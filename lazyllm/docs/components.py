@@ -1441,6 +1441,164 @@ add_example('TTSDeploy', ['''\
 ... <lazyllm-query>{"query": "", "files": ["path/to/chattts/sound_xxx.wav"]}
 '''])
 
+add_english_doc('finetune.base.DummyFinetune', '''\
+DummyFinetune is a subclass of [LazyLLMFinetuneBase][lazyllm.components.LazyLLMFinetuneBase] that serves as a placeholder implementation for fine-tuning.
+The class is primarily used for demonstration or testing purposes, as it does not perform any actual fine-tuning logic.
+Args:
+    base_model: A string specifying the base model name. Defaults to 'base'.
+    target_path: A string specifying the target path for fine-tuning outputs. Defaults to 'target'.
+    launcher: A launcher instance for executing commands. Defaults to [launchers.remote()][lazyllm.launchers.remote].
+    **kw: Additional keyword arguments that are stored for later use.
+     `cmd(self, *args, **kw) -> str`
+Generates a dummy command string for fine-tuning. This method is for testing purposes only.
+Args:
+    *args: Positional arguments to be included in the command.
+    **kw: Keyword arguments to be included in the command.
+Returns:
+    A string representing a dummy command. The string includes the initial arguments passed during initialization.
+''')
+
+add_chinese_doc('finetune.base.DummyFinetune', '''\
+DummyFinetune 是 [LazyLLMFinetuneBase][lazyllm.components.LazyLLMFinetuneBase] 的子类，用于占位实现微调逻辑。
+此类主要用于演示或测试目的，因为它不执行任何实际的微调操作。
+Args:
+    base_model: 字符串，指定基础模型的名称，默认为 'base'。
+    target_path: 字符串，指定微调输出的目标路径，默认为 'target'。
+    launcher: 启动器实例，用于执行命令。默认为 [launchers.remote()][lazyllm.launchers.remote]。
+    **kw: 其他关键字参数，这些参数会被保存以供后续使用。
+
+     `cmd(self, *args, **kw) -> str`
+生成一个用于微调的占位命令字符串。此方法仅用于测试目的。
+Args:
+    *args: 要包含在命令中的位置参数。
+    **kw: 要包含在命令中的关键字参数。
+Returns:
+    一个字符串，表示一个占位命令。该字符串包括初始化时传递的参数。
+''')
+
+add_example('finetune.base.DummyFinetune', ['''\
+>>> from lazyllm.components import DummyFinetune
+>>> from lazyllm import launchers
+>>> # 创建一个 DummyFinetune 实例
+>>> finetuner = DummyFinetune(base_model='example-base', target_path='example-target', launcher=launchers.local(), custom_arg='custom_value')
+>>> # 调用 cmd 方法生成占位命令
+>>> command = finetuner.cmd('--example-arg', key='value')
+>>> print(command)
+... echo 'dummy finetune!, and init-args is {'custom_arg': 'custom_value'}'
+'''])
+
+add_english_doc('finetune.base.DummyFinetune.cmd', '''\
+The `cmd` method generates a dummy command string for fine-tuning. This method is primarily for testing or demonstration purposes.
+Args:
+    *args: Positional arguments to be included in the command (not used in this implementation).
+    **kw: Keyword arguments to be included in the command (not used in this implementation).
+Returns:
+    A string representing a dummy command. The string includes the initial arguments (`**kw`) passed during the instance initialization, which are stored in `self.kw`.
+Example:
+    If the class is initialized with `custom_arg='value'`, calling the `cmd` method will return:
+    `"echo 'dummy finetune!, and init-args is {'custom_arg': 'value'}'"`
+''')
+
+add_chinese_doc('finetune.base.DummyFinetune.cmd', '''\
+`cmd` 方法生成一个用于微调的占位命令字符串。此方法主要用于测试或演示目的。
+Args:
+    *args: 要包含在命令中的位置参数（在本实现中未使用）。
+    **kw: 要包含在命令中的关键字参数（在本实现中未使用）。
+Returns:
+    一个字符串，表示一个占位命令。该字符串包括初始化时传递的关键字参数 (`**kw`)，存储在 `self.kw` 中。
+Example:
+    如果类初始化时使用 `custom_arg='value'`，调用 `cmd` 方法将返回：
+    `"echo 'dummy finetune!, and init-args is {'custom_arg': 'value'}'"`
+''')
+
+add_example('finetune.base.DummyFinetune.cmd', ['''\
+>>> from lazyllm.components import DummyFinetune
+>>> from lazyllm import launchers
+>>> # 创建一个 DummyFinetune 实例，并传递初始化参数
+>>> finetuner = DummyFinetune(base_model='example-base', target_path='example-target', launcher=launchers.local(), custom_arg='value')
+>>> # 调用 cmd 方法生成占位命令
+>>> command = finetuner.cmd()
+>>> # 打印生成的占位命令
+>>> print(command)
+... echo 'dummy finetune!, and init-args is {'custom_arg': 'value'}'
+'''])
+
+add_english_doc('OCRDeploy', '''\
+OCRDeploy is a subclass of [LazyLLMDeployBase][lazyllm.components.LazyLLMDeployBase] that provides deployment for OCR (Optical Character Recognition) models.
+This class is designed to deploy OCR models with additional configurations such as logging, trust for remote code, and port customization.
+     Attributes:
+    keys_name_handle: A dictionary mapping input keys to their corresponding handler keys. For example:
+        - "inputs": Handles general inputs.
+        - "ocr_files": Also mapped to "inputs".
+    message_format: A dictionary specifying the expected message format. For example:
+        - {"inputs": "/path/to/pdf"} indicates that the model expects a PDF file path as input.
+    default_headers: A dictionary specifying default headers for API requests. Defaults to:
+        - {"Content-Type": "application/json"}
+Args:
+    launcher: A launcher instance for deploying the model. Defaults to `None`.
+    log_path: A string specifying the path where logs should be saved. Defaults to `None`.
+    trust_remote_code: A boolean indicating whether to trust remote code execution. Defaults to `True`.
+    port: An integer specifying the port for the deployment server. Defaults to `None`.
+    finetuned_model: A string specifying the path or name of the fine-tuned OCR model. Defaults to `None`.
+    base_model: A string specifying the base model name. If `finetuned_model` is not provided, `base_model` will be used. Defaults to `None`.
+Returns:
+    An instance of [RelayServer][lazyllm.deploy.RelayServer], which acts as the deployment server for the OCR model.
+Example:
+    ```python
+    deployer = OCRDeploy(launcher=launchers.local(), log_path='./logs', port=8080)
+    server = deployer(finetuned_model='ocr-model')
+    print(server)  # RelayServer instance ready to handle OCR requests
+    ```
+''')
+
+add_chinese_doc('OCRDeploy', '''\
+OCRDeploy 是 [LazyLLMDeployBase][lazyllm.components.LazyLLMDeployBase] 的子类，用于部署 OCR（光学字符识别）模型。
+此类支持额外的配置，例如日志记录、远程代码信任以及端口自定义。
+     属性:
+    keys_name_handle: 一个字典，用于将输入键映射到相应的处理键。例如：
+        - "inputs": 处理一般输入。
+        - "ocr_files": 同样映射到 "inputs"。
+    message_format: 一个字典，指定模型期望的消息格式。例如：
+        - {"inputs": "/path/to/pdf"} 表示模型需要一个 PDF 文件路径作为输入。
+    default_headers: 一个字典，指定 API 请求的默认头部。默认为：
+        - {"Content-Type": "application/json"}
+Args:
+    launcher: 启动器实例，用于部署模型。默认为 `None`。
+    log_path: 字符串，指定日志保存的路径。默认为 `None`。
+    trust_remote_code: 布尔值，指示是否信任远程代码执行。默认为 `True`。
+    port: 整数，指定部署服务器的端口号。默认为 `None`。
+    finetuned_model: 字符串，指定微调 OCR 模型的路径或名称。默认为 `None`。
+    base_model: 字符串，指定基础模型的名称。如果未提供 `finetuned_model`，将使用 `base_model`。默认为 `None`。
+Returns:
+    [RelayServer][lazyllm.deploy.RelayServer] 的实例，作为 OCR 模型的部署服务器。
+Example:
+    ```python
+    deployer = OCRDeploy(launcher=launchers.local(), log_path='./logs', port=8080)
+    server = deployer(finetuned_model='ocr-model')
+    print(server)  # RelayServer 实例，准备处理 OCR 请求
+    ```
+''')
+
+add_example('OCRDeploy', ['''\
+>>> from lazyllm.components import OCRDeploy
+>>> from lazyllm import launchers
+>>> # 创建一个 OCRDeploy 实例
+>>> deployer = OCRDeploy(launcher=launchers.local(), log_path='./logs', port=8080)
+>>> # 使用微调的 OCR 模型部署服务器
+>>> server = deployer(finetuned_model='ocr-model')
+>>> # 打印部署服务器信息
+>>> print(server)
+... <RelayServer instance ready to handle OCR requests>
+'''])
+
+
+
+
+
+
+
+
+
 # ============= Launcher
 
 add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.launcher)

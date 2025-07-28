@@ -2155,3 +2155,418 @@ Args:
     client (mcp.ClientSession): 连接到MCP服务器的MCP客户端。
     mcp_tool (mcp.types.Tool): 由MCP服务器提供的工具。
 ''')
+
+add_english_doc('rag.utils.DocListManager.table_inited', '''\
+Checks if the database table `documents` is initialized. This method ensures thread-safety when accessing the database.
+`table_inited(self)`
+Determines whether the `documents` table exists in the database.
+Returns:
+    bool: `True` if the `documents` table exists, `False` otherwise.
+Notes:
+    - Uses a thread-safe lock (`self._db_lock`) to ensure safe access to the database.
+    - Establishes a connection to the SQLite database at `self._db_path` with the `check_same_thread` option.
+    - Executes the SQL query: `SELECT name FROM sqlite_master WHERE type='table' AND name='documents'` to check for the table.
+''')
+
+add_chinese_doc('rag.utils.DocListManager.table_inited', '''\
+检查数据库中的 `documents` 表是否已初始化。此方法在访问数据库时确保线程安全。
+`table_inited(self)`
+判断数据库中是否存在 `documents` 表。
+返回值:
+    bool: 如果 `documents` 表存在，返回 `True`；否则返回 `False`。
+说明:
+    - 使用线程安全锁 (`self._db_lock`) 确保对数据库的安全访问。
+    - 通过 `self._db_path` 连接 SQLite 数据库，并使用 `check_same_thread` 配置选项。
+    - 执行 SQL 查询：`SELECT name FROM sqlite_master WHERE type='table' AND name='documents'` 来检查表是否存在。
+''')
+
+add_english_doc('rag.utils.DocListManager.validate_paths', '''\
+Validates a list of file paths to ensure they are ready for processing.
+`validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]`
+This method checks whether the provided paths are new, already processed, or currently being processed. It ensures there are no conflicts in processing the documents.
+Args
+    paths (List[str]): A list of file paths to validate.
+Returns:
+    Tuple[bool, str, List[bool]]: A tuple containing:
+        - `bool`: `True` if all paths are valid, `False` otherwise.
+        - `str`: A message indicating success or the reason for failure.
+        - `List[bool]`: A list where each element corresponds to whether a path is new (`True`) or already exists (`False`).
+Notes:
+    - If any document is still being processed or needs reparsing, the method returns `False` with an appropriate error message.
+    - The method uses a database session and thread-safe lock (`self._db_lock`) to retrieve document status information.
+    - Unsafe statuses include `working` and `waiting`.
+''')
+
+add_chinese_doc('rag.utils.DocListManager.validate_paths', '''\
+验证一组文件路径，以确保它们可以被正常处理。
+`validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]`
+此方法检查提供的路径是否是新的、已处理的或当前正在处理的，并确保处理文档时不会发生冲突。
+参数:
+    paths (List[str]): 要验证的文件路径列表。
+返回值:
+    Tuple[bool, str, List[bool]]: 返回一个元组，包括：
+        - `bool`: 如果所有路径有效，则返回 `True`；否则返回 `False`。
+        - `str`: 表示成功或失败原因的消息。
+        - `List[bool]`: 一个布尔值列表，每个元素对应一个路径是否为新路径（`True` 表示新路径，`False` 表示已存在）。
+说明:
+    - 如果任何文档仍在处理中或需要重新解析，该方法会返回 `False`，并附带相应的错误消息。
+    - 方法通过数据库会话和线程安全锁 (`self._db_lock`) 检索文档状态信息。
+    - 不安全状态包括 `working` 和 `waiting`。
+''')
+
+add_english_doc('rag.utils.DocListManager.update_need_reparsing', '''\
+Updates the `need_reparse` status of a document in the `KBGroupDocuments` table.
+`update_need_reparsing(self, doc_id: str, need_reparse: bool, group_name: Optional[str] = None)`
+This method sets the `need_reparse` flag for a specific document, optionally scoped to a given group.
+Args:
+    doc_id (str): The ID of the document to update.
+    need_reparse (bool): The new value for the `need_reparse` flag.
+    group_name (Optional[str]): If provided, the update will be applied only to the specified group.
+Notes:
+    - Uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
+    - The `group_name` parameter allows scoping the update to a specific group; if not provided, the update applies to all groups containing the document.
+    - The method commits the change to the database immediately.
+''')
+
+add_chinese_doc('rag.utils.DocListManager.update_need_reparsing', '''\
+更新 `KBGroupDocuments` 表中某个文档的 `need_reparse` 状态。
+`update_need_reparsing(self, doc_id: str, need_reparse: bool, group_name: Optional[str] = None)`
+此方法设置指定文档的 `need_reparse` 标志，并可选限定到特定分组。
+参数:
+    doc_id (str): 要更新的文档ID。
+    need_reparse (bool): `need_reparse` 标志的新值。
+    group_name (Optional[str]): 如果提供，仅对指定分组应用更新；如果未提供，则对包含该文档的所有分组应用更新。
+说明:
+    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问安全。
+    - `group_name` 参数允许将更新限定到特定分组；如果未提供，则更新应用于包含该文档的所有分组。
+    - 方法会立刻将更改提交到数据库。
+''')
+
+add_english_doc('rag.utils.DocListManager.list_files', '''\
+Lists files from the `documents` table with optional filtering, limiting, and returning details.
+`list_files(self, limit: Optional[int] = None, details: bool = False, status: Union[str, List[str]] = DocListManager.Status.all, exclude_status: Optional[Union[str, List[str]]] = None)`
+This method retrieves file IDs or detailed file information from the database, based on the specified filtering conditions.
+Args:
+    limit (Optional[int]): Maximum number of files to return. If `None`, all matching files will be returned.
+    details (bool): Whether to return detailed file information (`True`) or just file IDs (`False`).
+    status (Union[str, List[str]]): The status or list of statuses to include in the results. Defaults to all statuses.
+    exclude_status (Optional[Union[str, List[str]]]): The status or list of statuses to exclude from the results. Defaults to `None`.
+Returns:
+    List: A list of file IDs if `details=False`, or a list of detailed file rows if `details=True`.
+Notes:
+    - The method constructs a query dynamically based on the provided `status` and `exclude_status` conditions.
+    - A thread-safe lock (`self._db_lock`) ensures safe database access.
+    - The `LIMIT` clause is applied if `limit` is specified.
+''')
+
+add_chinese_doc('rag.utils.DocListManager.list_files', '''\
+从 `documents` 表中列出文件，并支持过滤、限制返回结果以及返回详细信息。
+`list_files(self, limit: Optional[int] = None, details: bool = False, status: Union[str, List[str]] = DocListManager.Status.all, exclude_status: Optional[Union[str, List[str]]] = None)`
+此方法根据指定的条件，从数据库中检索文件ID或详细文件信息。
+参数:
+    limit (Optional[int]): 返回的最大文件数量。如果为 `None`，则返回所有匹配的文件。
+    details (bool): 是否返回详细的文件信息（`True`）或仅返回文件ID（`False`）。
+    status (Union[str, List[str]]): 要包含的状态或状态列表，默认为所有状态。
+    exclude_status (Optional[Union[str, List[str]]]): 要排除的状态或状态列表，默认为 `None`。
+返回值:
+    List: 如果 `details=False`，则返回文件ID列表；如果 `details=True`，则返回详细文件行的列表。
+说明:
+    - 该方法根据 `status` 和 `exclude_status` 条件动态构造查询。
+    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问安全。
+    - 如果指定了 `limit`，查询会附加 `LIMIT` 子句。
+''')
+
+add_english_doc('rag.utils.DocListManager.get_docs', '''\
+Fetch documents from the database based on a list of document IDs.
+`get_docs(self, doc_ids: List[str]) -> List[KBDocument]`
+This method retrieves document objects of type `KBDocument` from the database for the provided list of document IDs.
+Args:
+    doc_ids (List[str]): A list of document IDs to fetch.
+Returns:
+    List[KBDocument]: A list of `KBDocument` objects corresponding to the provided document IDs. If no documents are found, an empty list is returned.
+Notes:
+    - The method uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
+    - The query filters documents using the `doc_id` field with an SQL `IN` clause.
+    - If `doc_ids` is empty, the function will return an empty list without querying the database.
+''')
+
+add_chinese_doc('rag.utils.DocListManager.get_docs', '''\
+根据文档 ID 列表从数据库中获取文档对象。
+`get_docs(self, doc_ids: List[str]) -> List[KBDocument]`
+此方法从数据库中检索类型为 `KBDocument` 的文档对象，基于提供的文档 ID 列表。
+参数:
+    doc_ids (List[str]): 要获取的文档 ID 列表。
+返回值:
+    List[KBDocument]: 与提供的文档 ID 对应的 `KBDocument` 对象列表。如果没有找到文档，将返回空列表。
+说明:
+    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问的安全性。
+    - 查询使用 SQL 的 `IN` 子句，通过 `doc_id` 字段进行过滤。
+    - 如果 `doc_ids` 为空，函数将直接返回空列表，而不会查询数据库。
+''')
+
+add_english_doc('rag.utils.DocListManager.fetch_docs_changed_meta', '''\
+Fetch documents with changed metadata for a specific group and reset their `new_meta` field to `None`.
+`fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]`
+This method retrieves all documents where metadata has changed (`new_meta` is not `None`) for the given group. After fetching, it resets the `new_meta` field to `None` for those documents.
+Args:
+    group (str): The name of the group to filter documents by.
+Returns:
+    List[DocMetaChangedRow]: A list of rows, where each row contains the `doc_id` and the `new_meta` field of documents with changed metadata.
+Notes:
+    - The method uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
+    - It performs a SQL join between `KBDocument` and `KBGroupDocuments` to retrieve the relevant rows.
+    - After fetching, it updates the `new_meta` field of the affected rows to `None` and commits the changes to the database.
+''')
+
+add_chinese_doc('rag.utils.DocListManager.fetch_docs_changed_meta', '''\
+获取指定组中元数据已更改的文档，并将其 `new_meta` 字段重置为 `None`。
+`fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]`
+此方法检索元数据已更改（即 `new_meta` 不为 `None`）的所有文档，基于提供的组名。检索后，会将这些文档的 `new_meta` 字段重置为 `None`。
+参数:
+    group (str): 用于过滤文档的组名。
+返回值:
+    List[DocMetaChangedRow]: 包含文档 `doc_id` 和 `new_meta` 字段的行列表，表示元数据已更改的文档。
+说明:
+    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问安全。
+    - 方法通过 SQL `JOIN` 操作连接 `KBDocument` 和 `KBGroupDocuments` 表以检索相关行。
+    - 在获取数据后，将受影响行的 `new_meta` 字段更新为 `None`，并将更改提交到数据库。
+''')
+
+add_english_doc('rag.utils.DocListManager.list_kb_group_files', '''\
+List files in a specific knowledge base (KB) group with optional filters, limiting, and details.
+`list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False, status: Union[str, List[str]] = DocListManager.Status.all, exclude_status: Optional[Union[str, List[str]]] = None, upload_status: Union[str, List[str]] = DocListManager.Status.all, exclude_upload_status: Optional[Union[str, List[str]]] = None, need_reparse: Optional[bool] = None)`
+This method retrieves files from the `kb_group_documents` table, optionally filtering by group, document status, upload status, and whether reparsing is needed.
+Args:
+    group (str): The name of the KB group to filter files by. Defaults to `None` (no group filter).
+    limit (Optional[int]): Maximum number of files to return. If `None`, returns all matching files.
+    details (bool): Whether to return detailed file information (`True`) or only file IDs and paths (`False`).
+    status (Union[str, List[str]]): The KB group status or list of statuses to include in the results. Defaults to all statuses.
+    exclude_status (Optional[Union[str, List[str]]): The KB group status or list of statuses to exclude from the results. Defaults to `None`.
+    upload_status (Union[str, List[str]]): The document upload status or list of statuses to include in the results. Defaults to all statuses.
+    exclude_upload_status (Optional[Union[str, List[str]]): The document upload status or list of statuses to exclude from the results. Defaults to `None`.
+    need_reparse (Optional[bool]): Whether to filter files that need reparsing (`True`) or not (`False`). Defaults to `None` (no filtering).
+Returns:
+    List: If `details=False`, returns a list of tuples containing `(doc_id, path)`. 
+          If `details=True`, returns a list of detailed rows with additional metadata.
+Notes:
+    - This method constructs a SQL query dynamically based on the provided filters.
+    - Uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
+    - If `status` or `upload_status` are provided as lists, they are processed with SQL `IN` clauses.
+''')
+
+add_chinese_doc('rag.utils.DocListManager.list_kb_group_files', '''\
+列出指定知识库 (KB) 组中的文件，并支持过滤、限制返回以及返回详细信息。
+`list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False, status: Union[str, List[str]] = DocListManager.Status.all, exclude_status: Optional[Union[str, List[str]]] = None, upload_status: Union[str, List[str]] = DocListManager.Status.all, exclude_upload_status: Optional[Union[str, List[str]]] = None, need_reparse: Optional[bool] = None)`
+此方法从 `kb_group_documents` 表中检索文件，支持基于组名、文档状态、上传状态以及是否需要重新解析的过滤。
+参数:
+    group (str): 用于过滤文件的 KB 组名。默认为 `None`（不过滤组名）。
+    limit (Optional[int]): 返回的最大文件数量。如果为 `None`，则返回所有匹配的文件。
+    details (bool): 是否返回详细的文件信息（`True`）或仅返回文件 ID 和路径（`False`）。
+    status (Union[str, List[str]]): 要包含在结果中的 KB 组状态或状态列表。默认为所有状态。
+    exclude_status (Optional[Union[str, List[str]]): 要从结果中排除的 KB 组状态或状态列表。默认为 `None`。
+    upload_status (Union[str, List[str]]): 要包含在结果中的文档上传状态或状态列表。默认为所有状态。
+    exclude_upload_status (Optional[Union[str, List[str]]): 要从结果中排除的文档上传状态或状态列表。默认为 `None`。
+    need_reparse (Optional[bool]): 是否过滤需要重新解析的文件（`True`）或不需要重新解析的文件（`False`）。默认为 `None`（不进行过滤）。
+返回值:
+    List: 如果 `details=False`，返回包含 `(doc_id, path)` 的元组列表。
+          如果 `details=True`，返回包含附加元数据的详细行列表。
+说明:
+    - 方法根据提供的过滤条件动态构建 SQL 查询。
+    - 使用线程安全锁 (`self._db_lock`) 确保多线程环境下的数据库访问安全。
+    - 如果 `status` 或 `upload_status` 参数为列表，则会使用 SQL 的 `IN` 子句进行处理。
+''')
+
+add_english_doc('rag.utils.DocListManager.add_files', '''\
+Add multiple files to the document list with optional metadata, status, and batch processing.
+`add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None, status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[DocPartRow]`
+This method adds a list of files to the database with optional metadata and a specified initial status. Files are processed in batches for efficiency. After adding the documents, they are associated with the default knowledge base (KB) group.
+Args:
+    files (List[str]): A list of file paths to add to the database.
+    metadatas (Optional[List[Dict[str, Any]]]): A list of metadata dictionaries corresponding to the files. If `None`, no metadata will be associated. Defaults to `None`.
+    status (Optional[str]): The initial status for the added files. Defaults to `Status.waiting`.
+    batch_size (int): The number of files to process in each batch. Defaults to 64.
+Returns:
+    List[DocPartRow]: A list of `DocPartRow` objects representing the added files and their associated information.
+Notes:
+    - The method first creates document records using the `_add_doc_records` helper function.
+    - After the files are added, they are automatically linked to the default KB group (`DocListManager.DEFAULT_GROUP_NAME`).
+    - Batch processing ensures scalability when adding a large number of files.
+''')
+
+add_chinese_doc('rag.utils.DocListManager.add_files', '''\
+批量向文档列表中添加文件，可选附加元数据、状态，并支持分批处理。
+`add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None, status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[DocPartRow]`
+此方法将文件列表添加到数据库中，并为每个文件设置可选的元数据和初始状态。文件会以批量方式处理以提高效率。在文件添加完成后，它们会自动关联到默认的知识库 (KB) 组。
+参数:
+    files (List[str]): 要添加到数据库的文件路径列表。
+    metadatas (Optional[List[Dict[str, Any]]]): 与文件对应的元数据字典列表。如果为 `None`，则不会附加元数据。默认为 `None`。
+    status (Optional[str]): 添加文件的初始状态。默认为 `Status.waiting`。
+    batch_size (int): 每批处理的文件数量。默认为 64。
+返回值:
+    List[DocPartRow]: 包含已添加文件及其相关信息的 `DocPartRow` 对象列表。
+说明:
+    - 方法首先通过辅助函数 `_add_doc_records` 创建文档记录。
+    - 文件添加后，会自动关联到默认的知识库组 (`DocListManager.DEFAULT_GROUP_NAME`)。
+    - 批量处理确保在添加大量文件时具有良好的可扩展性。
+''')
+
+
+#delete_unreferenced_doc
+add_english_doc('rag.utils.DocListManager.delete_unreferenced_doc', '''\
+Delete documents marked as "deleting" and no longer referenced in the database.
+`delete_unreferenced_doc(self)`
+This method removes documents from the database that meet the following conditions:
+1. Their status is set to `DocListManager.Status.deleting`.
+2. Their reference count (`count`) is 0.
+''')
+
+add_chinese_doc('rag.utils.DocListManager.delete_unreferenced_doc', '''\
+删除数据库中标记为 "删除中" 且不再被引用的文档。
+`delete_unreferenced_doc(self)`
+此方法从数据库中删除满足以下条件的文档：
+1. 文档状态为 `DocListManager.Status.deleting`。
+2. 文档的引用计数 (`count`) 为 0。
+''')
+
+#get_docs_need_reparse
+add_english_doc('rag.utils.DocListManager.get_docs_need_reparse', '''\
+Retrieve documents that require reparsing for a specific group.
+`get_docs_need_reparse(self, group: str) -> List[KBDocument]`
+This method fetches documents that are marked as needing reparsing (`need_reparse=True`) for the given group. Only documents with a status of `success` or `failed` are included in the results.
+Args:
+    group (str): The name of the group to filter documents by.
+Returns:
+    List[KBDocument]: A list of `KBDocument` objects that need reparsing.
+Notes:
+    - The method uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
+    - The query performs a SQL `JOIN` between `KBDocument` and `KBGroupDocuments` to filter by group and reparse status.
+    - Documents with `need_reparse=True` and a status of `success` or `failed` are considered for reparsing.
+''')
+
+add_chinese_doc('rag.utils.DocListManager.get_docs_need_reparse', '''\
+获取需要重新解析的指定组中的文档。
+`get_docs_need_reparse(self, group: str) -> List[KBDocument]`
+此方法检索标记为需要重新解析 (`need_reparse=True`) 的文档，基于提供的组名。仅包含状态为 `success` 或 `failed` 的文档。
+参数:
+    group (str): 用于过滤文档的组名。
+返回值:
+    List[KBDocument]: 需要重新解析的 `KBDocument` 对象列表。
+说明:
+    - 使用线程安全锁 (`self._db_lock`) 确保多线程环境下的数据库访问安全。
+    - 查询通过 SQL `JOIN` 操作连接 `KBDocument` 和 `KBGroupDocuments` 表，并基于组名和重新解析状态进行过滤。
+    - 仅状态为 `success` 或 `failed` 且 `need_reparse=True` 的文档会被检索出来。
+''')
+
+add_english_doc('rag.utils.DocListManager.get_existing_paths_by_pattern', '''\
+Retrieve existing document paths that match a given pattern.
+`get_existing_paths_by_pattern(self, pattern: str) -> List[str]`
+This method fetches all document paths from the database that match the provided SQL `LIKE` pattern.
+Args:
+    pattern (str): The SQL `LIKE` pattern to filter document paths. For example, `%example%` matches paths containing the word "example".
+Returns:
+    List[str]: A list of document paths that match the given pattern. If no paths match, an empty list is returned.
+Notes:
+    - The method uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
+    - The `LIKE` operator in the SQL query is used to perform pattern matching on document paths.
+
+''')
+
+add_chinese_doc('rag.utils.DocListManager.get_existing_paths_by_pattern', '''\
+根据给定的模式，检索符合条件的文档路径。
+`get_existing_paths_by_pattern(self, pattern: str) -> List[str]`
+此方法从数据库中获取所有符合提供的 SQL `LIKE` 模式的文档路径。
+参数:
+    pattern (str): 用于过滤文档路径的 SQL `LIKE` 模式。例如，`%example%` 匹配包含单词 "example" 的路径。
+返回值:
+    List[str]: 符合给定模式的文档路径列表。如果没有匹配的路径，则返回空列表。
+说明:
+    - 使用线程安全锁 (`self._db_lock`) 确保多线程环境下的数据库访问安全。
+    - SQL 查询中的 `LIKE` 操作符用于对文档路径进行模式匹配。
+''')
+
+add_english_doc('rag.utils.DocListManager.enable_path_monitoring', '''\
+Enable or disable path monitoring for the document manager.
+`enable_path_monitoring(self, val: bool)`
+This method enables or disables the path monitoring functionality in the document manager. When enabled, a monitoring thread starts to handle path-related operations. When disabled, the thread stops and joins (waits for it to terminate).
+Args:
+    val (bool): A boolean value indicating whether to enable (`True`) or disable (`False`) path monitoring.
+Notes:
+    - If `val` is `True`, path monitoring is enabled by setting `_monitor_continue` to `True` and starting the `_monitor_thread`.
+    - If `val` is `False`, path monitoring is disabled by setting `_monitor_continue` to `False` and joining the `_monitor_thread` if it is running.
+    - This method ensures thread-safe operation when managing the monitoring thread.
+''')
+
+add_chinese_doc('rag.utils.DocListManager.enable_path_monitoring', '''\
+启用或禁用文档管理器的路径监控功能。
+`enable_path_monitoring(self, val: bool)`
+此方法用于启用或禁用文档管理器的路径监控功能。当启用时，会启动一个监控线程处理与路径相关的操作；当禁用时，会停止该线程并等待它终止。
+参数:
+    val (bool): 布尔值，指示是否启用 (`True`) 或禁用 (`False`) 路径监控。
+说明:
+    - 如果 `val` 为 `True`，路径监控功能会通过将 `_monitor_continue` 设置为 `True` 并启动 `_monitor_thread` 来启用。
+    - 如果 `val` 为 `False`，路径监控功能会通过将 `_monitor_continue` 设置为 `False` 并等待 `_monitor_thread` 终止来禁用。
+    - 方法在管理监控线程时确保线程操作是安全的。
+''')
+
+add_english_doc('rag.global_metadata.GlobalMetadataDesc', '''\
+A descriptor for global metadata, defining its type, optional element type, default value, and size constraints.
+`class GlobalMetadataDesc`
+This class is used to describe metadata properties such as type, optional constraints, and default values. It supports scalar and array data types, with specific size limitations for certain types.
+Args:
+    data_type (int): The type of the metadata as an integer, representing various data types (e.g., VARCHAR, ARRAY, etc.).
+    element_type (Optional[int]): The type of individual elements if `data_type` is an array. Defaults to `None`.
+    default_value (Optional[Any]): The default value for the metadata. If not provided, the default will be `None`.
+    max_size (Optional[int]): The maximum size or length for the metadata. Required if `data_type` is `VARCHAR` or `ARRAY`.
+''')
+
+add_chinese_doc('rag.global_metadata.GlobalMetadataDesc', '''\
+用于描述全局元数据的说明符，包括其类型、可选的元素类型、默认值和大小限制。
+`class GlobalMetadataDesc`
+此类用于描述元数据的属性，例如类型、可选约束和默认值。支持标量和数组数据类型，并对某些类型指定特定的大小限制。
+Args:
+    data_type (int): 元数据的类型，以整数表示，代表不同的数据类型（例如 VARCHAR、ARRAY 等）。
+    element_type (Optional[int]): 如果 `data_type` 是数组，则表示数组中每个元素的类型。默认为 `None`。
+    default_value (Optional[Any]): 元数据的默认值。如果未提供，默认值为 `None`。
+    max_size (Optional[int]): 元数据的最大大小或长度。如果 `data_type` 为 `VARCHAR` 或 `ARRAY`，则此属性为必填项。
+''')
+
+add_english_doc('rag.index_base.IndexBase', '''\
+An abstract base class for implementing indexing systems that support updating, removing, and querying document nodes.
+`class IndexBase(ABC)`
+This abstract base class defines the interface for an indexing system. It requires subclasses to implement methods for updating, removing, and querying document nodes.
+''')
+
+add_chinese_doc('rag.index_base.IndexBase', '''\
+用于实现索引系统的抽象基类，支持更新、删除和查询文档节点。
+`class IndexBase(ABC)`
+此抽象基类定义了索引系统的接口，要求子类实现更新、删除和查询文档节点的方法。
+''')
+
+add_example('rag.index_base.IndexBase', '''\
+>>> from mymodule import IndexBase, DocNode
+>>> class MyIndex(IndexBase):
+...     def __init__(self):
+...         self.nodes = []
+...     def update(self, nodes):
+...         self.nodes.extend(nodes)
+...         print(f"Updated nodes: {nodes}")
+...     def remove(self, uids, group_name=None):
+...         self.nodes = [node for node in self.nodes if node.uid not in uids]
+...         print(f"Removed nodes with uids: {uids}")
+...     def query(self, *args, **kwargs):
+...         print("Querying nodes...")
+...         return self.nodes
+>>> index = MyIndex()
+>>> doc1 = DocNode(uid="1", content="Document 1")
+>>> doc2 = DocNode(uid="2", content="Document 2")
+>>> index.update([doc1, doc2])
+Updated nodes: [DocNode(uid="1", content="Document 1"), DocNode(uid="2", content="Document 2")]
+>>> index.query()
+Querying nodes...
+[DocNode(uid="1", content="Document 1"), DocNode(uid="2", content="Document 2")]
+>>> index.remove(["1"])
+Removed nodes with uids: ['1']
+>>> index.query()
+Querying nodes...
+[DocNode(uid="2", content="Document 2")]
+''')

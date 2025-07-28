@@ -1,4 +1,4 @@
-## Finetune
+Finetune
 
 ::: lazyllm.components.finetune.AlpacaloraFinetune
     options:
@@ -19,7 +19,9 @@
 ::: lazyllm.components.auto.AutoFinetune
     options:
       heading_level: 3
-
+::: lazyllm.components.finetune.base.DummyFinetune
+    options:
+      heading_level: 3
 ---
 
 ## Deploy
@@ -39,7 +41,9 @@
 ::: lazyllm.components.auto.AutoDeploy
     options:
       heading_level: 3
-
+::: lazyllm.components.deploy.OCRDeploy
+    options:
+      heading_level: 3
 ---
 
 ## Launcher
@@ -73,17 +77,17 @@
 ::: lazyllm.components.AlpacaPrompter
     options:
       heading_level: 3
-	  inherited_members:
-	    - generate_prompt
-	    - get_response
+    inherited_members:
+      - generate_prompt
+      - get_response
       members: false
 
 ::: lazyllm.components.ChatPrompter
     options:
       heading_level: 3
-	  inherited_members:
-	    - generate_prompt
-	    - get_response
+    inherited_members:
+      - generate_prompt
+      - get_response
       members: false
 
 ---

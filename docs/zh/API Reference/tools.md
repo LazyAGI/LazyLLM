@@ -4,7 +4,7 @@
 
 ::: lazyllm.tools.rag.readers.ReaderBase
     members:
-	exclude-members:
+    exclude-members:
 
 ::: lazyllm.tools.Reranker
     members:
@@ -16,7 +16,7 @@
 
 ::: lazyllm.tools.rag.DocManager
     members:
-	exclude-members:
+    exclude-members:
 
 ::: lazyllm.tools.SentenceSplitter
     members:
@@ -57,3 +57,12 @@
 ::: lazyllm.tools.IntentClassifier
     members: 
     exclude-members:
+::: lazyllm.tools.rag.utils.DocListManager
+    members: 
+    exclude-members: 
+::: lazyllm.tools.rag.global_metadata.GlobalMetadataDesc
+    members: 
+    exclude-members: 
+::: lazyllm.tools.rag.index_base.IndexBase
+    members: 
+    exclude-members: 
