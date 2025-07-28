@@ -249,7 +249,7 @@ class TestDocumentServer(unittest.TestCase):
         time.sleep(20)  # waiting for worker thread to update newly uploaded files
 
         # make sure that ids are written into the store
-        nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
+        nodes = self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
         for node in nodes:
             if node.global_metadata[RAG_DOC_PATH].endswith('test1.txt'):
                 test1_docid = node.global_metadata[RAG_DOC_ID]
@@ -264,7 +264,7 @@ class TestDocumentServer(unittest.TestCase):
 
         time.sleep(20)  # waiting for worker thread to delete files
 
-        nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
+        nodes = self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
         assert len(nodes) == 1
         assert nodes[0].global_metadata[RAG_DOC_ID] == test2_docid
         cur_meta_dict = nodes[0].global_metadata

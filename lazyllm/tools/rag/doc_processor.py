@@ -104,9 +104,8 @@ class _Processor:
                 raise Exception(f"Failed to remove nodes for docs {doc_ids} from store")
             self.add_doc(input_files=doc_paths, ids=doc_ids, metadatas=metadatas)
         else:
-            p_nodes = self._store.get_nodes(
-                group=self._node_groups[group_name]['parent'], kb_id=kb_id, doc_ids=doc_ids
-            )
+            p_nodes = self._store.get_nodes(group=self._node_groups[group_name]['parent'],
+                                            kb_id=kb_id, doc_ids=doc_ids)
             self._reparse_group_recursive(p_nodes=p_nodes, cur_name=group_name, doc_ids=doc_ids)
 
     def _reparse_group_recursive(self, p_nodes: List[DocNode], cur_name: str, doc_ids: List[str]):
