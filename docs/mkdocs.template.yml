@@ -15,6 +15,7 @@ nav:
   - Great Writer: Cookbook/great_writer.md
   - RAG: Cookbook/rag.md
   - Streaming: Cookbook/streaming.md
+  - multi_modal_output_agent: Cookbook/multi_model_output_agent.md
 - Best Practice:
   - Flow: Best Practice/flow.md
   - Flowapp: Best Practice/flowapp.md
@@ -107,6 +108,7 @@ extra:
     link: https://github.com/LazyAGI/LazyLLM
 extra_javascript:
   - 'assets/js/assistant.js'
+  - 'https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js'
 plugins:
 - search:
 - section-index:
@@ -134,3 +136,5 @@ markdown_extensions:
   - pymdownx.superfences
   - attr_list
   - admonition
+  - pymdownx.arithmatex:
+      generic: true
