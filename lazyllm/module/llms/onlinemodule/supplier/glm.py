@@ -2,11 +2,15 @@ import json
 import os
 import uuid
 import requests
-from typing import Tuple, List
+from typing import Tuple, List, Any, Dict
 from urllib.parse import urljoin
 import lazyllm
-from .onlineChatModuleBase import OnlineChatModuleBase
-from .fileHandler import FileHandlerBase
+from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
+from ..fileHandler import FileHandlerBase
+from lazyllm.thirdparty import zhipuai
+from lazyllm.components.utils.file_operate import bytes_to_file
+from lazyllm.components.formatter import encode_query_with_filepaths
+
 
 class GLMModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ["chatglm3-6b", "chatglm_12b", "chatglm_32b", "chatglm_66b", "chatglm_130b"]
@@ -223,3 +227,88 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _query_deployment(self, deployment_id) -> str:
         return "RUNNING"
+
+
+class GLMEmbedding(OnlineEmbeddingModuleBase):
+    def __init__(self,
+                 embed_url: str = "https://open.bigmodel.cn/api/paas/v4/embeddings",
+                 embed_model_name: str = "embedding-2",
+                 api_key: str = None):
+        super().__init__("GLM", embed_url, api_key or lazyllm.config["glm_api_key"], embed_model_name)
+
+
+class GLMReranking(OnlineEmbeddingModuleBase):
+
+    def __init__(self,
+                 embed_url: str = "https://open.bigmodel.cn/api/paas/v4/rerank",
+                 embed_model_name: str = "rerank",
+                 api_key: str = None):
+        super().__init__("GLM", embed_url, api_key or lazyllm.config["glm_api_key"], embed_model_name)
+
+    @property
+    def type(self):
+        return "ONLINE_RERANK"
+
+    def _encapsulated_data(self, query: str, documents: List[str], top_n: int, **kwargs) -> Dict[str, str]:
+        json_data = {
+            "query": query,
+            "documents": documents,
+            "top_n": top_n,
+            "return_documents": False,
+            "return_raw_scores": True
+        }
+        if len(kwargs) > 0:
+            json_data.update(kwargs)
+
+        return json_data
+
+    def _parse_response(self, response: Dict[str, Any]) -> List[float]:
+        return [(result["index"], result["relevance_score"]) for result in response['results']]
+
+
+class GLMMultiModal(OnlineMultiModalBase):
+    def __init__(self, model_name: str, api_key: str = None,
+                 base_url: str = 'https://open.bigmodel.cn/api/paas/v4', return_trace: bool = False,
+                 **kwargs):
+        OnlineMultiModalBase.__init__(self, model_series='GLM', model_name=model_name,
+                                      return_trace=return_trace, **kwargs)
+        self._client = zhipuai.ZhipuAI(api_key=api_key or lazyllm.config['glm_api_key'], base_url=base_url)
+
+
+class GLMSTTModule(GLMMultiModal):
+    MODEL_NAME = "glm-asr"
+
+    def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
+        GLMMultiModal.__init__(self, model_name=model_name or GLMSTTModule.MODEL_NAME
+                               or lazyllm.config['glm_stt_model_name'], api_key=api_key,
+                               return_trace=return_trace, **kwargs)
+
+    def _forward(self, files: List[str] = [], **kwargs):
+        assert len(files) == 1, "GLMSTTModule only supports one file"
+        assert os.path.exists(files[0]), f"File {files[0]} not found"
+        transcriptResponse = self._client.audio.transcriptions.create(
+            model=self._model_name,
+            file=open(files[0], "rb"),
+        )
+        return transcriptResponse.text
+
+
+class GLMTextToImageModule(GLMMultiModal):
+    MODEL_NAME = "cogview-4-250304"
+
+    def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
+        GLMMultiModal.__init__(self, model_name=model_name or GLMTextToImageModule.MODEL_NAME
+                               or lazyllm.config['glm_text_to_image_model_name'], api_key=api_key,
+                               return_trace=return_trace, **kwargs)
+
+    def _forward(self, input: str = None, n: int = 1, size: str = '1024x1024', **kwargs):
+        call_params = {
+            'model': self._model_name,
+            'prompt': input,
+            'n': n,
+            'size': size,
+            **kwargs
+        }
+        response = self._client.images.generations(**call_params)
+        return encode_query_with_filepaths(None, bytes_to_file([requests.get(result.url).content
+                                                                for result in response.data]))
