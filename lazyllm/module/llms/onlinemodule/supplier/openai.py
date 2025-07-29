@@ -5,8 +5,8 @@ import requests
 from typing import Tuple, List
 from urllib.parse import urljoin
 import lazyllm
-from .onlineChatModuleBase import OnlineChatModuleBase
-from .fileHandler import FileHandlerBase
+from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
+from ..fileHandler import FileHandlerBase
 
 class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ["gpt-3.5-turbo-0125", "gpt-3.5-turbo-1106",
@@ -212,3 +212,13 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _query_deployment(self, deployment_id) -> str:
         return "RUNNING"
+
+
+class OpenAIEmbedding(OnlineEmbeddingModuleBase):
+    NO_PROXY = True
+
+    def __init__(self,
+                 embed_url: str = "https://api.openai.com/v1/embeddings",
+                 embed_model_name: str = "text-embedding-ada-002",
+                 api_key: str = None):
+        super().__init__("OPENAI", embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name)

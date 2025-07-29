@@ -1,6 +1,6 @@
 import lazyllm
 from urllib.parse import urljoin
-from .onlineChatModuleBase import OnlineChatModuleBase
+from ..base import OnlineChatModuleBase
 
 class KimiModule(OnlineChatModuleBase):
 

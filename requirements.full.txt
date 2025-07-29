@@ -89,3 +89,6 @@ botocore
 ftfy==6.3.1
 imageio==2.37.0
 imageio-ffmpeg==0.6.0
+volcengine-python-sdk[ark]>=4.0.6
+dashscope>=1.23.6
+zhipuai>=2.1.5.20250708

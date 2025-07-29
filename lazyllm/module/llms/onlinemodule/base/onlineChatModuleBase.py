@@ -13,11 +13,10 @@ from operator import itemgetter as itemget
 import lazyllm
 from lazyllm import globals
 from lazyllm.components.prompter import PrompterBase
-from lazyllm.components.formatter import FormatterBase, encode_query_with_filepaths, decode_query_with_filepaths
-from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
+from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import delete_old_files, image_to_base64
-from ...servermodule import LLMBase
-from ...module import Pipeline
+from ....servermodule import LLMBase
+from ....module import Pipeline
 
 
 class StaticParams(TypedDict, total=False):
@@ -167,8 +166,7 @@ class OnlineChatModuleBase(LLMBase):
                 tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):
         """LLM inference interface"""
         stream_output = stream_output or self._stream
-        if lazyllm_files:
-            __input = encode_query_with_filepaths(__input, lazyllm_files)
+        __input, files = self._get_files(__input, lazyllm_files)
         params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
         if tools: params["tools"] = tools
         data = self._prompt.generate_prompt(**params)
@@ -177,14 +175,8 @@ class OnlineChatModuleBase(LLMBase):
         if len(kw) > 0: data.update(kw)
         if len(self._model_optional_params) > 0: data.update(self._model_optional_params)
 
-        if isinstance(__input, str) and (__input.startswith(LAZYLLM_QUERY_PREFIX)
-           or (self._vlm_force_format_input_with_files and data["model"] in self.VLM_MODEL_LIST)):
-            for idx, message in enumerate(data["messages"]):
-                content = message["content"]
-                if content.startswith(LAZYLLM_QUERY_PREFIX):
-                    content = decode_query_with_filepaths(content)
-                query_files = self._format_input_with_files(content)
-                data["messages"][idx]["content"] = query_files
+        if files or (self._vlm_force_format_input_with_files and data["model"] in self.VLM_MODEL_LIST):
+            data["messages"][-1]["content"] = self._format_input_with_files(data["messages"][-1]["content"], files)
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         with requests.post(self._url, json=data, headers=self._headers, stream=stream_output, proxies=proxies) as r:
@@ -334,14 +326,12 @@ class OnlineChatModuleBase(LLMBase):
         return [{"type": "image_url", "image_url": {"url": image_url}}]
 
     # for online vlm
-    def _format_input_with_files(self, query_files: str) -> List[Dict[str, str]]:
-        if isinstance(query_files, str):
-            return self._format_vl_chat_query(query_files)
-        assert isinstance(query_files, dict), "query_files must be a dict."
-        output = [{"type": "text", "text": query_files["query"]}]
-        files = query_files.get("files", [])
-        assert isinstance(files, list), "files must be a list."
-        for file in files:
+    def _format_input_with_files(self, query: str, query_files: list[str]) -> List[Dict[str, str]]:
+        if not query_files:
+            return self._format_vl_chat_query(query)
+        output = [{"type": "text", "text": query}]
+        assert isinstance(query_files, list), "query_files must be a list."
+        for file in query_files:
             mime = None
             if not file.startswith("http"):
                 file, mime = image_to_base64(file)
