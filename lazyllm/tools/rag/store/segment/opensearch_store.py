@@ -41,7 +41,9 @@ DEFAULT_INDEX_BODY = {
 }
 
 
-class OpenSearchStore(LazyLLMStoreBase, capability=StoreCapability.SEGMENT):
+class OpenSearchStore(LazyLLMStoreBase):
+    capability = StoreCapability.SEGMENT
+
     def __init__(self, uris: List[str], client_kwargs: Optional[Dict] = {},
                  index_kwargs: Optional[Union[Dict, List]] = None, **kwargs):
         if isinstance(uris, str):

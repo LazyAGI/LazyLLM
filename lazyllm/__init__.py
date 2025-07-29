@@ -24,6 +24,7 @@ config.done()
 
 
 del LazyLLMRegisterMetaClass  # noqa F821
+del LazyLLMRegisterMetaABCClass  # noqa F821
 del _get_base_cls_from_registry  # noqa F821
 del patch
 

@@ -1,4 +1,4 @@
-from .registry import LazyLLMRegisterMetaClass, _get_base_cls_from_registry, Register
+from .registry import LazyLLMRegisterMetaClass, LazyLLMRegisterMetaABCClass, _get_base_cls_from_registry, Register
 from .common import package, kwargs, arguments, LazyLLMCMD, timeout, final, ReadOnlyWrapper, DynamicDescriptor, override
 from .common import FlatList, Identity, ResultCollector, ArgsDict, CaseInsensitiveDict
 from .common import ReprRule, make_repr, modify_repr, is_valid_url, is_valid_path
@@ -17,6 +17,7 @@ from .utils import compile_func, obj2str, str2obj, str2bool, dump_obj, load_obj
 __all__ = [
     # registry
     'LazyLLMRegisterMetaClass',
+    'LazyLLMRegisterMetaABCClass',
     '_get_base_cls_from_registry',
     'Register',
 

@@ -29,7 +29,9 @@ BUILTIN_KEYS = {
 }
 
 
-class MilvusStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
+class MilvusStore(LazyLLMStoreBase):
+    capability = StoreCapability.VECTOR
+
     def __init__(self, uri: str = "", db_name: str = 'lazyllm', index_kwargs: Optional[Union[Dict, List]] = None,
                  client_kwargs: Optional[Dict] = {}, ):
         # one database, different collection for each group (for standalone, add prefix to collection name)

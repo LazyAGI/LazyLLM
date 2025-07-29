@@ -3,7 +3,7 @@ import re
 from abc import ABC, abstractmethod
 from enum import IntFlag, auto
 from typing import Optional, List, Union, Set, Dict, Any
-from lazyllm import once_wrapper
+from lazyllm import once_wrapper, LazyLLMRegisterMetaABCClass
 from pydantic import BaseModel, Field
 
 from ..data_type import DataType
@@ -68,12 +68,8 @@ class StoreCapability(IntFlag):
     ALL = SEGMENT | VECTOR
 
 
-class LazyLLMStoreBase(ABC):
+class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
     capability: StoreCapability
-
-    def __init_subclass__(cls, *, capability: StoreCapability, **kwargs):
-        super().__init_subclass__(**kwargs)
-        cls.capability = capability
 
     @once_wrapper(reset_on_pickle=True)
     @abstractmethod

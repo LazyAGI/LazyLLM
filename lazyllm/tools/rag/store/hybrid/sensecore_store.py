@@ -37,7 +37,9 @@ class Segment(BaseModel):
     number: Optional[int] = 0
 
 
-class SenseCoreStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
+class SenseCoreStore(LazyLLMStoreBase):
+    capability = StoreCapability.ALL
+
     def __init__(self, uri: str = "", **kwargs):
         self._uri = uri
         self._s3_config = kwargs.get("s3_config")

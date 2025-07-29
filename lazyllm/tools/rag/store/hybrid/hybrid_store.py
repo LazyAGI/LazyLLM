@@ -5,7 +5,9 @@ from lazyllm.common import override
 from ..store_base import LazyLLMStoreBase, StoreCapability
 
 
-class HybridStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
+class HybridStore(LazyLLMStoreBase):
+    capability = StoreCapability.ALL
+
     def __init__(self, segment_store: LazyLLMStoreBase, vector_store: LazyLLMStoreBase):
         self.segment_store: LazyLLMStoreBase = segment_store
         self.vector_store: LazyLLMStoreBase = vector_store

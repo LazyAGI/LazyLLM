@@ -1,11 +1,11 @@
 from collections import defaultdict
 from typing import Optional, List, Union, Set, Dict, Callable, Any
+import lazyllm
 from lazyllm import LOG, once_wrapper
 
 from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment, INSERT_BATCH_SIZE,
                          BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID, EMBED_PREFIX)
 from .hybrid import HybridStore, MapStore, SenseCoreStore
-from .segment import OpenSearchStore
 from .vector import ChromadbStore, MilvusStore
 from ..default_index import DefaultIndex
 from ..utils import parallel_do_embedding
@@ -15,15 +15,6 @@ from ..index_base import IndexBase
 from ..data_type import DataType
 from ..global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 from ..similarity import registered_similarities
-
-
-STORE_FACTORIES = {
-    "map": MapStore,
-    "opensearch": OpenSearchStore,
-    "chroma": ChromadbStore,
-    "milvus": MilvusStore,
-    "sensecore": SenseCoreStore,
-}
 
 
 class DocumentStore(object):
@@ -55,7 +46,7 @@ class DocumentStore(object):
         if not cfg:
             return None
         stype = cfg["type"]
-        cls = STORE_FACTORIES.get(stype)
+        cls = getattr(lazyllm.store, stype, None)
         if not cls:
             raise NotImplementedError(f"Not implemented store type: {stype}")
         if deprecated_msg:

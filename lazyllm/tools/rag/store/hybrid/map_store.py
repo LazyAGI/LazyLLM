@@ -10,7 +10,9 @@ from lazyllm.common import override
 from ..store_base import LazyLLMStoreBase, StoreCapability, DEFAULT_KB_ID
 
 
-class MapStore(LazyLLMStoreBase, capability=StoreCapability.ALL):
+class MapStore(LazyLLMStoreBase):
+    capability = StoreCapability.ALL
+
     def __init__(self, uri: Optional[str] = None, **kwargs):
         self._uri = uri  # filepath to SQLite .db for persistence
 

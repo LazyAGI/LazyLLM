@@ -19,7 +19,9 @@ DEFAULT_INDEX_CONFIG = {
 }
 
 
-class ChromadbStore(LazyLLMStoreBase, capability=StoreCapability.VECTOR):
+class ChromadbStore(LazyLLMStoreBase):
+    capability = StoreCapability.VECTOR
+
     def __init__(self, dir: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = None,
                  index_kwargs: Optional[Union[Dict, List]] = None, client_kwargs: Optional[Dict] = {},
                  **kwargs) -> None:
