@@ -4,7 +4,7 @@
 
 ::: lazyllm.tools.rag.readers.ReaderBase
     members:
-    exclude-members:
+        exclude-members:
 
 ::: lazyllm.tools.Reranker
     members:
@@ -16,7 +16,7 @@
 
 ::: lazyllm.tools.rag.DocManager
     members:
-    exclude-members:
+        exclude-members:
 
 ::: lazyllm.tools.SentenceSplitter
     members:
