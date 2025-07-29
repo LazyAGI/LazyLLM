@@ -38,7 +38,6 @@ def listen(chat):
             try:
                 audio = r.listen(source, timeout=5, phrase_time_limit=30)
                 print("Recognizing...")
-
                 text = r.recognize_whisper(
                     audio,
                     model="medium.en",
