@@ -26,6 +26,7 @@ engine = pyttsx3.init()
 # Step 2: Define the Main Voice Assistant Logic
 # The listen(chat) function continuously listens for user input through the microphone, transcribes it into text, queries the LLM, and reads out the response.
 
+
 def listen(chat):
     r = sr.Recognizer()
     with sr.Microphone() as source:
@@ -49,7 +50,6 @@ def listen(chat):
                 )
                 text = unrecognized_speech_text
             print(text)
-
             response_text = chat(text)
             print(response_text)
             engine.say(response_text)
