@@ -1,0 +1,20 @@
+import os
+import lazyllm
+
+# 设置 LazyLLM 的 SenseNova API Key 和 Secret Key
+os.environ["LAZYLLM_SENSENOVA_API_KEY"] = "LAZYLLM_SENSENOVA_API_KEY"
+os.environ["LAZYLLM_SENSENOVA_SECRET_KEY"] = "LAZYLLM_SENSENOVA_SECRET_KEY"
+
+# 初始化 LazyLLM 的在线聊天模块 (基于 SenseNova)
+model = lazyllm.OnlineChatModule(provider="sensenova")  # 使用 LazyLLM 的 SenseNova 在线模型
+
+# 测试模型交互
+if __name__ == "__main__":
+    while True:
+        user_input = input("You: ")
+        if user_input.lower() in ["exit", "quit"]:
+            print("Exiting...")
+            break
+        # 使用 LazyLLM 模型生成回复
+        response = model(user_input)
+        print(f"Model: {response}")
