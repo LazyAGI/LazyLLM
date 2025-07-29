@@ -1,11 +1,11 @@
 # 语音对话agent
 
-# 本项目展示了如何使用[LazyLLM](https://github.com/LazyAGI/LazyLLM)，实现一个支持语音输入与语音播报的语音助手系统，可通过麦克风接收用户语音指令、识别语音文本、调用大模型生成回答，并通过语音播报返回。
+## 本项目展示了如何使用[LazyLLM](https://github.com/LazyAGI/LazyLLM)，实现一个支持语音输入与语音播报的语音助手系统，可通过麦克风接收用户语音指令、识别语音文本、调用大模型生成回答，并通过语音播报返回。
 
-# !!! abstract "通过本节您将学习到以下内容"
-# - 如何使用 `speech_recognition` 接收并识别麦克风语音。
-# - 如何使用 `LazyLLM.OnlineChatModule` 调用大模型进行自然语言回答。
-# - 如何使用 `pyttsx3` 将文本转为语音实现播报。
+## !!! abstract "通过本节您将学习到以下内容"
+## - 如何使用 `speech_recognition` 接收并识别麦克风语音。
+## - 如何使用 `LazyLLM.OnlineChatModule` 调用大模型进行自然语言回答。
+## - 如何使用 `pyttsx3` 将文本转为语音实现播报。
 
 
 # 项目依赖

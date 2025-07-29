@@ -1,10 +1,10 @@
 # Voice Dialogue Agent
-# This project demonstrates how to use LazyLLM to build a voice assistant system that supports speech input and audio output. It captures voice input through a microphone, transcribes it into text, generates a response using a large language model, and speaks the result aloud.
+## This project demonstrates how to use LazyLLM to build a voice assistant system that supports speech input and audio output. It captures voice input through a microphone, transcribes it into text, generates a response using a large language model, and speaks the result aloud.
 
-# !!! abstract "In this section, you will learn how to:"
-# Use speech_recognition to capture and recognize voice input from a microphone.
-# Use LazyLLM.OnlineChatModule to invoke a large language model for natural language responses.
-# Use pyttsx3 to convert text to speech for spoken output.
+## !!! abstract "In this section, you will learn how to:"
+## Use speech_recognition to capture and recognize voice input from a microphone.
+## Use LazyLLM.OnlineChatModule to invoke a large language model for natural language responses.
+## Use pyttsx3 to convert text to speech for spoken output.
 
 # Project Dependencies
 ## Ensure the following dependencies are installed:
@@ -33,7 +33,7 @@ engine = pyttsx3.init()
   - Cross-platform speech output
   - Supports adjusting speech rate, volume and other parameters
 
-## Step 2: 构建语音助手主逻辑
+## Step 2: Build Voice Assistant Main Logic
 
 ``` python
 def listen(chat):
