@@ -29,7 +29,7 @@ engine = pyttsx3.init()
 # Step 2: 构建语音助手主逻辑
 # 定义主函数 listen(chat)，通过麦克风持续监听用户语音、识别成文本、调用大模型进行回答，并通过语音播报返回结果。
 
-
+```python
 def listen(chat):
     r = sr.Recognizer()
     with sr.Microphone() as source:
@@ -57,6 +57,7 @@ def listen(chat):
             print(response_text)
             engine.say(response_text)
             engine.runAndWait()
+```
 
 # 示例运行结果
 
