@@ -22,11 +22,11 @@ class MetadataMode(str, Enum):
 
 @reset_on_pickle(('_lock', threading.Lock))
 class DocNode:
-    def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = None,
+    def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = "",
                  group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
                  parent: Optional[Union[str, "DocNode"]] = None, store=None,
-                 node_groups: Optional[Dict[str, Dict]] = None, metadata: Optional[Dict[str, Any]] = None,
-                 global_metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
+                 node_groups: Optional[Dict[str, Dict]] = {}, metadata: Optional[Dict[str, Any]] = {},
+                 global_metadata: Optional[Dict[str, Any]] = {}, *, text: Optional[str] = ""):
         if text and content:
             raise ValueError('`text` and `content` cannot be set at the same time.')
 
@@ -35,9 +35,9 @@ class DocNode:
         self._group: Optional[str] = group
         self._embedding: Optional[Dict[str, List[float]]] = embedding or {}
         # metadata: the chunk's meta
-        self._metadata: Dict[str, Any] = metadata or {}
+        self._metadata: Dict[str, Any] = metadata
         # Global metadata: the file's global metadata (higher level)
-        self._global_metadata = global_metadata or {}
+        self._global_metadata = global_metadata
         # Metadata keys that are excluded from text for the embed model.
         self._excluded_embed_metadata_keys: List[str] = []
         # Metadata keys that are excluded from text for the LLM.
@@ -47,7 +47,7 @@ class DocNode:
         self._children: Dict[str, List["DocNode"]] = defaultdict(list)
         self._children_loaded = False
         self._store = store
-        self._node_groups: Dict[str, Dict] = node_groups or {}
+        self._node_groups: Dict[str, Dict] = node_groups
         self._lock = threading.Lock()
         self._embedding_state = set()
         self.relevance_score = None

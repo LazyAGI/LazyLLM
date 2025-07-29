@@ -6,7 +6,7 @@ from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID
 from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform, TempDocRetriever
 from lazyllm.tools.rag.doc_manager import DocManager
-from lazyllm.tools.rag.utils import DocListManager
+from lazyllm.tools.rag.utils import DocListManager, gen_docid
 from lazyllm.launcher import cleanup
 from lazyllm import config
 from unittest.mock import MagicMock
@@ -30,7 +30,7 @@ class TestDocImpl(unittest.TestCase):
         self.tmp_file_a = tempfile.NamedTemporaryFile()
         self.tmp_file_b = tempfile.NamedTemporaryFile()
         mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
-        mock_node._global_metadata = {RAG_DOC_PATH: self.tmp_file_a.name}
+        mock_node._global_metadata = {RAG_DOC_ID: gen_docid(self.tmp_file_a.name), RAG_DOC_PATH: self.tmp_file_a.name}
         self.mock_directory_reader.load_data.return_value = ([mock_node], [])
 
         self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
@@ -80,12 +80,12 @@ class TestDocImpl(unittest.TestCase):
     def test_add_files(self):
         assert self.doc_impl.store is None
         self.doc_impl._lazy_init()
-        assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 1
+        assert len(self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
-        new_doc._global_metadata = {RAG_DOC_PATH: self.tmp_file_b.name}
+        new_doc._global_metadata = {RAG_DOC_ID: gen_docid(self.tmp_file_b.name), RAG_DOC_PATH: self.tmp_file_b.name}
         self.mock_directory_reader.load_data.return_value = ([new_doc], [])
         self.doc_impl._add_doc_to_store([self.tmp_file_b.name])
-        assert len(self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)) == 2
+        assert len(self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)) == 2
 
 class TestDocument(unittest.TestCase):
     @classmethod
@@ -249,7 +249,7 @@ class TestDocumentServer(unittest.TestCase):
         time.sleep(20)  # waiting for worker thread to update newly uploaded files
 
         # make sure that ids are written into the store
-        nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
+        nodes = self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
         for node in nodes:
             if node.global_metadata[RAG_DOC_PATH].endswith('test1.txt'):
                 test1_docid = node.global_metadata[RAG_DOC_ID]
@@ -264,7 +264,7 @@ class TestDocumentServer(unittest.TestCase):
 
         time.sleep(20)  # waiting for worker thread to delete files
 
-        nodes = self.doc_impl.store.get_nodes(LAZY_ROOT_NAME)
+        nodes = self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
         assert len(nodes) == 1
         assert nodes[0].global_metadata[RAG_DOC_ID] == test2_docid
         cur_meta_dict = nodes[0].global_metadata

@@ -19,6 +19,7 @@ import time
 import requests
 import uuid
 import os
+import traceback
 
 DB_TYPES = ['mysql']
 ENABLE_DB = os.getenv("RAG_ENABLE_DB", "false").lower() == "true"
@@ -41,7 +42,6 @@ class _Processor:
             if not ids: ids = [gen_docid(path) for path in input_files]
             if metadatas is None:
                 metadatas = [{} for _ in input_files]
-
             for metadata, doc_id, path in zip(metadatas, ids, input_files):
                 metadata.setdefault(RAG_DOC_ID, doc_id)
                 metadata.setdefault(RAG_DOC_PATH, path)
@@ -53,7 +53,7 @@ class _Processor:
                 self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
             LOG.info("Add documents done!")
         except Exception as e:
-            LOG.error(f"Add documents failed: {e}")
+            LOG.error(f"Add documents failed: {e}, {traceback.format_exc()}")
             raise e
 
     def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
@@ -104,9 +104,8 @@ class _Processor:
                 raise Exception(f"Failed to remove nodes for docs {doc_ids} from store")
             self.add_doc(input_files=doc_paths, ids=doc_ids, metadatas=metadatas)
         else:
-            p_nodes = self._store.get_nodes(
-                group=self._node_groups[group_name]['parent'], kb_id=kb_id, doc_ids=doc_ids
-            )
+            p_nodes = self._store.get_nodes(group=self._node_groups[group_name]['parent'],
+                                            kb_id=kb_id, doc_ids=doc_ids)
             self._reparse_group_recursive(p_nodes=p_nodes, cur_name=group_name, doc_ids=doc_ids)
 
     def _reparse_group_recursive(self, p_nodes: List[DocNode], cur_name: str, doc_ids: List[str]):
