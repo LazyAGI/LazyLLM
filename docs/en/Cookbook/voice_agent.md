@@ -7,24 +7,33 @@
 # Use pyttsx3 to convert text to speech for spoken output.
 
 # Project Dependencies
-# Make sure the following dependencies are installed:
-# pip install lazyllm pyttsx3 speechrecognition
-
+## Ensure the following dependencies are installed:
+```bash
+pip install lazyllm pyttsx3 speechrecognition
+```
+```
 import speech_recognition as sr
 import pyttsx3
 import lazyllm
+```
 
 # Step-by-Step Breakdown
-# Step 1: Initialize the LLM and Text-to-Speech Engine
+## Step 1: Initialize the LLM and Text-to-Speech Engine
 
+```python
 chat = lazyllm.OnlineChatModule()
 engine = pyttsx3.init()
+```
 
-# chat: Uses LazyLLM's online chat module to interact with a large language model (by default powered by Sensenova).
-# engine: Initializes the local text-to-speech engine pyttsx3 to convert text into audible speech.
+**Function Description：**
+- `chat`: Uses LazyLLM's online chat module (default sensenova API)
+  - Supports switching different LLM backends
+  - Automatically manages conversation context
+- `engine`: Initializes local text-to-speech engine (pyttsx3)
+  - Cross-platform speech output
+  - Supports adjusting speech rate, volume and other parameters
 
-# Step 2: Define the Main Voice Assistant Logic
-# The listen(chat) function continuously listens for user input through the microphone, transcribes it into text, queries the LLM, and reads out the response.
+## Step 2: 构建语音助手主逻辑
 
 ``` python
 def listen(chat):
@@ -56,20 +65,22 @@ def listen(chat):
             engine.runAndWait()
 ```
 
-# Sample Output
+## Sample Output
 
-# Example Scenario:
+#### Example Scenario:
 
-# You say:
-# “What is the capital of France?”
+**You say:**  
+"What is the capital of France?"
 
-# Console output:
-# Calibrating...
-# Okay, go!
-# listening now...
-# Recognizing...
-# You said: What is the capital of France?
-# The capital of France is Paris.
+**Console output:**
+```
+Calibrating...
+Okay, go!
+listening now...
+Recognizing...
+You said: What is the capital of France?
+The capital of France is Paris.
+```
 
-# System speech output:
-# “The capital of France is Paris.”
+**System speech output:**  
+"The capital of France is Paris."
