@@ -236,7 +236,7 @@ class _BGEVLEmbedding(AbstractEmbedding):
             return json.dumps(res[0])
 
 
-class _RerankDeploy(EmbeddingDeploy):
+class RerankDeploy(EmbeddingDeploy):
     message_format = {'query': 'query', 'documents': ['string'], 'top_n': 1}
     keys_name_handle = {'inputs': 'query', 'documents': 'documents', 'top_n': 'top_n'}
     default_headers = {'Content-Type': 'application/json'}
