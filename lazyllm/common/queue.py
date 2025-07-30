@@ -77,6 +77,40 @@ def sqlite3_check_threadsafety() -> bool:
     return True if res[0][0] == 'THREADSAFE=1' else False
 
 class SQLiteQueue(FileSystemQueue):
+    """Persistent file system queue backed by SQLite.
+
+This class extends FileSystemQueue and stores queue entries in an SQLite database with ordered message positions. It supports concurrent-safe enqueue, dequeue, peek, count, and clear operations.
+
+The queue database is saved at ~/.lazyllm_filesystem_queue.db, and file locking ensures safe concurrent access.
+
+Args:
+    klass (str): Name of the queue category, used to separate logical queues. Default is '__default__'.
+
+
+Examples:
+    >>> from lazyllm.components import SQLiteQueue
+    >>> queue = SQLiteQueue(klass='demo')
+    
+    >>> # Enqueue messages
+    >>> queue._enqueue('session1', 'Hello')
+    >>> queue._enqueue('session1', 'World')
+    
+    >>> # Peek at the first message without removing
+    >>> print(queue._peek('session1'))
+    ... 'Hello'
+    
+    >>> # Dequeue messages
+    >>> messages = queue._dequeue('session1', limit=2)
+    >>> print(messages)
+    ... ['Hello', 'World']
+    
+    >>> # Check queue size (should be 0)
+    >>> print(queue._size('session1'))
+    ... 0
+    
+    >>> # Clear the queue (safe even if empty)
+    >>> queue._clear('session1')
+    """
     def __init__(self, klass='__default__'):
         super(__class__, self).__init__(klass=klass)
         self.db_path = os.path.expanduser(os.path.join(config['home'], '.lazyllm_filesystem_queue.db'))
@@ -113,7 +147,6 @@ class SQLiteQueue(FileSystemQueue):
                 conn.commit()
 
     def _dequeue(self, id, limit=None):
-        """Retrieve and remove all messages from the queue."""
         with self._lock:
             with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
                 cursor = conn.cursor()

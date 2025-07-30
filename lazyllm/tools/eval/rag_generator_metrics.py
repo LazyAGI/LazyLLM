@@ -8,6 +8,35 @@ from .eval_base import BaseEvaluator
 
 
 class ResponseRelevancy(BaseEvaluator):
+    """Evaluator for measuring the semantic relevancy between a user-generated question and a model-generated one.
+
+This evaluator uses a language model to generate possible questions from an answer, and measures their semantic similarity to the original question using embeddings and cosine similarity.
+
+
+Args:
+    llm (ModuleBase): A language model used to generate inferred questions from the given answer.
+    embedding (ModuleBase): An embedding module to encode questions for similarity comparison.
+    prompt (str, optional): Custom prompt to guide the question generation. If not provided, a default will be used.
+    prompt_lang (str): Language for the default prompt. Options: `'en'` (default) or `'zh'`.
+    num_infer_questions (int): Number of questions to generate and evaluate for each answer.
+    retry (int): Number of retry attempts if generation fails.
+    concurrency (int): Number of concurrent evaluations.
+
+
+Examples:
+    >>> from lazyllm.components import ResponseRelevancy
+    >>> relevancy = ResponseRelevancy(
+    ...     llm=YourLLM(),
+    ...     embedding=YourEmbedding(),
+    ...     prompt_lang="en",
+    ...     num_infer_questions=3
+    ... )
+    >>> result = relevancy([
+    ...     {"question": "What is the capital of France?", "answer": "Paris is the capital city of France."}
+    ... ])
+    >>> print(result)
+    ... 0.95  # (a float score between 0 and 1)
+    """
     _default_generate_prompt_en = (
         'Please generate the most likely question based on '
         'the input, keeping it concise and to the point.')
@@ -60,6 +89,32 @@ class ResponseRelevancy(BaseEvaluator):
 
 
 class Faithfulness(BaseEvaluator):
+    """Evaluator that measures the factual consistency of an answer with the given context.
+
+This evaluator splits the answer into atomic factual statements using a generation model, then verifies each against the context using binary (1/0) scoring. It computes a final score as the average of the individual statement scores.
+
+
+Args:
+    llm (ModuleBase): A language model capable of both generating statements and evaluating them.
+    generate_prompt (str, optional): Custom prompt to generate factual statements from the answer.
+    eval_prompt (str, optional): Custom prompt to evaluate statement support within the context.
+    prompt_lang (str): Language of the default prompt, either 'en' or 'zh'.
+    retry (int): Number of retry attempts when generation or evaluation fails.
+    concurrency (int): Number of concurrent evaluations to run in parallel.
+
+
+Examples:
+    >>> from lazyllm.components import Faithfulness
+    >>> evaluator = Faithfulness(llm=YourLLM(), prompt_lang="en")
+    >>> data = {
+    ...     "question": "What is the role of ATP in cells?",
+    ...     "answer": "ATP stores energy and transfers it within cells.",
+    ...     "context": "ATP is the energy currency of the cell. It provides energy for many biochemical reactions."
+    ... }
+    >>> result = evaluator([data])
+    >>> print(result)
+    ... 1.0  # Average binary score of all factual statements
+    """
     _default_generate_prompt_en = (
         '[Task Description]\n'
         'Split the answer into independent factual statements using "|||" as '

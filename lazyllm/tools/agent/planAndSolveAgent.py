@@ -26,6 +26,51 @@ SOLVER_PROMPT = (
 )
 
 class PlanAndSolveAgent(ModuleBase):
+    """PlanAndSolveAgent consists of two components. First, the planner breaks down the entire task into smaller subtasks, then the solver executes these subtasks according to the plan, which may involve tool calls, and finally returns the answer to the user.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be TrainableModule or OnlineChatModule. It is mutually exclusive with plan_llm and solve_llm. Either set llm(the planner and sovler share the same LLM), or set plan_llm and solve_llm,or only specify llm(to set the planner) and solve_llm. Other cases are considered invalid.
+    tools (List[str]): A list of tool names for LLM to use.
+    plan_llm (ModuleBase): The LLM to be used by the planner, which can be either TrainableModule or OnlineChatModule.
+    solve_llm (ModuleBase): The LLM to be used by the solver, which can be either TrainableModule or OnlineChatModule.
+    max_retries (int): The maximum number of tool call iterations. The default value is 5.
+    return_trace (bool): If True, return intermediate steps and tool calls.
+    stream (bool): Whether to stream the planning and solving process.
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.tools import fc_register, PlanAndSolveAgent
+    >>> @fc_register("tool")
+    >>> def multiply(a: int, b: int) -> int:
+    ...     '''
+    ...     Multiply two integers and return the result integer
+    ...
+    ...     Args:
+    ...         a (int): multiplier
+    ...         b (int): multiplier
+    ...     '''
+    ...     return a * b
+    ...
+    >>> @fc_register("tool")
+    >>> def add(a: int, b: int):
+    ...     '''
+    ...     Add two integers and returns the result integer
+    ...
+    ...     Args:
+    ...         a (int): addend
+    ...         b (int): addend
+    ...     '''
+    ...     return a + b
+    ...
+    >>> tools = ["multiply", "add"]
+    >>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
+    >>> agent = PlanAndSolveAgent(llm, tools)
+    >>> query = "What is 20+(2*4)? Calculate step by step."
+    >>> res = agent(query)
+    >>> print(res)
+    'The final answer is 28.'
+    """
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[str] = [], *,
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  max_retries: int = 5, return_trace: bool = False, stream: bool = False):

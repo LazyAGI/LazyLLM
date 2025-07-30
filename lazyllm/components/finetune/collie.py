@@ -7,6 +7,41 @@ from .base import LazyLLMFinetuneBase
 
 
 class CollieFinetune(LazyLLMFinetuneBase):
+    """This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the [Collie](https://github.com/OpenLMLab/collie) framework, used for LoRA fine-tuning of large language models.
+
+Args:
+    base_model (str): The base model used for fine-tuning. It is required to be the path of the base model.
+    target_path (str): The path where the LoRA weights of the fine-tuned model are saved.
+    merge_path (str): The path where the model merges the LoRA weights, default to ``None``. If not specified, "lazyllm_lora" and "lazyllm_merge" directories will be created under ``target_path`` as ``target_path`` and ``merge_path`` respectively.
+    model_name (str): The name of the model, used as the prefix for setting the log name, default to "LLM".
+    cp_files (str): Specify configuration files to be copied from the base model path, which will be copied to ``merge_path``, default to "tokeniz*"
+    launcher (lazyllm.launcher): The launcher for fine-tuning, default to ``launchers.remote(ngpus=1)``.
+    kw: Keyword arguments, used to update the default training parameters. Note that additional keyword arguments cannot be arbitrarily specified.
+
+The keyword arguments and their default values for this class are as follows:
+
+Keyword Args: 
+    data_path (str): Data path, default to ``None``; generally passed as the only positional argument when this object is called.
+    batch_size (int): Batch size, default to ``64``.
+    micro_batch_size (int): Micro-batch size, default to ``4``.
+    num_epochs (int): Number of training epochs, default to ``2``.
+    learning_rate (float): Learning rate, default to ``5.e-4``.
+    dp_size (int): Data parallelism parameter, default to `` 8``.
+    pp_size (int): Pipeline parallelism parameter, default to ``1``.
+    tp_size (int): Tensor parallelism parameter, default to ``1``.
+    lora_r (int): LoRA rank, default to ``8``; this value determines the amount of parameters added, the smaller the value, the fewer the parameters.
+    lora_alpha (int): LoRA fusion factor, default to ``32``; this value determines the impact of LoRA parameters on the base model parameters, the larger the value, the greater the impact.
+    lora_dropout (float): LoRA dropout rate, default to ``0.05``, generally used to prevent overfitting.
+    lora_target_modules (str): LoRA target modules, default to ``[wo,wqkv]``, which is the default for InternLM2 model; this configuration item varies for different models.
+    modules_to_save (str): Modules for full fine-tuning, default to ``[tok_embeddings,output]``, which is the default for InternLM2 model; this configuration item varies for different models.
+    prompt_template_name (str): The name of the prompt template, default to ``alpaca``, i.e., use the prompt template provided by LazyLLM by default.
+
+
+
+Examples:
+    >>> from lazyllm import finetune
+    >>> trainer = finetune.collie('path/to/base/model', 'path/to/target')
+    """
     defatult_kw = ArgsDict({
         'data_path': None,
         'batch_size': 64,

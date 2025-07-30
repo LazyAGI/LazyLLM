@@ -51,6 +51,26 @@ the result is
 
 
 class SqlCall(ModuleBase):
+    """SqlCall is a class that extends ModuleBase and provides an interface for generating and executing SQL queries using a language model (LLM).
+It is designed to interact with a SQL database, extract SQL queries from LLM responses, execute those queries, and return results or explanations.
+
+Arguments:
+    llm: A language model to be used for generating and interpreting SQL queries and explanations.
+    sql_manager (SqlManager): An instance of SqlManager that handles interaction with the SQL database.
+    sql_examples (str, optional): An example of converting natural language represented by a JSON string into an SQL statement, formatted as: [{"Question": "Find the names of people in the same department as Smith", "Answer": "SELECT...;"}]
+    use_llm_for_sql_result (bool, optional): Default is True. If set to False, the module will only output raw SQL results in JSON without further processing.
+    return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.
+
+
+Examples:
+        >>> # First, run SqlManager example
+        >>> import lazyllm
+        >>> from lazyllm.tools import SQLManger, SqlCall
+        >>> sql_tool = SQLManger("personal.db")
+        >>> sql_llm = lazyllm.OnlineChatModule(model="gpt-4o", source="openai", base_url="***")
+        >>> sql_call = SqlCall(sql_llm, sql_tool, use_llm_for_sql_result=True)
+        >>> print(sql_call("去年一整年销售额最多的员工是谁?"))
+    """
     EXAMPLE_TITLE = "Here are some example: "
 
     def __init__(

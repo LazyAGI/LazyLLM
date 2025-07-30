@@ -11,8 +11,9 @@ from .logger import LOG
 from .deprecated import deprecated
 from .globals import globals, LazyLlmResponse, LazyLlmRequest, encode_request, decode_request
 from .bind import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, Placeholder
-from .queue import FileSystemQueue
+from .queue import FileSystemQueue, SQLiteQueue
 from .utils import compile_func, obj2str, str2obj, str2bool, dump_obj, load_obj
+
 
 __all__ = [
     # registry
@@ -95,4 +96,5 @@ __all__ = [
 
     # file-system queue
     'FileSystemQueue',
+    'SQLiteQueue',
 ]

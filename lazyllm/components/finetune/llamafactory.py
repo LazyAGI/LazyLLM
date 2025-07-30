@@ -13,6 +13,53 @@ from .llama_factory.model_mapping import match_longest_prefix, llamafactory_mapp
 
 
 class LlamafactoryFinetune(LazyLLMFinetuneBase):
+    """This class is a subclass of ``LazyLLMFinetuneBase``, based on the training capabilities provided by the [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) framework, used for training large language models(or visual language models).
+
+Args:
+    base_model (str): The base model used for training. It is required to be the path of the base model.
+    target_path (str): The path where the trained model weights are saved.
+    merge_path (str): The path where the model is merged with LoRA weights, default is None. If not specified, "lazyllm_lora" and "lazyllm_merge" directories will be created under ``target_path``, to be used as ``target_path`` and ``merge_path`` respectively.
+    config_path (str): The LLaMA-Factory training configuration file (yaml format is required), default is None. If not specified, a ``.temp`` folder will be created in the current working directory, and a configuration file starting with ``train_`` and ending with ``.yaml`` will be generated inside it.
+    export_config_path (str): The LLaMA-Factory Lora weight merging configuration file (yaml format is required), default is None. If not specified, a configuration file starting with ``merge_`` and ending with ``.yaml`` will be generated inside the ``.temp`` folder in the current working directory.
+    launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1, sync=True)``.
+    kw: Keyword arguments used to update the default training parameters.
+
+Keyword Args:
+    stage (typing.Literal['pt', 'sft', 'rm', 'ppo', 'dpo', 'kto']): Default is: ``sft``. Which stage will be performed in training.
+    do_train (bool): Default is: ``True``. Whether to run training.
+    finetuning_type (typing.Literal['lora', 'freeze', 'full']): Default is: ``lora``. Which fine-tuning method to use.
+    lora_target (str): Default is: ``all``. Name(s) of target modules to apply LoRA. Use commas to separate multiple modules. Use `all` to specify all the linear modules.
+    template (typing.Optional[str]): Default is: ``None``. Which template to use for constructing prompts in training and inference.
+    cutoff_len (int): Default is: ``1024``. The cutoff length of the tokenized inputs in the dataset.
+    max_samples (typing.Optional[int]): Default is: ``1000``. For debugging purposes, truncate the number of examples for each dataset.
+    overwrite_cache (bool): Default is: ``True``. Overwrite the cached training and evaluation sets.
+    preprocessing_num_workers (typing.Optional[int]): Default is: ``16``. The number of processes to use for the pre-processing.
+    dataset_dir (str): Default is: ``lazyllm_temp_dir``. Path to the folder containing the datasets. If not explicitly specified, LazyLLM will generate a ``dataset_info.json`` file in the ``.temp`` folder in the current working directory for use by LLaMA-Factory.
+    logging_steps (float): Default is: ``10``. Log every X updates steps. Should be an integer or a float in range ``[0,1)``. If smaller than 1, will be interpreted as ratio of total training steps.
+    save_steps (float): Default is: ``500``. Save checkpoint every X updates steps. Should be an integer or a float in range ``[0,1)``. If smaller than 1, will be interpreted as ratio of total training steps.
+    plot_loss (bool): Default is: ``True``. Whether or not to save the training loss curves.
+    overwrite_output_dir (bool): Default is: ``True``. Overwrite the content of the output directory.
+    per_device_train_batch_size (int): Default is: ``1``. Batch size per GPU/TPU/MPS/NPU core/CPU for training.
+    gradient_accumulation_steps (int): Default is: ``8``. Number of updates steps to accumulate before performing a backward/update pass.
+    learning_rate (float): Default is: ``1e-04``. The initial learning rate for AdamW.
+    num_train_epochs (float): Default is: ``3.0``. Total number of training epochs to perform.
+    lr_scheduler_type (typing.Union[transformers.trainer_utils.SchedulerType, str]): Default is: ``cosine``. The scheduler type to use.
+    warmup_ratio (float): Default is: ``0.1``. Linear warmup over warmup_ratio fraction of total steps.
+    fp16 (bool): Default is: ``True``. Whether to use fp16 (mixed) precision instead of 32-bit.
+    ddp_timeout (typing.Optional[int]): Default is: ``180000000``. Overrides the default timeout for distributed training (value should be given in seconds).
+    report_to (typing.Union[NoneType, str, typing.List[str]]): Default is: ``tensorboard``. The list of integrations to report the results and logs to.
+    val_size (float): Default is: ``0.1``. Size of the development set, should be an integer or a float in range `[0,1)`.
+    per_device_eval_batch_size (int): Default is: ``1``. Batch size per GPU/TPU/MPS/NPU core/CPU for evaluation.
+    eval_strategy (typing.Union[transformers.trainer_utils.IntervalStrategy, str]): Default is: ``steps``. The evaluation strategy to use.
+    eval_steps (typing.Optional[float]): Default is: ``500``. Run an evaluation every X steps. Should be an integer or a float in range `[0,1)`. If smaller than 1, will be interpreted as ratio of total training steps.
+
+
+
+Examples:
+    >>> from lazyllm import finetune
+    >>> trainer = finetune.llamafactory('internlm2-chat-7b', 'path/to/target')
+    <lazyllm.llm.finetune type=LlamafactoryFinetune>
+    """
     auto_map = {
         'gradient_step': 'gradient_accumulation_steps',
         'micro_batch_size': 'per_device_train_batch_size',

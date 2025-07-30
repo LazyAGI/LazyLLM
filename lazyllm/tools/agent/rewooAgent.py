@@ -31,6 +31,61 @@ S_PROMPT_SUFFIX = ("\nNow begin to solve the task or problem. Respond with "
                    "the answer directly with no extra words.\n\n")
 
 class ReWOOAgent(ModuleBase):
+    """ReWOOAgent consists of three parts: Planer, Worker and Solver. The Planner uses predictive reasoning capabilities to create a solution blueprint for a complex task; the Worker interacts with the environment through tool calls and fills in actual evidence or observations into instructions; the Solver processes all plans and evidence to develop a solution to the original task or problem.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be TrainableModule or OnlineChatModule. It is mutually exclusive with plan_llm and solve_llm. Either set llm(the planner and sovler share the same LLM), or set plan_llm and solve_llm,or only specify llm(to set the planner) and solve_llm. Other cases are considered invalid.
+    tools (List[str]): A list of tool names for LLM to use.
+    plan_llm (ModuleBase): The LLM to be used by the planner, which can be either TrainableModule or OnlineChatModule.
+    solve_llm (ModuleBase): The LLM to be used by the solver, which can be either TrainableModule or OnlineChatModule.
+    max_retries (int): The maximum number of tool call iterations. The default value is 5.
+    return_trace (bool): If True, return intermediate steps and tool calls.
+    stream (bool): Whether to stream the planning and solving process.
+
+
+Examples:
+    >>> import lazyllm
+    >>> import wikipedia
+    >>> from lazyllm.tools import fc_register, ReWOOAgent
+    >>> @fc_register("tool")
+    >>> def WikipediaWorker(input: str):
+    ...     '''
+    ...     Worker that search for similar page contents from Wikipedia. Useful when you need to get holistic knowledge about people, places, companies, historical events, or other subjects. The response are long and might contain some irrelevant information. Input should be a search query.
+    ...
+    ...     Args:
+    ...         input (str): search query.
+    ...     '''
+    ...     try:
+    ...         evidence = wikipedia.page(input).content
+    ...         evidence = evidence.split("\\n\\n")[0]
+    ...     except wikipedia.PageError:
+    ...         evidence = f"Could not find [{input}]. Similar: {wikipedia.search(input)}"
+    ...     except wikipedia.DisambiguationError:
+    ...         evidence = f"Could not find [{input}]. Similar: {wikipedia.search(input)}"
+    ...     return evidence
+    ...
+    >>> @fc_register("tool")
+    >>> def LLMWorker(input: str):
+    ...     '''
+    ...     A pretrained LLM like yourself. Useful when you need to act with general world knowledge and common sense. Prioritize it when you are confident in solving the problem yourself. Input can be any instruction.
+    ...
+    ...     Args:
+    ...         input (str): instruction
+    ...     '''
+    ...     llm = lazyllm.OnlineChatModule(source="glm")
+    ...     query = f"Respond in short directly with no extra words.\\n\\n{input}"
+    ...     response = llm(query, llm_chat_history=[])
+    ...     return response
+    ...
+    >>> tools = ["WikipediaWorker", "LLMWorker"]
+    >>> llm = lazyllm.TrainableModule("GLM-4-9B-Chat").deploy_method(lazyllm.deploy.vllm).start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
+    >>> agent = ReWOOAgent(llm, tools)
+    >>> query = "What is the name of the cognac house that makes the main ingredient in The Hennchata?"
+    >>> res = agent(query)
+    >>> print(res)
+    '
+    Hennessy '
+    """
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[Union[str, Callable]] = [], *,
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  return_trace: bool = False, stream: bool = False):

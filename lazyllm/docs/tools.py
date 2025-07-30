@@ -953,6 +953,62 @@ add_english_doc('rag.DocListManager.release', """\
 Releases the resources of the current manager.
 """)
 
+add_chinese_doc('IndexBase.update', '''\
+更新索引内容。
+
+该方法接收一组文档节点对象，并将其添加或更新到索引结构中。通常用于增量构建或刷新索引。
+
+Args:
+    nodes (List[DocNode]): 需要更新的文档节点列表。
+''')
+
+add_english_doc('IndexBase.update', '''\
+Update index contents.
+
+This method receives a list of document nodes and updates or inserts them into the index structure. Typically used for incremental indexing or refreshing data.
+
+Args:
+    nodes (List[DocNode]): A list of document nodes to update or insert.
+''')
+
+add_chinese_doc('IndexBase.remove', '''\
+从索引中移除指定文档节点。
+
+可根据唯一标识符列表删除索引中的文档节点，可选地指定组名称以限定范围。
+
+Args:
+    uids (List[str]): 需要移除的文档节点的唯一标识符列表。
+    group_name (Optional[str]): 可选的组名称，用于限定要删除的范围。
+''')
+
+add_english_doc('IndexBase.remove', '''\
+Remove specific document nodes from the index.
+
+Removes document nodes based on their unique identifiers, optionally scoped by group name.
+
+Args:
+    uids (List[str]): List of unique IDs corresponding to the document nodes to remove.
+    group_name (Optional[str]): Optional group name to scope the removal operation.
+''')
+
+add_chinese_doc('IndexBase.query', '''\
+执行索引查询。
+
+根据传入的参数执行查询操作，返回匹配的文档节点列表。具体查询逻辑由实现类定义。
+
+Returns:
+    List[DocNode]: 查询结果的文档节点列表。
+''')
+
+add_english_doc('IndexBase.query', '''\
+Execute a query over the index.
+
+Performs a query based on the given arguments and returns matching document nodes. The logic depends on the specific implementation.
+
+Returns:
+    List[DocNode]: A list of matched document nodes from the index.
+''')
+
 # ---------------------------------------------------------------------------- #
 
 add_chinese_doc('WebModule', '''\
@@ -966,6 +1022,19 @@ WebModule页面还提供“使用上下文”，“流式输出”和“追加�
 
 Args:
     component_descs (list): 用于动态向页面添加组件的列表。列表中的每个元素也是一个列表，其中包含5个元素，分别是组件对应的模块ID，模块名，组件名，组件类型（目前仅支持Checkbox和Text），组件默认值。
+    m (Any): 模型或模块实例，通常为 FlowBase、ActionModule 或 ChatModule。
+    components (Dict[Any, Any]): 组件配置映射，支持模块及其功能定义。
+    title (str): Web 页面标题，默认为 "对话演示终端"。
+    port (Union[int, range, tuple, list], optional): 指定 Web 服务的端口范围。
+    history (List[Any]): 历史模块 ID 列表，用于记录上下文。
+    text_mode (Optional[Mode]): 文本更新模式，支持 Dynamic、Refresh、Appendix。
+    trace_mode (Optional[Mode]): 已废弃的参数，不推荐使用。
+    audio (bool): 是否启用语音输入组件。
+    stream (bool): 是否启用模型输出流式展示。
+    files_target (Union[Any, List[Any]], optional): 接收文件上传的目标模块。
+    static_paths (Union[str, Path, List[Union[str, Path]]], optional): 本地静态资源路径。
+    encode_files (bool): 是否对上传文件进行 Base64 编码。
+    share (bool): 是否启用 Gradio 的 public share 功能（需联网）。
 ''')
 
 add_english_doc('WebModule', '''\
@@ -988,7 +1057,19 @@ Args:
     component_descs (list): A list used to add components to the page. Each element in the list is also a list containing
     5 elements, which are the module ID, the module name, the component name, the component type (currently only
     supports Checkbox and Text), and the default value of the component.
-
+    m (Any): A model or module instance, typically FlowBase, ActionModule, or ChatModule.
+    components (Dict[Any, Any]): Component bindings, mapping modules to tool functions.
+    title (str): Title of the web interface page (default: "对话演示终端").
+    port (Union[int, range, tuple, list], optional): Port or range of ports to serve the web UI.
+    history (List[Any]): Optional list of modules to inject into chat history.
+    text_mode (Optional[Mode]): Text update mode: Dynamic, Refresh, or Appendix.
+    trace_mode (Optional[Mode]): Deprecated.
+    audio (bool): Enable audio input components.
+    stream (bool): Enable streaming output from the model.
+    files_target (Union[Any, List[Any]], optional): Target modules for uploaded files.
+    static_paths (Union[str, Path, List[Union[str, Path]]], optional): Local static file paths to expose.
+    encode_files (bool): Whether to base64-encode uploaded files.
+    share (bool): Enable Gradio public sharing (requires internet).
 ''')
 
 add_example('WebModule', '''\
@@ -1003,6 +1084,56 @@ add_example('WebModule', '''\
 ...                       text_mode=lazyllm.tools.WebModule.Mode.Refresh)
 >>> w.start()
 193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
+''')
+
+add_chinese_doc('WebModule.init_web', '''\
+初始化 Web UI 页面。
+
+该方法使用 Gradio 构建对话界面，并将组件绑定到事件，支持会话选择、流式输出、上下文控制、多模态输入等功能。该方法返回构建完成的 Gradio Blocks 对象。
+
+Args:
+    component_descs (List[Tuple]): 组件描述列表，每项为五元组 (module, group_name, name, component_type, value)，
+        例如：('MyModule', 'GroupA', 'use_cache', 'Checkbox', True)。
+
+Returns:
+    gr.Blocks: 构建好的 Gradio 页面对象，可用于 launch 启动 Web 服务。
+''')
+
+add_english_doc('WebModule.init_web', '''\
+Initialize the Web UI page.
+
+This method uses Gradio to build the interactive chat interface and binds all components to the appropriate logic. It supports session selection, streaming output, context toggling, multimodal input, and control tools. The method returns the constructed Gradio Blocks object.
+
+Args:
+    component_descs (List[Tuple]): A list of component descriptors. Each element is a 5-tuple 
+        (module, group_name, name, component_type, value), e.g. ('MyModule', 'GroupA', 'use_cache', 'Checkbox', True).
+
+Returns:
+    gr.Blocks: The constructed Gradio UI object, which can be launched via `.launch()`.
+''')
+
+add_chinese_doc('WebModule.wait', '''\
+阻塞主线程，等待 Web 页面关闭。
+
+该方法会阻塞当前线程直到 Web 页面（Gradio demo）被关闭，适用于部署后阻止程序提前退出的场景。
+''')
+
+add_english_doc('WebModule.wait', '''\
+Block the main thread until the web interface is closed.
+
+This method blocks the current thread until the Gradio demo is closed. Useful in deployment scenarios to prevent premature program exit.
+''')
+
+add_chinese_doc('WebModule.stop', '''\
+关闭 Web 页面并清理资源。
+
+如果 Web 页面已初始化，则关闭 Gradio demo，释放资源并重置 `demo` 与 `url` 属性。
+''')
+
+add_english_doc('WebModule.stop', '''\
+Stop the web interface and clean up resources.
+
+If the web demo has been initialized, this method closes the Gradio demo, frees related resources, and resets `demo` and `url` attributes.
 ''')
 
 #actors/codegenerator
@@ -1044,7 +1175,6 @@ add_example('CodeGenerator', ['''\
 ...     return fibonacci(n-1) + fibonacci(n-2)
 '''])
 
-#actors/parameter_extractor
 add_chinese_doc('ParameterExtractor', '''\
 参数提取模块。
 
@@ -1091,7 +1221,6 @@ add_example('ParameterExtractor', ['''\
 ... ['Alice', 25]
 '''])
 
-# actors/question_rewrite.py
 add_chinese_doc('QustionRewrite', '''\
 问题改写模块。
 
@@ -1402,7 +1531,6 @@ add_example('FunctionCallAgent', """\
 'Hello! How can I assist you today?'
 """)
 
-# actors/function_call_formatter.py
 add_chinese_doc('FunctionCallFormatter', '''\
 用于解析函数调用结构消息的格式化器。
 
@@ -1676,7 +1804,6 @@ add_example(
 """,
 )
 
-#eval/eval_base.py
 add_chinese_doc('BaseEvaluator', '''\
 评估模块的抽象基类。
 
@@ -1930,9 +2057,6 @@ add_example('ContextRelevance', ['''\
 ... 0.6667  # 2 of 3 retrieved sentences match
 '''])
 
-
-
-#http_request/http_request.py
 add_chinese_doc('HttpRequest', '''\
 通用 HTTP 请求执行器。
 
@@ -1982,7 +2106,39 @@ add_example('HttpRequest', ['''\
 ... '{"id":123456,"name":"openai-python", ...}'
 '''])
 
-#infer_service/serve.py/JobDescription
+add_chinese_doc('HttpExecutorResponse', '''\
+HTTP 响应封装类。
+
+该类封装了 httpx.Response 对象，提供了访问响应头、正文、状态码、内容类型等的便捷接口，并支持识别文件类型响应和提取文件。
+
+Args:
+    response (httpx.Response, optional): 可选的 httpx 响应对象。
+''')
+
+add_english_doc('HttpExecutorResponse', '''\
+Wrapper for HTTP response.
+
+This class wraps an httpx.Response object and provides convenient access to headers, body, status code, content type, and file-type response recognition and extraction.
+
+Args:
+    response (httpx.Response, optional): Optional HTTP response object from httpx.
+''')
+
+add_example('HttpExecutorResponse', ['''\
+>>> import httpx
+>>> from lazyllm.components import HttpExecutorResponse
+>>> resp = httpx.Response(200, headers={"Content-Type": "application/json"}, content=b'{"msg":"hello"}')
+>>> wrapper = HttpExecutorResponse(resp)
+>>> print(wrapper.status_code)
+... 200
+>>> print(wrapper.content)
+... {"msg":"hello"}
+>>> print(wrapper.is_file)
+... False
+>>> print(wrapper.extract_file())
+... ('', b'')
+'''])
+
 add_chinese_doc('JobDescription', '''\
 模型部署任务描述的数据结构。
 
@@ -2006,7 +2162,7 @@ Args:
 add_example('JobDescription', ['''\
 >>> from lazyllm.components import JobDescription
 >>> job = JobDescription(deploy_model="deepseek-coder", num_gpus=2)
->>> print(job.dict())
+>>> print(job.dict()) 
 ... {'deploy_model': 'deepseek-coder', 'num_gpus': 2}
 '''])
 

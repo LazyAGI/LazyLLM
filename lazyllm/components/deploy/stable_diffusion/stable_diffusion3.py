@@ -211,6 +211,38 @@ def call_wan(model, prompt):
 
 
 class StableDiffusionDeploy(LazyLLMDeployBase):
+    """Stable Diffusion Model Deployment Class. This class is used to deploy the stable diffusion model to a specified server for network invocation.
+
+`__init__(self, launcher=None)`
+Constructor, initializes the deployment class.
+
+Args:
+    launcher (lazyllm.launcher): An instance of the launcher used to start the remote service.
+
+`__call__(self, finetuned_model=None, base_model=None)`
+Deploys the model and returns the remote service address.
+
+Args:
+    finetuned_model (str): If provided, this model will be used for deployment; if not provided or the path is invalid, `base_model` will be used.
+    base_model (str): The default model, which will be used for deployment if `finetuned_model` is invalid.
+    Return (str): The URL address of the remote service.
+
+Notes: 
+    - Input for infer: `str`. A description of the image to be generated.
+    - Return of infer: The string encoded from the generated file paths, starting with the encoding flag "<lazyllm-query>", followed by the serialized dictionary. The key `files` in the dictionary stores a list, with elements being the paths of the generated image files.
+    - Supported models: [stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
+
+
+Examples:
+    >>> from lazyllm import launchers, UrlModule
+    >>> from lazyllm.components import StableDiffusionDeploy
+    >>> deployer = StableDiffusionDeploy(launchers.remote())
+    >>> url = deployer(base_model='stable-diffusion-3-medium')
+    >>> model = UrlModule(url=url)
+    >>> res = model('a tiny cat.')
+    >>> print(res)
+    ... <lazyllm-query>{"query": "", "files": ["path/to/sd3/image_xxx.png"]}
+    """
     message_format = None
     keys_name_handle = None
     default_headers = {'Content-Type': 'application/json'}

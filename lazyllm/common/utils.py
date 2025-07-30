@@ -90,6 +90,21 @@ class SecurityVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 def compile_func(func_code: str, global_env: Optional[Dict[str, Any]] = None) -> Callable:
+    """
+Compile a Python function string into an executable function and return it.
+
+Args:
+    func_code (str): A string containing Python function code
+    global_env (str): Packages and global variables used in the Python function
+
+
+Examples:
+    
+    from lazyllm.common import compile_func
+    code_str = 'def Identity(v): return v'
+    identity = compile_func(code_str)
+    assert identity('hello') == 'hello'
+    """
     fname = re.search(r'def\s+(\w+)\s*\(', func_code).group(1)
     module = ast.parse(func_code)
     SecurityVisitor().visit(module)

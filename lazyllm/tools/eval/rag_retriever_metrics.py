@@ -6,6 +6,34 @@ from .eval_base import BaseEvaluator
 
 
 class LLMContextRecall(BaseEvaluator):
+    """Evaluator that measures whether each sentence in the answer can be attributed to the retrieved context.
+
+This module uses a language model to analyze the factual alignment between each statement in the answer and the provided context. It scores each sentence with binary values (1 = supported, 0 = unsupported/contradictory) and computes an average recall score.
+
+
+Args:
+    llm (ModuleBase): A language model capable of evaluating answer-context consistency.
+    eval_prompt (str, optional): Custom prompt used to instruct the evaluator model.
+    prompt_lang (str): Language of the default prompt. Choose 'en' for English or 'zh' for Chinese.
+    retry (int): Number of retry attempts if the evaluation fails.
+    concurrency (int): Number of parallel evaluations to perform concurrently.
+
+
+Examples:
+    >>> from lazyllm.components import LLMContextRecall
+    >>> evaluator = LLMContextRecall(llm=YourLLM(), prompt_lang="en")
+    >>> data = {
+    ...     "question": "What is Photosynthesis?",
+    ...     "answer": "Photosynthesis was discovered in the 1780s. It occurs in chloroplasts.",
+    ...     "context_retrieved": [
+    ...         "Photosynthesis occurs in chloroplasts.",
+    ...         "Light reactions produce ATP using sunlight."
+    ...     ]
+    ... }
+    >>> result = evaluator([data])
+    >>> print(result)
+    ... 0.5  # Final recall score averaged over statement evaluations
+    """
     _default_eval_prompt_en = (
         '[Task Description]\n'
         'Given a context, and an answer, analyze each sentence in the answer and '
@@ -84,6 +112,34 @@ class LLMContextRecall(BaseEvaluator):
         return res
 
 class NonLLMContextRecall(BaseEvaluator):
+    """A non-LLM evaluator that measures whether retrieved contexts match the reference context using fuzzy string matching.
+
+This module compares each retrieved context against a reference using Levenshtein distance and computes a recall score. It can return binary scores (whether any retrieved context is similar enough) or an averaged similarity score.
+
+
+Args:
+    th (float): Similarity threshold (between 0 and 1). A higher value means stricter matching.
+    binary (bool): If True, output is binary (1 if any match exceeds threshold), otherwise returns average match score.
+    retry (int): Number of retries for evaluation in case of failure.
+    concurrency (int): Number of parallel evaluations to run.
+
+
+Examples:
+    >>> from lazyllm.components import NonLLMContextRecall
+    >>> evaluator = NonLLMContextRecall(th=0.8, binary=True)
+    >>> data = {
+    ...     "context_retrieved": [
+    ...         "Photosynthesis uses sunlight to produce sugar.",
+    ...         "It takes place in chloroplasts."
+    ...     ],
+    ...     "context_reference": [
+    ...         "Photosynthesis occurs in chloroplasts."
+    ...     ]
+    ... }
+    >>> result = evaluator([data])
+    >>> print(result)
+    ... 1.0  # At least one retrieved context is similar enough
+    """
     def __init__(self, th=0.5, binary=True, retry=3, concurrency=1):
         super().__init__(concurrency, retry)
         self._binary = binary
@@ -122,6 +178,32 @@ class NonLLMContextRecall(BaseEvaluator):
         return res
 
 class ContextRelevance(BaseEvaluator):
+    """A non-LLM evaluator that measures the overlap between retrieved and reference contexts at the sentence level.
+
+This evaluator splits both retrieved and reference contexts into sentences, then counts how many retrieved sentences exactly match those in the reference. It outputs a relevance score as the fraction of overlapping sentences.
+
+
+Args:
+    splitter (str): Sentence splitter. Default is '。' for Chinese. Use '.' for English contexts.
+    retry (int): Number of retries for evaluation in case of failure.
+    concurrency (int): Number of parallel evaluations to run.
+
+
+Examples:
+    >>> from lazyllm.components import ContextRelevance
+    >>> evaluator = ContextRelevance(splitter='.')
+    >>> data = {
+    ...     "context_retrieved": [
+    ...         "Photosynthesis occurs in chloroplasts. It produces glucose."
+    ...     ],
+    ...     "context_reference": [
+    ...         "Photosynthesis occurs in chloroplasts. It requires sunlight. It produces glucose."
+    ...     ]
+    ... }
+    >>> result = evaluator([data])
+    >>> print(result)
+    ... 0.6667  # 2 of 3 retrieved sentences match
+    """
     def __init__(self, splitter="。", retry=3, concurrency=1):
         super().__init__(concurrency, retry)
         self._splitter = splitter

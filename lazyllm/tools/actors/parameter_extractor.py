@@ -43,6 +43,34 @@ Each parameter has a name, type, description, and a "require" flag.
 """
 
 class ParameterExtractor(ModuleBase):
+    """Parameter Extraction Module.
+
+This module extracts structured parameters from a given text using a language model, based on the parameter names, types, descriptions, and whether they are required.
+
+`__init__(self, base_model, param, type, description, require)`
+Initializes the parameter extractor with the parameter specification and base model.
+
+Args:
+    base_model (Union[str, TrainableModule, OnlineChatModuleBase]): A model path or model instance used for extraction.
+    param (list[str]): List of parameter names to extract.
+    type (list[str]): List of parameter types (e.g., "int", "str", "bool").
+    description (list[str]): List of descriptions for each parameter.
+    require (list[bool]): List indicating whether each parameter is required.
+
+
+Examples:
+    >>> from lazyllm.components import ParameterExtractor
+    >>> extractor = ParameterExtractor(
+    ...     base_model="deepseek-chat",
+    ...     param=["name", "age"],
+    ...     type=["str", "int"],
+    ...     description=["The user's name", "The user's age"],
+    ...     require=[True, True]
+    ... )
+    >>> result = extractor("My name is Alice and I am 25 years old.")
+    >>> print(result)
+    ... ['Alice', 25]
+    """
     type_map = {
         int.__name__: int,
         str.__name__: str,

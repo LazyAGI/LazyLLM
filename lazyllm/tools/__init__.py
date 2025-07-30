@@ -19,7 +19,7 @@ from .mcp.client import MCPClient
 from .actors import ParameterExtractor, QustionRewrite, CodeGenerator
 from .common import StreamCallHelper
 from .eval import(BaseEvaluator, ResponseRelevancy, Faithfulness, LLMContextRecall, NonLLMContextRecall, ContextRelevance)
-from .http_request import HttpRequest, _HttpExecutorResponse
+from .http_request import HttpRequest, HttpExecutorResponse
 from .infer_service import JobDescription
 
 __all__ = [
@@ -59,6 +59,6 @@ __all__ = [
     "CodeGenerator",
     "StreamCallHelper",
     "HttpRequest",
-    "_HttpExecutorResponse",
+    "HttpExecutorResponse",
     "JobDescription"
 ]

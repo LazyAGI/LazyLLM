@@ -19,6 +19,7 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 
 @dataclass
 class TransformArgs():
+    """TransformArgs(f: Union[str, Callable], trans_node: Optional[bool] = None, num_workers: int = 0, kwargs: Dict = <factory>, pattern: Union[str, Callable[[str], bool], NoneType] = None)"""
     f: Union[str, Callable]
     trans_node: Optional[bool] = None
     num_workers: int = 0
@@ -59,6 +60,7 @@ def build_nodes_from_splits(
 
 @dataclass
 class _Split:
+    """_Split(text: str, is_sentence: bool, token_size: int)"""
     text: str
     is_sentence: bool
     token_size: int
@@ -143,6 +145,22 @@ class AdaptiveTransform(NodeTransform):
 
 
 class SentenceSplitter(NodeTransform):
+    """
+Split sentences into chunks of a specified size. You can specify the size of the overlap between adjacent chunks.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    chunk_overlap (int): The length of the overlapping content between two adjacent chunks.
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools import Document, SentenceSplitter
+    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+    >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+    >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+    """
     def __init__(self, chunk_size: int = 1024, chunk_overlap: int = 200, num_workers: int = 0):
         super(__class__, self).__init__(num_workers=num_workers)
         if chunk_overlap > chunk_size:
@@ -333,7 +351,8 @@ class FuncNodeTransform(NodeTransform):
     Wrapped the transform to: List[Docnode] -> List[Docnode]
 
     This wrapper supports when trans_node is False:
-        1. str -> list: transform=lambda t: t.split('\n')
+        1. str -> list: transform=lambda t: t.split('
+')
         2. str -> str: transform=lambda t: t[:3]
 
     This wrapper supports when trans_node is True:
@@ -509,6 +528,22 @@ A: 小猪在草坪上奔跑。
 """))
 
 class LLMParser(NodeTransform):
+    """
+A text summarizer and keyword extractor that is responsible for analyzing the text input by the user and providing concise summaries or extracting relevant keywords based on the requested task.
+
+Args:
+    llm (TrainableModule): A trainable module.
+    language (str): The language type, currently only supports Chinese (zh) and English (en).
+    task_type (str): Currently supports two types of tasks: summary and keyword extraction.
+
+
+Examples:
+    
+    >>> from lazyllm import TrainableModule
+    >>> from lazyllm.tools.rag import LLMParser
+    >>> llm = TrainableModule("internlm2-chat-7b")
+    >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
+    """
     def __init__(self, llm: TrainableModule, language: str, task_type: str, num_workers: int = 30):
         super(__class__, self).__init__(num_workers=num_workers)
         assert language in ['en', 'zh'], f'Not supported language {language}'
@@ -522,6 +557,27 @@ class LLMParser(NodeTransform):
         self._task_type = task_type
 
     def transform(self, node: DocNode, **kwargs) -> List[str]:
+        """
+Perform the set task on the specified document.
+
+Args:
+    node (DocNode): The document on which the extraction task needs to be performed.
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools import LLMParser
+    >>> llm = lazyllm.TrainableModule("internlm2-chat-7b").start()
+    >>> m = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
+    >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
+    >>> keywords_parser = LLMParser(llm, language="en", task_type="keywords")
+    >>> documents = lazyllm.Document(dataset_path="/path/to/your/data", embed=m, manager=False)
+    >>> rm = lazyllm.Retriever(documents, group_name='CoarseChunk', similarity='bm25', topk=6)
+    >>> doc_nodes = rm("test")
+    >>> summary_result = summary_parser.transform(doc_nodes[0])
+    >>> keywords_result = keywords_parser.transform(doc_nodes[0])
+    """
         if self._task_type == 'qa_img':
             inputs = encode_query_with_filepaths('Extract QA pairs from images.', [node.image_path])
         else:

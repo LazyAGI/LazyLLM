@@ -11,6 +11,32 @@ from .retriever import _PostProcess
 
 
 class Reranker(ModuleBase, _PostProcess):
+    """Initializes a Rerank module for postprocessing and reranking of nodes (documents).
+This constructor initializes a Reranker module that configures a reranking process based on a specified reranking type. It allows for the dynamic selection and instantiation of reranking kernels (algorithms) based on the type and provided keyword arguments.
+
+Args:
+    name: The type of reranker to be used for the postprocessing and reranking process. Defaults to 'Reranker'.
+    kwargs: Additional keyword arguments that are passed to the reranker upon its instantiation.
+
+**Detailed explanation of reranker types**
+
+- Reranker: This registered reranking function instantiates a SentenceTransformerRerank reranker with a specified model and top_n parameter. It is designed to rerank nodes based on sentence transformer embeddings.
+
+- KeywordFilter: This registered reranking function instantiates a KeywordNodePostprocessor with specified required and excluded keywords. It filters nodes based on the presence or absence of these keywords.
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools import Document, Reranker, Retriever
+    >>> m = lazyllm.OnlineEmbeddingModule()
+    >>> documents = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
+    >>> retriever = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
+    >>> reranker = Reranker(name='ModuleReranker', model='bge-reranker-large', topk=1)
+    >>> ppl = lazyllm.ActionModule(retriever, reranker)
+    >>> ppl.start()
+    >>> print(ppl("user query"))
+    """
     registered_reranker = dict()
 
     def __new__(cls, name: str = "ModuleReranker", *args, **kwargs):

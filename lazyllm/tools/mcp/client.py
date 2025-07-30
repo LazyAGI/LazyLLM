@@ -11,6 +11,41 @@ from .deploy import SseServerSettings, start_sse_server
 
 
 class MCPClient(object):
+    """MCP client that can be used to connect to an MCP server. It supports both local servers (through stdio client) and remote servers (through sse client).
+
+If the 'command_or_url' is a url string (started with 'http' or 'https'), a remote server will be connected, otherwise a local server will be started and connected.
+
+Args:
+    command_or_url (str): The command or url string, which will be used to start a local server or connect to a remote server.
+    args (list[str], optional): Arguments list used for starting a local server, if you want to connect to a remote server, this argument is not needed. (default is [])
+    env (dict[str, str], optional): Environment variables dictionary used in tools, for example some api keys. (default is None)
+    headers(dict[str, Any], optional): HTTP headers used in sse client connection. (default is None)
+    timeout (float, optional): Timeout for sse client connection, in seconds. (default is 5)
+
+
+Examples:
+    >>> from lazyllm.tools import MCPClient
+    >>> mcp_server_configs = {
+    ...     "filesystem": {
+    ...         "command": "npx",
+    ...         "args": [
+    ...             "-y",
+    ...             "@modelcontextprotocol/server-filesystem",
+    ...             "./",
+    ...         ]
+    ...     }
+    ... }
+    >>> file_sys_config = mcp_server_configs["filesystem"]
+    >>> file_client = MCPClient(
+    ...     command_or_url=file_sys_config["command"],
+    ...     args=file_sys_config["args"],
+    ... )
+    >>> from lazyllm import OnlineChatModule
+    >>> from lazyllm.tools.agent.reactAgent import ReactAgent
+    >>> llm=OnlineChatModule(source="deepseek", stream=False)
+    >>> agent = ReactAgent(llm.share(), file_client.get_tools())
+    >>> print(agent("Write a Chinese poem about the moon, and save it to a file named 'moon.txt".))
+    """
     def __init__(
         self,
         command_or_url: str,
@@ -56,14 +91,29 @@ class MCPClient(object):
                     yield session
 
     async def call_tool(self, tool_name: str, arguments: dict):
+        """Calls one of the tools provided in the toolset of the connected MCP server via the MCP client and returns the result.
+
+Args:
+    tool_name (str): The name of the tool.
+    arguments (dict): The parameters for the tool.
+"""
         async with self._run_session() as session:
             return await session.call_tool(tool_name, arguments)
 
     async def list_tools(self):
+        """Retrieves the list of tools from the currently connected MCP client.
+"""
         async with self._run_session() as session:
             return await session.list_tools()
 
     async def aget_tools(self, allowed_tools: list[str] = None):
+        """Used to convert the tool set from the MCP server into a list of functions available for LazyLLM and return them.
+
+The allowed_tools parameter is used to specify the list of tools to be returned. If None, all tools will be returned.
+
+Args: 
+    allowed_tools (list[str], optional): The list of tools expected to be returned. Defaults to None, meaning that all tools will be returned.
+"""
         res = await self.list_tools()
         mcp_tools = getattr(res, "tools", [])
         if allowed_tools:

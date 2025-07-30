@@ -86,6 +86,14 @@
 	    - get_response
       members: false
 
+::: lazyllm.components.EmptyPrompter.generate_prompt
+    options:
+      heading_level: 3
+	  inherited_members:
+	    - generate_prompt
+	    - get_response
+      members: false
+
 ---
 
 ## Register
@@ -150,6 +158,9 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
     options:
       heading_level: 4
 
+::: lazyllm.components.TTSInfer
+    options:
+      heading_level: 4
 ### Speech to Text
 
 ::: lazyllm.components.SenseVoiceDeploy

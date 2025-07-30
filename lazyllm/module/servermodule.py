@@ -109,6 +109,25 @@ class _UrlHelper(object):
 
 
 class UrlModule(LLMBase, _UrlHelper):
+    """The URL obtained from deploying the ServerModule can be wrapped into a Module. When calling ``__call__`` , it will access the service.
+
+Args:
+    url (str): The URL of the service to be wrapped.
+    stream (bool): Whether to request and output in streaming mode, default is non-streaming.
+    return_trace (bool): Whether to record the results in trace, default is False.
+
+
+Examples:
+    >>> import lazyllm
+    >>> def demo(input): return input * 2
+    ... 
+    >>> s = lazyllm.ServerModule(demo, launcher=lazyllm.launchers.empty(sync=False))
+    >>> s.start()
+    INFO:     Uvicorn running on http://0.0.0.0:35485
+    >>> u = lazyllm.UrlModule(url=s._url)
+    >>> print(u(1))
+    2
+    """
 
     def __new__(cls, *args, **kw):
         if cls is not UrlModule:
@@ -141,7 +160,21 @@ class UrlModule(LLMBase, _UrlHelper):
     def _extract_and_format(self, output: str) -> str:
         return output
 
-    def forward(self, *args, **kw): raise NotImplementedError
+    def forward(self, *args, **kw):
+        """Defines the computation steps to be executed each time. All subclasses of ModuleBase need to override this function.
+
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...    def forward(self, input):
+    ...        return input + 1
+    ...
+    >>> MyModule()(1)
+    2
+    """
+        raise NotImplementedError
 
     def __call__(self, *args, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'
@@ -182,6 +215,112 @@ class _ServerModuleImpl(ModuleBase, _UrlHelper):
 
 
 class ServerModule(UrlModule):
+    """Using FastAPI, any callable object can be wrapped into an API service, allowing the simultaneous launch of one main service and multiple satellite services.
+
+Args:
+    m (Callable): The function to be wrapped as a service. It can be a function or a functor. When launching satellite services, it needs to be an object implementing ``__call__`` (a functor).
+    pre (Callable): Preprocessing function executed in the service process. It can be a function or a functor, default is ``None``.
+    post (Callable): Postprocessing function executed in the service process. It can be a function or a functor, default is ``None``.
+    stream (bool): Whether to request and output in streaming mode, default is non-streaming.
+    return_trace (bool): Whether to record the results in trace, default is ``False``.
+    port (int): Specifies the port after the service is deployed. The default is ``None``, which will generate a random port.
+    launcher (LazyLLMLaunchersBase): Used to select the compute node for service execution, default is ``launchers.remote`` .
+
+**Examples:**
+
+```python
+>>> def demo(input): return input * 2
+... 
+>>> s = lazyllm.ServerModule(demo, launcher=launchers.empty(sync=False))
+>>> s.start()
+INFO:     Uvicorn running on http://0.0.0.0:35485
+>>> print(s(1))
+2
+```
+
+```python
+>>> class MyServe(object):
+...     def __call__(self, input):
+...         return 2 * input
+...     
+...     @lazyllm.FastapiApp.post
+...     def server1(self, input):
+...         return f'reply for {input}'
+...
+...     @lazyllm.FastapiApp.get
+...     def server2(self):
+...        return f'get method'
+...
+>>> m = lazyllm.ServerModule(MyServe(), launcher=launchers.empty(sync=False))
+>>> m.start()
+>>> print(m(1))
+INFO:     Uvicorn running on http://0.0.0.0:32028
+>>> print(m(1))
+2  
+```
+
+<span style="font-size: 20px;">**`evalset(evalset, load_f=None, collect_f=<function ModuleBase.<lambda>>)`**</span>
+
+Set the evaluation set for the Module. Modules that have been set with an evaluation set will be evaluated during ``update`` or ``eval``, and the evaluation results will be stored in the eval_result variable. 
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, collect_f=lambda x: ...)→ None `**</span>
+
+
+Args:
+    evalset (list) :Evaluation set
+    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.
+
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, load_f=None, collect_f=lambda x: ...)→ None`**</span>
+
+
+Args:
+    evalset (str) :Path to the evaluation set
+    load_f (Callable) :Method for loading the evaluation set, including parsing file formats and converting to a list
+    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.
+
+**Examples:**
+
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.evalset([1, 2, 3])
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+>>> m.eval_result
+["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+```
+
+<span style="font-size: 20px;">**`restart() `**</span>
+
+Restart the module and all its submodules.
+
+**Examples:**
+
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.restart()
+>>> m(1)
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+```
+
+<span style="font-size: 20px;">**`start() `**</span> 
+
+Deploy the module and all its submodules.
+
+**Examples:**
+
+```python
+import lazyllm
+m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+m.start()
+m(1)
+"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+```                                                                    
+"""
     def __init__(self, m: Optional[Union[str, ModuleBase]] = None, pre: Optional[Callable] = None,
                  post: Optional[Callable] = None, stream: Union[bool, Dict] = False,
                  return_trace: bool = False, port: Optional[int] = None, pythonpath: Optional[str] = None,

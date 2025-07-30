@@ -62,6 +62,38 @@ Assistant:  查看天气
 
 
 class IntentClassifier(ModuleBase):
+    """IntentClassifier is an intent recognizer based on a language model that identifies predefined intents based on user-provided input text and conversational context.
+It can handle intent lists and ensures accurate intent recognition through preprocessing and postprocessing steps.
+
+Arguments:
+    llm: A language model object used for intent recognition, which can be of type OnlineChatModule or TrainableModule.
+    intent_list (list): A list of strings containing all possible intents. This list can include intents in either Chinese or English.
+    prompt (str): User-attached prompt words.
+    constrain (str): User-attached constrain words.
+    examples (list[list]): extra examples，format is `[[query, intent], [query, intent], ...]`.
+    return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.
+
+
+Examples:
+        >>> import lazyllm
+        >>> from lazyllm.tools import IntentClassifier
+        >>> classifier_llm = lazyllm.OnlineChatModule(source="openai")
+        >>> chatflow_intent_list = ["Chat", "Financial Knowledge Q&A", "Employee Information Query", "Weather Query"]
+        >>> classifier = IntentClassifier(classifier_llm, intent_list=chatflow_intent_list)
+        >>> classifier.start()
+        >>> print(classifier('What is the weather today'))
+        Weather Query
+        >>>
+        >>> with IntentClassifier(classifier_llm) as ic:
+        >>>     ic.case['Weather Query', lambda x: '38.5°C']
+        >>>     ic.case['Chat', lambda x: 'permission denied']
+        >>>     ic.case['Financial Knowledge Q&A', lambda x: 'Calling Financial RAG']
+        >>>     ic.case['Employee Information Query', lambda x: 'Beijing']
+        ...
+        >>> ic.start()
+        >>> print(ic('What is the weather today'))
+        38.5°C
+    """
     def __init__(self, llm, intent_list: list = None,
                  *, prompt: str = '', constrain: str = '', attention: str = '',
                  examples: list[list[str, str]] = [], return_trace: bool = False) -> None:

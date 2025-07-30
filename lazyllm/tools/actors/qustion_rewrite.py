@@ -39,6 +39,26 @@ ch_qustion_rewrite_prompt = """
 不要输出任何其他内容，仅输出改写后的问题
 """
 class QustionRewrite(ModuleBase):
+    """Question Rewrite Module.
+
+This module rewrites or reformulates a user query using a language model. It supports both string and list output formats based on the formatter.
+
+`__init__(self, base_model, rewrite_prompt="", formatter="str")`
+Initializes the question rewrite module with a prompt and model.
+
+Args:
+    base_model (Union[str, TrainableModule, OnlineChatModuleBase]): A path string or initialized model for question rewriting.
+    rewrite_prompt (str): Custom prompt to guide the rewrite behavior.
+    formatter (str): Output format type; either "str" or "list".
+
+
+Examples:
+    >>> from lazyllm.components import QustionRewrite
+    >>> rewriter = QustionRewrite(base_model="chatglm", rewrite_prompt="请将问题改写为更适合检索的形式", formatter="list")
+    >>> result = rewriter("中国的最高山峰是什么？")
+    >>> print(result)
+    ... ['中国的最高山峰是哪一座？', '中国海拔最高的山是什么？']
+    """
     def __init__(
         self,
         base_model: Union[str, TrainableModule, OnlineChatModuleBase],

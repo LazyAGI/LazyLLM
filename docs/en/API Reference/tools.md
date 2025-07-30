@@ -18,6 +18,18 @@
     members:
 	exclude-members:
 
+::: lazyllm.tools.IndexBase.update
+    members:
+	exclude-members:
+
+::: lazyllm.tools.IndexBase.remove
+    members:
+	exclude-members:
+
+::: lazyllm.tools.IndexBase.query
+    members:
+	exclude-members:
+
 ::: lazyllm.tools.SentenceSplitter
     members:
     exclude-members:
@@ -29,6 +41,18 @@
 ::: lazyllm.tools.WebModule
     members:
     exclude-members: forward
+
+::: lazyllm.tools.WebModule.init_web
+    members:
+    exclude-members: 
+
+::: lazyllm.tools.WebModule.wait
+    members:
+    exclude-members: 
+
+::: lazyllm.tools.WebModule.stop
+    members:
+    exclude-members: 
 
 ::: lazyllm.tools.CodeGenerator
     members: 

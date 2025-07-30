@@ -1025,6 +1025,32 @@ Args:
         input (Option[str]): The input of the large model. If this parameter is specified, any part of the output that includes the input will be completely truncated. Defaults to None.
 ''')
 
+add_chinese_doc('EmptyPrompter', '''\
+一个简单的提示词生成器，直接返回原始输入内容。
+
+该类继承自 LazyLLMPrompterBase，常用于调试或无需提示词处理的场景。
+
+Args:
+    无需额外参数。
+''')
+
+add_english_doc('EmptyPrompter', '''\
+A minimal prompt generator that returns the raw input as-is.
+
+This class inherits from LazyLLMPrompterBase and is useful for debugging or bypassing any prompt formatting logic.
+
+Args:
+    No additional arguments required.
+''')
+
+add_example('EmptyPrompter', ['''\
+>>> from lazyllm.prompters import EmptyPrompter
+>>> prompter = EmptyPrompter()
+>>> result = prompter.generate_prompt("Hello, world!")
+>>> print(result)
+... Hello, world!
+'''])
+
 add_chinese_doc('AlpacaPrompter', '''\
 Alpaca格式的Prompter，支持工具调用，不支持历史对话。
 
@@ -1404,7 +1430,7 @@ The constructor dynamically creates and returns the corresponding deployment ins
 Args:
     name: A string specifying the type of deployment instance to be created.
     **kwarg: Keyword arguments to be passed to the constructor of the corresponding deployment instance.
-                
+
 Returns:
     If the name argument is 'bark', an instance of [BarkDeploy][lazyllm.components.BarkDeploy] is returned.
     If the name argument is 'ChatTTS', an instance of [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] is returned.
@@ -1421,7 +1447,7 @@ TTSDeploy 是一个用于根据指定的名称创建不同类型文本到语音(
 Args:
     name：字符串，用于指定要创建的部署实例的类型。
     **kwarg：关键字参数，用于传递给对应部署实例的构造函数。
-                
+
 Returns:
     如果 name 参数为 ‘bark’，则返回一个 [BarkDeploy][lazyllm.components.BarkDeploy] 实例。
     如果 name 参数为 ‘ChatTTS’，则返回一个 [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] 实例。
@@ -1439,6 +1465,112 @@ add_example('TTSDeploy', ['''\
 >>> res = model('Hello World!')
 >>> print(res)
 ... <lazyllm-query>{"query": "", "files": ["path/to/chattts/sound_xxx.wav"]}
+'''])
+
+
+#TTSInfer
+add_english_doc('TTSInfer', '''\
+TTSInfer is an abstract base class for Text-to-Speech (TTS) inference models.
+
+This class defines the common interface and logic for all TTS models, including model loading, lazy initialization, audio inference, and serialization support. Subclasses must implement the `load_model` and `_infer` methods to provide actual model behavior.
+
+`__init__(self, base_path, source=None, save_path=None, init=False, trust_remote_code=True, model_name=None)`
+Constructor that prepares model path, lazy init flag, and output config.
+
+Args:
+    base_path: Path or model identifier to load the base TTS model.
+    source: Optional model source. If not set, uses `lazyllm.config['model_source']`.
+    save_path: Optional directory to store generated audio. Defaults to a temp path.
+    init: Whether to load the model immediately upon construction. Defaults to False.
+    trust_remote_code: Whether to trust and execute remote model code. Defaults to True.
+    model_name: Optional model name to distinguish the output folder.
+
+`load_model(self)`
+Abstract method to load the actual TTS model. Must be implemented by subclasses.
+
+`__call__(self, string)`
+Convert input text to audio using the loaded model. Returns base64-encoded audio files.
+
+Args:
+    string: The input string to synthesize into speech.
+
+Returns:
+    A `lazyllm-query` string containing the base64-encoded audio file list.
+
+`_infer(self, string)`
+Abstract method to perform model inference on input text. Must return audio waveform and sample rate.
+
+Args:
+    string: Input text.
+
+Returns:
+    A tuple of (numpy.ndarray waveform, int sample_rate).
+
+`rebuild(cls, base_path, init, save_path)`
+Class method for rebuilding the object during unpickling or multiprocessing.
+
+`__reduce__(self)`
+Supports pickling and serialization for lazy loading scenarios.
+''')
+
+add_chinese_doc('TTSInfer', '''\
+TTSInfer 是一个用于文本到语音（TTS）推理的抽象基类。
+
+该类定义了所有 TTS 模型的通用接口和逻辑，包括模型加载、懒加载初始化、音频推理以及序列化支持。子类必须实现 `load_model` 和 `_infer` 方法来定义实际的模型行为。
+
+`__init__(self, base_path, source=None, save_path=None, init=False, trust_remote_code=True, model_name=None)`
+构造函数，用于设置模型路径、懒加载标志和输出配置。
+
+Args:
+    base_path：基础 TTS 模型的路径或标识符。
+    source：可选模型来源。如果未指定，使用 `lazyllm.config['model_source']`。
+    save_path：可选的音频文件保存路径，默认为临时目录。
+    init：是否在初始化时立即加载模型，默认为 False。
+    trust_remote_code：是否信任并执行远程模型代码，默认为 True。
+    model_name：模型名称，用于区分保存目录。
+
+`load_model(self)`
+抽象方法，用于加载具体 TTS 模型。子类必须实现。
+
+`__call__(self, string)`
+将输入文本转换为语音，返回 base64 编码的音频文件。
+
+Args:
+    string：输入的文本字符串。
+
+返回值:
+    一个 `lazyllm-query` 格式的字符串，包含 base64 编码的音频文件路径。
+
+`_infer(self, string)`
+抽象方法，执行文本到语音的推理，返回波形和采样率。
+
+Args:
+    string：输入文本。
+
+返回值:
+    一个元组，包含音频波形（numpy 数组）和采样率（整数）。
+
+`rebuild(cls, base_path, init, save_path)`
+类方法，用于在反序列化或多进程中重建对象。
+
+`__reduce__(self)`
+支持 pickle 和懒加载下的序列化。
+''')
+
+add_example('TTSInfer', ['''\
+>>> from lazyllm.components.deploy.text_to_speech.base import TTSInfer
+
+>>> class DummyTTSInfer(TTSInfer):
+...     def load_model(self):
+...         print("Loading dummy model...")
+...     def _infer(self, string):
+...         import numpy as np
+...         return np.zeros(24000), 24000  # 1 second of silence
+
+>>> infer = DummyTTSInfer(base_path='dummy', init=True)
+>>> result = infer("Hello world!")
+>>> print(result)
+... <lazyllm-query>{"query": "", "files": ["path/to/base64_audio.wav"]}
 '''])
 
 # ============= Launcher

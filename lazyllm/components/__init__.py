@@ -10,7 +10,7 @@ from .auto import AutoDeploy, AutoFinetune
 from .utils import ModelManager
 from .formatter import FormatterBase, EmptyFormatter, JsonFormatter, FileFormatter
 from .deploy import (StableDiffusionDeploy, TTSDeploy, BarkDeploy, ChatTTSDeploy,
-                     MusicGenDeploy, SenseVoiceDeploy, OCRDeploy)
+                     MusicGenDeploy, SenseVoiceDeploy, OCRDeploy,TTSInfer)
 
 
 __all__ = [
@@ -32,6 +32,7 @@ __all__ = [
     "FileFormatter",
     "StableDiffusionDeploy",
     "TTSDeploy",
+    "TTSInfer",
     "BarkDeploy",
     "ChatTTSDeploy",
     "MusicGenDeploy",

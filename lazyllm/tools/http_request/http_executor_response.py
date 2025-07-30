@@ -1,6 +1,28 @@
 import httpx
 
 class HttpExecutorResponse:
+    """Wrapper for HTTP response.
+
+This class wraps an httpx.Response object and provides convenient access to headers, body, status code, content type, and file-type response recognition and extraction.
+
+Args:
+    response (httpx.Response, optional): Optional HTTP response object from httpx.
+
+
+Examples:
+    >>> import httpx
+    >>> from lazyllm.components import HttpExecutorResponse
+    >>> resp = httpx.Response(200, headers={"Content-Type": "application/json"}, content=b'{"msg":"hello"}')
+    >>> wrapper = HttpExecutorResponse(resp)
+    >>> print(wrapper.status_code)
+    ... 200
+    >>> print(wrapper.content)
+    ... {"msg":"hello"}
+    >>> print(wrapper.is_file)
+    ... False
+    >>> print(wrapper.extract_file())
+    ... ('', b'')
+    """
     headers: dict[str, str]
     response: httpx.Response
 

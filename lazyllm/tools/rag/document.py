@@ -32,6 +32,48 @@ class _MetaDocument(_MetaBind):
 
 
 class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
+    """Initialize a document module with an optional user interface.
+
+This constructor initializes a document module that can have an optional user interface. If the user interface is enabled, it also provides a UI to manage the document operation interface and offers a web page for user interface interaction.
+
+Args:
+    dataset_path (str): The path to the dataset directory. This directory should contain the documents to be managed by the document module.
+    embed (Optional[Union[Callable, Dict[str, Callable]]]): The object used to generate document embeddings. If you need to generate multiple embeddings for the text, you need to specify multiple embedding models in a dictionary format. The key identifies the name corresponding to the embedding, and the value is the corresponding embedding model.
+    manager (bool, optional): A flag indicating whether to create a user interface for the document module. Defaults to False.
+    launcher (optional): An object or function responsible for launching the server module. If not provided, the default asynchronous launcher from `lazyllm.launchers` is used (`sync=False`).
+    store_conf (optional): Configure which storage backend and index backend to use.
+    doc_fields (optional): Configure the fields that need to be stored and retrieved along with their corresponding types (currently only used by the Milvus backend).
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.tools import Document
+    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+    >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)  # or documents = Document(dataset_path='your_doc_path', embed={"key": m}, manager=False)
+    >>> m1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
+    >>> document1 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, manager=False)
+    
+    >>> store_conf = {
+    >>>     'type': 'chroma',
+    >>>     'indices': {
+    >>>         'smart_embedding_index': {
+    >>>             'backend': 'milvus',
+    >>>             'kwargs': {
+    >>>                 'uri': '/tmp/tmp.db',
+    >>>                 'index_kwargs': {
+    >>>                     'index_type': 'HNSW',
+    >>>                     'metric_type': 'COSINE'
+    >>>                  }
+    >>>             },
+    >>>         },
+    >>>     },
+    >>> }
+    >>> doc_fields = {
+    >>>     'author': DocField(data_type=DataType.VARCHAR, max_size=128, default_value=' '),
+    >>>     'public_year': DocField(data_type=DataType.INT32),
+    >>> }
+    >>> document2 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, store_conf=store_conf, doc_fields=doc_fields)
+    """
     class _Manager(ModuleBase):
         def __init__(self, dataset_path: Optional[str], embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: Union[bool, int] = False, name: Optional[str] = None,
@@ -268,6 +310,26 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
                           trans_node: bool = None, num_workers: int = 0, display_name: str = None,
                           group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
+        """
+Generate a node group produced by the specified rule.
+
+Args:
+    name (str): The name of the node group.
+    transform (Callable): The transformation rule that converts a node into a node group. The function prototype is `(DocNode, group_name, **kwargs) -> List[DocNode]`. Currently built-in options include [SentenceSplitter][lazyllm.tools.SentenceSplitter], and users can define their own transformation rules.
+    trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`.
+    num_workers (int): number of new threads used for transform. default: 0
+    parent (str): The node that needs further transformation. The series of new nodes obtained after transformation will be child nodes of this parent node. If not specified, the transformation starts from the root node.
+    kwargs: Parameters related to the specific implementation.
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools import Document, SentenceSplitter
+    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+    >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+    >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+    """
         if isinstance(self, type):
             DocImpl.create_global_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
                                              num_workers=num_workers, display_name=display_name,
@@ -279,6 +341,49 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     @DynamicDescriptor
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
+        """
+Used to specify the file reader for an instance. The scope of action is visible only to the registered Document object. The registered file reader must be a Callable object. It can only be registered by calling a function. The priority of the file reader registered by the instance is higher than that of the file reader registered by the class, and the priority of the file reader registered by the instance and class is higher than the system default file reader. That is, the order of priority is: instance file reader > class file reader > system default file reader.
+
+Args:
+    pattern (str): Matching rules applied by the file reader.
+    func (Callable): File reader, must be a Callable object.
+
+
+Examples:
+    
+    >>> from lazyllm.tools.rag import Document, DocNode
+    >>> from lazyllm.tools.rag.readers import ReaderBase
+    >>> class YmlReader(ReaderBase):
+    ...     def _load_data(self, file, fs=None):
+    ...         try:
+    ...             import yaml
+    ...         except ImportError:
+    ...             raise ImportError("yaml is required to read YAML file: `pip install pyyaml`")
+    ...         with open(file, 'r') as f:
+    ...             data = yaml.safe_load(f)
+    ...         print("Call the class YmlReader.")
+    ...         return [DocNode(text=data)]
+    ...
+    >>> def processYml(file):
+    ...     with open(file, 'r') as f:
+    ...         data = f.read()
+    ...     print("Call the function processYml.")
+    ...     return [DocNode(text=data)]
+    ...
+    >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
+    >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
+    >>> doc1.add_reader("**/*.yml", YmlReader)
+    >>> print(doc1._impl._local_file_reader)
+    {'**/*.yml': <class '__main__.YmlReader'>}
+    >>> print(doc2._impl._local_file_reader)
+    {}
+    >>> files = ["your_yml_files"]
+    >>> Document.register_global_reader("**/*.yml", processYml)
+    >>> doc1._impl._reader.load_data(input_files=files)
+    Call the class YmlReader.
+    >>> doc2._impl._reader.load_data(input_files=files)
+    Call the function processYml.
+    """
         if isinstance(self, type):
             return DocImpl.register_global_reader(pattern=pattern, func=func)
         else:
@@ -286,6 +391,31 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
+        """
+Used to specify a file reader, which is visible to all Document objects. The registered file reader must be a Callable object. It can be registered using a decorator or by a function call.
+
+Args:
+    pattern (str): Matching rules applied by the file reader.
+    func (Callable): File reader, must be a Callable object.
+
+
+Examples:
+    
+    >>> from lazyllm.tools.rag import Document, DocNode
+    >>> @Document.register_global_reader("**/*.yml")
+    >>> def processYml(file):
+    ...     with open(file, 'r') as f:
+    ...         data = f.read()
+    ...     return [DocNode(text=data)]
+    ...
+    >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
+    >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
+    >>> files = ["your_yml_files"]
+    >>> docs1 = doc1._impl._reader.load_data(input_files=files)
+    >>> docs2 = doc2._impl._reader.load_data(input_files=files)
+    >>> print(docs1[0].text == docs2[0].text)
+    # True
+    """
         return cls.add_reader(pattern, func)
 
     def get_store(self):
@@ -301,9 +431,43 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         return self._manager(self._curr_group, func_name, *args, **kw)
 
     def find_parent(self, target) -> Callable:
+        """
+Find the parent node of the specified node.
+
+Args:
+    group (str): The name of the node for which to find the parent.
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools import Document, SentenceSplitter
+    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+    >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+    >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+    >>> documents.create_node_group(name="children", transform=SentenceSplitter, parent="parent", chunk_size=1024, chunk_overlap=100)
+    >>> documents.find_parent('children')
+    """
         return functools.partial(self._forward, 'find_parent', group=target)
 
     def find_children(self, target) -> Callable:
+        """
+Find the child nodes of the specified node.
+
+Args:
+    group (str): The name of the node for which to find the children.
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools import Document, SentenceSplitter
+    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+    >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+    >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+    >>> documents.create_node_group(name="children", transform=SentenceSplitter, parent="parent", chunk_size=1024, chunk_overlap=100)
+    >>> documents.find_children('parent')
+    """
         return functools.partial(self._forward, 'find_children', group=target)
 
     def find(self, target) -> Callable:

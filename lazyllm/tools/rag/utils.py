@@ -160,15 +160,29 @@ class DocListManager(ABC):
 
     # Actually it shoule be "set_docs_status_deleting"
     def delete_files(self, file_ids: List[str]) -> List[DocPartRow]:
+        """Set the knowledge base entries associated with the document to "deleting," and have each knowledge base asynchronously delete parsed results and associated records.
+
+Args:
+    file_ids (list of str): List of file IDs to delete.
+"""
         document_list = self.update_file_status(file_ids, DocListManager.Status.deleting)
         self.update_kb_group(cond_file_ids=file_ids, new_status=DocListManager.Status.deleting)
         return document_list
 
     @abstractmethod
-    def table_inited(self): pass
+    def table_inited(self):
+        """Checks if the database tables have been initialized.
+
+**Returns:**
+- bool: True if the tables have been initialized, False otherwise.
+"""
+        pass
 
     @abstractmethod
-    def _init_tables(self): pass
+    def _init_tables(self):
+        """Initializes the database tables. This method should be called when the tables have not been initialized yet, creating the necessary table structures.
+"""
+        pass
 
     @abstractmethod
     def validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]: pass
@@ -179,7 +193,19 @@ class DocListManager(ABC):
     @abstractmethod
     def list_files(self, limit: Optional[int] = None, details: bool = False,
                    status: Union[str, List[str]] = Status.all,
-                   exclude_status: Optional[Union[str, List[str]]] = None): pass
+                   exclude_status: Optional[Union[str, List[str]]] = None):
+        """Lists files that meet the specified criteria.
+
+Args:
+    limit (int, optional): Limit on the number of files to return.
+    details (bool): If True, return detailed file information.
+    status (str or list of str, optional): Filter files by status.
+    exclude_status (str or list of str, optional): Exclude files with these statuses.
+
+**Returns:**
+- list: List of files.
+"""
+        pass
 
     @abstractmethod
     def get_docs(self, doc_ids: List[str]) -> List[KBDocument]: pass
@@ -191,10 +217,22 @@ class DocListManager(ABC):
     def fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]: pass
 
     @abstractmethod
-    def list_all_kb_group(self): pass
+    def list_all_kb_group(self):
+        """Lists all the knowledge base group names.
+
+**Returns:**
+- list: List of knowledge base group names.
+"""
+        pass
 
     @abstractmethod
-    def add_kb_group(self, name): pass
+    def add_kb_group(self, name):
+        """Adds a new knowledge base group.
+
+Args:
+    name (str): Name of the group to add.
+"""
+        pass
 
     @abstractmethod
     def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
@@ -202,7 +240,22 @@ class DocListManager(ABC):
                             exclude_status: Optional[Union[str, List[str]]] = None,
                             upload_status: Union[str, List[str]] = Status.all,
                             exclude_upload_status: Optional[Union[str, List[str]]] = None,
-                            need_reparse: Optional[bool] = False): pass
+                            need_reparse: Optional[bool] = False):
+        """Lists files in the specified knowledge base group.
+
+Args:
+    group (str, optional): Group name. Defaults to None, meaning all groups.
+    limit (int, optional): Limit on the number of files to return.
+    details (bool): If True, return detailed file information.
+    status (str or list of str, optional): Filter files by status.
+    exclude_status (str or list of str, optional): Exclude files with these statuses.
+    upload_status (str, optional): Filter by upload status.
+    exclude_upload_status (str or list of str, optional): Exclude files with these upload statuses.
+
+**Returns:**
+- list: List of files.
+"""
+        pass
 
     def add_files(
         self,
@@ -211,6 +264,16 @@ class DocListManager(ABC):
         status: Optional[str] = Status.waiting,
         batch_size: int = 64,
     ) -> List[DocPartRow]:
+        """Adds files to the database.
+
+Args:
+    files (list of str): List of file paths to add.
+    metadatas (list, optional): Metadata associated with the files.
+    status (str, optional): File status.
+
+**Returns:**
+- list: List of file IDs.
+"""
         documents = self._add_doc_records(files, metadatas, status, batch_size)
         if documents:
             self.add_files_to_kb_group([doc.doc_id for doc in documents], group=DocListManager.DEFAULT_GROUP_NAME)
@@ -236,28 +299,74 @@ class DocListManager(ABC):
     def get_existing_paths_by_pattern(self, file_path: str) -> List[str]: pass
 
     @abstractmethod
-    def update_file_message(self, fileid: str, **kw): pass
+    def update_file_message(self, fileid: str, **kw):
+        """Updates the message for a specified file.
+
+Args:
+    fileid (str): File ID.
+    **kw: Additional key-value pairs to update.
+"""
+        pass
 
     @abstractmethod
     def update_file_status(self, file_ids: List[str], status: str,
                            cond_status_list: Union[None, List[str]] = None) -> List[DocPartRow]: pass
 
     @abstractmethod
-    def add_files_to_kb_group(self, file_ids: List[str], group: str): pass
+    def add_files_to_kb_group(self, file_ids: List[str], group: str):
+        """Adds files to the specified knowledge base group.
+
+Args:
+    file_ids (list of str): List of file IDs to add.
+    group (str): Name of the group to add the files to.
+"""
+        pass
 
     @abstractmethod
-    def delete_files_from_kb_group(self, file_ids: List[str], group: str): pass
+    def delete_files_from_kb_group(self, file_ids: List[str], group: str):
+        """Deletes files from the specified knowledge base group.
+
+Args:
+    file_ids (list of str): List of file IDs to delete.
+    group (str): Name of the group.
+"""
+        pass
 
     @abstractmethod
-    def get_file_status(self, fileid: str): pass
+    def get_file_status(self, fileid: str):
+        """Retrieves the status of a specified file.
+
+Args:
+    fileid (str): File ID.
+
+**Returns:**
+- str: The current status of the file.
+"""
+        pass
 
     @abstractmethod
     def update_kb_group(self, cond_file_ids: List[str], cond_group: Optional[str] = None,
                         cond_status_list: Optional[List[str]] = None, new_status: Optional[str] = None,
-                        new_need_reparse: Optional[bool] = None) -> List[GroupDocPartRow]: pass
+                        new_need_reparse: Optional[bool] = None) -> List[GroupDocPartRow]:
+        """Updates the record of kb_group_document.
+
+Args:
+    cond_file_ids (list of str, optional): a list of file IDs to filter by, default None.
+    cond_group (str, optional): a kb_group name to filter by, default None.
+    cond_status_list (list of str, optional): a list of statuses to filter by, default None.
+    new_status (str, optional): the new status to update to, default None
+    new_need_reparse (bool, optinoal): the new need_reparse flag to update to, default None
+
+**Returns:**
+- list: updated records, list of (doc_id, group_name)
+"""
+        pass
 
     @abstractmethod
-    def release(self): pass
+    def release(self):
+        """Releases the resources of the current manager.
+"""
+        pass
 
     @property
     def enable_path_monitoring(self):

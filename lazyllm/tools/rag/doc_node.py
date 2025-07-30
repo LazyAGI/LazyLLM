@@ -14,6 +14,7 @@ _pickle_blacklist = {'_store', '_node_groups'}
 
 
 class MetadataMode(str, Enum):
+    """An enumeration."""
     ALL = auto()
     EMBED = auto()
     LLM = auto()

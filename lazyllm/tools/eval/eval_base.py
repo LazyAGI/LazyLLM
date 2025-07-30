@@ -14,6 +14,31 @@ lazyllm.config.add('eval_result_dir', str, os.path.join(os.path.expanduser('~'),
                    'EVAL_RESULT_DIR')
 
 class BaseEvaluator(ModuleBase):
+    """Abstract base class for evaluation modules.
+
+This class defines the standard interface and retry logic for evaluating model outputs. It supports concurrent processing, input validation, and automatic result saving.
+
+Args:
+    concurrency (int): Number of concurrent threads used during evaluation.
+    retry (int): Number of retry attempts for each evaluation item.
+    log_base_name (Optional[str]): Optional log file name prefix for saving results.
+
+
+Examples:
+    >>> from lazyllm.components import BaseEvaluator
+    >>> class SimpleAccuracyEvaluator(BaseEvaluator):
+    ...     def _process_one_data_impl(self, data):
+    ...         return {
+    ...             "final_score": float(data["pred"] == data["label"])
+    ...         }
+    >>> evaluator = SimpleAccuracyEvaluator()
+    >>> score = evaluator([
+    ...     {"pred": "yes", "label": "yes"},
+    ...     {"pred": "no", "label": "yes"}
+    ... ])
+    >>> print(score)
+    ... 0.5
+    """
     def __init__(self, concurrency=1, retry=3, log_base_name=None):
         super().__init__()
         self._concurrency = concurrency

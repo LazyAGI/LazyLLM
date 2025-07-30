@@ -93,3 +93,50 @@ code_str = 'def Identity(v): return v'
 identity = compile_func(code_str)
 assert identity('hello') == 'hello'
 ''')
+
+add_chinese_doc('SQLiteQueue', '''\
+基于 SQLite 的持久化文件系统队列。
+
+该类继承自 FileSystemQueue，并通过 SQLite 数据库存储队列内容，支持并发访问控制与消息顺序管理。每条队列消息按照 position 字段顺序排列，并提供入队、出队、查看、统计及清空操作。
+
+数据库默认存储在 ~/.lazyllm_filesystem_queue.db，写操作使用文件锁防止并发冲突。
+
+Args:
+    klass (str): 队列类别名称，用于区分不同逻辑队列，默认为 '__default__'。
+''')
+
+add_english_doc('SQLiteQueue', '''\
+Persistent file system queue backed by SQLite.
+
+This class extends FileSystemQueue and stores queue entries in an SQLite database with ordered message positions. It supports concurrent-safe enqueue, dequeue, peek, count, and clear operations.
+
+The queue database is saved at ~/.lazyllm_filesystem_queue.db, and file locking ensures safe concurrent access.
+
+Args:
+    klass (str): Name of the queue category, used to separate logical queues. Default is '__default__'.
+''')
+
+add_example('SQLiteQueue', ['''\
+>>> from lazyllm.components import SQLiteQueue
+>>> queue = SQLiteQueue(klass='demo')
+
+>>> # Enqueue messages
+>>> queue._enqueue('session1', 'Hello')
+>>> queue._enqueue('session1', 'World')
+
+>>> # Peek at the first message without removing
+>>> print(queue._peek('session1'))
+... 'Hello'
+
+>>> # Dequeue messages
+>>> messages = queue._dequeue('session1', limit=2)
+>>> print(messages)
+... ['Hello', 'World']
+
+>>> # Check queue size (should be 0)
+>>> print(queue._size('session1'))
+... 0
+
+>>> # Clear the queue (safe even if empty)
+>>> queue._clear('session1')
+'''])

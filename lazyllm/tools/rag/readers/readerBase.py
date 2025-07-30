@@ -9,6 +9,39 @@ from ..doc_node import DocNode
 from lazyllm.module import ModuleBase
 
 class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
+    """
+The base class of file readers, which inherits from the ModuleBase base class and has Callable capabilities. Subclasses that inherit from this class only need to implement the _load_data function, and its return parameter type is List[DocNode]. Generally, the input parameters of the _load_data function are file (Path) and fs (AbstractFileSystem).
+
+Args:
+    args (Any): Pass the corresponding position parameters as needed.
+    return_trace (bool): Set whether to record trace logs.
+    kwargs (Dict): Pass the corresponding keyword arguments as needed.
+
+
+Examples:
+    
+    >>> from lazyllm.tools.rag.readers import ReaderBase
+    >>> from lazyllm.tools.rag import DocNode, Document
+    >>> from typing import Dict, Optional, List
+    >>> from pathlib import Path
+    >>> from fsspec import AbstractFileSystem
+    >>> @Document.register_global_reader("**/*.yml")
+    >>> class YmlReader(ReaderBase):
+    ...     def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    ...         try:
+    ...             import yaml
+    ...         except ImportError:
+    ...             raise ImportError("yaml is required to read YAML file: `pip install pyyaml`")
+    ...         with open(file, 'r') as f:
+    ...             data = yaml.safe_load(f)
+    ...         print("Call the class YmlReader.")
+    ...         return [DocNode(text=data)]
+    ...
+    >>> files = ["your_yml_files"]
+    >>> doc = Document(dataset_path="your_files_path", create_ui=False)
+    >>> reader = doc._impl._reader.load_data(input_files=files)
+    # Call the class YmlReader.
+    """
     def __init__(self, *args, return_trace: bool = True, **kwargs):
         super().__init__(return_trace=return_trace)
 

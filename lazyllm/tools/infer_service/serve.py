@@ -14,6 +14,21 @@ from lazyllm import FastapiApp as app
 from ..services import ServerBase
 
 class JobDescription(BaseModel):
+    """Model deployment job description schema.
+
+Used to specify the configuration for creating a model inference job, including model name and GPU requirements.
+
+Args:
+    deploy_model (str): The model to be deployed. Default is "qwen1.5-0.5b-chat".
+    num_gpus (int): Number of GPUs required for deployment. Default is 1.
+
+
+Examples:
+    >>> from lazyllm.components import JobDescription
+    >>> job = JobDescription(deploy_model="deepseek-coder", num_gpus=2)
+    >>> print(job.dict()) 
+    ... {'deploy_model': 'deepseek-coder', 'num_gpus': 2}
+    """
     deploy_model: str = Field(default='qwen1.5-0.5b-chat')
     num_gpus: int = Field(default=1)
 

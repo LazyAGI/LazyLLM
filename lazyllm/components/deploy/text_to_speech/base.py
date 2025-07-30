@@ -6,6 +6,64 @@ from lazyllm.components.formatter.formatterbase import encode_query_with_filepat
 from lazyllm.components.utils.downloader.model_downloader import ModelManager
 
 class TTSInfer(object):
+    """TTSInfer is an abstract base class for Text-to-Speech (TTS) inference models.
+
+This class defines the common interface and logic for all TTS models, including model loading, lazy initialization, audio inference, and serialization support. Subclasses must implement the `load_model` and `_infer` methods to provide actual model behavior.
+
+`__init__(self, base_path, source=None, save_path=None, init=False, trust_remote_code=True, model_name=None)`
+Constructor that prepares model path, lazy init flag, and output config.
+
+Args:
+    base_path: Path or model identifier to load the base TTS model.
+    source: Optional model source. If not set, uses `lazyllm.config['model_source']`.
+    save_path: Optional directory to store generated audio. Defaults to a temp path.
+    init: Whether to load the model immediately upon construction. Defaults to False.
+    trust_remote_code: Whether to trust and execute remote model code. Defaults to True.
+    model_name: Optional model name to distinguish the output folder.
+
+`load_model(self)`
+Abstract method to load the actual TTS model. Must be implemented by subclasses.
+
+`__call__(self, string)`
+Convert input text to audio using the loaded model. Returns base64-encoded audio files.
+
+Args:
+    string: The input string to synthesize into speech.
+
+Returns:
+    A `lazyllm-query` string containing the base64-encoded audio file list.
+
+`_infer(self, string)`
+Abstract method to perform model inference on input text. Must return audio waveform and sample rate.
+
+Args:
+    string: Input text.
+
+Returns:
+    A tuple of (numpy.ndarray waveform, int sample_rate).
+
+`rebuild(cls, base_path, init, save_path)`
+Class method for rebuilding the object during unpickling or multiprocessing.
+
+`__reduce__(self)`
+Supports pickling and serialization for lazy loading scenarios.
+
+
+Examples:
+    >>> from lazyllm.components.deploy.text_to_speech.base import TTSInfer
+    
+    >>> class DummyTTSInfer(TTSInfer):
+    ...     def load_model(self):
+    ...         print("Loading dummy model...")
+    ...     def _infer(self, string):
+    ...         import numpy as np
+    ...         return np.zeros(24000), 24000  # 1 second of silence
+    
+    >>> infer = DummyTTSInfer(base_path='dummy', init=True)
+    >>> result = infer("Hello world!")
+    >>> print(result)
+    ... <lazyllm-query>{"query": "", "files": ["path/to/base64_audio.wav"]}
+    """
     def __init__(self, base_path, source=None, save_path=None, init=False, trust_remote_code=True, model_name=None):
         source = lazyllm.config['model_source'] if not source else source
         self.base_path = ModelManager(source).download(base_path) or ''

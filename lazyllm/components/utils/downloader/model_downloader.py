@@ -17,6 +17,50 @@ lazyllm.config.add('data_path', str, '', 'DATA_PATH')
 
 
 class ModelManager():
+    """ModelManager is a utility class provided by LazyLLM for developers to automatically download models.
+Currently, it supports search for models from local directories, as well as automatically downloading model from
+huggingface or modelscope. Before using ModelManager, the following environment variables need to be set:
+
+- LAZYLLM_MODEL_SOURCE: The source for model downloads, which can be set to ``huggingface`` or ``modelscope`` .
+- LAZYLLM_MODEL_SOURCE_TOKEN: The token provided by ``huggingface`` or ``modelscope`` for private model download.
+- LAZYLLM_MODEL_PATH: A colon-separated ``:`` list of local absolute paths for model search.
+- LAZYLLM_MODEL_CACHE_DIR: Directory for downloaded models.
+
+Keyword Args: 
+    model_source (str, optional): The source for model downloads, currently only supports ``huggingface`` or ``modelscope`` .
+        If necessary, ModelManager downloads model data from the source. If not provided, LAZYLLM_MODEL_SOURCE
+        environment variable would be used, and if LAZYLLM_MODEL_SOURCE is not set, ModelManager will not download
+        any model.
+    token (str, optional): The token provided by ``huggingface`` or ``modelscope`` . If the token is present, ModelManager uses
+        the token to download model. If not provided, LAZYLLM_MODEL_SOURCE_TOKEN environment variable would be used.
+        and if LAZYLLM_MODEL_SOURCE_TOKEN is not set, ModelManager will not download private models, only public ones.
+    model_path (str, optional): A colon-separated list of absolute paths. Before actually start to download model,
+        ModelManager trys to find the target model in the directories in this list. If not provided,
+        LAZYLLM_MODEL_PATH environment variable would be used, and LAZYLLM_MODEL_PATH is not set, ModelManager skips
+        looking for models from model_path.
+    cache_dir (str, optional): An absolute path of a directory to save downloaded models. If not provided,
+        LAZYLLM_MODEL_CACHE_DIR environment variable would be used, and if LAZYLLM_MODEL_PATH is not set, the default
+        value is ~/.lazyllm/model.
+
+<span style="font-size: 20px;">&ensp;**`ModelManager.download(model) -> str`**</span>
+
+Download models from model_source. The function first searches for the target model in directories listed in the
+model_path parameter of ModelManager class. If not found, it searches under cache_dir. If still not found,
+it downloads the model from model_source and stores it under cache_dir.
+
+Args:
+    model (str): The name of the target model. The function uses this name to download the model from model_source.
+    To further simplify use of the function, LazyLLM provides a mapping dict from abbreviated model names to original
+    names on the download source for popular models, such as ``Llama-3-8B`` , ``GLM3-6B`` or ``Qwen1.5-7B``. For more details,
+    please refer to the file ``lazyllm/module/utils/downloader/model_mapping.py`` . The model argument can be either
+    an abbreviated name or one from the download source.
+
+
+Examples:
+    >>> from lazyllm.components import ModelManager
+    >>> downloader = ModelManager(model_source='modelscope')
+    >>> downloader.download('chatglm3-6b')
+    """
     def __init__(self, model_source, token=lazyllm.config['model_source_token'],
                  cache_dir=lazyllm.config['model_cache_dir'], model_path=lazyllm.config['model_path']):
         self.model_source = model_source or lazyllm.config['model_source']
