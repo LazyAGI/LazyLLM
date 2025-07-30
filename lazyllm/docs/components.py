@@ -664,6 +664,64 @@ add_example('deploy.EmbeddingDeploy', '''\
 >>> embed_service('path/to/model')
 ''')
 
+# Deploy-RerankDeploy
+add_chinese_doc('deploy.RerankDeploy', '''\
+此类是 ``EmbeddingDeploy`` 的子类，用于部署重排序（Rerank）服务。支持使用HuggingFace模型进行文本重排序。
+
+Args:
+    launcher (lazyllm.launcher): 启动器，默认为 ``None``。
+    model_type (str): 模型类型，默认为 ``'embed'``。
+    log_path (str): 日志文件路径，默认为 ``None``。
+    trust_remote_code (bool): 是否信任远程代码，默认为 ``True``。
+    port (int): 服务端口号，默认为 ``None``，此情况下LazyLLM会自动生成随机端口号。
+
+调用参数:
+    finetuned_model: 微调后的模型路径或模型名称。
+    base_model: 基础模型路径或模型名称，当finetuned_model无效时会使用此模型。
+
+消息格式:
+    输入格式为包含query（查询文本）、documents（候选文档列表）和top_n（返回的文档数量）的字典。
+    - query: 查询文本
+    - documents: 候选文档列表
+    - top_n: 返回的文档数量，默认为1
+''')
+
+add_english_doc('deploy.RerankDeploy', '''\
+This class is a subclass of ``EmbeddingDeploy``, designed for deploying reranking services. It supports text reranking using HuggingFace models.
+
+Args:
+    launcher (lazyllm.launcher): The launcher instance, defaults to ``None``.
+    model_type (str): Model type, defaults to ``'embed'``.
+    log_path (str): Path for log file, defaults to ``None``.
+    trust_remote_code (bool): Whether to trust remote code, defaults to ``True``.
+    port (int): Service port number, defaults to ``None``, in which case LazyLLM will generate a random port.
+
+Call Arguments:
+    finetuned_model: Path or name of the fine-tuned model.
+    base_model: Path or name of the base model, used when finetuned_model is invalid.
+
+Message Format:
+    Input format is a dictionary containing query (query text), documents (list of candidate documents), and top_n (number of documents to return).
+    - query: Query text
+    - documents: List of candidate documents
+    - top_n: Number of documents to return, defaults to 1
+''')
+
+add_example('deploy.RerankDeploy', '''\
+>>> from lazyllm import deploy
+>>> rerank_service = deploy.RerankDeploy()
+>>> rerank_service('path/to/model')
+>>> input_data = {
+...     "query": "What is machine learning?",
+...     "documents": [
+...         "Machine learning is a branch of AI.",
+...         "Machine learning uses data to improve.",
+...         "Deep learning is a subset of machine learning."
+...     ],
+...     "top_n": 2
+... }
+>>> result = rerank_service(input_data)
+''')
 
 # Deploy-LMDeploy
 add_chinese_doc('deploy.LMDeploy', '''\

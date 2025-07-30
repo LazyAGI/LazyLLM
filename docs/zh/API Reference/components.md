@@ -44,6 +44,10 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.RerankDeploy
+    options:
+      heading_level: 3
+
 ---
 
 ## Launcher
