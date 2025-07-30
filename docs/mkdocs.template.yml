@@ -29,6 +29,7 @@ nav:
 - Api Reference:
   - Components: API Reference/components.md
   - Configs: API Reference/configs.md
+  - Launcher: API Reference/launcher.md
   - Flow: API Reference/flow.md
   - Module: API Reference/module.md
   - Tools: API Reference/tools.md

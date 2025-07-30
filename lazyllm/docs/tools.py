@@ -280,6 +280,94 @@ add_example('rag.readers.ReaderBase', '''
 # Call the class YmlReader.
 ''')
 
+add_chinese_doc('rag.readers.PandasCSVReader', '''\
+用于读取 CSV 文件并使用 pandas 进行解析。
+
+Args:
+    concat_rows (bool): 是否将所有行拼接为一个文本块，默认为 True。
+    col_joiner (str): 列之间的连接符。
+    row_joiner (str): 行之间的连接符。
+    pandas_config (Optional[Dict]): pandas.read_csv 的可选配置项。
+    return_trace (bool): 是否返回处理过程的 trace。
+''')
+
+add_english_doc('rag.readers.PandasCSVReader', '''\
+Reader for parsing CSV files using pandas.
+
+Args:
+    concat_rows (bool): Whether to concatenate all rows into a single text block. Default is True.
+    col_joiner (str): String used to join column values.
+    row_joiner (str): String used to join rows.
+    pandas_config (Optional[Dict]): Optional config for pandas.read_csv.
+    return_trace (bool): Whether to return the processing trace.
+''')
+
+add_chinese_doc('rag.readers.PandasExcelReader', '''\
+用于读取 Excel 文件（.xlsx），并将内容提取为文本。
+
+Args:
+    concat_rows (bool): 是否将所有行拼接为一个文本块。
+    sheet_name (Optional[str]): 要读取的工作表名称。若为 None，则读取所有工作表。
+    pandas_config (Optional[Dict]): pandas.read_excel 的可选配置项。
+    return_trace (bool): 是否返回处理过程的 trace。
+''')
+
+add_english_doc('rag.readers.PandasExcelReader', '''\
+Reader for extracting text content from Excel (.xlsx) files.
+
+Args:
+    concat_rows (bool): Whether to concatenate all rows into a single block.
+    sheet_name (Optional[str]): Name of the sheet to read. If None, all sheets will be read.
+    pandas_config (Optional[Dict]): Optional config for pandas.read_excel.
+    return_trace (bool): Whether to return the processing trace.
+''')
+
+add_chinese_doc('rag.readers.PDFReader', '''\
+用于读取 PDF 文件并提取其中的文本内容。
+
+Args:
+    return_full_document (bool): 是否将整份 PDF 合并为一个文档节点。若为 False，则每页作为一个节点。
+    return_trace (bool): 是否返回处理过程的 trace，默认为 True。
+''')
+
+add_english_doc('rag.readers.PDFReader', '''\
+Reader for extracting text content from PDF files.
+
+Args:
+    return_full_document (bool): Whether to merge the entire PDF into a single document node. If False, each page becomes a separate node.
+    return_trace (bool): Whether to return the processing trace. Default is True.
+''')
+
+add_chinese_doc('rag.readers.PPTXReader', '''\
+用于解析 PPTX（PowerPoint）文件的读取器，能够提取幻灯片中的文本，并对嵌入图像进行视觉描述生成。
+
+Args:
+    return_trace (bool): 是否记录处理过程的 trace，默认为 True。
+''')
+
+add_english_doc('rag.readers.PPTXReader', '''\
+Reader for PPTX (PowerPoint) files. Extracts text from slides and generates captions for embedded images using a vision-language model.
+
+Args:
+    return_trace (bool): Whether to record the processing trace. Default is True.
+''')
+
+add_chinese_doc('rag.readers.VideoAudioReader', '''\
+用于从视频或音频文件中提取语音内容的读取器，依赖 OpenAI 的 Whisper 模型进行语音识别。
+
+Args:
+    model_version (str): Whisper 模型的版本（如 "base", "small", "medium", "large"），默认为 "base"。
+    return_trace (bool): 是否返回处理过程的 trace，默认为 True。
+''')
+
+add_english_doc('rag.readers.VideoAudioReader', '''\
+Reader for extracting speech content from video or audio files using OpenAI's Whisper model for transcription.
+
+Args:
+    model_version (str): Whisper model version (e.g., "base", "small", "medium", "large"). Default is "base".
+    return_trace (bool): Whether to return the processing trace. Default is True.
+''')
+
 # ---------------------------------------------------------------------------- #
 
 # rag/rerank.py

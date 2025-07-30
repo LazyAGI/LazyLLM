@@ -6,6 +6,26 @@
     members:
 	exclude-members:
 
+::: lazyllm.tools.rag.readers.PandasCSVReader
+    members:
+	exclude-members:
+
+::: lazyllm.tools.rag.readers.PandasExcelReader
+    members:
+	exclude-members:
+
+::: lazyllm.tools.rag.readers.PDFReader
+    members:
+	exclude-members:
+
+::: lazyllm.tools.rag.readers.PPTXReader
+    members:
+	exclude-members:
+
+::: lazyllm.tools.rag.readers.VideoAudioReader
+    members:
+	exclude-members:
+
 ::: lazyllm.tools.Reranker
     members:
     exclude-members: forward
