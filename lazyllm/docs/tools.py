@@ -508,9 +508,7 @@ Returns:
 """)
 
 add_english_doc('rag.readers.DocxReader', """\
-Inherits from `LazyLLMReaderBase`, and only needs to implement `_load_data`.
-
-Read text content from a `.docx` file and return a list of `DocNode` objects.
+A docx format file parser, reading text content from a `.docx` file and return a list of `DocNode` objects.
 
 Args:
     file (Path): Path to the `.docx` file.
@@ -552,7 +550,7 @@ Args:
 ''')
 
 add_english_doc('rag.readers.HWPReader', '''
-This reader inherits from LazyLLMReaderBase and only supports loading from the local filesystem. It extracts body text from the `.hwp` file and returns it as a list of DocNode objects.
+A HWP format file parser. It supports loading from the local filesystem. It extracts body text from the `.hwp` file and returns it as a list of DocNode objects.
 
 HWP is a proprietary binary document format used primarily in Korea. This reader focuses on extracting the plain text from the body sections of the document.
 
