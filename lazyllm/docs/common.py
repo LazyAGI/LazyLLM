@@ -98,27 +98,66 @@ assert identity('hello') == 'hello'
 add_chinese_doc('bind', '''\
 Bind 类用于函数绑定与延迟调用，支持动态参数传入和上下文参数解析，实现灵活的函数组合与流水线式调用。
 
+bind 函数能够将一个函数与固定的位置参数和关键字参数绑定，支持使用占位符（如 _0, _1）引用当前数据流中上游节点的输出，实现数据在流水线中的跳跃传递和灵活组合。
+
+注意事项：
+    - 绑定的参数可以是具体值，也可以是当前数据流中上游节点的输出占位符。
+    - 参数绑定仅在当前数据流上下文内生效，不能跨数据流绑定或绑定外部变量。
+
 Args:
-    __bind_func (Callable 或 type): 要绑定的函数或函数类型，传入类型时自动实例化
-    *args: 绑定时固定的位置参数
-    **kw: 绑定时固定的关键字参数
+    __bind_func (Callable 或 type): 要绑定的函数或函数类型，传入类型时会自动实例化。
+    *args: 绑定时固定的位置参数，可以包含占位符。
+    **kw: 绑定时固定的关键字参数，可以包含占位符。
 ''')
 
 add_english_doc('bind', '''\
 The Bind class provides function binding and deferred invocation capabilities, supporting dynamic argument passing and context-based argument resolution for flexible function composition and pipeline-style calls.
 
-Args:             
+The bind function binds a callable with fixed positional and keyword arguments, supporting placeholders (e.g. _0, _1) to reference outputs of upstream nodes within the current pipeline, enabling flexible data jumps and function composition.
+
+Notes:
+    - Bound arguments can be concrete values or placeholders referring to upstream pipeline outputs.
+    - Bindings are local to the current pipeline context and do not support cross-pipeline or external variable binding.
+
+Args:
     __bind_func (Callable or type): The function or function type to bind. If a type is given, it will be instantiated automatically.
-    *args: Fixed positional arguments to bind.
-    **kw: Fixed keyword arguments to bind.
+    *args: Fixed positional arguments to bind, supporting placeholders.
+    **kw: Fixed keyword arguments to bind, supporting placeholders.
 ''')
 
 add_example('bind', '''\
->>> from lazyllm.common import bind
->>> def add(x, y): return x + y
->>> b = bind(add, 1, 2)
->>> print(b())
-3
+>>> from lazyllm import bind, _0, _1
+>>> def f1(x):
+...     return x ** 2
+>>> def f21(input1, input2=0):
+...     return input1 + input2 + 1
+>>> def f22(input1, input2=0):
+...     return input1 + input2 - 1
+>>> def f3(in1='placeholder1', in2='placeholder2', in3='placeholder3'):
+...     return f"get [input:{in1}], [f21:{in2}], [f22:{in3}]"
+
+>>> from lazyllm import pipeline, parallel
+
+>>> with pipeline() as ppl:
+...     ppl.f1 = f1
+...     with parallel() as ppl.subprl2:
+...         ppl.subprl2.path1 = f21
+...         ppl.subprl2.path2 = f22
+...     ppl.f3 = bind(f3, ppl.input, _0, _1)
+...
+>>> print(ppl(2))
+get [input:2], [f21:5], [f22:3]
+
+>>> # Demonstrate operator '|' overloading for bind
+>>> with pipeline() as ppl2:
+...     ppl2.f1 = f1
+...     with parallel().bind(ppl2.input, _0) as ppl2.subprl2:
+...         ppl2.subprl2.path1 = f21
+...         ppl2.subprl2.path2 = f22
+...     ppl2.f3 = f3 | bind(ppl2.input, _0, _1)
+...
+>>> print(ppl2(2))
+get [input:2], [f21:7], [f22:5]
 ''')
 
 # ============= package
