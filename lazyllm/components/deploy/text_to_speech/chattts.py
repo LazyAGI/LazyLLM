@@ -1,22 +1,22 @@
 from lazyllm.thirdparty import torch, ChatTTS
 from .utils import TTSBase
-from .base import TTSInfer
+from .base import _TTSInfer
 
 
-class ChatTTSModule(TTSInfer):
+class _ChatTTSModule(_TTSInfer):
 
     def __init__(self, base_path, source=None, save_path=None, init=False, trust_remote_code=True):
         self.seed = 1024
         super().__init__(base_path, source, save_path, init, trust_remote_code, 'chattts')
 
-    def load_model(self):
+    def _load_model(self):
         self.model = ChatTTS.Chat()
         self.model.load(compile=False,
                         source="custom",
                         custom_path=self.base_path)
-        self.spk = self.set_spk(self.seed)
+        self.spk = self._set_spk(self.seed)
 
-    def set_spk(self, seed):
+    def _set_spk(self, seed):
         assert self.model
         torch.manual_seed(seed)
         rand_spk = self.model.sample_random_speaker()
@@ -34,7 +34,7 @@ class ChatTTSModule(TTSInfer):
             spk_seed = int(spk_seed) if spk_seed else spk_seed
             if isinstance(spk_seed, int) and self.seed != spk_seed:
                 self.seed = spk_seed
-                self.spk = self.set_spk(self.seed)
+                self.spk = self._set_spk(self.seed)
             string['infercode']['spk_emb'] = self.spk
             params_infer_code = ChatTTS.Chat.InferCodeParams(**string['infercode'])
         else:
@@ -72,4 +72,4 @@ class ChatTTSDeploy(TTSBase):
 
     }
     default_headers = {'Content-Type': 'application/json'}
-    func = ChatTTSModule
+    func = _ChatTTSModule
