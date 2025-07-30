@@ -584,7 +584,8 @@ add_chinese_doc('deploy.Vllm', '''\
 Args:
     trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
-    stream (bool): 是否为流式响应，默认为 ``False``。
+    log_path (str): 日志保存路径，若为 ``None`` 则不保存日志。
+    openai_api(bool):是否调用openai接口,默认为``None``。
     kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
 
 此类的关键字参数及其默认值如下：
@@ -609,7 +610,8 @@ This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabi
 Args:
     trust_remote_code (bool): Whether to allow loading of model code from remote servers, default is ``True``.
     launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1)``.
-    stream (bool): Whether the response is streaming, default is ``False``.
+    log_path (str): Path to save logs. If ``None``, logs will not be saved.
+    openai_api (bool): Whether to call the OpenAI API. Default is ``None``.
     kw: Keyword arguments used to update default training parameters. Note that not any additional keyword arguments can be specified here.
 
 The keyword arguments and their default values for this class are as follows:
@@ -739,6 +741,48 @@ add_example('deploy.RerankDeploy', '''\
 ...     "top_n": 2
 ... }
 >>> result = rerank_service(input_data)
+''')
+
+# Deploy-Mindie
+add_chinese_doc('deploy.Mindie', '''\
+此类是 ``LazyLLMDeployBase`` 的一个子类, 用于部署和管理MindIE大模型推理服务。它封装了MindIE服务的配置生成、进程启动和API交互的全流程。
+Args:
+    trust_remote_code (bool): 是否信任远程代码(如HuggingFace模型)。默认为 ``True``。
+    launcher: 任务启动器实例，默认为 ``launchers.remote()``。
+    log_path (str): 日志保存路径，若为 ``None`` 则不保存日志。
+    **kw: 其他配置参数，支持以下关键参数：
+        - npuDeviceIds: NPU设备ID列表(如 ``[[0,1]]`` 表示使用2张卡)
+        - worldSize: 模型并行数量
+        - port: 服务端口（设为 ``'auto'`` 时自动分配30000-40000的随机端口)
+        - maxSeqLen: 最大序列长度
+        - maxInputTokenLen: 单次输入最大token数
+        - maxPrefillTokens: 预填充token上限
+        - config: 自定义配置文件
+注意事项: 
+   必须预先设置环境变量 ``LAZYLLM_MINDIE_HOME`` 指向MindIE安装目录, 若未指定 ``finetuned_model`` 或路径无效，会自动回退到 ``base_model``
+''')
+
+add_english_doc('deploy.Mindie', '''\
+This class is a subclass of ``LazyLLMDeployBase``, designed for deploying and managing the MindIE large language model inference service. It encapsulates the full workflow including configuration generation, process launching, and API interaction for the MindIE service.
+Args:
+    trust_remote_code (bool): Whether to trust remote code (e.g., from HuggingFace models). Default is ``True``.
+    launcher: Instance of the task launcher. Default is ``launchers.remote()``.
+    log_path (str): Path to save logs. If ``None``, logs will not be saved.
+    **kw: Other configuration parameters. Supports the following keys:
+        - npuDeviceIds: List of NPU device IDs (e.g., ``[[0,1]]`` indicates using 2 devices)
+        - worldSize: Model parallelism size
+        - port: Service port (set to ``'auto'`` for auto-assignment between 30000–40000)
+        - maxSeqLen: Maximum sequence length
+        - maxInputTokenLen: Maximum number of tokens per input
+        - maxPrefillTokens: Maximum number of prefill tokens
+        - config: Custom configuration file
+Note:
+    You must set the environment variable ``LAZYLLM_MINDIE_HOME`` to point to the MindIE installation directory. 
+    If ``finetuned_model`` is not specified or the path is invalid, it will automatically fall back to ``base_model``.
+''')
+
+
+add_example('deploy.Mindie', '''\
 ''')
 
 # Deploy-LMDeploy
