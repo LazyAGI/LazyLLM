@@ -27,3 +27,8 @@
 ::: lazyllm.common.compile_func
     options:
       heading_level: 3
+## Queue
+
+::: lazyllm.common.FileSystemQueue
+    members: enqueue, dequeue, peek, size, clear
+    exclude-members:
