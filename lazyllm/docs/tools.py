@@ -497,9 +497,7 @@ add_example('rag.doc_to_db.extract_db_schema_from_files', '''\
 ''')
 
 add_chinese_doc('rag.readers.DocxReader', """\
-继承自 `LazyLLMReaderBase`，只需实现 `_load_data` 方法。
-
-从 `.docx` 文件中读取文本内容并封装为文档节点（DocNode）列表。
+docx格式文件解析器，从 `.docx` 文件中读取文本内容并封装为文档节点（DocNode）列表。
 
 Args:
     file (Path): `.docx` 文件路径。
@@ -545,7 +543,7 @@ Returns:
 """)
 
 add_chinese_doc('rag.readers.HWPReader', '''\
-该类继承自 LazyLLMReaderBase，仅支持从本地文件系统读取 HWP 文件。它会从文档中提取正文部分的文本内容，返回 DocNode 列表。
+HWP文件解析器，支持从本地文件系统读取 HWP 文件。它会从文档中提取正文部分的文本内容，返回 DocNode 列表。
 
 HWP 是一种专有的二进制格式，主要在韩国使用。由于格式封闭，因此只能解析部分内容（如文本段落），但对常规文本提取已经足够使用。
 
