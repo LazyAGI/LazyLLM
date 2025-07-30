@@ -238,13 +238,22 @@ add_chinese_doc('finetune.LlamafactoryFinetune', '''\
 此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) 框架提供的训练能力，用于对大语言模型(或视觉语言模型)进行训练。
 
 Args:
-    base_model (str): 用于进行训练的基模型。要求是基模型的路径。
-    target_path (str): 训练后模型保存权重的路径。
-    merge_path (str): 模型合并LoRA权重后的路径，默认为None。如果未指定，则会在 ``target_path`` 下创建 "lazyllm_lora" 和 "lazyllm_merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
-    config_path (str): LLaMA-Factory的训练配置文件（这里要求格式为yaml），默认为None。如果未指定，则会在当前工作路径下，创建一个名为 ``.temp`` 的文件夹，并在其中生成以 ``train_`` 前缀开头，以 ``.yaml`` 结尾的配置文件。
-    export_config_path (str): LLaMA-Factory的Lora权重合并的配置文件（这里要求格式为yaml），默认为None。如果未指定，则会在当前工作路径下中的 ``.temp`` 文件夹内生成以 ``merge_`` 前缀开头，以 ``.yaml`` 结尾的配置文件。
-    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1, sync=True)``。
-    kw: 关键字参数，用于更新默认的训练参数。
+    base_model (str): 用于进行训练的基模型路径。支持本地路径，若路径不存在则尝试从配置的模型路径中查找。
+    target_path (str): 训练完成后，模型权重保存的目标路径。
+    merge_path (str, optional): 模型合并LoRA权重后的保存路径，默认为None。
+        如果未指定，将在 ``target_path`` 下自动创建两个目录：
+        - "lazyllm_lora"（用于存放LoRA训练权重）
+        - "lazyllm_merge"（用于存放合并后的模型权重）
+    config_path (str, optional): 训练配置的 YAML 文件路径，默认None。
+        如果未指定，则使用默认配置文件 ``llama_factory/sft.yaml``。
+        配置文件支持覆盖默认训练参数。
+    export_config_path (str, optional): LoRA权重合并导出配置的 YAML 文件路径，默认None。
+        如果未指定，则使用默认配置文件 ``llama_factory/lora_export.yaml``。
+    lora_r (int, optional): LoRA的秩（rank），若提供则覆盖配置中的 ``lora_rank``。
+    modules_to_save (str, optional): 额外需要保存的模型模块名称列表，格式类似于Python列表字符串，如 "[module1,module2]"。
+    lora_target_modules (str, optional): 目标LoRA微调的模块名称列表，格式同上。
+    launcher (lazyllm.launcher, optional): 微调任务的启动器，默认为单卡同步远程启动器 ``launchers.remote(ngpus=1, sync=True)``。
+    **kw: 关键字参数，用于动态覆盖默认训练配置中的参数。
 
 此类的关键字参数及其默认值如下：
 
@@ -283,13 +292,22 @@ add_english_doc('finetune.LlamafactoryFinetune', '''\
 This class is a subclass of ``LazyLLMFinetuneBase``, based on the training capabilities provided by the [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) framework, used for training large language models(or visual language models).
 
 Args:
-    base_model (str): The base model used for training. It is required to be the path of the base model.
-    target_path (str): The path where the trained model weights are saved.
-    merge_path (str): The path where the model is merged with LoRA weights, default is None. If not specified, "lazyllm_lora" and "lazyllm_merge" directories will be created under ``target_path``, to be used as ``target_path`` and ``merge_path`` respectively.
-    config_path (str): The LLaMA-Factory training configuration file (yaml format is required), default is None. If not specified, a ``.temp`` folder will be created in the current working directory, and a configuration file starting with ``train_`` and ending with ``.yaml`` will be generated inside it.
-    export_config_path (str): The LLaMA-Factory Lora weight merging configuration file (yaml format is required), default is None. If not specified, a configuration file starting with ``merge_`` and ending with ``.yaml`` will be generated inside the ``.temp`` folder in the current working directory.
-    launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1, sync=True)``.
-    kw: Keyword arguments used to update the default training parameters.
+    base_model (str): Path to the base model used for training. Supports local paths; if the path does not exist, it will attempt to locate it from the configured model directory.
+    target_path (str): Target directory to save model weights after training is completed.
+    merge_path (str, optional): Path to save the model after merging LoRA weights. Defaults to None.
+        If not specified, two directories will be automatically created under ``target_path``:
+        - "lazyllm_lora" (for storing LoRA fine-tuned weights)
+        - "lazyllm_merge" (for storing the merged model weights)
+    config_path (str, optional): Path to the YAML file containing training configuration. Defaults to None.
+        If not specified, the default config file ``llama_factory/sft.yaml`` will be used.
+        This file can override default training parameters.
+    export_config_path (str, optional): Path to the YAML file for LoRA weight export/merging configuration. Defaults to None.
+        If not specified, the default config file ``llama_factory/lora_export.yaml`` will be used.
+    lora_r (int, optional): Rank of the LoRA adaptation. If provided, overrides the ``lora_rank`` value in the configuration.
+    modules_to_save (str, optional): List of additional module names to be saved. Should be provided as a string in Python list format, e.g., "[module1, module2]".
+    lora_target_modules (str, optional): List of module names to apply LoRA fine-tuning to. Format is the same as above.
+    launcher (lazyllm.launcher, optional): Launcher for the fine-tuning task. Defaults to a single-GPU, synchronous remote launcher: ``launchers.remote(ngpus=1, sync=True)``.
+    **kw: Additional keyword arguments used to dynamically override default parameters in the training configuration.
 
 Keyword Args:
     stage (typing.Literal['pt', 'sft', 'rm', 'ppo', 'dpo', 'kto']): Default is: ``sft``. Which stage will be performed in training.
@@ -863,6 +881,117 @@ add_example('formatter.FormatterBase', '''\
 [2, 3]
 ''')
 
+# JsonLikeFormatter
+add_chinese_doc('formatter.formatterbase.JsonLikeFormatter', '''\
+该类用于以类 JSON 的格式提取嵌套结构（如 dict、list、tuple）中的子字段内容。
+
+其功能通过格式化字符串 `formatter` 来控制，格式类似于数组/字典的索引切片表达式。例如：
+
+- `[0]` 表示取第 0 个元素
+- `[0][{key}]` 表示取第 0 个元素并获取其中 key 字段
+- `[0,1][{a,b}]` 表示同时提取第 0 和第 1 个对象的 a 和 b 字段
+- `[::2]` 表示步长为 2 的切片
+- `*[0][{x}]` 表示以包装格式返回处理后的数据（用于进一步结构化）
+
+Args:
+    formatter (str, optional): 控制提取规则的格式字符串。若为 None，则返回原始数据。
+''')
+
+add_english_doc('formatter.formatterbase.JsonLikeFormatter', '''\
+This class is used to extract subfields from nested structures (like dicts, lists, tuples) using a JSON-like indexing syntax.
+
+The behavior is driven by a formatter string similar to Python-style slicing and dictionary access:
+
+- `[0]` fetches the first item
+- `[0][{key}]` accesses the `key` field in the first item
+- `[0,1][{a,b}]` fetches the `a` and `b` fields from the first and second items
+- `[::2]` does slicing with a step of 2
+- `*[0][{x}]` means return a wrapped/structured result
+
+Args:
+    formatter (str, optional): A format string that controls how to slice and extract the structure. If None, the input will be returned directly.
+''')
+
+add_example('formatter.formatterbase.JsonLikeFormatter', '''\
+>>> from lazyllm.components.formatter.formatterbase import JsonLikeFormatter
+>>> formatter = JsonLikeFormatter("[{a,b}]")
+''')
+
+# PythonFormatter
+add_chinese_doc('formatter.formatterbase.PythonFormatter', '''\
+预留格式化器类，用于支持 Python 风格的数据提取语法，待开发。
+
+当前继承自 JsonLikeFormatter，无额外功能。
+''')
+
+add_english_doc('formatter.formatterbase.PythonFormatter', '''\
+Reserved formatter class for supporting Python-style data extraction syntax. To be developed.
+
+Currently inherits from JsonLikeFormatter with no additional behavior.
+''')
+
+# FileFormatter
+add_chinese_doc('formatter.FileFormatter', '''\
+用于处理带文档上下文的查询字符串格式转换的格式化器。
+
+支持三种模式：
+- "decode"：将结构化查询字符串解码为包含 query 和 files 的字典。
+- "encode"：将包含 query 和 files 的字典编码为结构化查询字符串。
+- "merge"：将多个结构化查询字符串合并为一个整体查询。
+
+Args:
+    formatter (str): 指定操作模式，可为 "decode"、"encode" 或 "merge"（默认为 "decode"）。
+''')
+
+add_english_doc('formatter.FileFormatter', '''\
+A formatter that transforms query strings with document context between structured formats.
+
+Supports three modes:
+- "decode": Decodes structured query strings into dictionaries with `query` and `files`.
+- "encode": Encodes a dictionary with `query` and `files` into a structured query string.
+- "merge": Merges multiple structured query strings into one.
+
+Args:
+    formatter (str): The operation mode. Must be one of "decode", "encode", or "merge". Defaults to "decode".
+''')
+
+add_example('formatter.FileFormatter', '''\
+>>> from lazyllm.components.formatter import FileFormatter
+
+>>> # Decode mode
+>>> fmt = FileFormatter('decode')
+''')
+
+# YamlFormatter
+add_chinese_doc('formatter.YamlFormatter', '''\
+用于从 YAML 格式的字符串中提取结构化信息的格式化器。
+
+继承自 JsonLikeFormatter，通过内部方法将字符串解析为 Python 对象后使用类 JSON 的方式提取字段。
+
+适合用于处理包含嵌套结构的 YAML 文本，并结合格式化表达式获取目标数据。
+
+''')
+
+add_english_doc('formatter.YamlFormatter', '''\
+A formatter for extracting structured information from YAML-formatted strings.
+
+Inherits from JsonLikeFormatter. Uses the internal method to parse YAML strings into Python objects, and then applies JSON-like formatting rules to extract desired fields.
+
+Suitable for handling nested YAML content with formatter-based field selection.
+''')
+
+add_example('formatter.YamlFormatter', '''\
+>>> from lazyllm.components.formatter import YamlFormatter
+>>> formatter = YamlFormatter("{name,age}")
+>>> msg = \\"\\"\\" 
+... name: Alice
+... age: 30
+... city: London
+... \\"\\"\\"
+>>> formatter(msg)
+{'name': 'Alice', 'age': 30}
+''')
+
 # JsonFormatter
 add_chinese_doc('JsonFormatter', '''\
 此类是JSON格式化器，即用户希望模型输出的内容格式为JSON，还可以通过索引方式对输出内容中的某个字段进行选择。
@@ -953,7 +1082,337 @@ add_example('EmptyFormatter', """\
 'Based on your user input, here is the corresponding list of nested dictionaries:\n[\n    {\n        "title": "# Application of Artificial Intelligence in the Medical Field",\n        "describe": "Please provide a detailed description of the application of artificial intelligence in the medical field, including its benefits, challenges, and future prospects."\n    },\n    {\n        "title": "## AI in Medical Diagnosis",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in medical diagnosis, including specific examples of AI-based diagnostic tools and their impact on patient outcomes."\n    },\n    {\n        "title": "### AI in Medical Imaging",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in medical imaging, including the advantages of AI-based image analysis and its applications in various medical specialties."\n    },\n    {\n        "title": "### AI in Drug Discovery and Development",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in drug discovery and development, including the role of AI in identifying potential drug candidates and streamlining the drug development process."\n    },\n    {\n        "title": "## AI in Medical Research",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in medical research, including its applications in genomics, epidemiology, and clinical trials."\n    },\n    {\n        "title": "### AI in Genomics and Precision Medicine",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in genomics and precision medicine, including the role of AI in analyzing large-scale genomic data and tailoring treatments to individual patients."\n    },\n    {\n        "title": "### AI in Epidemiology and Public Health",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in epidemiology and public health, including its applications in disease surveillance, outbreak prediction, and resource allocation."\n    },\n    {\n        "title": "### AI in Clinical Trials",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in clinical trials, including its role in patient recruitment, trial design, and data analysis."\n    },\n    {\n        "title": "## AI in Medical Practice",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in medical practice, including its applications in patient monitoring, personalized medicine, and telemedicine."\n    },\n    {\n        "title": "### AI in Patient Monitoring",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in patient monitoring, including its role in real-time monitoring of vital signs and early detection of health issues."\n    },\n    {\n        "title": "### AI in Personalized Medicine",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in personalized medicine, including its role in analyzing patient data to tailor treatments and predict outcomes."\n    },\n    {\n        "title": "### AI in Telemedicine",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in telemedicine, including its applications in remote consultations, virtual diagnoses, and digital health records."\n    },\n    {\n        "title": "## AI in Medical Ethics and Policy",\n        "describe": "Please provide a detailed description of the ethical and policy considerations surrounding the use of artificial intelligence in the medical field, including issues related to data privacy, bias, and accountability."\n    }\n]'
 """)
 
+# encode_query_with_filepaths
+add_chinese_doc('formatter.encode_query_with_filepaths', '''\
+将查询文本和文件路径编码为带有文档上下文的结构化字符串格式。
+
+当指定文件路径时，该函数会将查询内容与文件路径打包成 JSON 格式，并在前缀 ``__lazyllm_docs__`` 的基础上编码返回。否则仅返回原始查询文本。
+
+Args:
+    query (str): 用户查询字符串，默认为空字符串。
+    files (str or List[str]): 与查询相关的文档路径，可为单个字符串或字符串列表。
+
+Returns:
+    str: 编码后的结构化查询字符串，或原始查询。
+
+Raises:
+    AssertionError: 如果 `files` 不是字符串或字符串列表，或列表中元素类型错误。
+''')
+
+add_english_doc('formatter.encode_query_with_filepaths', '''\
+Encodes a query string together with associated file paths into a structured string format with context.
+
+If file paths are provided, the query and file list will be wrapped into a JSON object prefixed with ``__lazyllm_docs__``. Otherwise, it returns the original query string.
+
+Args:
+    query (str): The user query string. Defaults to an empty string.
+    files (str or List[str]): File path(s) associated with the query. Can be a single string or a list of strings.
+
+Returns:
+    str: A structured encoded query string or the raw query.
+
+Raises:
+    AssertionError: If `files` is not a string or list of strings.
+''')
+
+add_example('formatter.encode_query_with_filepaths', '''\
+>>> from lazyllm.components.formatter import encode_query_with_filepaths
+
+>>> # Encode a query along with associated documentation files
+>>> encode_query_with_filepaths("Generate questions based on the document", files=["a.md"])
+'<lazyllm-query>{"query": "Generate questions based on the document", "files": ["a.md"]}'
+''')
+
+# decode_query_with_filepaths
+add_chinese_doc('formatter.decode_query_with_filepaths', '''\
+将结构化查询字符串解析为包含原始查询和文件路径的字典格式。
+
+当输入字符串以特殊前缀 ``__lazyllm_docs__`` 开头时，函数会尝试从中提取 JSON 格式的查询信息；否则将原样返回字符串内容。
+
+Args:
+    query_files (str): 编码后的查询字符串，可能包含文档路径和查询内容。
+
+Returns:
+    Union[dict, str]: 若为结构化格式则返回包含 'query' 和 'files' 的字典，否则返回原始查询字符串。
+
+Raises:
+    AssertionError: 如果输入参数不是字符串类型。
+    ValueError: 如果字符串为结构化格式但解析 JSON 失败。
+''')
+
+add_english_doc('formatter.decode_query_with_filepaths', '''\
+Decodes a structured query string into a dictionary containing the original query and file paths.
+
+If the input string starts with the special prefix ``__lazyllm_docs__``, it attempts to parse the JSON content; otherwise, it returns the raw query string as-is.
+
+Args:
+    query_files (str): The encoded query string that may include both query and file paths.
+
+Returns:
+    Union[dict, str]: A dictionary containing 'query' and 'files' if structured, otherwise the original query string.
+
+Raises:
+    AssertionError: If the input is not a string.
+    ValueError: If the string is prefixed but JSON decoding fails.
+''')
+
+add_example('formatter.decode_query_with_filepaths', '''\
+>>> from lazyllm.components.formatter import decode_query_with_filepaths
+
+>>> # Decode a structured query with files
+>>> decode_query_with_filepaths('<lazyllm-query>{"query": "Summarize the content", "files": ["doc.md"]}')
+{'query': 'Summarize the content', 'files': ['doc.md']}
+
+>>> # Decode a plain string without files
+>>> decode_query_with_filepaths("This is just a simple question")
+'This is just a simple question'
+''')
+
+# lazyllm_merge_query
+add_chinese_doc('formatter.lazyllm_merge_query', '''\
+将多个查询字符串（可能包含文档路径）合并为一个统一的结构化查询字符串。
+
+每个输入参数可以是普通查询字符串或由 ``encode_query_with_filepaths`` 编码后的结构化字符串。函数会自动解码、拼接查询文本，并合并所有涉及的文档路径，最终重新编码为统一的查询格式。
+
+Args:
+    *args (str): 多个查询字符串。每个字符串可以是普通文本或已编码的带文件路径的结构化查询。
+
+Returns:
+    str: 合并后的结构化查询字符串，包含统一的查询内容与文件路径。
+''')
+
+add_english_doc('formatter.lazyllm_merge_query', '''\
+Merges multiple query strings (potentially with associated file paths) into a single structured query string.
+
+Each argument can be a plain query string or a structured query created by ``encode_query_with_filepaths``. The function decodes each input, concatenates all query texts, and merges the associated file paths. The final result is re-encoded into a single query string with unified context.
+
+Args:
+    *args (str): Multiple query strings. Each can be either plain text or an encoded structured query with files.
+
+Returns:
+    str: A single structured query string containing the merged query and file paths.
+''')
+
+add_example('formatter.lazyllm_merge_query', '''\
+>>> from lazyllm.components.formatter import encode_query_with_filepaths, lazyllm_merge_query
+
+>>> # Merge two structured queries with English content and associated files
+>>> q1 = encode_query_with_filepaths("Please summarize document one", files=["doc1.md"])
+>>> q2 = encode_query_with_filepaths("Add details from document two", files=["doc2.md"])
+>>> lazyllm_merge_query(q1, q2)
+'<lazyllm-query>{"query": "Please summarize document oneAdd details from document two", "files": ["doc1.md", "doc2.md"]}'
+
+>>> # Merge plain English text queries without documents
+>>> lazyllm_merge_query("What is AI?", "Explain deep learning.")
+'What is AI?Explain deep learning.'
+''')
+
 # ============= Prompter
+
+# Prompter
+add_chinese_doc('Prompter', '''\
+用于生成模型输入的Prompt类，支持模板、历史对话拼接与响应抽取。
+
+该类支持从字典、模板名称或文件中加载prompt配置，支持历史对话结构拼接（用于Chat类任务），
+可灵活处理有/无history结构的prompt输入，适配非字典类型输入。
+
+Args:
+    prompt (Optional[str]): 模板Prompt字符串，支持格式化字段。
+    response_split (Optional[str]): 对模型响应进行切分的分隔符，仅用于抽取模型回答。
+    chat_prompt (Optional[str]): 多轮对话使用的Prompt模板，必须包含history字段。
+    history_symbol (str): 表示历史对话字段的名称，默认为'llm_chat_history'。
+    eoa (Optional[str]): 对话中 assistant/user 分隔符。
+    eoh (Optional[str]): 多轮history中 user-assistant 分隔符。
+    show (bool): 是否打印最终生成的Prompt，默认False。
+''')
+
+add_english_doc('Prompter', '''\
+Prompt generator class for LLM input formatting. Supports template-based prompting, history injection, and response extraction.
+
+This class allows prompts to be defined via string templates, loaded from dicts, files, or predefined names.
+It supports history-aware formatting for multi-turn conversations and adapts to both mapping and string input types.
+
+Args:
+    prompt (Optional[str]): Prompt template string with format placeholders.
+    response_split (Optional[str]): Optional delimiter to split model response and extract useful output.
+    chat_prompt (Optional[str]): Chat template string, must contain a history placeholder.
+    history_symbol (str): Name of the placeholder for historical messages, default is 'llm_chat_history'.
+    eoa (Optional[str]): Delimiter between assistant/user in history items.
+    eoh (Optional[str]): Delimiter between user-assistant pairs.
+    show (bool): Whether to print the final prompt when generating. Default is False.
+''')
+
+add_example('Prompter', '''\
+>>> from lazyllm import Prompter
+
+>>> p = Prompter(prompt="Answer the following: {question}")
+>>> p.generate_prompt("What is AI?")
+'Answer the following: What is AI?'
+
+>>> p.generate_prompt({"question": "Define machine learning"})
+'Answer the following: Define machine learning'
+
+>>> p = Prompter(
+...     prompt="Instruction: {instruction}",
+...     chat_prompt="Instruction: {instruction}\\\\nHistory:\\\\n{llm_chat_history}",
+...     history_symbol="llm_chat_history",
+...     eoa="</s>",
+...     eoh="|"
+... )
+>>> p.generate_prompt(
+...     input={"instruction": "Translate this."},
+...     history=[["hello", "你好"], ["how are you", "你好吗"]]
+... )
+'Instruction: Translate this.\\\\nHistory:\\\\nhello|你好</s>how are you|你好吗'
+
+>>> prompt_conf = {
+...     "prompt": "Task: {task}",
+...     "response_split": "---"
+... }
+>>> p = Prompter.from_dict(prompt_conf)
+>>> p.generate_prompt("Summarize this article.")
+'Task: Summarize this article.'
+
+>>> full_output = "Task: Summarize this article.---This is the summary."
+>>> p.get_response(full_output)
+'This is the summary.'
+''')
+
+# Prompter.from_dict
+add_chinese_doc('Prompter.from_dict', '''\
+通过字典配置初始化一个 Prompter 实例。
+
+Args:
+    prompt (Dict): 包含 prompt 相关字段的配置字典，需包含 `prompt` 键，其他为可选。
+    show (bool): 是否显示生成的 prompt，默认为 False。
+
+Returns:
+    Prompter: 返回一个初始化的 Prompter 实例。
+''')
+
+add_english_doc('Prompter.from_dict', '''\
+Initializes a Prompter instance from a prompt configuration dictionary.
+
+Args:
+    prompt (Dict): A dictionary containing prompt-related configuration. Must include 'prompt' key.
+    show (bool): Whether to display the generated prompt. Defaults to False.
+
+Returns:
+    Prompter: An initialized Prompter instance.
+''')
+
+# Prompter.from_template
+add_chinese_doc('Prompter.from_template', '''\
+根据模板名称加载 prompt 配置并初始化 Prompter 实例。
+
+Args:
+    template_name (str): 模板名称，必须在 `templates` 中存在。
+    show (bool): 是否显示生成的 prompt，默认为 False。
+
+Returns:
+    Prompter: 返回一个初始化的 Prompter 实例。
+''')
+
+add_english_doc('Prompter.from_template', '''\
+Loads prompt configuration from a template name and initializes a Prompter instance.
+
+Args:
+    template_name (str): Name of the template. Must exist in the `templates` dictionary.
+    show (bool): Whether to display the generated prompt. Defaults to False.
+
+Returns:
+    Prompter: An initialized Prompter instance.
+''')
+
+# Prompter.from_file
+add_chinese_doc('Prompter.from_file', '''\
+从 JSON 文件中读取配置并初始化 Prompter 实例。
+
+Args:
+    fname (str): JSON 配置文件路径。
+    show (bool): 是否显示生成的 prompt，默认为 False。
+
+Returns:
+    Prompter: 返回一个初始化的 Prompter 实例。
+''')
+
+add_english_doc('Prompter.from_file', '''\
+Loads prompt configuration from a JSON file and initializes a Prompter instance.
+
+Args:
+    fname (str): Path to the JSON configuration file.
+    show (bool): Whether to display the generated prompt. Defaults to False.
+
+Returns:
+    Prompter: An initialized Prompter instance.
+''')
+
+# Prompter.empty
+add_chinese_doc('Prompter.empty', '''\
+创建一个空的 Prompter 实例。
+
+Returns:
+    Prompter: 返回一个无 prompt 配置的 Prompter 实例。
+''')
+
+add_english_doc('Prompter.empty', '''\
+Creates an empty Prompter instance.
+
+Returns:
+    Prompter: A Prompter instance without any prompt configuration.
+''')
+
+# Prompter.generate_prompt
+add_chinese_doc('Prompter.generate_prompt', '''\
+根据输入和可选的历史记录生成最终 Prompt。
+
+Args:
+    input (Union[str, Dict]): 用户输入。可以是字符串或包含多字段的字典。
+    history (Optional[List[List[str]]]): 多轮对话历史，例如 [['u1', 'a1'], ['u2', 'a2']]。
+    tools (Optional[Any]): 目前未支持工具调用，此字段必须为 None。
+    label (Optional[str]): 附加在 prompt 末尾的标签，通常用于训练。
+    show (bool): 是否显示生成的 prompt，默认 False。
+
+Returns:
+    str: 格式化后的 prompt 字符串。
+''')
+
+add_english_doc('Prompter.generate_prompt', '''\
+Generates a formatted prompt string based on input and optional conversation history.
+
+Args:
+    input (Union[str, Dict]): User input. Can be a single string or a dictionary with multiple fields.
+    history (Optional[List[List[str]]]): Multi-turn dialogue history, e.g., [['u1', 'a1'], ['u2', 'a2']].
+    tools (Optional[Any]): Not supported. Must be None.
+    label (Optional[str]): Optional label to append to the prompt, commonly used for training.
+    show (bool): Whether to print the generated prompt. Defaults to False.
+
+Returns:
+    str: The final formatted prompt string.
+''')
+
+# Prompter.get_response
+add_chinese_doc('Prompter.get_response', '''\
+从 LLM 返回结果中提取模型的回答内容。
+
+Args:
+    response (str): 模型完整响应文本。
+    input (Optional[str]): 如果模型输出以输入开头，将会自动去除输入部分。
+
+Returns:
+    str: 提取后的模型响应内容。
+''')
+
+add_english_doc('Prompter.get_response', '''\
+Extracts the actual model answer from the full response returned by an LLM.
+
+Args:
+    response (str): The full raw output from the model.
+    input (Optional[str]): If the response starts with the input, that part will be removed.
+
+Returns:
+    str: The cleaned model response.
+''')
 
 add_chinese_doc('prompter.PrompterBase', '''\
 Prompter的基类，自定义的Prompter需要继承此基类，并通过基类提供的 ``_init_prompt`` 函数来设置Prompt模板和Instruction的模板，以及截取结果所使用的字符串。可以查看 :[prompt](/Best%20Practice/prompt) 进一步了解Prompt的设计思想和使用方式。
@@ -1025,6 +1484,62 @@ Args:
         input (Option[str]): The input of the large model. If this parameter is specified, any part of the output that includes the input will be completely truncated. Defaults to None.
 ''')
 
+# EmptyPrompter
+add_chinese_doc('prompter.EmptyPrompter', '''\
+继承自 `LazyLLMPrompterBase` 的空提示生成器，用于直接返回原始输入。
+
+该类不会对输入进行任何处理，适用于无需格式化的调试、测试或占位场景。
+''')
+
+add_english_doc('prompter.EmptyPrompter', '''\
+An empty prompt generator that inherits from `LazyLLMPrompterBase`, and directly returns the original input.
+
+This class performs no formatting and is useful for debugging, testing, or as a placeholder.
+''')
+
+add_example('prompter.EmptyPrompter', '''\
+>>> from lazyllm.components.prompter import EmptyPrompter
+
+>>> prompter = EmptyPrompter()
+
+>>> prompter.generate_prompt("Hello LazyLLM")
+'Hello LazyLLM'
+
+>>> prompter.generate_prompt({"query": "Tell me a joke"})
+{'query': 'Tell me a joke'}
+
+>>> # Even with additional parameters, the input is returned unchanged
+>>> prompter.generate_prompt("No-op", history=[["Hi", "Hello"]], tools=[{"name": "search"}], label="debug")
+'No-op'
+''')
+
+# EmptyPrompter.generate_prompt
+add_chinese_doc('prompter.EmptyPrompter.generate_prompt', '''\
+直接返回输入的Prompt实现，继承自 `LazyLLMPrompterBase`。
+
+该方法不会对输入做任何格式化操作，适用于调试、测试或占位场景。
+
+Args:
+    input (Any): 任意输入，作为Prompt返回。
+    history (Option[List[List | Dict]]): 历史对话，可忽略，默认None。
+    tools (Option[List[Dict]]): 工具参数，可忽略，默认None。
+    label (Option[str]): 标签，可忽略，默认None。
+    show (bool): 是否打印返回内容，默认为False。
+''')
+
+add_english_doc('prompter.EmptyPrompter.generate_prompt', '''\
+A prompt passthrough implementation that inherits from `LazyLLMPrompterBase`.
+
+This method directly returns the input without any formatting. Useful for debugging, testing, or placeholder use.
+
+Args:
+    input (Any): The input to be returned directly as the prompt.
+    history (Option[List[List | Dict]]): Dialogue history, ignored. Defaults to None.
+    tools (Option[List[Dict]]): Tool definitions, ignored. Defaults to None.
+    label (Option[str]): Label, ignored. Defaults to None.
+    show (bool): Whether to print the returned prompt. Defaults to False.
+''')
+
 add_chinese_doc('AlpacaPrompter', '''\
 Alpaca格式的Prompter，支持工具调用，不支持历史对话。
 
@@ -1069,43 +1584,65 @@ add_example('AlpacaPrompter', '''\
 ''')
 
 add_chinese_doc('ChatPrompter', '''\
-多轮对话的Prompt，支持工具调用和历史对话
+用于多轮对话的大模型Prompt构造器，继承自 `LazyLLMPrompterBase`。
+
+支持工具调用、历史对话与自定义指令模版。支持传入 system/user 拆分的指令结构，自动合并为统一模板。支持额外字段注入和打印提示信息。
 
 Args:
-    instruction (Option[str]): 大模型的任务指令，可以带0到多个待填充的槽位,用 ``{}`` 表示。针对用户instruction可以通过字典传递，字段为 ``user`` 和 ``system`` 。
-    extra_keys (Option[List]): 额外的字段，用户的输入会填充这些字段。
-    show (bool): 标志是否打印生成的Prompt，默认为False
+    instruction (Option[str | Dict[str, str]]): Prompt模板指令，可为字符串或包含 `system` 和 `user` 的字典。若为字典，将自动拼接并注入特殊标记分隔符。
+    extra_keys (Option[List[str]]): 额外的字段列表，用户输入中的内容会被插入对应槽位，用于丰富上下文。
+    show (bool): 是否打印生成的Prompt，默认False。
+    tools (Option[List]): 可选的工具列表，用于FunctionCall任务，默认None。
+    history (Option[List[List[str]]]): 可选的历史对话，用于对话记忆，格式为[[user, assistant], ...]，默认None。
 ''')
 
 add_english_doc('ChatPrompter', '''\
-chat prompt, supports tool calls and historical dialogue.
+Prompt constructor for multi-turn dialogue, inherits from `LazyLLMPrompterBase`.
+
+Supports tool calling, conversation history, and customizable instruction templates. Accepts instructions as either plain string or dict with separate `system` and `user` components, automatically merging them into a unified prompt template. Also supports injecting extra user-defined fields.
 
 Args:
-    instruction (Option[str]): Task instructions for the large model, with 0 to multiple fillable slot, represented by ``{}``. For user instructions, you can pass a dictionary with fields ``user`` and ``system``.
-    extra_keys (Option[List]): Additional fields that will be filled with user input.
-    show (bool): Flag indicating whether to print the generated Prompt, default is False.
+    instruction (Option[str | Dict[str, str]]): The prompt instruction template. Can be a string or a dict with `system` and `user` keys. If a dict is given, the components will be merged using special delimiters.
+    extra_keys (Option[List[str]]): A list of additional keys that will be filled by user input to enrich the prompt context.
+    show (bool): Whether to print the generated prompt. Default is False.
+    tools (Option[List]): A list of tools available to the model for function-calling tasks. Default is None.
+    history (Option[List[List[str]]]): Dialogue history in the format [[user, assistant], ...]. Used to provide conversational memory. Default is None.
 ''')
 
 add_example('ChatPrompter', '''\
 >>> from lazyllm import ChatPrompter
+
+- Simple instruction string
 >>> p = ChatPrompter('hello world')
 >>> p.generate_prompt('this is my input')
-'You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n\\\\n\\\\n\\\\n\\\\nthis is my input\\\\n\\\\n'
+'You are an AI-Agent developed by LazyLLM.hello world\\\\nthis is my input\\\\n'
+
 >>> p.generate_prompt('this is my input', return_dict=True)
-{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my input'}]}
->>>
+{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world'}, {'role': 'user', 'content': 'this is my input'}]}
+
+- Using extra_keys
 >>> p = ChatPrompter('hello world {instruction}', extra_keys=['knowledge'])
->>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'))
-'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n\\\\n\\\\n\\\\n\\\\nthis is my inp\\\\n\\\\n'
->>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), return_dict=True)
-{'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n'}, {'role': 'user', 'content': 'this is my inp'}]}
->>> p.generate_prompt(dict(instruction='this is my ins', input='this is my inp', knowledge='LazyLLM-Knowledge'), history=[['s1', 'e1'], ['s2', 'e2']])
-'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\n\\\\n\\\\n\\\\n\\\\ns1e1s2e2\\\\n\\\\nthis is my inp\\\\n\\\\n'
->>>
->>> p = ChatPrompter(dict(system="hello world", user="this is user instruction {input} "))
->>> p.generate_prompt(dict(input="my input", query="this is user query"))
-'You are an AI-Agent developed by LazyLLM.hello world\\\\n\\\\n\\\\n\\\\nthis is user instruction my input this is user query\\\\n\\\\n'
->>> p.generate_prompt(dict(input="my input", query="this is user query"), return_dict=True)
+>>> p.generate_prompt({
+...     'instruction': 'this is my ins',
+...     'input': 'this is my inp',
+...     'knowledge': 'LazyLLM-Knowledge'
+... })
+'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\nthis is my inp\\\\n'
+
+- With conversation history
+>>> p.generate_prompt({
+...     'instruction': 'this is my ins',
+...     'input': 'this is my inp',
+...     'knowledge': 'LazyLLM-Knowledge'
+... }, history=[['s1', 'e1'], ['s2', 'e2']])
+'You are an AI-Agent developed by LazyLLM.hello world this is my ins\\\\nHere are some extra messages you can referred to:\\\\n\\\\n### knowledge:\\\\nLazyLLM-Knowledge\\\\ns1|e1\\\\ns2|e2\\\\nthis is my inp\\\\n'
+
+- Using dict format for system/user instructions
+>>> p = ChatPrompter(dict(system="hello world", user="this is user instruction {input}"))
+>>> p.generate_prompt({'input': "my input", 'query': "this is user query"})
+'You are an AI-Agent developed by LazyLLM.hello world\\\\nthis is user instruction my input this is user query\\\\n'
+
+>>> p.generate_prompt({'input': "my input", 'query': "this is user query"}, return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input this is user query'}]}
 ''')
 
@@ -1404,7 +1941,7 @@ The constructor dynamically creates and returns the corresponding deployment ins
 Args:
     name: A string specifying the type of deployment instance to be created.
     **kwarg: Keyword arguments to be passed to the constructor of the corresponding deployment instance.
-                
+
 Returns:
     If the name argument is 'bark', an instance of [BarkDeploy][lazyllm.components.BarkDeploy] is returned.
     If the name argument is 'ChatTTS', an instance of [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] is returned.
@@ -1421,7 +1958,7 @@ TTSDeploy 是一个用于根据指定的名称创建不同类型文本到语音(
 Args:
     name：字符串，用于指定要创建的部署实例的类型。
     **kwarg：关键字参数，用于传递给对应部署实例的构造函数。
-                
+
 Returns:
     如果 name 参数为 ‘bark’，则返回一个 [BarkDeploy][lazyllm.components.BarkDeploy] 实例。
     如果 name 参数为 ‘ChatTTS’，则返回一个 [ChatTTSDeploy][lazyllm.components.ChatTTSDeploy] 实例。
