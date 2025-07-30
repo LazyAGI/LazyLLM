@@ -55,7 +55,7 @@ class _StableDiffusion3(object):
                 loader(self)
                 return
 
-        self.paintor = diffusers.StableDiffusion3Pipeline.from_pretrained(
+        self.paintor = diffusers._StableDiffusion3Pipeline.from_pretrained(
             self.base_sd, torch_dtype=torch.float16).to("cuda")
 
     @staticmethod
@@ -75,7 +75,7 @@ class _StableDiffusion3(object):
 
     @staticmethod
     def images_to_base64(images):
-        return [StableDiffusion3.image_to_base64(img) for img in images]
+        return [_StableDiffusion3.image_to_base64(img) for img in images]
 
     @staticmethod
     def image_to_file(image, file_path):
@@ -96,7 +96,7 @@ class _StableDiffusion3(object):
         path_list = []
         for i, img in enumerate(images):
             file_path = os.path.join(directory, f'image_{unique_id}_{i}.png')
-            StableDiffusion3.image_to_file(img, file_path)
+            _StableDiffusion3.image_to_file(img, file_path)
             path_list.append(file_path)
         return path_list
 
@@ -231,5 +231,5 @@ class StableDiffusionDeploy(LazyLLMDeployBase):
             LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                         f"base_model({base_model}) will be used")
             finetuned_model = base_model
-        return lazyllm.deploy.RelayServer(port=self._port, func=StableDiffusion3(finetuned_model),
+        return lazyllm.deploy.RelayServer(port=self._port, func=_StableDiffusion3(finetuned_model),
                                           launcher=self._launcher, log_path=self._log_path, cls='stable_diffusion')()
