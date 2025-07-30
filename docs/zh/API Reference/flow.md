@@ -2,9 +2,15 @@
     members: is_root, ancestor, for_each
     exclude-members:
 
+::: lazyllm.flow.LazyLLMFlowsBase
+    members: 
+    exclude-members:
+
 ::: lazyllm.flow.Pipeline
     members: 
     exclude-members:
+
+::: lazyllm.flow.save_pipeline_result
 
 ::: lazyllm.flow.Parallel
     members: 
