@@ -93,3 +93,66 @@ code_str = 'def Identity(v): return v'
 identity = compile_func(code_str)
 assert identity('hello') == 'hello'
 ''')
+
+add_chinese_doc('LazyLLMCMD', '''\
+命令行操作封装类，提供安全、灵活的命令行管理功能。
+
+Args:
+    cmd (Union[str, List[str], Callable]):命令行指令，支持三种形式：字符串命令,命令列表,可调用对象。
+    return_value (Any):预设返回值。
+    checkf(Any):命令验证函数。
+    no_displays(Any):需要过滤的敏感参数名。
+''')
+
+add_english_doc('LazyLLMCMD', '''\
+Command line operation wrapper class providing secure and flexible command management.
+
+Args:
+    cmd (Union[str, List[str], Callable]):Command input, supports three formats:String command,Command list,Callable object.
+    return_value (Any):Preset return value.
+    checkf(Any):Command validation function with signature.
+    no_displays(Any):Sensitive parameter names to filter.
+
+''')
+
+add_example('LazyLLMCMD', '''\
+>>> from lazyllm.common import LazyLLMCMD
+>>> cmd = LazyLLMCMD("run --epochs=50 --batch-size=32")
+>>> print(cmd.get_args("epochs"))
+50
+>>> print(cmd.get_args("batch-size")) 
+32
+>>> base = LazyLLMCMD("python train.py", checkf=lambda x: True)
+>>> new = base.with_cmd("python predict.py")
+
+''')
+
+add_chinese_doc('LazyLLMCMD.with_cmd', '''\
+创建新命令对象并继承当前配置。
+
+参数:
+    cmd: 新的命令内容（类型需与原始命令一致）
+
+''')
+
+add_english_doc('LazyLLMCMD.with_cmd', '''\
+Create new command object inheriting current configuration.
+
+Args:
+    cmd: New command content (must be same type as original)
+
+''')
+
+add_chinese_doc('LazyLLMCMD.get_args', '''\
+从命令字符串中提取指定参数的值。
+
+参数:
+    key: 要提取的参数名
+''')
+
+add_english_doc('LazyLLMCMD.get_args', '''\
+Extracts specified argument value from command string.
+
+Args:
+    key: Argument name
+''')

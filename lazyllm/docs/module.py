@@ -1055,3 +1055,49 @@ add_example('OnlineEmbeddingModuleBase', '''\
 ...         pass
 ...         return embedding
 ''')
+
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenModule', '''\
+阿里云通义千问大模型交互模块。
+
+Args:
+    base_url (str): API基础地址，默认"https://dashscope.aliyuncs.com/"
+    model (str):使用的模型名称。
+    api_key (str)API密钥。
+    stream (bool):使用流式响应。
+    return_trace (bool):返回调用追踪信息。
+    **kwargs:其他模型参数。
+
+''')
+
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenModule', '''\
+Aliyun Tongyi Qianwen LLM interaction module.
+
+Args:
+    base_url (str):API base URL, default "https://dashscope.aliyuncs.com/"
+    model (str):Model name.
+    api_key (str): API key.
+    stream (bool): Enable streaming response.
+    return_trace (bool): Return call trace info.
+    **kwargs:Other model params .
+
+''')
+
+add_example('llms.onlinemodule.supplier.qwen.QwenModule', '''\
+>>> from lazyllm.llms.onlinemodule.supplier.qwen import QwenModule   
+>>> qwen = QwenModule()
+>>> qwen.set_deploy_parameters(capacity=5)
+''')
+
+add_chinese_doc('QwenModule.set_deploy_parameters', '''\
+设置模型部署参数。
+
+Args:
+    **kw:部署配置项,特定参数
+''')
+
+add_english_doc('QwenModule.set_deploy_parameters', '''\
+Set model deployment parameters.
+
+Args:
+    **kw:Deployment configs,specific params.
+''')
