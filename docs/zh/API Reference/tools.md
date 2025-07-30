@@ -26,6 +26,20 @@
     members:
 	exclude-members:
 
+::: lazyllm.tools.SqlManager
+    members: 
+        - get_session
+        - check_connection
+        - set_desc
+        - get_all_tables
+        - get_table_orm_class
+        - execute_commit
+        - execute_query
+        - create_table
+        - drop_table
+        - insert_values
+	exclude-members:
+
 ::: lazyllm.tools.Reranker
     members:
     exclude-members: forward
