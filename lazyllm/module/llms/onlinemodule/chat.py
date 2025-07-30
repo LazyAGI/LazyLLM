@@ -1,13 +1,13 @@
 import lazyllm
 from typing import Any, Dict
-from .openaiModule import OpenAIModule
-from .glmModule import GLMModule
-from .kimiModule import KimiModule
-from .sensenovaModule import SenseNovaModule
-from .qwenModule import QwenModule
-from .doubaoModule import DoubaoModule
-from .deepseekModule import DeepSeekModule
-from .onlineChatModuleBase import OnlineChatModuleBase
+from .base import OnlineChatModuleBase
+from .supplier.openai import OpenAIModule
+from .supplier.glm import GLMModule
+from .supplier.kimi import KimiModule
+from .supplier.sensenova import SenseNovaModule
+from .supplier.qwen import QwenModule
+from .supplier.doubao import DoubaoModule
+from .supplier.deepseek import DeepSeekModule
 
 class _ChatModuleMeta(type):
 

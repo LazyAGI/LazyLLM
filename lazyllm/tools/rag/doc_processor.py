@@ -3,7 +3,6 @@ from typing import Dict, List, Optional, Any
 from sqlalchemy import create_engine, Column, JSON, String, TIMESTAMP, Table, MetaData, inspect, delete, text
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.engine import Engine
-import lazyllm
 from lazyllm import LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app, ThreadPoolExecutor, config
 
 from .store import StoreBase, LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
@@ -569,10 +568,6 @@ class DocumentProcessor(ModuleBase):
         impl = self._impl
         if isinstance(impl, ServerModule):
             impl._call(method, *args, **kwargs)
-        elif isinstance(impl, UrlModule):
-            dumped_args = lazyllm.dump_obj((method, *args))
-            dumped_kwargs = lazyllm.dump_obj(kwargs)
-            return impl("__call__", dumped_args, dumped_kwargs)
         else:
             getattr(impl, method)(*args, **kwargs)
 

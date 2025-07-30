@@ -94,49 +94,93 @@ identity = compile_func(code_str)
 assert identity('hello') == 'hello'
 ''')
 
-add_chinese_doc('SQLiteQueue', '''\
-基于 SQLite 的持久化文件系统队列。
+# ============= Bind/bind
+add_chinese_doc('bind', '''\
+Bind 类用于函数绑定与延迟调用，支持动态参数传入和上下文参数解析，实现灵活的函数组合与流水线式调用。
 
-该类继承自 FileSystemQueue，并通过 SQLite 数据库存储队列内容，支持并发访问控制与消息顺序管理。每条队列消息按照 position 字段顺序排列，并提供入队、出队、查看、统计及清空操作。
+bind 函数能够将一个函数与固定的位置参数和关键字参数绑定，支持使用占位符（如 _0, _1）引用当前数据流中上游节点的输出，实现数据在流水线中的跳跃传递和灵活组合。
 
-数据库默认存储在 ~/.lazyllm_filesystem_queue.db，写操作使用文件锁防止并发冲突。
-
-Args:
-    klass (str): 队列类别名称，用于区分不同逻辑队列，默认为 '__default__'。
-''')
-
-add_english_doc('SQLiteQueue', '''\
-Persistent file system queue backed by SQLite.
-
-This class extends FileSystemQueue and stores queue entries in an SQLite database with ordered message positions. It supports concurrent-safe enqueue, dequeue, peek, count, and clear operations.
-
-The queue database is saved at ~/.lazyllm_filesystem_queue.db, and file locking ensures safe concurrent access.
+注意事项：
+    - 绑定的参数可以是具体值，也可以是当前数据流中上游节点的输出占位符。
+    - 参数绑定仅在当前数据流上下文内生效，不能跨数据流绑定或绑定外部变量。
 
 Args:
-    klass (str): Name of the queue category, used to separate logical queues. Default is '__default__'.
+    __bind_func (Callable 或 type): 要绑定的函数或函数类型，传入类型时会自动实例化。
+    *args: 绑定时固定的位置参数，可以包含占位符。
+    **kw: 绑定时固定的关键字参数，可以包含占位符。
 ''')
 
-add_example('SQLiteQueue', ['''\
->>> from lazyllm.components import SQLiteQueue
->>> queue = SQLiteQueue(klass='demo')
+add_english_doc('bind', '''\
+The Bind class provides function binding and deferred invocation capabilities, supporting dynamic argument passing and context-based argument resolution for flexible function composition and pipeline-style calls.
 
->>> # Enqueue messages
->>> queue._enqueue('session1', 'Hello')
->>> queue._enqueue('session1', 'World')
+The bind function binds a callable with fixed positional and keyword arguments, supporting placeholders (e.g. _0, _1) to reference outputs of upstream nodes within the current pipeline, enabling flexible data jumps and function composition.
 
->>> # Peek at the first message without removing
->>> print(queue._peek('session1'))
-... 'Hello'
+Notes:
+    - Bound arguments can be concrete values or placeholders referring to upstream pipeline outputs.
+    - Bindings are local to the current pipeline context and do not support cross-pipeline or external variable binding.
 
->>> # Dequeue messages
->>> messages = queue._dequeue('session1', limit=2)
->>> print(messages)
-... ['Hello', 'World']
+Args:
+    __bind_func (Callable or type): The function or function type to bind. If a type is given, it will be instantiated automatically.
+    *args: Fixed positional arguments to bind, supporting placeholders.
+    **kw: Fixed keyword arguments to bind, supporting placeholders.
+''')
 
->>> # Check queue size (should be 0)
->>> print(queue._size('session1'))
-... 0
+add_example('bind', '''\
+>>> from lazyllm import bind, _0, _1
+>>> def f1(x):
+...     return x ** 2
+>>> def f21(input1, input2=0):
+...     return input1 + input2 + 1
+>>> def f22(input1, input2=0):
+...     return input1 + input2 - 1
+>>> def f3(in1='placeholder1', in2='placeholder2', in3='placeholder3'):
+...     return f"get [input:{in1}], [f21:{in2}], [f22:{in3}]"
 
->>> # Clear the queue (safe even if empty)
->>> queue._clear('session1')
-'''])
+>>> from lazyllm import pipeline, parallel
+
+>>> with pipeline() as ppl:
+...     ppl.f1 = f1
+...     with parallel() as ppl.subprl2:
+...         ppl.subprl2.path1 = f21
+...         ppl.subprl2.path2 = f22
+...     ppl.f3 = bind(f3, ppl.input, _0, _1)
+...
+>>> print(ppl(2))
+get [input:2], [f21:5], [f22:3]
+
+>>> # Demonstrate operator '|' overloading for bind
+>>> with pipeline() as ppl2:
+...     ppl2.f1 = f1
+...     with parallel().bind(ppl2.input, _0) as ppl2.subprl2:
+...         ppl2.subprl2.path1 = f21
+...         ppl2.subprl2.path2 = f22
+...     ppl2.f3 = f3 | bind(ppl2.input, _0, _1)
+...
+>>> print(ppl2(2))
+get [input:2], [f21:7], [f22:5]
+''')
+
+# ============= package
+add_chinese_doc('package', '''\
+package类用于封装流水线或并行模块的返回值，保证传递给下游模块时自动拆包，从而支持多个值的灵活传递。
+''')
+
+add_english_doc('package', '''\
+The package class is used to encapsulate the return values of pipeline or parallel modules,
+ensuring automatic unpacking when passing to the next module, thereby supporting flexible multi-value passing.
+''')
+
+add_example('package', '''\
+>>> from lazyllm.common import package
+>>> p = package(1, 2, 3)
+>>> p
+(1, 2, 3)
+>>> p[1]
+2
+>>> p_slice = p[1:]
+>>> isinstance(p_slice, package)
+True
+>>> p2 = package([4, 5])
+>>> p + p2
+(1, 2, 3, 4, 5)
+''')

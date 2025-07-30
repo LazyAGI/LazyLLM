@@ -1,7 +1,10 @@
 import json
-from typing import Optional, List, Union, Any
+import uuid
+from typing import Callable, Optional, List, Union, Any
 
-from ...common import LazyLLMRegisterMetaClass, package
+from lazyllm.flow.flow import Pipeline
+
+from ...common import LazyLLMRegisterMetaClass, package, Finalizer
 
 def is_number(s: str):
     try:
@@ -67,6 +70,33 @@ Examples:
 
     def __call__(self, *msg):
         return self.format(msg[0] if len(msg) == 1 else package(msg))
+
+    def __or__(self, other):
+        if not isinstance(other, LazyLLMFormatterBase):
+            return NotImplemented
+        return PipelineFormatter(other.__ror__(self))
+
+    def __ror__(self, f: Callable) -> Pipeline:
+        if isinstance(f, Pipeline):
+            if not f._capture:
+                _ = Finalizer(lambda: setattr(f, '_capture', True), lambda: setattr(f, '_capture', False))
+            f._add(str(uuid.uuid4().hex) if len(f._item_names) else None, self)
+            return f
+        return Pipeline(f, self)
+
+
+class PipelineFormatter(LazyLLMFormatterBase):
+    def __init__(self, formatter: Pipeline):
+        self._formatter = formatter
+
+    def _parse_py_data_by_formatter(self, py_data):
+        return self._formatter(py_data)
+
+    def __or__(self, other):
+        if isinstance(other, LazyLLMFormatterBase):
+            if isinstance(other, PipelineFormatter): other = other._formatter
+            return PipelineFormatter(self._formatter | other)
+        return NotImplemented
 
 
 class JsonLikeFormatter(LazyLLMFormatterBase):
@@ -302,12 +332,11 @@ LAZYLLM_QUERY_PREFIX = '<lazyllm-query>'
 
 def encode_query_with_filepaths(query: str = None, files: Union[str, List[str]] = None) -> str:
     query = query if query else ''
-    query_with_docs = {'query': query, 'files': files}
     if files:
         if isinstance(files, str): files = [files]
         assert isinstance(files, list), "files must be a list."
         assert all(isinstance(item, str) for item in files), "All items in files must be strings"
-        return LAZYLLM_QUERY_PREFIX + json.dumps(query_with_docs)
+        return LAZYLLM_QUERY_PREFIX + json.dumps({'query': query, 'files': files})
     else:
         return query
 

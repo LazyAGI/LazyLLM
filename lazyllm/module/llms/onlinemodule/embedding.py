@@ -1,12 +1,12 @@
 from typing import Any, Dict
 
 import lazyllm
-from .openaiEmbed import OpenAIEmbedding
-from .glmEmbed import GLMEmbedding, GLMReranking
-from .sensenovaEmbed import SenseNovaEmbedding
-from .qwenEmbed import QwenEmbedding, QwenReranking
-from .doubaoEmbed import DoubaoEmbedding, DoubaoMultimodalEmbedding
-from .onlineEmbeddingModuleBase import OnlineEmbeddingModuleBase
+from .base import OnlineEmbeddingModuleBase
+from .supplier.openai import OpenAIEmbedding
+from .supplier.glm import GLMEmbedding, GLMReranking
+from .supplier.sensenova import SenseNovaEmbedding
+from .supplier.qwen import QwenEmbedding, QwenReranking
+from .supplier.doubao import DoubaoEmbedding, DoubaoMultimodalEmbedding
 
 class __EmbedModuleMeta(type):
 

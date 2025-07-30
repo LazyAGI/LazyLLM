@@ -76,6 +76,11 @@ class LLMBase(ModuleBase):
     def stream(self, v: Union[bool, Dict[str, str]]):
         self._stream = v
 
+    def __or__(self, other):
+        if not isinstance(other, FormatterBase):
+            return NotImplemented
+        return self.share(format=(other if isinstance(self._formatter, EmptyFormatter) else (self._formatter | other)))
+
 
 class _UrlHelper(object):
     @dataclass
