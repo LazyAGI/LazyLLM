@@ -989,7 +989,7 @@ add_chinese_doc('rag.utils.SqliteDocListManager.table_inited', '''\
 
 该方法通过查询 sqlite_master 元信息表，判断数据表是否已初始化。
 
-**Returns:**
+**Returns:**\n
 - bool: 如果 "documents" 表存在，返回 True；否则返回 False。
 ''')
 
@@ -998,7 +998,7 @@ Checks whether the "documents" table has been initialized in the database.
 
 The method queries the sqlite_master metadata table to verify if the "documents" table exists.
 
-**Returns:**
+**Returns:**\n
 - bool: True if the "documents" table exists, False otherwise.
 ''')
 
@@ -1012,7 +1012,7 @@ Args:
     exclude_status (str 或 list of str, optional): 要排除的文档状态。不能为 "all"。
     prefix (str, optional): 字段名前缀（如联表查询中的别名），将应用于字段名。
 
-**Returns:**
+**Returns:**\n
 - Tuple[str, list]: 包含 SQL 条件语句和对应参数的元组。
 ''')
 
@@ -1027,7 +1027,7 @@ Args:
     exclude_status (str or list of str, optional): Status(es) to exclude. Must not be "all".
     prefix (str, optional): Optional field prefix (e.g., table alias) to prepend to the status field.
 
-**Returns:**
+**Returns:**\n
 - Tuple[str, list]: A tuple containing the SQL condition string and its corresponding parameter values.
 ''')
 
@@ -1040,7 +1040,7 @@ add_chinese_doc('rag.utils.SqliteDocListManager.validate_paths', '''\
 Args:
     paths (List[str]): 文件路径列表。
 
-**Returns:**
+**Returns:**\n
 - Tuple[bool, str, List[bool]]: 
     - bool: 是否所有路径都验证通过。
     - str: 成功或失败的描述信息。
@@ -1057,7 +1057,7 @@ being parsed, waiting to be parsed, or was not successfully re-parsed last time.
 Args:
     paths (List[str]): A list of file paths to validate.
 
-**Returns:**
+**Returns:**\n
 - Tuple[bool, str, List[bool]]: 
     - bool: Whether all paths passed validation.
     - str: Description message of the validation result.
@@ -1096,7 +1096,7 @@ Args:
     status (Union[str, List[str]]): 要包含在结果中的状态值，默认为包含所有状态。
     exclude_status (Optional[Union[str, List[str]]]): 要从结果中排除的状态值。
 
-**Returns:**
+**Returns:**\n
 - list: 文件记录列表或文档路径列表，具体取决于 `details` 参数。
 """)
 
@@ -1109,7 +1109,7 @@ Args:
     status (Union[str, List[str]]): Status values to include in the result. Defaults to including all.
     exclude_status (Optional[Union[str, List[str]]]): Status values to exclude from the result.
 
-**Returns:**
+**Returns:**\n
 - list: A list of file records or document paths depending on the `details` flag.
 """)
 
@@ -1119,7 +1119,7 @@ add_chinese_doc('rag.utils.SqliteDocListManager.get_docs', '''\
 Args:
     doc_ids (List[str]): 需要查询的文档ID列表。
 
-**Returns:**
+**Returns:**\n
 - List[KBDocument]: 匹配的文档对象列表。如果没有匹配项，返回空列表。
 ''')
 
@@ -1129,7 +1129,7 @@ Fetches document objects from the database corresponding to the given list of do
 Args:
     doc_ids (List[str]): A list of document IDs to query.
 
-**Returns:**
+**Returns:**\n
 - List[KBDocument]: A list of matching document objects. Returns an empty list if no matches found.
 ''')
 
@@ -1153,7 +1153,7 @@ add_chinese_doc('rag.utils.SqliteDocListManager.fetch_docs_changed_meta', '''\
 Args:
     group (str): 知识库分组名称。
 
-**Returns:**
+**Returns:**\n
 - List[DocMetaChangedRow]: 包含文档ID及其对应新元数据的列表。
 ''')
 
@@ -1163,21 +1163,21 @@ Fetches the list of documents within a specified knowledge base group that have 
 Args:
     group (str): Name of the knowledge base group.
 
-**Returns:**
+**Returns:**\n
 - List[DocMetaChangedRow]: A list containing document IDs and their updated metadata.
 ''')
 
 add_chinese_doc('rag.utils.SqliteDocListManager.list_all_kb_group', '''\
 列出数据库中所有的知识库分组名称。
 
-**Returns:**
+**Returns:**\n
 - List[str]: 知识库分组名称列表。
 ''')
 
 add_english_doc('rag.utils.SqliteDocListManager.list_all_kb_group', '''\
 Lists all knowledge base group names stored in the database.
 
-**Returns:**
+**Returns:**\n
 - List[str]: A list of knowledge base group names.
 ''')
 
@@ -1208,7 +1208,7 @@ Args:
     exclude_upload_status (str or List[str], optional): 排除指定的上传状态。
     need_reparse (bool, optional): 是否只返回需要重新解析的文件。
 
-**Returns:**
+**Returns:**\n
 - list: 
     - 如果 details 为 False，返回列表，每个元素为 (doc_id, path) 元组。
     - 如果 details 为 True，返回包含文件详细信息的元组列表，包括文档ID、路径、状态、元数据，
@@ -1228,7 +1228,7 @@ Args:
     exclude_upload_status (str or List[str], optional): Exclude files with these upload document statuses.
     need_reparse (bool, optional): If set, only returns files marked as needing reparse.
 
-**Returns:**
+**Returns:**\n
 - list: 
     - If details is False, returns a list of tuples (doc_id, path).
     - If details is True, returns a list of tuples containing detailed file information:
@@ -1258,7 +1258,7 @@ add_chinese_doc('rag.utils.SqliteDocListManager.get_docs_need_reparse', '''\
 Args:
     group (str): 知识库分组名称。
 
-**Returns:**
+**Returns:**\n
 - List[KBDocument]: 需要重新解析的文档列表。
 ''')
 
@@ -1270,7 +1270,7 @@ Only documents with status "success" or "failed" and marked as needing reparse i
 Args:
     group (str): Name of the knowledge base group.
 
-**Returns:**
+**Returns:**\n
 - List[KBDocument]: List of documents that need to be re-parsed.
 ''')
 
@@ -1280,7 +1280,7 @@ add_chinese_doc('rag.utils.SqliteDocListManager.get_existing_paths_by_pattern', 
 Args:
     pattern (str): 路径匹配模式，支持SQL的LIKE通配符。
 
-**Returns:**
+**Returns:**\n
 - List[str]: 匹配到的已存在文档路径列表。
 ''')
 
@@ -1290,7 +1290,7 @@ Retrieves a list of existing document paths that match a given pattern.
 Args:
     pattern (str): Path matching pattern, supports SQL LIKE wildcards.
 
-**Returns:**
+**Returns:**\n
 - List[str]: List of existing document paths matching the pattern.
 ''')
 
@@ -1318,7 +1318,7 @@ Args:
     status (str): 要设置的新状态。
     cond_status_list (Union[None, List[str]], optional): 仅更新当前状态在此列表中的文件，默认为 None，表示不筛选。
 
-**Returns:**
+**Returns:**\n
 - List[DocPartRow]: 返回更新后的文件ID和路径列表。
 ''')
 
@@ -1330,7 +1330,7 @@ Args:
     status (str): New status to set.
     cond_status_list (Union[None, List[str]], optional): List of statuses to filter files that can be updated. Defaults to None.
 
-**Returns:**
+**Returns:**\n
 - List[DocPartRow]: List of updated file IDs and their paths.
 ''')
 
@@ -1384,7 +1384,7 @@ add_chinese_doc('rag.utils.SqliteDocListManager.get_file_status', '''\
 Args:
     fileid (str): 文件的唯一标识符。
 
-**Returns:**
+**Returns:**\n
 - Optional[Tuple]: 返回包含状态的元组，若文件不存在则返回 None。
 ''')
 
@@ -1394,7 +1394,7 @@ Gets the status of a specified file.
 Args:
     fileid (str): Unique identifier of the file.
 
-**Returns:**
+**Returns:**\n
 - Optional[Tuple]: A tuple containing the status, or None if the file does not exist.
 ''')
 
@@ -1410,7 +1410,7 @@ Args:
     new_status (Optional[str]): 新的文件状态。
     new_need_reparse (Optional[bool]): 新的重解析需求标志。
 
-**Returns:**
+**Returns:**\n
 - List[Tuple]: 返回更新后文件的doc_id、group_name及状态列表。
 ''')
 
@@ -1426,7 +1426,7 @@ Args:
     new_status (Optional[str]): New status to set.
     new_need_reparse (Optional[bool]): New flag indicating if reparse is needed.
 
-**Returns:**
+**Returns:**\n
 - List[Tuple]: List of tuples of updated files containing doc_id, group_name, and status.
 ''')
 
