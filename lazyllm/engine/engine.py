@@ -3,6 +3,7 @@ import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier, SqlManager
 from lazyllm.tools.http_request.http_request import HttpRequest
+from lazyllm.tools.mcp.client import MCPClient
 from lazyllm.common import compile_func
 from lazyllm.components.formatter.formatterbase import (
     LAZYLLM_QUERY_PREFIX,
@@ -487,6 +488,15 @@ def _get_tools(tools):
 @NodeConstructor.register('ToolsForLLM', subitems=['tools'])
 def make_tools_for_llm(tools: List[str]):
     return lazyllm.tools.ToolManager(_get_tools(tools))
+
+@NodeConstructor.register('MCPTool', subitems=['tools'])
+def make_mcp_tool(command_or_url: str, tool_name: str, args: List[str] = [], env: Dict[str, str] = None,
+                  headers: Dict[str, str] = None, timeout: float = 5):
+    client = MCPClient(command_or_url, args, env, headers, timeout)
+    tools = client.get_tools([tool_name])
+    assert len(tools) == 1, f"Current MCP client does not support tool '{tool_name}'. \
+        Please check if the tool name is correct."
+    return tools[0]
 
 @NodeConstructor.register('FunctionCall', subitems=['tools'])
 def make_fc(base_model: str, tools: List[str], algorithm: Optional[str] = None):
