@@ -27,6 +27,7 @@
 ::: lazyllm.common.compile_func
     options:
       heading_level: 3
+
 ## Queue
 
 ::: lazyllm.common.FileSystemQueue
