@@ -155,3 +155,11 @@ lazyllm.tools.rag.transform.NodeTransform
 ::: lazyllm.tools.IntentClassifier
     members: 
     exclude-members:
+::: lazyllm.tools.rag.utils.DocListManager
+    members: 
+    exclude-members: 
+::: lazyllm.tools.rag.global_metadata.GlobalMetadataDesc
+    members: 
+    exclude-members: 
+::: lazyllm.tools.rag.index_base.IndexBase
+    members: 

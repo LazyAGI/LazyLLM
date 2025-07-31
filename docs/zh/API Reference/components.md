@@ -19,7 +19,9 @@
 ::: lazyllm.components.auto.AutoFinetune
     options:
       heading_level: 3
-
+::: lazyllm.components.finetune.base.DummyFinetune
+    options:
+      heading_level: 3
 ---
 
 ## Deploy
@@ -49,6 +51,9 @@
       heading_level: 3
 
 ::: lazyllm.components.deploy.Mindie
+    options:
+      heading_level: 3
+::: lazyllm.components.deploy.OCRDeploy
     options:
       heading_level: 3
 ---
