@@ -2,7 +2,7 @@ from lazyllm.thirdparty import torch
 from lazyllm.thirdparty import transformers as tf
 import importlib.util
 from lazyllm.components.deploy.text_to_speech.utils import TTSBase
-from lazyllm.components.deploy.text_to_speech.base import TTSInfer
+from lazyllm.components.deploy.text_to_speech.base import _TTSInfer
 
 class _Bark(_TTSInfer):
 
