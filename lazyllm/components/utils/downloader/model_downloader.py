@@ -33,7 +33,7 @@ class ModelManager():
 
     @staticmethod
     @functools.lru_cache
-    def _get_model_type(model) -> str:
+    def get_model_type(model) -> str:
         assert isinstance(model, str) and len(model) > 0, f'model name should be a non-empty string, get {model}'
         __class__._try_add_mapping(model)
         for name, info in model_name_mapping.items():
@@ -61,7 +61,7 @@ class ModelManager():
 
     @staticmethod
     @functools.lru_cache
-    def _get_model_prompt_keys(model) -> dict:
+    def get_model_prompt_keys(model) -> dict:
         model_name = __class__._get_model_name(model)
         __class__._try_add_mapping(model_name)
         if model_name and "prompt_keys" in model_name_mapping[model_name.lower()]:
@@ -70,7 +70,7 @@ class ModelManager():
             return dict()
 
     @staticmethod
-    def _validate_model_path(model_path):
+    def validate_model_path(model_path):
         extensions = {'.pt', '.bin', '.safetensors'}
         for _, _, files in os.walk(model_path):
             for file in files:
@@ -136,7 +136,7 @@ class ModelManager():
         return self.hub_downloader.verify_hub_token()
 
     def _validate_model_id(self, model_id):
-        return self.hub_downloader.verify_model_id(model_id)
+        return self.hub_downloader._verify_model_id(model_id)
 
     def _model_exists_at_path(self, model_name):
         if len(self.model_paths) == 0:
@@ -171,7 +171,7 @@ class ModelManager():
         full_model_dir = os.path.join(self.cache_dir, self.model_source, model_dir)
 
         try:
-            return self.hub_downloader._download(model, full_model_dir, call_back)
+            return self.hub_downloader.download(model, full_model_dir, call_back)
         # Use `BaseException` to capture `KeyboardInterrupt` and normal `Exceptioin`.
         except BaseException as e:
             lazyllm.LOG.warning(f"Download encountered an error: {e}")
@@ -236,7 +236,7 @@ class _HubDownloader(ABC):
             size += item['Size']
         return size
 
-    def _download(self, model_id, model_dir, call_back=None):
+    def download(self, model_id, model_dir, call_back=None):
         total = self._get_files_total_size(self._get_repo_files(model_id))
         if call_back:
             polling_event = threading.Event()
@@ -280,7 +280,7 @@ class _HuggingfaceDownloader(_HubDownloader):
     def _do_download(self, model_id, model_dir):
         from huggingface_hub import snapshot_download
         # refer to https://huggingface.co/docs/huggingface_hub/v0.23.1/en/package_reference/file_download
-        if not self.verify_model_id(model_id):
+        if not self._verify_model_id(model_id):
             lazyllm.LOG.warning(f"Invalid model id:{model_id}")
             return False
         downloaded_path = snapshot_download(repo_id=model_id, local_dir=model_dir, token=self._token)
@@ -330,7 +330,7 @@ class _ModelscopeDownloader(_HubDownloader):
     def _do_download(self, model_id, model_dir):
         from modelscope.hub.snapshot_download import snapshot_download
         # refer to https://www.modelscope.cn/docs/models/download
-        if not self.verify_model_id(model_id):
+        if not self._verify_model_id(model_id):
             lazyllm.LOG.warning(f"Invalid model id:{model_id}")
             return False
         downloaded_path = snapshot_download(model_id=model_id, local_dir=model_dir)
