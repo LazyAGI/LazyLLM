@@ -8,15 +8,15 @@ import random
 from typing import Tuple, List, Dict, Union, Any, Optional, TypedDict
 from urllib.parse import urljoin
 import time
+from operator import itemgetter as itemget
 
 import lazyllm
 from lazyllm import globals
 from lazyllm.components.prompter import PrompterBase
-from lazyllm.components.formatter import FormatterBase, encode_query_with_filepaths, decode_query_with_filepaths
-from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
+from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
-from ...servermodule import LLMBase
-from ...module import Pipeline
+from ....servermodule import LLMBase
+from ....module import Pipeline
 
 
 class StaticParams(TypedDict, total=False):
@@ -46,7 +46,6 @@ class OnlineChatModuleBase(LLMBase):
         self._set_headers()
         self._set_chat_url()
         self._is_trained = False
-        self._field_extractor()
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
         self._static_params = static_params
@@ -103,25 +102,6 @@ class OnlineChatModuleBase(LLMBase):
             res_json = r.json()
             return res_json
 
-    def _parse_output_by_key(self, key: str, data: Dict[str, Any]):
-        if "choices" in data and isinstance(data["choices"], list):
-            item = data['choices'][0]
-            data = item.get("delta", {}) if "delta" in item else item.get("message", {})
-            return data if not key or key == "." else data.get(key, "")
-        else:
-            raise ValueError(f"The response {data} does not contain a 'choices' field.")
-
-    def _field_extractor(self, key: Optional[Union[str, List[str]]] = None):
-        if key is None:
-            self._extractor_fields = ["{content}" + globals['tool_delimiter'] + "{tool_calls|index}"]
-        elif isinstance(key, str):
-            self._extractor_fields = [key]
-        elif isinstance(key, list):
-            self._extractor_fields = key
-        else:
-            raise TypeError(f"Unsupported type: {type(key)}")
-        return self
-
     def _convert_msg_format(self, msg: Dict[str, Any]):
         return msg
 
@@ -144,135 +124,59 @@ class OnlineChatModuleBase(LLMBase):
         except Exception:
             return ""
 
-    def _get_benchmark_data(self, data: Dict[str, Any]):
-        if "choices" in data and isinstance(data["choices"], list):
-            item = data['choices'][0]
-            outputs = item.get("message", item.get("delta", {}))
-            if 'reasoning_content' in outputs and outputs["reasoning_content"] and 'content' in outputs:
-                outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
-            return outputs
-        else:
-            raise ValueError(f"The response {data} does not contain a 'choices' field.")
+    def _extract_specified_key_fields(self, response: Dict[str, Any]):
+        if not ("choices" in response and isinstance(response["choices"], list)):
+            raise ValueError(f"The response {response} does not contain a 'choices' field.")
+        outputs = response['choices'][0].get("message") or response['choices'][0].get("delta", {})
+        if 'reasoning_content' in outputs and outputs["reasoning_content"] and 'content' in outputs:
+            outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
 
-    def _extract_and_format(self, data, template):  # noqa: C901
-        # finding placeholders in template and removing rules
-        placeholders = re.findall(r"{(.*?)(?:\|(.*?))?}", template)
-        delimiters = re.findall(r"<\|.*?\|>", template)
-        # extract and format the fields corresponding to the placeholders
-        extracted_data = {}
-        pkeys = []
-        for placeholder, remove_fields in placeholders:
-            placeholder_key = placeholder + "|" + remove_fields if remove_fields else placeholder
-            pkeys.append(placeholder_key)
-            if 'tool_calls' in placeholder:
-                # handling remove_fields
-                remove_fields = remove_fields.split(',') if remove_fields else []
-
-                # extract the tool_calls field
-                keys = placeholder.split('.')
-                value = data
-                try:
-                    for key in (int(key) if key.isdigit() else key for key in keys):
-                        value = value[key]
-
-                    if isinstance(value, list):
-                        for item in value:
-                            [item.pop(field) for field in remove_fields if field in item]
-                    # value = json.dumps(value).replace('\n', '').replace(' ', '')
-                    value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-                    extracted_data[placeholder_key] = value
-                except (KeyError, IndexError, TypeError):
-                    extracted_data[placeholder_key] = ""
-            else:
-                # extracting additional fields
-                keys = placeholder.split('.')
-                value = data
-                try:
-                    for key in (int(key) if key.isdigit() else key for key in keys):
-                        value = value[key]
-                    # convert the extracted value into a JSON string
-                    value = value if isinstance(value, str) else json.dumps(value, ensure_ascii=False)
-                    extracted_data[placeholder_key] = value
-                except (KeyError, IndexError, TypeError):
-                    extracted_data[placeholder_key] = ""
-
-        # populate the template with the extracted data
-        assert len(extracted_data) == len(delimiters) + 1, \
-               "The delimiters and the number of extracted fields are inconsistent."
-        result = extracted_data.get(pkeys[0])
-        result += ''.join(delimiters[idx] + extracted_data[key]
-                          for idx, key in enumerate(pkeys[1:]) if extracted_data.get(key))
-        lazyllm.LOG.debug(f"result: {result}")
+        result, tool_calls = outputs.get('content', ''), outputs.get('tool_calls')
+        if tool_calls:
+            try:
+                if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
+                tool_calls = tool_calls if isinstance(tool_calls, str) else json.dumps(tool_calls, ensure_ascii=False)
+                if tool_calls: result += '<|tool_calls|>' + tool_calls
+            except (KeyError, IndexError, TypeError):
+                pass
         return result
 
-    def _extract_specified_key_fields(self, response: Dict[str, Any]):
-        if len(self._extractor_fields) > 0:
-            res = {}
-            for key in self._extractor_fields:
-                res[key] = (self._parse_output_by_key(key, response) if "{" not in key else self._extract_and_format(
-                    self._get_benchmark_data(response), key) if key else "")
-            return list(res.values())[0] if len(res) == 1 else json.dumps(res, ensure_ascii=False)
-        else:
-            return json.dumps(self._parse_output_by_key(".", response), ensure_ascii=False)
+    def _merge_stream_result(self, src: List[Union[str, int, list, dict]], force_join: bool = False):
+        src = [ele for ele in src if ele is not None]
+        if not src: return None
+        elif len(src) == 1: return src[0]
+        assert len(set(map(type, src))) == 1, f"The elements in the list: {src} are of inconsistent types"
 
-    def _merge_stream_result(self, src: List[str | int | list | dict]):
-        types = set(type(ele) for ele in src if ele is not None)
-        assert len(src) > 0 and len(types) <= 1, f"The elements in the list: {src} are of inconsistent types"
-        if len(src) == 1:
-            return src[0]
-        if all(isinstance(ele, str) or ele is None for ele in src):
-            if all(ele == src[-1] or ele is None for ele in src) or (self._model_optional_params
-               and not self._model_optional_params.get("incremental_output", True)):
-                return src[-1]
-            else:
-                return "".join(ele for ele in src if ele is not None)
-        elif all(isinstance(ele, list) for ele in src):
-            assert all(len(src[-1]) == len(ele) for ele in src), f"The lists of elements: {src} have different lengths."
-            ret = [self._merge_stream_result([ele[idx] for ele in src]) for idx in range(len(src[-1]))]
+        if isinstance(src[0], str):
+            src = [ele for ele in src if ele]
+            if not src: return ''
+            if force_join or not all(src[0] == ele for ele in src): return ''.join(src)
+        elif isinstance(src[0], list):
+            assert len(set(map(len, src))) == 1, f"The lists of elements: {src} have different lengths."
+            ret = list(map(self._merge_stream_result, zip(*src)))
             return ret[0] if isinstance(ret[0], list) else ret
-        elif all(isinstance(ele, dict) for ele in src):
-            if "index" in src[-1]:  # If there are multiple index values that need to be appended.
-                data_sorted = sorted(src, key=lambda x: x['index'])
-                grouped_data = [list(g) for k, g in groupby(data_sorted, key=lambda x: x['index'])]
-                if len(grouped_data) > 1:
-                    return [self._merge_stream_result(src) for src in grouped_data]
-            return {k: "tool_calls" if k == "finish_reason" and "tool_calls" in [d[k] for d in src if k in d]
-                    else self._merge_stream_result([d[k] for d in src if k in d]) for k in set().union(*src)}
-        elif all(isinstance(ele, int) for ele in src):
-            return src[-1] if all(ele == src[-1] for ele in src) else src[-1]
-        else:
-            raise TypeError(f"The elements in list {src} are of inconsistent types.")
+        elif isinstance(src[0], dict):  # list of dicts
+            if 'index' in src[-1]:
+                grouped = [list(g) for _, g in groupby(sorted(src, key=itemget('index')), key=itemget("index"))]
+                if len(grouped) > 1: return [self._merge_stream_result(src) for src in grouped]
+            return {k: self._merge_stream_result([d.get(k) for d in src], k == 'content') for k in set().union(*src)}
+        return src[-1]
 
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
                 tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):
         """LLM inference interface"""
         stream_output = stream_output or self._stream
-        if lazyllm_files:
-            __input = encode_query_with_filepaths(__input, lazyllm_files)
-        params = {"input": __input, "history": llm_chat_history}
-        if tools:
-            params["tools"] = tools
-        params["return_dict"] = True
+        __input, files = self._get_files(__input, lazyllm_files)
+        params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
+        if tools: params["tools"] = tools
         data = self._prompt.generate_prompt(**params)
+        data.update(self._static_params, **dict(model=self._model_name, stream=bool(stream_output)))
 
-        data["model"] = self._model_name
-        data["stream"] = bool(stream_output)
-        data.update(self._static_params)
+        if len(kw) > 0: data.update(kw)
+        if len(self._model_optional_params) > 0: data.update(self._model_optional_params)
 
-        if len(kw) > 0:
-            data.update(kw)
-
-        if len(self._model_optional_params) > 0:
-            data.update(self._model_optional_params)
-
-        if isinstance(__input, str) and (__input.startswith(LAZYLLM_QUERY_PREFIX)
-           or (self._vlm_force_format_input_with_files and data["model"] in self.VLM_MODEL_LIST)):
-            for idx, message in enumerate(data["messages"]):
-                content = message["content"]
-                if content.startswith(LAZYLLM_QUERY_PREFIX):
-                    content = decode_query_with_filepaths(content)
-                query_files = self._format_input_with_files(content)
-                data["messages"][idx]["content"] = query_files
+        if files or (self._vlm_force_format_input_with_files and data["model"] in self.VLM_MODEL_LIST):
+            data["messages"][-1]["content"] = self._format_input_with_files(data["messages"][-1]["content"], files)
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         with requests.post(self._url, json=data, headers=self._headers, stream=stream_output, proxies=proxies) as r:
@@ -289,9 +193,7 @@ class OnlineChatModuleBase(LLMBase):
                 for k in usage:
                     usage[k] = msg_json[-1]["usage"].get(k, usage[k])
             self._record_usage(usage)
-            extractor = self._extract_specified_key_fields(
-                self._merge_stream_result(msg_json)
-            )
+            extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
             return self._formatter(extractor) if extractor else ""
 
     def _record_usage(self, usage: dict):
@@ -424,14 +326,12 @@ class OnlineChatModuleBase(LLMBase):
         return [{"type": "image_url", "image_url": {"url": image_url}}]
 
     # for online vlm
-    def _format_input_with_files(self, query_files: str) -> List[Dict[str, str]]:
-        if isinstance(query_files, str):
-            return self._format_vl_chat_query(query_files)
-        assert isinstance(query_files, dict), "query_files must be a dict."
-        output = [{"type": "text", "text": query_files["query"]}]
-        files = query_files.get("files", [])
-        assert isinstance(files, list), "files must be a list."
-        for file in files:
+    def _format_input_with_files(self, query: str, query_files: list[str]) -> List[Dict[str, str]]:
+        if not query_files:
+            return self._format_vl_chat_query(query)
+        output = [{"type": "text", "text": query}]
+        assert isinstance(query_files, list), "query_files must be a list."
+        for file in query_files:
             mime = None
             if not file.startswith("http"):
                 file, mime = _image_to_base64(file)

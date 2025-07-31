@@ -422,10 +422,11 @@ class SqliteDocListManager(DocListManager):
                 paths_is_new[i] = False
         return True, "Success", paths_is_new
 
-    def update_need_reparsing(self, doc_id: str, need_reparse: bool):
+    def update_need_reparsing(self, doc_id: str, need_reparse: bool, group_name: Optional[str] = None):
         with self._db_lock, self._Session() as session:
-            session.execute(update(KBGroupDocuments).where(
-                KBGroupDocuments.doc_id == doc_id).values(need_reparse=need_reparse))
+            stmt = update(KBGroupDocuments).where(KBGroupDocuments.doc_id == doc_id)
+            if group_name is not None: stmt = stmt.where(KBGroupDocuments.group_name == group_name)
+            session.execute(stmt.values(need_reparse=need_reparse))
             session.commit()
 
     def list_files(self, limit: Optional[int] = None, details: bool = False,

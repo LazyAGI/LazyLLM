@@ -204,7 +204,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
 
 
 @HuggingFaceEmbedding.register(model_ids=["BGE-VL-v1.5-mmeb"])
-class BGEVLEmbedding(AbstractEmbedding):
+class _BGEVLEmbedding(AbstractEmbedding):
 
     def __init__(self, base_embed, source=None, init=False):
         super().__init__(base_embed, source, init)
