@@ -15,7 +15,7 @@ When the command starts with `mcp_server`, it will launch an MCP server supporti
 ```bash
 # Start MCP service using uvx and mcp-server-fetch
 lazyllm deploy mcp_server uvx mcp-server-fetch
-````
+```
 
 Args:
 
