@@ -322,8 +322,11 @@ def _build_pipeline(nodes):
 
 
 @NodeConstructor.register('Switch', subitems=['nodes:dict'])
-def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
-    with switch(judge_on_full_input=judge_on_full_input) as sw:
+def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]], conversion: Optional[str] = None):
+    if conversion is not None:
+        conversion = make_code(conversion)
+
+    with switch(judge_on_full_input=judge_on_full_input, conversion=conversion) as sw:
         for cond, cond_nodes in nodes.items():
             sw.case[cond::_build_pipeline(cond_nodes)]
     return sw
