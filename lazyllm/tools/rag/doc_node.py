@@ -4,7 +4,7 @@ from collections import defaultdict
 from PIL import Image
 from lazyllm import config, reset_on_pickle
 from lazyllm.components.utils.file_operate import image_to_base64
-from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_DOC_KB_ID
+from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 import uuid
 import threading
 import time
@@ -29,7 +29,7 @@ class DocNode:
                  global_metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
         if text and content:
             raise ValueError('`text` and `content` cannot be set at the same time.')
-
+        if not content and not text: content = ''
         self._uid: str = uid if uid else str(uuid.uuid4())
         self._content: Optional[Union[str, List[Any]]] = content if content else text
         self._group: Optional[str] = group
@@ -52,6 +52,10 @@ class DocNode:
         self._embedding_state = set()
         self.relevance_score = None
         self.similarity_score = None
+
+    @property
+    def uid(self) -> str:
+        return self._uid
 
     @property
     def text(self) -> str:
@@ -78,7 +82,7 @@ class DocNode:
         if isinstance(uids, str):
             uids = [uids]
         nodes = self._store.get_nodes(group_name=group_name, uids=uids,
-                                      dataset_id=self.global_metadata.get(RAG_DOC_KB_ID), display=True)
+                                      dataset_id=self.global_metadata.get(RAG_KB_ID), display=True)
         for n in nodes:
             n._store = self._store
             n._node_groups = self._node_groups
@@ -100,7 +104,7 @@ class DocNode:
     def children(self) -> Dict[str, List["DocNode"]]:
         if not self._children_loaded and self._store and self._node_groups:
             self._children_loaded = True
-            dataset_id = self.global_metadata.get(RAG_DOC_KB_ID)
+            dataset_id = self.global_metadata.get(RAG_KB_ID)
             doc_id = self.global_metadata.get(RAG_DOC_ID)
             c_groups = [grp for grp in self._node_groups.keys() if self._node_groups[grp]['parent'] == self._group]
             for grp in c_groups:
@@ -121,8 +125,8 @@ class DocNode:
     @property
     def root_node(self) -> "DocNode":
         node = self
-        while isinstance(node.parent, DocNode):
-            node = node.parent
+        while isinstance(node._parent, DocNode):
+            node = node._parent
         return node
 
     @property
@@ -176,7 +180,7 @@ class DocNode:
         )
 
     def get_parent_id(self) -> str:
-        return self.parent._uid if self.parent else ""
+        return self.parent._uid if self.parent else ''
 
     def __str__(self) -> str:
         return (
@@ -227,7 +231,7 @@ class DocNode:
     def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
         """Metadata info string."""
         if mode == MetadataMode.NONE:
-            return ""
+            return ''
 
         metadata_keys = set(self.metadata.keys())
         if mode == MetadataMode.LLM:
@@ -244,7 +248,7 @@ class DocNode:
     def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
         metadata_str = self.get_metadata_str(metadata_mode).strip()
         if not metadata_str:
-            return self.text if self.text else ""
+            return self.text if self.text else ''
         return f"{metadata_str}\n\n{self.text}".strip()
 
     def to_dict(self) -> Dict:
@@ -269,6 +273,10 @@ class QADocNode(DocNode):
         super().__init__(uid, query, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
         self._answer = answer.strip()
 
+    @property
+    def answer(self) -> str:
+        return self._answer
+
     def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
         if metadata_mode == MetadataMode.LLM:
             return f'query:\n{self.text}\nanswer\n{self._answer}'
@@ -282,7 +290,7 @@ class ImageDocNode(DocNode):
                  *, text: Optional[str] = None):
         super().__init__(uid, None, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
         self._image_path = image_path.strip()
-        self._modality = "image"
+        self._modality = 'image'
 
     def do_embedding(self, embed: Dict[str, Callable]) -> None:
         for k, e in embed.items():

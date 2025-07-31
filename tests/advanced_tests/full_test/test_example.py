@@ -181,7 +181,7 @@ class TestRagFilter(object):
         assert 'Shanghai' in res and 'Beijing' not in res
 
         store = self.documents._impl.store
-        nodes = store.get_nodes('block')
+        nodes = store.get_nodes(group='block')
         for node in nodes:
             if node.global_metadata[RAG_DOC_PATH].endswith('test1.txt'):
                 test1_docid = node.global_metadata[RAG_DOC_ID]
