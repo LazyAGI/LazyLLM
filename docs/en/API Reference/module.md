@@ -43,7 +43,7 @@
 
 ::: lazyllm.module.AutoModel
     options:
-      members
+      members:
 
 ::: lazyllm.module.TrialModule
     members: start

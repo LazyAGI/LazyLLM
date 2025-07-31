@@ -296,7 +296,7 @@ Args:
     topk (int): 每次检索返回的最大节点数量，默认值为2。
 ''')
 
-add_english_doc('rag.component.BM25', '''\
+add_english_doc('rag.component.bm25.BM25', '''\
 A retriever based on the BM25 algorithm that retrieves the most relevant text nodes from a given list of nodes.
 
 Args:

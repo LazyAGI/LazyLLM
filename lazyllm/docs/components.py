@@ -685,7 +685,7 @@ add_example('deploy.EmbeddingDeploy', '''\
 ''')
 
 # Deploy-RerankDeploy
-add_chinese_doc('deploy.RerankDeploy', '''\
+add_chinese_doc('deploy.embed.RerankDeploy', '''\
 此类是 ``EmbeddingDeploy`` 的子类，用于部署重排序（Rerank）服务。支持使用HuggingFace模型进行文本重排序。
 
 Args:
@@ -706,7 +706,7 @@ Args:
     - top_n: 返回的文档数量，默认为1
 ''')
 
-add_english_doc('deploy.RerankDeploy', '''\
+add_english_doc('deploy.embed.RerankDeploy', '''\
 This class is a subclass of ``EmbeddingDeploy``, designed for deploying reranking services. It supports text reranking using HuggingFace models.
 
 Args:
@@ -727,9 +727,9 @@ Message Format:
     - top_n: Number of documents to return, defaults to 1
 ''')
 
-add_example('deploy.RerankDeploy', '''\
+add_example('deploy.embed.RerankDeploy', '''\
 >>> from lazyllm import deploy
->>> rerank_service = deploy.RerankDeploy()
+>>> rerank_service = deploy.embed.RerankDeploy()
 >>> rerank_service('path/to/model')
 >>> input_data = {
 ...     "query": "What is machine learning?",
