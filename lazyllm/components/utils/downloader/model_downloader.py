@@ -250,7 +250,6 @@ class _HubDownloader(ABC):
             polling_thread.join()
         return downloaded_path
 
-    # 判断是否设置huggingface token
     def verify_hub_token(self):
         return True if self._token else False
 
