@@ -27,11 +27,12 @@ ENABLE_DB = os.getenv("RAG_ENABLE_DB", "false").lower() == "true"
 
 class _Processor:
     def __init__(self, store: DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
-                 server: bool = False, description: str = "default algorithm"):
+                 display_name: Optional[str] = None, description: Optional[str] = None,
+                 server: bool = False):
         self._store = store
         self._reader = reader
         self._node_groups = node_groups
-        self._server = server
+        self._display_name = display_name
         self._description = description
 
     def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
@@ -224,13 +225,13 @@ class DocumentProcessor(ModuleBase):
             LOG.info(f"[DocumentProcessor] init done. feedback {self._feedback_url}, prefix {self._path_prefix}")
 
         def register_algorithm(self, name: str, store: DocumentStore, reader: ReaderBase,
-                               node_groups: Dict[str, Dict], force_refresh: bool = False,
-                               description: str = "default algorithm"):
+                               node_groups: Dict[str, Dict], display_name: Optional[str] = None,
+                               description: Optional[str] = None, force_refresh: bool = False):
             self._init_components(server=self._server)
             if name in self._processors and not force_refresh:
-                LOG.warning(f'Duplicated algo key {name} for processor!')
+                LOG.warning(f'There is already a processor with the same name {name}!')
                 return
-            self._processors[name] = _Processor(store, reader, node_groups, description=description)
+            self._processors[name] = _Processor(store, reader, node_groups, display_name, description)
             LOG.info(f'Processor {name} registered!')
 
         def drop_algorithm(self, name: str, clean_db: bool = False) -> None:
@@ -346,7 +347,8 @@ class DocumentProcessor(ModuleBase):
         async def get_algo_list(self) -> None:
             res = []
             for algo_id, processor in self._processors.items():
-                res.append({"algo_id": algo_id, "description": processor._description})
+                res.append({"algo_id": algo_id, "display_name": processor._display_name,
+                            "description": processor._description})
             return BaseResponse(code=200, msg='success', data=res)
 
         @app.get('/group/info')
@@ -590,8 +592,10 @@ class DocumentProcessor(ModuleBase):
             getattr(impl, method)(*args, **kwargs)
 
     def register_algorithm(self, name: str, store: DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
+                           display_name: Optional[str] = None, description: Optional[str] = None,
                            force_refresh: bool = False, **kwargs):
-        self._dispatch("register_algorithm", name, store, reader, node_groups, force_refresh, **kwargs)
+        self._dispatch("register_algorithm", name, store, reader, node_groups,
+                       display_name, description, force_refresh, **kwargs)
 
     def drop_algorithm(self, name: str, clean_db: bool = False) -> None:
         return self._dispatch("drop_algorithm", name, clean_db)

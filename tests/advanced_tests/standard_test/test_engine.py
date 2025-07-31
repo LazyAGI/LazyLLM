@@ -291,7 +291,7 @@ class TestEngine(object):
         assert len(data) == len(verify)
 
     def test_mcptool(self):
-        resource = [dict(id='0', kind='LLM', name='base', args=dict(base_model='internlm2-chat-7b', type='local')),
+        resource = [dict(id='0', kind='LLM', name='base', args=dict(base_model='Qwen3-14B', type='local')),
                     dict(id='1', kind='MCPTool', name='list_allowed_directories',
                          args=dict(command_or_url="npx", tool_name="list_allowed_directories",
                                    args=["-y", "@modelcontextprotocol/server-filesystem", "./"]))]
@@ -305,7 +305,7 @@ class TestEngine(object):
         resource = [dict(id='3', kind='MCPTool', name='listdirectories',
                          args=dict(command_or_url="npx", tool_name="listdirectories",
                                    args=["-y", "@modelcontextprotocol/server-filesystem", "./"]))]
-        nodes = [dict(id='4', kind='FunctionCall', name='fc', args=dict(base_model='0', tools=['2']))]
+        nodes = [dict(id='4', kind='FunctionCall', name='fc', args=dict(base_model='0', tools=['3']))]
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         with pytest.raises(AssertionError):
             gid = engine.start(nodes, edges, resources=resource)
