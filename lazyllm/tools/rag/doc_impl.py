@@ -62,12 +62,12 @@ class EmbedPlaceholder:
 
 
 class NodeGroupType(str, Enum):
-    ORIGINAL = "Original Source"
-    CHUNK = "Chunk"
-    SUMMARY = "Summary"
-    IMAGE_INFO = "Image Info"
-    QUESTION_ANSWER = "Question Answer"
-    OTHER = "Other"
+    ORIGINAL = 'Original Source'
+    CHUNK = 'Chunk'
+    SUMMARY = 'Summary'
+    IMAGE_INFO = 'Image Info'
+    QUESTION_ANSWER = 'Question Answer'
+    OTHER = 'Other'
 
 
 class BuiltinGroups(object):
@@ -459,102 +459,116 @@ class DocImpl:
         return nodes
 
     def find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
-        result = set()
         if isinstance(nodes[0].parent, DocNode):
-            def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
-                if node.parent:
-                    if node.parent._group == group:
-                        visited.add(node.parent)
-                    else:
-                        recurse_parents(node.parent, visited)
-            for node in nodes:
-                recurse_parents(node, result)
+            result = self._find_parent_with_node(nodes, group)
         else:
-            cur_group = nodes[0]._group
-            cur_nodes = nodes
-            while cur_group != group and cur_nodes[0].parent:
-                name = self.node_groups[cur_group]['parent']
-                parent_uids = set()
-                for node in cur_nodes:
-                    parent_uids.add(node.parent)
-                dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
-                LOG.info(f"Store get_nodes: {name} {dataset_id}, {parent_uids}")
-                parents = self.store.get_nodes(group_name=name, dataset_id=dataset_id,
-                                               uids=list(parent_uids), display=True)
-                if not parents:
-                    break
-                cur_group = parents[0]._group
-                cur_nodes = parents
-            if cur_group == group:
-                result = cur_nodes
+            result = self._find_parent_with_uid(nodes, group)
         if not result:
             LOG.warning(
                 f"We can not find any nodes for group `{group}`, please check your input"
             )
         LOG.debug(f"Found parent node for {group}: {result}")
-        return list(result)
+        return result
 
-    def find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:  # noqa:C901
+    def _find_parent_with_node(self, nodes: list[DocNode], group: str):
         result = set()
 
+        def recurse_parents(node: DocNode, visited: Set[DocNode]) -> None:
+            if node.parent:
+                if node.parent._group == group:
+                    visited.add(node.parent)
+                else:
+                    recurse_parents(node.parent, visited)
+
+        for node in nodes:
+            recurse_parents(node, result)
+        return list(result)
+
+    def _find_parent_with_uid(self, nodes: list[DocNode], group: str):
+        cur_group = nodes[0]._group
+        cur_nodes = nodes
+        while cur_group != group and cur_nodes[0].parent:
+            name = self.node_groups[cur_group]['parent']
+            parent_uids = {n.parent for n in cur_nodes}
+            dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID)
+            parents = self.store.get_nodes(group_name=name, dataset_id=dataset_id,
+                                           uids=list(parent_uids), display=True)
+            if not parents: break
+            cur_group = parents[0]._group
+            cur_nodes = parents
+
+        return cur_nodes if cur_group == group else []
+
+    def find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:  # noqa:C901
+        if not nodes: return []
+        result = set()
+        is_memory_tree = False
         for _, children in nodes[0].children.items():
-            if isinstance(children[0], DocNode):
-                is_memory_tree = True
-            else:
-                is_memory_tree = False
+            if len(children) == 0: continue
+            is_memory_tree = isinstance(children[0], DocNode)
             break
 
         if is_memory_tree:
-            def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
-                if group in node.children:
-                    visited.update(node.children[group])
-                    return True
-
-                found = False
-                for children_list in node.children.values():
-                    for child in children_list:
-                        if recurse_children(child, visited):
-                            found = True
-                return found
-            for node in nodes:
-                if group in node.children:
-                    result.update(node.children[group])
-                else:
-                    recurse_children(node, result)
-
+            result = self._find_children_with_node(nodes, group)
         else:
-            cur_group = nodes[0]._group
-            cur_nodes = nodes
-
-            while cur_group != group:
-                next_group = None
-                for g, v in self.node_groups.items():
-                    if v.get("parent") == cur_group:
-                        next_group = g
-                        break
-
-                if not next_group:
-                    LOG.warning(f"No child group found under group {cur_group}")
-                    break
-
-                if next_group == group:
-                    parent_uids = [n._uid for n in cur_nodes]
-                    dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
-                    children = self.store.get_nodes(group_name=group, dataset_id=dataset_id,
-                                                    uids=parent_uids, display=True)
-                    result.update(children)
-                    break
-                else:
-                    parent_uids = [n._uid for n in cur_nodes]
-                    dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
-                    cur_nodes = self.store.get_nodes(group_name=next_group, dataset_id=dataset_id,
-                                                     uids=parent_uids, display=True)
-                    cur_group = next_group
-
+            result = self._find_children_with_uid(nodes, group)
         if not result:
             LOG.warning(f"We cannot find any nodes for group `{group}`, please check your input.")
 
         LOG.debug(f"Found children nodes for {group}: {result}")
+        return list(result)
+
+    def _find_children_with_uid(self, nodes: list[DocNode], group: str):
+        result = set()
+        cur_group = nodes[0]._group
+        cur_nodes = nodes
+
+        while cur_group != group:
+            next_group = None
+            for g, v in self.node_groups.items():
+                if v.get("parent") == cur_group:
+                    next_group = g
+                    break
+
+            if not next_group:
+                LOG.warning(f"No child group found under group {cur_group}")
+                break
+
+            if next_group == group:
+                parent_uids = [n._uid for n in cur_nodes]
+                dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
+                children = self.store.get_nodes(group_name=group, dataset_id=dataset_id,
+                                                uids=parent_uids, display=True)
+                result.update(children)
+                break
+            else:
+                parent_uids = [n._uid for n in cur_nodes]
+                dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
+                cur_nodes = self.store.get_nodes(group_name=next_group, dataset_id=dataset_id,
+                                                 uids=parent_uids, display=True)
+                cur_group = next_group
+        return list(result)
+
+    def _find_children_with_node(self, nodes: list[DocNode], group: str):
+        result = set()
+
+        def recurse_children(node: DocNode, visited: Set[DocNode]) -> bool:
+            if group in node.children:
+                visited.update(node.children[group])
+                return True
+
+            found = False
+            for children_list in node.children.values():
+                for child in children_list:
+                    if recurse_children(child, visited):
+                        found = True
+            return found
+
+        for node in nodes:
+            if group in node.children:
+                result.update(node.children[group])
+            else:
+                recurse_children(node, result)
         return list(result)
 
     def clear_cache(self, group_names: Optional[List[str]] = None):

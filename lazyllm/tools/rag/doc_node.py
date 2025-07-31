@@ -22,22 +22,22 @@ class MetadataMode(str, Enum):
 
 @reset_on_pickle(('_lock', threading.Lock))
 class DocNode:
-    def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = "",
+    def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = None,
                  group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
                  parent: Optional[Union[str, "DocNode"]] = None, store=None,
-                 node_groups: Optional[Dict[str, Dict]] = {}, metadata: Optional[Dict[str, Any]] = {},
-                 global_metadata: Optional[Dict[str, Any]] = {}, *, text: Optional[str] = ""):
+                 node_groups: Optional[Dict[str, Dict]] = None, metadata: Optional[Dict[str, Any]] = None,
+                 global_metadata: Optional[Dict[str, Any]] = None, *, text: Optional[str] = None):
         if text and content:
             raise ValueError('`text` and `content` cannot be set at the same time.')
-
+        if not content and not text: content = ''
         self._uid: str = uid if uid else str(uuid.uuid4())
         self._content: Optional[Union[str, List[Any]]] = content if content else text
         self._group: Optional[str] = group
         self._embedding: Optional[Dict[str, List[float]]] = embedding or {}
         # metadata: the chunk's meta
-        self._metadata: Dict[str, Any] = metadata
+        self._metadata: Dict[str, Any] = metadata or {}
         # Global metadata: the file's global metadata (higher level)
-        self._global_metadata = global_metadata
+        self._global_metadata = global_metadata or {}
         # Metadata keys that are excluded from text for the embed model.
         self._excluded_embed_metadata_keys: List[str] = []
         # Metadata keys that are excluded from text for the LLM.
@@ -47,7 +47,7 @@ class DocNode:
         self._children: Dict[str, List["DocNode"]] = defaultdict(list)
         self._children_loaded = False
         self._store = store
-        self._node_groups: Dict[str, Dict] = node_groups
+        self._node_groups: Dict[str, Dict] = node_groups or {}
         self._lock = threading.Lock()
         self._embedding_state = set()
         self.relevance_score = None
@@ -180,7 +180,7 @@ class DocNode:
         )
 
     def get_parent_id(self) -> str:
-        return self.parent._uid if self.parent else ""
+        return self.parent._uid if self.parent else ''
 
     def __str__(self) -> str:
         return (
@@ -231,7 +231,7 @@ class DocNode:
     def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
         """Metadata info string."""
         if mode == MetadataMode.NONE:
-            return ""
+            return ''
 
         metadata_keys = set(self.metadata.keys())
         if mode == MetadataMode.LLM:
@@ -248,7 +248,7 @@ class DocNode:
     def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
         metadata_str = self.get_metadata_str(metadata_mode).strip()
         if not metadata_str:
-            return self.text if self.text else ""
+            return self.text if self.text else ''
         return f"{metadata_str}\n\n{self.text}".strip()
 
     def to_dict(self) -> Dict:
@@ -290,7 +290,7 @@ class ImageDocNode(DocNode):
                  *, text: Optional[str] = None):
         super().__init__(uid, None, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
         self._image_path = image_path.strip()
-        self._modality = "image"
+        self._modality = 'image'
 
     def do_embedding(self, embed: Dict[str, Callable]) -> None:
         for k, e in embed.items():
