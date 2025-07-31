@@ -2,7 +2,7 @@ import re
 import os
 import builtins
 import typing
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 from contextlib import contextmanager
 import copy
 import threading
@@ -448,3 +448,22 @@ def is_valid_url(url):
 
 def is_valid_path(path):
     return os.path.isfile(path)
+
+class Finalizer(object):
+    def __init__(self, func1: Callable, func2: Optional[Callable] = None, *, condition: Callable = lambda: True):
+        if func2:
+            func1()
+            func1 = func2
+        self._func = func1
+        self._condition = condition
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.__del__()
+
+    def __del__(self):
+        if self._func:
+            if self._condition(): self._func()
+            self._func = None
