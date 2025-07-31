@@ -1,7 +1,7 @@
 # 自适应聊天机器人构建教程
 本教程展示了如何使用 LazyLLM 构建一个交互式聊天机器人，基于 SenseNova 模型实现自然语言处理。您将学习如何初始化模型、配置环境变量以及实现一个简单的用户交互循环。
 
-!!! abstract "通过本教程您将学习以下内容"
+通过本教程您将学习以下内容
 
 - 如何通过 [OnlineChatModule][lazyllm.OnlineChatModule] 初始化 SenseNova 模型。
 - 如何设置 API Key 和 Secret Key 以正确连接 SenseNova。
