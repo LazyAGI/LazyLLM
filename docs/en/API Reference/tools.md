@@ -77,7 +77,7 @@
 	exclude-members:
 
 ::: lazyllm.tools.Reranker
-    members:register_reranker
+    members: register_reranker
     exclude-members: forward
 
 ::: lazyllm.tools.Retriever
