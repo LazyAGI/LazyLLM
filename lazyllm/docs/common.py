@@ -184,3 +184,182 @@ True
 >>> p + p2
 (1, 2, 3, 4, 5)
 ''')
+
+add_chinese_doc('FileSystemQueue', """\
+基于文件系统的队列抽象基类。
+
+FileSystemQueue是一个抽象基类，提供了基于文件系统的队列操作接口。它支持多种后端实现（如SQLite、Redis），用于在分布式环境中进行消息传递和数据流控制。
+
+该类实现了单例模式，确保每个类名只有一个队列实例，并提供了线程安全的队列操作。
+
+Args:
+    klass (str, optional): 队列的类名标识符。默认为 ``'__default__'``。
+
+**Returns:**\n
+- FileSystemQueue: 队列实例（单例模式）
+""")
+
+add_english_doc('FileSystemQueue', """\
+Abstract base class for file system-based queues.
+
+FileSystemQueue is an abstract base class that provides a file system-based queue operation interface. It supports multiple backend implementations (such as SQLite, Redis) for message passing and data flow control in distributed environments.
+
+This class implements the singleton pattern, ensuring only one queue instance per class name, and provides thread-safe queue operations.
+
+Args:
+    klass (str, optional): Class name identifier for the queue. Defaults to ``'__default__'``.
+
+**Returns:**\n
+- FileSystemQueue: Queue instance (singleton pattern)
+""")
+
+add_chinese_doc('FileSystemQueue.enqueue', """\
+将消息加入队列。
+
+此方法将指定的消息添加到队列的尾部，遵循先进先出（FIFO）的原则。
+
+Args:
+    message: 要加入队列的消息内容。
+""")
+
+add_english_doc('FileSystemQueue.enqueue', """\
+Add a message to the queue.
+
+This method adds the specified message to the tail of the queue, following the First-In-First-Out (FIFO) principle.
+
+Args:
+    message: The message content to be added to the queue.
+""")
+
+add_example('FileSystemQueue.enqueue', """\
+>>> import lazyllm
+>>> queue = lazyllm.FileSystemQueue(klass='enqueue_test')
+>>> queue.enqueue(123)
+>>> queue.peek()
+'123'
+""")
+
+add_chinese_doc('FileSystemQueue.dequeue', """\
+从队列中取出消息。
+
+此方法从队列头部取出消息并移除它们，可以指定一次取出的消息数量。
+
+Args:
+    limit (int, optional): 一次取出的最大消息数量。如果为None，则取出所有消息。默认为None。
+
+**Returns:**\n
+- list: 取出的消息列表。
+""")
+
+add_english_doc('FileSystemQueue.dequeue', """\
+Retrieve messages from the queue.
+
+This method retrieves messages from the head of the queue and removes them, with the option to specify the number of messages to retrieve at once.
+
+Args:
+    limit (int, optional): Maximum number of messages to retrieve at once. If None, retrieves all messages. Defaults to None.
+
+**Returns:**\n
+- list: List of retrieved messages.
+""")
+
+add_example('FileSystemQueue.dequeue', """\
+>>> import lazyllm
+>>> queue = lazyllm.FileSystemQueue(klass='dequeue_test')
+>>> for i in range(5):
+...     queue.enqueue(f"Message{i}")
+>>> all_messages = queue.dequeue()
+>>> all_messages
+['Message0', 'Message1', 'Message2', 'Message3', 'Message4']
+""")
+
+add_chinese_doc('FileSystemQueue.peek', """\
+查看队列头部的消息但不移除。
+
+此方法允许查看队列中最早的消息，但不会将其从队列中移除。
+
+**Returns:**\n
+- 队列头部的消息，如果队列为空则返回None。
+""")
+
+add_english_doc('FileSystemQueue.peek', """\
+View the message at the head of the queue without removing it.
+
+This method allows viewing the earliest message in the queue without removing it from the queue.
+
+**Returns:**\n
+- The message at the head of the queue, or None if the queue is empty.
+""")
+
+add_example('FileSystemQueue.peek', """\
+>>> import lazyllm
+>>> queue = lazyllm.FileSystemQueue(klass='peek_test')
+>>> queue.enqueue("First message")
+>>> queue.enqueue("Second message")
+>>> first_message = queue.peek()
+>>> first_message
+'First message'
+>>> queue.peek()
+'First message'
+""")
+
+add_chinese_doc('FileSystemQueue.size', """\
+获取队列大小。
+
+此方法返回当前队列中的消息数量。
+
+**Returns:**\n
+- int: 队列中的消息数量。
+""")
+
+add_english_doc('FileSystemQueue.size', """\
+Get the queue size.
+
+This method returns the current number of messages in the queue.
+
+**Returns:**\n
+- int: Number of messages in the queue.
+""")
+
+add_example('FileSystemQueue.size', """\
+>>> import lazyllm
+>>> queue = lazyllm.FileSystemQueue(klass='size_test')
+>>> queue.size()
+0
+>>> queue.enqueue("Message1")
+>>> queue.size()
+1
+>>> queue.enqueue("Message2")
+>>> queue.size()
+2
+>>> queue.dequeue()
+['Message1', 'Message2']
+>>> queue.size()
+0
+""")
+
+add_chinese_doc('FileSystemQueue.clear', """\
+清空队列。
+
+此方法移除队列中的所有消息，将队列重置为空状态。
+""")
+
+add_english_doc('FileSystemQueue.clear', """\
+Clear the queue.
+
+This method removes all messages from the queue, resetting it to an empty state.
+""")
+
+add_example('FileSystemQueue.clear', """\
+>>> import lazyllm
+>>> queue = lazyllm.FileSystemQueue(klass='clear_test')
+>>> for i in range(10):
+...     queue.enqueue(f"Message{i}")
+>>> queue.size()
+10
+>>> queue.clear()
+>>> queue.size()
+0
+>>> queue.peek() is None
+True
+""")
