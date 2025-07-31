@@ -1482,6 +1482,138 @@ Args:
     score: 相似度得分
 ''')
 
+add_chinese_doc('rag.doc_processor.DocumentProcessor', """
+文档处理器类，用于管理文档的添加、删除和更新操作。
+
+Args:
+    server (bool): 是否以服务器模式运行。默认为True。
+    port (Optional[int]): 服务器端口号。默认为None。
+    url (Optional[str]): 远程服务URL。默认为None。
+
+**说明:**
+- 支持异步处理文档任务
+- 提供文档元数据更新功能
+- 支持任务状态回调通知
+- 可配置数据库存储
+""")
+
+add_english_doc('rag.doc_processor.DocumentProcessor', """
+Document processor class for managing document addition, deletion and update operations.
+
+Args:
+    server (bool): Whether to run in server mode. Defaults to True.
+    port (Optional[int]): Server port number. Defaults to None.
+    url (Optional[str]): Remote service URL. Defaults to None.
+
+**Notes:**
+- Supports asynchronous document task processing
+- Provides document metadata update functionality
+- Supports task status callback notifications
+- Configurable database storage
+""")
+
+add_example('rag.doc_processor.DocumentProcessor', """
+```python
+# Create local document processor
+processor = DocumentProcessor(server=False)
+
+# Create server mode document processor
+processor = DocumentProcessor(server=True, port=8080)
+
+# Create remote document processor
+processor = DocumentProcessor(url="http://remote-server:8080")
+```
+""")
+
+add_chinese_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
+注册算法到文档处理器。
+
+Args:
+    name (str): 算法名称，作为唯一标识符。
+    store (StoreBase): 存储实例，用于管理文档数据。
+    reader (ReaderBase): 读取器实例，用于解析文档内容。
+    node_groups (Dict[str, Dict]): 节点组配置信息。
+    force_refresh (bool): 是否强制刷新已存在的算法。默认为False。
+
+**说明:**
+- 如果算法名称已存在且force_refresh为False，将跳过注册
+- 注册成功后可以使用该算法处理文档
+""")
+
+add_english_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
+Register an algorithm to the document processor.
+
+Args:
+    name (str): Algorithm name as unique identifier.
+    store (StoreBase): Storage instance for managing document data.
+    reader (ReaderBase): Reader instance for parsing document content.
+    node_groups (Dict[str, Dict]): Node group configuration information.
+    force_refresh (bool): Whether to force refresh existing algorithm. Defaults to False.
+
+**Notes:**
+- If algorithm name exists and force_refresh is False, registration will be skipped
+- After successful registration, the algorithm can be used to process documents
+""")
+
+add_example('rag.doc_processor.DocumentProcessor.register_algorithm', """
+```python
+from lazyllm.rag import DocumentProcessor, FileStore, PDFReader
+
+# Create storage and reader instances
+store = FileStore(path="./data")
+reader = PDFReader()
+
+# Define node group configuration
+node_groups = {
+    "text": {"transform": "text", "parent": "root"},
+    "summary": {"transform": "summary", "parent": "text"}
+}
+
+# Register algorithm
+processor = DocumentProcessor()
+processor.register_algorithm(
+    name="pdf_processor",
+    store=store,
+    reader=reader,
+    node_groups=node_groups
+)
+```
+""")
+
+add_chinese_doc('rag.doc_processor.DocumentProcessor.drop_algorithm', """
+从文档处理器中移除指定算法。
+
+Args:
+    name (str): 要移除的算法名称。
+    clean_db (bool): 是否清理相关数据库数据。默认为False。
+
+**说明:**
+- 如果算法名称不存在，将输出警告信息
+- 移除后该算法将无法继续使用
+""")
+
+add_english_doc('rag.doc_processor.DocumentProcessor.drop_algorithm', """
+Remove specified algorithm from document processor.
+
+Args:
+    name (str): Name of the algorithm to remove.
+    clean_db (bool): Whether to clean related database data. Defaults to False.
+
+**Notes:**
+- If algorithm name does not exist, a warning message will be output
+- After removal, the algorithm will no longer be available
+""")
+
+add_example('rag.doc_processor.DocumentProcessor.drop_algorithm', """
+```python
+# Remove algorithm
+processor.drop_algorithm("pdf_processor")
+
+# Remove algorithm and clean database
+processor.drop_algorithm("pdf_processor", clean_db=True)
+```
+""")
+
 add_english_doc('rag.dataReader.SimpleDirectoryReader', '''
 A modular document directory reader that inherits from ModuleBase, supporting reading various document formats from the file system and converting them into standardized DocNode objects.
 Args:
