@@ -269,7 +269,7 @@ class _HuggingfaceDownloader(_HubDownloader):
             if token: lazyllm.LOG.warning(f'Huggingface token {token} verified failed')
             return False
 
-    def verify_model_id(self, model_id):
+    def _verify_model_id(self, model_id):
         try:
             self._api.model_info(model_id)
             return True
@@ -319,7 +319,7 @@ class _ModelscopeDownloader(_HubDownloader):
             if token: lazyllm.LOG.warning(f'Modelscope token {token} verified failed')
             return False
 
-    def verify_model_id(self, model_id):
+    def _verify_model_id(self, model_id):
         try:
             self._api.get_model(model_id)
             return True
