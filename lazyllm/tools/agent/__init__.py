@@ -1,4 +1,4 @@
-from .functionCall import FunctionCall, FunctionCallAgent,FunctionCallFormatter
+from .functionCall import FunctionCall, FunctionCallAgent, FunctionCallFormatter
 from .toolsManager import register, ToolManager
 from .reactAgent import ReactAgent
 from .planAndSolveAgent import PlanAndSolveAgent
