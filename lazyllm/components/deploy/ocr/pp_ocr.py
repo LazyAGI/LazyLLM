@@ -12,7 +12,7 @@ def is_all_punctuation(s: str) -> bool:
     return all(c in punctuation for c in s)
 
 
-class OCR(object):
+class _OCR(object):
     def __init__(
         self,
         model: Optional[str] = "PP-OCRv5_mobile",
@@ -78,7 +78,7 @@ class OCR(object):
         return cls(*args, **kw)
 
     def __reduce__(self):
-        return OCR.rebuild, (
+        return _OCR.rebuild, (
             self.model,
             self.use_doc_orientation_classify,
             self.use_doc_unwarping,
@@ -104,4 +104,4 @@ class OCRDeploy(LazyLLMDeployBase):
         if not finetuned_model:
             finetuned_model = base_model
         return lazyllm.deploy.RelayServer(
-            port=self._port, func=OCR(finetuned_model), launcher=self._launcher, log_path=self._log_path, cls="ocr")()
+            port=self._port, func=_OCR(finetuned_model), launcher=self._launcher, log_path=self._log_path, cls="ocr")()
