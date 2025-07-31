@@ -13,7 +13,7 @@ from lazyllm import globals, LOG, launchers, Option, package, LazyLLMDeployBase,
 from ...components.formatter import decode_query_with_filepaths, encode_query_with_filepaths
 from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from ...components.utils import ModelManager
-from ...components.utils.file_operate import base64_to_file, is_base64_with_mime
+from ...components.utils.file_operate import _base64_to_file, _is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
 from .utils import map_kw_for_framework, encode_files
 from ...flow import Pipeline
@@ -177,7 +177,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if hasattr(self._deploy, 'auto_map') and self._deploy.auto_map:
             self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
 
-        stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
+        stop_words = ModelManager._get_model_prompt_keys(self._base_model).get('stop_words')
 
         self._template.update(self._deploy.message_format, self._deploy.keys_name_handle,
                               self._deploy.default_headers, extract_result=self._deploy.extract_result,
@@ -241,11 +241,11 @@ class TrainableModule(UrlModule):
 
     @property
     def series(self):
-        return re.sub(r'\d+$', '', ModelManager.get_model_name(self.base_model).split('-')[0].upper())
+        return re.sub(r'\d+$', '', ModelManager._get_model_name(self.base_model).split('-')[0].upper())
 
     @property
     def type(self):
-        return ModelManager.get_model_type(self.base_model).upper()
+        return ModelManager._get_model_type(self.base_model).upper()
 
     def get_all_models(self):
         return self._impl._get_all_finetuned_models()
@@ -280,12 +280,12 @@ class TrainableModule(UrlModule):
 
     # modify default value to ''
     def prompt(self, prompt: Union[str, dict] = '', history: Optional[List[List[str]]] = None):
-        if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
+        if self.base_model != '' and prompt == '' and ModelManager._get_model_type(self.base_model) != 'llm':
             prompt = None
         clear_system = isinstance(prompt, dict) and prompt.get('drop_builtin_system')
         prompter = super(__class__, self).prompt(prompt, history)._prompt
         self._tools = getattr(prompter, "_tools", None)
-        keys = ModelManager.get_model_prompt_keys(self.base_model).copy()
+        keys = ModelManager._get_model_prompt_keys(self.base_model).copy()
         if keys:
             if clear_system: keys['system'] = ''
             prompter._set_model_configs(**keys)
@@ -396,7 +396,7 @@ class TrainableModule(UrlModule):
 
     def _decode_base64_to_file(self, content: str) -> str:
         decontent = decode_query_with_filepaths(content)
-        files = [base64_to_file(file_content) if is_base64_with_mime(file_content) else file_content
+        files = [_base64_to_file(file_content) if _is_base64_with_mime(file_content) else file_content
                  for file_content in decontent["files"]]
         return encode_query_with_filepaths(query=decontent["query"], files=files)
 

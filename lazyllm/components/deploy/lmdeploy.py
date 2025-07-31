@@ -67,7 +67,7 @@ class LMDeploy(LazyLLMDeployBase):
                             f"base_model({base_model}) will be used")
             finetuned_model = base_model
 
-        model_type = ModelManager.get_model_type(base_model or finetuned_model)
+        model_type = ModelManager._get_model_type(base_model or finetuned_model)
         if model_type == 'vlm':
             self.kw.pop("chat-template")
         else:

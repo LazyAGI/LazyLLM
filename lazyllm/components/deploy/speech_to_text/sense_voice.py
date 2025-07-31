@@ -2,7 +2,7 @@ import os
 import importlib.util
 
 import lazyllm
-from lazyllm.components.utils.file_operate import base64_to_file, is_base64_with_mime
+from lazyllm.components.utils.file_operate import _base64_to_file, _is_base64_with_mime
 from lazyllm import LOG, LazyLLMLaunchersBase, is_valid_url, is_valid_path
 from ..base import LazyLLMDeployBase
 from ...utils.downloader import ModelManager
@@ -43,7 +43,7 @@ class SenseVoice(object):
         assert isinstance(string, str)
         string = string.strip()
         try:
-            string = base64_to_file(string) if is_base64_with_mime(string) else string
+            string = _base64_to_file(string) if _is_base64_with_mime(string) else string
         except Exception as e:
             LOG.error(f"Error processing base64 encoding: {e}")
             return f"Error processing base64 encoding {e}"

@@ -23,7 +23,6 @@ def check_cmd(framework):
 
 
 class AutoDeploy(LazyLLMDeployBase):
-
     @staticmethod
     def _get_embed_deployer(launcher, type, kw):
         launcher = launcher or launchers.remote(ngpus=1)
@@ -42,7 +41,7 @@ class AutoDeploy(LazyLLMDeployBase):
         model_name = get_model_name(base_model)
         kw['log_path'], kw['trust_remote_code'] = log_path, trust_remote_code
         if not type:
-            type = ModelManager.get_model_type(model_name)
+            type = ModelManager._get_model_type(model_name)
 
         if type in ('embed', 'cross_modal_embed', 'reranker'):
             return AutoDeploy._get_embed_deployer(launcher, type, kw)
