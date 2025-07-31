@@ -3,7 +3,7 @@ import lazyllm
 from typing import Optional
 import string
 from ..base import LazyLLMDeployBase
-from ...utils.file_operate import base64_to_file
+from ...utils.file_operate import _base64_to_file
 
 punctuation = set(string.punctuation + "，。！？；：“”‘’（）【】《》…—～、")
 
@@ -57,7 +57,7 @@ class _OCR(object):
             file_list = lazyllm.components.formatter.formatterbase._lazyllm_get_file_list(input)
         if isinstance(file_list, str):
             file_list = [file_list]
-        file_list = [base64_to_file(file) for file in file_list]
+        file_list = [_base64_to_file(file) for file in file_list]
         if hasattr(file_list, '__repr__'):
             lazyllm.LOG.info(f"paddleocr read files: {file_list}")
         txt = []
