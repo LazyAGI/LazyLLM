@@ -1677,6 +1677,56 @@ add_example('rag.dataReader.FileReader', '''
 >>> content = reader("yourpath/") 
 ''')
 
+add_chinese_doc('tools.rag.readers.readerBase.LazyLLMReaderBase', '''
+基础文档读取器类，提供了文档加载的基本接口。继承自ModuleBase，使用LazyLLMRegisterMetaClass作为元类。
+
+Args:
+    return_trace (bool): 是否返回处理过程的追踪信息。默认为True。
+
+**说明:**
+- 提供了惰性加载和普通加载两种方式
+- 子类需要实现_lazy_load_data方法
+- 支持批量处理文档
+- 自动转换为标准化的DocNode格式
+''')
+
+add_english_doc('tools.rag.readers.readerBase.LazyLLMReaderBase', '''
+Base document reader class that provides basic interfaces for document loading. Inherits from ModuleBase and uses LazyLLMRegisterMetaClass as metaclass.
+
+Args:
+    return_trace (bool): Whether to return processing trace information. Defaults to True.
+
+**Notes:**
+- Provides both lazy loading and regular loading methods
+- Subclasses need to implement _lazy_load_data method
+- Supports batch document processing
+- Automatically converts to standardized DocNode format
+''')
+
+add_example('tools.rag.readers.readerBase.LazyLLMReaderBase', '''
+```python
+from lazyllm.tools.rag.readers.readerBase import LazyLLMReaderBase
+from lazyllm.tools.rag.doc_node import DocNode
+from typing import Iterable
+
+class CustomReader(LazyLLMReaderBase):
+    def _lazy_load_data(self, file_paths: list, **kwargs) -> Iterable[DocNode]:
+        for file_path in file_paths:
+            # Process each file and yield DocNode
+            content = self._read_file(file_path)
+            yield DocNode(
+                text=content,
+                metadata={"source": file_path}
+            )
+
+# Create reader instance
+reader = CustomReader(return_trace=True)
+
+# Load documents
+documents = reader.forward(file_paths=["doc1.txt", "doc2.txt"])
+```
+''')
+
 # ---------------------------------------------------------------------------- #
 
 # rag/transform.py
