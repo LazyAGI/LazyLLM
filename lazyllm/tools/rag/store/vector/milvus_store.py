@@ -5,7 +5,7 @@ from packaging import version
 from urllib import parse
 from typing import Dict, List, Union, Optional, Set
 
-from lazyllm import LOG, once_wrapper
+from lazyllm import LOG
 from lazyllm.thirdparty import pymilvus
 from lazyllm.common import override
 
@@ -28,7 +28,6 @@ BUILTIN_KEYS = {
     'uid': {'dtype': pymilvus.DataType.VARCHAR, 'max_length': 256, 'is_primary': True}
 }
 
-
 class MilvusStore(LazyLLMStoreBase):
     capability = StoreCapability.VECTOR
 
@@ -44,9 +43,8 @@ class MilvusStore(LazyLLMStoreBase):
         self._client = None
 
     @override
-    @once_wrapper(reset_on_pickle=True)
-    def lazy_init(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
-                  global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs):
+    def connect(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
+                global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs):
         self._embed_dims = embed_dims
         self._embed_datatypes = embed_datatypes
         self._global_metadata_desc = global_metadata_desc

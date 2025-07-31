@@ -39,8 +39,8 @@ class DocumentStore(object):
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self):
-        self._impl.lazy_init(embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
-                             global_metadata_desc=self._global_metadata_desc, collections=self.activated_groups())
+        self._impl.connect(embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
+                           global_metadata_desc=self._global_metadata_desc, collections=self.activated_groups())
 
     def _make_store(self, cfg: Dict[str, Any], deprecated_msg: str = None) -> LazyLLMStoreBase:
         if not cfg:
@@ -130,6 +130,7 @@ class DocumentStore(object):
         return not self._impl.get(self._gen_collection_name(group), {})
 
     def update_nodes(self, nodes: List[DocNode]):   # noqa: C901
+        self._lazy_init()
         if not nodes:
             return
         try:
@@ -167,6 +168,7 @@ class DocumentStore(object):
         # remove the nodes of the whole file -- doc ids only
         # remove the nodes of a certain group for one file -- doc ids and group (kb_id is optional)
         # forbid to remove the nodes from multiple kb
+        self._lazy_init()
         try:
             criteria = {}
             if uids:
@@ -193,6 +195,7 @@ class DocumentStore(object):
 
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
                   group: Optional[str] = None, kb_id: Optional[str] = None, **kwargs) -> List[DocNode]:
+        self._lazy_init()
         try:
             segments = self.get_segments(uids, doc_ids, group, kb_id, **kwargs)
             return [self._deserialize_node(segment) for segment in segments]
@@ -207,6 +210,7 @@ class DocumentStore(object):
         # get the segments of a certain group for one file -- doc ids and group (kb_id is optional)
         # forbid to get the segments from multiple kb (only one kb_id is allowed)
         # TODO: pagination
+        self._lazy_init()
         try:
             criteria = {}
             if uids:
@@ -231,6 +235,7 @@ class DocumentStore(object):
             raise
 
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
+        self._lazy_init()
         kb_id = metadata.get(RAG_KB_ID, None)
         segments = self.get_segments(doc_ids=[doc_id], kb_id=kb_id)
         if not segments:
@@ -249,6 +254,7 @@ class DocumentStore(object):
               similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"),
               topk: Optional[int] = 10, embed_keys: Optional[List[str]] = None,
               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
+        self._lazy_init()
         self._validate_query_params(group_name, similarity_name, embed_keys)
         # temporary, when search in map store, use default index
         if isinstance(self._impl, MapStore):

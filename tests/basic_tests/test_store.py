@@ -53,7 +53,7 @@ class TestMapStore(unittest.TestCase):
         self.collections = ["col_g1", "col_g2"]
         _, self.store_dir = tempfile.mkstemp(suffix=".db")
         self.store1 = MapStore()
-        self.store1.lazy_init(collections=self.collections)
+        self.store1.connect(collections=self.collections)
 
     def tearDown(self):
         os.remove(self.store_dir)
@@ -147,7 +147,7 @@ class TestMapStore(unittest.TestCase):
 
     def test_mapstore_with_uri(self):
         store2 = MapStore(uri=self.store_dir)
-        store2.lazy_init(collections=self.collections)
+        store2.connect(collections=self.collections)
         store2.upsert(self.collections[0], [data[0], data[2]])
         store2.upsert(self.collections[1], [data[1]])
         res = store2.get(collection_name=self.collections[0])
@@ -160,7 +160,7 @@ class TestMapStore(unittest.TestCase):
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0], data[2])
         store3 = MapStore(uri=self.store_dir)
-        store3.lazy_init(collections=self.collections)
+        store3.connect(collections=self.collections)
         res = store3.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
@@ -194,8 +194,8 @@ class TestChromadbStore(unittest.TestCase):
         self.global_metadata_desc = BUILDIN_GLOBAL_META_DESC
         self.store_dir = tempfile.mkdtemp()
         self.store = ChromadbStore(dir=self.store_dir)
-        self.store.lazy_init(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
-                             global_metadata_desc=self.global_metadata_desc)
+        self.store.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
+                           global_metadata_desc=self.global_metadata_desc)
 
     def tearDown(self):
         clear_directory(self.store_dir)
@@ -355,8 +355,8 @@ class TestMilvusStore(unittest.TestCase):
         _, self.store_dir = tempfile.mkstemp(suffix=".db")
         self.uri_standalone = ""
         self.store = MilvusStore(uri=self.store_dir, index_kwargs=self.index_kwargs)
-        self.store.lazy_init(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
-                             global_metadata_desc=self.global_metadata_desc)
+        self.store.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
+                           global_metadata_desc=self.global_metadata_desc)
 
     def tearDown(self):
         os.remove(self.store_dir)
@@ -507,8 +507,8 @@ class TestMilvusStore(unittest.TestCase):
                               " and set the uri to the server"))
     def test_milvus_standalone(self):
         self.store1 = MilvusStore(uri=self.uri_standalone, index_kwargs=self.index_kwargs)
-        self.store1.lazy_init(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
-                              global_metadata_desc=self.global_metadata_desc)
+        self.store1.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
+                            global_metadata_desc=self.global_metadata_desc)
         self.store1.upsert(self.collections[0], [data[0], data[2]])
         self.store1.upsert(self.collections[1], [data[1]])
         res = self.store1.search(collection_name=self.collections[0], query_embedding=[0.1, 0.2, 0.3],
@@ -524,7 +524,7 @@ class TestOpenSearchStore(unittest.TestCase):
         self.uri = ""
         self.client_kwargs = {}
         self.store = OpenSearchStore(uris=self.uri, client_kwargs=self.client_kwargs)
-        self.store.lazy_init()
+        self.store.connect()
 
     def tearDown(self):
         for collection in self.collections:
@@ -664,7 +664,7 @@ class TestSenseCoreStore(unittest.TestCase):
             "bucket_name": os.getenv("RAG_IMAGE_URL_BUCKET", "lazyjfs")
         }
         self.store = SenseCoreStore(uri=self.uri, s3_config=self.s3_config, image_url_config=self.image_url_config)
-        self.store.lazy_init(global_metadata_desc=self.global_metadata_desc)
+        self.store.connect(global_metadata_desc=self.global_metadata_desc)
 
     def tearDown(self):
         pass
@@ -791,8 +791,8 @@ class TestHybridStore(unittest.TestCase):
         self.segment_store = MapStore()
         self.vector_store = MilvusStore(uri=self.store_dir, index_kwargs=self.index_kwargs)
         self.store = HybridStore(self.segment_store, self.vector_store)
-        self.store.lazy_init(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
-                             global_metadata_desc=self.global_metadata_desc, collections=self.collections)
+        self.store.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
+                           global_metadata_desc=self.global_metadata_desc, collections=self.collections)
 
     def tearDown(self):
         os.remove(self.store_dir)

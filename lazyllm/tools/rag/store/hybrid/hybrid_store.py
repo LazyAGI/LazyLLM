@@ -13,9 +13,9 @@ class HybridStore(LazyLLMStoreBase):
         self.vector_store: LazyLLMStoreBase = vector_store
 
     @override
-    def lazy_init(self, *args, **kwargs):
-        self.segment_store.lazy_init(*args, **kwargs)
-        self.vector_store.lazy_init(*args, **kwargs)
+    def connect(self, *args, **kwargs):
+        self.segment_store.connect(*args, **kwargs)
+        self.vector_store.connect(*args, **kwargs)
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:

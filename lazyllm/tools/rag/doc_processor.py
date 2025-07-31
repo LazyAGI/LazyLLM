@@ -33,7 +33,6 @@ class _Processor:
         self._node_groups = node_groups
         self._server = server
         self._description = description
-        self._store._lazy_init()
 
     def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
                 metadatas: Optional[List[Dict[str, Any]]] = None):

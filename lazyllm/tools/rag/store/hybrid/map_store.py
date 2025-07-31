@@ -89,7 +89,7 @@ class MapStore(LazyLLMStoreBase):
         conn.close()
 
     @override
-    def lazy_init(self, collections: Optional[List[str]] = None, **kwargs):
+    def connect(self, collections: Optional[List[str]] = None, **kwargs):
         self._uid2data: Dict[str, dict] = {}
         self._collection2uids: Dict[str, Set[str]] = defaultdict(set)
         self._col_doc_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))

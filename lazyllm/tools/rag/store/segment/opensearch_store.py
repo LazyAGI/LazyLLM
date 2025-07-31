@@ -3,7 +3,7 @@ import urllib3
 
 from typing import Dict, List, Union, Optional
 
-from lazyllm import LOG, once_wrapper
+from lazyllm import LOG
 from lazyllm.common import override
 from lazyllm.thirdparty import opensearchpy
 
@@ -54,8 +54,7 @@ class OpenSearchStore(LazyLLMStoreBase):
         self._primary_key = "uid"
 
     @override
-    @once_wrapper(reset_on_pickle=True)
-    def lazy_init(self, *args, **kwargs) -> None:
+    def connect(self, *args, **kwargs) -> None:
         """ load the store """
         if self._client_kwargs.get('user') and self._client_kwargs.get('password'):
             self._client_kwargs['http_auth'] = (self._client_kwargs.pop('user'), self._client_kwargs.pop('password'))

@@ -156,9 +156,10 @@ class DocImpl:
                                        embed_dims=embed_dims, embed_datatypes=embed_datatypes,
                                        global_metadata_desc=self._global_metadata_desc)
         elif isinstance(self.store, LazyLLMStoreBase):
-            self.store.lazy_init(group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                 embed_dims=embed_dims, embed_datatypes=embed_datatypes,
-                                 global_metadata_desc=self._global_metadata_desc)
+            self.store = DocumentStore(algo_name=self._algo_name, store=self.store,
+                                       group_embed_keys=self._activated_embeddings, embed=self.embed,
+                                       embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                                       global_metadata_desc=self._global_metadata_desc)
         else:
             raise ValueError(f'store type [{type(self.store)}] is not a dict or LazyLLMStoreBase.')
         self.store.activate_group(self._activated_groups)
@@ -176,8 +177,6 @@ class DocImpl:
                                                self._algo_desc)
         else:
             self._processor = _Processor(self.store, self._reader, self.node_groups, self._algo_desc)
-        # NOTE: Do lazy init after algo registered (when cloudpickle, some client may meet error)
-        self.store._lazy_init()
         # init files when `cloud` is False
         if not cloud and self.store.is_group_empty(LAZY_ROOT_NAME):
             ids, pathes, metadatas = self._list_files(upload_status=DocListManager.Status.success)

@@ -63,7 +63,6 @@ class TestStoreWithMapAndMilvus(unittest.TestCase):
                                             embed=self.mock_embed,
                                             global_metadata_desc=self.global_metadata_desc)
         self.document_store.activate_group(["group1", "group2", "qa", "image"])
-        self.document_store._lazy_init()
         self.document_store.update_nodes([node1, node2, node3, qa_node1, image_node1])
 
     def tearDown(self):

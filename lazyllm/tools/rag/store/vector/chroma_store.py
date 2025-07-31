@@ -5,7 +5,7 @@ from ..store_base import (LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PRE
 from ...data_type import DataType
 from ...global_metadata import GlobalMetadataDesc
 
-from lazyllm import LOG, once_wrapper
+from lazyllm import LOG
 from lazyllm.common import override
 from lazyllm.thirdparty import chromadb
 
@@ -34,9 +34,8 @@ class ChromadbStore(LazyLLMStoreBase):
         self._primary_key = 'uid'
 
     @override
-    @once_wrapper(reset_on_pickle=True)
-    def lazy_init(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
-                  global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs):
+    def connect(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
+                global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs):
         self._global_metadata_desc = global_metadata_desc
         self._embed_dims = embed_dims
         self._embed_datatypes = embed_datatypes

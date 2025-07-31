@@ -3,7 +3,7 @@ import re
 from abc import ABC, abstractmethod
 from enum import IntFlag, auto
 from typing import Optional, List, Union, Set, Dict, Any
-from lazyllm import once_wrapper, LazyLLMRegisterMetaABCClass
+from lazyllm import LazyLLMRegisterMetaABCClass
 from pydantic import BaseModel, Field
 
 from ..data_type import DataType
@@ -71,10 +71,9 @@ class StoreCapability(IntFlag):
 class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
     capability: StoreCapability
 
-    @once_wrapper(reset_on_pickle=True)
     @abstractmethod
-    def lazy_init(self, *args, **kwargs):
-        """ lazy init """
+    def connect(self, *args, **kwargs):
+        """ connect to the store """
         raise NotImplementedError
 
     @abstractmethod

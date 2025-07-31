@@ -14,7 +14,7 @@ from ..utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff,
 from ...data_type import DataType
 from ...global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 
-from lazyllm import warp, pipeline, LOG, config, once_wrapper
+from lazyllm import warp, pipeline, LOG, config
 from lazyllm.common import override
 from lazyllm.thirdparty import boto3
 
@@ -46,8 +46,7 @@ class SenseCoreStore(LazyLLMStoreBase):
         self._image_url_config = kwargs.get("image_url_config")
 
     @override
-    @once_wrapper(reset_on_pickle=True)
-    def lazy_init(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs) -> None:
+    def connect(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs) -> None:
         """ load the store """
         self._check_s3()
         self._global_metadata_desc = global_metadata_desc
