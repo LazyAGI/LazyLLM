@@ -1677,7 +1677,7 @@ add_example('rag.dataReader.FileReader', '''
 >>> content = reader("yourpath/") 
 ''')
 
-add_chinese_doc('tools.rag.readers.readerBase.LazyLLMReaderBase', '''
+add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase', '''
 基础文档读取器类，提供了文档加载的基本接口。继承自ModuleBase，使用LazyLLMRegisterMetaClass作为元类。
 
 Args:
@@ -1690,7 +1690,7 @@ Args:
 - 自动转换为标准化的DocNode格式
 ''')
 
-add_english_doc('tools.rag.readers.readerBase.LazyLLMReaderBase', '''
+add_english_doc('rag.readers.readerBase.LazyLLMReaderBase', '''
 Base document reader class that provides basic interfaces for document loading. Inherits from ModuleBase and uses LazyLLMRegisterMetaClass as metaclass.
 
 Args:
@@ -1703,7 +1703,7 @@ Args:
 - Automatically converts to standardized DocNode format
 ''')
 
-add_example('tools.rag.readers.readerBase.LazyLLMReaderBase', '''
+add_example('rag.readers.readerBase.LazyLLMReaderBase', '''
 ```python
 from lazyllm.tools.rag.readers.readerBase import LazyLLMReaderBase
 from lazyllm.tools.rag.doc_node import DocNode
