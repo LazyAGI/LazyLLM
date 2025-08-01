@@ -364,7 +364,7 @@ add_example('FileSystemQueue.clear', """\
 True
 """)
 
-add_chinese_doc('common.multiprocessing.SpawnProcess.start', '''
+add_chinese_doc('multiprocessing.SpawnProcess.start', '''
 使用spawn方式启动进程。
 
 此方法在启动进程时强制使用spawn方式，这种方式会创建一个全新的Python解释器进程。spawn方式相比fork更安全，特别是在多线程环境下。
@@ -375,7 +375,7 @@ add_chinese_doc('common.multiprocessing.SpawnProcess.start', '''
 - 继承自multiprocessing.Process.start()的所有功能
 ''')
 
-add_english_doc('common.multiprocessing.SpawnProcess.start', '''
+add_english_doc('multiprocessing.SpawnProcess.start', '''
 Start the process using spawn method.
 
 This method forces the use of spawn method when starting the process, which creates a brand new Python interpreter process. Spawn is safer than fork, especially in multi-threaded environments.
@@ -386,7 +386,7 @@ This method forces the use of spawn method when starting the process, which crea
 - Inherits all functionality from multiprocessing.Process.start()
 ''')
 
-add_example('common.multiprocessing.SpawnProcess.start', '''
+add_example('multiprocessing.SpawnProcess.start', '''
 ```python
 from lazyllm.common.multiprocessing import SpawnProcess
 
