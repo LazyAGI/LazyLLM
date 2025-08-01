@@ -1,33 +1,33 @@
-# 本项目展示了如何使用Google Custom Search JSON API实现一个智能搜索代理
-# 可通过API查询获取最新的网络搜索结果并格式化输出
+# This project demonstrates how to build an intelligent search agent using the Google Custom Search JSON API
+# It allows querying the latest web search results via the API and formatting the output
 
-## !!! abstract "通过本节您将学习到以下内容"
-## - 如何使用Google Custom Search JSON API进行网络搜索
-## - 如何封装搜索功能为可复用的Agent类
-## - 如何格式化输出搜索结果
+## !!! abstract "In this section, you will learn the following:"
+## - How to perform web searches using the Google Custom Search JSON API
+## - How to encapsulate the search functionality into a reusable Agent class
+## - How to format and display search results
 
-## 项目依赖
+## Project Dependencies
 
-### 确保安装以下依赖：
+### Make sure the following dependencies are installed:
 ```bash
 pip install lazyllm
 ```
-## 代码实现
+## Code Implementation
 ``` python
 from lazyllm.tools.tools import *
 from typing import Dict, Optional, List
 import json
-## Step 1: 初始化搜索代理
+## Step 1: Initialize the Search Agent
 
-**功能说明：**
-- 创建GoogleSearchAgent实例，配置API访问参数
-- 初始化底层GoogleSearch工具
+**Function Description：**
+- Create an instance of GoogleSearchAgent and configure the API access parameters
+- Initialize the underlying GoogleSearch tool
 
-**参数说明**
-- api_key (str): Google Custom Search JSON API密钥
-- search_engine_id (str): 搜索引擎ID
-- timeout (int): 请求超时时间，默认为10秒
-- proxies (Optional[Dict]): 代理设置，默认为None
+**Parameter Description**
+- api_key (str): Google Custom Search JSON API key
+- search_engine_id (str): Search engine ID
+- timeout (int): Request timeout in seconds, default is 10
+- proxies (Optional[Dict]): Proxy settings, default is None
 class GoogleSearchAgent:
 def __init__(self, api_key: str, search_engine_id: str,
              timeout: int = 10, proxies: Optional[Dict] = None):
@@ -37,9 +37,9 @@ def __init__(self, api_key: str, search_engine_id: str,
         timeout=timeout,
         proxies=proxies
     )
-## Step 2: 执行搜索查询
-**功能说明：**
-- 发送搜索请求到Google API, 处理返回结果并格式化
+## Step 2: Perform a Search Query
+**Function Description：**
+- Send a search request to the Google API, process the returned results, and format them
 def search(self, query: str,
            date_restrict: str = 'm1',
            max_results: int = 5) -> List[Dict]:
@@ -62,7 +62,7 @@ def search(self, query: str,
     except Exception as e:
         print(f"Search error: {str(e)}")
         return []
-## Step 3: 格式化打印搜索结果
+## Step 3: Format and Print Search Results
 def print_results(self, results: List[Dict]):
     if not results:
         print("No results found.")
@@ -75,9 +75,9 @@ def print_results(self, results: List[Dict]):
         print(f"   {item['snippet']}")
 ```
 
-## 示例运行结果
+## Example Output
 
-#### 示例场景：
+#### Example Scenario：
 ```python
 if __name__ == "__main__":
     API_KEY = "YOUR_API_KEY"
@@ -88,10 +88,10 @@ if __name__ == "__main__":
     print(f"Search results for: '{query}'")
     search_agent.print_results(results)
 ```
-**问题**
+**Question**
 "Search results for: 'latest AI advancements 2023'"
 
-**程序控制台输出：**
+**Console Output：**
 
 ```
 Found 3 results:

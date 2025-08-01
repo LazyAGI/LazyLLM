@@ -1,37 +1,41 @@
-# 代码助手代理(CodeAssistantAgent)
+# Code Assistant Agent (CodeAssistantAgent)
 
-## 本项目展示了一个基于大语言模型的智能代码助手，可识别用户意图并执行代码生成、代码解释和思路总结等功能。
+## Project Overview
 
-## !!! abstract "通过本节您将学习到以下内容"
-## - 如何构建多功能的代码助手代理
-## - 如何实现意图识别与任务分发
-## - 如何实现交互式的代码生成与解释功能
+This project demonstrates an intelligent code assistant powered by a large language model.  
+It can identify user intent and perform tasks such as code generation, code explanation, and idea summarization.
 
-## 项目依赖
+## !!! abstract "In this section, you will learn the following:"
 
-确保安装以下依赖：
+- How to build a multi-functional code assistant agent  
+- How to implement intent recognition and task dispatching  
+- How to create interactive features for code generation and explanation  
+
+## Project Dependencies
+
+Make sure the following dependency is installed:
 
 ```bash
 pip install lazyllm
 ```
-## 代码实现
+## Code Implementation
 ``` python
 from typing import List, Dict, Any
 import lazyllm
-## Step 1: 初始化代理
+## Step 1: Initialize the Agent
 
-**功能说明：**
-- 配置大语言模型和意图分类器
-- 设置默认意图列表和示例
+**Function Description：**
+- Configure the large language model and intent classifier
+- Set default intent list and examples
 
-**参数说明**
-- llm (str): 大语言模型实例
-- intent_list (List[str]): 支持的意图列表，默认为['生成代码', '解释', '总结']
-- prompt (str): 基础提示词
-- intent_constrain (str): 意图分类约束条件
-- intent_attention (str): 意图分类注意事项
-- intent_examples (List[List[str]]): 意图分类示例
-- return_trace (bool): 是否返回执行轨迹，默认为False
+**Parameter Description:**
+- llm (str): The large language model instance
+- intent_list (List[str]): Supported intents, default is ['Code Generation', 'Explanation', 'Summarization']
+- prompt (str): Base prompt for the model
+- intent_constrain (str): Constraint conditions for intent classification
+- intent_attention (str): Notes or special considerations for intent classification
+- intent_examples (List[List[str]]): Example pairs for intent classification
+- return_trace (bool): Whether to return execution trace, default is False
 class CodeAssistantAgent:
     def __init__(self, llm: str,
                  intent_list: List[str] = None,
@@ -43,104 +47,107 @@ class CodeAssistantAgent:
         self.generator = CodeGenerator(base_model=llm, prompt=prompt)
         self.intent_classifier = IntentClassifier(
             llm=llm,
-            intent_list=intent_list or ['生成代码', '解释', '总结'],
+            intent_list = intent_list or ['code generation', 'explanation', 'summarization']
             prompt=prompt,
             constrain=intent_constrain,
             attention=intent_attention,
             examples=intent_examples or [],
             return_trace=return_trace
         )
-## Step 2: 代码生成
-**功能说明：**
-- 根据指令生成Python代码
+## Step 2: Code Generation  
+**Function Description:**  
+- Generate Python code based on the given instruction  
     def generate_code(self, instruction: str, context: str = "") -> str:
-        prompt = f"{context}\n\n请根据以下要求编写Python代码:\n{instruction}" if context else f"请根据以下要求编写Python代码:\n{instruction}"
+        prompt = f"{context}\n\nPlease write Python code according to the following instruction:\n{instruction}" if context else f"Please write Python code according to the following instruction:\n{instruction}"
         return self.generator(prompt)
-## Step 3: 代码解释
-**功能说明：**
-- 解释代码逻辑和功能
+## Step 3: Code Explanation
+**Function Description：**
+- Explain the logic and function of the given code
     def explain_code(self, code: str) -> str:
-        prompt = f"请为以下Python代码添加详细注释并解释其逻辑：\n{code}"
+        prompt = f"Please add detailed comments and explain the logic of the following Python code:\n{code}"
         return self.generator(prompt)
-## Step 4: 对话总结
-**功能说明：**
-- 生成结构化摘要
+
+## Step 4: Explain the logic and function of the given code
+**Function Description：**
+- Generate a structured summary of the conversation
     def summarize_thoughts(self, history: List[Dict[str, Any]]) -> str:
-        convo = "\n".join([f"用户: {m['user']}\n助手: {m['assistant']}" for m in history])
-        prompt = f"请基于以下对话内容，总结出核心思路和流程：\n{convo}"
+        convo = "\n".join([f"User: {m['user']}\nAssistant: {m['assistant']}" for m in history])
+        prompt = f"Based on the following conversation, summarize the core ideas and workflow:\n{convo}"
         return self.generator(prompt)
-## Step 5: 交互控制
-**功能说明：**
-- 管理对话循环, 维护对话历史
+
+## Step 5: Interactive Control
+**Function Description：**
+- Manage the interactive loop and maintain conversation history
     def interactive_mode(self, context: str = "", history: List[Dict[str, Any]] = None):
         if history is None:
             history = []
-        print("进入交互模式，输入'exit'退出...")
+        print("Entering interactive mode. Type 'exit' to quit...")
+
         while True:
-            user_input = input("\n您: ")
+            user_input = input("\nYou: ")
             if user_input.lower() == 'exit':
                 break
-                
+
             intent = self.intent_classifier.forward(user_input, llm_chat_history=history)
             try:
-                if intent == '生成代码':
+                if intent == 'code generation':
                     result = self.generate_code(user_input, context)
-                    print("\n[代码生成] 生成的代码如下：\n")
+                    print("\n[Code Generation] Generated code:\n")
                     print(result)
                     history.append({'user': user_input, 'assistant': result})
 
-                elif intent == '解释':
+                elif intent == 'explanation':
                     last_code = history[-1]['assistant'] if history else ''
                     result = self.explain_code(last_code)
-                    print("\n[代码解释] 解释结果：\n")
+                    print("\n[Code Explanation] Explanation result:\n")
                     print(result)
                     history.append({'user': user_input, 'assistant': result})
 
-                elif intent == '总结':
+                elif intent == 'summarization':
                     result = self.summarize_thoughts(history)
-                    print("\n[思路总结] 总结如下：\n")
+                    print("\n[Thought Summarization] Summary:\n")
                     print(result)
                     history.append({'user': user_input, 'assistant': result})
 
                 else:
-                    print("无法识别您的需求，默认进行代码生成。")
+                    print("Unable to recognize your intent, defaulting to code generation.")
                     result = self.generate_code(user_input, context)
                     print(result)
                     history.append({'user': user_input, 'assistant': result})
 
             except Exception as e:
-                print(f"执行时出错: {e}")
-
-
+                print(f"Error during execution: {e}")
 
 ```
 
-## 示例运行结果
+## Example Execution
 
-#### 示例场景：
+#### Example Scenario:
+
 ```python
 if __name__ == '__main__':
     chat = lazyllm.OnlineChatModule()
     assistant = CodeAssistantAgent(
         llm=chat,
-        intent_list=['生成代码', '解释', '总结'],
+        intent_list=['code generation', 'explanation', 'summarization'],
         intent_examples=[
-            ['请实现排序函数', '生成代码'],
-            ['写一个代码来实现agent流程', '生成代码'],
-            ['解释代码意义功能', '解释'],
-            ['这段代码什么意思？', '解释'],
-            ['现在能给出思路总结吗', '总结']
+            ['Please implement a sorting function', 'code generation'],
+            ['Write code to implement an agent flow', 'code generation'],
+            ['Explain what this code does', 'explanation'],
+            ['What does this code mean?', 'explanation'],
+            ['Can you now provide a summary of the thought process?', 'summarization']
         ]
     )
     assistant.interactive_mode()
-```
 
-**输入**
-"生成一段二分类算法的代码"
 
-**程序控制台输出：**
+**Input**  
+"Generate a binary classification algorithm"
+
+**Console Output:**
 ```python
-[代码生成] 生成的代码如下：
+[Code Generation] The generated code is as follows:
+
 
 
 import numpy as np
@@ -186,12 +193,13 @@ if __name__ == "__main__":
     acc = binary_classification(data, labels)
     print(f"Model Accuracy: {acc:.2f}")
 ```
-**输入**
-"解释这代码"
+**Input**  
+"Explain this code"
 
-**程序控制台输出：**
+**Console Output:**
 ```python
-[代码解释] 解释结果：
+[Code Explanation] Explanation result:
+
 
 
 import numpy as np
