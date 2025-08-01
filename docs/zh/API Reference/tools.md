@@ -121,7 +121,8 @@ lazyllm.tools.rag.transform.NodeTransform
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_processor.DocumentProcessor
-    members: [register_algorithm, drop_algorithm]
+    members: register_algorithm, drop_algorithm
+    exclude-members:
 
 ::: lazyllm.tools.rag.dataReader.SimpleDirectoryReader
     members:
