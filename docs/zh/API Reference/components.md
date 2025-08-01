@@ -19,7 +19,9 @@
 ::: lazyllm.components.auto.AutoFinetune
     options:
       heading_level: 3
-
+::: lazyllm.components.finetune.base.DummyFinetune
+    options:
+      heading_level: 3
 ---
 
 ## Deploy
@@ -57,6 +59,10 @@
       heading_level: 3
       members: cmd, geturl
 
+::: lazyllm.components.deploy.OCRDeploy
+    options:
+      heading_level: 3
+      
 ---
 
 ## Launcher

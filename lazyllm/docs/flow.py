@@ -175,6 +175,10 @@ add_chinese_doc('Parallel', """\
 ```        
 
 Args:
+    _scatter (bool, optional): 如果为 ``True``，输入将在项目之间分割。如果为 ``False``，相同的输入将传递给所有项目。默认为 ``False``。
+    _concurrent (bool, optional): 如果为 ``True``，操作将使用线程并发执行。如果为 ``False``，操作将顺序执行。默认为 ``True``。
+    multiprocessing (bool, optional): 如果为 ``True``，将使用多进程而不是多线程进行并行执行。这可以提供真正的并行性，但会增加进程间通信的开销。默认为 ``False``。
+    auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
     args: 基类的可变长度参数列表。
     _scatter (bool, optional): 如果为 ``True``，输入将在项目之间分割。如果为 ``False``，相同的输入将传递给所有项目。默认为 ``False``。
     _concurrent (Union[bool, int], optional): 如果为 ``True``，操作将使用线程并发执行。如果为整数，则指定最大并发数。如果为 ``False``，操作将顺序执行。默认为 ``True``。
@@ -238,6 +242,12 @@ The ``Parallel.sequential`` method can be visualized as follows:
 Args:
     args: Variable length argument list passed to the Parallel constructor.
     kwargs: Keyword arguments passed to the Parallel constructor.
+    _scatter (bool, optional): If ``True``, the input is split across the items. If ``False``, the same input is passed to all items. Defaults to ``False``.
+    _concurrent (bool, optional): If ``True``, operations will be executed concurrently using threading. If ``False``, operations will be executed sequentially. Defaults to ``True``.
+    multiprocessing (bool, optional): If ``True``, multiprocessing will be used instead of multithreading for parallel execution. This can provide true parallelism but adds overhead for inter-process communication. Defaults to ``False``.
+    auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
+    args: Variable length argument list for the base class.
+    kwargs: Arbitrary keyword arguments for the base class.
 
 **Returns:**\n
 - Parallel: A new Parallel instance configured for sequential execution.
