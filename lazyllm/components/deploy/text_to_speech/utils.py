@@ -1,46 +1,29 @@
 import os
 import uuid
-import base64
-from io import BytesIO
 from lazyllm.thirdparty import scipy, numpy as np
-from ...utils.file_operate import delete_old_files
+from ...utils.file_operate import _delete_old_files
 import lazyllm
 from lazyllm import LOG, LazyLLMLaunchersBase
 from typing import Optional
 from ..base import LazyLLMDeployBase
 
 
-def sound_to_file(sound: 'np.array', file_path: str, sample_rate: int = 24000) -> str:
+def _sound_to_file(sound: 'np.array', file_path: str, sample_rate: int = 24000) -> str:
     scaled_audio = np.int16(sound / np.max(np.abs(sound)) * 32767)
     scipy.io.wavfile.write(file_path, sample_rate, scaled_audio)
     return [file_path]
 
-def sounds_to_files(sounds: list, directory: str, sample_rate: int = 24000) -> list:
+def _sounds_to_files(sounds: list, directory: str, sample_rate: int = 24000) -> list:
     if not os.path.exists(directory):
         os.makedirs(directory)
-    delete_old_files(directory)
+    _delete_old_files(directory)
     unique_id = uuid.uuid4()
     path_list = []
     for i, sound in enumerate(sounds):
         file_path = os.path.join(directory, f'sound_{unique_id}_{i}.wav')
-        sound_to_file(sound, file_path, sample_rate)
+        _sound_to_file(sound, file_path, sample_rate)
         path_list.append(file_path)
     return path_list
-
-def sound_to_base64(sound: 'np.array', mime_type: str = 'audio/wav', sample_rate: int = 24000) -> str:
-    scaled_audio = np.int16(sound / np.max(np.abs(sound)) * 32767)
-    buffer = BytesIO()
-    scipy.io.wavfile.write(buffer, sample_rate, scaled_audio)
-    buffer.seek(0)
-    base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
-    return f"data:{mime_type};base64,{base64_str}"
-
-def sounds_to_base64_list(sounds: list, mime_type: str = 'audio/wav', sample_rate: int = 24000) -> list:
-    base64_list = []
-    for sound in sounds:
-        base64_str = sound_to_base64(sound, mime_type, sample_rate)
-        base64_list.append(base64_str)
-    return base64_list
 
 class TTSBase(LazyLLMDeployBase):
     func = None
