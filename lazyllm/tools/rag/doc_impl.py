@@ -151,18 +151,10 @@ class DocImpl:
                 embed_dims[k] = len(embedding)
                 embed_datatypes[k] = DataType.FLOAT_VECTOR
 
-        if isinstance(self.store, Dict):
-            self.store = _DocumentStore(algo_name=self._algo_name, store_config=self.store,
-                                        group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                        embed_dims=embed_dims, embed_datatypes=embed_datatypes,
-                                        global_metadata_desc=self._global_metadata_desc)
-        elif isinstance(self.store, LazyLLMStoreBase):
-            self.store = _DocumentStore(algo_name=self._algo_name, store=self.store,
-                                        group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                        embed_dims=embed_dims, embed_datatypes=embed_datatypes,
-                                        global_metadata_desc=self._global_metadata_desc)
-        else:
-            raise ValueError(f'store type [{type(self.store)}] is not a dict or LazyLLMStoreBase.')
+        self.store = _DocumentStore(algo_name=self._algo_name, store=self.store,
+                                    group_embed_keys=self._activated_embeddings, embed=self.embed,
+                                    embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                                    global_metadata_desc=self._global_metadata_desc)
         self.store.activate_group(self._activated_groups)
 
     @once_wrapper(reset_on_pickle=True)
@@ -410,21 +402,20 @@ class DocImpl:
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,
                  filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
         self._lazy_init()
-        if index is None or index == 'default':
-            nodes = self.store.query(query=query, group_name=group_name, similarity_name=similarity,
-                                     similarity_cut_off=similarity_cut_off, topk=topk, embed_keys=embed_keys,
-                                     filters=filters, **similarity_kws, **kwargs)
-        else:
-            index_instance = self.store.get_index(type=index)
-            if not index_instance:
-                raise NotImplementedError(f"index type '{index}' is not supported currently.")
 
-            try:
-                nodes = index_instance.query(query=query, group_name=group_name, similarity_name=similarity,
-                                             similarity_cut_off=similarity_cut_off, topk=topk,
-                                             embed_keys=embed_keys, filters=filters, **similarity_kws, **kwargs)
-            except Exception as e:
-                raise RuntimeError(f'index type `{index}` of store `{type(self.store)}` query failed: {e}')
+        if index and index != 'default':
+            query_instance = self.store.get_index(type=index)
+            if query_instance is None:
+                raise NotImplementedError(f"Index type '{index}' is not registered in the store.")
+        else:
+            query_instance = self.store.get_index(type='default') or self.store
+        try:
+            nodes = query_instance.query(query=query, group_name=group_name, similarity_name=similarity,
+                                         similarity_cut_off=similarity_cut_off, topk=topk, embed_keys=embed_keys,
+                                         filters=filters, **similarity_kws, **kwargs)
+        except Exception as e:
+            raise RuntimeError(f'index type `{index}` of store `{type(self.store)}` query failed: {e}')
+
         for n in nodes:
             n._store = self.store
             n._node_groups = self.node_groups

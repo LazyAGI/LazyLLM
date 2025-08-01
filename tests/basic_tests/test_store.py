@@ -6,10 +6,10 @@ import unittest
 from lazyllm.tools.rag.store import (MapStore, ChromadbStore, MilvusStore, OpenSearchStore,
                                      SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
 from lazyllm.tools.rag.data_type import DataType
-
+from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
 data = [
     {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
-     'global_meta': {'doc_id': 'doc1', 'kb_id': 'kb1'},
+     'global_meta': {RAG_DOC_ID: 'doc1', RAG_KB_ID: 'kb1'},
      'embedding': {'vec_dense': [0.1, 0.2, 0.3], 'vec_sparse': {"1563": 0.212890625, "238": 0.1768798828125}},
      'type': 1, 'number': 0, 'kb_id': 'kb1',
      'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
@@ -17,7 +17,7 @@ data = [
      'parent': None, 'answer': "", 'image_keys': []},
 
     {'uid': 'uid2', 'doc_id': 'doc2', 'group': 'g2', 'content': 'test2', 'meta': {},
-     'global_meta': {'doc_id': 'doc2', 'kb_id': 'kb2'},
+     'global_meta': {RAG_DOC_ID: 'doc2', RAG_KB_ID: 'kb2'},
      'embedding': {'vec_dense': [0.3, 0.2, 0.1], 'vec_sparse': {"1563": 0.212890625, "238": 0.1768798828125}},
      'type': 1, 'number': 0, 'kb_id': 'kb2',
      'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
@@ -25,7 +25,7 @@ data = [
      'parent': 'p2', 'answer': "", 'image_keys': []},
 
     {'uid': 'uid3', 'doc_id': 'doc3', 'group': 'g1', 'content': 'test3', 'meta': {},
-     'global_meta': {'doc_id': 'doc3', 'kb_id': 'kb3'},
+     'global_meta': {RAG_DOC_ID: 'doc3', RAG_KB_ID: 'kb3'},
      'embedding': {'vec_dense': [0.3, 0.2, 0.1], 'vec_sparse': {"12": 0.212890625, "23": 0.1768798828125}},
      'type': 1, 'number': 0, 'kb_id': 'kb3',
      'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
@@ -76,11 +76,11 @@ class TestMapStore(unittest.TestCase):
 
     def test_delete_segments_by_kb_id(self):
         self.store1.upsert(self.collections[0], [data[0], data[2]])
-        self.store1.delete(self.collections[0], criteria={'kb_id': 'kb1'})
+        self.store1.delete(self.collections[0], criteria={RAG_KB_ID: 'kb1'})
         res = self.store1.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0], data[2])
-        self.store1.delete(self.collections[0], criteria={'kb_id': 'kb3'})
+        self.store1.delete(self.collections[0], criteria={RAG_KB_ID: 'kb3'})
         res = self.store1.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 0)
 
@@ -93,10 +93,10 @@ class TestMapStore(unittest.TestCase):
 
     def test_delete_segments_by_doc_id(self):
         self.store1.upsert(self.collections[0], [data[0], data[2]])
-        self.store1.delete(self.collections[0], criteria={'doc_id': ['doc2']})
+        self.store1.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
         res = self.store1.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 2)
-        self.store1.delete(self.collections[0], criteria={'doc_id': ['doc1']})
+        self.store1.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         res = self.store1.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0], data[2])
@@ -113,13 +113,13 @@ class TestMapStore(unittest.TestCase):
     def test_get_segments_by_kb_id(self):
         self.store1.upsert(self.collections[0], [data[0], data[2]])
         self.store1.upsert(self.collections[1], [data[1]])
-        res = self.store1.get(collection_name=self.collections[0], criteria={'kb_id': 'kb1'})
+        res = self.store1.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb1'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0], data[0])
-        res = self.store1.get(collection_name=self.collections[0], criteria={'kb_id': 'kb3'})
+        res = self.store1.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb3'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0], data[2])
-        res = self.store1.get(collection_name=self.collections[0], criteria={'kb_id': 'kb2'})
+        res = self.store1.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb2'})
         self.assertEqual(len(res), 0)
 
     def test_get_segments_by_uid(self):
@@ -137,12 +137,12 @@ class TestMapStore(unittest.TestCase):
     def test_get_segments_by_doc_id(self):
         self.store1.upsert(self.collections[0], [data[0], data[2]])
         self.store1.upsert(self.collections[1], [data[1]])
-        res = self.store1.get(collection_name=self.collections[0], criteria={'doc_id': ['doc1']})
+        res = self.store1.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0], data[0])
-        res = self.store1.get(collection_name=self.collections[0], criteria={'doc_id': ['doc2']})
+        res = self.store1.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
         self.assertEqual(len(res), 0)
-        res = self.store1.get(collection_name=self.collections[0], criteria={'doc_id': ['doc1', 'doc3']})
+        res = self.store1.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1', 'doc3']})
         self.assertEqual(len(res), 2)
 
     def test_mapstore_with_uri(self):
@@ -155,7 +155,7 @@ class TestMapStore(unittest.TestCase):
         res = store2.get(collection_name=self.collections[1])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0], data[1])
-        store2.delete(self.collections[0], criteria={'doc_id': ['doc1']})
+        store2.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         res = store2.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0], data[2])
@@ -170,19 +170,19 @@ class TestChromadbStore(unittest.TestCase):
     def setUp(self):
         self.data = [
             {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
-             'global_meta': {'doc_id': 'doc1', 'kb_id': 'kb1'},
+             'global_meta': {RAG_DOC_ID: 'doc1', RAG_KB_ID: 'kb1'},
              'embedding': {'vec_dense': [0.1, 0.2, 0.3]}, 'type': 1, 'number': 0, 'kb_id': 'kb1',
              'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
              'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
              'parent': None, 'answer': "", 'image_keys': []},
             {'uid': 'uid2', 'doc_id': 'doc2', 'group': 'g2', 'content': 'test2', 'meta': {},
-             'global_meta': {'doc_id': 'doc2', 'kb_id': 'kb2'},
+             'global_meta': {RAG_DOC_ID: 'doc2', RAG_KB_ID: 'kb2'},
              'embedding': {'vec_dense': [0.3, 0.2, 0.1]}, 'type': 1, 'number': 0, 'kb_id': 'kb2',
              'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
              'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
              'parent': 'p2', 'answer': "", 'image_keys': []},
             {'uid': 'uid3', 'doc_id': 'doc3', 'group': 'g1', 'content': 'test3', 'meta': {},
-             'global_meta': {'doc_id': 'doc3', 'kb_id': 'kb3'},
+             'global_meta': {RAG_DOC_ID: 'doc3', RAG_KB_ID: 'kb3'},
              'embedding': {'vec_dense': [0.3, 0.2, 0.1]}, 'type': 1, 'number': 0, 'kb_id': 'kb3',
              'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
              'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
@@ -218,11 +218,11 @@ class TestChromadbStore(unittest.TestCase):
 
     def test_delete_segments_by_kb_id(self):
         self.store.upsert(self.collections[0], [self.data[0], self.data[2]])
-        self.store.delete(self.collections[0], criteria={'kb_id': 'kb1'})
+        self.store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb1'})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), self.data[2].get('uid'))
-        self.store.delete(self.collections[0], criteria={'kb_id': 'kb3'})
+        self.store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb3'})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 0)
 
@@ -235,10 +235,10 @@ class TestChromadbStore(unittest.TestCase):
 
     def test_delete_segments_by_doc_id(self):
         self.store.upsert(self.collections[0], [self.data[0], self.data[2]])
-        self.store.delete(self.collections[0], criteria={'doc_id': ['doc2']})
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 2)
-        self.store.delete(self.collections[0], criteria={'doc_id': ['doc1']})
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), self.data[2].get('uid'))
@@ -255,15 +255,15 @@ class TestChromadbStore(unittest.TestCase):
     def test_get_segments_by_kb_id(self):
         self.store.upsert(self.collections[0], [self.data[0], self.data[2]])
         self.store.upsert(self.collections[1], [self.data[1]])
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb1'})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb1'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), self.data[0].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb3'})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb3'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), self.data[2].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb2'})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb2'})
         self.assertEqual(len(res), 0)
-        res = self.store.get(collection_name=self.collections[1], criteria={'kb_id': 'kb2'})
+        res = self.store.get(collection_name=self.collections[1], criteria={RAG_KB_ID: 'kb2'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), self.data[1].get('uid'))
 
@@ -285,12 +285,12 @@ class TestChromadbStore(unittest.TestCase):
     def test_get_segments_by_doc_id(self):
         self.store.upsert(self.collections[0], [self.data[0], self.data[2]])
         self.store.upsert(self.collections[1], [self.data[1]])
-        res = self.store.get(collection_name=self.collections[0], criteria={'doc_id': ['doc1']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), self.data[0].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'doc_id': ['doc2']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
         self.assertEqual(len(res), 0)
-        res = self.store.get(collection_name=self.collections[0], criteria={'doc_id': ['doc1', 'doc3']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1', 'doc3']})
         self.assertEqual(len(res), 2)
 
     def test_search(self):
@@ -318,11 +318,11 @@ class TestChromadbStore(unittest.TestCase):
         self.store.upsert(self.collections[0], [self.data[0], self.data[2]])
         self.store.upsert(self.collections[1], [self.data[1]])
         res = self.store.search(collection_name=self.collections[0], query_embedding=[0.1, 0.2, 0.3],
-                                embed_key='vec_dense', topk=2, filters={'kb_id': ['kb1']})
+                                embed_key='vec_dense', topk=2, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), self.data[0].get('uid'))
         res = self.store.search(collection_name=self.collections[1], query_embedding=[0.1, 0.2, 0.3],
-                                embed_key='vec_dense', topk=1, filters={'kb_id': ['kb1']})
+                                embed_key='vec_dense', topk=1, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 0)
 
 
@@ -379,11 +379,11 @@ class TestMilvusStore(unittest.TestCase):
 
     def test_delete_segments_by_kb_id(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.delete(self.collections[0], criteria={'kb_id': 'kb1'})
+        self.store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb1'})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
-        self.store.delete(self.collections[0], criteria={'kb_id': 'kb3'})
+        self.store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb3'})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 0)
 
@@ -396,10 +396,10 @@ class TestMilvusStore(unittest.TestCase):
 
     def test_delete_segments_by_doc_id(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.delete(self.collections[0], criteria={'doc_id': ['doc2']})
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 2)
-        self.store.delete(self.collections[0], criteria={'doc_id': ['doc1']})
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
@@ -416,22 +416,22 @@ class TestMilvusStore(unittest.TestCase):
     def test_get_segments_by_kb_id(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
         self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb1'})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb1'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb3'})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb3'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb2'})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb2'})
         self.assertEqual(len(res), 0)
-        res = self.store.get(collection_name=self.collections[1], criteria={'kb_id': 'kb2'})
+        res = self.store.get(collection_name=self.collections[1], criteria={RAG_KB_ID: 'kb2'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[1].get('uid'))
 
     def test_get_segments_by_kb_and_doc(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
         self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb1', 'doc_id': ['doc1']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb1', RAG_DOC_ID: ['doc1']})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
 
@@ -453,12 +453,12 @@ class TestMilvusStore(unittest.TestCase):
     def test_get_segments_by_doc_id(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
         self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.get(collection_name=self.collections[0], criteria={'doc_id': ['doc1']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'doc_id': ['doc2']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
         self.assertEqual(len(res), 0)
-        res = self.store.get(collection_name=self.collections[0], criteria={'doc_id': ['doc1', 'doc3']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1', 'doc3']})
         self.assertEqual(len(res), 2)
 
     def test_search(self):
@@ -496,11 +496,11 @@ class TestMilvusStore(unittest.TestCase):
         self.store.upsert(self.collections[0], [data[0], data[2]])
         self.store.upsert(self.collections[1], [data[1]])
         res = self.store.search(collection_name=self.collections[0], query_embedding=[0.1, 0.2, 0.3],
-                                embed_key='vec_dense', topk=2, filters={'kb_id': ['kb1']})
+                                embed_key='vec_dense', topk=2, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
         res = self.store.search(collection_name=self.collections[1], query_embedding=[0.1, 0.2, 0.3],
-                                embed_key='vec_dense', topk=1, filters={'kb_id': ['kb1']})
+                                embed_key='vec_dense', topk=1, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 0)
 
     @pytest.mark.skip(reason=("local test for milvus standalone, please set up a milvus standalone server"
@@ -548,11 +548,11 @@ class TestOpenSearchStore(unittest.TestCase):
 
     def test_delete_segments_by_kb_id(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.delete(self.collections[0], criteria={'kb_id': 'kb1'})
+        self.store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb1'})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
-        self.store.delete(self.collections[0], criteria={'kb_id': 'kb3'})
+        self.store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb3'})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 0)
 
@@ -565,10 +565,10 @@ class TestOpenSearchStore(unittest.TestCase):
 
     def test_delete_segments_by_doc_id(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.delete(self.collections[0], criteria={'doc_id': ['doc2']})
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 2)
-        self.store.delete(self.collections[0], criteria={'doc_id': ['doc1']})
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
@@ -585,15 +585,15 @@ class TestOpenSearchStore(unittest.TestCase):
     def test_get_segments_by_kb_id(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
         self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb1'})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb1'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb3'})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb3'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb2'})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb2'})
         self.assertEqual(len(res), 0)
-        res = self.store.get(collection_name=self.collections[1], criteria={'kb_id': 'kb2'})
+        res = self.store.get(collection_name=self.collections[1], criteria={RAG_KB_ID: 'kb2'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[1].get('uid'))
 
@@ -615,12 +615,12 @@ class TestOpenSearchStore(unittest.TestCase):
     def test_get_segments_by_doc_id(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
         self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.get(collection_name=self.collections[0], criteria={'doc_id': ['doc1']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'doc_id': ['doc2']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
         self.assertEqual(len(res), 0)
-        res = self.store.get(collection_name=self.collections[0], criteria={'doc_id': ['doc1', 'doc3']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1', 'doc3']})
         self.assertEqual(len(res), 2)
 
 
@@ -631,7 +631,7 @@ class TestSenseCoreStore(unittest.TestCase):
         self.collections = ["col_block", "col_line"]
         self.data = [
             {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'block', 'content': 'test1', 'meta': {},
-             'global_meta': {'doc_id': 'doc1', 'kb_id': 'kb1'},
+             'global_meta': {RAG_DOC_ID: 'doc1', RAG_KB_ID: 'kb1'},
              'embedding': {'bge_m3_dense': [0.1, 0.2, 0.3],
                            'bge_m3_sparse': {"1563": 0.212890625, "238": 0.1768798828125}},
              'type': 1, 'number': 0, 'kb_id': 'kb1',
@@ -640,7 +640,7 @@ class TestSenseCoreStore(unittest.TestCase):
              'parent': None, 'answer': "", 'image_keys': []},
 
             {'uid': 'uid2', 'doc_id': 'doc2', 'group': 'line', 'content': 'test2', 'meta': {},
-             'global_meta': {'doc_id': 'doc2', 'kb_id': 'kb2'},
+             'global_meta': {RAG_DOC_ID: 'doc2', RAG_KB_ID: 'kb2'},
              'embedding': {'bge_m3_dense': [0.3, 0.2, 0.1],
                            'bge_m3_sparse': {"1563": 0.212890625, "238": 0.1768798828125}},
              'type': 1, 'number': 0, 'kb_id': 'kb2',
@@ -671,22 +671,22 @@ class TestSenseCoreStore(unittest.TestCase):
 
     def test_upsert(self):
         self.store.upsert(self.collections[0], [data[0]])
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': data[0].get('kb_id')})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: data[0].get('kb_id')})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
 
     def test_delete_segments_by_uid(self):
         self.store.upsert(self.collections[0], [data[0]])
-        self.store.delete(self.collections[0], criteria={'uid': ['uid1'], 'kb_id': data[0].get('kb_id')})
+        self.store.delete(self.collections[0], criteria={'uid': ['uid1'], RAG_KB_ID: data[0].get('kb_id')})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 0)
 
     def test_delete_segments_by_doc_id(self):
         self.store.upsert(self.collections[0], [data[0]])
-        self.store.delete(self.collections[0], criteria={'doc_id': ['doc2'], 'kb_id': data[0].get('kb_id')})
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc2'], RAG_KB_ID: data[0].get('kb_id')})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
-        self.store.delete(self.collections[0], criteria={'doc_id': ['doc1'], 'kb_id': data[0].get('kb_id')})
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc1'], RAG_KB_ID: data[0].get('kb_id')})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 0)
 
@@ -694,14 +694,14 @@ class TestSenseCoreStore(unittest.TestCase):
         self.store.upsert(self.collections[0], [data[0]])
         self.store.upsert(self.collections[1], [data[1]])
         res = self.store.get(collection_name=self.collections[0],
-                             criteria={'uid': ['uid1'], 'kb_id': data[0].get('kb_id')})
+                             criteria={'uid': ['uid1'], RAG_KB_ID: data[0].get('kb_id')})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
         res = self.store.get(collection_name=self.collections[0],
-                             criteria={'uid': ['uid2'], 'kb_id': data[1].get('kb_id')})
+                             criteria={'uid': ['uid2'], RAG_KB_ID: data[1].get('kb_id')})
         self.assertEqual(len(res), 0)
         res = self.store.get(collection_name=self.collections[1],
-                             criteria={'uid': ['uid2'], 'kb_id': data[1].get('kb_id')})
+                             criteria={'uid': ['uid2'], RAG_KB_ID: data[1].get('kb_id')})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[1].get('uid'))
 
@@ -709,14 +709,14 @@ class TestSenseCoreStore(unittest.TestCase):
         self.store.upsert(self.collections[0], [data[0]])
         self.store.upsert(self.collections[1], [data[1]])
         res = self.store.get(collection_name=self.collections[0],
-                             criteria={'doc_id': ['doc1'], 'kb_id': data[0].get('kb_id')})
+                             criteria={RAG_DOC_ID: ['doc1'], RAG_KB_ID: data[0].get('kb_id')})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
         res = self.store.get(collection_name=self.collections[0],
-                             criteria={'doc_id': ['doc2'], 'kb_id': data[1].get('kb_id')})
+                             criteria={RAG_DOC_ID: ['doc2'], RAG_KB_ID: data[1].get('kb_id')})
         self.assertEqual(len(res), 0)
         res = self.store.get(collection_name=self.collections[1],
-                             criteria={'doc_id': ['doc2'], 'kb_id': data[1].get('kb_id')})
+                             criteria={RAG_DOC_ID: ['doc2'], RAG_KB_ID: data[1].get('kb_id')})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[1].get('uid'))
 
@@ -755,11 +755,11 @@ class TestSenseCoreStore(unittest.TestCase):
         self.store.upsert(self.collections[0], [data[0], data[2]])
         self.store.upsert(self.collections[1], [data[1]])
         res = self.store.search(collection_name=self.collections[0], query_embedding=[0.1, 0.2, 0.3],
-                                embed_key='vec_dense', topk=2, filters={'kb_id': ['kb1']})
+                                embed_key='vec_dense', topk=2, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
         res = self.store.search(collection_name=self.collections[1], query_embedding=[0.1, 0.2, 0.3],
-                                embed_key='vec_dense', topk=1, filters={'kb_id': ['kb1']})
+                                embed_key='vec_dense', topk=1, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 0)
 
 
@@ -815,11 +815,11 @@ class TestHybridStore(unittest.TestCase):
 
     def test_delete_segments_by_kb_id(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.delete(self.collections[0], criteria={'kb_id': 'kb1'})
+        self.store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb1'})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
-        self.store.delete(self.collections[0], criteria={'kb_id': 'kb3'})
+        self.store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb3'})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 0)
 
@@ -832,10 +832,10 @@ class TestHybridStore(unittest.TestCase):
 
     def test_delete_segments_by_doc_id(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.delete(self.collections[0], criteria={'doc_id': ['doc2']})
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 2)
-        self.store.delete(self.collections[0], criteria={'doc_id': ['doc1']})
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         res = self.store.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
@@ -852,15 +852,15 @@ class TestHybridStore(unittest.TestCase):
     def test_get_segments_by_kb_id(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
         self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb1'})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb1'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb3'})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb3'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'kb_id': 'kb2'})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb2'})
         self.assertEqual(len(res), 0)
-        res = self.store.get(collection_name=self.collections[1], criteria={'kb_id': 'kb2'})
+        res = self.store.get(collection_name=self.collections[1], criteria={RAG_KB_ID: 'kb2'})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[1].get('uid'))
 
@@ -882,12 +882,12 @@ class TestHybridStore(unittest.TestCase):
     def test_get_segments_by_doc_id(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
         self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.get(collection_name=self.collections[0], criteria={'doc_id': ['doc1']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'doc_id': ['doc2']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
         self.assertEqual(len(res), 0)
-        res = self.store.get(collection_name=self.collections[0], criteria={'doc_id': ['doc1', 'doc3']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1', 'doc3']})
         self.assertEqual(len(res), 2)
 
     def test_search(self):
@@ -926,10 +926,10 @@ class TestHybridStore(unittest.TestCase):
         self.store.upsert(self.collections[1], [data[1]])
         res = self.store.search(collection_name=self.collections[0], query="test1",
                                 query_embedding=[0.1, 0.2, 0.3], embed_key='vec_dense', topk=2,
-                                filters={'kb_id': ['kb1']})
+                                filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
         res = self.store.search(collection_name=self.collections[1], query="test2",
                                 query_embedding=[0.1, 0.2, 0.3], embed_key='vec_dense', topk=1,
-                                filters={'kb_id': ['kb1']})
+                                filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 0)

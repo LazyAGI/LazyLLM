@@ -21,6 +21,8 @@ DEFAULT_INDEX_CONFIG = {
 
 class ChromadbStore(LazyLLMStoreBase):
     capability = StoreCapability.VECTOR
+    need_embedding = True
+    supports_index_registration = False
 
     def __init__(self, dir: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = None,
                  index_kwargs: Optional[Union[Dict, List]] = None, client_kwargs: Optional[Dict] = {},
@@ -75,11 +77,8 @@ class ChromadbStore(LazyLLMStoreBase):
         for d in data:
             res['ids'].append(d.get('uid'))
             res['embeddings'].append(d.get('embedding', {}).get(embed_key))
-            res['metadatas'].append({})
-            global_meta = d.get('global_meta', {})
-            for k, v in global_meta.items():
-                if k in self._global_metadata_desc:
-                    res['metadatas'][-1][self._gen_global_meta_key(k)] = v
+            res['metadatas'].append({self._gen_global_meta_key(k): v for k, v in d.get('global_meta', {}).items()
+                                     if k in self._global_metadata_desc})
         return res
 
     @override
@@ -150,7 +149,6 @@ class ChromadbStore(LazyLLMStoreBase):
         return res
 
     def _construct_criteria(self, criteria: dict) -> dict:
-        """ construct criteria for delete """
         res = {}
         if self._primary_key in criteria:
             res['ids'] = criteria[self._primary_key]

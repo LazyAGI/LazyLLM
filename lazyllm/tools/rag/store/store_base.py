@@ -70,25 +70,23 @@ class StoreCapability(IntFlag):
 
 class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
     capability: StoreCapability
+    need_embedding: bool = True
+    supports_index_registration: bool = False
 
     @abstractmethod
     def connect(self, *args, **kwargs):
-        """ connect to the store """
         raise NotImplementedError
 
     @abstractmethod
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
-        """ upsert data to the store """
         raise NotImplementedError
 
     @abstractmethod
     def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
-        """ delete data from the store """
         raise NotImplementedError
 
     @abstractmethod
     def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:
-        """ get data from the store """
         raise NotImplementedError
 
     @abstractmethod
@@ -96,5 +94,4 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
                query_embedding: Optional[Union[dict, List[float]]] = None, topk: int = 10,
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                embed_key: Optional[str] = None, **kwargs) -> List[dict]:
-        """ search data from the store, search result: [{"uid": str, "score": float}] """
         raise NotImplementedError

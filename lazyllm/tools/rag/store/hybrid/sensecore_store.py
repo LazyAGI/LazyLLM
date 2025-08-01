@@ -39,6 +39,8 @@ class Segment(BaseModel):
 
 class SenseCoreStore(LazyLLMStoreBase):
     capability = StoreCapability.ALL
+    need_embedding = False
+    supports_index_registration = False
 
     def __init__(self, uri: str = '', **kwargs):
         self._uri = uri
@@ -47,7 +49,6 @@ class SenseCoreStore(LazyLLMStoreBase):
 
     @override
     def connect(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs) -> None:
-        """ load the store """
         self._check_s3()
         self._global_metadata_desc = global_metadata_desc
 
@@ -60,7 +61,6 @@ class SenseCoreStore(LazyLLMStoreBase):
         return
 
     def _serialize_data(self, data: dict) -> Dict:  # noqa: C901
-        """ serialize node to dict """
         data = dict(data)
         content = json.dumps(data.get('content', ''), ensure_ascii=False)
         matches = IMAGE_PATTERN.findall(content)
@@ -162,7 +162,6 @@ class SenseCoreStore(LazyLLMStoreBase):
         return segment.model_dump()
 
     def _deserialize_data(self, segment: Dict) -> Dict:
-        """ deserialize node from dict """
         data = {
             'uid': segment.get('segment_id', ''),
             'doc_id': segment.get('document_id', ''),
@@ -247,7 +246,6 @@ class SenseCoreStore(LazyLLMStoreBase):
         return job_id
 
     def _check_insert_job_status(self, job_id: str) -> None:
-        """ check if the insert task is finished """
         url = urljoin(self._uri, f"v1/writerSegmentJobs/{job_id}")
         headers = {'Accept': 'application/json'}
         for wait_time in fibonacci_backoff(max_retries=15):
@@ -268,7 +266,6 @@ class SenseCoreStore(LazyLLMStoreBase):
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
-        """ upsert data to the store """
         if not data: return True
         try:
             with pipeline() as insert_ppl:
@@ -284,7 +281,6 @@ class SenseCoreStore(LazyLLMStoreBase):
 
     @override
     def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
-        """ delete data from the store """
         try:
             url = urljoin(self._uri, 'v1/segments:bulkDelete')
             headers = {'Accept': '*/*', 'Content-Type': 'application/json'}
@@ -304,7 +300,6 @@ class SenseCoreStore(LazyLLMStoreBase):
 
     @override
     def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:  # noqa: C901
-        """ get data from the store """
         uids = criteria.get('uid')
         doc_ids = criteria.get(RAG_DOC_ID)
         kb_id = criteria.get(RAG_KB_ID)

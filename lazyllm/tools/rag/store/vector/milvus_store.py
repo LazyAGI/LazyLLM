@@ -1,4 +1,3 @@
-""" Milvus Vector Store (For Vector Store Only)"""
 import copy
 
 from packaging import version
@@ -30,9 +29,11 @@ BUILTIN_KEYS = {
 
 class MilvusStore(LazyLLMStoreBase):
     capability = StoreCapability.VECTOR
+    need_embedding = True
+    supports_index_registration = False
 
     def __init__(self, uri: str = '', db_name: str = 'lazyllm', index_kwargs: Optional[Union[Dict, List]] = None,
-                 client_kwargs: Optional[Dict] = {}, ):
+                 client_kwargs: Optional[Dict] = {}):
         # one database, different collection for each group (for standalone, add prefix to collection name)
         # when there's data need upsert, collection creation happen.
         self._uri = uri
@@ -49,9 +50,9 @@ class MilvusStore(LazyLLMStoreBase):
         self._embed_datatypes = embed_datatypes
         self._global_metadata_desc = global_metadata_desc
         if self._uri and parse.urlparse(self._uri).scheme.lower() not in ['unix', 'http', 'https', 'tcp', 'grpc']:
-            self._type = 'local'
+            self._is_remote = False
         else:
-            self._type = 'remote'
+            self._is_remote = True
         self._constant_fields = self._get_constant_fields()
         self._connect()
         LOG.info("[Milvus Vector Store] init success!")
@@ -60,7 +61,7 @@ class MilvusStore(LazyLLMStoreBase):
     def _connect(self):
         try:
             self._client = pymilvus.MilvusClient(uri=self._uri, **self._client_kwargs)
-            if self._type == 'remote' and self._db_name:
+            if self._is_remote and self._db_name:
                 existing_dbs = self._client.list_databases()
                 if self._db_name not in existing_dbs:
                     self._client.create_database(self._db_name)
@@ -78,7 +79,6 @@ class MilvusStore(LazyLLMStoreBase):
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
-        """ upsert data to the store """
         try:
             if not data: return
             data_embeddings = data[0].get('embedding', {})
@@ -106,7 +106,6 @@ class MilvusStore(LazyLLMStoreBase):
 
     @override
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
-        """ delete data from the store """
         try:
             self._connect()
             if not self._client.has_collection(collection_name):
@@ -125,7 +124,6 @@ class MilvusStore(LazyLLMStoreBase):
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
-        """ get data from the store """
         try:
             self._connect()
             if not self._client.has_collection(collection_name):
@@ -159,7 +157,6 @@ class MilvusStore(LazyLLMStoreBase):
             return []
 
     def _get_constant_fields(self) -> List[pymilvus.FieldSchema]:
-        """ get constant field schema for collection """
         field_list = []
         for k, kws in BUILTIN_KEYS.items():
             field_list.append(pymilvus.FieldSchema(name=k, **kws))
@@ -202,7 +199,6 @@ class MilvusStore(LazyLLMStoreBase):
         self._client.create_collection(collection_name=collection_name, schema=schema, index_params=index_params)
 
     def _serialize_data(self, d: dict) -> dict:
-        """ prepare data for upsert """
         # only keep primary_key, embedding and global_meta
         res = {
             self._primary_key: d.get(self._primary_key, '')
@@ -217,7 +213,6 @@ class MilvusStore(LazyLLMStoreBase):
         return res
 
     def _deserialize_data(self, d: dict) -> dict:
-        """ deserialize data from vector store """
         res = {
             self._primary_key: d.get(self._primary_key, ''),
             'embedding': {}
@@ -234,7 +229,6 @@ class MilvusStore(LazyLLMStoreBase):
         return GLOBAL_META_KEY_PREFIX + k
 
     def _construct_criteria(self, criteria: dict) -> dict:
-        """ construct criteria for delete """
         res = {}
         criteria = dict(criteria)
         if self._primary_key in criteria:

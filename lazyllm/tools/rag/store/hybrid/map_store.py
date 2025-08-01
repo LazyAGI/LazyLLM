@@ -8,16 +8,18 @@ from lazyllm import LOG
 from lazyllm.common import override
 
 from ..store_base import LazyLLMStoreBase, StoreCapability, DEFAULT_KB_ID
+from ...global_metadata import RAG_DOC_ID, RAG_KB_ID
 
 
 class MapStore(LazyLLMStoreBase):
     capability = StoreCapability.ALL
+    need_embedding = True
+    supports_index_registration = True
 
     def __init__(self, uri: Optional[str] = None, **kwargs):
         self._uri = uri  # filepath to SQLite .db for persistence
 
     def _ensure_table(self, cursor: sqlite3.Cursor, table: str):
-        # Create table for a specific collection
         cursor.execute(f"""
         CREATE TABLE IF NOT EXISTS {table} (
             uid TEXT PRIMARY KEY,
@@ -40,7 +42,13 @@ class MapStore(LazyLLMStoreBase):
     def _load_from_uri(self, collection_name: str, uri: str):
         conn = sqlite3.connect(uri)
         cursor = conn.cursor()
-        self._ensure_table(cursor, collection_name)
+
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (collection_name,))
+        if not cursor.fetchone():
+            LOG.warning(f"[MapStore] Table '{collection_name}' does not exist in SQLite DB {uri}, skipping.")
+            conn.close()
+            return
+
         res = []
         for row in cursor.execute(
             f"SELECT uid, doc_id, \"group\", content, meta, global_meta,"
@@ -110,7 +118,7 @@ class MapStore(LazyLLMStoreBase):
                 assert uid and doc_id, "[MapStore - upsert] uid and doc_id are required"
                 self._uid2data[uid] = item
                 self._collection2uids[collection_name].add(uid)
-                self._col_kb_doc_uids[collection_name][item.get('kb_id', DEFAULT_KB_ID)][doc_id].add(uid)
+                self._col_kb_doc_uids[collection_name][item.get(RAG_KB_ID, DEFAULT_KB_ID)][doc_id].add(uid)
                 self._col_doc_uids[collection_name][doc_id].add(uid)
             if self._uri:
                 self._save_to_uri(collection_name, self._uri, data)
@@ -129,9 +137,11 @@ class MapStore(LazyLLMStoreBase):
                 data = self._uid2data.pop(uid, None)
                 if not data:
                     continue
+                kb_id = data.get(RAG_KB_ID, DEFAULT_KB_ID)
+                doc_id = data.get('doc_id')
                 self._collection2uids[collection_name].remove(uid)
-                self._col_kb_doc_uids[collection_name][data.get('kb_id', DEFAULT_KB_ID)][data.get('doc_id')].remove(uid)
-                self._col_doc_uids[collection_name][data.get('doc_id')].remove(uid)
+                self._col_kb_doc_uids[collection_name][kb_id][doc_id].remove(uid)
+                self._col_doc_uids[collection_name][doc_id].remove(uid)
             if self._uri:
                 conn = sqlite3.connect(self._uri)
                 cursor = conn.cursor()
@@ -154,8 +164,8 @@ class MapStore(LazyLLMStoreBase):
             return list(self._collection2uids.get(collection_name, set()))
         else:
             uids = criteria.get('uid', [])
-            kb_id = criteria.get('kb_id')
-            doc_ids = criteria.get('doc_id', [])
+            kb_id = criteria.get(RAG_KB_ID)
+            doc_ids = criteria.get(RAG_DOC_ID, [])
             if uids:
                 return [uid for uid in uids if uid in self._collection2uids.get(collection_name, set())]
             elif kb_id and doc_ids:
@@ -173,5 +183,6 @@ class MapStore(LazyLLMStoreBase):
     @override
     def search(self, collection_name: str, query: str, topk: int,
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[dict]:
+        # TODO(chenjiahao): implement search in map store, using default index to search data in map store
         raise NotImplementedError(
             "[MapStore - search] Not implemented, please use default index to search data in map store...")

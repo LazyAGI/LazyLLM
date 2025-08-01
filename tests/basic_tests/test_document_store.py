@@ -10,15 +10,15 @@ from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
 from lazyllm.tools.rag.doc_node import DocNode, QADocNode, ImageDocNode
 
 node1 = DocNode(uid="1", text="text1", group="group1", parent=None,
-                global_metadata={"kb_id": "kb1", "doc_id": "doc1", "tags": ["tag1"]})
+                global_metadata={RAG_KB_ID: "kb1", RAG_DOC_ID: "doc1", "tags": ["tag1"]})
 node2 = DocNode(uid="2", text="text2", group="group1", parent=None,
-                global_metadata={"kb_id": "kb2", "doc_id": "doc2", "tags": ["tag2"]})
+                global_metadata={RAG_KB_ID: "kb2", RAG_DOC_ID: "doc2", "tags": ["tag2"]})
 node3 = DocNode(uid="3", text="text3", group="group2", parent=node1,
-                global_metadata={"kb_id": "kb3", "doc_id": "doc3", "tags": ["tag3"]})
+                global_metadata={RAG_KB_ID: "kb3", RAG_DOC_ID: "doc3", "tags": ["tag3"]})
 qa_node1 = QADocNode(uid="4", query="query1", answer="answer1", group="qa", parent=node1,
-                     global_metadata={"kb_id": "kb1", "doc_id": "doc3", "tags": ["tag4"]})
+                     global_metadata={RAG_KB_ID: "kb1", RAG_DOC_ID: "doc3", "tags": ["tag4"]})
 image_node1 = ImageDocNode(uid="5", image_path="image1.png", group="image", parent=node1,
-                           global_metadata={"kb_id": "kb1", "doc_id": "doc4", "tags": ["tag5"]})
+                           global_metadata={RAG_KB_ID: "kb1", RAG_DOC_ID: "doc4", "tags": ["tag5"]})
 
 
 class TestStoreWithMapAndMilvus(unittest.TestCase):
@@ -169,10 +169,10 @@ class TestStoreWithMapAndMilvus(unittest.TestCase):
 
     def test_query_with_filters(self):
         nodes = self.document_store.query(query="text1", group_name="group1", embed_keys=["vec_dense"],
-                                          topk=2, filters={"doc_id": ["doc1"]})
+                                          topk=2, filters={RAG_DOC_ID: ["doc1"]})
         self.assertEqual(len(nodes), 1)
         self.assertEqual(nodes[0].uid, node1.uid)
         nodes = self.document_store.query(query="text1", group_name="group1", embed_keys=["vec_dense"],
-                                          topk=2, filters={"doc_id": ["doc2"]})
+                                          topk=2, filters={RAG_DOC_ID: ["doc2"]})
         self.assertEqual(len(nodes), 1)
         self.assertEqual(nodes[0].uid, node2.uid)

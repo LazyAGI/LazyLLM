@@ -58,6 +58,10 @@ class DocNode:
         return self._uid
 
     @property
+    def group(self) -> str:
+        return self._group
+
+    @property
     def text(self) -> str:
         if isinstance(self._content, str):
             return self._content

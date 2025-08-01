@@ -46,15 +46,29 @@ class _Processor:
                 metadata.setdefault(RAG_DOC_ID, doc_id)
                 metadata.setdefault(RAG_DOC_PATH, path)
             root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
-            self._store.update_nodes(root_nodes)
+            self._store.update_nodes(self._set_nodes_number(root_nodes))
             self._create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)
             if image_nodes:
-                self._store.update_nodes(image_nodes)
+                self._store.update_nodes(self._set_nodes_number(image_nodes))
                 self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
             LOG.info("Add documents done!")
         except Exception as e:
             LOG.error(f"Add documents failed: {e}, {traceback.format_exc()}")
             raise e
+
+    def _set_nodes_number(self, nodes: List[DocNode]) -> List[DocNode]:
+        doc_group_number = {}
+        for node in nodes:
+            doc_id = node.global_metadata.get(RAG_DOC_ID)
+            group_name = node.group
+            if doc_id not in doc_group_number:
+                doc_group_number[doc_id] = {}
+            if group_name not in doc_group_number[doc_id]:
+                doc_group_number[doc_id][group_name] = 1
+            node.metadata['number'] = doc_group_number[doc_id][group_name]
+            doc_group_number[doc_id][group_name] += 1
+        del doc_group_number
+        return nodes
 
     def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
         for group_name in self._store.activated_groups():
@@ -73,7 +87,7 @@ class _Processor:
         t = self._node_groups[group_name]['transform']
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, group_name)
         nodes = transform.batch_forward(p_nodes, group_name)
-        self._store.update_nodes(nodes)
+        self._store.update_nodes(self._set_nodes_number(nodes))
         return nodes
 
     def _get_or_create_nodes(self, group_name, uids: Optional[List[str]] = None):
@@ -126,7 +140,7 @@ class _Processor:
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, cur_name)
         nodes = transform.batch_forward(p_nodes, cur_name)
         # reparse need set global_metadata
-        self._store.update_nodes(nodes)
+        self._store.update_nodes(self._set_nodes_number(nodes))
 
         for group_name in self._store.activated_groups():
             group = self._node_groups.get(group_name)

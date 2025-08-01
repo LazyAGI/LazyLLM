@@ -7,6 +7,8 @@ from ..store_base import LazyLLMStoreBase, StoreCapability
 
 class HybridStore(LazyLLMStoreBase):
     capability = StoreCapability.ALL
+    need_embedding = True
+    supports_index_registration = False
 
     def __init__(self, segment_store: LazyLLMStoreBase, vector_store: LazyLLMStoreBase):
         self.segment_store: LazyLLMStoreBase = segment_store
@@ -19,7 +21,12 @@ class HybridStore(LazyLLMStoreBase):
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
-        return self.segment_store.upsert(collection_name=collection_name, data=data) and \
+        segments = []
+        for segment in data:
+            seg = segment.copy()
+            seg.pop('embedding', None)
+            segments.append(seg)
+        return self.segment_store.upsert(collection_name=collection_name, data=segments) and \
             self.vector_store.upsert(collection_name=collection_name, data=data)
 
     @override
@@ -31,6 +38,7 @@ class HybridStore(LazyLLMStoreBase):
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         res_segments = self.segment_store.get(collection_name=collection_name, criteria=criteria, **kwargs)
         res_vectors = self.vector_store.get(collection_name=collection_name, criteria=criteria, **kwargs)
+        if not res_segments: return []
         data = {}
         for item in res_segments:
             data[item.get('uid')] = item
@@ -53,7 +61,7 @@ class HybridStore(LazyLLMStoreBase):
             if not res: return []
             uid2score = {item['uid']: item['score'] for item in res}
             uids = list(uid2score.keys())
-            segments = self.segment_store.get(collection_name=collection_name, criteria={'uid': uids}, **kwargs)
+            segments = self.segment_store.get(collection_name=collection_name, criteria={'uid': uids})
             for segment in segments:
                 segment['score'] = uid2score.get(segment['uid'], 0)
             return segments

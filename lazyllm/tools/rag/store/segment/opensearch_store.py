@@ -43,6 +43,8 @@ DEFAULT_INDEX_BODY = {
 
 class OpenSearchStore(LazyLLMStoreBase):
     capability = StoreCapability.SEGMENT
+    need_embedding = False
+    supports_index_registration = False
 
     def __init__(self, uris: List[str], client_kwargs: Optional[Dict] = {},
                  index_kwargs: Optional[Union[Dict, List]] = None, **kwargs):
@@ -55,14 +57,12 @@ class OpenSearchStore(LazyLLMStoreBase):
 
     @override
     def connect(self, *args, **kwargs) -> None:
-        """ load the store """
         if self._client_kwargs.get('user') and self._client_kwargs.get('password'):
             self._client_kwargs['http_auth'] = (self._client_kwargs.pop('user'), self._client_kwargs.pop('password'))
         self._client = opensearchpy.OpenSearch(hosts=self._uris, **self._client_kwargs)
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
-        """ upsert data to the store """
         if not data: return
         try:
             if not self._client.indices.exists(index=collection_name):
@@ -85,7 +85,6 @@ class OpenSearchStore(LazyLLMStoreBase):
 
     @override
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
-        """ delete data from the store """
         try:
             if not self._client.indices.exists(index=collection_name):
                 LOG.warning(f"[OpenSearchStore - delete] Index {collection_name} does not exist")
@@ -105,7 +104,6 @@ class OpenSearchStore(LazyLLMStoreBase):
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
-        """ get data from the store """
         try:
             if not self._client.indices.exists(index=collection_name):
                 LOG.warning(f"[OpenSearchStore - get] Index {collection_name} does not exist")
@@ -137,11 +135,9 @@ class OpenSearchStore(LazyLLMStoreBase):
 
     @override
     def search(self, collection_name: str, query: str, topk: int, **kwargs) -> List[dict]:
-        """ search data from the store """
         raise NotImplementedError("[OpenSearchStore - search] Not implemented yet")
 
     def _serialize_node(self, segment: dict):
-        """ serialize node to a dict that can be stored in OpenSearch """
         seg = dict(segment)
         seg.pop('embedding', None)
         seg['global_meta'] = json.dumps(seg.get('global_meta', {}), ensure_ascii=False)
@@ -150,14 +146,12 @@ class OpenSearchStore(LazyLLMStoreBase):
         return seg
 
     def _deserialize_node(self, segment: dict) -> dict:
-        """ deserialize node from dict """
         segment['meta'] = json.loads(segment.get('meta', "{}"))
         segment['global_meta'] = json.loads(segment.get('global_meta', "{}"))
         segment['image_keys'] = json.loads(segment.get('image_keys', "[]"))
         return segment
 
     def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:
-        """ construct criteria for OpenSearch """
         criteria = dict(criteria) if criteria else {}
         if not criteria:
             return {}

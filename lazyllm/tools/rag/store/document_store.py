@@ -5,8 +5,7 @@ from lazyllm import LOG, once_wrapper
 
 from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment, INSERT_BATCH_SIZE,
                          BUILDIN_GLOBAL_META_DESC, DEFAULT_KB_ID)
-from .hybrid import HybridStore, MapStore, SenseCoreStore
-from .vector import ChromadbStore, MilvusStore
+from .hybrid import HybridStore, MapStore
 from ..default_index import DefaultIndex
 from ..utils import parallel_do_embedding
 
@@ -18,7 +17,7 @@ from ..similarity import registered_similarities
 
 
 class _DocumentStore(object):
-    def __init__(self, algo_name: str, store_config: Optional[Dict] = None, store: Optional[LazyLLMStoreBase] = None,
+    def __init__(self, algo_name: str, store: Union[Dict, LazyLLMStoreBase],
                  group_embed_keys: Optional[Dict[str, Set[str]]] = None, embed: Optional[Dict[str, Callable]] = None,
                  embed_dims: Optional[Dict[str, int]] = None, embed_datatypes: Optional[Dict[str, DataType]] = None,
                  global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None):
@@ -30,16 +29,59 @@ class _DocumentStore(object):
         self._global_metadata_desc = (global_metadata_desc or {}) | BUILDIN_GLOBAL_META_DESC
         self._activated_groups = set()
         self._indices = {}
-        self._impl = None
-        self._store_config = store_config
-        self._store = store
+        self._impl = self._prepare_store(store)
+        if self._impl.supports_index_registration:
+            self._indices['default'] = DefaultIndex(self._embed, self)
+
+    def _prepare_store(self, store: Union[Dict, LazyLLMStoreBase]) -> LazyLLMStoreBase:
+        if isinstance(store, dict):
+            # create store from store config
+            if store.get('indices'): store = self._convert_legacy_to_config(store)
+            store = self._create_store_from_config(store)
+        if store.capability == StoreCapability.VECTOR:
+            segment_store = MapStore()
+            return HybridStore(segment_store=segment_store, vector_store=store)
+        else:
+            return store
+
+    def _make_store(self, cfg: Dict[str, Any]) -> LazyLLMStoreBase:
+        if not cfg: return None
+        stype = cfg.get('type')
+        cls = getattr(lazyllm.store, stype, None)
+        if not cls:
+            raise NotImplementedError(f"Not implemented store type: {stype}")
+        return cls(**cfg.get('kwargs', {}))
+
+    def _convert_legacy_to_config(self, cfg: Dict[str, Any]) -> Dict[str, Any]:
+        LOG.warning("[_DocumentStore] 'smart_embedding_index' is deprecated, will be converted to milvus type config")
+        indices = cfg.pop('indices')
+        backend = indices.get('backend')
+        if not backend:
+            raise ValueError("backend is required in indices")
+        cfg = {'type': backend, 'kwargs': indices.get('kwargs', {})}
+        return cfg
+
+    def _create_store_from_config(self, cfg: Optional[Dict[str, Any]] = None) -> LazyLLMStoreBase:
+        if cfg.get('type'):
+            # map/sensecore/chroma/milvus
+            s_store = self._make_store(cfg)
+            if s_store.capability in (StoreCapability.ALL, StoreCapability.SEGMENT):
+                return s_store
+            else:
+                LOG.warning("Only vector store is supported, segment store will be in‑memory MapStore")
+                return HybridStore(segment_store=MapStore(), vector_store=s_store)
+        else:
+            seg_store = self._make_store(cfg.get('segment_store', {}))
+            vec_store = self._make_store(cfg.get('vector_store', {}))
+            assert seg_store and vec_store, "Please provide both segment_store and vector_store in store_config"
+            assert seg_store.capability in (StoreCapability.ALL, StoreCapability.SEGMENT), \
+                "Segment store must be a segment store"
+            assert vec_store.capability in (StoreCapability.ALL, StoreCapability.VECTOR), \
+                "Vector store must be a vector store"
+            return HybridStore(segment_store=seg_store, vector_store=vec_store)
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self):
-        if not self._impl:
-            self._impl = self._create_store_from_config(self._store_config) if self._store_config\
-                else self._create_store(self._store)
-            if isinstance(self._impl, MapStore): self._indices['default'] = DefaultIndex(self._embed, self)
         self._impl.connect(embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
                            global_metadata_desc=self._global_metadata_desc, collections=self.activated_groups())
 
@@ -47,76 +89,6 @@ class _DocumentStore(object):
     def impl(self):
         self._lazy_init()
         return self._impl
-
-    def _make_store(self, cfg: Dict[str, Any], deprecated_msg: str = None) -> LazyLLMStoreBase:
-        if not cfg:
-            return None
-        stype = cfg['type']
-        cls = getattr(lazyllm.store, stype, None)
-        if not cls:
-            raise NotImplementedError(f"Not implemented store type: {stype}")
-        if deprecated_msg:
-            LOG.warning(deprecated_msg)
-        return cls(**cfg.get('kwargs', {}))
-
-    def _handle_legacy(self, cfg: Dict[str, Any]) -> LazyLLMStoreBase:
-        msg = "[_DocumentStore] Single store in store_config is deprecated, use segment_store/vector_store instead"
-        LOG.warning(msg)
-        st = self._make_store(cfg, None)
-        if st and st.capability == StoreCapability.ALL:
-            return st
-        if cfg['type'] in ('chroma', 'milvus'):
-            LOG.warning(f"[_DocumentStore] Single {cfg['type']} store is deprecated …")
-            segment = MapStore()
-            vector = st if isinstance(st, (ChromadbStore, MilvusStore)) else None
-            return HybridStore(segment_store=segment, vector_store=vector)
-        return st
-
-    def _handle_segment_only(self, seg: Any, cfg: Dict[str, Any]):
-        if seg.capability == StoreCapability.ALL:
-            return seg
-        idx = cfg.get('indices', {}).get('smart_embedding_index')
-        if idx:
-            LOG.warning("[_DocumentStore] 'smart_embedding_index' is deprecated, "
-                        "please configure 'vector_store' instead")
-            backend = idx['backend']
-            vec_cfg = {'type': backend, 'kwargs': idx.get('kwargs', {})}
-            vec = self._make_store(vec_cfg)
-            return HybridStore(seg, vec)
-        LOG.warning("[_DocumentStore] Only segment_store provided; to use vector retrieval "
-                    "please configure vector_store")
-        return seg
-
-    def _handle_vector_only(self, vec: Any):
-        if vec.capability == StoreCapability.ALL:
-            return vec
-        LOG.warning("[_DocumentStore] Only vector_store provided; segment will be in‑memory MapStore")
-        return HybridStore(segment_store=MapStore(), vector_store=vec)
-
-    def _create_store_from_config(self, cfg: Optional[Dict[str, Any]] = None):
-        if cfg and cfg.get('type'):
-            return self._handle_legacy(cfg)
-        seg = self._make_store(cfg.get('segment_store', {}))
-        vec = self._make_store(cfg.get('vector_store', {}))
-        if not seg and not vec:
-            LOG.warning("[_DocumentStore] No store configured; defaulting to in‑memory MapStore")
-            return MapStore()
-
-        if seg and vec:
-            return HybridStore(segment_store=seg, vector_store=vec)
-        if seg:
-            return self._handle_segment_only(seg, cfg)
-        return self._handle_vector_only(vec)
-
-    def _create_store(self, store: Optional[LazyLLMStoreBase] = None) -> LazyLLMStoreBase:
-        if store.capability == StoreCapability.ALL:
-            return store
-        elif store.capability == StoreCapability.SEGMENT:
-            return self._handle_segment_only(store, {})
-        elif store.capability == StoreCapability.VECTOR:
-            return self._handle_vector_only(store)
-        else:
-            raise ValueError("store must be a segment or vector store")
 
     def activate_group(self, groups: Union[str, List[str]]) -> bool:
         if isinstance(groups, str):
@@ -139,20 +111,11 @@ class _DocumentStore(object):
         if not nodes:
             return
         try:
-            # NOTE: sensecore store do embedding by itself, skip
-            if not isinstance(self.impl, SenseCoreStore):
+            if self.impl.need_embedding:
                 parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
             group_segments = defaultdict(list)
             for node in nodes:
                 group_segments[node._group].append(self._serialize_node(node))
-
-            group_cnt = {}
-            for group, segments in group_segments.items():
-                if group not in group_cnt:
-                    group_cnt[group] = 1
-                for segment in segments:
-                    segment['number'] = group_cnt[group]
-                group_cnt[group] += 1
             # upsert batch segments
             for group, segments in group_segments.items():
                 if not self.is_group_active(group):
@@ -256,10 +219,6 @@ class _DocumentStore(object):
               topk: Optional[int] = 10, embed_keys: Optional[List[str]] = None,
               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
         self._validate_query_params(group_name, similarity_name, embed_keys)
-        # temporary, when search in map store, use default index
-        if isinstance(self.impl, MapStore):
-            return self.get_index('default').query(query, group_name, similarity_name, similarity_cut_off,
-                                                   topk, embed_keys, filters, **kwargs)
         segments = []
         if embed_keys:
             if self.impl.capability == StoreCapability.SEGMENT:
@@ -274,20 +233,14 @@ class _DocumentStore(object):
                 if search_res:
                     sim_cut_off = similarity_cut_off if isinstance(similarity_cut_off, float)\
                         else similarity_cut_off[embed_key]
-                    for res in search_res:
-                        if res.get('score', 0) < sim_cut_off:
-                            continue
-                        segments.append(res)
+                    segments.extend([res for res in search_res if res.get('score', 0) >= sim_cut_off])
         else:
             # text search
             if self.impl.capability == StoreCapability.VECTOR:
                 raise ValueError(f"[_DocumentStore - {self._algo_name}] Text search is not"
                                  " supported when no segment store is provided")
-            search_res = self.impl.search(collection_name=self._gen_collection_name(group_name),
-                                          query=query, topk=topk, filters=filters, **kwargs)
-            if search_res:
-                segments.extend(search_res)
-        if not segments: return []
+            segments.extend(self.impl.search(collection_name=self._gen_collection_name(group_name),
+                                             query=query, topk=topk, filters=filters, **kwargs))
         return [self._deserialize_node(segment, segment.get('score', 0)) for segment in segments]
 
     def _validate_query_params(self, group_name: str, similarity: str,
@@ -325,17 +278,11 @@ class _DocumentStore(object):
             self.impl.delete(self._gen_collection_name(group))
 
     def register_index(self, type: str, index: IndexBase) -> None:
-        # TODO: By now, only map store support index registration
-        assert isinstance(self.impl, MapStore), \
-            f"[_DocumentStore - {self._algo_name}] Only map store support index registration"
+        assert self._impl.supports_index_registration, \
+            f"[_DocumentStore - {self._algo_name}] Store {type(self.impl)} does not support index registration"
         self._indices[type] = index
 
     def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
-        # TODO: By now, only map store support index registration
-        assert isinstance(self.impl, MapStore), \
-            f"[_DocumentStore - {self._algo_name}] Only map store support index registration"
-        if not type:
-            type = 'default'
         return self._indices.get(type)
 
     def _serialize_node(self, node: DocNode) -> dict:
@@ -346,6 +293,7 @@ class _DocumentStore(object):
             content=node.text,
             meta=node.metadata,
             global_meta=node.global_metadata,
+            number=node.metadata.get('number', 0),
             kb_id=node.global_metadata.get(RAG_KB_ID, DEFAULT_KB_ID),
             excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
             excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,
