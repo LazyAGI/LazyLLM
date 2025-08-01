@@ -33,4 +33,9 @@
 ::: lazyllm.common.FileSystemQueue
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
-    
+
+## LazyLLMCMD
+
+::: lazyllm.common.LazyLLMCMD
+    members: with_cmd, get_args
+    exclude-members:
