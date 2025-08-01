@@ -1525,7 +1525,7 @@ processor = DocumentProcessor(url="http://remote-server:8080")
 ```
 """)
 
-add_chinese_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
+add_chinese_doc('rag.doc_processor.DocumentProcessor.Impl.register_algorithm', """
 注册算法到文档处理器。
 
 Args:
@@ -1540,7 +1540,7 @@ Args:
 - 注册成功后可以使用该算法处理文档
 """)
 
-add_english_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
+add_english_doc('rag.doc_processor.DocumentProcessor.Impl.register_algorithm', """
 Register an algorithm to the document processor.
 
 Args:
@@ -1555,7 +1555,7 @@ Args:
 - After successful registration, the algorithm can be used to process documents
 """)
 
-add_example('rag.doc_processor.DocumentProcessor.register_algorithm', """
+add_example('rag.doc_processor.DocumentProcessor.Impl.register_algorithm', """
 ```python
 from lazyllm.rag import DocumentProcessor, FileStore, PDFReader
 
@@ -1580,7 +1580,7 @@ processor.register_algorithm(
 ```
 """)
 
-add_chinese_doc('rag.doc_processor.DocumentProcessor.drop_algorithm', """
+add_chinese_doc('rag.doc_processor.DocumentProcessor.Impl.drop_algorithm', """
 从文档处理器中移除指定算法。
 
 Args:
@@ -1592,7 +1592,7 @@ Args:
 - 移除后该算法将无法继续使用
 """)
 
-add_english_doc('rag.doc_processor.DocumentProcessor.drop_algorithm', """
+add_english_doc('rag.doc_processor.DocumentProcessor.Impl.drop_algorithm', """
 Remove specified algorithm from document processor.
 
 Args:
@@ -1604,7 +1604,7 @@ Args:
 - After removal, the algorithm will no longer be available
 """)
 
-add_example('rag.doc_processor.DocumentProcessor.drop_algorithm', """
+add_example('rag.doc_processor.DocumentProcessor.Impl.drop_algorithm', """
 ```python
 # Remove algorithm
 processor.drop_algorithm("pdf_processor")
