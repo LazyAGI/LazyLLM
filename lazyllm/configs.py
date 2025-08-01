@@ -1,9 +1,11 @@
 import os
 from enum import Enum
 import json
-from typing import List, Union
+from typing import List, Union, Optional
 from contextlib import contextmanager
 import logging
+
+import lazyllm
 
 
 class Mode(Enum):
@@ -49,7 +51,7 @@ class Config(object):
         yield
         self.impl[name] = old_value
 
-    def add(self, name, type, default=None, env=None):
+    def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None):
         update_params = (type, default, env)
         if name not in self._config_params or self._config_params[name] != update_params:
             if name in self._config_params:
@@ -64,7 +66,8 @@ class Config(object):
         self._update_impl(name, type, default, env)
         return self
 
-    def _update_impl(self, name, type, default=None, env=None):
+    def _update_impl(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None,
+                     env: Union[str, dict] = None):
         self.impl[name] = self.cfgs.pop(name) if name in self.cfgs else default
         if isinstance(env, dict):
             for k, v in env.items():
@@ -78,15 +81,18 @@ class Config(object):
 
     def __getitem__(self, name):
         try:
+            if isinstance(name, bytes): name = name.decode('utf-8')
             return self.impl[name]
         except KeyError:
-            raise RuntimeError(f'Key {name} is not in lazyllm global config')
+            raise RuntimeError(f'Key `{name}` is not in lazyllm global config')
 
     def __str__(self):
         return str(self.impl)
 
-    def refresh(self, targets: Union[str, List[str]] = None) -> None:
+    def refresh(self, targets: Union[bytes, str, List[str]] = None) -> None:
+        lazyllm.LOG.warning(f'refresh config with targets: {targets}')
         names = targets
+        if isinstance(targets, bytes): targets = targets.decode('utf-8')
         if isinstance(targets, str):
             names = targets.lower()
             if names.startswith('lazyllm_'):
