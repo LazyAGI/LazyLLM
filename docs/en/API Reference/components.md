@@ -51,6 +51,12 @@
 ::: lazyllm.components.deploy.Mindie
     options:
       heading_level: 3
+
+::: lazyllm.components.deploy.relay.base.RelayServer
+    options:
+      heading_level: 3
+      members: [cmd, geturl]
+
 ---
 
 ## Launcher
