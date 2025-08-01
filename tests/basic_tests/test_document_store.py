@@ -3,7 +3,7 @@ import tempfile
 import unittest
 from unittest.mock import MagicMock
 
-from lazyllm.tools.rag.store.document_store import DocumentStore
+from lazyllm.tools.rag.store.document_store import _DocumentStore
 from lazyllm.tools.rag.store import MapStore, MilvusStore, BUILDIN_GLOBAL_META_DESC, HybridStore
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
@@ -55,13 +55,14 @@ class TestStoreWithMapAndMilvus(unittest.TestCase):
             "image": {}
         }
         self.global_metadata_desc = BUILDIN_GLOBAL_META_DESC
-        self.document_store = DocumentStore(algo_name="__default__",
-                                            store=HybridStore(MapStore(), MilvusStore(uri=self.store_dir,
-                                                                                      index_kwargs=self.index_kwargs)),
-                                            group_embed_keys=self.group_embed_keys,
-                                            embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
-                                            embed=self.mock_embed,
-                                            global_metadata_desc=self.global_metadata_desc)
+        self.document_store = _DocumentStore(algo_name="__default__",
+                                             store=HybridStore(MapStore(),
+                                                               MilvusStore(uri=self.store_dir,
+                                                                           index_kwargs=self.index_kwargs)),
+                                             group_embed_keys=self.group_embed_keys,
+                                             embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
+                                             embed=self.mock_embed,
+                                             global_metadata_desc=self.global_metadata_desc)
         self.document_store.activate_group(["group1", "group2", "qa", "image"])
         self.document_store.update_nodes([node1, node2, node3, qa_node1, image_node1])
 

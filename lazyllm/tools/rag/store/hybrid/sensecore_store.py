@@ -21,18 +21,18 @@ from lazyllm.thirdparty import boto3
 
 class Segment(BaseModel):
     segment_id: str
-    dataset_id: Optional[str] = "__default__"
+    dataset_id: Optional[str] = '__default__'
     document_id: str
     group: str
-    content: Optional[str] = ""
+    content: Optional[str] = ''
     meta: str
     global_meta: str
     excluded_embed_metadata_keys: Optional[List[str]] = Field(default_factory=list)
     excluded_llm_metadata_keys: Optional[List[str]] = Field(default_factory=list)
-    parent: Optional[str] = ""
+    parent: Optional[str] = ''
     children: Optional[Dict[str, Any]] = Field(default_factory=dict)
     embedding_state: Optional[List[str]] = Field(default_factory=list)
-    answer: Optional[str] = ""
+    answer: Optional[str] = ''
     image_keys: Optional[List[str]] = Field(default_factory=list)
     number: Optional[int] = 0
 
@@ -40,10 +40,10 @@ class Segment(BaseModel):
 class SenseCoreStore(LazyLLMStoreBase):
     capability = StoreCapability.ALL
 
-    def __init__(self, uri: str = "", **kwargs):
+    def __init__(self, uri: str = '', **kwargs):
         self._uri = uri
-        self._s3_config = kwargs.get("s3_config")
-        self._image_url_config = kwargs.get("image_url_config")
+        self._s3_config = kwargs.get('s3_config')
+        self._image_url_config = kwargs.get('image_url_config')
 
     @override
     def connect(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs) -> None:
@@ -52,11 +52,11 @@ class SenseCoreStore(LazyLLMStoreBase):
         self._global_metadata_desc = global_metadata_desc
 
     def _check_s3(self):
-        obj_key = "lazyllm/warmup.txt"
-        upload_data_to_s3("warmup", bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
-                          aws_access_key_id=self._s3_config["access_key"],
-                          aws_secret_access_key=self._s3_config["secret_access_key"],
-                          use_minio=self._s3_config["use_minio"], endpoint_url=self._s3_config["endpoint_url"])
+        obj_key = 'lazyllm/warmup.txt'
+        upload_data_to_s3('warmup', bucket_name=self._s3_config['bucket_name'], object_key=obj_key,
+                          aws_access_key_id=self._s3_config['access_key'],
+                          aws_secret_access_key=self._s3_config['secret_access_key'],
+                          use_minio=self._s3_config['use_minio'], endpoint_url=self._s3_config['endpoint_url'])
         return
 
     def _serialize_data(self, data: dict) -> Dict:  # noqa: C901
@@ -65,22 +65,22 @@ class SenseCoreStore(LazyLLMStoreBase):
         content = json.dumps(data.get('content', ''), ensure_ascii=False)
         matches = IMAGE_PATTERN.findall(content)
         for title, image_path in matches:
-            if image_path.startswith("lazyllm"):
+            if image_path.startswith('lazyllm'):
                 continue
             image_file_name = os.path.basename(image_path)
             obj_key = f"lazyllm/images/{image_file_name}"
             try:
                 prefix = config['image_path_prefix']
             except Exception:
-                prefix = os.getenv("RAG_IMAGE_PATH_PREFIX", "")
+                prefix = os.getenv('RAG_IMAGE_PATH_PREFIX', '')
             file_path = create_file_path(path=image_path, prefix=prefix)
             try:
-                with open(file_path, "rb") as f:
-                    upload_data_to_s3(f.read(), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
-                                      aws_access_key_id=self._s3_config["access_key"],
-                                      aws_secret_access_key=self._s3_config["secret_access_key"],
-                                      use_minio=self._s3_config["use_minio"],
-                                      endpoint_url=self._s3_config["endpoint_url"])
+                with open(file_path, 'rb') as f:
+                    upload_data_to_s3(f.read(), bucket_name=self._s3_config['bucket_name'], object_key=obj_key,
+                                      aws_access_key_id=self._s3_config['access_key'],
+                                      aws_secret_access_key=self._s3_config['secret_access_key'],
+                                      use_minio=self._s3_config['use_minio'],
+                                      endpoint_url=self._s3_config['endpoint_url'])
                     content = content.replace(image_path, obj_key)
             except FileNotFoundError:
                 LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
@@ -90,10 +90,10 @@ class SenseCoreStore(LazyLLMStoreBase):
 
         if data.get('group') == LAZY_ROOT_NAME:
             obj_key = f"lazyllm/lazyllm_root/{data.get('uid')}.json"
-            upload_data_to_s3(content.encode('utf-8'), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
-                              aws_access_key_id=self._s3_config["access_key"],
-                              aws_secret_access_key=self._s3_config["secret_access_key"],
-                              use_minio=self._s3_config["use_minio"], endpoint_url=self._s3_config["endpoint_url"])
+            upload_data_to_s3(content.encode('utf-8'), bucket_name=self._s3_config['bucket_name'], object_key=obj_key,
+                              aws_access_key_id=self._s3_config['access_key'],
+                              aws_secret_access_key=self._s3_config['secret_access_key'],
+                              use_minio=self._s3_config['use_minio'], endpoint_url=self._s3_config['endpoint_url'])
             data['content'] = obj_key
 
         segment = Segment(segment_id=data.get('uid', ''), dataset_id=data.get(RAG_KB_ID, ''),
@@ -118,12 +118,12 @@ class SenseCoreStore(LazyLLMStoreBase):
             image_file_name = os.path.basename(image_path)
             obj_key = f"lazyllm/images/{image_file_name}"
             try:
-                with open(image_path, "rb") as f:
-                    upload_data_to_s3(f.read(), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
-                                      aws_access_key_id=self._s3_config["access_key"],
-                                      aws_secret_access_key=self._s3_config["secret_access_key"],
-                                      use_minio=self._s3_config["use_minio"],
-                                      endpoint_url=self._s3_config["endpoint_url"])
+                with open(image_path, 'rb') as f:
+                    upload_data_to_s3(f.read(), bucket_name=self._s3_config['bucket_name'], object_key=obj_key,
+                                      aws_access_key_id=self._s3_config['access_key'],
+                                      aws_secret_access_key=self._s3_config['secret_access_key'],
+                                      use_minio=self._s3_config['use_minio'],
+                                      endpoint_url=self._s3_config['endpoint_url'])
                 segment.image_keys = [obj_key]
             except FileNotFoundError:
                 LOG.error(f"Cannot find image path: {image_path} (local path {image_path}), skip...")
@@ -133,22 +133,22 @@ class SenseCoreStore(LazyLLMStoreBase):
             answer = data.get('answer')
             matches = IMAGE_PATTERN.findall(answer)
             for title, image_path in matches:
-                if image_path.startswith("lazyllm"):
+                if image_path.startswith('lazyllm'):
                     continue
                 image_file_name = os.path.basename(image_path)
                 obj_key = f"lazyllm/images/{image_file_name}"
                 try:
                     prefix = config['image_path_prefix']
                 except Exception:
-                    prefix = os.getenv("RAG_IMAGE_PATH_PREFIX", "")
+                    prefix = os.getenv('RAG_IMAGE_PATH_PREFIX', '')
                 file_path = create_file_path(path=image_path, prefix=prefix)
                 try:
-                    with open(file_path, "rb") as f:
-                        upload_data_to_s3(f.read(), bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
-                                          aws_access_key_id=self._s3_config["access_key"],
-                                          aws_secret_access_key=self._s3_config["secret_access_key"],
-                                          use_minio=self._s3_config["use_minio"],
-                                          endpoint_url=self._s3_config["endpoint_url"])
+                    with open(file_path, 'rb') as f:
+                        upload_data_to_s3(f.read(), bucket_name=self._s3_config['bucket_name'], object_key=obj_key,
+                                          aws_access_key_id=self._s3_config['access_key'],
+                                          aws_secret_access_key=self._s3_config['secret_access_key'],
+                                          use_minio=self._s3_config['use_minio'],
+                                          endpoint_url=self._s3_config['endpoint_url'])
                         answer = answer.replace(image_path, obj_key)
                 except FileNotFoundError:
                     LOG.error(f"Cannot find image path: {image_path} (local path {file_path}), skip...")
@@ -164,36 +164,36 @@ class SenseCoreStore(LazyLLMStoreBase):
     def _deserialize_data(self, segment: Dict) -> Dict:
         """ deserialize node from dict """
         data = {
-            "uid": segment.get("segment_id", ""),
-            "doc_id": segment.get("document_id", ""),
-            "group": segment.get("group", ""),
-            "content": segment.get("content", ""),
-            "meta": json.loads(segment.get("meta", "{}")),
-            "global_meta": json.loads(segment.get("global_meta", "{}")),
-            "number": segment.get("number", 0),
-            "kb_id": segment.get("dataset_id", ""),
-            "excluded_embed_metadata_keys": segment.get("excluded_embed_metadata_keys", []),
-            "excluded_llm_metadata_keys": segment.get("excluded_llm_metadata_keys", []),
-            "parent": segment.get("parent", ""),
-            "answer": segment.get("answer", ""),
-            "image_keys": segment.get("image_keys", []),
+            'uid': segment.get('segment_id', ''),
+            'doc_id': segment.get('document_id', ''),
+            'group': segment.get('group', ''),
+            'content': segment.get('content', ''),
+            'meta': json.loads(segment.get('meta', "{}")),
+            'global_meta': json.loads(segment.get('global_meta', "{}")),
+            'number': segment.get('number', 0),
+            'kb_id': segment.get('dataset_id', ''),
+            'excluded_embed_metadata_keys': segment.get('excluded_embed_metadata_keys', []),
+            'excluded_llm_metadata_keys': segment.get('excluded_llm_metadata_keys', []),
+            'parent': segment.get('parent', ''),
+            'answer': segment.get('answer', ''),
+            'image_keys': segment.get('image_keys', []),
         }
-        if len(data.get("answer", "")):
-            data["type"] = SegmentType.QA.value
+        if len(data.get('answer', '')):
+            data['type'] = SegmentType.QA.value
         else:
-            data["type"] = SegmentType.TEXT.value
-        if data.get("group") == LAZY_ROOT_NAME and data.get("content").startswith("lazyllm/lazyllm_root/"):
-            obj_key = data.get("content")
-            content = download_data_from_s3(bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
-                                            aws_access_key_id=self._s3_config["access_key"],
-                                            aws_secret_access_key=self._s3_config["secret_access_key"],
-                                            use_minio=self._s3_config["use_minio"],
-                                            endpoint_url=self._s3_config["endpoint_url"], encoding="utf-8")
-            data["content"] = json.loads(content)
+            data['type'] = SegmentType.TEXT.value
+        if data.get('group') == LAZY_ROOT_NAME and data.get('content').startswith('lazyllm/lazyllm_root/'):
+            obj_key = data.get('content')
+            content = download_data_from_s3(bucket_name=self._s3_config['bucket_name'], object_key=obj_key,
+                                            aws_access_key_id=self._s3_config['access_key'],
+                                            aws_secret_access_key=self._s3_config['secret_access_key'],
+                                            use_minio=self._s3_config['use_minio'],
+                                            endpoint_url=self._s3_config['endpoint_url'], encoding='utf-8')
+            data['content'] = json.loads(content)
         return data
 
     def _create_filters_str(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
-        ret_str = ""
+        ret_str = ''
         for name, candidates in filters.items():
             desc = self._global_metadata_desc.get(name)
             if not desc:
@@ -217,26 +217,26 @@ class SenseCoreStore(LazyLLMStoreBase):
             job_id = str(uuid.uuid4())
             groups = set()
             for item in data:
-                groups.add(item.get("group"))
+                groups.add(item.get('group'))
             groups = list(groups)
             data = [self._serialize_data(item) for item in data]
             dataset_id = None
             for item in data:
-                dataset_id = item.get("dataset_id", None)
+                dataset_id = item.get('dataset_id', None)
                 break
             if not dataset_id:
                 raise ValueError("dataset_id is required in SenseCoreStore")
 
             obj_key = f"lazyllm/segments/{job_id}.jsonl"
 
-            upload_data_to_s3(data=data, bucket_name=self._s3_config["bucket_name"], object_key=obj_key,
-                              aws_access_key_id=self._s3_config["access_key"],
-                              aws_secret_access_key=self._s3_config["secret_access_key"],
-                              use_minio=self._s3_config["use_minio"], endpoint_url=self._s3_config["endpoint_url"])
-            url = urljoin(self._uri, "v1/writerSegmentJob:submit")
-            params = {"writer_segment_job_id": job_id}
-            headers = {"Accept": "application/json", "Content-Type": "application/json"}
-            payload = {"dataset_id": dataset_id or self._kb_id, "file_key": obj_key, "groups": groups}
+            upload_data_to_s3(data=data, bucket_name=self._s3_config['bucket_name'], object_key=obj_key,
+                              aws_access_key_id=self._s3_config['access_key'],
+                              aws_secret_access_key=self._s3_config['secret_access_key'],
+                              use_minio=self._s3_config['use_minio'], endpoint_url=self._s3_config['endpoint_url'])
+            url = urljoin(self._uri, 'v1/writerSegmentJob:submit')
+            params = {'writer_segment_job_id': job_id}
+            headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+            payload = {'dataset_id': dataset_id or self._kb_id, 'file_key': obj_key, 'groups': groups}
 
             response = requests.post(url, params=params, headers=headers, json=payload)
             response.raise_for_status()
@@ -249,11 +249,11 @@ class SenseCoreStore(LazyLLMStoreBase):
     def _check_insert_job_status(self, job_id: str) -> None:
         """ check if the insert task is finished """
         url = urljoin(self._uri, f"v1/writerSegmentJobs/{job_id}")
-        headers = {"Accept": "application/json"}
+        headers = {'Accept': 'application/json'}
         for wait_time in fibonacci_backoff(max_retries=15):
             response = requests.get(url, headers=headers)
             response.raise_for_status()
-            status = response.json()["state"]
+            status = response.json()['state']
             if status == 2:
                 LOG.info(f"SenseCore Store: insert task {job_id} finished")
                 return
@@ -264,7 +264,7 @@ class SenseCoreStore(LazyLLMStoreBase):
         raise Exception(f"Insert task {job_id} failed after seconds")
 
     def _get_group_name(self, collection_name: str) -> str:
-        return collection_name.split("_")[-1]
+        return collection_name.split('_')[-1]
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
@@ -286,15 +286,15 @@ class SenseCoreStore(LazyLLMStoreBase):
     def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
         """ delete data from the store """
         try:
-            url = urljoin(self._uri, "v1/segments:bulkDelete")
-            headers = {"Accept": "*/*", "Content-Type": "application/json"}
+            url = urljoin(self._uri, 'v1/segments:bulkDelete')
+            headers = {'Accept': '*/*', 'Content-Type': 'application/json'}
 
             if criteria.get(RAG_DOC_ID):
-                payload = {"dataset_id": criteria.get(RAG_KB_ID), "document_ids": criteria.get(RAG_DOC_ID)}
+                payload = {'dataset_id': criteria.get(RAG_KB_ID), 'document_ids': criteria.get(RAG_DOC_ID)}
             else:
-                payload = {"dataset_id": criteria.get(RAG_KB_ID), "segment_ids": criteria.get("uid")}
+                payload = {'dataset_id': criteria.get(RAG_KB_ID), 'segment_ids': criteria.get('uid')}
             if collection_name:
-                payload["group"] = self._get_group_name(collection_name)
+                payload['group'] = self._get_group_name(collection_name)
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()
         except Exception as e:
@@ -305,7 +305,7 @@ class SenseCoreStore(LazyLLMStoreBase):
     @override
     def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:  # noqa: C901
         """ get data from the store """
-        uids = criteria.get("uid")
+        uids = criteria.get('uid')
         doc_ids = criteria.get(RAG_DOC_ID)
         kb_id = criteria.get(RAG_KB_ID)
         if not (uids or doc_ids):
@@ -316,15 +316,15 @@ class SenseCoreStore(LazyLLMStoreBase):
         if doc_id and not uids:
             url = urljoin(self._uri, f"v1/datasets/{kb_id}/documents/{doc_id}/segments:search")
         else:
-            url = urljoin(self._uri, "v1/segments:scroll")
-        headers = {"Accept": "application/json", "Content-Type": "application/json"}
-        payload = {"dataset_id": kb_id}
+            url = urljoin(self._uri, 'v1/segments:scroll')
+        headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+        payload = {'dataset_id': kb_id}
         if collection_name:
-            payload["group"] = self._get_group_name(collection_name)
+            payload['group'] = self._get_group_name(collection_name)
         if doc_id:
-            payload["document_id"] = doc_id
+            payload['document_id'] = doc_id
         if uids:
-            payload["segment_ids"] = uids
+            payload['segment_ids'] = uids
         segments = []
         while True:
             response = requests.post(url, headers=headers, json=payload)
@@ -332,7 +332,7 @@ class SenseCoreStore(LazyLLMStoreBase):
                 LOG.warning(f"SenseCore Store: get node task failed: {response.text}")
                 break
             data = response.json()
-            batch = data.get("segments", [])
+            batch = data.get('segments', [])
             if not batch:
                 break
             segments.extend(batch)
@@ -342,7 +342,7 @@ class SenseCoreStore(LazyLLMStoreBase):
             payload['page_token'] = next_page_token
         if doc_ids:
             segments = [segment for segment in segments if segment['document_id'] in doc_ids]
-        if kwargs.get("display"):
+        if kwargs.get('display'):
             segments = self._apply_display(segments)
         return [self._deserialize_data(s) for s in segments]
 
@@ -358,13 +358,13 @@ class SenseCoreStore(LazyLLMStoreBase):
 
     def _multi_modal_process(self, query: str, images: List[str]):
         urls = []
-        s3 = boto3.client('s3', aws_access_key_id=self._image_url_config["access_key"],
-                          aws_secret_access_key=self._image_url_config["secret_access_key"],
-                          endpoint_url=self._image_url_config["endpoint_url"])
+        s3 = boto3.client('s3', aws_access_key_id=self._image_url_config['access_key'],
+                          aws_secret_access_key=self._image_url_config['secret_access_key'],
+                          endpoint_url=self._image_url_config['endpoint_url'])
         for image in images:
-            query = query + "<image>\n"
+            query = query + '<image>\n'
             url = s3.generate_presigned_url(ClientMethod='get_object',
-                                            Params={'Bucket': self._image_url_config["bucket_name"], 'Key': image},
+                                            Params={'Bucket': self._image_url_config['bucket_name'], 'Key': image},
                                             ExpiresIn=3600)
             urls.append(url)
         return query, urls
@@ -376,8 +376,8 @@ class SenseCoreStore(LazyLLMStoreBase):
         try:
             if not embed_key:
                 raise ValueError("[Sensecore Store] Query: embed_key must be provided")
-            url = urljoin(self._uri, "v1/segments:hybrid")
-            headers = {"Accept": "application/json", "Content-Type": "application/json"}
+            url = urljoin(self._uri, 'v1/segments:hybrid')
+            headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
 
             filter_str = self._create_filters_str(filters) if filters else None
             dataset_ids = []
@@ -395,17 +395,17 @@ class SenseCoreStore(LazyLLMStoreBase):
                         dataset_ids = candidates
                         break
             if dataset_ids:
-                hybrid_search_datasets = [{"dataset_id": dataset_id} for dataset_id in dataset_ids]
+                hybrid_search_datasets = [{'dataset_id': dataset_id} for dataset_id in dataset_ids]
             else:
                 LOG.error(f"SenseCore Store: no dataset_id provided, please check your filters: {filters}")
                 return []
 
-            images = kwargs.get("images", [])
+            images = kwargs.get('images', [])
             if images:
                 query, images = self._multi_modal_process(query, images)
-            payload = {"query": query, "hybrid_search_datasets": hybrid_search_datasets, "hybrid_search_type": 2,
-                       "top_k": topk, "filters": filter_str, "group": self._get_group_name(collection_name),
-                       "embedding_model": embed_key, "images": images}
+            payload = {'query': query, 'hybrid_search_datasets': hybrid_search_datasets, 'hybrid_search_type': 2,
+                       'top_k': topk, 'filters': filter_str, 'group': self._get_group_name(collection_name),
+                       'embedding_model': embed_key, 'images': images}
             LOG.info(f"[Sensecore Store]: query request body: {payload}.")
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()

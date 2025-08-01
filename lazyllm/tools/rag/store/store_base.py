@@ -13,12 +13,12 @@ from ..global_metadata import (
     RAG_DOC_LAST_MODIFIED_DATE, RAG_DOC_LAST_ACCESSED_DATE, RAG_KB_ID
 )
 
-LAZY_ROOT_NAME = "lazyllm_root"
-LAZY_IMAGE_GROUP = "image"
+LAZY_ROOT_NAME = 'lazyllm_root'
+LAZY_IMAGE_GROUP = 'image'
 EMBED_DEFAULT_KEY = '__default__'
-EMBED_PREFIX = "embedding_"
-DEFAULT_KB_ID = "default"
-GLOBAL_META_KEY_PREFIX = "global_meta_"
+EMBED_PREFIX = 'embedding_'
+DEFAULT_KB_ID = 'default'
+GLOBAL_META_KEY_PREFIX = 'global_meta_'
 
 BUILDIN_GLOBAL_META_DESC = {
     RAG_DOC_ID: GlobalMetadataDesc(data_type=DataType.VARCHAR, default_value=' ', max_size=512),
@@ -54,11 +54,11 @@ class Segment(BaseModel):
     embedding: Optional[Dict[str, List[float]]] = Field(default_factory=dict)
     type: Optional[int] = SegmentType.TEXT.value
     number: Optional[int] = 0
-    kb_id: Optional[str] = "__default__"
+    kb_id: Optional[str] = '__default__'
     excluded_embed_metadata_keys: Optional[List[str]] = Field(default_factory=list)
     excluded_llm_metadata_keys: Optional[List[str]] = Field(default_factory=list)
     parent: Optional[str] = None    # uid of parent node
-    answer: Optional[str] = ""
+    answer: Optional[str] = ''
     image_keys: Optional[List[str]] = Field(default_factory=list)
 
 

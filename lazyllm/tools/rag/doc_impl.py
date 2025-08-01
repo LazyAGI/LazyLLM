@@ -10,7 +10,7 @@ from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMP
                         TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
 from .store import (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP, LazyLLMStoreBase)
-from .store.document_store import DocumentStore
+from .store.document_store import _DocumentStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
 from .utils import DocListManager, is_sparse
@@ -109,8 +109,8 @@ class DocImpl:
         self._dlm, self._doc_files = dlm, doc_files
         self._reader = DirectoryReader(None, self._local_file_reader, DocImpl._registered_file_reader)
         self.node_groups: Dict[str, Dict] = {
-            LAZY_ROOT_NAME: dict(parent=None, display_name="Original Source", group_type=NodeGroupType.ORIGINAL),
-            LAZY_IMAGE_GROUP: dict(parent=None, display_name="Image Node", group_type=NodeGroupType.OTHER)
+            LAZY_ROOT_NAME: dict(parent=None, display_name='Original Source', group_type=NodeGroupType.ORIGINAL),
+            LAZY_IMAGE_GROUP: dict(parent=None, display_name='Image Node', group_type=NodeGroupType.OTHER)
         }
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self._global_metadata_desc = global_metadata_desc
@@ -152,15 +152,15 @@ class DocImpl:
                 embed_datatypes[k] = DataType.FLOAT_VECTOR
 
         if isinstance(self.store, Dict):
-            self.store = DocumentStore(algo_name=self._algo_name, store_config=self.store,
-                                       group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                       embed_dims=embed_dims, embed_datatypes=embed_datatypes,
-                                       global_metadata_desc=self._global_metadata_desc)
+            self.store = _DocumentStore(algo_name=self._algo_name, store_config=self.store,
+                                        group_embed_keys=self._activated_embeddings, embed=self.embed,
+                                        embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                                        global_metadata_desc=self._global_metadata_desc)
         elif isinstance(self.store, LazyLLMStoreBase):
-            self.store = DocumentStore(algo_name=self._algo_name, store=self.store,
-                                       group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                       embed_dims=embed_dims, embed_datatypes=embed_datatypes,
-                                       global_metadata_desc=self._global_metadata_desc)
+            self.store = _DocumentStore(algo_name=self._algo_name, store=self.store,
+                                        group_embed_keys=self._activated_embeddings, embed=self.embed,
+                                        embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                                        global_metadata_desc=self._global_metadata_desc)
         else:
             raise ValueError(f'store type [{type(self.store)}] is not a dict or LazyLLMStoreBase.')
         self.store.activate_group(self._activated_groups)
@@ -493,8 +493,8 @@ class DocImpl:
         while cur_group != group and cur_nodes[0].parent:
             name = self.node_groups[cur_group]['parent']
             parent_uids = {n.parent for n in cur_nodes}
-            dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID)
-            parents = self.store.get_nodes(group_name=name, dataset_id=dataset_id,
+            kb_id = cur_nodes[0].global_metadata.get(RAG_KB_ID)
+            parents = self.store.get_nodes(group_name=name, kb_id=kb_id,
                                            uids=list(parent_uids), display=True)
             if not parents: break
             cur_group = parents[0]._group
@@ -529,7 +529,7 @@ class DocImpl:
         while cur_group != group:
             next_group = None
             for g, v in self.node_groups.items():
-                if v.get("parent") == cur_group:
+                if v.get('parent') == cur_group:
                     next_group = g
                     break
 
@@ -539,15 +539,15 @@ class DocImpl:
 
             if next_group == group:
                 parent_uids = [n._uid for n in cur_nodes]
-                dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
-                children = self.store.get_nodes(group_name=group, dataset_id=dataset_id,
+                kb_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
+                children = self.store.get_nodes(group_name=group, kb_id=kb_id,
                                                 uids=parent_uids, display=True)
                 result.update(children)
                 break
             else:
                 parent_uids = [n._uid for n in cur_nodes]
-                dataset_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
-                cur_nodes = self.store.get_nodes(group_name=next_group, dataset_id=dataset_id,
+                kb_id = cur_nodes[0].global_metadata.get(RAG_KB_ID, None)
+                cur_nodes = self.store.get_nodes(group_name=next_group, kb_id=kb_id,
                                                  uids=parent_uids, display=True)
                 cur_group = next_group
         return list(result)

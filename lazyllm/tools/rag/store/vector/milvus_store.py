@@ -31,7 +31,7 @@ BUILTIN_KEYS = {
 class MilvusStore(LazyLLMStoreBase):
     capability = StoreCapability.VECTOR
 
-    def __init__(self, uri: str = "", db_name: str = 'lazyllm', index_kwargs: Optional[Union[Dict, List]] = None,
+    def __init__(self, uri: str = '', db_name: str = 'lazyllm', index_kwargs: Optional[Union[Dict, List]] = None,
                  client_kwargs: Optional[Dict] = {}, ):
         # one database, different collection for each group (for standalone, add prefix to collection name)
         # when there's data need upsert, collection creation happen.
@@ -48,7 +48,7 @@ class MilvusStore(LazyLLMStoreBase):
         self._embed_dims = embed_dims
         self._embed_datatypes = embed_datatypes
         self._global_metadata_desc = global_metadata_desc
-        if self._uri and parse.urlparse(self._uri).scheme.lower() not in ["unix", "http", "https", "tcp", "grpc"]:
+        if self._uri and parse.urlparse(self._uri).scheme.lower() not in ['unix', 'http', 'https', 'tcp', 'grpc']:
             self._type = 'local'
         else:
             self._type = 'remote'
@@ -60,7 +60,7 @@ class MilvusStore(LazyLLMStoreBase):
     def _connect(self):
         try:
             self._client = pymilvus.MilvusClient(uri=self._uri, **self._client_kwargs)
-            if self._type == "remote" and self._db_name:
+            if self._type == 'remote' and self._db_name:
                 existing_dbs = self._client.list_databases()
                 if self._db_name not in existing_dbs:
                     self._client.create_database(self._db_name)
@@ -81,7 +81,7 @@ class MilvusStore(LazyLLMStoreBase):
         """ upsert data to the store """
         try:
             if not data: return
-            data_embeddings = data[0].get("embedding", {})
+            data_embeddings = data[0].get('embedding', {})
             if not data_embeddings: return
             self._connect()
             if not self._client.has_collection(collection_name):
@@ -90,8 +90,8 @@ class MilvusStore(LazyLLMStoreBase):
                     assert self._embed_datatypes.get(embed_key), \
                         f'cannot find embedding params for embed [{embed_key}]'
                     if embed_key not in embed_kwargs:
-                        embed_kwargs[embed_key] = {"dtype": TYPE2MILVUS[self._embed_datatypes[embed_key]]}
-                    if self._embed_dims.get(embed_key): embed_kwargs[embed_key]["dim"] = self._embed_dims[embed_key]
+                        embed_kwargs[embed_key] = {'dtype': TYPE2MILVUS[self._embed_datatypes[embed_key]]}
+                    if self._embed_dims.get(embed_key): embed_kwargs[embed_key]['dim'] = self._embed_dims[embed_key]
                 self._create_collection(collection_name, embed_kwargs)
 
             for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
@@ -132,8 +132,8 @@ class MilvusStore(LazyLLMStoreBase):
                 return []
             self._client.load_collection(collection_name)
             col_desc = self._client.describe_collection(collection_name=collection_name)
-            field_names = [field.get("name") for field in col_desc.get('fields', [])
-                           if field.get("name").startswith(EMBED_PREFIX)]
+            field_names = [field.get('name') for field in col_desc.get('fields', [])
+                           if field.get('name').startswith(EMBED_PREFIX)]
             if criteria and self._primary_key in criteria:
                 res = self._client.get(collection_name=collection_name, ids=criteria[self._primary_key])
             else:
@@ -220,7 +220,7 @@ class MilvusStore(LazyLLMStoreBase):
         """ deserialize data from vector store """
         res = {
             self._primary_key: d.get(self._primary_key, ''),
-            "embedding": {}
+            'embedding': {}
         }
         for k, v in d.items():
             if k.startswith(EMBED_PREFIX):
@@ -238,9 +238,9 @@ class MilvusStore(LazyLLMStoreBase):
         res = {}
         criteria = dict(criteria)
         if self._primary_key in criteria:
-            res["ids"] = criteria[self._primary_key]
+            res['ids'] = criteria[self._primary_key]
         else:
-            filter_str = ""
+            filter_str = ''
             for key, vaule in criteria.items():
                 if key not in self._global_metadata_desc:
                     continue
@@ -253,7 +253,7 @@ class MilvusStore(LazyLLMStoreBase):
                     filter_str += f'{field_name} == "{vaule}"'
                 else:
                     raise ValueError(f'invalid criteria type: {type(vaule)}')
-            res["filter"] = filter_str
+            res['filter'] = filter_str
         return res
 
     @override
@@ -279,7 +279,7 @@ class MilvusStore(LazyLLMStoreBase):
         return res
 
     def _construct_filter_expr(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
-        ret_str = ""
+        ret_str = ''
         if not filters:
             return ret_str
         for name, candidates in filters.items():

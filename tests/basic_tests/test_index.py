@@ -1,7 +1,7 @@
 import time
 import unittest
 from unittest.mock import MagicMock
-from lazyllm.tools.rag.store.document_store import DocumentStore
+from lazyllm.tools.rag.store.document_store import _DocumentStore
 from lazyllm.tools.rag import DocNode, IndexBase, Document
 from lazyllm.tools.rag.default_index import DefaultIndex
 from lazyllm.tools.rag.similarity import register_similarity, registered_similarities
@@ -20,15 +20,13 @@ class TestDefaultIndex(unittest.TestCase):
             'test1': MagicMock(return_value=[0, 1, 0]),
             'test2': MagicMock(return_value=[0, 0, 1]),
         }
-        self.mock_store = DocumentStore(algo_name='test_algo', store_config={"type": "map"},
-                                        group_embed_keys={"group1": ["default", "test1", "test2"]},
-                                        embed=self.mock_embed, embed_dims={"default": 3, "test1": 3, "test2": 3},
-                                        embed_datatypes={"default": DataType.FLOAT_VECTOR,
-                                                         "test1": DataType.FLOAT_VECTOR,
-                                                         "test2": DataType.FLOAT_VECTOR})
+        self.mock_store = _DocumentStore(algo_name='test_algo', store_config={"type": "map"},
+                                         group_embed_keys={"group1": ["default", "test1", "test2"]},
+                                         embed=self.mock_embed, embed_dims={"default": 3, "test1": 3, "test2": 3},
+                                         embed_datatypes={"default": DataType.FLOAT_VECTOR,
+                                                          "test1": DataType.FLOAT_VECTOR,
+                                                          "test2": DataType.FLOAT_VECTOR})
         self.mock_store.activate_group('group1')
-        self.mock_store._lazy_init()
-
         # Create instance of DefaultIndex
         self.index = DefaultIndex(embed=self.mock_embed, store=self.mock_store)
 

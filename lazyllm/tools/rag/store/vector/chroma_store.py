@@ -12,9 +12,9 @@ from lazyllm.thirdparty import chromadb
 INSERT_BATCH_SIZE = 1000
 
 DEFAULT_INDEX_CONFIG = {
-    "hnsw": {
-        "space": "cosine",
-        "ef_construction": 200,
+    'hnsw': {
+        'space': 'cosine',
+        'ef_construction': 200,
     }
 }
 
@@ -55,7 +55,7 @@ class ChromadbStore(LazyLLMStoreBase):
         try:
             # NOTE chromadb only support single embedding for each collection
             if not data: return
-            data_embeddings = data[0].get("embedding", {})
+            data_embeddings = data[0].get('embedding', {})
             if not data_embeddings: return
             embed_keys = list(data_embeddings.keys())
             for embed_key in embed_keys:
@@ -71,15 +71,15 @@ class ChromadbStore(LazyLLMStoreBase):
             return False
 
     def _serialize_data(self, data: List[dict], embed_key: str) -> List[dict]:
-        res = {"ids": [], "embeddings": [], "metadatas": []}
+        res = {'ids': [], 'embeddings': [], 'metadatas': []}
         for d in data:
-            res["ids"].append(d.get("uid"))
-            res["embeddings"].append(d.get("embedding", {}).get(embed_key))
-            res["metadatas"].append({})
-            global_meta = d.get("global_meta", {})
+            res['ids'].append(d.get('uid'))
+            res['embeddings'].append(d.get('embedding', {}).get(embed_key))
+            res['metadatas'].append({})
+            global_meta = d.get('global_meta', {})
             for k, v in global_meta.items():
                 if k in self._global_metadata_desc:
-                    res["metadatas"][-1][self._gen_global_meta_key(k)] = v
+                    res['metadatas'][-1][self._gen_global_meta_key(k)] = v
         return res
 
     @override
@@ -111,27 +111,27 @@ class ChromadbStore(LazyLLMStoreBase):
                 coll = self._client.get_collection(
                     name=self._gen_collection_name(collection_name, key)
                 )
-                data = coll.get(include=["metadatas", "embeddings"], **filters)
+                data = coll.get(include=['metadatas', 'embeddings'], **filters)
                 all_data.append((key, data))
             except Exception:
                 continue
 
         res: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
-            "uid": None, "global_meta": {}, "embedding": {}})
+            'uid': None, 'global_meta': {}, 'embedding': {}})
         for embed_key, data in all_data:
-            ids = data["ids"]
-            metas = data["metadatas"]
-            embs = data["embeddings"]
+            ids = data['ids']
+            metas = data['metadatas']
+            embs = data['embeddings']
 
             for uid, meta, emb in zip(ids, metas, embs):
                 entry = res[uid]
-                entry["uid"] = uid
-                if not entry["global_meta"]:
-                    entry["global_meta"] = {
+                entry['uid'] = uid
+                if not entry['global_meta']:
+                    entry['global_meta'] = {
                         k[len(GLOBAL_META_KEY_PREFIX):]: v
                         for k, v in meta.items()
                     }
-                entry["embedding"][embed_key] = list(emb)
+                entry['embedding'][embed_key] = list(emb)
         return list(res.values())
 
     @override
@@ -146,24 +146,24 @@ class ChromadbStore(LazyLLMStoreBase):
         for i, r_list in enumerate(query_results['ids']):
             for j, uid in enumerate(r_list):
                 dis = query_results['distances'][i][j]
-                res.append({"uid": uid, "score": 1 - dis})
+                res.append({'uid': uid, 'score': 1 - dis})
         return res
 
     def _construct_criteria(self, criteria: dict) -> dict:
         """ construct criteria for delete """
         res = {}
         if self._primary_key in criteria:
-            res["ids"] = criteria[self._primary_key]
+            res['ids'] = criteria[self._primary_key]
         else:
-            res["where"] = {}
+            res['where'] = {}
             for key, vaule in criteria.items():
                 if key not in self._global_metadata_desc:
                     continue
                 field_key = self._gen_global_meta_key(key)
                 if isinstance(vaule, list):
-                    res["where"][field_key] = {"$in": vaule}
+                    res['where'][field_key] = {'$in': vaule}
                 elif isinstance(vaule, str):
-                    res["where"][field_key] = {"$eq": vaule}
+                    res['where'][field_key] = {'$eq': vaule}
                 else:
                     raise ValueError(f'invalid criteria type: {type(vaule)}')
         return res
@@ -179,7 +179,7 @@ class ChromadbStore(LazyLLMStoreBase):
                 candidates = [candidates]
             elif (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
                 candidates = list(candidates)
-            ret[key] = {"$in": candidates}
+            ret[key] = {'$in': candidates}
         return {'where': ret}
 
     def _gen_global_meta_key(self, k: str) -> str:

@@ -53,7 +53,7 @@ class HybridStore(LazyLLMStoreBase):
             if not res: return []
             uid2score = {item['uid']: item['score'] for item in res}
             uids = list(uid2score.keys())
-            segments = self.segment_store.get(collection_name=collection_name, criteria={"uid": uids}, **kwargs)
+            segments = self.segment_store.get(collection_name=collection_name, criteria={'uid': uids}, **kwargs)
             for segment in segments:
                 segment['score'] = uid2score.get(segment['uid'], 0)
             return segments

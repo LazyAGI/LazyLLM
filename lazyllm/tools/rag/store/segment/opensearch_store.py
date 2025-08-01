@@ -15,27 +15,27 @@ DEFAULT_INDEX_BODY = {
     'settings': {
         'index': {
             'number_of_shards': 4,
-            "number_of_replicas": 1,
-            "refresh_interval": "1s",
+            'number_of_replicas': 1,
+            'refresh_interval': '1s',
         }
     },
     'mappings': {
         'dynamic': 'strict',
-        "properties": {
-            "uid": {"type": "keyword"},
-            "doc_id": {"type": "keyword"},
-            "group": {"type": "keyword"},
-            "kb_id": {"type": "keyword"},
-            "content": {"type": "text", "index": False, "store": True},
-            "answer": {"type": "text", "index": False, "store": True},
-            "meta": {"type": "text", "index": False, "store": True},
-            "global_meta": {"type": "text", "index": False, "store": True},
-            "type": {"type": "keyword", "store": True},
-            "number": {"type": "integer", "store": True},
-            "excluded_embed_metadata_keys": {"type": "keyword", "store": True},
-            "excluded_llm_metadata_keys": {"type": "keyword", "store": True},
-            "parent": {"type": "keyword", "store": True},
-            "image_keys": {"type": "keyword", "store": True},
+        'properties': {
+            'uid': {'type': 'keyword'},
+            'doc_id': {'type': 'keyword'},
+            'group': {'type': 'keyword'},
+            'kb_id': {'type': 'keyword'},
+            'content': {'type': 'text', 'index': False, 'store': True},
+            'answer': {'type': 'text', 'index': False, 'store': True},
+            'meta': {'type': 'text', 'index': False, 'store': True},
+            'global_meta': {'type': 'text', 'index': False, 'store': True},
+            'type': {'type': 'keyword', 'store': True},
+            'number': {'type': 'integer', 'store': True},
+            'excluded_embed_metadata_keys': {'type': 'keyword', 'store': True},
+            'excluded_llm_metadata_keys': {'type': 'keyword', 'store': True},
+            'parent': {'type': 'keyword', 'store': True},
+            'image_keys': {'type': 'keyword', 'store': True},
         }
     }
 }
@@ -51,7 +51,7 @@ class OpenSearchStore(LazyLLMStoreBase):
         self._uris = uris
         self._client_kwargs = client_kwargs
         self._index_kwargs = index_kwargs or DEFAULT_INDEX_BODY
-        self._primary_key = "uid"
+        self._primary_key = 'uid'
 
     @override
     def connect(self, *args, **kwargs) -> None:
@@ -72,10 +72,10 @@ class OpenSearchStore(LazyLLMStoreBase):
                 batch_data = data[i:i + INSERT_BATCH_SIZE]
                 for segment in batch_data:
                     segment = self._serialize_node(segment)
-                    bulk_data.append({"index": {"_index": collection_name, "_id": segment.get(self._primary_key)}})
+                    bulk_data.append({'index': {'_index': collection_name, '_id': segment.get(self._primary_key)}})
                     bulk_data.append(segment)
                 response = self._client.bulk(index=collection_name, body=bulk_data)
-                if response["errors"]:
+                if response['errors']:
                     raise ValueError(f"Error upserting data to OpenSearch: {response['items']}")
             self._client.indices.refresh(index=collection_name)
             return True
@@ -96,7 +96,7 @@ class OpenSearchStore(LazyLLMStoreBase):
             else:
                 resp = self._client.delete_by_query(index=collection_name,
                                                     body=self._construct_criteria(criteria), refresh=True)
-                if resp.get("failures"):
+                if resp.get('failures'):
                     raise ValueError(f"Error deleting data from OpenSearch: {resp['failures']}")
                 return True
         except Exception as e:
@@ -116,19 +116,19 @@ class OpenSearchStore(LazyLLMStoreBase):
                 vals = criteria.pop(self._primary_key)
                 if not isinstance(vals, list):
                     vals = [vals]
-                body = {"ids": vals}
+                body = {'ids': vals}
                 resp = self._client.mget(index=collection_name, body=body)
-                for doc in resp["docs"]:
-                    if doc.get("found", False):
-                        src = doc["_source"]
-                        src["uid"] = doc["_id"]
+                for doc in resp['docs']:
+                    if doc.get('found', False):
+                        src = doc['_source']
+                        src['uid'] = doc['_id']
                         results.append(self._deserialize_node(src))
             else:
                 query = self._construct_criteria(criteria)
                 for hit in opensearchpy.helpers.scan(client=self._client, index=collection_name, query=query,
-                                                     scroll="2m", size=500, preserve_order=True):
-                    src = hit["_source"]
-                    src["uid"] = hit["_id"]
+                                                     scroll='2m', size=500, preserve_order=True):
+                    src = hit['_source']
+                    src['uid'] = hit['_id']
                     results.append(self._deserialize_node(src))
             return results
         except Exception as e:
@@ -143,17 +143,17 @@ class OpenSearchStore(LazyLLMStoreBase):
     def _serialize_node(self, segment: dict):
         """ serialize node to a dict that can be stored in OpenSearch """
         seg = dict(segment)
-        seg.pop("embedding", None)
-        seg["global_meta"] = json.dumps(seg.get("global_meta", {}), ensure_ascii=False)
-        seg["meta"] = json.dumps(seg.get("meta", {}), ensure_ascii=False)
-        seg["image_keys"] = json.dumps(seg.get("image_keys", []), ensure_ascii=False)
+        seg.pop('embedding', None)
+        seg['global_meta'] = json.dumps(seg.get('global_meta', {}), ensure_ascii=False)
+        seg['meta'] = json.dumps(seg.get('meta', {}), ensure_ascii=False)
+        seg['image_keys'] = json.dumps(seg.get('image_keys', []), ensure_ascii=False)
         return seg
 
     def _deserialize_node(self, segment: dict) -> dict:
         """ deserialize node from dict """
-        segment["meta"] = json.loads(segment.get("meta", "{}"))
-        segment["global_meta"] = json.loads(segment.get("global_meta", "{}"))
-        segment["image_keys"] = json.loads(segment.get("image_keys", "[]"))
+        segment['meta'] = json.loads(segment.get('meta', "{}"))
+        segment['global_meta'] = json.loads(segment.get('global_meta', "{}"))
+        segment['image_keys'] = json.loads(segment.get('image_keys', "[]"))
         return segment
 
     def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:
@@ -165,12 +165,12 @@ class OpenSearchStore(LazyLLMStoreBase):
             vals = criteria.pop(self._primary_key)
             if not isinstance(vals, list):
                 vals = [vals]
-            return {"query": {"ids": {"values": vals}}}
+            return {'query': {'ids': {'values': vals}}}
         else:
             must_clauses = []
             for key, value in criteria.items():
                 if isinstance(value, list):
-                    must_clauses.append({"terms": {key: value}})
+                    must_clauses.append({'terms': {key: value}})
                 else:
-                    must_clauses.append({"term": {key: value}})
-            return {"query": {"bool": {"must": must_clauses}}}
+                    must_clauses.append({'term': {key: value}})
+            return {'query': {'bool': {'must': must_clauses}}}

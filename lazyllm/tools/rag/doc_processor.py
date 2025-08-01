@@ -6,7 +6,7 @@ from sqlalchemy.engine import Engine
 from lazyllm import LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app, ThreadPoolExecutor, config
 
 from .store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
-from .store.document_store import DocumentStore
+from .store.document_store import _DocumentStore
 from .store.utils import fibonacci_backoff, create_file_path
 from .transform import (AdaptiveTransform, make_transform,)
 from .readers import ReaderBase
@@ -26,7 +26,7 @@ ENABLE_DB = os.getenv("RAG_ENABLE_DB", "false").lower() == "true"
 
 
 class _Processor:
-    def __init__(self, store: DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
+    def __init__(self, store: _DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
                  display_name: Optional[str] = None, description: Optional[str] = None,
                  server: bool = False):
         self._store = store
@@ -76,18 +76,18 @@ class _Processor:
         self._store.update_nodes(nodes)
         return nodes
 
-    def _get_or_create_nodes(self, group_name, ids: Optional[List[str]] = None):
-        nodes = self._store.get_nodes(uids=ids, group=group_name) if self._store.is_group_active(group_name) else []
+    def _get_or_create_nodes(self, group_name, uids: Optional[List[str]] = None):
+        nodes = self._store.get_nodes(uids=uids, group=group_name) if self._store.is_group_active(group_name) else []
         if not nodes and group_name not in (LAZY_IMAGE_GROUP, LAZY_ROOT_NAME):
-            p_nodes = self._get_or_create_nodes(self._node_groups[group_name]['parent'], ids)
+            p_nodes = self._get_or_create_nodes(self._node_groups[group_name]['parent'], uids)
             nodes = self._create_nodes_impl(p_nodes, group_name)
         return nodes
 
-    def reparse(self, group_name: str, ids: Optional[List[str]] = None, doc_ids: Optional[List[str]] = None, **kwargs):
+    def reparse(self, group_name: str, uids: Optional[List[str]] = None, doc_ids: Optional[List[str]] = None, **kwargs):
         if doc_ids:
             self._reparse_docs(group_name=group_name, doc_ids=doc_ids, **kwargs)
         else:
-            self._get_or_create_nodes(group_name, ids)
+            self._get_or_create_nodes(group_name, uids)
 
     def _reparse_docs(self, group_name: str, doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict]):
         kb_id = metadatas[0].get(RAG_KB_ID, None)
@@ -139,12 +139,9 @@ class _Processor:
     def update_doc_meta(self, doc_id: str, metadata: dict):
         self._store.update_doc_meta(doc_id=doc_id, metadata=metadata)
 
-    def delete_doc(self, doc_ids: List[str] = None, dataset_id: str = None) -> None:
+    def delete_doc(self, doc_ids: List[str] = None, kb_id: str = None) -> None:
         LOG.info(f"delete_doc_ids: {doc_ids}")
-        if dataset_id:
-            self._store.remove_nodes(kb_id=dataset_id, doc_ids=doc_ids)
-        else:
-            self._store.remove_nodes(doc_ids=doc_ids)
+        self._store.remove_nodes(kb_id=kb_id, doc_ids=doc_ids)
 
 
 class FileInfo(BaseModel):
@@ -224,7 +221,7 @@ class DocumentProcessor(ModuleBase):
             self._inited = True
             LOG.info(f"[DocumentProcessor] init done. feedback {self._feedback_url}, prefix {self._path_prefix}")
 
-        def register_algorithm(self, name: str, store: DocumentStore, reader: ReaderBase,
+        def register_algorithm(self, name: str, store: _DocumentStore, reader: ReaderBase,
                                node_groups: Dict[str, Dict], display_name: Optional[str] = None,
                                description: Optional[str] = None, force_refresh: bool = False):
             self._init_components(server=self._server)
@@ -591,7 +588,7 @@ class DocumentProcessor(ModuleBase):
         else:
             getattr(impl, method)(*args, **kwargs)
 
-    def register_algorithm(self, name: str, store: DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
+    def register_algorithm(self, name: str, store: _DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
                            display_name: Optional[str] = None, description: Optional[str] = None,
                            force_refresh: bool = False, **kwargs):
         self._dispatch("register_algorithm", name, store, reader, node_groups,
