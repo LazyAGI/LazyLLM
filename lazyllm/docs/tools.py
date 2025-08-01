@@ -2284,6 +2284,65 @@ Args:
 - BaseResponse: 删除操作结果。
 """)
 
+add_chinese_doc('rag.DocManager.delete_files_from_group', """
+删除指定分组中的文件的接口。
+
+Args:
+    request (FileGroupRequest): 包含文件ID列表和分组名称的请求参数。
+
+**Returns:**\n
+- BaseResponse: 删除操作结果。
+""")
+
+add_chinese_doc('rag.DocManager.add_metadata', """
+为指定文档添加或更新元数据的接口。
+
+Args:
+    add_metadata_request (AddMetadataRequest): 包含文档ID列表和键值对元数据的请求。
+
+**Returns:**\n
+- BaseResponse: 操作结果信息。
+""")
+
+add_chinese_doc('rag.DocManager.delete_metadata_item', """
+删除指定文档的元数据字段或字段值的接口。
+
+Args:
+    del_metadata_request (DeleteMetadataRequest): 包含文档ID列表、字段名和键值对删除条件的请求。
+
+**Returns:**\n
+- BaseResponse: 操作结果信息。
+""")
+
+add_chinese_doc('rag.DocManager.update_or_create_metadata_keys', """
+更新或创建文档元数据字段的接口。
+Args:
+    update_metadata_request (UpdateMetadataRequest): 包含文档ID列表和需更新或新增的键值对元数据。
+
+**Returns:**\n
+- BaseResponse: 操作结果信息。
+""")
+
+add_chinese_doc('rag.DocManager.reset_metadata', """
+重置指定文档的所有元数据字段。
+
+Args:
+    reset_metadata_request (ResetMetadataRequest): 包含文档ID列表和新的元数据字典。
+
+**Returns:**\n
+- BaseResponse: 操作结果信息。
+""")
+
+add_chinese_doc('rag.DocManager.query_metadata', """
+查询指定文档的元数据。
+
+Args:
+    query_metadata_request (QueryMetadataRequest): 请求参数，包含文档ID和可选的字段名。
+
+**Returns:**\n
+- BaseResponse: 若指定了 key 且存在，返回对应字段值；否则返回整个 metadata；key 不存在时报错。
+""")
+
 add_english_doc('rag.DocManager', """
 The `DocManager` class manages document lists and related operations, providing APIs for uploading, deleting, and grouping documents.
 
@@ -2318,13 +2377,14 @@ Args:
 **Returns:**\n
 - BaseResponse: Upload results and file IDs.
 """)
-
 add_english_doc('rag.DocManager.add_files', """
 Batch add files.
+
 Args:
     files (List[UploadFile]): List of uploaded files.
     group_name (str): Target knowledge base group name; if empty, files are not added to any group.
     metadatas (Optional[str]): Metadata of the files in JSON format.
+
 **Returns:**\n
 - BaseResponse: Returns a list of unique file IDs corresponding to all input files, including newly added and existing ones. In case of exceptions, returns error codes and exception information.
 """)
@@ -2387,6 +2447,65 @@ Args:
 - BaseResponse: Deletion operation result.
 """)
 
+add_english_doc('rag.DocManager.delete_files_from_group', """
+An endpoint to delete specified files in a group.
+
+Args:
+    request (FileGroupRequest): Request containing a list of file IDs and the group name.
+
+**Returns:**\n
+- BaseResponse: Deletion operation result.
+""")
+
+add_english_doc('rag.DocManager.add_metadata', """
+An endpoint to add or update metadata for specified documents.
+
+Args:
+    add_metadata_request (AddMetadataRequest): Request containing list of document IDs and key-value metadata.
+
+**Returns:**\n
+- BaseResponse: Operation result information.
+""")
+
+add_english_doc('rag.DocManager.delete_metadata_item', """
+An endpoint to delete metadata fields or field values from specified documents.
+
+Args:
+    del_metadata_request (DeleteMetadataRequest): Request containing list of document IDs, field names, and/or deletion rules.
+
+**Returns:**\n
+- BaseResponse: Deletion operation result.
+""")
+
+add_english_doc('rag.DocManager.update_or_create_metadata_keys', """
+An endpoint to update or create metadata fields for specified documents.
+
+Args:
+    update_metadata_request (UpdateMetadataRequest): Request containing a list of document IDs and metadata key-value pairs to update or create.
+
+**Returns:**\n
+- BaseResponse: Deletion operation result.
+""")
+
+add_english_doc('rag.DocManager.reset_metadata', """
+An endpoint to reset all metadata fields of specified documents.
+
+Args:
+    reset_metadata_request (ResetMetadataRequest): Request containing a list of document IDs and the new metadata dictionary to apply.
+
+**Returns:**\n
+- BaseResponse: Deletion operation result.
+""")
+
+add_english_doc('rag.DocManager.query_metadata', """
+An endpoint to query metadata of a specific document.
+
+Args:
+    query_metadata_request (QueryMetadataRequest): Request containing the document ID and an optional metadata field name.
+
+**Returns:**\n
+- BaseResponse: Returns the field value if key is specified and exists; otherwise returns full metadata. If the key does not exist, returns an error.
+""")
 # ---------------------------------------------------------------------------- #
 
 # rag/utils.py

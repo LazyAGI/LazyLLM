@@ -44,3 +44,9 @@
     members: work, get_result
     exclude-members:
     
+
+## LazyLLMCMD
+
+::: lazyllm.common.LazyLLMCMD
+    members: with_cmd, get_args
+    exclude-members:
