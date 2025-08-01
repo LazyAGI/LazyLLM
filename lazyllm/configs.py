@@ -100,7 +100,7 @@ class Config(object):
             names = list(set([self._env_map_name[key] for key in curr_envs if key in self._env_map_name]))
         assert isinstance(names, list)
         for name in names:
-            self._update_impl(name, *self._config_params[name])
+            if name in self.impl: self._update_impl(name, *self._config_params[name])
 
 config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug)
                 ).add('repr_ml', bool, False, 'REPR_USE_ML'
