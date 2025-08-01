@@ -40,6 +40,10 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.embed.AbstractEmbedding
+    options:
+      heading_level: 3
+
 ---
 
 ## Launcher

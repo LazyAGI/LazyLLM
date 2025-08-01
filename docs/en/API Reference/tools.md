@@ -57,3 +57,19 @@
 ::: lazyllm.tools.IntentClassifier
     members: 
     exclude-members:
+
+::: lazyllm.tools.rag.smart_embedding_index.SmartEmbeddingIndex
+    members: update, remove, query
+    exclude-members:
+
+::: lazyllm.tools.rag.doc_node.ImageDocNode
+    members: do_embedding, get_content, get_text
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.AdaptiveTransform
+    members: transform
+    exclude-members:
+
+::: lazyllm.tools.rag.rerank.ModuleReranker
+    members: forward
+    exclude-members:
