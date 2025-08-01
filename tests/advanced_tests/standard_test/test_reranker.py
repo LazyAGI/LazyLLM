@@ -1,6 +1,5 @@
 import unittest
 import os
-import lazyllm
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.rerank import Reranker, register_reranker
 
@@ -43,7 +42,6 @@ class TestReranker(unittest.TestCase):
         for value in test_cases:
             with self.subTest(value=value):
                 os.environ[env_key] = value
-                lazyllm.config.refresh(env_key)
                 reranker = Reranker(name="ModuleReranker", model="bge-reranker-large", topk=2)
                 reranker.start()
                 results = reranker.forward(self.nodes, query='cherry')
@@ -55,7 +53,6 @@ class TestReranker(unittest.TestCase):
                 assert results[0].relevance_score > results[1].relevance_score
         if original_value:
             os.environ[env_key] = original_value
-            lazyllm.config.refresh(env_key)
 
     def test_register_reranker_decorator(self):
         @register_reranker

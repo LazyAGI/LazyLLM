@@ -37,7 +37,6 @@ class AutoDeploy(LazyLLMDeployBase):
     def get_deployer(cls, base_model: str, source: Optional[str] = None, trust_remote_code: bool = True,
                      launcher: Optional[LazyLLMLaunchersBase] = None, type: Optional[str] = None,
                      log_path: Optional[str] = None, **kw):
-        base_model = ModelManager(source).download(base_model) or ''
         model_name = get_model_name(base_model)
         kw['log_path'], kw['trust_remote_code'] = log_path, trust_remote_code
         if not type:
