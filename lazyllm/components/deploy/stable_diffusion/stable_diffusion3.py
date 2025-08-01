@@ -55,7 +55,7 @@ class _StableDiffusion3(object):
                 loader(self)
                 return
 
-        self.paintor = diffusers._StableDiffusion3Pipeline.from_pretrained(
+        self.paintor = diffusers.StableDiffusion3Pipeline.from_pretrained(
             self.base_sd, torch_dtype=torch.float16).to("cuda")
 
     @staticmethod
