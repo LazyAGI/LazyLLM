@@ -5,8 +5,6 @@ from typing import List, Union, Optional
 from contextlib import contextmanager
 import logging
 
-import lazyllm
-
 
 class Mode(Enum):
     Display = 0,
@@ -90,7 +88,6 @@ class Config(object):
         return str(self.impl)
 
     def refresh(self, targets: Union[bytes, str, List[str]] = None) -> None:
-        lazyllm.LOG.warning(f'refresh config with targets: {targets}')
         names = targets
         if isinstance(targets, bytes): targets = targets.decode('utf-8')
         if isinstance(targets, str):
