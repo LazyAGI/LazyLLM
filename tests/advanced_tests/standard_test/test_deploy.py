@@ -10,7 +10,7 @@ import lazyllm
 from lazyllm import deploy, globals
 from lazyllm.launcher import cleanup
 from lazyllm.components.formatter import encode_query_with_filepaths, decode_query_with_filepaths
-from lazyllm.components.utils.file_operate import image_to_base64
+from lazyllm.components.utils.file_operate import _image_to_base64
 
 @pytest.fixture()
 def set_enviroment(request):
@@ -114,7 +114,7 @@ class TestDeploy(object):
 
         image_url = "http://images.cocodataset.org/val2017/000000039769.jpg"
         image_path = os.path.join(lazyllm.config['data_path'], "ci_data/ji.jpg")
-        image_base64, mime = image_to_base64(image_path)
+        image_base64, mime = _image_to_base64(image_path)
         image_base64 = f'data:{mime};base64,{image_base64}'
         res = m(image_url, modality='image')
         assert len(json.loads(res)) == 1152
