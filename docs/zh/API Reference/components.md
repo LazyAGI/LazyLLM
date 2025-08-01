@@ -57,7 +57,7 @@
 ::: lazyllm.components.deploy.relay.base.RelayServer
     options:
       heading_level: 3
-      members: cmd, geturl
+      members: [cmd, geturl]
 
 ::: lazyllm.components.deploy.OCRDeploy
     options:
