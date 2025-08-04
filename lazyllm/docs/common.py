@@ -363,3 +363,46 @@ add_example('FileSystemQueue.clear', """\
 >>> queue.peek() is None
 True
 """)
+
+add_chinese_doc('ProcessPoolExecutor.submit', '''\
+将任务提交到进程池中执行。
+
+此方法将一个函数及其参数序列化后提交到进程池中执行，返回一个 `Future` 对象，用于获取任务执行结果或状态。
+
+Args:
+    fn (Callable): 要执行的函数。
+    *args: 传递给函数的位置参数。
+    **kwargs: 传递给函数的关键字参数。
+
+Returns:
+    concurrent.futures.Future: 表示任务执行状态的 `Future` 对象。
+''')
+
+add_english_doc('ProcessPoolExecutor.submit', '''\
+Submit a task to the process pool for execution.
+
+This method serializes a function and its arguments, then submits them to the process pool for execution. It returns a `Future` object to track the task's status or result.
+
+Args:
+    fn (Callable): The function to execute.
+    *args: Positional arguments passed to the function.
+    **kwargs: Keyword arguments passed to the function.
+
+Returns:
+    concurrent.futures.Future: A `Future` object representing the task's execution status.
+''')
+
+add_example('ProcessPoolExecutor.submit', '''\
+>>> from lazyllm.common.multiprocessing import ProcessPoolExecutor
+>>> import time
+>>> 
+>>> def task(x):
+...     time.sleep(1)
+...     return x * 2
+... 
+>>> with ProcessPoolExecutor(max_workers=2) as executor:
+...     future = executor.submit(task, 5)
+...     result = future.result()
+...     print(result)
+10
+''')

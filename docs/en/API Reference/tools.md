@@ -176,7 +176,7 @@
     exclude-members:
 
 lazyllm.tools.rag.transform.NodeTransform
-    members:
+    members: 
     exclude-members:
 
 ::: lazyllm.tools.rag.transform.TransformArgs
@@ -222,8 +222,11 @@ lazyllm.tools.rag.transform.NodeTransform
 ::: lazyllm.tools.rag.dataReader.FileReader
     members:
     exclude-members:
-    
-    
+
+::: lazyllm.tools.rag.transform.FuncNodeTransform
+    members: transform
+    exclude-members:
+
 ::: lazyllm.tools.WebModule
     members:
     exclude-members: forward
@@ -237,7 +240,7 @@ lazyllm.tools.rag.transform.NodeTransform
     exclude-members: forward
 
 ::: lazyllm.tools.QustionRewrite
-    members: 
+    members: choose_prompt
     exclude-members: forward
 
 ::: lazyllm.tools.agent.toolsManager.ToolManager

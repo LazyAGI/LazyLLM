@@ -33,4 +33,7 @@
 ::: lazyllm.common.FileSystemQueue
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
-    
+
+::: lazyllm.common.ProcessPoolExecutor
+    members: submit
+    exclude-members:
