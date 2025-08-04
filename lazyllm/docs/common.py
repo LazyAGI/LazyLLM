@@ -391,8 +391,8 @@ Args:
     instance (Optional[Any]): 调用该描述符的实例，若无则为 None。
     owner (type): 描述符所属的类。
 
-Returns:
-    调用结果，与封装函数的返回值一致。
+**Returns:**\n
+- 调用结果，与封装函数的返回值一致。
 ''')
 
 add_english_doc('DynamicDescriptor.Impl', '''\
@@ -404,6 +404,6 @@ Args:
     instance (Optional[Any]): The instance accessing the descriptor, or None if accessed via class.
     owner (type): The class owning the descriptor.
 
-Returns:
-    The result of the function call, consistent with the wrapped function's return value.
+**Returns:**\n
+- The result of the function call, consistent with the wrapped function's return value.
 ''')

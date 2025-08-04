@@ -37,5 +37,6 @@
 ## DynamicDescriptor
 
 ::: lazyllm.common.DynamicDescriptor
-    members: Impl
+    members:
+    - Impl
     exclude-members:

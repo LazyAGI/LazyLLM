@@ -132,11 +132,7 @@
 ::: lazyllm.components.ModelManager
     options:
       heading_level: 3
-      members:
-      - get_model_type
-      - get_model_prompt_keys
-      - validate_model_path
-      - download
+      members: [get_model_type,get_model_prompt_keys, validate_model_path, download]
 
 ---
 
