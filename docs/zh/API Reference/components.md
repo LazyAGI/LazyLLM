@@ -19,6 +19,7 @@
 ::: lazyllm.components.auto.AutoFinetune
     options:
       heading_level: 3
+
 ::: lazyllm.components.finetune.base.DummyFinetune
     options:
       heading_level: 3
@@ -131,6 +132,11 @@
 ::: lazyllm.components.ModelManager
     options:
       heading_level: 3
+      members:
+      - get_model_type
+      - get_model_prompt_keys
+      - validate_model_path
+      - download
 
 ---
 
@@ -211,5 +217,11 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
 ### Speech to Text
 
 ::: lazyllm.components.SenseVoiceDeploy
+    options:
+      heading_level: 4
+
+### Text to speech
+
+::: lazyllm.components.deploy.text_to_speech.utils.TTSBase
     options:
       heading_level: 4
