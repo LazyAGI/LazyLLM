@@ -167,6 +167,18 @@
     members:
 	exclude-members:
 
+::: lazyllm.tools.IndexBase.update
+    members:
+	exclude-members: 
+
+::: lazyllm.tools.IndexBase.remove
+    members:
+	exclude-members: 
+
+::: lazyllm.tools.IndexBase.query
+    members:
+	exclude-members:
+
 ::: lazyllm.tools.SentenceSplitter
     members:
     exclude-members:

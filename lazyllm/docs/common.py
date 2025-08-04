@@ -185,6 +185,97 @@ True
 (1, 2, 3, 4, 5)
 ''')
 
+# ============= Bind/bind
+add_chinese_doc('bind', '''\
+Bind 类用于函数绑定与延迟调用，支持动态参数传入和上下文参数解析，实现灵活的函数组合与流水线式调用。
+
+bind 函数能够将一个函数与固定的位置参数和关键字参数绑定，支持使用占位符（如 _0, _1）引用当前数据流中上游节点的输出，实现数据在流水线中的跳跃传递和灵活组合。
+
+注意事项：
+    - 绑定的参数可以是具体值，也可以是当前数据流中上游节点的输出占位符。
+    - 参数绑定仅在当前数据流上下文内生效，不能跨数据流绑定或绑定外部变量。
+
+Args:
+    __bind_func (Callable 或 type): 要绑定的函数或函数类型，传入类型时会自动实例化。
+    *args: 绑定时固定的位置参数，可以包含占位符。
+    **kw: 绑定时固定的关键字参数，可以包含占位符。
+''')
+
+add_english_doc('bind', '''\
+The Bind class provides function binding and deferred invocation capabilities, supporting dynamic argument passing and context-based argument resolution for flexible function composition and pipeline-style calls.
+
+The bind function binds a callable with fixed positional and keyword arguments, supporting placeholders (e.g. _0, _1) to reference outputs of upstream nodes within the current pipeline, enabling flexible data jumps and function composition.
+
+Notes:
+    - Bound arguments can be concrete values or placeholders referring to upstream pipeline outputs.
+    - Bindings are local to the current pipeline context and do not support cross-pipeline or external variable binding.
+
+Args:
+    __bind_func (Callable or type): The function or function type to bind. If a type is given, it will be instantiated automatically.
+    *args: Fixed positional arguments to bind, supporting placeholders.
+    **kw: Fixed keyword arguments to bind, supporting placeholders.
+''')
+
+add_example('bind', '''\
+>>> from lazyllm import bind, _0, _1
+>>> def f1(x):
+...     return x ** 2
+>>> def f21(input1, input2=0):
+...     return input1 + input2 + 1
+>>> def f22(input1, input2=0):
+...     return input1 + input2 - 1
+>>> def f3(in1='placeholder1', in2='placeholder2', in3='placeholder3'):
+...     return f"get [input:{in1}], [f21:{in2}], [f22:{in3}]"
+
+>>> from lazyllm import pipeline, parallel
+
+>>> with pipeline() as ppl:
+...     ppl.f1 = f1
+...     with parallel() as ppl.subprl2:
+...         ppl.subprl2.path1 = f21
+...         ppl.subprl2.path2 = f22
+...     ppl.f3 = bind(f3, ppl.input, _0, _1)
+...
+>>> print(ppl(2))
+get [input:2], [f21:5], [f22:3]
+
+>>> # Demonstrate operator '|' overloading for bind
+>>> with pipeline() as ppl2:
+...     ppl2.f1 = f1
+...     with parallel().bind(ppl2.input, _0) as ppl2.subprl2:
+...         ppl2.subprl2.path1 = f21
+...         ppl2.subprl2.path2 = f22
+...     ppl2.f3 = f3 | bind(ppl2.input, _0, _1)
+...
+>>> print(ppl2(2))
+get [input:2], [f21:7], [f22:5]
+''')
+
+# ============= package
+add_chinese_doc('package', '''\
+package类用于封装流水线或并行模块的返回值，保证传递给下游模块时自动拆包，从而支持多个值的灵活传递。
+''')
+
+add_english_doc('package', '''\
+The package class is used to encapsulate the return values of pipeline or parallel modules,
+ensuring automatic unpacking when passing to the next module, thereby supporting flexible multi-value passing.
+''')
+
+add_example('package', '''\
+>>> from lazyllm.common import package
+>>> p = package(1, 2, 3)
+>>> p
+(1, 2, 3)
+>>> p[1]
+2
+>>> p_slice = p[1:]
+>>> isinstance(p_slice, package)
+True
+>>> p2 = package([4, 5])
+>>> p + p2
+(1, 2, 3, 4, 5)
+''')
+
 add_chinese_doc('FileSystemQueue', """\
 基于文件系统的队列抽象基类。
 
@@ -363,3 +454,49 @@ add_example('FileSystemQueue.clear', """\
 >>> queue.peek() is None
 True
 """)
+
+add_chinese_doc('SQLiteQueue', '''\
+基于 SQLite 的持久化文件系统队列。
+
+该类扩展自 FileSystemQueue，使用 SQLite 数据库存储队列数据，通过 position 字段保证先进先出顺序，并支持并发安全的消息入队、出队、查看队头、队列大小查询和清空操作。
+
+队列数据库默认存储在 ~/.lazyllm_filesystem_queue.db，通过文件锁机制确保多进程安全访问。
+
+Args:
+    klass (str): 队列分类名，用于逻辑隔离不同的队列，默认为 '__default__'。
+''')
+
+add_english_doc('SQLiteQueue', '''\
+Persistent file system queue backed by SQLite.
+
+This class extends FileSystemQueue and stores queue data in an SQLite database. Messages are ordered by a position field to preserve FIFO behavior. The class supports concurrent-safe operations including enqueue, dequeue, peek, size checking, and clearing the queue.
+
+The queue database is saved at ~/.lazyllm_filesystem_queue.db, with a file lock mechanism ensuring safe access in multi-process environments.
+
+Args:
+    klass (str): Name of the queue category used to logically separate queues. Default is '__default__'.
+''')
+
+add_example('SQLiteQueue', ['''\
+>>> from lazyllm.components import SQLiteQueue
+>>> queue = SQLiteQueue(klass='demo')
+
+>>> # Enqueue messages
+>>> queue._enqueue('session1', 'Hello')
+>>> queue._enqueue('session1', 'World')
+
+>>> # Peek at the first message
+>>> print(queue._peek('session1'))
+... 'Hello'
+
+>>> # Dequeue all messages
+>>> print(queue._dequeue('session1'))
+... ['Hello', 'World']
+
+>>> # Check queue size
+>>> print(queue._size('session1'))
+... 0
+
+>>> # Clear queue (safe even when empty)
+>>> queue._clear('session1')
+'''])

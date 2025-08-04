@@ -22,7 +22,7 @@
     members:
 	exclude-members:
 
-::: lazyllm.tools.rag.component.bm25
+::: lazyllm.tools.rag.component.bm25.BM25
     members:
 	exclude-members:
 
@@ -84,7 +84,7 @@
     members:
 	exclude-members:
 
-::: lazyllm.tools.rag.component.bm25
+::: lazyllm.tools.rag.component.bm25.BM25
     members:
 	exclude-members:
 
@@ -164,6 +164,18 @@
     exclude-members: 
 
 ::: lazyllm.tools.rag.DocManager
+    members:
+	exclude-members:
+
+::: lazyllm.tools.IndexBase.update
+    members:
+	exclude-members: 
+
+::: lazyllm.tools.IndexBase.remove
+    members:
+	exclude-members: 
+
+::: lazyllm.tools.IndexBase.query
     members:
 	exclude-members:
 
