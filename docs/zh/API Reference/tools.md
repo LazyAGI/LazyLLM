@@ -22,7 +22,7 @@
     members:
 	exclude-members:
 
-::: lazyllm.tools.rag.component.bm25
+::: lazyllm.tools.rag.component.bm25.BM25
     members:
 	exclude-members:
 
@@ -84,7 +84,7 @@
     members:
 	exclude-members:
 
-::: lazyllm.tools.rag.component.bm25
+::: lazyllm.tools.rag.component.bm25.BM25
     members:
 	exclude-members:
 
@@ -373,5 +373,13 @@ lazyllm.tools.rag.transform.NodeTransform
     exclude-members:
 
 ::: lazyllm.tools.HttpTool
+    members: 
+    exclude-members:
+
+::: lazyllm.tools.TencentSearch
+    members: 
+    exclude-members:
+
+::: lazyllm.tools.WebUi
     members: 
     exclude-members:

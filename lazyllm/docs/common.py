@@ -363,3 +363,38 @@ add_example('FileSystemQueue.clear', """\
 >>> queue.peek() is None
 True
 """)
+
+add_chinese_doc('Identity', '''\
+恒等模块，用于直接返回输入值。
+
+该模块常用于模块拼接结构中占位，无实际处理逻辑。若输入为多个参数，将自动打包为一个整体结构输出。
+
+Args:
+    *args: 可选的位置参数，占位用。
+    **kw: 可选的关键字参数，占位用。
+''')
+
+add_english_doc('Identity', '''\
+Identity module that directly returns the input as output.
+
+This module serves as a no-op placeholder in composition pipelines. If multiple inputs are provided, they are packed together before returning.
+
+Args:
+    *args: Optional positional arguments for placeholder compatibility.
+    **kw: Optional keyword arguments for placeholder compatibility.
+''')
+
+add_example('Identity', ['''\
+>>> from lazyllm.components import Identity
+>>> identity = Identity()
+
+>>> # 单个输入时，返回原值
+>>> result = identity("hello")
+>>> print(result)
+'hello'
+
+>>> # 多个输入时，返回打包结果
+>>> result = identity(1, 2, 3)
+>>> print(result)
+(1, 2, 3)
+'''])
