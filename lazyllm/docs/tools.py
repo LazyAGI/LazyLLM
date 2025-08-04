@@ -373,7 +373,8 @@ Reader for extracting speech content from video or audio files using OpenAI's Wh
 Args:
     model_version (str): Whisper model version (e.g., "base", "small", "medium", "large"). Default is "base".
     return_trace (bool): Whether to return the processing trace. Default is True.
-=======
+''')
+
 add_chinese_doc('rag.component.bm25.BM25', '''\
 基于 BM25 算法实现的检索器，用于从节点集合中根据查询词检索最相关的文本节点。
 
