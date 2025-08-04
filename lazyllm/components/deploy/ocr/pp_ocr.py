@@ -3,7 +3,7 @@ import lazyllm
 from typing import Optional
 import string
 from ..base import LazyLLMDeployBase
-from ...utils.file_operate import base64_to_file
+from ...utils.file_operate import _base64_to_file
 
 punctuation = set(string.punctuation + "，。！？；：“”‘’（）【】《》…—～、")
 
@@ -12,7 +12,7 @@ def is_all_punctuation(s: str) -> bool:
     return all(c in punctuation for c in s)
 
 
-class OCR(object):
+class _OCR(object):
     def __init__(
         self,
         model: Optional[str] = "PP-OCRv5_mobile",
@@ -57,7 +57,7 @@ class OCR(object):
             file_list = lazyllm.components.formatter.formatterbase._lazyllm_get_file_list(input)
         if isinstance(file_list, str):
             file_list = [file_list]
-        file_list = [base64_to_file(file) for file in file_list]
+        file_list = [_base64_to_file(file) for file in file_list]
         if hasattr(file_list, '__repr__'):
             lazyllm.LOG.info(f"paddleocr read files: {file_list}")
         txt = []
@@ -78,7 +78,7 @@ class OCR(object):
         return cls(*args, **kw)
 
     def __reduce__(self):
-        return OCR.rebuild, (
+        return _OCR.rebuild, (
             self.model,
             self.use_doc_orientation_classify,
             self.use_doc_unwarping,
@@ -104,4 +104,4 @@ class OCRDeploy(LazyLLMDeployBase):
         if not finetuned_model:
             finetuned_model = base_model
         return lazyllm.deploy.RelayServer(
-            port=self._port, func=OCR(finetuned_model), launcher=self._launcher, log_path=self._log_path, cls="ocr")()
+            port=self._port, func=_OCR(finetuned_model), launcher=self._launcher, log_path=self._log_path, cls="ocr")()

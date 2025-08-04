@@ -17,6 +17,8 @@
       - evalset
       - forward
       - submodules
+      - forward
+      - submodules
 
 ::: lazyllm.module.TrainableModule
     options:
@@ -26,6 +28,10 @@
       - update
       - evalset
       - eval
+      - wait
+      - stop
+      - prompt
+      - forward
       - wait
       - stop
       - prompt
@@ -42,6 +48,10 @@
       - start
       - restart
       - evalset
+
+::: lazyllm.module.AutoModel
+    options:
+      members:
 
 ::: lazyllm.module.AutoModel
     options:

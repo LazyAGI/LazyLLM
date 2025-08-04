@@ -1,10 +1,29 @@
 from abc import abstractmethod
 import os
+import base64
+from io import BytesIO
+from lazyllm.thirdparty import scipy, numpy as np
 import lazyllm
-from lazyllm.components.deploy.text_to_speech.utils import sounds_to_base64_list
 from lazyllm.components.formatter.formatterbase import encode_query_with_filepaths
 from lazyllm.components.utils.downloader.model_downloader import ModelManager
 
+
+def _sound_to_base64(sound: 'np.array', mime_type: str = 'audio/wav', sample_rate: int = 24000) -> str:
+    scaled_audio = np.int16(sound / np.max(np.abs(sound)) * 32767)
+    buffer = BytesIO()
+    scipy.io.wavfile.write(buffer, sample_rate, scaled_audio)
+    buffer.seek(0)
+    base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
+    return f"data:{mime_type};base64,{base64_str}"
+
+def _sounds_to_base64_list(sounds: list, mime_type: str = 'audio/wav', sample_rate: int = 24000) -> list:
+    base64_list = []
+    for sound in sounds:
+        base64_str = _sound_to_base64(sound, mime_type, sample_rate)
+        base64_list.append(base64_str)
+    return base64_list
+
+class _TTSInfer(object):
 class TTSInfer(object):
     """TTSInfer is an abstract base class for Text-to-Speech (TTS) inference models.
 
@@ -74,16 +93,16 @@ Examples:
         self.save_path = save_path or os.path.join(lazyllm.config['temp_dir'], self.model_name)
         self.sample_rate = 24000
         if init:
-            lazyllm.call_once(self.init_flag, self.load_model)
+            lazyllm.call_once(self.init_flag, self._load_model)
 
     @abstractmethod
-    def load_model(self):
+    def _load_model(self):
         pass
 
     def __call__(self, string):
-        lazyllm.call_once(self.init_flag, self.load_model)
+        lazyllm.call_once(self.init_flag, self._load_model)
         speech, sample_rate = self._infer(string)
-        base64_list = sounds_to_base64_list(speech, sample_rate=sample_rate)
+        base64_list = _sounds_to_base64_list(speech, sample_rate=sample_rate)
         return encode_query_with_filepaths(files=base64_list)
 
     @abstractmethod

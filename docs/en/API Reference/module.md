@@ -28,6 +28,10 @@
       - stop
       - prompt
       - forward
+      - wait
+      - stop
+      - prompt
+      - forward
 
 ::: lazyllm.module.UrlModule
     options:
@@ -40,6 +44,10 @@
       - start
       - restart
       - evalset
+
+::: lazyllm.module.AutoModel
+    options:
+      members:
 
 ::: lazyllm.module.AutoModel
     options:

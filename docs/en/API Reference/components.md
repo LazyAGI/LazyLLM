@@ -19,7 +19,9 @@
 ::: lazyllm.components.auto.AutoFinetune
     options:
       heading_level: 3
-
+::: lazyllm.components.finetune.base.DummyFinetune
+    options:
+      heading_level: 3
 ---
 
 ## Deploy
@@ -40,6 +42,20 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.EmbeddingDeploy
+    options:
+      heading_level: 3
+
+::: lazyllm.components.deploy.embed.RerankDeploy
+    options:
+      heading_level: 3
+
+::: lazyllm.components.deploy.Mindie
+    options:
+      heading_level: 3
+::: lazyllm.components.deploy.OCRDeploy
+    options:
+      heading_level: 3
 ---
 
 ## Launcher
@@ -98,7 +114,7 @@
 	  inherited_members:
 	    - generate_prompt
 	    - get_response
-      members: false
+    members: false
 
 ---
 
