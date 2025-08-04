@@ -174,23 +174,46 @@ add_chinese_doc('Parallel', """\
 #       \> module31 -> ... -> module3N -> out3 /
 ```        
 
+可以这样可视化 ``Parallel.sequential`` 方法：
+
+```text
+# input -> module21 -> ... -> module2N -> out2 -> 
+```
+
 Args:
+    args: 基类的可变长度参数列表。
     _scatter (bool, optional): 如果为 ``True``，输入将在项目之间分割。如果为 ``False``，相同的输入将传递给所有项目。默认为 ``False``。
     _concurrent (bool, optional): 如果为 ``True``，操作将使用线程并发执行。如果为 ``False``，操作将顺序执行。默认为 ``True``。
     multiprocessing (bool, optional): 如果为 ``True``，将使用多进程而不是多线程进行并行执行。这可以提供真正的并行性，但会增加进程间通信的开销。默认为 ``False``。
     auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
-    args: 基类的可变长度参数列表。
-    _scatter (bool, optional): 如果为 ``True``，输入将在项目之间分割。如果为 ``False``，相同的输入将传递给所有项目。默认为 ``False``。
-    _concurrent (Union[bool, int], optional): 如果为 ``True``，操作将使用线程并发执行。如果为整数，则指定最大并发数。如果为 ``False``，操作将顺序执行。默认为 ``True``。
-    multiprocessing (bool, optional): 如果为 ``True``，将使用多进程而不是多线程进行并行执行。这可以提供真正的并行性，但会增加进程间通信的开销。默认为 ``False``。
-    auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
     kwargs: 基类的任意关键字参数。
+
+<span style="font-size: 20px;">&ensp;**`asdict property`**</span>
+
+标记Parellel，使得Parallel每次调用时的返回值由package变为dict。当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)`` 。
+
+<span style="font-size: 20px;">&ensp;**`tuple property`**</span>
+
+标记Parellel，使得Parallel每次调用时的返回值由package变为tuple。
+
+<span style="font-size: 20px;">&ensp;**`list property`**</span>
+
+标记Parellel，使得Parallel每次调用时的返回值由package变为list。
+
+<span style="font-size: 20px;">&ensp;**`sum property`**</span>
+
+标记Parellel，使得Parallel每次调用时的返回值做一次累加。
+
+<span style="font-size: 20px;">&ensp;**`join(self, string)`**</span>
+
+标记Parellel，使得Parallel每次调用时的返回值通过 ``string`` 做一次join。
 """)
 
 add_english_doc('Parallel', """\
 A class for managing parallel flows in LazyLLMFlows.
 
 This class inherits from LazyLLMFlowsBase and provides an interface for running operations in parallel or sequentially. It supports concurrent execution using threads and allows for the return of results as a dictionary.
+
 
 The ``Parallel`` class can be visualized as follows:
 
@@ -200,6 +223,12 @@ The ``Parallel`` class can be visualized as follows:
 #       \> module31 -> ... -> module3N -> out3 /
 ```       
 
+The ``Parallel.sequential`` method can be visualized as follows:
+
+```text
+# input -> module21 -> ... -> module2N -> out2 -> 
+```
+
 Args:
     args: Variable length argument list for the base class.
     _scatter (bool, optional): If ``True``, the input is split across the items. If ``False``, the same input is passed to all items. Defaults to ``False``.
@@ -207,7 +236,53 @@ Args:
     multiprocessing (bool, optional): If ``True``, multiprocessing will be used instead of multithreading for parallel execution. This can provide true parallelism but adds overhead for inter-process communication. Defaults to ``False``.
     auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
     kwargs: Arbitrary keyword arguments for the base class.
+
+`asdict property`
+
+Tag ``Parallel`` so that the return value of each call to ``Parallel`` is changed from a tuple to a dict. When using ``asdict``, make sure that the elements of ``parallel`` are named, for example: ``parallel(name=value)``.
+
+`tuple property`
+
+Mark Parallel so that the return value of Parallel changes from package to tuple each time it is called.
+
+`list property`
+
+Mark Parallel so that the return value of Parallel changes from package to list each time it is called.
+
+`sum property`
+
+Mark Parallel so that the return value of Parallel is accumulated each time it is called.
+
+`join(self, string)`
+
+Mark Parallel so that the return value of Parallel is joined by ``string`` each time it is called.
 """)
+
+add_example(
+    'Parallel',
+    '''\
+>>> import lazyllm
+>>> test1 = lambda a: a + 1
+>>> test2 = lambda a: a * 4
+>>> test3 = lambda a: a / 2
+>>> ppl = lazyllm.parallel(test1, test2, test3)
+>>> assert ppl(1) == (2, 4, 0.5), "LAZYLLM_CHECK_FAILED"
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3)
+>>> ppl(1)
+{2, 4, 0.5}
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).asdict
+>>> assert  ppl(2) == {'a': 3, 'b': 8, 'c': 1.0}, "LAZYLLM_CHECK_FAILED"
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).astuple
+>>> ppl(-1)
+(0, -4, -0.5)
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).aslist
+>>> ppl(0)
+[1, 0, 0.0]
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).join('\\\\n')
+>>> ppl(1)
+'2\\\\n4\\\\n0.5'
+''',
+)
 
 add_chinese_doc('Parallel.sequential', """\
 创建一个顺序执行的Parallel实例。
