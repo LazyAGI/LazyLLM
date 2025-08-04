@@ -13,7 +13,7 @@ from lazyllm import globals, LOG, launchers, Option, package, LazyLLMDeployBase,
 from ...components.formatter import decode_query_with_filepaths, encode_query_with_filepaths
 from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from ...components.utils import ModelManager
-from ...components.utils.file_operate import base64_to_file, is_base64_with_mime
+from ...components.utils.file_operate import _base64_to_file, _is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
 from .utils import map_kw_for_framework, encode_files
 from ...flow import Pipeline
@@ -241,7 +241,7 @@ class TrainableModule(UrlModule):
 
     @property
     def series(self):
-        return re.sub(r'\d+$', '', ModelManager.get_model_name(self.base_model).split('-')[0].upper())
+        return re.sub(r'\d+$', '', ModelManager._get_model_name(self.base_model).split('-')[0].upper())
 
     @property
     def type(self):
@@ -396,7 +396,7 @@ class TrainableModule(UrlModule):
 
     def _decode_base64_to_file(self, content: str) -> str:
         decontent = decode_query_with_filepaths(content)
-        files = [base64_to_file(file_content) if is_base64_with_mime(file_content) else file_content
+        files = [_base64_to_file(file_content) if _is_base64_with_mime(file_content) else file_content
                  for file_content in decontent["files"]]
         return encode_query_with_filepaths(query=decontent["query"], files=files)
 

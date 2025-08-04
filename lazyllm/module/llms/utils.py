@@ -7,7 +7,7 @@ from typing import Callable, Dict, Union, Tuple, Any, Optional
 import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import datasets
-from ...components.utils.file_operate import delete_old_files
+from ...components.utils.file_operate import _delete_old_files
 from lazyllm.common.utils import check_path
 
 @dataclass
@@ -103,7 +103,7 @@ def save_dataset(save_data: list, save_suffix='json', base_name='train_data') ->
     directory = os.path.join(lazyllm.config['temp_dir'], 'dataset')
     if not os.path.exists(directory):
         os.makedirs(directory)
-    delete_old_files(directory)
+    _delete_old_files(directory)
     time_stamp = datetime.now().strftime('%y%m%d%H%M%S%f')[:14]
     output_json_path = os.path.join(directory, f'{base_name}_{time_stamp}.{save_suffix}')
     if save_suffix == 'json':
