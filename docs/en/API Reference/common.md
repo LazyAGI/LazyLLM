@@ -37,3 +37,10 @@
 ::: lazyllm.common.multiprocessing.SpawnProcess
     members: start
     exclude-members:
+
+## Threading
+
+::: lazyllm.common.Thread
+    members: work, get_result
+    exclude-members:
+    

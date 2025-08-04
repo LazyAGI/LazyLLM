@@ -2650,6 +2650,497 @@ add_english_doc('rag.DocListManager.release', """\
 Releases the resources of the current manager.
 """)
 
+add_chinese_doc('rag.utils.SqliteDocListManager', '''\
+基于 SQLite 的文档管理器，用于本地文件的持久化存储、状态管理与元信息追踪。
+
+该类继承自 DocListManager，利用 SQLite 数据库存储文档记录。适用于管理具有唯一标识符的本地文档资源，并提供便捷的插入、查询、更新与状态过滤接口，支持可选的路径监控功能。
+
+Args:
+    path (str): 数据库存储路径。
+    name (str): 数据库文件名（不包含路径）。
+    enable_path_monitoring (bool): 是否启用对文件路径的变动监控，默认为 True。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager', '''\
+SQLite-based document manager for persistent local file storage, status tracking, and metadata management.
+
+This class inherits from DocListManager and uses a SQLite backend to store document records. It is suitable for managing locally identified documents with support for inserting, querying, updating, and filtering based on status. Optional file path monitoring is also supported.
+
+Args:
+    path (str): Directory path to store the database.
+    name (str): Name of the SQLite database file (without path).
+    enable_path_monitoring (bool): Whether to enable path monitoring. Defaults to True.
+''')
+
+add_example('rag.utils.SqliteDocListManager', '''\
+>>> from lazyllm.tools.rag.utils import SqliteDocListManager
+>>> manager = SqliteDocListManager(path="./data", name="docs.sqlite")
+>>> manager.insert({"uid": "doc_001", "name": "example.txt", "status": "ready"})
+>>> print(manager.get("doc_001"))
+>>> files = manager.list_files(limit=5, details=True)
+>>> print(files)
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.table_inited', '''\
+检查数据库中是否已存在名为 "documents" 的表。
+
+该方法通过查询 sqlite_master 元信息表，判断数据表是否已初始化。
+
+**Returns:**\n
+- bool: 如果 "documents" 表存在，返回 True；否则返回 False。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.table_inited', '''\
+Checks whether the "documents" table has been initialized in the database.
+
+The method queries the sqlite_master metadata table to verify if the "documents" table exists.
+
+**Returns:**\n
+- bool: True if the "documents" table exists, False otherwise.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.get_status_cond_and_params', '''\
+生成用于文档状态筛选的 SQL 条件语句及其参数列表。
+
+根据传入的包含状态和排除状态，构造 WHERE 子句中使用的 SQL 表达式。支持字段名前缀，用于联表查询等场景。
+
+Args:
+    status (str 或 list of str): 要包含的文档状态。若为 "all"，不添加包含条件。
+    exclude_status (str 或 list of str, optional): 要排除的文档状态。不能为 "all"。
+    prefix (str, optional): 字段名前缀（如联表查询中的别名），将应用于字段名。
+
+**Returns:**\n
+- Tuple[str, list]: 包含 SQL 条件语句和对应参数的元组。
+''')
+
+
+add_english_doc('rag.utils.SqliteDocListManager.get_status_cond_and_params', '''\
+Generates SQL condition expressions and parameter values for filtering documents by status.
+
+Builds WHERE clause components using the given inclusion and exclusion statuses. Supports field name prefixing for use in joined queries.
+
+Args:
+    status (str or list of str): Document status(es) to include. If set to "all", no inclusion condition will be applied.
+    exclude_status (str or list of str, optional): Status(es) to exclude. Must not be "all".
+    prefix (str, optional): Optional field prefix (e.g., table alias) to prepend to the status field.
+
+**Returns:**\n
+- Tuple[str, list]: A tuple containing the SQL condition string and its corresponding parameter values.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.validate_paths', '''\
+验证输入路径所对应的文档是否可以安全添加到数据库。
+
+该方法会检查每个路径是否对应已有文档，若已存在，需判断其状态是否允许重解析。
+若文档正在解析或等待解析，或上次重解析未完成，则视为不可用。
+
+Args:
+    paths (List[str]): 文件路径列表。
+
+**Returns:**\n
+- Tuple[bool, str, List[bool]]: 
+    - bool: 是否所有路径都验证通过。
+    - str: 成功或失败的描述信息。
+    - List[bool]: 与输入路径一一对应的布尔列表，表示该路径是否为新文档（True 为新文档，False 为已存在）。
+        若验证失败，返回值为 None。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.validate_paths', '''\
+Validates whether the documents corresponding to the given paths can be safely added to the database.
+
+The method checks if the document already exists. If it exists, it verifies whether the document is currently
+being parsed, waiting to be parsed, or was not successfully re-parsed last time.
+
+Args:
+    paths (List[str]): A list of file paths to validate.
+
+**Returns:**\n
+- Tuple[bool, str, List[bool]]: 
+    - bool: Whether all paths passed validation.
+    - str: Description message of the validation result.
+    - List[bool]: A boolean list corresponding to input paths, indicating whether each path is new (True) or already exists (False).
+      If validation fails, this value is None.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.update_need_reparsing', '''\
+更新指定文档的重解析标志位。
+
+该方法用于设置某个文档是否需要重新解析。可以选择性地指定知识库分组进行精确匹配。
+
+Args:
+    doc_id (str): 文档的唯一标识符。
+    need_reparse (bool): 是否需要重新解析文档。
+    group_name (Optional[str]): 可选，所属的知识库分组名称。如果提供，将仅更新指定分组中的文档。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.update_need_reparsing', '''\
+Updates the re-parsing flag for a specific document.
+
+This method sets whether a document should be re-parsed. If a group name is provided, the update is scoped to that group only.
+
+Args:
+    doc_id (str): The unique identifier of the document.
+    need_reparse (bool): Whether the document needs to be re-parsed.
+    group_name (Optional[str]): Optional. The knowledge base group name to filter by. If provided, only documents in the specified group will be updated.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.list_files', """\
+列出文档数据库中符合状态条件的文件，并根据参数选择返回完整记录或仅返回文件路径。
+
+Args:
+    limit (Optional[int]): 要返回的记录数上限，若为 None 则返回所有符合条件的记录。
+    details (bool): 是否返回完整的数据库行信息，若为 False 则仅返回文档路径（ID）。
+    status (Union[str, List[str]]): 要包含在结果中的状态值，默认为包含所有状态。
+    exclude_status (Optional[Union[str, List[str]]]): 要从结果中排除的状态值。
+
+**Returns:**\n
+- list: 文件记录列表或文档路径列表，具体取决于 `details` 参数。
+""")
+
+add_english_doc('rag.utils.SqliteDocListManager.list_files', """\
+Lists files in the document database based on status filters and returns either full records or file paths.
+
+Args:
+    limit (Optional[int]): The maximum number of records to return. If None, all matching records are returned.
+    details (bool): Whether to return full database rows or just file paths (document IDs).
+    status (Union[str, List[str]]): Status values to include in the result. Defaults to including all.
+    exclude_status (Optional[Union[str, List[str]]]): Status values to exclude from the result.
+
+**Returns:**\n
+- list: A list of file records or document paths depending on the `details` flag.
+""")
+
+add_chinese_doc('rag.utils.SqliteDocListManager.get_docs', '''\
+根据给定的文档ID列表，从数据库中获取对应的文档对象列表。
+
+Args:
+    doc_ids (List[str]): 需要查询的文档ID列表。
+
+**Returns:**\n
+- List[KBDocument]: 匹配的文档对象列表。如果没有匹配项，返回空列表。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.get_docs', '''\
+Fetches document objects from the database corresponding to the given list of document IDs.
+
+Args:
+    doc_ids (List[str]): A list of document IDs to query.
+
+**Returns:**\n
+- List[KBDocument]: A list of matching document objects. Returns an empty list if no matches found.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.set_docs_new_meta', '''\
+批量更新文档的元数据（meta），同时更新对应知识库分组中文档的 new_meta 字段（非等待状态的文档）。
+
+Args:
+    doc_meta (Dict[str, dict]): 字典，键为文档ID，值为对应的新元数据字典。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.set_docs_new_meta', '''\
+Batch updates the metadata (meta) of documents, and simultaneously updates the new_meta field of documents in knowledge base groups for documents that are not in waiting status.
+
+Args:
+    doc_meta (Dict[str, dict]): A dictionary mapping document IDs to their new metadata dictionaries.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.fetch_docs_changed_meta', '''\
+获取指定知识库分组中元数据发生变化的文档列表，并将对应的 new_meta 字段清空。
+
+Args:
+    group (str): 知识库分组名称。
+
+**Returns:**\n
+- List[DocMetaChangedRow]: 包含文档ID及其对应新元数据的列表。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.fetch_docs_changed_meta', '''\
+Fetches the list of documents within a specified knowledge base group that have updated metadata, and resets the new_meta field for those documents.
+
+Args:
+    group (str): Name of the knowledge base group.
+
+**Returns:**\n
+- List[DocMetaChangedRow]: A list containing document IDs and their updated metadata.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.list_all_kb_group', '''\
+列出数据库中所有的知识库分组名称。
+
+**Returns:**\n
+- List[str]: 知识库分组名称列表。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.list_all_kb_group', '''\
+Lists all knowledge base group names stored in the database.
+
+**Returns:**\n
+- List[str]: A list of knowledge base group names.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.add_kb_group', '''\
+向数据库中添加一个新的知识库分组名称，若已存在则忽略。
+
+Args:
+    name (str): 要添加的知识库分组名称。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.add_kb_group', '''\
+Adds a new knowledge base group name to the database; ignores if the group already exists.
+
+Args:
+    name (str): The name of the knowledge base group to add.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.list_kb_group_files', '''\
+列出指定知识库分组中的文件信息，可根据多种条件进行过滤。
+
+Args:
+    group (str, optional): 知识库分组名称，若为 None 则不按分组过滤。
+    limit (int, optional): 限制返回的文件数量。
+    details (bool): 是否返回详细的文件信息。
+    status (str or List[str], optional): 过滤知识库分组中文件的状态。
+    exclude_status (str or List[str], optional): 排除指定状态的文件。
+    upload_status (str or List[str], optional): 过滤文件上传状态。
+    exclude_upload_status (str or List[str], optional): 排除指定的上传状态。
+    need_reparse (bool, optional): 是否只返回需要重新解析的文件。
+
+**Returns:**\n
+- list: 
+    - 如果 details 为 False，返回列表，每个元素为 (doc_id, path) 元组。
+    - 如果 details 为 True，返回包含文件详细信息的元组列表，包括文档ID、路径、状态、元数据，
+      知识库分组名、分组内状态及日志。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.list_kb_group_files', '''\
+Lists files in a specified knowledge base group, with support for multiple filters.
+
+Args:
+    group (str, optional): Knowledge base group name to filter by. If None, no group filtering is applied.
+    limit (int, optional): Limit on the number of files to return.
+    details (bool): Whether to return detailed file information.
+    status (str or List[str], optional): Filter files by group document status.
+    exclude_status (str or List[str], optional): Exclude files with these group document statuses.
+    upload_status (str or List[str], optional): Filter files by upload document status.
+    exclude_upload_status (str or List[str], optional): Exclude files with these upload document statuses.
+    need_reparse (bool, optional): If set, only returns files marked as needing reparse.
+
+**Returns:**\n
+- list: 
+    - If details is False, returns a list of tuples (doc_id, path).
+    - If details is True, returns a list of tuples containing detailed file information:
+      document ID, path, status, metadata, group name, group status, and group log.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.delete_unreferenced_doc', '''\
+删除数据库中标记为删除且未被任何知识库分组引用的文档记录。
+
+该方法会查找状态为“deleting”且引用计数为0的文档，删除这些文档记录，并记录删除操作日志。
+
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.delete_unreferenced_doc', '''\
+Deletes documents from the database that are marked for deletion and are no longer referenced by any knowledge base group.
+
+This method queries documents with status "deleting" and a reference count of zero, deletes them from the database,
+and adds operation logs for these deletions.
+
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.get_docs_need_reparse', '''\
+获取指定知识库分组中需要重新解析的文档列表。
+
+仅返回状态为“success”或“failed”的文档，且其对应的知识库分组记录标记为需要重新解析。
+
+Args:
+    group (str): 知识库分组名称。
+
+**Returns:**\n
+- List[KBDocument]: 需要重新解析的文档列表。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.get_docs_need_reparse', '''\
+Retrieves the list of documents that require re-parsing within a specified knowledge base group.
+
+Only documents with status "success" or "failed" and marked as needing reparse in the group are returned.
+
+Args:
+    group (str): Name of the knowledge base group.
+
+**Returns:**\n
+- List[KBDocument]: List of documents that need to be re-parsed.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.get_existing_paths_by_pattern', '''\
+根据路径匹配模式获取已存在的文档路径列表。
+
+Args:
+    pattern (str): 路径匹配模式，支持SQL的LIKE通配符。
+
+**Returns:**\n
+- List[str]: 匹配到的已存在文档路径列表。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.get_existing_paths_by_pattern', '''\
+Retrieves a list of existing document paths that match a given pattern.
+
+Args:
+    pattern (str): Path matching pattern, supports SQL LIKE wildcards.
+
+**Returns:**\n
+- List[str]: List of existing document paths matching the pattern.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.update_file_message', '''\
+更新指定文件的字段信息。
+
+Args:
+    fileid (str): 文件的唯一标识符（doc_id）。
+    **kw: 需要更新的字段及其对应的值，键值对形式传入。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.update_file_message', '''\
+Updates fields of the specified file record.
+
+Args:
+    fileid (str): Unique identifier of the file (doc_id).
+    **kw: Key-value pairs of fields to update and their new values.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.update_file_status', '''\
+更新多个文件的状态，支持根据当前状态进行条件过滤。
+
+Args:
+    file_ids (List[str]): 需要更新状态的文件ID列表。
+    status (str): 要设置的新状态。
+    cond_status_list (Union[None, List[str]], optional): 仅更新当前状态在此列表中的文件，默认为 None，表示不筛选。
+
+**Returns:**\n
+- List[DocPartRow]: 返回更新后的文件ID和路径列表。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.update_file_status', '''\
+Updates the status of multiple files, optionally filtered by current status.
+
+Args:
+    file_ids (List[str]): List of file IDs to update.
+    status (str): New status to set.
+    cond_status_list (Union[None, List[str]], optional): List of statuses to filter files that can be updated. Defaults to None.
+
+**Returns:**\n
+- List[DocPartRow]: List of updated file IDs and their paths.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.add_files_to_kb_group', '''\
+将多个文件添加到指定的知识库分组中。
+
+该方法会将文件状态设置为等待处理（waiting），
+若添加成功，则对应文档的计数（count）加一。
+
+Args:
+    file_ids (List[str]): 需要添加的文件ID列表。
+    group (str): 知识库分组名称。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.add_files_to_kb_group', '''\
+Adds multiple files to the specified knowledge base group.
+
+This method sets the file status to waiting.
+If successfully added, increments the document's count.
+
+Args:
+    file_ids (List[str]): List of file IDs to add.
+    group (str): Name of the knowledge base group.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.delete_files_from_kb_group', '''\
+从指定的知识库分组中删除多个文件。
+
+删除成功后，对应文档的计数（count）减少，但不会低于0。
+若文档不存在，会记录警告日志。
+
+Args:
+    file_ids (List[str]): 需要删除的文件ID列表。
+    group (str): 知识库分组名称。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.delete_files_from_kb_group', '''\
+Deletes multiple files from the specified knowledge base group.
+
+After deletion, decrements the document's count but not below zero.
+If the document is not found, logs a warning.
+
+Args:
+    file_ids (List[str]): List of file IDs to delete.
+    group (str): Name of the knowledge base group.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.get_file_status', '''\
+获取指定文件的状态。
+
+Args:
+    fileid (str): 文件的唯一标识符。
+
+**Returns:**\n
+- Optional[Tuple]: 返回包含状态的元组，若文件不存在则返回 None。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.get_file_status', '''\
+Gets the status of a specified file.
+
+Args:
+    fileid (str): Unique identifier of the file.
+
+**Returns:**\n
+- Optional[Tuple]: A tuple containing the status, or None if the file does not exist.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.update_kb_group', '''\
+更新知识库分组中指定文件的状态和重解析需求。
+
+根据给定的文件ID列表、分组名及状态列表，批量更新对应文件在知识库分组中的状态及是否需要重解析标志。
+
+Args:
+    cond_file_ids (List[str]): 需要更新的文件ID列表。
+    cond_group (Optional[str]): 分组名称，若指定则只更新该分组内的文件。
+    cond_status_list (Optional[List[str]]): 仅更新状态匹配此列表的文件。
+    new_status (Optional[str]): 新的文件状态。
+    new_need_reparse (Optional[bool]): 新的重解析需求标志。
+
+**Returns:**\n
+- List[Tuple]: 返回更新后文件的doc_id、group_name及状态列表。
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.update_kb_group', '''\
+Updates the status and reparse need flag of specified files in a knowledge base group.
+
+Batch updates files' status and need_reparse flag within a knowledge base group based on file IDs, group name, and optional status filter.
+
+Args:
+    cond_file_ids (List[str]): List of file IDs to update.
+    cond_group (Optional[str]): Group name to filter files, if specified only updates files in this group.
+    cond_status_list (Optional[List[str]]): Only update files whose status is in this list.
+    new_status (Optional[str]): New status to set.
+    new_need_reparse (Optional[bool]): New flag indicating if reparse is needed.
+
+**Returns:**\n
+- List[Tuple]: List of tuples of updated files containing doc_id, group_name, and status.
+''')
+
+add_chinese_doc('rag.utils.SqliteDocListManager.release', '''\
+清空数据库中的所有文档、分组及相关操作日志数据。
+
+该操作会删除 documents、document_groups、kb_group_documents 和 operation_logs 表中的所有记录。
+
+''')
+
+add_english_doc('rag.utils.SqliteDocListManager.release', '''\
+Clears all documents, groups, and operation logs from the database.
+
+This operation deletes all records from documents, document_groups, kb_group_documents, and operation_logs tables.
+
+''')
+
 # ---------------------------------------------------------------------------- #
 
 add_chinese_doc('WebModule', '''\
@@ -4356,6 +4847,8 @@ Args:
 add_chinese_doc('MCPClient', '''\
 MCP客户端，用于连接MCP服务器。同时支持本地服务器和sse服务器。
 
+如果传入的 'command_or_url' 是一个 URL 字符串（以 'http' 或 'https' 开头），则将连接到远程服务器；否则，将启动并连接到本地服务器。
+
 
 Args:
     command_or_url (str): 用于启动本地服务器或连接远程服务器的命令或 URL 字符串。
@@ -4454,6 +4947,754 @@ add_chinese_doc('mcp.tool_adaptor.generate_lazyllm_tool', '''\
 Args:
     client (mcp.ClientSession): 连接到MCP服务器的MCP客户端。
     mcp_tool (mcp.types.Tool): 由MCP服务器提供的工具。
+''')
+
+# ---------------------------------------------------------------------------- #
+
+# rag/smart_embedding_index.py
+
+add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex', """\
+智能嵌入索引类，用于管理和查询文档节点的嵌入向量。
+
+SmartEmbeddingIndex是一个基于IndexBase的索引实现，支持多种后端存储（如Milvus、Map存储）。它提供了统一的接口来更新、删除和查询文档节点，特别适用于需要高效向量相似性搜索的RAG（检索增强生成）应用场景。
+
+该类封装了不同存储后端的具体实现细节，为用户提供了简洁一致的API接口。
+
+Args:
+    backend_type (str): 后端存储类型。支持的类型包括：
+        - 'milvus': 使用Milvus向量数据库作为后端存储
+        - 'map': 使用内存映射存储作为后端存储
+    **kwargs: 传递给具体后端存储的额外参数，这些参数会根据backend_type的不同而有所差异。
+
+**抛出:**\n
+- ValueError: 当提供不支持的backend_type时抛出
+""")
+
+add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex', """\
+Smart embedding index class for managing and querying document node embeddings.
+
+SmartEmbeddingIndex is an index implementation based on IndexBase that supports multiple backend storage options (such as Milvus, Map storage). It provides a unified interface for updating, removing, and querying document nodes, particularly suitable for RAG (Retrieval-Augmented Generation) applications that require efficient vector similarity search.
+
+This class encapsulates the implementation details of different storage backends, providing users with a clean and consistent API interface.
+
+Args:
+    backend_type (str): Backend storage type. Supported types include:
+        - 'milvus': Uses Milvus vector database as backend storage
+        - 'map': Uses memory-mapped storage as backend storage
+    **kwargs: Additional parameters passed to the specific backend storage, which may vary depending on the backend_type.
+
+**Raises:**\n
+- ValueError: Raised when an unsupported backend_type is provided
+""")
+
+add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex.update', """\
+更新索引中的文档节点。
+
+此方法将新的文档节点列表添加到索引中，包括它们的嵌入向量和元数据。如果节点已存在，则会更新其内容。
+
+Args:
+    nodes (List[DocNode]): 要添加或更新的文档节点列表。每个DocNode应包含文本内容、嵌入向量和相关元数据。
+""")
+
+add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex.update', """\
+Update document nodes in the index.
+
+This method adds a list of new document nodes to the index, including their embedding vectors and metadata. If nodes already exist, their content will be updated.
+
+Args:
+    nodes (List[DocNode]): List of document nodes to add or update. Each DocNode should contain text content, embedding vectors, and related metadata.
+""")
+
+add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex.remove', """\
+从索引中删除指定的文档节点。
+
+此方法根据提供的唯一标识符列表从索引中删除对应的文档节点。
+
+Args:
+    uids (List[str]): 要删除的文档节点的唯一标识符列表。
+    group_name (Optional[str]): 节点组名称，用于指定删除特定组中的节点。默认为None，表示删除所有匹配的节点。
+""")
+
+add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex.remove', """\
+Remove specified document nodes from the index.
+
+This method removes corresponding document nodes from the index based on the provided list of unique identifiers.
+
+Args:
+    uids (List[str]): List of unique identifiers of document nodes to be removed.
+    group_name (Optional[str]): Node group name used to specify removal of nodes from a specific group. Defaults to None, meaning all matching nodes will be removed.
+""")
+
+add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex.query', """\
+在索引中查询最相关的文档节点。
+
+此方法基于向量相似性搜索，返回与查询最相关的文档节点列表。具体的查询参数和行为取决于底层存储后端的实现。
+
+Args:
+    *args: 位置参数，传递给底层存储的查询方法。
+    **kwargs: 关键字参数，传递给底层存储的查询方法。
+
+**Returns:**\n
+- List[DocNode]: 按相关性排序的文档节点列表。
+""")
+
+add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex.query', """\
+Query the most relevant document nodes in the index.
+
+This method returns a list of document nodes most relevant to the query based on vector similarity search. The specific query parameters and behavior depend on the implementation of the underlying storage backend.
+
+Args:
+    *args: Positional arguments passed to the underlying storage's query method.
+    **kwargs: Keyword arguments passed to the underlying storage's query method. 
+
+**Returns:**\n
+- List[DocNode]: List of document nodes sorted by relevance.
+""")
+
+add_english_doc('rag.doc_node.ImageDocNode', '''\
+A specialized document node for handling image content in RAG systems.
+
+ImageDocNode extends DocNode to provide specialized functionality for image processing and embedding generation. It automatically handles image loading, base64 encoding for embedding, and PIL Image objects for LLM processing.
+
+Args:
+    image_path (str): The file path to the image file. This should be a valid path to an image file (e.g., .jpg, .png, .jpeg).
+    uid (Optional[str]): Unique identifier for the document node. If not provided, a UUID will be automatically generated.
+    group (Optional[str]): The group name this node belongs to. Used for organizing and filtering nodes.
+    embedding (Optional[Dict[str, List[float]]]): Pre-computed embeddings for the image. Keys are embedding model names, values are embedding vectors.
+    parent (Optional[DocNode]): Parent node in the document hierarchy. Used for building document trees.
+    metadata (Optional[Dict[str, Any]]): Additional metadata associated with the image node.
+    global_metadata (Optional[Dict[str, Any]]): Global metadata that applies to all nodes in the document.
+    text (Optional[str]): Optional text description or caption for the image.
+''')
+
+add_chinese_doc('rag.doc_node.ImageDocNode', '''\
+专门用于处理RAG系统中图像内容的文档节点。
+
+ImageDocNode继承自DocNode，为图像处理和嵌入生成提供专门的功能。它自动处理图像加载、用于嵌入的base64编码，以及用于LLM处理的PIL图像对象。
+
+Args:
+    image_path (str): 图像文件的文件路径。这应该是一个有效的图像文件路径（例如.jpg、.png、.jpeg）。
+    uid (Optional[str]): 文档节点的唯一标识符。如果未提供，将自动生成UUID。
+    group (Optional[str]): 此节点所属的组名。用于组织和过滤节点。
+    embedding (Optional[Dict[str, List[float]]]): 图像的预计算嵌入。键是嵌入模型名称，值是嵌入向量。
+    parent (Optional[DocNode]): 文档层次结构中的父节点。用于构建文档树。
+    metadata (Optional[Dict[str, Any]]): 与图像节点关联的附加元数据。
+    global_metadata (Optional[Dict[str, Any]]): 适用于文档中所有节点的全局元数据。
+    text (Optional[str]): 图像的可选文本描述或标题。
+''')
+
+add_example('rag.doc_node.ImageDocNode', '''\
+>>> from lazyllm.tools.rag.doc_node import ImageDocNode, MetadataMode
+>>> import numpy as np
+>>> image_node = ImageDocNode(
+...     image_path="/home/mnt/yehongfei/Code/Test/framework.jpg",
+...     text="这是一张照片"
+)
+>>> def clip_emb(content, modality="image"):
+...     if modality == "image":
+...         return [np.random.rand(512).tolist()]
+...     return [np.random.rand(256).tolist()]
+>>> embed_functions = {"clip": clip_emb}
+>>> image_node.do_embedding(embed_functions)
+>>> print(f"嵌入维度: {len(image_node.embedding['clip'])}")
+>>> text_representation = image_node.get_text()
+>>> content_representation = image_node.get_content(MetadataMode.EMBED)
+>>> print(f"text属性: {text_representation}")
+>>> print(f"content属性: {content_representation}")    
+''')
+
+add_english_doc('rag.doc_node.ImageDocNode.do_embedding', '''\
+Generate embeddings for the image using the provided embedding functions.
+
+This method overrides the parent class method to handle image-specific embedding generation. It automatically converts the image to the appropriate format (base64 for embedding) and calls the embedding functions with the image modality.
+
+Args:
+    embed (Dict[str, Callable]): Dictionary of embedding functions. Keys are embedding model names, values are callable functions that accept (content, modality) and return embedding vectors.
+''')
+
+add_chinese_doc('rag.doc_node.ImageDocNode.do_embedding', '''\
+使用提供的嵌入函数为图像生成嵌入。
+
+此方法重写父类方法以处理图像特定的嵌入生成。它自动将图像转换为适当的格式（用于嵌入的base64），并使用图像模态调用嵌入函数。
+
+Args:
+    embed (Dict[str, Callable]): 嵌入函数字典。键是嵌入模型名称，值是接受(content, modality)并返回嵌入向量的可调用函数。
+''')
+
+add_english_doc('rag.doc_node.ImageDocNode.get_content', '''\
+Get the image content in different formats based on the metadata mode.
+
+This method returns the image content in different formats depending on the intended use case. For LLM processing, it returns a PIL Image object. For embedding generation, it returns a base64-encoded image string.
+
+Args:
+    metadata_mode (MetadataMode, optional): The mode for content retrieval. Defaults to MetadataMode.LLM.
+        - MetadataMode.LLM: Returns PIL Image object for LLM processing
+        - MetadataMode.EMBED: Returns base64-encoded image for embedding generation
+        - Other modes: Returns the image path as text
+
+**Returns:**\n
+- Union[PIL.Image.Image, List[str], str]: The image content in the requested format.
+''')
+
+add_chinese_doc('rag.doc_node.ImageDocNode.get_content', '''\
+根据元数据模式获取不同格式的图像内容。
+
+此方法根据预期用例返回不同格式的图像内容。对于LLM处理，它返回PIL图像对象。对于嵌入生成，它返回base64编码的图像字符串。
+
+Args:
+    metadata_mode (MetadataMode, optional): 内容检索模式。默认为MetadataMode.LLM。
+        - MetadataMode.LLM: 返回用于LLM处理的PIL图像对象
+        - MetadataMode.EMBED: 返回用于嵌入生成的base64编码图像
+        - 其他模式: 返回图像路径作为文本
+
+**Returns:**\n
+- Union[PIL.Image.Image, List[str], str]: 请求格式的图像内容。
+''')
+
+add_english_doc('rag.doc_node.ImageDocNode.get_text', '''\
+Get the image path as text representation.
+
+This method overrides the parent class method to return the image path instead of the content field, since ImageDocNode doesn't use the content field for storing text.
+
+**Returns:**\n
+- str: The image file path.
+''')
+
+add_chinese_doc('rag.doc_node.ImageDocNode.get_text', '''\
+获取图像路径作为文本表示。
+
+此方法重写父类方法以返回图像路径而不是内容字段，因为ImageDocNode不使用内容字段存储文本。
+
+**Returns:**\n
+- str: 图像文件路径。
+''')
+
+add_english_doc('rag.transform.AdaptiveTransform', '''\
+A flexible document transformation system that applies different transforms based on document patterns.
+
+AdaptiveTransform allows you to define multiple transformation strategies and automatically selects the appropriate one based on the document's file path or custom pattern matching. This is particularly useful when you have different types of documents that require different processing approaches.
+
+Args:
+    transforms (Union[List[Union[TransformArgs, Dict]], Union[TransformArgs, Dict]]): A list of transform configurations or a single transform configuration. 
+    num_workers (int, optional): Number of worker threads for parallel processing. Defaults to 0.
+''')
+
+add_chinese_doc('rag.transform.AdaptiveTransform', '''\
+一个灵活的文档转换系统，根据文档模式应用不同的转换策略。
+
+AdaptiveTransform允许您定义多种转换策略，并根据文档的文件路径或自定义模式匹配自动选择适当的转换方法。当您有不同类型的文档需要不同处理方法时，这特别有用。
+
+Args:
+    transforms (Union[List[Union[TransformArgs, Dict]], Union[TransformArgs, Dict]]): 转换配置列表或单个转换配置。
+    num_workers (int, optional): 并行处理的工作线程数。默认为0。
+''')
+
+add_example('rag.transform.AdaptiveTransform', '''\
+>>> from lazyllm.tools.rag.transform import AdaptiveTransform, DocNode, SentenceSplitter
+>>> doc1 = DocNode(text="这是第一个文档的内容。它包含多个句子。")
+>>> doc2 = DocNode(text="这是第二个文档的内容。")
+>>> transforms = [
+...     {
+...         'f': SentenceSplitter,
+...         'pattern': '*.txt',
+...         'kwargs': {'chunk_size': 50, 'chunk_overlap': 10}
+...     },
+...     {
+...         'f': SentenceSplitter,
+...         'pattern': '*.pdf',
+...         'kwargs': {'chunk_size': 100, 'chunk_overlap': 20}
+...     }
+... ]
+>>> adaptive = AdaptiveTransform(transforms)
+>>> results1 = adaptive.transform(doc1)
+>>> print(f"文档1转换结果: {len(results1)} 个块")
+>>> for i, result in enumerate(results1):
+...     print(f"  块 {i+1}: {result.text}")
+>>> results2 = adaptive.transform(doc2)
+>>> print(f"文档2转换结果: {len(results2)} 个块")
+>>> for i, result in enumerate(results2):
+...     print(f"  块 {i+1}: {result.text}")      
+''')
+
+add_english_doc('rag.transform.AdaptiveTransform.transform', '''\
+Transform a document using the appropriate transformation strategy based on pattern matching.
+
+This method evaluates each transform configuration in order and applies the first one that matches the document's path pattern. The matching logic supports both glob patterns and custom callable functions.
+
+Args:
+    document (DocNode): The document node to be transformed.
+    **kwargs: Additional keyword arguments passed to the transform function.
+
+**Returns:**\n
+- List[Union[str, DocNode]]: A list of transformed results (strings or DocNode objects).
+''')
+
+add_chinese_doc('rag.transform.AdaptiveTransform.transform', '''\
+根据模式匹配使用适当的转换策略转换文档。
+
+此方法按顺序评估每个转换配置，并应用第一个匹配文档路径模式的转换。匹配逻辑支持glob模式和自定义可调用函数。
+
+Args:
+    document (DocNode): 要转换的文档节点。
+    **kwargs: 传递给转换函数的附加关键字参数。
+
+**Returns:**\n
+- List[Union[str, DocNode]]: 转换结果列表（字符串或DocNode对象）。
+''')
+
+add_english_doc('rag.rerank.ModuleReranker', '''\
+A reranker that uses trainable modules to reorder documents based on relevance to a query.
+
+ModuleReranker is a specialized reranker that leverages trainable models (such as BGE-reranker, Cohere rerank, etc.) to improve the relevance of retrieved documents. It takes a list of documents and a query, then returns the documents reordered by their relevance scores.
+
+Args:
+    name (str): The name of the reranker. Defaults to "ModuleReranker".
+    model (Union[Callable, str]): The reranking model. Can be either a model name (string) or a callable function.
+    target (Optional[str]): Defaults to None.
+    output_format (Optional[str]): The format for output processing. Defaults to None.
+    join (Union[bool, str]): Whether to join the results. Defaults to False.
+    **kwargs: Additional keyword arguments passed to the reranker model.
+''')
+
+add_chinese_doc('rag.rerank.ModuleReranker', '''\
+使用可训练模块根据查询相关性重新排序文档的重排序器。
+
+ModuleReranker是一个专门的重排序器，利用可训练模型（如BGE-reranker、Cohere rerank等）来提高检索文档的相关性。它接收文档列表和查询，然后返回按相关性分数重新排序的文档。
+
+Args:
+    name (str): 重排序器的名称。默认为"ModuleReranker"。
+    model (Union[Callable, str]): 重排序模型。可以是模型名称（字符串）或可调用函数。
+    target (Optional[str]): 默认为None。
+    output_format (Optional[str]): 输出处理格式。默认为None。
+    join (Union[bool, str]): 是否连接结果。默认为False。
+    **kwargs: 传递给重排序模型模型的附加关键字参数。
+''')
+
+add_example('rag.rerank.ModuleReranker', '''\
+>>> from lazyllm.tools.rag.rerank import ModuleReranker, DocNode
+>>> def simple_reranker(query, documents, top_n):
+...     query_lower = query.lower()
+...     scores = []
+...     for i, doc in enumerate(documents):
+...         score = sum(1 for word in query_lower.split() if word in doc)
+...         scores.append((i, score))
+...     scores.sort(key=lambda x: x[1], reverse=True)
+...     return scores[:top_n]
+>>> reranker = ModuleReranker(
+...     model=simple_reranker,
+...     topk=2
+... )
+>>> docs = [
+...     DocNode(text="机器学习算法在数据分析中应用广泛"),
+...     DocNode(text="深度学习模型需要大量训练数据"),
+...     DocNode(text="自然语言处理技术发展迅速"),
+...     DocNode(text="计算机视觉在自动驾驶中的应用")
+... ]
+>>> query = "机器学习"
+>>> results = reranker.forward(docs, query)
+>>> for i, doc in enumerate(results):
+...     print(f"  {i+1}. : {doc.text}")
+...     print(f"     相关性分数: {doc.relevance_score:.4f}")        
+''')
+
+add_english_doc('rag.rerank.ModuleReranker.forward', '''\
+Forward pass of the reranker that reorders documents based on relevance to the query.
+
+This method takes a list of documents and a query, then uses the underlying reranking model to score and reorder the documents by relevance. The documents are processed in MetadataMode.EMBED format to ensure compatibility with the reranking model.
+
+Args:
+    nodes (List[DocNode]): List of document nodes to be reranked.
+    query (str): The query string to rank documents against. Defaults to "".
+
+**Returns:**\n
+- List[DocNode]: List of document nodes reordered by relevance score, with relevance_score attribute added.
+''')
+
+add_chinese_doc('rag.rerank.ModuleReranker.forward', '''\
+重排序器的前向传播，根据与查询的相关性重新排序文档。
+
+此方法接收文档列表和查询，然后使用底层重排序模型对文档进行评分和重新排序。文档以MetadataMode.EMBED格式处理，以确保与重排序模型的兼容性。
+
+Args:
+    nodes (List[DocNode]): 要重排序的文档节点列表。
+    query (str): 用于排序文档的查询字符串。默认为""。
+
+**Returns:**\n
+- List[DocNode]: 按相关性分数重新排序的文档节点列表，添加了relevance_score属性。
+''')
+
+# ---------------------------------------------------------------------------- #
+
+# rag/smart_embedding_index.py
+
+add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex', """\
+智能嵌入索引类，用于管理和查询文档节点的嵌入向量。
+
+SmartEmbeddingIndex是一个基于IndexBase的索引实现，支持多种后端存储（如Milvus、Map存储）。它提供了统一的接口来更新、删除和查询文档节点，特别适用于需要高效向量相似性搜索的RAG（检索增强生成）应用场景。
+
+该类封装了不同存储后端的具体实现细节，为用户提供了简洁一致的API接口。
+
+Args:
+    backend_type (str): 后端存储类型。支持的类型包括：
+        - 'milvus': 使用Milvus向量数据库作为后端存储
+        - 'map': 使用内存映射存储作为后端存储
+    **kwargs: 传递给具体后端存储的额外参数，这些参数会根据backend_type的不同而有所差异。
+
+**抛出:**\n
+- ValueError: 当提供不支持的backend_type时抛出
+""")
+
+add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex', """\
+Smart embedding index class for managing and querying document node embeddings.
+
+SmartEmbeddingIndex is an index implementation based on IndexBase that supports multiple backend storage options (such as Milvus, Map storage). It provides a unified interface for updating, removing, and querying document nodes, particularly suitable for RAG (Retrieval-Augmented Generation) applications that require efficient vector similarity search.
+
+This class encapsulates the implementation details of different storage backends, providing users with a clean and consistent API interface.
+
+Args:
+    backend_type (str): Backend storage type. Supported types include:
+        - 'milvus': Uses Milvus vector database as backend storage
+        - 'map': Uses memory-mapped storage as backend storage
+    **kwargs: Additional parameters passed to the specific backend storage, which may vary depending on the backend_type.
+
+**Raises:**\n
+- ValueError: Raised when an unsupported backend_type is provided
+""")
+
+add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex.update', """\
+更新索引中的文档节点。
+
+此方法将新的文档节点列表添加到索引中，包括它们的嵌入向量和元数据。如果节点已存在，则会更新其内容。
+
+Args:
+    nodes (List[DocNode]): 要添加或更新的文档节点列表。每个DocNode应包含文本内容、嵌入向量和相关元数据。
+""")
+
+add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex.update', """\
+Update document nodes in the index.
+
+This method adds a list of new document nodes to the index, including their embedding vectors and metadata. If nodes already exist, their content will be updated.
+
+Args:
+    nodes (List[DocNode]): List of document nodes to add or update. Each DocNode should contain text content, embedding vectors, and related metadata.
+""")
+
+add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex.remove', """\
+从索引中删除指定的文档节点。
+
+此方法根据提供的唯一标识符列表从索引中删除对应的文档节点。
+
+Args:
+    uids (List[str]): 要删除的文档节点的唯一标识符列表。
+    group_name (Optional[str]): 节点组名称，用于指定删除特定组中的节点。默认为None，表示删除所有匹配的节点。
+""")
+
+add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex.remove', """\
+Remove specified document nodes from the index.
+
+This method removes corresponding document nodes from the index based on the provided list of unique identifiers.
+
+Args:
+    uids (List[str]): List of unique identifiers of document nodes to be removed.
+    group_name (Optional[str]): Node group name used to specify removal of nodes from a specific group. Defaults to None, meaning all matching nodes will be removed.
+""")
+
+add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex.query', """\
+在索引中查询最相关的文档节点。
+
+此方法基于向量相似性搜索，返回与查询最相关的文档节点列表。具体的查询参数和行为取决于底层存储后端的实现。
+
+Args:
+    *args: 位置参数，传递给底层存储的查询方法。
+    **kwargs: 关键字参数，传递给底层存储的查询方法。
+
+**Returns:**\n
+- List[DocNode]: 按相关性排序的文档节点列表。
+""")
+
+add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex.query', """\
+Query the most relevant document nodes in the index.
+
+This method returns a list of document nodes most relevant to the query based on vector similarity search. The specific query parameters and behavior depend on the implementation of the underlying storage backend.
+
+Args:
+    *args: Positional arguments passed to the underlying storage's query method.
+    **kwargs: Keyword arguments passed to the underlying storage's query method. 
+
+**Returns:**\n
+- List[DocNode]: List of document nodes sorted by relevance.
+""")
+
+add_english_doc('rag.doc_node.ImageDocNode', '''\
+A specialized document node for handling image content in RAG systems.
+
+ImageDocNode extends DocNode to provide specialized functionality for image processing and embedding generation. It automatically handles image loading, base64 encoding for embedding, and PIL Image objects for LLM processing.
+
+Args:
+    image_path (str): The file path to the image file. This should be a valid path to an image file (e.g., .jpg, .png, .jpeg).
+    uid (Optional[str]): Unique identifier for the document node. If not provided, a UUID will be automatically generated.
+    group (Optional[str]): The group name this node belongs to. Used for organizing and filtering nodes.
+    embedding (Optional[Dict[str, List[float]]]): Pre-computed embeddings for the image. Keys are embedding model names, values are embedding vectors.
+    parent (Optional[DocNode]): Parent node in the document hierarchy. Used for building document trees.
+    metadata (Optional[Dict[str, Any]]): Additional metadata associated with the image node.
+    global_metadata (Optional[Dict[str, Any]]): Global metadata that applies to all nodes in the document.
+    text (Optional[str]): Optional text description or caption for the image.
+''')
+
+add_chinese_doc('rag.doc_node.ImageDocNode', '''\
+专门用于处理RAG系统中图像内容的文档节点。
+
+ImageDocNode继承自DocNode，为图像处理和嵌入生成提供专门的功能。它自动处理图像加载、用于嵌入的base64编码，以及用于LLM处理的PIL图像对象。
+
+Args:
+    image_path (str): 图像文件的文件路径。这应该是一个有效的图像文件路径（例如.jpg、.png、.jpeg）。
+    uid (Optional[str]): 文档节点的唯一标识符。如果未提供，将自动生成UUID。
+    group (Optional[str]): 此节点所属的组名。用于组织和过滤节点。
+    embedding (Optional[Dict[str, List[float]]]): 图像的预计算嵌入。键是嵌入模型名称，值是嵌入向量。
+    parent (Optional[DocNode]): 文档层次结构中的父节点。用于构建文档树。
+    metadata (Optional[Dict[str, Any]]): 与图像节点关联的附加元数据。
+    global_metadata (Optional[Dict[str, Any]]): 适用于文档中所有节点的全局元数据。
+    text (Optional[str]): 图像的可选文本描述或标题。
+''')
+
+add_example('rag.doc_node.ImageDocNode', '''\
+>>> from lazyllm.tools.rag.doc_node import ImageDocNode, MetadataMode
+>>> import numpy as np
+>>> image_node = ImageDocNode(
+...     image_path="/home/mnt/yehongfei/Code/Test/framework.jpg",
+...     text="这是一张照片"
+)
+>>> def clip_emb(content, modality="image"):
+...     if modality == "image":
+...         return [np.random.rand(512).tolist()]
+...     return [np.random.rand(256).tolist()]
+>>> embed_functions = {"clip": clip_emb}
+>>> image_node.do_embedding(embed_functions)
+>>> print(f"嵌入维度: {len(image_node.embedding['clip'])}")
+>>> text_representation = image_node.get_text()
+>>> content_representation = image_node.get_content(MetadataMode.EMBED)
+>>> print(f"text属性: {text_representation}")
+>>> print(f"content属性: {content_representation}")    
+''')
+
+add_english_doc('rag.doc_node.ImageDocNode.do_embedding', '''\
+Generate embeddings for the image using the provided embedding functions.
+
+This method overrides the parent class method to handle image-specific embedding generation. It automatically converts the image to the appropriate format (base64 for embedding) and calls the embedding functions with the image modality.
+
+Args:
+    embed (Dict[str, Callable]): Dictionary of embedding functions. Keys are embedding model names, values are callable functions that accept (content, modality) and return embedding vectors.
+''')
+
+add_chinese_doc('rag.doc_node.ImageDocNode.do_embedding', '''\
+使用提供的嵌入函数为图像生成嵌入。
+
+此方法重写父类方法以处理图像特定的嵌入生成。它自动将图像转换为适当的格式（用于嵌入的base64），并使用图像模态调用嵌入函数。
+
+Args:
+    embed (Dict[str, Callable]): 嵌入函数字典。键是嵌入模型名称，值是接受(content, modality)并返回嵌入向量的可调用函数。
+''')
+
+add_english_doc('rag.doc_node.ImageDocNode.get_content', '''\
+Get the image content in different formats based on the metadata mode.
+
+This method returns the image content in different formats depending on the intended use case. For LLM processing, it returns a PIL Image object. For embedding generation, it returns a base64-encoded image string.
+
+Args:
+    metadata_mode (MetadataMode, optional): The mode for content retrieval. Defaults to MetadataMode.LLM.
+        - MetadataMode.LLM: Returns PIL Image object for LLM processing
+        - MetadataMode.EMBED: Returns base64-encoded image for embedding generation
+        - Other modes: Returns the image path as text
+
+**Returns:**\n
+- Union[PIL.Image.Image, List[str], str]: The image content in the requested format.
+''')
+
+add_chinese_doc('rag.doc_node.ImageDocNode.get_content', '''\
+根据元数据模式获取不同格式的图像内容。
+
+此方法根据预期用例返回不同格式的图像内容。对于LLM处理，它返回PIL图像对象。对于嵌入生成，它返回base64编码的图像字符串。
+
+Args:
+    metadata_mode (MetadataMode, optional): 内容检索模式。默认为MetadataMode.LLM。
+        - MetadataMode.LLM: 返回用于LLM处理的PIL图像对象
+        - MetadataMode.EMBED: 返回用于嵌入生成的base64编码图像
+        - 其他模式: 返回图像路径作为文本
+
+**Returns:**\n
+- Union[PIL.Image.Image, List[str], str]: 请求格式的图像内容。
+''')
+
+add_english_doc('rag.doc_node.ImageDocNode.get_text', '''\
+Get the image path as text representation.
+
+This method overrides the parent class method to return the image path instead of the content field, since ImageDocNode doesn't use the content field for storing text.
+
+**Returns:**\n
+- str: The image file path.
+''')
+
+add_chinese_doc('rag.doc_node.ImageDocNode.get_text', '''\
+获取图像路径作为文本表示。
+
+此方法重写父类方法以返回图像路径而不是内容字段，因为ImageDocNode不使用内容字段存储文本。
+
+**Returns:**\n
+- str: 图像文件路径。
+''')
+
+add_english_doc('rag.transform.AdaptiveTransform', '''\
+A flexible document transformation system that applies different transforms based on document patterns.
+
+AdaptiveTransform allows you to define multiple transformation strategies and automatically selects the appropriate one based on the document's file path or custom pattern matching. This is particularly useful when you have different types of documents that require different processing approaches.
+
+Args:
+    transforms (Union[List[Union[TransformArgs, Dict]], Union[TransformArgs, Dict]]): A list of transform configurations or a single transform configuration. 
+    num_workers (int, optional): Number of worker threads for parallel processing. Defaults to 0.
+''')
+
+add_chinese_doc('rag.transform.AdaptiveTransform', '''\
+一个灵活的文档转换系统，根据文档模式应用不同的转换策略。
+
+AdaptiveTransform允许您定义多种转换策略，并根据文档的文件路径或自定义模式匹配自动选择适当的转换方法。当您有不同类型的文档需要不同处理方法时，这特别有用。
+
+Args:
+    transforms (Union[List[Union[TransformArgs, Dict]], Union[TransformArgs, Dict]]): 转换配置列表或单个转换配置。
+    num_workers (int, optional): 并行处理的工作线程数。默认为0。
+''')
+
+add_example('rag.transform.AdaptiveTransform', '''\
+>>> from lazyllm.tools.rag.transform import AdaptiveTransform, DocNode, SentenceSplitter
+>>> doc1 = DocNode(text="这是第一个文档的内容。它包含多个句子。")
+>>> doc2 = DocNode(text="这是第二个文档的内容。")
+>>> transforms = [
+...     {
+...         'f': SentenceSplitter,
+...         'pattern': '*.txt',
+...         'kwargs': {'chunk_size': 50, 'chunk_overlap': 10}
+...     },
+...     {
+...         'f': SentenceSplitter,
+...         'pattern': '*.pdf',
+...         'kwargs': {'chunk_size': 100, 'chunk_overlap': 20}
+...     }
+... ]
+>>> adaptive = AdaptiveTransform(transforms)
+>>> results1 = adaptive.transform(doc1)
+>>> print(f"文档1转换结果: {len(results1)} 个块")
+>>> for i, result in enumerate(results1):
+...     print(f"  块 {i+1}: {result.text}")
+>>> results2 = adaptive.transform(doc2)
+>>> print(f"文档2转换结果: {len(results2)} 个块")
+>>> for i, result in enumerate(results2):
+...     print(f"  块 {i+1}: {result.text}")      
+''')
+
+add_english_doc('rag.transform.AdaptiveTransform.transform', '''\
+Transform a document using the appropriate transformation strategy based on pattern matching.
+
+This method evaluates each transform configuration in order and applies the first one that matches the document's path pattern. The matching logic supports both glob patterns and custom callable functions.
+
+Args:
+    document (DocNode): The document node to be transformed.
+    **kwargs: Additional keyword arguments passed to the transform function.
+
+**Returns:**\n
+- List[Union[str, DocNode]]: A list of transformed results (strings or DocNode objects).
+''')
+
+add_chinese_doc('rag.transform.AdaptiveTransform.transform', '''\
+根据模式匹配使用适当的转换策略转换文档。
+
+此方法按顺序评估每个转换配置，并应用第一个匹配文档路径模式的转换。匹配逻辑支持glob模式和自定义可调用函数。
+
+Args:
+    document (DocNode): 要转换的文档节点。
+    **kwargs: 传递给转换函数的附加关键字参数。
+
+**Returns:**\n
+- List[Union[str, DocNode]]: 转换结果列表（字符串或DocNode对象）。
+''')
+
+add_english_doc('rag.rerank.ModuleReranker', '''\
+A reranker that uses trainable modules to reorder documents based on relevance to a query.
+
+ModuleReranker is a specialized reranker that leverages trainable models (such as BGE-reranker, Cohere rerank, etc.) to improve the relevance of retrieved documents. It takes a list of documents and a query, then returns the documents reordered by their relevance scores.
+
+Args:
+    name (str): The name of the reranker. Defaults to "ModuleReranker".
+    model (Union[Callable, str]): The reranking model. Can be either a model name (string) or a callable function.
+    target (Optional[str]): Defaults to None.
+    output_format (Optional[str]): The format for output processing. Defaults to None.
+    join (Union[bool, str]): Whether to join the results. Defaults to False.
+    **kwargs: Additional keyword arguments passed to the reranker model.
+''')
+
+add_chinese_doc('rag.rerank.ModuleReranker', '''\
+使用可训练模块根据查询相关性重新排序文档的重排序器。
+
+ModuleReranker是一个专门的重排序器，利用可训练模型（如BGE-reranker、Cohere rerank等）来提高检索文档的相关性。它接收文档列表和查询，然后返回按相关性分数重新排序的文档。
+
+Args:
+    name (str): 重排序器的名称。默认为"ModuleReranker"。
+    model (Union[Callable, str]): 重排序模型。可以是模型名称（字符串）或可调用函数。
+    target (Optional[str]): 默认为None。
+    output_format (Optional[str]): 输出处理格式。默认为None。
+    join (Union[bool, str]): 是否连接结果。默认为False。
+    **kwargs: 传递给重排序模型模型的附加关键字参数。
+''')
+
+add_example('rag.rerank.ModuleReranker', '''\
+>>> from lazyllm.tools.rag.rerank import ModuleReranker, DocNode
+>>> def simple_reranker(query, documents, top_n):
+...     query_lower = query.lower()
+...     scores = []
+...     for i, doc in enumerate(documents):
+...         score = sum(1 for word in query_lower.split() if word in doc)
+...         scores.append((i, score))
+...     scores.sort(key=lambda x: x[1], reverse=True)
+...     return scores[:top_n]
+>>> reranker = ModuleReranker(
+...     model=simple_reranker,
+...     topk=2
+... )
+>>> docs = [
+...     DocNode(text="机器学习算法在数据分析中应用广泛"),
+...     DocNode(text="深度学习模型需要大量训练数据"),
+...     DocNode(text="自然语言处理技术发展迅速"),
+...     DocNode(text="计算机视觉在自动驾驶中的应用")
+... ]
+>>> query = "机器学习"
+>>> results = reranker.forward(docs, query)
+>>> for i, doc in enumerate(results):
+...     print(f"  {i+1}. : {doc.text}")
+...     print(f"     相关性分数: {doc.relevance_score:.4f}")        
+''')
+
+add_english_doc('rag.rerank.ModuleReranker.forward', '''\
+Forward pass of the reranker that reorders documents based on relevance to the query.
+
+This method takes a list of documents and a query, then uses the underlying reranking model to score and reorder the documents by relevance. The documents are processed in MetadataMode.EMBED format to ensure compatibility with the reranking model.
+
+Args:
+    nodes (List[DocNode]): List of document nodes to be reranked.
+    query (str): The query string to rank documents against. Defaults to "".
+
+**Returns:**\n
+- List[DocNode]: List of document nodes reordered by relevance score, with relevance_score attribute added.
+''')
+
+add_chinese_doc('rag.rerank.ModuleReranker.forward', '''\
+重排序器的前向传播，根据与查询的相关性重新排序文档。
+
+此方法接收文档列表和查询，然后使用底层重排序模型对文档进行评分和重新排序。文档以MetadataMode.EMBED格式处理，以确保与重排序模型的兼容性。
+
+Args:
+    nodes (List[DocNode]): 要重排序的文档节点列表。
+    query (str): 用于排序文档的查询字符串。默认为""。
+
+**Returns:**\n
+- List[DocNode]: 按相关性分数重新排序的文档节点列表，添加了relevance_score属性。
 ''')
 
 add_english_doc('rag.utils.DocListManager.table_inited', '''\

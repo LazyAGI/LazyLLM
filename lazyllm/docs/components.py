@@ -517,6 +517,38 @@ add_example('auto.AutoFinetune', '''\
 ''')
 
 # ============= Deploy
+
+# Deploy-AbstractEmbedding
+add_chinese_doc('deploy.embed.AbstractEmbedding', '''\
+抽象嵌入基类，为所有嵌入模型提供统一的接口和基础功能。此类定义了嵌入模型的标准接口，包括模型加载、调用和序列化等功能。
+
+Args:
+    base_embed (str): 嵌入模型的基础路径或标识符，用于指定要加载的嵌入模型。
+    source (str, optional): 模型来源，默认为 ``None``。如果未指定，将使用 LazyLLM 配置中的默认模型来源。
+    init (bool): 是否在初始化时立即加载模型，默认为 ``False``。如果为 ``True``，将在对象创建时立即调用 ``load_embed()`` 方法。
+''')
+
+add_english_doc('deploy.embed.AbstractEmbedding', '''\
+Abstract embedding base class that provides unified interface and basic functionality for all embedding models. This class defines the standard interface for embedding models, including model loading, calling, and serialization capabilities.
+
+Args:
+    base_embed (str): The base path or identifier of the embedding model, used to specify which embedding model to load.
+    source (str, optional): Model source, default to ``None``. If not specified, will use the default model source from LazyLLM configuration.
+    init (bool): Whether to load the model immediately during initialization, default to ``False``. If ``True``, will call the ``load_embed()`` method immediately when the object is created.
+''')
+
+add_chinese_doc('deploy.embed.AbstractEmbedding.load_embed', '''\
+加载嵌入模型的抽象方法。此方法由子类实现，用于执行具体的模型加载逻辑。
+
+**注意**: 此方法目前正在开发中。
+''')
+
+add_english_doc('deploy.embed.AbstractEmbedding.load_embed', '''\
+Abstract method for loading embedding models. This method is implemented by subclasses to perform specific model loading logic.
+
+**Note**: This method is currently under development.
+''')
+
 # Deploy-Lightllm
 add_chinese_doc('deploy.Lightllm', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [LightLLM](https://github.com/ModelTC/lightllm) 框架提供的推理能力，用于对大语言模型进行推理。

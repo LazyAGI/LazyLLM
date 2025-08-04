@@ -171,6 +171,31 @@
     members:
 	exclude-members:
 
+::: lazyllm.tools.rag.utils.SqliteDocListManager
+    members:
+      - table_inited
+      - get_status_cond_and_params
+      - validate_paths
+      - update_need_reparsing
+      - list_files
+      - get_docs
+      - set_docs_new_meta
+      - fetch_docs_changed_meta
+      - list_all_kb_group
+      - add_kb_group
+      - list_kb_group_files
+      - delete_unreferenced_doc
+      - get_docs_need_reparse
+      - get_existing_paths_by_pattern
+      - update_file_message
+      - update_file_status
+      - add_files_to_kb_group
+      - delete_files_from_kb_group
+      - get_file_status
+      - update_kb_group
+      - release
+	exclude-members:
+
 ::: lazyllm.tools.SentenceSplitter
     members:
     exclude-members:
@@ -280,6 +305,22 @@ lazyllm.tools.rag.transform.NodeTransform
 
 ::: lazyllm.tools.IntentClassifier
     members: 
+    exclude-members:
+
+::: lazyllm.tools.rag.smart_embedding_index.SmartEmbeddingIndex
+    members: update, remove, query
+    exclude-members:
+
+::: lazyllm.tools.rag.doc_node.ImageDocNode
+    members: do_embedding, get_content, get_text
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.AdaptiveTransform
+    members: transform
+    exclude-members:
+
+::: lazyllm.tools.rag.rerank.ModuleReranker
+    members: forward
     exclude-members:
 ::: lazyllm.tools.rag.utils.DocListManager
     members: 
