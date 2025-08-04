@@ -33,4 +33,10 @@
 ::: lazyllm.common.FileSystemQueue
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
+
+## Threading
+
+::: lazyllm.common.Thread
+    members: work, get_result
+    exclude-members:
     
