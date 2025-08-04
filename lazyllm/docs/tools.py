@@ -1482,6 +1482,439 @@ Args:
     score: 相似度得分
 ''')
 
+add_chinese_doc('rag.doc_processor.DocumentProcessor', """
+文档处理器类，用于管理文档的添加、删除和更新操作。
+
+Args:
+    server (bool): 是否以服务器模式运行。默认为True。
+    port (Optional[int]): 服务器端口号。默认为None。
+    url (Optional[str]): 远程服务URL。默认为None。
+
+**说明:**
+- 支持异步处理文档任务
+- 提供文档元数据更新功能
+- 支持任务状态回调通知
+- 可配置数据库存储
+""")
+
+add_english_doc('rag.doc_processor.DocumentProcessor', """
+Document processor class for managing document addition, deletion and update operations.
+
+Args:
+    server (bool): Whether to run in server mode. Defaults to True.
+    port (Optional[int]): Server port number. Defaults to None.
+    url (Optional[str]): Remote service URL. Defaults to None.
+
+**Notes:**
+- Supports asynchronous document task processing
+- Provides document metadata update functionality
+- Supports task status callback notifications
+- Configurable database storage
+""")
+
+add_example('rag.doc_processor.DocumentProcessor', """
+```python
+# Create local document processor
+processor = DocumentProcessor(server=False)
+
+# Create server mode document processor
+processor = DocumentProcessor(server=True, port=8080)
+
+# Create remote document processor
+processor = DocumentProcessor(url="http://remote-server:8080")
+```
+""")
+
+add_chinese_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
+注册算法到文档处理器。
+
+Args:
+    name (str): 算法名称，作为唯一标识符。
+    store (StoreBase): 存储实例，用于管理文档数据。
+    reader (ReaderBase): 读取器实例，用于解析文档内容。
+    node_groups (Dict[str, Dict]): 节点组配置信息。
+    force_refresh (bool): 是否强制刷新已存在的算法。默认为False。
+
+**说明:**
+- 如果算法名称已存在且force_refresh为False，将跳过注册
+- 注册成功后可以使用该算法处理文档
+""")
+
+add_english_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
+Register an algorithm to the document processor.
+
+Args:
+    name (str): Algorithm name as unique identifier.
+    store (StoreBase): Storage instance for managing document data.
+    reader (ReaderBase): Reader instance for parsing document content.
+    node_groups (Dict[str, Dict]): Node group configuration information.
+    force_refresh (bool): Whether to force refresh existing algorithm. Defaults to False.
+
+**Notes:**
+- If algorithm name exists and force_refresh is False, registration will be skipped
+- After successful registration, the algorithm can be used to process documents
+""")
+
+add_example('rag.doc_processor.DocumentProcessor.register_algorithm', """
+```python
+from lazyllm.rag import DocumentProcessor, FileStore, PDFReader
+
+# Create storage and reader instances
+store = FileStore(path="./data")
+reader = PDFReader()
+
+# Define node group configuration
+node_groups = {
+    "text": {"transform": "text", "parent": "root"},
+    "summary": {"transform": "summary", "parent": "text"}
+}
+
+# Register algorithm
+processor = DocumentProcessor()
+processor.register_algorithm(
+    name="pdf_processor",
+    store=store,
+    reader=reader,
+    node_groups=node_groups
+)
+```
+""")
+
+add_chinese_doc('rag.doc_processor.DocumentProcessor.drop_algorithm', """
+从文档处理器中移除指定算法。
+
+Args:
+    name (str): 要移除的算法名称。
+    clean_db (bool): 是否清理相关数据库数据。默认为False。
+
+**说明:**
+- 如果算法名称不存在，将输出警告信息
+- 移除后该算法将无法继续使用
+""")
+
+add_english_doc('rag.doc_processor.DocumentProcessor.drop_algorithm', """
+Remove specified algorithm from document processor.
+
+Args:
+    name (str): Name of the algorithm to remove.
+    clean_db (bool): Whether to clean related database data. Defaults to False.
+
+**Notes:**
+- If algorithm name does not exist, a warning message will be output
+- After removal, the algorithm will no longer be available
+""")
+
+add_example('rag.doc_processor.DocumentProcessor.drop_algorithm', """
+```python
+# Remove algorithm
+processor.drop_algorithm("pdf_processor")
+
+# Remove algorithm and clean database
+processor.drop_algorithm("pdf_processor", clean_db=True)
+```
+""")
+
+add_english_doc('rag.dataReader.SimpleDirectoryReader', '''
+A modular document directory reader that inherits from ModuleBase, supporting reading various document formats from the file system and converting them into standardized DocNode objects.
+Args:
+    input_dir (Optional[str]): Input directory path. Mutually exclusive with input_files.
+    input_files (Optional[List]): Directly specified list of files. Mutually exclusive with input_dir.
+    exclude (Optional[List]): List of file patterns to exclude.
+    exclude_hidden (bool): Whether to exclude hidden files.
+    recursive (bool): Whether to recursively read subdirectories.
+    encoding (str): Encoding format of text files.
+    required_exts (Optional[List[str]]): Whitelist of file extensions to process.
+    file_extractor (Optional[Dict[str, Callable]]): Dictionary of custom file readers.
+    fs (Optional[AbstractFileSystem]): Custom file system.
+    metadata_genf (Optional[Callable[[str], Dict]]): Metadata generation function that takes a file path and returns a metadata dictionary.
+    num_files_limit (Optional[int]): Maximum number of files to read.
+    return_trace (bool): Whether to return processing trace information.
+    metadatas (Optional[Dict]): Predefined global metadata dictionary.
+''')
+
+add_chinese_doc('rag.dataReader.SimpleDirectoryReader', '''
+模块化的文档目录读取器，继承自 ModuleBase，支持从文件系统读取多种格式的文档并转换为标准化的 DocNode 。
+Args:
+    input_dir (Optional[str]): 输入目录路径。与input_files二选一，不可同时指定。
+    input_files (Optional[List]):直接指定的文件列表。与input_dir二选一。
+    exclude (Optional[List]):需要排除的文件模式列表。
+    exclude_hidden (bool): 是否排除隐藏文件。
+    recursive (bool):是否递归读取子目录。
+    encoding (str):文本文件的编码格式。
+    required_exts (Optional[List[str]]):需要处理的文件扩展名白名单。
+    file_extractor (Optional[Dict[str, Callable]]):自定义文件阅读器字典。
+    fs (Optional[AbstractFileSystem]):自定义文件系统。
+    metadata_genf (Optional[Callable[[str], Dict]]):元数据生成函数，接收文件路径返回元数据字典。
+    num_files_limit (Optional[int]):最大读取文件数量限制。
+    return_trace (bool):是否返回处理过程追踪信息。
+    metadatas (Optional[Dict]):预定义的全局元数据字典。
+''')
+
+add_example('rag.dataReader.SimpleDirectoryReader', '''
+>>> import lazyllm
+>>> from lazyllm.tools.dataReader import SimpleDirectoryReader
+>>> reader = SimpleDirectoryReader(input_dir="yourpath/",recursive=True,exclude=["*.tmp"],required_exts=[".pdf", ".docx"])
+>>> documents = reader.load_data()
+''')
+
+
+add_english_doc('rag.dataReader.FileReader', '''
+File content reader whose main function is to convert various input file formats into concatenated plain text content.
+Args:
+    input_files (Optional[List]): Directly specified list of input files.
+''')
+
+add_chinese_doc('rag.dataReader.FileReader', '''
+文件内容读取器，主要功能是将多种格式的输入文件转换为拼接后的纯文本内容。
+Args:
+    input_files (Optional[List]):直接指定的文件列表。
+''')
+
+add_example('rag.dataReader.FileReader', '''
+>>> import lazyllm
+>>> from lazyllm.tools.dataReader import FileReader
+>>> reader = FileReader()
+>>> content = reader("yourpath/") 
+''')
+
+add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase', '''
+基础文档读取器类，提供了文档加载的基本接口。继承自ModuleBase，使用LazyLLMRegisterMetaClass作为元类。
+
+Args:
+    return_trace (bool): 是否返回处理过程的追踪信息。默认为True。
+
+**说明:**
+- 提供了惰性加载和普通加载两种方式
+- 子类需要实现_lazy_load_data方法
+- 支持批量处理文档
+- 自动转换为标准化的DocNode格式
+''')
+
+add_english_doc('rag.readers.readerBase.LazyLLMReaderBase', '''
+Base document reader class that provides basic interfaces for document loading. Inherits from ModuleBase and uses LazyLLMRegisterMetaClass as metaclass.
+
+Args:
+    return_trace (bool): Whether to return processing trace information. Defaults to True.
+
+**Notes:**
+- Provides both lazy loading and regular loading methods
+- Subclasses need to implement _lazy_load_data method
+- Supports batch document processing
+- Automatically converts to standardized DocNode format
+''')
+
+add_example('rag.readers.readerBase.LazyLLMReaderBase', '''
+```python
+from lazyllm.tools.rag.readers.readerBase import LazyLLMReaderBase
+from lazyllm.tools.rag.doc_node import DocNode
+from typing import Iterable
+
+class CustomReader(LazyLLMReaderBase):
+    def _lazy_load_data(self, file_paths: list, **kwargs) -> Iterable[DocNode]:
+        for file_path in file_paths:
+            # Process each file and yield DocNode
+            content = self._read_file(file_path)
+            yield DocNode(
+                text=content,
+                metadata={"source": file_path}
+            )
+
+# Create reader instance
+reader = CustomReader(return_trace=True)
+
+# Load documents
+documents = reader.forward(file_paths=["doc1.txt", "doc2.txt"])
+```
+''')
+
+add_english_doc('rag.retriever.TempDocRetriever', '''
+A temporary document retriever that inherits from ModuleBase and _PostProcess, used for quickly processing temporary files and performing retrieval tasks.
+Args:
+    embed: The embedding function.
+    output_format: The format of the output result (e.g., JSON). Optional, defaults to None.
+    join: Whether to merge multiple result segments (set to True or specify a separator like "\n").
+''')
+
+add_chinese_doc('rag.retriever.TempDocRetriever', '''
+临时文档检索器，继承自 ModuleBase 和 _PostProcess，用于快速处理临时文件并执行检索任务。
+Args:
+    embed:嵌入函数。
+    output_format:结果输出格式(如json),可选默认为None
+    join:是否合并多段结果(True或用分隔符如"\n")
+''')
+
+add_example('rag.retriever.TempDocRetriever', '''
+>>> import lazyllm
+>>> from lazyllm.tools import TempDocRetriever, Document, SentenceSplitter
+>>> retriever = TempDocRetriever(output_format="text", join="\n---------------\n")
+    retriever.create_node_group(transform=lambda text: [s.strip() for s in text.split("。") if s] )
+    retriever.add_subretriever(group=Document.MediumChunk, topk=3)
+    files = ["机器学习是AI的核心领域。深度学习是其重要分支。"]
+    results = retriever.forward(files, "什么是机器学习?")
+    print(results)
+''')
+
+add_english_doc('rag.retriever.TempDocRetriever.create_node_group', '''
+Create a node group with specific processing pipeline.
+Args:
+    name (str): Name of the node group. Auto-generated if None.
+    transform (Callable): Function to process documents in this group.
+    parent (str): Parent group name. Defaults to root group.
+    trans_node (bool): Whether to transform nodes. Inherits from parent if None.
+    num_workers (int): Parallel workers for processing. Default 0 (sequential).
+    **kwargs: Additional group parameters.
+''')
+
+add_chinese_doc('rag.retriever.TempDocRetriever.create_node_group', '''
+创建具有特定处理流程的节点组。
+Args:
+    name (str): 节点组名称，None时自动生成。
+    transform (Callable): 该组文档的处理函数。
+    parent (str): 父组名称，默认为根组。
+    trans_node (bool): 是否转换节点，None时继承父组设置。
+    num_workers (int): 并行处理worker数，0表示串行。
+    **kwargs: 其他组参数。
+''')
+
+add_english_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
+Add a sub-retriever with search configuration.
+Args:
+    group (str): Target node group name.
+    **kwargs: Retriever parameters (e.g., similarity='cosine').
+Returns:
+    self: For method chaining.
+''')
+
+add_chinese_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
+添加带搜索配置的子检索器。
+Args:
+    group (str): 目标节点组名称。
+    **kwargs: 检索器参数（如similarity='cosine'）。
+Returns:
+    self: 支持链式调用。
+''')
+
+add_english_doc('rag.doc_node.DocNode', '''
+Execute assigned tasks on the specified document.
+Args:
+    uid (str): Unique identifier.
+    content (Union[str, List[Any]]): Node content.
+    group (str): Document group name.
+    embedding (Dict[str, List[float]]): Dictionary of embedding vectors.
+    parent (Union[str, "DocNode"]): Reference to the parent node.
+    store: Storage representation.
+    node_groups (Dict[str, Dict]): Node storage groups.
+    metadata (Dict[str, Any]): Node-level metadata.
+    global_metadata (Dict[str, Any]): Document-level metadata.
+    text (str): Node content, mutually exclusive with content.
+''')
+
+add_chinese_doc('rag.doc_node.DocNode', '''
+在指定的文档上执行设定的任务。
+Args:
+    uid(str): 唯一标识符。
+    content(Union[str, List[Any]]):节点内容
+    group(str):文档组名
+    embedding(Dict[str, List[float]]):嵌入向量字典
+    parent(Union[str, "DocNode"]):父节点引用
+    store:存储表示
+    node_groups(Dict[str, Dict]):节点存储组
+    metadata(Dict[str, Any]):节点级元数据
+    global_metadata(Dict[str, Any]):文档级元数据
+    text(str):节点内容与content互斥
+''')
+
+add_english_doc('rag.doc_node.DocNode.get_metadata_str', '''
+Get formatted metadata string.
+Args:
+    mode: MetadataMode.NONE returns an empty string;  
+          MetadataMode.LLM filters out metadata not needed by LLM;  
+          MetadataMode.EMBED filters out metadata not needed by embedding model;  
+          MetadataMode.ALL returns all metadata.
+''')
+
+add_chinese_doc('rag.doc_node.DocNode.get_metadata_str', '''
+获取格式化元数据字符串
+Args:
+    mode: MetadataMode.NONE返回空字符串；
+          MetadataMode.LLM过滤排除LLM不需要的元数据；
+          MetadataMode.EMBED过滤排除嵌入模型不需要的元数据；
+          MetadataMode.ALL返回全部元数据。
+''')
+add_english_doc('rag.doc_node.DocNode.get_text', '''
+Combine metadata and content.
+Args:
+    metadata_mode: Same as the parameter in get_metadata_str.
+''')
+
+add_chinese_doc('rag.doc_node.DocNode.get_text', '''
+组合元数据和内容
+Args:
+    metadata_mode: 与get_metadata_str中参数一致
+''')
+add_english_doc('rag.doc_node.DocNode.has_missing_embedding', '''
+Check for missing embedding vectors.
+Args:
+    embed_keys (Union[str, List[str]]): List of target keys.
+''')
+
+add_chinese_doc('rag.doc_node.DocNode.has_missing_embedding', '''
+检查缺失的嵌入向量
+Args:
+    embed_keys(Union[str, List[str]]): 目标键列表
+''')
+add_english_doc('rag.doc_node.DocNode.do_embedding', '''
+Execute embedding computation.
+Args:
+    embed (Dict[str, Callable]): Target embedding objects.
+''')
+
+add_chinese_doc('rag.doc_node.DocNode.do_embedding', '''
+执行嵌入计算
+Args:
+    embed(Dict[str, Callable]): 目标嵌入对象
+''')
+add_english_doc('rag.doc_node.DocNode.check_embedding_state', '''
+Block to check the embedding status and ensure that asynchronous embedding computation is completed.
+Args:
+    embed_key (str): List of target keys.
+''')
+
+add_chinese_doc('rag.doc_node.DocNode.check_embedding_state', '''
+阻塞检查嵌入状态,确保异步嵌入计算完成
+Args:
+    embed_key(str): 目标键列表
+''')
+add_english_doc('rag.doc_node.DocNode.to_dict', '''
+Convert to dictionary format
+''')
+
+add_chinese_doc('rag.doc_node.DocNode.to_dict', '''
+转换为字典格式
+''')
+add_english_doc('rag.doc_node.DocNode.with_score', '''
+Shallow copy the original node and add a semantic relevance score.
+Args:
+    score: Relevance score.
+''')
+
+add_chinese_doc('rag.doc_node.DocNode.with_score', '''
+浅拷贝原节点并添加语义相关分数。
+Args:
+    score: 相关性得分
+''')
+add_english_doc('rag.doc_node.DocNode.with_sim_score', '''
+Shallow copy the original node and add a similarity score.
+Args:
+    score: Similarity score.
+''')
+
+add_chinese_doc('rag.doc_node.DocNode.with_sim_score', '''
+浅拷贝原节点并添加相似度分数。
+Args:
+    score: 相似度得分
+''')
+
 add_english_doc('rag.dataReader.SimpleDirectoryReader', '''
 A modular document directory reader that inherits from ModuleBase, supporting reading various document formats from the file system and converting them into standardized DocNode objects.
 Args:

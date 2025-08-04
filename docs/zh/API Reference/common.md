@@ -34,6 +34,9 @@
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
 
+::: lazyllm.common.multiprocessing.SpawnProcess
+    members: start
+
 ## Threading
 
 ::: lazyllm.common.Thread

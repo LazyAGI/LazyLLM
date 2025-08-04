@@ -22,6 +22,10 @@
     members:
 	exclude-members:
 
+::: lazyllm.tools.rag.readers.readerBase.LazyLLMReaderBase
+    members:
+	exclude-members:
+
 ::: lazyllm.tools.rag.component.bm25
     members:
 	exclude-members:
@@ -216,6 +220,8 @@ lazyllm.tools.rag.transform.NodeTransform
     members:
     exclude-members:
 
+::: lazyllm.tools.rag.doc_processor.DocumentProcessor
+    members: register_algorithm, drop_algorithm
 ::: lazyllm.tools.rag.dataReader.SimpleDirectoryReader
     members:
     exclude-members:

@@ -471,3 +471,39 @@ add_example('FileSystemQueue.clear', """\
 >>> queue.peek() is None
 True
 """)
+
+add_chinese_doc('multiprocessing.SpawnProcess.start', '''
+使用spawn方式启动进程。
+
+此方法在启动进程时强制使用spawn方式，这种方式会创建一个全新的Python解释器进程。spawn方式相比fork更安全，特别是在多线程环境下。
+
+**说明:**
+- 使用spawn方式启动新进程，避免了fork可能带来的问题
+- 会临时切换启动方式为spawn，执行完后恢复原有启动方式
+- 继承自multiprocessing.Process.start()的所有功能
+''')
+
+add_english_doc('multiprocessing.SpawnProcess.start', '''
+Start the process using spawn method.
+
+This method forces the use of spawn method when starting the process, which creates a brand new Python interpreter process. Spawn is safer than fork, especially in multi-threaded environments.
+
+**Notes:**
+- Uses spawn method to start new process, avoiding potential issues with fork
+- Temporarily switches to spawn method and restores original method after execution
+- Inherits all functionality from multiprocessing.Process.start()
+''')
+
+add_example('multiprocessing.SpawnProcess.start', '''
+```python
+from lazyllm.common.multiprocessing import SpawnProcess
+
+def worker():
+    print("Worker process running")
+
+# Create and start a process using spawn method
+process = SpawnProcess(target=worker)
+process.start()
+process.join()
+```
+''')

@@ -22,6 +22,10 @@
     members:
 	exclude-members:
 
+::: lazyllm.tools.rag.readers.readerBase.LazyLLMReaderBase
+    members:
+	exclude-members:
+
 ::: lazyllm.tools.rag.component.bm25.BM25
     members:
 	exclude-members:
@@ -148,7 +152,6 @@
 
 ::: lazyllm.tools.Reranker
     members: register_reranker
-    members: register_reranker
     exclude-members: forward
 
 ::: lazyllm.tools.Retriever
@@ -216,6 +219,8 @@ lazyllm.tools.rag.transform.NodeTransform
     members:
     exclude-members:
 
+::: lazyllm.tools.rag.doc_processor.DocumentProcessor
+    members: register_algorithm, drop_algorithm
 ::: lazyllm.tools.rag.dataReader.SimpleDirectoryReader
     members:
     exclude-members:
