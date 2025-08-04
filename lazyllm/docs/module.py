@@ -7,7 +7,7 @@ add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.module
 add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.module)
 add_example = functools.partial(utils.add_example, module=lazyllm.module)
 
-add_chinese_doc('lazyllm.ModuleBase', '''\
+add_chinese_doc('ModuleBase', '''\
 Module 是 LazyLLM 中的顶层组件，具备训练、部署、推理和评测四项关键能力。每个模块可选择实现其中的部分或全部能力，每项能力可以由一个或多个 Component 组成，并通过统一的调度机制完成调用。
 
 ModuleBase 是所有模块类的基类，不能直接实例化，必须通过继承并实现 ``forward`` 方法来自定义子模块，支持将其实例作为可调用对象（仿函数）使用。
@@ -24,7 +24,7 @@ Args:
     return_trace (bool): 是否在调用模块时记录返回结果，用于调试或追踪。默认为 False。
 ''')
 
-add_english_doc('lazyllm.ModuleBase', '''\
+add_english_doc('ModuleBase', '''\
 Module is the top-level component in LazyLLM, providing four core capabilities: training, deployment, inference, and evaluation. Each module can implement some or all of these capabilities, with each capability composed of one or more Components and managed through a unified execution pipeline.
 
 ModuleBase is the abstract base class for all modules and cannot be instantiated directly. Subclasses must implement the ``forward`` method and can be used as callable objects (functors).
