@@ -4639,9 +4639,9 @@ add_example('rag.transform.FuncNodeTransform', '''
 >>> from lazyllm.tools import Document, SentenceSplitter
 
 # Example 1: Text-based transformation (trans_node=False)
->>> def split_by_newline(text):
-...     return text.split('\\n')
->>> text_transform = FuncNodeTransform(split_by_newline, trans_node=False)
+>>> def split_by_comma(text):
+...     return text.split(',')
+>>> text_transform = FuncNodeTransform(split_by_comma, trans_node=False)
 
 # Example 2: Node-based transformation (trans_node=True)
 >>> def custom_node_transform(node):
@@ -4687,15 +4687,15 @@ add_example('rag.transform.FuncNodeTransform.transform', '''
 >>> from lazyllm.tools.rag import FuncNodeTransform, DocNode
 
 # Create a sample DocNode
->>> doc_node = DocNode(text="Hello\\nWorld\\nTest", uid="test_node")
+>>> doc_node = DocNode(text="apple,banana,orange", uid="test_node")
 
 # Example 1: Text-based transformation
 >>> def split_text(text):
-...     return [line.strip() for line in text.split('\\n') if line.strip()]
+...     return [item.strip() for item in text.split(',') if item.strip()]
 >>> text_transform = FuncNodeTransform(split_text, trans_node=False)
 >>> result = text_transform.transform(doc_node)
 >>> print(result)
-['Hello', 'World', 'Test']
+['apple', 'banana', 'orange']
 
 # Example 2: Node-based transformation
 >>> def process_node(node):
@@ -4704,5 +4704,5 @@ add_example('rag.transform.FuncNodeTransform.transform', '''
 >>> node_transform = FuncNodeTransform(process_node, trans_node=True)
 >>> result = node_transform.transform(doc_node)
 >>> print([r.text for r in result])
-['Processed: Hello\\nWorld\\nTest']
+['Processed: apple,banana,orange']
 ''')
