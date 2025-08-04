@@ -1190,3 +1190,85 @@ add_example('OnlineEmbeddingModuleBase', '''\
 ...         pass
 ...         return embedding
 ''')
+
+add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaModule', r"""
+商汤 Nova 大模型交互模块，支持聊天、文件处理、模型微调及部署功能。
+
+参数:
+    base_url: API 基础地址，默认为商汤官方API
+    model: 使用的模型名称，默认为 "SenseChat-5"
+    api_key: 商汤API密钥，未提供时从全局配置获取
+    secret_key: 商汤密钥，未提供时从全局配置获取
+    stream: 是否使用流式响应，默认为 True
+    return_trace: 是否返回追踪信息，默认为 False
+    **kwargs: 其他传递给基类的参数
+
+特性:
+    - 支持训练模型列表: ["nova-ptc-s-v2"]
+    - 支持视觉语言模型: ['SenseNova-V6-Turbo', 'SenseChat-Vision']
+    - 支持文件上传和格式转换
+    - 支持模型微调和部署管理
+""")
+
+add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaModule', r"""
+SenseTime Nova LLM interaction module supporting chat, file handling, model fine-tuning and deployment.
+
+Args:
+    base_url: Base API URL, defaults to official SenseTime API
+    model: Model name to use, defaults to "SenseChat-5"
+    api_key: SenseTime API key, uses global config if not provided
+    secret_key: SenseTime secret key, uses global config if not provided
+    stream: Whether to use streaming response, default True
+    return_trace: Whether to return trace information, default False
+    **kwargs: Additional arguments passed to base class
+
+Features:
+    - Trainable models: ["nova-ptc-s-v2"]
+    - Vision-Language models: ['SenseNova-V6-Turbo', 'SenseChat-Vision']
+    - File upload and format conversion support
+    - Model fine-tuning and deployment management
+""")
+
+add_example('llms.onlinemodule.supplier.sensenova.SenseNovaModule', r"""
+>>> from lazyllm import lazychat
+>>> chat = lazychat.SenseNovaModule(model="SenseChat-5")
+>>> response = chat("你好，介绍一下你自己")
+>>> 
+>>> vlm = lazychat.SenseNovaModule(model="SenseChat-Vision")
+>>> response = vlm([{"text": "描述这张图片", "image": "http://example.com/image.jpg"}])
+>>> 
+>>> chat.upload_train_file("dataset.jsonl")
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaModule.set_deploy_parameters', r"""
+设置模型部署参数
+
+参数:
+    **kw: 部署参数键值对，将更新到部署配置中
+
+说明:
+    此方法用于配置模型部署时的各种参数，如部署名称、计算资源配置等。
+    具体可用参数请参考商汤API文档。
+""")
+
+add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaModule.set_deploy_parameters', r"""
+Set model deployment parameters
+
+Args:
+    **kw: Key-value pairs of deployment parameters to update
+
+Note:
+    Used to configure various parameters for model deployment, such as 
+    deployment name, compute resources, etc.
+    Refer to SenseTime API documentation for available parameters.
+""")
+
+add_example('llms.onlinemodule.supplier.sensenova.SenseNovaModule.set_deploy_parameters', r"""
+>>> model = lazychat.SenseNovaModule()
+>>> model.set_deploy_parameters(
+...     deployment_name="production-model",
+...     replicas=3,
+...     compute_type="high-performance"
+... )
+>>> deployment_id = model.create_deployment()
+""")

@@ -68,3 +68,7 @@
 ::: lazyllm.module.OnlineEmbeddingModuleBase
     members:
     exclude-members: forward
+
+::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaModule
+    members: set_deploy_parameters
+    exclude-members: forward

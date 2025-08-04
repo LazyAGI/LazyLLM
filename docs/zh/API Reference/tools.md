@@ -39,7 +39,7 @@
 	exclude-members:
 
 ::: lazyllm.tools.rag.doc_to_db.DocInfoExtractor
-    members:
+    members: extract_doc_info
 	exclude-members:
 
 ::: lazyllm.tools.rag.doc_to_db.DocToDbProcessor
@@ -377,4 +377,8 @@ lazyllm.tools.rag.transform.NodeTransform
 
 ::: lazyllm.tools.HttpTool
     members: 
+    exclude-members:
+
+::: lazyllm.tools.http_request.http_executor_response.HttpExecutorResponse
+    members: extract_file, get_content_type
     exclude-members:

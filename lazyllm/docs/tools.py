@@ -397,6 +397,118 @@ add_example('rag.doc_to_db.DocInfoExtractor', '''\
 {'party_a': 'ABC Corp'}
 ''')
 
+add_chinese_doc('rag.doc_to_db.DocInfoExtractor.extract_doc_info', '''\
+根据提供的字段结构（schema）从指定文档中抽取具体的关键信息值。
+
+该方法使用大语言模型分析文档内容，根据预定义的字段结构提取相应的信息值，返回格式为 key-value 字典。
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): 用于文档信息抽取的大语言模型。
+    doc_path (str): 要分析的文档路径。
+    info_schema (DocInfoSchema): 字段结构定义，包含需要提取的字段信息。
+    extra_desc (str, optional): 额外的描述信息，用于指导信息抽取。默认为空字符串。
+
+Returns:
+    dict: 提取出的关键信息字典，键为字段名，值为对应的信息值。
+''')
+
+add_english_doc('rag.doc_to_db.DocInfoExtractor.extract_doc_info', '''\
+Extracts specific key information values from a document according to a provided schema.
+
+This method uses a large language model to analyze document content and extract corresponding information values based on predefined field structure, returning a key-value dictionary.
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): The large language model used for document information extraction.
+    doc_path (str): Path to the document to be analyzed.
+    info_schema (DocInfoSchema): Field structure definition containing the information to be extracted.
+    extra_desc (str, optional): Additional description information to guide the extraction process. Defaults to empty string.
+
+Returns:
+    dict: Extracted key information dictionary with field names as keys and corresponding information values as values.
+''')
+
+add_example('rag.doc_to_db.DocInfoExtractor.extract_doc_info', '''\
+>>> from lazyllm.components.doc_info_extractor import DocInfoExtractor
+>>> from lazyllm import OnlineChatModule
+>>> extractor = DocInfoExtractor()
+>>> m = OnlineChatModule(source="openai")
+>>> schema = [
+...     {"key": "party_a", "desc": "Party A name", "type": "str"},
+...     {"key": "party_b", "desc": "Party B name", "type": "str"},
+...     {"key": "contract_amount", "desc": "Contract amount", "type": "str"}
+... ]
+>>> info = extractor.extract_doc_info(m, "contract.txt", schema, "Focus on contract parties and amounts")
+>>> print(info)
+{'party_a': 'ABC Corp', 'party_b': 'XYZ Ltd', 'contract_amount': '$50,000'}
+''')
+
+add_chinese_doc('http_request.http_executor_response.HttpExecutorResponse.get_content_type', '''\
+获取HTTP响应的内容类型。
+
+从响应头中提取 'content-type' 字段的值，用于判断响应内容的类型。
+
+Returns:
+    str: 响应的内容类型，如果未找到则返回空字符串。
+''')
+
+add_english_doc('http_request.http_executor_response.HttpExecutorResponse.get_content_type', '''\
+Get the content type of the HTTP response.
+
+Extracts the 'content-type' field value from the response headers to determine the type of response content.
+
+Returns:
+    str: The content type of the response, or empty string if not found.
+''')
+
+add_example('http_request.http_executor_response.HttpExecutorResponse.get_content_type', '''\
+>>> from lazyllm.tools.http_request.http_executor_response import HttpExecutorResponse
+>>> import httpx
+>>> response = httpx.Response(200, headers={'content-type': 'application/json'})
+>>> http_response = HttpExecutorResponse(response)
+>>> content_type = http_response.get_content_type()
+>>> print(content_type)
+... 'application/json'
+''')
+
+add_chinese_doc('http_request.http_executor_response.HttpExecutorResponse.extract_file', '''\
+从HTTP响应中提取文件内容。
+
+如果响应内容类型是文件相关类型（如图片、音频、视频），则提取文件的内容类型和二进制数据。
+
+Returns:
+    tuple[str, bytes]: 包含内容类型和文件二进制数据的元组。如果不是文件类型，则返回空字符串和空字节。
+''')
+
+add_english_doc('http_request.http_executor_response.HttpExecutorResponse.extract_file', '''\
+Extract file content from HTTP response.
+
+If the response content type is file-related (such as image, audio, video), extracts the content type and binary data of the file.
+
+Returns:
+    tuple[str, bytes]: A tuple containing the content type and binary data of the file. If not a file type, returns empty string and empty bytes.
+''')
+
+add_example('http_request.http_executor_response.HttpExecutorResponse.extract_file', '''\
+>>> from lazyllm.tools.http_request.http_executor_response import HttpExecutorResponse
+>>> import httpx
+>>> # 模拟图片响应
+>>> response = httpx.Response(200, headers={'content-type': 'image/jpeg'}, content=b'fake_image_data')
+>>> http_response = HttpExecutorResponse(response)
+>>> content_type, file_data = http_response.extract_file()
+>>> print(content_type)
+... 'image/jpeg'
+>>> print(len(file_data))
+... 15
+>>> # 模拟JSON响应
+>>> response = httpx.Response(200, headers={'content-type': 'application/json'}, content=b'{"key": "value"}')
+>>> http_response = HttpExecutorResponse(response)
+>>> content_type, file_data = http_response.extract_file()
+>>> print(content_type)
+... ''
+>>> print(file_data)
+... b''
+''')
+
 add_chinese_doc('rag.doc_to_db.DocToDbProcessor', '''\
 用于将文档信息抽取并导出到数据库中。
 
