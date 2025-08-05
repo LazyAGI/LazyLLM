@@ -287,7 +287,841 @@ add_example('rag.readers.ReaderBase', '''
 # Call the class YmlReader.
 ''')
 
-add_chinese_doc('DefaultIndex', '''\
+add_chinese_doc('rag.component.bm25.BM25', '''\
+基于 BM25 算法实现的检索器，用于从节点集合中根据查询词检索最相关的文本节点。
+
+Args:
+    nodes (List[DocNode]): 需要建立索引的文本节点列表。
+    language (str): 所使用的语言，支持 ``en``（英文）或 ``zh``（中文）。默认为 ``en``。
+    topk (int): 每次检索返回的最大节点数量，默认值为2。
+''')
+
+add_english_doc('rag.component.bm25.BM25', '''\
+A retriever based on the BM25 algorithm that retrieves the most relevant text nodes from a given list of nodes.
+
+Args:
+    nodes (List[DocNode]): A list of text nodes to index.
+    language (str): The language to use, supports ``en`` (English) and ``zh`` (Chinese). Defaults to ``en``.
+    topk (int): The maximum number of nodes to return in each retrieval. Defaults to 2.
+''')
+
+add_chinese_doc('rag.doc_to_db.DocInfoSchemaItem', '''\
+文档信息结构中单个字段的定义。
+
+Args:
+    key (str): 字段名
+    desc (str): 字段含义描述
+    type (str): 字段的数据类型
+''')
+
+add_english_doc('rag.doc_to_db.DocInfoSchemaItem', '''\
+Definition of a single field in the document information schema.
+
+Args:
+    key (str): The name of the field.
+    desc (str): The description of the field's meaning.
+    type (str): The data type of the field.
+''')
+
+add_chinese_doc('rag.doc_to_db.DocGenreAnalyser', '''\
+用于分析文档所属的类别，例如合同、简历、发票等。通过读取文档内容，并结合大模型判断其类型。
+
+Args:
+    maximum_doc_num (int): 最多分析的文档数量，默认是 3。
+''')
+
+add_english_doc('rag.doc_to_db.DocGenreAnalyser', '''\
+Used to analyze the genre/type of documents, such as contracts, resumes, invoices, etc. It reads the document content and uses a language model to classify its type.
+
+Args:
+    maximum_doc_num (int): Maximum number of documents to analyze, default is 3.
+''')
+
+add_example('rag.doc_to_db.DocGenreAnalyser', '''\
+>>> import lazyllm
+>>> from lazyllm.components.doc_info_extractor import DocGenreAnalyser
+>>> from lazyllm import OnlineChatModule
+>>> m = OnlineChatModule(source="openai")
+>>> analyser = DocGenreAnalyser()
+>>> genre = analyser.analyse_doc_genre(m, "path/to/document.txt")
+>>> print(genre)
+contract
+''')
+
+add_chinese_doc('rag.doc_to_db.DocInfoSchemaAnalyser', '''\
+用于从文档中抽取出关键信息字段的结构，如字段名、描述、字段类型。可用于构建信息提取模板。
+
+Args:
+    maximum_doc_num (int): 用于生成schema的最大文档数量，默认是 3。
+''')
+
+add_english_doc('rag.doc_to_db.DocInfoSchemaAnalyser', '''\
+Used to extract key-value schema from documents, such as field names, descriptions, and data types. Useful for building structured information extraction templates.
+
+Args:
+    maximum_doc_num (int): Maximum number of documents to be used for generating schema, default is 3.
+''')
+
+add_example('rag.doc_to_db.DocInfoSchemaAnalyser', '''\
+>>> from lazyllm.components.doc_info_extractor import DocInfoSchemaAnalyser
+>>> from lazyllm import OnlineChatModule
+>>> analyser = DocInfoSchemaAnalyser()
+>>> m = OnlineChatModule(source="openai")
+>>> schema = analyser.analyse_info_schema(m, "contract", ["doc1.txt", "doc2.txt"])
+>>> print(schema)
+[{'key': 'party_a', 'desc': 'The first party', 'type': 'str'}, ...]
+''')
+
+add_chinese_doc('rag.doc_to_db.DocInfoExtractor', '''\
+根据给定的字段结构（schema）从文档中抽取具体的关键信息值，返回格式为 key-value 字典。
+
+Args:
+    无
+''')
+
+add_english_doc('rag.doc_to_db.DocInfoExtractor', '''\
+Extracts specific values for key fields from a document according to a provided schema. Returns a dictionary of key-value pairs.
+
+Args:
+    None
+''')
+
+add_example('rag.doc_to_db.DocInfoExtractor', '''\
+>>> from lazyllm.components.doc_info_extractor import DocInfoExtractor
+>>> from lazyllm import OnlineChatModule
+>>> extractor = DocInfoExtractor()
+>>> m = OnlineChatModule(source="openai")
+>>> schema = [{"key": "party_a", "desc": "Party A name", "type": "str"}]
+>>> info = extractor.extract_doc_info(m, "contract.txt", schema)
+>>> print(info)
+{'party_a': 'ABC Corp'}
+''')
+
+add_chinese_doc('rag.doc_to_db.DocToDbProcessor', '''\
+用于将文档信息抽取并导出到数据库中。
+
+该类通过分析文档主题、抽取字段结构、从文档中提取关键信息，并将其保存至数据库表中。
+
+Args:
+    sql_manager (SqlManager): 数据库管理模块。
+    doc_table_name (str): 存储文档字段的数据库表名，默认为`lazyllm_doc_elements`。
+
+Note:
+    - 如果表已存在，会自动检测并避免重复创建。
+    - 如果你希望重置字段结构，使用 `reset_doc_info_schema` 方法。
+''')
+
+add_english_doc('rag.doc_to_db.DocToDbProcessor', '''\
+Used to extract information from documents and export it to a database.
+
+This class analyzes document topics, extracts schema structure, pulls out key information, and saves it into a database table.
+
+Args:
+    sql_manager (SqlManager): The SQL management module.
+    doc_table_name (str): The table name to store document fields. Default is ``lazyllm_doc_elements``.
+
+Note:
+    - If the table already exists, it checks and avoids redundant creation.
+    - Use `reset_doc_info_schema` to reset the schema if necessary.
+''')
+
+add_chinese_doc('rag.doc_to_db.DocToDbProcessor.extract_info_from_docs', '''\
+从文档中提取结构化数据库信息。
+
+该函数使用嵌入和检索技术，在提供的文档中获取数据库相关的文本片段，用于后续模式生成。
+
+Args:
+    docs (list[DocNode]): 输入文档列表。
+    num_nodes (int): 要提取的片段数量，默认为10。
+
+Returns:
+    list[DocNode]: 提取出的相关文档片段。
+''')
+
+add_english_doc('rag.doc_to_db.DocToDbProcessor.extract_info_from_docs', '''\
+Extract structured database-related information from documents.
+
+This function uses embedding and retrieval techniques to identify relevant text fragments in the provided documents for schema generation.
+
+Args:
+    docs (list[DocNode]): List of input documents.
+    num_nodes (int): Number of text fragments to retrieve. Default is 10.
+
+Returns:
+    list[DocNode]: The relevant extracted document nodes.
+''')
+
+add_chinese_doc('rag.doc_to_db.DocToDbProcessor.analyze_info_schema_by_llm', '''\
+使用大语言模型从文档节点中推断数据库信息结构。
+
+Args:
+    nodes (list[DocNode]): 文档节点列表。
+
+Returns:
+    dict: 结构化信息模式，包含表名、字段、关系等信息。
+''')
+
+add_english_doc('rag.doc_to_db.DocToDbProcessor.analyze_info_schema_by_llm', '''\
+Infer structured database information using a large language model from document nodes.
+
+Args:
+    nodes (list[DocNode]): List of document nodes.
+
+Returns:
+    dict: The inferred database schema, including table names, fields, and relationships.
+''')
+
+
+add_chinese_doc('rag.doc_to_db.extract_db_schema_from_files', '''\
+给定文档路径和LLM模型，提取文档结构信息。
+
+Args:
+    file_paths (List[str]): 要分析的文档路径。
+    llm (Union[OnlineChatModule, TrainableModule]): 支持聊天的模型模块。
+
+Returns:
+    DocInfoSchema: 提取出的字段结构描述。
+''')
+
+add_english_doc('rag.doc_to_db.extract_db_schema_from_files', '''\
+Extract the schema information from documents using a given LLM.
+
+Args:
+    file_paths (List[str]): Paths of the documents to analyze.
+    llm (Union[OnlineChatModule, TrainableModule]): A chat-supported LLM module.
+
+Returns:
+    DocInfoSchema: The extracted field structure schema.
+''')
+
+add_example('rag.doc_to_db.extract_db_schema_from_files', '''\
+>>> import lazyllm
+>>> from lazyllm.components.document_to_db import extract_db_schema_from_files
+>>> llm = lazyllm.OnlineChatModule()
+>>> file_paths = ["doc1.pdf", "doc2.pdf"]
+>>> schema = extract_db_schema_from_files(file_paths, llm)
+>>> print(schema)
+''')
+
+add_chinese_doc('rag.readers.DocxReader', """\
+docx格式文件解析器，从 `.docx` 文件中读取文本内容并封装为文档节点（DocNode）列表。
+
+Args:
+    file (Path): `.docx` 文件路径。
+    fs (Optional[AbstractFileSystem]): 可选的文件系统对象，支持自定义读取方式。
+
+Returns:
+    List[DocNode]: 包含文档中所有文本内容的节点列表。
+""")
+
+add_english_doc('rag.readers.DocxReader', """\
+A docx format file parser, reading text content from a `.docx` file and return a list of `DocNode` objects.
+
+Args:
+    file (Path): Path to the `.docx` file.
+    fs (Optional[AbstractFileSystem]): Optional file system object for custom reading.
+
+Returns:
+    List[DocNode]: A list containing the extracted text content as `DocNode` instances.
+""")
+
+add_chinese_doc('rag.readers.EpubReader', """\
+用于读取 `.epub` 格式电子书的文件读取器。
+
+继承自 `LazyLLMReaderBase`，只需实现 `_load_data` 方法，即可通过 `Document` 组件自动加载 `.epub` 文件中的内容。
+
+注意：当前版本不支持通过 fsspec 文件系统（如远程路径）加载 epub 文件，若提供 `fs` 参数，将回退到本地文件读取。
+
+Returns:
+    List[DocNode]: 所有章节内容合并后的文本节点列表。
+""")
+
+add_english_doc('rag.readers.EpubReader', """\
+A file reader for `.epub` format eBooks.
+
+Inherits from `LazyLLMReaderBase`, and only needs to implement `_load_data`. The `Document` module can automatically use this class to load `.epub` files.
+
+Note: Reading from fsspec file systems (e.g., remote paths) is not supported in this version. If `fs` is specified, it will fall back to reading from the local file system.
+
+Returns:
+    List[DocNode]: A single node containing all merged chapter content from the EPUB file.
+""")
+
+add_chinese_doc('rag.readers.HWPReader', '''\
+HWP文件解析器，支持从本地文件系统读取 HWP 文件。它会从文档中提取正文部分的文本内容，返回 DocNode 列表。
+
+HWP 是一种专有的二进制格式，主要在韩国使用。由于格式封闭，因此只能解析部分内容（如文本段落），但对常规文本提取已经足够使用。
+
+Args:
+    return_trace (bool): 是否启用 trace 日志记录，默认为 ``True``。
+''')
+
+add_english_doc('rag.readers.HWPReader', '''
+A HWP format file parser. It supports loading from the local filesystem. It extracts body text from the `.hwp` file and returns it as a list of DocNode objects.
+
+HWP is a proprietary binary document format used primarily in Korea. This reader focuses on extracting the plain text from the body sections of the document.
+
+Args:
+    return_trace (bool): Whether to enable trace logging. Defaults to ``True``.
+''')
+
+add_chinese_doc('rag.readers.ImageReader', '''\
+用于从图片文件中读取内容的模块。支持保留图片、解析图片中的文本（基于OCR或预训练视觉模型），并返回文本和图片路径的节点列表。
+
+Args:
+    parser_config (Optional[Dict]): 解析器配置，包含模型和处理器，默认为 None。当设置 parse_text=True 且 parser_config=None 时，会自动根据 text_type 加载相应模型。
+    keep_image (bool): 是否保留图片的 base64 编码，默认为 False。
+    parse_text (bool): 是否解析图片中的文本，默认为 False。
+    text_type (str): 解析文本的类型，支持 ``text``（默认）和 ``plain_text``。当为 ``plain_text`` 时，使用 pytesseract 进行OCR；否则使用预训练视觉编码解码模型。
+    pytesseract_model_kwargs (Optional[Dict]): 传递给 pytesseract OCR 的可选参数，默认为空字典。
+    return_trace (bool): 是否记录处理过程的 trace，默认为 True。
+''')
+
+add_english_doc('rag.readers.ImageReader', '''\
+Module for reading content from image files. Supports keeping the image as base64, parsing text from images using OCR or pretrained vision models, and returns a list of nodes with text and image path.
+
+Args:
+    parser_config (Optional[Dict]): Parser configuration containing the model and processor. Defaults to None. When parse_text=True and parser_config is None, relevant models will be auto-loaded based on text_type.
+    keep_image (bool): Whether to keep the image as base64 string. Default is False.
+    parse_text (bool): Whether to parse text from the image. Default is False.
+    text_type (str): Type of text parsing. Supports ``text`` (default) and ``plain_text``. If ``plain_text``, pytesseract OCR is used; otherwise a pretrained vision encoder-decoder model is used.
+    pytesseract_model_kwargs (Optional[Dict]): Optional arguments passed to pytesseract OCR. Defaults to empty dict.
+    return_trace (bool): Whether to record the processing trace. Default is True.
+''')
+
+add_chinese_doc('rag.readers.IPYNBReader', '''\
+用于读取和解析 Jupyter Notebook (.ipynb) 文件的模块。将 notebook 转换成脚本文本后，按代码单元划分为多个文档节点，或合并为单一文本节点。
+
+Args:
+    parser_config (Optional[Dict]): 预留的解析器配置参数，当前未使用，默认为 None。
+    concatenate (bool): 是否将所有代码单元合并成一个整体文本节点，默认为 False，即分割为多个节点。
+    return_trace (bool): 是否记录处理过程的 trace，默认为 True。
+''')
+
+add_english_doc('rag.readers.IPYNBReader', '''\
+Module for reading and parsing Jupyter Notebook (.ipynb) files. Converts the notebook to script text, then splits it by code cells into multiple document nodes or concatenates into a single text node.
+
+Args:
+    parser_config (Optional[Dict]): Reserved parser configuration parameter, currently unused. Defaults to None.
+    concatenate (bool): Whether to concatenate all code cells into one text node. Defaults to False (split into multiple nodes).
+    return_trace (bool): Whether to record processing trace. Default is True.
+''')
+
+add_chinese_doc('rag.readers.MagicPDFReader', '''\
+用于通过 MagicPDF 服务解析 PDF 文件内容的模块。支持上传文件或通过 URL 方式调用解析接口，解析结果经过回调函数处理成文档节点列表。
+
+Args:
+    magic_url (str): MagicPDF 服务的接口 URL。
+    callback (Optional[Callable[[List[dict], Path, dict], List[DocNode]]]): 解析结果回调函数，接收解析元素列表、文件路径及额外信息，返回文档节点列表。默认将所有文本合并为一个节点。
+    upload_mode (bool): 是否采用文件上传模式调用接口，默认为 False，即通过 JSON 请求文件路径。
+''')
+
+add_english_doc('rag.readers.MagicPDFReader', '''\
+Module to parse PDF content via the MagicPDF service. Supports file upload or URL-based parsing, with a callback to process the parsed elements into document nodes.
+
+Args:
+    magic_url (str): The MagicPDF service API URL.
+    callback (Optional[Callable[[List[dict], Path, dict], List[DocNode]]]): A callback function that takes parsed element list, file path, and extra info, returns a list of DocNode. Defaults to merging all text into a single node.
+    upload_mode (bool): Whether to use file upload mode for the API call. Default is False, meaning JSON request with file path.
+''')
+
+add_chinese_doc('rag.readers.MarkdownReader', '''\
+用于读取和解析 Markdown 文件的模块。支持去除超链接和图片，按标题和内容将 Markdown 划分成若干文本段落节点。
+
+Args:
+    remove_hyperlinks (bool): 是否移除超链接，默认 True。
+    remove_images (bool): 是否移除图片标记，默认 True。
+    return_trace (bool): 是否记录处理过程的 trace，默认为 True。
+''')
+
+add_english_doc('rag.readers.MarkdownReader', '''\
+Module for reading and parsing Markdown files. Supports removing hyperlinks and images, and splits Markdown into text segments by headers, returning document nodes.
+
+Args:
+    remove_hyperlinks (bool): Whether to remove hyperlinks, default is True.
+    remove_images (bool): Whether to remove image tags, default is True.
+    return_trace (bool): Whether to record processing trace, default is True.
+''')
+
+add_chinese_doc('rag.readers.MarkdownReader.remove_images', '''\
+移除内容中形如 ![[...]] 的自定义图片标签。
+
+Args:
+    content (str): 输入的 markdown 内容。
+
+Returns:
+    str: 移除图片标签后的内容。
+''')
+
+add_english_doc('rag.readers.MarkdownReader.remove_images', '''\
+Remove custom image tags of the form ![[...]] from the content.
+
+Args:
+    content (str): Input markdown content.
+
+Returns:
+    str: Content with image tags removed.
+''')
+
+add_chinese_doc('rag.readers.MarkdownReader.remove_hyperlinks', '''\
+移除 Markdown 超链接，将 [文本](链接) 转换为纯文本。
+
+Args:
+    content (str): 输入的 markdown 内容。
+
+Returns:
+    str: 移除超链接后的内容，仅保留链接文本。
+''')
+
+add_english_doc('rag.readers.MarkdownReader.remove_hyperlinks', '''\
+Remove markdown hyperlinks, converting [text](url) to just text.
+
+Args:
+    content (str): Input markdown content.
+
+Returns:
+    str: Content with hyperlinks removed, only link text retained.
+''')
+
+add_chinese_doc('rag.readers.MboxReader', '''\
+用于解析 Mbox 邮件存档文件的模块。读取邮件内容并格式化为文本，支持限制最大邮件数和自定义消息格式。
+
+Args:
+    max_count (int): 最大读取的邮件数量，默认 0 表示读取全部邮件。
+    message_format (str): 邮件文本格式模板，支持使用 ``{_date}``、``{_from}``、``{_to}``、``{_subject}`` 和 ``{_content}`` 占位符。
+    return_trace (bool): 是否记录处理过程的 trace，默认为 True。
+''')
+
+add_english_doc('rag.readers.MboxReader', '''\
+Module to parse Mbox email archive files. Reads email messages and formats them into text. Supports limiting the maximum number of messages and custom message formatting.
+
+Args:
+    max_count (int): Maximum number of emails to read. Default 0 means read all.
+    message_format (str): Template string for formatting each message, supports placeholders ``{_date}``, ``{_from}``, ``{_to}``, ``{_subject}``, and ``{_content}``.
+    return_trace (bool): Whether to record processing trace. Default is True.
+''')
+
+
+add_english_doc('rag.store.ChromadbStore', '''
+Inherits from the abstract base class StoreBase. This class is mainly used to store and manage document nodes (DocNode), supporting operations such as node addition, deletion, modification, query, index management, and persistent storage.
+Args:
+    group_embed_keys (Dict[str, Set[str]]): Specifies the embedding fields associated with each document group.
+    embed (Dict[str, Callable]): A dictionary of embedding generation functions, supporting multiple embedding sources.
+    embed_dims (Dict[str, int]): The embedding dimensions corresponding to each embedding type.
+    dir (str): Path to the chromadb persistent storage directory.
+    kwargs (Dict): Additional optional parameters passed to the parent class or internal components.
+''')
+
+
+add_chinese_doc('rag.store.ChromadbStore', '''
+继承自 StoreBase 抽象基类。它主要用于存储和管理文档节点(DocNode)，支持节点增删改查、索引管理和持久化存储。
+Args:
+     group_embed_keys (Dict[str, Set[str]]): 指定每个文档分组所对应的嵌入字段。
+    embed (Dict[str, Callable]): 嵌入生成函数或其映射，支持多嵌入源。
+    embed_dims (Dict[str, int]): 每种嵌入类型对应的维度。
+    dir (str): chromadb 数据库存储路径。
+    kwargs (Dict): 其他可选参数，传递给父类或内部组件。
+''')
+
+add_example('rag.store.ChromadbStore', '''
+>>> from lazyllm.tools.rag.chroma_store import ChromadbStore
+>>> from typing import Dict, List
+>>> import numpy as np
+>>> store = ChromadbStore(
+...     group_embed_keys={"articles": {"title_embed", "content_embed"}},
+...     embed={
+...         "title_embed": lambda x: np.random.rand(128).tolist(),
+...         "content_embed": lambda x: np.random.rand(256).tolist()
+...     },
+...     embed_dims={"title_embed": 128, "content_embed": 256},
+...     dir="./chroma_data"
+... )
+>>> store.update_nodes([node1, node2])
+>>> results = store.query(query_text="文档内容", group_name="articles", top_k=2)
+>>> for node in results:
+...     print(f"找到文档: {node._content[:20]}...")
+>>> store.remove_nodes(doc_ids=["doc1"])
+''')
+
+add_english_doc('rag.store.ChromadbStore.update_nodes', '''
+Update a group of DocNode objects.
+Args:
+    nodes (DocNode): The list of DocNode objects to be updated.
+''')
+
+
+add_chinese_doc('rag.store.ChromadbStore.update_nodes', '''
+更新一组 DocNode 节点。
+Args:
+    nodes(DocNode): 需要更新的 DocNode 列表。
+''')
+
+
+add_english_doc('rag.store.ChromadbStore.remove_nodes', '''
+Delete nodes based on specified conditions.
+Args:
+    doc_ids (str): Delete by document ID.
+    group_name (str): Specify the group name for deletion.
+    uids (str): Delete by unique node ID.
+''')
+
+
+add_chinese_doc('rag.store.ChromadbStore.remove_nodes', '''
+删除指定条件的节点。
+Args:
+    doc_ids(str): 按文档 ID 删除。
+    group_name(str): 限定删除的组名。
+    uids(str): 按节点唯一 ID 删除。
+''')
+
+
+add_english_doc('rag.store.ChromadbStore.update_doc_meta', '''
+Update the metadata of a document.
+Args:
+    doc_id (str): The ID of the document to be updated.
+    metadata (dict): The new metadata (key-value pairs).
+''')
+
+
+add_chinese_doc('rag.store.ChromadbStore.update_doc_meta', '''
+更新文档的元数据。。
+Args:
+    doc_id(str):需要更新的文档 ID。
+    metadata(dict):新的元数据（键值对）。
+''')
+
+
+add_english_doc('rag.store.ChromadbStore.get_nodes', '''
+Query nodes based on specified conditions.
+Args:
+    group_name (str): The name of the group to which the nodes belong.
+    uids (List[str]): A list of unique node IDs.
+    doc_ids (Set[str]): A set of document IDs.
+    **kwargs: Additional optional parameters.
+''')
+
+
+add_chinese_doc('rag.store.ChromadbStore.get_nodes', '''
+根据条件查询节点。
+Args:
+    group_name(str]):节点所属的组名。
+    uids(List[str]):节点唯一 ID 列表。
+    doc_ids	(Set[str])：文档 ID 集合。
+    **kwargs:其他扩展参数。
+''')
+
+
+add_english_doc('rag.store.ChromadbStore.activate_group', '''
+Activate the specified group.
+Args:
+    group_names([str, List[str]]): Activate by group name.
+''')
+
+
+add_chinese_doc('rag.store.ChromadbStore.activate_group', '''
+激活指定的组。
+Args:
+    group_names([str, List[str]])：按组名激活。
+''')
+
+add_english_doc('rag.store.ChromadbStore.activated_groups', '''
+Activate groups. Return the list of currently activated group names.
+''')
+
+
+add_chinese_doc('rag.store.ChromadbStore.activated_groups', '''
+激活组，返回当前激活的组名列表。
+''')
+add_english_doc('rag.store.ChromadbStore.query', '''
+Execute a query using the default index.
+Args:
+    args: Query parameters.
+    kwargs: Additional optional parameters.
+''')
+
+
+add_chinese_doc('rag.store.ChromadbStore.query', '''
+通过默认索引执行查询。
+Args:
+    args：查询参数。
+    kwargs：其他扩展参数。
+''')
+
+add_english_doc('rag.store.ChromadbStore.is_group_active', '''
+Check whether the specified group is active.
+Args:
+    name (str): The name of the group.
+''')
+
+add_chinese_doc('rag.store.ChromadbStore.is_group_active', '''
+检查指定组是否激活。
+Args:
+    name(str)：组名。
+''')
+
+
+add_english_doc('rag.store.ChromadbStore.all_groups', '''
+Return the list of all group names.
+''')
+
+
+add_chinese_doc('rag.store.ChromadbStore.all_groups', '''
+返回所有组名列表。
+''')
+
+add_english_doc('rag.store.ChromadbStore.register_index', '''
+Register a custom index.
+Args:
+    type (str): The name of the index type.
+    index (IndexBase): An object implementing the IndexBase interface.
+''')
+
+
+add_chinese_doc('rag.store.ChromadbStore.register_index', '''
+注册自定义索引。
+Args:
+    type(str):索引类型名称。
+    index(IndexBase):实现 IndexBase 的对象。
+''')
+
+
+add_english_doc('rag.store.ChromadbStore.get_index', '''
+Get the index of the specified type.
+Args:
+    type (str): The type of the index.
+''')
+
+
+add_chinese_doc('rag.store.ChromadbStore.get_index', '''
+获取指定类型的索引。
+Args:
+    type(str):索引类型
+''')
+
+
+add_english_doc('rag.store.ChromadbStore.clear_cache', '''
+Clear the ChromaDB collections and memory cache for specified groups or all groups.
+Args:
+    group_names (List[str]): List of group names. If None, clear all groups.
+''')
+
+
+add_chinese_doc('rag.store.ChromadbStore.clear_cache', '''
+清除指定组或所有组的 ChromaDB 集合和内存缓存。
+Args:
+    group_names(List[str])：组名列表，为 None 时清除所有组。
+''')
+
+
+
+
+
+add_english_doc('rag.store.MilvusStore', '''
+Inherits from the StoreBase abstract base class. Implements a vector database based on Milvus. Its functionality is similar to ChromadbStore, used for storing, managing, indexing, and querying embedded document nodes (DocNode).
+Args:
+    group_embed_keys (Dict[str, Set[str]]): Specifies the embedding fields for each group.
+    embed (Dict[str, Callable]): Embedding functions for each field.
+    embed_dims (Dict[str, int]): Vector dimensions for each embedding field.
+    embed_datatypes (Dict[str, DataType]): Vector types for each embedding field (must comply with Milvus types).
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Description of global metadata fields, used to configure other non-vector fields in Milvus.
+    url (str): Milvus connection address, supporting local or remote connections.
+    index_kwargs (Union[Dict, List]): Optional index parameters for creating Milvus vector indexes, such as IVF, HNSW parameters.
+    db_name (str): Optional, defaults to "lazyllm". Represents the database name in Milvus.
+''')
+
+
+add_chinese_doc('rag.store.MilvusStore', '''
+继承自 StoreBase 抽象基类。基于 Milvus 向量数据库实现。其功能和 ChromadbStore 类似, 用于存储、管理、索引和查询嵌入向量化后的文档节点(DocNode)。
+Args:
+    group_embed_keys (Dict[str, Set[str]]): 指定每个group所对应的嵌入字段。
+    embed (Dict[str, Callable]): 每种字段对应的 embedding 函数.
+    embed_dims (Dict[str, int]): 每个嵌入字段的向量维度。
+    embed_datatypes(Dict[str, DataType]): 每个嵌入字段的向量类型（需符合 Milvus 类型）。
+    global_metadata_descDict([str, GlobalMetadataDesc])：全局元数据字段的说明，用于配置 Milvus 中的其他非向量字段。
+    url(str):Milvus 的连接地址，支持本地或远程。
+    index_kwargs:([Union[Dict, List]]):可选的索引参数，用于创建 Milvus 的向量索引，例如 IVF、HNSW 参数。
+    db_name(str):可选，默认 "lazyllm"。表示 Milvus 中的数据库名。
+''')
+
+add_example('rag.store.MilvusStore', '''
+>>> from lazyllm.tools.rag.milvus_store import MilvusStore
+>>> from typing import Dict, List
+>>> import numpy as np
+>>> store = MilvusStore(
+...     group_embed_keys={
+...         "articles": {"text"},
+...         "faqs": {"question"}
+...     },
+...     embed={
+...         "text": lambda x: np.random.rand(128).tolist(),
+...         "question": lambda x: np.random.rand(128).tolist()
+...     },
+...     embed_dims={"text": 128, "question": 128},
+...     embed_datatypes={"text": DataType.FLOAT_VECTOR, "question": DataType.FLOAT_VECTOR},
+...     global_metadata_desc=None,
+...     uri="http://localhost:19530",
+...     index_kwargs={"metric_type": "L2", "index_type": "IVF_FLAT", "params": {"nlist": 128}},
+...     db_name="test_db"
+... )
+>>> store.update_nodes([node1, node2])
+>>> results = store.query(query_text="文档内容", group_name="articles", top_k=2)
+>>> for node in results:
+...     print(f"找到文档: {node._content[:20]}...")
+>>> store.remove_nodes(doc_ids=["doc1"])
+''')
+
+add_english_doc('rag.store.MilvusStore.update_nodes', '''
+Update or insert nodes into Milvus collections and memory store.
+Args:
+    nodes (List[DocNode]): List of document nodes to update.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.update_nodes', '''
+更新或插入节点到 Milvus 集合和内存存储中。
+Args:
+    nodes (List[DocNode]): 需要更新的文档节点列表。
+''')
+
+add_english_doc('rag.store.MilvusStore.update_doc_meta', '''
+Update metadata for a document and sync to all related nodes.
+Args:
+    doc_id (str): Target document ID.
+    metadata (dict): New metadata key-value pairs.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.update_doc_meta', '''
+更新文档元数据并同步到所有关联节点。
+Args:
+    doc_id (str): 目标文档ID。
+    metadata (dict): 新的元数据键值对。
+''')
+
+add_english_doc('rag.store.MilvusStore.remove_nodes', '''
+Remove nodes by document IDs, group name, or node UIDs.
+Args:
+    doc_ids (Optional[List[str]]): Document IDs filter.
+    group_name (Optional[str]): Group name filter.
+    uids (Optional[List[str]]): Node UIDs filter.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.remove_nodes', '''
+通过文档ID、组名或节点UID删除节点。
+Args:
+    doc_ids (Optional[List[str]]): 文档ID过滤条件。
+    group_name (Optional[str]): 组名过滤条件。
+    uids (Optional[List[str]]): 节点UID过滤条件。
+''')
+add_english_doc('rag.store.MilvusStore.get_nodes', '''
+Query nodes with flexible filtering options.
+Args:
+    group_name (Optional[str]): Group name filter.
+    uids (Optional[List[str]]): Node UIDs filter.
+    doc_ids (Optional[Set[str]]): Document IDs filter.
+    **kwargs: Additional query parameters.
+Returns:
+    List[DocNode]: Matched document nodes.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.get_nodes', '''
+通过多条件查询节点。
+Args:
+    group_name (Optional[str]): 组名过滤条件。
+    uids (Optional[List[str]]): 节点UID过滤条件。
+    doc_ids (Optional[Set[str]]): 文档ID过滤条件。
+    **kwargs: 其他查询参数。
+Returns:
+    List[DocNode]: 匹配的文档节点列表。
+''')
+
+add_english_doc('rag.store.MilvusStore.query', '''
+Semantic search with vector similarity.
+Args:
+    query (str): Query text.
+    group_name (str): Target group name.
+    similarity_cut_off (Optional[Union[float, Dict[str, float]]]): Similarity threshold.
+    topk (int): Number of results to return.
+    embed_keys (List[str]): Embedding keys for search.
+    filters (Optional[Dict]): Metadata filters.
+Returns:
+    List[DocNode]: Nodes with similarity scores.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.query', '''
+基于向量相似度的语义搜索。
+Args:
+    query (str): 查询文本。
+    group_name (str): 目标组名。
+    similarity_cut_off (Optional[Union[float, Dict[str, float]]): 相似度阈值。
+    topk (int): 返回结果数量。
+    embed_keys (List[str]): 用于搜索的嵌入键。
+    filters (Optional[Dict]): 元数据过滤条件。
+Returns:
+    List[DocNode]: 带相似度分数的节点列表。
+''')
+
+add_english_doc('rag.store.MilvusStore.activate_group', '''
+Activate one or multiple groups for operations.
+Args:
+    group_names (Union[str, List[str]]): Group name(s) to activate.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.activate_group', '''
+激活一个或多个组用于后续操作。
+Args:
+    group_names (Union[str, List[str]]): 要激活的组名（单个或列表）。
+''')
+
+add_english_doc('rag.store.MilvusStore.get_index', '''
+Get index instance by type.
+Args:
+    type (Optional[str]): Index type name, defaults to "default".
+''')
+
+add_chinese_doc('rag.store.MilvusStore.get_index', '''
+获取指定类型的索引实例。
+Args:
+    type (Optional[str]): 索引类型名称，默认为"default"。
+''')
+
+add_english_doc('rag.store.MilvusStore.register_index', '''
+Register custom index type.
+Args:
+    type (str): Index type name.
+    index (IndexBase): Custom index instance.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.register_index', '''
+注册自定义索引类型。
+Args:
+    type (str): 索引类型名称。
+    index (IndexBase): 自定义索引实例。
+''')
+
+add_english_doc('rag.store.MilvusStore.activated_groups', '''
+Get names of all activated groups.
+Returns:
+    List[str]: Active group names.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.activated_groups', '''
+获取所有已激活的组名。
+Returns:
+    List[str]: 活跃组名列表。
+''')
+
+add_english_doc('rag.store.MilvusStore.is_group_active', '''
+Check if a group is activated.
+Args:
+    name (str): Group name to check.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.is_group_active', '''
+检查指定组是否激活。
+Args:
+    name (str): 要检查的组名。
+''')
+
+add_chinese_doc('DefaultIndex', r'''\ 
 默认的索引实现，负责通过 embedding 和文本相似度在底层存储中查询、更新和删除文档节点。支持多种相似度度量方式，并在必要时对查询和节点进行 embedding 计算与更新。
 
 Args:
@@ -305,7 +1139,7 @@ Args:
     **kwargs: Reserved for future extension.
 ''')
 
-add_chinese_doc('DefaultIndex.update', '''\
+add_chinese_doc('DefaultIndex.update', r'''\ 
 根据提供的节点列表更新索引中的内容。具体行为由子类或外部实现填充（此处为空实现，需在实际使用中覆盖/扩展）。
 
 Args:
@@ -319,7 +1153,7 @@ Args:
     nodes (List[DocNode]): Document nodes to add or update in the index.
 ''')
 
-add_chinese_doc('DefaultIndex.remove', '''\ 
+add_chinese_doc('DefaultIndex.remove', r'''\ 
 从索引中删除指定 UID 的节点，可选指定分组名称以限定作用域。当前为空实现，使用时需要补全逻辑。
 
 Args:
@@ -335,7 +1169,7 @@ Args:
     group_name (Optional[str]): Optional group name to scope the removal.
 ''')
 
-add_chinese_doc('DefaultIndex.query', '''\
+add_chinese_doc('DefaultIndex.query', r'''\ 
 执行一次查询，支持 embedding 和文本两种模式，依据相似度函数过滤并返回符合条件的 DocNode 结果。
 
 Args:
@@ -368,6 +1202,7 @@ Args:
 **Returns**\n
     - list: List[DocNode]: Deduplicated list of document nodes passing similarity and cutoff criteria.
 ''')
+
 
 # ---------------------------------------------------------------------------- #
 
@@ -2928,78 +3763,6 @@ add_example(
     >>> print(sql_call("去年一整年销售额最多的员工是谁?"))
 """,
 )
-
-add_english_doc('SqlCall.sql_query_promt_hook', '''\
-Hook to prepare the prompt inputs for generating a database query from user input.
-
-Args:
-    input (Union[str, List, Dict[str, str], None]): The user's natural language query.
-    history (List[Union[List[str], Dict[str, Any]]]): Conversation history.
-    tools (Union[List[Dict[str, Any]], None]): Available tool descriptions.
-    label (Union[str, None]): Optional label for the prompt.
-
-Returns:
-    Tuple: A tuple containing the formatted prompt dict (with current_date, db_type, desc, user_query), history, tools, and label.
-''')
-
-add_chinese_doc('SqlCall.sql_query_promt_hook', r'''\ 
-为从用户输入生成数据库查询准备 prompt 的 hook。
-
-Args:
-    input (Union[str, List, Dict[str, str], None]): 用户的自然语言查询。
-    history (List[Union[List[str], Dict[str, Any]]]): 会话历史。
-    tools (Union[List[Dict[str, Any]], None]): 可用工具描述。
-    label (Union[str, None]): 可选标签。
-
-Returns:
-    Tuple: 包含格式化后的 prompt 字典（包括 current_date、db_type、desc、user_query）、history、tools 和 label。
-''')
-
-add_english_doc('SqlCall.sql_explain_prompt_hook', '''\
-Hook to prepare the prompt for explaining the execution result of a database query.
-
-Args:
-    input (Union[str, List, Dict[str, str], None]): A list containing the query and its result.
-    history (List[Union[List[str], Dict[str, Any]]]): Conversation history.
-    tools (Union[List[Dict[str, Any]], None]): Available tool descriptions.
-    label (Union[str, None]): Optional label for the prompt.
-
-Returns:
-    Tuple: A tuple containing the formatted prompt dict (history_info, desc, query, result, explain_query), history, tools, and label.
-''')
-
-add_chinese_doc('SqlCall.sql_explain_prompt_hook', r'''\ 
-为解释数据库查询执行结果准备 prompt 的 hook。
-
-Args:
-    input (Union[str, List, Dict[str, str], None]): 包含查询和结果的列表。
-    history (List[Union[List[str], Dict[str, Any]]]): 会话历史。
-    tools (Union[List[Dict[str, Any]], None]): 可用工具描述。
-    label (Union[str, None]): 可选标签。
-
-Returns:
-    Tuple: 包含格式化后的 prompt 字典（history_info、desc、query、result、explain_query）、history、tools 和 label。
-''')
-
-add_english_doc('SqlCall.extract_sql_from_response', '''\
-Extract SQL (or MongoDB pipeline) statement from the raw LLM response.
-
-Args:
-    str_response (str): Raw text returned by the LLM which may contain code fences.
-
-Returns:
-    tuple[bool, str]: A tuple where the first element indicates whether extraction succeeded, and the second is the cleaned or original content. If sql_post_func is provided, it is applied to the extracted content.
-''')
-
-add_chinese_doc('SqlCall.extract_sql_from_response', r'''\ 
-从原始 LLM 响应中提取 SQL（或 MongoDB pipeline）语句。
-
-Args:
-    str_response (str): LLM 返回的原始文本，可能包含代码块。
-
-Returns:
-    tuple[bool, str]: 第一个元素表示是否成功提取，第二个是清洗后的或原始内容。如果提供了 sql_post_func，则会应用于提取结果。
-''')
 
 # ---------------------------------------------------------------------------- #
 
