@@ -68,3 +68,8 @@
 ::: lazyllm.module.OnlineEmbeddingModuleBase
     members:
     exclude-members: forward
+
+::: lazyllm.module.llms.onlinemodule.fileHandler.FileHandlerBase
+    members: get_finetune_data
+    exclude-members: 
+    
