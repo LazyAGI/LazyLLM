@@ -3764,6 +3764,78 @@ add_example(
 """,
 )
 
+add_english_doc('SqlCall.sql_query_promt_hook', '''\
+Hook to prepare the prompt inputs for generating a database query from user input.
+
+Args:
+    input (Union[str, List, Dict[str, str], None]): The user's natural language query.
+    history (List[Union[List[str], Dict[str, Any]]]): Conversation history.
+    tools (Union[List[Dict[str, Any]], None]): Available tool descriptions.
+    label (Union[str, None]): Optional label for the prompt.
+
+Returns:
+    Tuple: A tuple containing the formatted prompt dict (with current_date, db_type, desc, user_query), history, tools, and label.
+''')
+
+add_chinese_doc('SqlCall.sql_query_promt_hook', r'''\ 
+为从用户输入生成数据库查询准备 prompt 的 hook。
+
+Args:
+    input (Union[str, List, Dict[str, str], None]): 用户的自然语言查询。
+    history (List[Union[List[str], Dict[str, Any]]]): 会话历史。
+    tools (Union[List[Dict[str, Any]], None]): 可用工具描述。
+    label (Union[str, None]): 可选标签。
+
+Returns:
+    Tuple: 包含格式化后的 prompt 字典（包括 current_date、db_type、desc、user_query）、history、tools 和 label。
+''')
+
+add_english_doc('SqlCall.sql_explain_prompt_hook', '''\
+Hook to prepare the prompt for explaining the execution result of a database query.
+
+Args:
+    input (Union[str, List, Dict[str, str], None]): A list containing the query and its result.
+    history (List[Union[List[str], Dict[str, Any]]]): Conversation history.
+    tools (Union[List[Dict[str, Any]], None]): Available tool descriptions.
+    label (Union[str, None]): Optional label for the prompt.
+
+Returns:
+    Tuple: A tuple containing the formatted prompt dict (history_info, desc, query, result, explain_query), history, tools, and label.
+''')
+
+add_chinese_doc('SqlCall.sql_explain_prompt_hook', r'''\ 
+为解释数据库查询执行结果准备 prompt 的 hook。
+
+Args:
+    input (Union[str, List, Dict[str, str], None]): 包含查询和结果的列表。
+    history (List[Union[List[str], Dict[str, Any]]]): 会话历史。
+    tools (Union[List[Dict[str, Any]], None]): 可用工具描述。
+    label (Union[str, None]): 可选标签。
+
+Returns:
+    Tuple: 包含格式化后的 prompt 字典（history_info、desc、query、result、explain_query）、history、tools 和 label。
+''')
+
+add_english_doc('SqlCall.extract_sql_from_response', '''\
+Extract SQL (or MongoDB pipeline) statement from the raw LLM response.
+
+Args:
+    str_response (str): Raw text returned by the LLM which may contain code fences.
+
+Returns:
+    tuple[bool, str]: A tuple where the first element indicates whether extraction succeeded, and the second is the cleaned or original content. If sql_post_func is provided, it is applied to the extracted content.
+''')
+
+add_chinese_doc('SqlCall.extract_sql_from_response', r'''\ 
+从原始 LLM 响应中提取 SQL（或 MongoDB pipeline）语句。
+
+Args:
+    str_response (str): LLM 返回的原始文本，可能包含代码块。
+
+Returns:
+    tuple[bool, str]: 第一个元素表示是否成功提取，第二个是清洗后的或原始内容。如果提供了 sql_post_func，则会应用于提取结果。
+''')
+
 # ---------------------------------------------------------------------------- #
 
 add_chinese_doc("HttpTool", """
