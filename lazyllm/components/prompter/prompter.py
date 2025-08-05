@@ -53,11 +53,11 @@ class Prompter(object):
     def empty(cls):
         return cls()
 
-    def is_empty(self):
+    def _is_empty(self):
         return self._prompt is None
 
     def generate_prompt(self, input, history=None, tools=None, label=None, show=False):
-        if not self.is_empty():
+        if not self._is_empty():
             assert tools is None
             # datasets.formatting.formatting.LazyDict is used in transformers
             if not isinstance(input, collections.abc.Mapping):
