@@ -68,3 +68,4 @@
 ::: lazyllm.module.OnlineEmbeddingModuleBase
     members:
     exclude-members: forward
+
