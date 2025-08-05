@@ -55,6 +55,7 @@ class SenseCoreStore(LazyLLMStoreBase):
     def connect(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs) -> None:
         self._check_s3()
         self._global_metadata_desc = global_metadata_desc
+        LOG.info(f"[SenseCore Store - connect] connected to {self._uri}")
 
     def _check_s3(self):
         obj_key = 'lazyllm/warmup.txt'
@@ -62,6 +63,7 @@ class SenseCoreStore(LazyLLMStoreBase):
                           aws_access_key_id=self._s3_config['access_key'],
                           aws_secret_access_key=self._s3_config['secret_access_key'],
                           use_minio=self._s3_config['use_minio'], endpoint_url=self._s3_config['endpoint_url'])
+        LOG.info(f"[SenseCore Store - check_s3] uploaded warmup.txt to {self._s3_config['bucket_name']}")
         return
 
     def _serialize_data(self, data: dict) -> Dict:  # noqa: C901

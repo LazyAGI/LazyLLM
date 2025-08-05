@@ -703,423 +703,298 @@ Args:
 
 
 add_english_doc('rag.store.ChromadbStore', '''
-Inherits from the abstract base class StoreBase. This class is mainly used to store and manage document nodes (DocNode), supporting operations such as node addition, deletion, modification, query, index management, and persistent storage.
-Args:
-    group_embed_keys (Dict[str, Set[str]]): Specifies the embedding fields associated with each document group.
-    embed (Dict[str, Callable]): A dictionary of embedding generation functions, supporting multiple embedding sources.
-    embed_dims (Dict[str, int]): The embedding dimensions corresponding to each embedding type.
-    dir (str): Path to the chromadb persistent storage directory.
-    kwargs (Dict): Additional optional parameters passed to the parent class or internal components.
-''')
+ChromadbStore is a vector-capable implementation of LazyLLMStoreBase, leveraging ChromaDB for persistence and vector search.
 
+Args:
+    dir (Optional[str]): Filesystem path for on-disk ChromaDB storage. If provided, a PersistentClient will be used.
+    host (Optional[str]): Hostname for ChromaDB HTTP server. Used if `dir` is not set.
+    port (Optional[int]): Port number for ChromaDB HTTP server. Used if `dir` is not set.
+    index_kwargs (Optional[Union[Dict, List]]): Configuration parameters for ChromaDB collections, e.g., index type and metrics.
+    client_kwargs (Optional[Dict]): Additional keyword arguments passed to the ChromaDB client constructor.
+''')
 
 add_chinese_doc('rag.store.ChromadbStore', '''
-继承自 StoreBase 抽象基类。它主要用于存储和管理文档节点(DocNode)，支持节点增删改查、索引管理和持久化存储。
+ChromadbStore 是基于 ChromaDB 的向量存储实现，继承自 LazyLLMStoreBase，支持向量写入、检索与持久化。
+
 Args:
-     group_embed_keys (Dict[str, Set[str]]): 指定每个文档分组所对应的嵌入字段。
-    embed (Dict[str, Callable]): 嵌入生成函数或其映射，支持多嵌入源。
-    embed_dims (Dict[str, int]): 每种嵌入类型对应的维度。
-    dir (str): chromadb 数据库存储路径。
-    kwargs (Dict): 其他可选参数，传递给父类或内部组件。
+    dir (Optional[str]): 本地持久化存储目录，优先使用 PersistentClient 模式。
+    host (Optional[str]): HTTP 访问模式下的 ChromaDB 服务主机名。
+    port (Optional[int]): HTTP 模式下的 ChromaDB 服务端口。
+    index_kwargs (Optional[Union[Dict, List]]): Collection 配置参数，如索引类型、度量方式等。
+    client_kwargs (Optional[Dict]): 传递给 ChromaDB 客户端的额外参数。
 ''')
 
-add_example('rag.store.ChromadbStore', '''
->>> from lazyllm.tools.rag.chroma_store import ChromadbStore
->>> from typing import Dict, List
->>> import numpy as np
->>> store = ChromadbStore(
-...     group_embed_keys={"articles": {"title_embed", "content_embed"}},
-...     embed={
-...         "title_embed": lambda x: np.random.rand(128).tolist(),
-...         "content_embed": lambda x: np.random.rand(256).tolist()
-...     },
-...     embed_dims={"title_embed": 128, "content_embed": 256},
-...     dir="./chroma_data"
-... )
->>> store.update_nodes([node1, node2])
->>> results = store.query(query_text="文档内容", group_name="articles", top_k=2)
->>> for node in results:
-...     print(f"找到文档: {node._content[:20]}...")
->>> store.remove_nodes(doc_ids=["doc1"])
+add_english_doc('rag.store.ChromadbStore.dir', '''
+Directory property of the store.
+
+Returns:
+    Optional[str]: Normalized directory path ending with a slash, or None if not set.
 ''')
 
-add_english_doc('rag.store.ChromadbStore.update_nodes', '''
-Update a group of DocNode objects.
+add_chinese_doc('rag.store.ChromadbStore.dir', '''
+存储目录属性。
+
+Returns:
+    Optional[str]: 以斜杠结尾的目录路径，若未配置则返回 None。
+''')
+
+add_english_doc('rag.store.ChromadbStore.connect', '''
+Initialize the ChromaDB client and configure embedding settings.
+
 Args:
-    nodes (DocNode): The list of DocNode objects to be updated.
+    embed_dims (Dict[str, int]): Dimensions for each embedding key.
+    embed_datatypes (Dict[str, DataType]): Data types for global metadata fields.
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Descriptions of global metadata fields.
 ''')
 
+add_chinese_doc('rag.store.ChromadbStore.connect', '''
+初始化 ChromaDB 客户端并配置嵌入及元数据。
 
-add_chinese_doc('rag.store.ChromadbStore.update_nodes', '''
-更新一组 DocNode 节点。
 Args:
-    nodes(DocNode): 需要更新的 DocNode 列表。
+    embed_dims (Dict[str, int]): 每个嵌入键对应的向量维度。
+    embed_datatypes (Dict[str, DataType]): 全局元数据字段的数据类型。
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据字段的描述。
 ''')
 
+add_english_doc('rag.store.ChromadbStore.upsert', '''
+Insert or update a batch of records into ChromaDB.
 
-add_english_doc('rag.store.ChromadbStore.remove_nodes', '''
-Delete nodes based on specified conditions.
 Args:
-    doc_ids (str): Delete by document ID.
-    group_name (str): Specify the group name for deletion.
-    uids (str): Delete by unique node ID.
+    collection_name (str): Logical name for the collection.
+    data (List[dict]): List of documents.
+
+Returns:
+    bool: True if operation succeeds, False otherwise.
 ''')
 
+add_chinese_doc('rag.store.ChromadbStore.upsert', '''
+批量写入或更新记录到 ChromaDB。
 
-add_chinese_doc('rag.store.ChromadbStore.remove_nodes', '''
-删除指定条件的节点。
 Args:
-    doc_ids(str): 按文档 ID 删除。
-    group_name(str): 限定删除的组名。
-    uids(str): 按节点唯一 ID 删除。
+    collection_name (str): 集合名称。
+    data (List[dict]): 文档切片数据列表。
+
+Returns:
+    bool: 操作成功返回 True，否则 False。
 ''')
 
+add_english_doc('rag.store.ChromadbStore.delete', '''
+Delete an entire collection or specific records.
 
-add_english_doc('rag.store.ChromadbStore.update_doc_meta', '''
-Update the metadata of a document.
 Args:
-    doc_id (str): The ID of the document to be updated.
-    metadata (dict): The new metadata (key-value pairs).
+    collection_name (str): Name of the collection.
+    criteria (Optional[dict]): If None, drop the collection. Otherwise, filter dict to delete matching records.
+
+Returns:
+    bool: True if deletion succeeds, False otherwise.
 ''')
 
+add_chinese_doc('rag.store.ChromadbStore.delete', '''
+删除整个集合或指定记录。
 
-add_chinese_doc('rag.store.ChromadbStore.update_doc_meta', '''
-更新文档的元数据。。
 Args:
-    doc_id(str):需要更新的文档 ID。
-    metadata(dict):新的元数据（键值对）。
+    collection_name (str): 集合名称。
+    criteria (Optional[dict]): 若为 None，删除整个集合；否则按条件删除匹配记录。
+
+Returns:
+    bool: 删除成功返回 True，否则 False。
 ''')
 
+add_english_doc('rag.store.ChromadbStore.get', '''
+Retrieve records matching criteria.
 
-add_english_doc('rag.store.ChromadbStore.get_nodes', '''
-Query nodes based on specified conditions.
 Args:
-    group_name (str): The name of the group to which the nodes belong.
-    uids (List[str]): A list of unique node IDs.
-    doc_ids (Set[str]): A set of document IDs.
-    **kwargs: Additional optional parameters.
+    collection_name (str): Name of the collection.
+    criteria (Optional[dict]): Filter conditions such as primary key or metadata.
+
+Returns:
+    List[dict]: Each dict contains 'uid' and 'embedding'.
 ''')
 
+add_chinese_doc('rag.store.ChromadbStore.get', '''
+根据条件检索记录。
 
-add_chinese_doc('rag.store.ChromadbStore.get_nodes', '''
-根据条件查询节点。
 Args:
-    group_name(str]):节点所属的组名。
-    uids(List[str]):节点唯一 ID 列表。
-    doc_ids	(Set[str])：文档 ID 集合。
-    **kwargs:其他扩展参数。
+    collection_name (str): 集合名称。
+    criteria (Optional[dict]): 过滤条件，如主键或元数据。
+
+Returns:
+    List[dict]: 每项包含 'uid' 和 'embedding'。
 ''')
 
+add_english_doc('rag.store.ChromadbStore.search', '''
+Perform a vector similarity search.
 
-add_english_doc('rag.store.ChromadbStore.activate_group', '''
-Activate the specified group.
 Args:
-    group_names([str, List[str]]): Activate by group name.
+    collection_name (str): Collection to query.
+    query_embedding (List[float]): Vector to search with.
+    embed_key (str): Which embedding field to use.
+    topk (int): Number of top results to return.
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): Metadata filter conditions.
+
+Returns:
+    List[dict]: Each dict has 'uid' and 'score' (similarity).
 ''')
 
+add_chinese_doc('rag.store.ChromadbStore.search', '''
+执行向量相似度检索。
 
-add_chinese_doc('rag.store.ChromadbStore.activate_group', '''
-激活指定的组。
 Args:
-    group_names([str, List[str]])：按组名激活。
+    collection_name (str): 要查询的集合名称。
+    query_embedding (List[float]): 用于检索的向量。
+    embed_key (str): 使用的嵌入键。
+    topk (int): 返回的结果数量。
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): 元数据过滤条件。
+
+Returns:
+    List[dict]: 每项包含 'uid' 及 'score'（相似度）。
 ''')
-
-add_english_doc('rag.store.ChromadbStore.activated_groups', '''
-Activate groups. Return the list of currently activated group names.
-''')
-
-
-add_chinese_doc('rag.store.ChromadbStore.activated_groups', '''
-激活组，返回当前激活的组名列表。
-''')
-add_english_doc('rag.store.ChromadbStore.query', '''
-Execute a query using the default index.
-Args:
-    args: Query parameters.
-    kwargs: Additional optional parameters.
-''')
-
-
-add_chinese_doc('rag.store.ChromadbStore.query', '''
-通过默认索引执行查询。
-Args:
-    args：查询参数。
-    kwargs：其他扩展参数。
-''')
-
-add_english_doc('rag.store.ChromadbStore.is_group_active', '''
-Check whether the specified group is active.
-Args:
-    name (str): The name of the group.
-''')
-
-add_chinese_doc('rag.store.ChromadbStore.is_group_active', '''
-检查指定组是否激活。
-Args:
-    name(str)：组名。
-''')
-
-
-add_english_doc('rag.store.ChromadbStore.all_groups', '''
-Return the list of all group names.
-''')
-
-
-add_chinese_doc('rag.store.ChromadbStore.all_groups', '''
-返回所有组名列表。
-''')
-
-add_english_doc('rag.store.ChromadbStore.register_index', '''
-Register a custom index.
-Args:
-    type (str): The name of the index type.
-    index (IndexBase): An object implementing the IndexBase interface.
-''')
-
-
-add_chinese_doc('rag.store.ChromadbStore.register_index', '''
-注册自定义索引。
-Args:
-    type(str):索引类型名称。
-    index(IndexBase):实现 IndexBase 的对象。
-''')
-
-
-add_english_doc('rag.store.ChromadbStore.get_index', '''
-Get the index of the specified type.
-Args:
-    type (str): The type of the index.
-''')
-
-
-add_chinese_doc('rag.store.ChromadbStore.get_index', '''
-获取指定类型的索引。
-Args:
-    type(str):索引类型
-''')
-
-
-add_english_doc('rag.store.ChromadbStore.clear_cache', '''
-Clear the ChromaDB collections and memory cache for specified groups or all groups.
-Args:
-    group_names (List[str]): List of group names. If None, clear all groups.
-''')
-
-
-add_chinese_doc('rag.store.ChromadbStore.clear_cache', '''
-清除指定组或所有组的 ChromaDB 集合和内存缓存。
-Args:
-    group_names(List[str])：组名列表，为 None 时清除所有组。
-''')
-
-
-
-
 
 add_english_doc('rag.store.MilvusStore', '''
-Inherits from the StoreBase abstract base class. Implements a vector database based on Milvus. Its functionality is similar to ChromadbStore, used for storing, managing, indexing, and querying embedded document nodes (DocNode).
-Args:
-    group_embed_keys (Dict[str, Set[str]]): Specifies the embedding fields for each group.
-    embed (Dict[str, Callable]): Embedding functions for each field.
-    embed_dims (Dict[str, int]): Vector dimensions for each embedding field.
-    embed_datatypes (Dict[str, DataType]): Vector types for each embedding field (must comply with Milvus types).
-    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Description of global metadata fields, used to configure other non-vector fields in Milvus.
-    url (str): Milvus connection address, supporting local or remote connections.
-    index_kwargs (Union[Dict, List]): Optional index parameters for creating Milvus vector indexes, such as IVF, HNSW parameters.
-    db_name (str): Optional, defaults to "lazyllm". Represents the database name in Milvus.
-''')
+Vector store implementation based on Milvus, inheriting from StoreBase. Supports vector insertion, deletion, metadata sync, flexible querying, and similarity search.
 
+Args:
+    uri (str): Milvus connection URI (e.g., "tcp://localhost:19530"). If scheme is local file path, uses embedded Milvus; otherwise remote.
+    db_name (str): Database name to use in Milvus. Defaults to "lazyllm".
+    index_kwargs (Optional[Union[Dict, List]]): Index creation parameters (e.g., {"index_type": "IVF_FLAT", "metric_type": "L2"} or a list of per-embed-key configs).
+    client_kwargs (Optional[Dict]): Additional keyword arguments for pymilvus client.
+''')
 
 add_chinese_doc('rag.store.MilvusStore', '''
-继承自 StoreBase 抽象基类。基于 Milvus 向量数据库实现。其功能和 ChromadbStore 类似, 用于存储、管理、索引和查询嵌入向量化后的文档节点(DocNode)。
+基于 Milvus 的向量存储实现，继承自 StoreBase。支持向量写入、删除、元数据同步、灵活查询及相似度检索。
+
 Args:
-    group_embed_keys (Dict[str, Set[str]]): 指定每个group所对应的嵌入字段。
-    embed (Dict[str, Callable]): 每种字段对应的 embedding 函数.
-    embed_dims (Dict[str, int]): 每个嵌入字段的向量维度。
-    embed_datatypes(Dict[str, DataType]): 每个嵌入字段的向量类型（需符合 Milvus 类型）。
-    global_metadata_descDict([str, GlobalMetadataDesc])：全局元数据字段的说明，用于配置 Milvus 中的其他非向量字段。
-    url(str):Milvus 的连接地址，支持本地或远程。
-    index_kwargs:([Union[Dict, List]]):可选的索引参数，用于创建 Milvus 的向量索引，例如 IVF、HNSW 参数。
-    db_name(str):可选，默认 "lazyllm"。表示 Milvus 中的数据库名。
+    uri (str): Milvus 连接 URI（如 "tcp://localhost:19530"）。如果为本地路径则使用嵌入式 Milvus，否则为远程模式。
+    db_name (str): Milvus 中使用的数据库名称，默认为 "lazyllm"。
+    index_kwargs (Optional[Union[Dict, List]]): 索引创建参数（例如 {"index_type": "IVF_FLAT", "metric_type": "L2"} 或按嵌入键配置列表）。
+    client_kwargs (Optional[Dict]): 传递给 pymilvus 客户端的额外参数。
 ''')
 
-add_example('rag.store.MilvusStore', '''
->>> from lazyllm.tools.rag.milvus_store import MilvusStore
->>> from typing import Dict, List
->>> import numpy as np
->>> store = MilvusStore(
-...     group_embed_keys={
-...         "articles": {"text"},
-...         "faqs": {"question"}
-...     },
-...     embed={
-...         "text": lambda x: np.random.rand(128).tolist(),
-...         "question": lambda x: np.random.rand(128).tolist()
-...     },
-...     embed_dims={"text": 128, "question": 128},
-...     embed_datatypes={"text": DataType.FLOAT_VECTOR, "question": DataType.FLOAT_VECTOR},
-...     global_metadata_desc=None,
-...     uri="http://localhost:19530",
-...     index_kwargs={"metric_type": "L2", "index_type": "IVF_FLAT", "params": {"nlist": 128}},
-...     db_name="test_db"
-... )
->>> store.update_nodes([node1, node2])
->>> results = store.query(query_text="文档内容", group_name="articles", top_k=2)
->>> for node in results:
-...     print(f"找到文档: {node._content[:20]}...")
->>> store.remove_nodes(doc_ids=["doc1"])
-''')
+add_english_doc('rag.store.MilvusStore.dir', '''
+Local storage directory derived from URI if running embedded. Returns None when using remote Milvus.
 
-add_english_doc('rag.store.MilvusStore.update_nodes', '''
-Update or insert nodes into Milvus collections and memory store.
-Args:
-    nodes (List[DocNode]): List of document nodes to update.
-''')
-
-add_chinese_doc('rag.store.MilvusStore.update_nodes', '''
-更新或插入节点到 Milvus 集合和内存存储中。
-Args:
-    nodes (List[DocNode]): 需要更新的文档节点列表。
-''')
-
-add_english_doc('rag.store.MilvusStore.update_doc_meta', '''
-Update metadata for a document and sync to all related nodes.
-Args:
-    doc_id (str): Target document ID.
-    metadata (dict): New metadata key-value pairs.
-''')
-
-add_chinese_doc('rag.store.MilvusStore.update_doc_meta', '''
-更新文档元数据并同步到所有关联节点。
-Args:
-    doc_id (str): 目标文档ID。
-    metadata (dict): 新的元数据键值对。
-''')
-
-add_english_doc('rag.store.MilvusStore.remove_nodes', '''
-Remove nodes by document IDs, group name, or node UIDs.
-Args:
-    doc_ids (Optional[List[str]]): Document IDs filter.
-    group_name (Optional[str]): Group name filter.
-    uids (Optional[List[str]]): Node UIDs filter.
-''')
-
-add_chinese_doc('rag.store.MilvusStore.remove_nodes', '''
-通过文档ID、组名或节点UID删除节点。
-Args:
-    doc_ids (Optional[List[str]]): 文档ID过滤条件。
-    group_name (Optional[str]): 组名过滤条件。
-    uids (Optional[List[str]]): 节点UID过滤条件。
-''')
-add_english_doc('rag.store.MilvusStore.get_nodes', '''
-Query nodes with flexible filtering options.
-Args:
-    group_name (Optional[str]): Group name filter.
-    uids (Optional[List[str]]): Node UIDs filter.
-    doc_ids (Optional[Set[str]]): Document IDs filter.
-    **kwargs: Additional query parameters.
 Returns:
-    List[DocNode]: Matched document nodes.
+    Optional[str]: Directory path with trailing slash, or None if remote.
 ''')
 
-add_chinese_doc('rag.store.MilvusStore.get_nodes', '''
-通过多条件查询节点。
-Args:
-    group_name (Optional[str]): 组名过滤条件。
-    uids (Optional[List[str]]): 节点UID过滤条件。
-    doc_ids (Optional[Set[str]]): 文档ID过滤条件。
-    **kwargs: 其他查询参数。
+add_chinese_doc('rag.store.MilvusStore.dir', '''
+存储目录属性，基于 URI 推断。远程模式返回 None。
+
 Returns:
-    List[DocNode]: 匹配的文档节点列表。
+    Optional[str]: 以斜杠结尾的本地目录路径，或 None。
 ''')
 
-add_english_doc('rag.store.MilvusStore.query', '''
-Semantic search with vector similarity.
+add_english_doc('rag.store.MilvusStore.connect', '''
+Initialize Milvus client, prepare constant fields and ensure database selection.
+
 Args:
-    query (str): Query text.
-    group_name (str): Target group name.
-    similarity_cut_off (Optional[Union[float, Dict[str, float]]]): Similarity threshold.
-    topk (int): Number of results to return.
-    embed_keys (List[str]): Embedding keys for search.
-    filters (Optional[Dict]): Metadata filters.
+    embed_dims (Dict[str, int]): Embedding dimensions per embed key.
+    embed_datatypes (Dict[str, DataType]): Data types for each embed key.
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Descriptions for metadata fields.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.connect', '''
+初始化 Milvus 客户端，准备字段模式并选择数据库。
+
+Args:
+    embed_dims (Dict[str, int]): 每个嵌入键对应的向量维度。
+    embed_datatypes (Dict[str, DataType]): 每个嵌入键的数据类型。
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据字段的描述。
+''')
+
+add_english_doc('rag.store.MilvusStore.upsert', '''
+Insert or update a batch of DocNode data into the Milvus collection.
+
+Args:
+    collection_name (str): Collection name (per embed key grouping).
+    data (List[dict]): Each dict must contain:
+        - 'uid': Unique node ID.
+        - 'embedding': Dict of {embed_key: vector}.
+        - 'global_meta': Dict of metadata values.
 Returns:
-    List[DocNode]: Nodes with similarity scores.
+    bool: True if successful, False otherwise.
 ''')
 
-add_chinese_doc('rag.store.MilvusStore.query', '''
-基于向量相似度的语义搜索。
+add_chinese_doc('rag.store.MilvusStore.upsert', '''
+批量写入或更新 DocNode 数据到 Milvus 集合。
+
 Args:
-    query (str): 查询文本。
-    group_name (str): 目标组名。
-    similarity_cut_off (Optional[Union[float, Dict[str, float]]): 相似度阈值。
-    topk (int): 返回结果数量。
-    embed_keys (List[str]): 用于搜索的嵌入键。
-    filters (Optional[Dict]): 元数据过滤条件。
+    collection_name (str): 集合名称，通常为 "group_embedKey" 格式。
+    data (List[dict]): 列表中每项需包含：
+        - 'uid': 唯一节点 ID。
+        - 'embedding': 嵌入键到向量的映射。
+        - 'global_meta': 元数据键值对。
 Returns:
-    List[DocNode]: 带相似度分数的节点列表。
+    bool: 操作成功返回 True，否则 False。
 ''')
 
-add_english_doc('rag.store.MilvusStore.activate_group', '''
-Activate one or multiple groups for operations.
+add_english_doc('rag.store.MilvusStore.delete', '''
+Delete entire collection or subset of records by criteria.
+
 Args:
-    group_names (Union[str, List[str]]): Group name(s) to activate.
-''')
-
-add_chinese_doc('rag.store.MilvusStore.activate_group', '''
-激活一个或多个组用于后续操作。
-Args:
-    group_names (Union[str, List[str]]): 要激活的组名（单个或列表）。
-''')
-
-add_english_doc('rag.store.MilvusStore.get_index', '''
-Get index instance by type.
-Args:
-    type (Optional[str]): Index type name, defaults to "default".
-''')
-
-add_chinese_doc('rag.store.MilvusStore.get_index', '''
-获取指定类型的索引实例。
-Args:
-    type (Optional[str]): 索引类型名称，默认为"default"。
-''')
-
-add_english_doc('rag.store.MilvusStore.register_index', '''
-Register custom index type.
-Args:
-    type (str): Index type name.
-    index (IndexBase): Custom index instance.
-''')
-
-add_chinese_doc('rag.store.MilvusStore.register_index', '''
-注册自定义索引类型。
-Args:
-    type (str): 索引类型名称。
-    index (IndexBase): 自定义索引实例。
-''')
-
-add_english_doc('rag.store.MilvusStore.activated_groups', '''
-Get names of all activated groups.
+    collection_name (str): Target collection.
+    criteria (Optional[dict]): If None, drop the entire collection; otherwise a dict of filters (uid list or metadata conditions).
 Returns:
-    List[str]: Active group names.
+    bool: True if deletion succeeds, False otherwise.
 ''')
 
-add_chinese_doc('rag.store.MilvusStore.activated_groups', '''
-获取所有已激活的组名。
+add_chinese_doc('rag.store.MilvusStore.delete', '''
+删除整个集合或按条件删除指定记录。
+
+Args:
+    collection_name (str): 目标集合名称。
+    criteria (Optional[dict]): 若为 None 则删除整个集合；否则按 uid 列表或元数据条件过滤。
 Returns:
-    List[str]: 活跃组名列表。
+    bool: 删除成功返回 True，否则 False。
 ''')
 
-add_english_doc('rag.store.MilvusStore.is_group_active', '''
-Check if a group is activated.
+add_english_doc('rag.store.MilvusStore.get', '''
+Retrieve records matching primary-key or metadata filters.
+
 Args:
-    name (str): Group name to check.
+    collection_name (str): Collection to query.
+    criteria (Optional[dict]): Dict containing 'uid' list or metadata field filters.
+Returns:
+    List[dict]: Each entry contains 'uid' and 'embedding' dict.
 ''')
 
-add_chinese_doc('rag.store.MilvusStore.is_group_active', '''
-检查指定组是否激活。
+add_chinese_doc('rag.store.MilvusStore.get', '''
+检索匹配主键或元数据过滤条件的记录。
+
 Args:
-    name (str): 要检查的组名。
+    collection_name (str): 待查询集合。
+    criteria (Optional[dict]): 包含 'uid' 列表或元数据字段过滤条件。
+Returns:
+    List[dict]: 每项包含 'uid' 及 'embedding' 映射。
 ''')
+
+add_english_doc('rag.store.MilvusStore.search', '''
+Perform vector similarity search with optional metadata filtering.
+
+Args:
+    collection_name (str): Collection to search.
+    query_embedding (List[float]): Query vector.
+    topk (int): Number of nearest neighbors.
+    filters (Optional[Dict[str, Union[List, Set]]]): Metadata filter map.
+    embed_key (str): Which embedding field to use.
+Returns:
+    List[dict]: Each dict has 'uid' and similarity 'score'.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.search', '''
+执行向量相似度检索，并可按元数据过滤。
+
+Args:
+    collection_name (str): 待搜索集合。
+    query_embedding (List[float]): 查询向量。
+    topk (int): 返回邻近数量。
+    filters (Optional[Dict[str, Union[List, Set]]]): 元数据过滤映射。
+    embed_key (str): 使用的嵌入字段。
+Returns:
+    List[dict]: 每项包含 'uid' 及相似度 'score'。
+''')
+
+
 
 # ---------------------------------------------------------------------------- #
 
