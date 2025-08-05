@@ -1,6 +1,8 @@
+import os
+import lazyllm
+
 from collections import defaultdict
 from typing import Optional, List, Union, Set, Dict, Callable, Any
-import lazyllm
 from lazyllm import LOG, once_wrapper
 
 from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment, INSERT_BATCH_SIZE,
@@ -39,7 +41,10 @@ class _DocumentStore(object):
             if store.get('indices'): store = self._convert_legacy_to_config(store)
             store = self._create_store_from_config(store)
         if store.capability == StoreCapability.VECTOR:
-            segment_store = MapStore()
+            if store.dir:
+                segment_store = MapStore(uri=os.path.join(store.dir, 'segments.db'))
+            else:
+                segment_store = MapStore()
             return HybridStore(segment_store=segment_store, vector_store=store)
         else:
             return store
@@ -68,8 +73,12 @@ class _DocumentStore(object):
             if s_store.capability in (StoreCapability.ALL, StoreCapability.SEGMENT):
                 return s_store
             else:
-                LOG.warning("Only vector store is supported, segment store will be in‑memory MapStore")
-                return HybridStore(segment_store=MapStore(), vector_store=s_store)
+                LOG.warning("Only vector store is supported, segment store will be MapStore")
+                if s_store.dir:
+                    segment_store = MapStore(uri=os.path.join(s_store.dir, 'segments.db'))
+                else:
+                    segment_store = MapStore()
+                return HybridStore(segment_store=segment_store, vector_store=s_store)
         else:
             seg_store = self._make_store(cfg.get('segment_store', {}))
             vec_store = self._make_store(cfg.get('vector_store', {}))
@@ -83,7 +92,8 @@ class _DocumentStore(object):
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self):
         self._impl.connect(embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
-                           global_metadata_desc=self._global_metadata_desc, collections=self.activated_groups())
+                           global_metadata_desc=self._global_metadata_desc,
+                           collections=[self._gen_collection_name(group) for group in self.activated_groups()])
 
     @property
     def impl(self):

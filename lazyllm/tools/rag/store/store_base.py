@@ -73,6 +73,10 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
     need_embedding: bool = True
     supports_index_registration: bool = False
 
+    @property
+    def dir(self):
+        raise NotImplementedError
+
     @abstractmethod
     def connect(self, *args, **kwargs):
         raise NotImplementedError

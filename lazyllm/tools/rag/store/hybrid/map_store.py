@@ -1,6 +1,8 @@
 import json
 import sqlite3
+import os
 
+from pathlib import Path
 from collections import defaultdict
 from typing import Dict, List, Optional, Union, Set
 
@@ -18,6 +20,11 @@ class MapStore(LazyLLMStoreBase):
 
     def __init__(self, uri: Optional[str] = None, **kwargs):
         self._uri = uri  # filepath to SQLite .db for persistence
+
+    @property
+    def dir(self):
+        path = os.path.dirname(self._uri)
+        return path if path.endswith(os.sep) else path + os.sep
 
     def _ensure_table(self, cursor: sqlite3.Cursor, table: str):
         cursor.execute(f"""
@@ -105,6 +112,13 @@ class MapStore(LazyLLMStoreBase):
             lambda: defaultdict(lambda: defaultdict(set)))
 
         if self._uri:
+            if not os.path.exists(self._uri):
+                LOG.info(f"[MapStore] SQLite DB {self._uri} does not exist, creating...")
+                db_path = Path(self._uri)
+                db_path.parent.mkdir(parents=True, exist_ok=True)
+                db_path.touch(exist_ok=True)
+                self._uri = str(db_path)
+            LOG.info(f"[MapStore] Loading data from {self._uri}")
             for collection_name in collections:
                 self._load_from_uri(collection_name, self._uri)
         return

@@ -55,6 +55,10 @@ class OpenSearchStore(LazyLLMStoreBase):
         self._index_kwargs = index_kwargs or DEFAULT_INDEX_BODY
         self._primary_key = 'uid'
 
+    @property
+    def dir(self):
+        return None
+
     @override
     def connect(self, *args, **kwargs) -> None:
         if self._client_kwargs.get('user') and self._client_kwargs.get('password'):

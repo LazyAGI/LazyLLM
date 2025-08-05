@@ -1,3 +1,4 @@
+import os
 import copy
 
 from packaging import version
@@ -42,6 +43,16 @@ class MilvusStore(LazyLLMStoreBase):
         self._client_kwargs = client_kwargs
         self._primary_key = 'uid'
         self._client = None
+        if self._uri and parse.urlparse(self._uri).scheme.lower() in ['unix', 'http', 'https', 'tcp', 'grpc']:
+            self._is_remote = True
+        else:
+            self._is_remote = False
+
+    @property
+    def dir(self):
+        if self._is_remote: return None
+        path = os.path.dirname(self._uri)
+        return path if path.endswith(os.sep) else path + os.sep
 
     @override
     def connect(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
@@ -49,10 +60,6 @@ class MilvusStore(LazyLLMStoreBase):
         self._embed_dims = embed_dims
         self._embed_datatypes = embed_datatypes
         self._global_metadata_desc = global_metadata_desc
-        if self._uri and parse.urlparse(self._uri).scheme.lower() not in ['unix', 'http', 'https', 'tcp', 'grpc']:
-            self._is_remote = False
-        else:
-            self._is_remote = True
         self._constant_fields = self._get_constant_fields()
         self._connect()
         LOG.info("[Milvus Vector Store] init success!")

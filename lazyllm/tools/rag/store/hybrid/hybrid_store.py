@@ -14,6 +14,10 @@ class HybridStore(LazyLLMStoreBase):
         self.segment_store: LazyLLMStoreBase = segment_store
         self.vector_store: LazyLLMStoreBase = vector_store
 
+    @property
+    def dir(self):
+        return self.segment_store.dir
+
     @override
     def connect(self, *args, **kwargs):
         self.segment_store.connect(*args, **kwargs)

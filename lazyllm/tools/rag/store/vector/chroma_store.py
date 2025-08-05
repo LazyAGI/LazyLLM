@@ -1,3 +1,5 @@
+import os
+
 from typing import Dict, List, Optional, Set, Union, Any
 from collections import defaultdict
 
@@ -35,6 +37,11 @@ class ChromadbStore(LazyLLMStoreBase):
         self._port = port
         self._primary_key = 'uid'
 
+    @property
+    def dir(self):
+        if not self._dir: return None
+        return self._dir if self._dir.endswith(os.sep) else self._dir + os.sep
+
     @override
     def connect(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
                 global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs):
@@ -45,6 +52,10 @@ class ChromadbStore(LazyLLMStoreBase):
             if v.data_type not in [DataType.VARCHAR, DataType.INT32, DataType.FLOAT, DataType.BOOLEAN]:
                 raise ValueError(f"[Chromadb Store] Unsupported data type {v.data_type} for global metadata {k}"
                                  " (only string, int, float, bool are supported)")
+        for k, v in self._embed_datatypes.items():
+            if v not in [DataType.FLOAT_VECTOR, DataType.SPARSE_FLOAT_VECTOR]:
+                raise ValueError(f"[Chromadb Store] Unsupported data type {v} for embed key {k}"
+                                 " (only float vector and sparse float vector are supported)")
         if self._dir:
             self._client = chromadb.PersistentClient(path=self._dir, **self._client_kwargs)
             LOG.success(f"Initialzed chromadb in path: {self._dir}")

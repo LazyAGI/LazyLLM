@@ -47,6 +47,10 @@ class SenseCoreStore(LazyLLMStoreBase):
         self._s3_config = kwargs.get('s3_config')
         self._image_url_config = kwargs.get('image_url_config')
 
+    @property
+    def dir(self):
+        return None
+
     @override
     def connect(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs) -> None:
         self._check_s3()
