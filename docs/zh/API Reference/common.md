@@ -37,3 +37,19 @@
 ::: lazyllm.common.SQLiteQueue
     options:
       heading_level: 3
+
+::: lazyllm.common.multiprocessing.SpawnProcess
+    members: start
+
+## Threading
+
+::: lazyllm.common.Thread
+    members: work, get_result
+    exclude-members:
+    
+
+## LazyLLMCMD
+
+::: lazyllm.common.LazyLLMCMD
+    members: with_cmd, get_args
+    exclude-members:

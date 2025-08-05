@@ -549,6 +549,38 @@ add_example('auto.AutoFinetune', '''\
 ''')
 
 # ============= Deploy
+
+# Deploy-AbstractEmbedding
+add_chinese_doc('deploy.embed.AbstractEmbedding', '''\
+抽象嵌入基类，为所有嵌入模型提供统一的接口和基础功能。此类定义了嵌入模型的标准接口，包括模型加载、调用和序列化等功能。
+
+Args:
+    base_embed (str): 嵌入模型的基础路径或标识符，用于指定要加载的嵌入模型。
+    source (str, optional): 模型来源，默认为 ``None``。如果未指定，将使用 LazyLLM 配置中的默认模型来源。
+    init (bool): 是否在初始化时立即加载模型，默认为 ``False``。如果为 ``True``，将在对象创建时立即调用 ``load_embed()`` 方法。
+''')
+
+add_english_doc('deploy.embed.AbstractEmbedding', '''\
+Abstract embedding base class that provides unified interface and basic functionality for all embedding models. This class defines the standard interface for embedding models, including model loading, calling, and serialization capabilities.
+
+Args:
+    base_embed (str): The base path or identifier of the embedding model, used to specify which embedding model to load.
+    source (str, optional): Model source, default to ``None``. If not specified, will use the default model source from LazyLLM configuration.
+    init (bool): Whether to load the model immediately during initialization, default to ``False``. If ``True``, will call the ``load_embed()`` method immediately when the object is created.
+''')
+
+add_chinese_doc('deploy.embed.AbstractEmbedding.load_embed', '''\
+加载嵌入模型的抽象方法。此方法由子类实现，用于执行具体的模型加载逻辑。
+
+**注意**: 此方法目前正在开发中。
+''')
+
+add_english_doc('deploy.embed.AbstractEmbedding.load_embed', '''\
+Abstract method for loading embedding models. This method is implemented by subclasses to perform specific model loading logic.
+
+**Note**: This method is currently under development.
+''')
+
 # Deploy-Lightllm
 add_chinese_doc('deploy.Lightllm', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [LightLLM](https://github.com/ModelTC/lightllm) 框架提供的推理能力，用于对大语言模型进行推理。
@@ -1086,6 +1118,108 @@ add_example('deploy.Infinity', '''\
 >>> from lazyllm import deploy
 >>> deploy.Infinity()
 <lazyllm.llm.deploy type=Infinity>
+''')
+
+# RelayServer class documentation
+add_chinese_doc('deploy.relay.base.RelayServer', '''\
+RelayServer类是一个用于部署FastAPI服务的基类，它可以将一个函数转换为HTTP服务。这个类支持设置前处理函数、后处理函数，
+并可以自动分配端口号。它主要用于将模型推理功能转换为HTTP服务，便于分布式部署和调用。
+
+主要参数：
+    port: 服务端口号，如果为None则随机分配30000-40000之间的端口
+    func: 要部署的主函数
+    pre_func: 请求预处理函数
+    post_func: 响应后处理函数
+    pythonpath: 额外的Python路径
+    log_path: 日志存储路径
+    cls: 服务名称
+    launcher: 启动器类型，默认为异步远程启动
+''')
+
+add_english_doc('deploy.relay.base.RelayServer', '''\
+RelayServer is a base class for deploying FastAPI services that converts a function into an HTTP service. It supports 
+setting pre-processing and post-processing functions, and can automatically allocate port numbers. It's mainly used 
+to convert model inference functionality into HTTP services for distributed deployment and invocation.
+
+Main parameters:
+    port: Service port number, randomly assigned between 30000-40000 if None
+    func: Main function to be deployed
+    pre_func: Request pre-processing function
+    post_func: Response post-processing function
+    pythonpath: Additional Python path
+    log_path: Log storage path
+    cls: Service name
+    launcher: Launcher type, defaults to asynchronous remote launch
+''')
+
+add_example('deploy.relay.base.RelayServer', '''\
+>>> from lazyllm.components.deploy.relay.base import RelayServer
+>>> def my_function(text):
+...     return f"Processed: {text}"
+>>> server = RelayServer(port=35000, func=my_function)
+>>> server.start()  # This will start the server
+>>> print(server.geturl())  # Get the service URL
+http://localhost:35000/generate
+''')
+
+# cmd method documentation
+add_chinese_doc('deploy.relay.base.RelayServer.cmd', '''\
+cmd方法用于生成启动服务器的命令。它会将当前的函数和配置转换为一个可执行的命令字符串。
+
+参数：
+    func: 可选，要部署的新函数。如果不提供，则使用初始化时的函数。
+
+返回值：
+    返回一个LazyLLMCMD对象，包含服务器启动命令和相关配置。
+''')
+
+add_english_doc('deploy.relay.base.RelayServer.cmd', '''\
+The cmd method generates the command to start the server. It converts the current function and configuration into 
+an executable command string.
+
+Args:
+    func: Optional, new function to deploy. If not provided, uses the function from initialization.
+
+Returns:
+    Returns a LazyLLMCMD object containing the server start command and related configuration.
+''')
+
+add_example('deploy.relay.base.RelayServer.cmd', '''\
+>>> server = RelayServer(port=35000)
+>>> def new_function(text):
+...     return f"New process: {text}"
+>>> cmd_obj = server.cmd(new_function)
+>>> print(cmd_obj)  # Will show the command that would be executed
+''')
+
+# geturl method documentation
+add_chinese_doc('deploy.relay.base.RelayServer.geturl', '''\
+geturl方法用于获取服务的访问URL。该URL可用于向服务发送HTTP请求。
+
+参数：
+    job: 可选，指定的任务对象。如果为None，则使用当前实例的任务。
+
+返回值：
+    返回服务的完整URL地址，格式为 http://<ip>:<port>/generate
+''')
+
+add_english_doc('deploy.relay.base.RelayServer.geturl', '''\
+The geturl method returns the access URL for the service. This URL can be used to send HTTP requests to the service.
+
+Args:
+    job: Optional, specified job object. If None, uses the current instance's job.
+
+Returns:
+    Returns the complete URL of the service in the format http://<ip>:<port>/generate
+''')
+
+add_example('deploy.relay.base.RelayServer.geturl', '''\
+>>> server = RelayServer(port=35000)
+>>> server.start()
+>>> url = server.geturl()
+>>> print(url)  # Shows the service endpoint URL
+http://localhost:35000/generate
+>>> # You can now use this URL to make HTTP requests to your service
 ''')
 
 # Deploy-Auto
