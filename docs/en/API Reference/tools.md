@@ -376,10 +376,10 @@ lazyllm.tools.rag.transform.NodeTransform
     members: 
     exclude-members:
 
-::: lazyllm.tools.TencentSearch
+::: lazyllm.tools.tools.tencent_search.TencentSearch
     members: 
     exclude-members:
 
-::: lazyllm.tools.WebUi
+::: lazyllm.tools.rag.web.WebUi
     members: 
     exclude-members:
