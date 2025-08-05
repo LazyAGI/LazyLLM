@@ -4603,7 +4603,7 @@ This wrapper supports two modes of operation:
 2. When trans_node is True: transforms DocNode objects
 
 The wrapper can handle various function signatures:
-- str -> List[str]: transform=lambda t: t.split('\\n')
+- str -> List[str]: transform=lambda t: t.split('\\\\n')
 - str -> str: transform=lambda t: t[:3]
 - DocNode -> List[DocNode]: pipeline(lambda x:x, SentenceSplitter)
 - DocNode -> DocNode: pipeline(LLMParser)
@@ -4622,7 +4622,7 @@ add_chinese_doc('rag.transform.FuncNodeTransform', '''
 2. 当 trans_node 为 True：转换 DocNode 对象
 
 包装器可以处理各种函数签名：
-- str -> List[str]: transform=lambda t: t.split('\\n')
+- str -> List[str]: transform=lambda t: t.split('\\\\n')
 - str -> str: transform=lambda t: t[:3]
 - DocNode -> List[DocNode]: pipeline(lambda x:x, SentenceSplitter)
 - DocNode -> DocNode: pipeline(LLMParser)
