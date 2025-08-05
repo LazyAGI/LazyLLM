@@ -38,10 +38,6 @@
     members: start
     exclude-members:
 
-::: lazyllm.common.SQLiteQueue
-    options:
-      heading_level: 3
-      
 ## Threading
 
 ::: lazyllm.common.Thread
@@ -54,4 +50,3 @@
 ::: lazyllm.common.LazyLLMCMD
     members: with_cmd, get_args
     exclude-members:
-    
