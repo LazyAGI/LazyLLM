@@ -247,7 +247,7 @@ while n < max_turns:
 
 ## Example Output
 
-```bash
+```text
 🎯 Specified Task:
  Develop a Python trading bot that uses real-time data to execute trades based on a MACD strategy, with adjustable signal and fast EMA periods, and integrates with a broker API for automated trading.
 
