@@ -2,6 +2,8 @@
 ::: lazyllm.module.ModuleBase
     options:
       members:
+      - _get_deploy_tasks
+      - _get_train_tasks
       - stream_output
       - used_by
       - forward

@@ -367,6 +367,42 @@ Args:
     action (Callable[[ModuleBase], None]): An action function to execute on filtered modules.
 ''')
 
+add_chinese_doc('ModuleBase._get_train_tasks', '''\
+定义训练任务，该函数返回训练的pipeline，重写了此函数的子类可以在update阶段被训练/微调。
+''')
+
+add_english_doc('ModuleBase._get_train_tasks', '''\
+Define a training task. This function returns a training pipeline. Subclasses that override this function can be trained or fine-tuned during the update phase.
+''')
+
+add_example('ModuleBase._get_train_tasks', '''\
+>>> import lazyllm
+>>> class MyModule(lazyllm.module.ModuleBase):
+...     def _get_train_tasks(self):
+...         return lazyllm.pipeline(lambda : 1, lambda x: print(x))
+... 
+>>> MyModule().update()
+1
+''')
+
+add_chinese_doc('ModuleBase._get_deploy_tasks', '''\
+定义部署任务，该函数返回训练的pipeline，重写了此函数的子类可以在update/start阶段被部署。
+''')
+
+add_english_doc('ModuleBase._get_deploy_tasks', '''\
+Define a deployment task. This function returns a deployment pipeline. Subclasses that override this function can be deployed during the update/start phase.
+''')
+
+add_example('ModuleBase._get_deploy_tasks', '''\
+>>> import lazyllm
+>>> class MyModule(lazyllm.module.ModuleBase):
+...     def _get_deploy_tasks(self):
+...         return lazyllm.pipeline(lambda : 1, lambda x: print(x))
+... 
+>>> MyModule().start()
+1
+''')
+
 add_chinese_doc('ActionModule', '''\
 用于将函数、模块、flow、Module等可调用的对象包装一个Module。被包装的Module（包括flow中的Module）都会变成该Module的submodule。
 
