@@ -176,7 +176,7 @@
     exclude-members:
 
 lazyllm.tools.rag.transform.NodeTransform
-    members: 
+    members:
     exclude-members:
 
 ::: lazyllm.tools.rag.transform.TransformArgs
