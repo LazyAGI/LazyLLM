@@ -7,6 +7,7 @@ from .doc_node import DocNode
 from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader, EpubReader,
                       MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader)
 from .dataReader import SimpleDirectoryReader, FileReader
+from .default_index import DefaultIndex
 from .doc_manager import DocManager, DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField
 from .data_type import DataType
@@ -15,6 +16,7 @@ from .store import StoreBase
 
 __all__ = [
     "Document",
+    "DefaultIndex",
     "Reranker",
     "Retriever",
     "TempDocRetriever",

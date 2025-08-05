@@ -363,3 +363,63 @@ add_example('FileSystemQueue.clear', """\
 >>> queue.peek() is None
 True
 """)
+
+add_chinese_doc('ReadOnlyWrapper', '''\ 
+一个轻量级只读包装器，用于包裹任意对象并对外提供只读访问（实际并未完全禁止修改，但复制时不会携带原始对象）。包装器可以动态替换内部对象，并提供判断对象是否为空的辅助方法。
+Args:
+    obj (Optional[Any]): 初始被包装的对象，默认为 None。
+''')
+
+add_english_doc('ReadOnlyWrapper', '''\
+A lightweight read-only wrapper that holds an arbitrary object and exposes its attributes. It supports swapping the internal object dynamically and provides utility for checking emptiness. Note: it does not enforce deep immutability, but deepcopy drops the wrapped object.
+Args:
+    obj (Optional[Any]): The initial wrapped object, defaults to None.
+''')
+
+add_chinese_doc('ReadOnlyWrapper.set', '''\ 
+替换当前包装的内部对象。
+
+Args:
+    obj (Any): 新的内部对象。
+''')
+
+add_english_doc('ReadOnlyWrapper.set', '''\
+Replace the currently wrapped internal object.
+
+Args:
+    obj (Any): New object to wrap.
+''')
+
+add_chinese_doc('ReadOnlyWrapper.isNone', '''\ 
+检查当前包装器是否未持有任何对象。
+
+Args:
+    None.
+
+**Returns**\n
+- bool: 如果内部对象为 None 返回 True，否则 False。
+''')
+
+add_english_doc('ReadOnlyWrapper.isNone', '''\
+Check whether the wrapper currently holds no object.
+
+Args:
+    None.
+
+**Returns**\n
+- bool: True if the internal object is None, otherwise False.
+''')
+
+add_chinese_doc('RedisQueue', '''\ 
+基于 Redis 实现的文件系统队列（继承自 FileSystemQueue），用于跨进程/节点的消息传递与队列管理。内部使用指定的 redis_url 初始化并管理底层存储，同时提供线程安全的初始化逻辑。
+
+Args:
+    klass (str): 队列的分类名称，用于区分不同队列实例，默认值为 '__default__'。
+''')
+
+add_english_doc('RedisQueue', '''\
+Redis-backed file system queue (inherits from FileSystemQueue) for cross-process/node message passing and queue management. It initializes its underlying storage using a configured Redis URL and employs thread-safe setup logic.
+
+Args:
+    klass (str): Classification name for the queue instance to distinguish different queues. Defaults to '__default__'.
+''')

@@ -33,4 +33,11 @@
 ::: lazyllm.common.FileSystemQueue
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
-    
+  
+::: lazyllm.common.ReadOnlyWrapper
+    members: set, isNone
+    exclude-members:
+
+::: lazyllm.common.RedisQueue
+    members: 
+    exclude-members:

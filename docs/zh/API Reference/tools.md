@@ -146,8 +146,21 @@
     members:
 	exclude-members:
 
+::: lazyllm.tools.SqlCall
+    members: 
+        - sql_query_promt_hook
+        - sql_explain_prompt_hook
+        - extract_sql_from_response
+	exclude-members:
+
+::: lazyllm.tools.DefaultIndex
+    members:
+        - update
+        - remove
+        - query
+    exclude-members: 
+
 ::: lazyllm.tools.Reranker
-    members: register_reranker
     members: register_reranker
     exclude-members: forward
 

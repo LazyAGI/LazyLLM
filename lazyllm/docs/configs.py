@@ -105,3 +105,51 @@ add_example('Config.get_all_configs', '''\
 >>> config.get_all_configs()
 {'home': '~/.lazyllm/', 'mode': <Mode.Normal: (1,)>, 'repr_ml': False, 'rag_store': 'None', 'redis_url': 'None', ...}
 ''')
+
+add_chinese_doc('Config.get_config', r'''\ 
+将传入的配置字典原样返回。该方法可作为处理 config.json 解析结果的扩展点，用户可根据需要重写该方法实现自定义转换逻辑。
+
+Args:
+    cfg (dict): 从配置文件中读取的配置字典。
+''')
+
+add_english_doc('Config.get_config', '''
+Return the provided configuration dictionary as-is.  
+This method can be overridden to customize the transformation logic for the parsed config.json content.
+
+Args:
+    cfg (dict): The configuration dictionary read from the config file.
+''')
+
+add_chinese_doc('Config.temp', '''
+在上下文管理器作用域内临时修改某个配置项的值，退出上下文时恢复原值。
+
+Args:
+    name (str): 要临时修改的配置项名称。
+    value (Any): 临时设置的值。
+''')
+
+add_english_doc('Config.temp', '''
+Temporarily override a configuration item within a context manager scope, restoring the original value upon exit.
+
+Args:
+    name (str): The name of the configuration item to temporarily change.
+    value (Any): The temporary value to set.
+''')
+
+add_chinese_doc('Config.refresh', '''
+根据环境变量的最新值刷新配置项。如果传入 targets 为字符串，则按单个配置项更新；如果为列表，则批量更新；如果为 None，则扫描所有已映射到环境变量的配置项并更新。
+
+Args:
+    targets (str | list[str] | None): 要刷新的配置项名称或列表，传 None 表示刷新所有可从环境变量读取的项。
+''')
+
+add_english_doc('Config.refresh', '''
+Refresh configuration items based on the latest environment variable values.  
+If `targets` is a string, updates the single corresponding configuration item;  
+if it's a list, updates multiple;  
+if None, scans all environment-variable-mapped configuration items and updates them.
+
+Args:
+    targets (str | list[str] | None): Name of the config key or list of keys to refresh, or None to refresh all environment-backed keys.
+''')
