@@ -33,6 +33,10 @@
 ::: lazyllm.common.FileSystemQueue
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
+    
+::: lazyllm.common.SQLiteQueue
+    options:
+      heading_level: 3
 
 ::: lazyllm.common.multiprocessing.SpawnProcess
     members: start
