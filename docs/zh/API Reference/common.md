@@ -34,3 +34,14 @@
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
     
+## Multiprocessing
+
+::: lazyllm.common.ForkProcess
+    members: work, start
+    exclude-members:
+
+## Options
+
+::: lazyllm.common.Option
+    members: 
+    exclude-members:
