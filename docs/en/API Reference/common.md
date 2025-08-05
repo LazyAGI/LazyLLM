@@ -20,6 +20,12 @@
     options:
       heading_level: 3
 
+## Identity
+
+::: lazyllm.common.Identity
+    options:
+      heading_level: 3
+
 ---
 
 ## Compilation

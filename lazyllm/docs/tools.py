@@ -2512,6 +2512,47 @@ add_example('ModuleTool', """
 8
 """)
 
+add_chinese_doc("ModuleTool.apply", '''
+抽象方法，需在子类中实现具体逻辑。
+
+此方法应根据传入的参数执行特定任务。
+
+Raises:
+    NotImplementedError: 如果未在子类中重写该方法。
+''')
+
+add_english_doc("ModuleTool.apply", '''
+Abstract method to be implemented in subclasses.
+
+This method should perform a specific task based on the provided arguments.
+
+Raises:
+    NotImplementedError: If the method is not overridden in a subclass.
+''')
+
+add_chinese_doc("ModuleTool.validate_parameters", '''
+验证参数是否满足所需条件。
+
+此方法会检查参数字典是否包含所有必须字段，并尝试进一步进行格式验证。
+
+Args:
+    arguments (Dict[str, Any]): 传入的参数字典。
+
+Returns:
+    bool: 若参数合法且完整，返回 True；否则返回 False。
+''')
+
+add_english_doc("ModuleTool.validate_parameters", '''
+Validate whether the provided arguments meet the required criteria.
+
+This method checks if all required keys are present in the input dictionary and attempts format validation.
+
+Args:
+    arguments (Dict[str, Any]): Dictionary of input arguments.
+
+Returns:
+    bool: True if valid and complete; False otherwise.
+''')
 
 add_chinese_doc('FunctionCall', '''\
 FunctionCall是单轮工具调用类，如果LLM中的信息不足以回答用户的问题，必需结合外部知识来回答用户问题，则调用该类。如果LLM输出需要工具调用，则进行工具调用，并输出工具调用结果，输出结果为List类型，包含当前轮的输入、模型输出、工具输出。如果不需要工具调用，则直接输出LLM结果，输出结果为string类型。
@@ -4436,4 +4477,294 @@ Removed nodes with uids: ['1']
 >>> index.query()
 Querying nodes...
 [DocNode(uid="2", content="Document 2")]
+''')
+
+add_chinese_doc('WebUi', """\
+基于 Gradio 的知识库文件管理 Web UI 工具类。
+
+该类用于构建一个简单的 Web 界面，支持创建分组、上传文件、列出/删除分组或文件，并通过 RESTful API 与后端交互。支持快速集成与展示文件管理能力。
+
+Args:
+    base_url (str): 后端 API 服务的基础地址。
+""")
+
+add_english_doc('WebUi', """\
+A Gradio-based web UI for managing knowledge base files.
+
+This class provides an interactive UI to create/delete groups, upload files, list files, and perform deletion operations via RESTful APIs. It is designed for rapid integration of file and group management.
+
+Args:
+    base_url (str): Base URL of the backend API service.
+""")
+
+add_example('WebUi', ['''\
+>>> from lazyllm.components import WebUi
+>>> web_ui = WebUi(base_url="http://localhost:8000")
+>>> ui = web_ui.create_ui()
+>>> ui.launch()
+'''])
+
+add_chinese_doc("WebUi.basic_headers", '''
+生成通用的 HTTP 请求头。
+
+Args:
+    content_type (bool): 是否包含 Content-Type 头信息（默认为 True）。
+
+Returns:
+    dict: HTTP 请求头字典。
+''')
+
+add_english_doc("WebUi.basic_headers", '''
+Generate standard HTTP headers.
+
+Args:
+    content_type (bool): Whether to include Content-Type in the headers (default: True).
+
+Returns:
+    dict: Dictionary of HTTP headers.
+''')
+
+add_chinese_doc("WebUi.muti_headers", '''
+生成用于上传文件的 HTTP 请求头。
+
+Returns:
+    dict: HTTP 请求头字典。
+''')
+
+add_english_doc("WebUi.muti_headers", '''
+Generate HTTP headers for file upload.
+
+Returns:
+    dict: Dictionary of HTTP headers.
+''')
+
+add_chinese_doc("WebUi.post_request", '''
+发送 POST 请求。
+
+Args:
+    url (str): 请求地址。
+    data (dict): 请求数据，将被转为 JSON。
+
+Returns:
+    dict: 响应结果的 JSON。
+''')
+
+add_english_doc("WebUi.post_request", '''
+Send a POST request.
+
+Args:
+    url (str): Target request URL.
+    data (dict): Request data (will be serialized as JSON).
+
+Returns:
+    dict: JSON response from the server.
+''')
+
+add_chinese_doc("WebUi.get_request", '''
+发送 GET 请求。
+
+Args:
+    url (str): 请求地址。
+
+Returns:
+    dict: 响应结果的 JSON。
+''')
+
+add_english_doc("WebUi.get_request", '''
+Send a GET request.
+
+Args:
+    url (str): Target request URL.
+
+Returns:
+    dict: JSON response from the server.
+''')
+
+add_chinese_doc("WebUi.new_group", '''
+创建新的文件分组。
+
+Args:
+    group_name (str): 分组名称。
+
+Returns:
+    str: 创建结果的提示信息。
+''')
+
+add_english_doc("WebUi.new_group", '''
+Create a new file group.
+
+Args:
+    group_name (str): Name of the new group.
+
+Returns:
+    str: Server message about the creation result.
+''')
+
+add_chinese_doc("WebUi.delete_group", '''
+删除指定的文件分组。
+
+Args:
+    group_name (str): 分组名称。
+
+Returns:
+    str: 删除结果信息。
+''')
+
+add_english_doc("WebUi.delete_group", '''
+Delete a specific file group.
+
+Args:
+    group_name (str): Name of the group to delete.
+
+Returns:
+    str: Server message about the deletion.
+''')
+
+add_chinese_doc("WebUi.list_groups", '''
+列出所有文件分组。
+
+Returns:
+    List[str]: 分组名称列表。
+''')
+
+add_english_doc("WebUi.list_groups", '''
+List all available file groups.
+
+Returns:
+    List[str]: List of group names.
+''')
+
+add_chinese_doc("WebUi.upload_files", '''
+向指定分组上传文件。
+
+Args:
+    group_name (str): 分组名称。
+    override (bool): 是否覆盖已存在的文件（默认 True）。
+
+Returns:
+    Any: 后端返回的上传结果数据。
+''')
+
+add_english_doc("WebUi.upload_files", '''
+Upload files to a specified group.
+
+Args:
+    group_name (str): Name of the group.
+    override (bool): Whether to override existing files (default: True).
+
+Returns:
+    Any: Data returned by the backend.
+''')
+
+add_chinese_doc("WebUi.list_files_in_group", '''
+列出指定分组下的所有文件。
+
+Args:
+    group_name (str): 分组名称。
+
+Returns:
+    List: 文件信息列表。
+''')
+
+add_english_doc("WebUi.list_files_in_group", '''
+List all files within a specific group.
+
+Args:
+    group_name (str): Name of the group.
+
+Returns:
+    List: List of file information.
+''')
+
+add_chinese_doc("WebUi.delete_file", '''
+从指定分组中删除文件。
+
+Args:
+    group_name (str): 分组名称。
+    file_ids (List[str]): 要删除的文件 ID 列表。
+
+Returns:
+    str: 删除结果提示。
+''')
+
+add_english_doc("WebUi.delete_file", '''
+Delete specific files from a group.
+
+Args:
+    group_name (str): Name of the group.
+    file_ids (List[str]): IDs of files to delete.
+
+Returns:
+    str: Deletion result message.
+''')
+
+add_chinese_doc("WebUi.gr_show_list", '''
+以 Gradio 表格的形式展示字符串列表。
+
+Args:
+    str_list (List): 字符串或子项列表。
+    list_name (Union[str, List]): 表头名称或列名列表。
+
+Returns:
+    gr.DataFrame: Gradio 表格组件。
+''')
+
+add_english_doc("WebUi.gr_show_list", '''
+Display a list of strings as a Gradio DataFrame.
+
+Args:
+    str_list (List): List of strings or rows.
+    list_name (Union[str, List]): Column name(s) for the table.
+
+Returns:
+    gr.DataFrame: Gradio DataFrame component.
+''')
+
+add_chinese_doc("WebUi.create_ui", '''
+构建基于 Gradio 的文件管理图形界面，包含分组列表、上传、查看、删除等功能标签页。
+
+Returns:
+    gr.Blocks: 完整的 Gradio UI 应用实例。
+''')
+
+add_english_doc("WebUi.create_ui", '''
+Build a Gradio-based file management UI, including tabs for group listing, file uploading, viewing, and deletion.
+
+Returns:
+    gr.Blocks: A complete Gradio application instance.
+''')
+
+add_chinese_doc('TencentSearch', """
+腾讯内容安全搜索模块。
+
+该模块通过腾讯云 TMS（内容安全）API 实现对查询内容的智能搜索，用于内容检索或智能问答系统的辅助工具。
+
+Args:
+    secret_id (str): 腾讯云 API 密钥的 SecretId。
+    secret_key (str): 腾讯云 API 密钥的 SecretKey。
+""")
+
+add_english_doc('TencentSearch', """
+Tencent Content Security Search Module.
+
+This module uses Tencent Cloud TMS (Text Moderation Service) API to perform intelligent search on query content, suitable for content retrieval or as an auxiliary in QA systems.
+
+Args:
+    secret_id (str): SecretId for Tencent Cloud API credentials.
+    secret_key (str): SecretKey for Tencent Cloud API credentials.
+""")
+
+add_example('TencentSearch', '''
+
+# 中文示例
+from lazyllm.components import TencentSearch
+
+# 初始化模块，使用你的腾讯云 secret_id 和 secret_key
+search = TencentSearch(secret_id="你的secret-id", secret_key="你的secret-key")
+
+# 执行查询
+results = search.forward("人工智能的发展趋势")
+
+# 输出查询结果
+print(results)
 ''')
