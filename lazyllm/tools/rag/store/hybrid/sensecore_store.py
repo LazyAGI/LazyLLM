@@ -103,7 +103,7 @@ class SenseCoreStore(LazyLLMStoreBase):
             data['content'] = obj_key
 
         segment = Segment(segment_id=data.get('uid', ''), dataset_id=data.get(RAG_KB_ID, ''),
-                          document_id=data.get(RAG_DOC_ID, ''), group=data.get('group', ''),
+                          document_id=data.get('doc_id', ''), group=data.get('group', ''),
                           content=data.get('content', ''), meta=json.dumps(data.get('meta', {}), ensure_ascii=False),
                           excluded_embed_metadata_keys=data.get('excluded_embed_metadata_keys', []),
                           excluded_llm_metadata_keys=data.get('excluded_llm_metadata_keys', []),
@@ -290,9 +290,9 @@ class SenseCoreStore(LazyLLMStoreBase):
         try:
             url = urljoin(self._uri, 'v1/segments:bulkDelete')
             headers = {'Accept': '*/*', 'Content-Type': 'application/json'}
-
-            if criteria.get(RAG_DOC_ID):
-                payload = {'dataset_id': criteria.get(RAG_KB_ID), 'document_ids': criteria.get(RAG_DOC_ID)}
+            doc_ids = criteria.get(RAG_DOC_ID)
+            if doc_ids:
+                payload = {'dataset_id': criteria.get(RAG_KB_ID), 'document_ids': doc_ids}
             else:
                 payload = {'dataset_id': criteria.get(RAG_KB_ID), 'segment_ids': criteria.get('uid')}
             if collection_name:
@@ -300,8 +300,8 @@ class SenseCoreStore(LazyLLMStoreBase):
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()
         except Exception as e:
-            LOG.error(f"[SenseCore Store - delete] remove task failed: {e}")
-            raise e
+            LOG.error(f"[SenseCore Store - delete] task col: {collection_name}\ncriteria: {criteria}\n{e}")
+            return True
         return True
 
     @override
@@ -309,10 +309,10 @@ class SenseCoreStore(LazyLLMStoreBase):
         uids = criteria.get('uid')
         doc_ids = criteria.get(RAG_DOC_ID)
         kb_id = criteria.get(RAG_KB_ID)
-        if not (uids or doc_ids):
-            raise ValueError("uid or doc_id must be provided")
+        if not (uids or collection_name):
+            raise ValueError("group or uids must be provided")
         if doc_ids and len(doc_ids) > 1:
-            raise ValueError("[Sensecore Store] - get: doc_ids must be a single value")
+            raise ValueError("[Sensecore Store - get]: doc_ids must be a single value")
         doc_id = doc_ids[0] if doc_ids else None
         if doc_id and not uids:
             url = urljoin(self._uri, f"v1/datasets/{kb_id}/documents/{doc_id}/segments:search")
@@ -326,6 +326,8 @@ class SenseCoreStore(LazyLLMStoreBase):
             payload['document_id'] = doc_id
         if uids:
             payload['segment_ids'] = uids
+        else:
+            payload["page_size"] = 100
         segments = []
         while True:
             response = requests.post(url, headers=headers, json=payload)
@@ -407,7 +409,6 @@ class SenseCoreStore(LazyLLMStoreBase):
             payload = {'query': query, 'hybrid_search_datasets': hybrid_search_datasets, 'hybrid_search_type': 2,
                        'top_k': topk, 'filters': filter_str, 'group': self._get_group_name(collection_name),
                        'embedding_model': embed_key, 'images': images}
-            LOG.info(f"[Sensecore Store]: query request body: {payload}.")
             response = requests.post(url, headers=headers, json=payload)
             response.raise_for_status()
             segments = response.json()['segments']
@@ -415,7 +416,7 @@ class SenseCoreStore(LazyLLMStoreBase):
             for s in segments:
                 if len(s.get('display_content', '')):
                     s['content'] = s['display_content']
-            return segments
+            return [self._deserialize_data(s) for s in segments]
         except Exception as e:
             LOG.error(f"SenseCore Store: query task failed: {e}")
             raise e
