@@ -31,7 +31,7 @@ Args:
     launcher (optional): An object or function responsible for launching the server module. If not provided, the default asynchronous launcher from `lazyllm.launchers` is used (`sync=False`).
     doc_fields (optional): Configure the fields that need to be stored and retrieved along with their corresponding types (currently only used by the Milvus backend).
     doc_files (Optional[List[str]]): List of temporary document files (alternative to dataset_path).When used, dataset_path must be None and only map store is supported.
-    store_conf (optional): Configure which storage backend and index backend to use.      
+    store_conf (optional): Configure which storage backend, MapStore is the default choice.      
 ''')
 
 add_chinese_doc('Document', '''\
@@ -48,7 +48,7 @@ Args:
     name (Optional[str]):文档集合的名称标识符。云服务模式下必须提供
     launcher (optional): 负责启动服务器模块的对象或函数。如果未提供，则使用 `lazyllm.launchers` 中的默认异步启动器 (`sync=False`)。            
     doc_files (Optional[List[str]]):临时文档文件列表（dataset_path的替代方案）。使用时dataset_path必须为None且仅支持map存储类型
-    store_conf (optional): 配置使用哪种存储后端和索引后端。
+    store_conf (optional): 配置使用哪种存储后端, 默认使用MapStore将切片数据存于内存中。
 ''')
 
 add_example('Document', '''\
@@ -60,16 +60,19 @@ add_example('Document', '''\
 >>> document1 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, manager=False)
 
 >>> store_conf = {
->>>     'type': 'chroma',
->>>     'indices': {
->>>         'smart_embedding_index': {
->>>             'backend': 'milvus',
->>>             'kwargs': {
->>>                 'uri': '/tmp/tmp.db',
->>>                 'index_kwargs': {
->>>                     'index_type': 'HNSW',
->>>                     'metric_type': 'COSINE'
->>>                  }
+>>>     "segment_store": {
+>>>         "type": "map",
+>>>         "kwargs": {
+>>>             "uri": "/tmp/tmp_segments.db",
+>>>         },
+>>>     },
+>>>     "vector_store": {
+>>>         "type": "milvus",
+>>>         "kwargs": {
+>>>             "uri": "/tmp/tmp_milvus.db",
+>>>             "index_kwargs": {
+>>>                 "index_type": "FLAT",
+>>>                 "metric_type": "COSINE",
 >>>             },
 >>>         },
 >>>     },
@@ -117,14 +120,14 @@ add_english_doc('Document.find_parent', '''
 Find the parent node of the specified node.
 
 Args:
-    group (str): The name of the node for which to find the parent.
+    group (str): The name of the node group for which to find the parent.
 ''')
 
 add_chinese_doc('Document.find_parent', '''
 查找指定节点的父节点。
 
 Args:
-    group (str): 需要查找的节点名称
+    group (str): 需要查找的节点组名称
 ''')
 
 add_example('Document.find_parent', '''
@@ -141,14 +144,14 @@ add_english_doc('Document.find_children', '''
 Find the child nodes of the specified node.
 
 Args:
-    group (str): The name of the node for which to find the children.
+    group (str): The name of the node group for which to find the children.
 ''')
 
 add_chinese_doc('Document.find_children', '''
 查找指定节点的子节点。
 
 Args:
-    group (str): 需要查找的名称
+    group (str): 需要查找的节点组名称
 ''')
 
 add_example('Document.find_children', '''
@@ -739,7 +742,7 @@ Returns:
 ''')
 
 add_english_doc('rag.store.ChromadbStore.connect', '''
-Initialize the ChromaDB client and configure embedding settings.
+Initialize the ChromaDB client and configure embedding and metadata settings.
 
 Args:
     embed_dims (Dict[str, int]): Dimensions for each embedding key.
@@ -748,7 +751,7 @@ Args:
 ''')
 
 add_chinese_doc('rag.store.ChromadbStore.connect', '''
-初始化 ChromaDB 客户端并配置嵌入及元数据。
+初始化 ChromaDB 客户端并配置向量化及元数据相关设定。
 
 Args:
     embed_dims (Dict[str, int]): 每个嵌入键对应的向量维度。
@@ -757,7 +760,7 @@ Args:
 ''')
 
 add_english_doc('rag.store.ChromadbStore.upsert', '''
-Insert or update a batch of records into ChromaDB.
+Insert or update a batch of records(segment's uid and vectors) into ChromaDB.
 
 Args:
     collection_name (str): Logical name for the collection.
@@ -768,7 +771,7 @@ Returns:
 ''')
 
 add_chinese_doc('rag.store.ChromadbStore.upsert', '''
-批量写入或更新记录到 ChromaDB。
+批量写入或更新记录（切片的id及向量数据）到 ChromaDB。
 
 Args:
     collection_name (str): 集合名称。
@@ -783,7 +786,7 @@ Delete an entire collection or specific records.
 
 Args:
     collection_name (str): Name of the collection.
-    criteria (Optional[dict]): If None, drop the collection. Otherwise, filter dict to delete matching records.
+    criteria (Optional[dict]): If None, drop the collection. Otherwise, filter dict to delete matching records (e.x. delete by doc_id/uid/kb_id).
 
 Returns:
     bool: True if deletion succeeds, False otherwise.
@@ -794,7 +797,7 @@ add_chinese_doc('rag.store.ChromadbStore.delete', '''
 
 Args:
     collection_name (str): 集合名称。
-    criteria (Optional[dict]): 若为 None，删除整个集合；否则按条件删除匹配记录。
+    criteria (Optional[dict]): 若为 None，删除整个集合；否则按条件删除匹配记录（例如按照切片id、切片所属文件id、切片所属知识库id删除）。
 
 Returns:
     bool: 删除成功返回 True，否则 False。
@@ -805,7 +808,7 @@ Retrieve records matching criteria.
 
 Args:
     collection_name (str): Name of the collection.
-    criteria (Optional[dict]): Filter conditions such as primary key or metadata.
+    criteria (Optional[dict]): Filter conditions such as primary key or metadata (docid/kb_id).
 
 Returns:
     List[dict]: Each dict contains 'uid' and 'embedding'.
@@ -816,7 +819,7 @@ add_chinese_doc('rag.store.ChromadbStore.get', '''
 
 Args:
     collection_name (str): 集合名称。
-    criteria (Optional[dict]): 过滤条件，如主键或元数据。
+    criteria (Optional[dict]): 过滤条件，如主键或元数据（例如文档id或知识库id）。
 
 Returns:
     List[dict]: 每项包含 'uid' 和 'embedding'。
@@ -828,7 +831,7 @@ Perform a vector similarity search.
 Args:
     collection_name (str): Collection to query.
     query_embedding (List[float]): Vector to search with.
-    embed_key (str): Which embedding field to use.
+    embed_key (str): Which embedding to use.
     topk (int): Number of top results to return.
     filters (Optional[Dict[str, Union[str, int, List, Set]]]): Metadata filter conditions.
 
@@ -842,7 +845,7 @@ add_chinese_doc('rag.store.ChromadbStore.search', '''
 Args:
     collection_name (str): 要查询的集合名称。
     query_embedding (List[float]): 用于检索的向量。
-    embed_key (str): 使用的嵌入键。
+    embed_key (str): 使用的向量模型的key。
     topk (int): 返回的结果数量。
     filters (Optional[Dict[str, Union[str, int, List, Set]]]): 元数据过滤条件。
 
@@ -851,23 +854,23 @@ Returns:
 ''')
 
 add_english_doc('rag.store.MilvusStore', '''
-Vector store implementation based on Milvus, inheriting from StoreBase. Supports vector insertion, deletion, metadata sync, flexible querying, and similarity search.
+Vector store implementation based on Milvus, inheriting from StoreBase. Supports vector insertion, deletion, flexible querying (including scalar filtering).
 
 Args:
-    uri (str): Milvus connection URI (e.g., "tcp://localhost:19530"). If scheme is local file path, uses embedded Milvus; otherwise remote.
+    uri (str): Milvus connection URI (e.g., "tcp://localhost:19530"). If scheme is local file path, uses milvus-lite version; otherwise remote (need to set up a milvus service, e.x. standalone/distributed version).
     db_name (str): Database name to use in Milvus. Defaults to "lazyllm".
-    index_kwargs (Optional[Union[Dict, List]]): Index creation parameters (e.g., {"index_type": "IVF_FLAT", "metric_type": "L2"} or a list of per-embed-key configs).
-    client_kwargs (Optional[Dict]): Additional keyword arguments for pymilvus client.
+    index_kwargs (Optional[Union[Dict, List]]): Index creation parameters (e.g., {"index_type": "IVF_FLAT", "metric_type": "COSINE"} or a list of per-embed-key configs).
+    client_kwargs (Optional[Dict]): Additional keyword arguments for milvus client.
 ''')
 
 add_chinese_doc('rag.store.MilvusStore', '''
-基于 Milvus 的向量存储实现，继承自 StoreBase。支持向量写入、删除、元数据同步、灵活查询及相似度检索。
+基于 Milvus 的向量存储实现，继承自 StoreBase。支持向量写入、删除、相似度检索，兼容标量过滤。
 
 Args:
-    uri (str): Milvus 连接 URI（如 "tcp://localhost:19530"）。如果为本地路径则使用嵌入式 Milvus，否则为远程模式。
+    uri (str): Milvus 连接 URI（如 "tcp://localhost:19530"）。如果为本地路径则使用milvus-lite，否则为远程模式（需要独立部署milvus服务，例如standalone/distributed版本）。
     db_name (str): Milvus 中使用的数据库名称，默认为 "lazyllm"。
-    index_kwargs (Optional[Union[Dict, List]]): 索引创建参数（例如 {"index_type": "IVF_FLAT", "metric_type": "L2"} 或按嵌入键配置列表）。
-    client_kwargs (Optional[Dict]): 传递给 pymilvus 客户端的额外参数。
+    index_kwargs (Optional[Union[Dict, List]]): 索引创建参数（例如 {"index_type": "IVF_FLAT", "metric_type": "CONSINE"} ，支持按向量模型的key配置列表）。
+    client_kwargs (Optional[Dict]): 传递给 milvus 客户端的额外参数。
 ''')
 
 add_english_doc('rag.store.MilvusStore.dir', '''
