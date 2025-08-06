@@ -13,7 +13,7 @@
 ::: lazyllm.flow.save_pipeline_result
 
 ::: lazyllm.flow.Parallel
-    members: 
+    members: join, sequential
     exclude-members:
 
 ::: lazyllm.flow.Diverter

@@ -42,6 +42,10 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.embed.AbstractEmbedding
+    options:
+      heading_level: 3
+
 ::: lazyllm.components.deploy.EmbeddingDeploy
     options:
       heading_level: 3
@@ -53,9 +57,16 @@
 ::: lazyllm.components.deploy.Mindie
     options:
       heading_level: 3
+
+::: lazyllm.components.deploy.relay.base.RelayServer
+    options:
+      heading_level: 3
+      members: [cmd, geturl]
+
 ::: lazyllm.components.deploy.OCRDeploy
     options:
       heading_level: 3
+      
 ---
 
 ## Launcher
@@ -75,6 +86,10 @@
       - '!get_idle'
 
 ::: lazyllm.launcher.ScoLauncher
+    options:
+      heading_level: 3
+
+::: lazyllm.launcher.Job
     options:
       heading_level: 3
 

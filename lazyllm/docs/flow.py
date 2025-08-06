@@ -181,11 +181,11 @@ add_chinese_doc('Parallel', """\
 ```
 
 Args:
+    args: 基类的可变长度参数列表。
     _scatter (bool, optional): 如果为 ``True``，输入将在项目之间分割。如果为 ``False``，相同的输入将传递给所有项目。默认为 ``False``。
     _concurrent (bool, optional): 如果为 ``True``，操作将使用线程并发执行。如果为 ``False``，操作将顺序执行。默认为 ``True``。
     multiprocessing (bool, optional): 如果为 ``True``，将使用多进程而不是多线程进行并行执行。这可以提供真正的并行性，但会增加进程间通信的开销。默认为 ``False``。
     auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
-    args: 基类的可变长度参数列表。
     kwargs: 基类的任意关键字参数。
 
 <span style="font-size: 20px;">&ensp;**`asdict property`**</span>
@@ -230,11 +230,11 @@ The ``Parallel.sequential`` method can be visualized as follows:
 ```
 
 Args:
+    args: Variable length argument list for the base class.
     _scatter (bool, optional): If ``True``, the input is split across the items. If ``False``, the same input is passed to all items. Defaults to ``False``.
-    _concurrent (bool, optional): If ``True``, operations will be executed concurrently using threading. If ``False``, operations will be executed sequentially. Defaults to ``True``.
+    _concurrent (Union[bool, int], optional): If ``True``, operations will be executed concurrently using threading. If an integer, specifies the maximum number of concurrent executions. If ``False``, operations will be executed sequentially. Defaults to ``True``.
     multiprocessing (bool, optional): If ``True``, multiprocessing will be used instead of multithreading for parallel execution. This can provide true parallelism but adds overhead for inter-process communication. Defaults to ``False``.
     auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
-    args: Variable length argument list for the base class.
     kwargs: Arbitrary keyword arguments for the base class.
 
 `asdict property`
@@ -256,6 +256,110 @@ Mark Parallel so that the return value of Parallel is accumulated each time it i
 `join(self, string)`
 
 Mark Parallel so that the return value of Parallel is joined by ``string`` each time it is called.
+""")
+
+add_example(
+    'Parallel',
+    '''\
+>>> import lazyllm
+>>> test1 = lambda a: a + 1
+>>> test2 = lambda a: a * 4
+>>> test3 = lambda a: a / 2
+>>> ppl = lazyllm.parallel(test1, test2, test3)
+>>> assert ppl(1) == (2, 4, 0.5), "LAZYLLM_CHECK_FAILED"
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3)
+>>> ppl(1)
+{2, 4, 0.5}
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).asdict
+>>> assert  ppl(2) == {'a': 3, 'b': 8, 'c': 1.0}, "LAZYLLM_CHECK_FAILED"
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).astuple
+>>> ppl(-1)
+(0, -4, -0.5)
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).aslist
+>>> ppl(0)
+[1, 0, 0.0]
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).join('\\\\n')
+>>> ppl(1)
+'2\\\\n4\\\\n0.5'
+''',
+)
+
+add_chinese_doc('Parallel.sequential', """\
+创建一个顺序执行的Parallel实例。
+
+这个类方法会将 ``_concurrent`` 设置为 ``False``，使得所有操作按顺序执行而不是并行执行。
+
+可以这样可视化 ``Parallel.sequential`` 方法：
+
+```text
+# input -> module21 -> ... -> module2N -> out2 -> 
+```
+
+Args:
+    args: 传递给 Parallel 构造函数的可变长度参数列表。
+    kwargs: 传递给 Parallel 构造函数的关键字参数。
+
+**Returns:**\n
+- Parallel: 一个新的顺序执行的 Parallel 实例。
+""")
+
+add_english_doc('Parallel.sequential', """\
+Creates a Parallel instance that executes sequentially.
+
+This class method sets ``_concurrent`` to ``False``, causing all operations to be executed in sequence rather than in parallel.
+
+The ``Parallel.sequential`` method can be visualized as follows:
+
+```text
+# input -> module21 -> ... -> module2N -> out2 -> 
+```
+
+Args:
+    args: Variable length argument list passed to the Parallel constructor.
+    kwargs: Keyword arguments passed to the Parallel constructor.
+    _scatter (bool, optional): If ``True``, the input is split across the items. If ``False``, the same input is passed to all items. Defaults to ``False``.
+    _concurrent (bool, optional): If ``True``, operations will be executed concurrently using threading. If ``False``, operations will be executed sequentially. Defaults to ``True``.
+    multiprocessing (bool, optional): If ``True``, multiprocessing will be used instead of multithreading for parallel execution. This can provide true parallelism but adds overhead for inter-process communication. Defaults to ``False``.
+    auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
+    args: Variable length argument list for the base class.
+    kwargs: Arbitrary keyword arguments for the base class.
+
+**Returns:**\n
+- Parallel: A new Parallel instance configured for sequential execution.
+""")
+
+add_chinese_doc('Parallel.join', """\
+标记Parallel，使得每次调用时的返回值通过指定字符串连接。
+
+Args:
+    string (str): 用于连接结果的字符串。默认为空字符串。
+
+**Returns:**\n
+- Parallel: 返回当前 Parallel 实例，其结果将被字符串连接。
+
+**示例:**\n
+```python
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).join('\\n')
+>>> ppl(1)
+'2\\n4\\n0.5'
+```
+""")
+
+add_english_doc('Parallel.join', """\
+Marks the Parallel instance to join its results with the specified string on each call.
+
+Args:
+    string (str): The string to use for joining results. Defaults to an empty string.
+
+**Returns:**\n
+- Parallel: Returns the current Parallel instance configured to join results with the specified string.
+
+**Example:**\n
+```python
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).join('\\n')
+>>> ppl(1)
+'2\\n4\\n0.5'
+```
 """)
 
 add_example(
