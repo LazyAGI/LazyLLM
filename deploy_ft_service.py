@@ -9,12 +9,12 @@ import sys
 import uvicorn
 import argparse
 from datetime import datetime
+from lazyllm.tools.train_service.serveV2 import TrainServer
+from fastapi import FastAPI
 
 # 添加项目路径到Python路径
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
-from lazyllm.tools.train_service.serveV2 import TrainServer
-from fastapi import FastAPI
 
 def create_app():
     """创建FastAPI应用实例"""
@@ -26,13 +26,13 @@ def create_app():
         docs_url="/docs",
         redoc_url="/redoc"
     )
-    
+
     # 创建训练服务实例
     train_server = TrainServer()
-    
+
     # 手动注册路由，因为FastapiApp装饰器需要特殊处理
     # 我们需要从TrainServer类中获取装饰器信息并手动注册
-    
+
     # 注册POST /v1/finetuneTasks
     fastapi_app.add_api_route(
         "/v1/finetuneTasks",
@@ -42,7 +42,7 @@ def create_app():
         summary="创建训练任务",
         description="创建一个新的AI模型训练任务"
     )
-    
+
     # 注册DELETE /v1/finetuneTasks/{job_id}
     fastapi_app.add_api_route(
         "/v1/finetuneTasks/{job_id}",
@@ -52,7 +52,7 @@ def create_app():
         summary="取消训练任务",
         description="取消指定的训练任务"
     )
-    
+
     # 注册GET /v1/finetuneTasks/jobs
     fastapi_app.add_api_route(
         "/v1/finetuneTasks/jobs",
@@ -62,7 +62,7 @@ def create_app():
         summary="获取任务列表",
         description="获取所有训练任务的列表"
     )
-    
+
     # 注册GET /v1/finetuneTasks/{job_id}
     fastapi_app.add_api_route(
         "/v1/finetuneTasks/{job_id}",
@@ -72,7 +72,7 @@ def create_app():
         summary="获取任务详情",
         description="获取指定训练任务的详细信息"
     )
-    
+
     # 注册GET /v1/finetuneTasks/{job_id}/log
     fastapi_app.add_api_route(
         "/v1/finetuneTasks/{job_id}/log",
@@ -82,7 +82,7 @@ def create_app():
         summary="获取任务日志",
         description="获取指定训练任务的日志信息"
     )
-    
+
     # 注册POST /v1/finetuneTasks/{job_id}:pause
     fastapi_app.add_api_route(
         "/v1/finetuneTasks/{job_id}:pause",
@@ -92,7 +92,7 @@ def create_app():
         summary="暂停训练任务",
         description="暂停指定的训练任务"
     )
-    
+
     # 注册POST /v1/finetuneTasks/{job_id}:resume
     fastapi_app.add_api_route(
         "/v1/finetuneTasks/{job_id}:resume",
@@ -102,7 +102,7 @@ def create_app():
         summary="恢复训练任务",
         description="恢复指定的训练任务"
     )
-    
+
     # 注册GET /v1/finetuneTasks/{job_id}runningMetrics
     fastapi_app.add_api_route(
         "/v1/finetuneTasks/{job_id}runningMetrics",
@@ -112,7 +112,7 @@ def create_app():
         summary="获取运行指标",
         description="获取指定训练任务的运行指标"
     )
-    
+
     # 注册GET /v1/models:all
     fastapi_app.add_api_route(
         "/v1/models:all",
@@ -122,8 +122,9 @@ def create_app():
         summary="获取支持的模型",
         description="获取所有支持的模型列表"
     )
-    
+
     return fastapi_app
+
 
 def main():
     parser = argparse.ArgumentParser(description="部署LazyLLM训练服务")
@@ -132,24 +133,24 @@ def main():
     parser.add_argument("--reload", action="store_true", help="开发模式，自动重载")
     parser.add_argument("--workers", type=int, default=1, help="工作进程数")
     parser.add_argument("--log-level", default="info", choices=["debug", "info", "warning", "error"], help="日志级别")
-    
+
     args = parser.parse_args()
-    
+
     # 设置环境变量
     os.environ.setdefault("LAZYLLM_TRAIN_LOG_ROOT", "./logs/train")
-    
+
     # 创建日志目录
     log_dir = os.environ["LAZYLLM_TRAIN_LOG_ROOT"]
     os.makedirs(log_dir, exist_ok=True)
-    
+
     print(f"[{datetime.now()}] 启动LazyLLM训练服务...")
     print(f"[{datetime.now()}] 服务地址: http://{args.host}:{args.port}")
     print(f"[{datetime.now()}] API文档: http://{args.host}:{args.port}/docs")
     print(f"[{datetime.now()}] 日志目录: {log_dir}")
-    
+
     # 创建应用
     app = create_app()
-    
+
     # 启动服务器
     uvicorn.run(
         app,
@@ -160,6 +161,7 @@ def main():
         log_level=args.log_level,
         access_log=True
     )
+
 
 if __name__ == "__main__":
     main()

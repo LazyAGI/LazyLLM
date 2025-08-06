@@ -14,6 +14,7 @@ from async_timeout import timeout
 import re
 from urllib.parse import urlparse
 import shutil
+import glob
 
 import lazyllm
 from lazyllm.launcher import Status
@@ -31,7 +32,8 @@ class Dataset(BaseModel):
     dataset_download_uri: str
     format: int
     dataset_id: str
-    
+
+
 class TrainingArgs(BaseModel):
     val_size: float = 0.02
     num_train_epochs: int = 1
@@ -44,7 +46,7 @@ class TrainingArgs(BaseModel):
     lora_alpha: int = 32
     trust_remote_code: bool = True
     ngpus: int = 1
-    
+
     class Config:
         extra = "allow"  # 允许接受额外的字段
 
@@ -57,6 +59,7 @@ class JobDescription(BaseModel):
     validation_dataset: List[Dataset] = []
     validate_dataset_split_percent: float = Field(default=0.0)
     stage: str = ""
+
 
 class TrainServer(ServerBase):
 
@@ -127,23 +130,15 @@ class TrainServer(ServerBase):
         log_dir = self._get_save_path(model)
         if not log_dir:
             return None
-
-        parts = log_dir.split(os.sep)
-        if parts[-1].endswith('lazyllm_merge'):
-            parts[-1] = parts[-1].replace('lazyllm_merge', 'lazyllm_lora')
-        log_dir = os.sep.join(parts)
-
-        log_files_paths = []
-        for file in os.listdir(log_dir):
-            if file.endswith('.log') and file.startswith('train_log_'):
-                log_files_paths.append(os.path.join(log_dir, file))
+        log_files_paths = glob.glob(os.path.join(log_dir, '*.log'))
         if len(log_files_paths) == 0:
             return None
         assert len(log_files_paths) == 1
         return log_files_paths[-1]
 
     @app.post('/v1/finetuneTasks')
-    async def create_job(self, job: JobDescription = None, finetune_task_id: str = Query(None),  token: str = Header(DEFAULT_TOKEN)):
+    async def create_job(self, job: JobDescription = None, finetune_task_id: str = Query(None),
+                         token: str = Header(DEFAULT_TOKEN)):
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
         # Build Job-ID:
@@ -308,19 +303,19 @@ class TrainServer(ServerBase):
             return log_content
         else:
             raise HTTPException(status_code=404, detail='日志路径不存在')
-        
+
     @app.post('/v1/finetuneTasks/{job_id}:pause')
     def pause_job(self, job_id: str, name: str = Body(), token: str = Header(DEFAULT_TOKEN)):
         return
-    
+
     @app.post('/v1/finetuneTasks/{job_id}:resume')
     def resume_job(self, job_id: str, name: str = Body(), token: str = Header(DEFAULT_TOKEN)):
         return
-    
+
     @app.get('/v1/finetuneTasks/{job_id}runningMetrics')
     def get_running_metrics(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):
         return
-        
+
     @app.get('/v1/models:all')
     def get_support_model(self, token: str = Header(DEFAULT_TOKEN)):
         model_path = lazyllm.config['model_path']
