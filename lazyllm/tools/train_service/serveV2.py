@@ -152,6 +152,7 @@ class TrainServer(ServerBase):
         # Uniform Training DataSet:
         assert len(job.training_dataset) == 1, "just support one train dataset"
         data_path = job.training_dataset[0].dataset_download_uri
+        data_path = '/home/mnt/dengyuang/workspace/LazyLLM/train_data_for_code_alpace_20k.json'
         if is_url(data_path):
             parsed_url = urlparse(data_path)
             from urllib.parse import parse_qs
@@ -164,12 +165,11 @@ class TrainServer(ServerBase):
                 filename = 'downloaded_data.json'
             local_path = os.path.join(lazyllm.config['data_path'], filename)
             
-            resp = requests.get(data_path, stream=True)
+            resp = requests.get(data_path)
             resp.raise_for_status()
             with open(local_path, 'wb') as f:
                 shutil.copyfileobj(resp.raw, f)
             data_path = local_path
-        data_path = os.path.join(lazyllm.config['data_path'], data_path)
         data_path = uniform_sft_dataset(data_path, target='alpaca')
 
         # Set params for TrainableModule:
@@ -207,7 +207,7 @@ class TrainServer(ServerBase):
             'created_at': create_time,
             'fine_tuned_model': save_path,
             'status': status,
-            'data_path': job.data_path,
+            'data_path': data_path,
             'hyperparameters': hypram,
             'log_path': log_path,
             'started_at': started_time,
