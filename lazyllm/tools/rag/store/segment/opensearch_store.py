@@ -8,6 +8,7 @@ from lazyllm.common import override
 from lazyllm.thirdparty import opensearchpy
 
 from ..store_base import LazyLLMStoreBase, StoreCapability, INSERT_BATCH_SIZE
+from ...global_metadata import RAG_DOC_ID, RAG_KB_ID
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -166,9 +167,10 @@ class OpenSearchStore(LazyLLMStoreBase):
             return {'query': {'ids': {'values': vals}}}
         else:
             must_clauses = []
-            for key, value in criteria.items():
-                if isinstance(value, list):
-                    must_clauses.append({'terms': {key: value}})
-                else:
-                    must_clauses.append({'term': {key: value}})
+            if RAG_DOC_ID in criteria:
+                must_clauses.append({'terms': {'doc_id': criteria.pop(RAG_DOC_ID)}})
+            if RAG_KB_ID in criteria:
+                must_clauses.append({'term': {'kb_id': criteria.pop(RAG_KB_ID)}})
+            if 'parent' in criteria:
+                must_clauses.append({'terms': {'parent': criteria.pop('parent')}})
             return {'query': {'bool': {'must': must_clauses}}}

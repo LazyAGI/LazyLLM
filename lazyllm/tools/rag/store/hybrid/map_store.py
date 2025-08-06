@@ -45,6 +45,7 @@ class MapStore(LazyLLMStoreBase):
             image_keys TEXT
         )
         """)
+        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_parent ON {table}(parent)")
 
     def _load_from_uri(self, collection_name: str, uri: str):
         conn = sqlite3.connect(uri)
@@ -79,6 +80,7 @@ class MapStore(LazyLLMStoreBase):
             self._collection2uids[collection_name].add(item['uid'])
             self._col_doc_uids[collection_name][item['doc_id']].add(item['uid'])
             self._col_kb_doc_uids[collection_name][item['kb_id']][item['doc_id']].add(item['uid'])
+            self._col_parent_uids[collection_name][item['parent']].add(item['uid'])
 
     def _save_to_uri(self, collection_name: str, uri: str, data: List[dict]):
         conn = sqlite3.connect(uri)
@@ -110,7 +112,7 @@ class MapStore(LazyLLMStoreBase):
         self._col_doc_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
         self._col_kb_doc_uids: Dict[str, Dict[str, Dict[str, Set[str]]]] = defaultdict(
             lambda: defaultdict(lambda: defaultdict(set)))
-
+        self._col_parent_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
         if self._uri:
             if not os.path.exists(self._uri):
                 LOG.info(f"[MapStore] SQLite DB {self._uri} does not exist, creating...")
@@ -134,6 +136,7 @@ class MapStore(LazyLLMStoreBase):
                 self._collection2uids[collection_name].add(uid)
                 self._col_kb_doc_uids[collection_name][item.get(RAG_KB_ID, DEFAULT_KB_ID)][doc_id].add(uid)
                 self._col_doc_uids[collection_name][doc_id].add(uid)
+                self._col_parent_uids[collection_name][item.get('parent')].add(uid)
             if self._uri:
                 self._save_to_uri(collection_name, self._uri, data)
         except Exception as e:
@@ -153,9 +156,11 @@ class MapStore(LazyLLMStoreBase):
                     continue
                 kb_id = data.get(RAG_KB_ID, DEFAULT_KB_ID)
                 doc_id = data.get('doc_id')
+                parent = data.get('parent')
                 self._collection2uids[collection_name].remove(uid)
                 self._col_kb_doc_uids[collection_name][kb_id][doc_id].remove(uid)
                 self._col_doc_uids[collection_name][doc_id].remove(uid)
+                self._col_parent_uids[collection_name][parent].remove(uid)
             if self._uri:
                 conn = sqlite3.connect(self._uri)
                 cursor = conn.cursor()
@@ -171,7 +176,13 @@ class MapStore(LazyLLMStoreBase):
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         uids = self._get_uids_by_criteria(collection_name, criteria)
-        return [self._uid2data[uid] for uid in uids]
+        data = []
+        for uid in uids:
+            if uid in self._uid2data:
+                data.append(self._uid2data[uid])
+            else:
+                LOG.warning(f"[MapStore - get] uid {uid} not found in data")
+        return data
 
     def _get_uids_by_criteria(self, collection_name: str, criteria: dict) -> List[str]:
         if not criteria:
@@ -180,6 +191,7 @@ class MapStore(LazyLLMStoreBase):
             uids = criteria.get('uid', [])
             kb_id = criteria.get(RAG_KB_ID)
             doc_ids = criteria.get(RAG_DOC_ID, [])
+            parents = criteria.get('parent', [])
             if uids:
                 return [uid for uid in uids if uid in self._collection2uids.get(collection_name, set())]
             elif kb_id and doc_ids:
@@ -191,6 +203,9 @@ class MapStore(LazyLLMStoreBase):
                         for uid in self._col_kb_doc_uids.get(collection_name, {}).get(kb_id, {}).get(doc_id, ())]
             elif doc_ids:
                 return [uid for doc_id in doc_ids for uid in self._col_doc_uids.get(collection_name, {}).get(doc_id, ())]
+            elif parents:
+                return [uid for parent in parents for uid in
+                        self._col_parent_uids.get(collection_name, {}).get(parent, ())]
             else:
                 raise ValueError(f"[MapStore - get] Invalid criteria: {criteria}")
 

@@ -194,6 +194,9 @@ class _DocumentStore(object):
                 criteria = {RAG_DOC_ID: doc_ids}
             if kb_id:
                 criteria[RAG_KB_ID] = kb_id
+            # for find method, parent id should be in the criteria
+            if kwargs.get('parent'):
+                criteria['parent'] = kwargs['parent']
             if not group:
                 groups = self._activated_groups
             else:
