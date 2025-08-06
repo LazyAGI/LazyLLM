@@ -6359,7 +6359,7 @@ Querying nodes...
 [DocNode(uid="2", content="Document 2")]
 ''')
 
-add_chinese_doc('IndexBase.update', '''\
+add_chinese_doc('rag.index_base.IndexBase.update', '''\
 更新索引内容。
 
 该方法接收一组文档节点对象，并将其添加或更新到索引结构中。通常用于增量构建或刷新索引。
@@ -6368,7 +6368,7 @@ Args:
     nodes (List[DocNode]): 需要更新的文档节点列表。
 ''')
 
-add_english_doc('IndexBase.update', '''\
+add_english_doc('rag.index_base.IndexBase.update', '''\
 Update index contents.
 
 This method receives a list of document nodes and updates or inserts them into the index structure. Typically used for incremental indexing or refreshing data.
@@ -6377,7 +6377,7 @@ Args:
     nodes (List[DocNode]): A list of document nodes to update or insert.
 ''')
 
-add_chinese_doc('IndexBase.remove', '''\
+add_chinese_doc('rag.index_base.IndexBase.remove', '''\
 从索引中移除指定文档节点。
 
 可根据唯一标识符列表删除索引中的文档节点，可选地指定组名称以限定范围。
@@ -6387,7 +6387,7 @@ Args:
     group_name (Optional[str]): 可选的组名称，用于限定要删除的范围。
 ''')
 
-add_english_doc('IndexBase.remove', '''\
+add_english_doc('rag.index_base.IndexBase.remove', '''\
 Remove specific document nodes from the index.
 
 Removes document nodes based on their unique identifiers, optionally scoped by group name.
@@ -6397,7 +6397,7 @@ Args:
     group_name (Optional[str]): Optional group name to scope the removal operation.
 ''')
 
-add_chinese_doc('IndexBase.query', '''\
+add_chinese_doc('rag.index_base.IndexBase.query', '''\
 执行索引查询。
 
 根据传入的参数执行查询操作，返回匹配的文档节点列表。具体查询逻辑由实现类定义。
@@ -6406,7 +6406,7 @@ Returns:
     List[DocNode]: 查询结果的文档节点列表。
 ''')
 
-add_english_doc('IndexBase.query', '''\
+add_english_doc('rag.index_base.IndexBase.query', '''\
 Execute a query over the index.
 
 Performs a query based on the given arguments and returns matching document nodes. The logic depends on the specific implementation.
