@@ -89,6 +89,10 @@
     options:
       heading_level: 3
 
+::: lazyllm.launcher.Job
+    options:
+      heading_level: 3
+
 ---
 
 ## Prompter

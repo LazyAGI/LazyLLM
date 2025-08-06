@@ -570,3 +570,38 @@ Extracts specified argument value from command string.
 Args:
     key: Argument name
 ''')
+
+add_chinese_doc('queue.SQLiteQueue', '''\
+基于 SQLite 的持久化文件系统队列。
+该类扩展自 FileSystemQueue，使用 SQLite 数据库存储队列数据，通过 position 字段保证先进先出顺序，并支持并发安全的消息入队、出队、查看队头、队列大小查询和清空操作。
+队列数据库默认存储在 ~/.lazyllm_filesystem_queue.db，通过文件锁机制确保多进程安全访问。
+Args:
+    klass (str): 队列分类名，用于逻辑隔离不同的队列，默认为 '__default__'。
+''')
+
+add_english_doc('queue.SQLiteQueue', '''\
+Persistent file system queue backed by SQLite.
+This class extends FileSystemQueue and stores queue data in an SQLite database. Messages are ordered by a position field to preserve FIFO behavior. The class supports concurrent-safe operations including enqueue, dequeue, peek, size checking, and clearing the queue.
+The queue database is saved at ~/.lazyllm_filesystem_queue.db, with a file lock mechanism ensuring safe access in multi-process environments.
+Args:
+    klass (str): Name of the queue category used to logically separate queues. Default is '__default__'.
+''')
+
+add_example('queue.SQLiteQueue', ['''\
+>>> from lazyllm.components import SQLiteQueue
+>>> queue = SQLiteQueue(klass='demo')
+>>> # Enqueue messages
+>>> queue._enqueue('session1', 'Hello')
+>>> queue._enqueue('session1', 'World')
+>>> # Peek at the first message
+>>> print(queue._peek('session1'))
+... 'Hello'
+>>> # Dequeue all messages
+>>> print(queue._dequeue('session1'))
+... ['Hello', 'World']
+>>> # Check queue size
+>>> print(queue._size('session1'))
+... 0
+>>> # Clear queue (safe even when empty)
+>>> queue._clear('session1')
+'''])
