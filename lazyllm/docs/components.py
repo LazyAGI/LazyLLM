@@ -2587,17 +2587,6 @@ Args:
     sync (bool): Whether the task should run synchronously. Defaults to True.
 ''')
 
-add_example('Job', ['''\
->>> from lazyllm.runtime.job import Job
->>> from lazyllm.runtime.cmd import LazyLLMCMD
->>> class DummyLauncher:
-...     def launch(self, job): print("Launching job:", job.get_executable_cmd().cmd)
->>> cmd = LazyLLMCMD(cmd="echo Hello World")
->>> job = Job(cmd, DummyLauncher(), sync=True)
->>> job.get_executable_cmd().cmd
-... 'echo Hello World'
-'''])
-
 add_chinese_doc('Job.get_executable_cmd', '''\
 生成最终可执行命令。
 如果已缓存固定命令（fixed），则直接返回。否则根据原始命令进行包裹（wrap）并缓存为 `_fixed_cmd`。

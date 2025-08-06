@@ -1062,14 +1062,6 @@ Args:
     **kwargs: Additional arguments passed to the base class.
 ''')
 
-add_example('llms.onlinemodule.supplier.doubao.DoubaoModule', ['''\
->>> from lazyllm.components import DoubaoModule
->>> doubao = DoubaoModule(api_key="your-doubao-api-key")
->>> reply = doubao("你好，豆包是谁？")
->>> print(reply)
-... "我是豆包，一个由字节跳动开发的智能助手。"
-'''])
-
 add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIEmbedding', '''\
 OpenAI 在线嵌入模块。
 该类封装了对 OpenAI 嵌入 API 的调用，默认使用模型 `text-embedding-ada-002`，用于将文本编码为向量表示。
@@ -1087,14 +1079,6 @@ Args:
     embed_model_name (str): The name of the embedding model to use. Default is "text-embedding-ada-002".
     api_key (str, optional): The OpenAI API key. If not provided, it will be read from `lazyllm.config`.
 ''')
-
-add_example('llms.onlinemodule.supplier.openai.OpenAIEmbedding', ['''\
->>> from lazyllm.components import OpenAIEmbedding
->>> embedder = OpenAIEmbedding(api_key="your-openai-key")
->>> vectors = embedder(["hello", "world"])
->>> print(vectors[0][:5])  # print first 5 dimensions of the embedding
-... [0.0132, -0.0087, 0.0741, ...]
-'''])
 
 add_chinese_doc('OnlineEmbeddingModule', '''\
 用来管理创建目前市面上的在线Embedding服务模块，目前支持openai、sensenova、glm、qwen、doubao

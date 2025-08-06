@@ -586,22 +586,3 @@ The queue database is saved at ~/.lazyllm_filesystem_queue.db, with a file lock 
 Args:
     klass (str): Name of the queue category used to logically separate queues. Default is '__default__'.
 ''')
-
-add_example('queue.SQLiteQueue', ['''\
->>> from lazyllm.components import SQLiteQueue
->>> queue = SQLiteQueue(klass='demo')
->>> # Enqueue messages
->>> queue._enqueue('session1', 'Hello')
->>> queue._enqueue('session1', 'World')
->>> # Peek at the first message
->>> print(queue._peek('session1'))
-... 'Hello'
->>> # Dequeue all messages
->>> print(queue._dequeue('session1'))
-... ['Hello', 'World']
->>> # Check queue size
->>> print(queue._size('session1'))
-... 0
->>> # Clear queue (safe even when empty)
->>> queue._clear('session1')
-'''])
