@@ -1357,7 +1357,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
 
             if launcher.nnode == 1:
                 # SCO for mpi：supports multiple cards in a single machine
-                # sco_cmd += '-m '
+                sco_cmd += '-m '
                 torchrun_cmd += f'--nnodes {launcher.nnode} --node_rank 0 '
             else:
                 # SCO for All Reduce-DDP: support multiple machines and multiple cards
@@ -1368,7 +1368,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
             precmd = (f'''export PYTHONPATH={os.getcwd()}:{pythonpath}:$PYTHONPATH '''
                       f'''&& export PATH={os.path.join(os.path.expanduser('~'), '.local/bin')}:$PATH && ''')
             if lazyllm.config['sco_env_name']:
-                precmd = precmd + f"source activate {lazyllm.config['sco_env_name']} && "
+                precmd = f"source activate {lazyllm.config['sco_env_name']} && " + precmd
             env_vars = os.environ
             lazyllm_vars = {k: v for k, v in env_vars.items() if k.startswith("LAZYLLM")}
             if lazyllm_vars:
@@ -1470,7 +1470,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
                     id_str = subprocess.check_output(['scontrol', f'--workspace-id={self.workspace_name}',
                                                       'show', 'job', str(self.jobid)]).decode("utf-8")
                     id_json = json.loads(id_str)
-                    job_state = id_json['state'].strip().lower()
+                    job_state = id_json['status_phase'].strip().lower()
                     if job_state == 'running':
                         return Status.Running
                     elif job_state in ['tbsubmitted', 'suspending']:

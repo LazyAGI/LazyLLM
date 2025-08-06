@@ -43,9 +43,9 @@ def create_app():
         description="创建一个新的AI模型训练任务"
     )
     
-    # 注册DELETE /v1/fine_tuning/jobs/{job_id}
+    # 注册DELETE /v1/finetuneTasks/{job_id}
     fastapi_app.add_api_route(
-        "/v1/fine_tuning/jobs/{job_id}",
+        "/v1/finetuneTasks/{job_id}",
         train_server.cancel_job,
         methods=["DELETE"],
         tags=["训练服务"],
@@ -53,9 +53,9 @@ def create_app():
         description="取消指定的训练任务"
     )
     
-    # 注册GET /v1/fine_tuning/jobs
+    # 注册GET /v1/finetuneTasks/jobs
     fastapi_app.add_api_route(
-        "/v1/fine_tuning/jobs",
+        "/v1/finetuneTasks/jobs",
         train_server.list_jobs,
         methods=["GET"],
         tags=["训练服务"],

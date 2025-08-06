@@ -5,15 +5,15 @@ import string
 import random
 import asyncio
 import threading
-import requests
+from urllib.parse import parse_qs
 from datetime import datetime
 from typing import List
 from pydantic import BaseModel, Field
 from fastapi import Body, HTTPException, Header, Query
 from async_timeout import timeout
 import re
-import shutil
 from urllib.parse import urlparse
+import shutil
 
 import lazyllm
 from lazyllm.launcher import Status
@@ -31,17 +31,32 @@ class Dataset(BaseModel):
     dataset_download_uri: str
     format: int
     dataset_id: str
+    
+class TrainingArgs(BaseModel):
+    val_size: float = 0.02
+    num_train_epochs: int = 1
+    learning_rate: float = 0.1
+    lr_scheduler_type: str = 'cosine'
+    per_device_train_batch_size: int = 32
+    cutoff_len: int = 1024
+    finetuning_type: str = 'lora'
+    lora_rank: int = 8
+    lora_alpha: int = 32
+    trust_remote_code: bool = True
+    ngpus: int = 1
+    
+    class Config:
+        extra = "allow"  # 允许接受额外的字段
 
 
 class JobDescription(BaseModel):
     name: str
     model: str
-    training_args: dict = Field(default_factory=dict)
+    training_args: TrainingArgs = Field(default_factory=TrainingArgs)
     training_dataset: List[Dataset] = []
     validation_dataset: List[Dataset] = []
     validate_dataset_split_percent: float = Field(default=0.0)
     stage: str = ""
-    num_gpus: int = 1
 
 class TrainServer(ServerBase):
 
@@ -146,31 +161,24 @@ class TrainServer(ServerBase):
         save_root = os.path.join(lazyllm.config['train_target_root'], token, job_id)
 
         # Add launcher into hyperparameters:
-        hypram = job.training_args
-        hypram['ngpus'] = job.num_gpus
+        hypram = job.training_args.model_dump()
 
         # Uniform Training DataSet:
         assert len(job.training_dataset) == 1, "just support one train dataset"
         data_path = job.training_dataset[0].dataset_download_uri
-        data_path = '/home/mnt/dengyuang/workspace/LazyLLM/train_data_for_code_alpace_20k.json'
         if is_url(data_path):
             parsed_url = urlparse(data_path)
-            from urllib.parse import parse_qs
             query_params = parse_qs(parsed_url.query)
             if 'filename' in query_params:
-                filename_param = query_params['filename'][0]
-                filename = os.path.basename(filename_param)
-            
-            if not filename:
-                filename = 'downloaded_data.json'
-            local_path = os.path.join(lazyllm.config['data_path'], filename)
-            
-            resp = requests.get(data_path)
-            resp.raise_for_status()
-            with open(local_path, 'wb') as f:
-                shutil.copyfileobj(resp.raw, f)
-            data_path = local_path
-        data_path = uniform_sft_dataset(data_path, target='alpaca')
+                data_path = query_params['filename'][0]
+
+        if os.path.exists(data_path):
+            target_path = os.path.join(save_root, os.path.basename(data_path))
+            os.makedirs(save_root, exist_ok=True)
+            if os.path.abspath(data_path) != os.path.abspath(target_path):
+                shutil.copy(data_path, target_path)
+            data_path = target_path
+        data_path = uniform_sft_dataset(data_path, target='alpaca', save_path=save_root)
 
         # Set params for TrainableModule:
         m = lazyllm.TrainableModule(job.model, save_root)\
@@ -216,7 +224,7 @@ class TrainServer(ServerBase):
 
         return {'finetune_task_id': job_id, 'status': status}
 
-    @app.delete('/v1/fine_tuning/jobs/{job_id}')
+    @app.delete('/v1/finetuneTasks/{job_id}')
     async def cancel_job(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):
         await self.authorize_current_user(token)
         if not self._in_active_jobs(token, job_id):
@@ -242,7 +250,7 @@ class TrainServer(ServerBase):
 
         return {'status': status}
 
-    @app.get('/v1/fine_tuning/jobs')
+    @app.get('/v1/finetuneTasks/jobs')
     async def list_jobs(self, token: str = Header(DEFAULT_TOKEN)):
         # await self.authorize_current_user(token)
         if not self._in_user_job_info(token):
@@ -315,4 +323,10 @@ class TrainServer(ServerBase):
         
     @app.get('/v1/models:all')
     def get_support_model(self, token: str = Header(DEFAULT_TOKEN)):
-        return []
+        model_path = lazyllm.config['model_path']
+        # 列出model_path下的所有文件夹名称，作为list返回
+        import os
+        if os.path.exists(model_path) and os.path.isdir(model_path):
+            return [name for name in os.listdir(model_path) if os.path.isdir(os.path.join(model_path, name))]
+        else:
+            return []
