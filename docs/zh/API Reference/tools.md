@@ -22,11 +22,7 @@
     members:
     exclude-members:
 
-::: lazyllm.tools.rag.readers.readerBase.LazyLLMReaderBase
-    members:
-	exclude-members:
-
-::: lazyllm.tools.rag.component.bm25
+::: lazyllm.tools.rag.readers.PandasCSVReader
     members:
     exclude-members:
 
@@ -63,6 +59,10 @@
 ::: lazyllm.tools.Reranker
     members:
     exclude-members:
+
+::: lazyllm.tools.rag.readers.readerBase.LazyLLMReaderBase
+    members:
+	exclude-members:
 
 ::: lazyllm.tools.rag.component.bm25.BM25
     members:
@@ -186,7 +186,6 @@
 
 ::: lazyllm.tools.Reranker
     members: register_reranker
-    members: register_reranker
     exclude-members: forward
 
 ::: lazyllm.tools.Retriever
@@ -228,6 +227,18 @@
       - get_file_status
       - update_kb_group
       - release
+	exclude-members:
+
+::: lazyllm.tools.rag.IndexBase.update
+    members:
+	exclude-members: 
+
+::: lazyllm.tools.rag.IndexBase.remove
+    members:
+	exclude-members: 
+
+::: lazyllm.tools.rag.IndexBase.query
+    members:
 	exclude-members:
 
 ::: lazyllm.tools.SentenceSplitter

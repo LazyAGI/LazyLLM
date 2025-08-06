@@ -229,6 +229,18 @@
       - release
 	exclude-members:
 
+::: lazyllm.tools.rag.IndexBase.update
+    members:
+	exclude-members: 
+
+::: lazyllm.tools.rag.IndexBase.remove
+    members:
+	exclude-members: 
+
+::: lazyllm.tools.rag.IndexBase.query
+    members:
+	exclude-members:
+
 ::: lazyllm.tools.SentenceSplitter
     members:
     exclude-members:

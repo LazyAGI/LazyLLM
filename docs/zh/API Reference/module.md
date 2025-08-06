@@ -55,7 +55,15 @@
     members:
     exclude-members:
 
+::: lazyllm.llms.onlinemodule.supplier.doubao.DoubaoModule
+    members:
+    exclude-members:
+
 ::: lazyllm.module.OnlineEmbeddingModule
+    members:
+    exclude-members:
+
+::: lazyllm.llms.onlinemodule.supplier.openai.OpenAIEmbedding
     members:
     exclude-members:
 

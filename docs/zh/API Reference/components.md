@@ -66,7 +66,7 @@
 ::: lazyllm.components.deploy.OCRDeploy
     options:
       heading_level: 3
-      
+
 ---
 
 ## Launcher
@@ -89,11 +89,30 @@
     options:
       heading_level: 3
 
+::: lazyllm.launcher.Job
+    options:
+      heading_level: 3
 ---
 
 ## Prompter
 
 ::: lazyllm.components.prompter.LazyLLMPrompterBase
+  options:
+    heading_level: 3
+    inherited_members:
+      - generate_prompt
+      - get_response
+    members: false
+
+::: lazyllm.components.prompter.EmptyPrompter
+    options:
+      heading_level: 3
+      members: true
+
+::: lazyllm.components.Prompter
+    options:
+      heading_level: 3
+      members: [from_dict, from_template, from_file, empty, generate_prompt, get_response]
   options:
     heading_level: 3
     inherited_members:
@@ -148,6 +167,34 @@
 ## Formatter
 
 ::: lazyllm.components.formatter.LazyLLMFormatterBase
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.formatterbase.JsonLikeFormatter
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.formatterbase.PythonFormatter
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.FileFormatter
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.YamlFormatter
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.encode_query_with_filepaths
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.decode_query_with_filepaths
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.lazyllm_merge_query
     options:
       heading_level: 3
 
