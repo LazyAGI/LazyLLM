@@ -361,6 +361,19 @@ lazyllm.tools.rag.transform.NodeTransform
 ::: lazyllm.tools.rag.global_metadata.GlobalMetadataDesc
     members: 
     exclude-members: 
+
+::: lazyllm.tools.rag.IndexBase.update
+    members:
+	exclude-members: 
+
+::: lazyllm.tools.rag.IndexBase.remove
+    members:
+	exclude-members: 
+
+::: lazyllm.tools.rag.IndexBase.query
+    members:
+	exclude-members:
+
 ::: lazyllm.tools.rag.index_base.IndexBase
     members: 
 

@@ -2568,3 +2568,97 @@ add_example('RemoteLauncher', '''\
 >>> import lazyllm
 >>> launcher = lazyllm.launchers.remote(ngpus=1)
 ''')
+
+add_chinese_doc('Job', '''\
+通用任务调度执行类。
+该类用于封装一个通过启动器（launcher）调度执行的任务，支持命令包装、同步控制、返回值提取、命令固定等功能。
+Args:
+    cmd (LazyLLMCMD): 要执行的命令对象。
+    launcher (Any): 启动器实例，用于实际任务调度执行。
+    sync (bool): 是否为同步执行，默认为 True。
+''')
+
+add_english_doc('Job', '''\
+Generic task scheduling executor.
+This class wraps a task that is launched via a launcher, with features like command fixing, output handling, sync control, and return value capturing.
+Args:
+    cmd (LazyLLMCMD): The command object to be executed.
+    launcher (Any): Launcher instance responsible for task dispatching.
+    sync (bool): Whether the task should run synchronously. Defaults to True.
+''')
+
+add_chinese_doc('Job.get_executable_cmd', '''\
+生成最终可执行命令。
+如果已缓存固定命令（fixed），则直接返回。否则根据原始命令进行包裹（wrap）并缓存为 `_fixed_cmd`。
+Args:
+    fixed (bool): 是否使用已固定的命令对象（若已存在）。
+Returns:
+    LazyLLMCMD: 可直接执行的命令对象。
+''')
+
+add_english_doc('Job.get_executable_cmd', '''\
+Generate the final executable command.
+If a fixed command already exists, return it. Otherwise, wrap the original command and cache it as `_fixed_cmd`.
+Args:
+    fixed (bool): Whether to use the cached fixed command.
+Returns:
+    LazyLLMCMD: The executable command object.
+''')
+
+add_chinese_doc('Job.start', '''\
+对外接口：启动作业，并支持失败时的自动重试。
+若作业执行失败，会根据 `restart` 参数控制重试次数。
+Args:
+    restart (int): 重试次数。默认为 3。
+    fixed (bool): 是否使用固定后的命令。用于避免多次构建。
+''')
+
+add_english_doc('Job.start', '''\
+Public interface to start the job with optional retry on failure.
+If the job fails, retries execution based on the `restart` parameter.
+Args:
+    restart (int): Number of times to retry upon failure. Default is 3.
+    fixed (bool): Whether to use the fixed version of the command.
+''')
+
+add_chinese_doc('Job.restart', '''\
+重新启动作业流程。
+该函数会先停止已有进程，等待 2 秒后重新启动作业。
+Args:
+    fixed (bool): 是否使用固定后的命令。
+''')
+
+add_english_doc('Job.restart', '''\
+Restart the job by first stopping it and then restarting after a short delay.
+Args:
+    fixed (bool): Whether to reuse the fixed command object.
+''')
+
+add_chinese_doc('Job.wait', '''\
+挂起当前线程，等待作业执行完成。当前实现为空方法（子类可重写）。
+''')
+
+add_english_doc('Job.wait', '''\
+Suspend the current thread until the job finishes.
+Empty implementation by default; can be overridden in subclasses.
+''')
+
+add_chinese_doc('Job.stop', '''\
+停止当前作业。
+该方法为接口定义，需子类实现，当前抛出 NotImplementedError。
+''')
+
+add_english_doc('Job.stop', '''\
+Stop the current job.
+This method is an interface placeholder and must be implemented by subclasses.
+''')
+
+add_chinese_doc('Job.status', '''\
+当前作业状态。
+该属性为接口定义，需子类实现，当前抛出 NotImplementedError。
+''')
+
+add_english_doc('Job.status', '''\
+Current job status.
+This property is abstract and must be implemented by subclasses.
+''')

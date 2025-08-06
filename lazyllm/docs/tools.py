@@ -3400,6 +3400,46 @@ add_example('WebModule', '''\
 193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
 ''')
 
+add_chinese_doc('WebModule.init_web', '''\
+初始化 Web UI 页面。
+该方法使用 Gradio 构建对话界面，并将组件绑定到事件，支持会话选择、流式输出、上下文控制、多模态输入等功能。该方法返回构建完成的 Gradio Blocks 对象。
+Args:
+    component_descs (List[Tuple]): 组件描述列表，每项为五元组 (module, group_name, name, component_type, value)，
+        例如：('MyModule', 'GroupA', 'use_cache', 'Checkbox', True)。
+Returns:
+    gr.Blocks: 构建好的 Gradio 页面对象，可用于 launch 启动 Web 服务。
+''')
+
+add_english_doc('WebModule.init_web', '''\
+Initialize the Web UI page.
+This method uses Gradio to build the interactive chat interface and binds all components to the appropriate logic. It supports session selection, streaming output, context toggling, multimodal input, and control tools. The method returns the constructed Gradio Blocks object.
+Args:
+    component_descs (List[Tuple]): A list of component descriptors. Each element is a 5-tuple 
+        (module, group_name, name, component_type, value), e.g. ('MyModule', 'GroupA', 'use_cache', 'Checkbox', True).
+Returns:
+    gr.Blocks: The constructed Gradio UI object, which can be launched via `.launch()`.
+''')
+
+add_chinese_doc('WebModule.wait', '''\
+阻塞主线程，等待 Web 页面关闭。
+该方法会阻塞当前线程直到 Web 页面（Gradio demo）被关闭，适用于部署后阻止程序提前退出的场景。
+''')
+
+add_english_doc('WebModule.wait', '''\
+Block the main thread until the web interface is closed.
+This method blocks the current thread until the Gradio demo is closed. Useful in deployment scenarios to prevent premature program exit.
+''')
+
+add_chinese_doc('WebModule.stop', '''\
+关闭 Web 页面并清理资源。
+如果 Web 页面已初始化，则关闭 Gradio demo，释放资源并重置 `demo` 与 `url` 属性。
+''')
+
+add_english_doc('WebModule.stop', '''\
+Stop the web interface and clean up resources.
+If the web demo has been initialized, this method closes the Gradio demo, frees related resources, and resets `demo` and `url` attributes.
+''')
+
 #actors/codegenerator
 add_chinese_doc('CodeGenerator', '''\
 代码生成模块。
@@ -6317,4 +6357,60 @@ Removed nodes with uids: ['1']
 >>> index.query()
 Querying nodes...
 [DocNode(uid="2", content="Document 2")]
+''')
+
+add_chinese_doc('IndexBase.update', '''\
+更新索引内容。
+
+该方法接收一组文档节点对象，并将其添加或更新到索引结构中。通常用于增量构建或刷新索引。
+
+Args:
+    nodes (List[DocNode]): 需要更新的文档节点列表。
+''')
+
+add_english_doc('IndexBase.update', '''\
+Update index contents.
+
+This method receives a list of document nodes and updates or inserts them into the index structure. Typically used for incremental indexing or refreshing data.
+
+Args:
+    nodes (List[DocNode]): A list of document nodes to update or insert.
+''')
+
+add_chinese_doc('IndexBase.remove', '''\
+从索引中移除指定文档节点。
+
+可根据唯一标识符列表删除索引中的文档节点，可选地指定组名称以限定范围。
+
+Args:
+    uids (List[str]): 需要移除的文档节点的唯一标识符列表。
+    group_name (Optional[str]): 可选的组名称，用于限定要删除的范围。
+''')
+
+add_english_doc('IndexBase.remove', '''\
+Remove specific document nodes from the index.
+
+Removes document nodes based on their unique identifiers, optionally scoped by group name.
+
+Args:
+    uids (List[str]): List of unique IDs corresponding to the document nodes to remove.
+    group_name (Optional[str]): Optional group name to scope the removal operation.
+''')
+
+add_chinese_doc('IndexBase.query', '''\
+执行索引查询。
+
+根据传入的参数执行查询操作，返回匹配的文档节点列表。具体查询逻辑由实现类定义。
+
+Returns:
+    List[DocNode]: 查询结果的文档节点列表。
+''')
+
+add_english_doc('IndexBase.query', '''\
+Execute a query over the index.
+
+Performs a query based on the given arguments and returns matching document nodes. The logic depends on the specific implementation.
+
+Returns:
+    List[DocNode]: A list of matched document nodes from the index.
 ''')
