@@ -877,18 +877,18 @@ add_english_doc('rag.store.MilvusStore.dir', '''
 Local storage directory derived from URI if running embedded. Returns None when using remote Milvus.
 
 Returns:
-    Optional[str]: Directory path with trailing slash, or None if remote.
+    Optional[str]: Directory path for local milvus.db file, or None if remote.
 ''')
 
 add_chinese_doc('rag.store.MilvusStore.dir', '''
 存储目录属性，基于 URI 推断。远程模式返回 None。
 
 Returns:
-    Optional[str]: 以斜杠结尾的本地目录路径，或 None。
+    Optional[str]: 本地 milvus.db 文件的目录路径，或 None。
 ''')
 
 add_english_doc('rag.store.MilvusStore.connect', '''
-Initialize Milvus client, prepare constant fields and ensure database selection.
+Initialize Milvus client, pass in embedding model parameters and global metadata descriptions.
 
 Args:
     embed_dims (Dict[str, int]): Embedding dimensions per embed key.
@@ -897,7 +897,7 @@ Args:
 ''')
 
 add_chinese_doc('rag.store.MilvusStore.connect', '''
-初始化 Milvus 客户端，准备字段模式并选择数据库。
+初始化 Milvus 客户端，传入向量化模型参数和全局元数据描述。
 
 Args:
     embed_dims (Dict[str, int]): 每个嵌入键对应的向量维度。
@@ -906,27 +906,21 @@ Args:
 ''')
 
 add_english_doc('rag.store.MilvusStore.upsert', '''
-Insert or update a batch of DocNode data into the Milvus collection.
+Insert or update a batch of segment data into the Milvus collection.
 
 Args:
     collection_name (str): Collection name (per embed key grouping).
-    data (List[dict]): Each dict must contain:
-        - 'uid': Unique node ID.
-        - 'embedding': Dict of {embed_key: vector}.
-        - 'global_meta': Dict of metadata values.
+    data (List[dict]): List of segment data.
 Returns:
     bool: True if successful, False otherwise.
 ''')
 
 add_chinese_doc('rag.store.MilvusStore.upsert', '''
-批量写入或更新 DocNode 数据到 Milvus 集合。
+批量写入或更新切片数据到 Milvus 集合。
 
 Args:
     collection_name (str): 集合名称，通常为 "group_embedKey" 格式。
-    data (List[dict]): 列表中每项需包含：
-        - 'uid': 唯一节点 ID。
-        - 'embedding': 嵌入键到向量的映射。
-        - 'global_meta': 元数据键值对。
+    data (List[dict]): 切片数据列表。
 Returns:
     bool: 操作成功返回 True，否则 False。
 ''')
@@ -957,8 +951,8 @@ Retrieve records matching primary-key or metadata filters.
 Args:
     collection_name (str): Collection to query.
     criteria (Optional[dict]): Dict containing 'uid' list or metadata field filters.
-Returns:
-    List[dict]: Each entry contains 'uid' and 'embedding' dict.
+Returns: 
+    List[dict]: Each entry contains 'uid' and 'embedding'.
 ''')
 
 add_chinese_doc('rag.store.MilvusStore.get', '''
