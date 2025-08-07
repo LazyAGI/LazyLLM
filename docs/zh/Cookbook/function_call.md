@@ -29,8 +29,20 @@ pip install lazyllm
 
 ```bash
 export BOCHA_API_KEY=your_bocha_api_key
-export DEEPSEEK_API_KEY=your_deepseek_api_key
+export LAZYLLM_DEEPSEEK_API_KEY=your_deepseek_api_key
 ```
+
+**Bocha API 密钥申请：**
+1. 访问 [Bocha Open 平台](https://open.bochaai.com/overview)
+2. 注册并登录您的账户
+3. 在"API KEY管理"页面创建新的 API 密钥
+4. 复制生成的 API 密钥并设置到环境变量中
+
+**DeepSeek API 密钥申请：**
+1. 访问 [DeepSeek 平台](https://platform.deepseek.com/)
+2. 注册并登录您的账户
+3. 在"API Keys"页面创建新的 API 密钥
+4. 复制生成的 API 密钥并设置到环境变量中
 
 ### 依赖包
 
@@ -246,7 +258,6 @@ LazyLLM 代理可以通过 Web 界面自动维护对话历史，或者您可以�
 """
 
 import os
-import json
 import httpx
 import lazyllm
 from lazyllm.tools import fc_register

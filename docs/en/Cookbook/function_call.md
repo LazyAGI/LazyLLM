@@ -29,8 +29,23 @@ You'll need to set up your API keys:
 
 ```bash
 export BOCHA_API_KEY=your_bocha_api_key
-export DEEPSEEK_API_KEY=your_deepseek_api_key
+export LAZYLLM_DEEPSEEK_API_KEY=your_deepseek_api_key
 ```
+#### Applying for API Keys
+
+Before using this tutorial, you need to apply for the corresponding API keys:
+
+**Bocha API Key Application:**
+1. Visit the [Bocha Open Platform](https://open.bochaai.com/overview)
+2. Register and log in to your account
+3. Create a new API key in the "API KEY Management" page
+4. Copy the generated API key and set it in your environment variables
+
+**DeepSeek API Key Application:**
+1. Visit the [DeepSeek Platform](https://platform.deepseek.com/)
+2. Register and log in to your account
+3. Create a new API key in the "API Keys" page
+4. Copy the generated API key and set it in your environment variables
 
 ### Dependencies
 
@@ -246,7 +261,6 @@ Web interface supported with Bocha Search API
 """
 
 import os
-import json
 import httpx
 import lazyllm
 from lazyllm.tools import fc_register
