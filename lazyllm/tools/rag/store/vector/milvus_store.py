@@ -259,15 +259,16 @@ class MilvusStore(LazyLLMStoreBase):
 
     @override
     def search(self, collection_name: str, query_embedding: Union[dict, List[float]], topk: int,
-               filters: Optional[Dict[str, Union[List, set]]] = None,
-               embed_key: Optional[str] = None, **kwargs) -> List[dict]:
+               filters: Optional[Dict[str, Union[List, set]]] = None, embed_key: Optional[str] = None,
+               filter_str: Optional[str] = '', **kwargs) -> List[dict]:
         self._connect()
         if not embed_key or embed_key not in self._embed_datatypes:
             raise ValueError(f'[Milvus Store - search] Not supported or None `embed_key`: {embed_key}')
         res = []
+        filter_expr = self._construct_filter_expr(filters) if filters else filter_str
         results = self._client.search(collection_name=collection_name, data=[query_embedding], limit=topk,
                                       anns_field=self._gen_embed_key(embed_key),
-                                      filter=self._construct_filter_expr(filters))
+                                      filter=filter_expr)
         if len(results) != 1:
             raise ValueError(f'number of results [{len(results)}] != expected [1]')
         for result in results[0]:
