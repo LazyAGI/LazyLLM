@@ -3,14 +3,13 @@ from .doc_node import DocNode
 from .index_base import IndexBase
 from lazyllm import LOG
 from lazyllm.common import override
-from .store import StoreBase
 from .utils import parallel_do_embedding, generic_process_filters, is_sparse
 from .similarity import registered_similarities
 
 # ---------------------------------------------------------------------------- #
 
 class DefaultIndex(IndexBase):
-    def __init__(self, embed: Dict[str, Callable], store: StoreBase, **kwargs):
+    def __init__(self, embed: Dict[str, Callable], store, **kwargs):
         self.embed = embed
         self.store = store
 
@@ -41,7 +40,7 @@ class DefaultIndex(IndexBase):
             )
         similarity_func, mode, descend = registered_similarities[similarity_name]
 
-        nodes = self.store.get_nodes(group_name)
+        nodes = self.store.get_nodes(group=group_name)
         if filters:
             nodes = generic_process_filters(nodes, filters)
 
