@@ -9,12 +9,13 @@ from ..doc_node import DocNode
 from lazyllm import LOG
 import requests
 
-class MagicPDFReader:
+class MineruPDFReader:
 
-    def __init__(self, magic_url, callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
-                 upload_mode: bool = False):
-        self._magic_url = magic_url
+    def __init__(self, mineru_url, backend="pipeline", callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
+                 upload_mode: bool = False, post_func: Optional[Callable] = None):
+        self._mineru_url = mineru_url
         self._upload_mode = upload_mode
+        self._backend = backend
         if callback is not None:
             self._callback = callback
         else:
@@ -22,12 +23,13 @@ class MagicPDFReader:
                 text_chunks = [el["text"] for el in elements if "text" in el]
                 return [DocNode(text="\n".join(text_chunks), metadata={"file_name": file.name})]
             self._callback = default_callback
+        self._post_func = post_func
 
     def __call__(self, file: Path, **kwargs) -> List[DocNode]:
         try:
             return self._load_data(file, **kwargs)
         except Exception as e:
-            LOG.error(f"[MagicPDFReader] Error loading data from {file}: {e}")
+            LOG.error(f"[MineruPDFReader] Error loading data from {file}: {e}")
             return []
 
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None, **kwargs) -> List[DocNode]:
@@ -40,34 +42,54 @@ class MagicPDFReader:
         docs: List[DocNode] = self._callback(elements, file, extra_info)
         return docs
 
-    def _parse_pdf_elements(self, pdf_path: Path) -> List[dict]:
-        payload = {"files": [str(pdf_path)], "reserve_image": True}
+    def _parse_pdf_elements(self, pdf_path: Path, backend: str = "pipeline") -> List[dict]:
+        backend = backend or self._backend
+        payload = {"files": [str(pdf_path)], "return_content_list": True, "backend": backend}
+        LOG.info(f"[MineruPDFReader] payload: {payload}")
         try:
-            response = requests.post(self._magic_url, json=payload)
+            response = requests.post(self._mineru_url, data=payload)
             response.raise_for_status()
             res = response.json()
-            if not isinstance(res, list) or not res:
-                LOG.info(f"[MagicPDFReader] No elements found in PDF: {pdf_path}")
+            if not isinstance(res, dict) or not res.get('result'):
+                LOG.error(f"[MineruPDFReader] Invalid response: {res}")
+                return []
+            
+            res = res['result'][0].get('content_list', [])
+            if not res:
+                LOG.warning(f"[MineruPDFReader] No elements found in PDF: {pdf_path}")
                 return []
         except requests.exceptions.RequestException as e:
-            LOG.error(f"[MagicPDFReader] POST failed: {e}")
+            LOG.error(f"[MineruPDFReader] POST failed: {e}")
             return []
-        return self._extract_content_blocks(res[0])
+        res = self._extract_content_blocks(res)
+        if self._post_func:
+            res = self._post_func(res, pdf_path)
+        return res
 
-    def _upload_parse_pdf_elements(self, pdf_path: Path) -> List[dict]:
+    def _upload_parse_pdf_elements(self, pdf_path: Path, backend: str = "pipeline") -> List[dict]:
+        backend = backend or self._backend
         try:
             with open(pdf_path, "rb") as f:
-                files = {'file': (os.path.basename(pdf_path), f)}
-                response = requests.post(self._magic_url, files=files)
+                files = {'upload_files': (os.path.basename(pdf_path), f)}
+                payload = {"return_content_list": True, "backend": backend}
+                response = requests.post(self._mineru_url, data=payload, files=files)
                 response.raise_for_status()
                 res = response.json()
-                if not isinstance(res, list) or not res:
-                    LOG.info(f"[MagicPDFReader] No elements found in PDF: {pdf_path}")
+                if not isinstance(res, dict) or not res.get('result'):
+                    LOG.error(f"[MineruPDFReader] Invalid response: {res}")
+                    return []
+                
+                res = res['result'][0].get('content_list', [])
+                if not res:
+                    LOG.warning(f"[MineruPDFReader] No elements found in PDF: {pdf_path}")
                     return []
         except requests.exceptions.RequestException as e:
-            LOG.error(f"[MagicPDFReader] POST failed: {e}")
+            LOG.error(f"[MineruPDFReader] POST failed: {e}")
             return []
-        return self._extract_content_blocks(res[0])
+        res = self._extract_content_blocks(res)
+        if self._post_func:
+            res = self._post_func(res, pdf_path)
+        return res
 
     def _extract_content_blocks(self, content_list) -> List[dict]:  # noqa: C901
         blocks = []
@@ -101,8 +123,8 @@ class MagicPDFReader:
                 block["type"] = content["type"]
                 block["page"] = content["page_idx"]
                 block["image_path"] = os.path.basename(content["img_path"])
-                block['img_caption'] = self._clean_content(content['img_caption'])
-                block['img_footnote'] = self._clean_content(content['img_footnote'])
+                block['img_caption'] = self._clean_content(content['image_caption'])
+                block['img_footnote'] = self._clean_content(content['image_footnote'])
                 if cur_title:
                     block["title"] = cur_title
                 img_title = block["img_caption"][0] if len(block["img_caption"]) > 0 else ""
@@ -120,6 +142,11 @@ class MagicPDFReader:
                     block["title"] = cur_title
                 block['table_caption'] = self._clean_content(content['table_caption'])
                 block['table_footnote'] = self._clean_content(content['table_footnote'])
+                blocks.append(block)
+            elif content["type"] == "equation":
+                block["type"] = "text"
+                block["page"] = content["page_idx"]
+                block["text"] = content["text"]
                 blocks.append(block)
         return blocks
 
@@ -195,4 +222,5 @@ class MagicPDFReader:
 
         except Exception as e:
             LOG.error(f"Error parsing table: {e}")
-            return ''
+            return str(html_table)
+

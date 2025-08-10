@@ -607,22 +607,92 @@ Args:
     return_trace (bool): Whether to record processing trace. Default is True.
 ''')
 
-add_chinese_doc('rag.readers.MagicPDFReader', '''\
-用于通过 MagicPDF 服务解析 PDF 文件内容的模块。支持上传文件或通过 URL 方式调用解析接口，解析结果经过回调函数处理成文档节点列表。
+add_chinese_doc('rag.readers.MineruPDFReader', '''\
+用于通过 MinerU 服务解析 PDF 文件内容的模块。支持上传文件或通过 URL 方式调用解析接口，解析结果经过回调函数处理成文档节点列表。
 
 Args:
-    magic_url (str): MagicPDF 服务的接口 URL。
+    mineru_url (str): MagicPDF 服务的接口 URL。
     callback (Optional[Callable[[List[dict], Path, dict], List[DocNode]]]): 解析结果回调函数，接收解析元素列表、文件路径及额外信息，返回文档节点列表。默认将所有文本合并为一个节点。
     upload_mode (bool): 是否采用文件上传模式调用接口，默认为 False，即通过 JSON 请求文件路径。
 ''')
 
-add_english_doc('rag.readers.MagicPDFReader', '''\
+add_english_doc('rag.readers.MineruPDFReader', '''\
 Module to parse PDF content via the MagicPDF service. Supports file upload or URL-based parsing, with a callback to process the parsed elements into document nodes.
 
 Args:
-    magic_url (str): The MagicPDF service API URL.
+    mineru_url (str): The MagicPDF service API URL.
     callback (Optional[Callable[[List[dict], Path, dict], List[DocNode]]]): A callback function that takes parsed element list, file path, and extra info, returns a list of DocNode. Defaults to merging all text into a single node.
     upload_mode (bool): Whether to use file upload mode for the API call. Default is False, meaning JSON request with file path.
+''')
+
+add_english_doc('rag.tools.MineruServerModule', '''\
+A PDF document parsing service based on Mineru. 
+
+If you need to parse Office documents (Word, PowerPoint), please install the document conversion tool LibreOffice.
+If you provide a cache directory and a directory for saving images, the parsing results and extracted images will be automatically cached during parsing.
+
+Args:
+    cache_dir (str, optional): Directory path for caching parsed results. 
+                                If None, caching will be disabled
+    image_save_dir (str, optional): Directory path for saving extracted images.
+                                    If None, images will not be saved
+    default_backend (str, optional): Default parsing backend. 
+                                    Supports 'pipeline' or 'vlm-sglang-engine'
+    default_lang_list (List[str], optional): Default language list for parsing.
+                                            Supports 'ch_server' or 'ch'
+    default_parse_method (str, optional): Default parsing method.
+                                            Defaults to 'auto'
+    default_formula_enable (bool, optional): Whether to enable formula parsing by default.
+                                            Defaults to True
+    default_table_enable (bool, optional): Whether to enable table parsing by default.
+                                            Defaults to True
+    default_return_md (bool, optional): Whether to return markdown content by default.
+                                        Defaults to False
+    default_return_content_list (bool, optional): Whether to return content list by default.
+                                                    Defaults to True
+    mem_fraction_static (float, optional): Memory fraction for static allocation.
+                                            Defaults to 0.5
+
+Example:
+    # Create a MineruServer instance
+    server = MineruServer(
+        cache_dir="/path/to/cache",
+        image_save_dir="/path/to/images",
+        default_backend="pipeline"
+    )
+    
+    # Start the server
+    server.start()
+''')
+
+add_chinese_doc('rag.tools.MineruServerModule', '''\
+基于 Mineru 的PDF文档解析服务。
+
+若需要解析Office文档（Word、PowerPoint），请安装文档转换工具libreoffice。
+若提供缓存目录、保存图像的目录，则会在解析时自动缓存解析结果和提取的图像。
+
+参数:
+    cache_dir (str, 可选): 缓存解析结果的目录路径。如果为 None，则禁用缓存
+    image_save_dir (str, 可选): 保存提取图像的目录路径。如果为 None，则不会保存图像
+    default_backend (str, 可选): 默认解析后端。支持 'pipeline' 或 'vlm-sglang-engine'
+    default_lang_list (List[str], 可选): 解析的默认语言列表。支持 'ch_server' 或 'ch'
+    default_parse_method (str, 可选): 默认解析方法。默认为 'auto'
+    default_formula_enable (bool, 可选): 是否默认启用公式解析。默认为 True
+    default_table_enable (bool, 可选): 是否默认启用表格解析。默认为 True
+    default_return_md (bool, 可选): 是否默认返回 Markdown 内容。默认为 False
+    default_return_content_list (bool, 可选): 是否默认返回内容列表。默认为 True
+    mem_fraction_static (float, 可选): 静态分配的内存比例。默认为 0.5
+
+示例:
+    # 创建 MineruServer 实例
+    server = MineruServer(
+        cache_dir="/path/to/cache",
+        image_save_dir="/path/to/images",
+        default_backend="pipeline"
+    )
+    
+    # 启动服务器
+    server.start()
 ''')
 
 add_chinese_doc('rag.readers.MarkdownReader', '''\

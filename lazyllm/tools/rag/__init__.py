@@ -12,6 +12,7 @@ from .global_metadata import GlobalMetadataDesc as DocField
 from .data_type import DataType
 from .index_base import IndexBase
 from .store import StoreBase
+from .tools.mineru_server_module import MineruServerModule
 
 __all__ = [
     "Document",
@@ -46,4 +47,5 @@ __all__ = [
     'IndexBase',
     'StoreBase',
     "FileReader",
+    "MineruServerModule"
 ]
