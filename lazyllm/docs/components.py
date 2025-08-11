@@ -795,7 +795,7 @@ add_chinese_doc('deploy.embed.LazyHuggingFaceRerank.rebuild', '''\
 Args:
     base_rerank (str): 模型名称或路径。
     init (bool): 是否在重建时立即加载模型。
-                
+
 **Returns:**\n
 - LazyHuggingFaceRerank: 重新构建的类实例。
 ''')

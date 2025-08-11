@@ -88,8 +88,8 @@
 ## Prompter
 
 ::: lazyllm.components.prompter.LazyLLMPrompterBase
-  options:
-    heading_level: 3
+    options:
+      heading_level: 3
     inherited_members:
       - generate_prompt
       - get_response
