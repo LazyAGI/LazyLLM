@@ -20,6 +20,12 @@
     options:
       heading_level: 3
 
+## Identity
+
+::: lazyllm.common.Identity
+    options:
+      heading_level: 3
+
 ---
 
 ## Compilation
@@ -39,5 +45,26 @@
     exclude-members:
 
 ::: lazyllm.common.queue.RedisQueue
+    members: 
+    exclude-members:
+
+::: lazyllm.common.CaseInsensitiveDict
+    members: 
+    exclude-members:
+
+::: lazyllm.common.ProcessPoolExecutor
+    members: submit
+    exclude-members:
+
+
+## Multiprocessing
+
+::: lazyllm.common.ForkProcess
+    members: work, start
+    exclude-members:
+
+## Options
+
+::: lazyllm.common.Option
     members: 
     exclude-members:
