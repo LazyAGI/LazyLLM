@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
-训练服务部署脚本
-启动LazyLLM训练服务API服务器
+训练和推理服务部署脚本
+启动LazyLLM训练和推理服务API服务器
 """
 
 import os
@@ -10,6 +10,7 @@ import uvicorn
 import argparse
 from datetime import datetime
 from lazyllm.tools.train_service.serve import TrainServer
+from lazyllm.tools.infer_service.serve import InferServer
 from lazyllm import FastapiApp
 from fastapi import FastAPI
 
@@ -21,8 +22,8 @@ def create_app():
     """创建FastAPI应用实例"""
     # 创建FastAPI应用
     fastapi_app = FastAPI(
-        title="LazyLLM训练服务API",
-        description="用于部署和管理AI模型训练服务的RESTful API",
+        title="LazyLLM训练和推理服务API",
+        description="用于部署和管理AI模型训练和推理服务的RESTful API",
         version="1.0.0",
         docs_url="/docs",
         redoc_url="/redoc"
@@ -30,6 +31,9 @@ def create_app():
 
     # 创建训练服务实例
     train_server = TrainServer()
+    
+    # 创建推理服务实例
+    infer_server = InferServer()
 
     # 更新FastapiApp装饰器信息
     FastapiApp.update()
@@ -56,11 +60,33 @@ def create_app():
                 **{k: v for k, v in kw.items() if k not in ['summary', 'description']}
             )
 
+    # 从InferServer类中获取路由信息并注册
+    if hasattr(InferServer, '__relay_services__'):
+        for (method, path), (func_name, kw) in InferServer.__relay_services__.items():
+            # 获取方法对象
+            func = getattr(infer_server, func_name)
+            
+            # 设置标签和描述
+            tags = ["推理服务"]
+            summary = kw.get('summary', func_name)
+            description = kw.get('description', f"{method.upper()} {path}")
+            
+            # 注册路由
+            fastapi_app.add_api_route(
+                path,
+                func,
+                methods=[method.upper()],
+                tags=tags,
+                summary=summary,
+                description=description,
+                **{k: v for k, v in kw.items() if k not in ['summary', 'description']}
+            )
+
     return fastapi_app
 
 
 def main():
-    parser = argparse.ArgumentParser(description="部署LazyLLM训练服务")
+    parser = argparse.ArgumentParser(description="部署LazyLLM训练和推理服务")
     parser.add_argument("--host", default="0.0.0.0", help="服务器主机地址")
     parser.add_argument("--port", type=int, default=31341, help="服务器端口")
     parser.add_argument("--reload", action="store_true", help="开发模式，自动重载")
@@ -71,15 +97,19 @@ def main():
 
     # 设置环境变量
     os.environ.setdefault("LAZYLLM_TRAIN_LOG_ROOT", "./logs/train")
+    os.environ.setdefault("LAZYLLM_INFER_LOG_ROOT", "./logs/infer")
 
     # 创建日志目录
-    log_dir = os.environ["LAZYLLM_TRAIN_LOG_ROOT"]
-    os.makedirs(log_dir, exist_ok=True)
+    train_log_dir = os.environ["LAZYLLM_TRAIN_LOG_ROOT"]
+    infer_log_dir = os.environ["LAZYLLM_INFER_LOG_ROOT"]
+    os.makedirs(train_log_dir, exist_ok=True)
+    os.makedirs(infer_log_dir, exist_ok=True)
 
-    print(f"[{datetime.now()}] 启动LazyLLM训练服务...")
+    print(f"[{datetime.now()}] 启动LazyLLM训练和推理服务...")
     print(f"[{datetime.now()}] 服务地址: http://{args.host}:{args.port}")
     print(f"[{datetime.now()}] API文档: http://{args.host}:{args.port}/docs")
-    print(f"[{datetime.now()}] 日志目录: {log_dir}")
+    print(f"[{datetime.now()}] 训练日志目录: {train_log_dir}")
+    print(f"[{datetime.now()}] 推理日志目录: {infer_log_dir}")
 
     # 创建应用
     app = create_app()
