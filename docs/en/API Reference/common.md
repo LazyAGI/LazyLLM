@@ -41,3 +41,10 @@
 ::: lazyllm.common.RedisQueue
     members: 
     exclude-members:
+
+## DynamicDescriptor
+
+::: lazyllm.common.DynamicDescriptor
+    members:
+    - Impl
+    exclude-members:
