@@ -1,4 +1,5 @@
 import os
+import traceback
 
 from typing import Dict, List, Optional, Set, Union, Any
 from collections import defaultdict
@@ -81,6 +82,7 @@ class ChromadbStore(LazyLLMStoreBase):
             return True
         except Exception as e:
             LOG.error(f"[Chromadb Store - upsert] Failed to create collection {collection_name}: {e}")
+            LOG.error(traceback.format_exc())
             return False
 
     def _serialize_data(self, data: List[dict], embed_key: str) -> List[dict]:
@@ -110,54 +112,63 @@ class ChromadbStore(LazyLLMStoreBase):
                 return True
         except Exception as e:
             LOG.error(f"[Chromadb Store - delete] Failed to delete collection {collection_name}: {e}")
+            LOG.error(traceback.format_exc())
             return False
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
-        filters = self._construct_criteria(criteria) if criteria else {}
-        all_data = []
-        for key in self._embed_datatypes:
-            try:
-                coll = self._client.get_collection(
-                    name=self._gen_collection_name(collection_name, key)
-                )
-                data = coll.get(include=['metadatas', 'embeddings'], **filters)
-                all_data.append((key, data))
-            except Exception:
-                continue
+        try:
+            filters = self._construct_criteria(criteria) if criteria else {}
+            all_data = []
+            for key in self._embed_datatypes:
+                try:
+                    coll = self._client.get_collection(
+                        name=self._gen_collection_name(collection_name, key)
+                    )
+                    data = coll.get(include=['metadatas', 'embeddings'], **filters)
+                    all_data.append((key, data))
+                except Exception:
+                    continue
 
-        res: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
-            'uid': None, 'global_meta': {}, 'embedding': {}})
-        for embed_key, data in all_data:
-            ids = data['ids']
-            metas = data['metadatas']
-            embs = data['embeddings']
+            res: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
+                'uid': None, 'global_meta': {}, 'embedding': {}})
+            for embed_key, data in all_data:
+                ids = data['ids']
+                metas = data['metadatas']
+                embs = data['embeddings']
 
-            for uid, meta, emb in zip(ids, metas, embs):
-                entry = res[uid]
-                entry['uid'] = uid
-                if not entry['global_meta']:
-                    entry['global_meta'] = {
-                        k[len(GLOBAL_META_KEY_PREFIX):]: v
-                        for k, v in meta.items()
-                    }
-                entry['embedding'][embed_key] = list(emb)
-        return list(res.values())
+                for uid, meta, emb in zip(ids, metas, embs):
+                    entry = res[uid]
+                    entry['uid'] = uid
+                    if not entry['global_meta']:
+                        entry['global_meta'] = {
+                            k[len(GLOBAL_META_KEY_PREFIX):]: v
+                            for k, v in meta.items()
+                        }
+                    entry['embedding'][embed_key] = list(emb)
+            return list(res.values())
+        except Exception as e:
+            LOG.error(f"[ChromadbStore - get] task fail: {e}")
+            LOG.error(traceback.format_exc())
 
     @override
     def search(self, collection_name: str, query_embedding: List[float], embed_key: str, topk: Optional[int] = 10,
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                **kwargs) -> List[dict]:
-        collection = self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
+        try:
+            collection = self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
 
-        filters = self._construct_filter_expr(filters) if filters else {}
-        query_results = collection.query(query_embeddings=[query_embedding], n_results=topk, **filters)
-        res = []
-        for i, r_list in enumerate(query_results['ids']):
-            for j, uid in enumerate(r_list):
-                dis = query_results['distances'][i][j]
-                res.append({'uid': uid, 'score': 1 - dis})
-        return res
+            filters = self._construct_filter_expr(filters) if filters else {}
+            query_results = collection.query(query_embeddings=[query_embedding], n_results=topk, **filters)
+            res = []
+            for i, r_list in enumerate(query_results['ids']):
+                for j, uid in enumerate(r_list):
+                    dis = query_results['distances'][i][j]
+                    res.append({'uid': uid, 'score': 1 - dis})
+            return res
+        except Exception as e:
+            LOG.error(f"[ChromadbStore - search] task fail: {e}")
+            LOG.error(traceback.format_exc())
 
     def _construct_criteria(self, criteria: dict) -> dict:
         res = {}

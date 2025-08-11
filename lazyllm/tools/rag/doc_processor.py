@@ -6,6 +6,7 @@ from sqlalchemy.engine import Engine
 from lazyllm import LOG, ModuleBase, ServerModule, UrlModule, FastapiApp as app, ThreadPoolExecutor, config
 
 from .store import LAZY_ROOT_NAME, LAZY_IMAGE_GROUP
+from .store.store_base import DEFAULT_KB_ID
 from .store.document_store import _DocumentStore
 from .store.utils import fibonacci_backoff, create_file_path
 from .transform import (AdaptiveTransform, make_transform,)
@@ -45,6 +46,7 @@ class _Processor:
             for metadata, doc_id, path in zip(metadatas, ids, input_files):
                 metadata.setdefault(RAG_DOC_ID, doc_id)
                 metadata.setdefault(RAG_DOC_PATH, path)
+                metadata.setdefault(RAG_KB_ID, DEFAULT_KB_ID)
             root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
             self._store.update_nodes(self._set_nodes_number(root_nodes))
             self._create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)

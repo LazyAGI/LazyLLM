@@ -8,7 +8,8 @@ from pydantic import BaseModel, Field
 from urllib.parse import urljoin
 from typing import Optional, List, Dict, Any, Union, Set
 
-from ..store_base import LazyLLMStoreBase, StoreCapability, LAZY_ROOT_NAME, IMAGE_PATTERN, INSERT_BATCH_SIZE, SegmentType
+from ..store_base import (LazyLLMStoreBase, StoreCapability, LAZY_ROOT_NAME, IMAGE_PATTERN, INSERT_BATCH_SIZE,
+                          DEFAULT_KB_ID, SegmentType)
 from ..utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path
 
 from ...data_type import DataType
@@ -268,7 +269,7 @@ class SenseCoreStore(LazyLLMStoreBase):
         raise Exception(f"Insert task {job_id} failed after seconds")
 
     def _get_group_name(self, collection_name: str) -> str:
-        return collection_name.split('_')[-1]
+        return collection_name.split('_')[-1] if "lazyllm_root" not in collection_name else "lazyllm_root"
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
@@ -306,48 +307,52 @@ class SenseCoreStore(LazyLLMStoreBase):
 
     @override
     def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:  # noqa: C901
-        uids = criteria.get('uid')
-        doc_ids = criteria.get(RAG_DOC_ID)
-        kb_id = criteria.get(RAG_KB_ID)
-        if not (uids or collection_name):
-            raise ValueError("group or uids must be provided")
-        if doc_ids and len(doc_ids) > 1:
-            raise ValueError("[Sensecore Store - get]: doc_ids must be a single value")
-        doc_id = doc_ids[0] if doc_ids else None
-        if doc_id and not uids:
-            url = urljoin(self._uri, f"v1/datasets/{kb_id}/documents/{doc_id}/segments:search")
-        else:
-            url = urljoin(self._uri, 'v1/segments:scroll')
-        headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
-        payload = {'dataset_id': kb_id}
-        if collection_name:
-            payload['group'] = self._get_group_name(collection_name)
-        if doc_id:
-            payload['document_id'] = doc_id
-        if uids:
-            payload['segment_ids'] = uids
-        else:
-            payload["page_size"] = 100
-        segments = []
-        while True:
-            response = requests.post(url, headers=headers, json=payload)
-            if response.status_code != 200:
-                LOG.warning(f"SenseCore Store: get node task failed: {response.text}")
-                break
-            data = response.json()
-            batch = data.get('segments', [])
-            if not batch:
-                break
-            segments.extend(batch)
-            next_page_token = data.get('next_page_token')
-            if not next_page_token:
-                break
-            payload['page_token'] = next_page_token
-        if doc_ids:
-            segments = [segment for segment in segments if segment['document_id'] in doc_ids]
-        if kwargs.get('display'):
-            segments = self._apply_display(segments)
-        return [self._deserialize_data(s) for s in segments]
+        try:
+            uids = criteria.get('uid')
+            doc_ids = criteria.get(RAG_DOC_ID)
+            kb_id = criteria.get(RAG_KB_ID, DEFAULT_KB_ID)
+            if not (uids or collection_name):
+                raise ValueError("group or uids must be provided")
+            if doc_ids and len(doc_ids) > 1:
+                raise ValueError("[Sensecore Store - get]: doc_ids must be a single value")
+            doc_id = doc_ids[0] if doc_ids else None
+            if doc_id and not uids:
+                url = urljoin(self._uri, f"v1/datasets/{kb_id}/documents/{doc_id}/segments:search")
+            else:
+                url = urljoin(self._uri, 'v1/segments:scroll')
+            headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
+            payload = {'dataset_id': kb_id}
+            if collection_name:
+                payload['group'] = self._get_group_name(collection_name)
+            if doc_id:
+                payload['document_id'] = doc_id
+            if uids:
+                payload['segment_ids'] = uids
+            else:
+                payload["page_size"] = 100
+            segments = []
+            while True:
+                response = requests.post(url, headers=headers, json=payload)
+                if response.status_code != 200:
+                    LOG.warning(f"SenseCore Store: get task failed: url {url}, data: {payload}, e:{response.text}")
+                    break
+                data = response.json()
+                batch = data.get('segments', [])
+                if not batch:
+                    break
+                segments.extend(batch)
+                next_page_token = data.get('next_page_token')
+                if not next_page_token:
+                    break
+                payload['page_token'] = next_page_token
+            if doc_ids:
+                segments = [segment for segment in segments if segment['document_id'] in doc_ids]
+            if kwargs.get('display'):
+                segments = self._apply_display(segments)
+            return [self._deserialize_data(s) for s in segments]
+        except Exception as e:
+            LOG.error(f"[SenseCore Store - get]:task failed: {e}")
+            return []
 
     def _apply_display(self, segments: List[dict]) -> List[dict]:
         out = []
