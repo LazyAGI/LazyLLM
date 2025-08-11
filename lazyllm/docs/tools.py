@@ -7120,6 +7120,103 @@ Querying nodes...
 [DocNode(uid="2", content="Document 2")]
 ''')
 
+add_chinese_doc('rag.web.DocWebModule', """\
+文档Web界面模块，继承自ModuleBase，提供基于Web的文档管理交互界面。
+
+Args:
+    doc_server (ServerModule): 文档服务模块实例，提供后端API支持
+    title (str): 界面标题，默认为"文档管理演示终端"
+    port (int/range/list): 服务端口号或端口范围，默认为20800-20999
+    history (list): 初始聊天历史记录，默认为空列表
+    text_mode (Mode): 文本处理模式，默认为Mode.Dynamic(动态模式)
+    trace_mode (Mode): 追踪模式，默认为Mode.Refresh(刷新模式)
+
+类属性:
+    Mode: 模式枚举类，包含:
+        - Dynamic: 动态模式
+        - Refresh: 刷新模式
+        - Appendix: 附录模式
+
+注意事项:
+    - 需要配合有效的doc_server实例使用
+    - 端口冲突时会自动尝试范围内其他端口
+    - 服务停止后会释放相关资源
+""")
+
+add_english_doc('rag.web.DocWebModule', """\
+Document Web Interface Module, inherits from ModuleBase, provides web-based document management interface.
+
+Args:
+    doc_server (ServerModule): Document server module instance providing backend API support
+    title (str): Interface title, defaults to "文档管理演示终端"
+    port (int/range/list): Service port number or range, defaults to 20800-20999
+    history (list): Initial chat history, defaults to empty list
+    text_mode (Mode): Text processing mode, defaults to Mode.Dynamic
+    trace_mode (Mode): Trace mode, defaults to Mode.Refresh
+
+Class Attributes:
+    Mode: Mode enumeration class containing:
+        - Dynamic: Dynamic mode
+        - Refresh: Refresh mode
+        - Appendix: Appendix mode
+
+Notes:
+    - Requires a valid doc_server instance to work with
+    - Automatically tries other ports in range when port conflict occurs
+    - Releases resources when service is stopped
+""")
+
+add_chinese_doc('rag.web.DocWebModule.Mode', """\
+文档Web模块运行模式枚举类。
+
+取值:
+    Dynamic (0): 动态模式，实时更新内容
+    Refresh (1): 刷新模式，定期刷新内容
+    Appendix (2): 附录模式，将新内容作为附录添加
+
+""")
+
+add_english_doc('rag.web.DocWebModule.Mode', """\
+Operation mode enumeration class for DocWebModule.
+
+Values:
+    Dynamic (0): Dynamic mode, updates content in real-time
+    Refresh (1): Refresh mode, periodically refreshes content
+    Appendix (2): Appendix mode, adds new content as appendix
+
+""")
+
+
+add_example('rag.web.DocWebModule', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.rag.web import DocWebModule
+>>> doc_web = DocWebModule(your_doc_server, title="My Document WebUI", port=20810)
+>>> print(doc_web.url)
+http://127.0.0.1:20810
+>>>
+>>> doc_web.stop()
+''')
+add_english_doc('rag.web.DocWebModule.wait', '''\
+Blocks the current thread to keep the web interface running until manually stopped.
+
+''')
+
+add_chinese_doc('rag.web.DocWebModule.wait', '''\
+阻塞当前线程以保持Web界面运行，直到手动停止。
+
+''')
+
+add_english_doc('rag.web.DocWebModule.stop', '''\
+Stops the web interface service and releases related resources.
+
+''')
+
+add_chinese_doc('rag.web.DocWebModule.stop', '''\
+停止Web界面服务并释放相关资源。
+
+''')
+
+
 # FuncNodeTransform
 add_english_doc('rag.transform.FuncNodeTransform', '''
 A wrapper class for user-defined functions that transforms document nodes.

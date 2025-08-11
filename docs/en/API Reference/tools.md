@@ -325,6 +325,10 @@ lazyllm.tools.rag.transform.NodeTransform
     members: transform
     exclude-members:
 
+::: lazyllm.tools.rag.web.DocWebModule
+    members:
+    exclude-members:    
+    
 ::: lazyllm.tools.WebModule
     members:
     exclude-members: forward
