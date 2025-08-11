@@ -40,13 +40,13 @@
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
 
-## DynamicDescriptor
-
-::: lazyllm.common.DynamicDescriptor
-    members:
-    - Impl
+::: lazyllm.common.ReadOnlyWrapper
+    members: set, isNone
     exclude-members:
 
+::: lazyllm.common.queue.RedisQueue
+    members: 
+    exclude-members:
 
 ::: lazyllm.common.CaseInsensitiveDict
     members: 

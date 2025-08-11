@@ -428,48 +428,64 @@ add_example('FileSystemQueue.clear', """\
 True
 """)
 
-add_chinese_doc('DynamicDescriptor', '''\
-动态描述符类，实现了根据访问对象的不同动态绑定方法调用。  
-通过封装函数，支持当描述符被访问时，根据是通过实例还是类访问，调用对应的方法。
-
+add_chinese_doc('ReadOnlyWrapper', '''\ 
+一个轻量级只读包装器，用于包裹任意对象并对外提供只读访问（实际并未完全禁止修改，但复制时不会携带原始对象）。包装器可以动态替换内部对象，并提供判断对象是否为空的辅助方法。
 Args:
-    func (Callable): 作为描述符的函数。
-
+    obj (Optional[Any]): 初始被包装的对象，默认为 None。
 ''')
 
-add_english_doc('DynamicDescriptor', '''\
-A dynamic descriptor class that implements method binding dynamically based on the access object.  
-By wrapping a function, it supports calling the method on the instance or the class depending on how the descriptor is accessed.
-
+add_english_doc('ReadOnlyWrapper', '''\
+A lightweight read-only wrapper that holds an arbitrary object and exposes its attributes. It supports swapping the internal object dynamically and provides utility for checking emptiness. Note: it does not enforce deep immutability, but deepcopy drops the wrapped object.
 Args:
-    func (Callable): The function to be used as a descriptor.
-
+    obj (Optional[Any]): The initial wrapped object, defaults to None.
 ''')
 
-add_chinese_doc('DynamicDescriptor.Impl', '''\
-动态描述符的内部实现类，封装了函数及其访问上下文。  
-根据访问者是实例还是类，调用对应的方法。
+add_chinese_doc('ReadOnlyWrapper.set', '''\ 
+替换当前包装的内部对象。
 
 Args:
-    func (Callable): 被封装的函数。
-    instance (Optional[Any]): 调用该描述符的实例，若无则为 None。
-    owner (type): 描述符所属的类。
-
-**Returns:**\n
-- 调用结果，与封装函数的返回值一致。
+    obj (Any): 新的内部对象。
 ''')
 
-add_english_doc('DynamicDescriptor.Impl', '''\
-Internal implementation class of the dynamic descriptor, encapsulating the function and its context.  
-Calls the function bound to either the instance or the class depending on the accessor.
+add_english_doc('ReadOnlyWrapper.set', '''\
+Replace the currently wrapped internal object.
 
 Args:
-    func (Callable): The wrapped function.
-    instance (Optional[Any]): The instance accessing the descriptor, or None if accessed via class.
-    owner (type): The class owning the descriptor.
+    obj (Any): New object to wrap.
+''')
 
-**Returns:**\n
-- The result of the function call, consistent with the wrapped function's return value.
+add_chinese_doc('ReadOnlyWrapper.isNone', '''\ 
+检查当前包装器是否未持有任何对象。
+
+Args:
+    None.
+
+**Returns**\n
+- bool: 如果内部对象为 None 返回 True，否则 False。
+''')
+
+add_english_doc('ReadOnlyWrapper.isNone', '''\
+Check whether the wrapper currently holds no object.
+
+Args:
+    None.
+
+**Returns**\n
+- bool: True if the internal object is None, otherwise False.
+''')
+
+add_chinese_doc('queue.RedisQueue', '''\ 
+基于 Redis 实现的文件系统队列（继承自 FileSystemQueue），用于跨进程/节点的消息传递与队列管理。内部使用指定的 redis_url 初始化并管理底层存储，同时提供线程安全的初始化逻辑。
+
+Args:
+    klass (str): 队列的分类名称，用于区分不同队列实例，默认值为 '__default__'。
+''')
+
+add_english_doc('queue.RedisQueue', '''\
+Redis-backed file system queue (inherits from FileSystemQueue) for cross-process/node message passing and queue management. It initializes its underlying storage using a configured Redis URL and employs thread-safe setup logic.
+
+Args:
+    klass (str): Classification name for the queue instance to distinguish different queues. Defaults to '__default__'.
 ''')
 
 

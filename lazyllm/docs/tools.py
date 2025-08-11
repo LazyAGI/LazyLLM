@@ -1243,6 +1243,89 @@ Args:
     name (str): 要检查的组名。
 ''')
 
+add_chinese_doc('rag.default_index.DefaultIndex', r'''\ 
+默认的索引实现，负责通过 embedding 和文本相似度在底层存储中查询、更新和删除文档节点。支持多种相似度度量方式，并在必要时对查询和节点进行 embedding 计算与更新。
+
+Args:
+    embed (Dict[str, Callable]): 用于生成查询和节点 embedding 的字典，key 是 embedding 名称，value 是接收字符串返回向量的函数。
+    store (StoreBase): 底层存储，用于持久化和检索 DocNode 节点。
+    **kwargs: 预留扩展参数。
+''')
+
+add_english_doc('rag.default_index.DefaultIndex', '''\
+Default index implementation responsible for querying, updating, and removing document nodes in the underlying store using embedding or text similarity. Supports multiple similarity metrics and performs embedding computation and node updates when needed.
+
+Args:
+    embed (Dict[str, Callable]): Mapping of embedding names to functions that generate vector representations from strings.
+    store (StoreBase): Underlying storage to persist and retrieve DocNode objects.
+    **kwargs: Reserved for future extension.
+''')
+
+add_chinese_doc('rag.default_index.DefaultIndex.update', r'''\ 
+根据提供的节点列表更新索引中的内容。具体行为由子类或外部实现填充（此处为空实现，需在实际使用中覆盖/扩展）。
+
+Args:
+    nodes (List[DocNode]): 需要更新（新增或替换）的文档节点列表。
+''')
+
+add_english_doc('rag.default_index.DefaultIndex.update', '''\
+Update the index with the given list of document nodes. This is a placeholder implementation and should be provided/extended in concrete usage.
+
+Args:
+    nodes (List[DocNode]): Document nodes to add or update in the index.
+''')
+
+add_chinese_doc('rag.default_index.DefaultIndex.remove', r'''\ 
+从索引中删除指定 UID 的节点，可选指定分组名称以限定作用域。当前为空实现，使用时需要补全逻辑。
+
+Args:
+    uids (List[str]): 要删除的节点唯一标识列表。
+    group_name (Optional[str]): 可选的分组名称，用于限定删除范围。
+''')
+
+add_english_doc('rag.default_index.DefaultIndex.remove', '''\
+Remove nodes with specified UIDs from the index. Optionally scoped to a group. This is a no-op placeholder and should be implemented in concrete usage.
+
+Args:
+    uids (List[str]): List of unique IDs of nodes to remove.
+    group_name (Optional[str]): Optional group name to scope the removal.
+''')
+
+add_chinese_doc('rag.default_index.DefaultIndex.query', r'''\ 
+执行一次查询，支持 embedding 和文本两种模式，依据相似度函数过滤并返回符合条件的 DocNode 结果。
+
+Args:
+    query (str): 原始查询文本。
+    group_name (str): 要检索的节点组名称。
+    similarity_name (str): 使用的相似度度量名称，必须在 registered_similarities 中注册。
+    similarity_cut_off (Union[float, Dict[str, float]]): 相似度阈值或每个 embedding 对应的阈值字典，用于过滤结果。
+    topk (int): 每个相似度渠道最多保留的候选数量。
+    embed_keys (Optional[List[str]]): 指定用于 embedding 的 key 列表，若为空则使用所有可用 embedding。
+    filters (Optional[Dict[str, List]]): 额外的节点过滤器，应用在计算相似度前。
+    **kwargs: 传递给相似度函数的额外参数。
+
+**Returns**\n
+    - list: List[DocNode]: 经过相似度计算与阈值过滤后去重的文档节点列表。
+''')
+
+add_english_doc('rag.default_index.DefaultIndex.query', '''\
+Perform a query against the index, supporting both embedding-based and text-based similarity modes. Filters and ranks nodes according to similarity functions and cutoffs.
+
+Args:
+    query (str): The raw query string.
+    group_name (str): The group name from which to retrieve nodes.
+    similarity_name (str): Name of the similarity metric to use; must be registered in registered_similarities.
+    similarity_cut_off (Union[float, Dict[str, float]]): Similarity threshold(s) used to filter results; can be a single float or a mapping per embedding.
+    topk (int): Maximum number of candidates to keep per similarity channel before final filtering.
+    embed_keys (Optional[List[str]]): Specific embedding keys to use; defaults to all available if not provided.
+    filters (Optional[Dict[str, List]]): Additional pre-filters applied to nodes before similarity computation.
+    **kwargs: Extra keyword arguments forwarded to the similarity function.
+
+**Returns**\n
+    - list: List[DocNode]: Deduplicated list of document nodes passing similarity and cutoff criteria.
+''')
+
+
 # ---------------------------------------------------------------------------- #
 
 # rag/rerank.py
@@ -4206,6 +4289,78 @@ add_example(
     >>> print(sql_call("去年一整年销售额最多的员工是谁?"))
 """,
 )
+
+add_english_doc('SqlCall.sql_query_promt_hook', '''\
+Hook to prepare the prompt inputs for generating a database query from user input.
+
+Args:
+    input (Union[str, List, Dict[str, str], None]): The user's natural language query.
+    history (List[Union[List[str], Dict[str, Any]]]): Conversation history.
+    tools (Union[List[Dict[str, Any]], None]): Available tool descriptions.
+    label (Union[str, None]): Optional label for the prompt.
+
+Returns:
+    Tuple: A tuple containing the formatted prompt dict (with current_date, db_type, desc, user_query), history, tools, and label.
+''')
+
+add_chinese_doc('SqlCall.sql_query_promt_hook', r'''\ 
+为从用户输入生成数据库查询准备 prompt 的 hook。
+
+Args:
+    input (Union[str, List, Dict[str, str], None]): 用户的自然语言查询。
+    history (List[Union[List[str], Dict[str, Any]]]): 会话历史。
+    tools (Union[List[Dict[str, Any]], None]): 可用工具描述。
+    label (Union[str, None]): 可选标签。
+
+Returns:
+    Tuple: 包含格式化后的 prompt 字典（包括 current_date、db_type、desc、user_query）、history、tools 和 label。
+''')
+
+add_english_doc('SqlCall.sql_explain_prompt_hook', '''\
+Hook to prepare the prompt for explaining the execution result of a database query.
+
+Args:
+    input (Union[str, List, Dict[str, str], None]): A list containing the query and its result.
+    history (List[Union[List[str], Dict[str, Any]]]): Conversation history.
+    tools (Union[List[Dict[str, Any]], None]): Available tool descriptions.
+    label (Union[str, None]): Optional label for the prompt.
+
+Returns:
+    Tuple: A tuple containing the formatted prompt dict (history_info, desc, query, result, explain_query), history, tools, and label.
+''')
+
+add_chinese_doc('SqlCall.sql_explain_prompt_hook', r'''\ 
+为解释数据库查询执行结果准备 prompt 的 hook。
+
+Args:
+    input (Union[str, List, Dict[str, str], None]): 包含查询和结果的列表。
+    history (List[Union[List[str], Dict[str, Any]]]): 会话历史。
+    tools (Union[List[Dict[str, Any]], None]): 可用工具描述。
+    label (Union[str, None]): 可选标签。
+
+Returns:
+    Tuple: 包含格式化后的 prompt 字典（history_info、desc、query、result、explain_query）、history、tools 和 label。
+''')
+
+add_english_doc('SqlCall.extract_sql_from_response', '''\
+Extract SQL (or MongoDB pipeline) statement from the raw LLM response.
+
+Args:
+    str_response (str): Raw text returned by the LLM which may contain code fences.
+
+Returns:
+    tuple[bool, str]: A tuple where the first element indicates whether extraction succeeded, and the second is the cleaned or original content. If sql_post_func is provided, it is applied to the extracted content.
+''')
+
+add_chinese_doc('SqlCall.extract_sql_from_response', r'''\ 
+从原始 LLM 响应中提取 SQL（或 MongoDB pipeline）语句。
+
+Args:
+    str_response (str): LLM 返回的原始文本，可能包含代码块。
+
+Returns:
+    tuple[bool, str]: 第一个元素表示是否成功提取，第二个是清洗后的或原始内容。如果提供了 sql_post_func，则会应用于提取结果。
+''')
 
 # ---------------------------------------------------------------------------- #
 
