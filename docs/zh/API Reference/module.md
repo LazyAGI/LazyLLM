@@ -48,7 +48,7 @@
       members:
 
 ::: lazyllm.module.TrialModule
-    members: ["start"]
+    members: [start]
     exclude-members:
 
 ::: lazyllm.module.OnlineChatModule
