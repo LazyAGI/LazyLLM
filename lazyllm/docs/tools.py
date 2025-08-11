@@ -4497,13 +4497,6 @@ Args:
     base_url (str): Base URL of the backend API service.
 """)
 
-add_example('rag.web.WebUi', ['''\
->>> from lazyllm.components import WebUi
->>> web_ui = WebUi(base_url="http://localhost:8000")
->>> ui = web_ui.create_ui()
->>> ui.launch()
-'''])
-
 add_chinese_doc("rag.web.WebUi.basic_headers", '''
 生成通用的 HTTP 请求头。
 
