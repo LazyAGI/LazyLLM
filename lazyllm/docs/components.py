@@ -743,6 +743,174 @@ add_example('deploy.embed.RerankDeploy', '''\
 >>> result = rerank_service(input_data)
 ''')
 
+add_chinese_doc('deploy.LazyFlagEmbedding', '''\
+支持懒加载的 FlagEmbedding 嵌入模块封装。
+
+该类包装了 FlagEmbedding 的加载和调用逻辑，提供对稀疏和稠密嵌入的支持，并通过 lazyllm.once_flag() 机制实现懒加载。适用于嵌入模型的本地/远程下载、初始化与编码流程的封装，便于与 LazyLLM 系统集成。
+
+Args:
+    base_embed (str): 嵌入模型名称或路径。
+    sparse (bool): 是否使用稀疏嵌入模式，默认为 False。
+    source (str, optional): 模型下载源，若未提供则使用 lazyllm 全局配置。
+    init (bool): 是否在初始化时立即加载模型，默认为 False。
+''')
+
+add_english_doc('deploy.LazyFlagEmbedding', '''\
+A lazily loaded wrapper for the FlagEmbedding module.
+
+This class encapsulates loading and usage of FlagEmbedding, with support for both sparse and dense embeddings. It leverages the lazyllm.once_flag() mechanism to initialize only once on demand, and integrates with LazyLLM's model downloading utilities.
+
+Args:
+    base_embed (str): The model name or path to be used as the embedding backend.
+    sparse (bool): Whether to enable sparse embedding output. Defaults to False.
+    source (str, optional): Source URL or identifier for model downloading. Defaults to global config.
+    init (bool): Whether to initialize the model immediately upon construction. Defaults to False.
+''')
+
+add_chinese_doc('deploy.LazyFlagEmbedding.load_embed', '''\
+加载嵌入模型并初始化到设备上。
+
+该方法根据系统是否支持 CUDA 自动选择运行设备（GPU 或 CPU），并从本地或远程加载预训练的 FlagEmbedding 模型。
+''')
+
+add_english_doc('deploy.LazyFlagEmbedding.load_embed', '''\
+Load the embedding model onto the appropriate device.
+
+This method selects the available device (GPU or CPU) and initializes the pretrained FlagEmbedding model from the provided path or model hub.
+''')
+
+add_chinese_doc('deploy.LazyFlagEmbedding.rebuild', '''\
+重建 LazyFlagEmbedding 实例的方法。
+
+该类方法用于在序列化或跨进程传递时，重新构造带有初始化配置的 LazyFlagEmbedding 实例。
+
+Args:
+    base_embed (str): 嵌入模型的路径或模型名称。
+    sparse (bool): 是否启用稀疏嵌入。
+    init (bool): 是否在构造时立即加载模型。
+
+Returns:
+    LazyFlagEmbedding: 一个新的 LazyFlagEmbedding 实例。
+''')
+
+add_english_doc('deploy.LazyFlagEmbedding.rebuild', '''\
+Rebuild a LazyFlagEmbedding instance.
+
+This class method reconstructs an instance of LazyFlagEmbedding, typically used during deserialization or multiprocessing scenarios.
+
+Args:
+    base_embed (str): The path or name of the embedding model.
+    sparse (bool): Whether to enable sparse embedding mode.
+    init (bool): Whether to load the model immediately during instantiation.
+
+Returns:
+    LazyFlagEmbedding: A newly constructed LazyFlagEmbedding instance.
+''')
+
+add_chinese_doc('deploy.Vllm', '''\
+基于 vLLM 的模型部署器。
+
+该类封装了 vLLM 推理服务的启动、指令构造、参数配置与访问地址管理等逻辑。支持 OpenAI 风格 API 兼容，具备分布式部署能力，默认使用 LazyLLM 的启动器完成后端任务分配。
+
+Args:
+    trust_remote_code (bool): 是否信任远程代码，启用后会加载模型仓库中 `modeling.py` 脚本。
+    launcher (LazyLLMLaunchersBase): 启动器对象，控制模型部署逻辑，支持本地/远程/分布式。
+    log_path (str, optional): 日志输出目录，用于保存部署日志。
+    openai_api (bool): 是否以 OpenAI API 兼容模式启动（默认关闭）。
+    **kw: 其他部署参数，例如最大序列长度、并行配置等。
+''')
+
+add_english_doc('deploy.Vllm', '''\
+Model deployment class based on vLLM.
+
+This class wraps the logic for launching a vLLM inference server, constructing commands, managing configuration parameters, and retrieving access URLs. It supports OpenAI-compatible API mode and distributed deployment via LazyLLM's launcher system.
+
+Args:
+    trust_remote_code (bool): Whether to trust remote code, allowing loading of custom modeling scripts.
+    launcher (LazyLLMLaunchersBase): Launcher object controlling how the model is deployed (local, remote, distributed).
+    log_path (str, optional): Directory for saving deployment logs.
+    openai_api (bool): Whether to launch the server in OpenAI-compatible API mode (default: False).
+    **kw: Additional deployment options, such as max sequence length, parallel configs, etc.
+''')
+
+add_chinese_doc('deploy.Vllm.cmd', '''\
+构造用于启动 vLLM 推理服务的命令。
+
+该方法会自动检测模型路径是否有效，并根据当前配置参数动态生成可执行命令，支持多节点部署时自动加入 ray 启动命令。
+
+Args:
+    finetuned_model (str): 微调后的模型路径。
+    base_model (str): 备用基础模型路径（当 finetuned_model 无效时启用）。
+    master_ip (str): 分布式部署中的主节点 IP，仅在多节点时启用。
+
+Returns:
+    LazyLLMCMD: 可执行命令对象，包含启动指令、结果回调函数及健康检查方法。
+''')
+
+add_english_doc('deploy.Vllm.cmd', '''\
+Build the command to launch the vLLM inference service.
+
+This method validates the model path and constructs an executable command string based on current configuration. In distributed mode, it will also prepend the ray cluster start command.
+
+Args:
+    finetuned_model (str): Path to the fine-tuned model.
+    base_model (str): Fallback base model path if finetuned_model is invalid.
+    master_ip (str): IP address of the master node in a distributed setup.
+
+Returns:
+    LazyLLMCMD: The command object with shell instruction, return value handler, and health checker.
+''')
+
+add_chinese_doc('deploy.Vllm.geturl', '''\
+获取 vLLM 服务的推理地址。
+
+根据运行模式（Display 模式或实际部署）返回相应的 URL，用于访问模型的生成接口。
+
+Args:
+    job (Job, optional): 部署任务对象。默认取当前模块绑定的 job。
+
+Returns:
+    str: 推理服务的 HTTP 地址。
+''')
+
+add_english_doc('deploy.Vllm.geturl', '''\
+Get the inference service URL for the vLLM deployment.
+
+Depending on the execution mode (Display or actual deployment), this method returns the appropriate URL for accessing the model's generate endpoint.
+
+Args:
+    job (Job, optional): Deployment job object. Defaults to the module's associated job.
+
+Returns:
+    str: The HTTP URL for inference service.
+''')
+
+add_chinese_doc('deploy.Vllm.extract_result', '''\
+从 vLLM 返回结果中提取文本。
+
+该函数从 JSON 格式的返回值中提取模型输出的文本部分。
+
+Args:
+    x (str): JSON 格式的原始返回结果字符串。
+    inputs (dict): 原始输入数据（用于兼容接口，当前未使用）。
+
+Returns:
+    str: 提取出的文本内容。
+''')
+
+add_english_doc('deploy.Vllm.extract_result', '''\
+Extract the generated text from a vLLM response.
+
+This function parses the returned JSON and extracts the model-generated text content.
+
+Args:
+    x (str): Raw JSON string returned from the API.
+    inputs (dict): Original input data (unused; kept for compatibility).
+
+Returns:
+    str: The generated text extracted from the response.
+''')
+
 # Deploy-Mindie
 add_chinese_doc('deploy.Mindie', '''\
 此类是 ``LazyLLMDeployBase`` 的一个子类, 用于部署和管理MindIE大模型推理服务。它封装了MindIE服务的配置生成、进程启动和API交互的全流程。
@@ -881,6 +1049,27 @@ add_example('deploy.Infinity', '''\
 <lazyllm.llm.deploy type=Infinity>
 ''')
 
+# text_to_speech
+add_chinese_doc('deploy.text_to_speech.utils.TTSBase', '''\
+文本转语音（TTS）基类，继承自 LazyLLMDeployBase，封装了基础的模型加载与服务启动逻辑。  
+支持传入微调模型路径和基础模型路径，若微调模型路径无效则回退使用基础模型。
+
+Args:
+    launcher (Optional[LazyLLMLaunchersBase]): 模型加载器实例，默认为 None。
+    log_path (Optional[str]): 日志文件存储路径，默认为 None。
+    port (Optional[int]): 服务监听端口，默认为 None。
+''')
+
+add_english_doc('deploy.text_to_speech.utils.TTSBase', '''\
+Base class for Text-To-Speech (TTS), inherits from LazyLLMDeployBase, encapsulating basic model loading and service start logic.  
+Supports specifying a finetuned model path and a base model path, falling back to the base model if the finetuned model path is invalid.
+
+Args:
+    launcher (Optional[LazyLLMLaunchersBase]): Model launcher instance, defaults to None.
+    log_path (Optional[str]): Path to store log files, defaults to None.
+    port (Optional[int]): Service listening port, defaults to None.
+''')
+
 # Deploy-Auto
 add_chinese_doc('auto.AutoDeploy', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，可根据输入的参数自动选择合适的推理框架和参数，以对大语言模型进行推理。
@@ -924,78 +1113,154 @@ add_example('auto.AutoDeploy', '''\
 <lazyllm.llm.deploy type=Lightllm> 
 ''')
 
+# ModelManager
 add_chinese_doc('ModelManager', '''\
-ModelManager是LazyLLM为开发者提供的自动下载模型的工具类。目前支持从一个本地目录列表查找指定模型，以及从huggingface或者modelscope自动下载模型数据至指定目录。
-在使用ModelManager之前，需要设置下列环境变量：
+ModelManager 是 LazyLLM 提供的用于模型路径管理与自动下载的工具类。  
+支持从本地目录列表查找模型，若未命中则自动从 Huggingface 或 Modelscope 下载模型，缓存至指定目录，并通过软链接映射到统一路径。
 
-- LAZYLLM_MODEL_SOURCE: 模型下载源，可以设置为 ``huggingface`` 或 ``modelscope`` 。
-- LAZYLLM_MODEL_SOURCE_TOKEN: ``huggingface`` 或 ``modelscope`` 提供的token，用于下载私有模型。
-- LAZYLLM_MODEL_PATH: 冒号 ``:`` 分隔的本地绝对路径列表用于搜索模型。
-- LAZYLLM_MODEL_CACHE_DIR: 下载后的模型在本地的存储目录
+使用前需设置以下环境变量（可被类参数覆盖）：
 
-Keyword Args: 
-    model_source (str, 可选): 模型下载源，目前仅支持 ``huggingface`` 或 ``modelscope`` 。如有必要，ModelManager将从此下载源下载模型数据。如果不提供，默认使用
-        LAZYLLM_MODEL_SOURCE环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE，ModelManager将从 ``modelscope`` 下载模型。
-    token (str, 可选): ``huggingface`` 或 ``modelscope`` 提供的token。如果token不为空，ModelManager将使用此token下载模型数据。如果不提供，默认使用
-        LAZYLLM_MODEL_SOURCE_TOKEN环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE_TOKEN，ModelManager将不会自动下载私有模型。
-    model_path (str, 可选)：冒号(:)分隔的本地绝对路径列表。在实际下载模型数据之前，ModelManager将在此列表包含的目录中尝试寻找目标模型。如果不提供，默认使用
-        LAZYLLM_MODEL_PATH环境变量中的设置。如果为空或LAZYLLM_MODEL_PATH未设置，ModelManager将跳过从model_path中寻找模型的步骤。
-    cache_dir (str, 可选): 一个本地目录的绝对路径。下载后的模型将存放在此目录下，如果不提供，默认使用LAZYLLM_MODEL_CACHE_DIR环境变量中的设置。如果
-        LAZYLLM_MODEL_PATH未设置，默认值为~/.lazyllm/model
-ModelManager.download(model) -> str
-
-用于从model_source下载模型。download函数首先在ModelManager类初始化参数model_path列出的目录中搜索目标模型。如果未找到，会在cache_dir下搜索目标模型。如果仍未找到，
-则从model_source上下载模型并存放于cache_dir下。
+- `LAZYLLM_MODEL_SOURCE`：模型下载源，可为 `huggingface` 或 `modelscope`。
+- `LAZYLLM_MODEL_SOURCE_TOKEN`：私有模型下载所需的 token。
+- `LAZYLLM_MODEL_PATH`：本地模型搜索路径，多个路径用冒号 `:` 分隔。
+- `LAZYLLM_MODEL_CACHE_DIR`：模型下载后的本地缓存目录。
 
 Args:
-    model (str): 目标模型名称。download函数使用此名称从model_source上下载模型。为了方便开发者使用，LazyLLM为常用模型建立了简略模型名称到下载源实际模型名称的映射，
-        例如 ``Llama-3-8B`` , ``GLM3-6B`` 或 ``Qwen1.5-7B`` 。具体可参考文件 ``lazyllm/module/utils/downloader/model_mapping.py`` 。model可以接受简略模型名或下载源中的模型全名。
+    model_source (Optional[str]): 模型来源，支持 `huggingface` 和 `modelscope`，默认为环境变量值，若未设置则使用 `modelscope`。
+    token (Optional[str]): 下载私有模型所需的访问令牌，默认从环境变量读取，若未设置将无法访问私有模型。
+    model_path (Optional[str]): 本地模型搜索路径，多个路径以冒号分隔，存在目标模型时将跳过下载。
+    cache_dir (Optional[str]): 模型缓存目录，默认读取环境变量，未设置时为 `~/.lazyllm/model`。
+
+主要方法：
+
+`ModelManager.download(model) -> str`
+
+自动下载并链接模型的方法。
+
+- 若模型名称为路径或绝对路径，或以 `.` `~` `/` 开头，将直接返回该路径。
+- 否则会优先检查 `model_path` 中是否已存在该模型，若存在直接返回。
+- 若不存在，将按规则补全模型源路径后进行下载，下载完成后在缓存目录建立软链接。
+- 支持使用简化模型名（如 `Llama-3-8B`）自动映射真实下载路径，映射规则参考 `model_mapping.py`。
 ''')
 
 add_english_doc('ModelManager', '''\
-ModelManager is a utility class provided by LazyLLM for developers to automatically download models.
-Currently, it supports search for models from local directories, as well as automatically downloading model from
-huggingface or modelscope. Before using ModelManager, the following environment variables need to be set:
+ModelManager is a utility class in LazyLLM for managing model paths and downloading models automatically.  
+It supports locating models from local directories and downloading them from Huggingface or Modelscope if not found, 
+with symbolic links created in a unified cache location.
 
-- LAZYLLM_MODEL_SOURCE: The source for model downloads, which can be set to ``huggingface`` or ``modelscope`` .
-- LAZYLLM_MODEL_SOURCE_TOKEN: The token provided by ``huggingface`` or ``modelscope`` for private model download.
-- LAZYLLM_MODEL_PATH: A colon-separated ``:`` list of local absolute paths for model search.
-- LAZYLLM_MODEL_CACHE_DIR: Directory for downloaded models.
+Before use, the following environment variables are expected (overridable via constructor arguments):
 
-Keyword Args: 
-    model_source (str, optional): The source for model downloads, currently only supports ``huggingface`` or ``modelscope`` .
-        If necessary, ModelManager downloads model data from the source. If not provided, LAZYLLM_MODEL_SOURCE
-        environment variable would be used, and if LAZYLLM_MODEL_SOURCE is not set, ModelManager will not download
-        any model.
-    token (str, optional): The token provided by ``huggingface`` or ``modelscope`` . If the token is present, ModelManager uses
-        the token to download model. If not provided, LAZYLLM_MODEL_SOURCE_TOKEN environment variable would be used.
-        and if LAZYLLM_MODEL_SOURCE_TOKEN is not set, ModelManager will not download private models, only public ones.
-    model_path (str, optional): A colon-separated list of absolute paths. Before actually start to download model,
-        ModelManager trys to find the target model in the directories in this list. If not provided,
-        LAZYLLM_MODEL_PATH environment variable would be used, and LAZYLLM_MODEL_PATH is not set, ModelManager skips
-        looking for models from model_path.
-    cache_dir (str, optional): An absolute path of a directory to save downloaded models. If not provided,
-        LAZYLLM_MODEL_CACHE_DIR environment variable would be used, and if LAZYLLM_MODEL_PATH is not set, the default
-        value is ~/.lazyllm/model.
-
-<span style="font-size: 20px;">&ensp;**`ModelManager.download(model) -> str`**</span>
-
-Download models from model_source. The function first searches for the target model in directories listed in the
-model_path parameter of ModelManager class. If not found, it searches under cache_dir. If still not found,
-it downloads the model from model_source and stores it under cache_dir.
+- `LAZYLLM_MODEL_SOURCE`: Source of models, can be `huggingface` or `modelscope`.
+- `LAZYLLM_MODEL_SOURCE_TOKEN`: Token for accessing private models.
+- `LAZYLLM_MODEL_PATH`: Colon-separated list of local directories to search for models.
+- `LAZYLLM_MODEL_CACHE_DIR`: Directory to store downloaded models.
 
 Args:
-    model (str): The name of the target model. The function uses this name to download the model from model_source.
-    To further simplify use of the function, LazyLLM provides a mapping dict from abbreviated model names to original
-    names on the download source for popular models, such as ``Llama-3-8B`` , ``GLM3-6B`` or ``Qwen1.5-7B``. For more details,
-    please refer to the file ``lazyllm/module/utils/downloader/model_mapping.py`` . The model argument can be either
-    an abbreviated name or one from the download source.
+    model_source (Optional[str]): Source of the model, supports 'huggingface' and 'modelscope'. Defaults to environment variable or 'modelscope'.
+    token (Optional[str]): Token required for downloading private models. Defaults to environment variable; downloading will fail if unset.
+    model_path (Optional[str]): Colon-separated list of local model search paths. If the model exists locally, downloading will be skipped.
+    cache_dir (Optional[str]): Local directory for storing cached models. Defaults to environment variable or `~/.lazyllm/model`.
+
+Main Method:
+
+**`ModelManager.download(model) -> str`**
+
+Downloads and links the model automatically.
+
+- If `model` is a path or an absolute path (starts with `.`, `~`, or `/`), returns it directly.
+- Otherwise, checks all directories listed in `model_path`. If found, returns the local path.
+- If not found, the method constructs the full source path and downloads the model.
+- After downloading, a symbolic link is created in the cache directory.
+- Abbreviated model names like `Llama-3-8B` are supported via mapping defined in `model_mapping.py`.
 ''')
 
 add_example('ModelManager', '''\
 >>> from lazyllm.components import ModelManager
 >>> downloader = ModelManager(model_source='modelscope')
 >>> downloader.download('chatglm3-6b')
+''')
+
+add_chinese_doc('ModelManager.get_model_type', '''\
+获取模型的类型（如 'llm'、'embedding' 等），通过模型名称自动匹配预定义映射关系。
+
+Args:
+    model (str): 模型名称或路径。
+
+**Returns:**\n
+- str: 模型类型，默认返回 'llm'。
+''')
+
+add_english_doc('ModelManager.get_model_type', '''\
+Get the type of a model (e.g., 'llm', 'embedding') by matching against predefined mappings.
+
+Args:
+    model (str): Model name or path.
+
+**Returns:**\n
+- str: Model type, returns 'llm' by default.
+''')
+
+add_chinese_doc('ModelManager.get_model_prompt_keys', '''\
+获取模型对应的 prompt key 信息（如 prompt/response 的键），用于对话构造。
+
+Args:
+    model (str): 模型名称或路径。
+
+**Returns:**\n
+- dict: prompt key 映射字典，若无匹配信息则返回空字典。
+''')
+
+add_english_doc('ModelManager.get_model_prompt_keys', '''\
+Get the prompt key mapping (e.g., prompt/response keys) for a given model, used in dialogue construction.
+
+Args:
+    model (str): Model name or path.
+
+**Returns:**\n
+- dict: Prompt key mapping dictionary, returns empty dict if no mapping is found.
+''')
+
+add_chinese_doc('ModelManager.validate_model_path', '''\
+验证模型路径是否包含可识别的模型权重文件（.pt/.bin/.safetensors）。
+
+Args:
+    model_path (str): 待验证的模型路径。
+
+**Returns:**\n
+- bool: 是否为合法模型路径。
+''')
+
+add_english_doc('ModelManager.validate_model_path', '''\
+Validate whether a model path contains recognized model files (.pt/.bin/.safetensors).
+
+Args:
+    model_path (str): Path to be validated.
+
+**Returns:**\n
+- bool: Whether the path is valid for models.
+''')
+
+add_chinese_doc('ModelManager.download', '''\
+根据模型名称尝试下载远程模型并进行缓存，支持路径检测、映射匹配、符号链接创建等。
+
+Args:
+    model (str): 模型名称。
+    call_back (Optional[Callable]): 下载过程中的回调函数。
+
+**Returns:**\n
+- str: 下载成功后的模型本地路径，若模型已存在则直接返回原路径。
+''')
+
+add_english_doc('ModelManager.download', '''\
+Attempt to download a remote model based on its name and cache it locally.  
+Handles path checking, mapping lookup, and symlink creation.
+
+Args:
+    model (str): Name of the model.
+    call_back (Optional[Callable]): Callback function during download.
+
+**Returns:**\n
+- str: Local path of the model if downloaded or found locally.
 ''')
 
 # ============= Formatter

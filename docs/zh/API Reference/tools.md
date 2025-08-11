@@ -379,6 +379,15 @@ lazyllm.tools.rag.transform.NodeTransform
     members: 
     exclude-members:
 
+::: lazyllm.tools.tools.tencent_search.TencentSearch
+    members: 
+    exclude-members:
+
+::: lazyllm.tools.rag.web.WebUi
+    members: 
+    exclude-members:
+
+
 ::: lazyllm.tools.http_request.http_executor_response.HttpExecutorResponse
     members: extract_file, get_content_type
     exclude-members:

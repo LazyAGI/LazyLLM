@@ -428,6 +428,73 @@ add_example('FileSystemQueue.clear', """\
 True
 """)
 
+add_chinese_doc('DynamicDescriptor', '''\
+动态描述符类，实现了根据访问对象的不同动态绑定方法调用。  
+通过封装函数，支持当描述符被访问时，根据是通过实例还是类访问，调用对应的方法。
+
+Args:
+    func (Callable): 作为描述符的函数。
+
+''')
+
+add_english_doc('DynamicDescriptor', '''\
+A dynamic descriptor class that implements method binding dynamically based on the access object.  
+By wrapping a function, it supports calling the method on the instance or the class depending on how the descriptor is accessed.
+
+Args:
+    func (Callable): The function to be used as a descriptor.
+
+''')
+
+add_chinese_doc('DynamicDescriptor.Impl', '''\
+动态描述符的内部实现类，封装了函数及其访问上下文。  
+根据访问者是实例还是类，调用对应的方法。
+
+Args:
+    func (Callable): 被封装的函数。
+    instance (Optional[Any]): 调用该描述符的实例，若无则为 None。
+    owner (type): 描述符所属的类。
+
+**Returns:**\n
+- 调用结果，与封装函数的返回值一致。
+''')
+
+add_english_doc('DynamicDescriptor.Impl', '''\
+Internal implementation class of the dynamic descriptor, encapsulating the function and its context.  
+Calls the function bound to either the instance or the class depending on the accessor.
+
+Args:
+    func (Callable): The wrapped function.
+    instance (Optional[Any]): The instance accessing the descriptor, or None if accessed via class.
+    owner (type): The class owning the descriptor.
+
+**Returns:**\n
+- The result of the function call, consistent with the wrapped function's return value.
+''')
+
+
+add_chinese_doc('Identity', '''\
+恒等模块，用于直接返回输入值。
+
+该模块常用于模块拼接结构中占位，无实际处理逻辑。若输入为多个参数，将自动打包为一个整体结构输出。
+
+Args:
+    *args: 可选的位置参数，占位用。
+    **kw: 可选的关键字参数，占位用。
+''')
+
+add_english_doc('Identity', '''\
+Identity module that directly returns the input as output.
+
+This module serves as a no-op placeholder in composition pipelines. If multiple inputs are provided, they are packed together before returning.
+
+Args:
+    *args: Optional positional arguments for placeholder compatibility.
+    **kw: Optional keyword arguments for placeholder compatibility.
+''')
+
+
+
 add_chinese_doc('ProcessPoolExecutor.submit', '''\
 将任务提交到进程池中执行。
 

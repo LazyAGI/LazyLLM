@@ -20,6 +20,12 @@
     options:
       heading_level: 3
 
+## Identity
+
+::: lazyllm.common.Identity
+    options:
+      heading_level: 3
+
 ---
 
 ## Compilation
@@ -33,6 +39,14 @@
 ::: lazyllm.common.FileSystemQueue
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
+
+## DynamicDescriptor
+
+::: lazyllm.common.DynamicDescriptor
+    members:
+    - Impl
+    exclude-members:
+
 
 ::: lazyllm.common.CaseInsensitiveDict
     members: 
