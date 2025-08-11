@@ -8,37 +8,26 @@ add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.module
 add_example = functools.partial(utils.add_example, module=lazyllm.module)
 
 add_chinese_doc('ModuleBase', '''\
-Module 是 LazyLLM 中的顶层组件，具备训练、部署、推理和评测四项关键能力。每个模块可选择实现其中的部分或全部能力，每项能力可以由一个或多个 Component 组成，并通过统一的调度机制完成调用。
+Module是LazyLLM中的顶层组件，具备训练、部署、推理和评测四项关键能力，每个模块可以选择实现其中的部分或者全部的能力，每项能力都可以由一到多个Component组成。
+ModuleBase本身不可以直接实例化，继承并实现 ``forward`` 函数的子类可以作为一个仿函数来使用。
+类似pytorch的Moudule，当一个Module A持有了另一个Module B的实例作为成员变量时，会自动加入到submodule中。
 
-ModuleBase 是所有模块类的基类，不能直接实例化，必须通过继承并实现 ``forward`` 方法来自定义子模块，支持将其实例作为可调用对象（仿函数）使用。
-
-该类设计类似于 PyTorch 的 Module，当一个模块 A 持有另一个模块 B 的实例作为成员变量时，B 会自动注册为 A 的子模块，可参与递归调度和统一更新。
-
-如果你需要以下功能，请让你的自定义类继承自 ModuleBase:\n
-1. 组合训练、部署、推理和评测的部分或全部能力，例如 Embedding 模型通常具备训练和推理能力。\n
-2. 希望通过根模块的 ``start``、``update``、``eval`` 等方法，统一控制其持有的子模块的训练、部署与评测流程。\n
-3. 希望自动接收从最外层传入的参数，并将其传递到模块内部（参考 Tools.webpages.WebModule）。\n
-4. 希望模块可以被参数搜索器（如 TrialModule）识别并进行网格参数搜索。\n
-
-Args:
-    return_trace (bool): 是否在调用模块时记录返回结果，用于调试或追踪。默认为 False。
+如果你需要以下的能力，请让你自定义的类继承自ModuleBase:\n
+1. 组合训练、部署、推理和评测的部分或全部能力，例如Embedding模型需要训练和推理\n
+2. 持有的成员变量具备训练、部署和评测的部分或全部能力，并且想通过Module的根节点的 ``start``,  ``update``, ``eval`` 等方法对其持有的成员进行训练、部署和评测时。\n
+3. 将用户设置的参数从最外层直接传到你自定义的模块中（参考Tools.webpages.WebModule）\n
+4. 希望能被参数网格搜索模块使用（参考TrialModule）
 ''')
 
 add_english_doc('ModuleBase', '''\
-Module is the top-level component in LazyLLM, providing four core capabilities: training, deployment, inference, and evaluation. Each module can implement some or all of these capabilities, with each capability composed of one or more Components and managed through a unified execution pipeline.
-
-ModuleBase is the abstract base class for all modules and cannot be instantiated directly. Subclasses must implement the ``forward`` method and can be used as callable objects (functors).
-
-Inspired by PyTorch's Module design, if a Module A contains another Module B as a member variable, B will be automatically registered as a submodule of A and participate in recursive scheduling and updates.
-
-You should inherit from ModuleBase in the following scenarios:\n
-1. You want to combine training, deployment, inference, and evaluation capabilities (e.g., embedding models typically support training and inference).\n
-2. You want to trigger training, deployment, or evaluation on submodules via the root module's ``start``, ``update``, or ``eval`` methods.\n
-3. You want external parameters to be automatically propagated into your custom module (see Tools.webpages.WebModule).\n
-4. You want your module to be compatible with parameter grid search modules (e.g., TrialModule).\n
-
-Args:
-    return_trace (bool): Whether to record the return value during module invocation for debugging or tracing. Defaults to False.
+Module is the top-level component in LazyLLM, possessing four key capabilities: training, deployment, inference, and evaluation. Each module can choose to implement some or all of these capabilities, and each capability can be composed of one or more components.
+ModuleBase itself cannot be instantiated directly; subclasses that inherit and implement the forward function can be used as a functor.
+Similar to PyTorch's Module, when a Module A holds an instance of another Module B as a member variable, B will be automatically added to A's submodules.
+If you need the following capabilities, please have your custom class inherit from ModuleBase:\n
+1. Combine some or all of the training, deployment, inference, and evaluation capabilities. For example, an Embedding model requires training and inference.\n
+2. If you want the member variables to possess some or all of the capabilities for training, deployment, and evaluation, and you want to train, deploy, and evaluate these members through the start, update, eval, and other methods of the Module's root node.\n
+3. Pass user-set parameters directly to your custom module from the outermost layer (refer to WebModule).\n
+4. The desire for it to be usable by the parameter grid search module (refer to TrialModule).
 ''')
 
 add_example('ModuleBase', '''\
@@ -59,78 +48,12 @@ add_example('ModuleBase', '''\
 [<Module type=Module>, <Module type=Module>]
 ''')
 
-add_chinese_doc('ModuleBase.stream_output', '''\
-上下文管理器，用于在执行期间控制流式输出的前缀和后缀展示。  
-当启用流式输出且传入配置字典时，自动在上下文开始和结束时分别输出指定的前缀和后缀。
-
-Args:
-    stream_output (Optional[Union[bool, Dict]]): 
-        - 若为 False 或 None，表示不启用流式输出。  
-        - 若为 True，启用默认流式输出（无前后缀）。  
-        - 若为 Dict，可指定 'prefix'、'prefix_color'、'suffix' 和 'suffix_color' 用于自定义输出内容及颜色。
-
-**Yields:**\n
-- None: 无返回值，仅控制流式输出上下文。
-''')
-
-add_english_doc('ModuleBase.stream_output', '''\
-A context manager to control streaming output with optional prefix and suffix display during execution.  
-When streaming output is enabled and a configuration dictionary is provided, it automatically outputs the specified prefix at the start and suffix at the end of the context.
-
-Args:
-    stream_output (Optional[Union[bool, Dict]]): 
-        - False or None disables streaming output.  
-        - True enables default streaming output without prefix or suffix.  
-        - Dict can specify 'prefix', 'prefix_color', 'suffix', and 'suffix_color' to customize output content and colors.
-
-**Yields:**\n
-- None: No return value; controls the streaming output context.
-''')
-
-add_chinese_doc('ModuleBase.used_by', '''\
-标记该模块被哪个上层模块引用。
-该方法在模块构建或组合过程中记录调用者的 module_id，便于调试或追踪模块依赖关系。
-
-Args:
-    module_id (str): 使用该模块的上层模块的唯一标识符。
-
-**Returns:**\n
-- ModuleBase: 返回当前模块自身，用于链式调用。
-''')
-
-add_english_doc('ModuleBase.used_by', '''\
-Marks the module as being used by an upstream module.
-This method records the module ID of the caller during module construction or composition, useful for debugging or tracking module dependencies.
-
-Args:
-    module_id (str): The unique identifier of the upstream module using this module.
-
-**Returns:**\n
-- ModuleBase: Returns the current module instance for method chaining.
-''')
-
 add_chinese_doc('ModuleBase.forward', '''\
-定义每次模块调用时执行的计算步骤。
-该方法是 ModuleBase 的核心接口，所有子类必须重写本方法，实现模块的具体推理逻辑。
-
-Args:
-    *args: 位置参数，表示传入模块的输入内容。
-    **kw: 关键字参数，用于传入额外控制参数或输入内容。
-
-**Returns:**\n
-- Any: 推理结果，由具体子类决定返回类型。
+定义了每次执行的计算步骤，ModuleBase的所有的子类都需要重写这个函数。
 ''')
 
 add_english_doc('ModuleBase.forward', '''\
-Defines the computation logic to be executed when the module is called.
-This is the core interface of ModuleBase. All subclasses must override this method to implement their specific inference behavior.
-
-Args:
-    *args: Positional arguments representing the input to the module.
-    **kw: Keyword arguments for additional inputs or control parameters.
-
-**Returns:**\n
-- Any: The inference result, with return type defined by the subclass implementation.
+Define computation steps executed each time, all subclasses of ModuleBase need to override.
 ''')
 
 add_example('ModuleBase.forward', '''\
@@ -143,52 +66,12 @@ add_example('ModuleBase.forward', '''\
 2   
 ''')
 
-add_chinese_doc('ModuleBase.register_hook', '''\
-注册一个钩子（hook）到模块中，用于在执行过程中触发特定回调。
-
-Args:
-    hook_type (LazyLLMHook): 需要注册的钩子类型实例或类。
-''')
-
-add_english_doc('ModuleBase.register_hook', '''\
-Registers a hook to the module for triggering specific callbacks during execution.
-
-Args:
-    hook_type (LazyLLMHook): The hook instance or class to be registered.
-''')
-
-add_chinese_doc('ModuleBase.unregister_hook', '''\
-注销已注册的钩子，停止该钩子在模块执行过程中的触发。
-
-Args:
-    hook_type (LazyLLMHook): 需要注销的钩子类型实例或类。
-''')
-
-add_english_doc('ModuleBase.unregister_hook', '''\
-Unregisters a previously registered hook, preventing it from triggering during module execution.
-
-Args:
-    hook_type (LazyLLMHook): The hook instance or class to be unregistered.
-''')
-
-add_chinese_doc('ModuleBase.clear_hooks', '''\
-清除当前模块中已注册的所有钩子，使模块在后续执行中不再触发任何钩子。''')
-
-add_english_doc('ModuleBase.clear_hooks', '''\
-Clears all registered hooks from the current module, so no hooks will be triggered during subsequent execution.''')
-
 add_chinese_doc('ModuleBase.start', '''\
-以 ``server`` 模式部署模块及所有子模块，适用于服务启动或初始化配置。
-
-**Returns:**\n
-- ModuleBase: 返回当前模块实例，可用于链式调用。
+部署模块及所有的子模块
 ''')
 
 add_english_doc('ModuleBase.start', '''\
-Deploys the module and all its submodules in ``server`` mode, suitable for launching services or initializing configurations.
-
-**Returns:**\n
-- ModuleBase: Returns the current module instance for method chaining.
+Deploy the module and all its submodules.
 ''')
 
 add_example('ModuleBase.start', '''\
@@ -201,17 +84,11 @@ add_example('ModuleBase.start', '''\
 ''')
 
 add_chinese_doc('ModuleBase.restart', '''\
-重新部署模块及其所有子模块。
-
-**Returns:**\n
-- ModuleBase: 返回当前模块实例，可用于链式调用。
+重新重启模块及所有的子模块
 ''')
 
 add_english_doc('ModuleBase.restart', '''\
-Re-deploys the module and all its submodules.
-
-**Returns:**\n
-- ModuleBase: Returns the current module instance for method chaining.
+Re-deploy the module and all its submodules.
 ''')
 
 add_example('ModuleBase.restart', '''\
@@ -224,25 +101,17 @@ add_example('ModuleBase.restart', '''\
 ''')
 
 add_chinese_doc('ModuleBase.update', '''\
-更新模块及其所有子模块，包含训练、部署和评测等流程。  
-调用该方法会触发模块对应模式的任务执行，并自动依次进行训练、部署和评测。
+更新模块（及所有的子模块）。当模块重写了 ``_get_train_tasks`` 方法后，模块会被更新。更新完后会自动进入部署和推理的流程。
 
 Args:
-    recursive (bool): 是否递归更新所有子模块，默认为 True。
-
-**Returns:**\n
-- ModuleBase: 返回当前模块实例，用于链式调用。
+    recursive (bool): 是否递归更新所有的子模块，默认为True
 ''')
 
 add_english_doc('ModuleBase.update', '''\
-Updates the module and all its submodules, covering training, deployment, and evaluation processes.  
-This method triggers tasks corresponding to each mode and automatically runs training, deployment, and evaluation sequentially.
+Update the module (and all its submodules). The module will be updated when the ``_get_train_tasks`` method is overridden.
 
 Args:
-    recursive (bool): Whether to recursively update all submodules. Defaults to True.
-
-**Returns:**\n
-- ModuleBase: Returns the current module instance for method chaining.
+    recursive (bool): Whether to recursively update all submodules, default is True.
 ''')
 
 add_example('ModuleBase.update', '''\
@@ -255,42 +124,12 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
 ''')
 
-add_chinese_doc('ModuleBase.update_server', '''\
-以 ``server`` 模式更新模块，通常用于更新与远程服务或在线接口相关的状态或部署行为。
-
-Args:
-    recursive (bool): 是否递归更新子模块，默认为 True。
-
-**Returns:**\n
-- ModuleBase: 返回当前模块自身，用于链式调用。
-''')
-
-add_english_doc('ModuleBase.update_server', '''\
-Updates the module in ``server`` mode, typically used to refresh states or perform deployment-related operations for remote services or APIs.
-
-Args:
-    recursive (bool): Whether to update submodules recursively. Defaults to True.
-
-**Returns:**\n
-- ModuleBase: Returns the current module instance for method chaining.
-''')
-
 add_chinese_doc('ModuleBase.evalset', '''\
-为 Module 设置评测集。在执行 ``update`` 或 ``eval`` 时，若已设置评测集，将自动进行评测，评测结果会存储在 `eval_result` 变量中。
-
-Args:
-    evalset (Union[str, Any]): 评测集对象或文件路径，若为路径则会使用 `load_f` 加载。
-    load_f (Optional[Callable]): 当 `evalset` 为路径时用于加载评测集的函数，需可调用。
-    collect_f (Callable): 用于收集或处理评测结果的函数，默认为恒等函数（不做处理）。
+为Module设置评测集，设置过评测集的Module在 ``update`` 或 ``eval`` 的时候会进行评测，评测结果会存在eval_result变量中。
 ''')
 
 add_english_doc('ModuleBase.evalset', '''\
-Set the evaluation dataset for the Module. During ``update`` or ``eval``, evaluation will be performed if an evalset is set, and results will be stored in the `eval_result` variable.
-
-Args:
-    evalset (Union[str, Any]): The evaluation set or file path. If a path, `load_f` will be used to load it.
-    load_f (Optional[Callable]): A callable function to load the evaluation set if a file path is given.
-    collect_f (Callable): A function to collect or process evaluation results. Defaults to the identity function.
+during update or eval, and the results will be stored in the eval_result variable.
 ''')
 
 add_example('ModuleBase.evalset', '''\
@@ -327,44 +166,6 @@ add_example('ModuleBase.eval', '''\
 >>> m.evalset([1, 2, 3])
 >>> m.eval().eval_result
 ['reply for input', 'reply for input', 'reply for input']
-''')
-
-add_chinese_doc('ModuleBase.wait', '''\
-等待模块完成当前任务的执行。  
-该方法目前未实现，模块暂不支持该功能，正在开发中。
-''')
-
-add_english_doc('ModuleBase.wait', '''\
-Waits for the module to complete its current tasks.  
-This method is not implemented yet and the functionality is currently unsupported and under development.
-''')
-
-add_chinese_doc('ModuleBase.stop', '''\
-停止当前模块及其所有子模块的执行。  
-递归调用所有子模块的 ``stop`` 方法，确保所有相关进程或线程被终止。
-''')
-
-add_english_doc('ModuleBase.stop', '''\
-Stops the current module and all its submodules.  
-Recursively calls the ``stop`` method of all submodules to ensure termination of all related processes or threads.
-''')
-
-add_chinese_doc('ModuleBase.for_each', '''\
-对模块及其所有子模块执行指定的过滤和操作函数。  
-递归遍历所有子模块，若满足过滤条件，则执行对应操作。
-
-Args:
-    filter (Callable[[ModuleBase], bool]): 过滤函数，返回 True 的模块会被操作。
-    action (Callable[[ModuleBase], None]): 对满足条件模块执行的操作函数。
-''')
-
-add_english_doc('ModuleBase.for_each', '''\
-Applies specified filter and action functions on the module and all its submodules.  
-Recursively traverses all submodules, performing the action on those that satisfy the filter condition.
-
-Args:
-    filter (Callable[[ModuleBase], bool]): A filter function returning True for modules to be acted upon.
-    action (Callable[[ModuleBase], None]): An action function to execute on filtered modules.
 ''')
 
 add_chinese_doc('ModuleBase._get_train_tasks', '''\

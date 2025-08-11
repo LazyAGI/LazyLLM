@@ -1,4 +1,4 @@
-from .rag import Document, Reranker, Retriever, TempDocRetriever, SentenceSplitter, LLMParser, DefaultIndex
+from .rag import Document, Reranker, Retriever, TempDocRetriever, SentenceSplitter, LLMParser
 from .webpages import WebModule
 from .agent import (
     ToolManager,
@@ -25,7 +25,6 @@ from .infer_service import JobDescription
 
 __all__ = [
     "Document",
-    "DefaultIndex",
     "Reranker",
     "TempDocRetriever",
     "Retriever",

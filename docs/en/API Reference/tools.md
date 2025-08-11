@@ -153,7 +153,7 @@
         - extract_sql_from_response
 	exclude-members:
 
-::: lazyllm.tools.DefaultIndex
+::: lazyllm.tools.rag.default_index.DefaultIndex
     members:
         - update
         - remove

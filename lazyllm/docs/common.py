@@ -410,60 +410,16 @@ Args:
 - bool: True if the internal object is None, otherwise False.
 ''')
 
-add_chinese_doc('RedisQueue', '''\ 
+add_chinese_doc('queue.RedisQueue', '''\ 
 基于 Redis 实现的文件系统队列（继承自 FileSystemQueue），用于跨进程/节点的消息传递与队列管理。内部使用指定的 redis_url 初始化并管理底层存储，同时提供线程安全的初始化逻辑。
 
 Args:
     klass (str): 队列的分类名称，用于区分不同队列实例，默认值为 '__default__'。
 ''')
 
-add_english_doc('RedisQueue', '''\
+add_english_doc('queue.RedisQueue', '''\
 Redis-backed file system queue (inherits from FileSystemQueue) for cross-process/node message passing and queue management. It initializes its underlying storage using a configured Redis URL and employs thread-safe setup logic.
 
 Args:
     klass (str): Classification name for the queue instance to distinguish different queues. Defaults to '__default__'.
-''')
-
-add_chinese_doc('DynamicDescriptor', '''\
-动态描述符类，实现了根据访问对象的不同动态绑定方法调用。  
-通过封装函数，支持当描述符被访问时，根据是通过实例还是类访问，调用对应的方法。
-
-Args:
-    func (Callable): 作为描述符的函数。
-
-''')
-
-add_english_doc('DynamicDescriptor', '''\
-A dynamic descriptor class that implements method binding dynamically based on the access object.  
-By wrapping a function, it supports calling the method on the instance or the class depending on how the descriptor is accessed.
-
-Args:
-    func (Callable): The function to be used as a descriptor.
-
-''')
-
-add_chinese_doc('DynamicDescriptor.Impl', '''\
-动态描述符的内部实现类，封装了函数及其访问上下文。  
-根据访问者是实例还是类，调用对应的方法。
-
-Args:
-    func (Callable): 被封装的函数。
-    instance (Optional[Any]): 调用该描述符的实例，若无则为 None。
-    owner (type): 描述符所属的类。
-
-**Returns:**\n
-- 调用结果，与封装函数的返回值一致。
-''')
-
-add_english_doc('DynamicDescriptor.Impl', '''\
-Internal implementation class of the dynamic descriptor, encapsulating the function and its context.  
-Calls the function bound to either the instance or the class depending on the accessor.
-
-Args:
-    func (Callable): The wrapped function.
-    instance (Optional[Any]): The instance accessing the descriptor, or None if accessed via class.
-    owner (type): The class owning the descriptor.
-
-**Returns:**\n
-- The result of the function call, consistent with the wrapped function's return value.
 ''')

@@ -38,13 +38,6 @@
     members: set, isNone
     exclude-members:
 
-::: lazyllm.common.RedisQueue
+::: lazyllm.common.queue.RedisQueue
     members: 
-    exclude-members:
-
-## DynamicDescriptor
-
-::: lazyllm.common.DynamicDescriptor
-    members:
-    - Impl
     exclude-members:

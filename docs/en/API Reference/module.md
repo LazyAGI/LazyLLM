@@ -4,21 +4,12 @@
       members:
       - _get_deploy_tasks
       - _get_train_tasks
-      - stream_output
-      - used_by
+      - eval
+      - evalset
       - forward
-      - register_hook
-      - unregister_hook
-      - clear_hooks
       - start
       - restart
       - update
-      - update_server
-      - evalset
-      - eval
-      - wait
-      - stop
-      - for_each
         
 ::: lazyllm.module.ActionModule
     options:
