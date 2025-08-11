@@ -188,6 +188,7 @@ class TrainServer(ServerBase):
         # Launch Training:
         thread = threading.Thread(target=m._impl._async_finetune, args=(model_id,), kwargs=hypram)
         thread.start()
+        await asyncio.sleep(1)
 
         # Sleep 5s for launch cmd.
         try:

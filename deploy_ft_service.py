@@ -9,7 +9,7 @@ import sys
 import uvicorn
 import argparse
 from datetime import datetime
-from lazyllm.tools.train_service.serveV2 import TrainServer
+from lazyllm.tools.train_service.serve import TrainServer
 from lazyllm import FastapiApp
 from fastapi import FastAPI
 
