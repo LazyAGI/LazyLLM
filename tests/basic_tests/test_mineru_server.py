@@ -209,7 +209,6 @@ class TestMineruServer(unittest.TestCase):
     def test_pdf_parsing(self):
         """测试1: 初始PDF解析（创建缓存基础）"""
         LOG.info("\n📋 测试1: 初始PDF解析（创建缓存基础）")
-        LOG.info("🔄 这一步将解析PDF文件并创建缓存，为后续测试做准备")
         initial_files = [str(self.test_files["pdf1"]), str(self.test_files["pdf2"])]
         LOG.info(f"📄 解析PDF文件: {[os.path.basename(f) for f in initial_files]}")
 
@@ -225,7 +224,6 @@ class TestMineruServer(unittest.TestCase):
         self.check_result(result)
         LOG.info("✅ 初始PDF解析成功")
         LOG.info(f"📊 处理文件数: {len(result['result'])}")
-        # 存储结果用于后续测试 - 修复：使用文件路径作为键
         for i, file_result in enumerate(result["result"]):
             file_path = initial_files[i]
             self.__class__.test_results[file_path] = file_result
@@ -268,12 +266,7 @@ class TestMineruServer(unittest.TestCase):
     def test_pdf_parsing_with_cache(self):
         """测试3: 混合PDF缓存和新文件（依赖测试1和3）"""
         LOG.info("\n🔄 测试3: 混合PDF缓存和新文件（依赖测试1和3）")
-        LOG.info("🔄 这一步将测试部分PDF文件使用缓存，部分PDF文件重新解析")
-        # 混合文件：第一个有缓存，第三个是新文件
         mixed_files = [str(self.test_files["pdf1"]), str(self.test_files["pdf3"])]
-        LOG.info("📄 混合PDF文件:")
-        LOG.info(f"   - 有缓存: {os.path.basename(mixed_files[0])}")
-        LOG.info(f"   - 新文件: {os.path.basename(mixed_files[1])}")
         status, result = self.post_pdf_parse(
             files=mixed_files,
             backend="pipeline",
@@ -283,8 +276,6 @@ class TestMineruServer(unittest.TestCase):
         )
         assert status == 200, f"status: {status}, error: {result}"
         self.check_result(result)
-        LOG.info("✅ 混合PDF处理成功")
-        LOG.info(f"📊 处理文件数: {len(result['result'])}")
         for i, file_result in enumerate(result["result"]):
             file_path = mixed_files[i]
             file_name = os.path.basename(file_path)
@@ -359,8 +350,8 @@ class TestMineruServer(unittest.TestCase):
 
     @pytest.mark.order(6)
     def test_pdf_reader(self):
-        """测试6: 测试pdf reader"""
-        LOG.info("\n⚠️ 测试6: 测试pdf reader")
+        """测试6: 测试pdf reader(文件路径)"""
+        LOG.info("\n⚠️ 测试6: 测试pdf reader(文件路径)")
         pdf_reader = MineruPDFReader(self.__class__.url)
         pdf_path = str(self.test_files["pdf1"])
         nodes = pdf_reader(pdf_path)
@@ -370,7 +361,6 @@ class TestMineruServer(unittest.TestCase):
             for item in self.__class__.test_results[pdf_path]["content_list"]
         ]
         assert set([node._content for node in nodes]) == set(cache_res)
-        LOG.info([node._content for node in nodes])
 
     @pytest.mark.order(7)
     def test_pdf_reader_with_upload_files(self):
@@ -387,6 +377,3 @@ class TestMineruServer(unittest.TestCase):
             for item in self.__class__.test_results[pdf_path]["content_list"]
         ]
         assert set([node._content for node in nodes]) == set(cache_res)
-        LOG.info([node._content for node in nodes])
-
-        LOG.info("✅ PDF reader 文件上传模式测试成功")
