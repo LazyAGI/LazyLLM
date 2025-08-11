@@ -22,7 +22,7 @@
     members:
 	exclude-members:
 
-::: lazyllm.tools.rag.component.bm25.BM25
+::: lazyllm.tools.rag.component.bm25
     members:
 	exclude-members:
 
@@ -84,7 +84,7 @@
     members:
 	exclude-members:
 
-::: lazyllm.tools.rag.component.bm25.BM25
+::: lazyllm.tools.rag.component.bm25
     members:
 	exclude-members:
 

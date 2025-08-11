@@ -4479,7 +4479,7 @@ Querying nodes...
 [DocNode(uid="2", content="Document 2")]
 ''')
 
-add_chinese_doc('WebUi', """\
+add_chinese_doc('rag.web.WebUi', """\
 基于 Gradio 的知识库文件管理 Web UI 工具类。
 
 该类用于构建一个简单的 Web 界面，支持创建分组、上传文件、列出/删除分组或文件，并通过 RESTful API 与后端交互。支持快速集成与展示文件管理能力。
@@ -4488,7 +4488,7 @@ Args:
     base_url (str): 后端 API 服务的基础地址。
 """)
 
-add_english_doc('WebUi', """\
+add_english_doc('rag.web.WebUi', """\
 A Gradio-based web UI for managing knowledge base files.
 
 This class provides an interactive UI to create/delete groups, upload files, list files, and perform deletion operations via RESTful APIs. It is designed for rapid integration of file and group management.
@@ -4497,14 +4497,14 @@ Args:
     base_url (str): Base URL of the backend API service.
 """)
 
-add_example('WebUi', ['''\
+add_example('rag.web.WebUi', ['''\
 >>> from lazyllm.components import WebUi
 >>> web_ui = WebUi(base_url="http://localhost:8000")
 >>> ui = web_ui.create_ui()
 >>> ui.launch()
 '''])
 
-add_chinese_doc("WebUi.basic_headers", '''
+add_chinese_doc("rag.web.WebUi.basic_headers", '''
 生成通用的 HTTP 请求头。
 
 Args:
@@ -4514,7 +4514,7 @@ Returns:
     dict: HTTP 请求头字典。
 ''')
 
-add_english_doc("WebUi.basic_headers", '''
+add_english_doc("rag.web.WebUi.basic_headers", '''
 Generate standard HTTP headers.
 
 Args:
@@ -4524,21 +4524,21 @@ Returns:
     dict: Dictionary of HTTP headers.
 ''')
 
-add_chinese_doc("WebUi.muti_headers", '''
+add_chinese_doc("rag.web.WebUi.muti_headers", '''
 生成用于上传文件的 HTTP 请求头。
 
 Returns:
     dict: HTTP 请求头字典。
 ''')
 
-add_english_doc("WebUi.muti_headers", '''
+add_english_doc("rag.web.WebUi.muti_headers", '''
 Generate HTTP headers for file upload.
 
 Returns:
     dict: Dictionary of HTTP headers.
 ''')
 
-add_chinese_doc("WebUi.post_request", '''
+add_chinese_doc("rag.web.WebUi.post_request", '''
 发送 POST 请求。
 
 Args:
@@ -4549,7 +4549,7 @@ Returns:
     dict: 响应结果的 JSON。
 ''')
 
-add_english_doc("WebUi.post_request", '''
+add_english_doc("rag.web.WebUi.post_request", '''
 Send a POST request.
 
 Args:
@@ -4560,7 +4560,7 @@ Returns:
     dict: JSON response from the server.
 ''')
 
-add_chinese_doc("WebUi.get_request", '''
+add_chinese_doc("rag.web.WebUi.get_request", '''
 发送 GET 请求。
 
 Args:
@@ -4570,7 +4570,7 @@ Returns:
     dict: 响应结果的 JSON。
 ''')
 
-add_english_doc("WebUi.get_request", '''
+add_english_doc("rag.web.WebUi.get_request", '''
 Send a GET request.
 
 Args:
@@ -4580,7 +4580,7 @@ Returns:
     dict: JSON response from the server.
 ''')
 
-add_chinese_doc("WebUi.new_group", '''
+add_chinese_doc("rag.web.WebUi.new_group", '''
 创建新的文件分组。
 
 Args:
@@ -4590,7 +4590,7 @@ Returns:
     str: 创建结果的提示信息。
 ''')
 
-add_english_doc("WebUi.new_group", '''
+add_english_doc("rag.web.WebUi.new_group", '''
 Create a new file group.
 
 Args:
@@ -4600,7 +4600,7 @@ Returns:
     str: Server message about the creation result.
 ''')
 
-add_chinese_doc("WebUi.delete_group", '''
+add_chinese_doc("rag.web.WebUi.delete_group", '''
 删除指定的文件分组。
 
 Args:
@@ -4610,7 +4610,7 @@ Returns:
     str: 删除结果信息。
 ''')
 
-add_english_doc("WebUi.delete_group", '''
+add_english_doc("rag.web.WebUi.delete_group", '''
 Delete a specific file group.
 
 Args:
@@ -4620,21 +4620,21 @@ Returns:
     str: Server message about the deletion.
 ''')
 
-add_chinese_doc("WebUi.list_groups", '''
+add_chinese_doc("rag.web.WebUi.list_groups", '''
 列出所有文件分组。
 
 Returns:
     List[str]: 分组名称列表。
 ''')
 
-add_english_doc("WebUi.list_groups", '''
+add_english_doc("rag.web.WebUi.list_groups", '''
 List all available file groups.
 
 Returns:
     List[str]: List of group names.
 ''')
 
-add_chinese_doc("WebUi.upload_files", '''
+add_chinese_doc("rag.web.WebUi.upload_files", '''
 向指定分组上传文件。
 
 Args:
@@ -4645,7 +4645,7 @@ Returns:
     Any: 后端返回的上传结果数据。
 ''')
 
-add_english_doc("WebUi.upload_files", '''
+add_english_doc("rag.web.WebUi.upload_files", '''
 Upload files to a specified group.
 
 Args:
@@ -4656,7 +4656,7 @@ Returns:
     Any: Data returned by the backend.
 ''')
 
-add_chinese_doc("WebUi.list_files_in_group", '''
+add_chinese_doc("rag.web.WebUi.list_files_in_group", '''
 列出指定分组下的所有文件。
 
 Args:
@@ -4666,7 +4666,7 @@ Returns:
     List: 文件信息列表。
 ''')
 
-add_english_doc("WebUi.list_files_in_group", '''
+add_english_doc("rag.web.WebUi.list_files_in_group", '''
 List all files within a specific group.
 
 Args:
@@ -4676,7 +4676,7 @@ Returns:
     List: List of file information.
 ''')
 
-add_chinese_doc("WebUi.delete_file", '''
+add_chinese_doc("rag.web.WebUi.delete_file", '''
 从指定分组中删除文件。
 
 Args:
@@ -4687,7 +4687,7 @@ Returns:
     str: 删除结果提示。
 ''')
 
-add_english_doc("WebUi.delete_file", '''
+add_english_doc("rag.web.WebUi.delete_file", '''
 Delete specific files from a group.
 
 Args:
@@ -4698,7 +4698,7 @@ Returns:
     str: Deletion result message.
 ''')
 
-add_chinese_doc("WebUi.gr_show_list", '''
+add_chinese_doc("rag.web.WebUi.gr_show_list", '''
 以 Gradio 表格的形式展示字符串列表。
 
 Args:
@@ -4709,7 +4709,7 @@ Returns:
     gr.DataFrame: Gradio 表格组件。
 ''')
 
-add_english_doc("WebUi.gr_show_list", '''
+add_english_doc("rag.web.WebUi.gr_show_list", '''
 Display a list of strings as a Gradio DataFrame.
 
 Args:
@@ -4720,51 +4720,17 @@ Returns:
     gr.DataFrame: Gradio DataFrame component.
 ''')
 
-add_chinese_doc("WebUi.create_ui", '''
+add_chinese_doc("rag.web.WebUi.create_ui", '''
 构建基于 Gradio 的文件管理图形界面，包含分组列表、上传、查看、删除等功能标签页。
 
 Returns:
     gr.Blocks: 完整的 Gradio UI 应用实例。
 ''')
 
-add_english_doc("WebUi.create_ui", '''
+add_english_doc("rag.web.WebUi.create_ui", '''
 Build a Gradio-based file management UI, including tabs for group listing, file uploading, viewing, and deletion.
 
 Returns:
     gr.Blocks: A complete Gradio application instance.
 ''')
 
-add_chinese_doc('TencentSearch', """
-腾讯内容安全搜索模块。
-
-该模块通过腾讯云 TMS（内容安全）API 实现对查询内容的智能搜索，用于内容检索或智能问答系统的辅助工具。
-
-Args:
-    secret_id (str): 腾讯云 API 密钥的 SecretId。
-    secret_key (str): 腾讯云 API 密钥的 SecretKey。
-""")
-
-add_english_doc('TencentSearch', """
-Tencent Content Security Search Module.
-
-This module uses Tencent Cloud TMS (Text Moderation Service) API to perform intelligent search on query content, suitable for content retrieval or as an auxiliary in QA systems.
-
-Args:
-    secret_id (str): SecretId for Tencent Cloud API credentials.
-    secret_key (str): SecretKey for Tencent Cloud API credentials.
-""")
-
-add_example('TencentSearch', '''
-
-# 中文示例
-from lazyllm.components import TencentSearch
-
-# 初始化模块，使用你的腾讯云 secret_id 和 secret_key
-search = TencentSearch(secret_id="你的secret-id", secret_key="你的secret-key")
-
-# 执行查询
-results = search.forward("人工智能的发展趋势")
-
-# 输出查询结果
-print(results)
-''')

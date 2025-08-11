@@ -39,4 +39,10 @@
 ::: lazyllm.common.FileSystemQueue
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
-    
+
+## DynamicDescriptor
+
+::: lazyllm.common.DynamicDescriptor
+    members:
+    - Impl
+    exclude-members:
