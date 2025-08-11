@@ -1213,7 +1213,7 @@ FileHandlerBase provides the following capabilities:\n
 
 add_example('llms.onlinemodule.fileHandler.FileHandlerBase', '''\
 >>> import lazyllm
->>> from lazyllm.module.onlineChatModule.fileHandler import FileHandlerBase
+>>> from lazyllm.module.llms.onlinemodule.fileHandler import FileHandlerBase
 >>> import tempfile
 >>> import json
 >>> sample_data = [
