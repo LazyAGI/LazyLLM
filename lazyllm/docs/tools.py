@@ -427,21 +427,6 @@ Returns:
     dict: Extracted key information dictionary with field names as keys and corresponding information values as values.
 ''')
 
-add_example('rag.doc_to_db.DocInfoExtractor.extract_doc_info', '''\
->>> from lazyllm.components.doc_info_extractor import DocInfoExtractor
->>> from lazyllm import OnlineChatModule
->>> extractor = DocInfoExtractor()
->>> m = OnlineChatModule(source="openai")
->>> schema = [
-...     {"key": "party_a", "desc": "Party A name", "type": "str"},
-...     {"key": "party_b", "desc": "Party B name", "type": "str"},
-...     {"key": "contract_amount", "desc": "Contract amount", "type": "str"}
-... ]
->>> info = extractor.extract_doc_info(m, "contract.txt", schema, "Focus on contract parties and amounts")
->>> print(info)
-{'party_a': 'ABC Corp', 'party_b': 'XYZ Ltd', 'contract_amount': '$50,000'}
-''')
-
 add_chinese_doc('http_request.http_executor_response.HttpExecutorResponse.get_content_type', '''\
 获取HTTP响应的内容类型。
 
@@ -4680,29 +4665,4 @@ Args:
 
 Returns:
     List[Union[str, DocNode]]: 转换结果，根据函数实现可以是字符串或 DocNode 对象。
-''')
-
-add_example('rag.transform.FuncNodeTransform.transform', '''
->>> import lazyllm
->>> from lazyllm.tools.rag import FuncNodeTransform, DocNode
-
-# Create a sample DocNode
->>> doc_node = DocNode(text="apple,banana,orange", uid="test_node")
-
-# Example 1: Text-based transformation
->>> def split_text(text):
-...     return [item.strip() for item in text.split(',') if item.strip()]
->>> text_transform = FuncNodeTransform(split_text, trans_node=False)
->>> result = text_transform.transform(doc_node)
->>> print(result)
-['apple', 'banana', 'orange']
-
-# Example 2: Node-based transformation
->>> def process_node(node):
-...     # Create new nodes based on the original node
-...     return [DocNode(text=f"Processed: {node.text}", uid=f"{node.uid}_processed")]
->>> node_transform = FuncNodeTransform(process_node, trans_node=True)
->>> result = node_transform.transform(doc_node)
->>> print([r.text for r in result])
-['Processed: apple,banana,orange']
 ''')
