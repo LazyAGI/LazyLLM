@@ -31,7 +31,7 @@ class DocNode:
             raise ValueError('`text` and `content` cannot be set at the same time.')
         if not content and not text: content = ''
         self._uid: str = uid if uid else str(uuid.uuid4())
-        self._content: Optional[Union[str, List[Any]]] = content if content else text
+        self._content: Optional[Union[str, List[Any]]] = content if content is not None else text
         self._group: Optional[str] = group
         self._embedding: Optional[Dict[str, List[float]]] = embedding or {}
         # metadata: the chunk's meta

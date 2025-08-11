@@ -1,5 +1,6 @@
 import os
 import lazyllm
+import traceback
 
 from collections import defaultdict
 from typing import Optional, List, Union, Set, Dict, Callable, Any
@@ -142,6 +143,7 @@ class _DocumentStore(object):
                 index.update(nodes)
         except Exception as e:
             LOG.error(f"[_DocumentStore - {self._algo_name}] Failed to update nodes: {e}")
+            LOG.error(traceback.format_exc())
             raise
 
     def remove_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
