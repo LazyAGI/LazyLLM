@@ -767,13 +767,6 @@ Args:
     init (bool): Whether to initialize the model immediately upon construction. Defaults to False.
 ''')
 
-add_example('deploy.LazyFlagEmbedding', ['''\
->>> from lazyllm.components import LazyFlagEmbedding
->>> embedder = LazyFlagEmbedding(base_embed="BAAI/bge-small-en", sparse=False)
->>> result = embedder({"text": "hello world", "images": None})
->>> print(result)
-'''])
-
 add_chinese_doc('deploy.LazyFlagEmbedding.load_embed', '''\
 加载嵌入模型并初始化到设备上。
 
@@ -839,17 +832,6 @@ Args:
     openai_api (bool): Whether to launch the server in OpenAI-compatible API mode (default: False).
     **kw: Additional deployment options, such as max sequence length, parallel configs, etc.
 ''')
-
-add_example('deploy.Vllm', ['''\
->>> from lazyllm.components import Vllm
->>> vllm = Vllm(openai_api=True, max_tokens=512)
->>> cmd = vllm.cmd(finetuned_model="/path/to/model")
->>> launcher = vllm.launcher
->>> job = launcher.launch(cmd)
->>> url = vllm.geturl(job)
->>> print(url)
-... http://192.168.0.1:PORT/generate
-'''])
 
 add_chinese_doc('deploy.Vllm.cmd', '''\
 构造用于启动 vLLM 推理服务的命令。

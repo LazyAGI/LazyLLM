@@ -429,17 +429,3 @@ Args:
     **kw: Optional keyword arguments for placeholder compatibility.
 ''')
 
-add_example('Identity', ['''\
->>> from lazyllm.components import Identity
->>> identity = Identity()
-
->>> # 单个输入时，返回原值
->>> result = identity("hello")
->>> print(result)
-'hello'
-
->>> # 多个输入时，返回打包结果
->>> result = identity(1, 2, 3)
->>> print(result)
-(1, 2, 3)
-'''])
