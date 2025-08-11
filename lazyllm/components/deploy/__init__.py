@@ -6,7 +6,7 @@ from .lmdeploy import LMDeploy
 from .infinity import Infinity
 from .ray import Distributed
 from .mindie import Mindie
-from .embed import EmbeddingDeploy, LazyFlagEmbedding
+from .embed import EmbeddingDeploy
 from .stable_diffusion import StableDiffusionDeploy
 from .text_to_speech import TTSDeploy, BarkDeploy, ChatTTSDeploy, MusicGenDeploy
 from .speech_to_text import SenseVoiceDeploy
@@ -24,7 +24,6 @@ __all__ = [
     'Infinity',
     'Distributed',
     'EmbeddingDeploy',
-    'LazyFlagEmbedding',
     'StableDiffusionDeploy',
     'TTSDeploy',
     'BarkDeploy',
