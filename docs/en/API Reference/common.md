@@ -4,6 +4,11 @@
     options:
       heading_level: 3
 
+::: lazyllm.common.Register.LazyDict
+    options:
+      heading_level: 3
+      members: remove, set_default
+
 ---
 
 ## Bind

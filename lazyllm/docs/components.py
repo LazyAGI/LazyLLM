@@ -577,6 +577,76 @@ add_example('deploy.Lightllm', '''\
 >>> infer = deploy.lightllm()
 ''')
 
+add_chinese_doc('deploy.Lightllm.cmd', '''\
+该方法用于生成启动LightLLM服务的命令。
+
+参数:
+    finetuned_model (str): 微调后的模型路径。
+    base_model (str): 基础模型路径，当finetuned_model无效时使用。
+
+返回值:
+    LazyLLMCMD: 一个包含启动命令的LazyLLMCMD对象。
+''')
+
+add_english_doc('deploy.Lightllm.cmd', '''\
+This method generates the command to start the LightLLM service.
+
+Args:
+    finetuned_model (str): Path to the fine-tuned model.
+    base_model (str): Path to the base model, used when finetuned_model is invalid.
+
+Returns:
+    LazyLLMCMD: A LazyLLMCMD object containing the startup command.
+''')
+
+add_chinese_doc('deploy.Lightllm.geturl', '''\
+获取LightLLM服务的URL地址。
+
+参数:
+    job (optional): 任务对象，默认为None，此时使用self.job。
+
+返回值:
+    str: 服务的URL地址，格式为"http://{ip}:{port}/generate"。
+''')
+
+add_english_doc('deploy.Lightllm.geturl', '''\
+Get the URL address of the LightLLM service.
+
+Args:
+    job (optional): Job object, defaults to None, in which case self.job is used.
+
+Returns:
+    str: The service URL address in the format "http://{ip}:{port}/generate".
+''')
+
+add_chinese_doc('deploy.Lightllm.extract_result', '''\
+从服务响应中提取生成的文本结果。
+
+参数:
+    x (str): 服务返回的响应文本。
+    inputs (str): 输入文本。
+
+返回值:
+    str: 提取出的生成文本。
+
+异常:
+    Exception: 当解析JSON响应失败时抛出异常。
+''')
+
+add_english_doc('deploy.Lightllm.extract_result', '''\
+Extract generated text from the service response.
+
+Args:
+    x (str): Response text from the service.
+    inputs (str): Input text.
+
+Returns:
+    str: The extracted generated text.
+
+Raises:
+    Exception: When JSON response parsing fails.
+''')
+
 # Deploy-Vllm
 add_chinese_doc('deploy.Vllm', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [VLLM](https://github.com/vllm-project/vllm) 框架提供的推理能力，用于对大语言模型进行推理。
@@ -841,6 +911,70 @@ add_example('deploy.LMDeploy', '''\
 >>> chat.update_server()
 >>> inputs = encode_query_with_filepaths('What is it?', ['path/to/image'])
 >>> res = chat(inputs)
+''')
+
+add_chinese_doc('deploy.LMDeploy.cmd', '''\
+该方法用于生成启动LMDeploy服务的命令。
+
+参数:
+    finetuned_model (str): 微调后的模型路径。
+    base_model (str): 基础模型路径，当finetuned_model无效时使用。
+
+返回值:
+    LazyLLMCMD: 一个包含启动命令的LazyLLMCMD对象。
+''')
+
+add_english_doc('deploy.LMDeploy.cmd', '''\
+This method generates the command to start the LMDeploy service.
+
+Args:
+    finetuned_model (str): Path to the fine-tuned model.
+    base_model (str): Path to the base model, used when finetuned_model is invalid.
+
+Returns:
+    LazyLLMCMD: A LazyLLMCMD object containing the startup command.
+''')
+
+add_chinese_doc('deploy.LMDeploy.geturl', '''\
+获取LMDeploy服务的URL地址。
+
+参数:
+    job (optional): 任务对象，默认为None，此时使用self.job。
+
+返回值:
+    str: 服务的URL地址，格式为"http://{ip}:{port}/v1/chat/interactive"。
+''')
+
+add_english_doc('deploy.LMDeploy.geturl', '''\
+Get the URL address of the LMDeploy service.
+
+Args:
+    job (optional): Job object, defaults to None, in which case self.job is used.
+
+Returns:
+    str: The service URL address in the format "http://{ip}:{port}/v1/chat/interactive".
+''')
+
+add_chinese_doc('deploy.LMDeploy.extract_result', '''\
+从服务响应中提取生成的文本结果。
+
+参数:
+    x (str): 服务返回的响应文本。
+    inputs (str): 输入文本。
+
+返回值:
+    str: 提取出的生成文本。
+''')
+
+add_english_doc('deploy.LMDeploy.extract_result', '''\
+Extract generated text from the service response.
+
+Args:
+    x (str): Response text from the service.
+    inputs (str): Input text.
+
+Returns:
+    str: The extracted generated text.
 ''')
 
 # Deploy-Infinity
@@ -2433,4 +2567,88 @@ Notes:
 add_example('RemoteLauncher', '''\
 >>> import lazyllm
 >>> launcher = lazyllm.launchers.remote(ngpus=1)
+''')
+
+add_chinese_doc('K8sLauncher', '''\
+K8sLauncher是一个基于Kubernetes的部署启动器，用于在Kubernetes集群中部署和管理服务。
+
+参数:
+    kube_config_path (str): Kubernetes配置文件路径。
+    resource_config_path (str): 资源配置文件路径。
+    image (str): 容器镜像。
+    volume_configs (list): 卷配置列表。
+    svc_type (str): 服务类型，默认为"LoadBalancer"。
+    namespace (str): Kubernetes命名空间，默认为"default"。
+    gateway_name (str): 网关名称，默认为"lazyllm-gateway"。
+    gateway_class_name (str): 网关类名称，默认为"istio"。
+    host (str): HTTP主机名，默认为None。
+    path (str): HTTP路径，默认为'/generate'。
+    gateway_retry (int): 网关重试次数。
+''')
+
+add_english_doc('K8sLauncher', '''\
+K8sLauncher is a Kubernetes-based deployment launcher for deploying and managing services in a Kubernetes cluster.
+
+Args:
+    kube_config_path (str): Path to the Kubernetes configuration file.
+    resource_config_path (str): Path to the resource configuration file.
+    image (str): Container image.
+    volume_configs (list): List of volume configurations.
+    svc_type (str): Service type, defaults to "LoadBalancer".
+    namespace (str): Kubernetes namespace, defaults to "default".
+    gateway_name (str): Gateway name, defaults to "lazyllm-gateway".
+    gateway_class_name (str): Gateway class name, defaults to "istio".
+    host (str): HTTP hostname, defaults to None.
+    path (str): HTTP path, defaults to '/generate'.
+    gateway_retry (int): Number of gateway retries.
+''')
+
+add_chinese_doc('K8sLauncher.makejob', '''\
+创建一个Kubernetes作业实例。
+
+参数:
+    cmd (str): 要执行的命令。
+
+返回值:
+    K8sLauncher.Job: 一个新的Kubernetes作业实例。
+''')
+
+add_english_doc('K8sLauncher.makejob', '''\
+Create a Kubernetes job instance.
+
+Args:
+    cmd (str): The command to execute.
+
+Returns:
+    K8sLauncher.Job: A new Kubernetes job instance.
+''')
+
+add_chinese_doc('K8sLauncher.launch', '''\
+启动一个Kubernetes作业或可调用对象。
+
+参数:
+    f (K8sLauncher.Job): 要启动的Kubernetes作业实例。
+    *args: 位置参数。
+    **kw: 关键字参数。
+
+返回值:
+    Any: 作业的返回值。
+
+异常:
+    RuntimeError: 当提供的不是Deployment对象时抛出。
+''')
+
+add_english_doc('K8sLauncher.launch', '''\
+Launch a Kubernetes job or callable object.
+
+Args:
+    f (K8sLauncher.Job): The Kubernetes job instance to launch.
+    *args: Positional arguments.
+    **kw: Keyword arguments.
+
+Returns:
+    Any: The return value of the job.
+
+Raises:
+    RuntimeError: When the provided object is not a Deployment object.
 ''')

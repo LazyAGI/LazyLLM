@@ -327,6 +327,28 @@ add_example('Pipeline', """\
 <Function type=lambda>
 """)
 
+add_chinese_doc('Pipeline.output', '''\
+获取流水线中指定模块的输出结果。
+
+参数:
+    module: 要获取输出的模块。可以是模块对象或模块名称。
+    unpack (bool): 是否解包输出结果。默认为False。
+
+返回值:
+    bind.Args: 一个绑定参数对象，用于在流水线中传递数据。
+''')
+
+add_english_doc('Pipeline.output', '''\
+Get the output result of a specified module in the pipeline.
+
+Args:
+    module: The module to get output from. Can be a module object or module name.
+    unpack (bool): Whether to unpack the output result. Defaults to False.
+
+Returns:
+    bind.Args: A bound argument object for data passing in the pipeline.
+''')
+
 add_chinese_doc('save_pipeline_result', """\
 一个上下文管理器，用于临时设置是否保存流水线中的中间执行结果。
 
