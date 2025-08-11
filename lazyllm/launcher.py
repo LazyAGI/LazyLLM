@@ -61,6 +61,14 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
             return Status.Cancelled
         raise RuntimeError('More than one tasks are found in one launcher!')
 
+    @property
+    def log_path(self):
+        if len(self.all_processes[self._id]) == 1:
+            return self.all_processes[self._id][0][1].log_path
+        elif len(self.all_processes[self._id]) == 0:
+            return None
+        raise RuntimeError('More than one tasks are found in one launcher!')
+
     def wait(self):
         for _, v in self.all_processes[self._id]:
             v.wait()
@@ -82,6 +90,7 @@ lazyllm.config.add('sco_resource_type', str, 'N3lS.Ii.I60', 'SCO_RESOURCE_TYPE')
 lazyllm.config.add('cuda_visible', bool, False, 'CUDA_VISIBLE')
 lazyllm.config.add('k8s_env_name', str, '', 'K8S_ENV_NAME')
 lazyllm.config.add('k8s_config_path', str, '', 'K8S_CONFIG_PATH')
+lazyllm.config.add('k8s_device_type', str, 'nvidia.com/gpu', 'K8S_DEVICE_TYPE')
 
 
 # store cmd, return message and command output.
@@ -201,17 +210,21 @@ class K8sLauncher(LazyLLMLaunchersBase):
         def __init__(self, cmd, launcher, *, sync=True):
             super().__init__(cmd, launcher, sync=sync)
             self.deployment_name = f"deployment-{uuid.uuid4().hex[:8]}"
+            self.ngpus = launcher.ngpus
             self.namespace = launcher.namespace
             self.volume_configs = launcher.volume_configs
             self.gateway_name = launcher.gateway_name
             self.gateway_class_name = launcher.gateway_class_name
             self.deployment_port = 8080
+            self.deploy_type = 'inference'
+            self.cmd = cmd
             self.host = launcher.http_host
             self.path = launcher.http_path
             self.svc_type = launcher.svc_type
             self.gateway_retry = launcher.gateway_retry
+            self.on_gateway = launcher.on_gateway
             self.image = launcher.image
-            self.resource_config = launcher.resource_config
+            self.resource_config = launcher.resource_config if launcher.resource_config else {}
 
         def _wrap_cmd(self, cmd):
             pythonpath = os.getenv("PYTHONPATH", '')
@@ -224,25 +237,31 @@ class K8sLauncher(LazyLLMLaunchersBase):
             if lazyllm_vars:
                 precmd += " && ".join(f"export {k}={v}" for k, v in lazyllm_vars.items()) + " && "
             precmd += '''ifconfig | grep "inet " | awk "{printf \\"LAZYLLMIP %s\\\\n\\", \$2}" &&'''  # noqa W605
-            port_match = re.search(r"--open_port=(\d+)", cmd)
+            port_match = re.search(r"--(?:open_)?port=(\d+)", cmd)
             if port_match:
                 port = port_match.group(1)
                 LOG.info(f"Port: {port}")
                 self.deployment_port = int(port)
+            elif "train" in cmd:
+                self.deploy_type = 'train'
             else:
                 LOG.info("Port not found")
                 raise ValueError("Failed to obtain application port.")
             return precmd + " " + cmd
 
         def _create_deployment_spec(self, cmd, volume_configs=None):
+            device_type = lazyllm.config['k8s_device_type']
+            resource_config = self.resource_config.get("requests", {"cpu": "2", "memory": "16Gi"})
+            if device_type:
+                resource_config[device_type] = self.ngpus
             container = k8s.client.V1Container(
                 name=self.deployment_name,
                 image=self.image,
                 image_pull_policy="IfNotPresent",
                 command=["bash", "-c", cmd],
                 resources=k8s.client.V1ResourceRequirements(
-                    requests=self.resource_config.get("requests", {"cpu": "2", "memory": "16Gi"}),
-                    limits=self.resource_config.get("requests", {"cpu": "2", "memory": "16Gi"})
+                    requests=resource_config,
+                    limits=resource_config
                 ),
                 volume_mounts=[] if not volume_configs else [
                     k8s.client.V1VolumeMount(
@@ -299,9 +318,77 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 spec=deployment_spec
             )
 
-        def _create_deployment(self, *, fixed=False):
+        def _create_job_spec(self, cmd, volume_configs=None):
+            device_type = lazyllm.config['k8s_device_type']
+            resource_config = self.resource_config.get("requests", {"cpu": "2", "memory": "16Gi"})
+            if device_type:
+                resource_config[device_type] = self.ngpus
+            container = k8s.client.V1Container(
+                name=self.deployment_name,
+                image=self.image,
+                image_pull_policy="IfNotPresent",
+                command=["bash", "-c", cmd],
+                resources=k8s.client.V1ResourceRequirements(
+                    requests=resource_config,
+                    limits=resource_config
+                ),
+                volume_mounts=[] if not volume_configs else [
+                    k8s.client.V1VolumeMount(
+                        mount_path=vol_config["mount_path"] if "__CURRENT_DIR__" not in vol_config['mount_path']
+                        else vol_config['mount_path'].replace("__CURRENT_DIR__", os.getcwd()),
+                        name=vol_config["name"]
+                    ) for vol_config in volume_configs
+                ]
+            )
+
+            volumes = []
+            if volume_configs:
+                for vol_config in volume_configs:
+                    if "nfs_server" in vol_config and "nfs_path" in vol_config:
+                        volumes.append(
+                            k8s.client.V1Volume(
+                                name=vol_config["name"],
+                                nfs=k8s.client.V1NFSVolumeSource(
+                                    server=vol_config["nfs_server"],
+                                    path=vol_config["nfs_path"] if "__CURRENT_DIR__" not in vol_config['nfs_path']
+                                    else vol_config['nfs_path'].replace("__CURRENT_DIR__", os.getcwd()),
+                                    read_only=vol_config.get("read_only", False)
+                                )
+                            )
+                        )
+                    elif "host_path" in vol_config:
+                        volumes.append(
+                            k8s.client.V1Volume(
+                                name=vol_config["name"],
+                                host_path=k8s.client.V1HostPathVolumeSource(
+                                    path=vol_config["host_path"] if "__CURRENT_DIR__" not in vol_config['host_path']
+                                    else vol_config['host_path'].replace("__CURRENT_DIR__", os.getcwd()),
+                                    type="Directory"
+                                )
+                            )
+                        )
+                    else:
+                        LOG.error(f"{vol_config} configuration error.")
+                        raise
+
+            # Job 使用 OnFailure/Never 重启策略，避免无限重启
+            template = k8s.client.V1PodTemplateSpec(
+                metadata=k8s.client.V1ObjectMeta(labels={"app": self.deployment_name}),
+                spec=k8s.client.V1PodSpec(restart_policy="OnFailure", containers=[container], volumes=volumes)
+            )
+            job_spec = k8s.client.V1JobSpec(
+                template=template,
+                backoff_limit=3
+            )
+            return k8s.client.V1Job(
+                api_version="batch/v1",
+                kind="Job",
+                metadata=k8s.client.V1ObjectMeta(name=self.deployment_name),
+                spec=job_spec
+            )
+
+        def _create_deployment(self, *, cmd):
             api_instance = k8s.client.AppsV1Api()
-            cmd = self.get_executable_cmd(fixed=fixed)
             deployment = self._create_deployment_spec(cmd.cmd, self.volume_configs)
             try:
                 api_instance.create_namespaced_deployment(
@@ -311,6 +398,19 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 LOG.info(f"Kubernetes Deployment '{self.deployment_name}' created successfully.")
             except k8s.client.rest.ApiException as e:
                 LOG.error(f"Exception when creating Kubernetes Deployment: {e}")
+                raise
+
+        def _create_job(self, *, cmd):
+            api_instance = k8s.client.BatchV1Api()
+            job = self._create_job_spec(cmd.cmd, self.volume_configs)
+            try:
+                api_instance.create_namespaced_job(
+                    body=job,
+                    namespace=self.namespace
+                )
+                LOG.info(f"Kubernetes Job '{self.deployment_name}' created successfully.")
+            except k8s.client.rest.ApiException as e:
+                LOG.error(f"Exception when creating Kubernetes Job: {e}")
                 raise
 
         def _delete_deployment(self, wait_for_completion=True, timeout=60, check_interval=5):
@@ -333,6 +433,26 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     LOG.error(f"Exception when deleting Kubernetes Deployment: {e}")
                     raise
 
+        def _delete_job(self, wait_for_completion=True, timeout=60, check_interval=5):
+            k8s.config.load_kube_config(self._launcher.kube_config_path)
+            api_instance = k8s.client.BatchV1Api()
+            try:
+                api_instance.delete_namespaced_job(
+                    name=self.deployment_name,
+                    namespace=self.namespace,
+                    body=k8s.client.V1DeleteOptions(propagation_policy="Foreground")
+                )
+                LOG.info(f"Kubernetes Job {self.deployment_name} deleted.")
+
+                if wait_for_completion:
+                    self._wait_for_job_deletion(timeout=timeout, check_interval=check_interval)
+            except k8s.client.rest.ApiException as e:
+                if e.status == 404:
+                    LOG.info(f"Kubernetes Job '{self.deployment_name}' already deleted.")
+                else:
+                    LOG.error(f"Exception when deleting Kubernetes Job: {e}")
+                    raise
+
         def _wait_for_deployment_deletion(self, timeout, check_interval):
             api_instance = k8s.client.AppsV1Api()
             start_time = time.time()
@@ -349,6 +469,23 @@ class K8sLauncher(LazyLLMLaunchersBase):
                         raise
                 time.sleep(check_interval)
             LOG.warning(f"Timeout while waiting for Kubernetes Deployment '{self.deployment_name}' to be deleted.")
+
+        def _wait_for_job_deletion(self, timeout, check_interval):
+            api_instance = k8s.client.BatchV1Api()
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                try:
+                    api_instance.read_namespaced_job(name=self.deployment_name, namespace=self.namespace)
+                    LOG.info(f"Waiting for Kubernetes Job '{self.deployment_name}' to be deleted...")
+                except k8s.client.rest.ApiException as e:
+                    if e.status == 404:
+                        LOG.info(f"Kubernetes Job '{self.deployment_name}' successfully deleted.")
+                        return
+                    else:
+                        LOG.error(f"Error while checking Job deletion status: {e}")
+                        raise
+                time.sleep(check_interval)
+            LOG.warning(f"Timeout while waiting for Kubernetes Job '{self.deployment_name}' to be deleted.")
 
         def _expose_deployment(self):
             api_instance = k8s.client.CoreV1Api()
@@ -657,23 +794,36 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 LOG.warning(f"Timeout while waiting for HTTPRoute '{httproute_name}' to be deleted.")
 
         def _start(self, *, fixed=False):
-            self._create_deployment(fixed=fixed)
-            self._expose_deployment()
-            self._create_or_update_gateway()
-            self._create_httproute()
-            self.jobid = self._get_jobid()
-            self._launcher.all_processes[self._launcher._id].append((self.jobid, self))
-            ret = self.wait()
-            LOG.info(ret)
+            cmd = self.get_executable_cmd(fixed=fixed)
+            if self.deploy_type == 'train':
+                self._create_job(cmd=cmd)
+                self.jobid = self._get_jobid()
+                self._launcher.all_processes[self._launcher._id].append((self.jobid, self))
+                ret = self.wait()
+                LOG.info(ret)
+            else:
+                self._create_deployment(cmd=cmd)
+                self._expose_deployment()
+                if self.on_gateway:
+                    self._create_or_update_gateway()
+                    self._create_httproute()
+                self.jobid = self._get_jobid()
+                self._launcher.all_processes[self._launcher._id].append((self.jobid, self))
+                ret = self.wait()
+                LOG.info(ret)
 
         def stop(self):
-            self._delete_or_update_gateway()
-            self._delete_httproute()
-            self._delete_service()
-            self._delete_deployment()
+            if self.deploy_type == 'train':
+                self._delete_job()
+            else:
+                if self.on_gateway:
+                    self._delete_or_update_gateway()
+                    self._delete_httproute()
+                self._delete_service()
+                self._delete_deployment()
 
         def _get_jobid(self):
-            return f"service-{self.deployment_name}"
+            return f"job-{self.deployment_name}" if self.deploy_type == 'train' else f"service-{self.deployment_name}"
 
         def _get_gateway_service_name(self):
             core_api = k8s.client.CoreV1Api()
@@ -794,6 +944,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 return None
 
         def get_jobip(self):
+            if not self.on_gateway: return f"service-{self.deployment_name}"
             host = self._get_httproute_host()
             ip = self._get_gateway_ip()
             LOG.info(f"gateway ip: {ip}, hostname: {host}")
@@ -818,7 +969,27 @@ class K8sLauncher(LazyLLMLaunchersBase):
             LOG.warning(f"Timed out waiting for Deployment '{self.deployment_name}' to be ready.")
             return False
 
-        def wait_for_service_ready(self, timeout=300):
+        def _is_service_ready(self, timeout):
+            if self.on_gateway: return True
+            url = f"http://service-{self.deployment_name}:{self.deployment_port}{self.path}"
+            for i in range(self.gateway_retry):
+                try:
+                    response = requests.get(url, timeout=timeout)
+                    if response.status_code != 503:
+                        LOG.info(f"Kubernetes Service is ready at '{url}'")
+                        self.queue.put(f"Uvicorn running on {url}")
+                        return True
+                    else:
+                        LOG.info(f"Kubernetes Service at '{url}' returned status code {response.status_code}")
+                except requests.RequestException as e:
+                    LOG.error(f"Failed to access service at '{url}': {e}, retry: {i}/{self.gateway_retry}")
+                    # raise
+                time.sleep(timeout)
+
+            self.queue.put(f"ERROR: Kubernetes Service failed to start on '{url}'.")
+            return False
+
+        def _wait_for_service_ready(self, timeout=300):
             svc_instance = k8s.client.CoreV1Api()
             start_time = time.time()
             while time.time() - start_time < timeout:
@@ -858,6 +1029,10 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     raise
             LOG.warning(f"Timed out waiting for Service 'service-{self.deployment_name}' to be ready.")
             return None
+
+        def wait_for_service_ready(self, timeout=300, interval=5):
+            _service_ready = self._wait_for_service_ready(timeout=timeout)
+            return _service_ready if _service_ready and self._is_service_ready(timeout=interval) else None
 
         def _is_gateway_ready(self, timeout):
             url = f"http://{self.get_jobip()}:{self.deployment_port}{self.path}"
@@ -966,43 +1141,101 @@ class K8sLauncher(LazyLLMLaunchersBase):
             return False
 
         def wait(self):
-            deployment_ready = self.wait_for_deployment_ready()
-            if not deployment_ready:
-                raise TimeoutError("Kubernetes Deployment did not become ready in time.")
+            if self.deploy_type == 'train':
+                job_done = self.wait_for_job_completion()
+                if not job_done:
+                    raise TimeoutError("Kubernetes Job did not complete in time.")
+                return {"job": Status.Done}
+            else:
+                deployment_ready = self.wait_for_deployment_ready()
+                if not deployment_ready:
+                    raise TimeoutError("Kubernetes Deployment did not become ready in time.")
 
-            service_ip = self.wait_for_service_ready()
-            if not service_ip:
-                raise TimeoutError("Kubernetes Service did not become ready in time.")
+                service_ip = self.wait_for_service_ready(interval=10)
+                if not service_ip:
+                    raise TimeoutError("Kubernetes Service did not become ready in time.")
 
-            httproute_ready = self.wait_for_httproute()
-            if not httproute_ready:
-                raise TimeoutError("Kubernetes Httproute did not become ready in time.")
+                httproute_ready = True if not self.on_gateway else self.wait_for_httproute()
+                if not httproute_ready:
+                    raise TimeoutError("Kubernetes Httproute did not become ready in time.")
 
-            gateway_ready = self.wait_for_gateway()
-            if not gateway_ready:
-                raise TimeoutError("Kubernetes Gateway did not become ready in time.")
+                gateway_ready = True if not self.on_gateway else self.wait_for_gateway()
+                if not gateway_ready:
+                    raise TimeoutError("Kubernetes Gateway did not become ready in time.")
 
-            return {"deployment": Status.Running, "service_ip": service_ip,
-                    "gateway": Status.Running, "httproute": Status.Running}
+                return {"deployment": Status.Running, "service_ip": service_ip,
+                        "gateway": Status.Running, "httproute": Status.Running}
+
+        def wait_for_job_completion(self, timeout=86400, poll_interval=5):
+            api_instance = k8s.client.BatchV1Api()
+            start_time = time.time()
+            while time.time() - start_time < timeout:
+                try:
+                    status = api_instance.read_namespaced_job_status(
+                        name=self.deployment_name,
+                        namespace=self.namespace
+                    ).status
+                    if getattr(status, 'succeeded', 0) and status.succeeded >= 1:
+                        LOG.info(f"Kubernetes Job '{self.deployment_name}' succeeded.")
+                        return True
+                    if getattr(status, 'failed', 0) and status.failed >= 1:
+                        LOG.error(f"Kubernetes Job '{self.deployment_name}' failed.")
+                        return False
+                except k8s.client.rest.ApiException as e:
+                    if e.status == 404:
+                        LOG.warning(f"Kubernetes Job '{self.deployment_name}' was deleted or cancelled.")
+                        return False
+                    else:
+                        LOG.error(f"Exception when reading Job status: {e}")
+                        raise
+                time.sleep(poll_interval)
+            LOG.warning(f"Timed out waiting for Job '{self.deployment_name}' to complete.")
+            return False
+
+        @property
+        def log_path(self):
+            match = re.search(r"tee\s+([^\s]+\.log)", self.cmd.cmd)
+            if match:
+                return match.group(1)
+            return None
 
         @property
         def status(self):
-            api_instance = k8s.client.AppsV1Api()
-            try:
-                deployment_status = api_instance.read_namespaced_deployment_status(
-                    name=self.deployment_name,
-                    namespace=self.namespace
-                ).status
-                if deployment_status.available_replicas and deployment_status.available_replicas > 0:
-                    return Status.Running
-                else:
-                    return Status.Pending
-            except k8s.client.rest.ApiException as e:
-                LOG.error(f"Exception when reading Deployment status: {e}")
-                return Status.Failed
+            if self.deploy_type == 'train':
+                api_instance = k8s.client.BatchV1Api()
+                try:
+                    job_status = api_instance.read_namespaced_job_status(
+                        name=self.deployment_name,
+                        namespace=self.namespace
+                    ).status
+                    if getattr(job_status, 'succeeded', 0) and job_status.succeeded >= 1:
+                        return Status.Done
+                    elif getattr(job_status, 'active', 0) and job_status.active >= 1:
+                        return Status.Running
+                    elif getattr(job_status, 'failed', 0) and job_status.failed >= 1:
+                        return Status.Failed
+                    else:
+                        return Status.Pending
+                except k8s.client.rest.ApiException as e:
+                    LOG.error(f"Exception when reading Job status: {e}")
+                    return Status.Failed
+            else:
+                api_instance = k8s.client.AppsV1Api()
+                try:
+                    deployment_status = api_instance.read_namespaced_deployment_status(
+                        name=self.deployment_name,
+                        namespace=self.namespace
+                    ).status
+                    if deployment_status.available_replicas and deployment_status.available_replicas > 0:
+                        return Status.Running
+                    else:
+                        return Status.Pending
+                except k8s.client.rest.ApiException as e:
+                    LOG.error(f"Exception when reading Deployment status: {e}")
+                    return Status.Failed
 
     def __init__(self, kube_config_path=None, volume_configs=None, image=None, resource_config=None,
-                 namespace=None, gateway_name=None, gateway_class_name=None, host=None, path=None,
+                 namespace=None, on_gateway=None, gateway_name=None, gateway_class_name=None, host=None, path=None,
                  svc_type: Literal["LoadBalancer", "NodePort", "ClusterIP"] = None, retry=3,
                  sync=True, ngpus=None, **kwargs):
         super().__init__()
@@ -1018,6 +1251,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             else config_data.get('kube_config_path', "~/.kube/config")
         self.svc_type = svc_type if svc_type else config_data.get("svc_type", "LoadBalancer")
         self.namespace = namespace if namespace else config_data.get("namespace", "default")
+        self.on_gateway = on_gateway if on_gateway else config_data.get("on_gateway", False)
         self.gateway_name = gateway_name if gateway_name else config_data.get("gateway_name", "lazyllm-gateway")
         self.gateway_class_name = gateway_class_name if gateway_class_name \
             else config_data.get("gateway_class_name", "istio")

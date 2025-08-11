@@ -10,6 +10,7 @@ import uvicorn
 import argparse
 from datetime import datetime
 from lazyllm.tools.train_service.serveV2 import TrainServer
+from lazyllm import FastapiApp
 from fastapi import FastAPI
 
 # 添加项目路径到Python路径
@@ -30,98 +31,30 @@ def create_app():
     # 创建训练服务实例
     train_server = TrainServer()
 
-    # 手动注册路由，因为FastapiApp装饰器需要特殊处理
-    # 我们需要从TrainServer类中获取装饰器信息并手动注册
+    # 更新FastapiApp装饰器信息
+    FastapiApp.update()
 
-    # 注册POST /v1/finetuneTasks
-    fastapi_app.add_api_route(
-        "/v1/finetuneTasks",
-        train_server.create_job,
-        methods=["POST"],
-        tags=["训练服务"],
-        summary="创建训练任务",
-        description="创建一个新的AI模型训练任务"
-    )
-
-    # 注册DELETE /v1/finetuneTasks/{job_id}
-    fastapi_app.add_api_route(
-        "/v1/finetuneTasks/{job_id}",
-        train_server.cancel_job,
-        methods=["DELETE"],
-        tags=["训练服务"],
-        summary="取消训练任务",
-        description="取消指定的训练任务"
-    )
-
-    # 注册GET /v1/finetuneTasks/jobs
-    fastapi_app.add_api_route(
-        "/v1/finetuneTasks/jobs",
-        train_server.list_jobs,
-        methods=["GET"],
-        tags=["训练服务"],
-        summary="获取任务列表",
-        description="获取所有训练任务的列表"
-    )
-
-    # 注册GET /v1/finetuneTasks/{job_id}
-    fastapi_app.add_api_route(
-        "/v1/finetuneTasks/{job_id}",
-        train_server.get_job_info,
-        methods=["GET"],
-        tags=["训练服务"],
-        summary="获取任务详情",
-        description="获取指定训练任务的详细信息"
-    )
-
-    # 注册GET /v1/finetuneTasks/{job_id}/log
-    fastapi_app.add_api_route(
-        "/v1/finetuneTasks/{job_id}/log",
-        train_server.get_job_log,
-        methods=["GET"],
-        tags=["训练服务"],
-        summary="获取任务日志",
-        description="获取指定训练任务的日志信息"
-    )
-
-    # 注册POST /v1/finetuneTasks/{job_id}:pause
-    fastapi_app.add_api_route(
-        "/v1/finetuneTasks/{job_id}:pause",
-        train_server.pause_job,
-        methods=["POST"],
-        tags=["训练服务"],
-        summary="暂停训练任务",
-        description="暂停指定的训练任务"
-    )
-
-    # 注册POST /v1/finetuneTasks/{job_id}:resume
-    fastapi_app.add_api_route(
-        "/v1/finetuneTasks/{job_id}:resume",
-        train_server.resume_job,
-        methods=["POST"],
-        tags=["训练服务"],
-        summary="恢复训练任务",
-        description="恢复指定的训练任务"
-    )
-
-    # 注册GET /v1/finetuneTasks/{job_id}runningMetrics
-    fastapi_app.add_api_route(
-        "/v1/finetuneTasks/{job_id}runningMetrics",
-        train_server.get_running_metrics,
-        methods=["GET"],
-        tags=["训练服务"],
-        summary="获取运行指标",
-        description="获取指定训练任务的运行指标"
-    )
-
-    # 注册GET /v1/models:all
-    fastapi_app.add_api_route(
-        "/v1/models:all",
-        train_server.get_support_model,
-        methods=["GET"],
-        tags=["训练服务"],
-        summary="获取支持的模型",
-        description="获取所有支持的模型列表"
-    )
+    # 从TrainServer类中获取路由信息并注册
+    if hasattr(TrainServer, '__relay_services__'):
+        for (method, path), (func_name, kw) in TrainServer.__relay_services__.items():
+            # 获取方法对象
+            func = getattr(train_server, func_name)
+            
+            # 设置标签和描述
+            tags = ["训练服务"]
+            summary = kw.get('summary', func_name)
+            description = kw.get('description', f"{method.upper()} {path}")
+            
+            # 注册路由
+            fastapi_app.add_api_route(
+                path,
+                func,
+                methods=[method.upper()],
+                tags=tags,
+                summary=summary,
+                description=description,
+                **{k: v for k, v in kw.items() if k not in ['summary', 'description']}
+            )
 
     return fastapi_app
 
