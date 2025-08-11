@@ -161,7 +161,25 @@ def install(commands):  # noqa C901
     deps = load_dependencies()  # dict of dependencies
     to_install = OrderedDict()
 
-    for cmd in items:
+    # Special handling for mineru
+    mineru_items = [item for item in items if item == "mineru"]
+    other_items = [item for item in items if item != "mineru"]
+    
+    # Process mineru items first
+    for cmd in mineru_items:
+        print("Installing mineru with custom installation process...")
+        try:
+            # Execute custom mineru installation
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip'])
+            subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'uv'])
+            subprocess.check_call([sys.executable, '-m', 'uv', 'pip', 'install', '-U', 'mineru[core]'])
+            print("Mineru installation completed successfully!")
+        except subprocess.CalledProcessError as e:
+            logging.error(f"Mineru installation failed: {e}")
+            sys.exit(1)
+
+    # Process other items normally
+    for cmd in other_items:
         if cmd in extras:
             for pkg in extras[cmd]:
                 spec = process_package(pkg, deps)
@@ -171,8 +189,11 @@ def install(commands):  # noqa C901
             to_install[spec] = None
 
     if not to_install:
-        logging.error("No packages to install, please check your command.")
-        sys.exit(1)
+        if not mineru_items:
+            logging.error("No packages to install, please check your command.")
+            sys.exit(1)
+        else:
+            return  # Only mineru was installed
 
     pkgs = list(to_install.keys())
     filtered_pkgs = [p for p in pkgs if not p.startswith("flash-attn")]

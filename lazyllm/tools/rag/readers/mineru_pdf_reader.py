@@ -11,7 +11,8 @@ import requests
 
 class MineruPDFReader:
 
-    def __init__(self, mineru_url, backend="pipeline", callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
+    def __init__(self, mineru_url, backend="pipeline",
+                 callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  upload_mode: bool = False, post_func: Optional[Callable] = None):
         self._mineru_url = mineru_url
         self._upload_mode = upload_mode
@@ -53,7 +54,6 @@ class MineruPDFReader:
             if not isinstance(res, dict) or not res.get('result'):
                 LOG.error(f"[MineruPDFReader] Invalid response: {res}")
                 return []
-            
             res = res['result'][0].get('content_list', [])
             if not res:
                 LOG.warning(f"[MineruPDFReader] No elements found in PDF: {pdf_path}")
@@ -78,7 +78,6 @@ class MineruPDFReader:
                 if not isinstance(res, dict) or not res.get('result'):
                     LOG.error(f"[MineruPDFReader] Invalid response: {res}")
                     return []
-                
                 res = res['result'][0].get('content_list', [])
                 if not res:
                     LOG.warning(f"[MineruPDFReader] No elements found in PDF: {pdf_path}")
@@ -100,7 +99,8 @@ class MineruPDFReader:
             block["bbox"] = content["bbox"]
             block["lines"] = content["lines"] if 'lines' in content else []
             for line in block['lines']:
-                line['content'] = self._clean_content(line['content'])
+                if 'content' in line:
+                    line['content'] = self._clean_content(line['content'])
             if content["type"] == "text":
                 content["text"] = self._clean_content(content["text"]).strip()
                 if not content["text"]:
@@ -123,12 +123,12 @@ class MineruPDFReader:
                 block["type"] = content["type"]
                 block["page"] = content["page_idx"]
                 block["image_path"] = os.path.basename(content["img_path"])
-                block['img_caption'] = self._clean_content(content['image_caption'])
-                block['img_footnote'] = self._clean_content(content['image_footnote'])
+                block['img_caption'] = "\n".join(self._clean_content(content.get('image_caption', [])))
+                block['img_footnote'] = "\n".join(self._clean_content(content.get('image_footnote', [])))
                 if cur_title:
                     block["title"] = cur_title
-                img_title = block["img_caption"][0] if len(block["img_caption"]) > 0 else ""
-                block["text"] = f"![{img_title}]({block['image_path']})"
+                block["text"] = f"![{block['img_caption']}]({block['image_path']})"
+                block["text"] += f"\n{block['img_footnote']}\n" if block["img_footnote"] else "\n"
                 blocks.append(block)
             elif content["type"] == "table":
                 block["type"] = content["type"]
@@ -140,8 +140,11 @@ class MineruPDFReader:
                     block['image_path'] = os.path.basename(content['img_path'])
                 if cur_title:
                     block["title"] = cur_title
-                block['table_caption'] = self._clean_content(content['table_caption'])
-                block['table_footnote'] = self._clean_content(content['table_footnote'])
+                block['table_caption'] = "\n".join(self._clean_content(content['table_caption']))
+                block['table_footnote'] = "\n".join(self._clean_content(content['table_footnote']))
+                
+                block["text"] = f"{block['table_caption']}\n{block['text']}".lstrip("\n")
+                block["text"] += f"\n{block['table_footnote']}\n" if block["table_footnote"] else "\n"
                 blocks.append(block)
             elif content["type"] == "equation":
                 block["type"] = "text"
@@ -223,4 +226,3 @@ class MineruPDFReader:
         except Exception as e:
             LOG.error(f"Error parsing table: {e}")
             return str(html_table)
-
