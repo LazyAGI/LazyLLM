@@ -68,3 +68,24 @@
 ::: lazyllm.common.Option
     members: 
     exclude-members:
+
+::: lazyllm.common.multiprocessing.SpawnProcess
+    members: start
+    exclude-members:
+
+::: lazyllm.common.queue.SQLiteQueue
+    options:
+      heading_level: 3
+
+## Threading
+
+::: lazyllm.common.Thread
+    members: work, get_result
+    exclude-members:
+    
+
+## LazyLLMCMD
+
+::: lazyllm.common.LazyLLMCMD
+    members: with_cmd, get_args
+    exclude-members:
