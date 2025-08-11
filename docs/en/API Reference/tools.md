@@ -156,11 +156,11 @@
     exclude-members: forward
 
 ::: lazyllm.tools.rag.retriever.TempDocRetriever
-    members:
+    members: create_node_group, add_subretriever
     exclude-members: 
 
-::: lazyllm.tools.rag.retriever.TempDocRetriever
-    members:
+::: lazyllm.tools.rag.retriever.UrlDocument
+    members: find
     exclude-members: 
 
 ::: lazyllm.tools.rag.DocManager
@@ -229,7 +229,7 @@ lazyllm.tools.rag.transform.NodeTransform
     exclude-members: forward
 
 ::: lazyllm.tools.CodeGenerator
-    members: 
+    members: choose_prompt
     exclude-members: forward
 
 ::: lazyllm.tools.ParameterExtractor
@@ -374,4 +374,16 @@ lazyllm.tools.rag.transform.NodeTransform
 
 ::: lazyllm.tools.HttpTool
     members: 
+    exclude-members:
+
+::: lazyllm.tools.agent.functionCall.StreamResponse
+    members: 
+    exclude-members:
+
+::: lazyllm.tools.MCPClient
+    members: call_tool, list_tools, get_tools, aget_tools, deploy
+    exclude-members:
+
+::: lazyllm.tools.tools.GoogleSearch
+    members: forward
     exclude-members:

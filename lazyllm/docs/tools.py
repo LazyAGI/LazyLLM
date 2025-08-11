@@ -12,6 +12,11 @@ add_tools_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.
 add_tools_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools.tools)
 add_tools_example = functools.partial(utils.add_example, module=lazyllm.tools.tools)
 
+# functions for lazyllm.tools.agent
+add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools.agent)
+add_agent_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools.agent)
+add_agent_example = functools.partial(utils.add_example, module=lazyllm.tools.agent)
+
 # ---------------------------------------------------------------------------- #
 
 # rag/document.py
@@ -1296,6 +1301,7 @@ add_example('Retriever', '''
 
 add_english_doc('rag.retriever.TempDocRetriever', '''
 A temporary document retriever that inherits from ModuleBase and _PostProcess, used for quickly processing temporary files and performing retrieval tasks.
+
 Args:
     embed: The embedding function.
     output_format: The format of the output result (e.g., JSON). Optional, defaults to None.
@@ -1304,6 +1310,7 @@ Args:
 
 add_chinese_doc('rag.retriever.TempDocRetriever', '''
 临时文档检索器，继承自 ModuleBase 和 _PostProcess，用于快速处理临时文件并执行检索任务。
+
 Args:
     embed:嵌入函数。
     output_format:结果输出格式(如json),可选默认为None
@@ -1323,6 +1330,7 @@ add_example('rag.retriever.TempDocRetriever', '''
 
 add_english_doc('rag.retriever.TempDocRetriever.create_node_group', '''
 Create a node group with specific processing pipeline.
+
 Args:
     name (str): Name of the node group. Auto-generated if None.
     transform (Callable): Function to process documents in this group.
@@ -1334,6 +1342,7 @@ Args:
 
 add_chinese_doc('rag.retriever.TempDocRetriever.create_node_group', '''
 创建具有特定处理流程的节点组。
+
 Args:
     name (str): 节点组名称，None时自动生成。
     transform (Callable): 该组文档的处理函数。
@@ -1345,20 +1354,62 @@ Args:
 
 add_english_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
 Add a sub-retriever with search configuration.
+
 Args:
     group (str): Target node group name.
     **kwargs: Retriever parameters (e.g., similarity='cosine').
-Returns:
-    self: For method chaining.
+
+**Returns:**\n
+- self: For method chaining.
 ''')
 
 add_chinese_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
 添加带搜索配置的子检索器。
+
 Args:
     group (str): 目标节点组名称。
     **kwargs: 检索器参数（如similarity='cosine'）。
-Returns:
-    self: 支持链式调用。
+
+**Returns:**\n
+- self: 支持链式调用。
+''')
+
+add_chinese_doc('rag.document.UrlDocument', '''\
+UrlDocument类继承自ModuleBase，用于通过指定的URL和名称管理远程文档资源。  
+内部通过lazyllm的UrlModule代理实际调用，支持文档查找、检索和活跃节点分组查询。  
+
+Args:
+    url (str): 远程文档资源的访问URL。
+    name (str): 当前文档分组名称，用于标识文档分组。
+''')
+
+add_english_doc('rag.document.UrlDocument', '''\
+UrlDocument class inherits from ModuleBase, used to manage remote document resources by specifying a URL and a name.  
+Internally delegates calls to lazyllm's UrlModule, supporting document find, retrieve, and querying active node groups.
+
+Args:
+    url (str): Access URL for the remote document resource.
+    name (str): Current document group name used to identify the document group.
+''')
+
+add_chinese_doc('rag.document.UrlDocument.find', '''\
+生成一个部分应用函数，用于在当前文档组中查找指定目标。
+
+Args:
+    target (str): 需要查找的目标标识。
+
+**Returns:**\n
+- Callable: 调用时会执行查找操作的部分应用函数。
+''')
+
+add_english_doc('rag.document.UrlDocument.find', '''\
+Creates a partially applied function to find a specified target within the current document group.
+
+Args:
+    target (str): The target identifier to find.
+
+**Returns:**\n
+- Callable: A partially applied function that executes the find operation when called.
 ''')
 
 add_english_doc('rag.doc_node.DocNode', '''
@@ -2308,6 +2359,28 @@ add_example('CodeGenerator', ['''\
 ...     return fibonacci(n-1) + fibonacci(n-2)
 '''])
 
+add_chinese_doc('CodeGenerator.choose_prompt', '''\
+根据输入的提示文本内容选择合适的代码生成提示模板。  
+如果提示中包含中文字符，则返回中文提示模板；否则返回英文提示模板。
+
+Args:
+    prompt (str): 输入的提示文本。
+
+**Returns:**\n
+- str: 选择的代码生成提示模板字符串。
+''')
+
+add_english_doc('CodeGenerator.choose_prompt', '''\
+Selects an appropriate code generation prompt template based on the content of the input prompt.  
+Returns the Chinese prompt template if Chinese characters are detected; otherwise returns the English prompt template.
+
+Args:
+    prompt (str): Input prompt text.
+
+**Returns:**\n
+- str: The selected code generation prompt template string.
+''')
+
 #actors/parameter_extractor
 add_chinese_doc('ParameterExtractor', '''\
 参数提取模块。
@@ -2514,23 +2587,33 @@ add_example('ModuleTool', """
 
 
 add_chinese_doc('FunctionCall', '''\
-FunctionCall是单轮工具调用类，如果LLM中的信息不足以回答用户的问题，必需结合外部知识来回答用户问题，则调用该类。如果LLM输出需要工具调用，则进行工具调用，并输出工具调用结果，输出结果为List类型，包含当前轮的输入、模型输出、工具输出。如果不需要工具调用，则直接输出LLM结果，输出结果为string类型。
+FunctionCall是单轮工具调用类。当LLM自身信息不足以回答用户问题，需要结合外部工具获取辅助信息时，调用此类。  
+若LLM输出需要调用工具，则执行工具调用并返回调用结果；输出结果为List类型，包含当前轮的输入、模型输出和工具输出。  
+若不需工具调用，则直接返回LLM输出结果，输出为字符串类型。
 
 Args:
-    llm (ModuleBase): 要使用的LLM可以是TrainableModule或OnlineChatModule。
-    tools (List[Union[str, Callable]]): LLM使用的工具名称或者 Callable 列表
+    llm (ModuleBase): 使用的LLM实例，支持TrainableModule或OnlineChatModule。
+    tools (List[Union[str, Callable]]): LLM可调用的工具名称或Callable对象列表。
+    return_trace (Optional[bool]): 是否返回调用轨迹，默认为False。
+    stream (Optional[bool]): 是否启用流式输出，默认为False。
+    _prompt (Optional[str]): 自定义工具调用提示语，默认根据llm类型自动设置。
 
-注意：tools 中使用的工具必须带有 `__doc__` 字段，按照 [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) 的要求描述清楚工具的用途和参数。
+注意：tools中的工具需包含`__doc__`字段，且须遵循[Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)规范说明用途与参数。
 ''')
 
 add_english_doc('FunctionCall', '''\
-FunctionCall is a single-round tool call class. If the information in LLM is not enough to answer the uesr's question, it is necessary to combine external knowledge to answer the user's question. If the LLM output required a tool call, the tool call is performed and the tool call result is output. The output result is of List type, including the input, model output, and tool output of the current round. If a tool call is not required, the LLM result is directly output, and the output result is of string type.
-
-Note: The tools used in `tools` must have a `__doc__` field, clearly describing the purpose and parameters of the tool according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) requirements.
+FunctionCall is a single-turn tool invocation class. It is used when the LLM alone cannot answer user queries and requires external knowledge through tool calls.  
+If the LLM output requires tool calls, the tools are invoked and the combined results (input, model output, tool output) are returned as a list.  
+If no tool calls are needed, the LLM output is returned directly as a string.
 
 Args:
-    llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
-    tools (List[Union[str, Callable]]): A list of tool names for LLM to use.
+    llm (ModuleBase): The LLM instance to use, which can be either a TrainableModule or OnlineChatModule.
+    tools (List[Union[str, Callable]]): A list of tool names or callable objects that the LLM can use.
+    return_trace (Optional[bool]): Whether to return the invocation trace, defaults to False.
+    stream (Optional[bool]): Whether to enable streaming output, defaults to False.
+    _prompt (Optional[str]): Custom prompt for function call, defaults to automatic selection based on llm type.
+
+Note: Tools in `tools` must include a `__doc__` attribute and describe their purpose and parameters according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings).
 ''')
 
 add_example('FunctionCall', """\
@@ -3951,11 +4034,53 @@ Args:
 
 
 add_english_doc('MCPClient.list_tools', '''\
-Retrieves the list of tools from the currently connected MCP client.
+Retrieve the list of tools from the currently connected MCP client.
+
+**Returns:**\n
+- Any: The list of tools returned by the MCP client.
 ''')
 
 add_chinese_doc('MCPClient.list_tools', '''\
-获取当前连接MCP客户端的工具列表。
+获取当前连接的 MCP 客户端的工具列表。
+
+**Returns:**\n
+- Any: MCP 客户端返回的工具列表。
+''')
+
+
+add_english_doc('MCPClient.get_tools', '''\
+Retrieve a filtered list of tools from the MCP client.
+
+Args:
+    allowed_tools (Optional[list[str]]): List of tool names to filter. If None, all tools are returned.
+
+**Returns:**\n
+- Any: List of tools that match the filter criteria.
+''')
+
+add_chinese_doc('MCPClient.get_tools', '''\
+从 MCP 客户端获取经过筛选的工具列表。
+
+Args:
+    allowed_tools (Optional[list[str]]): 要筛选的工具名称列表，若为 None，则返回所有工具。
+
+**Returns:**\n
+- Any: 符合筛选条件的工具列表。
+''')
+
+
+add_english_doc('MCPClient.deploy', '''\
+Deploys the MCP client with the specified SSE server settings asynchronously.
+
+Args:
+    sse_settings (SseServerSettings): Configuration settings for the SSE server.
+''')
+
+add_chinese_doc('MCPClient.deploy', '''\
+使用指定的 SSE 服务器设置异步部署 MCP 客户端。
+
+Args:
+    sse_settings (SseServerSettings): SSE 服务器的配置设置。
 ''')
 
 
@@ -4436,4 +4561,34 @@ Removed nodes with uids: ['1']
 >>> index.query()
 Querying nodes...
 [DocNode(uid="2", content="Document 2")]
+''')
+
+# agent/functionCall.py
+add_agent_chinese_doc('functionCall.StreamResponse', '''\
+StreamResponse类用于封装带有前缀和颜色配置的流式输出行为。  
+当启用流式模式时，调用实例会将带颜色的文本推送到文件系统队列中，用于异步处理或显示。
+
+Args:
+    prefix (str): 输出内容前的前缀文本，通常用于标识信息来源或类别。
+    prefix_color (Optional[str]): 前缀文本的颜色，支持终端颜色代码，默认无颜色。
+    color (Optional[str]): 主体内容文本颜色，支持终端颜色代码，默认无颜色。
+    stream (bool): 是否启用流式输出模式，启用后会将文本推送至文件系统队列，默认关闭。
+''')
+
+add_agent_english_doc('functionCall.StreamResponse', '''\
+StreamResponse class encapsulates streaming output behavior with configurable prefix and colors.  
+When streaming is enabled, calling the instance enqueues colored text to a filesystem queue for asynchronous processing or display.
+
+Args:
+    prefix (str): Prefix text before the output, typically used to indicate the source or category.
+    prefix_color (Optional[str]): Color of the prefix text, supports terminal color codes, defaults to None.
+    color (Optional[str]): Color of the main content text, supports terminal color codes, defaults to None.
+    stream (bool): Whether to enable streaming output mode, which enqueues text to the filesystem queue, defaults to False.
+''')
+
+add_agent_example('functionCall.StreamResponse', '''\
+>>> from lazyllm.tools.agent.functionCall import StreamResponse
+>>> resp = StreamResponse(prefix="[INFO]", prefix_color="green", color="white", stream=True)
+>>> resp("Hello, world!")
+Hello, world!
 ''')

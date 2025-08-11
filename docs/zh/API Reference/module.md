@@ -68,3 +68,7 @@
 ::: lazyllm.module.OnlineEmbeddingModuleBase
     members:
     exclude-members: forward
+
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoEmbedding
+    options:
+      members:

@@ -50,6 +50,11 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.embed.LazyHuggingFaceRerank
+    options:
+      heading_level: 3
+      members: load_reranker, rebuild
+
 ::: lazyllm.components.deploy.Mindie
     options:
       heading_level: 3
@@ -88,7 +93,7 @@
     inherited_members:
       - generate_prompt
       - get_response
-    members: false
+    members: pre_hook
 
 ::: lazyllm.components.prompter.EmptyPrompter
     options:
@@ -175,6 +180,14 @@
 ::: lazyllm.components.EmptyFormatter
     options:
       heading_level: 3
+
+---
+
+## Core
+::: lazyllm.components.core.ComponentBase
+    options:
+      heading_level: 3
+      members: apply, cmd
 
 ---
 
