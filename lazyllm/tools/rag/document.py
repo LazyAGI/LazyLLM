@@ -96,10 +96,10 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             embed = self._get_embeds(embed) if embed else self._embed
             if isinstance(self._kbs, ServerModule):
                 self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=embed, kb_group_name=name,
-                                                   global_metadata_desc=doc_fields, store_conf=store_conf)
+                                                   global_metadata_desc=doc_fields, store=store_conf)
             else:
                 self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
-                                          global_metadata_desc=doc_fields, store_conf=store_conf)
+                                          global_metadata_desc=doc_fields, store=store_conf)
             self._dlm.add_kb_group(name=name)
 
         def get_doc_by_kb_group(self, name):
