@@ -1243,7 +1243,7 @@ Args:
     name (str): 要检查的组名。
 ''')
 
-add_chinese_doc('tools.rag.default_index.DefaultIndex', r'''\ 
+add_chinese_doc('rag.default_index.DefaultIndex', r'''\ 
 默认的索引实现，负责通过 embedding 和文本相似度在底层存储中查询、更新和删除文档节点。支持多种相似度度量方式，并在必要时对查询和节点进行 embedding 计算与更新。
 
 Args:
@@ -1252,7 +1252,7 @@ Args:
     **kwargs: 预留扩展参数。
 ''')
 
-add_english_doc('tools.rag.default_index.DefaultIndex', '''\
+add_english_doc('rag.default_index.DefaultIndex', '''\
 Default index implementation responsible for querying, updating, and removing document nodes in the underlying store using embedding or text similarity. Supports multiple similarity metrics and performs embedding computation and node updates when needed.
 
 Args:
@@ -1261,21 +1261,21 @@ Args:
     **kwargs: Reserved for future extension.
 ''')
 
-add_chinese_doc('tools.rag.default_index.DefaultIndex.update', r'''\ 
+add_chinese_doc('rag.default_index.DefaultIndex.update', r'''\ 
 根据提供的节点列表更新索引中的内容。具体行为由子类或外部实现填充（此处为空实现，需在实际使用中覆盖/扩展）。
 
 Args:
     nodes (List[DocNode]): 需要更新（新增或替换）的文档节点列表。
 ''')
 
-add_english_doc('tools.rag.default_index.DefaultIndex.update', '''\
+add_english_doc('rag.default_index.DefaultIndex.update', '''\
 Update the index with the given list of document nodes. This is a placeholder implementation and should be provided/extended in concrete usage.
 
 Args:
     nodes (List[DocNode]): Document nodes to add or update in the index.
 ''')
 
-add_chinese_doc('tools.rag.default_index.DefaultIndex.remove', r'''\ 
+add_chinese_doc('rag.default_index.DefaultIndex.remove', r'''\ 
 从索引中删除指定 UID 的节点，可选指定分组名称以限定作用域。当前为空实现，使用时需要补全逻辑。
 
 Args:
@@ -1283,7 +1283,7 @@ Args:
     group_name (Optional[str]): 可选的分组名称，用于限定删除范围。
 ''')
 
-add_english_doc('tools.rag.default_index.DefaultIndex.remove', '''\
+add_english_doc('rag.default_index.DefaultIndex.remove', '''\
 Remove nodes with specified UIDs from the index. Optionally scoped to a group. This is a no-op placeholder and should be implemented in concrete usage.
 
 Args:
@@ -1291,7 +1291,7 @@ Args:
     group_name (Optional[str]): Optional group name to scope the removal.
 ''')
 
-add_chinese_doc('tools.rag.default_index.DefaultIndex.query', r'''\ 
+add_chinese_doc('rag.default_index.DefaultIndex.query', r'''\ 
 执行一次查询，支持 embedding 和文本两种模式，依据相似度函数过滤并返回符合条件的 DocNode 结果。
 
 Args:
@@ -1308,7 +1308,7 @@ Args:
     - list: List[DocNode]: 经过相似度计算与阈值过滤后去重的文档节点列表。
 ''')
 
-add_english_doc('tools.rag.default_index.DefaultIndex.query', '''\
+add_english_doc('rag.default_index.DefaultIndex.query', '''\
 Perform a query against the index, supporting both embedding-based and text-based similarity modes. Filters and ranks nodes according to similarity functions and cutoffs.
 
 Args:
