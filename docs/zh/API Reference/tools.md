@@ -167,6 +167,10 @@
     members:
 	exclude-members:
 
+::: lazyllm.tools.rag.data_loaders.DirectoryReader
+    members: load_data
+	exclude-members:
+
 ::: lazyllm.tools.SentenceSplitter
     members:
     exclude-members:

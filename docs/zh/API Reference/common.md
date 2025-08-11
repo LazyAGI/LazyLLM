@@ -33,4 +33,9 @@
 ::: lazyllm.common.FileSystemQueue
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
-    
+
+## Hook
+
+::: lazyllm.hook.LazyLLMHook
+    members: pre_hook, post_hook, report
+    exclude-members:
