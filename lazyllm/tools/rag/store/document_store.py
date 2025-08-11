@@ -58,12 +58,16 @@ class _DocumentStore(object):
         return cls(**cfg.get('kwargs', {}))
 
     def _convert_legacy_to_config(self, cfg: Dict[str, Any]) -> Dict[str, Any]:
-        LOG.warning("[_DocumentStore] 'smart_embedding_index' is deprecated, will be converted to milvus type config")
         indices = cfg.pop('indices')
-        backend = indices.get('backend')
+        if indices.get('smart_embedding_index'):
+            LOG.warning("[_DocumentStore] 'smart_embedding_index' is deprecated, converted to milvus type config")
+        else:
+            raise ValueError(f"[_DocumentStore] Unsupported index type: {indices.keys()}")
+        index_config = indices.get('smart_embedding_index')
+        backend = index_config.get('backend')
         if not backend:
             raise ValueError("backend is required in indices")
-        cfg = {'type': backend, 'kwargs': indices.get('kwargs', {})}
+        cfg = {'type': backend, 'kwargs': index_config.get('kwargs', {})}
         return cfg
 
     def _create_store_from_config(self, cfg: Optional[Dict[str, Any]] = None) -> LazyLLMStoreBase:
