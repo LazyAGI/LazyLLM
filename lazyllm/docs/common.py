@@ -71,7 +71,7 @@ Args:
 # ...     return input
 # ''')
 
-add_chinese_doc('Register.LazyDict', '''\
+add_chinese_doc('registry.LazyDict', '''\
 一个为懒惰的程序员设计的特殊字典类。支持多种便捷的访问和操作方式。
 
 特性：
@@ -88,7 +88,7 @@ add_chinese_doc('Register.LazyDict', '''\
     **kw: 关键字参数，传递给dict父类。
 ''')
 
-add_english_doc('Register.LazyDict', '''\
+add_english_doc('registry.LazyDict', '''\
 A special dictionary class designed for lazy programmers. Supports various convenient access and operation methods.
 
 Features:
@@ -105,7 +105,7 @@ Args:
     **kw: Keyword arguments passed to dict parent class.
 ''')
 
-add_chinese_doc('Register.LazyDict.remove', '''\
+add_chinese_doc('registry.LazyDict.remove', '''\
 从字典中移除指定的键值对。
 
 参数:
@@ -115,7 +115,7 @@ add_chinese_doc('Register.LazyDict.remove', '''\
     如果找不到匹配的键，将抛出AttributeError异常。
 ''')
 
-add_english_doc('Register.LazyDict.remove', '''\
+add_english_doc('registry.LazyDict.remove', '''\
 Remove the specified key-value pair from the dictionary.
 
 Args:
@@ -126,7 +126,7 @@ Note:
     Raises AttributeError if no matching key is found.
 ''')
 
-add_chinese_doc('Register.LazyDict.set_default', '''\
+add_chinese_doc('registry.LazyDict.set_default', '''\
 设置字典的默认键。设置后可以通过.default属性访问该键对应的值。
 
 参数:
@@ -137,7 +137,7 @@ add_chinese_doc('Register.LazyDict.set_default', '''\
     - 设置后可以通过.default访问，或在字典只有一个元素时直接调用
 ''')
 
-add_english_doc('Register.LazyDict.set_default', '''\
+add_english_doc('registry.LazyDict.set_default', '''\
 Set the default key for the dictionary. After setting, the value can be accessed through the .default property.
 
 Args:

@@ -29,7 +29,7 @@
 ::: lazyllm.components.deploy.Lightllm
     options:
       heading_level: 3
-      members: cmd, geturl, extract_result
+      members: [cmd, geturl, extract_result]
 
 ::: lazyllm.components.deploy.Vllm
     options:
@@ -38,7 +38,7 @@
 ::: lazyllm.components.deploy.LMDeploy
     options:
       heading_level: 3
-      members: cmd, geturl, extract_result
+      members: [cmd, geturl, extract_result]
 
 ::: lazyllm.components.auto.AutoDeploy
     options:
@@ -83,7 +83,7 @@
 ::: lazyllm.launcher.K8sLauncher
     options:
       heading_level: 3
-      members: makejob, launch
+      members: [makejob, launch]
 
 ---
 

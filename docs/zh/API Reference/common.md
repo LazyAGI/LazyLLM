@@ -4,10 +4,10 @@
     options:
       heading_level: 3
 
-::: lazyllm.common.Register.LazyDict
+::: lazyllm.common.registry.LazyDict
     options:
       heading_level: 3
-      members: remove, set_default
+      members: [remove, set_default]
 
 ---
 
