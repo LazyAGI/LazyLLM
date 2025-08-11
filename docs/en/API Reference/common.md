@@ -55,3 +55,16 @@
 ::: lazyllm.common.ProcessPoolExecutor
     members: submit
     exclude-members:
+
+
+## Multiprocessing
+
+::: lazyllm.common.ForkProcess
+    members: work, start
+    exclude-members:
+
+## Options
+
+::: lazyllm.common.Option
+    members: 
+    exclude-members:

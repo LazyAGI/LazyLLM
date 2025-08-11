@@ -372,6 +372,31 @@ add_example('rag.doc_to_db.DocInfoSchemaAnalyser', '''\
 [{'key': 'party_a', 'desc': 'The first party', 'type': 'str'}, ...]
 ''')
 
+# DocInfoSchemaAnalyser.analyse_info_schema
+add_chinese_doc('rag.doc_to_db.DocInfoSchemaAnalyser.analyse_info_schema', '''\
+分析文档信息模式的方法，用于从指定类型的文档中提取关键信息字段的结构定义。
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): 用于生成信息模式的LLM模型
+    doc_type (str): 文档类型，用于指导LLM生成相应的信息模式
+    doc_paths (list[str]): 文档路径列表，用于分析的信息来源
+
+**Returns:**\n
+- DocInfoSchema: 包含关键信息字段定义的模式列表，每个字段包含key、desc、type三个属性
+''')
+
+add_english_doc('rag.doc_to_db.DocInfoSchemaAnalyser.analyse_info_schema', '''\
+Method for analyzing document information schema, used to extract structural definitions of key information fields from documents of a specified type.
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): LLM model used to generate information schema
+    doc_type (str): Document type, used to guide the LLM in generating corresponding information schema
+    doc_paths (list[str]): List of document paths, used as information sources for analysis
+
+**Returns:**\n
+- DocInfoSchema: List of schema containing key information field definitions, each field includes key, desc, and type attributes
+''')
+
 add_chinese_doc('rag.doc_to_db.DocInfoExtractor', '''\
 根据给定的字段结构（schema）从文档中抽取具体的关键信息值，返回格式为 key-value 字典。
 
@@ -3774,6 +3799,40 @@ add_example('DBManager', ['''\
 >>> print(db("SELECT * FROM test"))
 ... Executed: SELECT * FROM test
 '''])
+
+add_chinese_doc('DBManager.execute_query', '''\
+执行数据库查询语句的抽象方法。此方法需要由具体的数据库管理器子类实现，用于执行各种数据库操作。
+
+Args:
+    statement: 要执行的数据库查询语句，可以是 SQL 语句或其他数据库特定的查询语言
+
+此方法的特点：
+
+- **抽象方法**: 需要在子类中实现具体的数据库操作逻辑
+- **统一接口**: 为不同的数据库类型提供统一的查询接口
+- **错误处理**: 子类实现应该包含适当的错误处理和状态报告
+- **结果格式化**: 返回格式化的字符串结果，便于后续处理
+
+**注意**: 此方法是数据库管理器的核心方法，所有具体的数据库操作都通过此方法执行。
+
+''')
+
+add_english_doc('DBManager.execute_query', '''\
+Abstract method for executing database query statements. This method needs to be implemented by specific database manager subclasses to execute various database operations.
+
+Args:
+    statement: The database query statement to execute, which can be SQL statements or other database-specific query languages
+
+Features of this method:
+
+- **Abstract Method**: Requires implementation of specific database operation logic in subclasses
+- **Unified Interface**: Provides a unified query interface for different database types
+- **Error Handling**: Subclass implementations should include appropriate error handling and status reporting
+- **Result Formatting**: Returns formatted string results for subsequent processing
+
+**Note**: This method is the core method of the database manager, and all specific database operations are executed through this method.
+
+''')
 
 add_chinese_doc(
     "SqlManager",

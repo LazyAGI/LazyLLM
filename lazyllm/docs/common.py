@@ -537,3 +537,142 @@ add_example('ProcessPoolExecutor.submit', '''\
 ...     print(result)
 10
 ''')
+
+
+# ============= Multiprocessing
+# ForkProcess
+add_chinese_doc('ForkProcess', '''\
+LazyLLM 提供的增强进程类，继承自 Python 标准库的 `multiprocessing.Process`。此类专门使用 fork 启动方法来创建子进程，并提供了同步/异步执行模式的支持。
+
+Args:
+    group: 进程组，默认为 ``None``
+    target: 要在进程中执行的函数，默认为 ``None``
+    name: 进程名称，默认为 ``None``
+    args: 传递给目标函数的参数元组，默认为 ``()``
+    kwargs: 传递给目标函数的关键字参数字典，默认为 ``{}``
+    daemon: 是否为守护进程，默认为 ``None``
+    sync: 是否为同步模式，默认为 ``True``。在同步模式下，进程执行完目标函数后会自动退出；在异步模式下，进程会持续运行直到被手动终止。
+
+**注意**: 此类主要用于 LazyLLM 内部的进程管理，特别是在需要长期运行的服务器进程中。
+''')
+
+add_english_doc('ForkProcess', '''\
+Enhanced process class provided by LazyLLM, inheriting from Python's standard library `multiprocessing.Process`. This class specifically uses the fork start method to create child processes and provides support for synchronous/asynchronous execution modes.
+
+Args:
+    group: Process group, default to ``None``
+    target: Function to be executed in the process, default to ``None``
+    name: Process name, default to ``None``
+    args: Tuple of arguments to pass to the target function, default to ``()``
+    kwargs: Dictionary of keyword arguments to pass to the target function, default to ``{}``
+    daemon: Whether the process is a daemon process, default to ``None``
+    sync: Whether to use synchronous mode, default to ``True``. In synchronous mode, the process automatically exits after executing the target function; in asynchronous mode, the process continues running until manually terminated.
+
+**Note**: This class is primarily used for LazyLLM's internal process management, especially in long-running server processes.
+''')
+
+add_example('ForkProcess', '''\
+>>> import lazyllm
+>>> from lazyllm.common import ForkProcess
+>>> import time
+>>> import os
+>>> def simple_task(task_id):
+...     print(f"Process {os.getpid()} executing task {task_id}")
+...     time.sleep(0.1)  
+...     return f"Task {task_id} completed by process {os.getpid()}"
+>>> process = ForkProcess(target=simple_task, args=(1,), sync=True)
+>>> process.start()
+Process 12345 executing task 1
+''')
+
+# ForkProcess.work
+add_chinese_doc('ForkProcess.work', '''\
+ForkProcess 的核心工作方法，负责包装目标函数并处理同步/异步执行逻辑。
+
+Args:
+    f: 要执行的目标函数
+    sync: 是否为同步模式。在同步模式下，执行完目标函数后进程会退出；在异步模式下，进程会持续运行。
+''')
+
+add_english_doc('ForkProcess.work', '''\
+Core working method of ForkProcess, responsible for wrapping the target function and handling synchronous/asynchronous execution logic.
+
+Args:
+    f: Target function to execute
+    sync: Whether to use synchronous mode. In synchronous mode, the process exits after executing the target function; in asynchronous mode, the process continues running.
+''')
+
+# ForkProcess.start
+add_chinese_doc('ForkProcess.start', '''\
+启动 ForkProcess 进程。此方法会使用 fork 启动方法来创建子进程，并开始执行目标函数。
+
+此方法的特点：
+
+- **Fork 启动**: 使用 fork 方法创建子进程，在 Unix/Linux 系统上提供更好的性能
+- **上下文管理**: 自动管理进程启动方法的上下文，确保使用正确的启动方式
+- **继承父类**: 继承自 `multiprocessing.Process.start()` 的所有功能
+
+**注意**: 此方法会实际创建新的进程并开始执行，调用后进程会立即开始运行。
+
+''')
+
+add_english_doc('ForkProcess.start', '''\
+Start the ForkProcess. This method uses the fork start method to create a child process and begin executing the target function.
+
+Features of this method:
+
+- **Fork Start**: Uses fork method to create child processes, providing better performance on Unix/Linux systems
+- **Context Management**: Automatically manages the context of process start methods, ensuring the correct start method is used
+- **Parent Inheritance**: Inherits all functionality from `multiprocessing.Process.start()`
+
+**Note**: This method actually creates a new process and begins execution, the process starts running immediately after calling.
+
+''')
+
+# ============= Options
+# Option
+add_chinese_doc('Option', '''\
+LazyLLM 提供的选项管理类，用于管理多个选项值并在它们之间进行迭代。此类主要用于参数网格搜索和超参数调优场景。
+
+Args:
+    *obj: 一个或多个选项值，可以是任意类型的对象。如果传入单个列表或元组，会自动展开。
+
+此类的主要特性：
+
+- **多选项管理**: 可以管理多个不同的选项值
+- **迭代支持**: 支持标准的 Python 迭代协议，可以遍历所有选项
+- **当前值访问**: 始终可以访问当前选中的选项值
+- **深度复制**: 支持深度复制当前选中的选项值
+- **多进程兼容**: 支持在多进程环境中使用
+
+**注意**: 此类主要用于 LazyLLM 内部的参数搜索和试验管理，特别是在 TrialModule 中进行参数网格搜索时。
+
+''')
+
+add_english_doc('Option', '''\
+Option management class provided by LazyLLM, used for managing multiple option values and iterating between them. This class is primarily used for parameter grid search and hyperparameter tuning scenarios.
+
+Args:
+    *obj: One or more option values, which can be objects of any type. If a single list or tuple is passed, it will be automatically expanded.
+
+Key features of this class:
+
+- **Multi-option Management**: Can manage multiple different option values
+- **Iteration Support**: Supports standard Python iteration protocol, can iterate through all options
+- **Current Value Access**: Always can access the currently selected option value
+- **Deep Copy**: Supports deep copying of the currently selected option value
+- **Multi-process Compatibility**: Supports usage in multi-process environments
+
+**Note**: This class is primarily used for LazyLLM's internal parameter search and trial management, especially in TrialModule for parameter grid search.
+
+''')
+
+add_example('Option', '''\
+>>> import lazyllm
+>>> from lazyllm.common.option import Option
+>>> learning_rates = Option(0.001, 0.01, 0.1)
+>>> print(f"当前学习率: {learning_rates}")
+当前学习率: <Option options="(0.001, 0.01, 0.1)" curr="0.001">
+>>> print(f"所有选项: {list(learning_rates)}")
+所有选项: [0.001, 0.01, 0.1]
+''')
