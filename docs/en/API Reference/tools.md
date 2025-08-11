@@ -228,7 +228,7 @@ lazyllm.tools.rag.transform.NodeTransform
     exclude-members: forward
 
 ::: lazyllm.tools.CodeGenerator
-    members: choose_prompt
+    members: [choose_prompt]
     exclude-members: forward
 
 ::: lazyllm.tools.ParameterExtractor
