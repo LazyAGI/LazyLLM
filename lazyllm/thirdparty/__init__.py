@@ -11,6 +11,7 @@ package_name_map = {
     'flash_attn': 'flash-attn',
     'sklearn': 'scikit-learn',
     'volcenginesdkarkruntime': 'volcengine-python-sdk[ark]',
+    'opensearchpy': 'opensearch-py',
 }
 
 requirements = {}
