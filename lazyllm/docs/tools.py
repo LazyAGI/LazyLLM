@@ -397,6 +397,103 @@ add_example('rag.doc_to_db.DocInfoExtractor', '''\
 {'party_a': 'ABC Corp'}
 ''')
 
+add_chinese_doc('rag.doc_to_db.DocInfoExtractor.extract_doc_info', '''\
+根据提供的字段结构（schema）从指定文档中抽取具体的关键信息值。
+
+该方法使用大语言模型分析文档内容，根据预定义的字段结构提取相应的信息值，返回格式为 key-value 字典。
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): 用于文档信息抽取的大语言模型。
+    doc_path (str): 要分析的文档路径。
+    info_schema (DocInfoSchema): 字段结构定义，包含需要提取的字段信息。
+    extra_desc (str, optional): 额外的描述信息，用于指导信息抽取。默认为空字符串。
+
+Returns:
+    dict: 提取出的关键信息字典，键为字段名，值为对应的信息值。
+''')
+
+add_english_doc('rag.doc_to_db.DocInfoExtractor.extract_doc_info', '''\
+Extracts specific key information values from a document according to a provided schema.
+
+This method uses a large language model to analyze document content and extract corresponding information values based on predefined field structure, returning a key-value dictionary.
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): The large language model used for document information extraction.
+    doc_path (str): Path to the document to be analyzed.
+    info_schema (DocInfoSchema): Field structure definition containing the information to be extracted.
+    extra_desc (str, optional): Additional description information to guide the extraction process. Defaults to empty string.
+
+Returns:
+    dict: Extracted key information dictionary with field names as keys and corresponding information values as values.
+''')
+
+add_chinese_doc('http_request.http_executor_response.HttpExecutorResponse.get_content_type', '''\
+获取HTTP响应的内容类型。
+
+从响应头中提取 'content-type' 字段的值，用于判断响应内容的类型。
+
+Returns:
+    str: 响应的内容类型，如果未找到则返回空字符串。
+''')
+
+add_english_doc('http_request.http_executor_response.HttpExecutorResponse.get_content_type', '''\
+Get the content type of the HTTP response.
+
+Extracts the 'content-type' field value from the response headers to determine the type of response content.
+
+Returns:
+    str: The content type of the response, or empty string if not found.
+''')
+
+add_example('http_request.http_executor_response.HttpExecutorResponse.get_content_type', '''\
+>>> from lazyllm.tools.http_request.http_executor_response import HttpExecutorResponse
+>>> import httpx
+>>> response = httpx.Response(200, headers={'content-type': 'application/json'})
+>>> http_response = HttpExecutorResponse(response)
+>>> content_type = http_response.get_content_type()
+>>> print(content_type)
+... 'application/json'
+''')
+
+add_chinese_doc('http_request.http_executor_response.HttpExecutorResponse.extract_file', '''\
+从HTTP响应中提取文件内容。
+
+如果响应内容类型是文件相关类型（如图片、音频、视频），则提取文件的内容类型和二进制数据。
+
+Returns:
+    tuple[str, bytes]: 包含内容类型和文件二进制数据的元组。如果不是文件类型，则返回空字符串和空字节。
+''')
+
+add_english_doc('http_request.http_executor_response.HttpExecutorResponse.extract_file', '''\
+Extract file content from HTTP response.
+
+If the response content type is file-related (such as image, audio, video), extracts the content type and binary data of the file.
+
+Returns:
+    tuple[str, bytes]: A tuple containing the content type and binary data of the file. If not a file type, returns empty string and empty bytes.
+''')
+
+add_example('http_request.http_executor_response.HttpExecutorResponse.extract_file', '''\
+>>> from lazyllm.tools.http_request.http_executor_response import HttpExecutorResponse
+>>> import httpx
+>>> # 模拟图片响应
+>>> response = httpx.Response(200, headers={'content-type': 'image/jpeg'}, content=b'fake_image_data')
+>>> http_response = HttpExecutorResponse(response)
+>>> content_type, file_data = http_response.extract_file()
+>>> print(content_type)
+... 'image/jpeg'
+>>> print(len(file_data))
+... 15
+>>> # 模拟JSON响应
+>>> response = httpx.Response(200, headers={'content-type': 'application/json'}, content=b'{"key": "value"}')
+>>> http_response = HttpExecutorResponse(response)
+>>> content_type, file_data = http_response.extract_file()
+>>> print(content_type)
+... ''
+>>> print(file_data)
+... b''
+''')
+
 add_chinese_doc('rag.doc_to_db.DocToDbProcessor', '''\
 用于将文档信息抽取并导出到数据库中。
 
@@ -2392,6 +2489,50 @@ add_example('QustionRewrite', ['''\
 ... ['中国的最高山峰是哪一座？', '中国海拔最高的山是什么？']
 '''])
 
+# QustionRewrite.choose_prompt
+add_english_doc('QustionRewrite.choose_prompt', '''
+Choose the appropriate prompt template based on the language of the input prompt.
+
+This method analyzes the input prompt string and determines whether to use the Chinese or English prompt template. It checks each character in the prompt string and if any character falls within the Chinese Unicode range (\\u4e00-\\u9fff), it returns the Chinese prompt template; otherwise, it returns the English prompt template.
+
+Args:
+    prompt (str): The input prompt string to be analyzed for language detection.
+
+Returns:
+    str: The selected prompt template string (either Chinese or English version).
+''')
+
+add_chinese_doc('QustionRewrite.choose_prompt', '''
+根据输入提示的语言选择合适的提示模板。
+
+此方法分析输入提示字符串并确定使用中文还是英文提示模板。它检查提示字符串中的每个字符，如果任何字符落在中文字符Unicode范围内（\\u4e00-\\u9fff），则返回中文提示模板；否则返回英文提示模板。
+
+Args:
+    prompt (str): 要分析语言检测的输入提示字符串。
+
+Returns:
+    str: 选定的提示模板字符串（中文或英文版本）。
+''')
+
+add_example('QustionRewrite.choose_prompt', '''
+>>> from lazyllm.tools.actors.qustion_rewrite import QustionRewrite
+
+# Example 1: English prompt (no Chinese characters)
+>>> rewriter = QustionRewrite("gpt-3.5-turbo")
+>>> prompt_template = rewriter.choose_prompt("How to implement machine learning?")
+>>> print("Template contains Chinese:", "中文" in prompt_template)
+Template contains Chinese: False
+
+# Example 2: Chinese prompt (contains Chinese characters)
+>>> prompt_template = rewriter.choose_prompt("如何实现机器学习？")
+>>> print("Template contains Chinese:", "中文" in prompt_template)
+Template contains Chinese: True
+
+# Example 3: Mixed language prompt (contains Chinese characters)
+>>> prompt_template = rewriter.choose_prompt("What is 机器学习?")
+>>> print("Template contains Chinese:", "中文" in prompt_template)
+Template contains Chinese: True
+''')
 
 add_chinese_doc('ToolManager', '''\
 ToolManager是一个工具管理类，用于提供工具信息和工具调用给function call。
@@ -4478,6 +4619,95 @@ Removed nodes with uids: ['1']
 Querying nodes...
 [DocNode(uid="2", content="Document 2")]
 ''')
+
+# FuncNodeTransform
+add_english_doc('rag.transform.FuncNodeTransform', '''
+A wrapper class for user-defined functions that transforms document nodes.
+
+This wrapper supports two modes of operation:
+1. When trans_node is False (default): transforms text strings
+2. When trans_node is True: transforms DocNode objects
+
+The wrapper can handle various function signatures:
+- str -> List[str]: transform=lambda t: t.split('\\\\n')
+- str -> str: transform=lambda t: t[:3]
+- DocNode -> List[DocNode]: pipeline(lambda x:x, SentenceSplitter)
+- DocNode -> DocNode: pipeline(LLMParser)
+
+Args:
+    func (Union[Callable[[str], List[str]], Callable[[DocNode], List[DocNode]]]): The user-defined function to be wrapped.
+    trans_node (bool, optional): Determines whether the function operates on DocNode objects (True) or text strings (False). Defaults to None.
+    num_workers (int): Controls the number of threads or processes used for parallel processing. Defaults to 0.
+''')
+
+add_chinese_doc('rag.transform.FuncNodeTransform', '''
+用于包装用户自定义函数的转换器类。
+
+此包装器支持两种操作模式：
+1. 当 trans_node 为 False（默认）：转换文本字符串
+2. 当 trans_node 为 True：转换 DocNode 对象
+
+包装器可以处理各种函数签名：
+- str -> List[str]: transform=lambda t: t.split('\\\\n')
+- str -> str: transform=lambda t: t[:3]
+- DocNode -> List[DocNode]: pipeline(lambda x:x, SentenceSplitter)
+- DocNode -> DocNode: pipeline(LLMParser)
+
+Args:
+    func (Union[Callable[[str], List[str]], Callable[[DocNode], List[DocNode]]]): 要包装的用户自定义函数。
+    trans_node (bool, optional): 确定函数是操作 DocNode 对象（True）还是文本字符串（False）。默认为 None。
+    num_workers (int): 控制并行处理的线程/进程数量。默认为 0。
+''')
+
+add_example('rag.transform.FuncNodeTransform', '''
+>>> import lazyllm
+>>> from lazyllm.tools.rag import FuncNodeTransform
+>>> from lazyllm.tools import Document, SentenceSplitter
+
+# Example 1: Text-based transformation (trans_node=False)
+>>> def split_by_comma(text):
+...     return text.split(',')
+>>> text_transform = FuncNodeTransform(split_by_comma, trans_node=False)
+
+# Example 2: Node-based transformation (trans_node=True)
+>>> def custom_node_transform(node):
+...     # Process the DocNode and return a list of DocNodes
+...     return [node]  # Simple pass-through
+>>> node_transform = FuncNodeTransform(custom_node_transform, trans_node=True)
+
+# Example 3: Using with Document
+>>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+>>> documents.create_node_group(name="custom", transform=text_transform)
+''')
+
+# FuncNodeTransform.transform
+add_english_doc('rag.transform.FuncNodeTransform.transform', '''
+Transform a document node using the wrapped user-defined function.
+
+This method applies the user-defined function to either the text content of the node (when trans_node=False) or the node itself (when trans_node=True).
+
+Args:
+    node (DocNode): The document node to be transformed.
+    **kwargs: Additional keyword arguments passed to the transformation function.
+
+Returns:
+    List[Union[str, DocNode]]: The transformed results, which can be either strings or DocNode objects depending on the function implementation.
+''')
+
+add_chinese_doc('rag.transform.FuncNodeTransform.transform', '''
+使用包装的用户自定义函数转换文档节点。
+
+此方法将用户自定义函数应用于节点的文本内容（当 trans_node=False 时）或节点本身（当 trans_node=True 时）。
+
+Args:
+    node (DocNode): 要转换的文档节点。
+    **kwargs: 传递给转换函数的额外关键字参数。
+
+Returns:
+    List[Union[str, DocNode]]: 转换结果，根据函数实现可以是字符串或 DocNode 对象。
+''')
+
 
 add_chinese_doc('rag.web.WebUi', """\
 基于 Gradio 的知识库文件管理 Web UI 工具类。

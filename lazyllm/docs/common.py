@@ -110,6 +110,70 @@ Args:
     **kw: 绑定时固定的关键字参数，可以包含占位符。
 ''')
 
+add_chinese_doc('common.CaseInsensitiveDict', '''\
+大小写不敏感的字典类。
+
+CaseInsensitiveDict 继承自 dict，提供大小写不敏感的键值存储和检索功能。所有的键都会被转换为小写形式存储，确保无论使用大写、小写或混合大小写的键名都能访问到相同的值。
+
+特点：
+    - 所有键在存储时自动转换为小写
+    - 支持标准的字典操作（获取、设置、检查包含关系）
+    - 保持字典的原有功能，只是键名处理方式不同
+
+Args:
+    *args: 传递给父类 dict 的位置参数
+    **kwargs: 传递给父类 dict 的关键字参数
+''')
+
+add_english_doc('common.CaseInsensitiveDict', '''\
+Case-insensitive dictionary class.
+
+CaseInsensitiveDict inherits from dict and provides case-insensitive key-value storage and retrieval. All keys are converted to lowercase when stored, ensuring that values can be accessed regardless of whether the key name is uppercase, lowercase, or mixed case.
+
+Features:
+    - All keys are automatically converted to lowercase when stored
+    - Supports standard dictionary operations (get, set, check containment)
+    - Maintains all original dict functionality, only differs in key name handling
+
+Args:
+    *args: Positional arguments passed to the parent dict class
+    **kwargs: Keyword arguments passed to the parent dict class
+''')
+
+add_example('common.CaseInsensitiveDict', '''\
+>>> from lazyllm.common import CaseInsensitiveDict
+>>> # 创建大小写不敏感的字典
+>>> d = CaseInsensitiveDict({'Name': 'John', 'AGE': 25, 'City': 'New York'})
+>>> 
+>>> # 使用不同大小写访问相同的键
+>>> print(d['name'])      # 使用小写
+... 'John'
+>>> print(d['NAME'])      # 使用大写
+... 'John'
+>>> print(d['Name'])      # 使用首字母大写
+... 'John'
+>>> 
+>>> # 设置值时也会转换为小写
+>>> d['EMAIL'] = 'john@example.com'
+>>> print(d['email'])     # 使用小写访问
+... 'john@example.com'
+>>> 
+>>> # 检查键是否存在（大小写不敏感）
+>>> 'AGE' in d
+True
+>>> 'age' in d
+True
+>>> 'Age' in d
+True
+>>> 
+>>> # 支持标准字典操作
+>>> d['PHONE'] = '123-456-7890'
+>>> print(d.get('phone'))
+... '123-456-7890'
+>>> print(len(d))
+... 5
+''')
+
 add_english_doc('bind', '''\
 The Bind class provides function binding and deferred invocation capabilities, supporting dynamic argument passing and context-based argument resolution for flexible function composition and pipeline-style calls.
 
@@ -429,3 +493,47 @@ Args:
     **kw: Optional keyword arguments for placeholder compatibility.
 ''')
 
+
+
+add_chinese_doc('ProcessPoolExecutor.submit', '''\
+将任务提交到进程池中执行。
+
+此方法将一个函数及其参数序列化后提交到进程池中执行，返回一个 `Future` 对象，用于获取任务执行结果或状态。
+
+Args:
+    fn (Callable): 要执行的函数。
+    *args: 传递给函数的位置参数。
+    **kwargs: 传递给函数的关键字参数。
+
+Returns:
+    concurrent.futures.Future: 表示任务执行状态的 `Future` 对象。
+''')
+
+add_english_doc('ProcessPoolExecutor.submit', '''\
+Submit a task to the process pool for execution.
+
+This method serializes a function and its arguments, then submits them to the process pool for execution. It returns a `Future` object to track the task's status or result.
+
+Args:
+    fn (Callable): The function to execute.
+    *args: Positional arguments passed to the function.
+    **kwargs: Keyword arguments passed to the function.
+
+Returns:
+    concurrent.futures.Future: A `Future` object representing the task's execution status.
+''')
+
+add_example('ProcessPoolExecutor.submit', '''\
+>>> from lazyllm.common.multiprocessing import ProcessPoolExecutor
+>>> import time
+>>> 
+>>> def task(x):
+...     time.sleep(1)
+...     return x * 2
+... 
+>>> with ProcessPoolExecutor(max_workers=2) as executor:
+...     future = executor.submit(task, 5)
+...     result = future.result()
+...     print(result)
+10
+''')

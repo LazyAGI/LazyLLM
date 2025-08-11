@@ -949,18 +949,20 @@ add_chinese_doc('UrlModule', '''\
 可以将ServerModule部署得到的Url包装成一个Module，调用 ``__call__`` 时会访问该服务。
 
 Args:
-    url (str): 要包装的服务的Url
-    stream (bool): 是否流式请求和输出，默认为非流式
+    url (str): 要包装的服务的Url，默认为空字符串
+    stream (bool|Dict[str, str]): 是否流式请求和输出，默认为非流式
     return_trace (bool): 是否将结果记录在trace中，默认为False
+    init_prompt (bool): 是否初始化prompt，默认为True
 ''')
 
 add_english_doc('UrlModule', '''\
 The URL obtained from deploying the ServerModule can be wrapped into a Module. When calling ``__call__`` , it will access the service.
 
 Args:
-    url (str): The URL of the service to be wrapped.
-    stream (bool): Whether to request and output in streaming mode, default is non-streaming.
+    url (str): The URL of the service to be wrapped, defaults to empty string.
+    stream (bool|Dict[str, str]): Whether to request and output in streaming mode, default is non-streaming.
     return_trace (bool): Whether to record the results in trace, default is False.
+    init_prompt (bool): Whether to initialize prompt, defaults to True.
 ''')
 
 add_example('UrlModule', '''\

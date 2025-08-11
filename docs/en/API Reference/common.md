@@ -46,3 +46,12 @@
     members:
     - Impl
     exclude-members:
+
+
+::: lazyllm.common.CaseInsensitiveDict
+    members: 
+    exclude-members:
+
+::: lazyllm.common.ProcessPoolExecutor
+    members: submit
+    exclude-members:
