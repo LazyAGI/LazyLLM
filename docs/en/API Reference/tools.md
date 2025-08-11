@@ -375,3 +375,11 @@ lazyllm.tools.rag.transform.NodeTransform
 ::: lazyllm.tools.HttpTool
     members: 
     exclude-members:
+
+::: lazyllm.tools.tools.tencent_search.TencentSearch
+    members: 
+    exclude-members:
+
+::: lazyllm.tools.rag.web.WebUi
+    members: 
+    exclude-members:
