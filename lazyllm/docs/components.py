@@ -743,7 +743,7 @@ add_example('deploy.embed.RerankDeploy', '''\
 >>> result = rerank_service(input_data)
 ''')
 
-add_chinese_doc('deploy.LazyFlagEmbedding', '''\
+add_chinese_doc('deploy.embed.LazyFlagEmbedding', '''\
 支持懒加载的 FlagEmbedding 嵌入模块封装。
 
 该类包装了 FlagEmbedding 的加载和调用逻辑，提供对稀疏和稠密嵌入的支持，并通过 lazyllm.once_flag() 机制实现懒加载。适用于嵌入模型的本地/远程下载、初始化与编码流程的封装，便于与 LazyLLM 系统集成。
@@ -755,7 +755,7 @@ Args:
     init (bool): 是否在初始化时立即加载模型，默认为 False。
 ''')
 
-add_english_doc('deploy.LazyFlagEmbedding', '''\
+add_english_doc('deploy.embed.LazyFlagEmbedding', '''\
 A lazily loaded wrapper for the FlagEmbedding module.
 
 This class encapsulates loading and usage of FlagEmbedding, with support for both sparse and dense embeddings. It leverages the lazyllm.once_flag() mechanism to initialize only once on demand, and integrates with LazyLLM's model downloading utilities.
@@ -767,19 +767,19 @@ Args:
     init (bool): Whether to initialize the model immediately upon construction. Defaults to False.
 ''')
 
-add_chinese_doc('deploy.LazyFlagEmbedding.load_embed', '''\
+add_chinese_doc('deploy.embed.LazyFlagEmbedding.load_embed', '''\
 加载嵌入模型并初始化到设备上。
 
 该方法根据系统是否支持 CUDA 自动选择运行设备（GPU 或 CPU），并从本地或远程加载预训练的 FlagEmbedding 模型。
 ''')
 
-add_english_doc('deploy.LazyFlagEmbedding.load_embed', '''\
+add_english_doc('deploy.embed.LazyFlagEmbedding.load_embed', '''\
 Load the embedding model onto the appropriate device.
 
 This method selects the available device (GPU or CPU) and initializes the pretrained FlagEmbedding model from the provided path or model hub.
 ''')
 
-add_chinese_doc('deploy.LazyFlagEmbedding.rebuild', '''\
+add_chinese_doc('deploy.embed.LazyFlagEmbedding.rebuild', '''\
 重建 LazyFlagEmbedding 实例的方法。
 
 该类方法用于在序列化或跨进程传递时，重新构造带有初始化配置的 LazyFlagEmbedding 实例。
@@ -793,7 +793,7 @@ Returns:
     LazyFlagEmbedding: 一个新的 LazyFlagEmbedding 实例。
 ''')
 
-add_english_doc('deploy.LazyFlagEmbedding.rebuild', '''\
+add_english_doc('deploy.embed.LazyFlagEmbedding.rebuild', '''\
 Rebuild a LazyFlagEmbedding instance.
 
 This class method reconstructs an instance of LazyFlagEmbedding, typically used during deserialization or multiprocessing scenarios.
