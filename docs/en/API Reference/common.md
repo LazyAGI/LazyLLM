@@ -20,6 +20,12 @@
     options:
       heading_level: 3
 
+## Identity
+
+::: lazyllm.common.Identity
+    options:
+      heading_level: 3
+
 ---
 
 ## Compilation
@@ -34,6 +40,23 @@
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
 
+## DynamicDescriptor
+
+::: lazyllm.common.DynamicDescriptor
+    members:
+    - Impl
+    exclude-members:
+
+
+::: lazyllm.common.CaseInsensitiveDict
+    members: 
+    exclude-members:
+
+::: lazyllm.common.ProcessPoolExecutor
+    members: submit
+    exclude-members:
+
+
 ## Multiprocessing
 
 ::: lazyllm.common.ForkProcess
@@ -45,4 +68,3 @@
 ::: lazyllm.common.Option
     members: 
     exclude-members:
-  

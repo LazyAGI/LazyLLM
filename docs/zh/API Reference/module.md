@@ -4,12 +4,21 @@
       members:
       - _get_deploy_tasks
       - _get_train_tasks
-      - eval
-      - evalset
+      - stream_output
+      - used_by
       - forward
+      - register_hook
+      - unregister_hook
+      - clear_hooks
       - start
       - restart
       - update
+      - update_server
+      - evalset
+      - eval
+      - wait
+      - stop
+      - for_each
         
 ::: lazyllm.module.ActionModule
     options:
@@ -68,7 +77,7 @@
 ::: lazyllm.module.OnlineEmbeddingModuleBase
     members:
     exclude-members: forward
-
+    
 ::: lazyllm.module.llms.onlinemodule.fileHandler.FileHandlerBase
     members: get_finetune_data
     exclude-members: 

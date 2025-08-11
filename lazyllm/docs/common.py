@@ -110,6 +110,70 @@ Args:
     **kw: 绑定时固定的关键字参数，可以包含占位符。
 ''')
 
+add_chinese_doc('common.CaseInsensitiveDict', '''\
+大小写不敏感的字典类。
+
+CaseInsensitiveDict 继承自 dict，提供大小写不敏感的键值存储和检索功能。所有的键都会被转换为小写形式存储，确保无论使用大写、小写或混合大小写的键名都能访问到相同的值。
+
+特点：
+    - 所有键在存储时自动转换为小写
+    - 支持标准的字典操作（获取、设置、检查包含关系）
+    - 保持字典的原有功能，只是键名处理方式不同
+
+Args:
+    *args: 传递给父类 dict 的位置参数
+    **kwargs: 传递给父类 dict 的关键字参数
+''')
+
+add_english_doc('common.CaseInsensitiveDict', '''\
+Case-insensitive dictionary class.
+
+CaseInsensitiveDict inherits from dict and provides case-insensitive key-value storage and retrieval. All keys are converted to lowercase when stored, ensuring that values can be accessed regardless of whether the key name is uppercase, lowercase, or mixed case.
+
+Features:
+    - All keys are automatically converted to lowercase when stored
+    - Supports standard dictionary operations (get, set, check containment)
+    - Maintains all original dict functionality, only differs in key name handling
+
+Args:
+    *args: Positional arguments passed to the parent dict class
+    **kwargs: Keyword arguments passed to the parent dict class
+''')
+
+add_example('common.CaseInsensitiveDict', '''\
+>>> from lazyllm.common import CaseInsensitiveDict
+>>> # 创建大小写不敏感的字典
+>>> d = CaseInsensitiveDict({'Name': 'John', 'AGE': 25, 'City': 'New York'})
+>>> 
+>>> # 使用不同大小写访问相同的键
+>>> print(d['name'])      # 使用小写
+... 'John'
+>>> print(d['NAME'])      # 使用大写
+... 'John'
+>>> print(d['Name'])      # 使用首字母大写
+... 'John'
+>>> 
+>>> # 设置值时也会转换为小写
+>>> d['EMAIL'] = 'john@example.com'
+>>> print(d['email'])     # 使用小写访问
+... 'john@example.com'
+>>> 
+>>> # 检查键是否存在（大小写不敏感）
+>>> 'AGE' in d
+True
+>>> 'age' in d
+True
+>>> 'Age' in d
+True
+>>> 
+>>> # 支持标准字典操作
+>>> d['PHONE'] = '123-456-7890'
+>>> print(d.get('phone'))
+... '123-456-7890'
+>>> print(len(d))
+... 5
+''')
+
 add_english_doc('bind', '''\
 The Bind class provides function binding and deferred invocation capabilities, supporting dynamic argument passing and context-based argument resolution for flexible function composition and pipeline-style calls.
 
@@ -363,6 +427,117 @@ add_example('FileSystemQueue.clear', """\
 >>> queue.peek() is None
 True
 """)
+
+add_chinese_doc('DynamicDescriptor', '''\
+动态描述符类，实现了根据访问对象的不同动态绑定方法调用。  
+通过封装函数，支持当描述符被访问时，根据是通过实例还是类访问，调用对应的方法。
+
+Args:
+    func (Callable): 作为描述符的函数。
+
+''')
+
+add_english_doc('DynamicDescriptor', '''\
+A dynamic descriptor class that implements method binding dynamically based on the access object.  
+By wrapping a function, it supports calling the method on the instance or the class depending on how the descriptor is accessed.
+
+Args:
+    func (Callable): The function to be used as a descriptor.
+
+''')
+
+add_chinese_doc('DynamicDescriptor.Impl', '''\
+动态描述符的内部实现类，封装了函数及其访问上下文。  
+根据访问者是实例还是类，调用对应的方法。
+
+Args:
+    func (Callable): 被封装的函数。
+    instance (Optional[Any]): 调用该描述符的实例，若无则为 None。
+    owner (type): 描述符所属的类。
+
+**Returns:**\n
+- 调用结果，与封装函数的返回值一致。
+''')
+
+add_english_doc('DynamicDescriptor.Impl', '''\
+Internal implementation class of the dynamic descriptor, encapsulating the function and its context.  
+Calls the function bound to either the instance or the class depending on the accessor.
+
+Args:
+    func (Callable): The wrapped function.
+    instance (Optional[Any]): The instance accessing the descriptor, or None if accessed via class.
+    owner (type): The class owning the descriptor.
+
+**Returns:**\n
+- The result of the function call, consistent with the wrapped function's return value.
+''')
+
+
+add_chinese_doc('Identity', '''\
+恒等模块，用于直接返回输入值。
+
+该模块常用于模块拼接结构中占位，无实际处理逻辑。若输入为多个参数，将自动打包为一个整体结构输出。
+
+Args:
+    *args: 可选的位置参数，占位用。
+    **kw: 可选的关键字参数，占位用。
+''')
+
+add_english_doc('Identity', '''\
+Identity module that directly returns the input as output.
+
+This module serves as a no-op placeholder in composition pipelines. If multiple inputs are provided, they are packed together before returning.
+
+Args:
+    *args: Optional positional arguments for placeholder compatibility.
+    **kw: Optional keyword arguments for placeholder compatibility.
+''')
+
+
+
+add_chinese_doc('ProcessPoolExecutor.submit', '''\
+将任务提交到进程池中执行。
+
+此方法将一个函数及其参数序列化后提交到进程池中执行，返回一个 `Future` 对象，用于获取任务执行结果或状态。
+
+Args:
+    fn (Callable): 要执行的函数。
+    *args: 传递给函数的位置参数。
+    **kwargs: 传递给函数的关键字参数。
+
+Returns:
+    concurrent.futures.Future: 表示任务执行状态的 `Future` 对象。
+''')
+
+add_english_doc('ProcessPoolExecutor.submit', '''\
+Submit a task to the process pool for execution.
+
+This method serializes a function and its arguments, then submits them to the process pool for execution. It returns a `Future` object to track the task's status or result.
+
+Args:
+    fn (Callable): The function to execute.
+    *args: Positional arguments passed to the function.
+    **kwargs: Keyword arguments passed to the function.
+
+Returns:
+    concurrent.futures.Future: A `Future` object representing the task's execution status.
+''')
+
+add_example('ProcessPoolExecutor.submit', '''\
+>>> from lazyllm.common.multiprocessing import ProcessPoolExecutor
+>>> import time
+>>> 
+>>> def task(x):
+...     time.sleep(1)
+...     return x * 2
+... 
+>>> with ProcessPoolExecutor(max_workers=2) as executor:
+...     future = executor.submit(task, 5)
+...     result = future.result()
+...     print(result)
+10
+''')
+
 
 # ============= Multiprocessing
 # ForkProcess

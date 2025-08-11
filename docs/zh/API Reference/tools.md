@@ -31,7 +31,7 @@
 	exclude-members:
 
 ::: lazyllm.tools.rag.doc_to_db.DocInfoExtractor
-    members:
+    members: extract_doc_info
 	exclude-members:
 
 ::: lazyllm.tools.rag.doc_to_db.DocToDbProcessor
@@ -124,6 +124,36 @@ lazyllm.tools.rag.transform.NodeTransform
 ::: lazyllm.tools.rag.dataReader.FileReader
     members:
     exclude-members:
+
+ 
+::: lazyllm.tools.rag.transform.FuncNodeTransform
+    members: transform
+    exclude-members:
+
+lazyllm.tools.rag.transform.NodeTransform
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.TransformArgs
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.similarity.register_similarity
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.doc_node.DocNode
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.dataReader.SimpleDirectoryReader
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.dataReader.FileReader
+    members:
+    exclude-members:
+    
     
 ::: lazyllm.tools.WebModule
     members:
@@ -138,7 +168,7 @@ lazyllm.tools.rag.transform.NodeTransform
     exclude-members: forward
 
 ::: lazyllm.tools.QustionRewrite
-    members: 
+    members: choose_prompt
     exclude-members: forward
 
 ::: lazyllm.tools.agent.toolsManager.ToolManager
@@ -227,4 +257,17 @@ lazyllm.tools.rag.transform.NodeTransform
 
 ::: lazyllm.tools.HttpTool
     members: 
+    exclude-members:
+
+::: lazyllm.tools.tools.tencent_search.TencentSearch
+    members: 
+    exclude-members:
+
+::: lazyllm.tools.rag.web.WebUi
+    members: 
+    exclude-members:
+
+
+::: lazyllm.tools.http_request.http_executor_response.HttpExecutorResponse
+    members: extract_file, get_content_type
     exclude-members:
