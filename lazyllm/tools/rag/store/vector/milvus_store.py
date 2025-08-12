@@ -167,7 +167,7 @@ class MilvusStore(LazyLLMStoreBase):
         }
         self._constant_fields = self._get_constant_fields()
 
-    def _get_constant_fields(self) -> List[pymilvus.FieldSchema]:
+    def _get_constant_fields(self) -> list:
         field_list = []
         for k, kws in self._builtin_keys.items():
             field_list.append(pymilvus.FieldSchema(name=k, **kws))
