@@ -41,6 +41,8 @@ class MineruPDFReader:
         else:
             elements = self._parse_pdf_elements(file)
         docs: List[DocNode] = self._callback(elements, file, extra_info)
+        if self._post_func:
+            docs = self._post_func(docs)
         return docs
 
     def _parse_pdf_elements(self, pdf_path: Path, backend: str = "pipeline") -> List[dict]:
@@ -62,8 +64,6 @@ class MineruPDFReader:
             LOG.error(f"[MineruPDFReader] POST failed: {e}")
             return []
         res = self._extract_content_blocks(res)
-        if self._post_func:
-            res = self._post_func(res, pdf_path)
         return res
 
     def _upload_parse_pdf_elements(self, pdf_path: Path, backend: str = "pipeline") -> List[dict]:
@@ -86,8 +86,6 @@ class MineruPDFReader:
             LOG.error(f"[MineruPDFReader] POST failed: {e}")
             return []
         res = self._extract_content_blocks(res)
-        if self._post_func:
-            res = self._post_func(res, pdf_path)
         return res
 
     def _extract_content_blocks(self, content_list) -> List[dict]:  # noqa: C901

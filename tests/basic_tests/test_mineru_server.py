@@ -377,3 +377,29 @@ class TestMineruServer(unittest.TestCase):
             for item in self.__class__.test_results[pdf_path]["content_list"]
         ]
         assert set([node._content for node in nodes]) == set(cache_res)
+
+    @pytest.mark.order(8)
+    def test_pdf_reader_with_post_func(self):
+        """测试8: 测试pdf reader的后处理函数post_func功能"""
+        LOG.info("\n🔧 测试8: 测试pdf reader的后处理函数post_func功能")
+
+        def test_post_func(nodes):
+            for node in nodes:
+                node._content += "[after_process]"
+            return nodes
+
+        pdf_reader = MineruPDFReader(
+            self.__class__.url, 
+            post_func=test_post_func
+        )
+        
+        pdf_path = str(self.test_files["pdf1"])
+        nodes = pdf_reader(pdf_path)
+
+        nodes = pdf_reader(pdf_path)
+        assert isinstance(nodes, list)
+        cache_res = [
+            item["text"] + "[after_process]"
+            for item in self.__class__.test_results[pdf_path]["content_list"]
+        ]
+        assert set([node._content for node in nodes]) == set(cache_res)
