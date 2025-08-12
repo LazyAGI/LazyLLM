@@ -16,7 +16,7 @@ def run(query):
                 'kwargs': {
                     'uri': store_file,
                     'index_kwargs': {
-                        'index_type': 'HNSW',
+                        'index_type': 'IVF_FLAT',
                         'metric_type': 'COSINE',
                     }
                 },

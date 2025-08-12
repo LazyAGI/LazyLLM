@@ -414,7 +414,7 @@ class DocImpl:
                                          similarity_cut_off=similarity_cut_off, topk=topk, embed_keys=embed_keys,
                                          filters=filters, **similarity_kws, **kwargs)
         except Exception as e:
-            raise RuntimeError(f'index type `{index}` of store `{type(self.store)}` query failed: {e}')
+            raise RuntimeError(f'index type `{index}` of store `{type(self.store.impl)}` query failed: {e}')
 
         for n in nodes:
             n._store = self.store
