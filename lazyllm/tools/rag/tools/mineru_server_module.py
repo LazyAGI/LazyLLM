@@ -267,7 +267,7 @@ class MineruServer:
                  default_table_enable: bool = True,
                  default_return_md: bool = False,
                  default_return_content_list: bool = True,
-                 mem_fraction_static: float = 0.5):
+                 mem_fraction_static: float = 0.8):
         self._default_backend = default_backend
         self._cache_dir = cache_dir
         self._image_save_dir = image_save_dir
@@ -296,13 +296,12 @@ class MineruServer:
                         use_cache: bool = Form(False, description="if True, chache_dir should be set"),
                         lang_list: List[str] = Form(["ch_server"],
                                                     description="only use for pipeline,ch|ch_server|ch_lite|en"),
-                        backend: str = Form("pipeline", description="Parsing mode, vlm-sglang-engine|pipeline"),
+                        backend: str = Form(None, description="Parsing mode, vlm-sglang-engine|pipeline"),
                         parse_method: str = Form("auto"),
-                        formula_enable: bool = Form(True, description="Whether to enable formula parsing"),
-                        table_enable: bool = Form(True, description="Whether to enable table parsing"),
-                        return_md: bool = Form(False, description="Whether to return markdown content"),
-                        return_content_list: bool = Form(True, description="Whether to return content list")):
-        LOG.info(f"[MINERU SERVER] GOT INITIAL FILES: {files}")
+                        formula_enable: bool = Form(None, description="Whether to enable formula parsing"),
+                        table_enable: bool = Form(None, description="Whether to enable table parsing"),
+                        return_md: bool = Form(None, description="Whether to return markdown content"),
+                        return_content_list: bool = Form(None, description="Whether to return content list")):
         if files and upload_files:
             raise HTTPException(status_code=400, detail="Either provide only 'files' or only 'upload_files'!")
         for file in files:
@@ -324,6 +323,7 @@ class MineruServer:
         formula_enable = formula_enable or self._default_formula_enable
         table_enable = table_enable or self._default_table_enable
         return_md = return_md or self._default_return_md
+        return_content_list = return_content_list or self._default_return_content_list
 
         LOG.info(f"[MINERU SERVER] GOT FILE {[Path(file).stem for file in files]} --- BACKEND: {backend}")
         results = {file: {} for file in files}
@@ -331,7 +331,9 @@ class MineruServer:
             LOG.warning("[MINERU SERVER] CACHE_DIR is not set, the Cache will not be used!")
 
         if use_cache and self._cache_dir:
-            cache_complete, results = self._check_cache(files, results, backend, return_md, return_content_list)
+            cache_complete, results = self._check_cache(files, results, backend,
+                                                        return_md, return_content_list,
+                                                        table_enable, formula_enable)
             if cache_complete:
                 LOG.info(f"[MINERU SERVER] RETURN RESULTS FROM CACHE: {files}")
                 results = [results[file] for file in files]
@@ -405,7 +407,9 @@ class MineruServer:
                         if content_list:
                             results[pdf_path]["content_list"] = content_list
                     if self._cache_dir:
-                        self._cache_parse_result(hash_id, results[pdf_path], mode=backend)
+                        self._cache_parse_result(hash_id, results[pdf_path], mode=backend,
+                                                 table_enable=table_enable,
+                                                 formula_enable=formula_enable)
 
                     if self._image_save_dir:
                         source_dir = Path(f"{parse_dir}/images/")
@@ -444,39 +448,69 @@ class MineruServer:
                 f.write(content)
             file_paths.append(temp_file_path)
         return file_paths
+    
+    def _get_func_suffix(self, table_enable, formula_enable):
+        if table_enable and formula_enable:
+            return "_a"
+        elif table_enable:
+            return "_t"
+        elif formula_enable:
+            return "_f"
+        else:
+            return "_n"
 
-    def _check_cache(self, files, results, backend, return_md, return_content_list):
+    def _check_cache(self, files, results, backend, return_md, return_content_list,
+                     table_enable, formula_enable):
         if not self._cache_dir:
             return False, results
+        
+        func_suffix = self._get_func_suffix(table_enable, formula_enable)
+        func_suffix_map = {"_a": ["_a"],
+                           "_t": ["_t", "_a"],
+                           "_f": ["_f", "_a"],
+                           "_n": ["_n", "_a", "_t", "_f"]}
+        func_suffix_list = func_suffix_map[func_suffix]
 
-        cache_complete = True
-
+        all_files_cached = True
+        
         for file in files:
-            hash_id = self._file_sha256(file)
+            file_hash = self._file_sha256(file)
+            valid_hash_ids = [file_hash + func_suffix for func_suffix in func_suffix_list]
             result = {}
 
+            file_content_list_found = False
+            file_md_found = False
+            
             if return_content_list:
-                json_path = os.path.join(self._cache_dir, backend, f"{hash_id}_content_list.json")
-                if os.path.isfile(json_path):
-                    with open(json_path, "r") as f:
-                        result["content_list"] = json.load(f)
-                else:
-                    cache_complete = False
-
+                for valid_hash in valid_hash_ids:
+                    json_path = os.path.join(self._cache_dir, backend, f"{valid_hash}_content_list.json")
+                    if os.path.isfile(json_path):
+                        with open(json_path, "r") as f:
+                            result["content_list"] = json.load(f)
+                        file_content_list_found = True
+                        break
+            
             if return_md:
-                md_path = os.path.join(self._cache_dir, backend, f"{hash_id}.md")
-                if os.path.isfile(md_path):
-                    with open(md_path, "r", encoding="utf-8") as f:
-                        result["md_content"] = f.read()
-                else:
-                    cache_complete = False
+                for valid_hash in valid_hash_ids:
+                    md_path = os.path.join(self._cache_dir, backend, f"{valid_hash}.md")
+                    if os.path.isfile(md_path):
+                        with open(md_path, "r", encoding="utf-8") as f:
+                            result["md_content"] = f.read()
+                        file_md_found = True
+                        break
 
             results[file].update(result)
 
-        if not (return_md or return_content_list):
-            cache_complete = False
+            file_cache_complete = True
+            if return_content_list and not file_content_list_found:
+                file_cache_complete = False
+            if return_md and not file_md_found:
+                file_cache_complete = False
 
-        return cache_complete, results
+            if not file_cache_complete:
+                all_files_cached = False
+        
+        return all_files_cached, results
 
     def _read_parse_result(self, file_suffix_identifier: str,
                            pdf_name: str, parse_dir: str) -> Optional[Union[str, dict]]:
@@ -494,11 +528,22 @@ class MineruServer:
                 return None
         return None
 
-    def _cache_parse_result(self, hash_id: str, result: dict, mode: str):
+    def _cache_parse_result(self, hash_id: str, result: dict, mode: str,
+                            table_enable: bool, formula_enable: bool):
         try:
             cache_subdir = os.path.join(self._cache_dir, mode)
             os.makedirs(cache_subdir, exist_ok=True)
-
+            
+            if table_enable and formula_enable:
+                func_suffix = "_a"
+            elif table_enable:
+                func_suffix = "_t"
+            elif formula_enable:
+                func_suffix = "_f"
+            else:
+                func_suffix = "_n"
+            
+            hash_id += func_suffix
             md_content = result.get('md_content', None)
             if md_content:
                 cache_path = os.path.join(cache_subdir, f"{hash_id}.md")

@@ -13,10 +13,15 @@ class MineruPDFReader:
 
     def __init__(self, mineru_url, backend="pipeline",
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
-                 upload_mode: bool = False, post_func: Optional[Callable] = None):
+                 upload_mode: bool = False,
+                 extract_table: bool = True,
+                 extract_formula: bool = True,
+                 post_func: Optional[Callable] = None):
         self._mineru_url = mineru_url + "/api/v1/pdf_parse"
         self._upload_mode = upload_mode
         self._backend = backend
+        self._extract_table = extract_table
+        self._extract_formula = extract_formula
         if callback is not None:
             self._callback = callback
         else:
@@ -45,9 +50,13 @@ class MineruPDFReader:
             docs = self._post_func(docs)
         return docs
 
-    def _parse_pdf_elements(self, pdf_path: Path, backend: str = "pipeline") -> List[dict]:
-        backend = backend or self._backend
-        payload = {"files": [str(pdf_path)], "return_content_list": True, "backend": backend}
+    def _parse_pdf_elements(self, pdf_path: Path, use_cache: bool = True) -> List[dict]:
+        payload = {"files": [str(pdf_path)],
+                   "use_cache": use_cache,
+                   "return_content_list": True,
+                   "backend": self._backend,
+                   "table_enable": self._extract_table,
+                   "formula_enable": self._extract_formula}
         LOG.info(f"[MineruPDFReader] payload: {payload}")
         try:
             response = requests.post(self._mineru_url, data=payload)
@@ -95,6 +104,8 @@ class MineruPDFReader:
         for content in content_list:
             block = {}
             block["bbox"] = content["bbox"]
+            block["type"] = content["type"]
+            block["page"] = content["page_idx"]
             block["lines"] = content["lines"] if 'lines' in content else []
             for line in block['lines']:
                 if 'content' in line:
@@ -112,14 +123,11 @@ class MineruPDFReader:
                     if cur_title:
                         content["title"] = cur_title
                 block = copy.deepcopy(content)
-                block["page"] = content["page_idx"]
                 del block["page_idx"]
                 blocks.append(block)
             elif content["type"] == "image":
                 if not content["img_path"]:
                     continue
-                block["type"] = content["type"]
-                block["page"] = content["page_idx"]
                 block["image_path"] = os.path.basename(content["img_path"])
                 block['img_caption'] = "\n".join(self._clean_content(content.get('image_caption', [])))
                 block['img_footnote'] = "\n".join(self._clean_content(content.get('image_footnote', [])))
@@ -129,25 +137,25 @@ class MineruPDFReader:
                 block["text"] += f"\n{block['img_footnote']}\n" if block["img_footnote"] else "\n"
                 blocks.append(block)
             elif content["type"] == "table":
-                block["type"] = content["type"]
-                block["page"] = content["page_idx"]
-                if self.extract_table:
-                    block["text"] = self._html_table_to_markdown(self._clean_content(content["table_body"])
-                                                                 ) if "table_body" in content else ""
+                if self._extract_table:
+                    block["text"] = self._html_table_to_markdown(self._clean_content(content["table_body"])) if "table_body" in content else ""
+                    block['table_caption'] = "\n".join(self._clean_content(content['table_caption']))
+                    block['table_footnote'] = "\n".join(self._clean_content(content['table_footnote']))
+                    if block.get("text", None):
+                        block["text"] = f"{block['table_caption']}\n{block['text']}".lstrip("\n")
+                        block["text"] += f"\n{block['table_footnote']}\n" if block["table_footnote"] else "\n"
                 else:
-                    block['image_path'] = os.path.basename(content['img_path'])
+                    block['image_path'] = os.path.basename(content.get("img_path", ""))
+                    block["text"] = f"![table]({block['image_path']})"
                 if cur_title:
                     block["title"] = cur_title
-                block['table_caption'] = "\n".join(self._clean_content(content['table_caption']))
-                block['table_footnote'] = "\n".join(self._clean_content(content['table_footnote']))
-
-                block["text"] = f"{block['table_caption']}\n{block['text']}".lstrip("\n")
-                block["text"] += f"\n{block['table_footnote']}\n" if block["table_footnote"] else "\n"
                 blocks.append(block)
             elif content["type"] == "equation":
-                block["type"] = "text"
-                block["page"] = content["page_idx"]
-                block["text"] = content["text"]
+                if self._extract_formula:
+                    block["text"] = content["text"]
+                else:
+                    block["image_path"] = os.path.basename(content.get("img_path", ""))
+                    block["text"] = f"![formula]({block['image_path']})"
                 blocks.append(block)
         return blocks
 
