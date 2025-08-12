@@ -209,6 +209,7 @@ add_chinese_doc('ActionModule', '''\
 
 Args:
     action (Callable|list[Callable]): 被包装的对象，是一个或一组可执行的对象。
+    return_trace (bool): 是否开启 trace 模式，用于记录调用栈，默认为 ``False``。
 ''')
 
 add_english_doc('ActionModule', '''\
@@ -216,6 +217,7 @@ Used to wrap a Module around functions, modules, flows, Module, and other callab
 
 Args:
     action (Callable|list[Callable]): The object to be wrapped, which is one or a set of callable objects.
+    return_trace (bool): Whether to enable trace mode to record the execution stack. Defaults to ``False``.
 
 **Examples:**\n
 ```python
@@ -281,6 +283,42 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 
 ''')
 
+add_chinese_doc('ActionModule.forward', '''\
+执行被包装的 action，对输入参数进行前向计算。等效于调用该模块本身。
+
+Args:
+    args (list of callables or single callable): 传递给被包装 action 的位置参数。
+    kwargs (dict of callables): 传递给被包装 action 的关键字参数。
+
+**Returns:**\n
+- 任意类型：被包装 action 的执行结果。
+''')
+
+add_english_doc('ActionModule.forward', '''\
+Executes the wrapped action with the provided input arguments. Equivalent to directly calling the module.
+
+Args:
+    args (list of callables or single callable): Positional arguments to be passed to the wrapped action.
+    kwargs (dict of callables): Keyword arguments to be passed to the wrapped action.
+
+**Returns:**\n
+- Any: The result of executing the wrapped action.
+''')
+
+add_chinese_doc('ActionModule.submodules', '''\
+返回被包装 action 中所有属于 ModuleBase 类型的子模块。该属性会自动展开 Pipeline 中嵌套的模块。
+
+**Returns:**\n
+- list[ModuleBase]: 子模块列表
+''')
+
+add_english_doc('ActionModule.submodules', '''\
+Returns all submodules of type ModuleBase contained in the wrapped action. This automatically traverses any nested modules inside a Pipeline.
+
+**Returns:**\n
+- list[ModuleBase]: List of submodules
+''')
+
 # add_example('ActionModule', '''\
 # >>> import lazyllm
 # >>> def myfunc(input): return input + 1
@@ -308,6 +346,96 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 # ['get 16', 'get 24', 'get 32']
 # ''')
 
+add_chinese_doc('servermodule.LLMBase', '''\
+大语言模型模块的基类，继承自 ModuleBase。  
+负责管理流式输出、Prompt 和格式化器的初始化与切换，处理输入中的文件信息，支持实例共享。
+
+Args:
+    stream (bool 或 dict): 是否启用流式输出或流式配置，默认为 False。
+    return_trace (bool): 是否返回执行过程的 trace，默认为 False。
+    init_prompt (bool): 是否在初始化时自动创建默认 Prompt，默认为 True。
+''')
+
+add_english_doc('servermodule.LLMBase', '''\
+Base class for large language model modules, inheriting from ModuleBase.  
+Manages initialization and switching of streaming output, prompts, and formatters; processes file information in inputs; supports instance sharing.
+
+Args:
+    stream (bool or dict): Whether to enable streaming output or streaming configuration, default is False.
+    return_trace (bool): Whether to return execution trace, default is False.
+    init_prompt (bool): Whether to automatically create a default prompt at initialization, default is True.
+''')
+
+add_chinese_doc('servermodule.LLMBase.prompt', '''\
+设置或切换 Prompt。支持 None、PrompterBase 子类或字符串/字典类型创建 ChatPrompter。
+
+Args:
+    prompt (str/dict/PrompterBase/None): 要设置的 Prompt。
+    history (list): 对话历史，仅当 prompt 为字符串或字典时有效。
+
+**Returns**\n
+- self: 便于链式调用。
+''')
+
+add_english_doc('servermodule.LLMBase.prompt', '''\
+Set or switch the prompt. Supports None, PrompterBase subclass, or string/dict to create ChatPrompter.
+
+Args:
+    prompt (str/dict/PrompterBase/None): The prompt to set.
+    history (list): Conversation history, only valid when prompt is str or dict.
+
+**Returns**\n
+- self: For chaining calls.
+''')
+
+add_chinese_doc('servermodule.LLMBase.formatter', '''\
+设置或切换输出格式化器。支持 None、FormatterBase 子类或可调用对象。
+
+Args:
+    format (FormatterBase/Callable/None): 格式化器对象或函数，默认为 None。
+
+**Returns**\n
+- self: 便于链式调用。
+''')
+
+add_english_doc('servermodule.LLMBase.formatter', '''\
+Set or switch the output formatter. Supports None, FormatterBase subclass or callable.
+
+Args:
+    format (FormatterBase/Callable/None): Formatter object or function, default is None.
+
+**Returns**\n
+- self: For chaining calls.
+''')
+
+add_chinese_doc('servermodule.LLMBase.share', '''\
+创建当前实例的浅拷贝，并可重新设置 prompt、formatter、stream 等属性。  
+适用于多会话或多 Agent 共享基础配置但个性化部分参数的场景。
+
+Args:
+    prompt (str/dict/PrompterBase/None): 新的 Prompt，可选。
+    format (FormatterBase/None): 新的格式化器，可选。
+    stream (bool/dict/None): 新的流式设置，可选。
+    history (list/None): 新的对话历史，仅在设置 Prompt 时有效。
+
+**Returns**\n
+- LLMBase: 新的共享实例。
+''')
+
+add_english_doc('servermodule.LLMBase.share', '''\
+Creates a shallow copy of the current instance, with optional resetting of prompt, formatter, and stream attributes.  
+Useful for scenarios where multiple sessions or agents share a base configuration but customize certain parameters.
+
+Args:
+    prompt (str/dict/PrompterBase/None): New prompt, optional.
+    format (FormatterBase/None): New formatter, optional.
+    stream (bool/dict/None): New streaming settings, optional.
+    history (list/None): New conversation history, effective only when setting prompt.
+
+**Returns**\n
+- LLMBase: The new shared instance.
+''')
+
 add_chinese_doc('TrainableModule', '''\
 可训练模块，所有模型（包括LLM、Embedding等）都通过TrainableModule提供服务
 
@@ -315,11 +443,11 @@ add_chinese_doc('TrainableModule', '''\
 
 
 Args:
-    base_model (str): 基础模型的名称或路径。如果本地没有该模型，将会自动从模型源下载。
-    target_path (str): 保存微调任务的路径。如果仅进行推理，可以留空。
-    source (str): 模型来源，可选值为huggingface或...。如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
-    stream (bool): 是否输出流式结果。如果使用的推理引擎不支持流式输出，该参数将被忽略。
-    return_trace (bool): 是否在trace中记录结果。
+    base_model (str): 基础模型的名称或路径。
+    target_path (str): 保存微调任务的路径。
+    source (str): 模型来源，如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
+    stream (bool): 输出流式结果。     
+    return_trace (bool): 在trace中记录结果。
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
 
@@ -465,11 +593,12 @@ Trainable module, all models (including LLM, Embedding, etc.) are served through
 
 
 Args:
-    base_model (str): Name or path of the base model. If the model is not available locally, it will be automatically downloaded from the model source.
-    target_path (str): Path to save the fine-tuning task. Can be left empty if only performing inference.
-    source (str): Model source, optional values are huggingface or. If not set, it will read the value from the environment variable LAZYLLM_MODEL_SOURCE.
-    stream (bool): Whether to output stream. If the inference engine used does not support streaming, this parameter will be ignored.
-    return_trace (bool): Whether to record the results in trace.
+    base_model (str): Name or path of the base model. 
+    target_path (str): Path to save the fine-tuning task. 
+    source (str): Model source. If not set, it will read the value from the environment variable LAZYLLM_MODEL_SOURCE.
+    stream (bool): Whether to output stream. 
+    return_trace (bool): Record the results in trace.
+
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
 
@@ -611,6 +740,80 @@ m(1)
 ```                                  
 ''')
 
+add_chinese_doc('TrainableModule.wait', '''\
+等待模型部署任务完成，该方法会阻塞当前线程直到部署完成。
+''')
+
+add_english_doc('TrainableModule.wait', '''\
+Wait for the model deployment task to complete. This method blocks the current thread until the deployment is finished.
+''')
+
+add_example('TrainableModule.wait', '''\
+>>> import lazyllm
+>>> class Mywait(lazyllm.module.llms.TrainableModule):
+...    def forward(self):
+...        self.wait()
+''')
+
+add_chinese_doc('TrainableModule.stop', '''\
+暂停模型特定任务。
+Args:
+    task_name(str): 需要暂停的任务名, 默认为None(默认暂停deploy任务)
+''')
+
+add_english_doc('TrainableModule.stop', '''\
+Pause a specific task of the model.
+Args:
+    task_name (str): The name of the task to pause. Defaults to None (pauses the 'deploy' task by default).
+''')
+
+add_example('TrainableModule.stop', '''\
+>>> import lazyllm
+>>> class Mystop(lazyllm.module.llms.TrainableModule):
+...    def forward(self, task):
+...        self.stop(task)
+''')
+
+add_chinese_doc('TrainableModule.prompt', '''\
+处理输入的prompt生成符合模型需求的格式。
+Args:
+    prompt(str): 输入的prompt, 默认为空。
+    history(**List): 对话历史记忆。
+''')
+
+add_english_doc('TrainableModule.prompt', '''\
+Processes the input prompt and generates a format compatible with the model.
+Args:
+    prompt (str): The input prompt. Defaults to an empty string.
+    history (List): Conversation history.
+''')
+
+add_example('TrainableModule.prompt', '''\
+>>> import lazyllm
+>>> class Myprompt(lazyllm.module.llms.TrainableModule):
+...    def forward(self, prompt, history):
+...        self.prompt(prompt,history)
+''')
+
+add_chinese_doc('TrainableModule.forward', '''\
+自动构建符合模型要求的输入数据结构，适配多模态场景。
+''')
+
+add_english_doc('TrainableModule.forward', '''\
+Supports handling various input formats, automatically builds the input structure required by the model, and adapts to multimodal scenarios.
+''')
+
+add_example('TrainableModule.forward', '''\
+>>> import lazyllm
+>>> from lazyllm.module import TrainableModule
+>>> class MyModule(TrainableModule):
+...     def forward(self, __input, **kw):
+...         return f"processed: {__input}"
+...
+>>> MyModule()("Hello")
+'processed: Hello'
+''')
+
 # add_example('TrainableModule', '''\
 # >>> import lazyllm
 # >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).trainset('/file/to/path').deploy_method(None).mode('finetune')
@@ -692,7 +895,9 @@ Args:
     stream (bool): 是否流式请求和输出，默认为非流式。
     return_trace (bool): 是否将结果记录在 trace 中，默认为``False``。
     port (int): 指定服务部署后的端口，默认为 ``None`` 会随机生成端口。
-    launcher (LazyLLMLaunchersBase): 用于选择服务执行的计算节点，默认为`` launchers.remote``。
+    pythonpath(str):传递给子进程的 PYTHONPATH 环境变量，默认为 ``None``。
+    launcher (LazyLLMLaunchersBase): 用于选择服务执行的计算节点，默认为是异步远程部署"launchers.remote(sync=False)"。
+    url(str):模块服务的地址，默认为"None",使用Redis获取。
 ''')
 
 add_english_doc('ServerModule', '''\
@@ -705,7 +910,9 @@ Args:
     stream (bool): Whether to request and output in streaming mode, default is non-streaming.
     return_trace (bool): Whether to record the results in trace, default is ``False``.
     port (int): Specifies the port after the service is deployed. The default is ``None``, which will generate a random port.
-    launcher (LazyLLMLaunchersBase): Used to select the compute node for service execution, default is ``launchers.remote`` .
+    pythonpath (str): PYTHONPATH environment variable passed to the subprocess. Defaults to None.
+    launcher (LazyLLMLaunchersBase): Specifies the compute node for running the service. Defaults to asynchronous remote deployment via launchers.remote(sync=False).
+    url (str): The service URL of the module. Defaults to None, in which case the URL is retrieved from Redis.
 
 **Examples:**\n
 ```python
@@ -855,6 +1062,22 @@ add_example('TrialModule', '''\
 dummy finetune!, and init-args is {a: f1}
 dummy finetune!, and init-args is {a: f2}
 [["post2(reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1})"], ["post2(reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1})"]]
+''')
+
+add_chinese_doc('AutoModel', '''\
+用于部署在线 API 模型或本地模型的模块，支持加载在线推理模块或本地可微调模块。
+Args:
+    model (str): 指定要加载的模型名称，例如 ``internlm2-chat-7b``，可为空。为空时默认加载 ``internlm2-chat-7b``。
+    source (str): 指定要使用的在线模型服务，如需使用在线模型，必须传入此参数。支持 ``qwen`` / ``glm`` / ``openai`` / ``moonshot`` 等。
+    framework (str): 指定本地部署所使用的推理框架，支持 ``lightllm`` / ``vllm`` / ``lmdeploy``。将通过 ``TrainableModule`` 与指定框架组合进行部署。
+''')
+
+add_english_doc('AutoModel', '''\
+A module for deploying either online API-based models or local models, supporting both online inference and locally trainable modules.
+Args:
+    model (str): The name of the model to load, e.g., ``internlm2-chat-7b``. If None, ``internlm2-chat-7b`` will be loaded by default.
+    source (str): Specifies the online model service to use. Required when using online models. Supported values include ``qwen``, ``glm``, ``openai``, ``moonshot``, etc.
+    framework (str): The local inference framework to use for deployment. Supported values are ``lightllm``, ``vllm``, and ``lmdeploy``. The model will be deployed via ``TrainableModule`` using the specified framework.
 ''')
 
 add_chinese_doc('OnlineChatModule', '''\

@@ -10,7 +10,14 @@
       - start
       - restart
       - update
-        
+
+::: lazyllm.module.servermodule.LLMBase
+    options:
+      members:
+      - prompt
+      - formatter
+      - share
+
 ::: lazyllm.module.ActionModule
     options:
       members:
@@ -24,6 +31,10 @@
       - update
       - evalset
       - eval
+      - wait
+      - stop
+      - prompt
+      - forward
 
 ::: lazyllm.module.UrlModule
     options:
@@ -36,6 +47,10 @@
       - start
       - restart
       - evalset
+
+::: lazyllm.module.AutoModel
+    options:
+      members:
 
 ::: lazyllm.module.TrialModule
     members: start
