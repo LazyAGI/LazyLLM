@@ -1,8 +1,10 @@
 import os
+import re
 import traceback
 
 from typing import Dict, List, Optional, Set, Union, Any
 from collections import defaultdict
+from urllib.parse import urlparse
 
 from ..store_base import (LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX)
 from ...data_type import DataType
@@ -27,21 +29,50 @@ class ChromadbStore(LazyLLMStoreBase):
     need_embedding = True
     supports_index_registration = False
 
-    def __init__(self, dir: Optional[str] = None, host: Optional[str] = None, port: Optional[int] = None,
+    def __init__(self, uri: Optional[str] = None, dir: Optional[str] = None,
                  index_kwargs: Optional[Union[Dict, List]] = None, client_kwargs: Optional[Dict] = {},
                  **kwargs) -> None:
-        assert dir or (host and port), "dir or (host and port) must be provided"
+        assert uri or (dir), "uri or dir must be provided"
         self._index_kwargs = index_kwargs or DEFAULT_INDEX_CONFIG
         self._client_kwargs = client_kwargs
-        self._dir = dir
-        self._host = host
-        self._port = port
+        if dir:
+            self._dir = dir
+        else:
+            self._dir, self._host, self._port = self._parse_uri(uri)
         self._primary_key = 'uid'
 
     @property
     def dir(self):
         if not self._dir: return None
         return self._dir if self._dir.endswith(os.sep) else self._dir + os.sep
+
+    def _parse_uri(uri: str):
+        windows_drive = re.match(r"^[a-zA-Z]:[\\/]", uri or "")
+        if ("://" not in uri) and (windows_drive or os.path.isabs(uri)):
+            return os.path.abspath(uri), None, None
+
+        p = urlparse(uri)
+
+        if p.scheme == "":
+            return os.path.abspath(uri), None, None
+
+        if p.scheme == "file":
+            path = p.path
+            if os.name == "nt" and path.startswith("/") and re.match(r"^/[a-zA-Z]:", path):
+                path = path.lstrip("/")  # file:///C:/... -> C:/...
+            return os.path.abspath(path), None, None
+
+        scheme = p.scheme
+        if scheme.startswith("chroma+"):
+            scheme = scheme.split("+", 1)[1]  # http or https
+
+        if scheme in ("http", "https"):
+            host = p.hostname or "127.0.0.1"
+            port = p.port or (443 if scheme == "https" else 80)
+            return None, host, port
+
+        raise ValueError(f"Unsupported URI scheme in '{uri}'. "
+                         "Use file:///path or plain path for local; http(s)://host:port for remote.")
 
     @override
     def connect(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},

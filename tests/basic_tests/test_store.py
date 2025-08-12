@@ -193,7 +193,7 @@ class TestChromadbStore(unittest.TestCase):
         self.embed_datatypes = {"vec_dense": DataType.FLOAT_VECTOR}
         self.global_metadata_desc = BUILDIN_GLOBAL_META_DESC
         self.store_dir = tempfile.mkdtemp()
-        self.store = ChromadbStore(dir=self.store_dir)
+        self.store = ChromadbStore(uri=self.store_dir)
         self.store.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
                            global_metadata_desc=self.global_metadata_desc)
 
