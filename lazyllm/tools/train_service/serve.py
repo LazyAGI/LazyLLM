@@ -15,7 +15,6 @@ from async_timeout import timeout
 import re
 from urllib.parse import urlparse
 import shutil
-import glob
 from fastapi.responses import StreamingResponse
 
 import lazyllm
@@ -131,16 +130,6 @@ class TrainServer(ServerBase):
             return None
         return model._impl._temp_finetuned_model_path
 
-    def _get_log_path(self, model):
-        log_dir = self._get_save_path(model)
-        if not log_dir:
-            return None
-        log_files_paths = glob.glob(os.path.join(log_dir, '*.log'))
-        if len(log_files_paths) == 0:
-            return None
-        assert len(log_files_paths) == 1
-        return log_files_paths[-1]
-
     @app.post('/v1/finetuneTasks')
     async def create_job(self, job: JobDescription, finetune_task_id: str = Query(None),
                          token: str = Header(DEFAULT_TOKEN)):
@@ -200,7 +189,7 @@ class TrainServer(ServerBase):
 
         # The first getting the path may be invalid, and it will be getted with each update.
         save_path = self._get_save_path(m)
-        log_path = self._get_log_path(m)
+        log_path = m.log_path(model_id)
 
         # Save status
         status = m.status(model_id).name
