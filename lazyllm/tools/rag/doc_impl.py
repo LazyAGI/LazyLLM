@@ -443,11 +443,9 @@ class DocImpl:
                 idx += 1
             else:
                 break
-        lca = path_cur[idx - 1]
         parent_path = list(reversed(path_cur[idx - 1:]))
         child_path = path_tgt[idx - 1:]
 
-        LOG.info(f"LCA: {lca}, parent_path: {parent_path}, child_path: {child_path}")
         parent_path.pop(0)
         child_path.pop(0)
         while parent_path and nodes:
