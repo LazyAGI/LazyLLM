@@ -14,7 +14,7 @@ class MineruPDFReader:
     def __init__(self, mineru_url, backend="pipeline",
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  upload_mode: bool = False, post_func: Optional[Callable] = None):
-        self._mineru_url = mineru_url
+        self._mineru_url = mineru_url + "/api/v1/pdf_parse"
         self._upload_mode = upload_mode
         self._backend = backend
         if callback is not None:
@@ -140,7 +140,7 @@ class MineruPDFReader:
                     block["title"] = cur_title
                 block['table_caption'] = "\n".join(self._clean_content(content['table_caption']))
                 block['table_footnote'] = "\n".join(self._clean_content(content['table_footnote']))
-                
+
                 block["text"] = f"{block['table_caption']}\n{block['text']}".lstrip("\n")
                 block["text"] += f"\n{block['table_footnote']}\n" if block["table_footnote"] else "\n"
                 blocks.append(block)

@@ -17,7 +17,7 @@ from mineru.cli.common import aio_do_parse, read_fn, pdf_suffixes, image_suffixe
 from lazyllm import ServerModule, LOG
 from lazyllm import FastapiApp as app
 
-# patches to mineru
+# patches to mineru (to output bbox)#############################################
 
 def parse_line_spans(para_block, page_idx):
     lines_metas = []
@@ -431,7 +431,6 @@ class MineruServer:
             )
 
     async def _resolve_upload_files(self, upload_files: List[UploadFile], unique_id: str) -> List[str]:
-        """将上传的 UploadFile 保存为临时文件路径列表"""
         if not upload_files:
             return []
 
@@ -447,7 +446,6 @@ class MineruServer:
         return file_paths
 
     def _check_cache(self, files, results, backend, return_md, return_content_list):
-        """检查缓存是否存在，如果存在则直接返回"""
         if not self._cache_dir:
             return False, results
 
@@ -482,7 +480,6 @@ class MineruServer:
 
     def _read_parse_result(self, file_suffix_identifier: str,
                            pdf_name: str, parse_dir: str) -> Optional[Union[str, dict]]:
-        """从结果文件中读取解析结果"""
         result_file_path = os.path.join(parse_dir, f"{pdf_name}{file_suffix_identifier}")
         if os.path.exists(result_file_path):
             try:
@@ -498,7 +495,6 @@ class MineruServer:
         return None
 
     def _cache_parse_result(self, hash_id: str, result: dict, mode: str):
-        """缓解析结果到文件"""
         try:
             cache_subdir = os.path.join(self._cache_dir, mode)
             os.makedirs(cache_subdir, exist_ok=True)
@@ -534,7 +530,6 @@ class MineruServer:
             raise HTTPException(status_code=400, detail=f"Unsupported file type: {file_path.suffix}")
 
     def _convert_file_to_pdf(self, input_path, output_dir):
-        """Convert a single document (ppt, doc, etc.) to PDF."""
         if not os.path.isfile(input_path):
             raise FileNotFoundError(f"The input file {input_path} does not exist.")
 

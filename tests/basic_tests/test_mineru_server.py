@@ -27,7 +27,6 @@ def setup_tmpdir_class(request, tmpdir_factory):
 class TestMineruServer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        """类级别的设置，启动服务器"""
         cls.cache_dir = str(cls.tmpdir_class.mkdir("cache"))
         cls.image_save_dir = str(cls.tmpdir_class.mkdir("images"))
         cls.server = MineruServerModule(
@@ -81,23 +80,20 @@ class TestMineruServer(unittest.TestCase):
             for pdf_name, content_lines in pdf_contents.items():
                 file_path = self.test_files[pdf_name]
                 if not file_path.exists():
-                    # 创建真正的PDF文件
                     c = canvas.Canvas(str(file_path), pagesize=letter)
 
                     y_position = 750
                     for line in content_lines:
                         c.drawString(100, y_position, line)
                         y_position -= 20
-                    # 为pdf2添加图片和表格
+                    # 添加图片和表格
                     if pdf_name == "pdf2":
                         try:
-                            # 创建简单测试图片
                             img = Image.new("RGB", (150, 100), color="lightblue")
                             draw = ImageDraw.Draw(img)
                             draw.text((10, 10), "test image", fill="black")
                             draw.rectangle([10, 30, 140, 90], outline="red", width=2)
 
-                            # 保存图片到临时文件
                             with tempfile.NamedTemporaryFile(
                                 suffix=".png", delete=False
                             ) as tmp_file:
@@ -352,7 +348,7 @@ class TestMineruServer(unittest.TestCase):
     def test_pdf_reader(self):
         """测试6: 测试pdf reader(文件路径)"""
         LOG.info("\n⚠️ 测试6: 测试pdf reader(文件路径)")
-        pdf_reader = MineruPDFReader(self.__class__.url)
+        pdf_reader = MineruPDFReader(self.__class__.server._url[:-9])
         pdf_path = str(self.test_files["pdf1"])
         nodes = pdf_reader(pdf_path)
         assert isinstance(nodes, list)
@@ -367,8 +363,7 @@ class TestMineruServer(unittest.TestCase):
         """测试7: 测试pdf reader(上传文件)"""
         LOG.info("\n⚠️ 测试7: 测试pdf reader(上传文件)")
 
-        # 设置 upload_mode=True 来测试文件上传功能
-        pdf_reader = MineruPDFReader(self.__class__.url, upload_mode=True)
+        pdf_reader = MineruPDFReader(self.__class__.server._url[:-9], upload_mode=True)
         pdf_path = str(self.test_files["pdf1"])
         nodes = pdf_reader(pdf_path)
         assert isinstance(nodes, list)
@@ -389,7 +384,7 @@ class TestMineruServer(unittest.TestCase):
             return nodes
 
         pdf_reader = MineruPDFReader(
-            self.__class__.url, 
+            self.__class__.server._url[:-9], 
             post_func=test_post_func
         )
         
