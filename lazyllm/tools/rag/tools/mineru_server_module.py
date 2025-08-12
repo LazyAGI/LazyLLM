@@ -320,8 +320,8 @@ class MineruServer:
         backend = backend or self._default_backend
         lang_list = lang_list or self._default_lang_list
         parse_method = parse_method or self._default_parse_method
-        formula_enable = formula_enable or self._default_formula_enable
-        table_enable = table_enable or self._default_table_enable
+        formula_enable = formula_enable if formula_enable is not None else self._default_formula_enable
+        table_enable = table_enable if table_enable is not None else self._default_table_enable
         return_md = return_md or self._default_return_md
         return_content_list = return_content_list or self._default_return_content_list
 
