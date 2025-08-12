@@ -312,7 +312,7 @@ class _DocumentStore(object):
             content=node.text,
             meta=node.metadata,
             global_meta=node.global_metadata,
-            number=node.metadata.get('number', 0),
+            number=node.metadata.get('store_num', 0),
             kb_id=node.global_metadata.get(RAG_KB_ID, DEFAULT_KB_ID),
             excluded_embed_metadata_keys=node.excluded_embed_metadata_keys,
             excluded_llm_metadata_keys=node.excluded_llm_metadata_keys,

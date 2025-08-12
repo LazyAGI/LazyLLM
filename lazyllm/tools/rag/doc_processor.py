@@ -67,7 +67,7 @@ class _Processor:
                 doc_group_number[doc_id] = {}
             if group_name not in doc_group_number[doc_id]:
                 doc_group_number[doc_id][group_name] = 1
-            node.metadata['number'] = doc_group_number[doc_id][group_name]
+            node.metadata['store_num'] = doc_group_number[doc_id][group_name]
             doc_group_number[doc_id][group_name] += 1
         del doc_group_number
         return nodes

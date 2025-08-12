@@ -15,18 +15,7 @@ from ...global_metadata import GlobalMetadataDesc
 
 MILVUS_UPSERT_BATCH_SIZE = 500
 MILVUS_PAGINATION_OFFSET = 1000
-TYPE2MILVUS = {
-    DataType.VARCHAR: pymilvus.DataType.VARCHAR,
-    DataType.ARRAY: pymilvus.DataType.ARRAY,
-    DataType.FLOAT_VECTOR: pymilvus.DataType.FLOAT_VECTOR,
-    DataType.INT32: pymilvus.DataType.INT32,
-    DataType.INT64: pymilvus.DataType.INT64,
-    DataType.SPARSE_FLOAT_VECTOR: pymilvus.DataType.SPARSE_FLOAT_VECTOR,
-    DataType.STRING: pymilvus.DataType.STRING,
-}
-BUILTIN_KEYS = {
-    'uid': {'dtype': pymilvus.DataType.VARCHAR, 'max_length': 256, 'is_primary': True}
-}
+
 
 class MilvusStore(LazyLLMStoreBase):
     capability = StoreCapability.VECTOR
@@ -60,7 +49,7 @@ class MilvusStore(LazyLLMStoreBase):
         self._embed_dims = embed_dims
         self._embed_datatypes = embed_datatypes
         self._global_metadata_desc = global_metadata_desc
-        self._constant_fields = self._get_constant_fields()
+        self._set_constants()
         self._connect()
         LOG.info("[Milvus Vector Store] init success!")
         self._disconnect()
@@ -97,7 +86,7 @@ class MilvusStore(LazyLLMStoreBase):
                     assert self._embed_datatypes.get(embed_key), \
                         f'cannot find embedding params for embed [{embed_key}]'
                     if embed_key not in embed_kwargs:
-                        embed_kwargs[embed_key] = {'dtype': TYPE2MILVUS[self._embed_datatypes[embed_key]]}
+                        embed_kwargs[embed_key] = {'dtype': self._type2milvus[self._embed_datatypes[embed_key]]}
                     if self._embed_dims.get(embed_key): embed_kwargs[embed_key]['dim'] = self._embed_dims[embed_key]
                 self._create_collection(collection_name, embed_kwargs)
 
@@ -163,9 +152,24 @@ class MilvusStore(LazyLLMStoreBase):
             self._disconnect()
             return []
 
+    def _set_constants(self):
+        self._type2milvus = {
+            DataType.VARCHAR: pymilvus.DataType.VARCHAR,
+            DataType.ARRAY: pymilvus.DataType.ARRAY,
+            DataType.FLOAT_VECTOR: pymilvus.DataType.FLOAT_VECTOR,
+            DataType.INT32: pymilvus.DataType.INT32,
+            DataType.INT64: pymilvus.DataType.INT64,
+            DataType.SPARSE_FLOAT_VECTOR: pymilvus.DataType.SPARSE_FLOAT_VECTOR,
+            DataType.STRING: pymilvus.DataType.STRING,
+        }
+        self._builtin_keys = {
+            'uid': {'dtype': pymilvus.DataType.VARCHAR, 'max_length': 256, 'is_primary': True}
+        }
+        self._constant_fields = self._get_constant_fields()
+
     def _get_constant_fields(self) -> List[pymilvus.FieldSchema]:
         field_list = []
-        for k, kws in BUILTIN_KEYS.items():
+        for k, kws in self._builtin_keys.items():
             field_list.append(pymilvus.FieldSchema(name=k, **kws))
         for k, desc in self._global_metadata_desc.items():
             field_name = self._gen_global_meta_key(k)
@@ -173,13 +177,13 @@ class MilvusStore(LazyLLMStoreBase):
                 if desc.element_type is None:
                     raise ValueError(f'Milvus field [{field_name}]: '
                                      '`element_type` is required when `data_type` is ARRAY.')
-                field_args = {'element_type': TYPE2MILVUS[desc.element_type], 'max_capacity': desc.max_size}
+                field_args = {'element_type': self._type2milvus[desc.element_type], 'max_capacity': desc.max_size}
                 if desc.element_type == DataType.VARCHAR: field_args['max_length'] = 65535
             elif desc.data_type == DataType.VARCHAR:
                 field_args = {'max_length': desc.max_size}
             else:
                 field_args = {}
-            field_list.append(pymilvus.FieldSchema(name=field_name, dtype=TYPE2MILVUS[desc.data_type],
+            field_list.append(pymilvus.FieldSchema(name=field_name, dtype=self._type2milvus[desc.data_type],
                                                    default_value=desc.default_value, **field_args))
         return field_list
 
