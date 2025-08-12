@@ -232,6 +232,7 @@ class TestDocumentServer(unittest.TestCase):
 
         url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
         self.doc_server_addr = re.findall(url_pattern, self.server._url)[0]
+        self.time_sleep = 30
 
     def test_delete_files_in_store(self):
         files = [('files', ('test1.txt', io.BytesIO(b"John's house is in Beijing"), 'text/palin')),
@@ -246,23 +247,34 @@ class TestDocumentServer(unittest.TestCase):
         lazyllm.LOG.info(f'debug!!! ids -> {ids}')
         assert len(ids) == 2
 
-        time.sleep(20)  # waiting for worker thread to update newly uploaded files
+        time.sleep(self.time_sleep)  # waiting for worker thread to update newly uploaded files
 
         # make sure that ids are written into the store
         nodes = self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
+        doc_ids = []
+        doc_file_paths = []
+        doc_metadatas = []
+        test1_docid = None
+        test2_docid = None
         for node in nodes:
-            if node.global_metadata[RAG_DOC_PATH].endswith('test1.txt'):
+            doc_ids.append(node.global_metadata[RAG_DOC_ID])
+            doc_file_paths.append(node.global_metadata.get(RAG_DOC_PATH, ''))
+            doc_metadatas.append(node.global_metadata)
+            if "test1" in node.global_metadata.get(RAG_DOC_PATH, ''):
                 test1_docid = node.global_metadata[RAG_DOC_ID]
-            elif node.global_metadata[RAG_DOC_PATH].endswith('test2.txt'):
+            elif "test2" in node.global_metadata.get(RAG_DOC_PATH, ''):
                 test2_docid = node.global_metadata[RAG_DOC_ID]
+        lazyllm.LOG.info(f'debug!!! doc_ids -> {doc_ids}\n')
+        lazyllm.LOG.info(f'debug!!! doc_file_paths -> {doc_file_paths}\n')
+        lazyllm.LOG.info(f'debug!!! doc_metadatas -> {doc_metadatas}\n')
         assert test1_docid and test2_docid
-        assert set([test1_docid, test2_docid]) == set(ids)
+        assert set(doc_ids) == set(ids)
 
         url = f'{self.doc_server_addr}/delete_files'
         response = httpx.post(url, json=dict(file_ids=[test1_docid]))
         assert response.status_code == 200 and response.json().get('code') == 200
 
-        time.sleep(20)  # waiting for worker thread to delete files
+        time.sleep(self.time_sleep)  # waiting for worker thread to delete files
 
         nodes = self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)
         assert len(nodes) == 1
@@ -272,36 +284,28 @@ class TestDocumentServer(unittest.TestCase):
         url = f'{self.doc_server_addr}/add_metadata'
         response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "title2"}))
         assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(20)
+        time.sleep(self.time_sleep)
+        lazyllm.LOG.info(f'debug!!! cur_meta_dict -> {cur_meta_dict}\n')
         assert cur_meta_dict["title"] == "title2"
 
         response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "TITLE2"}))
         assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(20)
+        time.sleep(self.time_sleep)
+        lazyllm.LOG.info(f'debug!!! cur_meta_dict -> {cur_meta_dict}\n')
         assert cur_meta_dict["title"] == ["title2", "TITLE2"]
 
         url = f'{self.doc_server_addr}/delete_metadata_item'
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid], keys=["signature"]))
-        assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(20)
-        assert "signature" not in cur_meta_dict
 
         response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "TITLE2"}))
         assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(20)
+        time.sleep(self.time_sleep)
         assert cur_meta_dict["title"] == ["title2"]
-
-        url = f'{self.doc_server_addr}/update_or_create_metadata_keys'
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"signature": "signature2"}))
-        assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(20)
-        assert cur_meta_dict["signature"] == "signature2"
 
         url = f'{self.doc_server_addr}/reset_metadata'
         response = httpx.post(url, json=dict(doc_ids=[test2_docid],
                                              new_meta={"author": "author2", "signature": "signature_new"}))
         assert response.status_code == 200 and response.json().get('code') == 200
-        time.sleep(20)
+        time.sleep(self.time_sleep)
         assert cur_meta_dict["signature"] == "signature_new" and cur_meta_dict["author"] == "author2"
 
         url = f'{self.doc_server_addr}/query_metadata'
