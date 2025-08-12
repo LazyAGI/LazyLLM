@@ -1,5 +1,6 @@
 import os
 import copy
+import traceback
 
 from packaging import version
 from urllib import parse
@@ -97,6 +98,7 @@ class MilvusStore(LazyLLMStoreBase):
             return True
         except Exception as e:
             LOG.error(f'[Milvus Store - upsert] error: {e}')
+            LOG.error(traceback.format_exc())
             self._disconnect()
             return False
 
@@ -205,7 +207,7 @@ class MilvusStore(LazyLLMStoreBase):
                         index_params.add_index(field_name=embed_field_name, **index_kwarg)
                         break
             elif isinstance(self._index_kwargs, dict):
-                index_params.add_index(field_name=k, **self._index_kwargs)
+                index_params.add_index(field_name=embed_field_name, **self._index_kwargs)
         schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_field=False)
         self._client.create_collection(collection_name=collection_name, schema=schema, index_params=index_params)
 
