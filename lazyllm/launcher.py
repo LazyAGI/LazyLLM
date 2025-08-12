@@ -201,6 +201,13 @@ class Job(object):
     def __deepcopy__(self, memo=None):
         raise RuntimeError('Cannot copy Job object')
 
+    @property
+    def log_path(self):
+        match = re.search(r"tee\s+([^\s]+\.log)", self._origin_cmd.cmd)
+        if match:
+            return match.group(1)
+        return None
+
 @final
 class K8sLauncher(LazyLLMLaunchersBase):
     all_processes = defaultdict(list)
@@ -217,7 +224,6 @@ class K8sLauncher(LazyLLMLaunchersBase):
             self.gateway_class_name = launcher.gateway_class_name
             self.deployment_port = 8080
             self.deploy_type = 'inference'
-            self.cmd = cmd
             self.host = launcher.http_host
             self.path = launcher.http_path
             self.svc_type = launcher.svc_type
@@ -1191,13 +1197,6 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 time.sleep(poll_interval)
             LOG.warning(f"Timed out waiting for Job '{self.deployment_name}' to complete.")
             return False
-
-        @property
-        def log_path(self):
-            match = re.search(r"tee\s+([^\s]+\.log)", self.cmd.cmd)
-            if match:
-                return match.group(1)
-            return None
 
         @property
         def status(self):
