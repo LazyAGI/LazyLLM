@@ -56,6 +56,48 @@
     members:
 	exclude-members:
 
+::: lazyllm.tools.rag.readers.PandasCSVReader
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.readers.PandasExcelReader
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.readers.PDFReader
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.readers.PPTXReader
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.readers.VideoAudioReader
+    members:
+    exclude-members:
+
+::: lazyllm.tools.SqlManager
+    members: 
+        - get_session
+        - check_connection
+        - set_desc
+        - get_all_tables
+        - get_table_orm_class
+        - execute_commit
+        - execute_query
+        - create_table
+        - drop_table
+        - insert_values
+    exclude-members:
+
+::: lazyllm.tools.Reranker
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.readers.readerBase.LazyLLMReaderBase
+    members:
+	exclude-members:
+
 ::: lazyllm.tools.rag.component.bm25
     members:
     exclude-members:
