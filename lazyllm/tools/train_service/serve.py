@@ -312,7 +312,7 @@ class TrainServer(ServerBase):
                     if line.strip():
                         res = json.dumps({'result': {'log_data': line.strip()}})
                         yield f"data: {res}\n\n"
-            yield f"data: [DONE]"
+            yield "data: [DONE]"
 
         return StreamingResponse(
             generate_log_stream(),
@@ -357,4 +357,8 @@ class TrainServer(ServerBase):
 
     @app.get('/v1/models:all')
     def get_support_model(self, token: str = Header(DEFAULT_TOKEN)):
-        return dict(models=[dict(model='internlm2_5-7b-chat'), dict(model='InternLM2.5-7B-Chat')])
+        if os.path.exists(lazyllm.config['model_path']):
+            model_list = os.listdir(lazyllm.config['model_path'])
+            return model_list
+        else:
+            raise HTTPException(status_code=404, detail='model path not found')
