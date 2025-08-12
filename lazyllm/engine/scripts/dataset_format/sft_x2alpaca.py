@@ -7,7 +7,7 @@ from datetime import datetime
 from datasets import load_dataset
 
 import lazyllm
-from lazyllm.module.utils import openai2alpaca
+from lazyllm.module.llms.utils import openai2alpaca
 from lazyllm.components.utils.file_operate import delete_old_files
 
 # origin_key: target_key:

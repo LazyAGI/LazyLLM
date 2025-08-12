@@ -1,28 +1,19 @@
 import os
-import re
-import time
-import requests
-import pickle
-import codecs
 import inspect
 import traceback
-from lazyllm import ThreadPoolExecutor, FileSystemQueue
-from typing import Callable, Dict, List, Union, Optional, Tuple
-from dataclasses import dataclass
+from lazyllm import ThreadPoolExecutor
 
 import lazyllm
-from lazyllm import (FlatList, Option, launchers, LOG, package, kwargs, encode_request, globals,
-                     colored_text, is_valid_url, LazyLLMLaunchersBase)
-from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
-from ..components.formatter import FormatterBase, EmptyFormatter
+from lazyllm import FlatList, Option, kwargs, globals, colored_text
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
-from ..client import get_redis, redis_client
+from ..client import redis_client
 from ..hook import LazyLLMHook
-from urllib.parse import urljoin
+from lazyllm import FileSystemQueue
 from contextlib import contextmanager
-
+from typing import Optional, Union, Dict
+import copy
 
 # use _MetaBind:
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
@@ -93,7 +84,7 @@ class ModuleBase(metaclass=_MetaBind):
         hook_objs = []
         for hook_type in self._hooks:
             if isinstance(hook_type, LazyLLMHook):
-                hook_objs.append(hook_type)
+                hook_objs.append(copy.deepcopy(hook_type))
             else:
                 hook_objs.append(hook_type(self))
             hook_objs[-1].pre_hook(*args, **kw)
@@ -116,6 +107,18 @@ class ModuleBase(metaclass=_MetaBind):
             hook_obj.report()
         self._clear_usage()
         return r
+
+    def _stream_output(self, text: str, color: Optional[str] = None, *, cls: Optional[str] = None):
+        (FileSystemQueue.get_instance(cls) if cls else FileSystemQueue()).enqueue(colored_text(text, color))
+        return ''
+
+    @contextmanager
+    def stream_output(self, stream_output: Optional[Union[bool, Dict]] = None):
+        if stream_output and isinstance(stream_output, dict) and (prefix := stream_output.get('prefix')):
+            self._stream_output(prefix, stream_output.get('prefix_color'))
+        yield
+        if isinstance(stream_output, dict) and (suffix := stream_output.get('suffix')):
+            self._stream_output(suffix, stream_output.get('suffix_color'))
 
     def used_by(self, module_id):
         self._used_by_moduleid = module_id
@@ -246,117 +249,6 @@ class ModuleBase(metaclass=_MetaBind):
             submodule.for_each(filter, action)
 
 
-class _UrlHelper(object):
-    @dataclass
-    class _Wrapper:
-        url: Optional[str] = None
-
-    def __init__(self, url):
-        self._url_wrapper = url if isinstance(url, _UrlHelper._Wrapper) else _UrlHelper._Wrapper(url=url)
-
-    _url_id = property(lambda self: self._module_id)
-
-    @property
-    def _url(self) -> str:
-        if not self._url_wrapper.url:
-            if redis_client:
-                try:
-                    while not self._url_wrapper.url:
-                        self._url_wrapper.url = get_redis(self._url_id)
-                        if self._url_wrapper.url: break
-                        time.sleep(lazyllm.config["redis_recheck_delay"])
-                except Exception as e:
-                    LOG.error(f"Error accessing Redis: {e}")
-                    raise
-        return self._url_wrapper.url
-
-    def _set_url(self, url):
-        if redis_client:
-            redis_client.set(self._url_id, url)
-        LOG.debug(f'url: {url}')
-        self._url_wrapper.url = url
-
-
-class UrlModule(ModuleBase, _UrlHelper):
-
-    def __new__(cls, *args, **kw):
-        if cls is not UrlModule:
-            return super().__new__(cls)
-        return ServerModule(*args, **kw)
-
-    def __init__(self, *, url='', stream=False, return_trace=False):
-        super().__init__(return_trace=return_trace)
-        _UrlHelper.__init__(self, url)
-        self._stream = stream
-        __class__.prompt(self)
-        __class__.formatter(self)
-
-    def _estimate_token_usage(self, text):
-        if not isinstance(text, str):
-            return 0
-        # extract english words, number and comma
-        pattern = r"\b[a-zA-Z0-9]+\b|,"
-        ascii_words = re.findall(pattern, text)
-        ascii_ch_count = sum(len(ele) for ele in ascii_words)
-        non_ascii_pattern = r"[^\x00-\x7F]"
-        non_ascii_chars = re.findall(non_ascii_pattern, text)
-        non_ascii_char_count = len(non_ascii_chars)
-        return int(ascii_ch_count / 3.0 + non_ascii_char_count + 1)
-
-    def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
-        if prompt is None:
-            assert not history, 'history is not supported in EmptyPrompter'
-            self._prompt = EmptyPrompter()
-        elif isinstance(prompt, PrompterBase):
-            assert not history, 'history is not supported in user defined prompter'
-            self._prompt = prompt
-        elif isinstance(prompt, (str, dict)):
-            self._prompt = ChatPrompter(prompt, history=history)
-        return self
-
-    def _decode_line(self, line: bytes):
-        try:
-            return pickle.loads(codecs.decode(line, "base64"))
-        except Exception:
-            return line.decode('utf-8')
-
-    def _extract_and_format(self, output: str) -> str:
-        return output
-
-    def _stream_output(self, text: str, color: Optional[str] = None):
-        FileSystemQueue().enqueue(colored_text(text, color))
-        return ''
-
-    def formatter(self, format: FormatterBase = None):
-        if isinstance(format, FormatterBase) or callable(format):
-            self._formatter = format
-        elif format is None:
-            self._formatter = EmptyFormatter()
-        else:
-            raise TypeError("format must be a FormatterBase")
-        return self
-
-    def forward(self, *args, **kw): raise NotImplementedError
-
-    @contextmanager
-    def stream_output(self, stream_output: Optional[Union[bool, Dict]] = None):
-        if stream_output and isinstance(stream_output, dict) and (prefix := stream_output.get('prefix')):
-            self._stream_output(prefix, stream_output.get('prefix_color'))
-        yield
-        if isinstance(stream_output, dict) and (suffix := stream_output.get('suffix')):
-            self._stream_output(suffix, stream_output.get('suffix_color'))
-
-    def __call__(self, *args, **kw):
-        assert self._url is not None, f'Please start {self.__class__} first'
-        if len(args) > 1:
-            return super(__class__, self).__call__(package(args), **kw)
-        return super(__class__, self).__call__(*args, **kw)
-
-    def __repr__(self):
-        return lazyllm.make_repr('Module', 'Url', name=self._module_name, url=self._url,
-                                 stream=self._stream, return_trace=self._return_trace)
-
-
 class ActionModule(ModuleBase):
     def __init__(self, *action, return_trace=False):
         super().__init__(return_trace=return_trace)
@@ -392,109 +284,6 @@ def flow_start(self):
 
 lazyllm.ReprRule.add_rule('Module', 'Action', 'Flow')
 setattr(lazyllm.LazyLLMFlowsBase, 'start', flow_start)
-
-
-def light_reduce(cls):
-    def rebuild(mid): return cls()._set_mid(mid)
-
-    def _impl(self):
-        if os.getenv('LAZYLLM_ON_CLOUDPICKLE', False) == 'ON':
-            assert self._get_deploy_tasks.flag, f'{cls.__name__[1:-4]} shoule be deployed before used'
-            return rebuild, (self._module_id,)
-        return super(cls, self).__reduce__()
-    setattr(cls, '__reduce__', _impl)
-    return cls
-
-@light_reduce
-class _ServerModuleImpl(ModuleBase, _UrlHelper):
-    def __init__(self, m=None, pre=None, post=None, launcher=None, port=None, pythonpath=None, url_wrapper=None):
-        super().__init__()
-        _UrlHelper.__init__(self, url=url_wrapper)
-        self._m = ActionModule(m) if isinstance(m, FlowBase) else m
-        self._pre_func, self._post_func = pre, post
-        self._launcher = launcher.clone() if launcher else launchers.remote(sync=False)
-        self._port = port
-        self._pythonpath = pythonpath
-
-    @lazyllm.once_wrapper
-    def _get_deploy_tasks(self):
-        if self._m is None: return None
-        return Pipeline(
-            lazyllm.deploy.RelayServer(func=self._m, pre_func=self._pre_func, port=self._port,
-                                       pythonpath=self._pythonpath, post_func=self._post_func, launcher=self._launcher),
-            self._set_url)
-
-    def stop(self):
-        self._launcher.cleanup()
-        self._get_deploy_tasks.flag.reset()
-
-    def __del__(self):
-        self.stop()
-
-
-class ServerModule(UrlModule):
-    def __init__(self, m: Optional[Union[str, ModuleBase]] = None, pre: Optional[Callable] = None,
-                 post: Optional[Callable] = None, stream: Union[bool, Dict] = False,
-                 return_trace: bool = False, port: Optional[int] = None, pythonpath: Optional[str] = None,
-                 launcher: Optional[LazyLLMLaunchersBase] = None, url: Optional[str] = None):
-        assert stream is False or return_trace is False, 'Module with stream output has no trace'
-        assert (post is None) or (stream is False), 'Stream cannot be true when post-action exists'
-        if isinstance(m, str):
-            assert url is None, 'url should be None when m is a url'
-            url, m = m, None
-        if url:
-            assert is_valid_url(url), f'Invalid url: {url}'
-            assert m is None, 'm should be None when url is provided'
-        super().__init__(url=url, stream=stream, return_trace=return_trace)
-        self._impl = _ServerModuleImpl(m, pre, post, launcher, port, pythonpath, self._url_wrapper)
-        if url: self._impl._get_deploy_tasks.flag.set()
-
-    _url_id = property(lambda self: self._impl._module_id)
-
-    def wait(self):
-        self._impl._launcher.wait()
-
-    def stop(self):
-        self._impl.stop()
-
-    @property
-    def status(self):
-        return self._impl._launcher.status
-
-    def _call(self, fname, *args, **kwargs):
-        args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
-        url = urljoin(self._url.rsplit("/", 1)[0], '_call')
-        r = requests.post(url, json=(fname, args, kwargs), headers={'Content-Type': 'application/json'})
-        return pickle.loads(codecs.decode(r.content, "base64"))
-
-    def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), **kw):
-        headers = {
-            'Content-Type': 'application/json',
-            'Global-Parameters': encode_request(globals._pickle_data),
-            'Session-ID': encode_request(globals._sid)
-        }
-        data = encode_request((__input, kw))
-
-        # context bug with httpx, so we use requests
-        with requests.post(self._url, json=data, stream=True, headers=headers,
-                           proxies={'http': None, 'https': None}) as r:
-            if r.status_code != 200:
-                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
-
-            messages = ''
-            with self.stream_output(self._stream):
-                for line in r.iter_lines(delimiter=b"<|lazyllm_delimiter|>"):
-                    line = self._decode_line(line)
-                    if self._stream:
-                        self._stream_output(str(line), getattr(self._stream, 'get', lambda x: None)('color'))
-                    messages = (messages + str(line)) if self._stream else line
-
-                temp_output = self._extract_and_format(messages)
-                return self._formatter(temp_output)
-
-    def __repr__(self):
-        return lazyllm.make_repr('Module', 'Server', subs=[repr(self._impl._m)], name=self._module_name,
-                                 stream=self._stream, return_trace=self._return_trace)
 
 
 class ModuleRegistryBase(ModuleBase, metaclass=lazyllm.LazyLLMRegisterMetaClass):

@@ -2,38 +2,51 @@ import json
 import time
 import os
 import requests
-from typing import Tuple, Dict, Any
+from typing import Tuple, Any, Dict, List
 from urllib.parse import urljoin
 import uuid
 
 import lazyllm
 from lazyllm.thirdparty import jwt
+from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
+from ..fileHandler import FileHandlerBase
 
-from .onlineChatModuleBase import OnlineChatModuleBase
-from .fileHandler import FileHandlerBase
 
-class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
+class _SenseNovaBase(object):
+
+    def _get_api_key(self, api_key: str, secret_key: str):
+        if not api_key and not secret_key:
+            api_key, secret_key = lazyllm.config['sensenova_api_key'], lazyllm.config['sensenova_secret_key']
+        if secret_key.startswith('sk-'): api_key, secret_key = secret_key, None
+        if not api_key: raise ValueError('api_key is required for sensecore')
+        if not api_key.startswith('sk-'):
+            if ':' in api_key: api_key, secret_key = api_key.split(':', 1)
+            assert secret_key, 'secret_key should be provided with sensecore api_key'
+            api_key = SenseNovaModule.encode_jwt_token(api_key, secret_key)
+        return api_key
+
+    @staticmethod
+    def encode_jwt_token(ak: str, sk: str) -> str:
+        headers = {'alg': 'HS256', 'typ': 'JWT'}
+        payload = {
+            'iss': ak,
+            # Fill in the expected effective time, which represents the current time +24 hours
+            'exp': int(time.time()) + 86400,
+            # Fill in the desired effective time starting point, which represents the current time
+            'nbf': int(time.time())
+        }
+        token = jwt.encode(payload, sk, headers=headers)
+        return token
+
+class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     TRAINABLE_MODEL_LIST = ["nova-ptc-s-v2"]
     VLM_MODEL_LIST = ['SenseNova-V6-Turbo', 'SenseChat-Vision']
 
-    def __init__(self, base_url: str = "https://api.sensenova.cn/v1/llm/", model: str = "SenseChat-5",
+    def __init__(self, base_url: str = "https://api.sensenova.cn/compatible-mode/v1/", model: str = "SenseChat-5",
                  api_key: str = None, secret_key: str = None, stream: bool = True,
                  return_trace: bool = False, **kwargs):
-        jwt_api_key = None
-        self._is_only_api_key = False
-        if (api_key and secret_key) or (lazyllm.config['sensenova_api_key'] and lazyllm.config['sensenova_secret_key']):
-            jwt_api_key = SenseNovaModule.encode_jwt_token(api_key, secret_key) if secret_key else \
-                SenseNovaModule.encode_jwt_token(lazyllm.config['sensenova_api_key'],
-                                                 lazyllm.config['sensenova_secret_key'])
-        elif ((api_key and (secret_key is None or secret_key == ""))
-                or (lazyllm.config['sensenova_api_key'] and lazyllm.config['sensenova_secret_key'] == "")):
-            base_url = "https://api.sensenova.cn/compatible-mode/v1/"
-            jwt_api_key = api_key if api_key else lazyllm.config['sensenova_api_key']
-            self._is_only_api_key = True
-        else:
-            raise ValueError("Either configure both api_key and secret_key, or only configure api_key. "
-                             "Other configurations are not supported.")
-        OnlineChatModuleBase.__init__(self, model_series="SENSENOVA", api_key=jwt_api_key, base_url=base_url,
+        api_key = self._get_api_key(api_key, secret_key)
+        OnlineChatModuleBase.__init__(self, model_series="SENSENOVA", api_key=api_key, base_url=base_url,
                                       model_name=model, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
@@ -42,47 +55,8 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
     def _get_system_prompt(self):
         return "You are an AI assistant, developed by SenseTime."
 
-    @staticmethod
-    def encode_jwt_token(ak: str, sk: str) -> str:
-        headers = {
-            "alg": "HS256",
-            "typ": "JWT"
-        }
-        payload = {
-            "iss": ak,
-            # Fill in the expected effective time, which represents the current time +24 hours
-            "exp": int(time.time()) + 86400,
-            # Fill in the desired effective time starting point, which represents the current time
-            "nbf": int(time.time())
-        }
-        token = jwt.encode(payload, sk, headers=headers)
-        return token
-
     def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat/completions' if self._is_only_api_key else 'chat-completions')
-
-    def _convert_msg_format(self, msg: Dict[str, Any]):
-        if self._is_only_api_key:
-            return msg
-        try:
-            resp = msg['data']
-            resp['plugins'] = {} if resp.get('plugins') is None else resp['plugins']
-            data = resp['choices'][0]
-            content = data.get('delta', '') if 'delta' in data else data.get('message', '')
-            message = {"role": data.pop("role"), "content": content}
-            if 'reasoning_content' in data:
-                message['reasoning_content'] = data.pop('reasoning_content')
-            data["delta" if "delta" in data else "message"] = message
-
-            if "tool_calls" in data:
-                tool_calls = data.pop('tool_calls')
-                for idx in range(len(tool_calls)):
-                    tool_calls[idx]['index'] = idx
-                data["delta" if "delta" in data else "message"]["tool_calls"] = tool_calls
-            resp['model'] = self._model_name
-            return resp
-        except Exception:
-            return ""
+        self._url = urljoin(self._base_url, 'chat/completions')
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:
@@ -253,3 +227,27 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase):
             return [{"type": "image_url", "image_url": image_url}]
         else:
             return [{"type": "image_base64", "image_base64": image_url}]
+
+
+class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
+
+    def __init__(self,
+                 embed_url: str = "https://api.sensenova.cn/v1/llm/embeddings",
+                 embed_model_name: str = "nova-embedding-stable",
+                 api_key: str = None,
+                 secret_key: str = None):
+        api_key = self._get_api_key(api_key, secret_key)
+        super().__init__("SENSENOVA", embed_url, api_key, embed_model_name)
+
+    def _encapsulated_data(self, text: str, **kwargs) -> Dict[str, str]:
+        json_data = {
+            "input": [text],
+            "model": self._embed_model_name
+        }
+        if len(kwargs) > 0:
+            json_data.update(kwargs)
+
+        return json_data
+
+    def _parse_response(self, response: Dict[str, Any]) -> List[float]:
+        return response['embeddings'][0]['embedding']

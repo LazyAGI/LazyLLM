@@ -1,7 +1,7 @@
 import lazyllm
 from lazyllm import LOG
 from .trainablemodule import TrainableModule
-from .onlineChatModule import OnlineChatModule
+from .onlinemodule import OnlineChatModule
 
 class AutoModel:
     def __new__(cls, model=None, source=None, framework=None):

@@ -46,7 +46,7 @@ class TestEngine(unittest.TestCase):
         lazyllm.FileSystemQueue(klass="lazy_trace").dequeue()
 
     def test_intent_classifier(self):
-        resources = [dict(id='0', kind='OnlineLLM', name='llm', args=dict(source=None))]
+        resources = [dict(id='0', kind='LLM', name='llm', args=dict(source=None, type='online'))]
         music = dict(id='1', kind='Code', name='m1',
                      args=dict(code='def music(x): return f"Music get {x}"'))
         draw = dict(id='2', kind='Code', name='m2',
@@ -85,7 +85,7 @@ class TestEngine(unittest.TestCase):
 
     def test_fc(self):
         resources = [
-            dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
+            dict(id="0", kind="LLM", name="llm", args=dict(source='glm', type='online')),
             dict(id="1001", kind="Code", name="get_current_weather",
                  args=(dict(code=get_current_weather_code,
                             vars_for_code=get_current_weather_vars))),
@@ -142,8 +142,8 @@ class TestEngine(unittest.TestCase):
                                 arguments=dict(model="01", topk=3))),
                  dict(id='5', kind='Code', name='c1',
                       args='def test(nodes, query): return dict(context_str=nodes, query=query)'),
-                 dict(id='6', kind='OnlineLLM', name='m1',
-                      args=dict(source='glm', prompt=dict(system=prompt, user='问题: {query}')))]
+                 dict(id='6', kind='LLM', name='m1',
+                      args=dict(source='glm', type='online', prompt=dict(system=prompt, user='问题: {query}')))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='__start__', oid='2'), dict(iid='1', oid='3'),
                  dict(iid='2', oid='3'), dict(iid='3', oid='4'), dict(iid='__start__', oid='4'),
                  dict(iid='4', oid='5'), dict(iid='__start__', oid='5'), dict(iid='5', oid='6'),
@@ -182,7 +182,7 @@ class TestEngine(unittest.TestCase):
                     tables_info_dict=SqlEgsData.TEST_TABLES_INFO,
                 ),
             ),
-            dict(id="1", kind="OnlineLLM", name="llm", args=dict(source="sensenova")),
+            dict(id="1", kind="LLM", name="llm", args=dict(source="sensenova", type='online')),
         ]
         nodes = [
             dict(
@@ -207,7 +207,7 @@ class TestEngine(unittest.TestCase):
 
     def test_register_tools(self):
         resources = [
-            dict(id="0", kind="OnlineLLM", name="llm", args=dict(source='glm')),
+            dict(id="0", kind="LLM", name="llm", args=dict(source='glm', type='online')),
             dict(id="3", kind="HttpTool", name="weather_12345",
                  args=dict(code_str=get_current_weather_code,
                            vars_for_code=get_current_weather_vars,
@@ -281,7 +281,7 @@ class TestEngine(unittest.TestCase):
             assert res is False
 
     def test_tools_with_llm(self):
-        resources = [dict(id='0', kind='OnlineLLM', name='base', args=dict(source="qwen"))]
+        resources = [dict(id='0', kind='LLM', name='base', args=dict(source="qwen", type='online'))]
         nodes = [dict(id="1", kind="QustionRewrite", name="m1", args=dict(base_model='0', formatter="str")),
                  dict(id="2", kind="QustionRewrite", name="m2", args=dict(base_model='0', formatter="list")),
                  dict(id="3", kind="ParameterExtractor", name="m3", args=dict(
@@ -312,3 +312,15 @@ class TestEngine(unittest.TestCase):
         res = engine.run(gid, "帮我写一个函数，计算两数之和")
         compiled = lazyllm.common.utils.compile_func(res)
         assert compiled(2, 3) == 5
+
+    def test_online_multi_module(self):
+        nodes = [
+            dict(id="1", kind="TTS", name="m1", args=dict(source='qwen', type='online')),
+            dict(id="2", kind="STT", name="m2", args=dict(source='glm', type='online')),
+            dict(id="3", kind="SD", name="m3", args=dict(source='qwen', type='online', target_dir='./test_online_mm')),
+            dict(id="4", kind="VQA", name="m4", args=dict(source='qwen', base_model='qwen-vl-plus', type='online'))
+        ]
+        engine = LightEngine()
+        gid = engine.start(nodes, [['__start__', '1'], ['1', '2'], ['2', '3'], ['3', '4'], ['4', '__end__']])
+        res = engine.run(gid, "画一只动漫风格的懒懒猫")
+        assert 'cat' in res or '猫' in res
