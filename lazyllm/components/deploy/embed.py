@@ -1,7 +1,7 @@
 import os
 import json
 import lazyllm
-from lazyllm.components.utils.file_operate import base64_to_file, is_base64_with_mime
+from lazyllm.components.utils.file_operate import _base64_to_file, _is_base64_with_mime
 from lazyllm import LOG, LazyLLMLaunchersBase
 from lazyllm.thirdparty import transformers as tf, torch, sentence_transformers, numpy as np, FlagEmbedding as fe
 from .base import LazyLLMDeployBase
@@ -80,7 +80,7 @@ class HuggingFaceEmbedding:
 
     def __call__(self, *args, **kwargs):
         try:
-            args[0]['images'] = [base64_to_file(image) if is_base64_with_mime(image) else image
+            args[0]['images'] = [_base64_to_file(image) if _is_base64_with_mime(image) else image
                                  for image in args[0]['images']]
         except Exception as e:
             LOG.error(f"Error converting base64 to image: {e}")
@@ -204,7 +204,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
 
 
 @HuggingFaceEmbedding.register(model_ids=["BGE-VL-v1.5-mmeb"])
-class BGEVLEmbedding(AbstractEmbedding):
+class _BGEVLEmbedding(AbstractEmbedding):
 
     def __init__(self, base_embed, source=None, init=False):
         super().__init__(base_embed, source, init)

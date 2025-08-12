@@ -134,7 +134,6 @@ add_chinese_doc('LazyLLMFlowsBase', """\
                    ↑             ↓
                pre_hook       post_hook
 ```
-
 Args:
     args: 可变长度参数列表。
     post_action: 在主流程结束后对输出进行进一步处理的可调用对象。默认为 ``None``。
@@ -152,7 +151,6 @@ input --> [Flow module1 -> Flow module2 -> ... -> Flow moduleN] --> output
                    ↑             ↓
                pre_hook       post_hook
 ```
-
 Args:
     args: A sequence of callables representing the flow modules.
     post_action: An optional callable applied to the output after main flow execution. Defaults to ``None``。

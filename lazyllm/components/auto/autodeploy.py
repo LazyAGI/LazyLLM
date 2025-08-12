@@ -23,7 +23,6 @@ def check_cmd(framework):
 
 
 class AutoDeploy(LazyLLMDeployBase):
-
     @staticmethod
     def _get_embed_deployer(launcher, type, kw):
         launcher = launcher or launchers.remote(ngpus=1)
