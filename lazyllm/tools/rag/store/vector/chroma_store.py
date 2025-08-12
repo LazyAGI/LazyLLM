@@ -46,7 +46,7 @@ class ChromadbStore(LazyLLMStoreBase):
         if not self._dir: return None
         return self._dir if self._dir.endswith(os.sep) else self._dir + os.sep
 
-    def _parse_uri(uri: str):
+    def _parse_uri(self, uri: str):
         windows_drive = re.match(r"^[a-zA-Z]:[\\/]", uri or "")
         if ("://" not in uri) and (windows_drive or os.path.isabs(uri)):
             return os.path.abspath(uri), None, None
