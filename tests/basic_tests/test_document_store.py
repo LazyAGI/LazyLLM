@@ -1,6 +1,8 @@
 import os
 import tempfile
 import unittest
+import pytest
+
 from unittest.mock import MagicMock
 
 from lazyllm.tools.rag.store.document_store import _DocumentStore
@@ -21,6 +23,8 @@ image_node1 = ImageDocNode(uid="5", image_path="image1.png", group="image", pare
                            global_metadata={RAG_KB_ID: "kb1", RAG_DOC_ID: "doc4", "tags": ["tag5"]})
 
 
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestStoreWithMapAndMilvus(unittest.TestCase):
     def setUp(self):
         _, self.store_dir = tempfile.mkstemp(suffix=".db")

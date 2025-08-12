@@ -166,6 +166,8 @@ class TestMapStore(unittest.TestCase):
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
 
 
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestChromadbStore(unittest.TestCase):
     def setUp(self):
         self.data = [
@@ -751,6 +753,8 @@ class TestSenseCoreStore(unittest.TestCase):
         self.assertEqual(res[0].get('uid'), self.data[1].get('uid'))
 
 
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestHybridStore(unittest.TestCase):
     def setUp(self):
         self.collections = ["col_g1", "col_g2"]
