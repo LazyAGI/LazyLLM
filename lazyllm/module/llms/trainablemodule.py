@@ -278,6 +278,10 @@ class TrainableModule(UrlModule):
         launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
         return launcher.status
 
+    def log_path(self, task_name: Optional[str] = None):
+        launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
+        return launcher.log_path
+
     # modify default value to ''
     def prompt(self, prompt: Union[str, dict] = '', history: Optional[List[List[str]]] = None):
         if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
@@ -527,6 +531,7 @@ class TrainableModule(UrlModule):
             elif key in kw: paras[key] = kw.pop(key)
 
         if isinstance(optional_keys, str): optional_keys = [optional_keys]
+        kw = {}
         assert set(kw.keys()).issubset(set(optional_keys)), f'{kw.keys()} is not in {optional_keys}'
         paras.update(kw)
         return paras

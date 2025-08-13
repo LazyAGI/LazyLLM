@@ -39,12 +39,10 @@ class LightEngine(Engine):
 
     @once_wrapper
     def launch_localllm_train_service(self):
-        train_server = TrainServer()
-        self._local_serve = lazyllm.ServerModule(train_server, launcher=lazyllm.launcher.EmptyLauncher(sync=False))
+        self._local_serve = lazyllm.ServerModule(TrainServer(), launcher=lazyllm.launcher.EmptyLauncher(sync=False))
         self._local_serve.start()()
         parsed_url = urlparse(self._local_serve._url)
-        base_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
-        self.local_train_client = LocalTrainClient(base_url)
+        self.local_train_client = LocalTrainClient(f"{parsed_url.scheme}://{parsed_url.netloc}")
 
     @once_wrapper
     def launch_localllm_infer_service(self):
