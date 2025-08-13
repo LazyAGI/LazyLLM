@@ -1038,6 +1038,48 @@ ret: Hello! How can I assist you today?
 >>> print(vlm(inputs))
 ''')
 
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoModule', '''\
+豆包（Doubao）在线对话模块。
+该类封装了对字节跳动豆包 API 的调用，用于进行多轮对话。默认使用模型 `doubao-1-5-pro-32k-250115`，支持流式输出和调用链跟踪。
+Args:
+    model (str): 使用的模型名称，默认为 `doubao-1-5-pro-32k-250115`。
+    base_url (str): API 的基础 URL，默认为 "https://ark.cn-beijing.volces.com/api/v3/"。
+    api_key (str): 豆包 API Key。若未提供，则从 lazyllm.config['doubao_api_key'] 读取。
+    stream (bool): 是否启用流式输出，默认为 True。
+    return_trace (bool): 是否返回调用链跟踪信息，默认为 False。
+    **kwargs: 其他传递给基类的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoModule', '''\
+Doubao online chat module.
+This class wraps the Doubao API (from ByteDance) for multi-turn chat. It defaults to model `doubao-1-5-pro-32k-250115` and supports streaming and optional trace return.
+Args:
+    model (str): The name of the model to use. Defaults to `doubao-1-5-pro-32k-250115`.
+    base_url (str): The base URL for the API. Defaults to "https://ark.cn-beijing.volces.com/api/v3/".
+    api_key (str): Doubao API key. If not provided, it will be read from `lazyllm.config['doubao_api_key']`.
+    stream (bool): Whether to use streaming output. Defaults to True.
+    return_trace (bool): Whether to return trace information. Defaults to False.
+    **kwargs: Additional arguments passed to the base class.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIEmbedding', '''\
+OpenAI 在线嵌入模块。
+该类封装了对 OpenAI 嵌入 API 的调用，默认使用模型 `text-embedding-ada-002`，用于将文本编码为向量表示。
+Args:
+    embed_url (str): OpenAI 嵌入 API 的 URL，默认为 "https://api.openai.com/v1/embeddings"。
+    embed_model_name (str): 使用的嵌入模型名称，默认为 "text-embedding-ada-002"。
+    api_key (str, optional): OpenAI 的 API Key。若未提供，则从 lazyllm.config 中读取。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.openai.OpenAIEmbedding', '''\
+Online embedding module using OpenAI.
+This class wraps the OpenAI Embedding API, defaulting to the `text-embedding-ada-002` model, and converts text into vector representations.
+Args:
+    embed_url (str): The URL endpoint of the OpenAI embedding API. Default is "https://api.openai.com/v1/embeddings".
+    embed_model_name (str): The name of the embedding model to use. Default is "text-embedding-ada-002".
+    api_key (str, optional): The OpenAI API key. If not provided, it will be read from `lazyllm.config`.
+''')
+
 add_chinese_doc('OnlineEmbeddingModule', '''\
 用来管理创建目前市面上的在线Embedding服务模块，目前支持openai、sensenova、glm、qwen、doubao
 
