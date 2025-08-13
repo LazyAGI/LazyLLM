@@ -141,12 +141,12 @@ rerank_model = lazyllm.TrainableModule("bge-reranker-large").start()
 
 # 加载 PDF
 documents = Document(
-    dataset_path="/home/mnt/pansihan/ProjectLazyLLM/test/pdf_data",
+    dataset_path="data_path/pdf_data",
     embed=embed_model,
     manager=False
 )
 documents._impl._reader.load_data(
-    input_files=["/home/mnt/pansihan/ProjectLazyLLM/test/pdf_data/2501.12948v1.pdf"]
+    input_files=["data_path/pdf_data/2501.12948v1.pdf"]
 )
 documents.create_node_group(name="block", transform=lambda s: s.split("\n") if s else '')
 
