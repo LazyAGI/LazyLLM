@@ -1097,16 +1097,6 @@ Args:
     init (bool): Whether to load the model immediately upon instantiation. If `False`, the model will be loaded lazily on first call.
 ''')
 
-add_example('deploy.embed.LazyHuggingFaceRerank', '''\
->>> from lazyllm.components.deploy.embed import LazyHuggingFaceRerank
->>> reranker = LazyHuggingFaceRerank(base_rerank=local_path, init=True)
->>> query = "What is the capital of France?"
->>> documents = ["Paris is the capital of France.", "Berlin is the capital of Germany.", "France is in Europe."]
->>> result = reranker({"query": query, "documents": documents, "top_n": 2})
->>> print(result)
-[(0, 0.95), (2, 0.80)]
-''')
-
 add_chinese_doc('deploy.embed.LazyHuggingFaceRerank.load_reranker', '''\
 加载重排序模型。  
 该方法会使用 `sentence_transformers.CrossEncoder` 从指定的 `base_rerank` 路径或名称加载模型，  
@@ -1142,6 +1132,8 @@ Args:
 
 **Returns:**\n
 - LazyHuggingFaceRerank: The rebuilt class instance.
+''')
+
 add_chinese_doc('deploy.embed.LazyFlagEmbedding', '''\
 支持懒加载的 FlagEmbedding 嵌入模块封装。
 
@@ -1434,7 +1426,7 @@ add_chinese_doc('deploy.Mindie.update_config', '''\
         - 调度参数
 ''')
 
-add_english_doc('Mindie.cmd', '''\
+add_english_doc('deploy.Mindie.cmd', '''\
 Generates the command to start the MindIE service.
 
 Args:
@@ -1451,7 +1443,7 @@ Notes:
     - Supports random port allocation when configured
 ''')
 
-add_chinese_doc('Mindie.cmd', '''\
+add_chinese_doc('deploy.Mindie.cmd', '''\
 生成启动MindIE服务的命令。
 
 Args:
@@ -1468,7 +1460,7 @@ Args:
     - 支持配置随机端口分配
 ''')
 
-add_english_doc('Mindie.geturl', '''\
+add_english_doc('deploy.Mindie.geturl', '''\
 Gets the service URL after deployment.
 
 Args:
@@ -1482,7 +1474,7 @@ Notes:
     - Includes port number from configuration
 ''')
 
-add_chinese_doc('Mindie.geturl', '''\
+add_chinese_doc('deploy.Mindie.geturl', '''\
 获取部署后的服务URL。
 
 Args:
@@ -1496,7 +1488,7 @@ Args:
     - 包含配置中的端口号
 ''')
 
-add_english_doc('Mindie.extract_result', '''\
+add_english_doc('deploy.Mindie.extract_result', '''\
 Extracts the generated text from the API response.
 
 Args:
@@ -1511,7 +1503,7 @@ Notes:
     - Returns first text entry from response
 ''')
 
-add_chinese_doc('Mindie.extract_result', '''\
+add_chinese_doc('deploy.Mindie.extract_result', '''\
 从API响应中提取生成的文本。
 
 Args:
@@ -1525,6 +1517,7 @@ Args:
     - 解析JSON响应
     - 返回响应中的第一个文本条目
 ''')
+
 # Deploy-LMDeploy
 add_chinese_doc('deploy.LMDeploy', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [LMDeploy](https://github.com/InternLM/lmdeploy) 框架提供的推理能力，用于对大语言模型进行推理。
@@ -3661,6 +3654,8 @@ The returned command can be a string, tuple, or list, representing the instructi
 
 **Note:**  
 If the `apply` method is not overridden, this command will be used to create a job for the launcher to run.
+''')
+
 add_chinese_doc('Job', '''\
 通用任务调度执行类。
 该类用于封装一个通过启动器（launcher）调度执行的任务，支持命令包装、同步控制、返回值提取、命令固定等功能。

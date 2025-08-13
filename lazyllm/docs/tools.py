@@ -7440,6 +7440,8 @@ add_agent_example('functionCall.StreamResponse', '''\
 >>> resp = StreamResponse(prefix="[INFO]", prefix_color="green", color="white", stream=True)
 >>> resp("Hello, world!")
 Hello, world!
+''')
+ 
 add_chinese_doc('rag.web.DocWebModule', """\
 文档Web界面模块，继承自ModuleBase，提供基于Web的文档管理交互界面。
 
@@ -7521,6 +7523,7 @@ add_example('rag.web.DocWebModule', '''\
 >>> print(doc_web.url)
 >>> doc_web.stop()
 ''')
+
 add_english_doc('rag.web.DocWebModule.wait', '''\
 Blocks the current thread to keep the web interface running until manually stopped.
 
@@ -7540,7 +7543,6 @@ add_chinese_doc('rag.web.DocWebModule.stop', '''\
 停止Web界面服务并释放相关资源。
 
 ''')
-
 
 # FuncNodeTransform
 add_english_doc('rag.transform.FuncNodeTransform', '''

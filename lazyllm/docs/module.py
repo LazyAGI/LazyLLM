@@ -1423,6 +1423,8 @@ Args:
     embed_url (Optional[str]): URL of the Doubao text embedding service, defaulting to the Beijing region endpoint.
     embed_model_name (Optional[str]): Name of the Doubao embedding model used, default is "doubao-embedding-text-240715".
     api_key (Optional[str]): API key for accessing the Doubao service. If not provided, it is read from lazyllm config.
+''')
+
 add_chinese_doc('llms.onlinemodule.fileHandler.FileHandlerBase', '''\
 FileHandlerBase是用于处理微调数据文件的基类，主要用于验证和转换微调数据格式。该类本身不支持直接实例化，需要子类继承该类并实现特定的文件格式转换逻辑。
 
