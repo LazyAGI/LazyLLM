@@ -6,6 +6,16 @@
 
 ---
 
+::: lazyllm.common.common.ResultCollector
+    members: 
+    - keys
+    - items
+    exclude-members:
+
+::: lazyllm.common.common.EnvVarContextManager
+    members: 
+    exclude-members:
+
 ## Bind
 
 ::: lazyllm.common.bind
@@ -22,11 +32,21 @@
 
 ---
 
+## Identity
+
+::: lazyllm.common.Identity
+    options:
+      heading_level: 3
+
+---
+
 ## Compilation
 
 ::: lazyllm.common.compile_func
     options:
       heading_level: 3
+
+---
 
 ## Queue
 
@@ -34,8 +54,66 @@
     members: enqueue, dequeue, peek, size, clear
     exclude-members:
 
-## Hook
+::: lazyllm.common.multiprocessing.SpawnProcess
+    members: start
 
-::: lazyllm.hook.LazyLLMHook
-    members: pre_hook, post_hook, report
+::: lazyllm.common.queue.SQLiteQueue
+    options:
+      heading_level: 3
+
+::: lazyllm.common.ReadOnlyWrapper
+    members: set, isNone
+    exclude-members:
+
+::: lazyllm.common.queue.RedisQueue
+    members: 
+    exclude-members:
+
+---
+
+## Multiprocessing
+
+::: lazyllm.common.ForkProcess
+    members: work, start
+    exclude-members:
+
+---
+
+## Options
+
+::: lazyllm.common.Option
+    members: 
+    exclude-members:
+
+---
+
+## DynamicDescriptor
+
+::: lazyllm.common.DynamicDescriptor
+    members:
+    - Impl
+    exclude-members:
+
+::: lazyllm.common.CaseInsensitiveDict
+    members: 
+    exclude-members:
+
+::: lazyllm.common.ProcessPoolExecutor
+    members: submit
+    exclude-members:
+
+---
+
+## Threading
+
+::: lazyllm.common.Thread
+    members: work, get_result
+    exclude-members:
+
+---
+
+## LazyLLMCMD
+
+::: lazyllm.common.LazyLLMCMD
+    members: with_cmd, get_args
     exclude-members:

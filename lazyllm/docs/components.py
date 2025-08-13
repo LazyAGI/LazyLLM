@@ -516,7 +516,139 @@ add_example('auto.AutoFinetune', '''\
 <lazyllm.llm.finetune type=AlpacaloraFinetune>
 ''')
 
+# DummyFinetune
+add_chinese_doc('finetune.base.DummyFinetune', '''\
+虚拟微调组件，用于测试和调试微调流程。此类继承自 `LazyLLMFinetuneBase`，提供了一个不执行实际微调操作的模拟实现。
+
+Args:
+    base_model (str): 基础模型标识符，默认为 ``'base'``
+    target_path (str): 目标保存路径，默认为 ``'target'``
+    launcher: 启动器实例，默认为 ``launchers.remote()``
+    **kw: 额外的关键字参数，会被存储在实例中并在命令执行时输出
+
+此类的主要特性：
+
+- **模拟执行**: 不执行实际的微调操作，仅用于测试流程
+- **参数记录**: 记录所有传入的参数并在执行时输出
+- **快速响应**: 使用空启动器，提供即时的响应
+- **调试友好**: 便于调试微调流程和参数传递
+
+**注意**: 此类主要用于开发和测试阶段，不应该在生产环境中使用。
+
+''')
+
+add_english_doc('finetune.base.DummyFinetune', '''\
+Dummy fine-tuning component for testing and debugging fine-tuning workflows. This class inherits from `LazyLLMFinetuneBase` and provides a mock implementation that doesn't perform actual fine-tuning operations.
+
+Args:
+    base_model (str): Base model identifier, defaults to ``'base'``
+    target_path (str): Target save path, defaults to ``'target'``
+    launcher: Launcher instance, defaults to ``launchers.remote()``
+    **kw: Additional keyword arguments that will be stored in the instance and output during command execution
+
+Key features of this class:
+
+- **Mock Execution**: Doesn't perform actual fine-tuning operations, only used for testing workflows
+- **Parameter Recording**: Records all passed parameters and outputs them during execution
+- **Fast Response**: Uses empty launcher for immediate response
+- **Debug-Friendly**: Facilitates debugging of fine-tuning workflows and parameter passing
+
+**Note**: This class is primarily used during development and testing phases and should not be used in production environments.
+
+''')
+
+add_example('finetune.base.DummyFinetune', '''\
+>>> import lazyllm
+>>> from lazyllm.components.finetune.base import DummyFinetune
+>>> 
+>>> # 基本用法：创建虚拟微调组件
+>>> dummy_finetune = DummyFinetune(
+...     target_path="/path/to/output",
+...     learning_rate=0.001,
+...     batch_size=16
+... )
+>>> result = dummy_finetune()
+>>> print(f"微调结果路径: {result}")
+>>> cmd = dummy_finetune.cmd()
+>>> print(f"生成的命令: {cmd}")
+''')
+
+# DummyFinetune.cmd
+add_chinese_doc('finetune.base.DummyFinetune.cmd', '''\
+生成虚拟微调命令的方法。此方法返回一个简单的 echo 命令，用于模拟微调操作的执行。
+
+Args:
+    *args: 位置参数，在此实现中未使用
+    **kw: 关键字参数，在此实现中未使用
+
+Returns:
+    str: 包含初始化参数的 echo 命令字符串
+
+此方法的特点：
+
+- **简单输出**: 返回一个基本的 echo 命令
+- **参数显示**: 在命令中显示所有初始化时传入的参数
+- **调试信息**: 提供清晰的调试信息，便于验证参数传递
+- **一致性**: 与真实微调组件的接口保持一致
+
+**注意**: 此方法主要用于调试和测试，实际执行时不会进行任何微调操作。
+
+''')
+
+add_english_doc('finetune.base.DummyFinetune.cmd', '''\
+Method to generate dummy fine-tuning command. This method returns a simple echo command to simulate fine-tuning operation execution.
+
+Args:
+    *args: Positional arguments, not used in this implementation
+    **kw: Keyword arguments, not used in this implementation
+
+Returns:
+    str: Echo command string containing initialization parameters
+
+Features of this method:
+
+- **Simple Output**: Returns a basic echo command
+- **Parameter Display**: Shows all parameters passed during initialization in the command
+- **Debug Information**: Provides clear debug information for parameter validation
+- **Consistency**: Maintains interface consistency with real fine-tuning components
+
+**Note**: This method is primarily used for debugging and testing, and doesn't perform any actual fine-tuning operations when executed.
+
+''')
+
 # ============= Deploy
+
+# Deploy-AbstractEmbedding
+add_chinese_doc('deploy.embed.AbstractEmbedding', '''\
+抽象嵌入基类，为所有嵌入模型提供统一的接口和基础功能。此类定义了嵌入模型的标准接口，包括模型加载、调用和序列化等功能。
+
+Args:
+    base_embed (str): 嵌入模型的基础路径或标识符，用于指定要加载的嵌入模型。
+    source (str, optional): 模型来源，默认为 ``None``。如果未指定，将使用 LazyLLM 配置中的默认模型来源。
+    init (bool): 是否在初始化时立即加载模型，默认为 ``False``。如果为 ``True``，将在对象创建时立即调用 ``load_embed()`` 方法。
+''')
+
+add_english_doc('deploy.embed.AbstractEmbedding', '''\
+Abstract embedding base class that provides unified interface and basic functionality for all embedding models. This class defines the standard interface for embedding models, including model loading, calling, and serialization capabilities.
+
+Args:
+    base_embed (str): The base path or identifier of the embedding model, used to specify which embedding model to load.
+    source (str, optional): Model source, default to ``None``. If not specified, will use the default model source from LazyLLM configuration.
+    init (bool): Whether to load the model immediately during initialization, default to ``False``. If ``True``, will call the ``load_embed()`` method immediately when the object is created.
+''')
+
+add_chinese_doc('deploy.embed.AbstractEmbedding.load_embed', '''\
+加载嵌入模型的抽象方法。此方法由子类实现，用于执行具体的模型加载逻辑。
+
+**注意**: 此方法目前正在开发中。
+''')
+
+add_english_doc('deploy.embed.AbstractEmbedding.load_embed', '''\
+Abstract method for loading embedding models. This method is implemented by subclasses to perform specific model loading logic.
+
+**Note**: This method is currently under development.
+''')
+
 # Deploy-Lightllm
 add_chinese_doc('deploy.Lightllm', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [LightLLM](https://github.com/ModelTC/lightllm) 框架提供的推理能力，用于对大语言模型进行推理。
@@ -743,6 +875,174 @@ add_example('deploy.embed.RerankDeploy', '''\
 >>> result = rerank_service(input_data)
 ''')
 
+add_chinese_doc('deploy.embed.LazyFlagEmbedding', '''\
+支持懒加载的 FlagEmbedding 嵌入模块封装。
+
+该类包装了 FlagEmbedding 的加载和调用逻辑，提供对稀疏和稠密嵌入的支持，并通过 lazyllm.once_flag() 机制实现懒加载。适用于嵌入模型的本地/远程下载、初始化与编码流程的封装，便于与 LazyLLM 系统集成。
+
+Args:
+    base_embed (str): 嵌入模型名称或路径。
+    sparse (bool): 是否使用稀疏嵌入模式，默认为 False。
+    source (str, optional): 模型下载源，若未提供则使用 lazyllm 全局配置。
+    init (bool): 是否在初始化时立即加载模型，默认为 False。
+''')
+
+add_english_doc('deploy.embed.LazyFlagEmbedding', '''\
+A lazily loaded wrapper for the FlagEmbedding module.
+
+This class encapsulates loading and usage of FlagEmbedding, with support for both sparse and dense embeddings. It leverages the lazyllm.once_flag() mechanism to initialize only once on demand, and integrates with LazyLLM's model downloading utilities.
+
+Args:
+    base_embed (str): The model name or path to be used as the embedding backend.
+    sparse (bool): Whether to enable sparse embedding output. Defaults to False.
+    source (str, optional): Source URL or identifier for model downloading. Defaults to global config.
+    init (bool): Whether to initialize the model immediately upon construction. Defaults to False.
+''')
+
+add_chinese_doc('deploy.embed.LazyFlagEmbedding.load_embed', '''\
+加载嵌入模型并初始化到设备上。
+
+该方法根据系统是否支持 CUDA 自动选择运行设备（GPU 或 CPU），并从本地或远程加载预训练的 FlagEmbedding 模型。
+''')
+
+add_english_doc('deploy.embed.LazyFlagEmbedding.load_embed', '''\
+Load the embedding model onto the appropriate device.
+
+This method selects the available device (GPU or CPU) and initializes the pretrained FlagEmbedding model from the provided path or model hub.
+''')
+
+add_chinese_doc('deploy.embed.LazyFlagEmbedding.rebuild', '''\
+重建 LazyFlagEmbedding 实例的方法。
+
+该类方法用于在序列化或跨进程传递时，重新构造带有初始化配置的 LazyFlagEmbedding 实例。
+
+Args:
+    base_embed (str): 嵌入模型的路径或模型名称。
+    sparse (bool): 是否启用稀疏嵌入。
+    init (bool): 是否在构造时立即加载模型。
+
+Returns:
+    LazyFlagEmbedding: 一个新的 LazyFlagEmbedding 实例。
+''')
+
+add_english_doc('deploy.embed.LazyFlagEmbedding.rebuild', '''\
+Rebuild a LazyFlagEmbedding instance.
+
+This class method reconstructs an instance of LazyFlagEmbedding, typically used during deserialization or multiprocessing scenarios.
+
+Args:
+    base_embed (str): The path or name of the embedding model.
+    sparse (bool): Whether to enable sparse embedding mode.
+    init (bool): Whether to load the model immediately during instantiation.
+
+Returns:
+    LazyFlagEmbedding: A newly constructed LazyFlagEmbedding instance.
+''')
+
+add_chinese_doc('deploy.Vllm', '''\
+基于 vLLM 的模型部署器。
+
+该类封装了 vLLM 推理服务的启动、指令构造、参数配置与访问地址管理等逻辑。支持 OpenAI 风格 API 兼容，具备分布式部署能力，默认使用 LazyLLM 的启动器完成后端任务分配。
+
+Args:
+    trust_remote_code (bool): 是否信任远程代码，启用后会加载模型仓库中 `modeling.py` 脚本。
+    launcher (LazyLLMLaunchersBase): 启动器对象，控制模型部署逻辑，支持本地/远程/分布式。
+    log_path (str, optional): 日志输出目录，用于保存部署日志。
+    openai_api (bool): 是否以 OpenAI API 兼容模式启动（默认关闭）。
+    **kw: 其他部署参数，例如最大序列长度、并行配置等。
+''')
+
+add_english_doc('deploy.Vllm', '''\
+Model deployment class based on vLLM.
+
+This class wraps the logic for launching a vLLM inference server, constructing commands, managing configuration parameters, and retrieving access URLs. It supports OpenAI-compatible API mode and distributed deployment via LazyLLM's launcher system.
+
+Args:
+    trust_remote_code (bool): Whether to trust remote code, allowing loading of custom modeling scripts.
+    launcher (LazyLLMLaunchersBase): Launcher object controlling how the model is deployed (local, remote, distributed).
+    log_path (str, optional): Directory for saving deployment logs.
+    openai_api (bool): Whether to launch the server in OpenAI-compatible API mode (default: False).
+    **kw: Additional deployment options, such as max sequence length, parallel configs, etc.
+''')
+
+add_chinese_doc('deploy.Vllm.cmd', '''\
+构造用于启动 vLLM 推理服务的命令。
+
+该方法会自动检测模型路径是否有效，并根据当前配置参数动态生成可执行命令，支持多节点部署时自动加入 ray 启动命令。
+
+Args:
+    finetuned_model (str): 微调后的模型路径。
+    base_model (str): 备用基础模型路径（当 finetuned_model 无效时启用）。
+    master_ip (str): 分布式部署中的主节点 IP，仅在多节点时启用。
+
+Returns:
+    LazyLLMCMD: 可执行命令对象，包含启动指令、结果回调函数及健康检查方法。
+''')
+
+add_english_doc('deploy.Vllm.cmd', '''\
+Build the command to launch the vLLM inference service.
+
+This method validates the model path and constructs an executable command string based on current configuration. In distributed mode, it will also prepend the ray cluster start command.
+
+Args:
+    finetuned_model (str): Path to the fine-tuned model.
+    base_model (str): Fallback base model path if finetuned_model is invalid.
+    master_ip (str): IP address of the master node in a distributed setup.
+
+Returns:
+    LazyLLMCMD: The command object with shell instruction, return value handler, and health checker.
+''')
+
+add_chinese_doc('deploy.Vllm.geturl', '''\
+获取 vLLM 服务的推理地址。
+
+根据运行模式（Display 模式或实际部署）返回相应的 URL，用于访问模型的生成接口。
+
+Args:
+    job (Job, optional): 部署任务对象。默认取当前模块绑定的 job。
+
+Returns:
+    str: 推理服务的 HTTP 地址。
+''')
+
+add_english_doc('deploy.Vllm.geturl', '''\
+Get the inference service URL for the vLLM deployment.
+
+Depending on the execution mode (Display or actual deployment), this method returns the appropriate URL for accessing the model's generate endpoint.
+
+Args:
+    job (Job, optional): Deployment job object. Defaults to the module's associated job.
+
+Returns:
+    str: The HTTP URL for inference service.
+''')
+
+add_chinese_doc('deploy.Vllm.extract_result', '''\
+从 vLLM 返回结果中提取文本。
+
+该函数从 JSON 格式的返回值中提取模型输出的文本部分。
+
+Args:
+    x (str): JSON 格式的原始返回结果字符串。
+    inputs (dict): 原始输入数据（用于兼容接口，当前未使用）。
+
+Returns:
+    str: 提取出的文本内容。
+''')
+
+add_english_doc('deploy.Vllm.extract_result', '''\
+Extract the generated text from a vLLM response.
+
+This function parses the returned JSON and extracts the model-generated text content.
+
+Args:
+    x (str): Raw JSON string returned from the API.
+    inputs (dict): Original input data (unused; kept for compatibility).
+
+Returns:
+    str: The generated text extracted from the response.
+''')
+
 # Deploy-Mindie
 add_chinese_doc('deploy.Mindie', '''\
 此类是 ``LazyLLMDeployBase`` 的一个子类, 用于部署和管理MindIE大模型推理服务。它封装了MindIE服务的配置生成、进程启动和API交互的全流程。
@@ -879,6 +1179,108 @@ add_example('deploy.Infinity', '''\
 >>> from lazyllm import deploy
 >>> deploy.Infinity()
 <lazyllm.llm.deploy type=Infinity>
+''')
+
+# RelayServer class documentation
+add_chinese_doc('deploy.relay.base.RelayServer', '''\
+RelayServer类是一个用于部署FastAPI服务的基类，它可以将一个函数转换为HTTP服务。这个类支持设置前处理函数、后处理函数，
+并可以自动分配端口号。它主要用于将模型推理功能转换为HTTP服务，便于分布式部署和调用。
+
+主要参数：
+    port: 服务端口号，如果为None则随机分配30000-40000之间的端口
+    func: 要部署的主函数
+    pre_func: 请求预处理函数
+    post_func: 响应后处理函数
+    pythonpath: 额外的Python路径
+    log_path: 日志存储路径
+    cls: 服务名称
+    launcher: 启动器类型，默认为异步远程启动
+''')
+
+add_english_doc('deploy.relay.base.RelayServer', '''\
+RelayServer is a base class for deploying FastAPI services that converts a function into an HTTP service. It supports 
+setting pre-processing and post-processing functions, and can automatically allocate port numbers. It's mainly used 
+to convert model inference functionality into HTTP services for distributed deployment and invocation.
+
+Main parameters:
+    port: Service port number, randomly assigned between 30000-40000 if None
+    func: Main function to be deployed
+    pre_func: Request pre-processing function
+    post_func: Response post-processing function
+    pythonpath: Additional Python path
+    log_path: Log storage path
+    cls: Service name
+    launcher: Launcher type, defaults to asynchronous remote launch
+''')
+
+add_example('deploy.relay.base.RelayServer', '''\
+>>> from lazyllm.components.deploy.relay.base import RelayServer
+>>> def my_function(text):
+...     return f"Processed: {text}"
+>>> server = RelayServer(port=35000, func=my_function)
+>>> server.start()  # This will start the server
+>>> print(server.geturl())  # Get the service URL
+http://localhost:35000/generate
+''')
+
+# cmd method documentation
+add_chinese_doc('deploy.relay.base.RelayServer.cmd', '''\
+cmd方法用于生成启动服务器的命令。它会将当前的函数和配置转换为一个可执行的命令字符串。
+
+参数：
+    func: 可选，要部署的新函数。如果不提供，则使用初始化时的函数。
+
+返回值：
+    返回一个LazyLLMCMD对象，包含服务器启动命令和相关配置。
+''')
+
+add_english_doc('deploy.relay.base.RelayServer.cmd', '''\
+The cmd method generates the command to start the server. It converts the current function and configuration into 
+an executable command string.
+
+Args:
+    func: Optional, new function to deploy. If not provided, uses the function from initialization.
+
+Returns:
+    Returns a LazyLLMCMD object containing the server start command and related configuration.
+''')
+
+add_example('deploy.relay.base.RelayServer.cmd', '''\
+>>> server = RelayServer(port=35000)
+>>> def new_function(text):
+...     return f"New process: {text}"
+>>> cmd_obj = server.cmd(new_function)
+>>> print(cmd_obj)  # Will show the command that would be executed
+''')
+
+# geturl method documentation
+add_chinese_doc('deploy.relay.base.RelayServer.geturl', '''\
+geturl方法用于获取服务的访问URL。该URL可用于向服务发送HTTP请求。
+
+参数：
+    job: 可选，指定的任务对象。如果为None，则使用当前实例的任务。
+
+返回值：
+    返回服务的完整URL地址，格式为 http://<ip>:<port>/generate
+''')
+
+add_english_doc('deploy.relay.base.RelayServer.geturl', '''\
+The geturl method returns the access URL for the service. This URL can be used to send HTTP requests to the service.
+
+Args:
+    job: Optional, specified job object. If None, uses the current instance's job.
+
+Returns:
+    Returns the complete URL of the service in the format http://<ip>:<port>/generate
+''')
+
+add_example('deploy.relay.base.RelayServer.geturl', '''\
+>>> server = RelayServer(port=35000)
+>>> server.start()
+>>> url = server.geturl()
+>>> print(url)  # Shows the service endpoint URL
+http://localhost:35000/generate
+>>> # You can now use this URL to make HTTP requests to your service
 ''')
 
 # Deploy-Auto
@@ -2508,4 +2910,98 @@ Notes:
 add_example('RemoteLauncher', '''\
 >>> import lazyllm
 >>> launcher = lazyllm.launchers.remote(ngpus=1)
+''')
+
+add_chinese_doc('Job', '''\
+通用任务调度执行类。
+该类用于封装一个通过启动器（launcher）调度执行的任务，支持命令包装、同步控制、返回值提取、命令固定等功能。
+Args:
+    cmd (LazyLLMCMD): 要执行的命令对象。
+    launcher (Any): 启动器实例，用于实际任务调度执行。
+    sync (bool): 是否为同步执行，默认为 True。
+''')
+
+add_english_doc('Job', '''\
+Generic task scheduling executor.
+This class wraps a task that is launched via a launcher, with features like command fixing, output handling, sync control, and return value capturing.
+Args:
+    cmd (LazyLLMCMD): The command object to be executed.
+    launcher (Any): Launcher instance responsible for task dispatching.
+    sync (bool): Whether the task should run synchronously. Defaults to True.
+''')
+
+add_chinese_doc('Job.get_executable_cmd', '''\
+生成最终可执行命令。
+如果已缓存固定命令（fixed），则直接返回。否则根据原始命令进行包裹（wrap）并缓存为 `_fixed_cmd`。
+Args:
+    fixed (bool): 是否使用已固定的命令对象（若已存在）。
+Returns:
+    LazyLLMCMD: 可直接执行的命令对象。
+''')
+
+add_english_doc('Job.get_executable_cmd', '''\
+Generate the final executable command.
+If a fixed command already exists, return it. Otherwise, wrap the original command and cache it as `_fixed_cmd`.
+Args:
+    fixed (bool): Whether to use the cached fixed command.
+Returns:
+    LazyLLMCMD: The executable command object.
+''')
+
+add_chinese_doc('Job.start', '''\
+对外接口：启动作业，并支持失败时的自动重试。
+若作业执行失败，会根据 `restart` 参数控制重试次数。
+Args:
+    restart (int): 重试次数。默认为 3。
+    fixed (bool): 是否使用固定后的命令。用于避免多次构建。
+''')
+
+add_english_doc('Job.start', '''\
+Public interface to start the job with optional retry on failure.
+If the job fails, retries execution based on the `restart` parameter.
+Args:
+    restart (int): Number of times to retry upon failure. Default is 3.
+    fixed (bool): Whether to use the fixed version of the command.
+''')
+
+add_chinese_doc('Job.restart', '''\
+重新启动作业流程。
+该函数会先停止已有进程，等待 2 秒后重新启动作业。
+Args:
+    fixed (bool): 是否使用固定后的命令。
+''')
+
+add_english_doc('Job.restart', '''\
+Restart the job by first stopping it and then restarting after a short delay.
+Args:
+    fixed (bool): Whether to reuse the fixed command object.
+''')
+
+add_chinese_doc('Job.wait', '''\
+挂起当前线程，等待作业执行完成。当前实现为空方法（子类可重写）。
+''')
+
+add_english_doc('Job.wait', '''\
+Suspend the current thread until the job finishes.
+Empty implementation by default; can be overridden in subclasses.
+''')
+
+add_chinese_doc('Job.stop', '''\
+停止当前作业。
+该方法为接口定义，需子类实现，当前抛出 NotImplementedError。
+''')
+
+add_english_doc('Job.stop', '''\
+Stop the current job.
+This method is an interface placeholder and must be implemented by subclasses.
+''')
+
+add_chinese_doc('Job.status', '''\
+当前作业状态。
+该属性为接口定义，需子类实现，当前抛出 NotImplementedError。
+''')
+
+add_english_doc('Job.status', '''\
+Current job status.
+This property is abstract and must be implemented by subclasses.
 ''')

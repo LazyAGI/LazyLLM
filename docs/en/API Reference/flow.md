@@ -1,9 +1,16 @@
 ::: lazyllm.flow.FlowBase
-    members: is_root, ancestor, for_each
+    members: is_root, ancestor, for_each, id
     exclude-members:
 
 ::: lazyllm.flow.LazyLLMFlowsBase
     members: 
+    - register_hook
+    - unregister_hook
+    - clear_hooks
+    - set_sync
+    - wait
+    - invoke
+    - bind
     exclude-members:
 
 ::: lazyllm.flow.Pipeline
@@ -13,7 +20,7 @@
 ::: lazyllm.flow.save_pipeline_result
 
 ::: lazyllm.flow.Parallel
-    members: 
+    members: join, sequential
     exclude-members:
 
 ::: lazyllm.flow.Diverter
