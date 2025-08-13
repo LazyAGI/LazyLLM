@@ -2030,6 +2030,48 @@ add_example('rag.dataReader.SimpleDirectoryReader', '''
 >>> documents = reader.load_data()
 ''')
 
+add_chinese_doc('rag.dataReader.SimpleDirectoryReader.load_file', '''\
+load_file(input_file, metadata_genf, file_extractor, encoding='utf-8', pathm=Path, fs=None, metadata=None)
+
+使用指定的 Reader 将单个文件加载为 `DocNode` 列表。
+
+该方法会根据文件名匹配合适的读取器（reader），并遵循以下优先级生成元数据：
+`用户提供 > reader 自动生成 > metadata_genf 生成`。支持自定义文件读取器，同时在配置允许的情况下支持回退到原始文本读取。
+
+参数说明：
+- input_file (Path): 要读取的文件路径。
+- metadata_genf (Callable): 用于根据路径生成元数据的函数。
+- file_extractor (Dict[str, Callable]): 文件扩展名与 reader 的映射表。
+- encoding (str): 文件读取时使用的文本编码，默认为 "utf-8"。
+- pathm (PurePath): 路径处理模块，适用于本地或远程路径。
+- fs (AbstractFileSystem): 可选的文件系统对象，支持 fsspec 抽象。
+- metadata (Dict): 可选的用户自定义元数据，优先于自动生成。
+
+返回：
+- List[DocNode]: 从文件中提取的文档对象列表。
+''')
+
+add_english_doc('rag.dataReader.SimpleDirectoryReader.load_file', '''\
+load_file(input_file, metadata_genf, file_extractor, encoding='utf-8', pathm=Path, fs=None, metadata=None)
+
+Load a single file into a list of `DocNode` objects using the appropriate reader.
+
+This method supports automatic reader selection based on file extension patterns, and applies a priority order to metadata:
+`user > reader > metadata_genf`. It supports both default and user-supplied readers and can fall back to raw text decoding
+if enabled in config.
+
+Parameters:
+- input_file (Path): Path to the input file.
+- metadata_genf (Callable): Function to generate metadata from file path.
+- file_extractor (Dict[str, Callable]): Mapping of file extension patterns to reader callables.
+- encoding (str): Text encoding to use when reading files. Default is "utf-8".
+- pathm (PurePath): Path handling module to support local or remote paths.
+- fs (AbstractFileSystem): Optional filesystem abstraction from fsspec.
+- metadata (Dict): Optional user-defined metadata to override reader-generated data.
+
+Returns:
+- List[DocNode]: List of parsed documents extracted from the file.
+''')
 
 add_english_doc('rag.dataReader.FileReader', '''
 File content reader whose main function is to convert various input file formats into concatenated plain text content.

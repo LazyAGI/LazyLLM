@@ -814,6 +814,88 @@ add_example('TrainableModule.forward', '''\
 'processed: Hello'
 ''')
 
+add_english_doc("TrainableModule.get_all_models", '''\
+get_all_models() -> List[str]
+
+Returns a list of all fine-tuned model paths under the current target path.
+
+Returns:
+- List[str]: A list of fine-tuned model identifiers or directories.
+''')
+
+add_chinese_doc("TrainableModule.get_all_models", '''\
+get_all_models() -> List[str]
+
+返回当前目标路径下所有微调模型的路径列表。
+
+返回值：
+- List[str]：所有微调模型的名称或路径列表。
+''')
+
+add_english_doc("TrainableModule.status", '''\
+status(task_name: Optional[str] = None) -> str
+
+Returns the current status of a specific task in the module.
+
+Args:
+- task_name (Optional[str]): Name of the task (e.g., 'deploy'). Defaults to 'deploy' if not provided.
+
+Returns:
+- str: Status string such as 'running', 'finished', or 'stopped'.
+''')
+
+add_chinese_doc("TrainableModule.status", '''\
+status(task_name: Optional[str] = None) -> str
+
+返回模块中指定任务的当前状态。
+
+参数：
+- task_name (Optional[str])：任务名称（如 'deploy'），默认返回 'deploy' 任务的状态。
+
+返回值：
+- str：状态字符串，例如 'running'、'finished' 或 'stopped'。
+''')
+
+add_english_doc("TrainableModule.set_specific_finetuned_model", '''\
+set_specific_finetuned_model(model_path: str) -> None
+
+Sets the model to be used from a specific fine-tuned model path.
+
+Args:
+- model_path (str): The path to the fine-tuned model to use.
+''')
+
+add_chinese_doc("TrainableModule.set_specific_finetuned_model", '''\
+set_specific_finetuned_model(model_path: str) -> None
+
+设置要使用的特定微调模型路径。
+
+参数：
+- model_path (str)：要使用的微调模型的路径。
+''')
+
+add_english_doc("TrainableModule.set_default_parameters", '''\
+set_default_parameters(*, optional_keys: List[str] = [], **kw) -> None
+
+Sets the default parameters to be used during inference or evaluation.
+
+Args:
+- optional_keys (List[str]): A list of optional keys to allow additional parameters without error.
+- **kw: Key-value pairs for default parameters such as temperature, top_k, etc.
+
+''')
+
+add_chinese_doc("TrainableModule.set_default_parameters", '''\
+set_default_parameters(*, optional_keys: List[str] = [], **kw) -> None
+
+设置用于推理或评估的默认参数。
+
+参数：
+- optional_keys (List[str])：允许传入额外参数的可选键列表。
+- **kw：用于设置默认参数的键值对，如 temperature、top_k 等。
+
+''')
+
 # add_example('TrainableModule', '''\
 # >>> import lazyllm
 # >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).trainset('/file/to/path').deploy_method(None).mode('finetune')
