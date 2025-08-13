@@ -68,6 +68,10 @@ class _Processor:
             if group_name not in doc_group_number[doc_id]:
                 doc_group_number[doc_id][group_name] = 1
             node.metadata['store_num'] = doc_group_number[doc_id][group_name]
+            if "store_num" not in node.excluded_embed_metadata_keys:
+                node._excluded_embed_metadata_keys.append("store_num")
+            if "store_num" not in node._excluded_llm_metadata_keys:
+                node._excluded_llm_metadata_keys.append("store_num")
             doc_group_number[doc_id][group_name] += 1
         del doc_group_number
         return nodes
