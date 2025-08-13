@@ -1283,6 +1283,52 @@ http://localhost:35000/generate
 >>> # You can now use this URL to make HTTP requests to your service
 ''')
 
+add_chinese_doc('deploy.base.DummyDeploy', '''\
+DummyDeploy(launcher=launchers.remote(sync=False), *, stream=False, **kw)
+
+一个用于测试的模拟部署类，继承自 `LazyLLMDeployBase` 和 `flows.Pipeline`，实现了一个简单的流水线风格部署服务，
+支持流式输出（可选）。
+
+该类主要用于内部测试和示例用途。它接收符合 `message_format` 格式的输入，根据是否启用 `stream` 参数，返回
+字符串或逐步输出的模拟响应。
+
+属性：
+- keys_name_handle (dict): 输入字段名的映射。
+- message_format (dict): 默认请求模板，包括输入内容与生成参数。
+
+参数：
+- launcher: 部署器实例，默认值为 `launchers.remote(sync=False)`。
+- stream (bool): 是否以流式方式输出结果。
+- kw: 其他传递给父类的关键字参数。
+
+方法：
+- __call__(*args): 启动部署并返回服务地址。
+- __repr__(): 返回流水线的字符串表示。
+''')
+
+add_english_doc('deploy.base.DummyDeploy', '''\
+DummyDeploy(launcher=launchers.remote(sync=False), *, stream=False, **kw)
+
+A mock deployment class for testing purposes. It extends both `LazyLLMDeployBase` and `flows.Pipeline`,
+simulating a simple pipeline-style deployable service with optional streaming support.
+
+This class is primarily intended for internal testing and demonstration. It receives inputs in the format defined
+by `message_format`, and returns a dummy response or a streaming response depending on the `stream` flag.
+
+Attributes:
+- keys_name_handle (dict): Mapping of input keys for request formatting.
+- message_format (dict): Default request template including input and generation parameters.
+
+Parameters:
+- launcher: Deployment launcher instance, defaulting to `launchers.remote(sync=False)`.
+- stream (bool): Whether to simulate streaming output.
+- kw: Additional keyword arguments passed to the superclass.
+
+Methods:
+- __call__(*args): Starts the deployment and returns the service URL.
+- __repr__(): Returns a string representation of the underlying pipeline.
+''')
+
 # Deploy-Auto
 add_chinese_doc('auto.AutoDeploy', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，可根据输入的参数自动选择合适的推理框架和参数，以对大语言模型进行推理。
@@ -2501,6 +2547,122 @@ add_example('SenseVoiceDeploy', ['''\
 >>> model('path/to/audio') # support format: .mp3, .wav
 ... xxxxxxxxxxxxxxxx
 '''])
+
+add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice', '''\
+SenseVoice(base_path, source=None, init=False)
+
+A speech-to-text wrapper using FunASR models for lazy initialization and audio transcription.
+This class supports automatic model downloading, safe initialization, and inference from audio paths or URLs.
+
+Parameters:
+- base_path (str): Path or model identifier to download the STT model.
+- source (str, optional): Model source name; defaults to `lazyllm.config['model_source']`.
+- init (bool): Whether to initialize the model immediately on creation.
+
+Attributes:
+- base_path (str): Final resolved path of the model after download.
+- model: Loaded FunASR model instance.
+- init_flag: A lazy flag used to ensure model is only loaded once.
+
+Methods:
+- __call__(string: str | dict) -> str:
+    Transcribes the input audio file or URL to text. Accepts base64-encoded content, file paths, or URLs.
+- load_stt():
+    Loads the FunASR speech-to-text model and related VAD (Voice Activity Detection).
+- rebuild(base_path, init):
+    Rebuilds the class instance (used for serialization).
+- __reduce__():
+    Supports pickling by ensuring proper lazy-loading on deserialization.
+''')
+
+add_chinese_doc('deploy.speech_to_text.sense_voice.SenseVoice', '''\
+SenseVoice(base_path, source=None, init=False)
+
+使用 FunASR 模型进行语音转文本的包装类，支持懒加载与自动模型下载。
+支持从音频路径、URL 或 base64 编码音频进行转写，适用于延迟初始化和高效部署。
+
+参数：
+- base_path (str): 用于下载语音识别模型的路径或模型标识。
+- source (str, 可选): 模型来源，默认使用 `lazyllm.config['model_source']`。
+- init (bool): 是否在初始化时立即加载模型。
+
+属性：
+- base_path (str): 下载后模型的实际路径。
+- model: 加载的 FunASR 模型对象。
+- init_flag: 用于懒加载的初始化标志，保证模型只加载一次。
+
+方法：
+- __call__(string: str | dict) -> str:
+    将输入的音频文件或 URL 转换为文本。支持 base64 编码、文件路径或 URL 输入。
+- load_stt():
+    加载 FunASR 的语音识别模型和语音活动检测（VAD）模型。
+- rebuild(base_path, init):
+    用于重新构造类实例（常用于序列化）。
+- __reduce__():
+    实现 pickling 支持，确保在反序列化时正确懒加载。
+''')
+
+add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice.load_stt', '''\
+load_stt()
+
+Loads the speech-to-text model using FunASR with optional support for Huawei NPU via `torch_npu`.
+
+The method initializes the model with the following characteristics:
+- Uses `fsmn-vad` for voice activity detection with long utterance support.
+- Sets maximum single segment time to 30 seconds.
+- Selects `cuda:0` as the default inference device.
+
+The model is stored in `self.model` and will be used to transcribe audio input.
+
+Note:
+If `torch_npu` is available in the environment, the function attempts to load it for potential Huawei Ascend acceleration.
+''')
+
+add_chinese_doc('deploy.speech_to_text.sense_voice.SenseVoice.load_stt', '''\
+load_stt()
+
+使用 FunASR 加载语音转文本模型，支持华为 NPU（如存在 `torch_npu`）。
+
+此方法将初始化模型，包含以下设置：
+- 使用 `fsmn-vad` 进行语音活动检测（VAD），支持最长 30 秒的单段语音。
+- 设置推理设备为 `cuda:0`（默认使用 GPU）。
+- 将模型实例保存在 `self.model` 中，用于后续音频转写。
+
+注意：
+如果当前环境中存在 `torch_npu`，函数将自动导入以支持华为昇腾设备加速。
+''')
+
+add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice.rebuild', '''\
+rebuild(base_path: str, init: bool) -> SenseVoice
+
+Class method used to reconstruct a `SenseVoice` instance during deserialization (e.g., when using `cloudpickle`).
+
+Parameters:
+- base_path (str): Path to the speech-to-text model.
+- init (bool): Whether to immediately initialize and load the model upon creation.
+
+Returns:
+- A new instance of `SenseVoice` with the specified configuration.
+
+Note:
+This method is internally used to support model serialization and multiprocessing compatibility.
+''')
+
+add_chinese_doc('deploy.speech_to_text.sense_voice.SenseVoice.rebuild', '''\
+rebuild(base_path: str, init: bool) -> SenseVoice
+
+该类方法用于反序列化（如 `cloudpickle`）过程中重新构建 `SenseVoice` 实例。
+
+参数：
+- base_path (str)：语音识别模型的路径。
+- init (bool)：是否在实例化时立即加载模型。
+
+返回：
+- 一个新的 `SenseVoice` 实例。
+
+说明：
+该方法主要用于支持对象的序列化与多进程环境下的兼容重建操作。
+''')
 
 add_english_doc('TTSDeploy', '''\
 TTSDeploy is a factory class for creating instances of different Text-to-Speech (TTS) deployment types based on the specified name.

@@ -38,6 +38,10 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.base.DummyDeploy
+    options:
+      heading_level: 3
+
 ::: lazyllm.components.auto.AutoDeploy
     options:
       heading_level: 3
@@ -159,6 +163,9 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
     options:
       heading_level: 4
 
+::: lazyllm.components.deploy.speech_to_text.sense_voice.SenseVoice
+    options:
+      heading_level: 4
 ---
 
 ## ModelManager
