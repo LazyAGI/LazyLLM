@@ -17,13 +17,11 @@ def set_enviroment(request):
     env_key, env_var = request.param
     original_value = os.getenv(env_key, None)
     os.environ[env_key] = env_var
-    lazyllm.config.refresh(env_key)
     yield
     if original_value:
         os.environ[env_key] = original_value
     else:
         os.environ.pop(env_key, None)
-    lazyllm.config.refresh(env_key)
 
 class TestDeploy(object):
 
