@@ -730,9 +730,9 @@ add_chinese_doc('Switch', """\
 
 Args:
     args: 可变长度参数列表，交替提供条件和对应的流或函数。条件可以是返回布尔值的可调用对象或与输入表达式进行比较的值。
+    conversion (callable, optional): 在进行条件匹配之前，对判定表达式 ``exp`` 进行转换或预处理的函数。默认为 ``None``。
     post_action (callable, optional): 在执行选定流后要调用的函数。默认为 ``None``。
     judge_on_full_input(bool): 如果设置为 ``True`` ， 则通过 ``switch`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
-    kwargs: 代表命名条件和对应流或函数的任意关键字参数。
 
 抛出:
     TypeError: 如果提供的参数数量为奇数，或者如果第一个参数不是字典且条件没有成对提供。
@@ -752,9 +752,9 @@ The ``Switch`` class provides a way to choose between different flows depending 
 
 Args:
     args: A variable length argument list, alternating between conditions and corresponding flows or functions. Conditions are either callables returning a boolean or values to be compared with the input expression.
+    conversion (callable, optional): A function used to transform or preprocess the evaluation expression ``exp`` before performing condition matching. Defaults to ``None``.
     post_action (callable, optional): A function to be called on the output after the selected flow is executed. Defaults to ``None``.
     judge_on_full_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``switch``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
-    kwargs: Arbitrary keyword arguments representing named conditions and corresponding flows or functions.
 
 Raises:
     TypeError: If an odd number of arguments are provided, or if the first argument is not a dictionary and the conditions are not provided in pairs.

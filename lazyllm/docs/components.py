@@ -2898,6 +2898,81 @@ add_example('SlurmLauncher', '''\
 >>> launcher = lazyllm.launchers.slurm(partition='partition_name', nnode=1, nproc=1, ngpus=1, sync=False)
 ''')
 
+# SlurmLauncher methods
+add_chinese_doc('SlurmLauncher.makejob', '''\
+创建并返回一个 SlurmLauncher.Job 对象。
+
+Args:
+    cmd: 要执行的命令字符串。
+
+Returns:
+    SlurmLauncher.Job: 配置好的 Slurm 作业对象。
+''')
+
+add_english_doc('SlurmLauncher.makejob', '''\
+Creates and returns a SlurmLauncher.Job object.
+
+Args:
+    cmd: The command string to execute.
+
+Returns:
+    SlurmLauncher.Job: A configured Slurm job object.
+''')
+
+add_chinese_doc('SlurmLauncher.get_idle_nodes', '''\
+获取指定分区中当前可用的节点数量，基于可用 GPU 数量。
+
+该方法通过查询 Slurm 队列状态和节点信息，计算每个节点的可用 GPU 数量，并返回一个字典，其中键为节点 IP，值为可用 GPU 数量。
+
+Args:
+    partion (str, optional): 要查询的分区名称。默认为 ``None``，此时使用当前启动器的分区。
+
+Returns:
+    dict: 以节点 IP 为键、可用 GPU 数量为值的字典。
+''')
+
+add_english_doc('SlurmLauncher.get_idle_nodes', '''\
+Obtains the current number of available nodes in the specified partition based on the available number of GPUs.
+
+This method queries the Slurm queue status and node information to calculate the number of available GPUs for each node, and returns a dictionary with node IP as the key and the number of available GPUs as the value.
+
+Args:
+    partion (str, optional): The partition name to query. Defaults to ``None``, in which case the current launcher's partition will be used.
+
+Returns:
+    dict: A dictionary with node IP as the key and the number of available GPUs as the value.
+''')
+
+add_chinese_doc('SlurmLauncher.launch', '''\
+启动 Slurm 作业并管理其执行。
+
+该方法启动指定的 Slurm 作业，并根据同步设置决定是否等待作业完成。如果设置为同步执行，会持续监控作业状态直到完成，然后停止作业。
+
+Args:
+    job: 要启动的 SlurmLauncher.Job 对象。
+
+Returns:
+    作业的返回值。
+
+Raises:
+    AssertionError: 如果传入的 job 不是 SlurmLauncher.Job 类型。
+''')
+
+add_english_doc('SlurmLauncher.launch', '''\
+Launches a Slurm job and manages its execution.
+
+This method starts the specified Slurm job and decides whether to wait for job completion based on the sync setting. If set to synchronous execution, it continuously monitors the job status until completion, then stops the job.
+
+Args:
+    job: The SlurmLauncher.Job object to launch.
+
+Returns:
+    The return value of the job.
+
+Raises:
+    AssertionError: If the provided job is not a SlurmLauncher.Job type.
+''')
+
 # Launcher-ScoLauncher
 add_chinese_doc('ScoLauncher', '''\
 此类是 ``LazyLLMLaunchersBase`` 的子类，作为SCO (Sensecore)启动器。

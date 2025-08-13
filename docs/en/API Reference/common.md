@@ -103,3 +103,4 @@
 ::: lazyllm.common.LazyLLMCMD
     members: with_cmd, get_args
     exclude-members:
+    

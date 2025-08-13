@@ -35,6 +35,7 @@ nav:
   - Tools: API Reference/tools.md
   - Configs: API Reference/configs.md
   - Launcher: API Reference/launcher.md
+  - Hook: API Reference/hook.md
 - Tutorials:
   - Overview: Tutorial/index.md
   - Lesson 1: Tutorial/1.md

@@ -2935,6 +2935,77 @@ Args:
 """)
 # ---------------------------------------------------------------------------- #
 
+# rag/data_loaders.py
+
+add_english_doc('rag.data_loaders.DirectoryReader', '''\
+A directory reader class for loading and processing documents from file directories.
+
+This class provides functionality to read documents from specified directories and convert them into document nodes. It supports both local and global file readers, and can handle different types of documents including images.
+
+Args:
+    input_files (Optional[List[str]]): A list of file paths to read. If None, files will be loaded when calling load_data method.
+    local_readers (Optional[Dict]): A dictionary of local file readers specific to this instance. Keys are file patterns, values are reader functions.
+    global_readers (Optional[Dict]): A dictionary of global file readers shared across all instances. Keys are file patterns, values are reader functions.
+''')
+
+add_chinese_doc('rag.data_loaders.DirectoryReader', '''\
+用于从文件目录加载和处理文档的目录读取器类。
+
+此类提供从指定目录读取文档并将其转换为文档节点的功能。它支持本地和全局文件读取器，并且可以处理不同类型的文档，包括图像。
+
+Args:
+    input_files (Optional[List[str]]): 要读取的文件路径列表。如果为None，文件将在调用load_data方法时加载。
+    local_readers (Optional[Dict]): 特定于此实例的本地文件读取器字典。键是文件模式，值是读取器函数。
+    global_readers (Optional[Dict]): 在所有实例间共享的全局文件读取器字典。键是文件模式，值是读取器函数。
+''')
+
+add_example('rag.data_loaders.DirectoryReader', '''\
+>>> from lazyllm.tools.rag.data_loaders import DirectoryReader
+>>> from lazyllm.tools.rag.readers import DocxReader, PDFReader
+>>> local_readers = {
+...     "**/*.docx": DocxReader,
+...     "**/*.pdf": PDFReader
+>>> }
+>>> reader = DirectoryReader(
+...     input_files=["path/to/documents"],
+...     local_readers=local_readers,
+...     global_readers={}
+>>> )
+>>> documents = reader.load_data()
+>>> print(f"加载了 {len(documents)} 个文档")
+''')
+
+add_english_doc('rag.data_loaders.DirectoryReader.load_data', '''\
+Load and process documents from the specified input files.
+
+This method reads documents from the input files using the configured file readers (both local and global), processes them into document nodes, and optionally separates image nodes from text nodes.
+
+Args:
+    input_files (Optional[List[str]]): A list of file paths to read. If None, uses the files specified during initialization.
+    metadatas (Optional[Dict]): Additional metadata to associate with the loaded documents.
+    split_image_nodes (bool): Whether to separate image nodes from text nodes. If True, returns a tuple of (text_nodes, image_nodes). If False, returns all nodes together.
+
+**Returns:**
+- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: If split_image_nodes is False, returns a list of all document nodes. If True, returns a tuple containing text nodes and image nodes separately.
+
+''')
+
+add_chinese_doc('rag.data_loaders.DirectoryReader.load_data', '''\
+从指定的输入文件加载和处理文档。
+
+此方法使用配置的文件读取器（本地和全局）从输入文件读取文档，将它们处理成文档节点，并可选地将图像节点与文本节点分离。
+
+Args:
+    input_files (Optional[List[str]]): 要读取的文件路径列表。如果为None，使用初始化时指定的文件。
+    metadatas (Optional[Dict]): 与加载文档关联的额外元数据。
+    split_image_nodes (bool): 是否将图像节点与文本节点分离。如果为True，返回(text_nodes, image_nodes)的元组。如果为False，一起返回所有节点。
+
+**Returns:**
+- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: 如果split_image_nodes为False，返回所有文档节点的列表。如果为True，返回包含文本节点和图像节点的元组。
+''')
+
+# ---------------------------------------------------------------------------- #
+
 # rag/utils.py
 add_chinese_doc('rag.utils.DocListManager', """\
 抽象基类，用于管理文档列表和监控文档目录变化。
