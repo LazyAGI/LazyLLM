@@ -7190,10 +7190,15 @@ Values:
 add_example('rag.web.DocWebModule', '''\
 >>> import lazyllm
 >>> from lazyllm.tools.rag.web import DocWebModule
->>> doc_web = DocWebModule(your_doc_server, title="My Document WebUI", port=20810)
+>>> from lazyllm import
+>>> doc_server = ServerModule(url="your_url")
+>>> doc_web = DocWebModule(
+>>>   doc_server=doc_server,
+>>>   title="文档管理演示终端",
+>>>   port=range(20800, 20805)  # 自动寻找可用端口)
+>>> deploy_task = doc_web._get_deploy_tasks()
+>>> deploy_task()  
 >>> print(doc_web.url)
-http://127.0.0.1:20810
->>>
 >>> doc_web.stop()
 ''')
 add_english_doc('rag.web.DocWebModule.wait', '''\

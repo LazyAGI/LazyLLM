@@ -1216,14 +1216,14 @@ add_example('deploy.Mindie', '''\
 >>> from lazyllm.components.deploy import Mindie            
 >>> deployer = Mindie(
 ...     port=30000,
-...     tp=2,  # tensor parallel size
+...     launcher=lazyllm.launchers.remote(),
 ...     max_seq_len=32000,
 ...     log_path="/path/to/logs"
 ... )
 >>> cmd = deployer.cmd(
 ...     finetuned_model="/path/to/finetuned_model",
 ...     base_model="/path/to/base_model")
->>> print("Service URL:", deployer.geturl())
+>>> print("Service URL:", cmd.geturl())
 
 ''')
 add_english_doc('deploy.Mindie.load_config', '''\
