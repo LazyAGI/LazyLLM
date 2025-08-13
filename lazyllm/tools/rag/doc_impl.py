@@ -443,17 +443,15 @@ class DocImpl:
                 idx += 1
             else:
                 break
-        parent_path = list(reversed(path_cur[idx - 1:]))
-        child_path = path_tgt[idx - 1:]
+        parent_path = list(reversed(path_cur[idx - 1:-1]))
+        child_path = path_tgt[idx:]
 
-        parent_path.pop(0)
-        child_path.pop(0)
-        while parent_path and nodes:
-            next_group = parent_path.pop(0)
+        for next_group in parent_path:
+            if not nodes: break
             nodes = self.find_parent(nodes, next_group)
 
-        while child_path and nodes:
-            next_group = child_path.pop(0)
+        for next_group in child_path:
+            if not nodes: break
             nodes = self.find_children(nodes, next_group)
 
         if not nodes:

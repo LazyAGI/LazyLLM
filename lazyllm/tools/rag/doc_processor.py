@@ -67,13 +67,8 @@ class _Processor:
                 doc_group_number[doc_id] = {}
             if group_name not in doc_group_number[doc_id]:
                 doc_group_number[doc_id][group_name] = 1
-            node.metadata['store_num'] = doc_group_number[doc_id][group_name]
-            if "store_num" not in node.excluded_embed_metadata_keys:
-                node._excluded_embed_metadata_keys.append("store_num")
-            if "store_num" not in node._excluded_llm_metadata_keys:
-                node._excluded_llm_metadata_keys.append("store_num")
+            node.metadata['lazyllm_store_num'] = doc_group_number[doc_id][group_name]
             doc_group_number[doc_id][group_name] += 1
-        del doc_group_number
         return nodes
 
     def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):

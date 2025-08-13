@@ -25,11 +25,7 @@ class HybridStore(LazyLLMStoreBase):
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
-        segments = []
-        for segment in data:
-            seg = segment.copy()
-            seg.pop('embedding', None)
-            segments.append(seg)
+        segments = [{k: v for k, v in segment.items() if k != 'embedding'} for segment in data]
         return self.segment_store.upsert(collection_name=collection_name, data=segments) and \
             self.vector_store.upsert(collection_name=collection_name, data=data)
 

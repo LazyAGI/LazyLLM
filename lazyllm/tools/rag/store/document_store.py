@@ -55,19 +55,19 @@ class _DocumentStore(object):
         stype = cfg.get('type')
         cls = getattr(lazyllm.store, stype, None)
         if not cls:
-            raise NotImplementedError(f"Not implemented store type: {stype}")
+            raise NotImplementedError(f'Not implemented store type: {stype}')
         return cls(**cfg.get('kwargs', {}))
 
     def _convert_legacy_to_config(self, cfg: Dict[str, Any]) -> Dict[str, Any]:
         indices = cfg.pop('indices')
         if indices.get('smart_embedding_index'):
-            LOG.warning("[_DocumentStore] 'smart_embedding_index' is deprecated, converted to milvus type config")
+            LOG.warning('[_DocumentStore] `smart_embedding_index` is deprecated, converted to milvus type config')
         else:
-            raise ValueError(f"[_DocumentStore] Unsupported index type: {indices.keys()}")
+            raise ValueError(f'[_DocumentStore] Unsupported index type: {indices.keys()}')
         index_config = indices.get('smart_embedding_index')
         backend = index_config.get('backend')
         if not backend:
-            raise ValueError("backend is required in indices")
+            raise ValueError('backend is required in indices')
         cfg = {'type': backend, 'kwargs': index_config.get('kwargs', {})}
         return cfg
 
@@ -78,7 +78,7 @@ class _DocumentStore(object):
             if s_store.capability in (StoreCapability.ALL, StoreCapability.SEGMENT):
                 return s_store
             else:
-                LOG.warning("Only vector store is supported, segment store will be MapStore")
+                LOG.warning('Only vector store is supported, segment store will be MapStore')
                 if s_store.dir:
                     segment_store = MapStore(uri=os.path.join(s_store.dir, 'segments.db'))
                 else:
@@ -87,11 +87,11 @@ class _DocumentStore(object):
         else:
             seg_store = self._make_store(cfg.get('segment_store', {}))
             vec_store = self._make_store(cfg.get('vector_store', {}))
-            assert seg_store and vec_store, "Please provide both segment_store and vector_store in store_config"
+            assert seg_store and vec_store, 'Please provide both segment_store and vector_store in store_config'
             assert seg_store.capability in (StoreCapability.ALL, StoreCapability.SEGMENT), \
-                "Segment store must be a segment store"
+                'Segment store must be a segment store'
             assert vec_store.capability in (StoreCapability.ALL, StoreCapability.VECTOR), \
-                "Vector store must be a vector store"
+                'Vector store must be a vector store'
             return HybridStore(segment_store=seg_store, vector_store=vec_store)
 
     @once_wrapper(reset_on_pickle=True)
@@ -134,7 +134,7 @@ class _DocumentStore(object):
             # upsert batch segments
             for group, segments in group_segments.items():
                 if not self.is_group_active(group):
-                    LOG.warning(f"[_DocumentStore - {self._algo_name}] Group {group} is not active, skip")
+                    LOG.warning(f'[_DocumentStore - {self._algo_name}] Group {group} is not active, skip')
                     continue
                 for i in range(0, len(segments), INSERT_BATCH_SIZE):
                     self.impl.upsert(self._gen_collection_name(group), segments[i:i + INSERT_BATCH_SIZE])
@@ -142,7 +142,7 @@ class _DocumentStore(object):
             for index in self._indices.values():
                 index.update(nodes)
         except Exception as e:
-            LOG.error(f"[_DocumentStore - {self._algo_name}] Failed to update nodes: {e}")
+            LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to update nodes: {e}')
             LOG.error(traceback.format_exc())
             raise
 
@@ -166,14 +166,14 @@ class _DocumentStore(object):
                 groups = [group]
             for group in groups:
                 if not self.is_group_active(group):
-                    LOG.warning(f"[_DocumentStore - {self._algo_name}] Group {group} is not active, skip")
+                    LOG.warning(f'[_DocumentStore - {self._algo_name}] Group {group} is not active, skip')
                     continue
                 self.impl.delete(self._gen_collection_name(group), criteria)
             # update indices
             for index in self._indices.values():
                 index.remove(uids, group)
         except Exception as e:
-            LOG.error(f"[_DocumentStore - {self._algo_name}] Failed to remove nodes: {e}")
+            LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to remove nodes: {e}')
             raise
 
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
@@ -182,7 +182,7 @@ class _DocumentStore(object):
             segments = self.get_segments(uids, doc_ids, group, kb_id, **kwargs)
             return [self._deserialize_node(segment) for segment in segments]
         except Exception as e:
-            LOG.error(f"[_DocumentStore - {self._algo_name}] Failed to get nodes: {e}")
+            LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to get nodes: {e}')
             raise
 
     def get_segments(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
@@ -210,19 +210,19 @@ class _DocumentStore(object):
             segments = []
             for group in groups:
                 if not self.is_group_active(group):
-                    LOG.warning(f"[_DocumentStore - {self._algo_name}] Group {group} is not active, skip")
+                    LOG.warning(f'[_DocumentStore - {self._algo_name}] Group {group} is not active, skip')
                     continue
                 segments.extend(self.impl.get(self._gen_collection_name(group), criteria, **kwargs))
             return segments
         except Exception as e:
-            LOG.error(f"[_DocumentStore - {self._algo_name}] Failed to get segments: {e}")
+            LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to get segments: {e}')
             raise
 
     def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
         kb_id = metadata.get(RAG_KB_ID, None)
         segments = self.get_segments(doc_ids=[doc_id], kb_id=kb_id)
         if not segments:
-            LOG.warning(f"[_DocumentStore] No segments found for doc_id: {doc_id} in dataset: {kb_id}")
+            LOG.warning(f'[_DocumentStore] No segments found for doc_id: {doc_id} in dataset: {kb_id}')
             return
         group_segments = defaultdict(list)
         for segment in segments:
@@ -230,7 +230,7 @@ class _DocumentStore(object):
             group_segments[segment.get('group')].append(segment)
         for group, segments in group_segments.items():
             self.impl.upsert(self._gen_collection_name(group), segments)
-        LOG.info(f"[_DocumentStore] Updated metadata for doc_id: {doc_id} in dataset: {kb_id}")
+        LOG.info(f'[_DocumentStore] Updated metadata for doc_id: {doc_id} in dataset: {kb_id}')
         return
 
     def query(self, query: str, group_name: str, similarity_name: Optional[str] = None,
@@ -241,8 +241,8 @@ class _DocumentStore(object):
         segments = []
         if embed_keys:
             if self.impl.capability == StoreCapability.SEGMENT:
-                raise ValueError(f"[_DocumentStore - {self._algo_name}] Embed keys {embed_keys}"
-                                 " are not supported when no vector store is provided")
+                raise ValueError(f'[_DocumentStore - {self._algo_name}] Embed keys {embed_keys}'
+                                 ' are not supported when no vector store is provided')
             # vector search
             for embed_key in embed_keys:
                 query_embedding = self._embed.get(embed_key)(query)
@@ -256,32 +256,32 @@ class _DocumentStore(object):
         else:
             # text search
             if self.impl.capability == StoreCapability.VECTOR:
-                raise ValueError(f"[_DocumentStore - {self._algo_name}] Text search is not"
-                                 " supported when no segment store is provided")
+                raise ValueError(f'[_DocumentStore - {self._algo_name}] Text search is not'
+                                 ' supported when no segment store is provided')
             segments.extend(self.impl.search(collection_name=self._gen_collection_name(group_name),
                                              query=query, topk=topk, filters=filters, **kwargs))
         return [self._deserialize_node(segment, segment.get('score', 0)) for segment in segments]
 
     def _validate_query_params(self, group_name: str, similarity: str,
                                embed_keys: Optional[List[str]] = None, **kwargs) -> bool:
-        assert self.is_group_active(group_name), f"[_DocumentStore - {self._algo_name}] Group {group_name} is not active"
+        assert self.is_group_active(group_name), f'[_DocumentStore - {self._algo_name}] Group {group_name} is not active'
         if similarity:
             if similarity in registered_similarities:
                 _, mode, _ = registered_similarities[similarity]
                 if mode == 'embedding' and self.impl.capability == StoreCapability.SEGMENT:
-                    raise ValueError(f"[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported, "
-                                     f"embedding similarity is supported for vector or hybrid store")
+                    raise ValueError(f'[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported, '
+                                     f'embedding similarity is supported for vector or hybrid store')
                 elif mode == 'text' and self.impl.capability == StoreCapability.VECTOR:
-                    raise ValueError(f"[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported, "
-                                     "text similarity is supported for segment or hybrid store")
+                    raise ValueError(f'[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported, '
+                                     'text similarity is supported for segment or hybrid store')
             else:
-                raise ValueError(f"[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported")
+                raise ValueError(f'[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported')
 
         if embed_keys:
             assert self.impl.capability != StoreCapability.SEGMENT, \
-                f"[_DocumentStore - {self._algo_name}] Embed {embed_keys} not supported when no vector store provided"
+                f'[_DocumentStore - {self._algo_name}] Embed {embed_keys} not supported when no vector store provided'
             assert all(key in self._embed for key in embed_keys), \
-                f"[_DocumentStore - {self._algo_name}] Embed {embed_keys} not supported"
+                f'[_DocumentStore - {self._algo_name}] Embed {embed_keys} not supported'
         return True
 
     def clear_cache(self, groups: Optional[List[str]] = None) -> None:
@@ -292,13 +292,13 @@ class _DocumentStore(object):
         elif isinstance(groups, (tuple, list, set)):
             groups = list(groups)
         else:
-            raise TypeError(f"Invalid type {type(groups)} for groups, expected list of str")
+            raise TypeError(f'Invalid type {type(groups)} for groups, expected list of str')
         for group in groups:
             self.impl.delete(self._gen_collection_name(group))
 
     def register_index(self, type: str, index: IndexBase) -> None:
         assert self._impl.supports_index_registration, \
-            f"[_DocumentStore - {self._algo_name}] Store {type(self.impl)} does not support index registration"
+            f'[_DocumentStore - {self._algo_name}] Store {type(self.impl)} does not support index registration'
         self._indices[type] = index
 
     def get_index(self, type: Optional[str] = None) -> Optional[IndexBase]:
@@ -340,7 +340,7 @@ class _DocumentStore(object):
                              global_metadata=data.get('global_meta', {}))
         elif segment_type == SegmentType.IMAGE.value:
             if not data.get('image_keys', []):
-                raise ValueError("ImageDocNode does have any image_keys")
+                raise ValueError('ImageDocNode does have any image_keys')
             node = ImageDocNode(image_path=data.get('image_keys')[0],
                                 uid=data['uid'], group=data['group'], parent=data.get('parent', ''),
                                 metadata=data.get('meta', {}),
@@ -356,4 +356,4 @@ class _DocumentStore(object):
         return node.with_sim_score(score) if score else node
 
     def _gen_collection_name(self, group: str) -> str:
-        return f"col_{self._algo_name}_{group}".lower()
+        return f'col_{self._algo_name}_{group}'.lower()
