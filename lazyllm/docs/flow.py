@@ -778,6 +778,11 @@ add_example('Warp', """\
 >>> warp = lazyllm.warp(lazyllm.pipeline(lambda x: x * 2, lambda x: f'get {x}'))
 >>> warp(1, 2, 3, 4)
 ('get 2', 'get 4', 'get 6', 'get 8')
+
+>>> from lazyllm import package
+>>> warp1 = lazyllm.warp(lambda x, y: x * 2 + y)
+>>> print(warp1([package(1,2), package(10, 20)]))
+(4, 40)
 """)
 
 add_chinese_doc('Graph', """\
