@@ -12,6 +12,14 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.LazyLLMDeployBase
+    options:
+      heading_level: 3
+
+::: lazyllm.components.deploy.LazyLLMDeployBase.extract_result
+    options:
+      heading_level: 3
+      
 ::: lazyllm.components.finetune.FlagembeddingFinetune
     options:
       heading_level: 3
@@ -63,6 +71,12 @@
 ::: lazyllm.components.deploy.Mindie
     options:
       heading_level: 3
+
+      
+::: lazyllm.components.deploy.OCRDeploy
+    options:
+      heading_level: 3
+---
 
 ::: lazyllm.components.deploy.relay.base.RelayServer
     options:

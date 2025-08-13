@@ -317,7 +317,10 @@ lazyllm.tools.rag.transform.NodeTransform
 ::: lazyllm.tools.rag.dataReader.FileReader
     members:
     exclude-members:
-    
+
+::: lazyllm.tools.rag.web.DocWebModule
+    members:
+    exclude-members:    
     
 ::: lazyllm.tools.WebModule
     members:

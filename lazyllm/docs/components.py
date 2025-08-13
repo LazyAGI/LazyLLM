@@ -232,7 +232,38 @@ add_example('finetune.CollieFinetune', '''\
 >>> from lazyllm import finetune
 >>> trainer = finetune.collie('path/to/base/model', 'path/to/target')
 ''')
+add_chinese_doc('finetune.AlpacaloraFinetune.cmd', """\
+生成用于执行Alpaca-LoRA微调和模型合并的shell命令序列。
 
+Args:
+    trainset (str): 训练数据集路径，支持相对data_path配置的路径或绝对路径
+    valset (str, optional): 验证数据集路径，未指定时将从训练集中自动划分
+
+Returns:
+    str or list: 当不需要合并模型时返回单个命令字符串，需要合并时返回包含微调命令、合并命令和文件拷贝命令的列表
+
+""")
+
+add_english_doc('finetune.AlpacaloraFinetune.cmd', """\
+Generate shell command sequence for Alpaca-LoRA fine-tuning and model merging.
+
+Args:
+    trainset (str): Training dataset path, supports both relative path (to configured data_path) and absolute path
+    valset (str, optional): Validation dataset path, will auto-split from trainset if not specified
+
+Returns:
+    str or list: Returns a single command string when no merging needed, otherwise returns a list containing:
+                 [fine-tune command, merge command, file copy command]
+
+
+""")
+
+add_example('finetune.AlpacaloraFinetune.cmd', """\
+>>> from lazyllm import finetune
+>>> trainer = finetune.alpacalora('path/to/base/model', 'path/to/target')
+>>> cmd = trainer.cmd("my_dataset.json")
+
+""")
 # Finetune-LlamafactoryFinetune
 add_chinese_doc('finetune.LlamafactoryFinetune', '''\
 此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) 框架提供的训练能力，用于对大语言模型(或视觉语言模型)进行训练。
@@ -345,6 +376,45 @@ add_example('finetune.LlamafactoryFinetune', '''\
 >>> trainer = finetune.llamafactory('internlm2-chat-7b', 'path/to/target')
 <lazyllm.llm.finetune type=LlamafactoryFinetune>
 ''')
+add_chinese_doc('finetune.LlamafactoryFinetune.cmd', """\
+生成LLaMA-Factory微调命令序列，包括训练和模型合并命令。
+
+Args:
+    trainset (str): 训练数据集路径(支持相对lazyllm.config['data_path']的路径)
+    valset (str, optional): 验证数据集路径(当前实现中未直接使用)
+
+返回:
+    str: 完整的shell命令字符串，包含:
+         - 训练命令(自动配置参数)
+         - 日志重定向(保存到目标路径)
+         - 可选的模型合并命令(当配置LoRA时)
+
+注意事项:
+    - 自动生成带时间戳的训练日志文件
+    - 临时文件会在使用后自动清理
+    - 支持多种数据格式(alpaca/sharegpt等)
+    - 多模态数据(图像/视频/音频)会自动检测处理
+""")
+
+add_english_doc('finetune.LlamafactoryFinetune.cmd', """\
+Generate LLaMA-Factory fine-tuning command sequence, including training and model merge commands.
+
+Args:
+    trainset (str): Training dataset path (supports relative path to lazyllm.config['data_path'])
+    valset (str, optional): Validation dataset path (not directly used in current implementation)
+
+Returns:
+    str: Complete shell command string containing:
+         - Training command (with auto-configured parameters)
+         - Log redirection (saved to target path)
+         - Optional model merge command (when LoRA is configured)
+
+Notes:
+    - Automatically generates timestamped training log files
+    - Temporary files are automatically cleaned up after use
+    - Supports multiple data formats (alpaca/sharegpt etc.)
+    - Multimodal data (images/videos/audios) is automatically detected and handled
+""")
 
 # Finetune-FlagembeddingFinetune
 add_chinese_doc('finetune.FlagembeddingFinetune', '''\
@@ -617,6 +687,65 @@ Features of this method:
 ''')
 
 # ============= Deploy
+
+add_chinese_doc('LazyLLMDeployBase', '''\
+此类是 ``ComponentBase`` 的一个子类，提供了LazyLLM部署的基础功能。它支持多种媒体类型的编码转换，并提供了结果提取和流式处理的配置选项。
+
+Args:
+    launcher (LauncherBase): 用于部署的启动器实例，默认为远程启动器(``launchers.remote()``)。
+
+注意事项: 
+    - 继承此类时需要实现具体的部署逻辑
+    - 可以通过重写extract_result方法来自定义结果提取逻辑
+''')
+
+add_english_doc('LazyLLMDeployBase', '''\
+This class is a subclass of ``ComponentBase`` that provides basic functionality for LazyLLM deployment. It supports encoding conversion for various media types and provides configuration options for result extraction and streaming processing.
+
+Args:
+    launcher (LauncherBase): Launcher instance for deployment, defaults to remote launcher (``launchers.remote()``).
+
+Notes: 
+    - Need to implement specific deployment logic when inheriting this class
+    - Can customize result extraction logic by overriding the extract_result method
+''')
+
+add_example('LazyLLMDeployBase', '''\
+>>> import lazyllm
+>>> from lazyllm.components.deploy.base import LazyLLMDeployBase
+>>> class MyDeployer(LazyLLMDeployBase):
+...     def __call__(self, inputs):
+...         return processed_result
+        def extract_result(output, inputs):
+...         return output.json()['result']
+>>> deployer = MyDeployer()
+>>> result = deployer.extract_result(raw_output, input_data)
+''')
+
+add_chinese_doc('LazyLLMDeployBase.extract_result', """\
+从模型输出中提取最终结果，默认实现直接返回原始输出，子类可重写此方法实现自定义结果提取逻辑。
+
+Args:
+    output: 模型原始输出
+    inputs: 原始输入数据，可用于结果后处理
+
+Returns:
+    处理后的最终结果
+
+""")
+
+add_english_doc('LazyLLMDeployBase.extract_result', """\
+Extract final result from model output. The default implementation returns raw output directly, subclasses can override this method to implement custom result extraction logic.
+
+Args:
+    output: Raw model output
+    inputs: Original input data, can be used for post-processing
+
+Returns:
+    Processed final result
+
+""")
+
 
 # Deploy-AbstractEmbedding
 add_chinese_doc('deploy.embed.AbstractEmbedding', '''\
@@ -1153,8 +1282,181 @@ Note:
 
 
 add_example('deploy.Mindie', '''\
+>>> import lazyllm
+>>> from lazyllm.components.deploy import Mindie            
+>>> deployer = Mindie(
+...     port=30000,
+...     launcher=lazyllm.launchers.remote(),
+...     max_seq_len=32000,
+...     log_path="/path/to/logs"
+... )
+>>> cmd = deployer.cmd(
+...     finetuned_model="/path/to/finetuned_model",
+...     base_model="/path/to/base_model")
+>>> print("Service URL:", cmd.geturl())
+
+''')
+add_english_doc('deploy.Mindie.load_config', '''\
+Loads and parses the MindIE configuration file.
+
+Args:
+    config_path (str): Path to the JSON configuration file
+
+Returns:
+    dict: Parsed configuration dictionary
+
+Notes:
+    - Handles both default and custom configuration files
+    - Uses JSON format for configuration
+    - Creates backup of original config before modification
 ''')
 
+add_chinese_doc('deploy.Mindie.load_config', '''\
+加载并解析MindIE配置文件。
+
+Args:
+    config_path (str): JSON配置文件的路径
+
+Returns:
+    dict: 解析后的配置字典
+
+注意事项:
+    - 处理默认和自定义配置文件
+    - 使用JSON格式配置
+    - 修改前会创建原始配置的备份
+''')
+
+add_english_doc('deploy.Mindie.save_config', '''\
+Saves the current configuration to file.
+
+Notes:
+    - Automatically creates backup of existing config
+    - Writes to the standard MindIE config location
+    - Uses JSON format with proper indentation
+    - Called automatically during deployment
+''')
+
+add_chinese_doc('deploy.Mindie.save_config', '''\
+保存当前配置到文件。
+
+注意事项:
+    - 自动创建现有配置的备份
+    - 写入到标准MindIE配置位置
+    - 使用带缩进的JSON格式
+    - 部署时自动调用
+''')
+
+add_english_doc('deploy.Mindie.update_config', '''\
+Updates the configuration dictionary with current settings.
+
+Notes:
+    - Handles multiple configuration sections:
+        - Model deployment parameters
+        - Server settings
+        - Scheduling parameters
+''')
+
+add_chinese_doc('deploy.Mindie.update_config', '''\
+使用当前设置更新配置字典。
+
+注意事项:
+    - 处理多个配置部分:
+        - 模型部署参数
+        - 服务器设置
+        - 调度参数
+''')
+
+add_english_doc('Mindie.cmd', '''\
+Generates the command to start the MindIE service.
+
+Args:
+    finetuned_model (str): Path to the fine-tuned model
+    base_model (str): Path to the base model (fallback if finetuned_model is invalid)
+    master_ip (str): Master node IP address (currently unused)
+
+Returns:
+    LazyLLMCMD: Command object for starting the service
+
+Notes:
+    - Automatically handles model path validation
+    - Updates configuration before service start
+    - Supports random port allocation when configured
+''')
+
+add_chinese_doc('Mindie.cmd', '''\
+生成启动MindIE服务的命令。
+
+Args:
+    finetuned_model (str): 微调模型路径
+    base_model (str): 基础模型路径(当微调模型无效时作为后备)
+    master_ip (str): 主节点IP地址(当前未使用)
+
+返回:
+    LazyLLMCMD: 启动服务的命令对象
+
+注意事项:
+    - 自动处理模型路径验证
+    - 启动服务前更新配置
+    - 支持配置随机端口分配
+''')
+
+add_english_doc('Mindie.geturl', '''\
+Gets the service URL after deployment.
+
+Args:
+    job: Job object (optional, defaults to self.job)
+
+Returns:
+    str: The generate endpoint URL
+
+Notes:
+    - Returns different formats based on display mode
+    - Includes port number from configuration
+''')
+
+add_chinese_doc('Mindie.geturl', '''\
+获取部署后的服务URL。
+
+Args:
+    job: 任务对象(可选，默认为self.job)
+
+返回:
+    str: generate接口的URL
+
+注意事项:
+    - 根据显示模式返回不同格式
+    - 包含配置中的端口号
+''')
+
+add_english_doc('Mindie.extract_result', '''\
+Extracts the generated text from the API response.
+
+Args:
+    x: Raw API response
+    inputs: Original inputs (unused)
+
+Returns:
+    str: The generated text
+
+Notes:
+    - Parses JSON response
+    - Returns first text entry from response
+''')
+
+add_chinese_doc('Mindie.extract_result', '''\
+从API响应中提取生成的文本。
+
+Args:
+    x: 原始API响应
+    inputs: 原始输入(未使用)
+
+返回:
+    str: 生成的文本
+
+注意事项:
+    - 解析JSON响应
+    - 返回响应中的第一个文本条目
+''')
 # Deploy-LMDeploy
 add_chinese_doc('deploy.LMDeploy', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [LMDeploy](https://github.com/InternLM/lmdeploy) 框架提供的推理能力，用于对大语言模型进行推理。
