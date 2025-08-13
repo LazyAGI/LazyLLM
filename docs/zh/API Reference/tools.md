@@ -10,14 +10,6 @@
     members:
     exclude-members:
     
-::: lazyllm.tools.rag.store.ChromadbStore
-    members:
-    exclude-members:
-
-::: lazyllm.tools.rag.store.MilvusStore
-    members:
-    exclude-members:
-    
 ::: lazyllm.tools.rag.readers.ReaderBase
     members:
     exclude-members:
@@ -26,7 +18,49 @@
     members:
 	exclude-members:
 
-::: lazyllm.tools.rag.component.bm25
+::: lazyllm.tools.rag.readers.readerBase.LazyLLMReaderBase
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.readers.PandasExcelReader
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.readers.PDFReader
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.readers.PPTXReader
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.readers.VideoAudioReader
+    members:
+    exclude-members:
+
+::: lazyllm.tools.SqlManager
+    members: 
+        - get_session
+        - check_connection
+        - set_desc
+        - get_all_tables
+        - get_table_orm_class
+        - execute_commit
+        - execute_query
+        - create_table
+        - drop_table
+        - insert_values
+    exclude-members:
+
+::: lazyllm.tools.Reranker
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.component.bm25.BM25
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.component.bm25.BM25
     members:
     exclude-members:
 
@@ -77,8 +111,12 @@
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_to_db.DocInfoSchemaAnalyser
-    members:
-    exclude-members:
+    members: analyse_info_schema
+	exclude-members:
+
+::: lazyllm.tools.rag.doc_to_db.DocInfoExtractor
+    members: extract_doc_info
+	exclude-members:
 
 ::: lazyllm.tools.rag.doc_to_db.DocInfoExtractor
     members:
@@ -124,7 +162,14 @@
 
 ::: lazyllm.tools.rag.readers.MboxReader
     members:
-    exclude-members:
+	exclude-members:
+
+::: lazyllm.tools.SqlCall
+    members: 
+        - sql_query_promt_hook
+        - sql_explain_prompt_hook
+        - extract_sql_from_response
+	exclude-members:
 
 ::: lazyllm.tools.rag.doc_to_db.DocInfoSchemaItem
     members:
@@ -148,54 +193,20 @@
         - analyze_info_schema_by_llm
 	exclude-members:
 
-::: lazyllm.tools.rag.doc_to_db.extract_db_schema_from_files
-
-::: lazyllm.tools.rag.readers.DocxReader
+::: lazyllm.tools.rag.default_index.DefaultIndex
     members:
-	exclude-members:
-
-::: lazyllm.tools.rag.readers.EpubReader
-    members:
-	exclude-members:
-
-::: lazyllm.tools.rag.readers.HWPReader
-    members:
-	exclude-members:
-
-::: lazyllm.tools.rag.readers.ImageReader
-    members:
-	exclude-members:
-
-::: lazyllm.tools.rag.readers.IPYNBReader
-    members:
-	exclude-members:
-
-::: lazyllm.tools.rag.readers.MagicPDFReader
-    members:
-	exclude-members:
-
-::: lazyllm.tools.rag.readers.MarkdownReader
-    members:
-        - remove_images
-        - remove_hyperlinks
-	exclude-members:
-
-::: lazyllm.tools.rag.readers.MboxReader
-    members:
-	exclude-members:
+        - update
+        - remove
+        - query
+    exclude-members: 
 
 ::: lazyllm.tools.Reranker
-    members: register_reranker
     members: register_reranker
     exclude-members: forward
 
 ::: lazyllm.tools.Retriever
     members:
     exclude-members: forward
-
-::: lazyllm.tools.rag.retriever.TempDocRetriever
-    members:
-    exclude-members: 
 
 ::: lazyllm.tools.rag.retriever.TempDocRetriever
     members:
@@ -264,6 +275,11 @@ lazyllm.tools.rag.transform.NodeTransform
     members:
     exclude-members:
 
+ 
+::: lazyllm.tools.rag.transform.FuncNodeTransform
+    members: transform
+    exclude-members:
+
 lazyllm.tools.rag.transform.NodeTransform
     members:
     exclude-members:
@@ -302,7 +318,7 @@ lazyllm.tools.rag.transform.NodeTransform
     exclude-members: forward
 
 ::: lazyllm.tools.QustionRewrite
-    members: 
+    members: choose_prompt
     exclude-members: forward
 
 ::: lazyllm.tools.agent.toolsManager.ToolManager
@@ -410,55 +426,7 @@ lazyllm.tools.rag.transform.NodeTransform
     exclude-members:
 
 ::: lazyllm.tools.DBManager
-    members: 
-    exclude-members:
-
-::: lazyllm.tools.MongoDBManager
-    members: 
-    exclude-members:
-::: lazyllm.tools.rag.utils.DocListManager
-    members: 
-    exclude-members: 
-::: lazyllm.tools.rag.global_metadata.GlobalMetadataDesc
-    members: 
-    exclude-members: 
-::: lazyllm.tools.rag.index_base.IndexBase
-    members: 
-
-::: lazyllm.tools.BaseEvaluator
-    members: 
-    exclude-members:
-
-::: lazyllm.tools.ResponseRelevancy
-    members: 
-    exclude-members:    
-
-::: lazyllm.tools.Faithfulness
-    members: 
-    exclude-members: 
-
-::: lazyllm.tools.LLMContextRecall
-    members: 
-    exclude-members: 
-
-::: lazyllm.tools.NonLLMContextRecall
-    members: 
-    exclude-members:
-
-::: lazyllm.tools.ContextRelevance
-    members: 
-    exclude-members:
-
-::: lazyllm.tools.HttpRequest
-    members: 
-    exclude-members:
-
-::: lazyllm.tools.JobDescription
-    members: 
-    exclude-members:
-
-::: lazyllm.tools.DBManager
-    members: 
+    members: execute_query
     exclude-members:
 
 ::: lazyllm.tools.MongoDBManager
@@ -467,4 +435,16 @@ lazyllm.tools.rag.transform.NodeTransform
 
 ::: lazyllm.tools.HttpTool
     members: 
+    exclude-members:
+
+::: lazyllm.tools.tools.tencent_search.TencentSearch
+    members: 
+    exclude-members:
+
+::: lazyllm.tools.rag.web.WebUi
+    members: 
+    exclude-members:
+
+::: lazyllm.tools.http_request.http_executor_response.HttpExecutorResponse
+    members: extract_file, get_content_type
     exclude-members:
