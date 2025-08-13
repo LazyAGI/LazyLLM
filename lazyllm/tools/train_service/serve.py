@@ -303,27 +303,18 @@ class TrainServer(ServerBase):
                         yield f"data: {res}\n\n"
             yield "data: [DONE]"
 
-        return StreamingResponse(
-            generate_log_stream(),
-            media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "Connection": "keep-alive",
-                "Access-Control-Allow-Origin": "*",
-                "Access-Control-Allow-Headers": "*",
-            }
-        )
+        return StreamingResponse(generate_log_stream(), media_type="text/event-stream")
 
     @app.post('/v1/finetuneTasks/{job_id}:pause')
     async def pause_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN)):
         raise HTTPException(status_code=404, detail='not implemented')
 
     @app.post('/v1/finetuneTasks/{job_id}:resume')
-    def resume_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN)):
+    async def resume_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN)):
         raise HTTPException(status_code=404, detail='not implemented')
 
     @app.post('/v1/finetuneTasks/{job_id}/model:export')
-    def export_model(self, job_id: str, model: ModelExport, token: str = Header(DEFAULT_TOKEN)):
+    async def export_model(self, job_id: str, model: ModelExport, token: str = Header(DEFAULT_TOKEN)):
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
 
@@ -341,11 +332,11 @@ class TrainServer(ServerBase):
         return
 
     @app.get('/v1/finetuneTasks/{job_id}/runningMetrics')
-    def get_running_metrics(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):
+    async def get_running_metrics(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):
         raise HTTPException(status_code=404, detail='not implemented')
 
     @app.get('/v1/models:all')
-    def get_support_model(self, token: str = Header(DEFAULT_TOKEN)):
+    async def get_support_model(self, token: str = Header(DEFAULT_TOKEN)):
         if os.path.exists(lazyllm.config['model_path']):
             model_list = os.listdir(lazyllm.config['model_path'])
             return model_list

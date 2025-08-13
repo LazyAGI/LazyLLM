@@ -135,7 +135,7 @@ class InferServer(ServerBase):
             self._update_user_job_info(token)
         job_id = job.service_name
         if ":" in job.model_name:
-            base_model, infer_model = job.model_name.split(":")
+            _, infer_model = job.model_name.split(":")
         else:
             infer_model = job.model_name
         create_time = datetime.now().strftime(self._time_format)
