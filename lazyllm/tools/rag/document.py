@@ -13,7 +13,7 @@ from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .index_base import IndexBase
-from .utils import DocListManager
+from .utils import DocListManager, ensure_call_endpoint
 from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
 import copy
@@ -334,7 +334,7 @@ class UrlDocument(ModuleBase):
     def __init__(self, url: str, name: str):
         super().__init__()
         self._missing_keys = set(dir(Document)) - set(dir(UrlDocument))
-        self._manager = lazyllm.UrlModule(url=url)
+        self._manager = lazyllm.UrlModule(url=ensure_call_endpoint(url))
         self._curr_group = name
 
     def _forward(self, func_name: str, *args, **kwargs):
