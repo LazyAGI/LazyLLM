@@ -24,9 +24,9 @@ class ModelManager():
         self.cache_dir = cache_dir
         self.model_paths = model_path.split(":") if len(model_path) > 0 else []
         if self.model_source == 'huggingface':
-            self.hub_downloader = HuggingfaceDownloader(token=self.token)
+            self.hub_downloader = _HuggingfaceDownloader(token=self.token)
         else:
-            self.hub_downloader = ModelscopeDownloader(token=self.token)
+            self.hub_downloader = _ModelscopeDownloader(token=self.token)
             if self.model_source != 'modelscope':
                 lazyllm.LOG.error("Only support Huggingface and Modelscope currently. "
                                   f"Unsupported model source: {self.model_source}. Forcing use of Modelscope.")
@@ -49,7 +49,7 @@ class ModelManager():
 
     @staticmethod
     @functools.lru_cache
-    def get_model_name(model) -> str:
+    def _get_model_name(model) -> str:
         search_string = os.path.basename(model)
         __class__._try_add_mapping(search_string)
         for model_name, sources in model_name_mapping.items():
@@ -62,7 +62,7 @@ class ModelManager():
     @staticmethod
     @functools.lru_cache
     def get_model_prompt_keys(model) -> dict:
-        model_name = __class__.get_model_name(model)
+        model_name = __class__._get_model_name(model)
         __class__._try_add_mapping(model_name)
         if model_name and "prompt_keys" in model_name_mapping[model_name.lower()]:
             return model_name_mapping[model_name.lower()]["prompt_keys"]
@@ -132,11 +132,11 @@ class ModelManager():
             model_save_dir = self._do_download(model_name_for_download, call_back)
             return model_save_dir
 
-    def validate_token(self):
+    def _validate_token(self):
         return self.hub_downloader.verify_hub_token()
 
-    def validate_model_id(self, model_id):
-        return self.hub_downloader.verify_model_id(model_id)
+    def _validate_model_id(self, model_id):
+        return self.hub_downloader._verify_model_id(model_id)
 
     def _model_exists_at_path(self, model_name):
         if len(self.model_paths) == 0:
@@ -184,7 +184,7 @@ class ModelManager():
                 lazyllm.LOG.warning(f"{full_model_dir} removed due to exceptions.")
         return False
 
-class HubDownloader(ABC):
+class _HubDownloader(ABC):
 
     def __init__(self, token=None):
         self._token = token if self._verify_hub_token(token) else None
@@ -199,7 +199,7 @@ class HubDownloader(ABC):
         pass
 
     @abstractmethod
-    def verify_model_id(self, model_id):
+    def _verify_model_id(self, model_id):
         pass
 
     @abstractmethod
@@ -253,7 +253,7 @@ class HubDownloader(ABC):
     def verify_hub_token(self):
         return True if self._token else False
 
-class HuggingfaceDownloader(HubDownloader):
+class _HuggingfaceDownloader(_HubDownloader):
 
     def _build_hub_api(self, token):
         from huggingface_hub import HfApi
@@ -269,7 +269,7 @@ class HuggingfaceDownloader(HubDownloader):
             if token: lazyllm.LOG.warning(f'Huggingface token {token} verified failed')
             return False
 
-    def verify_model_id(self, model_id):
+    def _verify_model_id(self, model_id):
         try:
             self._api.model_info(model_id)
             return True
@@ -280,7 +280,7 @@ class HuggingfaceDownloader(HubDownloader):
     def _do_download(self, model_id, model_dir):
         from huggingface_hub import snapshot_download
         # refer to https://huggingface.co/docs/huggingface_hub/v0.23.1/en/package_reference/file_download
-        if not self.verify_model_id(model_id):
+        if not self._verify_model_id(model_id):
             lazyllm.LOG.warning(f"Invalid model id:{model_id}")
             return False
         downloaded_path = snapshot_download(repo_id=model_id, local_dir=model_dir, token=self._token)
@@ -300,7 +300,7 @@ class HuggingfaceDownloader(HubDownloader):
                 })
         return hub_model_info
 
-class ModelscopeDownloader(HubDownloader):
+class _ModelscopeDownloader(_HubDownloader):
 
     def _build_hub_api(self, token):
         from modelscope.hub.api import HubApi
@@ -319,7 +319,7 @@ class ModelscopeDownloader(HubDownloader):
             if token: lazyllm.LOG.warning(f'Modelscope token {token} verified failed')
             return False
 
-    def verify_model_id(self, model_id):
+    def _verify_model_id(self, model_id):
         try:
             self._api.get_model(model_id)
             return True
@@ -330,7 +330,7 @@ class ModelscopeDownloader(HubDownloader):
     def _do_download(self, model_id, model_dir):
         from modelscope.hub.snapshot_download import snapshot_download
         # refer to https://www.modelscope.cn/docs/models/download
-        if not self.verify_model_id(model_id):
+        if not self._verify_model_id(model_id):
             lazyllm.LOG.warning(f"Invalid model id:{model_id}")
             return False
         downloaded_path = snapshot_download(model_id=model_id, local_dir=model_dir)

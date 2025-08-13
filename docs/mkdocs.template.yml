@@ -27,11 +27,14 @@ nav:
   - Contribution: Advanced Topics/contribution.md
   - Changelog: Advanced Topics/changelog.md
 - Api Reference:
+  - CLI: API Reference/cli.md
+  - Common: API Reference/common.md
   - Components: API Reference/components.md
-  - Configs: API Reference/configs.md
   - Flow: API Reference/flow.md
   - Module: API Reference/module.md
   - Tools: API Reference/tools.md
+  - Configs: API Reference/configs.md
+  - Launcher: API Reference/launcher.md
 - Tutorials:
   - Overview: Tutorial/index.md
   - Lesson 1: Tutorial/1.md

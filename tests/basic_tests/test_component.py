@@ -4,7 +4,7 @@ import lazyllm
 class TestPrompter(object):
     def test_prompter(self):
         p = lazyllm.Prompter(prompt='hello world2 <{input}>')
-        assert not p.is_empty(), "Prompter should not be empty"
+        assert not p._is_empty(), "Prompter should not be empty"
 
     def test_generate_prompt(self):
         p = lazyllm.Prompter(prompt='hello world2 <{input}>')

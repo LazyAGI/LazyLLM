@@ -24,6 +24,10 @@
       - update
       - evalset
       - eval
+      - wait
+      - stop
+      - prompt
+      - forward
 
 ::: lazyllm.module.UrlModule
     options:
@@ -37,6 +41,10 @@
       - restart
       - evalset
 
+::: lazyllm.module.AutoModel
+    options:
+      members:
+
 ::: lazyllm.module.TrialModule
     members: start
     exclude-members:
@@ -45,7 +53,15 @@
     members:
     exclude-members:
 
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoModule
+    members:
+    exclude-members:
+
 ::: lazyllm.module.OnlineEmbeddingModule
+    members:
+    exclude-members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIEmbedding
     members:
     exclude-members:
 
@@ -58,3 +74,8 @@
 ::: lazyllm.module.OnlineEmbeddingModuleBase
     members:
     exclude-members: forward
+
+::: lazyllm.module.llms.onlinemodule.fileHandler.FileHandlerBase
+    members: get_finetune_data
+    exclude-members: 
+    

@@ -14,7 +14,9 @@ add_chinese_doc('FlowBase', """\
 Args:
     items (iterable): 要包含在流中的项目的可迭代对象。这些可以是 ``FlowBase`` 的实例或其他对象。
     item_names (list of str, optional): 对应于项目的名称列表。这允许通过名称访问项目。如果未提供，则只能通过索引访问项目。
+    auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
 
+    auto_capture: 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 False。
 """)
 
 add_english_doc('FlowBase', """\
@@ -25,7 +27,27 @@ This class provides a way to organize items, which can be instances of ``FlowBas
 Args:
     items (iterable): An iterable of items to be included in the flow. These can be instances of ``FlowBase`` or other objects.
     item_names (list of str, optional): A list of names corresponding to the items. This allows items to be accessed by name. If not provided, items can only be accessed by index.
+    auto_capture: If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
+""")
 
+add_chinese_doc('FlowBase.id', """\
+获取模块或流程的 ID。如果传入字符串则原样返回；如果传入已绑定的模块则返回其对应的 item_id；不传参时返回整个 flow 的唯一 id。
+
+Args:
+    module (Optional[Union[str, Any]]): 目标模块或字符串标识。
+
+**Returns:**\n
+- str: 对应的 ID 字符串。
+""")
+
+add_english_doc('FlowBase.id', """\
+Get the identifier for a module or the flow itself. If a string is provided, it is returned as-is. If a bound module is provided, returns its associated item_id. If no argument is given, returns the unique id of the entire flow.
+
+Args:
+    module (Optional[Union[str, Any]]): Target module or string identifier.
+
+**Returns:**\n
+- str: Corresponding identifier string.
 """)
 
 add_chinese_doc('FlowBase.is_root', """\
@@ -120,6 +142,44 @@ add_example('FlowBase.for_each', """\
 <Function type=test3>
 """)
 
+add_chinese_doc('LazyLLMFlowsBase', """\
+一个支持流程封装、钩子注册与调用逻辑的基础类。
+
+`LazyLLMFlowsBase` 是 LazyLLM 中所有流程（Flow）的基类，用于组织一系列可调用模块的执行流程，并支持钩子（hook）机制、同步控制、后处理逻辑等功能。它的设计旨在统一封装执行调用、异常处理、后处理、流程表示等功能，适用于各种同步数据处理场景。
+
+该类通常不直接使用，而是被诸如 `Pipeline`、`Parallel` 等具体流程类继承和使用。
+
+```text
+输入 --> [Flow模块1 -> Flow模块2 -> ... -> Flow模块N] --> 输出
+                   ↑             ↓
+               pre_hook       post_hook
+```
+                
+Args:
+    args: 可变长度参数列表。
+    post_action: 在主流程结束后对输出进行进一步处理的可调用对象。默认为 ``None``。
+    auto_capture: 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 False。
+
+""")
+
+add_english_doc('LazyLLMFlowsBase', """\
+A base class for flow structures with hook support and unified execution logic.
+
+`LazyLLMFlowsBase` is the base class for all LazyLLM flow types. It organizes a sequence of callable modules into a flow and provides support for pre/post hooks, synchronization control, post-processing, and error-safe invocation. It is not intended for direct use but instead serves as a foundational class for concrete flow types like `Pipeline`, `Parallel`, etc.
+
+```text
+input --> [Flow module1 -> Flow module2 -> ... -> Flow moduleN] --> output
+                   ↑             ↓
+               pre_hook       post_hook
+```
+                
+Args:
+    args: A sequence of callables representing the flow modules.
+    post_action: An optional callable applied to the output after main flow execution. Defaults to ``None``。
+    auto_capture: If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
+
+""")
+
 add_chinese_doc('Parallel', """\
 用于管理LazyLLMFlows中的并行流的类。
 
@@ -141,9 +201,11 @@ add_chinese_doc('Parallel', """\
 ```
 
 Args:
+    args: 基类的可变长度参数列表。
     _scatter (bool, optional): 如果为 ``True``，输入将在项目之间分割。如果为 ``False``，相同的输入将传递给所有项目。默认为 ``False``。
     _concurrent (bool, optional): 如果为 ``True``，操作将使用线程并发执行。如果为 ``False``，操作将顺序执行。默认为 ``True``。
-    args: 基类的可变长度参数列表。
+    multiprocessing (bool, optional): 如果为 ``True``，将使用多进程而不是多线程进行并行执行。这可以提供真正的并行性，但会增加进程间通信的开销。默认为 ``False``。
+    auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
     kwargs: 基类的任意关键字参数。
 
 <span style="font-size: 20px;">&ensp;**`asdict property`**</span>
@@ -188,9 +250,11 @@ The ``Parallel.sequential`` method can be visualized as follows:
 ```
 
 Args:
-    _scatter (bool, optional): If ``True``, the input is split across the items. If ``False``, the same input is passed to all items. Defaults to ``False``.
-    _concurrent (bool, optional): If ``True``, operations will be executed concurrently using threading. If ``False``, operations will be executed sequentially. Defaults to ``True``.
     args: Variable length argument list for the base class.
+    _scatter (bool, optional): If ``True``, the input is split across the items. If ``False``, the same input is passed to all items. Defaults to ``False``.
+    _concurrent (Union[bool, int], optional): If ``True``, operations will be executed concurrently using threading. If an integer, specifies the maximum number of concurrent executions. If ``False``, operations will be executed sequentially. Defaults to ``True``.
+    multiprocessing (bool, optional): If ``True``, multiprocessing will be used instead of multithreading for parallel execution. This can provide true parallelism but adds overhead for inter-process communication. Defaults to ``False``.
+    auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
     kwargs: Arbitrary keyword arguments for the base class.
 
 `asdict property`
@@ -240,6 +304,110 @@ add_example(
 ''',
 )
 
+add_chinese_doc('Parallel.sequential', """\
+创建一个顺序执行的Parallel实例。
+
+这个类方法会将 ``_concurrent`` 设置为 ``False``，使得所有操作按顺序执行而不是并行执行。
+
+可以这样可视化 ``Parallel.sequential`` 方法：
+
+```text
+# input -> module21 -> ... -> module2N -> out2 -> 
+```
+
+Args:
+    args: 传递给 Parallel 构造函数的可变长度参数列表。
+    kwargs: 传递给 Parallel 构造函数的关键字参数。
+
+**Returns:**\n
+- Parallel: 一个新的顺序执行的 Parallel 实例。
+""")
+
+add_english_doc('Parallel.sequential', """\
+Creates a Parallel instance that executes sequentially.
+
+This class method sets ``_concurrent`` to ``False``, causing all operations to be executed in sequence rather than in parallel.
+
+The ``Parallel.sequential`` method can be visualized as follows:
+
+```text
+# input -> module21 -> ... -> module2N -> out2 -> 
+```
+
+Args:
+    args: Variable length argument list passed to the Parallel constructor.
+    kwargs: Keyword arguments passed to the Parallel constructor.
+    _scatter (bool, optional): If ``True``, the input is split across the items. If ``False``, the same input is passed to all items. Defaults to ``False``.
+    _concurrent (bool, optional): If ``True``, operations will be executed concurrently using threading. If ``False``, operations will be executed sequentially. Defaults to ``True``.
+    multiprocessing (bool, optional): If ``True``, multiprocessing will be used instead of multithreading for parallel execution. This can provide true parallelism but adds overhead for inter-process communication. Defaults to ``False``.
+    auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
+    args: Variable length argument list for the base class.
+    kwargs: Arbitrary keyword arguments for the base class.
+
+**Returns:**\n
+- Parallel: A new Parallel instance configured for sequential execution.
+""")
+
+add_chinese_doc('Parallel.join', """\
+标记Parallel，使得每次调用时的返回值通过指定字符串连接。
+
+Args:
+    string (str): 用于连接结果的字符串。默认为空字符串。
+
+**Returns:**\n
+- Parallel: 返回当前 Parallel 实例，其结果将被字符串连接。
+
+**示例:**\n
+```python
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).join('\\n')
+>>> ppl(1)
+'2\\n4\\n0.5'
+```
+""")
+
+add_english_doc('Parallel.join', """\
+Marks the Parallel instance to join its results with the specified string on each call.
+
+Args:
+    string (str): The string to use for joining results. Defaults to an empty string.
+
+**Returns:**\n
+- Parallel: Returns the current Parallel instance configured to join results with the specified string.
+
+**Example:**\n
+```python
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).join('\\n')
+>>> ppl(1)
+'2\\n4\\n0.5'
+```
+""")
+
+add_example(
+    'Parallel',
+    '''\
+>>> import lazyllm
+>>> test1 = lambda a: a + 1
+>>> test2 = lambda a: a * 4
+>>> test3 = lambda a: a / 2
+>>> ppl = lazyllm.parallel(test1, test2, test3)
+>>> assert ppl(1) == (2, 4, 0.5), "LAZYLLM_CHECK_FAILED"
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3)
+>>> ppl(1)
+{2, 4, 0.5}
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).asdict
+>>> assert  ppl(2) == {'a': 3, 'b': 8, 'c': 1.0}, "LAZYLLM_CHECK_FAILED"
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).astuple
+>>> ppl(-1)
+(0, -4, -0.5)
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).aslist
+>>> ppl(0)
+[1, 0, 0.0]
+>>> ppl = lazyllm.parallel(a=test1, b=test2, c=test3).join('\\\\n')
+>>> ppl(1)
+'2\\\\n4\\\\n0.5'
+''',
+)
+
 add_chinese_doc('Pipeline', """\
 一个形成处理阶段管道的顺序执行模型。
 
@@ -248,6 +416,7 @@ add_chinese_doc('Pipeline', """\
 Args:
     args (list of callables or single callable): 管道的处理阶段。每个元素可以是一个可调用的函数或 ``LazyLLMFlowsBase.FuncWrap``的实例。如果提供了单个列表或元组，则将其解包为管道的阶段。
     post_action (callable, optional): 在管道的最后一个阶段之后执行的可选操作。默认为None。
+    auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
     kwargs (dict of callables): 管道的命名处理阶段。每个键值对表示一个命名阶段，其中键是名称，值是可调用的阶段。
 
 **Returns:**\n
@@ -263,6 +432,7 @@ The ``Pipeline`` class is a linear sequence of processing stages, where the outp
 Args:
     args (list of callables or single callable): The processing stages of the pipeline. Each element can be a callable function or an instance of ``LazyLLMFlowsBase.FuncWrap``. If a single list or tuple is provided, it is unpacked as the stages of the pipeline.
     post_action (callable, optional): An optional action to perform after the last stage of the pipeline. Defaults to None.
+    auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
     kwargs (dict of callables): Named processing stages of the pipeline. Each key-value pair represents a named stage, where the key is the name and the value is the callable stage.
 
 **Returns:**\n
@@ -281,6 +451,39 @@ add_example('Pipeline', """\
 <Function type=lambda>
 """)
 
+add_chinese_doc('save_pipeline_result', """\
+一个上下文管理器，用于临时设置是否保存流水线中的中间执行结果。
+
+在进入上下文时，会将 `Pipeline.g_save_flow_result` 设置为指定值；退出上下文后会恢复为原来的状态。适用于调试或需要记录中间输出的场景。
+
+Args:
+    flag (bool): 是否启用结果保存功能，默认为 True。
+
+**Returns:**\n
+- ContextManager: 上下文管理器。
+""")
+
+add_english_doc('save_pipeline_result', """\
+A context manager that temporarily sets whether to save intermediate results during pipeline execution.
+
+When entering the context, `Pipeline.g_save_flow_result` is set to the given value. After exiting, it restores the previous value. Useful for debugging or recording intermediate outputs.
+
+Args:
+    flag (bool): Whether to enable result saving. Defaults to True.
+
+**Returns:**\n
+- ContextManager: A context manager.
+""")
+
+add_example('save_pipeline_result', '''\
+>>> import lazyllm
+>>> pipe = lazyllm.pipeline(lambda x: x + 1, lambda x: x * 2)
+>>> with lazyllm.save_pipeline_result(True):
+...     result = pipe(1)
+>>> result
+4
+''')
+
 add_chinese_doc('Loop', '''\
 初始化一个循环流结构，该结构将一系列函数重复应用于输入，直到满足停止条件或达到指定的迭代次数。
 
@@ -291,6 +494,7 @@ Args:
     stop_condition (callable, optional): 一个函数，它接受循环中最后一个项目的输出作为输入并返回一个布尔值。如果返回 ``True``，循环将停止。如果为 ``None``，循环将继续直到达到 ``count``。默认为 ``None``。
     count (int, optional): 运行循环的最大迭代次数。如果为 ``None``，循环将无限期地继续或直到 ``stop_condition`` 返回 ``True``。默认为 ``None``。
     post_action (callable, optional): 循环结束后调用的函数。默认为 ``None``。
+    auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
     judge_on_full_input(bool): 如果设置为 ``True`` ， 则通过 ``stop_condition`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
 
 抛出:
@@ -307,6 +511,7 @@ Args:
     stop_condition (callable, optional): A function that takes the output of the last item in the loop as input and returns a boolean. If it returns ``True``, the loop will stop. If ``None``, the loop will continue until ``count`` is reached. Defaults to ``None``.
     count (int, optional): The maximum number of iterations to run the loop for. If ``None``, the loop will continue indefinitely or until ``stop_condition`` returns ``True``. Defaults to ``None``.
     post_action (callable, optional): A function to be called with the final output after the loop ends. Defaults to ``None``.
+    auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
     judge_on_full_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``stop_condition``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
 
 Raises:
@@ -477,6 +682,7 @@ Diverter类是一种专门的并行处理形式，其中多个输入分别通过
 Args:
     args: 可变长度参数列表，代表并行执行的模块。
     _concurrent (bool, optional): 控制模块是否应并行执行的标志。默认为 ``True``。可用 ``Diverter.sequential`` 代替 ``Diverter`` 来设置此变量。
+    auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
     kwargs: 代表额外模块的任意关键字参数，其中键是模块的名称。
 
 .. property:: 
@@ -502,6 +708,7 @@ This class is useful when you have distinct data processing pipelines that can b
 Args:
     args : Variable length argument list representing the modules to be executed in parallel.
     _concurrent (bool, optional): A flag to control whether the modules should be run concurrently. Defaults to ``True``. You can use ``Diverter.sequential`` instead of ``Diverter`` to set this variable.
+    auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
     kwargs : Arbitrary keyword arguments representing additional modules, where the key is the name of the module.
 
 """)
@@ -530,6 +737,9 @@ Warp类设计用于将同一个处理模块应用于一组输入。它有效地�
 ```
 Args:
     args: 可变长度参数列表，代表要应用于所有输入的单个模块。
+    _scatter (bool): 是否以分片方式拆分输入，默认 False。
+    _concurrent (bool | int): 是否启用并发执行，可设定最大并发数。默认启用并发。
+    auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
     kwargs: 未来扩展的任意关键字参数。
 
 注意:
@@ -550,6 +760,9 @@ The Warp class is designed to apply the same processing module to a set of input
 
 Args:
     args: Variable length argument list representing the single module to be applied to all inputs.
+    _scatter (bool): Whether to scatter inputs into parts before processing. Defaults to False.
+    _concurrent (bool | int): Whether to execute in parallel. Can be a boolean or a max concurrency limit. Defaults to True.
+    auto_capture (bool): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
     kwargs: Arbitrary keyword arguments for future extensions.
 
 Note:
@@ -565,4 +778,317 @@ add_example('Warp', """\
 >>> warp = lazyllm.warp(lazyllm.pipeline(lambda x: x * 2, lambda x: f'get {x}'))
 >>> warp(1, 2, 3, 4)
 ('get 2', 'get 4', 'get 6', 'get 8')
+
+>>> from lazyllm import package
+>>> warp1 = lazyllm.warp(lambda x, y: x * 2 + y)
+>>> print(warp1([package(1,2), package(10, 20)]))
+(4, 40)
+""")
+
+add_chinese_doc('Graph', """\
+一个基于有向无环图（DAG）的复杂流控制结构。
+
+Graph类允许您创建复杂的处理图，其中节点表示处理函数，边表示数据流。它支持拓扑排序来确保正确的执行顺序，并可以处理多输入和多输出的复杂依赖关系。
+
+Graph类特别适用于需要复杂数据流和依赖管理的场景，如机器学习管道、数据处理工作流等。
+
+Args:
+    post_action (callable, optional): 在图执行完成后要调用的函数。默认为 ``None``。
+    auto_capture (bool, optional): 是否自动捕获上下文中的变量。默认为 ``False``。
+    kwargs: 代表命名节点和对应函数的任意关键字参数。
+
+**Returns:**\n
+- 图的最终输出结果。
+""")
+
+add_english_doc('Graph', """\
+A complex flow control structure based on Directed Acyclic Graph (DAG).
+
+The Graph class allows you to create complex processing graphs where nodes represent processing functions and edges represent data flow. It supports topological sorting to ensure correct execution order and can handle complex dependencies with multiple inputs and outputs.
+
+The Graph class is particularly suitable for scenarios requiring complex data flow and dependency management, such as machine learning pipelines, data processing workflows, etc.
+
+Args:
+    post_action (callable, optional): A function to be called after the graph execution is complete. Defaults to ``None``.
+    auto_capture (bool, optional): Whether to automatically capture variables from context. Defaults to ``False``.
+    kwargs: Arbitrary keyword arguments representing named nodes and corresponding functions.
+
+**Returns:**\n
+- The final output result of the graph.
+""")
+
+add_chinese_doc('Graph.Node', """\
+表示图中单个节点的类。
+
+Node类封装了图中节点的所有信息，包括处理函数、名称、输入输出连接等。
+
+Args:
+    func (callable): 节点要执行的函数。
+    name (str): 节点的名称。
+    arg_names (list, optional): 函数参数的名称列表。默认为 ``None``。
+    inputs (dict): 输入连接的字典，键为源节点名，值为格式化函数。
+    outputs (list): 输出连接的节点列表。
+
+**Returns:**\n
+- Node: 新创建的节点对象。
+""")
+
+add_english_doc('Graph.Node', """\
+A class representing a single node in the graph.
+
+The Node class encapsulates all information about a node in the graph, including the processing function, name, input/output connections, etc.
+
+Args:
+    func (callable): The function to be executed by the node.
+    name (str): The name of the node.
+    arg_names (list, optional): List of function parameter names. Defaults to ``None``.
+    inputs (dict): Dictionary of input connections, with source node names as keys and formatter functions as values.
+    outputs (list): List of output connected nodes.
+
+**Returns:**\n
+- Node: The newly created node object.
+""")
+
+add_example('Graph.Node', """\
+>>> import lazyllm
+>>> node = lazyllm.graph.Node(lambda x: x * 2, "multiply_node", ["input"])
+>>> node.name
+'multiply_node'
+>>> node.func(5)
+10
+""")
+
+add_chinese_doc('Graph.set_node_arg_name', """\
+设置节点的参数名称。
+
+此方法用于为图中的节点设置函数参数的名称，这对于多参数函数的正确调用很重要。
+
+Args:
+    arg_names (list): 参数名称的列表，与节点创建时的顺序对应。
+""")
+
+add_english_doc('Graph.set_node_arg_name', """\
+Set the argument names for nodes.
+
+This method is used to set the names of function arguments for nodes in the graph, which is important for correct invocation of multi-parameter functions.
+
+Args:
+    arg_names (list): List of argument names, corresponding to the order when nodes were created.
+""")
+
+add_example('Graph.set_node_arg_name', """\
+>>> import lazyllm
+>>> with lazyllm.graph() as g:
+...     g.add = lambda a, b: a + b
+...     g.multiply = lambda x, y: x * y
+>>> g.set_node_arg_name([['x', 'y'], ['a', 'b']])
+>>> g._nodes['add'].arg_names
+['x', 'y']
+>>> g._nodes['multiply'].arg_names
+['a', 'b']
+""")
+
+add_chinese_doc('Graph.start_node', """\
+获取图的起始节点。
+
+**Returns:**\n
+- Node: 图的起始节点（__start__）对象。
+""")
+
+add_english_doc('Graph.start_node', """\
+Get the start node of the graph.
+
+**Returns:**\n
+- Node: The start node (__start__) object of the graph.
+""")
+
+add_example('Graph.start_node', """\
+>>> import lazyllm
+>>> with lazyllm.graph() as g:
+...     g.process = lambda x: x * 2
+>>> start = g.start_node
+>>> start.name
+'__start__'
+""")
+
+add_chinese_doc('Graph.end_node', """\
+获取图的结束节点。
+
+**Returns:**\n
+- Node: 图的结束节点（__end__）对象。
+""")
+
+add_english_doc('Graph.end_node', """\
+Get the end node of the graph.
+
+**Returns:**\n
+- Node: The end node (__end__) object of the graph.
+""")
+
+add_example('Graph.end_node', """\
+>>> import lazyllm
+>>> with lazyllm.graph() as g:
+...     g.process = lambda x: x * 2
+>>> end = g.end_node
+>>> end.name
+'__end__'
+""")
+
+add_chinese_doc('Graph.add_edge', """\
+在图中添加一条边，定义节点之间的数据流。
+
+此方法用于定义图中节点之间的连接关系，指定数据如何从一个节点流向另一个节点。
+
+Args:
+    from_node (str or Node): 源节点的名称或Node对象。
+    to_node (str or Node): 目标节点的名称或Node对象。
+    formatter (callable, optional): 可选的格式化函数，用于在传递数据时进行转换。默认为 ``None``。
+""")
+
+add_english_doc('Graph.add_edge', """\
+Add an edge to the graph, defining data flow between nodes.
+
+This method is used to define connection relationships between nodes in the graph, specifying how data flows from one node to another.
+
+Args:
+    from_node (str or Node): The name or Node object of the source node.
+    to_node (str or Node): The name or Node object of the target node.
+    formatter (callable, optional): Optional formatting function for data transformation during transfer. Defaults to ``None``.
+""")
+
+add_example('Graph.add_edge', """\
+>>> import lazyllm
+>>> with lazyllm.graph() as g:
+...     g.node1 = lambda x: x * 2
+...     g.node2 = lambda x: x + 1
+...     g.node3 = lambda x, y: x + y
+>>> g.add_edge('__start__', 'node1')
+>>> g.add_edge('node1', 'node2')
+>>> g.add_edge('node3', '__end__')
+>>> g._nodes['node1'].outputs
+[<Flow type=Node name=node2>]
+>>> def double_input(data):
+...     return data * 2
+>>> g.add_edge('node1', 'node3', formatter=double_input)
+>>> g._nodes['node3'].inputs
+{'node1': <function double_input at ...>}
+""")
+
+add_chinese_doc('Graph.add_const_edge', """\
+添加一个常量边，将固定值传递给指定节点。
+
+此方法用于将常量值作为输入传递给图中的节点，无需从其他节点获取数据。
+
+Args:
+    constant: 要传递的常量值。
+    to_node (str or Node): 目标节点的名称或Node对象。
+""")
+
+add_english_doc('Graph.add_const_edge', """\
+Add a constant edge that passes a fixed value to a specified node.
+
+This method is used to pass constant values as input to nodes in the graph without needing to get data from other nodes.
+
+Args:
+    constant: The constant value to pass.
+    to_node (str or Node): The name or Node object of the target node.
+""")
+
+add_example('Graph.add_const_edge', """\
+>>> import lazyllm
+>>> with lazyllm.graph() as g:
+...     g.add = lambda x, y: x + y
+>>> g.add_const_edge(10, 'add')
+>>> g._constants
+[10]
+""")
+
+add_chinese_doc('Graph.topological_sort', """\
+执行拓扑排序，返回正确的节点执行顺序。
+
+此方法使用Kahn算法对有向无环图进行拓扑排序，确保所有依赖关系都得到满足。
+
+**Returns:**\n
+- List[Node]: 按拓扑顺序排列的节点列表。
+
+**抛出:**\n
+- ValueError: 如果图中存在循环依赖。
+""")
+
+add_english_doc('Graph.topological_sort', """\
+Perform topological sorting to return the correct node execution order.
+
+This method uses Kahn's algorithm to perform topological sorting on the directed acyclic graph, ensuring all dependencies are satisfied.
+
+**Returns:**\n
+- List[Node]: List of nodes arranged in topological order.
+
+**Raises:**\n
+- ValueError: If there are circular dependencies in the graph.
+""")
+
+add_example('Graph.topological_sort', """\
+>>> import lazyllm
+>>> with lazyllm.graph() as g:
+...     g.node1 = lambda x: x * 2
+...     g.node2 = lambda x: x + 1
+...     g.node3 = lambda x, y: x + y
+>>> g.add_edge('__start__', 'node1')
+>>> g.add_edge('node1', 'node2')
+>>> g.add_edge('node1', 'node3')
+>>> g.add_edge('node2', 'node3')
+>>> g.add_edge('node3', '__end__')
+>>> sorted_nodes = g.topological_sort()
+>>> [node.name for node in sorted_nodes]
+['__start__', 'node1', 'node2', 'node3', '__end__']
+>>> g.add_edge('node3', 'node1')
+>>> try:
+...     g.topological_sort()
+... except ValueError as e:
+...     print("检测到循环依赖")
+检测到循环依赖
+""")
+
+add_chinese_doc('Graph.compute_node', """\
+计算单个节点的输出结果。
+
+此方法是图的内部方法，用于执行单个节点的计算，包括获取输入数据、应用格式化函数、调用节点函数等。
+
+Args:
+    sid: 会话ID。
+    node (Node): 要计算的节点。
+    intermediate_results (dict): 中间结果存储。
+    futures (dict): 异步任务字典。
+
+**Returns:**\n
+- 节点的计算结果。
+""")
+
+add_english_doc('Graph.compute_node', """\
+Compute the output result of a single node.
+
+This is an internal method of the graph, used to execute the computation of a single node, including getting input data, applying formatter functions, calling node functions, etc.
+
+Args:
+    sid: Session ID.
+    node (Node): The node to compute.
+    intermediate_results (dict): Intermediate result storage.
+    futures (dict): Async task dictionary.
+
+**Returns:**\n
+- The computation result of the node.
+""")
+
+add_example('Graph.compute_node', """\
+>>> import lazyllm
+>>> with lazyllm.graph() as g:
+...     g.add = lambda x, y: x + y
+...     g.multiply = lambda x: x * 2
+>>> g.add_edge('__start__', 'add')
+>>> g.add_const_edge(5, 'add')
+>>> g.add_edge('add', 'multiply')
+>>> g.add_edge('multiply', '__end__')
+>>> result = g(3)  # x=3, y=5 (常量)
+>>> result
+16
 """)

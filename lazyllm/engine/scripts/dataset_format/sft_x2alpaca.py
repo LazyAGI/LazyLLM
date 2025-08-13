@@ -8,7 +8,7 @@ from datasets import load_dataset
 
 import lazyllm
 from lazyllm.module.llms.utils import openai2alpaca
-from lazyllm.components.utils.file_operate import delete_old_files
+from lazyllm.components.utils.file_operate import _delete_old_files
 
 # origin_key: target_key:
 default_mapping = {'instruction': 'instruction', 'input': 'input', 'output': 'output'}
@@ -129,7 +129,7 @@ def _build_target_dir(target_path: str = None) -> str:
         if not os.path.exists(save_dir):
             os.system(f'mkdir -p {save_dir}')
         else:
-            delete_old_files(save_dir)
+            _delete_old_files(save_dir)
     return save_dir
 
 def _save_dataset(data: list, save_dir: str, base_name: str) -> str:

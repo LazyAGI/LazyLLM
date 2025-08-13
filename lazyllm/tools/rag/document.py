@@ -37,7 +37,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                      manager: Union[bool, str] = False, server: Union[bool, int] = False, name: Optional[str] = None,
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
-                     doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None):
+                     doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
+                     display_name: Optional[str] = "", description: Optional[str] = "algorithm description"):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
@@ -52,12 +53,15 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._dataset_path = dataset_path
             self._embed = self._get_embeds(embed)
             self._processor = processor
+            name = name or DocListManager.DEFAULT_GROUP_NAME
+            if not display_name: display_name = name
 
             self._dlm = None if (self._cloud or self._doc_files is not None) else DocListManager(
                 dataset_path, name, enable_path_monitoring=False if manager else True)
-            self._kbs = CallableDict({DocListManager.DEFAULT_GROUP_NAME: DocImpl(
+            self._kbs = CallableDict({name: DocImpl(
                 embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
-                store_conf=store_conf, processor=processor, algo_name=name)})
+                store_conf=store_conf, processor=processor, algo_name=name, display_name=display_name,
+                description=description)})
 
             if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
@@ -122,7 +126,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                  create_ui: bool = False, manager: Union[bool, str, "Document._Manager", DocumentProcessor] = False,
                  server: Union[bool, int] = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
-                 store_conf: Optional[Dict] = None):
+                 store_conf: Optional[Dict] = None, display_name: Optional[str] = "",
+                 description: Optional[str] = "algorithm description"):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
@@ -135,6 +140,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 'Manager and dataset_path are not supported for Document with temp-files')
             assert store_conf is None or store_conf['type'] == 'map', (
                 'Only map store is supported for Document with temp-files')
+
+        name = name or DocListManager.DEFAULT_GROUP_NAME
 
         if isinstance(manager, Document._Manager):
             assert not server, 'Server infomation is already set to by manager'
@@ -158,8 +165,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             else:
                 cloud, processor = False, None
             self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher, store_conf,
-                                              doc_fields, cloud=cloud, doc_files=doc_files, processor=processor)
-            self._curr_group = DocListManager.DEFAULT_GROUP_NAME
+                                              doc_fields, cloud=cloud, doc_files=doc_files, processor=processor,
+                                              display_name=display_name, description=description)
+            self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
 
     def _list_all_files_in_dataset(self) -> List[str]:

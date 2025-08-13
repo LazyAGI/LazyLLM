@@ -54,7 +54,7 @@ IMAGE_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if v.startswith('image/')}
 AUDIO_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if v.startswith('audio/')}
 OCR_MIME_TYPE = {k: v for k, v in MIME_TYPE.items() if k in ['pdf', 'jpg', 'jpeg', 'png']}
 
-def delete_old_files(directory):
+def _delete_old_files(directory):
     now = datetime.datetime.now()
     for root, dirs, files in os.walk(directory):
         for name in files:
@@ -76,13 +76,13 @@ def delete_old_files(directory):
             except Exception as e:
                 LOG.error(f"Error deleting directory {dir_path}: {e}")
 
-def is_base64_with_mime(input_str: str):
+def _is_base64_with_mime(input_str: str):
     pattern = r'^data:([^;]+);base64,(.+)$'
     if isinstance(input_str, str) and re.match(pattern, input_str):
         return True
     return False
 
-def split_base64_with_mime(input_str: str):
+def _split_base64_with_mime(input_str: str):
     """
     Split base64 string with MIME type
 
@@ -98,7 +98,7 @@ def split_base64_with_mime(input_str: str):
     return input_str, None
 
 
-def file_to_base64(file_path: str, mime_types: dict) -> Optional[Tuple[str, Optional[str]]]:
+def _file_to_base64(file_path: str, mime_types: dict) -> Optional[Tuple[str, Optional[str]]]:
     """
     Convert file to base64 string with MIME type
 
@@ -120,18 +120,18 @@ def file_to_base64(file_path: str, mime_types: dict) -> Optional[Tuple[str, Opti
         return None
 
 
-def image_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
-    return file_to_base64(file_path, IMAGE_MIME_TYPE)
+def _image_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
+    return _file_to_base64(file_path, IMAGE_MIME_TYPE)
 
 
-def audio_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
-    return file_to_base64(file_path, AUDIO_MIME_TYPE)
+def _audio_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
+    return _file_to_base64(file_path, AUDIO_MIME_TYPE)
 
 def ocr_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
-    return file_to_base64(file_path, OCR_MIME_TYPE)
+    return _file_to_base64(file_path, OCR_MIME_TYPE)
 
 
-def base64_to_file(base64_str: Union[str, list[str]], target_dir: Optional[str] = None) -> Union[str, list[str]]:
+def _base64_to_file(base64_str: Union[str, list[str]], target_dir: Optional[str] = None) -> Union[str, list[str]]:
     """
     Convert base64 string to file
 
@@ -146,8 +146,8 @@ def base64_to_file(base64_str: Union[str, list[str]], target_dir: Optional[str] 
         ValueError: If base64 format is invalid or MIME type is unsupported
     """
     if isinstance(base64_str, list):
-        return [base64_to_file(item, target_dir) for item in base64_str]
-    base64_data, mime_type = split_base64_with_mime(base64_str)
+        return [_base64_to_file(item, target_dir) for item in base64_str]
+    base64_data, mime_type = _split_base64_with_mime(base64_str)
 
     if mime_type is None:
         raise ValueError("Invalid base64 format")

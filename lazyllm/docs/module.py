@@ -209,6 +209,7 @@ add_chinese_doc('ActionModule', '''\
 
 Args:
     action (Callable|list[Callable]): 被包装的对象，是一个或一组可执行的对象。
+    return_trace (bool): 是否开启 trace 模式，用于记录调用栈，默认为 ``False``。
 ''')
 
 add_english_doc('ActionModule', '''\
@@ -216,6 +217,7 @@ Used to wrap a Module around functions, modules, flows, Module, and other callab
 
 Args:
     action (Callable|list[Callable]): The object to be wrapped, which is one or a set of callable objects.
+    return_trace (bool): Whether to enable trace mode to record the execution stack. Defaults to ``False``.
 
 **Examples:**\n
 ```python
@@ -281,6 +283,42 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 
 ''')
 
+add_chinese_doc('ActionModule.forward', '''\
+执行被包装的 action，对输入参数进行前向计算。等效于调用该模块本身。
+
+Args:
+    args (list of callables or single callable): 传递给被包装 action 的位置参数。
+    kwargs (dict of callables): 传递给被包装 action 的关键字参数。
+
+**Returns:**\n
+- 任意类型：被包装 action 的执行结果。
+''')
+
+add_english_doc('ActionModule.forward', '''\
+Executes the wrapped action with the provided input arguments. Equivalent to directly calling the module.
+
+Args:
+    args (list of callables or single callable): Positional arguments to be passed to the wrapped action.
+    kwargs (dict of callables): Keyword arguments to be passed to the wrapped action.
+
+**Returns:**\n
+- Any: The result of executing the wrapped action.
+''')
+
+add_chinese_doc('ActionModule.submodules', '''\
+返回被包装 action 中所有属于 ModuleBase 类型的子模块。该属性会自动展开 Pipeline 中嵌套的模块。
+
+**Returns:**\n
+- list[ModuleBase]: 子模块列表
+''')
+
+add_english_doc('ActionModule.submodules', '''\
+Returns all submodules of type ModuleBase contained in the wrapped action. This automatically traverses any nested modules inside a Pipeline.
+
+**Returns:**\n
+- list[ModuleBase]: List of submodules
+''')
+
 # add_example('ActionModule', '''\
 # >>> import lazyllm
 # >>> def myfunc(input): return input + 1
@@ -315,11 +353,11 @@ add_chinese_doc('TrainableModule', '''\
 
 
 Args:
-    base_model (str): 基础模型的名称或路径。如果本地没有该模型，将会自动从模型源下载。
-    target_path (str): 保存微调任务的路径。如果仅进行推理，可以留空。
-    source (str): 模型来源，可选值为huggingface或...。如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
-    stream (bool): 是否输出流式结果。如果使用的推理引擎不支持流式输出，该参数将被忽略。
-    return_trace (bool): 是否在trace中记录结果。
+    base_model (str): 基础模型的名称或路径。
+    target_path (str): 保存微调任务的路径。
+    source (str): 模型来源，如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
+    stream (bool): 输出流式结果。     
+    return_trace (bool): 在trace中记录结果。
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
 
@@ -465,11 +503,12 @@ Trainable module, all models (including LLM, Embedding, etc.) are served through
 
 
 Args:
-    base_model (str): Name or path of the base model. If the model is not available locally, it will be automatically downloaded from the model source.
-    target_path (str): Path to save the fine-tuning task. Can be left empty if only performing inference.
-    source (str): Model source, optional values are huggingface or. If not set, it will read the value from the environment variable LAZYLLM_MODEL_SOURCE.
-    stream (bool): Whether to output stream. If the inference engine used does not support streaming, this parameter will be ignored.
-    return_trace (bool): Whether to record the results in trace.
+    base_model (str): Name or path of the base model. 
+    target_path (str): Path to save the fine-tuning task. 
+    source (str): Model source. If not set, it will read the value from the environment variable LAZYLLM_MODEL_SOURCE.
+    stream (bool): Whether to output stream. 
+    return_trace (bool): Record the results in trace.
+
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
 
@@ -611,6 +650,80 @@ m(1)
 ```                                  
 ''')
 
+add_chinese_doc('TrainableModule.wait', '''\
+等待模型部署任务完成，该方法会阻塞当前线程直到部署完成。
+''')
+
+add_english_doc('TrainableModule.wait', '''\
+Wait for the model deployment task to complete. This method blocks the current thread until the deployment is finished.
+''')
+
+add_example('TrainableModule.wait', '''\
+>>> import lazyllm
+>>> class Mywait(lazyllm.module.llms.TrainableModule):
+...    def forward(self):
+...        self.wait()
+''')
+
+add_chinese_doc('TrainableModule.stop', '''\
+暂停模型特定任务。
+Args:
+    task_name(str): 需要暂停的任务名, 默认为None(默认暂停deploy任务)
+''')
+
+add_english_doc('TrainableModule.stop', '''\
+Pause a specific task of the model.
+Args:
+    task_name (str): The name of the task to pause. Defaults to None (pauses the 'deploy' task by default).
+''')
+
+add_example('TrainableModule.stop', '''\
+>>> import lazyllm
+>>> class Mystop(lazyllm.module.llms.TrainableModule):
+...    def forward(self, task):
+...        self.stop(task)
+''')
+
+add_chinese_doc('TrainableModule.prompt', '''\
+处理输入的prompt生成符合模型需求的格式。
+Args:
+    prompt(str): 输入的prompt, 默认为空。
+    history(**List): 对话历史记忆。
+''')
+
+add_english_doc('TrainableModule.prompt', '''\
+Processes the input prompt and generates a format compatible with the model.
+Args:
+    prompt (str): The input prompt. Defaults to an empty string.
+    history (List): Conversation history.
+''')
+
+add_example('TrainableModule.prompt', '''\
+>>> import lazyllm
+>>> class Myprompt(lazyllm.module.llms.TrainableModule):
+...    def forward(self, prompt, history):
+...        self.prompt(prompt,history)
+''')
+
+add_chinese_doc('TrainableModule.forward', '''\
+自动构建符合模型要求的输入数据结构，适配多模态场景。
+''')
+
+add_english_doc('TrainableModule.forward', '''\
+Supports handling various input formats, automatically builds the input structure required by the model, and adapts to multimodal scenarios.
+''')
+
+add_example('TrainableModule.forward', '''\
+>>> import lazyllm
+>>> from lazyllm.module import TrainableModule
+>>> class MyModule(TrainableModule):
+...     def forward(self, __input, **kw):
+...         return f"processed: {__input}"
+...
+>>> MyModule()("Hello")
+'processed: Hello'
+''')
+
 # add_example('TrainableModule', '''\
 # >>> import lazyllm
 # >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).trainset('/file/to/path').deploy_method(None).mode('finetune')
@@ -637,18 +750,20 @@ add_chinese_doc('UrlModule', '''\
 可以将ServerModule部署得到的Url包装成一个Module，调用 ``__call__`` 时会访问该服务。
 
 Args:
-    url (str): 要包装的服务的Url
-    stream (bool): 是否流式请求和输出，默认为非流式
+    url (str): 要包装的服务的Url，默认为空字符串
+    stream (bool|Dict[str, str]): 是否流式请求和输出，默认为非流式
     return_trace (bool): 是否将结果记录在trace中，默认为False
+    init_prompt (bool): 是否初始化prompt，默认为True
 ''')
 
 add_english_doc('UrlModule', '''\
 The URL obtained from deploying the ServerModule can be wrapped into a Module. When calling ``__call__`` , it will access the service.
 
 Args:
-    url (str): The URL of the service to be wrapped.
-    stream (bool): Whether to request and output in streaming mode, default is non-streaming.
+    url (str): The URL of the service to be wrapped, defaults to empty string.
+    stream (bool|Dict[str, str]): Whether to request and output in streaming mode, default is non-streaming.
     return_trace (bool): Whether to record the results in trace, default is False.
+    init_prompt (bool): Whether to initialize prompt, defaults to True.
 ''')
 
 add_example('UrlModule', '''\
@@ -692,7 +807,9 @@ Args:
     stream (bool): 是否流式请求和输出，默认为非流式。
     return_trace (bool): 是否将结果记录在 trace 中，默认为``False``。
     port (int): 指定服务部署后的端口，默认为 ``None`` 会随机生成端口。
-    launcher (LazyLLMLaunchersBase): 用于选择服务执行的计算节点，默认为`` launchers.remote``。
+    pythonpath(str):传递给子进程的 PYTHONPATH 环境变量，默认为 ``None``。
+    launcher (LazyLLMLaunchersBase): 用于选择服务执行的计算节点，默认为是异步远程部署"launchers.remote(sync=False)"。
+    url(str):模块服务的地址，默认为"None",使用Redis获取。
 ''')
 
 add_english_doc('ServerModule', '''\
@@ -705,7 +822,9 @@ Args:
     stream (bool): Whether to request and output in streaming mode, default is non-streaming.
     return_trace (bool): Whether to record the results in trace, default is ``False``.
     port (int): Specifies the port after the service is deployed. The default is ``None``, which will generate a random port.
-    launcher (LazyLLMLaunchersBase): Used to select the compute node for service execution, default is ``launchers.remote`` .
+    pythonpath (str): PYTHONPATH environment variable passed to the subprocess. Defaults to None.
+    launcher (LazyLLMLaunchersBase): Specifies the compute node for running the service. Defaults to asynchronous remote deployment via launchers.remote(sync=False).
+    url (str): The service URL of the module. Defaults to None, in which case the URL is retrieved from Redis.
 
 **Examples:**\n
 ```python
@@ -857,6 +976,22 @@ dummy finetune!, and init-args is {a: f2}
 [["post2(reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1})"], ["post2(reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1})"]]
 ''')
 
+add_chinese_doc('AutoModel', '''\
+用于部署在线 API 模型或本地模型的模块，支持加载在线推理模块或本地可微调模块。
+Args:
+    model (str): 指定要加载的模型名称，例如 ``internlm2-chat-7b``，可为空。为空时默认加载 ``internlm2-chat-7b``。
+    source (str): 指定要使用的在线模型服务，如需使用在线模型，必须传入此参数。支持 ``qwen`` / ``glm`` / ``openai`` / ``moonshot`` 等。
+    framework (str): 指定本地部署所使用的推理框架，支持 ``lightllm`` / ``vllm`` / ``lmdeploy``。将通过 ``TrainableModule`` 与指定框架组合进行部署。
+''')
+
+add_english_doc('AutoModel', '''\
+A module for deploying either online API-based models or local models, supporting both online inference and locally trainable modules.
+Args:
+    model (str): The name of the model to load, e.g., ``internlm2-chat-7b``. If None, ``internlm2-chat-7b`` will be loaded by default.
+    source (str): Specifies the online model service to use. Required when using online models. Supported values include ``qwen``, ``glm``, ``openai``, ``moonshot``, etc.
+    framework (str): The local inference framework to use for deployment. Supported values are ``lightllm``, ``vllm``, and ``lmdeploy``. The model will be deployed via ``TrainableModule`` using the specified framework.
+''')
+
 add_chinese_doc('OnlineChatModule', '''\
 用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao、deekseek(由于该平台暂时不让充值了，暂时不支持访问)。平台的api key获取方法参见 [开始入门](/#platform)
 
@@ -903,6 +1038,48 @@ ret: Hello! How can I assist you today?
 >>> query = "what is it?"
 >>> inputs = encode_query_with_filepaths(query, ["/path/to/your/image"])
 >>> print(vlm(inputs))
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoModule', '''\
+豆包（Doubao）在线对话模块。
+该类封装了对字节跳动豆包 API 的调用，用于进行多轮对话。默认使用模型 `doubao-1-5-pro-32k-250115`，支持流式输出和调用链跟踪。
+Args:
+    model (str): 使用的模型名称，默认为 `doubao-1-5-pro-32k-250115`。
+    base_url (str): API 的基础 URL，默认为 "https://ark.cn-beijing.volces.com/api/v3/"。
+    api_key (str): 豆包 API Key。若未提供，则从 lazyllm.config['doubao_api_key'] 读取。
+    stream (bool): 是否启用流式输出，默认为 True。
+    return_trace (bool): 是否返回调用链跟踪信息，默认为 False。
+    **kwargs: 其他传递给基类的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoModule', '''\
+Doubao online chat module.
+This class wraps the Doubao API (from ByteDance) for multi-turn chat. It defaults to model `doubao-1-5-pro-32k-250115` and supports streaming and optional trace return.
+Args:
+    model (str): The name of the model to use. Defaults to `doubao-1-5-pro-32k-250115`.
+    base_url (str): The base URL for the API. Defaults to "https://ark.cn-beijing.volces.com/api/v3/".
+    api_key (str): Doubao API key. If not provided, it will be read from `lazyllm.config['doubao_api_key']`.
+    stream (bool): Whether to use streaming output. Defaults to True.
+    return_trace (bool): Whether to return trace information. Defaults to False.
+    **kwargs: Additional arguments passed to the base class.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIEmbedding', '''\
+OpenAI 在线嵌入模块。
+该类封装了对 OpenAI 嵌入 API 的调用，默认使用模型 `text-embedding-ada-002`，用于将文本编码为向量表示。
+Args:
+    embed_url (str): OpenAI 嵌入 API 的 URL，默认为 "https://api.openai.com/v1/embeddings"。
+    embed_model_name (str): 使用的嵌入模型名称，默认为 "text-embedding-ada-002"。
+    api_key (str, optional): OpenAI 的 API Key。若未提供，则从 lazyllm.config 中读取。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.openai.OpenAIEmbedding', '''\
+Online embedding module using OpenAI.
+This class wraps the OpenAI Embedding API, defaulting to the `text-embedding-ada-002` model, and converts text into vector representations.
+Args:
+    embed_url (str): The URL endpoint of the OpenAI embedding API. Default is "https://api.openai.com/v1/embeddings".
+    embed_model_name (str): The name of the embedding model to use. Default is "text-embedding-ada-002".
+    api_key (str, optional): The OpenAI API key. If not provided, it will be read from `lazyllm.config`.
 ''')
 
 add_chinese_doc('OnlineEmbeddingModule', '''\
@@ -1054,4 +1231,76 @@ add_example('OnlineEmbeddingModuleBase', '''\
 ...     def _parse_response(self, response: dict[str, any]):
 ...         pass
 ...         return embedding
+''')
+
+add_chinese_doc('llms.onlinemodule.fileHandler.FileHandlerBase', '''\
+FileHandlerBase是用于处理微调数据文件的基类，主要用于验证和转换微调数据格式。该类本身不支持直接实例化，需要子类继承该类并实现特定的文件格式转换逻辑。
+
+FileHandlerBase提供以下功能：\n
+1. 验证微调数据文件的格式是否符合标准（.jsonl格式）\n
+2. 检查数据内容是否符合预期的消息格式（包含role和content字段）\n
+3. 验证角色类型是否在允许的范围内（system、knowledge、user、assistant）\n
+4. 确保每个对话示例都包含assistant回复\n
+5. 提供临时文件存储机制用于后续处理\n
+''')
+
+add_english_doc('llms.onlinemodule.fileHandler.FileHandlerBase', '''\
+FileHandlerBase is a base class for handling fine-tuning data files, primarily used for validating and converting fine-tuning data formats. This class itself does not support direct instantiation; it requires subclasses to inherit from this class and implement specific file format conversion logic.
+
+FileHandlerBase provides the following capabilities:\n
+1. Validate that the fine-tuning data file format conforms to standards (.jsonl format)\n
+2. Check if the data content conforms to the expected message format (containing role and content fields)\n
+3. Verify that role types are within the allowed range (system, knowledge, user, assistant)\n
+4. Ensure that each conversation example contains an assistant response\n
+5. Provide temporary file storage mechanism for subsequent processing\n
+''')
+
+add_example('llms.onlinemodule.fileHandler.FileHandlerBase', '''\
+>>> import lazyllm
+>>> from lazyllm.module.llms.onlinemodule.fileHandler import FileHandlerBase
+>>> import tempfile
+>>> import json
+>>> sample_data = [
+...     {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there!"}]},
+...     {"messages": [{"role": "user", "content": "How are you?"}, {"role": "assistant", "content": "I'm doing well, thank you!"}]}
+... ] 
+>>> with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
+...     for item in sample_data:
+...         f.write(json.dumps(item, ensure_ascii=False) + '\n')
+...     temp_file_path = f.name
+>>> class CustomFileHandler(FileHandlerBase):
+...     def _convert_file_format(self, filepath: str) -> str:
+...         with open(filepath, 'r', encoding='utf-8') as f:
+...             data = [json.loads(line) for line in f]
+...         converted_data = []
+...         for item in data:
+...             messages = item.get('messages', [])
+...             conversation = []
+...             for msg in messages:
+...                 conversation.append(f"{msg['role']}: {msg['content']}")
+...             converted_data.append('\n'.join(conversation))
+...         return '\n---\n'.join(converted_data)
+>>> handler = CustomFileHandler()
+>>> try:
+...     result = handler.get_finetune_data(temp_file_path)
+...     print("数据验证和转换成功")
+... except Exception as e:
+...     print(f"错误: {e}")
+... finally:
+...     import os
+...     os.unlink(temp_file_path)
+''')
+
+add_chinese_doc('llms.onlinemodule.fileHandler.FileHandlerBase.get_finetune_data', '''\
+获取并处理微调数据文件，包括验证文件格式和转换为目标平台支持的格式。
+
+Args:
+    filepath (str): 微调数据文件的路径，必须是.jsonl格式
+''')
+
+add_english_doc('llms.onlinemodule.fileHandler.FileHandlerBase.get_finetune_data', '''\
+Get and process fine-tuning data files, including validating file format and converting to the format supported by the target platform.
+
+Args:
+    filepath (str): Path to the fine-tuning data file, must be in .jsonl format
 ''')
