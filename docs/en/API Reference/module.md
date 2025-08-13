@@ -60,7 +60,15 @@
     members:
     exclude-members:
 
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoModule
+    members:
+    exclude-members:
+
 ::: lazyllm.module.OnlineEmbeddingModule
+    members:
+    exclude-members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIEmbedding
     members:
     exclude-members:
 
@@ -73,3 +81,8 @@
 ::: lazyllm.module.OnlineEmbeddingModuleBase
     members:
     exclude-members: forward
+
+::: lazyllm.module.llms.onlinemodule.fileHandler.FileHandlerBase
+    members: get_finetune_data
+    exclude-members: 
+    
