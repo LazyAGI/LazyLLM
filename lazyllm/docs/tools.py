@@ -14,6 +14,86 @@ add_tools_example = functools.partial(utils.add_example, module=lazyllm.tools.to
 
 # ---------------------------------------------------------------------------- #
 
+# classifier/intent_classifier.py
+
+add_chinese_doc('IntentClassifier', '''\
+意图分类模块，用于根据输入文本在给定的意图列表中进行分类。  
+支持中英文自动选择提示模板，并可通过示例、提示、约束和注意事项增强分类效果。
+
+Args:
+    llm: 用于意图分类的大语言模型实例。
+    intent_list (list): 可选，意图类别列表，例如 ["聊天", "天气", "问答"]。
+    prompt (str): 可选，自定义提示语，插入到系统提示模板中。
+    constrain (str): 可选，分类约束条件说明。
+    attention (str): 可选，提示注意事项。
+    examples (list[list[str, str]]): 可选，分类示例列表，每个元素为 [输入文本, 标签]。
+    return_trace (bool): 是否返回执行过程的 trace，默认为 False。
+''')
+
+add_english_doc('IntentClassifier', '''\
+Intent classification module that classifies input text into a given intent list.  
+Supports automatic selection of Chinese or English prompt templates, and allows enhancement through examples, prompt text, constraints, and attention notes.
+
+Args:
+    llm: The large language model instance used for intent classification.
+    intent_list (list): Optional, list of intent categories, e.g., ["chat", "weather", "QA"].
+    prompt (str): Optional, custom prompt inserted into the system prompt template.
+    constrain (str): Optional, classification constraint description.
+    attention (str): Optional, attention notes for classification.
+    examples (list[list[str, str]]): Optional, classification examples, each element is [input text, label].
+    return_trace (bool): Whether to return execution trace. Default is False.
+''')
+
+add_chinese_doc('IntentClassifier.intent_promt_hook', '''\
+意图分类的预处理 Hook。  
+将输入文本与意图列表打包为 JSON，并生成历史对话信息字符串。
+
+Args:
+    input (str | List | Dict | None): 输入文本，仅支持字符串类型。
+    history (List): 历史对话记录，默认为空列表。
+    tools (List[Dict] | None): 工具信息，可选。
+    label (str | None): 标签，可选。
+
+**Returns**\n
+- tuple: (输入数据字典, 历史记录列表, 工具信息, 标签)
+''')
+
+add_english_doc('IntentClassifier.intent_promt_hook', '''\
+Pre-processing hook for intent classification.  
+Packages the input text and intent list into JSON and generates a string of conversation history.
+
+Args:
+    input (str | List | Dict | None): The input text, only string type is supported.
+    history (List): Conversation history, default empty list.
+    tools (List[Dict] | None): Optional tool information.
+    label (str | None): Optional label.
+
+**Returns**\n
+- tuple: (input data dict, history list, tools, label)
+''')
+
+add_chinese_doc('IntentClassifier.post_process_result', '''\
+意图分类结果的后处理。  
+如果结果在意图列表中则直接返回，否则返回意图列表的第一个元素。
+
+Args:
+    input (str): 分类模型输出结果。
+
+**Returns**\n
+- str: 最终的分类标签。
+''')
+
+add_english_doc('IntentClassifier.post_process_result', '''\
+Post-processing of intent classification result.  
+Returns the result directly if it is in the intent list, otherwise returns the first element of the intent list.
+
+Args:
+    input (str): Output result from the classification model.
+
+**Returns**\n
+- str: The final classification label.
+''')
+
 # rag/document.py
 
 add_english_doc('Document', '''\

@@ -1,3 +1,9 @@
+::: lazyllm.tools.IntentClassifier
+    members:
+    - intent_promt_hook
+    - post_process_result
+    exclude-members:
+
 ::: lazyllm.tools.Document
     members:
     exclude-members:

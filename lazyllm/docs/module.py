@@ -346,6 +346,96 @@ Returns all submodules of type ModuleBase contained in the wrapped action. This 
 # ['get 16', 'get 24', 'get 32']
 # ''')
 
+add_chinese_doc('servermodule.LLMBase', '''\
+大语言模型模块的基类，继承自 ModuleBase。  
+负责管理流式输出、Prompt 和格式化器的初始化与切换，处理输入中的文件信息，支持实例共享。
+
+Args:
+    stream (bool 或 dict): 是否启用流式输出或流式配置，默认为 False。
+    return_trace (bool): 是否返回执行过程的 trace，默认为 False。
+    init_prompt (bool): 是否在初始化时自动创建默认 Prompt，默认为 True。
+''')
+
+add_english_doc('servermodule.LLMBase', '''\
+Base class for large language model modules, inheriting from ModuleBase.  
+Manages initialization and switching of streaming output, prompts, and formatters; processes file information in inputs; supports instance sharing.
+
+Args:
+    stream (bool or dict): Whether to enable streaming output or streaming configuration, default is False.
+    return_trace (bool): Whether to return execution trace, default is False.
+    init_prompt (bool): Whether to automatically create a default prompt at initialization, default is True.
+''')
+
+add_chinese_doc('servermodule.LLMBase.prompt', '''\
+设置或切换 Prompt。支持 None、PrompterBase 子类或字符串/字典类型创建 ChatPrompter。
+
+Args:
+    prompt (str/dict/PrompterBase/None): 要设置的 Prompt。
+    history (list): 对话历史，仅当 prompt 为字符串或字典时有效。
+
+**Returns**\n
+- self: 便于链式调用。
+''')
+
+add_english_doc('servermodule.LLMBase.prompt', '''\
+Set or switch the prompt. Supports None, PrompterBase subclass, or string/dict to create ChatPrompter.
+
+Args:
+    prompt (str/dict/PrompterBase/None): The prompt to set.
+    history (list): Conversation history, only valid when prompt is str or dict.
+
+**Returns**\n
+- self: For chaining calls.
+''')
+
+add_chinese_doc('servermodule.LLMBase.formatter', '''\
+设置或切换输出格式化器。支持 None、FormatterBase 子类或可调用对象。
+
+Args:
+    format (FormatterBase/Callable/None): 格式化器对象或函数，默认为 None。
+
+**Returns**\n
+- self: 便于链式调用。
+''')
+
+add_english_doc('servermodule.LLMBase.formatter', '''\
+Set or switch the output formatter. Supports None, FormatterBase subclass or callable.
+
+Args:
+    format (FormatterBase/Callable/None): Formatter object or function, default is None.
+
+**Returns**\n
+- self: For chaining calls.
+''')
+
+add_chinese_doc('servermodule.LLMBase.share', '''\
+创建当前实例的浅拷贝，并可重新设置 prompt、formatter、stream 等属性。  
+适用于多会话或多 Agent 共享基础配置但个性化部分参数的场景。
+
+Args:
+    prompt (str/dict/PrompterBase/None): 新的 Prompt，可选。
+    format (FormatterBase/None): 新的格式化器，可选。
+    stream (bool/dict/None): 新的流式设置，可选。
+    history (list/None): 新的对话历史，仅在设置 Prompt 时有效。
+
+**Returns**\n
+- LLMBase: 新的共享实例。
+''')
+
+add_english_doc('servermodule.LLMBase.share', '''\
+Creates a shallow copy of the current instance, with optional resetting of prompt, formatter, and stream attributes.  
+Useful for scenarios where multiple sessions or agents share a base configuration but customize certain parameters.
+
+Args:
+    prompt (str/dict/PrompterBase/None): New prompt, optional.
+    format (FormatterBase/None): New formatter, optional.
+    stream (bool/dict/None): New streaming settings, optional.
+    history (list/None): New conversation history, effective only when setting prompt.
+
+**Returns**\n
+- LLMBase: The new shared instance.
+''')
+
 add_chinese_doc('TrainableModule', '''\
 可训练模块，所有模型（包括LLM、Embedding等）都通过TrainableModule提供服务
 

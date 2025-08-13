@@ -4,6 +4,13 @@
 
 ::: lazyllm.flow.LazyLLMFlowsBase
     members: 
+    - register_hook
+    - unregister_hook
+    - clear_hooks
+    - set_sync
+    - wait
+    - invoke
+    - bind
     exclude-members:
 
 ::: lazyllm.flow.Pipeline

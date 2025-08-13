@@ -154,7 +154,6 @@ add_chinese_doc('LazyLLMFlowsBase', """\
                    ↑             ↓
                pre_hook       post_hook
 ```
-                
 Args:
     args: 可变长度参数列表。
     post_action: 在主流程结束后对输出进行进一步处理的可调用对象。默认为 ``None``。
@@ -172,13 +171,126 @@ input --> [Flow module1 -> Flow module2 -> ... -> Flow moduleN] --> output
                    ↑             ↓
                pre_hook       post_hook
 ```
-                
 Args:
     args: A sequence of callables representing the flow modules.
     post_action: An optional callable applied to the output after main flow execution. Defaults to ``None``。
     auto_capture: If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
 
 """)
+
+add_chinese_doc('LazyLLMFlowsBase.register_hook', '''\
+注册一个 Hook 类型，用于在流程执行前后进行额外处理。
+
+Args:
+    hook_type (LazyLLMHook): 要注册的 Hook 类型或实例。
+''')
+
+add_english_doc('LazyLLMFlowsBase.register_hook', '''\
+Register a hook type for additional processing before and after the flow execution.
+
+Args:
+    hook_type (LazyLLMHook): The hook type or instance to register.
+''')
+
+add_chinese_doc('LazyLLMFlowsBase.unregister_hook', '''\
+注销已注册的 Hook。
+
+Args:
+    hook_type (LazyLLMHook): 要移除的 Hook 类型或实例。
+''')
+
+add_english_doc('LazyLLMFlowsBase.unregister_hook', '''\
+Unregister a previously registered hook.
+
+Args:
+    hook_type (LazyLLMHook): The hook type or instance to remove.
+''')
+
+add_chinese_doc('LazyLLMFlowsBase.clear_hooks', '''\
+清空所有已注册的 Hook。
+''')
+
+add_english_doc('LazyLLMFlowsBase.clear_hooks', '''\
+Clear all registered hooks.
+''')
+
+add_chinese_doc('LazyLLMFlowsBase.set_sync', '''\
+设置流程是否同步执行。
+
+Args:
+    sync (bool): 是否同步执行，默认为 True。
+
+**Returns**\n
+- LazyLLMFlowsBase: 当前实例。
+''')
+
+add_english_doc('LazyLLMFlowsBase.set_sync', '''\
+Set whether the flow executes synchronously.
+
+Args:
+    sync (bool): Whether to execute synchronously. Default is True.
+
+**Returns**\n
+- LazyLLMFlowsBase: The current instance.
+''')
+
+add_chinese_doc('LazyLLMFlowsBase.wait', '''\
+等待流程中所有异步任务完成。
+
+**Returns**\n
+- LazyLLMFlowsBase: 当前实例。
+''')
+
+add_english_doc('LazyLLMFlowsBase.wait', '''\
+Wait for all asynchronous tasks in the flow to complete.
+
+**Returns**\n
+- LazyLLMFlowsBase: The current instance.
+''')
+
+add_chinese_doc('LazyLLMFlowsBase.invoke', '''\
+调用指定对象（可为函数、模块或 bind 对象）并传入输入数据。  
+支持对 bind 对象进行 root/pipeline 输出替换。
+
+Args:
+    it (Callable | bind): 要调用的对象。
+    __input (Any): 输入数据。
+    bind_args_source (Any, optional): 绑定参数来源。
+    **kw: 其他关键字参数。
+''')
+
+add_english_doc('LazyLLMFlowsBase.invoke', '''\
+Invoke a target (function, module, or bind object) with the given input.  
+Supports root/pipeline output replacement for bind objects.
+
+Args:
+    it (Callable | bind): The target to invoke.
+    __input (Any): Input data.
+    bind_args_source (Any, optional): Source of bind arguments.
+    **kw: Additional keyword arguments.
+''')
+
+add_chinese_doc('LazyLLMFlowsBase.bind', '''\
+为当前流程绑定参数，生成一个 bind 对象。
+
+Args:
+    *args: 位置参数。
+    **kw: 关键字参数。
+
+**Returns**\n
+- bind: 绑定后的 bind 对象。
+''')
+
+add_english_doc('LazyLLMFlowsBase.bind', '''\
+Bind arguments to the current flow, producing a bind object.
+
+Args:
+    *args: Positional arguments.
+    **kw: Keyword arguments.
+
+**Returns**\n
+- bind: The bound bind object.
+''')
 
 add_chinese_doc('Parallel', """\
 用于管理LazyLLMFlows中的并行流的类。

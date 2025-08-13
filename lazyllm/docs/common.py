@@ -536,6 +536,79 @@ add_example('FileSystemQueue.clear', """\
 True
 """)
 
+
+add_chinese_doc('common.ResultCollector', '''\
+结果收集器，用于在流程或任务执行过程中按名称存储和访问结果。  
+它通过调用自身（传入 name）返回一个可调用的 Impl 对象来收集指定名称的结果。  
+适用于需要跨步骤共享中间结果的场景。
+''')
+
+add_english_doc('common.ResultCollector', '''\
+A result collector used to store and access results by name during the execution of a flow or task.  
+Calling the instance with a name returns a callable Impl object that collects results for that name.  
+Useful for scenarios where intermediate results need to be shared across steps.
+''')
+add_chinese_doc('common.ResultCollector.Impl', '''\
+ResultCollector 的内部实现类，负责为指定名称收集结果。  
+不应直接实例化，需通过 ResultCollector(name) 获取。
+
+Args:
+    name (str): 结果名称。
+    value (dict): 存储结果的字典引用。
+''')
+
+add_english_doc('common.ResultCollector.Impl', '''\
+Internal implementation class of ResultCollector, responsible for collecting results for a given name.  
+Should not be instantiated directly; obtain via ResultCollector(name).
+
+Args:
+    name (str): The result name.
+    value (dict): A reference to the dictionary where results are stored.
+''')
+
+
+add_chinese_doc('common.ResultCollector.keys', '''\
+获取所有已存储结果的名称。
+
+**Returns**\n
+- KeysView[str]: 结果名称集合。
+''')
+
+add_english_doc('common.ResultCollector.keys', '''\
+Get all stored result names.
+
+**Returns**\n
+- KeysView[str]: A set-like object containing result names.
+''')
+
+add_chinese_doc('common.ResultCollector.items', '''\
+获取所有已存储的 (名称, 值) 对。
+
+**Returns**\n
+- ItemsView[str, Any]: 结果的键值对集合。
+''')
+
+add_english_doc('common.ResultCollector.items', '''\
+Get all stored (name, value) pairs.
+
+**Returns**\n
+- ItemsView[str, Any]: A set-like object containing name-value pairs of results.
+''')
+
+add_chinese_doc('common.EnvVarContextManager', '''\
+环境变量上下文管理器，用于 在代码块执行期间临时设置环境变量，退出时自动恢复原始环境变量。
+
+Args:
+    env_vars_dict (dict): 需要临时设置的环境变量字典，值为 None 的变量将被忽略。
+''')
+
+add_english_doc('common.EnvVarContextManager', '''\
+Environment variable context manager used to temporarily set environment variables during the execution of a code block, automatically restoring original environment variables upon exit.
+
+Args:
+    env_vars_dict (dict): Dictionary of environment variables to temporarily set; variables with None values are ignored.
+''')
+
 add_chinese_doc('ReadOnlyWrapper', '''\ 
 一个轻量级只读包装器，用于包裹任意对象并对外提供只读访问（实际并未完全禁止修改，但复制时不会携带原始对象）。包装器可以动态替换内部对象，并提供判断对象是否为空的辅助方法。
 Args:

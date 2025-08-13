@@ -10,7 +10,14 @@
       - start
       - restart
       - update
-        
+
+::: lazyllm.module.servermodule.LLMBase
+    options:
+      members:
+      - prompt
+      - formatter
+      - share
+
 ::: lazyllm.module.ActionModule
     options:
       members:
