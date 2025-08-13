@@ -96,5 +96,5 @@ __all__ = [
     'LOG',
 
     # file-system queue
-    'FileSystemQueue',
+    'FileSystemQueue'
 ]

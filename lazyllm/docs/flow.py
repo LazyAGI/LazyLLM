@@ -16,6 +16,7 @@ Args:
     item_names (list of str, optional): 对应于项目的名称列表。这允许通过名称访问项目。如果未提供，则只能通过索引访问项目。
     auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
 
+    auto_capture: 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 False。
 """)
 
 add_english_doc('FlowBase', """\
@@ -26,8 +27,27 @@ This class provides a way to organize items, which can be instances of ``FlowBas
 Args:
     items (iterable): An iterable of items to be included in the flow. These can be instances of ``FlowBase`` or other objects.
     item_names (list of str, optional): A list of names corresponding to the items. This allows items to be accessed by name. If not provided, items can only be accessed by index.
-    auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
+    auto_capture: If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
+""")
 
+add_chinese_doc('FlowBase.id', """\
+获取模块或流程的 ID。如果传入字符串则原样返回；如果传入已绑定的模块则返回其对应的 item_id；不传参时返回整个 flow 的唯一 id。
+
+Args:
+    module (Optional[Union[str, Any]]): 目标模块或字符串标识。
+
+**Returns:**\n
+- str: 对应的 ID 字符串。
+""")
+
+add_english_doc('FlowBase.id', """\
+Get the identifier for a module or the flow itself. If a string is provided, it is returned as-is. If a bound module is provided, returns its associated item_id. If no argument is given, returns the unique id of the entire flow.
+
+Args:
+    module (Optional[Union[str, Any]]): Target module or string identifier.
+
+**Returns:**\n
+- str: Corresponding identifier string.
 """)
 
 add_chinese_doc('FlowBase.is_root', """\
@@ -758,6 +778,11 @@ add_example('Warp', """\
 >>> warp = lazyllm.warp(lazyllm.pipeline(lambda x: x * 2, lambda x: f'get {x}'))
 >>> warp(1, 2, 3, 4)
 ('get 2', 'get 4', 'get 6', 'get 8')
+
+>>> from lazyllm import package
+>>> warp1 = lazyllm.warp(lambda x, y: x * 2 + y)
+>>> print(warp1([package(1,2), package(10, 20)]))
+(4, 40)
 """)
 
 add_chinese_doc('Graph', """\

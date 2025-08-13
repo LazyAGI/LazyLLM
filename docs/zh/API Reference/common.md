@@ -22,11 +22,21 @@
 
 ---
 
+## Identity
+
+::: lazyllm.common.Identity
+    options:
+      heading_level: 3
+
+---
+
 ## Compilation
 
 ::: lazyllm.common.compile_func
     options:
       heading_level: 3
+
+---
 
 ## Queue
 
@@ -41,12 +51,56 @@
     options:
       heading_level: 3
 
+::: lazyllm.common.ReadOnlyWrapper
+    members: set, isNone
+    exclude-members:
+
+::: lazyllm.common.queue.RedisQueue
+    members: 
+    exclude-members:
+
+---
+
+## Multiprocessing
+
+::: lazyllm.common.ForkProcess
+    members: work, start
+    exclude-members:
+
+---
+
+## Options
+
+::: lazyllm.common.Option
+    members: 
+    exclude-members:
+
+---
+
+## DynamicDescriptor
+
+::: lazyllm.common.DynamicDescriptor
+    members:
+    - Impl
+    exclude-members:
+
+::: lazyllm.common.CaseInsensitiveDict
+    members: 
+    exclude-members:
+
+::: lazyllm.common.ProcessPoolExecutor
+    members: submit
+    exclude-members:
+
+---
+
 ## Threading
 
 ::: lazyllm.common.Thread
     members: work, get_result
     exclude-members:
-    
+
+---
 
 ## LazyLLMCMD
 

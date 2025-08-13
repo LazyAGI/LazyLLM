@@ -218,6 +218,70 @@ Args:
     **kw: 绑定时固定的关键字参数，可以包含占位符。
 ''')
 
+add_chinese_doc('common.CaseInsensitiveDict', '''\
+大小写不敏感的字典类。
+
+CaseInsensitiveDict 继承自 dict，提供大小写不敏感的键值存储和检索功能。所有的键都会被转换为小写形式存储，确保无论使用大写、小写或混合大小写的键名都能访问到相同的值。
+
+特点：
+    - 所有键在存储时自动转换为小写
+    - 支持标准的字典操作（获取、设置、检查包含关系）
+    - 保持字典的原有功能，只是键名处理方式不同
+
+Args:
+    *args: 传递给父类 dict 的位置参数
+    **kwargs: 传递给父类 dict 的关键字参数
+''')
+
+add_english_doc('common.CaseInsensitiveDict', '''\
+Case-insensitive dictionary class.
+
+CaseInsensitiveDict inherits from dict and provides case-insensitive key-value storage and retrieval. All keys are converted to lowercase when stored, ensuring that values can be accessed regardless of whether the key name is uppercase, lowercase, or mixed case.
+
+Features:
+    - All keys are automatically converted to lowercase when stored
+    - Supports standard dictionary operations (get, set, check containment)
+    - Maintains all original dict functionality, only differs in key name handling
+
+Args:
+    *args: Positional arguments passed to the parent dict class
+    **kwargs: Keyword arguments passed to the parent dict class
+''')
+
+add_example('common.CaseInsensitiveDict', '''\
+>>> from lazyllm.common import CaseInsensitiveDict
+>>> # 创建大小写不敏感的字典
+>>> d = CaseInsensitiveDict({'Name': 'John', 'AGE': 25, 'City': 'New York'})
+>>> 
+>>> # 使用不同大小写访问相同的键
+>>> print(d['name'])      # 使用小写
+... 'John'
+>>> print(d['NAME'])      # 使用大写
+... 'John'
+>>> print(d['Name'])      # 使用首字母大写
+... 'John'
+>>> 
+>>> # 设置值时也会转换为小写
+>>> d['EMAIL'] = 'john@example.com'
+>>> print(d['email'])     # 使用小写访问
+... 'john@example.com'
+>>> 
+>>> # 检查键是否存在（大小写不敏感）
+>>> 'AGE' in d
+True
+>>> 'age' in d
+True
+>>> 'Age' in d
+True
+>>> 
+>>> # 支持标准字典操作
+>>> d['PHONE'] = '123-456-7890'
+>>> print(d.get('phone'))
+... '123-456-7890'
+>>> print(len(d))
+... 5
+''')
+
 add_english_doc('bind', '''\
 The Bind class provides function binding and deferred invocation capabilities, supporting dynamic argument passing and context-based argument resolution for flexible function composition and pipeline-style calls.
 
@@ -471,6 +535,271 @@ add_example('FileSystemQueue.clear', """\
 >>> queue.peek() is None
 True
 """)
+
+add_chinese_doc('ReadOnlyWrapper', '''\ 
+一个轻量级只读包装器，用于包裹任意对象并对外提供只读访问（实际并未完全禁止修改，但复制时不会携带原始对象）。包装器可以动态替换内部对象，并提供判断对象是否为空的辅助方法。
+Args:
+    obj (Optional[Any]): 初始被包装的对象，默认为 None。
+''')
+
+add_english_doc('ReadOnlyWrapper', '''\
+A lightweight read-only wrapper that holds an arbitrary object and exposes its attributes. It supports swapping the internal object dynamically and provides utility for checking emptiness. Note: it does not enforce deep immutability, but deepcopy drops the wrapped object.
+Args:
+    obj (Optional[Any]): The initial wrapped object, defaults to None.
+''')
+
+add_chinese_doc('ReadOnlyWrapper.set', '''\ 
+替换当前包装的内部对象。
+
+Args:
+    obj (Any): 新的内部对象。
+''')
+
+add_english_doc('ReadOnlyWrapper.set', '''\
+Replace the currently wrapped internal object.
+
+Args:
+    obj (Any): New object to wrap.
+''')
+
+add_chinese_doc('ReadOnlyWrapper.isNone', '''\ 
+检查当前包装器是否未持有任何对象。
+
+Args:
+    None.
+
+**Returns**\n
+- bool: 如果内部对象为 None 返回 True，否则 False。
+''')
+
+add_english_doc('ReadOnlyWrapper.isNone', '''\
+Check whether the wrapper currently holds no object.
+
+Args:
+    None.
+
+**Returns**\n
+- bool: True if the internal object is None, otherwise False.
+''')
+
+add_chinese_doc('queue.RedisQueue', '''\ 
+基于 Redis 实现的文件系统队列（继承自 FileSystemQueue），用于跨进程/节点的消息传递与队列管理。内部使用指定的 redis_url 初始化并管理底层存储，同时提供线程安全的初始化逻辑。
+
+Args:
+    klass (str): 队列的分类名称，用于区分不同队列实例，默认值为 '__default__'。
+''')
+
+add_english_doc('queue.RedisQueue', '''\
+Redis-backed file system queue (inherits from FileSystemQueue) for cross-process/node message passing and queue management. It initializes its underlying storage using a configured Redis URL and employs thread-safe setup logic.
+
+Args:
+    klass (str): Classification name for the queue instance to distinguish different queues. Defaults to '__default__'.
+''')
+
+
+add_chinese_doc('Identity', '''\
+恒等模块，用于直接返回输入值。
+
+该模块常用于模块拼接结构中占位，无实际处理逻辑。若输入为多个参数，将自动打包为一个整体结构输出。
+
+Args:
+    *args: 可选的位置参数，占位用。
+    **kw: 可选的关键字参数，占位用。
+''')
+
+add_english_doc('Identity', '''\
+Identity module that directly returns the input as output.
+
+This module serves as a no-op placeholder in composition pipelines. If multiple inputs are provided, they are packed together before returning.
+
+Args:
+    *args: Optional positional arguments for placeholder compatibility.
+    **kw: Optional keyword arguments for placeholder compatibility.
+''')
+
+
+
+add_chinese_doc('ProcessPoolExecutor.submit', '''\
+将任务提交到进程池中执行。
+
+此方法将一个函数及其参数序列化后提交到进程池中执行，返回一个 `Future` 对象，用于获取任务执行结果或状态。
+
+Args:
+    fn (Callable): 要执行的函数。
+    *args: 传递给函数的位置参数。
+    **kwargs: 传递给函数的关键字参数。
+
+Returns:
+    concurrent.futures.Future: 表示任务执行状态的 `Future` 对象。
+''')
+
+add_english_doc('ProcessPoolExecutor.submit', '''\
+Submit a task to the process pool for execution.
+
+This method serializes a function and its arguments, then submits them to the process pool for execution. It returns a `Future` object to track the task's status or result.
+
+Args:
+    fn (Callable): The function to execute.
+    *args: Positional arguments passed to the function.
+    **kwargs: Keyword arguments passed to the function.
+
+Returns:
+    concurrent.futures.Future: A `Future` object representing the task's execution status.
+''')
+
+add_example('ProcessPoolExecutor.submit', '''\
+>>> from lazyllm.common.multiprocessing import ProcessPoolExecutor
+>>> import time
+>>> 
+>>> def task(x):
+...     time.sleep(1)
+...     return x * 2
+... 
+>>> with ProcessPoolExecutor(max_workers=2) as executor:
+...     future = executor.submit(task, 5)
+...     result = future.result()
+...     print(result)
+10
+''')
+
+
+# ============= Multiprocessing
+# ForkProcess
+add_chinese_doc('ForkProcess', '''\
+LazyLLM 提供的增强进程类，继承自 Python 标准库的 `multiprocessing.Process`。此类专门使用 fork 启动方法来创建子进程，并提供了同步/异步执行模式的支持。
+
+Args:
+    group: 进程组，默认为 ``None``
+    target: 要在进程中执行的函数，默认为 ``None``
+    name: 进程名称，默认为 ``None``
+    args: 传递给目标函数的参数元组，默认为 ``()``
+    kwargs: 传递给目标函数的关键字参数字典，默认为 ``{}``
+    daemon: 是否为守护进程，默认为 ``None``
+    sync: 是否为同步模式，默认为 ``True``。在同步模式下，进程执行完目标函数后会自动退出；在异步模式下，进程会持续运行直到被手动终止。
+
+**注意**: 此类主要用于 LazyLLM 内部的进程管理，特别是在需要长期运行的服务器进程中。
+''')
+
+add_english_doc('ForkProcess', '''\
+Enhanced process class provided by LazyLLM, inheriting from Python's standard library `multiprocessing.Process`. This class specifically uses the fork start method to create child processes and provides support for synchronous/asynchronous execution modes.
+
+Args:
+    group: Process group, default to ``None``
+    target: Function to be executed in the process, default to ``None``
+    name: Process name, default to ``None``
+    args: Tuple of arguments to pass to the target function, default to ``()``
+    kwargs: Dictionary of keyword arguments to pass to the target function, default to ``{}``
+    daemon: Whether the process is a daemon process, default to ``None``
+    sync: Whether to use synchronous mode, default to ``True``. In synchronous mode, the process automatically exits after executing the target function; in asynchronous mode, the process continues running until manually terminated.
+
+**Note**: This class is primarily used for LazyLLM's internal process management, especially in long-running server processes.
+''')
+
+add_example('ForkProcess', '''\
+>>> import lazyllm
+>>> from lazyllm.common import ForkProcess
+>>> import time
+>>> import os
+>>> def simple_task(task_id):
+...     print(f"Process {os.getpid()} executing task {task_id}")
+...     time.sleep(0.1)  
+...     return f"Task {task_id} completed by process {os.getpid()}"
+>>> process = ForkProcess(target=simple_task, args=(1,), sync=True)
+>>> process.start()
+Process 12345 executing task 1
+''')
+
+# ForkProcess.work
+add_chinese_doc('ForkProcess.work', '''\
+ForkProcess 的核心工作方法，负责包装目标函数并处理同步/异步执行逻辑。
+
+Args:
+    f: 要执行的目标函数
+    sync: 是否为同步模式。在同步模式下，执行完目标函数后进程会退出；在异步模式下，进程会持续运行。
+''')
+
+add_english_doc('ForkProcess.work', '''\
+Core working method of ForkProcess, responsible for wrapping the target function and handling synchronous/asynchronous execution logic.
+
+Args:
+    f: Target function to execute
+    sync: Whether to use synchronous mode. In synchronous mode, the process exits after executing the target function; in asynchronous mode, the process continues running.
+''')
+
+# ForkProcess.start
+add_chinese_doc('ForkProcess.start', '''\
+启动 ForkProcess 进程。此方法会使用 fork 启动方法来创建子进程，并开始执行目标函数。
+
+此方法的特点：
+
+- **Fork 启动**: 使用 fork 方法创建子进程，在 Unix/Linux 系统上提供更好的性能
+- **上下文管理**: 自动管理进程启动方法的上下文，确保使用正确的启动方式
+- **继承父类**: 继承自 `multiprocessing.Process.start()` 的所有功能
+
+**注意**: 此方法会实际创建新的进程并开始执行，调用后进程会立即开始运行。
+
+''')
+
+add_english_doc('ForkProcess.start', '''\
+Start the ForkProcess. This method uses the fork start method to create a child process and begin executing the target function.
+
+Features of this method:
+
+- **Fork Start**: Uses fork method to create child processes, providing better performance on Unix/Linux systems
+- **Context Management**: Automatically manages the context of process start methods, ensuring the correct start method is used
+- **Parent Inheritance**: Inherits all functionality from `multiprocessing.Process.start()`
+
+**Note**: This method actually creates a new process and begins execution, the process starts running immediately after calling.
+
+''')
+
+# ============= Options
+# Option
+add_chinese_doc('Option', '''\
+LazyLLM 提供的选项管理类，用于管理多个选项值并在它们之间进行迭代。此类主要用于参数网格搜索和超参数调优场景。
+
+Args:
+    *obj: 一个或多个选项值，可以是任意类型的对象。如果传入单个列表或元组，会自动展开。
+
+此类的主要特性：
+
+- **多选项管理**: 可以管理多个不同的选项值
+- **迭代支持**: 支持标准的 Python 迭代协议，可以遍历所有选项
+- **当前值访问**: 始终可以访问当前选中的选项值
+- **深度复制**: 支持深度复制当前选中的选项值
+- **多进程兼容**: 支持在多进程环境中使用
+
+**注意**: 此类主要用于 LazyLLM 内部的参数搜索和试验管理，特别是在 TrialModule 中进行参数网格搜索时。
+
+''')
+
+add_english_doc('Option', '''\
+Option management class provided by LazyLLM, used for managing multiple option values and iterating between them. This class is primarily used for parameter grid search and hyperparameter tuning scenarios.
+
+Args:
+    *obj: One or more option values, which can be objects of any type. If a single list or tuple is passed, it will be automatically expanded.
+
+Key features of this class:
+
+- **Multi-option Management**: Can manage multiple different option values
+- **Iteration Support**: Supports standard Python iteration protocol, can iterate through all options
+- **Current Value Access**: Always can access the currently selected option value
+- **Deep Copy**: Supports deep copying of the currently selected option value
+- **Multi-process Compatibility**: Supports usage in multi-process environments
+
+**Note**: This class is primarily used for LazyLLM's internal parameter search and trial management, especially in TrialModule for parameter grid search.
+
+''')
+
+add_example('Option', '''\
+>>> import lazyllm
+>>> from lazyllm.common.option import Option
+>>> learning_rates = Option(0.001, 0.01, 0.1)
+>>> print(f"当前学习率: {learning_rates}")
+当前学习率: <Option options="(0.001, 0.01, 0.1)" curr="0.001">
+>>> print(f"所有选项: {list(learning_rates)}")
+所有选项: [0.001, 0.01, 0.1]
+''')
 
 add_chinese_doc('multiprocessing.SpawnProcess.start', '''
 使用spawn方式启动进程。
