@@ -44,6 +44,10 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.embed.AbstractEmbedding
+    options:
+      heading_level: 3
+
 ::: lazyllm.components.deploy.EmbeddingDeploy
     options:
       heading_level: 3
@@ -55,35 +59,15 @@
 ::: lazyllm.components.deploy.Mindie
     options:
       heading_level: 3
+
+::: lazyllm.components.deploy.relay.base.RelayServer
+    options:
+      heading_level: 3
+      members: [cmd, geturl]
+
 ::: lazyllm.components.deploy.OCRDeploy
     options:
       heading_level: 3
----
-
-## Launcher
-
-::: lazyllm.launcher.EmptyLauncher
-    options:
-      heading_level: 3
-
-::: lazyllm.launcher.RemoteLauncher
-    options:
-      heading_level: 3
-
-::: lazyllm.launcher.SlurmLauncher
-    options:
-      heading_level: 3
-      filters:
-      - '!get_idle'
-
-::: lazyllm.launcher.ScoLauncher
-    options:
-      heading_level: 3
-
-::: lazyllm.launcher.K8sLauncher
-    options:
-      heading_level: 3
-      members: [makejob, launch]
 
 ---
 
@@ -125,11 +109,41 @@
 
 ---
 
-## Register
+## MultiModal
 
-::: lazyllm.common.Register
+### Text to Image
+
+::: lazyllm.components.StableDiffusionDeploy
     options:
-      heading_level: 3
+      heading_level: 4
+
+### Visual Question Answering
+
+Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Visual Question Answering model.
+
+### Text to Sound
+
+::: lazyllm.components.TTSDeploy
+    options:
+      heading_level: 4
+
+::: lazyllm.components.ChatTTSDeploy
+    options:
+      heading_level: 4
+
+::: lazyllm.components.BarkDeploy
+    options:
+      heading_level: 4
+
+::: lazyllm.components.MusicGenDeploy
+    options:
+      heading_level: 4
+
+### Speech to Text
+
+::: lazyllm.components.SenseVoiceDeploy
+    options:
+      heading_level: 4
 
 ---
 
@@ -182,41 +196,3 @@
 ::: lazyllm.components.EmptyFormatter
     options:
       heading_level: 3
-
----
-
-## MultiModal
-
-### Text to Image
-
-::: lazyllm.components.StableDiffusionDeploy
-    options:
-      heading_level: 4
-
-### Visual Question Answering
-
-Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Visual Question Answering model.
-
-### Text to Sound
-
-::: lazyllm.components.TTSDeploy
-    options:
-      heading_level: 4
-
-::: lazyllm.components.ChatTTSDeploy
-    options:
-      heading_level: 4
-
-::: lazyllm.components.BarkDeploy
-    options:
-      heading_level: 4
-
-::: lazyllm.components.MusicGenDeploy
-    options:
-      heading_level: 4
-
-### Speech to Text
-
-::: lazyllm.components.SenseVoiceDeploy
-    options:
-      heading_level: 4
