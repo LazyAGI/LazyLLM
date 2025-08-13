@@ -2288,6 +2288,60 @@ Args:
     score: 相似度得分
 ''')
 
+add_chinese_doc('rag.doc_node.QADocNode', '''\
+问答文档节点类，用于存储问答对数据。
+
+参数:
+    query (str): 问题文本。
+    answer (str): 答案文本。
+    uid (str): 唯一标识符。
+    group (str): 文档组名。
+    embedding (Dict[str, List[float]]): 嵌入向量字典。
+    parent (DocNode): 父节点引用。
+    metadata (Dict[str, Any]): 节点级元数据。
+    global_metadata (Dict[str, Any]): 文档级元数据。
+    text (str): 节点内容，与query互斥。
+''')
+
+add_english_doc('rag.doc_node.QADocNode', '''\
+Question-Answer document node class for storing QA pair data.
+
+Args:
+    query (str): The question text.
+    answer (str): The answer text.
+    uid (str): Unique identifier.
+    group (str): Document group name.
+    embedding (Dict[str, List[float]]): Dictionary of embedding vectors.
+    parent (DocNode): Reference to the parent node.
+    metadata (Dict[str, Any]): Node-level metadata.
+    global_metadata (Dict[str, Any]): Document-level metadata.
+    text (str): Node content, mutually exclusive with query.
+''')
+
+add_chinese_doc('rag.doc_node.QADocNode.get_text', '''\
+获取节点的文本内容。
+
+参数:
+    metadata_mode (MetadataMode): 元数据模式，默认为MetadataMode.NONE。
+        当设置为MetadataMode.LLM时，返回格式化的问答对。
+        其他模式下返回基类的文本格式。
+
+返回值:
+    str: 格式化后的文本内容。
+''')
+
+add_english_doc('rag.doc_node.QADocNode.get_text', '''\
+Get the text content of the node.
+
+Args:
+    metadata_mode (MetadataMode): Metadata mode, defaults to MetadataMode.NONE.
+        When set to MetadataMode.LLM, returns formatted QA pair.
+        For other modes, returns base class text format.
+
+Returns:
+    str: The formatted text content.
+''')
+
 add_english_doc('rag.dataReader.SimpleDirectoryReader', '''
 A modular document directory reader that inherits from ModuleBase, supporting reading various document formats from the file system and converting them into standardized DocNode objects.
 Args:

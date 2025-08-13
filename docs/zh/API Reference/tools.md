@@ -271,6 +271,10 @@ lazyllm.tools.rag.transform.NodeTransform
     members:
     exclude-members:
 
+::: lazyllm.tools.rag.doc_node.QADocNode
+    members: get_text
+    exclude-members:
+
 ::: lazyllm.tools.rag.doc_processor.DocumentProcessor
     members: register_algorithm, drop_algorithm
 ::: lazyllm.tools.rag.dataReader.SimpleDirectoryReader

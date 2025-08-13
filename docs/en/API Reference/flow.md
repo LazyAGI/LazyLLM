@@ -14,7 +14,7 @@
     exclude-members:
 
 ::: lazyllm.flow.Pipeline
-    members: 
+    members: output
     exclude-members:
 
 ::: lazyllm.flow.save_pipeline_result
