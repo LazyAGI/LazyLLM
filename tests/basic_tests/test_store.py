@@ -51,7 +51,8 @@ def clear_directory(directory_path):
 class TestMapStore(unittest.TestCase):
     def setUp(self):
         self.collections = ["col_g1", "col_g2"]
-        _, self.store_dir = tempfile.mkstemp(suffix=".db")
+        fd, self.store_dir = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
         self.store1 = MapStore()
         self.store1.connect(collections=self.collections)
 
@@ -354,7 +355,8 @@ class TestMilvusStore(unittest.TestCase):
                 }
             }
         ]
-        _, self.store_dir = tempfile.mkstemp(suffix=".db")
+        fd, self.store_dir = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
         self.uri_standalone = ""
         self.store = MilvusStore(uri=self.store_dir, index_kwargs=self.index_kwargs)
         self.store.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
@@ -779,7 +781,8 @@ class TestHybridStore(unittest.TestCase):
                 }
             }
         ]
-        _, self.store_dir = tempfile.mkstemp(suffix=".db")
+        fd, self.store_dir = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
         self.segment_store = MapStore()
         self.vector_store = MilvusStore(uri=self.store_dir, index_kwargs=self.index_kwargs)
         self.store = HybridStore(self.segment_store, self.vector_store)

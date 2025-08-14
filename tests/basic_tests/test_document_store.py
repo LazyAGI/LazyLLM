@@ -27,7 +27,8 @@ image_node1 = ImageDocNode(uid="5", image_path="image1.png", group="image", pare
 @pytest.mark.skip_on_mac
 class TestStoreWithMapAndMilvus(unittest.TestCase):
     def setUp(self):
-        _, self.store_dir = tempfile.mkstemp(suffix=".db")
+        fd, self.store_dir = tempfile.mkstemp(suffix=".db")
+        os.close(fd)
         self.mock_embed = {
             'vec_dense': MagicMock(return_value=[1.0, 2.0, 3.0]),
             'vec_sparse': MagicMock(return_value={0: 1.0, 1: 2.0, 2: 3.0}),
