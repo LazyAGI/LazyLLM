@@ -69,12 +69,17 @@ class MineruServer:
                  default_return_content_list: bool = True,
                  mem_fraction_static: float = 0.8):
         if default_backend not in ['pipeline', 'vlm-sglang-engine', 'vlm-transformers']:
-            raise ValueError(f'Invalid backend: {default_backend}')
+            raise ValueError(f'Invalid backend: {default_backend}, \
+                             only support pipeline, vlm-sglang-engine, vlm-transformers')
         if default_lang not in ['ch', 'ch_server', 'ch_lite', 'en']:
-            raise ValueError(f'Invalid language: {default_lang}')
+            raise ValueError(f'Invalid language: {default_lang}, \
+                             only support ch, ch_server, ch_lite, en')
         self._default_backend = default_backend
         self._cache_dir = cache_dir
-        self._image_save_dir = os.path.join(image_save_dir, 'images')
+        if image_save_dir:
+            self._image_save_dir = os.path.join(image_save_dir, 'images')
+        else:
+            self._image_save_dir = None
         self._default_lang = default_lang
         self._default_parse_method = default_parse_method
         self._default_formula_enable = default_formula_enable
@@ -107,15 +112,17 @@ class MineruServer:
                         return_md: bool = Form(None, description='Whether to return markdown content'),
                         return_content_list: bool = Form(None, description='Whether to return content list')):
         if files and upload_files:
-            raise HTTPException(status_code=400, detail='Either provide only \'files\' or only \'upload_files\'!')
+            raise HTTPException(status_code=400, detail='Either pr7ovide only \'files\' or only \'upload_files\'!')
         for file in files:
             if not os.path.isfile(file):
                 raise HTTPException(status_code=400, detail=f'File Not Found: {file}')
 
         unique_id = str(uuid.uuid4())
+        unique_dir = os.path.join(self._middle_file_dir, unique_id)
+        os.makedirs(unique_dir, exist_ok=True)
 
         if upload_files:
-            files = await self._resolve_upload_files(upload_files, unique_id)
+            files = await self._resolve_upload_files(upload_files, unique_dir)
 
         for file in files:
             if Path(file).suffix.lower() not in self._supported_office_types + ['.pdf']:
@@ -131,21 +138,23 @@ class MineruServer:
             else self._default_return_content_list
 
         LOG.info(f'[MINERU SERVER] GOT FILE {[Path(file).stem for file in files]} --- BACKEND: {backend}')
-        results = {file: {} for file in files}
-        if use_cache and not self._cache_dir:
-            LOG.warning('[MINERU SERVER] CACHE_DIR is not set, the Cache will not be used!')
 
-        files_to_process = files
-        if use_cache and self._cache_dir:
-            results, files_to_process = self._check_cache(files, results, backend,
-                                                          return_md, return_content_list,
-                                                          table_enable, formula_enable)
-            if not files_to_process:
-                LOG.info(f'[MINERU SERVER] RETURN RESULTS FROM CACHE: {files}')
-                results = [results[file] for file in files]
-                return JSONResponse(status_code=200, content={'result': results, 'unique_id': unique_id})
         try:
-            mineru_results = await self._run_mineru(files_to_process, unique_id, backend, lang,
+            results = {file: {} for file in files}
+            if use_cache and not self._cache_dir:
+                LOG.warning('[MINERU SERVER] CACHE_DIR is not set, the Cache will not be used!')
+
+            files_to_process = files
+            if use_cache and self._cache_dir:
+                results, files_to_process = self._check_cache(files, results, backend,
+                                                              return_md, return_content_list,
+                                                              table_enable, formula_enable)
+                if not files_to_process:
+                    LOG.info(f'[MINERU SERVER] RETURN RESULTS FROM CACHE: {files}')
+                    results = [results[file] for file in files]
+                    return JSONResponse(status_code=200, content={'result': results, 'unique_id': unique_id})
+
+            mineru_results = await self._run_mineru(files_to_process, unique_dir, backend, lang,
                                                     parse_method, formula_enable, table_enable,
                                                     return_md, return_content_list)
             results.update(mineru_results)
@@ -157,73 +166,71 @@ class MineruServer:
             LOG.error(f'[MINERU SERVER] Parse Failed: {str(e)}')
             return JSONResponse(status_code=500,
                                 content={'error': f'Failed to process file: {str(e)}'})
-
-    async def _run_mineru(self, files_to_process, unique_id, backend, lang,  # noqa: C901
-                          parse_method, formula_enable, table_enable,
-                          return_md, return_content_list):
-        results = {file: {} for file in files_to_process}
-        unique_dir = os.path.join(self._middle_file_dir, unique_id)
-        os.makedirs(unique_dir, exist_ok=True)
-        try:
-            pdf_file_names = []
-            pdf_bytes_list = []
-
-            for file in files_to_process:
-                pdf_file_name, pdf_byte = self._load_files(Path(file), unique_dir)
-                pdf_file_names.append(pdf_file_name)
-                pdf_bytes_list.append(pdf_byte)
-
-            lang_list = [lang] * len(pdf_bytes_list)
-
-            params = dict(output_dir=unique_dir, pdf_file_names=pdf_file_names,
-                          pdf_bytes_list=pdf_bytes_list, p_lang_list=lang_list, backend=backend,
-                          parse_method=parse_method, formula_enable=formula_enable,
-                          table_enable=table_enable, f_draw_layout_bbox=False, f_draw_span_bbox=False,
-                          f_dump_md=True, f_dump_middle_json=False, f_dump_model_output=False,
-                          f_dump_orig_pdf=False, f_dump_content_list=True)
-            if backend == 'vlm-sglang-engine':
-                params['mem_fraction_static'] = self._mem_fraction_static
-
-            await aio_do_parse(**params)
-
-            for pdf_name, pdf_path in zip(pdf_file_names, files_to_process):
-                # Directory output by mineru
-                if backend.startswith('pipeline'):
-                    parse_dir = os.path.join(unique_dir, pdf_name, parse_method)
-                else:
-                    parse_dir = os.path.join(unique_dir, pdf_name, 'vlm')
-
-                if os.path.exists(parse_dir):
-                    hash_id = self._file_sha256(pdf_path)
-                    md_content = self._read_parse_result('.md', pdf_name, parse_dir)
-                    content_list = self._read_parse_result('_content_list.json', pdf_name, parse_dir)
-
-                    if return_md:
-                        if md_content:
-                            results[pdf_path]['md_content'] = md_content
-                    if return_content_list:
-                        if content_list:
-                            results[pdf_path]['content_list'] = content_list
-                    if self._cache_dir:
-                        self._cache_parse_result(hash_id, results[pdf_path], mode=backend,
-                                                 table_enable=table_enable,
-                                                 formula_enable=formula_enable)
-
-                    if self._image_save_dir:
-                        source_dir = Path(f'{parse_dir}/images/')
-                        target_dir = Path(self._image_save_dir)
-                        for jpg_file in source_dir.glob('*.jpg'):
-                            shutil.move(str(jpg_file), str(target_dir / jpg_file.name))
-
-            return results
         finally:
             shutil.rmtree(unique_dir)
 
-    async def _resolve_upload_files(self, upload_files: List[UploadFile], unique_id: str) -> List[str]:
+    async def _run_mineru(self, files_to_process, unique_dir, backend, lang,  # noqa: C901
+                          parse_method, formula_enable, table_enable,
+                          return_md, return_content_list):
+        results = {file: {} for file in files_to_process}
+
+        pdf_file_names = []
+        pdf_bytes_list = []
+
+        for file in files_to_process:
+            pdf_file_name, pdf_byte = self._load_files(Path(file), unique_dir)
+            pdf_file_names.append(pdf_file_name)
+            pdf_bytes_list.append(pdf_byte)
+
+        lang_list = [lang] * len(pdf_bytes_list)
+
+        params = dict(output_dir=unique_dir, pdf_file_names=pdf_file_names,
+                      pdf_bytes_list=pdf_bytes_list, p_lang_list=lang_list, backend=backend,
+                      parse_method=parse_method, formula_enable=formula_enable,
+                      table_enable=table_enable, f_draw_layout_bbox=False, f_draw_span_bbox=False,
+                      f_dump_md=True, f_dump_middle_json=False, f_dump_model_output=False,
+                      f_dump_orig_pdf=False, f_dump_content_list=True)
+        if backend == 'vlm-sglang-engine':
+            params['mem_fraction_static'] = self._mem_fraction_static
+
+        await aio_do_parse(**params)
+
+        for pdf_name, pdf_path in zip(pdf_file_names, files_to_process):
+            # Directory output by mineru
+            if backend.startswith('pipeline'):
+                parse_dir = os.path.join(unique_dir, pdf_name, parse_method)
+            else:
+                parse_dir = os.path.join(unique_dir, pdf_name, 'vlm')
+
+            if os.path.exists(parse_dir):
+                hash_id = self._file_sha256(pdf_path)
+                md_content = self._read_parse_result('.md', pdf_name, parse_dir)
+                content_list = self._read_parse_result('_content_list.json', pdf_name, parse_dir)
+
+                if return_md:
+                    if md_content:
+                        results[pdf_path]['md_content'] = md_content
+                if return_content_list:
+                    if content_list:
+                        results[pdf_path]['content_list'] = content_list
+                if self._cache_dir:
+                    self._cache_parse_result(hash_id, results[pdf_path], mode=backend,
+                                             table_enable=table_enable,
+                                             formula_enable=formula_enable)
+
+                if self._image_save_dir:
+                    source_dir = Path(f'{parse_dir}/images/')
+                    target_dir = Path(self._image_save_dir)
+                    for jpg_file in source_dir.glob('*.jpg'):
+                        shutil.move(str(jpg_file), str(target_dir / jpg_file.name))
+
+        return results
+
+    async def _resolve_upload_files(self, upload_files: List[UploadFile], unique_dir: str) -> List[str]:
         if not upload_files:
             return []
 
-        temp_upload_dir = os.path.join(self._middle_file_dir, f'upload_{unique_id}')
+        temp_upload_dir = os.path.join(self._middle_file_dir, f'{unique_dir}/upload')
         os.makedirs(temp_upload_dir, exist_ok=True)
         file_paths = []
         for upload_file in upload_files:
