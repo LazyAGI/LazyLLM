@@ -9,5 +9,5 @@ def light_reduce(cls):
             assert self._get_deploy_tasks.flag, f'{cls.__name__[1:-4]} shoule be deployed before used'
             return rebuild, (self._module_id,)
         return super(cls, self).__reduce__()
-    setattr(cls, '__reduce__', _impl)
+    cls.__reduce__ = _impl
     return cls

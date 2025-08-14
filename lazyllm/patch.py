@@ -55,7 +55,7 @@ def new_httpx_func(method, url, **kwargs):
         except Exception: pass
     return _old_httpx_func(method, url, **kwargs)
 
-setattr(httpx, 'request', new_httpx_func)
+httpx.request = new_httpx_func
 
 
 def patch_httpx_func(fname):

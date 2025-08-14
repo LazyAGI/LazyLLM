@@ -339,7 +339,8 @@ class LightEngine(Engine):
         self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
 
-    def start(self, nodes, edges=[], resources=[], gid=None, name=None, _history_ids=None):
+    def start(self, nodes, edges=None, resources=None, gid=None, name=None, _history_ids=None):
+        edges, resources = edges or [], resources or []
         if isinstance(nodes, str):
             assert not edges and not resources and not gid and not name
             self.build_node(nodes).func.start()
@@ -380,7 +381,8 @@ class LightEngine(Engine):
                 node.func.stop()
 
     def update(self, gid_or_nodes: Union[str, Dict, List[Dict]], nodes: List[Dict],
-               edges: List[Dict] = [], resources: List[Dict] = []) -> str:
+               edges: Optional[List[Dict]] = None, resources: Optional[List[Dict]] = None) -> str:
+        edges, resources = edges or [], resources or []
         if isinstance(gid_or_nodes, str):
             assert (gid := gid_or_nodes) in self._nodes
             name = self._nodes[gid].name

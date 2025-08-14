@@ -78,7 +78,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         signature = inspect.signature(func)
         has_var_args = False
-        for name, param in signature.parameters.items():
+        for _, param in signature.parameters.items():
             if param.kind == inspect.Parameter.VAR_POSITIONAL or\
                param.kind == inspect.Parameter.VAR_KEYWORD:
                 has_var_args = True

@@ -26,7 +26,7 @@ def get_sub_classes(module):
     """Get all valid subclasses from a module recursively."""
     clsmembers = inspect.getmembers(module, inspect.isclass)
     classes = set([ele[1] for ele in clsmembers if class_should_check(ele[1], module)])
-    for name, sub_module in inspect.getmembers(module, inspect.ismodule):
+    for _, sub_module in inspect.getmembers(module, inspect.ismodule):
         if sub_module.__name__.startswith(module.__name__):
             classes.update(get_sub_classes(sub_module))
     return classes
@@ -66,7 +66,7 @@ def get_doc_from_language(cls, func: Callable, language: str = 'ENGLISH'):
         warnings.warn(
             f"Documentation for {cls.__name__}.{func.__name__} is written directly in the "
             f"function/class. Please use add_{language.lower()}_doc instead.",
-            UserWarning
+            UserWarning, stacklevel=2
         )
         return None
 
@@ -116,7 +116,7 @@ def do_check_method(cls, func: Callable):
         warnings.warn(
             f"Documentation for {cls.__name__}.{func.__name__} is written directly in the "
             f"function/class. Please use add_english_doc and add_chinese_doc instead.",
-            UserWarning
+            UserWarning, stacklevel=2
         )
         return
 

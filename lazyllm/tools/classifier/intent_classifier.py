@@ -2,7 +2,7 @@ from lazyllm.module import ModuleBase
 from lazyllm.components import AlpacaPrompter
 from lazyllm import pipeline, globals, switch
 from lazyllm.tools.utils import chat_history_to_str
-from typing import Dict, Union, Any, List
+from typing import Dict, Union, Any, List, Optional
 import json
 
 
@@ -64,11 +64,11 @@ Assistant:  查看天气
 class IntentClassifier(ModuleBase):
     def __init__(self, llm, intent_list: list = None,
                  *, prompt: str = '', constrain: str = '', attention: str = '',
-                 examples: list[list[str, str]] = [], return_trace: bool = False) -> None:
+                 examples: Optional[list[list[str, str]]] = None, return_trace: bool = False) -> None:
         super().__init__(return_trace=return_trace)
         self._intent_list = intent_list or []
         self._llm = llm
-        self._prompt, self._constrain, self._attention, self._examples = prompt, constrain, attention, examples
+        self._prompt, self._constrain, self._attention, self._examples = prompt, constrain, attention, examples or []
         if self._intent_list:
             self._init()
 
@@ -95,7 +95,7 @@ class IntentClassifier(ModuleBase):
     def intent_promt_hook(
         self,
         input: Union[str, List, Dict[str, str], None] = None,
-        history: List[Union[List[str], Dict[str, Any]]] = [],
+        history: List[Union[List[str], Dict[str, Any]]] = [],  # noqa B006
         tools: Union[List[Dict[str, Any]], None] = None,
         label: Union[str, None] = None,
     ):

@@ -18,6 +18,7 @@ import concurrent.futures
 from collections import deque
 import uuid
 from ..hook import LazyLLMHook
+from itertools import repeat
 
 
 class _FuncWrap(object):
@@ -43,14 +44,14 @@ def new_ins(obj, cls):
         return True if (cls is _FuncWrap or (_oldins(cls, (tuple, list)) and _FuncWrap in cls)) else _oldins(obj._f, cls)
     return _oldins(obj, cls)
 
-setattr(builtins, 'isinstance', new_ins)
+builtins.isinstance = new_ins
 
 def _is_function(f):
     return isinstance(f, (types.BuiltinFunctionType, types.FunctionType,
                           types.BuiltinMethodType, types.MethodType, types.LambdaType))
 
 class FlowBase(metaclass=_MetaBind):
-    def __init__(self, *items, item_names=[], auto_capture=False) -> None:
+    def __init__(self, *items, item_names=None, auto_capture=False) -> None:
         self._father = None
         self._items, self._item_names, self._item_ids = [], [], []
         self._auto_capture = auto_capture
@@ -58,7 +59,7 @@ class FlowBase(metaclass=_MetaBind):
         self._curr_frame = None
         self._flow_id = str(uuid.uuid4().hex)
 
-        for k, v in zip(item_names if item_names else [None] * len(items), items):
+        for k, v in zip(item_names if item_names else repeat(None), items):
             self._add(k, v)
 
         self._capture = False
@@ -146,8 +147,8 @@ def _bind_enter(self):
 def _bind_exit(self, exc_type, exc_val, exc_tb):
     return self._f.__exit__(exc_type, exc_val, exc_tb)
 
-setattr(bind, '__enter__', _bind_enter)
-setattr(bind, '__exit__', _bind_exit)
+bind.__enter__ = _bind_enter
+bind.__exit__ = _bind_exit
 
 
 # TODO(wangzhihong): support workflow launcher.
@@ -642,7 +643,7 @@ class Graph(LazyLLMFlowsBase):
 
         def get_input(name):
             if name.startswith('_lazyllm_constant_'):
-                return self._constants[int(name.strip('_lazyllm_constant_'))]
+                return self._constants[int(name.removeprefix('_lazyllm_constant_'))]
             if name not in intermediate_results['values']:
                 r = futures[name].result()
                 with intermediate_results['lock']:
