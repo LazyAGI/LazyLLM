@@ -1074,6 +1074,66 @@ add_example('deploy.embed.RerankDeploy', '''\
 >>> result = rerank_service(input_data)
 ''')
 
+# Deploy-embed
+add_chinese_doc('deploy.embed.LazyHuggingFaceRerank', '''\
+基于 HuggingFace CrossEncoder 的重排序（Rerank）封装类。  
+用于根据查询与候选文档的相关性分数，对文档进行排序。  
+支持在初始化时下载并加载指定的重排序模型，并可选择延迟加载以提升启动性能。
+
+Args:
+    base_rerank (str): 重排序模型名称或本地路径。支持 HuggingFace Hub 模型标识符或本地路径。
+    source (Optional[str]): 模型来源，支持 `huggingface` 和 `modelscope`，默认为全局配置项 `model_source`。
+    init (bool): 是否在实例化时立即加载模型。若为 `False`，将在首次调用时延迟加载。
+''')
+
+add_english_doc('deploy.embed.LazyHuggingFaceRerank', '''\
+Wrapper class for HuggingFace CrossEncoder-based reranking.  
+Ranks candidate documents by relevance score with respect to a given query.  
+Supports downloading and loading a specified rerank model at initialization, with optional lazy loading for faster startup.
+
+Args:
+    base_rerank (str): Name or local path of the rerank model. Supports HuggingFace Hub identifiers or local paths.
+    source (Optional[str]): Source of the model, supports `huggingface` and `modelscope`. Defaults to global config `model_source`.
+    init (bool): Whether to load the model immediately upon instantiation. If `False`, the model will be loaded lazily on first call.
+''')
+
+add_chinese_doc('deploy.embed.LazyHuggingFaceRerank.load_reranker', '''\
+加载重排序模型。  
+该方法会使用 `sentence_transformers.CrossEncoder` 从指定的 `base_rerank` 路径或名称加载模型，  
+通常在延迟加载模式下由首次调用实例时自动触发。
+''')
+
+add_english_doc('deploy.embed.LazyHuggingFaceRerank.load_reranker', '''\
+Load the rerank model.  
+Uses `sentence_transformers.CrossEncoder` to load the model from the specified `base_rerank` path or name.  
+Typically triggered automatically on first call when lazy loading is enabled.
+''')
+
+add_chinese_doc('deploy.embed.LazyHuggingFaceRerank.rebuild', '''\
+重建 `LazyHuggingFaceRerank` 实例的类方法。  
+主要用于序列化（pickle/cloudpickle）时的反序列化过程，根据提供的参数重新实例化对象。
+
+Args:
+    base_rerank (str): 模型名称或路径。
+    init (bool): 是否在重建时立即加载模型。
+
+**Returns:**\n
+- LazyHuggingFaceRerank: 重新构建的类实例。
+''')
+
+add_english_doc('deploy.embed.LazyHuggingFaceRerank.rebuild', '''\
+Class method to rebuild a `LazyHuggingFaceRerank` instance.  
+Used primarily for deserialization during pickle/cloudpickle operations,  
+reinstantiating the object with the provided parameters.
+
+Args:
+    base_rerank (str): Model name or path.
+    init (bool): Whether to load the model immediately upon rebuilding.
+
+**Returns:**\n
+- LazyHuggingFaceRerank: The rebuilt class instance.
+''')
+
 add_chinese_doc('deploy.embed.LazyFlagEmbedding', '''\
 支持懒加载的 FlagEmbedding 嵌入模块封装。
 
@@ -1366,7 +1426,7 @@ add_chinese_doc('deploy.Mindie.update_config', '''\
         - 调度参数
 ''')
 
-add_english_doc('Mindie.cmd', '''\
+add_english_doc('deploy.Mindie.cmd', '''\
 Generates the command to start the MindIE service.
 
 Args:
@@ -1383,7 +1443,7 @@ Notes:
     - Supports random port allocation when configured
 ''')
 
-add_chinese_doc('Mindie.cmd', '''\
+add_chinese_doc('deploy.Mindie.cmd', '''\
 生成启动MindIE服务的命令。
 
 Args:
@@ -1400,7 +1460,7 @@ Args:
     - 支持配置随机端口分配
 ''')
 
-add_english_doc('Mindie.geturl', '''\
+add_english_doc('deploy.Mindie.geturl', '''\
 Gets the service URL after deployment.
 
 Args:
@@ -1414,7 +1474,7 @@ Notes:
     - Includes port number from configuration
 ''')
 
-add_chinese_doc('Mindie.geturl', '''\
+add_chinese_doc('deploy.Mindie.geturl', '''\
 获取部署后的服务URL。
 
 Args:
@@ -1428,7 +1488,7 @@ Args:
     - 包含配置中的端口号
 ''')
 
-add_english_doc('Mindie.extract_result', '''\
+add_english_doc('deploy.Mindie.extract_result', '''\
 Extracts the generated text from the API response.
 
 Args:
@@ -1443,7 +1503,7 @@ Notes:
     - Returns first text entry from response
 ''')
 
-add_chinese_doc('Mindie.extract_result', '''\
+add_chinese_doc('deploy.Mindie.extract_result', '''\
 从API响应中提取生成的文本。
 
 Args:
@@ -1457,6 +1517,7 @@ Args:
     - 解析JSON响应
     - 返回响应中的第一个文本条目
 ''')
+
 # Deploy-LMDeploy
 add_chinese_doc('deploy.LMDeploy', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [LMDeploy](https://github.com/InternLM/lmdeploy) 框架提供的推理能力，用于对大语言模型进行推理。
@@ -2495,6 +2556,26 @@ add_example('prompter.PrompterBase', '''\
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nins hello world\\\\n\\\\n'}, {'role': 'user', 'content': ''}]}
 ''')
 
+add_chinese_doc('prompter.PrompterBase.pre_hook', '''\
+设置预处理钩子函数，供外部在生成提示词前对输入数据进行自定义处理。
+
+Args:
+    func (Optional[Callable]): 一个可调用对象，作为预处理钩子函数，接收并处理输入数据。
+
+**Returns:**\n
+- LazyLLMPrompterBase: 返回自身实例，方便链式调用。
+''')
+
+add_english_doc('prompter.PrompterBase.pre_hook', '''\
+Sets a pre-processing hook function, allowing external custom processing of input data before prompt generation.
+
+Args:
+    func (Optional[Callable]): A callable object to be used as the pre-processing hook function, which receives and processes input data.
+
+**Returns:**\n
+- LazyLLMPrompterBase: Returns the instance itself to support method chaining.
+''')
+
 add_chinese_doc('prompter.PrompterBase.generate_prompt', '''\
 根据用户输入，生成对应的Prompt.
 
@@ -3508,6 +3589,71 @@ Notes:
 add_example('RemoteLauncher', '''\
 >>> import lazyllm
 >>> launcher = lazyllm.launchers.remote(ngpus=1)
+''')
+
+# core.py
+add_chinese_doc('lazyllm.components.core.ComponentBase', '''\
+组件基类，提供统一的接口与基础实现，便于创建不同类型的组件。  
+组件通过指定的 Launcher 来执行任务，支持自定义任务执行逻辑。
+
+Args:
+    launcher (LazyLLMLaunchersBase or type, optional): 组件使用的启动器实例或启动器类，默认为空启动器（empty）。
+''')
+
+add_english_doc('lazyllm.components.core.ComponentBase', '''\
+Base class for components, providing a unified interface and basic implementation to facilitate creation of various components.  
+Components execute tasks via a specified launcher and support custom task execution logic.
+
+Args:
+    launcher (LazyLLMLaunchersBase or type, optional): Launcher instance or launcher class used by the component, defaults to empty launcher.
+''')
+
+add_example('lazyllm.components.core.ComponentBase', '''\
+>>> from lazyllm.components.core import ComponentBase
+>>> class MyComponent(ComponentBase):
+...     def apply(self, x):
+...         return x * 2
+>>> comp = MyComponent()
+>>> comp.name = "ExampleComponent"
+>>> print(comp.name)
+ExampleComponent
+>>> result = comp(10)
+>>> print(result)
+20
+>>> print(comp.apply(5))
+10
+''')
+
+add_chinese_doc('lazyllm.components.core.ComponentBase.apply', '''\
+组件执行的核心方法，需由子类实现。  
+定义组件的具体业务逻辑或任务执行步骤。  
+
+**注意:**  
+调用组件时，如果子类重写了此方法，则会调用此方法执行任务。  
+''')
+
+add_english_doc('lazyllm.components.core.ComponentBase.apply', '''\
+Core execution method of the component, to be implemented by subclasses.  
+Defines the specific business logic or task execution steps of the component.
+
+**Note:**  
+If this method is overridden by the subclass, it will be called when the component is invoked.
+''')
+
+add_chinese_doc('lazyllm.components.core.ComponentBase.cmd', '''\
+生成组件的执行命令，需由子类实现。  
+返回的命令可以是字符串、元组或列表，表示具体执行任务的指令。  
+
+**注意:**  
+调用组件时，如果未重写 `apply` 方法，将通过此命令生成任务并由启动器执行。  
+''')
+
+add_english_doc('lazyllm.components.core.ComponentBase.cmd', '''\
+Generates the execution command of the component, to be implemented by subclasses.  
+The returned command can be a string, tuple, or list, representing the instruction to execute the task.
+
+**Note:**  
+If the `apply` method is not overridden, this command will be used to create a job for the launcher to run.
 ''')
 
 add_chinese_doc('Job', '''\

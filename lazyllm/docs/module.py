@@ -1405,6 +1405,26 @@ add_example('OnlineEmbeddingModuleBase', '''\
 ...         return embedding
 ''')
 
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoEmbedding', '''\
+豆包嵌入类，继承自 OnlineEmbeddingModuleBase，封装了调用豆包在线文本嵌入服务的功能。  
+通过指定服务接口 URL、模型名称及 API Key，支持远程获取文本向量表示。
+
+Args:
+    embed_url (Optional[str]): 豆包文本嵌入服务的接口 URL，默认指向北京区域的服务地址。
+    embed_model_name (Optional[str]): 使用的豆包嵌入模型名称，默认为 "doubao-embedding-text-240715"。
+    api_key (Optional[str]): 访问豆包服务的 API Key，若未提供则从 lazyllm 配置中读取。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoEmbedding', '''\
+DoubaoEmbedding class inherits from OnlineEmbeddingModuleBase, encapsulating the functionality to call Doubao's online text embedding service.  
+It supports remote text vector representation retrieval by specifying the service URL, model name, and API key.
+
+Args:
+    embed_url (Optional[str]): URL of the Doubao text embedding service, defaulting to the Beijing region endpoint.
+    embed_model_name (Optional[str]): Name of the Doubao embedding model used, default is "doubao-embedding-text-240715".
+    api_key (Optional[str]): API key for accessing the Doubao service. If not provided, it is read from lazyllm config.
+''')
+
 add_chinese_doc('llms.onlinemodule.fileHandler.FileHandlerBase', '''\
 FileHandlerBase是用于处理微调数据文件的基类，主要用于验证和转换微调数据格式。该类本身不支持直接实例化，需要子类继承该类并实现特定的文件格式转换逻辑。
 

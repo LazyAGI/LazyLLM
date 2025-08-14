@@ -68,6 +68,11 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.embed.LazyHuggingFaceRerank
+    options:
+      heading_level: 3
+      members: [load_reranker, rebuild]
+
 ::: lazyllm.components.deploy.Mindie
     options:
       heading_level: 3
@@ -92,12 +97,12 @@
 ## Prompter
 
 ::: lazyllm.components.prompter.LazyLLMPrompterBase
-  options:
-    heading_level: 3
+    options:
+      heading_level: 3
     inherited_members:
       - generate_prompt
       - get_response
-    members: false
+    members: [pre_hook]
 
 ::: lazyllm.components.prompter.EmptyPrompter
     options:
@@ -182,6 +187,7 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
 ::: lazyllm.components.deploy.speech_to_text.sense_voice.SenseVoice
     options:
       heading_level: 4
+
 ---
 
 ## ModelManager
@@ -261,3 +267,12 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
 ::: lazyllm.components.EmptyFormatter
     options:
       heading_level: 3
+
+---
+
+## ComponentBase
+
+::: lazyllm.components.core.ComponentBase
+    options:
+      heading_level: 3
+      members: [apply, cmd]
