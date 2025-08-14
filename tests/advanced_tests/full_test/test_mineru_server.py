@@ -101,7 +101,6 @@ class TestMineruServer(unittest.TestCase):
     def test_pdf_parsing(self):
         """Test 1: Initial PDF parsing (create cache foundation)"""
         initial_files = [str(self.test_files["pdf1"]), str(self.test_files["pdf2"])]
-        LOG.info(f"📄 Parsing PDF files: {[os.path.basename(f) for f in initial_files]}")
 
         status, result = self.post_pdf_parse(
             files=initial_files,
@@ -132,7 +131,6 @@ class TestMineruServer(unittest.TestCase):
     @pytest.mark.order(2)
     def test_pdf_parsing_with_upload_files(self):
         """Test 2: Initial upload file object parsing"""
-        LOG.info("\n📋 Test 2: Initial upload file object parsing")
         file_path = str(self.test_files["pdf2"])
         with open(file_path, "rb") as f:
             upload_files = [
@@ -156,8 +154,7 @@ class TestMineruServer(unittest.TestCase):
 
     @pytest.mark.order(3)
     def test_pdf_parsing_with_cache(self):
-        """Test 3: Mixed PDF cache and new files (depends on test 1 and 3)"""
-        LOG.info("\n🔄 Test 3: Mixed PDF cache and new files (depends on test 1 and 3)")
+        """Test 3: Mixed PDF cache and new files"""
         mixed_files = [str(self.test_files["pdf1"]), str(self.test_files["pdf3"])]
         status, result = self.post_pdf_parse(
             files=mixed_files,
@@ -175,10 +172,8 @@ class TestMineruServer(unittest.TestCase):
     @pytest.mark.order(4)
     def test_office_document_parsing(self):
         """Test 4: Office document parsing functionality"""
-        LOG.info("\n📄 Test 4: Office document parsing functionality")
         office_files = [str(self.test_files["docx"]), str(self.test_files["pptx"])]
         for file_path in office_files:
-            LOG.info(f"🔄 Testing file: {os.path.basename(file_path)}")
             status, result = self.post_pdf_parse(
                 files=[file_path],
                 backend="pipeline",
@@ -189,23 +184,15 @@ class TestMineruServer(unittest.TestCase):
             assert status in [200, 400], f"status: {status}, error: {result}"
             if status == 200:
                 self.check_result(result)
-                LOG.info(f"✅ {os.path.basename(file_path)} parsed successfully")
-                file_result = result["result"][0]
-                if "md_content" in file_result:
-                    LOG.info(f"   - MD content: {file_result['md_content']}")
-                if "content_list" in file_result:
-                    LOG.info(f"   - Content List: {file_result['content_list']} ")
             else:
                 LOG.warning(f"Skipping office document parsing test")
 
     @pytest.mark.order(5)
     def test_different_backends(self):
         """Test 6: Different backend testing"""
-        LOG.info("\n🔧 Test 6: Different backend testing")
         backends = ["vlm-sglang-engine", "vlm-transformers"]
         test_file = str(self.test_files["pdf1"])
         for backend in backends:
-            LOG.info(f"🔄 Testing backend: {backend}")
             status, result = self.post_pdf_parse(
                 files=[test_file],
                 backend=backend,
@@ -214,7 +201,7 @@ class TestMineruServer(unittest.TestCase):
                 use_cache=False,
             )
             
-            assert status == 200, f"status: {status}, error: {result}"
+            assert status == 200, f"backend: {backend}, status: {status}, error: {result}"
             self.check_result(result)
 
     @pytest.mark.order(6)
