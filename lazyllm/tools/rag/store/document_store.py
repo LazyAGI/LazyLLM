@@ -3,7 +3,7 @@ import lazyllm
 import traceback
 
 from collections import defaultdict
-from typing import Optional, List, Union, Set, Dict, Callable, Any
+from typing import Optional, List, Union, Set, Dict, Callable, Any, Tuple
 from lazyllm import LOG, once_wrapper
 
 from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment, INSERT_BATCH_SIZE,
@@ -42,13 +42,9 @@ class _DocumentStore(object):
             if store.get('indices'): store = self._convert_legacy_to_config(store)
             store = self._create_store_from_config(store)
         if store.capability == StoreCapability.VECTOR:
-            if store.dir:
-                segment_store = MapStore(uri=os.path.join(store.dir, 'segments.db'))
-            else:
-                segment_store = MapStore()
+            segment_store = MapStore(uri=os.path.join(store.dir, 'segments.db') if store.dir else None)
             return HybridStore(segment_store=segment_store, vector_store=store)
-        else:
-            return store
+        return store
 
     def _make_store(self, cfg: Dict[str, Any]) -> LazyLLMStoreBase:
         if not cfg: return None
@@ -71,28 +67,58 @@ class _DocumentStore(object):
         cfg = {'type': backend, 'kwargs': index_config.get('kwargs', {})}
         return cfg
 
-    def _create_store_from_config(self, cfg: Optional[Dict[str, Any]] = None) -> LazyLLMStoreBase:
-        if cfg.get('type'):
-            # map/sensecore/chroma/milvus
-            s_store = self._make_store(cfg)
-            if s_store.capability in (StoreCapability.ALL, StoreCapability.SEGMENT):
-                return s_store
+    def _normalize_store_config(self, cfg: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        if 'type' in cfg:
+            store_type = cfg['type']
+            cls = getattr(lazyllm.store, store_type, None)
+            if not cls:
+                raise NotImplementedError(f"Not implemented store type: {store_type}")
+            cap = getattr(cls, "capability", None)
+            if cap is None:
+                raise AttributeError(f"{cls.__name__} must define class attribute 'capability'")
+
+            if cap in (StoreCapability.ALL, StoreCapability.SEGMENT):
+                return cfg, {}
+            elif cap == StoreCapability.VECTOR:
+                return {}, cfg
             else:
-                LOG.warning('Only vector store is supported, segment store will be MapStore')
-                if s_store.dir:
-                    segment_store = MapStore(uri=os.path.join(s_store.dir, 'segments.db'))
-                else:
-                    segment_store = MapStore()
-                return HybridStore(segment_store=segment_store, vector_store=s_store)
-        else:
-            seg_store = self._make_store(cfg.get('segment_store', {}))
-            vec_store = self._make_store(cfg.get('vector_store', {}))
-            assert seg_store and vec_store, 'Please provide both segment_store and vector_store in store_config'
+                raise ValueError(f"Unsupported capability {cap} for {cls.__name__}")
+        return cfg.get('segment_store', {}) or {}, cfg.get('vector_store', {}) or {}
+
+    def _create_store_from_config(self, cfg: Optional[Dict[str, Any]] = None) -> LazyLLMStoreBase:
+        seg_cfg, vec_cfg = self._normalize_store_config(cfg)
+
+        seg_store = self._make_store(seg_cfg)
+        vec_store = self._make_store(vec_cfg)
+
+        if not seg_store and not vec_store:
+            raise ValueError("Provide either 'type' or 'segment_store'/'vector_store' in config.")
+
+        if seg_store:
             assert seg_store.capability in (StoreCapability.ALL, StoreCapability.SEGMENT), \
                 'Segment store must be a segment store'
+        if vec_store:
             assert vec_store.capability in (StoreCapability.ALL, StoreCapability.VECTOR), \
                 'Vector store must be a vector store'
+
+        if seg_store and vec_store:
+            if seg_store.capability == StoreCapability.ALL:
+                LOG.warning("segment_store has ALL capability; ignore explicit vector_store")
+                return seg_store
+            if vec_store.capability == StoreCapability.ALL:
+                LOG.warning("vector_store has ALL capability; ignore explicit segment_store")
+                return vec_store
             return HybridStore(segment_store=seg_store, vector_store=vec_store)
+
+        if seg_store and not vec_store:
+            return seg_store
+        if vec_store and not seg_store:
+            if vec_store.capability == StoreCapability.VECTOR:
+                segment_store = MapStore(uri=os.path.join(vec_store.dir, 'segments.db') if vec_store.dir else None)
+                return HybridStore(segment_store=segment_store, vector_store=vec_store)
+            return vec_store
+        # should not reach here
+        raise RuntimeError("Unexpected store creation state")
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self):

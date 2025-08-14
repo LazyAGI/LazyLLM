@@ -237,4 +237,4 @@ class ChromadbStore(LazyLLMStoreBase):
         return GLOBAL_META_KEY_PREFIX + k
 
     def _gen_collection_name(self, collection_name: str, embed_key: str) -> str:
-        return collection_name + '_' + embed_key
+        return collection_name + '_' + embed_key + "_embed"
