@@ -15,6 +15,7 @@ nav:
   - Great Writer: Cookbook/great_writer.md
   - RAG: Cookbook/rag.md
   - Streaming: Cookbook/streaming.md
+  - Simulated Environment: Cookbook/gym_agent.md
 - Best Practice:
   - Flow: Best Practice/flow.md
   - Flowapp: Best Practice/flowapp.md
@@ -27,14 +28,14 @@ nav:
   - Contribution: Advanced Topics/contribution.md
   - Changelog: Advanced Topics/changelog.md
 - Api Reference:
-  - Cli: API Reference/cli.md
+  - CLI: API Reference/cli.md
   - Common: API Reference/common.md
   - Components: API Reference/components.md
-  - Configs: API Reference/configs.md
-  - Launcher: API Reference/launcher.md
   - Flow: API Reference/flow.md
   - Module: API Reference/module.md
   - Tools: API Reference/tools.md
+  - Configs: API Reference/configs.md
+  - Launcher: API Reference/launcher.md
 - Tutorials:
   - Overview: Tutorial/index.md
   - Lesson 1: Tutorial/1.md
