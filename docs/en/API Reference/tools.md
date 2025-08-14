@@ -150,10 +150,6 @@
     members:
     exclude-members:
 
-::: lazyllm.tools.rag.readers.MagicPDFReader
-    members:
-    exclude-members:
-
 ::: lazyllm.tools.rag.readers.MarkdownReader
     members:
         - remove_images
@@ -212,7 +208,7 @@
     members:
 	exclude-members:
 
-::: lazyllm.tools.rag.readers.MagicPDFReader
+::: lazyllm.tools.rag.readers.MineruPDFReader
     members:
 	exclude-members:
 

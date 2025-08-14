@@ -10,25 +10,19 @@ from lazyllm import LOG
 import requests
 
 class MineruPDFReader:
-
-    def __init__(self, mineru_url, backend="pipeline",
+    def __init__(self, url, backend="pipeline",
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  upload_mode: bool = False,
                  extract_table: bool = True,
                  extract_formula: bool = True,
+                 split_doc: bool = True,
                  post_func: Optional[Callable] = None):
-        self._mineru_url = mineru_url + "/api/v1/pdf_parse"
+        self._url = url + "/api/v1/pdf_parse"
         self._upload_mode = upload_mode
         self._backend = backend
         self._extract_table = extract_table
         self._extract_formula = extract_formula
-        if callback is not None:
-            self._callback = callback
-        else:
-            def default_callback(elements: List[dict], file: Path, extra_info: Optional[Dict] = None) -> List[DocNode]:
-                text_chunks = [el["text"] for el in elements if "text" in el]
-                return [DocNode(text="\n".join(text_chunks), metadata={"file_name": file.name})]
-            self._callback = default_callback
+        self._split_doc = split_doc
         self._post_func = post_func
 
     def __call__(self, file: Path, **kwargs) -> List[DocNode]:
@@ -38,28 +32,35 @@ class MineruPDFReader:
             LOG.error(f"[MineruPDFReader] Error loading data from {file}: {e}")
             return []
 
-    def _load_data(self, file: Path, extra_info: Optional[Dict] = None, **kwargs) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   use_cache: bool = True, **kwargs) -> List[DocNode]:
         if isinstance(file, str):
             file = Path(file)
-        if self._upload_mode:
-            elements = self._upload_parse_pdf_elements(file)
-        else:
-            elements = self._parse_pdf_elements(file)
-        docs: List[DocNode] = self._callback(elements, file, extra_info)
+        elements = self._parse_pdf_elements(file, use_cache=use_cache)
+        docs = self._build_nodes(elements, file, extra_info)
+
         if self._post_func:
             docs = self._post_func(docs)
+            assert isinstance(docs, list), f"Expected list, got {type(docs)}, please check your post function"
+            for node in docs:
+                assert isinstance(node, DocNode), f"Expected DocNode, got {type(node)}, please check your post function"
+                node.global_metadata = extra_info
         return docs
 
     def _parse_pdf_elements(self, pdf_path: Path, use_cache: bool = True) -> List[dict]:
-        payload = {"files": [str(pdf_path)],
+        payload = {"return_content_list": True,
                    "use_cache": use_cache,
-                   "return_content_list": True,
                    "backend": self._backend,
                    "table_enable": self._extract_table,
                    "formula_enable": self._extract_formula}
-        LOG.info(f"[MineruPDFReader] payload: {payload}")
         try:
-            response = requests.post(self._mineru_url, data=payload)
+            if self._upload_mode:
+                payload["files"] = [str(pdf_path)]
+                response = requests.post(self._url, data=payload)
+            else:
+                with open(pdf_path, "rb") as f:
+                    files = {'upload_files': (os.path.basename(pdf_path), f)}
+                    response = requests.post(self._url, data=payload, files=files)
             response.raise_for_status()
             res = response.json()
             if not isinstance(res, dict) or not res.get('result'):
@@ -75,43 +76,21 @@ class MineruPDFReader:
         res = self._extract_content_blocks(res)
         return res
 
-    def _upload_parse_pdf_elements(self, pdf_path: Path, backend: str = "pipeline") -> List[dict]:
-        backend = backend or self._backend
-        try:
-            with open(pdf_path, "rb") as f:
-                files = {'upload_files': (os.path.basename(pdf_path), f)}
-                payload = {"return_content_list": True, "backend": backend}
-                response = requests.post(self._mineru_url, data=payload, files=files)
-                response.raise_for_status()
-                res = response.json()
-                if not isinstance(res, dict) or not res.get('result'):
-                    LOG.error(f"[MineruPDFReader] Invalid response: {res}")
-                    return []
-                res = res['result'][0].get('content_list', [])
-                if not res:
-                    LOG.warning(f"[MineruPDFReader] No elements found in PDF: {pdf_path}")
-                    return []
-        except requests.exceptions.RequestException as e:
-            LOG.error(f"[MineruPDFReader] POST failed: {e}")
-            return []
-        res = self._extract_content_blocks(res)
-        return res
-
     def _extract_content_blocks(self, content_list) -> List[dict]:  # noqa: C901
         blocks = []
         cur_title = ""
         cur_level = -1
         for content in content_list:
             block = {}
-            block["bbox"] = content["bbox"]
-            block["type"] = content["type"]
-            block["page"] = content["page_idx"]
+            block["bbox"] = content.get('bbox', [])
+            block["type"] = content.get('type', 'text')
+            block["page"] = content.get('page', [])
             block["lines"] = content["lines"] if 'lines' in content else []
             for line in block['lines']:
                 if 'content' in line:
-                    line['content'] = self._clean_content(line['content'])
+                    line['content'] = self._normalize_content_recursively(line['content'])
             if content["type"] == "text":
-                content["text"] = self._clean_content(content["text"]).strip()
+                content["text"] = self._normalize_content_recursively(content["text"]).strip()
                 if not content["text"]:
                     continue
                 if "text_level" in content:
@@ -126,11 +105,11 @@ class MineruPDFReader:
                 del block["page_idx"]
                 blocks.append(block)
             elif content["type"] == "image":
-                if not content["img_path"]:
+                if not content.get("img_path", None):
                     continue
-                block["image_path"] = os.path.basename(content["img_path"])
-                block['img_caption'] = "\n".join(self._clean_content(content.get('image_caption', [])))
-                block['img_footnote'] = "\n".join(self._clean_content(content.get('image_footnote', [])))
+                block["image_path"] = content["img_path"]
+                block['img_caption'] = "\n".join(self._normalize_content_recursively(content.get('image_caption', [])))
+                block['img_footnote'] = "\n".join(self._normalize_content_recursively(content.get('image_footnote', [])))
                 if cur_title:
                     block["title"] = cur_title
                 block["text"] = f"![{block['img_caption']}]({block['image_path']})"
@@ -138,36 +117,41 @@ class MineruPDFReader:
                 blocks.append(block)
             elif content["type"] == "table":
                 if self._extract_table:
-                    block["text"] = self._html_table_to_markdown(self._clean_content(content["table_body"])) if "table_body" in content else ""
-                    block['table_caption'] = "\n".join(self._clean_content(content['table_caption']))
-                    block['table_footnote'] = "\n".join(self._clean_content(content['table_footnote']))
+                    block["text"] = self._html_table_to_markdown(
+                        self._normalize_content_recursively(content.get('table_body', '')))
+                    block['table_caption'] = "\n".join(
+                        self._normalize_content_recursively(content.get('table_caption', [])))
+                    block['table_footnote'] = "\n".join(
+                        self._normalize_content_recursively(content.get('table_footnote', [])))
                     if block.get("text", None):
                         block["text"] = f"{block['table_caption']}\n{block['text']}".lstrip("\n")
                         block["text"] += f"\n{block['table_footnote']}\n" if block["table_footnote"] else "\n"
                 else:
-                    block['image_path'] = os.path.basename(content.get("img_path", ""))
+                    block['image_path'] = content.get('img_path', '')
                     block["text"] = f"![table]({block['image_path']})"
                 if cur_title:
                     block["title"] = cur_title
                 blocks.append(block)
             elif content["type"] == "equation":
                 if self._extract_formula:
-                    block["text"] = content["text"]
+                    block["text"] = content.get('text', '')
                 else:
-                    block["image_path"] = os.path.basename(content.get("img_path", ""))
+                    block["image_path"] = content.get('img_path', '')
                     block["text"] = f"![formula]({block['image_path']})"
                 blocks.append(block)
         return blocks
 
-    def _clean_content(self, content) -> str:
+    def _normalize_content_recursively(self, content) -> str:
         if isinstance(content, str):
             content = content.encode("utf-8", "replace").decode("utf-8")
             return unicodedata.normalize("NFKC", content)
         if isinstance(content, list):
-            return [self._clean_content(t) for t in content]
+            return [self._normalize_content_recursively(t) for t in content]
         return content
 
     def _html_table_to_markdown(self, html_table) -> str:  # noqa: C901
+        if not html_table:
+            return ''
         try:
             soup = BeautifulSoup(html_table.strip(), 'html.parser')
             table = soup.find('table')
@@ -232,3 +216,22 @@ class MineruPDFReader:
         except Exception as e:
             LOG.error(f"Error parsing table: {e}")
             return str(html_table)
+
+    def _build_nodes(self, elements: List[dict], file: Path, extra_info: Optional[Dict] = None) -> List[DocNode]:
+        docs = []
+        if self._split_doc:
+            for e in elements:
+                metadata = {"file_name": file.name}
+                metadata.update({k: v for k, v in e.items() if k != "text"})
+                metadata.update({'file_path': str(file)})
+                node = DocNode(text=e.get("text", ""), metadata=metadata, global_metadata=extra_info)
+                node.excluded_embed_metadata_keys = ['type', 'index', 'text_level', 'bbox', 'lines']
+                node.excluded_llm_metadata_keys = ['type', 'index', 'text_level', 'bbox', 'lines']
+                docs.append(node)
+        else:
+            text_chunks = [el["text"] for el in elements if "text" in el]
+            nodes = DocNode(text="\n".join(text_chunks), metadata={"file_name": file.name})
+            nodes.excluded_embed_metadata_keys = ['type', 'index', 'text_level', 'bbox', 'lines']
+            nodes.excluded_llm_metadata_keys = ['type', 'index', 'text_level', 'bbox', 'lines']
+            docs.append(nodes)
+        return docs

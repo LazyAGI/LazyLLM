@@ -821,18 +821,24 @@ add_chinese_doc('rag.readers.MineruPDFReader', '''\
 用于通过 MinerU 服务解析 PDF 文件内容的模块。支持上传文件或通过 URL 方式调用解析接口，解析结果经过回调函数处理成文档节点列表。
 
 Args:
-    mineru_url (str): MagicPDF 服务的接口 URL。
-    callback (Optional[Callable[[List[dict], Path, dict], List[DocNode]]]): 解析结果回调函数，接收解析元素列表、文件路径及额外信息，返回文档节点列表。默认将所有文本合并为一个节点。
+    url (str): MineruPDFReader 服务的接口 URL。
     upload_mode (bool): 是否采用文件上传模式调用接口，默认为 False，即通过 JSON 请求文件路径。
+    extract_table (bool): 是否提取表格，默认为 True。
+    extract_formula (bool): 是否提取公式，默认为 True。
+    split_doc (bool): 是否分割文档，默认为 True。
+    post_func (Optional[Callable]): 后处理函数。
 ''')
 
 add_english_doc('rag.readers.MineruPDFReader', '''\
-Module to parse PDF content via the MagicPDF service. Supports file upload or URL-based parsing, with a callback to process the parsed elements into document nodes.
+Module to parse PDF content via the MineruPDFReader service. Supports file upload or URL-based parsing, with a callback to process the parsed elements into document nodes.
 
 Args:
-    mineru_url (str): The MagicPDF service API URL.
-    callback (Optional[Callable[[List[dict], Path, dict], List[DocNode]]]): A callback function that takes parsed element list, file path, and extra info, returns a list of DocNode. Defaults to merging all text into a single node.
+    url (str): The MineruPDFReader service API URL.
     upload_mode (bool): Whether to use file upload mode for the API call. Default is False, meaning JSON request with file path.
+    extract_table (bool): Whether to extract tables. Default is True.
+    extract_formula (bool): Whether to extract formulas. Default is True.
+    split_doc (bool): Whether to split the document. Default is True.
+    post_func (Optional[Callable]): Post-processing function.
 ''')
 
 add_chinese_doc('rag.readers.MarkdownReader', '''\
