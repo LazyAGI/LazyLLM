@@ -45,5 +45,5 @@ __all__ = [
     'DataType',
     'IndexBase',
     'StoreBase',
-    "FileReader",
+    "FileReader"
 ]
