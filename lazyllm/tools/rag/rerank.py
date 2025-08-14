@@ -75,13 +75,8 @@ def get_nlp_and_matchers(language):
 
 
 @Reranker.register_reranker
-def KeywordFilter(
-    node: DocNode,
-    required_keys: List[str] = [],
-    exclude_keys: List[str] = [],
-    language: str = "en",
-    **kwargs,
-) -> Optional[DocNode]:
+def KeywordFilter(node: DocNode, required_keys: Optional[List[str]] = None, exclude_keys: Optional[List[str]] = None,
+                  language: str = "en", **kwargs) -> Optional[DocNode]:
     assert required_keys or exclude_keys, 'One of required_keys or exclude_keys should be provided'
     nlp, required_matcher, exclude_matcher = get_nlp_and_matchers(language)
     if required_keys:

@@ -1,6 +1,7 @@
 import os
 
 from typing import Callable, Optional, Dict, Union, List
+from functools import cached_property
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
@@ -35,7 +36,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     class _Manager(ModuleBase):
         def __init__(self, dataset_path: Optional[str], embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: Union[bool, int] = False, name: Optional[str] = None,
-                     launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = {"type": "map"},
+                     launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
                      doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
                      display_name: Optional[str] = "", description: Optional[str] = "algorithm description"):
@@ -226,7 +227,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def get_sql_manager(self):
         if self._doc_to_db_processor is None:
-            raise None
+            raise ValueError("Please call connect_sql_manager to init handler first")
         return self._doc_to_db_processor.sql_manager
 
     def extract_db_schema(
@@ -347,7 +348,7 @@ class UrlDocument(ModuleBase):
     def forward(self, *args, **kw):
         return self._forward('retrieve', *args, **kw)
 
-    @functools.lru_cache
+    @cached_property
     def active_node_groups(self):
         return self._forward('active_node_groups')
 

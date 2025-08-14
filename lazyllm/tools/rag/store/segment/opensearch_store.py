@@ -47,12 +47,12 @@ class OpenSearchStore(LazyLLMStoreBase):
     need_embedding = False
     supports_index_registration = False
 
-    def __init__(self, uris: List[str], client_kwargs: Optional[Dict] = {},
+    def __init__(self, uris: List[str], client_kwargs: Optional[Dict] = None,
                  index_kwargs: Optional[Union[Dict, List]] = None, **kwargs):
         if isinstance(uris, str):
             uris = [uris]
         self._uris = uris
-        self._client_kwargs = client_kwargs
+        self._client_kwargs = client_kwargs or {}
         self._index_kwargs = index_kwargs or DEFAULT_INDEX_BODY
         self._primary_key = 'uid'
 

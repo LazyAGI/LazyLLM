@@ -31,11 +31,11 @@ class ChromadbStore(LazyLLMStoreBase):
     supports_index_registration = False
 
     def __init__(self, uri: Optional[str] = None, dir: Optional[str] = None,
-                 index_kwargs: Optional[Union[Dict, List]] = None, client_kwargs: Optional[Dict] = {},
+                 index_kwargs: Optional[Union[Dict, List]] = None, client_kwargs: Optional[Dict] = None,
                  **kwargs) -> None:
         assert uri or (dir), "uri or dir must be provided"
         self._index_kwargs = index_kwargs or DEFAULT_INDEX_CONFIG
-        self._client_kwargs = client_kwargs
+        self._client_kwargs = client_kwargs or {}
         if dir:
             self._dir = dir
         else:
@@ -78,11 +78,12 @@ class ChromadbStore(LazyLLMStoreBase):
                          "Use file:///path or plain path for local; http(s)://host:port for remote.")
 
     @override
-    def connect(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
-                global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs):
-        self._global_metadata_desc = global_metadata_desc
-        self._embed_dims = embed_dims
-        self._embed_datatypes = embed_datatypes
+    def connect(self, embed_dims: Optional[Dict[str, int]] = None,
+                embed_datatypes: Optional[Dict[str, DataType]] = None,
+                global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs):
+        self._global_metadata_desc = global_metadata_desc or {}
+        self._embed_dims = embed_dims or {}
+        self._embed_datatypes = embed_datatypes or {}
         for k, v in self._global_metadata_desc.items():
             if v.data_type not in [DataType.VARCHAR, DataType.INT32, DataType.FLOAT, DataType.BOOLEAN]:
                 raise ValueError(f"[Chromadb Store] Unsupported data type {v.data_type} for global metadata {k}"

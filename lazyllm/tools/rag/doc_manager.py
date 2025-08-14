@@ -5,7 +5,7 @@ import traceback
 from typing import List, Optional, Dict, Union
 from pydantic import BaseModel, Field
 from starlette.responses import RedirectResponse
-from fastapi import UploadFile, Body
+from fastapi import UploadFile
 
 import lazyllm
 from lazyllm import FastapiApp as app
@@ -106,10 +106,16 @@ class DocManager(lazyllm.ModuleBase):
             lazyllm.LOG.error(f'upload_files exception: {e}')
             return BaseResponse(code=500, msg=str(e), data=None)
 
+    class AddFilesRequest(BaseModel):
+        files: List[str]
+        group_name: Optional[str] = None
+        metadatas: Optional[str] = None
+
     @app.post("/add_files")
-    def add_files(self, files: List[str] = Body(...),
-                  group_name: str = Body(None),
-                  metadatas: Optional[str] = Body(None)):
+    def add_files(self, request: AddFilesRequest):
+        files = request.files
+        group_name = request.group_name
+        metadatas = request.metadatas
         try:
             if metadatas:
                 metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
@@ -151,8 +157,16 @@ class DocManager(lazyllm.ModuleBase):
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
+    class ListFilesRequest(BaseModel):
+        limit: Optional[int] = None
+        details: bool = True
+        alive: Optional[bool] = None
+
     @app.get("/list_files")
-    def list_files(self, limit: Optional[int] = None, details: bool = True, alive: Optional[bool] = None):
+    def list_files(self, request: ListFilesRequest):
+        limit = request.limit
+        details = request.details
+        alive = request.alive
         try:
             status = [DocListManager.Status.success, DocListManager.Status.waiting, DocListManager.Status.working,
                       DocListManager.Status.failed] if alive else DocListManager.Status.all
@@ -160,17 +174,30 @@ class DocManager(lazyllm.ModuleBase):
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
+    class ReparseFilesRequest(BaseModel):
+        file_ids: List[str]
+        group_name: Optional[str] = None
+
     @app.get("/reparse_files")
-    def reparse_files(self, file_ids: List[str], group_name: Optional[str] = None):
+    def reparse_files(self, request: ReparseFilesRequest):
+        file_ids = request.file_ids
+        group_name = request.group_name
         try:
             self._manager.update_need_reparsing(file_ids, group_name)
             return BaseResponse()
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
+    class ListFilesInGroupRequest(BaseModel):
+        group_name: Optional[str] = None
+        limit: Optional[int] = None
+        alive: Optional[bool] = None
+
     @app.get("/list_files_in_group")
-    def list_files_in_group(self, group_name: Optional[str] = None,
-                            limit: Optional[int] = None, alive: Optional[bool] = None):
+    def list_files_in_group(self, request: ListFilesInGroupRequest):
+        group_name = request.group_name
+        limit = request.limit
+        alive = request.alive
         try:
             status = [DocListManager.Status.success, DocListManager.Status.waiting, DocListManager.Status.working,
                       DocListManager.Status.failed] if alive else DocListManager.Status.all
@@ -190,9 +217,20 @@ class DocManager(lazyllm.ModuleBase):
         except Exception as e:
             return BaseResponse(code=500, msg=str(e), data=None)
 
+    class AddFilesToGroupRequest(BaseModel):
+        files: List[UploadFile]
+        group_name: str
+        override: bool = False
+        metadatas: Optional[str] = None
+        user_path: Optional[str] = None
+
     @app.post("/add_files_to_group")
-    def add_files_to_group(self, files: List[UploadFile], group_name: str, override: bool = False,
-                           metadatas: Optional[str] = None, user_path: Optional[str] = None):
+    def add_files_to_group(self, request: AddFilesToGroupRequest):
+        files = request.files
+        group_name = request.group_name
+        override = request.override
+        metadatas = request.metadatas
+        user_path = request.user_path
         try:
             response = self.upload_files(files, override=override, metadatas=metadatas, user_path=user_path)
             if response.code != 200: return response

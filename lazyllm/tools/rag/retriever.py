@@ -103,7 +103,7 @@ class TempDocRetriever(ModuleBase, _PostProcess):
         self._node_groups.append((group, kwargs))
         return self
 
-    @functools.lru_cache
+    @functools.lru_cache    # noqa: B019
     def _get_retrievers(self, doc_files: List[str]):
         active_node_groups = self._node_groups or [[Document.MediumChunk,
                                                     dict(similarity=('cosine' if self._embed else 'bm25'))]]

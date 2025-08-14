@@ -24,13 +24,13 @@ class MilvusStore(LazyLLMStoreBase):
     supports_index_registration = False
 
     def __init__(self, uri: str = '', db_name: str = 'lazyllm', index_kwargs: Optional[Union[Dict, List]] = None,
-                 client_kwargs: Optional[Dict] = {}):
+                 client_kwargs: Optional[Dict] = None):
         # one database, different collection for each group (for standalone, add prefix to collection name)
         # when there's data need upsert, collection creation happen.
         self._uri = uri
         self._db_name = db_name
         self._index_kwargs = index_kwargs
-        self._client_kwargs = client_kwargs
+        self._client_kwargs = client_kwargs or {}
         self._primary_key = 'uid'
         self._client = None
         if self._uri and parse.urlparse(self._uri).scheme.lower() in ['unix', 'http', 'https', 'tcp', 'grpc']:
@@ -46,11 +46,12 @@ class MilvusStore(LazyLLMStoreBase):
         return str(p.resolve(strict=False))
 
     @override
-    def connect(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
-                global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs):
-        self._embed_dims = embed_dims
-        self._embed_datatypes = embed_datatypes
-        self._global_metadata_desc = global_metadata_desc
+    def connect(self, embed_dims: Optional[Dict[str, int]] = None,
+                embed_datatypes: Optional[Dict[str, DataType]] = None,
+                global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs):
+        self._embed_dims = embed_dims or {}
+        self._embed_datatypes = embed_datatypes or {}
+        self._global_metadata_desc = global_metadata_desc or {}
         self._set_constants()
         self._connect()
         LOG.info("[Milvus Vector Store] init success!")
@@ -84,7 +85,7 @@ class MilvusStore(LazyLLMStoreBase):
             self._connect()
             if not self._client.has_collection(collection_name):
                 embed_kwargs = {}
-                for embed_key, embedding in data_embeddings.items():
+                for embed_key in data_embeddings.keys():
                     assert self._embed_datatypes.get(embed_key), \
                         f'cannot find embedding params for embed [{embed_key}]'
                     if embed_key not in embed_kwargs:

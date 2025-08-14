@@ -53,7 +53,7 @@ class SenseCoreStore(LazyLLMStoreBase):
         return None
 
     @override
-    def connect(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = {}, **kwargs) -> None:
+    def connect(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs) -> None:
         self._check_s3()
         self._global_metadata_desc = global_metadata_desc
         LOG.info(f"[SenseCore Store - connect] connected to {self._uri}")
@@ -71,7 +71,7 @@ class SenseCoreStore(LazyLLMStoreBase):
         data = dict(data)
         content = json.dumps(data.get('content', ''), ensure_ascii=False)
         matches = IMAGE_PATTERN.findall(content)
-        for title, image_path in matches:
+        for _, image_path in matches:
             if image_path.startswith('lazyllm'):
                 continue
             image_file_name = os.path.basename(image_path)
@@ -117,7 +117,7 @@ class SenseCoreStore(LazyLLMStoreBase):
         else:
             target = json.dumps(segment.content)
         matches = IMAGE_PATTERN.findall(target)
-        for title, image_path in matches:
+        for _, image_path in matches:
             segment.image_keys.append(image_path)
 
         if data.get('type') == SegmentType.IMAGE.value and data.get('image_keys'):
@@ -139,7 +139,7 @@ class SenseCoreStore(LazyLLMStoreBase):
         elif data.get('type') == SegmentType.QA.value and data.get('answer'):
             answer = data.get('answer')
             matches = IMAGE_PATTERN.findall(answer)
-            for title, image_path in matches:
+            for _, image_path in matches:
                 if image_path.startswith('lazyllm'):
                     continue
                 image_file_name = os.path.basename(image_path)
@@ -163,7 +163,7 @@ class SenseCoreStore(LazyLLMStoreBase):
                     LOG.error(f"Error when uploading `{image_path}` {e!r}")
             data['answer'] = answer
             matches = IMAGE_PATTERN.findall(data['answer'])
-            for title, image_path in matches:
+            for _, image_path in matches:
                 segment.image_keys.append(image_path)
             segment.answer = data['answer']
         return segment.model_dump()
