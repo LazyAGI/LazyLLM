@@ -861,7 +861,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
 
         def _is_gateway_ready(self, timeout):
             url = f"http://{self.get_jobip()}:{self.deployment_port}{self.path}"
-            for i in range(self.gateway_retry):
+            for _ in range(self.gateway_retry):
                 try:
                     response = requests.get(url, timeout=timeout)
                     if response.status_code != 503:

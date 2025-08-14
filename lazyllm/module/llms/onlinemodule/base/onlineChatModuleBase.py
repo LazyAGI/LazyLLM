@@ -34,7 +34,7 @@ class OnlineChatModuleBase(LLMBase):
 
     def __init__(self, model_series: str, api_key: str, base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False,
-                 skip_auth: bool = False, static_params: StaticParams = {}, **kwargs):
+                 skip_auth: bool = False, static_params: Optional[StaticParams] = None, **kwargs):
         super().__init__(stream=stream, return_trace=return_trace)
         self._model_series = model_series
         if skip_auth and not api_key:
@@ -48,7 +48,7 @@ class OnlineChatModuleBase(LLMBase):
         self._is_trained = False
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
-        self._static_params = static_params
+        self._static_params = static_params or {}
 
     @property
     def series(self):

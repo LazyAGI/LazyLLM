@@ -34,8 +34,8 @@ class WebModule(ModuleBase):
         Refresh = 1
         Appendix = 2
 
-    def __init__(self, m: Any, *, components: Dict[Any, Any] = dict(), title: str = '对话演示终端',
-                 port: Optional[Union[int, range, tuple, list]] = None, history: List[Any] = [],
+    def __init__(self, m: Any, *, components: Dict[Any, Any] = dict(), title: str = '对话演示终端',  # noqa B008
+                 port: Optional[Union[int, range, tuple, list]] = None, history: List[Any] = [],  # noqa B006
                  text_mode: Optional[Mode] = None, trace_mode: Optional[Mode] = None, audio: bool = False,
                  stream: bool = False, files_target: Optional[Union[Any, List[Any]]] = None,
                  static_paths: Optional[Union[str, Path, List[Union[str, Path]]]] = None,

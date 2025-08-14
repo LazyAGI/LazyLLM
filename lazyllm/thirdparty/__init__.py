@@ -69,7 +69,7 @@ class PackageWrapper(object):
         try:
             return getattr(importlib.import_module(
                 self._Wrapper__key, package=self._Wrapper__package), __name)
-        except (ImportError, ModuleNotFoundError):
+        except ImportError:
             pip_cmd = get_pip_install_cmd([self._Wrapper__key])
             if pip_cmd:
                 err_msg = f'Cannot import module {self._Wrapper__key}, please install it by {pip_cmd}'
