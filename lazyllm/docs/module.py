@@ -346,6 +346,96 @@ Returns all submodules of type ModuleBase contained in the wrapped action. This 
 # ['get 16', 'get 24', 'get 32']
 # ''')
 
+add_chinese_doc('servermodule.LLMBase', '''\
+大语言模型模块的基类，继承自 ModuleBase。  
+负责管理流式输出、Prompt 和格式化器的初始化与切换，处理输入中的文件信息，支持实例共享。
+
+Args:
+    stream (bool 或 dict): 是否启用流式输出或流式配置，默认为 False。
+    return_trace (bool): 是否返回执行过程的 trace，默认为 False。
+    init_prompt (bool): 是否在初始化时自动创建默认 Prompt，默认为 True。
+''')
+
+add_english_doc('servermodule.LLMBase', '''\
+Base class for large language model modules, inheriting from ModuleBase.  
+Manages initialization and switching of streaming output, prompts, and formatters; processes file information in inputs; supports instance sharing.
+
+Args:
+    stream (bool or dict): Whether to enable streaming output or streaming configuration, default is False.
+    return_trace (bool): Whether to return execution trace, default is False.
+    init_prompt (bool): Whether to automatically create a default prompt at initialization, default is True.
+''')
+
+add_chinese_doc('servermodule.LLMBase.prompt', '''\
+设置或切换 Prompt。支持 None、PrompterBase 子类或字符串/字典类型创建 ChatPrompter。
+
+Args:
+    prompt (str/dict/PrompterBase/None): 要设置的 Prompt。
+    history (list): 对话历史，仅当 prompt 为字符串或字典时有效。
+
+**Returns**\n
+- self: 便于链式调用。
+''')
+
+add_english_doc('servermodule.LLMBase.prompt', '''\
+Set or switch the prompt. Supports None, PrompterBase subclass, or string/dict to create ChatPrompter.
+
+Args:
+    prompt (str/dict/PrompterBase/None): The prompt to set.
+    history (list): Conversation history, only valid when prompt is str or dict.
+
+**Returns**\n
+- self: For chaining calls.
+''')
+
+add_chinese_doc('servermodule.LLMBase.formatter', '''\
+设置或切换输出格式化器。支持 None、FormatterBase 子类或可调用对象。
+
+Args:
+    format (FormatterBase/Callable/None): 格式化器对象或函数，默认为 None。
+
+**Returns**\n
+- self: 便于链式调用。
+''')
+
+add_english_doc('servermodule.LLMBase.formatter', '''\
+Set or switch the output formatter. Supports None, FormatterBase subclass or callable.
+
+Args:
+    format (FormatterBase/Callable/None): Formatter object or function, default is None.
+
+**Returns**\n
+- self: For chaining calls.
+''')
+
+add_chinese_doc('servermodule.LLMBase.share', '''\
+创建当前实例的浅拷贝，并可重新设置 prompt、formatter、stream 等属性。  
+适用于多会话或多 Agent 共享基础配置但个性化部分参数的场景。
+
+Args:
+    prompt (str/dict/PrompterBase/None): 新的 Prompt，可选。
+    format (FormatterBase/None): 新的格式化器，可选。
+    stream (bool/dict/None): 新的流式设置，可选。
+    history (list/None): 新的对话历史，仅在设置 Prompt 时有效。
+
+**Returns**\n
+- LLMBase: 新的共享实例。
+''')
+
+add_english_doc('servermodule.LLMBase.share', '''\
+Creates a shallow copy of the current instance, with optional resetting of prompt, formatter, and stream attributes.  
+Useful for scenarios where multiple sessions or agents share a base configuration but customize certain parameters.
+
+Args:
+    prompt (str/dict/PrompterBase/None): New prompt, optional.
+    format (FormatterBase/None): New formatter, optional.
+    stream (bool/dict/None): New streaming settings, optional.
+    history (list/None): New conversation history, effective only when setting prompt.
+
+**Returns**\n
+- LLMBase: The new shared instance.
+''')
+
 add_chinese_doc('TrainableModule', '''\
 可训练模块，所有模型（包括LLM、Embedding等）都通过TrainableModule提供服务
 
@@ -722,6 +812,88 @@ add_example('TrainableModule.forward', '''\
 ...
 >>> MyModule()("Hello")
 'processed: Hello'
+''')
+
+add_english_doc("TrainableModule.get_all_models", '''\
+get_all_models() -> List[str]
+
+Returns a list of all fine-tuned model paths under the current target path.
+
+Returns:
+- List[str]: A list of fine-tuned model identifiers or directories.
+''')
+
+add_chinese_doc("TrainableModule.get_all_models", '''\
+get_all_models() -> List[str]
+
+返回当前目标路径下所有微调模型的路径列表。
+
+返回值：
+- List[str]：所有微调模型的名称或路径列表。
+''')
+
+add_english_doc("TrainableModule.status", '''\
+status(task_name: Optional[str] = None) -> str
+
+Returns the current status of a specific task in the module.
+
+Args:
+- task_name (Optional[str]): Name of the task (e.g., 'deploy'). Defaults to 'deploy' if not provided.
+
+Returns:
+- str: Status string such as 'running', 'finished', or 'stopped'.
+''')
+
+add_chinese_doc("TrainableModule.status", '''\
+status(task_name: Optional[str] = None) -> str
+
+返回模块中指定任务的当前状态。
+
+参数：
+- task_name (Optional[str])：任务名称（如 'deploy'），默认返回 'deploy' 任务的状态。
+
+返回值：
+- str：状态字符串，例如 'running'、'finished' 或 'stopped'。
+''')
+
+add_english_doc("TrainableModule.set_specific_finetuned_model", '''\
+set_specific_finetuned_model(model_path: str) -> None
+
+Sets the model to be used from a specific fine-tuned model path.
+
+Args:
+- model_path (str): The path to the fine-tuned model to use.
+''')
+
+add_chinese_doc("TrainableModule.set_specific_finetuned_model", '''\
+set_specific_finetuned_model(model_path: str) -> None
+
+设置要使用的特定微调模型路径。
+
+参数：
+- model_path (str)：要使用的微调模型的路径。
+''')
+
+add_english_doc("TrainableModule.set_default_parameters", '''\
+set_default_parameters(*, optional_keys: List[str] = [], **kw) -> None
+
+Sets the default parameters to be used during inference or evaluation.
+
+Args:
+- optional_keys (List[str]): A list of optional keys to allow additional parameters without error.
+- **kw: Key-value pairs for default parameters such as temperature, top_k, etc.
+
+''')
+
+add_chinese_doc("TrainableModule.set_default_parameters", '''\
+set_default_parameters(*, optional_keys: List[str] = [], **kw) -> None
+
+设置用于推理或评估的默认参数。
+
+参数：
+- optional_keys (List[str])：允许传入额外参数的可选键列表。
+- **kw：用于设置默认参数的键值对，如 temperature、top_k 等。
+
 ''')
 
 # add_example('TrainableModule', '''\
@@ -1231,6 +1403,26 @@ add_example('OnlineEmbeddingModuleBase', '''\
 ...     def _parse_response(self, response: dict[str, any]):
 ...         pass
 ...         return embedding
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoEmbedding', '''\
+豆包嵌入类，继承自 OnlineEmbeddingModuleBase，封装了调用豆包在线文本嵌入服务的功能。  
+通过指定服务接口 URL、模型名称及 API Key，支持远程获取文本向量表示。
+
+Args:
+    embed_url (Optional[str]): 豆包文本嵌入服务的接口 URL，默认指向北京区域的服务地址。
+    embed_model_name (Optional[str]): 使用的豆包嵌入模型名称，默认为 "doubao-embedding-text-240715"。
+    api_key (Optional[str]): 访问豆包服务的 API Key，若未提供则从 lazyllm 配置中读取。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoEmbedding', '''\
+DoubaoEmbedding class inherits from OnlineEmbeddingModuleBase, encapsulating the functionality to call Doubao's online text embedding service.  
+It supports remote text vector representation retrieval by specifying the service URL, model name, and API key.
+
+Args:
+    embed_url (Optional[str]): URL of the Doubao text embedding service, defaulting to the Beijing region endpoint.
+    embed_model_name (Optional[str]): Name of the Doubao embedding model used, default is "doubao-embedding-text-240715".
+    api_key (Optional[str]): API key for accessing the Doubao service. If not provided, it is read from lazyllm config.
 ''')
 
 add_chinese_doc('llms.onlinemodule.fileHandler.FileHandlerBase', '''\

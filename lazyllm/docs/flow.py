@@ -154,7 +154,6 @@ add_chinese_doc('LazyLLMFlowsBase', """\
                    ↑             ↓
                pre_hook       post_hook
 ```
-                
 Args:
     args: 可变长度参数列表。
     post_action: 在主流程结束后对输出进行进一步处理的可调用对象。默认为 ``None``。
@@ -172,13 +171,126 @@ input --> [Flow module1 -> Flow module2 -> ... -> Flow moduleN] --> output
                    ↑             ↓
                pre_hook       post_hook
 ```
-                
 Args:
     args: A sequence of callables representing the flow modules.
     post_action: An optional callable applied to the output after main flow execution. Defaults to ``None``。
     auto_capture: If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
 
 """)
+
+add_chinese_doc('LazyLLMFlowsBase.register_hook', '''\
+注册一个 Hook 类型，用于在流程执行前后进行额外处理。
+
+Args:
+    hook_type (LazyLLMHook): 要注册的 Hook 类型或实例。
+''')
+
+add_english_doc('LazyLLMFlowsBase.register_hook', '''\
+Register a hook type for additional processing before and after the flow execution.
+
+Args:
+    hook_type (LazyLLMHook): The hook type or instance to register.
+''')
+
+add_chinese_doc('LazyLLMFlowsBase.unregister_hook', '''\
+注销已注册的 Hook。
+
+Args:
+    hook_type (LazyLLMHook): 要移除的 Hook 类型或实例。
+''')
+
+add_english_doc('LazyLLMFlowsBase.unregister_hook', '''\
+Unregister a previously registered hook.
+
+Args:
+    hook_type (LazyLLMHook): The hook type or instance to remove.
+''')
+
+add_chinese_doc('LazyLLMFlowsBase.clear_hooks', '''\
+清空所有已注册的 Hook。
+''')
+
+add_english_doc('LazyLLMFlowsBase.clear_hooks', '''\
+Clear all registered hooks.
+''')
+
+add_chinese_doc('LazyLLMFlowsBase.set_sync', '''\
+设置流程是否同步执行。
+
+Args:
+    sync (bool): 是否同步执行，默认为 True。
+
+**Returns**\n
+- LazyLLMFlowsBase: 当前实例。
+''')
+
+add_english_doc('LazyLLMFlowsBase.set_sync', '''\
+Set whether the flow executes synchronously.
+
+Args:
+    sync (bool): Whether to execute synchronously. Default is True.
+
+**Returns**\n
+- LazyLLMFlowsBase: The current instance.
+''')
+
+add_chinese_doc('LazyLLMFlowsBase.wait', '''\
+等待流程中所有异步任务完成。
+
+**Returns**\n
+- LazyLLMFlowsBase: 当前实例。
+''')
+
+add_english_doc('LazyLLMFlowsBase.wait', '''\
+Wait for all asynchronous tasks in the flow to complete.
+
+**Returns**\n
+- LazyLLMFlowsBase: The current instance.
+''')
+
+add_chinese_doc('LazyLLMFlowsBase.invoke', '''\
+调用指定对象（可为函数、模块或 bind 对象）并传入输入数据。  
+支持对 bind 对象进行 root/pipeline 输出替换。
+
+Args:
+    it (Callable | bind): 要调用的对象。
+    __input (Any): 输入数据。
+    bind_args_source (Any, optional): 绑定参数来源。
+    **kw: 其他关键字参数。
+''')
+
+add_english_doc('LazyLLMFlowsBase.invoke', '''\
+Invoke a target (function, module, or bind object) with the given input.  
+Supports root/pipeline output replacement for bind objects.
+
+Args:
+    it (Callable | bind): The target to invoke.
+    __input (Any): Input data.
+    bind_args_source (Any, optional): Source of bind arguments.
+    **kw: Additional keyword arguments.
+''')
+
+add_chinese_doc('LazyLLMFlowsBase.bind', '''\
+为当前流程绑定参数，生成一个 bind 对象。
+
+Args:
+    *args: 位置参数。
+    **kw: 关键字参数。
+
+**Returns**\n
+- bind: 绑定后的 bind 对象。
+''')
+
+add_english_doc('LazyLLMFlowsBase.bind', '''\
+Bind arguments to the current flow, producing a bind object.
+
+Args:
+    *args: Positional arguments.
+    **kw: Keyword arguments.
+
+**Returns**\n
+- bind: The bound bind object.
+''')
 
 add_chinese_doc('Parallel', """\
 用于管理LazyLLMFlows中的并行流的类。
@@ -451,6 +563,28 @@ add_example('Pipeline', """\
 <Function type=lambda>
 """)
 
+add_chinese_doc('Pipeline.output', '''\
+获取流水线中指定模块的输出结果。
+
+参数:
+    module: 要获取输出的模块。可以是模块对象或模块名称。
+    unpack (bool): 是否解包输出结果。默认为False。
+
+返回值:
+    bind.Args: 一个绑定参数对象，用于在流水线中传递数据。
+''')
+
+add_english_doc('Pipeline.output', '''\
+Get the output result of a specified module in the pipeline.
+
+Args:
+    module: The module to get output from. Can be a module object or module name.
+    unpack (bool): Whether to unpack the output result. Defaults to False.
+
+Returns:
+    bind.Args: A bound argument object for data passing in the pipeline.
+''')
+
 add_chinese_doc('save_pipeline_result', """\
 一个上下文管理器，用于临时设置是否保存流水线中的中间执行结果。
 
@@ -596,9 +730,9 @@ add_chinese_doc('Switch', """\
 
 Args:
     args: 可变长度参数列表，交替提供条件和对应的流或函数。条件可以是返回布尔值的可调用对象或与输入表达式进行比较的值。
+    conversion (callable, optional): 在进行条件匹配之前，对判定表达式 ``exp`` 进行转换或预处理的函数。默认为 ``None``。
     post_action (callable, optional): 在执行选定流后要调用的函数。默认为 ``None``。
     judge_on_full_input(bool): 如果设置为 ``True`` ， 则通过 ``switch`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
-    kwargs: 代表命名条件和对应流或函数的任意关键字参数。
 
 抛出:
     TypeError: 如果提供的参数数量为奇数，或者如果第一个参数不是字典且条件没有成对提供。
@@ -618,9 +752,9 @@ The ``Switch`` class provides a way to choose between different flows depending 
 
 Args:
     args: A variable length argument list, alternating between conditions and corresponding flows or functions. Conditions are either callables returning a boolean or values to be compared with the input expression.
+    conversion (callable, optional): A function used to transform or preprocess the evaluation expression ``exp`` before performing condition matching. Defaults to ``None``.
     post_action (callable, optional): A function to be called on the output after the selected flow is executed. Defaults to ``None``.
     judge_on_full_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``switch``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
-    kwargs: Arbitrary keyword arguments representing named conditions and corresponding flows or functions.
 
 Raises:
     TypeError: If an odd number of arguments are provided, or if the first argument is not a dictionary and the conditions are not provided in pairs.

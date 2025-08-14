@@ -12,6 +12,14 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.LazyLLMDeployBase
+    options:
+      heading_level: 3
+
+::: lazyllm.components.deploy.LazyLLMDeployBase.extract_result
+    options:
+      heading_level: 3
+      
 ::: lazyllm.components.finetune.FlagembeddingFinetune
     options:
       heading_level: 3
@@ -29,12 +37,18 @@
 ::: lazyllm.components.deploy.Lightllm
     options:
       heading_level: 3
+      members: [cmd, geturl, extract_result]
 
 ::: lazyllm.components.deploy.Vllm
     options:
       heading_level: 3
 
 ::: lazyllm.components.deploy.LMDeploy
+    options:
+      heading_level: 3
+      members: [cmd, geturl, extract_result]
+
+::: lazyllm.components.deploy.base.DummyDeploy
     options:
       heading_level: 3
 
@@ -54,9 +68,20 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.embed.LazyHuggingFaceRerank
+    options:
+      heading_level: 3
+      members: [load_reranker, rebuild]
+
 ::: lazyllm.components.deploy.Mindie
     options:
       heading_level: 3
+
+      
+::: lazyllm.components.deploy.OCRDeploy
+    options:
+      heading_level: 3
+---
 
 ::: lazyllm.components.deploy.relay.base.RelayServer
     options:
@@ -72,12 +97,12 @@
 ## Prompter
 
 ::: lazyllm.components.prompter.LazyLLMPrompterBase
-  options:
-    heading_level: 3
+    options:
+      heading_level: 3
     inherited_members:
       - generate_prompt
       - get_response
-    members: false
+    members: [pre_hook]
 
 ::: lazyllm.components.prompter.EmptyPrompter
     options:
@@ -156,6 +181,10 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
 ### Speech to Text
 
 ::: lazyllm.components.SenseVoiceDeploy
+    options:
+      heading_level: 4
+
+::: lazyllm.components.deploy.speech_to_text.sense_voice.SenseVoice
     options:
       heading_level: 4
 
@@ -238,3 +267,12 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
 ::: lazyllm.components.EmptyFormatter
     options:
       heading_level: 3
+
+---
+
+## ComponentBase
+
+::: lazyllm.components.core.ComponentBase
+    options:
+      heading_level: 3
+      members: [apply, cmd]
