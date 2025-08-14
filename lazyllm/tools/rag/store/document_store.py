@@ -4,6 +4,7 @@ import traceback
 
 from collections import defaultdict
 from typing import Optional, List, Union, Set, Dict, Callable, Any, Tuple
+from pathlib import Path
 from lazyllm import LOG, once_wrapper
 
 from .store_base import (LazyLLMStoreBase, StoreCapability, SegmentType, Segment, INSERT_BATCH_SIZE,
@@ -114,7 +115,13 @@ class _DocumentStore(object):
             return seg_store
         if vec_store and not seg_store:
             if vec_store.capability == StoreCapability.VECTOR:
-                segment_store = MapStore(uri=os.path.join(vec_store.dir, 'segments.db') if vec_store.dir else None)
+                db_path = getattr(vec_store, "dir", None)
+                if db_path:
+                    p = Path(db_path)
+                    segment_uri = str(p.with_name(f"lazyllm_{p.stem}_segments.db"))
+                else:
+                    segment_uri = None
+                segment_store = MapStore(uri=segment_uri)
                 return HybridStore(segment_store=segment_store, vector_store=vec_store)
             return vec_store
         # should not reach here

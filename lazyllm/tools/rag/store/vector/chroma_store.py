@@ -5,6 +5,7 @@ import traceback
 from typing import Dict, List, Optional, Set, Union, Any
 from collections import defaultdict
 from urllib.parse import urlparse
+from pathlib import Path
 
 from ..store_base import (LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX)
 from ...data_type import DataType
@@ -44,7 +45,9 @@ class ChromadbStore(LazyLLMStoreBase):
     @property
     def dir(self):
         if not self._dir: return None
-        return self._dir if self._dir.endswith(os.sep) else self._dir + os.sep
+        p = Path(self._dir)
+        p = p if p.suffix else (p / "chroma.sqlite3")
+        return str(p.resolve(strict=False))
 
     def _parse_uri(self, uri: str):
         windows_drive = re.match(r"^[a-zA-Z]:[\\/]", uri or "")

@@ -1,9 +1,9 @@
-import os
 import copy
 import traceback
 
 from packaging import version
 from urllib import parse
+from pathlib import Path
 from typing import Dict, List, Union, Optional, Set
 
 from lazyllm import LOG
@@ -41,8 +41,9 @@ class MilvusStore(LazyLLMStoreBase):
     @property
     def dir(self):
         if self._is_remote: return None
-        path = os.path.dirname(self._uri)
-        return path if path.endswith(os.sep) else path + os.sep
+        p = Path(self._uri)
+        p = p if p.suffix else (p / "milvus.db")
+        return str(p.resolve(strict=False))
 
     @override
     def connect(self, embed_dims: Optional[Dict[str, int]] = {}, embed_datatypes: Optional[Dict[str, DataType]] = {},
