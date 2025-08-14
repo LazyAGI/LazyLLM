@@ -27,7 +27,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
                  lora_r=None,
                  modules_to_save=None,
                  lora_target_modules=None,
-                 launcher=launchers.remote(ngpus=1, sync=True),
+                 launcher=launchers.remote(ngpus=1, sync=True),  # noqa B008
                  **kw
                  ):
         if not os.path.exists(base_model):

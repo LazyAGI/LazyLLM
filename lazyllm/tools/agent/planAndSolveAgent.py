@@ -26,7 +26,7 @@ SOLVER_PROMPT = (
 )
 
 class PlanAndSolveAgent(ModuleBase):
-    def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[str] = [], *,
+    def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[str] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  max_retries: int = 5, return_trace: bool = False, stream: bool = False):
         super().__init__(return_trace=return_trace)

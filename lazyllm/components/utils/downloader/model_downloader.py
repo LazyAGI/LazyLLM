@@ -173,7 +173,7 @@ class ModelManager():
         try:
             return self.hub_downloader.download(model, full_model_dir, call_back)
         # Use `BaseException` to capture `KeyboardInterrupt` and normal `Exceptioin`.
-        except BaseException as e:
+        except BaseException as e:  # noqa B036
             lazyllm.LOG.warning(f"Download encountered an error: {e}")
             if not self.token and 'Permission denied' not in str(e):
                 lazyllm.LOG.warning('Token is empty, which may prevent private models from being downloaded, '

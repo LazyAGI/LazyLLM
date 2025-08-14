@@ -33,7 +33,7 @@ def reallocate_launcher(launcher):
 
 class Distributed(LazyLLMDeployBase):
 
-    def __init__(self, launcher=launchers.remote(ngpus=1), port=None):
+    def __init__(self, launcher=launchers.remote(ngpus=1), port=None):  # noqa B008
         super().__init__(launcher=launcher)
         self.port = port or random.randint(30000, 40000)
         self.finetuned_model = None

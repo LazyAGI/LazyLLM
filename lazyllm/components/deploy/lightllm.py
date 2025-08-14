@@ -33,7 +33,7 @@ class Lightllm(LazyLLMDeployBase):
     stream_url_suffix = '_stream'
     stream_parse_parameters = {"delimiter": b"\n\n"}
 
-    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None, **kw):
+    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None, **kw):  # noqa B008
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'tp': 1,

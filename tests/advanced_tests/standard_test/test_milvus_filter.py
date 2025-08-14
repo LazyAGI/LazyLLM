@@ -15,7 +15,8 @@ from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc as DocField
 from lazyllm.tools.rag import DataType
 
-def get_milvus_store_conf(rag_dir: str, kb_group_name: str = str(uuid.uuid4())):
+def get_milvus_store_conf(rag_dir: str, kb_group_name: str = ''):
+    kb_group_name = kb_group_name or str(uuid.uuid4())
     milvus_db_dir = os.path.join(rag_dir, kb_group_name)
     if not os.path.exists(milvus_db_dir):
         os.makedirs(milvus_db_dir)
@@ -36,7 +37,7 @@ def get_milvus_store_conf(rag_dir: str, kb_group_name: str = str(uuid.uuid4())):
     return milvus_store_conf
 
 
-def get_milvus_index_conf(rag_dir: str, kb_group_name: str = str(uuid.uuid4())):
+def get_milvus_index_conf(rag_dir: str, kb_group_name: str = str(uuid.uuid4())):  # noqa B008
     milvus_db_dir = os.path.join(rag_dir, kb_group_name)
     if not os.path.exists(milvus_db_dir):
         os.makedirs(milvus_db_dir)

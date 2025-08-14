@@ -78,7 +78,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if base_model and deploy: self.deploy_method(deploy)
         self._prepare_deploy = lambda target_path, base_model: lazyllm.package(target_path, base_model)
 
-    def _get_train_or_deploy_args(self, arg_cls: str, disable: List[str] = []):
+    def _get_train_or_deploy_args(self, arg_cls: str, disable: List[str] = []):  # noqa B006
         args = getattr(self, f'_{arg_cls}_args', dict()).copy()
         if len(set(args.keys()).intersection(set(disable))) > 0:
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
@@ -128,7 +128,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def _get_all_finetuned_models(self):
         valid_paths = []
         invalid_paths = []
-        for root, dirs, files in os.walk(self._target_path):
+        for root, _, files in os.walk(self._target_path):
             if root.endswith('lazyllm_merge'):
                 model_path = os.path.abspath(root)
                 model_id = model_path.split(os.sep)[-2].split(self._delimiter)[0]
@@ -453,7 +453,7 @@ class TrainableModule(UrlModule):
             for k in globals["usage"][par_muduleid]:
                 globals["usage"][par_muduleid][k] += usage[k]
 
-    def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),
+    def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
                 *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
         __input, files = self._get_files(__input, lazyllm_files)
         text_input_for_token_usage = __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
@@ -481,7 +481,7 @@ class TrainableModule(UrlModule):
     def _maybe_has_fc(self, token: str, chunk: str) -> bool:
         return token and (token.startswith(chunk if token.startswith('\n') else chunk.lstrip('\n')) or token in chunk)
 
-    def _forward_impl(self, data: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), *,
+    def _forward_impl(self, data: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), *,  # noqa B008
                       url: str, stream_output: Optional[Union[bool, Dict]] = None, text_input: Optional[str] = None):
         headers = self.template_headers or {'Content-Type': 'application/json'}
         parse_parameters = self.stream_parse_parameters if stream_output else {"delimiter": b"<|lazyllm_delimiter|>"}
@@ -516,7 +516,7 @@ class TrainableModule(UrlModule):
             if text_input: self._record_usage(text_input, temp_output)
             return self._formatter(temp_output)
 
-    def _modify_parameters(self, paras: dict, kw: dict, *, optional_keys: Union[List[str], str] = []):
+    def _modify_parameters(self, paras: dict, kw: dict, *, optional_keys: Union[List[str], str] = None):
         for key, value in paras.items():
             if key == self.keys_name_handle['inputs']: continue
             elif isinstance(value, dict):
@@ -526,10 +526,10 @@ class TrainableModule(UrlModule):
                 else: [setattr(value, k, kw.pop(k)) for k in value.keys() if k in kw]
             elif key in kw: paras[key] = kw.pop(key)
 
-        if isinstance(optional_keys, str): optional_keys = [optional_keys]
+        optional_keys = [optional_keys] if isinstance(optional_keys, str) else (optional_keys or [])
         assert set(kw.keys()).issubset(set(optional_keys)), f'{kw.keys()} is not in {optional_keys}'
         paras.update(kw)
         return paras
 
-    def set_default_parameters(self, *, optional_keys: List[str] = [], **kw):
-        self._modify_parameters(self.template_message, kw, optional_keys=optional_keys)
+    def set_default_parameters(self, *, optional_keys: Optional[List[str]] = None, **kw):
+        self._modify_parameters(self.template_message, kw, optional_keys=optional_keys or [])

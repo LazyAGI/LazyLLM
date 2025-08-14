@@ -41,7 +41,8 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
     optional_keys = set(["max-model-len"])
 
     # TODO(wangzhihong): change default value for `openai_api` argument to True
-    def __init__(self, trust_remote_code: bool = True, launcher: LazyLLMLaunchersBase = launchers.remote(ngpus=1),
+    def __init__(self, trust_remote_code: bool = True,
+                 launcher: LazyLLMLaunchersBase = launchers.remote(ngpus=1),  # noqa B008
                  log_path: str = None, openai_api: bool = False, **kw):
         self.launcher_list, launcher = reallocate_launcher(launcher)
         super().__init__(launcher=launcher)

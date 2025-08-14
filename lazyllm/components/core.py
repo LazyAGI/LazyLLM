@@ -5,7 +5,7 @@ from lazyllm import launchers, LazyLLMLaunchersBase
 from typing import Union
 
 class ComponentBase(object, metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, *, launcher=launchers.empty()):
+    def __init__(self, *, launcher=launchers.empty()):  # noqa B008
         self._llm_name = None
         self.job = ReadOnlyWrapper()
         if isinstance(launcher, LazyLLMLaunchersBase):
