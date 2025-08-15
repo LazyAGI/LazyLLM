@@ -79,6 +79,16 @@ class ParameterExtractor(ModuleBase):
                 return ch_parameter_extractor_prompt
         return en_parameter_extractor_prompt
 
+    def check_int_value(self, res: dict):
+        for param_name in self._param_dict:
+            if self._param_dict[param_name] == int.__name__ and param_name in res:
+                if not isinstance(res[param_name], int):
+                    try:
+                        t = res[param_name]
+                        res[param_name] = int(t)
+                    except (ValueError, TypeError):
+                        pass
+
     def forward(self, *args, **kw):
         res = self._m(*args, **kw)
         pattern = r"```json(.*?)\n```"
@@ -99,6 +109,7 @@ class ParameterExtractor(ModuleBase):
                     continue
                 if isinstance(res, dict): break
         if isinstance(res, dict):
+            self.check_int_value(res)
             ret = [res.get(param_name, None) for param_name in self._param_dict]
         else:
             ret = [None] * len(self._param_dict)

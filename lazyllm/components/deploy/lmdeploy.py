@@ -31,6 +31,7 @@ class LMDeploy(LazyLLMDeployBase):
         "top_k": 40,
         "temperature": 0.8,
         "repetition_penalty": 1,
+        "max_new_tokens": 4096,
         "ignore_eos": False,
         "skip_special_tokens": True,
         "cancel": False,
