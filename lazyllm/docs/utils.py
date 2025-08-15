@@ -1,5 +1,7 @@
 import lazyllm
 import ast
+import threading
+from typing import Tuple
 
 cpp_add_doc_code = '''
 namespace py = pybind11;
@@ -23,6 +25,28 @@ void addDocStr(py::object obj, std::string docs) {
 }
 '''
 
+
+class DuplicateDocError(RuntimeError):
+    pass
+
+_doc_registry: set[Tuple[str, str, str, str]] = set()
+_doc_registry_lock = threading.Lock()
+
+def _reg_key(obj_name: str, module, append: str) -> Tuple[str, str, str, str]:
+    lang = str(lazyllm.config['language']).upper()
+    sec = 'BASE' if not append else f'APPEND:{append.strip()}'
+    return (lang, getattr(module, '__name__', str(module)), obj_name, sec)
+
+def _guard_register_once(obj_name: str, module, append: str = '') -> None:
+    key = _reg_key(obj_name, module, append)
+    with _doc_registry_lock:
+        if key in _doc_registry:
+            raise DuplicateDocError(
+                f"Doc for {key[1]}.{obj_name} [{key[0]} / {key[3]}] already added"
+            )
+        _doc_registry.add(key)
+
+
 all_examples = []
 
 def get_all_examples():   # Examples are not always exported, so process them in case of need.
@@ -42,6 +66,8 @@ def get_all_examples():   # Examples are not always exported, so process them in
 lazyllm.config.add('language', str, 'ENGLISH', 'LANGUAGE')
 
 def add_doc(obj_name, docstr, module, append=''):
+    _guard_register_once(obj_name, module, append)
+
     obj = module
     for n in obj_name.split('.'):
         if isinstance(obj, type): obj = obj.__dict__[n]

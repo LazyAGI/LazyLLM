@@ -25,6 +25,7 @@ patch_os_env(lambda key, value: config.refresh(key), config.refresh)
 
 
 del LazyLLMRegisterMetaClass  # noqa F821
+del LazyLLMRegisterMetaABCClass  # noqa F821
 del _get_base_cls_from_registry  # noqa F821
 del patch_os_env
 
