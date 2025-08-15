@@ -957,17 +957,17 @@ def is_sparse(embedding: Union[Dict[int, float], List[Tuple[int, float]], List[f
 
 def ensure_call_endpoint(raw: str) -> str:
     if not raw: return raw
-    if "://" not in raw:
-        raw = f"http://{raw}"
+    if '://' not in raw:
+        raw = f'http://{raw}'
 
     parts = urlsplit(raw)
-    path = parts.path or ""
+    path = parts.path or ''
 
-    if path.rstrip("/").endswith("_call"):
-        new_path = path.rstrip("/")
-    elif path == "" or path.endswith("/"):
-        new_path = (path or "") + "_call" if path.endswith("/") else "/_call"
+    if path.rstrip('/').endswith('_call'):
+        new_path = path.rstrip('/')
+    elif path == '' or path.endswith('/'):
+        new_path = (path or '') + '_call' if path.endswith('/') else '/_call'
     else:
-        new_path = path + "/_call"
+        new_path = path + '/_call'
 
     return urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, parts.fragment))
