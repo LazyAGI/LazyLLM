@@ -1,0 +1,24 @@
+name: ⚙️ Enhancement
+description: Propose optimization suggestions for existing features
+title: "[Enhancement]: "
+labels: ["enhancement"]
+body:
+  - type: textarea
+    id: current
+    attributes:
+      label: Current Behavior
+      description: How existing features currently work
+    validations:
+      required: true
+  - type: textarea
+    id: improved
+    attributes:
+      label: Improvement Suggestions
+      description: How you would like to improve it
+    validations:
+      required: true
+  - type: textarea
+    id: benefit
+    attributes:
+      label: Benefits of Improvement
+      description: Benefits after improvement
