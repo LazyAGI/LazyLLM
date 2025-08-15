@@ -49,6 +49,32 @@ Args:
     return_trace (bool): Whether to return execution trace. Default is False.
 ''')
 
+
+add_example(
+    "IntentClassifier",
+    """\
+    >>> import lazyllm
+    >>> from lazyllm.tools import IntentClassifier
+    >>> classifier_llm = lazyllm.OnlineChatModule(source="openai")
+    >>> chatflow_intent_list = ["Chat", "Financial Knowledge Q&A", "Employee Information Query", "Weather Query"]
+    >>> classifier = IntentClassifier(classifier_llm, intent_list=chatflow_intent_list)
+    >>> classifier.start()
+    >>> print(classifier('What is the weather today'))
+    Weather Query
+    >>>
+    >>> with IntentClassifier(classifier_llm) as ic:
+    >>>     ic.case['Weather Query', lambda x: '38.5°C']
+    >>>     ic.case['Chat', lambda x: 'permission denied']
+    >>>     ic.case['Financial Knowledge Q&A', lambda x: 'Calling Financial RAG']
+    >>>     ic.case['Employee Information Query', lambda x: 'Beijing']
+    ...
+    >>> ic.start()
+    >>> print(ic('What is the weather today'))
+    38.5°C
+""",
+)
+
+
 add_chinese_doc('IntentClassifier.intent_promt_hook', '''\
 意图分类的预处理 Hook。  
 将输入文本与意图列表打包为 JSON，并生成历史对话信息字符串。
@@ -116,7 +142,7 @@ Args:
     launcher (optional): An object or function responsible for launching the server module. If not provided, the default asynchronous launcher from `lazyllm.launchers` is used (`sync=False`).
     doc_fields (optional): Configure the fields that need to be stored and retrieved along with their corresponding types (currently only used by the Milvus backend).
     doc_files (Optional[List[str]]): List of temporary document files (alternative to dataset_path).When used, dataset_path must be None and only map store is supported.
-    store_conf (optional): Configure which storage backend and index backend to use.      
+    store_conf (optional): Configure which storage backend, MapStore is the default choice.      
 ''')
 
 add_chinese_doc('Document', '''\
@@ -133,7 +159,7 @@ Args:
     name (Optional[str]):文档集合的名称标识符。云服务模式下必须提供
     launcher (optional): 负责启动服务器模块的对象或函数。如果未提供，则使用 `lazyllm.launchers` 中的默认异步启动器 (`sync=False`)。            
     doc_files (Optional[List[str]]):临时文档文件列表（dataset_path的替代方案）。使用时dataset_path必须为None且仅支持map存储类型
-    store_conf (optional): 配置使用哪种存储后端和索引后端。
+    store_conf (optional): 配置使用哪种存储后端, 默认使用MapStore将切片数据存于内存中。
 ''')
 
 add_example('Document', '''\
@@ -145,16 +171,19 @@ add_example('Document', '''\
 >>> document1 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, manager=False)
 
 >>> store_conf = {
->>>     'type': 'chroma',
->>>     'indices': {
->>>         'smart_embedding_index': {
->>>             'backend': 'milvus',
->>>             'kwargs': {
->>>                 'uri': '/tmp/tmp.db',
->>>                 'index_kwargs': {
->>>                     'index_type': 'HNSW',
->>>                     'metric_type': 'COSINE'
->>>                  }
+>>>     "segment_store": {
+>>>         "type": "map",
+>>>         "kwargs": {
+>>>             "uri": "/tmp/tmp_segments.db",
+>>>         },
+>>>     },
+>>>     "vector_store": {
+>>>         "type": "milvus",
+>>>         "kwargs": {
+>>>             "uri": "/tmp/tmp_milvus.db",
+>>>             "index_kwargs": {
+>>>                 "index_type": "FLAT",
+>>>                 "metric_type": "COSINE",
 >>>             },
 >>>         },
 >>>     },
@@ -202,14 +231,14 @@ add_english_doc('Document.find_parent', '''
 Find the parent node of the specified node.
 
 Args:
-    group (str): The name of the node for which to find the parent.
+    group (str): The name of the node group for which to find the parent.
 ''')
 
 add_chinese_doc('Document.find_parent', '''
 查找指定节点的父节点。
 
 Args:
-    group (str): 需要查找的节点名称
+    group (str): 需要查找的节点组名称
 ''')
 
 add_example('Document.find_parent', '''
@@ -226,14 +255,14 @@ add_english_doc('Document.find_children', '''
 Find the child nodes of the specified node.
 
 Args:
-    group (str): The name of the node for which to find the children.
+    group (str): The name of the node group for which to find the children.
 ''')
 
 add_chinese_doc('Document.find_children', '''
 查找指定节点的子节点。
 
 Args:
-    group (str): 需要查找的名称
+    group (str): 需要查找的节点组名称
 ''')
 
 add_example('Document.find_children', '''
@@ -998,422 +1027,289 @@ Args:
 
 
 add_english_doc('rag.store.ChromadbStore', '''
-Inherits from the abstract base class StoreBase. This class is mainly used to store and manage document nodes (DocNode), supporting operations such as node addition, deletion, modification, query, index management, and persistent storage.
-Args:
-    group_embed_keys (Dict[str, Set[str]]): Specifies the embedding fields associated with each document group.
-    embed (Dict[str, Callable]): A dictionary of embedding generation functions, supporting multiple embedding sources.
-    embed_dims (Dict[str, int]): The embedding dimensions corresponding to each embedding type.
-    dir (str): Path to the chromadb persistent storage directory.
-    kwargs (Dict): Additional optional parameters passed to the parent class or internal components.
-''')
+ChromadbStore is a vector-capable implementation of LazyLLMStoreBase, leveraging ChromaDB for persistence and vector search.
 
+Args:
+    dir (Optional[str]): Filesystem path for on-disk ChromaDB storage. If provided, a PersistentClient will be used.
+    host (Optional[str]): Hostname for ChromaDB HTTP server. Used if `dir` is not set.
+    port (Optional[int]): Port number for ChromaDB HTTP server. Used if `dir` is not set.
+    index_kwargs (Optional[Union[Dict, List]]): Configuration parameters for ChromaDB collections, e.g., index type and metrics.
+    client_kwargs (Optional[Dict]): Additional keyword arguments passed to the ChromaDB client constructor.
+''')
 
 add_chinese_doc('rag.store.ChromadbStore', '''
-继承自 StoreBase 抽象基类。它主要用于存储和管理文档节点(DocNode)，支持节点增删改查、索引管理和持久化存储。
+ChromadbStore 是基于 ChromaDB 的向量存储实现，继承自 LazyLLMStoreBase，支持向量写入、检索与持久化。
+
 Args:
-     group_embed_keys (Dict[str, Set[str]]): 指定每个文档分组所对应的嵌入字段。
-    embed (Dict[str, Callable]): 嵌入生成函数或其映射，支持多嵌入源。
-    embed_dims (Dict[str, int]): 每种嵌入类型对应的维度。
-    dir (str): chromadb 数据库存储路径。
-    kwargs (Dict): 其他可选参数，传递给父类或内部组件。
+    dir (Optional[str]): 本地持久化存储目录，优先使用 PersistentClient 模式。
+    host (Optional[str]): HTTP 访问模式下的 ChromaDB 服务主机名。
+    port (Optional[int]): HTTP 模式下的 ChromaDB 服务端口。
+    index_kwargs (Optional[Union[Dict, List]]): Collection 配置参数，如索引类型、度量方式等。
+    client_kwargs (Optional[Dict]): 传递给 ChromaDB 客户端的额外参数。
 ''')
 
-add_example('rag.store.ChromadbStore', '''
->>> from lazyllm.tools.rag.chroma_store import ChromadbStore
->>> from typing import Dict, List
->>> import numpy as np
->>> store = ChromadbStore(
-...     group_embed_keys={"articles": {"title_embed", "content_embed"}},
-...     embed={
-...         "title_embed": lambda x: np.random.rand(128).tolist(),
-...         "content_embed": lambda x: np.random.rand(256).tolist()
-...     },
-...     embed_dims={"title_embed": 128, "content_embed": 256},
-...     dir="./chroma_data"
-... )
->>> store.update_nodes([node1, node2])
->>> results = store.query(query_text="文档内容", group_name="articles", top_k=2)
->>> for node in results:
-...     print(f"找到文档: {node._content[:20]}...")
->>> store.remove_nodes(doc_ids=["doc1"])
+add_english_doc('rag.store.ChromadbStore.dir', '''
+Directory property of the store.
+
+Returns:
+    Optional[str]: Normalized directory path ending with a slash, or None if not set.
 ''')
 
-add_english_doc('rag.store.ChromadbStore.update_nodes', '''
-Update a group of DocNode objects.
+add_chinese_doc('rag.store.ChromadbStore.dir', '''
+存储目录属性。
+
+Returns:
+    Optional[str]: 以斜杠结尾的目录路径，若未配置则返回 None。
+''')
+
+add_english_doc('rag.store.ChromadbStore.connect', '''
+Initialize the ChromaDB client and configure embedding and metadata settings.
+
 Args:
-    nodes (DocNode): The list of DocNode objects to be updated.
+    embed_dims (Dict[str, int]): Dimensions for each embedding key.
+    embed_datatypes (Dict[str, DataType]): Data types for global metadata fields.
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Descriptions of global metadata fields.
 ''')
 
+add_chinese_doc('rag.store.ChromadbStore.connect', '''
+初始化 ChromaDB 客户端并配置向量化及元数据相关设定。
 
-add_chinese_doc('rag.store.ChromadbStore.update_nodes', '''
-更新一组 DocNode 节点。
 Args:
-    nodes(DocNode): 需要更新的 DocNode 列表。
+    embed_dims (Dict[str, int]): 每个嵌入键对应的向量维度。
+    embed_datatypes (Dict[str, DataType]): 全局元数据字段的数据类型。
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据字段的描述。
 ''')
 
+add_english_doc('rag.store.ChromadbStore.upsert', '''
+Insert or update a batch of records(segment's uid and vectors) into ChromaDB.
 
-add_english_doc('rag.store.ChromadbStore.remove_nodes', '''
-Delete nodes based on specified conditions.
 Args:
-    doc_ids (str): Delete by document ID.
-    group_name (str): Specify the group name for deletion.
-    uids (str): Delete by unique node ID.
+    collection_name (str): Logical name for the collection.
+    data (List[dict]): List of documents.
+
+Returns:
+    bool: True if operation succeeds, False otherwise.
 ''')
 
+add_chinese_doc('rag.store.ChromadbStore.upsert', '''
+批量写入或更新记录（切片的id及向量数据）到 ChromaDB。
 
-add_chinese_doc('rag.store.ChromadbStore.remove_nodes', '''
-删除指定条件的节点。
 Args:
-    doc_ids(str): 按文档 ID 删除。
-    group_name(str): 限定删除的组名。
-    uids(str): 按节点唯一 ID 删除。
+    collection_name (str): 集合名称。
+    data (List[dict]): 文档切片数据列表。
+
+Returns:
+    bool: 操作成功返回 True，否则 False。
 ''')
 
+add_english_doc('rag.store.ChromadbStore.delete', '''
+Delete an entire collection or specific records.
 
-add_english_doc('rag.store.ChromadbStore.update_doc_meta', '''
-Update the metadata of a document.
 Args:
-    doc_id (str): The ID of the document to be updated.
-    metadata (dict): The new metadata (key-value pairs).
+    collection_name (str): Name of the collection.
+    criteria (Optional[dict]): If None, drop the collection. Otherwise, filter dict to delete matching records (e.x. delete by doc_id/uid/kb_id).
+
+Returns:
+    bool: True if deletion succeeds, False otherwise.
 ''')
 
+add_chinese_doc('rag.store.ChromadbStore.delete', '''
+删除整个集合或指定记录。
 
-add_chinese_doc('rag.store.ChromadbStore.update_doc_meta', '''
-更新文档的元数据。。
 Args:
-    doc_id(str):需要更新的文档 ID。
-    metadata(dict):新的元数据（键值对）。
+    collection_name (str): 集合名称。
+    criteria (Optional[dict]): 若为 None，删除整个集合；否则按条件删除匹配记录（例如按照切片id、切片所属文件id、切片所属知识库id删除）。
+
+Returns:
+    bool: 删除成功返回 True，否则 False。
 ''')
 
+add_english_doc('rag.store.ChromadbStore.get', '''
+Retrieve records matching criteria.
 
-add_english_doc('rag.store.ChromadbStore.get_nodes', '''
-Query nodes based on specified conditions.
 Args:
-    group_name (str): The name of the group to which the nodes belong.
-    uids (List[str]): A list of unique node IDs.
-    doc_ids (Set[str]): A set of document IDs.
-    **kwargs: Additional optional parameters.
+    collection_name (str): Name of the collection.
+    criteria (Optional[dict]): Filter conditions such as primary key or metadata (docid/kb_id).
+
+Returns:
+    List[dict]: Each dict contains 'uid' and 'embedding'.
 ''')
 
+add_chinese_doc('rag.store.ChromadbStore.get', '''
+根据条件检索记录。
 
-add_chinese_doc('rag.store.ChromadbStore.get_nodes', '''
-根据条件查询节点。
 Args:
-    group_name(str]):节点所属的组名。
-    uids(List[str]):节点唯一 ID 列表。
-    doc_ids	(Set[str])：文档 ID 集合。
-    **kwargs:其他扩展参数。
+    collection_name (str): 集合名称。
+    criteria (Optional[dict]): 过滤条件，如主键或元数据（例如文档id或知识库id）。
+
+Returns:
+    List[dict]: 每项包含 'uid' 和 'embedding'。
 ''')
 
+add_english_doc('rag.store.ChromadbStore.search', '''
+Perform a vector similarity search.
 
-add_english_doc('rag.store.ChromadbStore.activate_group', '''
-Activate the specified group.
 Args:
-    group_names([str, List[str]]): Activate by group name.
+    collection_name (str): Collection to query.
+    query_embedding (List[float]): Vector to search with.
+    embed_key (str): Which embedding to use.
+    topk (int): Number of top results to return.
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): Metadata filter conditions.
+
+Returns:
+    List[dict]: Each dict has 'uid' and 'score' (similarity).
 ''')
 
+add_chinese_doc('rag.store.ChromadbStore.search', '''
+执行向量相似度检索。
 
-add_chinese_doc('rag.store.ChromadbStore.activate_group', '''
-激活指定的组。
 Args:
-    group_names([str, List[str]])：按组名激活。
+    collection_name (str): 要查询的集合名称。
+    query_embedding (List[float]): 用于检索的向量。
+    embed_key (str): 使用的向量模型的key。
+    topk (int): 返回的结果数量。
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): 元数据过滤条件。
+
+Returns:
+    List[dict]: 每项包含 'uid' 及 'score'（相似度）。
 ''')
-
-add_english_doc('rag.store.ChromadbStore.activated_groups', '''
-Activate groups. Return the list of currently activated group names.
-''')
-
-
-add_chinese_doc('rag.store.ChromadbStore.activated_groups', '''
-激活组，返回当前激活的组名列表。
-''')
-add_english_doc('rag.store.ChromadbStore.query', '''
-Execute a query using the default index.
-Args:
-    args: Query parameters.
-    kwargs: Additional optional parameters.
-''')
-
-
-add_chinese_doc('rag.store.ChromadbStore.query', '''
-通过默认索引执行查询。
-Args:
-    args：查询参数。
-    kwargs：其他扩展参数。
-''')
-
-add_english_doc('rag.store.ChromadbStore.is_group_active', '''
-Check whether the specified group is active.
-Args:
-    name (str): The name of the group.
-''')
-
-add_chinese_doc('rag.store.ChromadbStore.is_group_active', '''
-检查指定组是否激活。
-Args:
-    name(str)：组名。
-''')
-
-
-add_english_doc('rag.store.ChromadbStore.all_groups', '''
-Return the list of all group names.
-''')
-
-
-add_chinese_doc('rag.store.ChromadbStore.all_groups', '''
-返回所有组名列表。
-''')
-
-add_english_doc('rag.store.ChromadbStore.register_index', '''
-Register a custom index.
-Args:
-    type (str): The name of the index type.
-    index (IndexBase): An object implementing the IndexBase interface.
-''')
-
-
-add_chinese_doc('rag.store.ChromadbStore.register_index', '''
-注册自定义索引。
-Args:
-    type(str):索引类型名称。
-    index(IndexBase):实现 IndexBase 的对象。
-''')
-
-
-add_english_doc('rag.store.ChromadbStore.get_index', '''
-Get the index of the specified type.
-Args:
-    type (str): The type of the index.
-''')
-
-
-add_chinese_doc('rag.store.ChromadbStore.get_index', '''
-获取指定类型的索引。
-Args:
-    type(str):索引类型
-''')
-
-
-add_english_doc('rag.store.ChromadbStore.clear_cache', '''
-Clear the ChromaDB collections and memory cache for specified groups or all groups.
-Args:
-    group_names (List[str]): List of group names. If None, clear all groups.
-''')
-
-
-add_chinese_doc('rag.store.ChromadbStore.clear_cache', '''
-清除指定组或所有组的 ChromaDB 集合和内存缓存。
-Args:
-    group_names(List[str])：组名列表，为 None 时清除所有组。
-''')
-
-
-
-
 
 add_english_doc('rag.store.MilvusStore', '''
-Inherits from the StoreBase abstract base class. Implements a vector database based on Milvus. Its functionality is similar to ChromadbStore, used for storing, managing, indexing, and querying embedded document nodes (DocNode).
-Args:
-    group_embed_keys (Dict[str, Set[str]]): Specifies the embedding fields for each group.
-    embed (Dict[str, Callable]): Embedding functions for each field.
-    embed_dims (Dict[str, int]): Vector dimensions for each embedding field.
-    embed_datatypes (Dict[str, DataType]): Vector types for each embedding field (must comply with Milvus types).
-    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Description of global metadata fields, used to configure other non-vector fields in Milvus.
-    url (str): Milvus connection address, supporting local or remote connections.
-    index_kwargs (Union[Dict, List]): Optional index parameters for creating Milvus vector indexes, such as IVF, HNSW parameters.
-    db_name (str): Optional, defaults to "lazyllm". Represents the database name in Milvus.
-''')
+Vector store implementation based on Milvus, inheriting from StoreBase. Supports vector insertion, deletion, flexible querying (including scalar filtering).
 
+Args:
+    uri (str): Milvus connection URI (e.g., "tcp://localhost:19530"). If scheme is local file path, uses milvus-lite version; otherwise remote (need to set up a milvus service, e.x. standalone/distributed version).
+    db_name (str): Database name to use in Milvus. Defaults to "lazyllm".
+    index_kwargs (Optional[Union[Dict, List]]): Index creation parameters (e.g., {"index_type": "IVF_FLAT", "metric_type": "COSINE"} or a list of per-embed-key configs).
+    client_kwargs (Optional[Dict]): Additional keyword arguments for milvus client.
+''')
 
 add_chinese_doc('rag.store.MilvusStore', '''
-继承自 StoreBase 抽象基类。基于 Milvus 向量数据库实现。其功能和 ChromadbStore 类似, 用于存储、管理、索引和查询嵌入向量化后的文档节点(DocNode)。
+基于 Milvus 的向量存储实现，继承自 StoreBase。支持向量写入、删除、相似度检索，兼容标量过滤。
+
 Args:
-    group_embed_keys (Dict[str, Set[str]]): 指定每个group所对应的嵌入字段。
-    embed (Dict[str, Callable]): 每种字段对应的 embedding 函数.
-    embed_dims (Dict[str, int]): 每个嵌入字段的向量维度。
-    embed_datatypes(Dict[str, DataType]): 每个嵌入字段的向量类型（需符合 Milvus 类型）。
-    global_metadata_descDict([str, GlobalMetadataDesc])：全局元数据字段的说明，用于配置 Milvus 中的其他非向量字段。
-    url(str):Milvus 的连接地址，支持本地或远程。
-    index_kwargs:([Union[Dict, List]]):可选的索引参数，用于创建 Milvus 的向量索引，例如 IVF、HNSW 参数。
-    db_name(str):可选，默认 "lazyllm"。表示 Milvus 中的数据库名。
+    uri (str): Milvus 连接 URI（如 "tcp://localhost:19530"）。如果为本地路径则使用milvus-lite，否则为远程模式（需要独立部署milvus服务，例如standalone/distributed版本）。
+    db_name (str): Milvus 中使用的数据库名称，默认为 "lazyllm"。
+    index_kwargs (Optional[Union[Dict, List]]): 索引创建参数（例如 {"index_type": "IVF_FLAT", "metric_type": "CONSINE"} ，支持按向量模型的key配置列表）。
+    client_kwargs (Optional[Dict]): 传递给 milvus 客户端的额外参数。
 ''')
 
-add_example('rag.store.MilvusStore', '''
->>> from lazyllm.tools.rag.milvus_store import MilvusStore
->>> from typing import Dict, List
->>> import numpy as np
->>> store = MilvusStore(
-...     group_embed_keys={
-...         "articles": {"text"},
-...         "faqs": {"question"}
-...     },
-...     embed={
-...         "text": lambda x: np.random.rand(128).tolist(),
-...         "question": lambda x: np.random.rand(128).tolist()
-...     },
-...     embed_dims={"text": 128, "question": 128},
-...     embed_datatypes={"text": DataType.FLOAT_VECTOR, "question": DataType.FLOAT_VECTOR},
-...     global_metadata_desc=None,
-...     uri="http://localhost:19530",
-...     index_kwargs={"metric_type": "L2", "index_type": "IVF_FLAT", "params": {"nlist": 128}},
-...     db_name="test_db"
-... )
->>> store.update_nodes([node1, node2])
->>> results = store.query(query_text="文档内容", group_name="articles", top_k=2)
->>> for node in results:
-...     print(f"找到文档: {node._content[:20]}...")
->>> store.remove_nodes(doc_ids=["doc1"])
-''')
+add_english_doc('rag.store.MilvusStore.dir', '''
+Local storage directory derived from URI if running embedded. Returns None when using remote Milvus.
 
-add_english_doc('rag.store.MilvusStore.update_nodes', '''
-Update or insert nodes into Milvus collections and memory store.
-Args:
-    nodes (List[DocNode]): List of document nodes to update.
-''')
-
-add_chinese_doc('rag.store.MilvusStore.update_nodes', '''
-更新或插入节点到 Milvus 集合和内存存储中。
-Args:
-    nodes (List[DocNode]): 需要更新的文档节点列表。
-''')
-
-add_english_doc('rag.store.MilvusStore.update_doc_meta', '''
-Update metadata for a document and sync to all related nodes.
-Args:
-    doc_id (str): Target document ID.
-    metadata (dict): New metadata key-value pairs.
-''')
-
-add_chinese_doc('rag.store.MilvusStore.update_doc_meta', '''
-更新文档元数据并同步到所有关联节点。
-Args:
-    doc_id (str): 目标文档ID。
-    metadata (dict): 新的元数据键值对。
-''')
-
-add_english_doc('rag.store.MilvusStore.remove_nodes', '''
-Remove nodes by document IDs, group name, or node UIDs.
-Args:
-    doc_ids (Optional[List[str]]): Document IDs filter.
-    group_name (Optional[str]): Group name filter.
-    uids (Optional[List[str]]): Node UIDs filter.
-''')
-
-add_chinese_doc('rag.store.MilvusStore.remove_nodes', '''
-通过文档ID、组名或节点UID删除节点。
-Args:
-    doc_ids (Optional[List[str]]): 文档ID过滤条件。
-    group_name (Optional[str]): 组名过滤条件。
-    uids (Optional[List[str]]): 节点UID过滤条件。
-''')
-add_english_doc('rag.store.MilvusStore.get_nodes', '''
-Query nodes with flexible filtering options.
-Args:
-    group_name (Optional[str]): Group name filter.
-    uids (Optional[List[str]]): Node UIDs filter.
-    doc_ids (Optional[Set[str]]): Document IDs filter.
-    **kwargs: Additional query parameters.
 Returns:
-    List[DocNode]: Matched document nodes.
+    Optional[str]: Directory path for local milvus.db file, or None if remote.
 ''')
 
-add_chinese_doc('rag.store.MilvusStore.get_nodes', '''
-通过多条件查询节点。
-Args:
-    group_name (Optional[str]): 组名过滤条件。
-    uids (Optional[List[str]]): 节点UID过滤条件。
-    doc_ids (Optional[Set[str]]): 文档ID过滤条件。
-    **kwargs: 其他查询参数。
+add_chinese_doc('rag.store.MilvusStore.dir', '''
+存储目录属性，基于 URI 推断。远程模式返回 None。
+
 Returns:
-    List[DocNode]: 匹配的文档节点列表。
+    Optional[str]: 本地 milvus.db 文件的目录路径，或 None。
 ''')
 
-add_english_doc('rag.store.MilvusStore.query', '''
-Semantic search with vector similarity.
+add_english_doc('rag.store.MilvusStore.connect', '''
+Initialize Milvus client, pass in embedding model parameters and global metadata descriptions.
+
 Args:
-    query (str): Query text.
-    group_name (str): Target group name.
-    similarity_cut_off (Optional[Union[float, Dict[str, float]]]): Similarity threshold.
-    topk (int): Number of results to return.
-    embed_keys (List[str]): Embedding keys for search.
-    filters (Optional[Dict]): Metadata filters.
+    embed_dims (Dict[str, int]): Embedding dimensions per embed key.
+    embed_datatypes (Dict[str, DataType]): Data types for each embed key.
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Descriptions for metadata fields.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.connect', '''
+初始化 Milvus 客户端，传入向量化模型参数和全局元数据描述。
+
+Args:
+    embed_dims (Dict[str, int]): 每个嵌入键对应的向量维度。
+    embed_datatypes (Dict[str, DataType]): 每个嵌入键的数据类型。
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据字段的描述。
+''')
+
+add_english_doc('rag.store.MilvusStore.upsert', '''
+Insert or update a batch of segment data into the Milvus collection.
+
+Args:
+    collection_name (str): Collection name (per embed key grouping).
+    data (List[dict]): List of segment data.
 Returns:
-    List[DocNode]: Nodes with similarity scores.
+    bool: True if successful, False otherwise.
 ''')
 
-add_chinese_doc('rag.store.MilvusStore.query', '''
-基于向量相似度的语义搜索。
+add_chinese_doc('rag.store.MilvusStore.upsert', '''
+批量写入或更新切片数据到 Milvus 集合。
+
 Args:
-    query (str): 查询文本。
-    group_name (str): 目标组名。
-    similarity_cut_off (Optional[Union[float, Dict[str, float]]): 相似度阈值。
-    topk (int): 返回结果数量。
-    embed_keys (List[str]): 用于搜索的嵌入键。
-    filters (Optional[Dict]): 元数据过滤条件。
+    collection_name (str): 集合名称，通常为 "group_embedKey" 格式。
+    data (List[dict]): 切片数据列表。
 Returns:
-    List[DocNode]: 带相似度分数的节点列表。
+    bool: 操作成功返回 True，否则 False。
 ''')
 
-add_english_doc('rag.store.MilvusStore.activate_group', '''
-Activate one or multiple groups for operations.
+add_english_doc('rag.store.MilvusStore.delete', '''
+Delete entire collection or subset of records by criteria.
+
 Args:
-    group_names (Union[str, List[str]]): Group name(s) to activate.
-''')
-
-add_chinese_doc('rag.store.MilvusStore.activate_group', '''
-激活一个或多个组用于后续操作。
-Args:
-    group_names (Union[str, List[str]]): 要激活的组名（单个或列表）。
-''')
-
-add_english_doc('rag.store.MilvusStore.get_index', '''
-Get index instance by type.
-Args:
-    type (Optional[str]): Index type name, defaults to "default".
-''')
-
-add_chinese_doc('rag.store.MilvusStore.get_index', '''
-获取指定类型的索引实例。
-Args:
-    type (Optional[str]): 索引类型名称，默认为"default"。
-''')
-
-add_english_doc('rag.store.MilvusStore.register_index', '''
-Register custom index type.
-Args:
-    type (str): Index type name.
-    index (IndexBase): Custom index instance.
-''')
-
-add_chinese_doc('rag.store.MilvusStore.register_index', '''
-注册自定义索引类型。
-Args:
-    type (str): 索引类型名称。
-    index (IndexBase): 自定义索引实例。
-''')
-
-add_english_doc('rag.store.MilvusStore.activated_groups', '''
-Get names of all activated groups.
+    collection_name (str): Target collection.
+    criteria (Optional[dict]): If None, drop the entire collection; otherwise a dict of filters (uid list or metadata conditions).
 Returns:
-    List[str]: Active group names.
+    bool: True if deletion succeeds, False otherwise.
 ''')
 
-add_chinese_doc('rag.store.MilvusStore.activated_groups', '''
-获取所有已激活的组名。
+add_chinese_doc('rag.store.MilvusStore.delete', '''
+删除整个集合或按条件删除指定记录。
+
+Args:
+    collection_name (str): 目标集合名称。
+    criteria (Optional[dict]): 若为 None 则删除整个集合；否则按 uid 列表或元数据条件过滤。
 Returns:
-    List[str]: 活跃组名列表。
+    bool: 删除成功返回 True，否则 False。
 ''')
 
-add_english_doc('rag.store.MilvusStore.is_group_active', '''
-Check if a group is activated.
+add_english_doc('rag.store.MilvusStore.get', '''
+Retrieve records matching primary-key or metadata filters.
+
 Args:
-    name (str): Group name to check.
+    collection_name (str): Collection to query.
+    criteria (Optional[dict]): Dict containing 'uid' list or metadata field filters.
+Returns: 
+    List[dict]: Each entry contains 'uid' and 'embedding'.
 ''')
 
-add_chinese_doc('rag.store.MilvusStore.is_group_active', '''
-检查指定组是否激活。
+add_chinese_doc('rag.store.MilvusStore.get', '''
+检索匹配主键或元数据过滤条件的记录。
+
 Args:
-    name (str): 要检查的组名。
+    collection_name (str): 待查询集合。
+    criteria (Optional[dict]): 包含 'uid' 列表或元数据字段过滤条件。
+Returns:
+    List[dict]: 每项包含 'uid' 及 'embedding' 映射。
+''')
+
+add_english_doc('rag.store.MilvusStore.search', '''
+Perform vector similarity search with optional metadata filtering.
+
+Args:
+    collection_name (str): Collection to search.
+    query_embedding (List[float]): Query vector.
+    topk (int): Number of nearest neighbors.
+    filters (Optional[Dict[str, Union[List, Set]]]): Metadata filter map.
+    embed_key (str): Which embedding field to use.
+Returns:
+    List[dict]: Each dict has 'uid' and similarity 'score'.
+''')
+
+add_chinese_doc('rag.store.MilvusStore.search', '''
+执行向量相似度检索，并可按元数据过滤。
+
+Args:
+    collection_name (str): 待搜索集合。
+    query_embedding (List[float]): 查询向量。
+    topk (int): 返回邻近数量。
+    filters (Optional[Dict[str, Union[List, Set]]]): 元数据过滤映射。
+    embed_key (str): 使用的嵌入字段。
+Returns:
+    List[dict]: 每项包含 'uid' 及相似度 'score'。
 ''')
 
 add_chinese_doc('rag.default_index.DefaultIndex', r'''\ 
@@ -2193,193 +2089,6 @@ documents = reader.forward(file_paths=["doc1.txt", "doc2.txt"])
 ```
 ''')
 
-add_english_doc('rag.retriever.TempDocRetriever', '''
-A temporary document retriever that inherits from ModuleBase and _PostProcess, used for quickly processing temporary files and performing retrieval tasks.
-Args:
-    embed: The embedding function.
-    output_format: The format of the output result (e.g., JSON). Optional, defaults to None.
-    join: Whether to merge multiple result segments (set to True or specify a separator like "\n").
-''')
-
-add_chinese_doc('rag.retriever.TempDocRetriever', '''
-临时文档检索器，继承自 ModuleBase 和 _PostProcess，用于快速处理临时文件并执行检索任务。
-Args:
-    embed:嵌入函数。
-    output_format:结果输出格式(如json),可选默认为None
-    join:是否合并多段结果(True或用分隔符如"\n")
-''')
-
-add_example('rag.retriever.TempDocRetriever', '''
->>> import lazyllm
->>> from lazyllm.tools import TempDocRetriever, Document, SentenceSplitter
->>> retriever = TempDocRetriever(output_format="text", join="\n---------------\n")
-    retriever.create_node_group(transform=lambda text: [s.strip() for s in text.split("。") if s] )
-    retriever.add_subretriever(group=Document.MediumChunk, topk=3)
-    files = ["机器学习是AI的核心领域。深度学习是其重要分支。"]
-    results = retriever.forward(files, "什么是机器学习?")
-    print(results)
-''')
-
-add_english_doc('rag.retriever.TempDocRetriever.create_node_group', '''
-Create a node group with specific processing pipeline.
-Args:
-    name (str): Name of the node group. Auto-generated if None.
-    transform (Callable): Function to process documents in this group.
-    parent (str): Parent group name. Defaults to root group.
-    trans_node (bool): Whether to transform nodes. Inherits from parent if None.
-    num_workers (int): Parallel workers for processing. Default 0 (sequential).
-    **kwargs: Additional group parameters.
-''')
-
-add_chinese_doc('rag.retriever.TempDocRetriever.create_node_group', '''
-创建具有特定处理流程的节点组。
-Args:
-    name (str): 节点组名称，None时自动生成。
-    transform (Callable): 该组文档的处理函数。
-    parent (str): 父组名称，默认为根组。
-    trans_node (bool): 是否转换节点，None时继承父组设置。
-    num_workers (int): 并行处理worker数，0表示串行。
-    **kwargs: 其他组参数。
-''')
-
-add_english_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
-Add a sub-retriever with search configuration.
-Args:
-    group (str): Target node group name.
-    **kwargs: Retriever parameters (e.g., similarity='cosine').
-Returns:
-    self: For method chaining.
-''')
-
-add_chinese_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
-添加带搜索配置的子检索器。
-Args:
-    group (str): 目标节点组名称。
-    **kwargs: 检索器参数（如similarity='cosine'）。
-Returns:
-    self: 支持链式调用。
-''')
-
-add_english_doc('rag.doc_node.DocNode', '''
-Execute assigned tasks on the specified document.
-Args:
-    uid (str): Unique identifier.
-    content (Union[str, List[Any]]): Node content.
-    group (str): Document group name.
-    embedding (Dict[str, List[float]]): Dictionary of embedding vectors.
-    parent (Union[str, "DocNode"]): Reference to the parent node.
-    store: Storage representation.
-    node_groups (Dict[str, Dict]): Node storage groups.
-    metadata (Dict[str, Any]): Node-level metadata.
-    global_metadata (Dict[str, Any]): Document-level metadata.
-    text (str): Node content, mutually exclusive with content.
-''')
-
-add_chinese_doc('rag.doc_node.DocNode', '''
-在指定的文档上执行设定的任务。
-Args:
-    uid(str): 唯一标识符。
-    content(Union[str, List[Any]]):节点内容
-    group(str):文档组名
-    embedding(Dict[str, List[float]]):嵌入向量字典
-    parent(Union[str, "DocNode"]):父节点引用
-    store:存储表示
-    node_groups(Dict[str, Dict]):节点存储组
-    metadata(Dict[str, Any]):节点级元数据
-    global_metadata(Dict[str, Any]):文档级元数据
-    text(str):节点内容与content互斥
-''')
-
-add_english_doc('rag.doc_node.DocNode.get_metadata_str', '''
-Get formatted metadata string.
-Args:
-    mode: MetadataMode.NONE returns an empty string;  
-          MetadataMode.LLM filters out metadata not needed by LLM;  
-          MetadataMode.EMBED filters out metadata not needed by embedding model;  
-          MetadataMode.ALL returns all metadata.
-''')
-
-add_chinese_doc('rag.doc_node.DocNode.get_metadata_str', '''
-获取格式化元数据字符串
-Args:
-    mode: MetadataMode.NONE返回空字符串；
-          MetadataMode.LLM过滤排除LLM不需要的元数据；
-          MetadataMode.EMBED过滤排除嵌入模型不需要的元数据；
-          MetadataMode.ALL返回全部元数据。
-''')
-add_english_doc('rag.doc_node.DocNode.get_text', '''
-Combine metadata and content.
-Args:
-    metadata_mode: Same as the parameter in get_metadata_str.
-''')
-
-add_chinese_doc('rag.doc_node.DocNode.get_text', '''
-组合元数据和内容
-Args:
-    metadata_mode: 与get_metadata_str中参数一致
-''')
-add_english_doc('rag.doc_node.DocNode.has_missing_embedding', '''
-Check for missing embedding vectors.
-Args:
-    embed_keys (Union[str, List[str]]): List of target keys.
-''')
-
-add_chinese_doc('rag.doc_node.DocNode.has_missing_embedding', '''
-检查缺失的嵌入向量
-Args:
-    embed_keys(Union[str, List[str]]): 目标键列表
-''')
-add_english_doc('rag.doc_node.DocNode.do_embedding', '''
-Execute embedding computation.
-Args:
-    embed (Dict[str, Callable]): Target embedding objects.
-''')
-
-add_chinese_doc('rag.doc_node.DocNode.do_embedding', '''
-执行嵌入计算
-Args:
-    embed(Dict[str, Callable]): 目标嵌入对象
-''')
-add_english_doc('rag.doc_node.DocNode.check_embedding_state', '''
-Block to check the embedding status and ensure that asynchronous embedding computation is completed.
-Args:
-    embed_key (str): List of target keys.
-''')
-
-add_chinese_doc('rag.doc_node.DocNode.check_embedding_state', '''
-阻塞检查嵌入状态,确保异步嵌入计算完成
-Args:
-    embed_key(str): 目标键列表
-''')
-add_english_doc('rag.doc_node.DocNode.to_dict', '''
-Convert to dictionary format
-''')
-
-add_chinese_doc('rag.doc_node.DocNode.to_dict', '''
-转换为字典格式
-''')
-add_english_doc('rag.doc_node.DocNode.with_score', '''
-Shallow copy the original node and add a semantic relevance score.
-Args:
-    score: Relevance score.
-''')
-
-add_chinese_doc('rag.doc_node.DocNode.with_score', '''
-浅拷贝原节点并添加语义相关分数。
-Args:
-    score: 相关性得分
-''')
-add_english_doc('rag.doc_node.DocNode.with_sim_score', '''
-Shallow copy the original node and add a similarity score.
-Args:
-    score: Similarity score.
-''')
-
-add_chinese_doc('rag.doc_node.DocNode.with_sim_score', '''
-浅拷贝原节点并添加相似度分数。
-Args:
-    score: 相似度得分
-''')
 
 add_chinese_doc('rag.doc_node.QADocNode', '''\
 问答文档节点类，用于存储问答对数据。
@@ -2433,69 +2142,6 @@ Args:
 
 Returns:
     str: The formatted text content.
-''')
-
-add_english_doc('rag.dataReader.SimpleDirectoryReader', '''
-A modular document directory reader that inherits from ModuleBase, supporting reading various document formats from the file system and converting them into standardized DocNode objects.
-Args:
-    input_dir (Optional[str]): Input directory path. Mutually exclusive with input_files.
-    input_files (Optional[List]): Directly specified list of files. Mutually exclusive with input_dir.
-    exclude (Optional[List]): List of file patterns to exclude.
-    exclude_hidden (bool): Whether to exclude hidden files.
-    recursive (bool): Whether to recursively read subdirectories.
-    encoding (str): Encoding format of text files.
-    required_exts (Optional[List[str]]): Whitelist of file extensions to process.
-    file_extractor (Optional[Dict[str, Callable]]): Dictionary of custom file readers.
-    fs (Optional[AbstractFileSystem]): Custom file system.
-    metadata_genf (Optional[Callable[[str], Dict]]): Metadata generation function that takes a file path and returns a metadata dictionary.
-    num_files_limit (Optional[int]): Maximum number of files to read.
-    return_trace (bool): Whether to return processing trace information.
-    metadatas (Optional[Dict]): Predefined global metadata dictionary.
-''')
-
-add_chinese_doc('rag.dataReader.SimpleDirectoryReader', '''
-模块化的文档目录读取器，继承自 ModuleBase，支持从文件系统读取多种格式的文档并转换为标准化的 DocNode 。
-Args:
-    input_dir (Optional[str]): 输入目录路径。与input_files二选一，不可同时指定。
-    input_files (Optional[List]):直接指定的文件列表。与input_dir二选一。
-    exclude (Optional[List]):需要排除的文件模式列表。
-    exclude_hidden (bool): 是否排除隐藏文件。
-    recursive (bool):是否递归读取子目录。
-    encoding (str):文本文件的编码格式。
-    required_exts (Optional[List[str]]):需要处理的文件扩展名白名单。
-    file_extractor (Optional[Dict[str, Callable]]):自定义文件阅读器字典。
-    fs (Optional[AbstractFileSystem]):自定义文件系统。
-    metadata_genf (Optional[Callable[[str], Dict]]):元数据生成函数，接收文件路径返回元数据字典。
-    num_files_limit (Optional[int]):最大读取文件数量限制。
-    return_trace (bool):是否返回处理过程追踪信息。
-    metadatas (Optional[Dict]):预定义的全局元数据字典。
-''')
-
-add_example('rag.dataReader.SimpleDirectoryReader', '''
->>> import lazyllm
->>> from lazyllm.tools.dataReader import SimpleDirectoryReader
->>> reader = SimpleDirectoryReader(input_dir="yourpath/",recursive=True,exclude=["*.tmp"],required_exts=[".pdf", ".docx"])
->>> documents = reader.load_data()
-''')
-
-
-add_english_doc('rag.dataReader.FileReader', '''
-File content reader whose main function is to convert various input file formats into concatenated plain text content.
-Args:
-    input_files (Optional[List]): Directly specified list of input files.
-''')
-
-add_chinese_doc('rag.dataReader.FileReader', '''
-文件内容读取器，主要功能是将多种格式的输入文件转换为拼接后的纯文本内容。
-Args:
-    input_files (Optional[List]):直接指定的文件列表。
-''')
-
-add_example('rag.dataReader.FileReader', '''
->>> import lazyllm
->>> from lazyllm.tools.dataReader import FileReader
->>> reader = FileReader()
->>> content = reader("yourpath/") 
 ''')
 
 # ---------------------------------------------------------------------------- #
@@ -4961,60 +4607,6 @@ add_example(
 """,
 )
 
-add_chinese_doc(
-    "IntentClassifier",
-    """\
-IntentClassifier 是一个基于语言模型的意图识别器，用于根据用户提供的输入文本及对话上下文识别预定义的意图，并通过预处理和后处理步骤确保准确识别意图。
-
-Arguments:
-    llm: 用于意图识别的语言模型对象，OnlineChatModule或TrainableModule类型
-    intent_list (list): 包含所有可能意图的字符串列表。可以包含中文或英文的意图。
-    prompt (str): 用户附加的提示词。
-    constrain (str): 用户附加的限制。
-    examples (list[list]): 额外的示例，格式为 `[[query, intent], [query, intent], ...]` 。
-    return_trace (bool, 可选): 如果设置为 True，则将结果记录在trace中。默认为 False。
-""",
-)
-
-add_english_doc(
-    "IntentClassifier",
-    """\
-IntentClassifier is an intent recognizer based on a language model that identifies predefined intents based on user-provided input text and conversational context.
-It can handle intent lists and ensures accurate intent recognition through preprocessing and postprocessing steps.
-
-Arguments:
-    llm: A language model object used for intent recognition, which can be of type OnlineChatModule or TrainableModule.
-    intent_list (list): A list of strings containing all possible intents. This list can include intents in either Chinese or English.
-    prompt (str): User-attached prompt words.
-    constrain (str): User-attached constrain words.
-    examples (list[list]): extra examples，format is `[[query, intent], [query, intent], ...]`.
-    return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.
-""",
-)
-
-add_example(
-    "IntentClassifier",
-    """\
-    >>> import lazyllm
-    >>> from lazyllm.tools import IntentClassifier
-    >>> classifier_llm = lazyllm.OnlineChatModule(source="openai")
-    >>> chatflow_intent_list = ["Chat", "Financial Knowledge Q&A", "Employee Information Query", "Weather Query"]
-    >>> classifier = IntentClassifier(classifier_llm, intent_list=chatflow_intent_list)
-    >>> classifier.start()
-    >>> print(classifier('What is the weather today'))
-    Weather Query
-    >>>
-    >>> with IntentClassifier(classifier_llm) as ic:
-    >>>     ic.case['Weather Query', lambda x: '38.5°C']
-    >>>     ic.case['Chat', lambda x: 'permission denied']
-    >>>     ic.case['Financial Knowledge Q&A', lambda x: 'Calling Financial RAG']
-    >>>     ic.case['Employee Information Query', lambda x: 'Beijing']
-    ...
-    >>> ic.start()
-    >>> print(ic('What is the weather today'))
-    38.5°C
-""",
-)
 
 #eval/eval_base.py
 add_chinese_doc('BaseEvaluator', '''\
@@ -6249,107 +5841,6 @@ Args:
     mcp_tool (mcp.types.Tool): 由MCP服务器提供的工具。
 ''')
 
-# ---------------------------------------------------------------------------- #
-
-# rag/smart_embedding_index.py
-
-add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex', """\
-智能嵌入索引类，用于管理和查询文档节点的嵌入向量。
-
-SmartEmbeddingIndex是一个基于IndexBase的索引实现，支持多种后端存储（如Milvus、Map存储）。它提供了统一的接口来更新、删除和查询文档节点，特别适用于需要高效向量相似性搜索的RAG（检索增强生成）应用场景。
-
-该类封装了不同存储后端的具体实现细节，为用户提供了简洁一致的API接口。
-
-Args:
-    backend_type (str): 后端存储类型。支持的类型包括：
-        - 'milvus': 使用Milvus向量数据库作为后端存储
-        - 'map': 使用内存映射存储作为后端存储
-    **kwargs: 传递给具体后端存储的额外参数，这些参数会根据backend_type的不同而有所差异。
-
-**抛出:**\n
-- ValueError: 当提供不支持的backend_type时抛出
-""")
-
-add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex', """\
-Smart embedding index class for managing and querying document node embeddings.
-
-SmartEmbeddingIndex is an index implementation based on IndexBase that supports multiple backend storage options (such as Milvus, Map storage). It provides a unified interface for updating, removing, and querying document nodes, particularly suitable for RAG (Retrieval-Augmented Generation) applications that require efficient vector similarity search.
-
-This class encapsulates the implementation details of different storage backends, providing users with a clean and consistent API interface.
-
-Args:
-    backend_type (str): Backend storage type. Supported types include:
-        - 'milvus': Uses Milvus vector database as backend storage
-        - 'map': Uses memory-mapped storage as backend storage
-    **kwargs: Additional parameters passed to the specific backend storage, which may vary depending on the backend_type.
-
-**Raises:**\n
-- ValueError: Raised when an unsupported backend_type is provided
-""")
-
-add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex.update', """\
-更新索引中的文档节点。
-
-此方法将新的文档节点列表添加到索引中，包括它们的嵌入向量和元数据。如果节点已存在，则会更新其内容。
-
-Args:
-    nodes (List[DocNode]): 要添加或更新的文档节点列表。每个DocNode应包含文本内容、嵌入向量和相关元数据。
-""")
-
-add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex.update', """\
-Update document nodes in the index.
-
-This method adds a list of new document nodes to the index, including their embedding vectors and metadata. If nodes already exist, their content will be updated.
-
-Args:
-    nodes (List[DocNode]): List of document nodes to add or update. Each DocNode should contain text content, embedding vectors, and related metadata.
-""")
-
-add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex.remove', """\
-从索引中删除指定的文档节点。
-
-此方法根据提供的唯一标识符列表从索引中删除对应的文档节点。
-
-Args:
-    uids (List[str]): 要删除的文档节点的唯一标识符列表。
-    group_name (Optional[str]): 节点组名称，用于指定删除特定组中的节点。默认为None，表示删除所有匹配的节点。
-""")
-
-add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex.remove', """\
-Remove specified document nodes from the index.
-
-This method removes corresponding document nodes from the index based on the provided list of unique identifiers.
-
-Args:
-    uids (List[str]): List of unique identifiers of document nodes to be removed.
-    group_name (Optional[str]): Node group name used to specify removal of nodes from a specific group. Defaults to None, meaning all matching nodes will be removed.
-""")
-
-add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex.query', """\
-在索引中查询最相关的文档节点。
-
-此方法基于向量相似性搜索，返回与查询最相关的文档节点列表。具体的查询参数和行为取决于底层存储后端的实现。
-
-Args:
-    *args: 位置参数，传递给底层存储的查询方法。
-    **kwargs: 关键字参数，传递给底层存储的查询方法。
-
-**Returns:**\n
-- List[DocNode]: 按相关性排序的文档节点列表。
-""")
-
-add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex.query', """\
-Query the most relevant document nodes in the index.
-
-This method returns a list of document nodes most relevant to the query based on vector similarity search. The specific query parameters and behavior depend on the implementation of the underlying storage backend.
-
-Args:
-    *args: Positional arguments passed to the underlying storage's query method.
-    **kwargs: Keyword arguments passed to the underlying storage's query method. 
-
-**Returns:**\n
-- List[DocNode]: List of document nodes sorted by relevance.
-""")
 
 add_english_doc('rag.doc_node.ImageDocNode', '''\
 A specialized document node for handling image content in RAG systems.
@@ -6623,731 +6114,6 @@ Args:
 - List[DocNode]: 按相关性分数重新排序的文档节点列表，添加了relevance_score属性。
 ''')
 
-# ---------------------------------------------------------------------------- #
-
-# rag/smart_embedding_index.py
-
-add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex', """\
-智能嵌入索引类，用于管理和查询文档节点的嵌入向量。
-
-SmartEmbeddingIndex是一个基于IndexBase的索引实现，支持多种后端存储（如Milvus、Map存储）。它提供了统一的接口来更新、删除和查询文档节点，特别适用于需要高效向量相似性搜索的RAG（检索增强生成）应用场景。
-
-该类封装了不同存储后端的具体实现细节，为用户提供了简洁一致的API接口。
-
-Args:
-    backend_type (str): 后端存储类型。支持的类型包括：
-        - 'milvus': 使用Milvus向量数据库作为后端存储
-        - 'map': 使用内存映射存储作为后端存储
-    **kwargs: 传递给具体后端存储的额外参数，这些参数会根据backend_type的不同而有所差异。
-
-**抛出:**\n
-- ValueError: 当提供不支持的backend_type时抛出
-""")
-
-add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex', """\
-Smart embedding index class for managing and querying document node embeddings.
-
-SmartEmbeddingIndex is an index implementation based on IndexBase that supports multiple backend storage options (such as Milvus, Map storage). It provides a unified interface for updating, removing, and querying document nodes, particularly suitable for RAG (Retrieval-Augmented Generation) applications that require efficient vector similarity search.
-
-This class encapsulates the implementation details of different storage backends, providing users with a clean and consistent API interface.
-
-Args:
-    backend_type (str): Backend storage type. Supported types include:
-        - 'milvus': Uses Milvus vector database as backend storage
-        - 'map': Uses memory-mapped storage as backend storage
-    **kwargs: Additional parameters passed to the specific backend storage, which may vary depending on the backend_type.
-
-**Raises:**\n
-- ValueError: Raised when an unsupported backend_type is provided
-""")
-
-add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex.update', """\
-更新索引中的文档节点。
-
-此方法将新的文档节点列表添加到索引中，包括它们的嵌入向量和元数据。如果节点已存在，则会更新其内容。
-
-Args:
-    nodes (List[DocNode]): 要添加或更新的文档节点列表。每个DocNode应包含文本内容、嵌入向量和相关元数据。
-""")
-
-add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex.update', """\
-Update document nodes in the index.
-
-This method adds a list of new document nodes to the index, including their embedding vectors and metadata. If nodes already exist, their content will be updated.
-
-Args:
-    nodes (List[DocNode]): List of document nodes to add or update. Each DocNode should contain text content, embedding vectors, and related metadata.
-""")
-
-add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex.remove', """\
-从索引中删除指定的文档节点。
-
-此方法根据提供的唯一标识符列表从索引中删除对应的文档节点。
-
-Args:
-    uids (List[str]): 要删除的文档节点的唯一标识符列表。
-    group_name (Optional[str]): 节点组名称，用于指定删除特定组中的节点。默认为None，表示删除所有匹配的节点。
-""")
-
-add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex.remove', """\
-Remove specified document nodes from the index.
-
-This method removes corresponding document nodes from the index based on the provided list of unique identifiers.
-
-Args:
-    uids (List[str]): List of unique identifiers of document nodes to be removed.
-    group_name (Optional[str]): Node group name used to specify removal of nodes from a specific group. Defaults to None, meaning all matching nodes will be removed.
-""")
-
-add_chinese_doc('rag.smart_embedding_index.SmartEmbeddingIndex.query', """\
-在索引中查询最相关的文档节点。
-
-此方法基于向量相似性搜索，返回与查询最相关的文档节点列表。具体的查询参数和行为取决于底层存储后端的实现。
-
-Args:
-    *args: 位置参数，传递给底层存储的查询方法。
-    **kwargs: 关键字参数，传递给底层存储的查询方法。
-
-**Returns:**\n
-- List[DocNode]: 按相关性排序的文档节点列表。
-""")
-
-add_english_doc('rag.smart_embedding_index.SmartEmbeddingIndex.query', """\
-Query the most relevant document nodes in the index.
-
-This method returns a list of document nodes most relevant to the query based on vector similarity search. The specific query parameters and behavior depend on the implementation of the underlying storage backend.
-
-Args:
-    *args: Positional arguments passed to the underlying storage's query method.
-    **kwargs: Keyword arguments passed to the underlying storage's query method. 
-
-**Returns:**\n
-- List[DocNode]: List of document nodes sorted by relevance.
-""")
-
-add_english_doc('rag.doc_node.ImageDocNode', '''\
-A specialized document node for handling image content in RAG systems.
-
-ImageDocNode extends DocNode to provide specialized functionality for image processing and embedding generation. It automatically handles image loading, base64 encoding for embedding, and PIL Image objects for LLM processing.
-
-Args:
-    image_path (str): The file path to the image file. This should be a valid path to an image file (e.g., .jpg, .png, .jpeg).
-    uid (Optional[str]): Unique identifier for the document node. If not provided, a UUID will be automatically generated.
-    group (Optional[str]): The group name this node belongs to. Used for organizing and filtering nodes.
-    embedding (Optional[Dict[str, List[float]]]): Pre-computed embeddings for the image. Keys are embedding model names, values are embedding vectors.
-    parent (Optional[DocNode]): Parent node in the document hierarchy. Used for building document trees.
-    metadata (Optional[Dict[str, Any]]): Additional metadata associated with the image node.
-    global_metadata (Optional[Dict[str, Any]]): Global metadata that applies to all nodes in the document.
-    text (Optional[str]): Optional text description or caption for the image.
-''')
-
-add_chinese_doc('rag.doc_node.ImageDocNode', '''\
-专门用于处理RAG系统中图像内容的文档节点。
-
-ImageDocNode继承自DocNode，为图像处理和嵌入生成提供专门的功能。它自动处理图像加载、用于嵌入的base64编码，以及用于LLM处理的PIL图像对象。
-
-Args:
-    image_path (str): 图像文件的文件路径。这应该是一个有效的图像文件路径（例如.jpg、.png、.jpeg）。
-    uid (Optional[str]): 文档节点的唯一标识符。如果未提供，将自动生成UUID。
-    group (Optional[str]): 此节点所属的组名。用于组织和过滤节点。
-    embedding (Optional[Dict[str, List[float]]]): 图像的预计算嵌入。键是嵌入模型名称，值是嵌入向量。
-    parent (Optional[DocNode]): 文档层次结构中的父节点。用于构建文档树。
-    metadata (Optional[Dict[str, Any]]): 与图像节点关联的附加元数据。
-    global_metadata (Optional[Dict[str, Any]]): 适用于文档中所有节点的全局元数据。
-    text (Optional[str]): 图像的可选文本描述或标题。
-''')
-
-add_example('rag.doc_node.ImageDocNode', '''\
->>> from lazyllm.tools.rag.doc_node import ImageDocNode, MetadataMode
->>> import numpy as np
->>> image_node = ImageDocNode(
-...     image_path="/home/mnt/yehongfei/Code/Test/framework.jpg",
-...     text="这是一张照片"
-)
->>> def clip_emb(content, modality="image"):
-...     if modality == "image":
-...         return [np.random.rand(512).tolist()]
-...     return [np.random.rand(256).tolist()]
->>> embed_functions = {"clip": clip_emb}
->>> image_node.do_embedding(embed_functions)
->>> print(f"嵌入维度: {len(image_node.embedding['clip'])}")
->>> text_representation = image_node.get_text()
->>> content_representation = image_node.get_content(MetadataMode.EMBED)
->>> print(f"text属性: {text_representation}")
->>> print(f"content属性: {content_representation}")    
-''')
-
-add_english_doc('rag.doc_node.ImageDocNode.do_embedding', '''\
-Generate embeddings for the image using the provided embedding functions.
-
-This method overrides the parent class method to handle image-specific embedding generation. It automatically converts the image to the appropriate format (base64 for embedding) and calls the embedding functions with the image modality.
-
-Args:
-    embed (Dict[str, Callable]): Dictionary of embedding functions. Keys are embedding model names, values are callable functions that accept (content, modality) and return embedding vectors.
-''')
-
-add_chinese_doc('rag.doc_node.ImageDocNode.do_embedding', '''\
-使用提供的嵌入函数为图像生成嵌入。
-
-此方法重写父类方法以处理图像特定的嵌入生成。它自动将图像转换为适当的格式（用于嵌入的base64），并使用图像模态调用嵌入函数。
-
-Args:
-    embed (Dict[str, Callable]): 嵌入函数字典。键是嵌入模型名称，值是接受(content, modality)并返回嵌入向量的可调用函数。
-''')
-
-add_english_doc('rag.doc_node.ImageDocNode.get_content', '''\
-Get the image content in different formats based on the metadata mode.
-
-This method returns the image content in different formats depending on the intended use case. For LLM processing, it returns a PIL Image object. For embedding generation, it returns a base64-encoded image string.
-
-Args:
-    metadata_mode (MetadataMode, optional): The mode for content retrieval. Defaults to MetadataMode.LLM.
-        - MetadataMode.LLM: Returns PIL Image object for LLM processing
-        - MetadataMode.EMBED: Returns base64-encoded image for embedding generation
-        - Other modes: Returns the image path as text
-
-**Returns:**\n
-- Union[PIL.Image.Image, List[str], str]: The image content in the requested format.
-''')
-
-add_chinese_doc('rag.doc_node.ImageDocNode.get_content', '''\
-根据元数据模式获取不同格式的图像内容。
-
-此方法根据预期用例返回不同格式的图像内容。对于LLM处理，它返回PIL图像对象。对于嵌入生成，它返回base64编码的图像字符串。
-
-Args:
-    metadata_mode (MetadataMode, optional): 内容检索模式。默认为MetadataMode.LLM。
-        - MetadataMode.LLM: 返回用于LLM处理的PIL图像对象
-        - MetadataMode.EMBED: 返回用于嵌入生成的base64编码图像
-        - 其他模式: 返回图像路径作为文本
-
-**Returns:**\n
-- Union[PIL.Image.Image, List[str], str]: 请求格式的图像内容。
-''')
-
-add_english_doc('rag.doc_node.ImageDocNode.get_text', '''\
-Get the image path as text representation.
-
-This method overrides the parent class method to return the image path instead of the content field, since ImageDocNode doesn't use the content field for storing text.
-
-**Returns:**\n
-- str: The image file path.
-''')
-
-add_chinese_doc('rag.doc_node.ImageDocNode.get_text', '''\
-获取图像路径作为文本表示。
-
-此方法重写父类方法以返回图像路径而不是内容字段，因为ImageDocNode不使用内容字段存储文本。
-
-**Returns:**\n
-- str: 图像文件路径。
-''')
-
-add_english_doc('rag.transform.AdaptiveTransform', '''\
-A flexible document transformation system that applies different transforms based on document patterns.
-
-AdaptiveTransform allows you to define multiple transformation strategies and automatically selects the appropriate one based on the document's file path or custom pattern matching. This is particularly useful when you have different types of documents that require different processing approaches.
-
-Args:
-    transforms (Union[List[Union[TransformArgs, Dict]], Union[TransformArgs, Dict]]): A list of transform configurations or a single transform configuration. 
-    num_workers (int, optional): Number of worker threads for parallel processing. Defaults to 0.
-''')
-
-add_chinese_doc('rag.transform.AdaptiveTransform', '''\
-一个灵活的文档转换系统，根据文档模式应用不同的转换策略。
-
-AdaptiveTransform允许您定义多种转换策略，并根据文档的文件路径或自定义模式匹配自动选择适当的转换方法。当您有不同类型的文档需要不同处理方法时，这特别有用。
-
-Args:
-    transforms (Union[List[Union[TransformArgs, Dict]], Union[TransformArgs, Dict]]): 转换配置列表或单个转换配置。
-    num_workers (int, optional): 并行处理的工作线程数。默认为0。
-''')
-
-add_example('rag.transform.AdaptiveTransform', '''\
->>> from lazyllm.tools.rag.transform import AdaptiveTransform, DocNode, SentenceSplitter
->>> doc1 = DocNode(text="这是第一个文档的内容。它包含多个句子。")
->>> doc2 = DocNode(text="这是第二个文档的内容。")
->>> transforms = [
-...     {
-...         'f': SentenceSplitter,
-...         'pattern': '*.txt',
-...         'kwargs': {'chunk_size': 50, 'chunk_overlap': 10}
-...     },
-...     {
-...         'f': SentenceSplitter,
-...         'pattern': '*.pdf',
-...         'kwargs': {'chunk_size': 100, 'chunk_overlap': 20}
-...     }
-... ]
->>> adaptive = AdaptiveTransform(transforms)
->>> results1 = adaptive.transform(doc1)
->>> print(f"文档1转换结果: {len(results1)} 个块")
->>> for i, result in enumerate(results1):
-...     print(f"  块 {i+1}: {result.text}")
->>> results2 = adaptive.transform(doc2)
->>> print(f"文档2转换结果: {len(results2)} 个块")
->>> for i, result in enumerate(results2):
-...     print(f"  块 {i+1}: {result.text}")      
-''')
-
-add_english_doc('rag.transform.AdaptiveTransform.transform', '''\
-Transform a document using the appropriate transformation strategy based on pattern matching.
-
-This method evaluates each transform configuration in order and applies the first one that matches the document's path pattern. The matching logic supports both glob patterns and custom callable functions.
-
-Args:
-    document (DocNode): The document node to be transformed.
-    **kwargs: Additional keyword arguments passed to the transform function.
-
-**Returns:**\n
-- List[Union[str, DocNode]]: A list of transformed results (strings or DocNode objects).
-''')
-
-add_chinese_doc('rag.transform.AdaptiveTransform.transform', '''\
-根据模式匹配使用适当的转换策略转换文档。
-
-此方法按顺序评估每个转换配置，并应用第一个匹配文档路径模式的转换。匹配逻辑支持glob模式和自定义可调用函数。
-
-Args:
-    document (DocNode): 要转换的文档节点。
-    **kwargs: 传递给转换函数的附加关键字参数。
-
-**Returns:**\n
-- List[Union[str, DocNode]]: 转换结果列表（字符串或DocNode对象）。
-''')
-
-add_english_doc('rag.rerank.ModuleReranker', '''\
-A reranker that uses trainable modules to reorder documents based on relevance to a query.
-
-ModuleReranker is a specialized reranker that leverages trainable models (such as BGE-reranker, Cohere rerank, etc.) to improve the relevance of retrieved documents. It takes a list of documents and a query, then returns the documents reordered by their relevance scores.
-
-Args:
-    name (str): The name of the reranker. Defaults to "ModuleReranker".
-    model (Union[Callable, str]): The reranking model. Can be either a model name (string) or a callable function.
-    target (Optional[str]): Defaults to None.
-    output_format (Optional[str]): The format for output processing. Defaults to None.
-    join (Union[bool, str]): Whether to join the results. Defaults to False.
-    **kwargs: Additional keyword arguments passed to the reranker model.
-''')
-
-add_chinese_doc('rag.rerank.ModuleReranker', '''\
-使用可训练模块根据查询相关性重新排序文档的重排序器。
-
-ModuleReranker是一个专门的重排序器，利用可训练模型（如BGE-reranker、Cohere rerank等）来提高检索文档的相关性。它接收文档列表和查询，然后返回按相关性分数重新排序的文档。
-
-Args:
-    name (str): 重排序器的名称。默认为"ModuleReranker"。
-    model (Union[Callable, str]): 重排序模型。可以是模型名称（字符串）或可调用函数。
-    target (Optional[str]): 默认为None。
-    output_format (Optional[str]): 输出处理格式。默认为None。
-    join (Union[bool, str]): 是否连接结果。默认为False。
-    **kwargs: 传递给重排序模型模型的附加关键字参数。
-''')
-
-add_example('rag.rerank.ModuleReranker', '''\
->>> from lazyllm.tools.rag.rerank import ModuleReranker, DocNode
->>> def simple_reranker(query, documents, top_n):
-...     query_lower = query.lower()
-...     scores = []
-...     for i, doc in enumerate(documents):
-...         score = sum(1 for word in query_lower.split() if word in doc)
-...         scores.append((i, score))
-...     scores.sort(key=lambda x: x[1], reverse=True)
-...     return scores[:top_n]
->>> reranker = ModuleReranker(
-...     model=simple_reranker,
-...     topk=2
-... )
->>> docs = [
-...     DocNode(text="机器学习算法在数据分析中应用广泛"),
-...     DocNode(text="深度学习模型需要大量训练数据"),
-...     DocNode(text="自然语言处理技术发展迅速"),
-...     DocNode(text="计算机视觉在自动驾驶中的应用")
-... ]
->>> query = "机器学习"
->>> results = reranker.forward(docs, query)
->>> for i, doc in enumerate(results):
-...     print(f"  {i+1}. : {doc.text}")
-...     print(f"     相关性分数: {doc.relevance_score:.4f}")        
-''')
-
-add_english_doc('rag.rerank.ModuleReranker.forward', '''\
-Forward pass of the reranker that reorders documents based on relevance to the query.
-
-This method takes a list of documents and a query, then uses the underlying reranking model to score and reorder the documents by relevance. The documents are processed in MetadataMode.EMBED format to ensure compatibility with the reranking model.
-
-Args:
-    nodes (List[DocNode]): List of document nodes to be reranked.
-    query (str): The query string to rank documents against. Defaults to "".
-
-**Returns:**\n
-- List[DocNode]: List of document nodes reordered by relevance score, with relevance_score attribute added.
-''')
-
-add_chinese_doc('rag.rerank.ModuleReranker.forward', '''\
-重排序器的前向传播，根据与查询的相关性重新排序文档。
-
-此方法接收文档列表和查询，然后使用底层重排序模型对文档进行评分和重新排序。文档以MetadataMode.EMBED格式处理，以确保与重排序模型的兼容性。
-
-Args:
-    nodes (List[DocNode]): 要重排序的文档节点列表。
-    query (str): 用于排序文档的查询字符串。默认为""。
-
-**Returns:**\n
-- List[DocNode]: 按相关性分数重新排序的文档节点列表，添加了relevance_score属性。
-''')
-
-add_english_doc('rag.utils.DocListManager.table_inited', '''\
-Checks if the database table `documents` is initialized. This method ensures thread-safety when accessing the database.
-`table_inited(self)`
-Determines whether the `documents` table exists in the database.
-Returns:
-    bool: `True` if the `documents` table exists, `False` otherwise.
-Notes:
-    - Uses a thread-safe lock (`self._db_lock`) to ensure safe access to the database.
-    - Establishes a connection to the SQLite database at `self._db_path` with the `check_same_thread` option.
-    - Executes the SQL query: `SELECT name FROM sqlite_master WHERE type='table' AND name='documents'` to check for the table.
-''')
-
-add_chinese_doc('rag.utils.DocListManager.table_inited', '''\
-检查数据库中的 `documents` 表是否已初始化。此方法在访问数据库时确保线程安全。
-`table_inited(self)`
-判断数据库中是否存在 `documents` 表。
-返回值:
-    bool: 如果 `documents` 表存在，返回 `True`；否则返回 `False`。
-说明:
-    - 使用线程安全锁 (`self._db_lock`) 确保对数据库的安全访问。
-    - 通过 `self._db_path` 连接 SQLite 数据库，并使用 `check_same_thread` 配置选项。
-    - 执行 SQL 查询：`SELECT name FROM sqlite_master WHERE type='table' AND name='documents'` 来检查表是否存在。
-''')
-
-add_english_doc('rag.utils.DocListManager.validate_paths', '''\
-Validates a list of file paths to ensure they are ready for processing.
-`validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]`
-This method checks whether the provided paths are new, already processed, or currently being processed. It ensures there are no conflicts in processing the documents.
-Args
-    paths (List[str]): A list of file paths to validate.
-Returns:
-    Tuple[bool, str, List[bool]]: A tuple containing:
-        - `bool`: `True` if all paths are valid, `False` otherwise.
-        - `str`: A message indicating success or the reason for failure.
-        - `List[bool]`: A list where each element corresponds to whether a path is new (`True`) or already exists (`False`).
-Notes:
-    - If any document is still being processed or needs reparsing, the method returns `False` with an appropriate error message.
-    - The method uses a database session and thread-safe lock (`self._db_lock`) to retrieve document status information.
-    - Unsafe statuses include `working` and `waiting`.
-''')
-
-add_chinese_doc('rag.utils.DocListManager.validate_paths', '''\
-验证一组文件路径，以确保它们可以被正常处理。
-`validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]`
-此方法检查提供的路径是否是新的、已处理的或当前正在处理的，并确保处理文档时不会发生冲突。
-参数:
-    paths (List[str]): 要验证的文件路径列表。
-返回值:
-    Tuple[bool, str, List[bool]]: 返回一个元组，包括：
-        - `bool`: 如果所有路径有效，则返回 `True`；否则返回 `False`。
-        - `str`: 表示成功或失败原因的消息。
-        - `List[bool]`: 一个布尔值列表，每个元素对应一个路径是否为新路径（`True` 表示新路径，`False` 表示已存在）。
-说明:
-    - 如果任何文档仍在处理中或需要重新解析，该方法会返回 `False`，并附带相应的错误消息。
-    - 方法通过数据库会话和线程安全锁 (`self._db_lock`) 检索文档状态信息。
-    - 不安全状态包括 `working` 和 `waiting`。
-''')
-
-add_english_doc('rag.utils.DocListManager.update_need_reparsing', '''\
-Updates the `need_reparse` status of a document in the `KBGroupDocuments` table.
-`update_need_reparsing(self, doc_id: str, need_reparse: bool, group_name: Optional[str] = None)`
-This method sets the `need_reparse` flag for a specific document, optionally scoped to a given group.
-Args:
-    doc_id (str): The ID of the document to update.
-    need_reparse (bool): The new value for the `need_reparse` flag.
-    group_name (Optional[str]): If provided, the update will be applied only to the specified group.
-Notes:
-    - Uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
-    - The `group_name` parameter allows scoping the update to a specific group; if not provided, the update applies to all groups containing the document.
-    - The method commits the change to the database immediately.
-''')
-
-add_chinese_doc('rag.utils.DocListManager.update_need_reparsing', '''\
-更新 `KBGroupDocuments` 表中某个文档的 `need_reparse` 状态。
-`update_need_reparsing(self, doc_id: str, need_reparse: bool, group_name: Optional[str] = None)`
-此方法设置指定文档的 `need_reparse` 标志，并可选限定到特定分组。
-参数:
-    doc_id (str): 要更新的文档ID。
-    need_reparse (bool): `need_reparse` 标志的新值。
-    group_name (Optional[str]): 如果提供，仅对指定分组应用更新；如果未提供，则对包含该文档的所有分组应用更新。
-说明:
-    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问安全。
-    - `group_name` 参数允许将更新限定到特定分组；如果未提供，则更新应用于包含该文档的所有分组。
-    - 方法会立刻将更改提交到数据库。
-''')
-
-add_english_doc('rag.utils.DocListManager.list_files', '''\
-Lists files from the `documents` table with optional filtering, limiting, and returning details.
-`list_files(self, limit: Optional[int] = None, details: bool = False, status: Union[str, List[str]] = DocListManager.Status.all, exclude_status: Optional[Union[str, List[str]]] = None)`
-This method retrieves file IDs or detailed file information from the database, based on the specified filtering conditions.
-Args:
-    limit (Optional[int]): Maximum number of files to return. If `None`, all matching files will be returned.
-    details (bool): Whether to return detailed file information (`True`) or just file IDs (`False`).
-    status (Union[str, List[str]]): The status or list of statuses to include in the results. Defaults to all statuses.
-    exclude_status (Optional[Union[str, List[str]]]): The status or list of statuses to exclude from the results. Defaults to `None`.
-Returns:
-    List: A list of file IDs if `details=False`, or a list of detailed file rows if `details=True`.
-Notes:
-    - The method constructs a query dynamically based on the provided `status` and `exclude_status` conditions.
-    - A thread-safe lock (`self._db_lock`) ensures safe database access.
-    - The `LIMIT` clause is applied if `limit` is specified.
-''')
-
-add_chinese_doc('rag.utils.DocListManager.list_files', '''\
-从 `documents` 表中列出文件，并支持过滤、限制返回结果以及返回详细信息。
-`list_files(self, limit: Optional[int] = None, details: bool = False, status: Union[str, List[str]] = DocListManager.Status.all, exclude_status: Optional[Union[str, List[str]]] = None)`
-此方法根据指定的条件，从数据库中检索文件ID或详细文件信息。
-参数:
-    limit (Optional[int]): 返回的最大文件数量。如果为 `None`，则返回所有匹配的文件。
-    details (bool): 是否返回详细的文件信息（`True`）或仅返回文件ID（`False`）。
-    status (Union[str, List[str]]): 要包含的状态或状态列表，默认为所有状态。
-    exclude_status (Optional[Union[str, List[str]]]): 要排除的状态或状态列表，默认为 `None`。
-返回值:
-    List: 如果 `details=False`，则返回文件ID列表；如果 `details=True`，则返回详细文件行的列表。
-说明:
-    - 该方法根据 `status` 和 `exclude_status` 条件动态构造查询。
-    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问安全。
-    - 如果指定了 `limit`，查询会附加 `LIMIT` 子句。
-''')
-
-add_english_doc('rag.utils.DocListManager.get_docs', '''\
-Fetch documents from the database based on a list of document IDs.
-`get_docs(self, doc_ids: List[str]) -> List[KBDocument]`
-This method retrieves document objects of type `KBDocument` from the database for the provided list of document IDs.
-Args:
-    doc_ids (List[str]): A list of document IDs to fetch.
-Returns:
-    List[KBDocument]: A list of `KBDocument` objects corresponding to the provided document IDs. If no documents are found, an empty list is returned.
-Notes:
-    - The method uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
-    - The query filters documents using the `doc_id` field with an SQL `IN` clause.
-    - If `doc_ids` is empty, the function will return an empty list without querying the database.
-''')
-
-add_chinese_doc('rag.utils.DocListManager.get_docs', '''\
-根据文档 ID 列表从数据库中获取文档对象。
-`get_docs(self, doc_ids: List[str]) -> List[KBDocument]`
-此方法从数据库中检索类型为 `KBDocument` 的文档对象，基于提供的文档 ID 列表。
-参数:
-    doc_ids (List[str]): 要获取的文档 ID 列表。
-返回值:
-    List[KBDocument]: 与提供的文档 ID 对应的 `KBDocument` 对象列表。如果没有找到文档，将返回空列表。
-说明:
-    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问的安全性。
-    - 查询使用 SQL 的 `IN` 子句，通过 `doc_id` 字段进行过滤。
-    - 如果 `doc_ids` 为空，函数将直接返回空列表，而不会查询数据库。
-''')
-
-add_english_doc('rag.utils.DocListManager.fetch_docs_changed_meta', '''\
-Fetch documents with changed metadata for a specific group and reset their `new_meta` field to `None`.
-`fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]`
-This method retrieves all documents where metadata has changed (`new_meta` is not `None`) for the given group. After fetching, it resets the `new_meta` field to `None` for those documents.
-Args:
-    group (str): The name of the group to filter documents by.
-Returns:
-    List[DocMetaChangedRow]: A list of rows, where each row contains the `doc_id` and the `new_meta` field of documents with changed metadata.
-Notes:
-    - The method uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
-    - It performs a SQL join between `KBDocument` and `KBGroupDocuments` to retrieve the relevant rows.
-    - After fetching, it updates the `new_meta` field of the affected rows to `None` and commits the changes to the database.
-''')
-
-add_chinese_doc('rag.utils.DocListManager.fetch_docs_changed_meta', '''\
-获取指定组中元数据已更改的文档，并将其 `new_meta` 字段重置为 `None`。
-`fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]`
-此方法检索元数据已更改（即 `new_meta` 不为 `None`）的所有文档，基于提供的组名。检索后，会将这些文档的 `new_meta` 字段重置为 `None`。
-参数:
-    group (str): 用于过滤文档的组名。
-返回值:
-    List[DocMetaChangedRow]: 包含文档 `doc_id` 和 `new_meta` 字段的行列表，表示元数据已更改的文档。
-说明:
-    - 使用线程安全锁 (`self._db_lock`) 确保数据库访问安全。
-    - 方法通过 SQL `JOIN` 操作连接 `KBDocument` 和 `KBGroupDocuments` 表以检索相关行。
-    - 在获取数据后，将受影响行的 `new_meta` 字段更新为 `None`，并将更改提交到数据库。
-''')
-
-add_english_doc('rag.utils.DocListManager.list_kb_group_files', '''\
-List files in a specific knowledge base (KB) group with optional filters, limiting, and details.
-`list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False, status: Union[str, List[str]] = DocListManager.Status.all, exclude_status: Optional[Union[str, List[str]]] = None, upload_status: Union[str, List[str]] = DocListManager.Status.all, exclude_upload_status: Optional[Union[str, List[str]]] = None, need_reparse: Optional[bool] = None)`
-This method retrieves files from the `kb_group_documents` table, optionally filtering by group, document status, upload status, and whether reparsing is needed.
-Args:
-    group (str): The name of the KB group to filter files by. Defaults to `None` (no group filter).
-    limit (Optional[int]): Maximum number of files to return. If `None`, returns all matching files.
-    details (bool): Whether to return detailed file information (`True`) or only file IDs and paths (`False`).
-    status (Union[str, List[str]]): The KB group status or list of statuses to include in the results. Defaults to all statuses.
-    exclude_status (Optional[Union[str, List[str]]): The KB group status or list of statuses to exclude from the results. Defaults to `None`.
-    upload_status (Union[str, List[str]]): The document upload status or list of statuses to include in the results. Defaults to all statuses.
-    exclude_upload_status (Optional[Union[str, List[str]]): The document upload status or list of statuses to exclude from the results. Defaults to `None`.
-    need_reparse (Optional[bool]): Whether to filter files that need reparsing (`True`) or not (`False`). Defaults to `None` (no filtering).
-Returns:
-    List: If `details=False`, returns a list of tuples containing `(doc_id, path)`. 
-          If `details=True`, returns a list of detailed rows with additional metadata.
-Notes:
-    - This method constructs a SQL query dynamically based on the provided filters.
-    - Uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
-    - If `status` or `upload_status` are provided as lists, they are processed with SQL `IN` clauses.
-''')
-
-add_chinese_doc('rag.utils.DocListManager.list_kb_group_files', '''\
-列出指定知识库 (KB) 组中的文件，并支持过滤、限制返回以及返回详细信息。
-`list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False, status: Union[str, List[str]] = DocListManager.Status.all, exclude_status: Optional[Union[str, List[str]]] = None, upload_status: Union[str, List[str]] = DocListManager.Status.all, exclude_upload_status: Optional[Union[str, List[str]]] = None, need_reparse: Optional[bool] = None)`
-此方法从 `kb_group_documents` 表中检索文件，支持基于组名、文档状态、上传状态以及是否需要重新解析的过滤。
-参数:
-    group (str): 用于过滤文件的 KB 组名。默认为 `None`（不过滤组名）。
-    limit (Optional[int]): 返回的最大文件数量。如果为 `None`，则返回所有匹配的文件。
-    details (bool): 是否返回详细的文件信息（`True`）或仅返回文件 ID 和路径（`False`）。
-    status (Union[str, List[str]]): 要包含在结果中的 KB 组状态或状态列表。默认为所有状态。
-    exclude_status (Optional[Union[str, List[str]]): 要从结果中排除的 KB 组状态或状态列表。默认为 `None`。
-    upload_status (Union[str, List[str]]): 要包含在结果中的文档上传状态或状态列表。默认为所有状态。
-    exclude_upload_status (Optional[Union[str, List[str]]): 要从结果中排除的文档上传状态或状态列表。默认为 `None`。
-    need_reparse (Optional[bool]): 是否过滤需要重新解析的文件（`True`）或不需要重新解析的文件（`False`）。默认为 `None`（不进行过滤）。
-返回值:
-    List: 如果 `details=False`，返回包含 `(doc_id, path)` 的元组列表。
-          如果 `details=True`，返回包含附加元数据的详细行列表。
-说明:
-    - 方法根据提供的过滤条件动态构建 SQL 查询。
-    - 使用线程安全锁 (`self._db_lock`) 确保多线程环境下的数据库访问安全。
-    - 如果 `status` 或 `upload_status` 参数为列表，则会使用 SQL 的 `IN` 子句进行处理。
-''')
-
-add_english_doc('rag.utils.DocListManager.add_files', '''\
-Add multiple files to the document list with optional metadata, status, and batch processing.
-`add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None, status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[DocPartRow]`
-This method adds a list of files to the database with optional metadata and a specified initial status. Files are processed in batches for efficiency. After adding the documents, they are associated with the default knowledge base (KB) group.
-Args:
-    files (List[str]): A list of file paths to add to the database.
-    metadatas (Optional[List[Dict[str, Any]]]): A list of metadata dictionaries corresponding to the files. If `None`, no metadata will be associated. Defaults to `None`.
-    status (Optional[str]): The initial status for the added files. Defaults to `Status.waiting`.
-    batch_size (int): The number of files to process in each batch. Defaults to 64.
-Returns:
-    List[DocPartRow]: A list of `DocPartRow` objects representing the added files and their associated information.
-Notes:
-    - The method first creates document records using the `_add_doc_records` helper function.
-    - After the files are added, they are automatically linked to the default KB group (`DocListManager.DEFAULT_GROUP_NAME`).
-    - Batch processing ensures scalability when adding a large number of files.
-''')
-
-add_chinese_doc('rag.utils.DocListManager.add_files', '''\
-批量向文档列表中添加文件，可选附加元数据、状态，并支持分批处理。
-`add_files(self, files: List[str], metadatas: Optional[List[Dict[str, Any]]] = None, status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[DocPartRow]`
-此方法将文件列表添加到数据库中，并为每个文件设置可选的元数据和初始状态。文件会以批量方式处理以提高效率。在文件添加完成后，它们会自动关联到默认的知识库 (KB) 组。
-参数:
-    files (List[str]): 要添加到数据库的文件路径列表。
-    metadatas (Optional[List[Dict[str, Any]]]): 与文件对应的元数据字典列表。如果为 `None`，则不会附加元数据。默认为 `None`。
-    status (Optional[str]): 添加文件的初始状态。默认为 `Status.waiting`。
-    batch_size (int): 每批处理的文件数量。默认为 64。
-返回值:
-    List[DocPartRow]: 包含已添加文件及其相关信息的 `DocPartRow` 对象列表。
-说明:
-    - 方法首先通过辅助函数 `_add_doc_records` 创建文档记录。
-    - 文件添加后，会自动关联到默认的知识库组 (`DocListManager.DEFAULT_GROUP_NAME`)。
-    - 批量处理确保在添加大量文件时具有良好的可扩展性。
-''')
-
-
-#delete_unreferenced_doc
-add_english_doc('rag.utils.DocListManager.delete_unreferenced_doc', '''\
-Delete documents marked as "deleting" and no longer referenced in the database.
-`delete_unreferenced_doc(self)`
-This method removes documents from the database that meet the following conditions:
-1. Their status is set to `DocListManager.Status.deleting`.
-2. Their reference count (`count`) is 0.
-''')
-
-add_chinese_doc('rag.utils.DocListManager.delete_unreferenced_doc', '''\
-删除数据库中标记为 "删除中" 且不再被引用的文档。
-`delete_unreferenced_doc(self)`
-此方法从数据库中删除满足以下条件的文档：
-1. 文档状态为 `DocListManager.Status.deleting`。
-2. 文档的引用计数 (`count`) 为 0。
-''')
-
-#get_docs_need_reparse
-add_english_doc('rag.utils.DocListManager.get_docs_need_reparse', '''\
-Retrieve documents that require reparsing for a specific group.
-`get_docs_need_reparse(self, group: str) -> List[KBDocument]`
-This method fetches documents that are marked as needing reparsing (`need_reparse=True`) for the given group. Only documents with a status of `success` or `failed` are included in the results.
-Args:
-    group (str): The name of the group to filter documents by.
-Returns:
-    List[KBDocument]: A list of `KBDocument` objects that need reparsing.
-Notes:
-    - The method uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
-    - The query performs a SQL `JOIN` between `KBDocument` and `KBGroupDocuments` to filter by group and reparse status.
-    - Documents with `need_reparse=True` and a status of `success` or `failed` are considered for reparsing.
-''')
-
-add_chinese_doc('rag.utils.DocListManager.get_docs_need_reparse', '''\
-获取需要重新解析的指定组中的文档。
-`get_docs_need_reparse(self, group: str) -> List[KBDocument]`
-此方法检索标记为需要重新解析 (`need_reparse=True`) 的文档，基于提供的组名。仅包含状态为 `success` 或 `failed` 的文档。
-参数:
-    group (str): 用于过滤文档的组名。
-返回值:
-    List[KBDocument]: 需要重新解析的 `KBDocument` 对象列表。
-说明:
-    - 使用线程安全锁 (`self._db_lock`) 确保多线程环境下的数据库访问安全。
-    - 查询通过 SQL `JOIN` 操作连接 `KBDocument` 和 `KBGroupDocuments` 表，并基于组名和重新解析状态进行过滤。
-    - 仅状态为 `success` 或 `failed` 且 `need_reparse=True` 的文档会被检索出来。
-''')
-
-add_english_doc('rag.utils.DocListManager.get_existing_paths_by_pattern', '''\
-Retrieve existing document paths that match a given pattern.
-`get_existing_paths_by_pattern(self, pattern: str) -> List[str]`
-This method fetches all document paths from the database that match the provided SQL `LIKE` pattern.
-Args:
-    pattern (str): The SQL `LIKE` pattern to filter document paths. For example, `%example%` matches paths containing the word "example".
-Returns:
-    List[str]: A list of document paths that match the given pattern. If no paths match, an empty list is returned.
-Notes:
-    - The method uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
-    - The `LIKE` operator in the SQL query is used to perform pattern matching on document paths.
-
-''')
-
-add_chinese_doc('rag.utils.DocListManager.get_existing_paths_by_pattern', '''\
-根据给定的模式，检索符合条件的文档路径。
-`get_existing_paths_by_pattern(self, pattern: str) -> List[str]`
-此方法从数据库中获取所有符合提供的 SQL `LIKE` 模式的文档路径。
-参数:
-    pattern (str): 用于过滤文档路径的 SQL `LIKE` 模式。例如，`%example%` 匹配包含单词 "example" 的路径。
-返回值:
-    List[str]: 符合给定模式的文档路径列表。如果没有匹配的路径，则返回空列表。
-说明:
-    - 使用线程安全锁 (`self._db_lock`) 确保多线程环境下的数据库访问安全。
-    - SQL 查询中的 `LIKE` 操作符用于对文档路径进行模式匹配。
-''')
-
-add_english_doc('rag.utils.DocListManager.enable_path_monitoring', '''\
-Enable or disable path monitoring for the document manager.
-`enable_path_monitoring(self, val: bool)`
-This method enables or disables the path monitoring functionality in the document manager. When enabled, a monitoring thread starts to handle path-related operations. When disabled, the thread stops and joins (waits for it to terminate).
-Args:
-    val (bool): A boolean value indicating whether to enable (`True`) or disable (`False`) path monitoring.
-Notes:
-    - If `val` is `True`, path monitoring is enabled by setting `_monitor_continue` to `True` and starting the `_monitor_thread`.
-    - If `val` is `False`, path monitoring is disabled by setting `_monitor_continue` to `False` and joining the `_monitor_thread` if it is running.
-    - This method ensures thread-safe operation when managing the monitoring thread.
-''')
-
-add_chinese_doc('rag.utils.DocListManager.enable_path_monitoring', '''\
-启用或禁用文档管理器的路径监控功能。
-`enable_path_monitoring(self, val: bool)`
-此方法用于启用或禁用文档管理器的路径监控功能。当启用时，会启动一个监控线程处理与路径相关的操作；当禁用时，会停止该线程并等待它终止。
-参数:
-    val (bool): 布尔值，指示是否启用 (`True`) 或禁用 (`False`) 路径监控。
-说明:
-    - 如果 `val` 为 `True`，路径监控功能会通过将 `_monitor_continue` 设置为 `True` 并启动 `_monitor_thread` 来启用。
-    - 如果 `val` 为 `False`，路径监控功能会通过将 `_monitor_continue` 设置为 `False` 并等待 `_monitor_thread` 终止来禁用。
-    - 方法在管理监控线程时确保线程操作是安全的。
-''')
 
 add_english_doc('rag.global_metadata.GlobalMetadataDesc', '''\
 A descriptor for global metadata, defining its type, optional element type, default value, and size constraints.

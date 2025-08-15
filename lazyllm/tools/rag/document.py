@@ -1,6 +1,7 @@
 import os
 
 from typing import Callable, Optional, Dict, Union, List
+from functools import cached_property
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
@@ -60,7 +61,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 dataset_path, name, enable_path_monitoring=False if manager else True)
             self._kbs = CallableDict({name: DocImpl(
                 embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
-                store_conf=store_conf, processor=processor, algo_name=name, display_name=display_name,
+                store=store_conf, processor=processor, algo_name=name, display_name=display_name,
                 description=description)})
 
             if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
@@ -96,10 +97,10 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             embed = self._get_embeds(embed) if embed else self._embed
             if isinstance(self._kbs, ServerModule):
                 self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=embed, kb_group_name=name,
-                                                   global_metadata_desc=doc_fields, store_conf=store_conf)
+                                                   global_metadata_desc=doc_fields, store=store_conf)
             else:
                 self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
-                                          global_metadata_desc=doc_fields, store_conf=store_conf)
+                                          global_metadata_desc=doc_fields, store=store_conf)
             self._dlm.add_kb_group(name=name)
 
         def get_doc_by_kb_group(self, name):
@@ -160,7 +161,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 processor._impl.start()
                 manager = False
                 assert name, '`Name` of Document is necessary when using cloud service'
-                assert store_conf['type'] != 'map', 'Cloud manager is not supported when using map store'
+                assert store_conf.get('type') != 'map', 'Cloud manager is not supported when using map store'
                 assert not dataset_path, 'Cloud manager is not supported with local dataset path'
             else:
                 cloud, processor = False, None
@@ -226,7 +227,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def get_sql_manager(self):
         if self._doc_to_db_processor is None:
-            raise None
+            raise ValueError("Please call connect_sql_manager to init handler first")
         return self._doc_to_db_processor.sql_manager
 
     def extract_db_schema(
@@ -320,7 +321,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._forward('retrieve', *args, **kw)
 
-    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+    def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
         return self._forward('clear_cache', group_names)
 
     def _get_post_process_tasks(self):
@@ -347,7 +348,7 @@ class UrlDocument(ModuleBase):
     def forward(self, *args, **kw):
         return self._forward('retrieve', *args, **kw)
 
-    @functools.lru_cache
+    @cached_property
     def active_node_groups(self):
         return self._forward('active_node_groups')
 

@@ -1,0 +1,28 @@
+name: ✨ Feature request
+description: Submit new feature requirements
+title: "[Feature]: "
+labels: ["feature"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Please describe the new feature you would like to add and its use cases.
+  - type: textarea
+    id: description
+    attributes:
+      label: Feature Description
+      description: Briefly describe what the feature does
+    validations:
+      required: true
+  - type: textarea
+    id: usecase
+    attributes:
+      label: Use Cases
+      description: How this feature will be used
+    validations:
+      required: true
+  - type: textarea
+    id: design
+    attributes:
+      label: Design Ideas / Technical Details
+      description: (Optional) Your thoughts on implementation approach
