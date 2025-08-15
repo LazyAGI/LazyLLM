@@ -3,6 +3,7 @@ from abc import ABC, abstractmethod
 from typing import List, Optional
 
 class IndexBase(ABC):
+    # TODO(chenjiahao): change params `nodes` to `segments`, index should be able to handle segments
     @abstractmethod
     def update(self, nodes: List[DocNode]) -> None:
         pass

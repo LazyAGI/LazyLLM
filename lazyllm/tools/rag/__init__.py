@@ -11,7 +11,7 @@ from .doc_manager import DocManager, DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField
 from .data_type import DataType
 from .index_base import IndexBase
-from .store import StoreBase
+from .store import LazyLLMStoreBase
 
 __all__ = [
     "Document",
@@ -44,6 +44,6 @@ __all__ = [
     'DocField',
     'DataType',
     'IndexBase',
-    'StoreBase',
+    'LazyLLMStoreBase',
     "FileReader",
 ]

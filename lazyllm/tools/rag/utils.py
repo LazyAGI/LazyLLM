@@ -735,13 +735,10 @@ class BaseResponse(BaseModel):
         }
 
 
-def run_in_thread_pool(
-    func: Callable,
-    params: List[Dict] = [],
-) -> Generator:
+def run_in_thread_pool(func: Callable, params: Optional[List[Dict]] = None) -> Generator:
     tasks = []
     with ThreadPoolExecutor() as pool:
-        for kwargs in params:
+        for kwargs in params or []:
             thread = pool.submit(func, **kwargs)
             tasks.append(thread)
 

@@ -2,61 +2,6 @@ site_name: LazyLLM
 repo_url: https://github.com/LazyAGI/LazyLLM
 repo_name: LazyAGI/LazyLLM
 docs_dir: docs/{doc_dir}
-nav:
-- Home:
-  - Getting Started: index.md
-  - FAQ: Home/FAQ.md
-  - Environment: Home/environment.md
-  - Supported Models: Home/model_list.md
-- Cookbook:
-  - Chatbot: Cookbook/robot.md
-  - Painting Master: Cookbook/painting_master.md
-  - Multimodal Chatbot: Cookbook/multimodal_robot.md
-  - Great Writer: Cookbook/great_writer.md
-  - RAG: Cookbook/rag.md
-  - Streaming: Cookbook/streaming.md
-- Best Practice:
-  - Flow: Best Practice/flow.md
-  - Flowapp: Best Practice/flowapp.md
-  - Module: Best Practice/module.md
-  - Prompt: Best Practice/prompt.md
-  - Rag: Best Practice/rag.md
-  - FunctionCall: Best Practice/functionCall.md
-  - Stream: Best Practice/stream.md
-- Advanced Topics:
-  - Contribution: Advanced Topics/contribution.md
-  - Changelog: Advanced Topics/changelog.md
-- Api Reference:
-  - CLI: API Reference/cli.md
-  - Common: API Reference/common.md
-  - Components: API Reference/components.md
-  - Flow: API Reference/flow.md
-  - Module: API Reference/module.md
-  - Tools: API Reference/tools.md
-  - Configs: API Reference/configs.md
-  - Launcher: API Reference/launcher.md
-  - Hook: API Reference/hook.md
-- Tutorials:
-  - Overview: Tutorial/index.md
-  - Lesson 1: Tutorial/1.md
-  - Lesson 2: Tutorial/2.md
-  - Lesson 3: Tutorial/3.md
-  - Lesson 4: Tutorial/4.md
-  - Lesson 5: Tutorial/5.md
-  - Lesson 6: Tutorial/6.md
-  - Lesson 7: Tutorial/7.md
-  - Lesson 8: Tutorial/8.md
-  - Lesson 9: Tutorial/9.md
-  - Lesson 10: Tutorial/10.md
-  - Lesson 11: Tutorial/11.md
-  - Lesson 12: Tutorial/12.md
-  - Lesson 13: Tutorial/13.md
-  - Lesson 14: Tutorial/14.md
-  - Lesson 15: Tutorial/15.md
-  - Lesson 16: Tutorial/16.md
-  - Lesson 17: Tutorial/17.md
-  - Lesson 18: Tutorial/18.md
-  - Lesson 19: Tutorial/19.md
 theme:
   language: en
   name: material
