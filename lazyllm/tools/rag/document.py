@@ -116,7 +116,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def __new__(cls, *args, **kw):
         if url := kw.pop('url', None):
             name = kw.pop('name', None)
-            assert name, 'Document name must be provided with `url`'
             assert not args and not kw, 'Only `name` is supported with `url`'
             return UrlDocument(url, name)
         else:
@@ -331,11 +330,11 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                                  server=isinstance(self._manager._kbs, ServerModule))
 
 class UrlDocument(ModuleBase):
-    def __init__(self, url: str, name: str):
+    def __init__(self, url: str, name: str = None):
         super().__init__()
         self._missing_keys = set(dir(Document)) - set(dir(UrlDocument))
         self._manager = lazyllm.UrlModule(url=ensure_call_endpoint(url))
-        self._curr_group = name
+        self._curr_group = name or DocListManager.DEFAULT_GROUP_NAME
 
     def _forward(self, func_name: str, *args, **kwargs):
         args = (self._curr_group, func_name, *args)
