@@ -103,12 +103,6 @@ class _DocumentStore(object):
                 'Vector store must be a vector store'
 
         if seg_store and vec_store:
-            if seg_store.capability == StoreCapability.ALL:
-                LOG.warning("segment_store has ALL capability; ignore explicit vector_store")
-                return seg_store
-            if vec_store.capability == StoreCapability.ALL:
-                LOG.warning("vector_store has ALL capability; ignore explicit segment_store")
-                return vec_store
             return HybridStore(segment_store=seg_store, vector_store=vec_store)
 
         if seg_store and not vec_store:
@@ -159,6 +153,9 @@ class _DocumentStore(object):
         if not nodes:
             return
         try:
+            if self._embed and self.impl.capability == StoreCapability.SEGMENT:
+                LOG.warning(f'[_DocumentStore - {self._algo_name}] Embed is provided'
+                            f' but store {self.impl} does not support embedding')
             if self.impl.need_embedding:
                 parallel_do_embedding(self._embed, [], nodes, self._group_embed_keys)
             group_segments = defaultdict(list)

@@ -55,7 +55,7 @@ class SenseCoreStore(LazyLLMStoreBase):
     @override
     def connect(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs) -> None:
         self._check_s3()
-        self._global_metadata_desc = global_metadata_desc
+        self._global_metadata_desc = global_metadata_desc or {}
         LOG.info(f"[SenseCore Store - connect] connected to {self._uri}")
 
     def _check_s3(self):
