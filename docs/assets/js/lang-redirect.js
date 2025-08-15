@@ -1,22 +1,31 @@
 document.addEventListener("DOMContentLoaded", function() {
-  // 获取所有语言切换链接
-  const langLinks = document.querySelectorAll('a[lang]');
+  console.log("[Language Redirect] Script loaded");
   
+  // 修改选择器：同时匹配lang和hreflang
+  const langLinks = document.querySelectorAll('a[lang], a[hreflang]');
+  console.log(`Found ${langLinks.length} language links`);
+
   langLinks.forEach(link => {
-    // 获取当前页面路径（如 "/en/api/"）
+    const lang = link.getAttribute('lang') || link.getAttribute('hreflang');
     const currentPath = window.location.pathname;
+    const originalHref = link.getAttribute('href');
     
-    // 判断当前是英文还是中文
-    if (currentPath.includes('/en/')) {
-      // 如果当前是英文，点击中文时跳转到对应中文路径
-      if (link.getAttribute('lang') === 'zh') {
-        link.href = currentPath.replace('/en/', '/zh-cn/');
-      }
-    } else if (currentPath.includes('/zh-cn/')) {
-      // 如果当前是中文，点击英文时跳转到对应英文路径
-      if (link.getAttribute('lang') === 'en') {
-        link.href = currentPath.replace('/zh-cn/', '/en/');
-      }
+    console.log(`Processing ${lang} link: ${originalHref} (current: ${currentPath})`);
+
+    // 计算新路径
+    let newHref;
+    if (currentPath.startsWith('/en/')) {
+      newHref = currentPath.replace('/en/', '/zh-cn/');
+    } else if (currentPath.startsWith('/zh-cn/')) {
+      newHref = currentPath.replace('/zh-cn/', '/en/');
+    } else {
+      newHref = lang === 'en' ? '/en/' : '/zh-cn/';
     }
+
+    // 保留锚点和查询参数
+    newHref += window.location.search + window.location.hash;
+    
+    link.setAttribute('href', newHref);
+    console.log(`Rewrote link to: ${newHref}`);
   });
 });
