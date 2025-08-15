@@ -114,7 +114,7 @@ class DocImpl:
         }
         self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
         self._global_metadata_desc = global_metadata_desc
-        self.store = store or {"type": "map"}  # NOTE: will be initialized in _lazy_init()
+        self.store = store  # NOTE: will be initialized in _lazy_init()
         self._activated_groups = set([LAZY_ROOT_NAME, LAZY_IMAGE_GROUP])
         # activated_embeddings maintains all node_groups and active embeddings
         self._activated_embeddings = {LAZY_ROOT_NAME: set(), LAZY_IMAGE_GROUP: set()}  # {group_name: {em1, em2, ...}}
