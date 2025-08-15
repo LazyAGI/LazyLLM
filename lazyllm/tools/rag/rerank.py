@@ -30,6 +30,8 @@ class Reranker(ModuleBase, _PostProcess):
         _PostProcess.__init__(self, output_format, join)
 
     def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
+        if isinstance(query, list) and isinstance(nodes, str):
+            query, nodes = nodes, query
         results = self.registered_reranker[self._name](nodes, query=query, **self._kwargs)
         LOG.debug(f"Rerank use `{self._name}` and get nodes: {results}")
         return self._post_process(results)
@@ -111,6 +113,9 @@ class ModuleReranker(Reranker):
     def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
         if not nodes:
             return self._post_process([])
+
+        if isinstance(query, list) and isinstance(nodes, str):
+            query, nodes = nodes, query
 
         docs = [node.get_text(metadata_mode=MetadataMode.EMBED) for node in nodes]
         top_n = self._kwargs['topk'] if 'topk' in self._kwargs else len(docs)
