@@ -321,13 +321,11 @@ def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
 
 
 def _build_pipeline(nodes):
-    if isinstance(nodes, list) and len(nodes) > 1:
-        return pipeline([Engine().build_node(node).func for node in nodes])
-    elif isinstance(nodes, list) and len(nodes) == 0:
-        return lazyllm.Identity()
+    if not isinstance(nodes, list): nodes = [nodes]
+    if isinstance(nodes, list) and len(nodes) > 0:
+        return make_graph(nodes, enable_server=False)
     else:
-        return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
-
+        return lazyllm.Identity()
 
 @NodeConstructor.register('Switch', subitems=['nodes:dict'])
 def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
@@ -389,11 +387,8 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]],
     with IntentClassifier(Engine().build_node(base_model).func,
                           prompt=prompt, constrain=constrain, attention=attention) as ic:
         for cond, sub_nodes in nodes.items():
-            if isinstance(sub_nodes, list) and len(sub_nodes) > 1:
-                f = pipeline([Engine().build_node(node).func for node in sub_nodes])
-            else:
-                f = Engine().build_node(sub_nodes[0] if isinstance(sub_nodes, list) else sub_nodes).func
-            ic.case[cond::f]
+            if not isinstance(sub_nodes, list): sub_nodes = [sub_nodes]
+            ic.case[cond::make_graph(sub_nodes, enable_server=False)]
     return ic
 
 
