@@ -131,6 +131,8 @@ class Engine(ABC):
 
     def subnodes(self, nodeid: str, recursive: bool = False):
         def _impl(nid, recursive):
+            if nid not in self._nodes:
+                return
             for id in self._nodes[nid].subitems:
                 yield id
                 if recursive: yield from self.subnodes(id, True)
@@ -330,8 +332,11 @@ def _build_pipeline(nodes):
 
 
 @NodeConstructor.register('Switch', subitems=['nodes:dict'])
-def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
-    with switch(judge_on_full_input=judge_on_full_input) as sw:
+def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]], conversion: Optional[str] = None):
+    if conversion is not None:
+        conversion = make_code(conversion)
+
+    with switch(judge_on_full_input=judge_on_full_input, conversion=conversion) as sw:
         for cond, cond_nodes in nodes.items():
             sw.case[cond::_build_pipeline(cond_nodes)]
     return sw
@@ -826,6 +831,15 @@ class LLM(lazyllm.ModuleBase):
     def share(self, prompt: str, format: callable = None, stream: bool = False,
               history: Optional[List[List[str]]] = None):
         return LLM(self._m.share(prompt=prompt, format=format, stream=stream, history=history), self._keys)
+
+    def formatter(self, format: lazyllm.components.formatter.FormatterBase = None):
+        if isinstance(format, lazyllm.components.formatter.FormatterBase) or callable(format):
+            self._formatter = format
+        elif format is None:
+            self._formatter = lazyllm.components.formatter.EmptyFormatter()
+        else:
+            raise TypeError("format must be a FormatterBase")
+        return self
 
     @property
     def func(self):
