@@ -1,7 +1,8 @@
-from typing import Dict, Union, Any, List
+from typing import Dict, Union, Any, List, Optional
 
 
-def chat_history_to_str(history: List[Union[List[str], Dict[str, Any]]] = [], user_query: Union[str, None] = None):
+def chat_history_to_str(history: Optional[List[Union[List[str], Dict[str, Any]]]] = None,
+                        user_query: Union[str, None] = None):
     MAX_HISTORY_LEN = 20
     history_info = ""
     MAP_ROLE = {"user": "human", "assitant": "assitant"}

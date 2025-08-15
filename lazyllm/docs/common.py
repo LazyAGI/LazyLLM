@@ -71,6 +71,83 @@ Args:
 # ...     return input
 # ''')
 
+add_chinese_doc('registry.LazyDict', '''\
+一个为懒惰的程序员设计的特殊字典类。支持多种便捷的访问和操作方式。
+
+特性：
+1. 使用点号代替['str']访问字典元素
+2. 支持首字母小写来使语句更像函数调用
+3. 当字典只有一个元素时支持直接调用
+4. 支持动态默认键
+5. 如果组名出现在名称中，允许省略组名
+
+参数:
+    name (str): 字典的名称，默认为空字符串。
+    base: 基类引用，默认为None。
+    *args: 位置参数，传递给dict父类。
+    **kw: 关键字参数，传递给dict父类。
+''')
+
+add_english_doc('registry.LazyDict', '''\
+A special dictionary class designed for lazy programmers. Supports various convenient access and operation methods.
+
+Features:
+1. Use dot notation instead of ['str'] to access dictionary elements
+2. Support lowercase first character to make statements more like function calls
+3. Support direct calls when dictionary has only one element
+4. Support dynamic default keys
+5. Allow omitting group name if it appears in the name
+
+Args:
+    name (str): Name of the dictionary, defaults to empty string.
+    base: Base class reference, defaults to None.
+    *args: Positional arguments passed to dict parent class.
+    **kw: Keyword arguments passed to dict parent class.
+''')
+
+add_chinese_doc('registry.LazyDict.remove', '''\
+从字典中移除指定的键值对。
+
+参数:
+    key (str): 要移除的键。支持与__getattr__相同的键匹配规则，包括首字母小写和组名省略等特性。
+
+注意:
+    如果找不到匹配的键，将抛出AttributeError异常。
+''')
+
+add_english_doc('registry.LazyDict.remove', '''\
+Remove the specified key-value pair from the dictionary.
+
+Args:
+    key (str): The key to remove. Supports the same key matching rules as __getattr__, 
+              including lowercase first character and group name omission features.
+
+Note:
+    Raises AttributeError if no matching key is found.
+''')
+
+add_chinese_doc('registry.LazyDict.set_default', '''\
+设置字典的默认键。设置后可以通过.default属性访问该键对应的值。
+
+参数:
+    key (str): 要设置为默认的键名。
+
+注意:
+    - key必须是字符串类型
+    - 设置后可以通过.default访问，或在字典只有一个元素时直接调用
+''')
+
+add_english_doc('registry.LazyDict.set_default', '''\
+Set the default key for the dictionary. After setting, the value can be accessed through the .default property.
+
+Args:
+    key (str): The key name to set as default.
+
+Note:
+    - key must be a string type
+    - After setting, can be accessed via .default, or called directly when dictionary has only one element
+''')
+
 add_chinese_doc('compile_func', '''
 将一段 python 函数字符串编译成一个可执行函数并返回。
 
@@ -535,6 +612,79 @@ add_example('FileSystemQueue.clear', """\
 >>> queue.peek() is None
 True
 """)
+
+
+add_chinese_doc('common.ResultCollector', '''\
+结果收集器，用于在流程或任务执行过程中按名称存储和访问结果。  
+它通过调用自身（传入 name）返回一个可调用的 Impl 对象来收集指定名称的结果。  
+适用于需要跨步骤共享中间结果的场景。
+''')
+
+add_english_doc('common.ResultCollector', '''\
+A result collector used to store and access results by name during the execution of a flow or task.  
+Calling the instance with a name returns a callable Impl object that collects results for that name.  
+Useful for scenarios where intermediate results need to be shared across steps.
+''')
+add_chinese_doc('common.ResultCollector.Impl', '''\
+ResultCollector 的内部实现类，负责为指定名称收集结果。  
+不应直接实例化，需通过 ResultCollector(name) 获取。
+
+Args:
+    name (str): 结果名称。
+    value (dict): 存储结果的字典引用。
+''')
+
+add_english_doc('common.ResultCollector.Impl', '''\
+Internal implementation class of ResultCollector, responsible for collecting results for a given name.  
+Should not be instantiated directly; obtain via ResultCollector(name).
+
+Args:
+    name (str): The result name.
+    value (dict): A reference to the dictionary where results are stored.
+''')
+
+
+add_chinese_doc('common.ResultCollector.keys', '''\
+获取所有已存储结果的名称。
+
+**Returns**\n
+- KeysView[str]: 结果名称集合。
+''')
+
+add_english_doc('common.ResultCollector.keys', '''\
+Get all stored result names.
+
+**Returns**\n
+- KeysView[str]: A set-like object containing result names.
+''')
+
+add_chinese_doc('common.ResultCollector.items', '''\
+获取所有已存储的 (名称, 值) 对。
+
+**Returns**\n
+- ItemsView[str, Any]: 结果的键值对集合。
+''')
+
+add_english_doc('common.ResultCollector.items', '''\
+Get all stored (name, value) pairs.
+
+**Returns**\n
+- ItemsView[str, Any]: A set-like object containing name-value pairs of results.
+''')
+
+add_chinese_doc('common.EnvVarContextManager', '''\
+环境变量上下文管理器，用于 在代码块执行期间临时设置环境变量，退出时自动恢复原始环境变量。
+
+Args:
+    env_vars_dict (dict): 需要临时设置的环境变量字典，值为 None 的变量将被忽略。
+''')
+
+add_english_doc('common.EnvVarContextManager', '''\
+Environment variable context manager used to temporarily set environment variables during the execution of a code block, automatically restoring original environment variables upon exit.
+
+Args:
+    env_vars_dict (dict): Dictionary of environment variables to temporarily set; variables with None values are ignored.
+''')
 
 add_chinese_doc('ReadOnlyWrapper', '''\ 
 一个轻量级只读包装器，用于包裹任意对象并对外提供只读访问（实际并未完全禁止修改，但复制时不会携带原始对象）。包装器可以动态替换内部对象，并提供判断对象是否为空的辅助方法。

@@ -34,7 +34,7 @@ class Mindie(LazyLLMDeployBase):
         'max_seq_len': ('maxSeqLen', int)
     }
 
-    def __init__(self, trust_remote_code=True, launcher=launchers.remote(), log_path=None, **kw):
+    def __init__(self, trust_remote_code=True, launcher=launchers.remote(), log_path=None, **kw):  # noqa B008
         super().__init__(launcher=launcher)
         assert lazyllm.config['mindie_home'], 'Ensure you have installed MindIE and \
                                   "export LAZYLLM_MINDIE_HOME=/path/to/mindie/latest"'

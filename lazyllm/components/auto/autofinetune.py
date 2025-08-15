@@ -9,7 +9,7 @@ from ..utils.downloader import ModelManager
 
 class AutoFinetune(LazyLLMFinetuneBase):
     def __new__(cls, base_model, target_path, source=lazyllm.config['model_source'], merge_path=None, ctx_len=1024,
-                batch_size=32, lora_r=8, launcher=launchers.remote(ngpus=1), **kw):
+                batch_size=32, lora_r=8, launcher=launchers.remote(ngpus=1), **kw):  # noqa B008
         base_model = ModelManager(source).download(base_model) or ''
         model_name = get_model_name(base_model)
         model_type = ModelManager.get_model_type(model_name)
