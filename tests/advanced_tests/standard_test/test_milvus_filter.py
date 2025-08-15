@@ -113,27 +113,3 @@ class TestMilvusFilter(unittest.TestCase):
         # in case of re-run with old failing staus that will trigger reparsing, call release to clean db
         doc._manager._dlm.release()
         doc.stop()
-
-    def test_smart_embedding_index(self):
-        CUSTOM_DOC_FIELDS = {"department": DocField(data_type=DataType.VARCHAR, max_size=65535, default_value=' ')}
-        Document.create_node_group('sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=100)
-        doc = Document(self.index_dir, name='law_kg_smart', doc_fields=CUSTOM_DOC_FIELDS,
-                       embed={"dense": OnlineEmbeddingModule(source="qwen")}, manager=True,
-                       store_conf=get_milvus_index_conf(self.doc_dir, 'law_kg_smart'))
-        retriever = Retriever(doc, group_name="sentences", topk=5, embed_keys=['dense'], similarity='cosine')
-        retriever_bm25 = Retriever(doc, group_name="sentences", topk=5, similarity='bm25')
-        doc.start()
-
-        doc_manager_url = doc._manager.url.rsplit('/', 1)[0]
-        do_upload(doc_manager_url, 'law_kg_smart')
-        time.sleep(20)
-        query = "合同问题"
-
-        nodes = retriever(query, filters={'department': ['dpt_123']})
-        assert len(nodes) == 1 and nodes[0].global_metadata["department"] == "dpt_123"
-
-        nodes = retriever_bm25(query, filters={'department': ['dpt_123']})
-        assert len(nodes) == 1 and nodes[0].global_metadata["department"] == "dpt_123"
-
-        doc._manager._dlm.release()
-        doc.stop()

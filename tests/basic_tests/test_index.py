@@ -1,15 +1,17 @@
 import time
 import unittest
 from unittest.mock import MagicMock
-from lazyllm.tools.rag.store import MapStore
+from lazyllm.tools.rag.store.document_store import _DocumentStore
 from lazyllm.tools.rag import DocNode, IndexBase, Document
 from lazyllm.tools.rag.default_index import DefaultIndex
 from lazyllm.tools.rag.similarity import register_similarity, registered_similarities
-from lazyllm.tools.rag.store import StoreBase
+from lazyllm.tools.rag.data_type import DataType
+from lazyllm.tools.rag.store.store_base import LazyLLMStoreBase
 from lazyllm.tools.rag.utils import parallel_do_embedding, generic_process_filters
 from typing import List, Optional, Dict
 from lazyllm.common import override
 from lazyllm import SentenceSplitter, Retriever
+from lazyllm.tools.rag.global_metadata import RAG_DOC_ID
 
 class TestDefaultIndex(unittest.TestCase):
     def setUp(self):
@@ -18,17 +20,22 @@ class TestDefaultIndex(unittest.TestCase):
             'test1': MagicMock(return_value=[0, 1, 0]),
             'test2': MagicMock(return_value=[0, 0, 1]),
         }
-        self.mock_store = MapStore(node_groups=['group1'], embed=self.mock_embed)
-
+        self.mock_store = _DocumentStore(algo_name='test_algo', store={"type": "map"},
+                                         group_embed_keys={"group1": ["default", "test1", "test2"]},
+                                         embed=self.mock_embed, embed_dims={"default": 3, "test1": 3, "test2": 3},
+                                         embed_datatypes={"default": DataType.FLOAT_VECTOR,
+                                                          "test1": DataType.FLOAT_VECTOR,
+                                                          "test2": DataType.FLOAT_VECTOR})
+        self.mock_store.activate_group('group1')
         # Create instance of DefaultIndex
         self.index = DefaultIndex(embed=self.mock_embed, store=self.mock_store)
 
         # Create mock DocNodes
-        self.doc_node_1 = DocNode(uid="text1", group="group1")
+        self.doc_node_1 = DocNode(uid="text1", group="group1", global_metadata={RAG_DOC_ID: "test_doc_id"})
         self.doc_node_1.embedding = {"default": [1, 0, 0], "test1": [1, 0, 0], "test2": [1, 0, 0]}
-        self.doc_node_2 = DocNode(uid="text2", group="group1")
+        self.doc_node_2 = DocNode(uid="text2", group="group1", global_metadata={RAG_DOC_ID: "test_doc_id"})
         self.doc_node_2.embedding = {"default": [0, 1, 0], "test1": [0, 1, 0], "test2": [0, 1, 0]}
-        self.doc_node_3 = DocNode(uid="text3", group="group1")
+        self.doc_node_3 = DocNode(uid="text3", group="group1", global_metadata={RAG_DOC_ID: "test_doc_id"})
         self.doc_node_3.embedding = {"default": [0, 0, 1], "test1": [0, 0, 1], "test2": [0, 0, 1]}
         self.nodes = [self.doc_node_1, self.doc_node_2, self.doc_node_3]
         self.mock_store.update_nodes(self.nodes)  # used by index
@@ -105,7 +112,7 @@ class TestDefaultIndex(unittest.TestCase):
         self.assertIn(self.doc_node_2, results)
 
 class KeywordIndex(IndexBase):
-    def __init__(self, cstore: StoreBase):
+    def __init__(self, cstore: LazyLLMStoreBase):
         self.store = cstore
 
     @override

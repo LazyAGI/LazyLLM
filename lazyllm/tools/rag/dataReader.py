@@ -188,10 +188,10 @@ class SimpleDirectoryReader(ModuleBase):
         for doc in documents:
             doc._excluded_embed_metadata_keys.extend(
                 ["file_name", "file_type", "file_size", "creation_date",
-                 "last_modified_date", "last_accessed_date"])
+                 "last_modified_date", "last_accessed_date", "lazyllm_store_num"])
             doc._excluded_llm_metadata_keys.extend(
                 ["file_name", "file_type", "file_size", "creation_date",
-                 "last_modified_date", "last_accessed_date"])
+                 "last_modified_date", "last_accessed_date", "lazyllm_store_num"])
         return documents
 
     @staticmethod
