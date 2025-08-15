@@ -586,106 +586,6 @@ add_example('auto.AutoFinetune', '''\
 <lazyllm.llm.finetune type=AlpacaloraFinetune>
 ''')
 
-# DummyFinetune
-add_chinese_doc('finetune.base.DummyFinetune', '''\
-虚拟微调组件，用于测试和调试微调流程。此类继承自 `LazyLLMFinetuneBase`，提供了一个不执行实际微调操作的模拟实现。
-
-Args:
-    base_model (str): 基础模型标识符，默认为 ``'base'``
-    target_path (str): 目标保存路径，默认为 ``'target'``
-    launcher: 启动器实例，默认为 ``launchers.remote()``
-    **kw: 额外的关键字参数，会被存储在实例中并在命令执行时输出
-
-此类的主要特性：
-
-- **模拟执行**: 不执行实际的微调操作，仅用于测试流程
-- **参数记录**: 记录所有传入的参数并在执行时输出
-- **快速响应**: 使用空启动器，提供即时的响应
-- **调试友好**: 便于调试微调流程和参数传递
-
-**注意**: 此类主要用于开发和测试阶段，不应该在生产环境中使用。
-
-''')
-
-add_english_doc('finetune.base.DummyFinetune', '''\
-Dummy fine-tuning component for testing and debugging fine-tuning workflows. This class inherits from `LazyLLMFinetuneBase` and provides a mock implementation that doesn't perform actual fine-tuning operations.
-
-Args:
-    base_model (str): Base model identifier, defaults to ``'base'``
-    target_path (str): Target save path, defaults to ``'target'``
-    launcher: Launcher instance, defaults to ``launchers.remote()``
-    **kw: Additional keyword arguments that will be stored in the instance and output during command execution
-
-Key features of this class:
-
-- **Mock Execution**: Doesn't perform actual fine-tuning operations, only used for testing workflows
-- **Parameter Recording**: Records all passed parameters and outputs them during execution
-- **Fast Response**: Uses empty launcher for immediate response
-- **Debug-Friendly**: Facilitates debugging of fine-tuning workflows and parameter passing
-
-**Note**: This class is primarily used during development and testing phases and should not be used in production environments.
-
-''')
-
-add_example('finetune.base.DummyFinetune', '''\
->>> import lazyllm
->>> from lazyllm.components.finetune.base import DummyFinetune
->>> 
->>> # 基本用法：创建虚拟微调组件
->>> dummy_finetune = DummyFinetune(
-...     target_path="/path/to/output",
-...     learning_rate=0.001,
-...     batch_size=16
-... )
->>> result = dummy_finetune()
->>> print(f"微调结果路径: {result}")
->>> cmd = dummy_finetune.cmd()
->>> print(f"生成的命令: {cmd}")
-''')
-
-# DummyFinetune.cmd
-add_chinese_doc('finetune.base.DummyFinetune.cmd', '''\
-生成虚拟微调命令的方法。此方法返回一个简单的 echo 命令，用于模拟微调操作的执行。
-
-Args:
-    *args: 位置参数，在此实现中未使用
-    **kw: 关键字参数，在此实现中未使用
-
-Returns:
-    str: 包含初始化参数的 echo 命令字符串
-
-此方法的特点：
-
-- **简单输出**: 返回一个基本的 echo 命令
-- **参数显示**: 在命令中显示所有初始化时传入的参数
-- **调试信息**: 提供清晰的调试信息，便于验证参数传递
-- **一致性**: 与真实微调组件的接口保持一致
-
-**注意**: 此方法主要用于调试和测试，实际执行时不会进行任何微调操作。
-
-''')
-
-add_english_doc('finetune.base.DummyFinetune.cmd', '''\
-Method to generate dummy fine-tuning command. This method returns a simple echo command to simulate fine-tuning operation execution.
-
-Args:
-    *args: Positional arguments, not used in this implementation
-    **kw: Keyword arguments, not used in this implementation
-
-Returns:
-    str: Echo command string containing initialization parameters
-
-Features of this method:
-
-- **Simple Output**: Returns a basic echo command
-- **Parameter Display**: Shows all parameters passed during initialization in the command
-- **Debug Information**: Provides clear debug information for parameter validation
-- **Consistency**: Maintains interface consistency with real fine-tuning components
-
-**Note**: This method is primarily used for debugging and testing, and doesn't perform any actual fine-tuning operations when executed.
-
-''')
-
 # ============= Deploy
 
 add_chinese_doc('LazyLLMDeployBase', '''\
@@ -1198,31 +1098,6 @@ Returns:
     LazyFlagEmbedding: A newly constructed LazyFlagEmbedding instance.
 ''')
 
-add_chinese_doc('deploy.Vllm', '''\
-基于 vLLM 的模型部署器。
-
-该类封装了 vLLM 推理服务的启动、指令构造、参数配置与访问地址管理等逻辑。支持 OpenAI 风格 API 兼容，具备分布式部署能力，默认使用 LazyLLM 的启动器完成后端任务分配。
-
-Args:
-    trust_remote_code (bool): 是否信任远程代码，启用后会加载模型仓库中 `modeling.py` 脚本。
-    launcher (LazyLLMLaunchersBase): 启动器对象，控制模型部署逻辑，支持本地/远程/分布式。
-    log_path (str, optional): 日志输出目录，用于保存部署日志。
-    openai_api (bool): 是否以 OpenAI API 兼容模式启动（默认关闭）。
-    **kw: 其他部署参数，例如最大序列长度、并行配置等。
-''')
-
-add_english_doc('deploy.Vllm', '''\
-Model deployment class based on vLLM.
-
-This class wraps the logic for launching a vLLM inference server, constructing commands, managing configuration parameters, and retrieving access URLs. It supports OpenAI-compatible API mode and distributed deployment via LazyLLM's launcher system.
-
-Args:
-    trust_remote_code (bool): Whether to trust remote code, allowing loading of custom modeling scripts.
-    launcher (LazyLLMLaunchersBase): Launcher object controlling how the model is deployed (local, remote, distributed).
-    log_path (str, optional): Directory for saving deployment logs.
-    openai_api (bool): Whether to launch the server in OpenAI-compatible API mode (default: False).
-    **kw: Additional deployment options, such as max sequence length, parallel configs, etc.
-''')
 
 add_chinese_doc('deploy.Vllm.cmd', '''\
 构造用于启动 vLLM 推理服务的命令。
