@@ -321,13 +321,11 @@ def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
 
 
 def _build_pipeline(nodes):
-    if isinstance(nodes, list) and len(nodes) > 1:
+    if not isinstance(nodes, list): nodes = [nodes]
+    if isinstance(nodes, list) and len(nodes) > 0:
         return make_graph(nodes, enable_server=False)
-    elif isinstance(nodes, list) and len(nodes) == 0:
-        return lazyllm.Identity()
     else:
-        return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
-
+        return lazyllm.Identity()
 
 @NodeConstructor.register('Switch', subitems=['nodes:dict'])
 def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
