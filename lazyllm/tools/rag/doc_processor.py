@@ -12,8 +12,9 @@ from .store.utils import fibonacci_backoff, create_file_path
 from .transform import (AdaptiveTransform, make_transform,)
 from .readers import ReaderBase
 from .doc_node import DocNode
-from .utils import gen_docid, BaseResponse
+from .utils import gen_docid, ensure_call_endpoint, BaseResponse
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
+
 import queue
 import threading
 import time
@@ -594,7 +595,7 @@ class DocumentProcessor(ModuleBase):
             if server:
                 self._impl = ServerModule(self._impl, port=port)
         else:
-            self._impl = UrlModule(url=url)
+            self._impl = UrlModule(url=ensure_call_endpoint(url))
 
     def _dispatch(self, method: str, *args, **kwargs):
         impl = self._impl
