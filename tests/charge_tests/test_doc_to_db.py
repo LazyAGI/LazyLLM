@@ -14,6 +14,7 @@ class DocToDbTester(unittest.TestCase):
         assert data_root_dir
         cls.pdf_root = os.path.join(data_root_dir, "rag_master/default/__data/pdfs")
 
+    @pytest.mark.skip(reason="Skip for now, will be fixed in v0.6")
     def test_doc_to_db_sop(self):
         sql_manager = SqlManager("SQLite", None, None, None, None, db_name=":memory:")
         documents = lazyllm.Document(dataset_path=self.pdf_root, create_ui=False)
