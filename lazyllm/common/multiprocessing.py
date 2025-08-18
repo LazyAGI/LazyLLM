@@ -24,8 +24,8 @@ class SpawnProcess(multiprocessing.Process):
 
 class ForkProcess(multiprocessing.Process):
     def __init__(self, group=None, target=None, name=None, args=(),
-                 kwargs={}, *, daemon=None, sync=True):
-        super().__init__(group, ForkProcess.work(target, sync), name, args, kwargs, daemon=daemon)
+                 kwargs=None, *, daemon=None, sync=True):
+        super().__init__(group, ForkProcess.work(target, sync), name, args, kwargs or {}, daemon=daemon)
 
     @staticmethod
     def work(f, sync):

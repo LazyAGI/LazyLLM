@@ -5,6 +5,7 @@ import re
 from .bind import _MetaBind
 from ..configs import config
 from typing import Optional
+from abc import ABCMeta
 
 # Special Dict for lazy programmer. Suppose we have a LazyDict as follows：
 #    >>> ld = LazyDict(name='ld', ALd=int)
@@ -104,6 +105,9 @@ class LazyLLMRegisterMetaClass(_MetaBind):
                 f'duplicate class \'{name}\' in group {new_cls._lazy_llm_group}')
             group[new_cls.__name__] = new_cls
         return new_cls
+
+
+class LazyLLMRegisterMetaABCClass(LazyLLMRegisterMetaClass, ABCMeta): pass
 
 
 def _get_base_cls_from_registry(cls_str, *, registry=LazyLLMRegisterMetaClass.all_clses):

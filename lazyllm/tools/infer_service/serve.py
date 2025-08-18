@@ -127,7 +127,7 @@ class InferServer(ServerBase):
         return newest_file
 
     @app.post('/v1/deploy/jobs')
-    async def create_job(self, job: JobDescription, token: str = Header(None)):
+    async def create_job(self, job: JobDescription, token: str = Header(None)):  # noqa B008
         if not token:
             raise HTTPException(status_code=401, detail='Invalid token')
         # await self.authorize_current_user(token)
@@ -188,7 +188,7 @@ class InferServer(ServerBase):
         return {'job_id': job_id, 'status': status}
 
     @app.post('/v1/deploy/jobs/{job_id}/cancel')
-    async def cancel_job(self, job_id: str, token: str = Header(None)):
+    async def cancel_job(self, job_id: str, token: str = Header(None)):  # noqa B008
         await self.authorize_current_user(token)
         if not self._in_active_jobs(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
@@ -214,7 +214,7 @@ class InferServer(ServerBase):
         return {'status': status}
 
     @app.get('/v1/deploy/jobs')
-    async def list_jobs(self, token: str = Header(None)):
+    async def list_jobs(self, token: str = Header(None)):  # noqa B008
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
         server_running_dict = self._read_user_job_info(token)
@@ -239,7 +239,7 @@ class InferServer(ServerBase):
         return server_running_dict
 
     @app.get('/v1/deploy/jobs/{job_id}')
-    async def get_job_info(self, job_id: str, token: str = Header(None)):
+    async def get_job_info(self, job_id: str, token: str = Header(None)):  # noqa B008
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
@@ -249,7 +249,7 @@ class InferServer(ServerBase):
         return self._read_user_job_info(token, job_id)
 
     @app.get('/v1/deploy/jobs/{job_id}/events')
-    async def get_job_log(self, job_id: str, token: str = Header(None)):
+    async def get_job_log(self, job_id: str, token: str = Header(None)):  # noqa B008
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')

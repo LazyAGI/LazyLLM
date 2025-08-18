@@ -19,7 +19,7 @@ class LazyLLMDeployBase(ComponentBase):
     def extract_result(output, inputs):
         return output
 
-    def __init__(self, *, launcher=launchers.remote()):
+    def __init__(self, *, launcher=launchers.remote()):  # noqa B008
         super().__init__(launcher=launcher)
 
 
@@ -33,7 +33,7 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
         }
     }
 
-    def __init__(self, launcher=launchers.remote(sync=False), *, stream=False, **kw):
+    def __init__(self, launcher=launchers.remote(sync=False), *, stream=False, **kw):  # noqa B008
         super().__init__(launcher=launcher)
 
         def func():

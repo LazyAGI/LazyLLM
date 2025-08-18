@@ -2,7 +2,7 @@ from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
 from lazyllm.tools.utils import chat_history_to_str
 from lazyllm import pipeline, globals, bind, _0, switch
-from typing import List, Any, Dict, Union, Callable
+from typing import List, Any, Dict, Optional, Union, Callable
 import datetime
 import re
 from lazyllm.tools.sql import DBManager
@@ -103,7 +103,7 @@ class SqlCall(ModuleBase):
     def sql_query_promt_hook(
         self,
         input: Union[str, List, Dict[str, str], None] = None,
-        history: List[Union[List[str], Dict[str, Any]]] = [],
+        history: Optional[List[Union[List[str], Dict[str, Any]]]] = None,
         tools: Union[List[Dict[str, Any]], None] = None,
         label: Union[str, None] = None,
     ):
@@ -115,7 +115,7 @@ class SqlCall(ModuleBase):
             raise ValueError(f"Unexpected type for input: {type(input)}")
         return (
             dict(current_date=current_date, db_type=self._sql_tool.db_type, desc=schema_desc, user_query=input),
-            history,
+            history or [],
             tools,
             label,
         )
@@ -123,7 +123,7 @@ class SqlCall(ModuleBase):
     def sql_explain_prompt_hook(
         self,
         input: Union[str, List, Dict[str, str], None] = None,
-        history: List[Union[List[str], Dict[str, Any]]] = [],
+        history: List[Union[List[str], Dict[str, Any]]] = [],  # noqa B006
         tools: Union[List[Dict[str, Any]], None] = None,
         label: Union[str, None] = None,
     ):

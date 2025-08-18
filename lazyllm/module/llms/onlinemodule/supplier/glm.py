@@ -283,7 +283,7 @@ class GLMSTTModule(GLMMultiModal):
                                or lazyllm.config['glm_stt_model_name'], api_key=api_key,
                                return_trace=return_trace, **kwargs)
 
-    def _forward(self, files: List[str] = [], **kwargs):
+    def _forward(self, files: List[str] = [], **kwargs):  # noqa B006
         assert len(files) == 1, "GLMSTTModule only supports one file"
         assert os.path.exists(files[0]), f"File {files[0]} not found"
         transcriptResponse = self._client.audio.transcriptions.create(

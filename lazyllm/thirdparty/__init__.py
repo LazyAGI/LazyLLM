@@ -11,6 +11,7 @@ package_name_map = {
     'flash_attn': 'flash-attn',
     'sklearn': 'scikit-learn',
     'volcenginesdkarkruntime': 'volcengine-python-sdk[ark]',
+    'opensearchpy': 'opensearch-py',
 }
 
 requirements = {}
@@ -69,7 +70,7 @@ class PackageWrapper(object):
         try:
             return getattr(importlib.import_module(
                 self._Wrapper__key, package=self._Wrapper__package), __name)
-        except (ImportError, ModuleNotFoundError):
+        except ImportError:
             pip_cmd = get_pip_install_cmd([self._Wrapper__key])
             if pip_cmd:
                 err_msg = f'Cannot import module {self._Wrapper__key}, please install it by {pip_cmd}'
@@ -89,6 +90,6 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'sentence_transformers', 'gradio', 'chromadb', 'nltk', 'PIL', 'httpx', 'bm25s', 'kubernetes', 'pymongo',
            'rapidfuzz', 'FlagEmbedding', 'mcp', 'diffusers', 'pypdf', 'pptx', 'html2text', 'ebooklib', 'docx2txt',
            'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr', 'volcenginesdkarkruntime',
-           'zhipuai', 'dashscope', 'mineru']
+           'zhipuai', 'dashscope', 'mineru', 'opensearchpy']
 for m in modules:
     vars()[m] = PackageWrapper(m)

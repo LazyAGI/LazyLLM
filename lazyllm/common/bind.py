@@ -1,14 +1,14 @@
 import copy
 import builtins
 import itertools
-from typing import Callable, Any
+from typing import Callable, Any, Optional, List
 from .globals import globals
 from .common import package
 
 
 class AttrTree(object):
-    def __init__(self, name=None, pres=[]):
-        self._path = copy.deepcopy(pres)
+    def __init__(self, name: Optional[str] = None, pres: Optional[List[str]] = None):
+        self._path = copy.deepcopy(pres or [])
         if name is not None:
             self._path.append(name)
 
@@ -58,7 +58,7 @@ for i in range(10):
 
 def _setattr(self, key, v):
     raise RuntimeError(f'Cannot set attr for Placeholder, you want to set {key}={v}')
-setattr(Placeholder, '__setattr__', _setattr)
+Placeholder.__setattr__ = _setattr
 
 
 class _MetaBind(type):
@@ -152,4 +152,4 @@ class Bind(object):
         return super(__class__, self).__setattr__(__name, __value)
 
 
-setattr(builtins, 'bind', Bind)
+builtins.bind = Bind

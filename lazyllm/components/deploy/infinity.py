@@ -19,7 +19,7 @@ class Infinity(LazyLLMDeployBase):
     default_headers = {'Content-Type': 'application/json'}
     target_name = 'embeddings'
 
-    def __init__(self, launcher=launchers.remote(ngpus=1), model_type='embed', log_path=None, **kw):
+    def __init__(self, launcher=launchers.remote(ngpus=1), model_type='embed', log_path=None, **kw):  # noqa B008
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'host': '0.0.0.0',

@@ -221,7 +221,7 @@ class ServerModule(UrlModule):
         r = requests.post(url, json=(fname, args, kwargs), headers={'Content-Type': 'application/json'})
         return pickle.loads(codecs.decode(r.content, "base64"))
 
-    def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), **kw):
+    def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), **kw):  # noqa B008
         headers = {
             'Content-Type': 'application/json',
             'Global-Parameters': encode_request(globals._pickle_data),

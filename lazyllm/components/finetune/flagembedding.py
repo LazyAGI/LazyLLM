@@ -62,7 +62,7 @@ class FlagembeddingFinetune(LazyLLMFinetuneBase):
         self,
         base_model,
         target_path,
-        launcher=launchers.remote(ngpus=1, sync=True),
+        launcher=launchers.remote(ngpus=1, sync=True),  # noqa B008
         **kw
     ):
         model_type = ModelManager.get_model_type(base_model.split('/')[-1])

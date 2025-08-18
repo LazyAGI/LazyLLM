@@ -153,7 +153,7 @@ class SqlManager(DBManager):
             self.set_desc(tables_desc_dict={})
         return self._desc
 
-    def set_desc(self, tables_desc_dict: dict = {}):
+    def set_desc(self, tables_desc_dict: dict = {}):  # noqa B006
         self._desc = ""
         if not isinstance(tables_desc_dict, dict):
             raise ValueError(f"desc type {type(tables_desc_dict)} not supported")

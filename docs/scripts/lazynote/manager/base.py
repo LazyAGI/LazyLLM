@@ -137,7 +137,7 @@ class BaseManager(BaseModel, ABC):
             skip_modules = []
 
         if get_member_type(obj) == MemberType.PACKAGE:
-            for importer, modname, ispkg in pkgutil.walk_packages(obj.__path__, obj.__name__ + "."):
+            for _, modname, ispkg in pkgutil.walk_packages(obj.__path__, obj.__name__ + "."):
                 if any(modname.startswith(skip_mod) for skip_mod in skip_modules):
                     continue
                 if ispkg:
@@ -172,7 +172,7 @@ class BaseManager(BaseModel, ABC):
 
         if get_member_type(obj) == MemberType.PACKAGE:
             tasks = []
-            for importer, modname, ispkg in pkgutil.walk_packages(obj.__path__, obj.__name__ + "."):
+            for _, modname, ispkg in pkgutil.walk_packages(obj.__path__, obj.__name__ + "."):
                 if any(modname.startswith(skip_mod) for skip_mod in skip_modules):
                     continue
                 if ispkg:

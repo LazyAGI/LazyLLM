@@ -13,7 +13,7 @@ class Mode(Enum):
 
 
 class Config(object):
-    def __init__(self, prefix='LAZYLLM', home=os.path.join(os.path.expanduser('~'), '.lazyllm')):
+    def __init__(self, prefix='LAZYLLM', home=os.path.join(os.path.expanduser('~'), '.lazyllm')):  # noqa B008
         self._config_params = dict()
         self._env_map_name = dict()
         self.prefix = prefix
