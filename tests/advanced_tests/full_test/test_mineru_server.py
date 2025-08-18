@@ -4,6 +4,7 @@ import os
 import pytest
 import requests
 import unittest
+import lazyllm
 from lazyllm import LOG
 from lazyllm.components.deploy.mineru.mineru_server_module import MineruServerModule
 from lazyllm.tools.rag.readers.mineru_pdf_reader import MineruPDFReader
@@ -24,12 +25,12 @@ def setup_tmpdir_class(request, tmpdir_factory):
 @pytest.mark.skip_on_mac
 @pytest.mark.usefixtures("setup_tmpdir_class")
 class TestMineruServer(unittest.TestCase):
-    TEST_FILES = {
-        "pdf1": "ci_data/test_mineru/test_mineru1.pdf",
-        "pdf2": "ci_data/test_mineru/test_mineru2.pdf", 
-        "pdf3": "ci_data/test_mineru/test_mineru3.pdf",
-        "docx": "ci_data/test_mineru/test_mineru.docx",
-        "pptx": "ci_data/test_mineru/test_mineru.pptx",
+    TEST_FILES_LOCAL = {
+        "pdf1": os.path.join(lazyllm.config['data_path'], "ci_data/test_mineru/test_mineru1.pdf"),
+        "pdf2": os.path.join(lazyllm.config['data_path'], "ci_data/test_mineru/test_mineru2.pdf"), 
+        "pdf3": os.path.join(lazyllm.config['data_path'], "ci_data/test_mineru/test_mineru3.pdf"),
+        "docx": os.path.join(lazyllm.config['data_path'], "ci_data/test_mineru/test_mineru.docx"),
+        "pptx": os.path.join(lazyllm.config['data_path'], "ci_data/test_mineru/test_mineru.pptx"),
     }
     
     @classmethod

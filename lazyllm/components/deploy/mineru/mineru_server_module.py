@@ -12,14 +12,14 @@ from fastapi import UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from typing import List, Optional, Union
 
-from lazyllm.thirdparty import mineru  # noqa: F401
-from mineru.cli.common import aio_do_parse, read_fn, pdf_suffixes, image_suffixes
 from lazyllm import ServerModule, LOG
 from lazyllm import FastapiApp as app
+
+from mineru.cli.common import aio_do_parse, read_fn, pdf_suffixes, image_suffixes
 from . import mineru_patches  # noqa: F401
 
 
-def check_libreoffice():
+def _check_libreoffice():
     system = platform.system()
 
     if system != 'Linux':
@@ -48,8 +48,8 @@ def check_libreoffice():
         output = subprocess.check_output(['fc-list', ':lang=zh'], encoding='utf-8')
         if not output.strip():
             LOG.warning('[MINERU SERVER] No Chinese fonts were detected, \
-                        the converted document may not display Chinese content properly.')
-            LOG.warning('[MINERU SERVER] It is recommended to install Chinese fonts: sudo apt install fonts-noto-cjk')
+                        the converted document may not display Chinese content properly. \
+                        It is recommended to install Chinese fonts: sudo apt install fonts-noto-cjk')
     except Exception:
         LOG.error('[MINERU SERVER] Font check failed')
 
@@ -57,17 +57,11 @@ def check_libreoffice():
 
 
 class MineruServer:
-    def __init__(self,
-                 cache_dir: str = None,
-                 image_save_dir: str = None,
-                 default_backend: str = 'pipeline',
-                 default_lang: str = 'ch_server',
-                 default_parse_method: str = 'auto',
-                 default_formula_enable: bool = True,
-                 default_table_enable: bool = True,
-                 default_return_md: bool = False,
-                 default_return_content_list: bool = True,
-                 mem_fraction_static: float = 0.8):
+    def __init__(self, cache_dir: str = None, image_save_dir: str = None,
+                 default_backend: str = 'pipeline', default_lang: str = 'ch_server',
+                 default_parse_method: str = 'auto', default_formula_enable: bool = True,
+                 default_table_enable: bool = True, default_return_md: bool = False,
+                 default_return_content_list: bool = True, mem_fraction_static: float = 0.8):
         if default_backend not in ['pipeline', 'vlm-sglang-engine', 'vlm-transformers']:
             raise ValueError(f'Invalid backend: {default_backend}, \
                              only support pipeline, vlm-sglang-engine, vlm-transformers')
@@ -87,7 +81,7 @@ class MineruServer:
         self._default_return_md = default_return_md
         self._default_return_content_list = default_return_content_list
         self._mem_fraction_static = mem_fraction_static
-        self._supported_office_types = ['.pptx', '.ppt', '.docx', '.doc'] if check_libreoffice() else []
+        self._supported_office_types = ['.pptx', '.ppt', '.docx', '.doc'] if _check_libreoffice() else []
         LOG.info(f'[MINERU SERVER] Supported office types: {self._supported_office_types}')
         self._middle_file_dir = tempfile.mkdtemp()
         atexit.register(lambda: shutil.rmtree(self._middle_file_dir, ignore_errors=True))
@@ -112,10 +106,18 @@ class MineruServer:
                         return_md: bool = Form(None, description='Whether to return markdown content'),
                         return_content_list: bool = Form(None, description='Whether to return content list')):
         if files and upload_files:
-            raise HTTPException(status_code=400, detail='Either pr7ovide only \'files\' or only \'upload_files\'!')
+            raise HTTPException(status_code=400, detail='Either provide only \'files\' or only \'upload_files\'!')
         for file in files:
             if not os.path.isfile(file):
                 raise HTTPException(status_code=400, detail=f'File Not Found: {file}')
+
+        if lang and lang not in ['ch', 'ch_server', 'ch_lite', 'en']:
+            raise HTTPException(status_code=400, detail=f'Invalid language: {lang}, \
+                                only support ch, ch_server, ch_lite, en')
+
+        if backend and backend not in ['pipeline', 'vlm-sglang-engine', 'vlm-transformers']:
+            raise HTTPException(status_code=400, detail=f'Invalid backend: {backend}, \
+                                only support pipeline, vlm-sglang-engine, vlm-transformers')
 
         unique_id = str(uuid.uuid4())
         unique_dir = os.path.join(self._middle_file_dir, unique_id)
@@ -277,7 +279,7 @@ class MineruServer:
                 for valid_hash in valid_hash_ids:
                     json_path = os.path.join(self._cache_dir, backend, f'{valid_hash}_content_list.json')
                     if os.path.isfile(json_path):
-                        with open(json_path, 'r') as f:
+                        with open(json_path, 'r', encoding='utf-8') as f:
                             result['content_list'] = json.load(f)
                         file_content_list_found = True
                         break
