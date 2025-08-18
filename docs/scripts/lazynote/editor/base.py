@@ -4,6 +4,8 @@ from typing import Callable, Optional, Any, Dict, Set
 import libcst as cst
 import libcst.matchers as m
 
+import lazyllm
+
 
 class BaseEditor(cst.CSTTransformer):
     """
@@ -38,6 +40,8 @@ class BaseEditor(cst.CSTTransformer):
         module_dict = {}
         seen_objects: Set[Any] = set()
         for name, obj in inspect.getmembers(module):
+            if type(obj) is lazyllm.thirdparty.PackageWrapper:
+                continue
             module_dict[name] = obj
             if inspect.isclass(obj):
                 self.add_class_members_to_dict(module_dict, obj, name, seen_objects)
