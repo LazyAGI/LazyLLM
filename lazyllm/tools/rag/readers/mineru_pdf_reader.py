@@ -1,22 +1,26 @@
 import os
 import copy
+import requests
 from pathlib import Path
 from bs4 import BeautifulSoup
 from typing import Dict, List, Optional, Callable
-
 import unicodedata
-from ..doc_node import DocNode
-from lazyllm import LOG
-import requests
 
-class MineruPDFReader:
+from lazyllm import LOG
+from ..doc_node import DocNode
+from .readerBase import LazyLLMReaderBase
+
+
+class MineruPDFReader(LazyLLMReaderBase):
     def __init__(self, url, backend='pipeline',
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  upload_mode: bool = False,
                  extract_table: bool = True,
                  extract_formula: bool = True,
                  split_doc: bool = True,
-                 post_func: Optional[Callable] = None):
+                 post_func: Optional[Callable] = None,
+                 return_trace: bool = True):
+        super().__init__(return_trace=return_trace)
         self._url = url + '/api/v1/pdf_parse'
         self._upload_mode = upload_mode
         self._backend = backend
@@ -25,27 +29,25 @@ class MineruPDFReader:
         self._split_doc = split_doc
         self._post_func = post_func
 
-    def __call__(self, file: Path, **kwargs) -> List[DocNode]:
+    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
+                   use_cache: bool = True, **kwargs) -> List[DocNode]:
         try:
-            return self._load_data(file, **kwargs)
+            if isinstance(file, str):
+                file = Path(file)
+            elements = self._parse_pdf_elements(file, use_cache=use_cache)
+            docs = self._build_nodes(elements, file, extra_info)
+
+            if self._post_func:
+                docs = self._post_func(docs)
+                assert isinstance(docs, list), f'Expected list, got {type(docs)}, please check your post function'
+                for node in docs:
+                    assert isinstance(node, DocNode), f'Expected DocNode, got {type(node)}, \
+                        please check your post function'
+                    node.global_metadata = extra_info
+            return docs
         except Exception as e:
             LOG.error(f'[MineruPDFReader] Error loading data from {file}: {e}')
             return []
-
-    def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
-                   use_cache: bool = True, **kwargs) -> List[DocNode]:
-        if isinstance(file, str):
-            file = Path(file)
-        elements = self._parse_pdf_elements(file, use_cache=use_cache)
-        docs = self._build_nodes(elements, file, extra_info)
-
-        if self._post_func:
-            docs = self._post_func(docs)
-            assert isinstance(docs, list), f'Expected list, got {type(docs)}, please check your post function'
-            for node in docs:
-                assert isinstance(node, DocNode), f'Expected DocNode, got {type(node)}, please check your post function'
-                node.global_metadata = extra_info
-        return docs
 
     def _parse_pdf_elements(self, pdf_path: Path, use_cache: bool = True) -> List[dict]:
         payload = {'return_content_list': True,

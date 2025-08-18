@@ -3,7 +3,7 @@ from mineru.backend.pipeline import pipeline_middle_json_mkcontent
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text as pipeline_merge_para_with_text
 from mineru.backend.vlm import vlm_middle_json_mkcontent
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text as vlm_merge_para_with_text
-from mineru.utils.enum_class import BlockType, ContentType, MakeMode
+from mineru.utils.enum_class import BlockType, ContentType
 
 # patches to mineru (to output bbox)
 
@@ -23,7 +23,7 @@ def _parse_line_spans(para_block, page_idx):
 
 # patches to pipeline
 
-def pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
+def pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # noqa: C901
     para_type = para_block['type']
     para_content = {}
     if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX]:
