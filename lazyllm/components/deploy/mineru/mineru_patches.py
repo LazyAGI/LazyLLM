@@ -1,4 +1,9 @@
 import copy
+from mineru.backend.pipeline import pipeline_middle_json_mkcontent
+from mineru.backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text as pipeline_merge_para_with_text
+from mineru.backend.vlm import vlm_middle_json_mkcontent
+from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text as vlm_merge_para_with_text
+from mineru.utils.enum_class import BlockType, ContentType, MakeMode
 
 # patches to mineru (to output bbox)
 
@@ -17,9 +22,6 @@ def _parse_line_spans(para_block, page_idx):
 
 
 # patches to pipeline
-from mineru.backend.pipeline import pipeline_middle_json_mkcontent   # noqa E402
-from mineru.utils.enum_class import BlockType, ContentType   # noqa E402
-from mineru.backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text   # noqa E402
 
 def pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
     para_type = para_block['type']
@@ -27,13 +29,13 @@ def pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
     if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX]:
         para_content = {
             'type': ContentType.TEXT,
-            'text': merge_para_with_text(para_block),
+            'text': pipeline_merge_para_with_text(para_block),
             'lines': _parse_line_spans(para_block, page_idx)
         }
     elif para_type == BlockType.TITLE:
         para_content = {
             'type': ContentType.TEXT,
-            'text': merge_para_with_text(para_block),
+            'text': pipeline_merge_para_with_text(para_block),
             'lines': _parse_line_spans(para_block, page_idx)
         }
         title_level = pipeline_middle_json_mkcontent.get_title_level(para_block)
@@ -48,7 +50,7 @@ def pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
             'lines': _parse_line_spans(para_block, page_idx)
         }
         if para_block['lines'][0]['spans'][0].get('content', ''):
-            para_content['text'] = merge_para_with_text(para_block)
+            para_content['text'] = pipeline_merge_para_with_text(para_block)
             para_content['text_format'] = 'latex'
     elif para_type == BlockType.IMAGE:
         image_lines_metas = []
@@ -68,10 +70,10 @@ def pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
                                 para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
             if block['type'] == BlockType.IMAGE_CAPTION:
                 para_content[BlockType.IMAGE_CAPTION].append(
-                    merge_para_with_text(block))
+                    pipeline_merge_para_with_text(block))
             if block['type'] == BlockType.IMAGE_FOOTNOTE:
                 para_content[BlockType.IMAGE_FOOTNOTE].append(
-                    merge_para_with_text(block))
+                    pipeline_merge_para_with_text(block))
         para_content['lines'] = image_lines_metas
     elif para_type == BlockType.TABLE:
         para_content = {
@@ -95,10 +97,10 @@ def pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
 
             if block['type'] == BlockType.TABLE_CAPTION:
                 para_content[BlockType.TABLE_CAPTION].append(
-                    merge_para_with_text(block))
+                    pipeline_merge_para_with_text(block))
             if block['type'] == BlockType.TABLE_FOOTNOTE:
                 para_content[BlockType.TABLE_FOOTNOTE].append(
-                    merge_para_with_text(block))
+                    pipeline_merge_para_with_text(block))
         para_content['lines'] = table_lines_metas
 
     para_content['page_idx'] = page_idx
@@ -110,9 +112,6 @@ pipeline_middle_json_mkcontent.make_blocks_to_content_list = pipeline_make_block
 
 
 # patches to vlm
-from mineru.backend.vlm import vlm_middle_json_mkcontent   # noqa E402
-from mineru.utils.enum_class import MakeMode, BlockType, ContentType   # noqa E402
-from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text   # noqa E402
 
 def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # noqa: C901
     para_type = para_block['type']
@@ -120,14 +119,14 @@ def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # no
     if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX]:
         para_content = {
             'type': ContentType.TEXT,
-            'text': merge_para_with_text(para_block),
+            'text': vlm_merge_para_with_text(para_block),
             'lines': _parse_line_spans(para_block, page_idx)
         }
     elif para_type == BlockType.TITLE:
         title_level = vlm_middle_json_mkcontent.get_title_level(para_block)
         para_content = {
             'type': ContentType.TEXT,
-            'text': merge_para_with_text(para_block),
+            'text': vlm_merge_para_with_text(para_block),
             'lines': _parse_line_spans(para_block, page_idx)
         }
         if title_level != 0:
@@ -135,7 +134,7 @@ def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # no
     elif para_type == BlockType.INTERLINE_EQUATION:
         para_content = {
             'type': ContentType.EQUATION,
-            'text': merge_para_with_text(para_block),
+            'text': vlm_merge_para_with_text(para_block),
             'text_format': 'latex',
             'lines': _parse_line_spans(para_block, page_idx)
         }
@@ -157,10 +156,10 @@ def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # no
                                 para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
             if block['type'] == BlockType.IMAGE_CAPTION:
                 para_content[BlockType.IMAGE_CAPTION].append(
-                    merge_para_with_text(block))
+                    vlm_merge_para_with_text(block))
             if block['type'] == BlockType.IMAGE_FOOTNOTE:
                 para_content[BlockType.IMAGE_FOOTNOTE].append(
-                    merge_para_with_text(block))
+                    vlm_merge_para_with_text(block))
         para_content['lines'] = image_lines_metas
     elif para_type == BlockType.TABLE:
         table_lines_metas = []
@@ -184,10 +183,10 @@ def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # no
 
             if block['type'] == BlockType.TABLE_CAPTION:
                 para_content[BlockType.TABLE_CAPTION].append(
-                    merge_para_with_text(block))
+                    vlm_merge_para_with_text(block))
             if block['type'] == BlockType.TABLE_FOOTNOTE:
                 para_content[BlockType.TABLE_FOOTNOTE].append(
-                    merge_para_with_text(block))
+                    vlm_merge_para_with_text(block))
         para_content['lines'] = table_lines_metas
 
     para_content['page_idx'] = page_idx
