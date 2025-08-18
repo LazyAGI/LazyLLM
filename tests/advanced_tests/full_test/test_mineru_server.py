@@ -6,7 +6,7 @@ import requests
 import unittest
 import lazyllm
 from lazyllm import LOG
-from lazyllm.components.deploy.mineru.mineru_server_module import MineruServerModule
+from lazyllm.components.deploy.mineru.mineru_server_module import MineruServer
 from lazyllm.tools.rag.readers.mineru_pdf_reader import MineruPDFReader
 
 os.environ['MINERU_MODEL_SOURCE'] = "modelscope" 
@@ -37,7 +37,7 @@ class TestMineruServer(unittest.TestCase):
     def setUpClass(cls):
         cls.cache_dir = str(cls.tmpdir_class.mkdir("cache"))
         cls.image_save_dir = str(cls.tmpdir_class.mkdir("images"))
-        cls.server = MineruServerModule(
+        cls.server = MineruServer(
             cache_dir=cls.cache_dir, 
             image_save_dir=cls.image_save_dir,
             pythonpath=None, port=31769

@@ -56,7 +56,7 @@ def _check_libreoffice():
     return True
 
 
-class MineruServer:
+class MineruServerBase:
     def __init__(self, cache_dir: str = None, image_save_dir: str = None,
                  default_backend: str = 'pipeline', default_lang: str = 'ch_server',
                  default_parse_method: str = 'auto', default_formula_enable: bool = True,
@@ -397,7 +397,7 @@ class MineruServer:
         return hasher.hexdigest()
 
 
-class MineruServerModule(ServerModule):
+class MineruServer(ServerModule):
     def __init__(self,
                  cache_dir: str = None,
                  image_save_dir: str = None,
@@ -409,7 +409,7 @@ class MineruServerModule(ServerModule):
                  default_return_md: bool = False,
                  default_return_content_list: bool = True,
                  *args, **kwargs):
-        mineru_server = MineruServer(cache_dir=cache_dir,
+        mineru_server = MineruServerBase(cache_dir=cache_dir,
                                      image_save_dir=image_save_dir,
                                      default_backend=default_backend,
                                      default_lang=default_lang,
