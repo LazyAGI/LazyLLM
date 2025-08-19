@@ -17,9 +17,12 @@ class _VllmStreamParseParametersMeta(LazyLLMRegisterMetaClass):
     def __getattribute__(cls, name):
         if name == 'stream_parse_parameters':
             if not hasattr(cls, '_stream_parse_parameters'):
-                vllm_version = parse(importlib.import_module('vllm').__version__)
-                cls._stream_parse_parameters = {"decode_unicode": False}
-                if vllm_version <= parse("0.5.0"): cls._stream_parse_parameters.update({"delimiter": b"\0"})
+                try:
+                    vllm_version = parse(importlib.import_module('vllm').__version__)
+                    cls._stream_parse_parameters = {"decode_unicode": False}
+                    if vllm_version <= parse("0.5.0"): cls._stream_parse_parameters.update({"delimiter": b"\0"})
+                except ImportError:
+                    cls._stream_parse_parameters = {"decode_unicode": False}
             return cls._stream_parse_parameters
         return super().__getattribute__(name)
 
