@@ -260,7 +260,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
             resource_config = self.resource_config.get("requests", {"cpu": "2", "memory": "16Gi"})
             if device_type:
                 resource_config[device_type] = self.ngpus
-            
+
             container = k8s.client.V1Container(
                 name=self.deployment_name,
                 image=self.image,
@@ -308,12 +308,12 @@ class K8sLauncher(LazyLLMLaunchersBase):
                     else:
                         LOG.error(f"{vol_config} configuration error.")
                         raise
-            
+
             return container, volumes
 
         def _create_deployment_spec(self, cmd, volume_configs=None):
             container, volumes = self._create_container_and_volumes(cmd, volume_configs)
-            
+
             template = k8s.client.V1PodTemplateSpec(
                 metadata=k8s.client.V1ObjectMeta(labels={"app": self.deployment_name}),
                 spec=k8s.client.V1PodSpec(restart_policy="Always", containers=[container], volumes=volumes)
@@ -332,7 +332,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
 
         def _create_job_spec(self, cmd, volume_configs=None):
             container, volumes = self._create_container_and_volumes(cmd, volume_configs)
-            
+
             # use OnFailure for job to avoid infinite restart
             template = k8s.client.V1PodTemplateSpec(
                 metadata=k8s.client.V1ObjectMeta(labels={"app": self.deployment_name}),
@@ -782,7 +782,8 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 self._delete_job()
 
         def _get_jobid(self):
-            return f'service-{self.deployment_name}' if self.launch_type == 'inference' else f'job-{self.deployment_name}'
+            return f'service-{self.deployment_name}' if self.launch_type == 'inference' \
+                else f'job-{self.deployment_name}'
 
         def _get_gateway_service_name(self):
             core_api = k8s.client.CoreV1Api()
@@ -995,7 +996,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
 
         def _is_gateway_ready(self, timeout):
             url = f"http://{self.get_jobip()}:{self.deployment_port}{self.path}"
-            for i in range(self.gateway_retry):
+            for _ in range(self.gateway_retry):
                 try:
                     response = requests.get(url, timeout=timeout)
                     if response.status_code != 503:

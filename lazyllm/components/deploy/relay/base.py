@@ -14,7 +14,7 @@ class RelayServer(LazyLLMDeployBase):
     message_format = None
 
     def __init__(self, port=None, *, func=None, pre_func=None, post_func=None,
-                 pythonpath=None, log_path=None, cls=None, launcher=launchers.remote(sync=False)):
+                 pythonpath=None, log_path=None, cls=None, launcher=launchers.remote(sync=False)):  # noqa B008
         # func must dump in __call__ to wait for dependancies.
         self.func = func
         self.pre = dump_obj(pre_func)

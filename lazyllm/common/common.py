@@ -2,7 +2,7 @@ import re
 import os
 import builtins
 import typing
-from typing import Any, Callable, Optional
+from typing import Any, Callable, Optional, List, Dict
 from contextlib import contextmanager
 import copy
 import threading
@@ -110,7 +110,7 @@ class arguments(object):
         return self
 
 
-setattr(builtins, 'package', package)
+builtins.package = package
 
 
 class LazyLLMCMD(object):
@@ -248,7 +248,9 @@ class ReprRule(object):
 def rreplace(s, old, new, count):
     return (s[::-1].replace(old[::-1], new[::-1], count))[::-1]
 
-def make_repr(category, type, *, name=None, subs=[], attrs=dict(), **kw):
+def make_repr(category: str, type: str, *, name: Optional[str] = None,
+              subs: Optional[List[str]] = None, attrs: Optional[Dict[str, Any]] = None, **kw):
+    subs, attrs = subs or [], attrs or {}
     if len(kw) > 0:
         assert len(attrs) == 0, 'Cannot provide attrs and kwargs at the same time'
         attrs = kw

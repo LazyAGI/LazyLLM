@@ -378,7 +378,7 @@ class QwenSTTModule(QwenMultiModal):
                                 model_name=model or lazyllm.config['qwen_stt_model_name'] or QwenSTTModule.MODEL_NAME,
                                 return_trace=return_trace, **kwargs)
 
-    def _forward(self, files: List[str] = [], **kwargs):
+    def _forward(self, files: List[str] = [], **kwargs):  # noqa B006
         assert any(file.startswith('http') for file in files), "QwenSTTModule only supports http file urls"
         call_params = {'model': self._model_name, 'file_urls': files, **kwargs}
         if self._api_key: call_params['api_key'] = self._api_key

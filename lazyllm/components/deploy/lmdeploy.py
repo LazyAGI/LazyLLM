@@ -44,7 +44,7 @@ class LMDeploy(LazyLLMDeployBase):
     }
     stream_parse_parameters = {"delimiter": b"\n"}
 
-    def __init__(self, launcher=launchers.remote(ngpus=1), trust_remote_code=True, log_path=None, **kw):
+    def __init__(self, launcher=launchers.remote(ngpus=1), trust_remote_code=True, log_path=None, **kw):  # noqa B008
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'server-name': '0.0.0.0',

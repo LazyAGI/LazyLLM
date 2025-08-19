@@ -83,7 +83,7 @@ class TestCommon(object):
         [t.start() for t in ts]
 
         assert ts[0].get_result() == 2
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa B017
             ts[1].get_result()
 
     def test_common_makerepr(self):

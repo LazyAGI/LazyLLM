@@ -283,7 +283,7 @@ def flow_start(self):
 
 
 lazyllm.ReprRule.add_rule('Module', 'Action', 'Flow')
-setattr(lazyllm.LazyLLMFlowsBase, 'start', flow_start)
+lazyllm.LazyLLMFlowsBase.start = flow_start
 
 
 class ModuleRegistryBase(ModuleBase, metaclass=lazyllm.LazyLLMRegisterMetaClass):
