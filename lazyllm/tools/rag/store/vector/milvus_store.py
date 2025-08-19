@@ -75,22 +75,47 @@ class MilvusStore(LazyLLMStoreBase):
         self._set_constants()
 
         self._ddl_lock = threading.Lock()
+        self._db_ready = False
+        self._ensure_database()
+
         max_pool_size = int(self._client_kwargs.pop('max_pool_size', 8))
         self._client_pool = _ClientPool(self._new_client, max_size=max_pool_size)
         LOG.info("[Milvus Vector Store] init success!")
 
     def _new_client(self):
+        kwargs = dict(self._client_kwargs)
         try:
-            c = pymilvus.MilvusClient(uri=self._uri, **self._client_kwargs)
+            c = pymilvus.MilvusClient(uri=self._uri, **kwargs)
             if self._is_remote and self._db_name:
-                existing_dbs = c.list_databases()
-                if self._db_name not in existing_dbs:
-                    c.create_database(self._db_name)
                 c.using_database(self._db_name)
             return c
         except Exception as e:
-            LOG.error(f'[Milvus Store - connect] error: {e}')
+            LOG.error(f'[Milvus Store - _new_client] error: {e}')
             raise e
+
+    def _ensure_database(self):
+        if not (self._is_remote and self._db_name) or self._db_ready:
+            return
+        tmp = pymilvus.MilvusClient(uri=self._uri, **self._client_kwargs)
+        try:
+            with self._ddl_lock:
+                if self._db_ready:
+                    return
+                need_create = True
+                try:
+                    db_list = tmp.list_databases()
+                    need_create = self._db_name not in db_list
+                except Exception:
+                    pass
+                if need_create:
+                    try:
+                        tmp.create_database(self._db_name)
+                    except Exception as e:
+                        if 'already exist' not in str(e).lower():
+                            raise
+                self._db_ready = True
+        finally:
+            tmp.close()
 
     @contextmanager
     def _client_context(self):
