@@ -103,9 +103,9 @@ class MilvusStore(LazyLLMStoreBase):
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         try:
-            if not data: return
+            if not data: return True
             data_embeddings = data[0].get('embedding', {})
-            if not data_embeddings: return
+            if not data_embeddings: return True
             with self._client_context() as client:
                 if not client.has_collection(collection_name):
                     embed_kwargs = {}
@@ -119,9 +119,9 @@ class MilvusStore(LazyLLMStoreBase):
                         if not client.has_collection(collection_name):
                             self._create_collection(client, collection_name, embed_kwargs)
 
-                    for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
-                        client.upsert(collection_name=collection_name,
-                                      data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
+                for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
+                    client.upsert(collection_name=collection_name,
+                                  data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
             return True
         except Exception as e:
             LOG.error(f'[Milvus Store - upsert] error: {e}')
@@ -221,7 +221,6 @@ class MilvusStore(LazyLLMStoreBase):
         for k, kws in embed_kwargs.items():
             embed_field_name = self._gen_embed_key(k)
             field_list.append(pymilvus.FieldSchema(name=embed_field_name, **kws))
-            index_params.add_index(field_name=embed_field_name, **kws)
             if isinstance(self._index_kwargs, list):
                 for item in self._index_kwargs:
                     embed_key = item.get('embed_key', None)
@@ -296,13 +295,15 @@ class MilvusStore(LazyLLMStoreBase):
         with self._client_context() as client:
             if not embed_key or embed_key not in self._embed_datatypes:
                 raise ValueError(f'[Milvus Store - search] Not supported or None `embed_key`: {embed_key}')
+            if not client.has_collection(collection_name):
+                return []
             client.load_collection(collection_name)
+
             res = []
-            filter_expr = self._construct_filter_expr(filters) if filters else ""
-            if filter_expr and filter_str:
-                filter_expr += f' and {filter_str}'
-            elif not filter_expr and filter_str:
-                filter_expr = filter_str
+            filter_expr = self._construct_filter_expr(filters) if filters else ''
+            if filter_str:
+                filter_expr = f'{filter_expr} and {filter_str}' if filter_expr else filter_str
+
             results = client.search(collection_name=collection_name, data=[query_embedding], limit=topk,
                                     anns_field=self._gen_embed_key(embed_key),
                                     filter=filter_expr)
