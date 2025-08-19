@@ -1,0 +1,22 @@
+name: 🚀 Performance issue
+description: Submit performance related issues or optimization suggestions
+title: "[Performance]: "
+labels: ["performance"]
+body:
+  - type: textarea
+    id: bottleneck
+    attributes:
+      label: Current Bottleneck
+      description: Describe the performance issue
+    validations:
+      required: true
+  - type: textarea
+    id: metrics
+    attributes:
+      label: Performance Metrics
+      description: Provide test data / benchmarks
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Optimization Suggestions
+      description: Your optimization ideas

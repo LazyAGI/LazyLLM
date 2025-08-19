@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lazyllm"
-version = "0.5.0"
+version = "0.6.0"
 description = "A Low-code Development Tool For Building Multi-agent LLMs Applications."
 authors = ["wangzhihong <wangzhihong@sensetime.com>"]
 license = "Apache-2.0 license"
@@ -49,7 +49,7 @@ beautifulsoup4 = "^4.13.4"
 appdirs = { version = "*", optional = true }
 loralib = { version = "*", optional = true }
 flake8 = { version = ">=7.0.0", optional = true }
-chromadb = { version = "^0.5.5", optional = true }
+chromadb = {version = ">=1.0.6", optional = true}
 sentence-transformers = { version = "^3.0.1", optional = true }
 modelscope = { version = "^1.17.1", optional = true }
 pytest = { version = "^8.3.3", optional = true }
@@ -105,6 +105,7 @@ imageio-ffmpeg = {version = "==0.6.0", optional = true}
 volcengine-python-sdk = {version = ">=4.0.6", extras = ["ark"], optional = true}
 dashscope = {version = ">=1.23.6", optional = true}
 zhipuai = {version = ">=2.1.5.20250708", optional = true}
+opensearch-py = {version = "^3.0.0", optional = true}
 
 [tool.poetry.extras]
 standard = [
@@ -327,7 +328,8 @@ rag-advanced = [
     "torch",
     "transformers",
     "boto3",
-    "botocore"
+    "botocore",
+    "opensearch-py"
 ]
 agent-advanced = [
     "ctranslate2",

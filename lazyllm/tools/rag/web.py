@@ -181,19 +181,12 @@ class DocWebModule(ModuleBase):
         Refresh = 1
         Appendix = 2
 
-    def __init__(
-        self,
-        doc_server: ServerModule,
-        title="文档管理演示终端",
-        port=range(20800, 20999),
-        history=[],
-        text_mode=None,
-        trace_mode=None,
-    ) -> None:
+    def __init__(self, doc_server: ServerModule, title="文档管理演示终端", port=None,
+                 history=None, text_mode=None, trace_mode=None) -> None:
         super().__init__()
         self.title = title
-        self.port = port
-        self.history = history
+        self.port = port or range(20800, 20999)
+        self.history = history or []
         self.trace_mode = trace_mode if trace_mode else DocWebModule.Mode.Refresh
         self.text_mode = text_mode if text_mode else DocWebModule.Mode.Dynamic
         self.doc_server = doc_server

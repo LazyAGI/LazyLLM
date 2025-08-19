@@ -12,6 +12,7 @@ from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import (Any, Callable, Dict, Generator, List, Optional, Set, Tuple,
                     Union)
+from urllib.parse import urlsplit, urlunsplit
 
 import pydantic
 import sqlalchemy
@@ -734,13 +735,10 @@ class BaseResponse(BaseModel):
         }
 
 
-def run_in_thread_pool(
-    func: Callable,
-    params: List[Dict] = [],
-) -> Generator:
+def run_in_thread_pool(func: Callable, params: Optional[List[Dict]] = None) -> Generator:
     tasks = []
     with ThreadPoolExecutor() as pool:
-        for kwargs in params:
+        for kwargs in params or []:
             thread = pool.submit(func, **kwargs)
             tasks.append(thread)
 
@@ -952,3 +950,21 @@ def is_sparse(embedding: Union[Dict[int, float], List[Tuple[int, float]], List[f
         return False
 
     raise TypeError(f'unsupported embedding type `{type(embedding[0])}`')
+
+
+def ensure_call_endpoint(raw: str) -> str:
+    if not raw: return raw
+    if '://' not in raw:
+        raw = f'http://{raw}'
+
+    parts = urlsplit(raw)
+    path = parts.path or ''
+
+    if path.rstrip('/').endswith('_call'):
+        new_path = path.rstrip('/')
+    elif path == '' or path.endswith('/'):
+        new_path = (path or '') + '_call' if path.endswith('/') else '/_call'
+    else:
+        new_path = path + '/_call'
+
+    return urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, parts.fragment))

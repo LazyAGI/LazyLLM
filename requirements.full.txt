@@ -36,7 +36,7 @@ beautifulsoup4
 appdirs
 loralib
 flake8>=7.0.0
-chromadb
+chromadb>=1.0.6
 sentence-transformers
 modelscope
 pytest
@@ -92,3 +92,4 @@ imageio-ffmpeg==0.6.0
 volcengine-python-sdk[ark]>=4.0.6
 dashscope>=1.23.6
 zhipuai>=2.1.5.20250708
+opensearch-py>=3.0.0

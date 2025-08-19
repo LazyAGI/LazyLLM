@@ -5,7 +5,7 @@ import traceback
 from typing import List, Optional, Dict, Union
 from pydantic import BaseModel, Field
 from starlette.responses import RedirectResponse
-from fastapi import UploadFile, Body
+from fastapi import UploadFile
 
 import lazyllm
 from lazyllm import FastapiApp as app
@@ -106,10 +106,16 @@ class DocManager(lazyllm.ModuleBase):
             lazyllm.LOG.error(f'upload_files exception: {e}')
             return BaseResponse(code=500, msg=str(e), data=None)
 
+    class AddFilesRequest(BaseModel):
+        files: List[str]
+        group_name: Optional[str] = None
+        metadatas: Optional[str] = None
+
     @app.post("/add_files")
-    def add_files(self, files: List[str] = Body(...),
-                  group_name: str = Body(None),
-                  metadatas: Optional[str] = Body(None)):
+    def add_files(self, request: AddFilesRequest):
+        files = request.files
+        group_name = request.group_name
+        metadatas = request.metadatas
         try:
             if metadatas:
                 metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)

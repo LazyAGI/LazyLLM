@@ -11,6 +11,7 @@ package_name_map = {
     'flash_attn': 'flash-attn',
     'sklearn': 'scikit-learn',
     'volcenginesdkarkruntime': 'volcengine-python-sdk[ark]',
+    'opensearchpy': 'opensearch-py',
 }
 
 requirements = {}
@@ -89,6 +90,6 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'sentence_transformers', 'gradio', 'chromadb', 'nltk', 'PIL', 'httpx', 'bm25s', 'kubernetes', 'pymongo',
            'rapidfuzz', 'FlagEmbedding', 'mcp', 'diffusers', 'pypdf', 'pptx', 'html2text', 'ebooklib', 'docx2txt',
            'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr', 'volcenginesdkarkruntime',
-           'zhipuai', 'dashscope']
+           'zhipuai', 'dashscope', 'opensearchpy']
 for m in modules:
     vars()[m] = PackageWrapper(m)
