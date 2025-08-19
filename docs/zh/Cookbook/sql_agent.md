@@ -99,6 +99,7 @@ def init_db(db_name: str = DB_NAME, data: dict = SAMPLE_DATA) -> None:
         order_date DATE
     )
     ''')
+    
     sample_orders = data.get("orders", [])
     if sample_orders:
         cursor.executemany('''
