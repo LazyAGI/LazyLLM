@@ -28,3 +28,8 @@
 ::: lazyllm.launcher.Job
     options:
       heading_level: 3
+
+::: lazyllm.launcher.K8sLauncher
+    options:
+      heading_level: 3
+      members: [makejob, launch]

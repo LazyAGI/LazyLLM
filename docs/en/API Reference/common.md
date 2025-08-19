@@ -4,7 +4,22 @@
     options:
       heading_level: 3
 
+::: lazyllm.common.registry.LazyDict
+    options:
+      heading_level: 3
+      members: [remove, set_default]
+
 ---
+
+::: lazyllm.common.common.ResultCollector
+    members: 
+    - keys
+    - items
+    exclude-members:
+
+::: lazyllm.common.common.EnvVarContextManager
+    members: 
+    exclude-members:
 
 ## Bind
 
@@ -88,3 +103,4 @@
 ::: lazyllm.common.LazyLLMCMD
     members: with_cmd, get_args
     exclude-members:
+    

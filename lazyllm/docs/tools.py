@@ -12,7 +12,92 @@ add_tools_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.
 add_tools_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools.tools)
 add_tools_example = functools.partial(utils.add_example, module=lazyllm.tools.tools)
 
+# functions for lazyllm.tools.agent
+add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools.agent)
+add_agent_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools.agent)
+add_agent_example = functools.partial(utils.add_example, module=lazyllm.tools.agent)
+
 # ---------------------------------------------------------------------------- #
+
+# classifier/intent_classifier.py
+
+add_chinese_doc('IntentClassifier', '''\
+意图分类模块，用于根据输入文本在给定的意图列表中进行分类。  
+支持中英文自动选择提示模板，并可通过示例、提示、约束和注意事项增强分类效果。
+
+Args:
+    llm: 用于意图分类的大语言模型实例。
+    intent_list (list): 可选，意图类别列表，例如 ["聊天", "天气", "问答"]。
+    prompt (str): 可选，自定义提示语，插入到系统提示模板中。
+    constrain (str): 可选，分类约束条件说明。
+    attention (str): 可选，提示注意事项。
+    examples (list[list[str, str]]): 可选，分类示例列表，每个元素为 [输入文本, 标签]。
+    return_trace (bool): 是否返回执行过程的 trace，默认为 False。
+''')
+
+add_english_doc('IntentClassifier', '''\
+Intent classification module that classifies input text into a given intent list.  
+Supports automatic selection of Chinese or English prompt templates, and allows enhancement through examples, prompt text, constraints, and attention notes.
+
+Args:
+    llm: The large language model instance used for intent classification.
+    intent_list (list): Optional, list of intent categories, e.g., ["chat", "weather", "QA"].
+    prompt (str): Optional, custom prompt inserted into the system prompt template.
+    constrain (str): Optional, classification constraint description.
+    attention (str): Optional, attention notes for classification.
+    examples (list[list[str, str]]): Optional, classification examples, each element is [input text, label].
+    return_trace (bool): Whether to return execution trace. Default is False.
+''')
+
+add_chinese_doc('IntentClassifier.intent_promt_hook', '''\
+意图分类的预处理 Hook。  
+将输入文本与意图列表打包为 JSON，并生成历史对话信息字符串。
+
+Args:
+    input (str | List | Dict | None): 输入文本，仅支持字符串类型。
+    history (List): 历史对话记录，默认为空列表。
+    tools (List[Dict] | None): 工具信息，可选。
+    label (str | None): 标签，可选。
+
+**Returns**\n
+- tuple: (输入数据字典, 历史记录列表, 工具信息, 标签)
+''')
+
+add_english_doc('IntentClassifier.intent_promt_hook', '''\
+Pre-processing hook for intent classification.  
+Packages the input text and intent list into JSON and generates a string of conversation history.
+
+Args:
+    input (str | List | Dict | None): The input text, only string type is supported.
+    history (List): Conversation history, default empty list.
+    tools (List[Dict] | None): Optional tool information.
+    label (str | None): Optional label.
+
+**Returns**\n
+- tuple: (input data dict, history list, tools, label)
+''')
+
+add_chinese_doc('IntentClassifier.post_process_result', '''\
+意图分类结果的后处理。  
+如果结果在意图列表中则直接返回，否则返回意图列表的第一个元素。
+
+Args:
+    input (str): 分类模型输出结果。
+
+**Returns**\n
+- str: 最终的分类标签。
+''')
+
+add_english_doc('IntentClassifier.post_process_result', '''\
+Post-processing of intent classification result.  
+Returns the result directly if it is in the intent list, otherwise returns the first element of the intent list.
+
+Args:
+    input (str): Output result from the classification model.
+
+**Returns**\n
+- str: The final classification label.
+''')
 
 # rag/document.py
 
@@ -1589,6 +1674,7 @@ add_example('Retriever', '''
 
 add_english_doc('rag.retriever.TempDocRetriever', '''
 A temporary document retriever that inherits from ModuleBase and _PostProcess, used for quickly processing temporary files and performing retrieval tasks.
+
 Args:
     embed: The embedding function.
     output_format: The format of the output result (e.g., JSON). Optional, defaults to None.
@@ -1597,6 +1683,7 @@ Args:
 
 add_chinese_doc('rag.retriever.TempDocRetriever', '''
 临时文档检索器，继承自 ModuleBase 和 _PostProcess，用于快速处理临时文件并执行检索任务。
+
 Args:
     embed:嵌入函数。
     output_format:结果输出格式(如json),可选默认为None
@@ -1616,6 +1703,7 @@ add_example('rag.retriever.TempDocRetriever', '''
 
 add_english_doc('rag.retriever.TempDocRetriever.create_node_group', '''
 Create a node group with specific processing pipeline.
+
 Args:
     name (str): Name of the node group. Auto-generated if None.
     transform (Callable): Function to process documents in this group.
@@ -1627,6 +1715,7 @@ Args:
 
 add_chinese_doc('rag.retriever.TempDocRetriever.create_node_group', '''
 创建具有特定处理流程的节点组。
+
 Args:
     name (str): 节点组名称，None时自动生成。
     transform (Callable): 该组文档的处理函数。
@@ -1638,20 +1727,62 @@ Args:
 
 add_english_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
 Add a sub-retriever with search configuration.
+
 Args:
     group (str): Target node group name.
     **kwargs: Retriever parameters (e.g., similarity='cosine').
-Returns:
-    self: For method chaining.
+
+**Returns:**\n
+- self: For method chaining.
 ''')
 
 add_chinese_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
 添加带搜索配置的子检索器。
+
 Args:
     group (str): 目标节点组名称。
     **kwargs: 检索器参数（如similarity='cosine'）。
-Returns:
-    self: 支持链式调用。
+
+**Returns:**\n
+- self: 支持链式调用。
+''')
+
+add_chinese_doc('rag.document.UrlDocument', '''\
+UrlDocument类继承自ModuleBase，用于通过指定的URL和名称管理远程文档资源。  
+内部通过lazyllm的UrlModule代理实际调用，支持文档查找、检索和活跃节点分组查询。  
+
+Args:
+    url (str): 远程文档资源的访问URL。
+    name (str): 当前文档分组名称，用于标识文档分组。
+''')
+
+add_english_doc('rag.document.UrlDocument', '''\
+UrlDocument class inherits from ModuleBase, used to manage remote document resources by specifying a URL and a name.  
+Internally delegates calls to lazyllm's UrlModule, supporting document find, retrieve, and querying active node groups.
+
+Args:
+    url (str): Access URL for the remote document resource.
+    name (str): Current document group name used to identify the document group.
+''')
+
+add_chinese_doc('rag.document.UrlDocument.find', '''\
+生成一个部分应用函数，用于在当前文档组中查找指定目标。
+
+Args:
+    target (str): 需要查找的目标标识。
+
+**Returns:**\n
+- Callable: 调用时会执行查找操作的部分应用函数。
+''')
+
+add_english_doc('rag.document.UrlDocument.find', '''\
+Creates a partially applied function to find a specified target within the current document group.
+
+Args:
+    target (str): The target identifier to find.
+
+**Returns:**\n
+- Callable: A partially applied function that executes the find operation when called.
 ''')
 
 add_english_doc('rag.doc_node.DocNode', '''
@@ -1950,6 +2081,48 @@ add_example('rag.dataReader.SimpleDirectoryReader', '''
 >>> documents = reader.load_data()
 ''')
 
+add_chinese_doc('rag.dataReader.SimpleDirectoryReader.load_file', '''\
+load_file(input_file, metadata_genf, file_extractor, encoding='utf-8', pathm=Path, fs=None, metadata=None)
+
+使用指定的 Reader 将单个文件加载为 `DocNode` 列表。
+
+该方法会根据文件名匹配合适的读取器（reader），并遵循以下优先级生成元数据：
+`用户提供 > reader 自动生成 > metadata_genf 生成`。支持自定义文件读取器，同时在配置允许的情况下支持回退到原始文本读取。
+
+参数说明：
+- input_file (Path): 要读取的文件路径。
+- metadata_genf (Callable): 用于根据路径生成元数据的函数。
+- file_extractor (Dict[str, Callable]): 文件扩展名与 reader 的映射表。
+- encoding (str): 文件读取时使用的文本编码，默认为 "utf-8"。
+- pathm (PurePath): 路径处理模块，适用于本地或远程路径。
+- fs (AbstractFileSystem): 可选的文件系统对象，支持 fsspec 抽象。
+- metadata (Dict): 可选的用户自定义元数据，优先于自动生成。
+
+返回：
+- List[DocNode]: 从文件中提取的文档对象列表。
+''')
+
+add_english_doc('rag.dataReader.SimpleDirectoryReader.load_file', '''\
+load_file(input_file, metadata_genf, file_extractor, encoding='utf-8', pathm=Path, fs=None, metadata=None)
+
+Load a single file into a list of `DocNode` objects using the appropriate reader.
+
+This method supports automatic reader selection based on file extension patterns, and applies a priority order to metadata:
+`user > reader > metadata_genf`. It supports both default and user-supplied readers and can fall back to raw text decoding
+if enabled in config.
+
+Parameters:
+- input_file (Path): Path to the input file.
+- metadata_genf (Callable): Function to generate metadata from file path.
+- file_extractor (Dict[str, Callable]): Mapping of file extension patterns to reader callables.
+- encoding (str): Text encoding to use when reading files. Default is "utf-8".
+- pathm (PurePath): Path handling module to support local or remote paths.
+- fs (AbstractFileSystem): Optional filesystem abstraction from fsspec.
+- metadata (Dict): Optional user-defined metadata to override reader-generated data.
+
+Returns:
+- List[DocNode]: List of parsed documents extracted from the file.
+''')
 
 add_english_doc('rag.dataReader.FileReader', '''
 File content reader whose main function is to convert various input file formats into concatenated plain text content.
@@ -2206,6 +2379,60 @@ add_chinese_doc('rag.doc_node.DocNode.with_sim_score', '''
 浅拷贝原节点并添加相似度分数。
 Args:
     score: 相似度得分
+''')
+
+add_chinese_doc('rag.doc_node.QADocNode', '''\
+问答文档节点类，用于存储问答对数据。
+
+参数:
+    query (str): 问题文本。
+    answer (str): 答案文本。
+    uid (str): 唯一标识符。
+    group (str): 文档组名。
+    embedding (Dict[str, List[float]]): 嵌入向量字典。
+    parent (DocNode): 父节点引用。
+    metadata (Dict[str, Any]): 节点级元数据。
+    global_metadata (Dict[str, Any]): 文档级元数据。
+    text (str): 节点内容，与query互斥。
+''')
+
+add_english_doc('rag.doc_node.QADocNode', '''\
+Question-Answer document node class for storing QA pair data.
+
+Args:
+    query (str): The question text.
+    answer (str): The answer text.
+    uid (str): Unique identifier.
+    group (str): Document group name.
+    embedding (Dict[str, List[float]]): Dictionary of embedding vectors.
+    parent (DocNode): Reference to the parent node.
+    metadata (Dict[str, Any]): Node-level metadata.
+    global_metadata (Dict[str, Any]): Document-level metadata.
+    text (str): Node content, mutually exclusive with query.
+''')
+
+add_chinese_doc('rag.doc_node.QADocNode.get_text', '''\
+获取节点的文本内容。
+
+参数:
+    metadata_mode (MetadataMode): 元数据模式，默认为MetadataMode.NONE。
+        当设置为MetadataMode.LLM时，返回格式化的问答对。
+        其他模式下返回基类的文本格式。
+
+返回值:
+    str: 格式化后的文本内容。
+''')
+
+add_english_doc('rag.doc_node.QADocNode.get_text', '''\
+Get the text content of the node.
+
+Args:
+    metadata_mode (MetadataMode): Metadata mode, defaults to MetadataMode.NONE.
+        When set to MetadataMode.LLM, returns formatted QA pair.
+        For other modes, returns base class text format.
+
+Returns:
+    str: The formatted text content.
 ''')
 
 add_english_doc('rag.dataReader.SimpleDirectoryReader', '''
@@ -2799,6 +3026,77 @@ Args:
 **Returns:**\n
 - BaseResponse: Returns the field value if key is specified and exists; otherwise returns full metadata. If the key does not exist, returns an error.
 """)
+# ---------------------------------------------------------------------------- #
+
+# rag/data_loaders.py
+
+add_english_doc('rag.data_loaders.DirectoryReader', '''\
+A directory reader class for loading and processing documents from file directories.
+
+This class provides functionality to read documents from specified directories and convert them into document nodes. It supports both local and global file readers, and can handle different types of documents including images.
+
+Args:
+    input_files (Optional[List[str]]): A list of file paths to read. If None, files will be loaded when calling load_data method.
+    local_readers (Optional[Dict]): A dictionary of local file readers specific to this instance. Keys are file patterns, values are reader functions.
+    global_readers (Optional[Dict]): A dictionary of global file readers shared across all instances. Keys are file patterns, values are reader functions.
+''')
+
+add_chinese_doc('rag.data_loaders.DirectoryReader', '''\
+用于从文件目录加载和处理文档的目录读取器类。
+
+此类提供从指定目录读取文档并将其转换为文档节点的功能。它支持本地和全局文件读取器，并且可以处理不同类型的文档，包括图像。
+
+Args:
+    input_files (Optional[List[str]]): 要读取的文件路径列表。如果为None，文件将在调用load_data方法时加载。
+    local_readers (Optional[Dict]): 特定于此实例的本地文件读取器字典。键是文件模式，值是读取器函数。
+    global_readers (Optional[Dict]): 在所有实例间共享的全局文件读取器字典。键是文件模式，值是读取器函数。
+''')
+
+add_example('rag.data_loaders.DirectoryReader', '''\
+>>> from lazyllm.tools.rag.data_loaders import DirectoryReader
+>>> from lazyllm.tools.rag.readers import DocxReader, PDFReader
+>>> local_readers = {
+...     "**/*.docx": DocxReader,
+...     "**/*.pdf": PDFReader
+>>> }
+>>> reader = DirectoryReader(
+...     input_files=["path/to/documents"],
+...     local_readers=local_readers,
+...     global_readers={}
+>>> )
+>>> documents = reader.load_data()
+>>> print(f"加载了 {len(documents)} 个文档")
+''')
+
+add_english_doc('rag.data_loaders.DirectoryReader.load_data', '''\
+Load and process documents from the specified input files.
+
+This method reads documents from the input files using the configured file readers (both local and global), processes them into document nodes, and optionally separates image nodes from text nodes.
+
+Args:
+    input_files (Optional[List[str]]): A list of file paths to read. If None, uses the files specified during initialization.
+    metadatas (Optional[Dict]): Additional metadata to associate with the loaded documents.
+    split_image_nodes (bool): Whether to separate image nodes from text nodes. If True, returns a tuple of (text_nodes, image_nodes). If False, returns all nodes together.
+
+**Returns:**
+- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: If split_image_nodes is False, returns a list of all document nodes. If True, returns a tuple containing text nodes and image nodes separately.
+
+''')
+
+add_chinese_doc('rag.data_loaders.DirectoryReader.load_data', '''\
+从指定的输入文件加载和处理文档。
+
+此方法使用配置的文件读取器（本地和全局）从输入文件读取文档，将它们处理成文档节点，并可选地将图像节点与文本节点分离。
+
+Args:
+    input_files (Optional[List[str]]): 要读取的文件路径列表。如果为None，使用初始化时指定的文件。
+    metadatas (Optional[Dict]): 与加载文档关联的额外元数据。
+    split_image_nodes (bool): 是否将图像节点与文本节点分离。如果为True，返回(text_nodes, image_nodes)的元组。如果为False，一起返回所有节点。
+
+**Returns:**
+- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: 如果split_image_nodes为False，返回所有文档节点的列表。如果为True，返回包含文本节点和图像节点的元组。
+''')
+
 # ---------------------------------------------------------------------------- #
 
 # rag/utils.py
@@ -3969,6 +4267,28 @@ add_example('CodeGenerator', ['''\
 ...     return fibonacci(n-1) + fibonacci(n-2)
 '''])
 
+add_chinese_doc('CodeGenerator.choose_prompt', '''\
+根据输入的提示文本内容选择合适的代码生成提示模板。  
+如果提示中包含中文字符，则返回中文提示模板；否则返回英文提示模板。
+
+Args:
+    prompt (str): 输入的提示文本。
+
+**Returns:**\n
+- str: 选择的代码生成提示模板字符串。
+''')
+
+add_english_doc('CodeGenerator.choose_prompt', '''\
+Selects an appropriate code generation prompt template based on the content of the input prompt.  
+Returns the Chinese prompt template if Chinese characters are detected; otherwise returns the English prompt template.
+
+Args:
+    prompt (str): Input prompt text.
+
+**Returns:**\n
+- str: The selected code generation prompt template string.
+''')
+
 #actors/parameter_extractor
 add_chinese_doc('ParameterExtractor', '''\
 参数提取模块。
@@ -4260,23 +4580,33 @@ Returns:
 ''')
 
 add_chinese_doc('FunctionCall', '''\
-FunctionCall是单轮工具调用类，如果LLM中的信息不足以回答用户的问题，必需结合外部知识来回答用户问题，则调用该类。如果LLM输出需要工具调用，则进行工具调用，并输出工具调用结果，输出结果为List类型，包含当前轮的输入、模型输出、工具输出。如果不需要工具调用，则直接输出LLM结果，输出结果为string类型。
+FunctionCall是单轮工具调用类。当LLM自身信息不足以回答用户问题，需要结合外部工具获取辅助信息时，调用此类。  
+若LLM输出需要调用工具，则执行工具调用并返回调用结果；输出结果为List类型，包含当前轮的输入、模型输出和工具输出。  
+若不需工具调用，则直接返回LLM输出结果，输出为字符串类型。
 
 Args:
-    llm (ModuleBase): 要使用的LLM可以是TrainableModule或OnlineChatModule。
-    tools (List[Union[str, Callable]]): LLM使用的工具名称或者 Callable 列表
+    llm (ModuleBase): 使用的LLM实例，支持TrainableModule或OnlineChatModule。
+    tools (List[Union[str, Callable]]): LLM可调用的工具名称或Callable对象列表。
+    return_trace (Optional[bool]): 是否返回调用轨迹，默认为False。
+    stream (Optional[bool]): 是否启用流式输出，默认为False。
+    _prompt (Optional[str]): 自定义工具调用提示语，默认根据llm类型自动设置。
 
-注意：tools 中使用的工具必须带有 `__doc__` 字段，按照 [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) 的要求描述清楚工具的用途和参数。
+注意：tools中的工具需包含`__doc__`字段，且须遵循[Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings)规范说明用途与参数。
 ''')
 
 add_english_doc('FunctionCall', '''\
-FunctionCall is a single-round tool call class. If the information in LLM is not enough to answer the uesr's question, it is necessary to combine external knowledge to answer the user's question. If the LLM output required a tool call, the tool call is performed and the tool call result is output. The output result is of List type, including the input, model output, and tool output of the current round. If a tool call is not required, the LLM result is directly output, and the output result is of string type.
-
-Note: The tools used in `tools` must have a `__doc__` field, clearly describing the purpose and parameters of the tool according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings) requirements.
+FunctionCall is a single-turn tool invocation class. It is used when the LLM alone cannot answer user queries and requires external knowledge through tool calls.  
+If the LLM output requires tool calls, the tools are invoked and the combined results (input, model output, tool output) are returned as a list.  
+If no tool calls are needed, the LLM output is returned directly as a string.
 
 Args:
-    llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
-    tools (List[Union[str, Callable]]): A list of tool names for LLM to use.
+    llm (ModuleBase): The LLM instance to use, which can be either a TrainableModule or OnlineChatModule.
+    tools (List[Union[str, Callable]]): A list of tool names or callable objects that the LLM can use.
+    return_trace (Optional[bool]): Whether to return the invocation trace, defaults to False.
+    stream (Optional[bool]): Whether to enable streaming output, defaults to False.
+    _prompt (Optional[str]): Custom prompt for function call, defaults to automatic selection based on llm type.
+
+Note: Tools in `tools` must include a `__doc__` attribute and describe their purpose and parameters according to the [Google Python Style](https://google.github.io/styleguide/pyguide.html#38-comments-and-docstrings).
 ''')
 
 add_example('FunctionCall', """\
@@ -5805,11 +6135,53 @@ Args:
 
 
 add_english_doc('MCPClient.list_tools', '''\
-Retrieves the list of tools from the currently connected MCP client.
+Retrieve the list of tools from the currently connected MCP client.
+
+**Returns:**\n
+- Any: The list of tools returned by the MCP client.
 ''')
 
 add_chinese_doc('MCPClient.list_tools', '''\
-获取当前连接MCP客户端的工具列表。
+获取当前连接的 MCP 客户端的工具列表。
+
+**Returns:**\n
+- Any: MCP 客户端返回的工具列表。
+''')
+
+
+add_english_doc('MCPClient.get_tools', '''\
+Retrieve a filtered list of tools from the MCP client.
+
+Args:
+    allowed_tools (Optional[list[str]]): List of tool names to filter. If None, all tools are returned.
+
+**Returns:**\n
+- Any: List of tools that match the filter criteria.
+''')
+
+add_chinese_doc('MCPClient.get_tools', '''\
+从 MCP 客户端获取经过筛选的工具列表。
+
+Args:
+    allowed_tools (Optional[list[str]]): 要筛选的工具名称列表，若为 None，则返回所有工具。
+
+**Returns:**\n
+- Any: 符合筛选条件的工具列表。
+''')
+
+
+add_english_doc('MCPClient.deploy', '''\
+Deploys the MCP client with the specified SSE server settings asynchronously.
+
+Args:
+    sse_settings (SseServerSettings): Configuration settings for the SSE server.
+''')
+
+add_chinese_doc('MCPClient.deploy', '''\
+使用指定的 SSE 服务器设置异步部署 MCP 客户端。
+
+Args:
+    sse_settings (SseServerSettings): SSE 服务器的配置设置。
 ''')
 
 
@@ -7038,6 +7410,138 @@ Removed nodes with uids: ['1']
 >>> index.query()
 Querying nodes...
 [DocNode(uid="2", content="Document 2")]
+''')
+
+# agent/functionCall.py
+add_agent_chinese_doc('functionCall.StreamResponse', '''\
+StreamResponse类用于封装带有前缀和颜色配置的流式输出行为。  
+当启用流式模式时，调用实例会将带颜色的文本推送到文件系统队列中，用于异步处理或显示。
+
+Args:
+    prefix (str): 输出内容前的前缀文本，通常用于标识信息来源或类别。
+    prefix_color (Optional[str]): 前缀文本的颜色，支持终端颜色代码，默认无颜色。
+    color (Optional[str]): 主体内容文本颜色，支持终端颜色代码，默认无颜色。
+    stream (bool): 是否启用流式输出模式，启用后会将文本推送至文件系统队列，默认关闭。
+''')
+
+add_agent_english_doc('functionCall.StreamResponse', '''\
+StreamResponse class encapsulates streaming output behavior with configurable prefix and colors.  
+When streaming is enabled, calling the instance enqueues colored text to a filesystem queue for asynchronous processing or display.
+
+Args:
+    prefix (str): Prefix text before the output, typically used to indicate the source or category.
+    prefix_color (Optional[str]): Color of the prefix text, supports terminal color codes, defaults to None.
+    color (Optional[str]): Color of the main content text, supports terminal color codes, defaults to None.
+    stream (bool): Whether to enable streaming output mode, which enqueues text to the filesystem queue, defaults to False.
+''')
+
+add_agent_example('functionCall.StreamResponse', '''\
+>>> from lazyllm.tools.agent.functionCall import StreamResponse
+>>> resp = StreamResponse(prefix="[INFO]", prefix_color="green", color="white", stream=True)
+>>> resp("Hello, world!")
+Hello, world!
+''')
+ 
+add_chinese_doc('rag.web.DocWebModule', """\
+文档Web界面模块，继承自ModuleBase，提供基于Web的文档管理交互界面。
+
+Args:
+    doc_server (ServerModule): 文档服务模块实例，提供后端API支持
+    title (str): 界面标题，默认为"文档管理演示终端"
+    port (int/range/list): 服务端口号或端口范围，默认为20800-20999
+    history (list): 初始聊天历史记录，默认为空列表
+    text_mode (Mode): 文本处理模式，默认为Mode.Dynamic(动态模式)
+    trace_mode (Mode): 追踪模式，默认为Mode.Refresh(刷新模式)
+
+类属性:
+    Mode: 模式枚举类，包含:
+        - Dynamic: 动态模式
+        - Refresh: 刷新模式
+        - Appendix: 附录模式
+
+注意事项:
+    - 需要配合有效的doc_server实例使用
+    - 端口冲突时会自动尝试范围内其他端口
+    - 服务停止后会释放相关资源
+""")
+
+add_english_doc('rag.web.DocWebModule', """\
+Document Web Interface Module, inherits from ModuleBase, provides web-based document management interface.
+
+Args:
+    doc_server (ServerModule): Document server module instance providing backend API support
+    title (str): Interface title, defaults to "文档管理演示终端"
+    port (int/range/list): Service port number or range, defaults to 20800-20999
+    history (list): Initial chat history, defaults to empty list
+    text_mode (Mode): Text processing mode, defaults to Mode.Dynamic
+    trace_mode (Mode): Trace mode, defaults to Mode.Refresh
+
+Class Attributes:
+    Mode: Mode enumeration class containing:
+        - Dynamic: Dynamic mode
+        - Refresh: Refresh mode
+        - Appendix: Appendix mode
+
+Notes:
+    - Requires a valid doc_server instance to work with
+    - Automatically tries other ports in range when port conflict occurs
+    - Releases resources when service is stopped
+""")
+
+add_chinese_doc('rag.web.DocWebModule.Mode', """\
+文档Web模块运行模式枚举类。
+
+取值:
+    Dynamic (0): 动态模式，实时更新内容
+    Refresh (1): 刷新模式，定期刷新内容
+    Appendix (2): 附录模式，将新内容作为附录添加
+
+""")
+
+add_english_doc('rag.web.DocWebModule.Mode', """\
+Operation mode enumeration class for DocWebModule.
+
+Values:
+    Dynamic (0): Dynamic mode, updates content in real-time
+    Refresh (1): Refresh mode, periodically refreshes content
+    Appendix (2): Appendix mode, adds new content as appendix
+
+""")
+
+
+add_example('rag.web.DocWebModule', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.rag.web import DocWebModule
+>>> from lazyllm import
+>>> doc_server = ServerModule(url="your_url")
+>>> doc_web = DocWebModule(
+>>>   doc_server=doc_server,
+>>>   title="文档管理演示终端",
+>>>   port=range(20800, 20805)  # 自动寻找可用端口)
+>>> deploy_task = doc_web._get_deploy_tasks()
+>>> deploy_task()  
+>>> print(doc_web.url)
+>>> doc_web.stop()
+''')
+
+add_english_doc('rag.web.DocWebModule.wait', '''\
+Blocks the current thread to keep the web interface running until manually stopped.
+
+''')
+
+add_chinese_doc('rag.web.DocWebModule.wait', '''\
+阻塞当前线程以保持Web界面运行，直到手动停止。
+
+''')
+
+add_english_doc('rag.web.DocWebModule.stop', '''\
+Stops the web interface service and releases related resources.
+
+''')
+
+add_chinese_doc('rag.web.DocWebModule.stop', '''\
+停止Web界面服务并释放相关资源。
+
 ''')
 
 # FuncNodeTransform
