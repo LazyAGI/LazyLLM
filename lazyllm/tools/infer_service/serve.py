@@ -134,10 +134,6 @@ class InferServer(ServerBase):
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
         job_id = job.service_name
-        if ":" in job.model_name:
-            _, infer_model = job.model_name.split(":")
-        else:
-            infer_model = job.model_name
         create_time = datetime.now().strftime(self._time_format)
 
         # Build checkpoint save dir:
@@ -146,7 +142,7 @@ class InferServer(ServerBase):
         save_root = os.path.join(lazyllm.config['infer_log_root'], token, job_id)
         os.makedirs(save_root, exist_ok=True)
         hypram = dict(launcher=lazyllm.launchers.remote(sync=False, ngpus=job.num_gpus, retry=30), log_path=save_root)
-        m = lazyllm.TrainableModule(infer_model).deploy_method((lazyllm.deploy.auto, hypram))
+        m = lazyllm.TrainableModule(job.model_name).deploy_method((lazyllm.deploy.auto, hypram))
 
         # Launch Deploy:
         thread = threading.Thread(target=m.start)

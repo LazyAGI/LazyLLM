@@ -531,7 +531,6 @@ class TrainableModule(UrlModule):
             elif key in kw: paras[key] = kw.pop(key)
 
         if isinstance(optional_keys, str): optional_keys = [optional_keys]
-        kw = {}
         assert set(kw.keys()).issubset(set(optional_keys)), f'{kw.keys()} is not in {optional_keys}'
         paras.update(kw)
         return paras

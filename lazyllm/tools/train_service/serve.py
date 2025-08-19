@@ -48,7 +48,7 @@ class TrainingArgs(BaseModel):
     ngpus: int = 1
 
     class Config:
-        extra = "allow"  # 允许接受额外的字段
+        extra = "allow"  # extra fields are allowed
 
 class JobDescription(BaseModel):
     name: str
