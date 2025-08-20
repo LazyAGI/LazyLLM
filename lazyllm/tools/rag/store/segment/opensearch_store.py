@@ -147,8 +147,6 @@ class OpenSearchStore(LazyLLMStoreBase):
                         results.append(self._deserialize_node(src))
             else:
                 query = self._construct_criteria(criteria)
-                # if not query:
-                #     query = {'query': {'match_all': {}}}
                 for hit in opensearchpy.helpers.scan(client=self._client, index=collection_name, query=query,
                                                      scroll='2m', size=500, preserve_order=False):
                     src = hit['_source']
