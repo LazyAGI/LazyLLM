@@ -38,7 +38,7 @@ def update_config(input_dict: dict, default_data: type) -> dict:
 
 INPUT_SPLIT = " ### input "
 
-def uniform_sft_dataset(dataset_path: str, target: str = 'alpaca', save_path: str = None) -> str:
+def uniform_sft_dataset(dataset_path: str, target: str = 'alpaca') -> str:
     '''
     {origin_format}.{suffix} -> {target_format}, supported all 8 cases:
     1. openai.json   -> alpaca: Conversion: openai2alpaca: json
@@ -88,7 +88,6 @@ def uniform_sft_dataset(dataset_path: str, target: str = 'alpaca', save_path: st
         else:
             raise ValueError(f"Not supported type: {target}")
 
-    base_name = save_path or base_name
     return save_dataset(save_data, save_suffix, base_name + f'_{suffix}')
 
 def save_json(data: list, output_json_path: str) -> None:

@@ -6,16 +6,16 @@ import random
 import asyncio
 import json
 import threading
-from urllib.parse import parse_qs
 from datetime import datetime
 from typing import List
 from pydantic import BaseModel, Field
 from fastapi import Body, HTTPException, Header, Query
 from async_timeout import timeout
 import re
-from urllib.parse import urlparse
 import shutil
 from fastapi.responses import StreamingResponse
+import requests
+from urllib.parse import unquote
 
 import lazyllm
 from lazyllm.launcher import Status
@@ -27,6 +27,24 @@ DEFAULT_TOKEN = "default_token"
 
 def is_url(path):
     return bool(re.match(r'^https?://', path))
+
+def get_filename_from_url(url: str, timeout: int = 10) -> str:
+    """
+    Get filename from URL Content-Disposition header
+    """
+    try:
+        resp = requests.get(url, stream=True, timeout=timeout)
+        resp.raise_for_status()
+
+        cd = resp.headers.get("Content-Disposition", "")
+        for pattern in [r"filename\*=UTF-8''(.+)", r'filename="?([^"]+)"?']:
+            match = re.search(pattern, cd)
+            if match:
+                return unquote(match.group(1))
+    except Exception:
+        pass
+    
+    raise HTTPException(status_code=404, detail='File format is not clear')
 
 
 class Dataset(BaseModel):
@@ -148,7 +166,8 @@ class TrainServer(ServerBase):
         # - No-Env-Set: (work/path + save_ckpt) + token + job_id;
         # - Env-Set:    (train_target_root)     + token + job_id;
         save_root = os.path.join(lazyllm.config['train_target_root'], token, job_id)
-
+        os.makedirs(save_root, exist_ok=True)
+        
         # Add launcher into hyperparameters:
         hypram = job.training_args.model_dump()
 
@@ -156,18 +175,18 @@ class TrainServer(ServerBase):
         assert len(job.training_dataset) == 1, "just support one train dataset"
         data_path = job.training_dataset[0].dataset_download_uri
         if is_url(data_path):
-            parsed_url = urlparse(data_path)
-            query_params = parse_qs(parsed_url.query)
-            if 'filename' in query_params:
-                data_path = query_params['filename'][0]
+            response = requests.get(data_path, stream=True)
+            if response.status_code == 200:
+                file_name = get_filename_from_url(data_path)
+                target_path = os.path.join(save_root, file_name)
+                with open(target_path, "wb") as f:
+                    for chunk in response.iter_content(chunk_size=8192):
+                        f.write(chunk)
+                data_path = target_path
+            else:
+                raise HTTPException(status_code=404, detail='dataset download failed')
 
-        if os.path.exists(data_path):
-            target_path = os.path.join(save_root, os.path.basename(data_path))
-            os.makedirs(save_root, exist_ok=True)
-            if os.path.abspath(data_path) != os.path.abspath(target_path):
-                shutil.copy(data_path, target_path)
-            data_path = target_path
-        data_path = uniform_sft_dataset(data_path, target='alpaca', save_path=save_root)
+        data_path = uniform_sft_dataset(data_path, target='alpaca')
 
         # Set params for TrainableModule:
         m = lazyllm.TrainableModule(job.model, save_root)\
