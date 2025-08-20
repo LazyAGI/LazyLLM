@@ -43,7 +43,7 @@ def get_filename_from_url(url: str, timeout: int = 10) -> str:
                 return unquote(match.group(1))
     except Exception:
         pass
-    
+
     raise HTTPException(status_code=404, detail='File format is not clear')
 
 
@@ -167,7 +167,7 @@ class TrainServer(ServerBase):
         # - Env-Set:    (train_target_root)     + token + job_id;
         save_root = os.path.join(lazyllm.config['train_target_root'], token, job_id)
         os.makedirs(save_root, exist_ok=True)
-        
+
         # Add launcher into hyperparameters:
         hypram = job.training_args.model_dump()
 
