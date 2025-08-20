@@ -141,6 +141,7 @@ class InferServer(ServerBase):
         # - Env-Set:    (infer_log_root)     + token + job_id;
         save_root = os.path.join(lazyllm.config['infer_log_root'], token, job_id)
         os.makedirs(save_root, exist_ok=True)
+        # wait 5 minutes for launch cmd
         hypram = dict(launcher=lazyllm.launchers.remote(sync=False, ngpus=job.num_gpus, retry=30), log_path=save_root)
         m = lazyllm.TrainableModule(job.model_name).deploy_method((lazyllm.deploy.auto, hypram))
 
