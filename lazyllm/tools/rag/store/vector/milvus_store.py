@@ -1,6 +1,9 @@
 import copy
 import traceback
+import threading
 
+from contextlib import contextmanager
+from queue import Queue, Empty, Full
 from packaging import version
 from urllib import parse
 from pathlib import Path
@@ -18,6 +21,24 @@ MILVUS_UPSERT_BATCH_SIZE = 500
 MILVUS_PAGINATION_OFFSET = 1000
 
 
+class _ClientPool:
+    def __init__(self, maker, max_size: int = 8):
+        self._q = Queue(maxsize=max_size)
+        self._maker = maker
+
+    def acquire(self):
+        try:
+            return self._q.get_nowait()
+        except Empty:
+            return self._maker()
+
+    def release(self, c):
+        try:
+            self._q.put_nowait(c)
+        except Full:
+            c.close()
+
+
 class MilvusStore(LazyLLMStoreBase):
     capability = StoreCapability.VECTOR
     need_embedding = True
@@ -32,7 +53,6 @@ class MilvusStore(LazyLLMStoreBase):
         self._index_kwargs = index_kwargs
         self._client_kwargs = client_kwargs or {}
         self._primary_key = 'uid'
-        self._client = None
         if self._uri and parse.urlparse(self._uri).scheme.lower() in ['unix', 'http', 'https', 'tcp', 'grpc']:
             self._is_remote = True
         else:
@@ -53,107 +73,136 @@ class MilvusStore(LazyLLMStoreBase):
         self._embed_datatypes = embed_datatypes or {}
         self._global_metadata_desc = global_metadata_desc or {}
         self._set_constants()
-        self._connect()
+
+        self._ddl_lock = threading.Lock()
+        self._db_ready = False
+        self._ensure_database()
+
+        max_pool_size = int(self._client_kwargs.pop('max_pool_size', 8))
+        self._client_pool = _ClientPool(self._new_client, max_size=max_pool_size)
         LOG.info("[Milvus Vector Store] init success!")
-        self._disconnect()
 
-    def _connect(self):
+    def _new_client(self):
+        kwargs = dict(self._client_kwargs)
         try:
-            self._client = pymilvus.MilvusClient(uri=self._uri, **self._client_kwargs)
+            c = pymilvus.MilvusClient(uri=self._uri, **kwargs)
             if self._is_remote and self._db_name:
-                existing_dbs = self._client.list_databases()
-                if self._db_name not in existing_dbs:
-                    self._client.create_database(self._db_name)
-                self._client.using_database(self._db_name)
+                c.using_database(self._db_name)
+            return c
         except Exception as e:
-            LOG.error(f'[Milvus Store - connect] error: {e}')
+            LOG.error(f'[Milvus Store - _new_client] error: {e}')
+            raise e
 
-    def _disconnect(self):
+    def _ensure_database(self):
+        if not (self._is_remote and self._db_name) or self._db_ready:
+            return
+        tmp = pymilvus.MilvusClient(uri=self._uri, **self._client_kwargs)
         try:
-            if self._client:
-                self._client.close()
-                self._client = None
-        except Exception as e:
-            LOG.error(f'[Milvus Store - disconnect] error: {e}')
+            with self._ddl_lock:
+                if self._db_ready:
+                    return
+                need_create = True
+                try:
+                    db_list = tmp.list_databases()
+                    need_create = self._db_name not in db_list
+                except Exception:
+                    pass
+                if need_create:
+                    try:
+                        tmp.create_database(self._db_name)
+                    except Exception as e:
+                        if 'already exist' not in str(e).lower():
+                            raise
+                self._db_ready = True
+        finally:
+            tmp.close()
+
+    @contextmanager
+    def _client_context(self):
+        c = self._client_pool.acquire()
+        try:
+            yield c
+        finally:
+            self._client_pool.release(c)
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         try:
-            if not data: return
+            if not data: return True
             data_embeddings = data[0].get('embedding', {})
-            if not data_embeddings: return
-            self._connect()
-            if not self._client.has_collection(collection_name):
-                embed_kwargs = {}
-                for embed_key in data_embeddings.keys():
-                    assert self._embed_datatypes.get(embed_key), \
-                        f'cannot find embedding params for embed [{embed_key}]'
-                    if embed_key not in embed_kwargs:
-                        embed_kwargs[embed_key] = {'dtype': self._type2milvus[self._embed_datatypes[embed_key]]}
-                    if self._embed_dims.get(embed_key): embed_kwargs[embed_key]['dim'] = self._embed_dims[embed_key]
-                self._create_collection(collection_name, embed_kwargs)
+            if not data_embeddings: return True
+            with self._client_context() as client:
+                if not client.has_collection(collection_name):
+                    embed_kwargs = {}
+                    for embed_key in data_embeddings.keys():
+                        assert self._embed_datatypes.get(embed_key), \
+                            f'cannot find embedding params for embed [{embed_key}]'
+                        if embed_key not in embed_kwargs:
+                            embed_kwargs[embed_key] = {'dtype': self._type2milvus[self._embed_datatypes[embed_key]]}
+                        if self._embed_dims.get(embed_key): embed_kwargs[embed_key]['dim'] = self._embed_dims[embed_key]
+                    with self._ddl_lock:
+                        if not client.has_collection(collection_name):
+                            self._create_collection(client, collection_name, embed_kwargs)
 
-            for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
-                self._client.upsert(collection_name=collection_name,
-                                    data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
-            self._disconnect()
+                for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
+                    client.upsert(collection_name=collection_name,
+                                  data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
             return True
         except Exception as e:
             LOG.error(f'[Milvus Store - upsert] error: {e}')
             LOG.error(traceback.format_exc())
-            self._disconnect()
             return False
 
     @override
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
         try:
-            self._connect()
-            if not self._client.has_collection(collection_name):
-                return True
-            self._client.load_collection(collection_name)
-            if not criteria:
-                self._client.drop_collection(collection_name=collection_name)
-            else:
-                self._client.delete(collection_name=collection_name, **self._construct_criteria(criteria))
-            self._disconnect()
+            with self._client_context() as client:
+                if not client.has_collection(collection_name):
+                    return True
+                client.load_collection(collection_name)
+                if not criteria:
+                    with self._ddl_lock:
+                        if client.has_collection(collection_name):
+                            client.drop_collection(collection_name=collection_name)
+                else:
+                    client.delete(collection_name=collection_name, **self._construct_criteria(criteria))
             return True
         except Exception as e:
             LOG.error(f'[Milvus Store - delete] error: {e}')
-            self._disconnect()
+            LOG.error(traceback.format_exc())
             return False
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         try:
-            self._connect()
-            if not self._client.has_collection(collection_name):
-                return []
-            self._client.load_collection(collection_name)
-            col_desc = self._client.describe_collection(collection_name=collection_name)
-            field_names = [field.get('name') for field in col_desc.get('fields', [])
-                           if field.get('name').startswith(EMBED_PREFIX)]
-            if criteria and self._primary_key in criteria:
-                res = self._client.get(collection_name=collection_name, ids=criteria[self._primary_key])
-            else:
-                filters = self._construct_criteria(criteria) if criteria else {}
-                if version.parse(pymilvus.__version__) >= version.parse('2.4.11'):
-                    iterator = self._client.query_iterator(collection_name=collection_name,
-                                                           batch_size=MILVUS_PAGINATION_OFFSET,
-                                                           output_fields=field_names, **filters)
-                    res = []
-                    while True:
-                        result = iterator.next()
-                        if not result:
-                            iterator.close()
-                            break
-                        res += result
+            with self._client_context() as client:
+                if not client.has_collection(collection_name):
+                    return []
+                client.load_collection(collection_name)
+                col_desc = client.describe_collection(collection_name=collection_name)
+                field_names = [field.get('name') for field in col_desc.get('fields', [])
+                               if field.get('name').startswith(EMBED_PREFIX)]
+                if criteria and self._primary_key in criteria:
+                    res = client.get(collection_name=collection_name, ids=criteria[self._primary_key])
                 else:
-                    res = self._client.query(collection_name=collection_name, output_fields=field_names, **filters)
-            self._disconnect()
+                    filters = self._construct_criteria(criteria) if criteria else {}
+                    if version.parse(pymilvus.__version__) >= version.parse('2.4.11'):
+                        iterator = client.query_iterator(collection_name=collection_name,
+                                                         batch_size=MILVUS_PAGINATION_OFFSET,
+                                                         output_fields=field_names, **filters)
+                        res = []
+                        while True:
+                            result = iterator.next()
+                            if not result:
+                                iterator.close()
+                                break
+                            res += result
+                    else:
+                        res = client.query(collection_name=collection_name, output_fields=field_names, **filters)
             return [self._deserialize_data(r) for r in res]
         except Exception as e:
             LOG.error(f'[Milvus Store - get] error: {e}')
-            self._disconnect()
+            LOG.error(traceback.format_exc())
             return []
 
     def _set_constants(self):
@@ -191,13 +240,12 @@ class MilvusStore(LazyLLMStoreBase):
                                                    default_value=desc.default_value, **field_args))
         return field_list
 
-    def _create_collection(self, collection_name: str, embed_kwargs: Dict[str, Dict]):  # noqa: C901
+    def _create_collection(self, client, collection_name: str, embed_kwargs: Dict[str, Dict]):  # noqa: C901
         field_list = copy.deepcopy(self._constant_fields)
-        index_params = self._client.prepare_index_params()
+        index_params = client.prepare_index_params()
         for k, kws in embed_kwargs.items():
             embed_field_name = self._gen_embed_key(k)
             field_list.append(pymilvus.FieldSchema(name=embed_field_name, **kws))
-            index_params.add_index(field_name=embed_field_name, **kws)
             if isinstance(self._index_kwargs, list):
                 for item in self._index_kwargs:
                     embed_key = item.get('embed_key', None)
@@ -211,7 +259,7 @@ class MilvusStore(LazyLLMStoreBase):
             elif isinstance(self._index_kwargs, dict):
                 index_params.add_index(field_name=embed_field_name, **self._index_kwargs)
         schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_field=False)
-        self._client.create_collection(collection_name=collection_name, schema=schema, index_params=index_params)
+        client.create_collection(collection_name=collection_name, schema=schema, index_params=index_params)
 
     def _serialize_data(self, d: dict) -> dict:
         # only keep primary_key, embedding and global_meta
@@ -269,23 +317,29 @@ class MilvusStore(LazyLLMStoreBase):
     def search(self, collection_name: str, query_embedding: Union[dict, List[float]], topk: int,
                filters: Optional[Dict[str, Union[List, set]]] = None, embed_key: Optional[str] = None,
                filter_str: Optional[str] = '', **kwargs) -> List[dict]:
-        self._connect()
-        if not embed_key or embed_key not in self._embed_datatypes:
-            raise ValueError(f'[Milvus Store - search] Not supported or None `embed_key`: {embed_key}')
-        res = []
-        filter_expr = self._construct_filter_expr(filters) if filters else filter_str
-        results = self._client.search(collection_name=collection_name, data=[query_embedding], limit=topk,
-                                      anns_field=self._gen_embed_key(embed_key),
-                                      filter=filter_expr)
-        if len(results) != 1:
-            raise ValueError(f'number of results [{len(results)}] != expected [1]')
-        for result in results[0]:
-            score = result.get('distance', 0)
-            uid = result.get('id', result.get(self._primary_key, ''))
-            if not uid:
-                continue
-            res.append({'uid': uid, 'score': score})
-        self._disconnect()
+        with self._client_context() as client:
+            if not embed_key or embed_key not in self._embed_datatypes:
+                raise ValueError(f'[Milvus Store - search] Not supported or None `embed_key`: {embed_key}')
+            if not client.has_collection(collection_name):
+                return []
+            client.load_collection(collection_name)
+
+            res = []
+            filter_expr = self._construct_filter_expr(filters) if filters else ''
+            if filter_str:
+                filter_expr = f'{filter_expr} and {filter_str}' if filter_expr else filter_str
+
+            results = client.search(collection_name=collection_name, data=[query_embedding], limit=topk,
+                                    anns_field=self._gen_embed_key(embed_key),
+                                    filter=filter_expr)
+            if len(results) != 1:
+                raise ValueError(f'number of results [{len(results)}] != expected [1]')
+            for result in results[0]:
+                score = result.get('distance', 0)
+                uid = result.get('id', result.get(self._primary_key, ''))
+                if not uid:
+                    continue
+                res.append({'uid': uid, 'score': score})
         return res
 
     def _construct_filter_expr(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
