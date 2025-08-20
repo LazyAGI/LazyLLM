@@ -1121,39 +1121,7 @@ class K8sLauncher(LazyLLMLaunchersBase):
                 return {"deployment": Status.Running, "service_ip": service_ip,
                         "gateway": Status.Running, "httproute": Status.Running}
             else:
-                job_done = self.wait_for_job_ready()
-                if not job_done:
-                    raise TimeoutError("Kubernetes Job did not become ready in time.")
-                else:
-                    return {"job": Status.Running}
-
-        def wait_for_job_ready(self, timeout=300):
-            api_instance = k8s.client.BatchV1Api()
-            start_time = time.time()
-            while time.time() - start_time < timeout:
-                try:
-                    status = api_instance.read_namespaced_job_status(
-                        name=self.deployment_name,
-                        namespace=self.namespace
-                    ).status
-                    if getattr(status, 'succeeded', 0) and status.succeeded >= 1:
-                        LOG.info(f"Kubernetes Job '{self.deployment_name}' succeeded.")
-                        return True
-                    elif getattr(status, 'active', 0) and status.active >= 1:
-                        LOG.info(f"Kubernetes Job '{self.deployment_name}' is running.")
-                        return True
-                    elif getattr(status, 'failed', 0) and status.failed >= 1:
-                        LOG.error(f"Kubernetes Job '{self.deployment_name}' failed.")
-                        return False
-                except k8s.client.rest.ApiException as e:
-                    if e.status == 404:
-                        LOG.warning(f"Kubernetes Job '{self.deployment_name}' was deleted or cancelled.")
-                        return False
-                    else:
-                        LOG.error(f"Exception when reading Job status: {e}")
-                        raise
-            LOG.warning(f"Timed out waiting for Job '{self.deployment_name}' to complete.")
-            return False
+                return {"job": Status.Running}
 
         @property
         def status(self):
