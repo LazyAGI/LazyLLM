@@ -324,14 +324,6 @@ class TrainServer(ServerBase):
 
         return StreamingResponse(generate_log_stream(), media_type="text/event-stream")
 
-    @app.post('/v1/finetuneTasks/{job_id}:pause')
-    async def pause_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN)):
-        raise HTTPException(status_code=404, detail='not implemented')
-
-    @app.post('/v1/finetuneTasks/{job_id}:resume')
-    async def resume_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN)):
-        raise HTTPException(status_code=404, detail='not implemented')
-
     @app.post('/v1/finetuneTasks/{job_id}/model:export')
     async def export_model(self, job_id: str, model: ModelExport, token: str = Header(DEFAULT_TOKEN)):
         if not self._in_user_job_info(token, job_id):
@@ -354,10 +346,10 @@ class TrainServer(ServerBase):
     async def get_running_metrics(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):
         raise HTTPException(status_code=404, detail='not implemented')
 
-    @app.get('/v1/models:all')
-    async def get_support_model(self, token: str = Header(DEFAULT_TOKEN)):
-        if os.path.exists(lazyllm.config['model_path']):
-            model_list = os.listdir(lazyllm.config['model_path'])
-            return model_list
-        else:
-            raise HTTPException(status_code=404, detail='model path not found')
+    @app.post('/v1/finetuneTasks/{job_id}:pause')
+    async def pause_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN)):
+        raise HTTPException(status_code=404, detail='not implemented')
+
+    @app.post('/v1/finetuneTasks/{job_id}:resume')
+    async def resume_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN)):
+        raise HTTPException(status_code=404, detail='not implemented')
