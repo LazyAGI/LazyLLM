@@ -24,7 +24,6 @@ from lazyllm import FastapiApp as app
 from ..services import ServerBase
 
 DEFAULT_TOKEN = 'default_token'
-DEFAULT_HEADER = Header(DEFAULT_TOKEN)
 
 def is_url(path):
     return bool(re.match(r'^https?://', path))
@@ -150,8 +149,8 @@ class TrainServer(ServerBase):
         return model._impl._temp_finetuned_model_path
 
     @app.post('/v1/finetuneTasks')
-    async def create_job(self, job: JobDescription, finetune_task_id: str = Query(None),
-                         token: str = DEFAULT_HEADER):
+    async def create_job(self, job: JobDescription, finetune_task_id: str = Query(None),  # noqa B008
+                         token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
         # Build Job-ID:
@@ -235,7 +234,7 @@ class TrainServer(ServerBase):
         return {'finetune_task_id': job_id, 'status': status}
 
     @app.delete('/v1/finetuneTasks/{job_id}')
-    async def cancel_job(self, job_id: str, token: str = DEFAULT_HEADER):
+    async def cancel_job(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         await self.authorize_current_user(token)
         if not self._in_active_jobs(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
@@ -261,7 +260,7 @@ class TrainServer(ServerBase):
         return {'status': status}
 
     @app.get('/v1/finetuneTasks/jobs')
-    async def list_jobs(self, token: str = DEFAULT_HEADER):
+    async def list_jobs(self, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         # await self.authorize_current_user(token)
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
@@ -294,7 +293,7 @@ class TrainServer(ServerBase):
         return server_running_dict
 
     @app.get('/v1/finetuneTasks/{job_id}')
-    async def get_job_info(self, job_id: str, token: str = DEFAULT_HEADER):
+    async def get_job_info(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
@@ -304,7 +303,7 @@ class TrainServer(ServerBase):
         return self._read_user_job_info(token, job_id)
 
     @app.get('/v1/finetuneTasks/{job_id}/log')
-    async def get_job_log(self, job_id: str, token: str = DEFAULT_HEADER):
+    async def get_job_log(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
@@ -326,7 +325,7 @@ class TrainServer(ServerBase):
         return StreamingResponse(generate_log_stream(), media_type="text/event-stream")
 
     @app.post('/v1/finetuneTasks/{job_id}/model:export')
-    async def export_model(self, job_id: str, model: ModelExport, token: str = DEFAULT_HEADER):
+    async def export_model(self, job_id: str, model: ModelExport, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
 
@@ -344,13 +343,13 @@ class TrainServer(ServerBase):
         return
 
     @app.get('/v1/finetuneTasks/{job_id}/runningMetrics')
-    async def get_running_metrics(self, job_id: str, token: str = DEFAULT_HEADER):
+    async def get_running_metrics(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         raise HTTPException(status_code=404, detail='not implemented')
 
     @app.post('/v1/finetuneTasks/{job_id}:pause')
-    async def pause_job(self, job_id: str, name: str = Body(embed=True), token: str = DEFAULT_HEADER):
+    async def pause_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         raise HTTPException(status_code=404, detail='not implemented')
 
     @app.post('/v1/finetuneTasks/{job_id}:resume')
-    async def resume_job(self, job_id: str, name: str = Body(embed=True), token: str = DEFAULT_HEADER):
+    async def resume_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         raise HTTPException(status_code=404, detail='not implemented')
