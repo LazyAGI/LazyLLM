@@ -1,5 +1,4 @@
 import os
-import copy
 import requests
 from pathlib import Path
 from bs4 import BeautifulSoup
@@ -86,25 +85,24 @@ class MineruPDFReader(LazyLLMReaderBase):
             block = {}
             block['bbox'] = content.get('bbox', [])
             block['type'] = content.get('type', 'text')
-            block['page'] = content.get('page', [])
+            block['page'] = content.get('page_idx', 0)
             block['lines'] = content['lines'] if 'lines' in content else []
             for line in block['lines']:
                 if 'content' in line:
                     line['content'] = self._normalize_content_recursively(line['content'])
             if content['type'] == 'text':
-                content['text'] = self._normalize_content_recursively(content['text']).strip()
-                if not content['text']:
+                block['text'] = self._normalize_content_recursively(content['text']).strip()
+                if not content['text'].strip():
                     continue
                 if 'text_level' in content:
                     if cur_title and content['text_level'] > cur_level:
-                        content['title'] = cur_title
+                        block['title'] = cur_title
                     cur_title = content['text']
                     cur_level = content['text_level']
+                    block['text_level'] = content['text_level']
                 else:
                     if cur_title:
-                        content['title'] = cur_title
-                block = copy.deepcopy(content)
-                del block['page_idx']
+                        block['title'] = cur_title
                 blocks.append(block)
             elif content['type'] == 'image':
                 if not content.get('img_path', None):
@@ -139,7 +137,11 @@ class MineruPDFReader(LazyLLMReaderBase):
                     block['text'] = content.get('text', '')
                 else:
                     block['image_path'] = content.get('img_path', '')
+                    if not block['image_path']:
+                        continue
                     block['text'] = f'![formula]({block["image_path"]})'
+                if cur_title:
+                    block['title'] = cur_title
                 blocks.append(block)
         return blocks
 
