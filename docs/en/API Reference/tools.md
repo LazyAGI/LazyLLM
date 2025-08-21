@@ -114,7 +114,7 @@
     members:
     exclude-members:
 
-::: lazyllm.tools.rag.readers.MagicPDFReader
+::: lazyllm.tools.rag.readers.MineruPDFReader
     members:
     exclude-members:
 
