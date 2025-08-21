@@ -21,6 +21,7 @@ def setup_tmpdir_class(request, tmpdir_factory):
     request.cls.tmpdir_class = tmpdir_factory.mktemp("mineru_test")
 
 
+@pytest.mark.skip(reason="Skip for env issues")
 @pytest.mark.skip_on_win
 @pytest.mark.skip_on_mac
 @pytest.mark.usefixtures("setup_tmpdir_class")
