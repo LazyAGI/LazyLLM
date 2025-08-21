@@ -94,17 +94,17 @@ class MineruServerBase:
 
     @app.post('/api/v1/pdf_parse')
     async def parse_pdf(self,   # noqa: C901
-                        files: List[str] = Form([]),
-                        upload_files: List[UploadFile] = File([]),
-                        use_cache: bool = Form(False, description='if True, chache_dir should be set'),
-                        lang: str = Form('ch_server',
+                        files: List[str] = Form([]),  # noqa B008
+                        upload_files: List[UploadFile] = File([]),  # noqa B008
+                        use_cache: bool = Form(False, description='if True, chache_dir should be set'),  # noqa B008
+                        lang: str = Form('ch_server',  # noqa B008
                                          description='only use for pipeline,ch|ch_server|ch_lite|en'),
-                        backend: str = Form(None, description='Parsing mode, vlm-sglang-engine|pipeline'),
-                        parse_method: str = Form('auto'),
-                        formula_enable: bool = Form(None, description='Whether to enable formula parsing'),
-                        table_enable: bool = Form(None, description='Whether to enable table parsing'),
-                        return_md: bool = Form(None, description='Whether to return markdown content'),
-                        return_content_list: bool = Form(None, description='Whether to return content list')):
+                        backend: str = Form(None, description='Parsing mode, vlm-sglang-engine|pipeline'),  # noqa B008
+                        parse_method: str = Form('auto'),  # noqa B008
+                        formula_enable: bool = Form(None, description='Whether to enable formula parsing'),  # noqa B008
+                        table_enable: bool = Form(None, description='Whether to enable table parsing'),  # noqa B008
+                        return_md: bool = Form(None, description='Whether to return markdown content'),  # noqa B008
+                        return_content_list: bool = Form(None, description='Whether to return content list')):  # noqa B008
         if files and upload_files:
             raise HTTPException(status_code=400, detail='Either provide only \'files\' or only \'upload_files\'!')
         for file in files:
@@ -409,13 +409,9 @@ class MineruServer(ServerModule):
                  default_return_md: bool = False,
                  default_return_content_list: bool = True,
                  *args, **kwargs):
-        mineru_server = MineruServerBase(cache_dir=cache_dir,
-                                     image_save_dir=image_save_dir,
-                                     default_backend=default_backend,
-                                     default_lang=default_lang,
-                                     default_parse_method=default_parse_method,
-                                     default_formula_enable=default_formula_enable,
-                                     default_table_enable=default_table_enable,
-                                     default_return_md=default_return_md,
-                                     default_return_content_list=default_return_content_list)
+        mineru_server = MineruServerBase(
+            cache_dir=cache_dir, image_save_dir=image_save_dir, default_backend=default_backend,
+            default_lang=default_lang, default_parse_method=default_parse_method,
+            default_formula_enable=default_formula_enable, default_table_enable=default_table_enable,
+            default_return_md=default_return_md, default_return_content_list=default_return_content_list)
         super().__init__(mineru_server, *args, **kwargs)

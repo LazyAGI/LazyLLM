@@ -132,9 +132,12 @@ def install_multiple_packages(package_names_with_versions):
 
 def install_mineru():
     try:
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip', '-i', 'https://mirrors.aliyun.com/pypi/simple/'])
-        subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'uv', '-i', 'https://mirrors.aliyun.com/pypi/simple/'])
-        subprocess.check_call([sys.executable, '-m', 'uv', 'pip', 'install', 'mineru[all]==2.1.10', '-i', 'https://mirrors.aliyun.com/pypi/simple/'])
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', '--upgrade', 'pip', '-i',
+                               'https://mirrors.aliyun.com/pypi/simple/'])
+        subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'uv', '-i',
+                               'https://mirrors.aliyun.com/pypi/simple/'])
+        subprocess.check_call([sys.executable, '-m', 'uv', 'pip', 'install',
+                               'mineru[all]==2.1.10', '-i', 'https://mirrors.aliyun.com/pypi/simple/'])
     except subprocess.CalledProcessError as e:
         logging.error(f"Mineru installation failed: {e}")
         sys.exit(1)
@@ -166,10 +169,10 @@ def install(commands):  # noqa C901
         logging.error("Extras for finetune/local inference are not supported on macOS/Windows.")
         sys.exit(1)
 
-    extras = load_extras()        # dict of extras
+    extras = load_extras()  # dict of extras
     deps = load_dependencies()  # dict of dependencies
     to_install = OrderedDict()
-    
+
     if "mineru" in items:
         install_mineru()
         items.remove("mineru")
