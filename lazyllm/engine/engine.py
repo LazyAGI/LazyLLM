@@ -827,15 +827,6 @@ class LLM(lazyllm.ModuleBase):
               history: Optional[List[List[str]]] = None):
         return LLM(self._m.share(prompt=prompt, format=format, stream=stream, history=history), self._keys)
 
-    def formatter(self, format: lazyllm.components.formatter.FormatterBase = None):
-        if isinstance(format, lazyllm.components.formatter.FormatterBase) or callable(format):
-            self._formatter = format
-        elif format is None:
-            self._formatter = lazyllm.components.formatter.EmptyFormatter()
-        else:
-            raise TypeError("format must be a FormatterBase")
-        return self
-
     @property
     def func(self):
         return self._m

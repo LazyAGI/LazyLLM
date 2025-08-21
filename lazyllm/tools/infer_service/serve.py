@@ -12,7 +12,8 @@ from lazyllm.launcher import Status
 from lazyllm import FastapiApp as app
 from ..services import ServerBase
 
-DEFAULT_TOKEN = "default_token"
+DEFAULT_TOKEN = 'default_token'
+DEFAULT_HEADER = Header(DEFAULT_TOKEN)
 
 class JobDescription(BaseModel):
     service_name: str
@@ -130,7 +131,7 @@ class InferServer(ServerBase):
         return newest_file
 
     @app.post('/v1/inference_services')
-    async def create_job(self, job: JobDescription, token: str = Header(DEFAULT_TOKEN)):
+    async def create_job(self, job: JobDescription, token: str = DEFAULT_HEADER):
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
         job_id = job.service_name
@@ -189,7 +190,7 @@ class InferServer(ServerBase):
         return {'lwsName': job_id}
 
     @app.delete('/v1/inference_services/{job_id}')
-    async def cancel_job(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):
+    async def cancel_job(self, job_id: str, token: str = DEFAULT_HEADER):
         await self.authorize_current_user(token)
         if not self._in_active_jobs(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
@@ -215,14 +216,14 @@ class InferServer(ServerBase):
         return {'status': status}
 
     @app.get('/v1/inference_services')
-    async def list_jobs(self, token: str = Header(DEFAULT_TOKEN)):
+    async def list_jobs(self, token: str = DEFAULT_HEADER):
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
         server_running_dict = self._read_user_job_info(token)
         return server_running_dict
 
     @app.get('/v1/inference_services/{job_id}')
-    async def get_job_info(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):
+    async def get_job_info(self, job_id: str, token: str = DEFAULT_HEADER):
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
@@ -232,7 +233,7 @@ class InferServer(ServerBase):
         return self._read_user_job_info(token, job_id)
 
     @app.get('/v1/inference_services/{job_id}/events')
-    async def get_job_log(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):
+    async def get_job_log(self, job_id: str, token: str = DEFAULT_HEADER):
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')

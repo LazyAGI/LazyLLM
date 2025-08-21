@@ -512,10 +512,7 @@ class Switch(LazyLLMFlowsBase):
             __input = __input[1] if len(__input) == 2 else __input[1:]
 
         if self._conversion:
-            if isinstance(exp, tuple) or isinstance(exp, list):
-                exp = self._conversion(*exp)
-            else:
-                exp = self._conversion(exp)
+            exp = self._conversion(*exp) if isinstance(exp, package) else self._conversion(exp)
 
         for idx, cond in enumerate(self.conds):
             if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or (
@@ -643,31 +640,32 @@ class Graph(LazyLLMFlowsBase):
 
         return [n for n in sorted_nodes if (self._in_degree[n] > 0 or self._out_degree[n] > 0)]
 
+    def _get_input(self, name, node, intermediate_results, futures):
+        if name.startswith('_lazyllm_constant_'):
+            return self._constants[int(name.removeprefix('_lazyllm_constant_'))]
+        if name not in intermediate_results['values']:
+            r = futures[name].result()
+            with intermediate_results['lock']:
+                if name not in intermediate_results['values']:
+                    intermediate_results['values'][name] = r
+        r = intermediate_results['values'][name]
+        if isinstance(r, Exception): raise r
+        if node.inputs[name]:
+            if isinstance(r, arguments) and not ((len(r.args) == 0) ^ (len(r.kw) == 0)):
+                raise RuntimeError('Only one of args and kwargs can be given with formatter.')
+            r = node.inputs[name]((r.args or r.kw) if isinstance(r, arguments) else r)
+        return r
+
     def compute_node(self, sid, node, intermediate_results, futures):
         globals._init_sid(sid)
 
-        def get_input(name):
-            if name.startswith('_lazyllm_constant_'):
-                return self._constants[int(name.removeprefix('_lazyllm_constant_'))]
-            if name not in intermediate_results['values']:
-                r = futures[name].result()
-                with intermediate_results['lock']:
-                    if name not in intermediate_results['values']:
-                        intermediate_results['values'][name] = r
-            r = intermediate_results['values'][name]
-            if isinstance(r, Exception): raise r
-            if node.inputs[name]:
-                if isinstance(r, arguments) and not ((len(r.args) == 0) ^ (len(r.kw) == 0)):
-                    raise RuntimeError('Only one of args and kwargs can be given with formatter.')
-                r = node.inputs[name]((r.args or r.kw) if isinstance(r, arguments) else r)
-            return r
-
         kw = {}
         if len(node.inputs) == 1:
-            input = get_input(list(node.inputs.keys())[0])
+            input = self._get_input(list(node.inputs.keys())[0], node, intermediate_results, futures)
         else:
             # TODO(wangzhihong): add complex rules: mixture of package / support kwargs / ...
-            inputs = package(get_input(input) for input in node.inputs.keys())
+            inputs = package(self._get_input(input, node, intermediate_results, futures)
+                             for input in node.inputs.keys())
             input = arguments()
             for inp in inputs:
                 input.append(inp)
@@ -677,8 +675,7 @@ class Graph(LazyLLMFlowsBase):
             input = input.args
 
         if node.arg_names:
-            if isinstance(input, str):
-                input = [input]
+            if not isinstance(input, (list, tuple, package)): input = [input]
             kw.update({name: value for name, value in zip(node.arg_names, input)})
             input = package()
 
