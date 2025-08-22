@@ -154,7 +154,7 @@ class OnlineChatModuleBase(LLMBase):
         elif isinstance(src[0], list):
             assert len(set(map(len, src))) == 1, f"The lists of elements: {src} have different lengths."
             ret = list(map(self._merge_stream_result, zip(*src)))
-            return ret[0] if isinstance(ret[0], list) else ret
+            return ret[0] if (len(ret) > 0 and isinstance(ret[0], list)) else ret
         elif isinstance(src[0], dict):  # list of dicts
             if 'index' in src[-1]:
                 grouped = [list(g) for _, g in groupby(sorted(src, key=itemget('index')), key=itemget("index"))]

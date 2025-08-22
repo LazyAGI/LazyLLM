@@ -1,5 +1,6 @@
 import json
 import urllib3
+import threading
 
 from typing import Dict, List, Union, Optional
 
@@ -64,14 +65,29 @@ class OpenSearchStore(LazyLLMStoreBase):
     def connect(self, *args, **kwargs) -> None:
         if self._client_kwargs.get('user') and self._client_kwargs.get('password'):
             self._client_kwargs['http_auth'] = (self._client_kwargs.pop('user'), self._client_kwargs.pop('password'))
+        self._ddl_lock = threading.Lock()
         self._client = opensearchpy.OpenSearch(hosts=self._uris, **self._client_kwargs)
+
+    def _ensure_index(self, name: str):
+        if self._client.indices.exists(index=name):
+            return
+        with self._ddl_lock:
+            if self._client.indices.exists(index=name):
+                return
+            try:
+                self._client.indices.create(index=name, body=self._index_kwargs)
+            except opensearchpy.TransportError as e:
+                if getattr(e, 'error', '') != 'resource_already_exists_exception':
+                    raise e
+            except Exception as e:
+                LOG.error(f"[OpenSearchStore - _ensure_index] Error creating index {name}: {e}")
+                raise e
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         if not data: return
         try:
-            if not self._client.indices.exists(index=collection_name):
-                self._client.indices.create(index=collection_name, body=self._index_kwargs)
+            self._ensure_index(collection_name)
             for i in range(0, len(data), INSERT_BATCH_SIZE):
                 bulk_data = []
                 batch_data = data[i:i + INSERT_BATCH_SIZE]
@@ -79,10 +95,9 @@ class OpenSearchStore(LazyLLMStoreBase):
                     segment = self._serialize_node(segment)
                     bulk_data.append({'index': {'_index': collection_name, '_id': segment.get(self._primary_key)}})
                     bulk_data.append(segment)
-                response = self._client.bulk(index=collection_name, body=bulk_data)
-                if response['errors']:
-                    raise ValueError(f"Error upserting data to OpenSearch: {response['items']}")
-            self._client.indices.refresh(index=collection_name)
+                response = self._client.bulk(index=collection_name, body=bulk_data, refresh='wait_for')
+                if response.get('errors'):
+                    raise ValueError(f"Error upserting data to OpenSearch: {response.get('errors')}")
             return True
         except Exception as e:
             LOG.error(f"[OpenSearchStore - upsert] Error upserting data to OpenSearch: {e}")
@@ -95,11 +110,15 @@ class OpenSearchStore(LazyLLMStoreBase):
                 LOG.warning(f"[OpenSearchStore - delete] Index {collection_name} does not exist")
                 return True
             if not criteria:
-                self._client.indices.delete(index=collection_name)
+                with self._ddl_lock:
+                    if self._client.indices.exists(index=collection_name):
+                        self._client.indices.delete(index=collection_name)
                 return True
             else:
-                resp = self._client.delete_by_query(index=collection_name,
-                                                    body=self._construct_criteria(criteria), refresh=True)
+                resp = self._client.delete_by_query(index=collection_name, body=self._construct_criteria(criteria),
+                                                    refresh=True, conflicts='proceed')
+                if resp.get('version_conflicts', 0) > 0:
+                    LOG.warning(f"[OpenSearchStore - delete] Version conflicts: {resp.get('version_conflicts')}")
                 if resp.get('failures'):
                     raise ValueError(f"Error deleting data from OpenSearch: {resp['failures']}")
                 return True
@@ -129,7 +148,7 @@ class OpenSearchStore(LazyLLMStoreBase):
             else:
                 query = self._construct_criteria(criteria)
                 for hit in opensearchpy.helpers.scan(client=self._client, index=collection_name, query=query,
-                                                     scroll='2m', size=500, preserve_order=True):
+                                                     scroll='2m', size=500, preserve_order=False):
                     src = hit['_source']
                     src['uid'] = hit['_id']
                     results.append(self._deserialize_node(src))
