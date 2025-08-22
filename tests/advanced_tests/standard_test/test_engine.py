@@ -193,10 +193,10 @@ class TestEngine(object):
         engine = LightEngine()
         nodes = [dict(id='0', kind='LLM', name='m1',
                  args=dict(base_model=model_name, deploy_method=deploy_method, type='local', url=url, stream=True,
-                           stream=True, prompt=dict(system='请根据输入帮我计算，不要反问和发挥', user='输入: {query} \n, 答案:')))]
+                           prompt=dict(system='请根据输入帮我计算，不要反问和发挥', user='输入: {query} \n, 答案:')))]
         gid = engine.start(nodes)
-        r = engine.run(gid, '请重复下面一句话：你好')
-        assert '你好' in r
+        r = engine.run(gid, '1 + 1 = ?')
+        assert '2' in r
 
     def test_engine_infer_server_vqa(self):
         model_name = 'Mini-InternVL-Chat-2B-V1-5'
