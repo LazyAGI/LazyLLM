@@ -177,7 +177,7 @@ class TestEngine(object):
             if response_data['status'] == 'Ready':
                 return model_name, response_data['deploy_method'], response_data['endpoint']
             elif response_data['status'] in ('Invalid', 'Cancelled', 'Failed'):
-                raise RuntimeError(f'Deploy service failed. status is {response_data['status']}')
+                raise RuntimeError(f'Deploy service failed. status is {response_data["status"]}')
             time.sleep(10)
 
         raise TimeoutError("inference service deploy timeout")
