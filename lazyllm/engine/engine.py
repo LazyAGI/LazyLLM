@@ -138,18 +138,6 @@ class Engine(ABC):
                 if recursive: yield from self.subnodes(id, True)
         return list(_impl(nodeid, recursive))
 
-    @classmethod
-    @abstractmethod
-    def launch_localllm_train_service(self): pass
-
-    @classmethod
-    @abstractmethod
-    def launch_localllm_infer_service(self): pass
-
-    @classmethod
-    @abstractmethod
-    def get_infra_handle(self, token, mid) -> lazyllm.TrainableModule: pass
-
 
 class NodeConstructor(object):
     builder_methods = dict()
@@ -754,39 +742,16 @@ def make_online_vqa(source: str = None, base_model: Optional[str] = None, prompt
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
                     history: Optional[List[List[str]]] = None):
     if source: source = source.lower()
-    if source == 'lazyllm':
-        return make_shared_llm(base_model, False, prompt, token, stream, history=history)
-    else:
-        return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
-                                        api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
+    return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
+                                    api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
 
-
-@NodeConstructor.register('SharedLLM')
-def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
-                    stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
-                    history: Optional[List[List[str]]] = None):
-    if local:
-        llm = Engine().build_node(llm).func
-        if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
-        r = (VQA(llm._vqa.share(prompt=prompt, history=history), file_resource_id)
-             if file_resource_id else llm.share(prompt=prompt, history=history))
-    else:
-        assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
-        r = Engine().get_infra_handle(token, llm)
-        if prompt: r.prompt(prompt, history=history)
-    if stream is not None: r.stream = stream
-    return r
 
 @NodeConstructor.register('SharedModel')
-def make_shared_model(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
+def make_shared_model(llm: str, prompt: Optional[str] = None,
                       stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
                       history: Optional[List[List[str]]] = None, cls: str = "llm"):
     if file_resource_id: assert cls == 'vqa', 'file_resource_id is only supported in VQA'
-    if local:
-        model = Engine().build_node(llm).func
-    else:
-        assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
-        model = Engine().get_infra_handle(token, llm)
+    model = Engine().build_node(llm).func
     if stream is not None: model.stream = stream
     if cls == "vqa": return VQA(model, file_resource_id).share(prompt=prompt, history=history)
     elif cls == "tts": return TTS(model)
@@ -801,11 +766,8 @@ def make_online_llm(source: str = None, base_model: Optional[str] = None, prompt
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
                     history: Optional[List[List[str]]] = None, static_params: Optional[Dict[str, Any]] = None):
     if source: source = source.lower()
-    if source == 'lazyllm':
-        return make_shared_llm(base_model, False, prompt, token, stream, history=history)
-    else:
-        return lazyllm.OnlineChatModule(base_model, source, base_url, stream, api_key=api_key, secret_key=secret_key,
-                                        static_params=static_params or {}).prompt(prompt, history=history)
+    return lazyllm.OnlineChatModule(base_model, source, base_url, stream, api_key=api_key, secret_key=secret_key,
+                                    static_params=static_params or {}).prompt(prompt, history=history)
 
 
 class LLM(lazyllm.ModuleBase):
