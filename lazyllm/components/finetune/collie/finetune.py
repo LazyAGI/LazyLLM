@@ -77,8 +77,8 @@ class LogCallback(Callback):
             total_batch = trainer.engine.train_batch_size()
             item_per_second = total_batch / v
 
-            print((f"Epoch:{trainer.epoch_idx+1:02d} "
-                   f"Iter/Total:{trainer.batch_idx+1:04d}/{trainer.steps_per_epoch} "
+            print((f"Epoch:{trainer.epoch_idx + 1:02d} "
+                   f"Iter/Total:{trainer.batch_idx + 1:04d}/{trainer.steps_per_epoch} "
                    f"Time:{v:.3f} "
                    f"Items/s:{item_per_second:.3f} "
                    f"Cost:{total_time_str}/End:{remaining_time_str} "

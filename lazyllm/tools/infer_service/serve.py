@@ -1,6 +1,5 @@
 import os
 import time
-import uuid
 import asyncio
 import threading
 from datetime import datetime
@@ -13,8 +12,12 @@ from lazyllm.launcher import Status
 from lazyllm import FastapiApp as app
 from ..services import ServerBase
 
+DEFAULT_TOKEN = 'default_token'
+
 class JobDescription(BaseModel):
-    deploy_model: str = Field(default='qwen1.5-0.5b-chat')
+    service_name: str
+    model_name: str = Field(default='qwen1.5-0.5b-chat')
+    framework: str = Field(default='auto')
     num_gpus: int = Field(default=1)
 
 
@@ -40,7 +43,7 @@ class InferServer(ServerBase):
         # Ready to Infer
         if Status[status] == Status.Running and m._url:
             update['status'] = 'Ready'
-            update['url'] = m._url
+            update['endpoint'] = m._url
 
         # Some tasks cannot obtain the storage path when they are just started
         if not log_path:
@@ -126,24 +129,24 @@ class InferServer(ServerBase):
                 newest_file = path
         return newest_file
 
-    @app.post('/v1/deploy/jobs')
-    async def create_job(self, job: JobDescription, token: str = Header(None)):  # noqa B008
-        if not token:
-            raise HTTPException(status_code=401, detail='Invalid token')
-        # await self.authorize_current_user(token)
+    @app.post('/v1/inference_services')
+    async def create_job(self, job: JobDescription, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
-        # Build Job-ID:
+        if self._in_active_jobs(token, job.service_name):
+            raise HTTPException(status_code=400, detail='Service name already exists')
+
+        job_id = job.service_name
         create_time = datetime.now().strftime(self._time_format)
-        job_id = '-'.join(['inf', create_time, str(uuid.uuid4())[:5]])
 
         # Build checkpoint save dir:
         # - No-Env-Set: (work/path + infer_log) + token + job_id;
         # - Env-Set:    (infer_log_root)     + token + job_id;
         save_root = os.path.join(lazyllm.config['infer_log_root'], token, job_id)
         os.makedirs(save_root, exist_ok=True)
-        hypram = dict(launcher=lazyllm.launchers.remote(sync=False, ngpus=job.num_gpus), log_path=save_root)
-        m = lazyllm.TrainableModule(job.deploy_model).deploy_method((lazyllm.deploy.auto, hypram))
+        # wait 5 minutes for launch cmd
+        hypram = dict(launcher=lazyllm.launchers.remote(sync=False, ngpus=job.num_gpus, retry=30), log_path=save_root)
+        m = lazyllm.TrainableModule(job.model_name).deploy_method((lazyllm.deploy.auto, hypram))
 
         # Launch Deploy:
         thread = threading.Thread(target=m.start)
@@ -172,23 +175,24 @@ class InferServer(ServerBase):
             first_seen = None
         self._update_active_jobs(token, job_id, (m, thread))
         self._update_user_job_info(token, job_id, {
-            'job_id': job_id,
-            'base_model': job.deploy_model,
-            'created_at': create_time,
+            'lwsName': job_id,
             'status': status,
+            'endpoint': "unknown",
+            'service_name': job.service_name,
+            'model_name': job.model_name,
+            'created_at': create_time,
             'hyperparameters': hypram,
             'started_at': started_time,
             'log_path': log_path,
             'cost': None,
             'deploy_method': m._deploy_type.__name__,
-            'url': m._url,
             'first_cancelled_time': first_seen,
         })
 
-        return {'job_id': job_id, 'status': status}
+        return {'lwsName': job_id}
 
-    @app.post('/v1/deploy/jobs/{job_id}/cancel')
-    async def cancel_job(self, job_id: str, token: str = Header(None)):  # noqa B008
+    @app.delete('/v1/inference_services/{job_id}')
+    async def cancel_job(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         await self.authorize_current_user(token)
         if not self._in_active_jobs(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
@@ -213,33 +217,15 @@ class InferServer(ServerBase):
 
         return {'status': status}
 
-    @app.get('/v1/deploy/jobs')
-    async def list_jobs(self, token: str = Header(None)):  # noqa B008
+    @app.get('/v1/inference_services')
+    async def list_jobs(self, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
         server_running_dict = self._read_user_job_info(token)
-        save_root = os.path.join(lazyllm.config['infer_log_root'], token)
-        os.makedirs(save_root, exist_ok=True)
-        for job_id in os.listdir(save_root):
-            if job_id not in server_running_dict:
-                log_path = os.path.join(save_root, job_id)
-                creation_time = os.path.getctime(log_path)
-                formatted_time = datetime.fromtimestamp(creation_time).strftime(self._time_format)
-                server_running_dict[job_id] = {
-                    'job_id': job_id,
-                    'base_model': None,
-                    'created_at': formatted_time,
-                    'status': 'Cancelled',
-                    'hyperparameters': None,
-                    'log_path': self._get_log_path(log_path),
-                    'cost': None,
-                    'deploy_method': None,
-                    'url': None,
-                }
         return server_running_dict
 
-    @app.get('/v1/deploy/jobs/{job_id}')
-    async def get_job_info(self, job_id: str, token: str = Header(None)):  # noqa B008
+    @app.get('/v1/inference_services/{job_id}')
+    async def get_job_info(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
@@ -248,8 +234,8 @@ class InferServer(ServerBase):
 
         return self._read_user_job_info(token, job_id)
 
-    @app.get('/v1/deploy/jobs/{job_id}/events')
-    async def get_job_log(self, job_id: str, token: str = Header(None)):  # noqa B008
+    @app.get('/v1/inference_services/{job_id}/events')
+    async def get_job_log(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')

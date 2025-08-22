@@ -116,7 +116,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def _async_finetune(self, name: str, ngpus: int = 1, **kw):
         assert name and isinstance(name, str), 'Invalid name: {name}, expect a valid string'
         assert name not in self._launchers['manual'], 'Duplicate name: {name}'
-        self._launchers['manual'][name] = kw['launcher'] = launchers.remote(sync=False, ngpus=ngpus)
+        self._launchers['manual'][name] = kw['launcher'] = launchers.remote(sync=False, ngpus=ngpus, launch_type='train')
         self._set_file_name(name)
 
         def after_train(real_target_path):
@@ -277,6 +277,10 @@ class TrainableModule(UrlModule):
     def status(self, task_name: Optional[str] = None):
         launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
         return launcher.status
+
+    def log_path(self, task_name: Optional[str] = None):
+        launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
+        return launcher.log_path
 
     # modify default value to ''
     def prompt(self, prompt: Union[str, dict] = '', history: Optional[List[List[str]]] = None):

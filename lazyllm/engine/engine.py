@@ -131,22 +131,12 @@ class Engine(ABC):
 
     def subnodes(self, nodeid: str, recursive: bool = False):
         def _impl(nid, recursive):
+            if nid not in self._nodes:
+                return
             for id in self._nodes[nid].subitems:
                 yield id
                 if recursive: yield from self.subnodes(id, True)
         return list(_impl(nodeid, recursive))
-
-    @classmethod
-    @abstractmethod
-    def launch_localllm_train_service(self): pass
-
-    @classmethod
-    @abstractmethod
-    def launch_localllm_infer_service(self): pass
-
-    @classmethod
-    @abstractmethod
-    def get_infra_handle(self, token, mid) -> lazyllm.TrainableModule: pass
 
 
 class NodeConstructor(object):
@@ -321,17 +311,18 @@ def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
 
 
 def _build_pipeline(nodes):
-    if isinstance(nodes, list) and len(nodes) > 1:
-        return pipeline([Engine().build_node(node).func for node in nodes])
-    elif isinstance(nodes, list) and len(nodes) == 0:
-        return lazyllm.Identity()
+    if not isinstance(nodes, list): nodes = [nodes]
+    if isinstance(nodes, list) and len(nodes) > 0:
+        return make_graph(nodes, enable_server=False)
     else:
-        return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
-
+        return lazyllm.Identity()
 
 @NodeConstructor.register('Switch', subitems=['nodes:dict'])
-def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
-    with switch(judge_on_full_input=judge_on_full_input) as sw:
+def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]], conversion: Optional[str] = None):
+    if conversion is not None:
+        conversion = make_code(conversion)
+
+    with switch(judge_on_full_input=judge_on_full_input, conversion=conversion) as sw:
         for cond, cond_nodes in nodes.items():
             sw.case[cond::_build_pipeline(cond_nodes)]
     return sw
@@ -389,11 +380,8 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]],
     with IntentClassifier(Engine().build_node(base_model).func,
                           prompt=prompt, constrain=constrain, attention=attention) as ic:
         for cond, sub_nodes in nodes.items():
-            if isinstance(sub_nodes, list) and len(sub_nodes) > 1:
-                f = pipeline([Engine().build_node(node).func for node in sub_nodes])
-            else:
-                f = Engine().build_node(sub_nodes[0] if isinstance(sub_nodes, list) else sub_nodes).func
-            ic.case[cond::f]
+            if not isinstance(sub_nodes, list): sub_nodes = [sub_nodes]
+            ic.case[cond::make_graph(sub_nodes, enable_server=False)]
     return ic
 
 
@@ -754,39 +742,16 @@ def make_online_vqa(source: str = None, base_model: Optional[str] = None, prompt
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
                     history: Optional[List[List[str]]] = None):
     if source: source = source.lower()
-    if source == 'lazyllm':
-        return make_shared_llm(base_model, False, prompt, token, stream, history=history)
-    else:
-        return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
-                                        api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
+    return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
+                                    api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
 
-
-@NodeConstructor.register('SharedLLM')
-def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
-                    stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
-                    history: Optional[List[List[str]]] = None):
-    if local:
-        llm = Engine().build_node(llm).func
-        if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
-        r = (VQA(llm._vqa.share(prompt=prompt, history=history), file_resource_id)
-             if file_resource_id else llm.share(prompt=prompt, history=history))
-    else:
-        assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
-        r = Engine().get_infra_handle(token, llm)
-        if prompt: r.prompt(prompt, history=history)
-    if stream is not None: r.stream = stream
-    return r
 
 @NodeConstructor.register('SharedModel')
-def make_shared_model(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
+def make_shared_model(llm: str, prompt: Optional[str] = None,
                       stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
                       history: Optional[List[List[str]]] = None, cls: str = "llm"):
     if file_resource_id: assert cls == 'vqa', 'file_resource_id is only supported in VQA'
-    if local:
-        model = Engine().build_node(llm).func
-    else:
-        assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
-        model = Engine().get_infra_handle(token, llm)
+    model = Engine().build_node(llm).func
     if stream is not None: model.stream = stream
     if cls == "vqa": return VQA(model, file_resource_id).share(prompt=prompt, history=history)
     elif cls == "tts": return TTS(model)
@@ -801,11 +766,8 @@ def make_online_llm(source: str = None, base_model: Optional[str] = None, prompt
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
                     history: Optional[List[List[str]]] = None, static_params: Optional[Dict[str, Any]] = None):
     if source: source = source.lower()
-    if source == 'lazyllm':
-        return make_shared_llm(base_model, False, prompt, token, stream, history=history)
-    else:
-        return lazyllm.OnlineChatModule(base_model, source, base_url, stream, api_key=api_key, secret_key=secret_key,
-                                        static_params=static_params or {}).prompt(prompt, history=history)
+    return lazyllm.OnlineChatModule(base_model, source, base_url, stream, api_key=api_key, secret_key=secret_key,
+                                    static_params=static_params or {}).prompt(prompt, history=history)
 
 
 class LLM(lazyllm.ModuleBase):

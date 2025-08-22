@@ -52,8 +52,8 @@ class HttpRequest(ModuleBase):
         headers, params = self._process_api_key(headers, params)
         if isinstance(headers, dict) and headers.get("Content-Type") == "application/json":
             try:
-                body = json.loads(self._body) if isinstance(self._body, str) else self._body
-                body = {k: _map_input(v) for k, v in body.items()}
+                body = json.dumps(self._body) if isinstance(self._body, dict) else self._body
+                body = json.loads(_map_input(body))
 
                 http_response = httpx.request(method=self._method, url=url, headers=headers,
                                               params=params, json=body, timeout=self._timeout,

@@ -4924,28 +4924,32 @@ add_example('HttpRequest', ['''\
 add_chinese_doc('JobDescription', '''\
 模型部署任务描述的数据结构。
 
-用于创建模型推理任务时指定部署配置，包括模型名称与所需 GPU 数量。
+用于创建模型推理任务时指定部署配置，包括服务名称、模型名称、框架类型与所需 GPU 数量。
 
 Args:
-    deploy_model (str): 要部署的模型名称，默认为 "qwen1.5-0.5b-chat"。
+    service_name (str): 服务名称，必需参数。
+    model_name (str): 要部署的模型名称，默认为 "qwen1.5-0.5b-chat"。
+    framework (str): 推理框架类型，默认为 "auto"。
     num_gpus (int): 所需的 GPU 数量，默认为 1。
 ''')
 
 add_english_doc('JobDescription', '''\
 Model deployment job description schema.
 
-Used to specify the configuration for creating a model inference job, including model name and GPU requirements.
+Used to specify the configuration for creating a model inference job, including service name, model name, framework type and GPU requirements.
 
 Args:
-    deploy_model (str): The model to be deployed. Default is "qwen1.5-0.5b-chat".
+    service_name (str): Service name, required parameter.
+    model_name (str): The model to be deployed. Default is "qwen1.5-0.5b-chat".
+    framework (str): Inference framework type. Default is "auto".
     num_gpus (int): Number of GPUs required for deployment. Default is 1.
 ''')
 
 add_example('JobDescription', ['''\
 >>> from lazyllm.components import JobDescription
->>> job = JobDescription(deploy_model="deepseek-coder", num_gpus=2)
+>>> job = JobDescription(service_name="my-service", model_name="deepseek-coder", framework="vllm", num_gpus=2)
 >>> print(job.dict())
-... {'deploy_model': 'deepseek-coder', 'num_gpus': 2}
+... {'service_name': 'my-service', 'model_name': 'deepseek-coder', 'framework': 'vllm', 'num_gpus': 2}
 '''])
 
 
