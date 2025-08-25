@@ -2,7 +2,7 @@ import json
 import os
 import re
 import requests
-from typing import Tuple, List, Any, Dict
+from typing import Tuple, List, Any, Dict, Union
 from urllib.parse import urljoin
 import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
@@ -307,10 +307,10 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
                  api_key: str = None):
         super().__init__("QWEN", embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name)
 
-    def _encapsulated_data(self, text: str, **kwargs) -> Dict[str, str]:
+    def _encapsulated_data(self, text: Union[List, str], **kwargs) -> Dict[str, str]:
         json_data = {
             "input": {
-                "texts": [text]
+                "texts": [text] if isinstance(text, str) else text
             },
             "model": self._embed_model_name
         }
@@ -319,8 +319,11 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
 
         return json_data
 
-    def _parse_response(self, response: Dict[str, Any]) -> List[float]:
-        return response['output']['embeddings'][0]['embedding']
+    def _parse_response(self, response: Dict[str, Any], input: Union[List, str]) -> List[float]:
+        if isinstance(input, str):
+            return response['output']['embeddings'][0]['embedding']
+        else:
+            return [res['embedding'] for res in response['output']['embeddings']]        
 
 
 class QwenReranking(OnlineEmbeddingModuleBase):
@@ -352,7 +355,7 @@ class QwenReranking(OnlineEmbeddingModuleBase):
 
         return json_data
 
-    def _parse_response(self, response: Dict[str, Any]) -> List[float]:
+    def _parse_response(self, response: Dict[str, Any], input: Union[List, str]) -> List[float]:
         results = response['output']['results']
         return [(result["index"], result["relevance_score"]) for result in results]
 

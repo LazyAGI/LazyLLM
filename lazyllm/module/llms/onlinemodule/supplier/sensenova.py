@@ -2,7 +2,7 @@ import json
 import time
 import os
 import requests
-from typing import Tuple, Any, Dict, List
+from typing import Tuple, Any, Dict, List, Union
 from urllib.parse import urljoin
 import uuid
 
@@ -239,9 +239,9 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
         api_key = self._get_api_key(api_key, secret_key)
         super().__init__("SENSENOVA", embed_url, api_key, embed_model_name)
 
-    def _encapsulated_data(self, text: str, **kwargs) -> Dict[str, str]:
+    def _encapsulated_data(self, text: Union[List, str], **kwargs) -> Dict[str, str]:
         json_data = {
-            "input": [text],
+            "input": [text] if isinstance(text, str) else text,
             "model": self._embed_model_name
         }
         if len(kwargs) > 0:
@@ -249,5 +249,8 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
 
         return json_data
 
-    def _parse_response(self, response: Dict[str, Any]) -> List[float]:
-        return response['embeddings'][0]['embedding']
+    def _parse_response(self, response: Dict[str, Any], input: Union[List, str]) -> List[float]:
+        if isinstance(input, str):
+            return response['embeddings'][0]['embedding']
+        else:
+            return [res['embedding'] for res in response['embeddings']]        

@@ -60,7 +60,7 @@ class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
 
         return json_data
 
-    def _parse_response(self, response: Dict[str, Any]) -> List[float]:
+    def _parse_response(self, response: Dict[str, Any], input: Union[List, str]) -> List[float]:
         # 豆包多模态Embedding返回融合的单个embedding
         return response['data']['embedding']
 

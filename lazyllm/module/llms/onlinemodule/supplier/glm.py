@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import requests
-from typing import Tuple, List, Any, Dict
+from typing import Tuple, List, Any, Dict, Union
 from urllib.parse import urljoin
 import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
@@ -262,7 +262,7 @@ class GLMReranking(OnlineEmbeddingModuleBase):
 
         return json_data
 
-    def _parse_response(self, response: Dict[str, Any]) -> List[float]:
+    def _parse_response(self, response: Dict[str, Any], input: Union[List, str]) -> List[float]:
         return [(result["index"], result["relevance_score"]) for result in response['results']]
 
 
