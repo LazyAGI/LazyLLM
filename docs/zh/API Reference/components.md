@@ -42,6 +42,7 @@
 ::: lazyllm.components.deploy.Vllm
     options:
       heading_level: 3
+      members: [extract_result]
 
 ::: lazyllm.components.deploy.LMDeploy
     options:
@@ -171,6 +172,7 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
 ::: lazyllm.components.deploy.speech_to_text.sense_voice.SenseVoice
     options:
       heading_level: 4
+      members: [load_stt, rebuild]
 ---
 
 ## ModelManager

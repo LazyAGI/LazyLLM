@@ -810,60 +810,85 @@ Raises:
 
 # Deploy-Vllm
 add_chinese_doc('deploy.Vllm', '''\
-此类是 ``LazyLLMDeployBase`` 的子类，基于 [VLLM](https://github.com/vllm-project/vllm) 框架提供的推理能力，用于对大语言模型进行推理。
+此类是 ``LazyLLMDeployBase`` 的子类，基于 [VLLM](https://github.com/vllm-project/vllm) 框架提供的推理能力，用于大语言模型的部署与推理。
 
 Args:
     trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
-    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
+    launcher (lazyllm.launcher): 模型启动器，默认为 ``launchers.remote(ngpus=1)``。
     log_path (str): 日志保存路径，若为 ``None`` 则不保存日志。
-    openai_api(bool):是否调用openai接口,默认为``None``。
-    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
+    openai_api (bool): 是否使用 OpenAI API 接口启动 VLLM 服务，默认为 ``False``。
+    kw: 关键字参数，用于更新默认的部署参数。除支持的关键字参数外，不允许传入额外参数。
 
-此类的关键字参数及其默认值如下：
+此类支持的关键字参数及其默认值如下：
 
 Keyword Args: 
-    tensor-parallel-size (int): 张量并行参数，默认为 ``1``。
-    dtype (str): 模型权重和激活值的数据类型，默认为 ``auto``。另外可选项还有： ``half``, ``float16``, ``bfloat16``, ``float``, ``float32``。
-    kv-cache-dtype (str): 看kv缓存的存储类型，默认为 ``auto``。另外可选的还有：``fp8``, ``fp8_e5m2``, ``fp8_e4m3``。
-    device (str): VLLM所支持的后端硬件类型，默认为 ``auto``。另外可选的还有：``cuda``, ``neuron``, ``cpu``。
-    block-size (int): 设置 token块的大小，默认为 ``16``。
-    port (int): 服务的端口号，默认为 ``auto``。
-    host (str): 服务的IP地址，默认为 ``0.0.0.0``。
+    tensor-parallel-size (int): 张量并行大小，默认为 ``1``。
+    dtype (str): 模型权重和激活值的数据类型，默认为 ``auto``。可选：``half``、``float16``、``bfloat16``、``float``、``float32``。
+    kv-cache-dtype (str): KV 缓存的数据类型，默认为 ``auto``。可选：``fp8``、``fp8_e5m2``、``fp8_e4m3``。
+    device (str): VLLM 支持的硬件类型，默认为 ``auto``。可选：``cuda``、``neuron``、``cpu``。
+    block-size (int): token 块大小，默认为 ``16``。
+    port (int | str): 服务端口号，默认为 ``auto``，即随机分配。
+    host (str): 服务绑定的 IP 地址，默认为 ``0.0.0.0``。
     seed (int): 随机数种子，默认为 ``0``。
-    tokenizer_mode (str): tokenizer的加载模式，默认为 ``auto``。
-    max-num-seqs (int): 推理引擎最大的并行请求数， 默认为 ``256``。
+    tokenizer_mode (str): Tokenizer 加载模式，默认为 ``auto``。
+    max-num-seqs (int): 推理引擎支持的最大并行请求数，默认为 ``256``。
+    pipeline-parallel-size (int): 流水线并行大小，默认为 ``1``。
+    max-num-batched-tokens (int): 最大批处理 token 数，默认为 ``64000``。
 
 ''')
 
 add_english_doc('deploy.Vllm', '''\
-This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the [VLLM](https://github.com/vllm-project/vllm) framework, used for inference with large language models.
+This class is a subclass of ``LazyLLMDeployBase``, leveraging the [VLLM](https://github.com/vllm-project/vllm) framework to deploy and run inference on large language models.
 
 Args:
-    trust_remote_code (bool): Whether to allow loading of model code from remote servers, default is ``True``.
-    launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1)``.
-    log_path (str): Path to save logs. If ``None``, logs will not be saved.
-    openai_api (bool): Whether to call the OpenAI API. Default is ``None``.
-    kw: Keyword arguments used to update default training parameters. Note that not any additional keyword arguments can be specified here.
+    trust_remote_code (bool): Whether to allow loading of model code from remote sources. Default is ``True``.
+    launcher (lazyllm.launcher): The launcher used to start the model. Default is ``launchers.remote(ngpus=1)``.
+    log_path (str): Path to store logs. If ``None``, logs will not be saved.
+    openai_api (bool): Whether to start VLLM with OpenAI-compatible API. Default is ``False``.
+    kw: Keyword arguments used to override default deployment parameters. No extra arguments beyond the supported ones are allowed.
 
-The keyword arguments and their default values for this class are as follows:
+The supported keyword arguments and their default values are as follows:
 
 Keyword Args: 
-    tensor-parallel-size (int): Tensor parallelism parameter, default is ``1``.
-    dtype (str): Data type for model weights and activations, default is ``auto``. Other options include: ``half``, ``float16``, ``bfloat16``, ``float``, ``float32``.
-    kv-cache-dtype (str): Data type for the key-value cache storage, default is ``auto``. Other options include: ``fp8``, ``fp8_e5m2``, ``fp8_e4m3``.
-    device (str): Backend hardware type supported by VLLM, default is ``auto``. Other options include: ``cuda``, ``neuron``, ``cpu``.
-    block-size (int): Sets the size of the token block, default is ``16``.
-    port (int): Service port number, default is ``auto``.
-    host (str): Service IP address, default is ``0.0.0.0``.
-    seed (int): Random number seed, default is ``0``.
-    tokenizer_mode (str): Tokenizer loading mode, default is ``auto``.
-    max-num-seqs (int): Maximum number of parallel requests for the inference engine, default is ``256``.
-
+    tensor-parallel-size (int): Tensor parallelism size. Default is ``1``.
+    dtype (str): Data type for model weights and activations. Default is ``auto``. Options include: ``half``, ``float16``, ``bfloat16``, ``float``, ``float32``.
+    kv-cache-dtype (str): Data type for KV cache. Default is ``auto``. Options include: ``fp8``, ``fp8_e5m2``, ``fp8_e4m3``.
+    device (str): Backend device type supported by VLLM. Default is ``auto``. Options include: ``cuda``, ``neuron``, ``cpu``.
+    block-size (int): Token block size. Default is ``16``.
+    port (int | str): Service port number. Default is ``auto`` (random assignment).
+    host (str): Service binding IP address. Default is ``0.0.0.0``.
+    seed (int): Random seed. Default is ``0``.
+    tokenizer_mode (str): Tokenizer loading mode. Default is ``auto``.
+    max-num-seqs (int): Maximum number of concurrent requests supported by the inference engine. Default is ``256``.
+    pipeline-parallel-size (int): Pipeline parallelism size. Default is ``1``.
+    max-num-batched-tokens (int): Maximum number of batched tokens. Default is ``64000``.
 ''')
 
 add_example('deploy.Vllm', '''\
 >>> from lazyllm import deploy
 >>> infer = deploy.vllm()
+''')
+
+add_chinese_doc('deploy.Vllm.extract_result', '''\
+从 VLLM 接口返回的 JSON 字符串中提取推理结果。
+
+Args:
+    x (str): VLLM 服务返回的原始 JSON 字符串。
+    inputs (Any): 输入参数（此处未使用，保留接口一致性）。
+
+**Returns:**\n
+- str: 模型生成的文本结果。
+''')
+
+add_english_doc('deploy.Vllm.extract_result', '''\
+Extracts the inference result from the JSON string returned by the VLLM service.
+
+Args:
+    x (str): Raw JSON string returned from the VLLM service.
+    inputs (Any): Input arguments (not used here, kept for interface consistency).
+
+**Returns:**\n
+- str: The generated text result from the model.
 ''')
 
 # Deploy-EmbeddingDeploy
@@ -999,14 +1024,16 @@ Args:
 
 add_chinese_doc('deploy.embed.LazyHuggingFaceRerank.load_reranker', '''\
 加载重排序模型。  
-该方法会使用 `sentence_transformers.CrossEncoder` 从指定的 `base_rerank` 路径或名称加载模型，  
-通常在延迟加载模式下由首次调用实例时自动触发。
+
+该方法会基于 `self.base_rerank` 初始化一个 `sentence_transformers.CrossEncoder` 实例，  
+并赋值给类属性 `self.reranker`，用于后续的重排序任务。  
 ''')
 
 add_english_doc('deploy.embed.LazyHuggingFaceRerank.load_reranker', '''\
 Load the rerank model.  
-Uses `sentence_transformers.CrossEncoder` to load the model from the specified `base_rerank` path or name.  
-Typically triggered automatically on first call when lazy loading is enabled.
+
+This method initializes a `sentence_transformers.CrossEncoder` instance using `self.base_rerank`  
+and assigns it to the class attribute `self.reranker` for subsequent reranking tasks.  
 ''')
 
 add_chinese_doc('deploy.embed.LazyHuggingFaceRerank.rebuild', '''\
@@ -1816,6 +1843,81 @@ add_example('ModelManager', '''\
 >>> from lazyllm.components import ModelManager
 >>> downloader = ModelManager(model_source='modelscope')
 >>> downloader.download('chatglm3-6b')
+''')
+
+# Configure-Auto
+add_chinese_doc('auto.configure.core.Configurations', '''\
+配置管理类，用于管理一组规则（Rule），支持根据规则解析表头和数据值，并进行基于关键字段的查询。
+
+Args:
+    rules (List[Rule]): 规则列表，每个规则名称必须唯一。用于定义数据解析、类型转换及索引映射。
+''')
+
+add_english_doc('auto.configure.core.Configurations', '''\
+Configuration management class to handle a set of rules (Rule), supporting parsing of headers and data values, and lookup based on key fields.
+
+Args:
+    rules (List[Rule]): List of rules, each rule name must be unique. Defines data parsing, type conversion, and index mapping.
+''')
+
+add_chinese_doc('auto.configure.core.Configurations.parse_header', '''\
+解析表头，根据给定名称列表匹配已有规则，并确定关键规则和有序规则列表。
+
+Args:
+    names (List[str]): 表头名称列表，每个名称必须对应已有规则。
+
+**Returns:**\n
+- self (Configurations): 返回自身实例，便于链式调用
+''')
+
+add_english_doc('auto.configure.core.Configurations.parse_header', '''\
+Parse the header, match existing rules according to the given list of names, and determine key rules and the ordered rules list.
+
+Args:
+    names (List[str]): List of header names, each must correspond to an existing rule.
+
+**Returns:**\n
+- self (Configurations): Returns the instance itself for chaining
+''')
+
+add_chinese_doc('auto.configure.core.Configurations.parse_values', '''\
+解析数据值列表，将每行字符串值转换为对应规则的值，并生成按关键字段索引的有序值字典。
+
+Args:
+    values (Iterator[List[str]]): 数据值迭代器，每行是与表头对应的字符串列表。
+
+**Returns:**\n
+- self (Configurations): 返回自身实例，便于链式调用
+''')
+
+add_english_doc('auto.configure.core.Configurations.parse_values', '''\
+Parse the list of data values, convert each row of string values to the corresponding rule values, and generate an ordered values dictionary indexed by key fields.
+
+Args:
+    values (Iterator[List[str]]): Iterator of data rows, each row is a list of strings corresponding to the header.
+
+**Returns:**\n
+- self (Configurations): Returns the instance itself for chaining
+''')
+
+add_chinese_doc('auto.configure.core.Configurations.lookup', '''\
+根据关键字段的值进行查询，返回匹配的有序值列表，每个元素为字典形式映射规则名称与对应值。
+
+Args:
+    keys (List[Union[str, Any]]): 用于查询的关键字段值字典，键为规则名称，值为对应值。
+
+**Returns:**\n
+- List[Dict[str, Any]]: 匹配的结果列表，每个元素为规则名称到对应值的字典
+''')
+
+add_english_doc('auto.configure.core.Configurations.lookup', '''\
+Lookup based on the values of key fields, returning a list of matched ordered values, each element is a dictionary mapping rule names to their corresponding values.
+
+Args:
+    keys (List[Union[str, Any]]): Dictionary of key field values used for lookup, with rule names as keys and corresponding values.
+
+**Returns:**\n
+- List[Dict[str, Any]]: List of matched results, each element is a dictionary mapping rule names to values
 ''')
 
 add_chinese_doc('LLMType', '''\
@@ -3006,120 +3108,84 @@ add_example('SenseVoiceDeploy', ['''\
 ... xxxxxxxxxxxxxxxx
 '''])
 
-add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice', '''\
-SenseVoice(base_path, source=None, init=False)
+add_chinese_doc('deploy.speech_to_text.sense_voice.SenseVoice', '''\
+SenseVoice 类，封装了基于 FunASR 的语音转文本模型加载与调用逻辑。  
+支持懒加载、自动模型下载，输入可为字符串路径、URL 或包含音频的字典。  
 
-A speech-to-text wrapper using FunASR models for lazy initialization and audio transcription.
-This class supports automatic model downloading, safe initialization, and inference from audio paths or URLs.
-
-Parameters:
-- base_path (str): Path or model identifier to download the STT model.
-- source (str, optional): Model source name; defaults to `lazyllm.config['model_source']`.
-- init (bool): Whether to initialize the model immediately on creation.
+Args:
+    base_path (str): 模型路径或标识符，将通过 ModelManager 下载到本地。  
+    source (Optional[str]): 模型来源，若未指定则使用 ``lazyllm.config['model_source']``。  
+    init (bool): 是否在初始化时立即加载模型，默认为 ``False``。  
 
 Attributes:
-- base_path (str): Final resolved path of the model after download.
-- model: Loaded FunASR model instance.
-- init_flag: A lazy flag used to ensure model is only loaded once.
-
-Methods:
-- __call__(string: str | dict) -> str:
-    Transcribes the input audio file or URL to text. Accepts base64-encoded content, file paths, or URLs.
-- load_stt():
-    Loads the FunASR speech-to-text model and related VAD (Voice Activity Detection).
-- rebuild(base_path, init):
-    Rebuilds the class instance (used for serialization).
-- __reduce__():
-    Supports pickling by ensuring proper lazy-loading on deserialization.
+    base_path (str): 下载或解析后的模型路径。  
+    model (Optional[funasr.AutoModel]): FunASR 语音识别模型实例，初始化后可用。  
+    init_flag: 用于懒加载的标志，确保模型只加载一次。  
 ''')
 
-add_chinese_doc('deploy.speech_to_text.sense_voice.SenseVoice', '''\
-SenseVoice(base_path, source=None, init=False)
+add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice', '''\
+The SenseVoice class encapsulates FunASR-based speech-to-text model loading and invocation.  
+It supports lazy initialization, automatic model downloading, and accepts string paths, URLs, or dicts containing audio.  
 
-使用 FunASR 模型进行语音转文本的包装类，支持懒加载与自动模型下载。
-支持从音频路径、URL 或 base64 编码音频进行转写，适用于延迟初始化和高效部署。
+Args:
+    base_path (str): Model path or identifier, downloaded locally via ModelManager.  
+    source (Optional[str]): Model source, defaults to ``lazyllm.config['model_source']`` if not specified.  
+    init (bool): Whether to load the model immediately during initialization. Defaults to ``False``.  
 
-参数：
-- base_path (str): 用于下载语音识别模型的路径或模型标识。
-- source (str, 可选): 模型来源，默认使用 `lazyllm.config['model_source']`。
-- init (bool): 是否在初始化时立即加载模型。
-
-属性：
-- base_path (str): 下载后模型的实际路径。
-- model: 加载的 FunASR 模型对象。
-- init_flag: 用于懒加载的初始化标志，保证模型只加载一次。
-
-方法：
-- __call__(string: str | dict) -> str:
-    将输入的音频文件或 URL 转换为文本。支持 base64 编码、文件路径或 URL 输入。
-- load_stt():
-    加载 FunASR 的语音识别模型和语音活动检测（VAD）模型。
-- rebuild(base_path, init):
-    用于重新构造类实例（常用于序列化）。
-- __reduce__():
-    实现 pickling 支持，确保在反序列化时正确懒加载。
+Attributes:
+    base_path (str): Resolved local path of the downloaded model.  
+    model (Optional[funasr.AutoModel]): Instance of the FunASR speech recognition model, available after initialization.  
+    init_flag: A flag used for lazy loading, ensuring the model is loaded only once.  
 ''')
 
 add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice.load_stt', '''\
-load_stt()
+Initializes and loads the FunASR speech-to-text model. Supports Huawei NPU acceleration if `torch_npu` is available.
 
-Loads the speech-to-text model using FunASR with optional support for Huawei NPU via `torch_npu`.
+Key configurations:
+- Uses `fsmn-vad` for voice activity detection (VAD), supporting long utterances.
+- Maximum single segment duration is set to 30 seconds.
+- Default inference device is `cuda:0` (GPU).
 
-The method initializes the model with the following characteristics:
-- Uses `fsmn-vad` for voice activity detection with long utterance support.
-- Sets maximum single segment time to 30 seconds.
-- Selects `cuda:0` as the default inference device.
-
-The model is stored in `self.model` and will be used to transcribe audio input.
+The loaded model is assigned to `self.model` for subsequent audio transcription.
 
 Note:
-If `torch_npu` is available in the environment, the function attempts to load it for potential Huawei Ascend acceleration.
+- If the environment has `torch_npu` installed, the method will import it to enable Ascend NPU acceleration.
 ''')
 
 add_chinese_doc('deploy.speech_to_text.sense_voice.SenseVoice.load_stt', '''\
-load_stt()
+初始化并加载 FunASR 语音转文本模型，如果存在 `torch_npu` 则支持华为 NPU 加速。
 
-使用 FunASR 加载语音转文本模型，支持华为 NPU（如存在 `torch_npu`）。
+主要配置：
+- 使用 `fsmn-vad` 进行语音活动检测（VAD），支持长语音段。
+- 单段语音最大持续时间为 30 秒。
+- 默认推理设备为 `cuda:0`（GPU）。
 
-此方法将初始化模型，包含以下设置：
-- 使用 `fsmn-vad` 进行语音活动检测（VAD），支持最长 30 秒的单段语音。
-- 设置推理设备为 `cuda:0`（默认使用 GPU）。
-- 将模型实例保存在 `self.model` 中，用于后续音频转写。
+加载的模型将保存在 `self.model` 中，用于后续音频转写。
 
 注意：
-如果当前环境中存在 `torch_npu`，函数将自动导入以支持华为昇腾设备加速。
-''')
-
-add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice.rebuild', '''\
-rebuild(base_path: str, init: bool) -> SenseVoice
-
-Class method used to reconstruct a `SenseVoice` instance during deserialization (e.g., when using `cloudpickle`).
-
-Parameters:
-- base_path (str): Path to the speech-to-text model.
-- init (bool): Whether to immediately initialize and load the model upon creation.
-
-Returns:
-- A new instance of `SenseVoice` with the specified configuration.
-
-Note:
-This method is internally used to support model serialization and multiprocessing compatibility.
+- 如果当前环境中存在 `torch_npu`，函数会导入以支持昇腾 NPU 加速。
 ''')
 
 add_chinese_doc('deploy.speech_to_text.sense_voice.SenseVoice.rebuild', '''\
-rebuild(base_path: str, init: bool) -> SenseVoice
+类方法，用于在反序列化过程中重新构建 `SenseVoice` 实例（例如使用 `cloudpickle`）。  
 
-该类方法用于反序列化（如 `cloudpickle`）过程中重新构建 `SenseVoice` 实例。
+Args:
+    base_path (str): 语音识别模型路径。  
+    init (bool): 实例化时是否立即初始化并加载模型。
 
-参数：
-- base_path (str)：语音识别模型的路径。
-- init (bool)：是否在实例化时立即加载模型。
+**Returns:**\n
+- SenseVoice: 返回一个新的 `SenseVoice` 实例，用于支持序列化/多进程兼容。
+''')
 
-返回：
-- 一个新的 `SenseVoice` 实例。
+add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice.rebuild', '''\
+Class method to reconstruct a `SenseVoice` instance during deserialization (e.g., with `cloudpickle`).  
 
-说明：
-该方法主要用于支持对象的序列化与多进程环境下的兼容重建操作。
+Args:
+    base_path (str): Path to the speech-to-text model.  
+    init (bool): Whether to initialize and load the model upon instantiation.
+
+**Returns:**\n
+- SenseVoice: A new `SenseVoice` instance, used for serialization/multiprocessing compatibility.
 ''')
 
 add_english_doc('TTSDeploy', '''\

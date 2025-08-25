@@ -10,6 +10,15 @@
       - start
       - restart
       - update
+      - stream_output
+      - used_by
+      - register_hook
+      - unregister_hook
+      - clear_hooks
+      - update_server
+      - wait
+      - stop
+      - for_each
 
 ::: lazyllm.module.servermodule.LLMBase
     options:
@@ -47,6 +56,8 @@
       - start
       - restart
       - evalset
+      - wait
+      - stop
 
 ::: lazyllm.module.AutoModel
     options:
@@ -61,6 +72,10 @@
     exclude-members:
 
 ::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoModule
+    members:
+    exclude-members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultiModal
     members:
     exclude-members:
 
@@ -83,6 +98,26 @@
     exclude-members: forward
 
 ::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoEmbedding
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultimodalEmbedding
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMTextToImageModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenTextToImageModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.kimi.KimiModule
     options:
       members:
 

@@ -8,26 +8,47 @@ add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.module
 add_example = functools.partial(utils.add_example, module=lazyllm.module)
 
 add_chinese_doc('ModuleBase', '''\
-Module是LazyLLM中的顶层组件，具备训练、部署、推理和评测四项关键能力，每个模块可以选择实现其中的部分或者全部的能力，每项能力都可以由一到多个Component组成。
-ModuleBase本身不可以直接实例化，继承并实现 ``forward`` 函数的子类可以作为一个仿函数来使用。
-类似pytorch的Moudule，当一个Module A持有了另一个Module B的实例作为成员变量时，会自动加入到submodule中。
+ModuleBase 是 LazyLLM 的核心基类，定义了所有模块的统一接口和基础能力。  
+它抽象了模块的训练、部署、推理和评测逻辑，并提供了子模块管理、钩子注册、参数传递和递归更新等机制。  
+用户自定义的模块需要继承 ModuleBase，并实现 ``forward`` 方法来定义具体的推理逻辑。  
 
-如果你需要以下的能力，请让你自定义的类继承自ModuleBase:\n
-1. 组合训练、部署、推理和评测的部分或全部能力，例如Embedding模型需要训练和推理\n
-2. 持有的成员变量具备训练、部署和评测的部分或全部能力，并且想通过Module的根节点的 ``start``,  ``update``, ``eval`` 等方法对其持有的成员进行训练、部署和评测时。\n
-3. 将用户设置的参数从最外层直接传到你自定义的模块中（参考Tools.webpages.WebModule）\n
-4. 希望能被参数网格搜索模块使用（参考TrialModule）
+功能特性:
+    - 统一管理子模块 (submodules)，自动追踪被持有的 ModuleBase 实例。
+    - 支持 Option 类型的超参数设置，方便网格搜索与自动调参。
+    - 提供钩子 (hook) 机制，可在调用前后执行自定义逻辑。
+    - 封装训练 (train)、服务部署 (server)、评测 (eval) 的更新流程。
+    - 支持 evalset 的加载与自动并行推理评测。
+
+Args:
+    return_trace (bool): 是否将推理结果写入 trace 队列，用于调试和追踪。默认为 ``False``。
+
+使用场景:
+    1. 当你需要组合训练、部署、推理和评测中的部分或全部能力时，例如一个 Embedding 模型需要同时训练与推理。
+    2. 当你希望通过根模块调用 ``start``、``update``、``eval`` 等方法，递归管理其持有的子模块。
+    3. 当你希望用户参数从外层模块自动传递到内部实现（参考 WebModule）。
+    4. 当你希望自定义模块支持参数网格搜索（参考 TrialModule）。
 ''')
 
 add_english_doc('ModuleBase', '''\
-Module is the top-level component in LazyLLM, possessing four key capabilities: training, deployment, inference, and evaluation. Each module can choose to implement some or all of these capabilities, and each capability can be composed of one or more components.
-ModuleBase itself cannot be instantiated directly; subclasses that inherit and implement the forward function can be used as a functor.
-Similar to PyTorch's Module, when a Module A holds an instance of another Module B as a member variable, B will be automatically added to A's submodules.
-If you need the following capabilities, please have your custom class inherit from ModuleBase:\n
-1. Combine some or all of the training, deployment, inference, and evaluation capabilities. For example, an Embedding model requires training and inference.\n
-2. If you want the member variables to possess some or all of the capabilities for training, deployment, and evaluation, and you want to train, deploy, and evaluate these members through the start, update, eval, and other methods of the Module's root node.\n
-3. Pass user-set parameters directly to your custom module from the outermost layer (refer to WebModule).\n
-4. The desire for it to be usable by the parameter grid search module (refer to TrialModule).
+ModuleBase is the core base class in LazyLLM, defining the common interface and fundamental capabilities for all modules.  
+It abstracts training, deployment, inference, and evaluation logic, while also providing mechanisms for submodule management, hook registration, parameter passing, and recursive updates.  
+Custom modules should inherit from ModuleBase and implement the ``forward`` method to define specific inference logic.  
+
+Key Features:
+    - Unified management of submodules, automatically tracking held ModuleBase instances.
+    - Support for Option type hyperparameters, enabling grid search and automated tuning.
+    - Hook system that allows executing custom logic before and after calls.
+    - Encapsulated update pipeline covering training, server deployment, and evaluation.
+    - Built-in evalset loading and parallel inference evaluation.
+
+Args:
+    return_trace (bool): Whether to write inference results into the trace queue for debugging and tracking. Default is ``False``.
+
+Use Cases:
+    1. When combining some or all of training, deployment, inference, and evaluation capabilities, e.g., an embedding model requiring both training and inference.
+    2. When you want to recursively manage submodules through root-level methods such as ``start``, ``update``, and ``eval``.
+    3. When you want user parameters to be automatically propagated from outer modules to inner implementations (see WebModule).
+    4. When you want the module to support parameter grid search (see TrialModule).
 ''')
 
 add_example('ModuleBase', '''\
@@ -48,30 +69,128 @@ add_example('ModuleBase', '''\
 [<Module type=Module>, <Module type=Module>]
 ''')
 
+add_chinese_doc('ModuleBase.stream_output', '''\
+上下文管理器，用于在推理或执行过程中进行流式输出。  
+当提供字典类型的 ``stream_output`` 时，可指定输出前缀和后缀，以及对应颜色。
+
+Args:
+    stream_output (Optional[Union[bool, Dict]]): 流式输出配置。
+        - 如果为布尔值 True，则开启默认流式输出。
+        - 如果为字典，可包含以下键：
+            - 'prefix' (str): 输出前缀文本。
+            - 'prefix_color' (str, optional): 前缀颜色。
+            - 'suffix' (str): 输出后缀文本。
+            - 'suffix_color' (str, optional): 后缀颜色。
+''')
+
+add_english_doc('ModuleBase.stream_output', '''\
+Context manager for streaming output during inference or execution.  
+When a dictionary is provided to ``stream_output``, a prefix and suffix can be specified along with optional colors.
+
+Args:
+    stream_output (Optional[Union[bool, Dict]]): Configuration for streaming output.
+        - If True, enables default streaming output.
+        - If a dictionary, may include:
+            - 'prefix' (str): Text to output at the beginning.
+            - 'prefix_color' (str, optional): Color of the prefix.
+            - 'suffix' (str): Text to output at the end.
+            - 'suffix_color' (str, optional): Color of the suffix.
+''')
+
+add_chinese_doc('ModuleBase.used_by', '''\
+设置当前模块被哪个模块使用，用于标记模块的调用关系。  
+可链式调用，返回模块自身。
+
+Args:
+    module_id (str): 调用该模块的上层模块的唯一 ID。
+
+**Returns:**\n
+- ModuleBase: 返回模块自身，用于链式调用。
+''')
+
+add_english_doc('ModuleBase.used_by', '''\
+Mark which module is using the current module, indicating the calling relationship.  
+Supports chaining by returning the module itself.
+
+Args:
+    module_id (str): Unique ID of the parent module that uses this module.
+
+**Returns:**\n
+- ModuleBase: Returns the module itself for method chaining.
+''')
+
 add_chinese_doc('ModuleBase.forward', '''\
-定义了每次执行的计算步骤，ModuleBase的所有的子类都需要重写这个函数。
+前向计算接口，需要子类实现。  
+该方法定义了模块接收输入并返回输出的逻辑，是模块作为仿函数的核心函数。
+
+Args:
+    *args: 可变位置参数，子类可根据实际需求定义输入。
+    **kw: 可变关键字参数，子类可根据实际需求定义输入。
 ''')
 
 add_english_doc('ModuleBase.forward', '''\
-Define computation steps executed each time, all subclasses of ModuleBase need to override.
+Forward computation interface that must be implemented by subclasses.  
+This method defines the logic for receiving inputs and returning outputs, and is the core function of the module as a functor.
+
+Args:
+    *args: Variable positional arguments, subclass can define the input as needed.
+    **kw: Variable keyword arguments, subclass can define the input as needed.
 ''')
 
-add_example('ModuleBase.forward', '''\
->>> import lazyllm
->>> class MyModule(lazyllm.module.ModuleBase):
-...     def forward(self, input):
-...         return input + 1
-... 
->>> MyModule()(1)
-2   
+add_chinese_doc('ModuleBase.register_hook', '''\
+注册一个钩子（Hook），在模块调用时执行特定逻辑。  
+钩子需要继承自 ``LazyLLMHook``，可用于在模块前向计算前后添加自定义操作，例如日志记录或统计。
+
+Args:
+    hook_type (LazyLLMHook): 待注册的钩子对象。
+''')
+
+add_english_doc('ModuleBase.register_hook', '''\
+Register a hook to execute specific logic during module invocation.  
+The hook must inherit from ``LazyLLMHook`` and can be used to add custom operations before or after the module's forward computation, such as logging or metrics collection.
+
+Args:
+    hook_type (LazyLLMHook): Hook object to register.
+''')
+
+add_chinese_doc('ModuleBase.unregister_hook', '''\
+注销已注册的钩子。  
+如果钩子存在于模块中，将其移除，使其不再在模块调用时执行。
+
+Args:
+    hook_type (LazyLLMHook): 待注销的钩子对象。
+''')
+
+add_english_doc('ModuleBase.unregister_hook', '''\
+Unregister a previously registered hook.  
+If the hook exists in the module, it will be removed and no longer executed during module invocation.
+
+Args:
+    hook_type (LazyLLMHook): Hook object to unregister.
+''')
+
+add_chinese_doc('ModuleBase.clear_hooks', '''\
+清空模块中所有已注册的钩子。  
+调用后模块将不再执行任何钩子逻辑。
+''')
+
+add_english_doc('ModuleBase.clear_hooks', '''\
+Clear all hooks registered in the module.  
+After calling this, the module will no longer execute any hook logic.
 ''')
 
 add_chinese_doc('ModuleBase.start', '''\
-部署模块及所有的子模块
+启动模块及所有子模块的部署服务。该方法会确保模块和子模块的 server 功能被执行，适合用于初始化或重新启动服务。
+
+**Returns:**\n
+- ModuleBase: 返回自身实例，以支持链式调用
 ''')
 
 add_english_doc('ModuleBase.start', '''\
-Deploy the module and all its submodules.
+Start the deployment services of the module and all its submodules. This ensures that the server functionality of the module and its submodules is executed, suitable for initialization or restarting services.
+
+**Returns:**\n
+- ModuleBase: Returns itself to support method chaining
 ''')
 
 add_example('ModuleBase.start', '''\
@@ -84,11 +203,17 @@ add_example('ModuleBase.start', '''\
 ''')
 
 add_chinese_doc('ModuleBase.restart', '''\
-重新重启模块及所有的子模块
+重启模块及其子模块的部署服务。内部会调用 ``start`` 方法，实现服务的重新启动。
+
+**Returns:**\n
+- ModuleBase: 返回自身实例，以支持链式调用
 ''')
 
 add_english_doc('ModuleBase.restart', '''\
-Re-deploy the module and all its submodules.
+Restart the deployment services of the module and its submodules. Internally calls the ``start`` method to reinitialize the services.
+
+**Returns:**\n
+- ModuleBase: Returns itself to support method chaining
 ''')
 
 add_example('ModuleBase.restart', '''\
@@ -98,6 +223,38 @@ add_example('ModuleBase.restart', '''\
 <Module type=Trainable mode=None basemodel= target= stream=False return_trace=False>
 >>> m(1)
 "reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+''')
+
+add_chinese_doc('ModuleBase.wait', '''\
+等待模块或其子模块的执行完成。此方法在当前实现中为空，可由子类根据具体部署逻辑进行实现。
+''')
+
+add_english_doc('ModuleBase.wait', '''\
+Wait for the module or its submodules to finish execution. Currently, this method is a no-op and can be implemented by subclasses according to specific deployment logic.
+''')
+
+add_chinese_doc('ModuleBase.stop', '''\
+停止模块及其所有子模块的运行。该方法会递归调用子模块的 ``stop`` 方法，适用于释放资源或关闭服务。
+''')
+
+add_english_doc('ModuleBase.stop', '''\
+Stop the module and all its submodules. This method recursively calls the ``stop`` method of each submodule, suitable for releasing resources or shutting down services.
+''')
+
+add_chinese_doc('ModuleBase.for_each', '''\
+对模块的所有子模块执行指定操作。递归遍历所有子模块，如果子模块满足 ``filter`` 条件，则执行 ``action``。
+
+Args:
+    filter (Callable): 接受子模块作为输入并返回布尔值的函数，用于判断是否执行操作。
+    action (Callable): 对满足条件的子模块执行的操作函数。
+''')
+
+add_english_doc('ModuleBase.for_each', '''\
+Execute a specified action on all submodules of the module. Recursively traverses all submodules, and if a submodule satisfies the ``filter`` condition, executes the ``action``.
+
+Args:
+    filter (Callable): A function that takes a submodule as input and returns a boolean, used to determine whether to perform the action.
+    action (Callable): A function to perform on submodules that meet the condition.
 ''')
 
 add_chinese_doc('ModuleBase.update', '''\
@@ -124,12 +281,38 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
 ''')
 
+add_chinese_doc('ModuleBase.update_server', '''\
+更新模块及其子模块的部署（server）部分。当模块或子模块实现了部署功能时，会进行相应的服务启动。  
+
+Args:
+    recursive (bool): 是否递归更新所有子模块的部署任务，默认为 True。
+''')
+
+add_english_doc('ModuleBase.update_server', '''\
+Update the deployment (server) part of the module and its submodules. When a module or submodule implements deployment functionality, the corresponding services will be started.
+
+Args:
+    recursive (bool): Whether to recursively update deployment tasks of all submodules, default is True.
+''')
+
 add_chinese_doc('ModuleBase.evalset', '''\
-为Module设置评测集，设置过评测集的Module在 ``update`` 或 ``eval`` 的时候会进行评测，评测结果会存在eval_result变量中。
+为模块设置评测集（evaluation set）。  
+模块在调用 ``update`` 或 ``eval`` 时会使用评测集进行推理，并将评测结果存储在 ``eval_result`` 变量中。  
+
+Args:
+    evalset (Union[list, str]): 评测数据列表，或者评测数据文件路径。
+    load_f (Optional[Callable]): 当 ``evalset`` 为文件路径时，用于加载文件并返回列表的函数，默认为 None。
+    collect_f (Callable): 对评测结果进行后处理的函数，默认为 ``lambda x: x``。
 ''')
 
 add_english_doc('ModuleBase.evalset', '''\
-during update or eval, and the results will be stored in the eval_result variable.
+Set the evaluation set for the module.  
+During ``update`` or ``eval``, the module will perform inference on the evaluation set, and the results will be stored in the ``eval_result`` variable.  
+
+Args:
+    evalset (Union[list, str]): Evaluation data list or path to an evaluation data file.
+    load_f (Optional[Callable]): Function to load and parse the evaluation file into a list if ``evalset`` is a file path, default is None.
+    collect_f (Callable): Function to post-process evaluation results, default is ``lambda x: x``.
 ''')
 
 add_example('ModuleBase.evalset', '''\
@@ -970,50 +1153,55 @@ add_example('UrlModule.forward', '''\
 ''')
 
 add_chinese_doc('ServerModule', '''\
-借助 fastapi，将任意可调用对象包装成 api 服务，可同时启动一个主服务和多个卫星服务。
+ServerModule 类，继承自 UrlModule，封装了将任意可调用对象部署为 API 服务的能力。  
+通过 FastAPI 实现，可以启动一个主服务和多个卫星服务，并支持流式调用、预处理和后处理逻辑。  
+既可以传入本地可调用对象启动服务，也可以通过 URL 直接连接远程服务。
 
 Args:
-    m (Callable): 被包装成服务的函数，可以是一个函数，也可以是一个仿函数。当启动卫星服务时，需要是一个实现了 ``__call__`` 的对象（仿函数）。
-    pre (Callable): 前处理函数，在服务进程执行，可以是一个函数，也可以是一个仿函数，默认为 ``None``。
-    post (Callable): 后处理函数，在服务进程执行，可以是一个函数，也可以是一个仿函数，默认为 ``None``。
-    stream (bool): 是否流式请求和输出，默认为非流式。
-    return_trace (bool): 是否将结果记录在 trace 中，默认为``False``。
-    port (int): 指定服务部署后的端口，默认为 ``None`` 会随机生成端口。
-    pythonpath(str):传递给子进程的 PYTHONPATH 环境变量，默认为 ``None``。
-    launcher (LazyLLMLaunchersBase): 用于选择服务执行的计算节点，默认为是异步远程部署"launchers.remote(sync=False)"。
-    url(str):模块服务的地址，默认为"None",使用Redis获取。
+    m (Optional[Union[str, ModuleBase]]): 被包装成服务的模块或其名称。若为字符串则表示 URL，此时 `url` 必须为 None；若为 ModuleBase 则包装为服务。
+    pre (Optional[Callable]): 前处理函数，在服务进程执行，默认为 ``None``。
+    post (Optional[Callable]): 后处理函数，在服务进程执行，默认为 ``None``。
+    stream (Union[bool, Dict]): 是否开启流式输出。可以是布尔值，或包含流式配置的字典，默认为 ``False``。
+    return_trace (Optional[bool]): 是否返回调试追踪信息。默认为 ``False``。
+    port (Optional[int]): 指定服务部署的端口。默认为 ``None``，将自动分配端口。
+    pythonpath (Optional[str]): 传递给子进程的 PYTHONPATH 环境变量，默认为 ``None``。
+    launcher (Optional[LazyLLMLaunchersBase]): 启动服务所使用的 Launcher，默认使用异步远程部署。
+    url (Optional[str]): 已部署服务的 URL 地址。若提供，则 `m` 必须为 None。
 ''')
 
 add_english_doc('ServerModule', '''\
-Using FastAPI, any callable object can be wrapped into an API service, allowing the simultaneous launch of one main service and multiple satellite services.
+The ServerModule class inherits from UrlModule and provides functionality to deploy any callable object as an API service.  
+Built on FastAPI, it supports launching a main service with multiple satellite services, as well as preprocessing, postprocessing, and streaming capabilities.  
+A local callable can be deployed as a service, or an existing service can be accessed directly via a URL.
 
 Args:
-    m (Callable): The function to be wrapped as a service. It can be a function or a functor. When launching satellite services, it needs to be an object implementing ``__call__`` (a functor).
-    pre (Callable): Preprocessing function executed in the service process. It can be a function or a functor, default is ``None``.
-    post (Callable): Postprocessing function executed in the service process. It can be a function or a functor, default is ``None``.
-    stream (bool): Whether to request and output in streaming mode, default is non-streaming.
-    return_trace (bool): Whether to record the results in trace, default is ``False``.
-    port (int): Specifies the port after the service is deployed. The default is ``None``, which will generate a random port.
-    pythonpath (str): PYTHONPATH environment variable passed to the subprocess. Defaults to None.
-    launcher (LazyLLMLaunchersBase): Specifies the compute node for running the service. Defaults to asynchronous remote deployment via launchers.remote(sync=False).
-    url (str): The service URL of the module. Defaults to None, in which case the URL is retrieved from Redis.
+    m (Optional[Union[str, ModuleBase]]): The module or its name to be wrapped as a service.  
+        If a string is provided, it is treated as a URL and `url` must be None.  
+        If a ModuleBase is provided, it will be wrapped as a service.
+    pre (Optional[Callable]): Preprocessing function executed in the service process. Default is ``None``.
+    post (Optional[Callable]): Postprocessing function executed in the service process. Default is ``None``.
+    stream (Union[bool, Dict]): Whether to enable streaming output. Can be a boolean or a dictionary with streaming configuration. Default is ``False``.
+    return_trace (Optional[bool]): Whether to return debug trace information. Default is ``False``.
+    port (Optional[int]): Port to deploy the service. If ``None``, a random port will be assigned.
+    pythonpath (Optional[str]): PYTHONPATH environment variable passed to the subprocess. Defaults to ``None``.
+    launcher (Optional[LazyLLMLaunchersBase]): The launcher used to deploy the service. Defaults to asynchronous remote deployment.
+    url (Optional[str]): URL of an already deployed service. If provided, `m` must be None.
+''')
 
-**Examples:**\n
-```python
+add_example('ServerModule', '''\
+>>> import lazyllm
 >>> def demo(input): return input * 2
-... 
+...
 >>> s = lazyllm.ServerModule(demo, launcher=launchers.empty(sync=False))
 >>> s.start()
 INFO:     Uvicorn running on http://0.0.0.0:35485
 >>> print(s(1))
 2
-```
 
-```python
 >>> class MyServe(object):
 ...     def __call__(self, input):
 ...         return 2 * input
-...     
+...
 ...     @lazyllm.FastapiApp.post
 ...     def server1(self, input):
 ...         return f'reply for {input}'
@@ -1024,69 +1212,29 @@ INFO:     Uvicorn running on http://0.0.0.0:35485
 ...
 >>> m = lazyllm.ServerModule(MyServe(), launcher=launchers.empty(sync=False))
 >>> m.start()
->>> print(m(1))
 INFO:     Uvicorn running on http://0.0.0.0:32028
 >>> print(m(1))
-2  
-```
+2
+''')
 
-<span style="font-size: 20px;">**`evalset(evalset, load_f=None, collect_f=<function ModuleBase.<lambda>>)`**</span>
+add_chinese_doc('ServerModule.wait', '''\
+等待当前模块服务的启动或执行过程完成。  
+通常用于阻塞主线程，直到服务正常结束或中断。  
+''')
 
-Set the evaluation set for the Module. Modules that have been set with an evaluation set will be evaluated during ``update`` or ``eval``, and the evaluation results will be stored in the eval_result variable. 
+add_english_doc('ServerModule.wait', '''\
+Wait for the current module service to finish starting or executing.  
+Typically used to block the main thread until the service finishes or is interrupted.  
+''')
 
+add_chinese_doc('ServerModule.stop', '''\
+停止当前模块服务以及其相关子进程。  
+调用后，模块将不再响应请求。  
+''')
 
-<span style="font-size: 18px;">&ensp;**`evalset(evalset, collect_f=lambda x: ...)→ None `**</span>
-
-
-Args:
-    evalset (list) :Evaluation set
-    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.\n
-
-
-<span style="font-size: 18px;">&ensp;**`evalset(evalset, load_f=None, collect_f=lambda x: ...)→ None`**</span>
-
-
-Args:
-    evalset (str) :Path to the evaluation set
-    load_f (Callable) :Method for loading the evaluation set, including parsing file formats and converting to a list
-    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.
-
-**Examples:**\n
-```python
->>> import lazyllm
->>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
->>> m.evalset([1, 2, 3])
->>> m.update()
-INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
->>> m.eval_result
-["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
-```
-
-<span style="font-size: 20px;">**`restart() `**</span>
-
-Restart the module and all its submodules.
-
-**Examples:**\n
-```python
->>> import lazyllm
->>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
->>> m.restart()
->>> m(1)
-"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
-```
-
-<span style="font-size: 20px;">**`start() `**</span> 
-
-Deploy the module and all its submodules.
-
-**Examples:**\n
-```python
-import lazyllm
-m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
-m.start()
-m(1)
-"reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
-```                                                                    
+add_english_doc('ServerModule.stop', '''\
+Stop the current module service and its related subprocesses.  
+After this call, the module will no longer respond to requests.  
 ''')
 
 # add_example('ServerModule', '''\
@@ -1146,6 +1294,30 @@ add_example('TrialModule', '''\
 dummy finetune!, and init-args is {a: f1}
 dummy finetune!, and init-args is {a: f2}
 [["post2(reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1})"], ["post2(reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1})"]]
+''')
+
+add_chinese_doc('TrialModule.work', '''\
+静态方法，用于在子进程中复制模块、执行更新操作，并将评测结果放入队列中。
+
+Args:
+    m (Callable): 要执行更新操作的模块。
+    q (multiprocessing.Queue): 用于存放评测结果的队列。
+''')
+
+add_english_doc('TrialModule.work', '''\
+Static method to deepcopy the module, perform update in a subprocess, and put the evaluation result into a queue.
+
+Args:
+    m (Callable): The module to perform update on.
+    q (multiprocessing.Queue): Queue to store evaluation results.
+''')
+
+add_chinese_doc('TrialModule.update', '''\
+遍历模块的所有配置选项，使用多进程并行执行模块更新，并收集每个配置的评测结果。
+''')
+
+add_english_doc('TrialModule.update', '''\
+Iterates through all configuration options of the module, updates the module in parallel using multiprocessing, and collects the evaluation results for each configuration.
 ''')
 
 add_chinese_doc('AutoModel', '''\
@@ -1213,27 +1385,53 @@ ret: Hello! How can I assist you today?
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoModule', '''\
-豆包（Doubao）在线对话模块。
-该类封装了对字节跳动豆包 API 的调用，用于进行多轮对话。默认使用模型 `doubao-1-5-pro-32k-250115`，支持流式输出和调用链跟踪。
+豆包（Doubao）在线聊天模块，继承自 OnlineChatModuleBase。  
+封装了对字节跳动 Doubao API 的调用，用于进行多轮问答交互。默认使用模型 `doubao-1-5-pro-32k-250115`，支持流式输出和调用链追踪。
+
 Args:
     model (str): 使用的模型名称，默认为 `doubao-1-5-pro-32k-250115`。
-    base_url (str): API 的基础 URL，默认为 "https://ark.cn-beijing.volces.com/api/v3/"。
-    api_key (str): 豆包 API Key。若未提供，则从 lazyllm.config['doubao_api_key'] 读取。
+    base_url (str): API 基础 URL，默认为 "https://ark.cn-beijing.volces.com/api/v3/"。
+    api_key (Optional[str]): Doubao API Key，若未提供，则从 lazyllm.config['doubao_api_key'] 读取。
     stream (bool): 是否启用流式输出，默认为 True。
-    return_trace (bool): 是否返回调用链跟踪信息，默认为 False。
-    **kwargs: 其他传递给基类的参数。
+    return_trace (bool): 是否返回调用链追踪信息，默认为 False。
+    **kwargs: 其他传递给基类 OnlineChatModuleBase 的参数。
 ''')
 
 add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoModule', '''\
-Doubao online chat module.
-This class wraps the Doubao API (from ByteDance) for multi-turn chat. It defaults to model `doubao-1-5-pro-32k-250115` and supports streaming and optional trace return.
+Doubao online chat module, inheriting from OnlineChatModuleBase.  
+Encapsulates the Doubao API (ByteDance) for multi-turn Q&A interactions. Defaults to model `doubao-1-5-pro-32k-250115`, supporting streaming and optional trace return.
+
 Args:
-    model (str): The name of the model to use. Defaults to `doubao-1-5-pro-32k-250115`.
-    base_url (str): The base URL for the API. Defaults to "https://ark.cn-beijing.volces.com/api/v3/".
-    api_key (str): Doubao API key. If not provided, it will be read from `lazyllm.config['doubao_api_key']`.
-    stream (bool): Whether to use streaming output. Defaults to True.
+    model (str): The model name to use. Defaults to `doubao-1-5-pro-32k-250115`.
+    base_url (str): Base URL of the API, default is "https://ark.cn-beijing.volces.com/api/v3/".
+    api_key (Optional[str]): Doubao API key. If not provided, it is read from `lazyllm.config['doubao_api_key']`.
+    stream (bool): Whether to enable streaming output. Defaults to True.
     return_trace (bool): Whether to return trace information. Defaults to False.
-    **kwargs: Additional arguments passed to the base class.
+    **kwargs: Additional arguments passed to the base class OnlineChatModuleBase.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoMultiModal', '''\
+豆包多模态模块，继承自 OnlineMultiModalBase，封装了调用豆包多模态服务的能力。  
+可通过指定 API Key、模型名称和服务基础 URL，远程调用豆包接口进行多模态数据处理和特征提取。
+
+Args:
+    api_key (Optional[str]): 访问豆包服务的 API Key，若未提供则从 lazyllm 配置中读取。
+    model_name (Optional[str]): 使用的豆包多模态模型名称。
+    base_url (str): 豆包服务的基础 URL，默认指向北京区域的服务地址。
+    return_trace (bool): 是否返回调试追踪信息，默认为 False。
+    **kwargs: 其他传递给 OnlineMultiModalBase 的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoMultiModal', '''\
+Doubao MultiModal module, inheriting from OnlineMultiModalBase, encapsulates the functionality to call Doubao's multimodal service.  
+By specifying the API key, model name, and base service URL, it allows remote interaction with Doubao's API for multimodal data processing and feature extraction.
+
+Args:
+    api_key (Optional[str]): API key for accessing Doubao service. If not provided, it is read from lazyllm config.
+    model_name (Optional[str]): Name of the Doubao multimodal model to use.
+    base_url (str): Base URL of the Doubao service, defaulting to the Beijing region endpoint.
+    return_trace (bool): Whether to return debug trace information, default is False.
+    **kwargs: Additional parameters passed to OnlineMultiModalBase.
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIEmbedding', '''\
@@ -1425,26 +1623,144 @@ Args:
     api_key (Optional[str]): API key for accessing the Doubao service. If not provided, it is read from lazyllm config.
 ''')
 
-add_chinese_doc('llms.onlinemodule.fileHandler.FileHandlerBase', '''\
-FileHandlerBase是用于处理微调数据文件的基类，主要用于验证和转换微调数据格式。该类本身不支持直接实例化，需要子类继承该类并实现特定的文件格式转换逻辑。
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoMultimodalEmbedding', '''\
+豆包多模态嵌入类，继承自 OnlineEmbeddingModuleBase，封装了调用豆包在线多模态（文本+图像）嵌入服务的功能。  
+支持将文本和图像输入转换为统一的向量表示，通过指定服务接口 URL、模型名称及 API Key，实现远程获取多模态向量。
 
-FileHandlerBase提供以下功能：\n
-1. 验证微调数据文件的格式是否符合标准（.jsonl格式）\n
-2. 检查数据内容是否符合预期的消息格式（包含role和content字段）\n
-3. 验证角色类型是否在允许的范围内（system、knowledge、user、assistant）\n
-4. 确保每个对话示例都包含assistant回复\n
-5. 提供临时文件存储机制用于后续处理\n
+Args:
+    embed_url (Optional[str]): 豆包多模态嵌入服务的接口 URL，默认指向北京区域的服务地址。
+    embed_model_name (Optional[str]): 使用的豆包多模态嵌入模型名称，默认为 "doubao-embedding-vision-241215"。
+    api_key (Optional[str]): 访问豆包服务的 API Key，若未提供则从 lazyllm 配置中读取。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoMultimodalEmbedding', '''\
+DoubaoMultimodalEmbedding class inherits from OnlineEmbeddingModuleBase, encapsulating the functionality to call Doubao's online multimodal (text + image) embedding service.  
+It supports converting text and image inputs into a unified vector representation by specifying the service URL, model name, and API key, enabling remote retrieval of multimodal embeddings.
+
+Args:
+    embed_url (Optional[str]): URL of the Doubao multimodal embedding service, defaulting to the Beijing region endpoint.
+    embed_model_name (Optional[str]): Name of the Doubao multimodal embedding model used, default is "doubao-embedding-vision-241215".
+    api_key (Optional[str]): API key for accessing the Doubao service. If not provided, it is read from lazyllm config.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMModule', '''\
+GLMModule 类，继承自 OnlineChatModuleBase 和 FileHandlerBase，封装了对智谱 GLM 系列模型的在线调用功能。  
+支持对话生成、文件处理以及模型微调等能力。默认使用 GLM-4 模型，也可指定其他训练型模型（如 chatglm3-6b、chatglm_12b 等）。
+
+Args:
+    base_url (Optional[str]): 智谱 GLM 服务的 API 接口地址，默认为 "https://open.bigmodel.cn/api/paas/v4/"。
+    model (Optional[str]): 使用的 GLM 模型名称，默认为 "glm-4"，也可选择 TRAINABLE_MODEL_LIST 中的其他模型。
+    api_key (Optional[str]): 访问 GLM 服务的 API Key，若未提供则从 lazyllm 配置中读取。
+    stream (Optional[bool]): 是否开启流式输出，默认为 True。
+    return_trace (Optional[bool]): 是否返回调试追踪信息，默认为 False。
+    **kwargs: 其他传递给 OnlineChatModuleBase 的可选参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.glm.GLMModule', '''\
+GLMModule class inherits from OnlineChatModuleBase and FileHandlerBase, encapsulating the functionality of accessing Zhipu's GLM series models online.  
+It supports chat generation, file handling, and fine-tuning. The default model is GLM-4, but other trainable models (e.g., chatglm3-6b, chatglm_12b) are also supported.
+
+Args:
+    base_url (Optional[str]): API endpoint for Zhipu GLM service, default is "https://open.bigmodel.cn/api/paas/v4/".
+    model (Optional[str]): Name of the GLM model to use. Defaults to "glm-4", or one from the TRAINABLE_MODEL_LIST.
+    api_key (Optional[str]): API key for accessing GLM service. If not provided, it is read from lazyllm config.
+    stream (Optional[bool]): Whether to enable streaming output. Defaults to True.
+    return_trace (Optional[bool]): Whether to return debug trace information. Defaults to False.
+    **kwargs: Additional optional parameters passed to OnlineChatModuleBase.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMTextToImageModule', '''\
+GLM文本生成图像模块，继承自 GLMMultiModal，封装了调用 GLM CogView-4 模型生成图像的功能。  
+支持根据文本提示（prompt）生成指定数量和分辨率的图像，并可通过 API Key 调用远程服务。
+
+Args:
+    model_name (Optional[str]): 使用的 GLM 模型名称，默认使用 "cogview-4-250304" 或配置中的 'glm_text_to_image_model_name'。
+    api_key (Optional[str]): API Key，用于访问 GLM 图像生成服务。
+    return_trace (bool): 是否返回调试追踪信息，默认为 False。
+    **kwargs: 其他传递给 GLMMultiModal 的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.glm.GLMTextToImageModule', '''\
+GLM Text-to-Image module, inheriting from GLMMultiModal, encapsulates the functionality to generate images using the GLM CogView-4 model.  
+It supports generating a specified number of images with given resolution based on a text prompt and can call the remote service via an API key.
+
+Args:
+    model_name (Optional[str]): Name of the GLM model to use, defaulting to "cogview-4-250304" or the 'glm_text_to_image_model_name' in config.
+    api_key (Optional[str]): API key to access the GLM image generation service.
+    return_trace (bool): Whether to return debug trace information, default is False.
+    **kwargs: Additional parameters passed to GLMMultiModal.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenTextToImageModule', '''\
+Qwen文本生成图像模块，继承自 QwenMultiModal，封装了调用 Qwen Wanx2.1-t2i-turbo 模型生成图像的能力。  
+支持根据文本提示生成指定数量和分辨率的图像，并可设置负面提示、随机种子及扩展提示功能，通过 DashScope API 远程调用服务。
+
+Args:
+    model (Optional[str]): 使用的 Qwen 模型名称，默认从配置 'qwen_text2image_model_name' 获取，若未设置则使用 "wanx2.1-t2i-turbo"。
+    api_key (Optional[str]): 调用 DashScope 服务的 API Key。
+    return_trace (bool): 是否返回调试追踪信息，默认为 False。
+    **kwargs: 其他传递给 QwenMultiModal 的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenTextToImageModule', '''\
+Qwen Text-to-Image module, inheriting from QwenMultiModal, encapsulates the functionality to generate images using the Qwen Wanx2.1-t2i-turbo model.  
+It supports generating a specified number of images with given resolution based on a text prompt, and allows setting negative prompts, random seeds, and prompt extension. The service is called remotely via DashScope API.
+
+Args:
+    model (Optional[str]): Name of the Qwen model to use, default is taken from config 'qwen_text2image_model_name', or "wanx2.1-t2i-turbo" if not set.
+    api_key (Optional[str]): API key for accessing DashScope service.
+    return_trace (bool): Whether to return debug trace information, default is False.
+    **kwargs: Additional parameters passed to QwenMultiModal.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.kimi.KimiModule', '''\
+KimiModule 类，继承自 OnlineChatModuleBase，封装了调用 Moonshot AI 提供的 Kimi 聊天服务的能力。  
+可通过指定 API Key、模型名称和服务 URL，支持中文和英文的安全问答交互，并支持图像输入的 base64 格式处理。
+
+Args:
+    base_url (str): Kimi 服务的基础 URL，默认为 "https://api.moonshot.cn/"。
+    model (str): 使用的 Kimi 模型名称，默认为 "moonshot-v1-8k"。
+    api_key (Optional[str]): 访问 Kimi 服务的 API Key，若未提供则从 lazyllm 配置中读取。
+    stream (bool): 是否开启流式输出，默认为 True。
+    return_trace (bool): 是否返回调试追踪信息，默认为 False。
+    **kwargs: 其他传递给 OnlineChatModuleBase 的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.kimi.KimiModule', '''\
+KimiModule class, inheriting from OnlineChatModuleBase, encapsulates the functionality to call Kimi chat service provided by Moonshot AI.  
+By specifying the API key, model name, and service URL, it supports safe and accurate Chinese and English Q&A interactions, as well as image input in base64 format.
+
+Args:
+    base_url (str): Base URL of the Kimi service, default is "https://api.moonshot.cn/".
+    model (str): Kimi model name to use, default is "moonshot-v1-8k".
+    api_key (Optional[str]): API key for accessing Kimi service. If not provided, it is read from lazyllm config.
+    stream (bool): Whether to enable streaming output, default is True.
+    return_trace (bool): Whether to return debug trace information, default is False.
+    **kwargs: Additional parameters passed to OnlineChatModuleBase.
+''')
+
+add_chinese_doc('llms.onlinemodule.fileHandler.FileHandlerBase', '''\
+FileHandlerBase 是处理微调数据文件的基类，主要用于验证和转换微调数据格式。  
+该类不支持直接实例化，需要子类继承并实现特定的文件格式转换逻辑。
+
+功能包括：
+1. 验证微调数据文件格式是否为标准的 `.jsonl`。
+2. 检查每条数据是否包含符合规范的消息格式（包含 `role` 和 `content` 字段）。
+3. 验证角色类型是否在允许范围内（system、knowledge、user、assistant）。
+4. 确保每个对话示例包含至少一条 assistant 回复。
+5. 提供临时文件存储机制，便于后续处理。
 ''')
 
 add_english_doc('llms.onlinemodule.fileHandler.FileHandlerBase', '''\
-FileHandlerBase is a base class for handling fine-tuning data files, primarily used for validating and converting fine-tuning data formats. This class itself does not support direct instantiation; it requires subclasses to inherit from this class and implement specific file format conversion logic.
+FileHandlerBase is a base class for handling fine-tuning data files, mainly used for validating and converting fine-tuning data formats.  
+This class cannot be instantiated directly; it must be inherited by a subclass that implements specific file format conversion logic.
 
-FileHandlerBase provides the following capabilities:\n
-1. Validate that the fine-tuning data file format conforms to standards (.jsonl format)\n
-2. Check if the data content conforms to the expected message format (containing role and content fields)\n
-3. Verify that role types are within the allowed range (system, knowledge, user, assistant)\n
-4. Ensure that each conversation example contains an assistant response\n
-5. Provide temporary file storage mechanism for subsequent processing\n
+Capabilities include:
+1. Validate that the fine-tuning data file is in standard `.jsonl` format.
+2. Check that each data entry contains messages in the correct format (with `role` and `content` fields).
+3. Verify that roles are within the allowed range (system, knowledge, user, assistant).
+4. Ensure each conversation example contains at least one assistant response.
+5. Provide temporary file storage for further processing.
 ''')
 
 add_example('llms.onlinemodule.fileHandler.FileHandlerBase', '''\
