@@ -253,4 +253,4 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
         if isinstance(input, str):
             return response['embeddings'][0]['embedding']
         else:
-            return [res['embedding'] for res in response['embeddings']]        
+            return [res['embedding'] for res in response['embeddings']]

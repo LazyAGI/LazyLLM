@@ -323,7 +323,7 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
         if isinstance(input, str):
             return response['output']['embeddings'][0]['embedding']
         else:
-            return [res['embedding'] for res in response['output']['embeddings']]        
+            return [res['embedding'] for res in response['output']['embeddings']]
 
 
 class QwenReranking(OnlineEmbeddingModuleBase):
