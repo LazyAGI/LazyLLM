@@ -157,7 +157,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
             return (fine_tuning_job_id, status)
 
     def _validate_api_key(self):
-        fine_tune_url = urljoin(self._base_url, "models")
+        fine_tune_url = urljoin('https://api.sensenova.cn/v1/llm/', "models")
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json"
