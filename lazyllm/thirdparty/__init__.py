@@ -39,7 +39,7 @@ def get_pip_install_cmd(names):
     for name in names:
         if name in package_name_map:
             name = package_name_map[name]
-        install_parts.append("\"" + name + requirements.get(name, name) + "\"")
+        install_parts.append("\"" + name + requirements.get(name, '') + "\"")
     if len(install_parts) > 0:
         return "pip install " + " ".join(install_parts)
     return None
