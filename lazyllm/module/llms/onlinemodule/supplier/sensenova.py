@@ -2,7 +2,7 @@ import json
 import time
 import os
 import requests
-from typing import Tuple, Any, Dict, List, Union
+from typing import Tuple, Dict, List, Union
 from urllib.parse import urljoin
 import uuid
 
@@ -235,22 +235,34 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
                  embed_url: str = "https://api.sensenova.cn/v1/llm/embeddings",
                  embed_model_name: str = "nova-embedding-stable",
                  api_key: str = None,
-                 secret_key: str = None):
+                 secret_key: str = None,
+                 **kw):
         api_key = self._get_api_key(api_key, secret_key)
         super().__init__("SENSENOVA", embed_url, api_key, embed_model_name)
+        self.batch_size = kw.pop('batch_size', 10)
 
-    def _encapsulated_data(self, text: Union[List, str], **kwargs) -> Dict[str, str]:
-        json_data = {
-            "input": [text] if isinstance(text, str) else text,
-            "model": self._embed_model_name
-        }
-        if len(kwargs) > 0:
-            json_data.update(kwargs)
-
-        return json_data
-
-    def _parse_response(self, response: Dict[str, Any], input: Union[List, str]) -> List[float]:
-        if isinstance(input, str):
-            return response['embeddings'][0]['embedding']
+    def _encapsulated_data(self, text: Union[List, str], **kwargs):
+        if isinstance(text, str):
+            json_data = {
+                "input": [text],
+                "model": self._embed_model_name
+            }
+            if len(kwargs) > 0:
+                json_data.update(kwargs)
+            return json_data
         else:
-            return [res['embedding'] for res in response['embeddings']]
+            text_batch = [text[i: i + self.batch_size] for i in range(0, len(text), self.batch_size)]
+            json_data = [{"input": texts, "model": self._embed_model_name} for texts in text_batch]
+            if len(kwargs) > 0:
+                for i in range(len(json_data)):
+                    json_data[i].update(kwargs)
+            return json_data
+
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
+        embeddings = response.get("embeddings", [])
+        if not embeddings:
+            return []
+        if isinstance(input, str):
+            return embeddings[0].get("embedding", [])
+        else:
+            return [res.get("embedding", []) for res in embeddings]

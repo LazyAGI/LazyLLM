@@ -1,7 +1,6 @@
-from typing import Dict, Any, List, Union
+from typing import Dict, List, Union
 import requests
 from ....module import ModuleBase
-
 
 class OnlineEmbeddingModuleBase(ModuleBase):
     NO_PROXY = True
@@ -36,13 +35,26 @@ class OnlineEmbeddingModuleBase(ModuleBase):
     def forward(self, input: Union[List, str], **kwargs) -> List[float]:
         data = self._encapsulated_data(input, **kwargs)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
-        with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies) as r:
-            if r.status_code == 200:
-                return self._parse_response(r.json(), input)
-            else:
-                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        if isinstance(data, List):
+            return self.run_embed_batch(input, data, proxies)
+        else:
+            with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies) as r:
+                if r.status_code == 200:
+                    return self._parse_response(r.json(), input)
+                else:
+                    raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
-    def _encapsulated_data(self, input: Union[List, str], **kwargs) -> Dict[str, str]:
+    def run_embed_batch(self, input: Union[List, str], data: List, proxies):
+        ret = []
+        for i in range(len(data)):
+            with requests.post(self._embed_url, json=data[i], headers=self._headers, proxies=proxies) as r:
+                if r.status_code == 200:
+                    ret.extend(self._parse_response(r.json(), input))
+                else:
+                    raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        return ret
+
+    def _encapsulated_data(self, input: Union[List, str], **kwargs):
         json_data = {
             "input": input,
             "model": self._embed_model_name
@@ -52,8 +64,11 @@ class OnlineEmbeddingModuleBase(ModuleBase):
 
         return json_data
 
-    def _parse_response(self, response: Dict[str, Any], input: Union[List, str]) -> List[float]:
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
+        data = response.get("data", [])
+        if not data:
+            return []
         if isinstance(input, str):
-            return response['data'][0]['embedding']
+            return data[0].get("embedding", [])
         else:
-            return [res['embedding'] for res in response['data']]
+            return [res.get("embedding", []) for res in data]

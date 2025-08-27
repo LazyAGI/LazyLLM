@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import requests
-from typing import Tuple, List
+from typing import Tuple, List, Union
 from urllib.parse import urljoin
 import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
@@ -220,5 +220,24 @@ class OpenAIEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = "https://api.openai.com/v1/embeddings",
                  embed_model_name: str = "text-embedding-ada-002",
-                 api_key: str = None):
+                 api_key: str = None,
+                 *kw):
         super().__init__("OPENAI", embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name)
+        self.batch_size = kw.pop('batch_size', 10)
+
+    def _encapsulated_data(self, text: Union[List, str], **kwargs):
+        if isinstance(text, str):
+            json_data = {
+                "input": [text],
+                "model": self._embed_model_name
+            }
+            if len(kwargs) > 0:
+                json_data.update(kwargs)
+            return json_data
+        else:
+            text_batch = [text[i: i + self.batch_size] for i in range(0, len(text), self.batch_size)]
+            json_data = [{"input": texts, "model": self._embed_model_name} for texts in text_batch]
+            if len(kwargs) > 0:
+                for i in range(len(json_data)):
+                    json_data[i].update(kwargs)
+            return json_data

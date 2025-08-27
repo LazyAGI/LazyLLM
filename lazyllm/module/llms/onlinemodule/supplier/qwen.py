@@ -2,7 +2,7 @@ import json
 import os
 import re
 import requests
-from typing import Tuple, List, Any, Dict, Union
+from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
 import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
@@ -304,26 +304,41 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
                  embed_url: str = ("https://dashscope.aliyuncs.com/api/v1/services/"
                                    "embeddings/text-embedding/text-embedding"),
                  embed_model_name: str = "text-embedding-v1",
-                 api_key: str = None):
+                 api_key: str = None,
+                 **kw):
         super().__init__("QWEN", embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name)
+        self.batch_size = kw.pop('batch_size', 10)
 
-    def _encapsulated_data(self, text: Union[List, str], **kwargs) -> Dict[str, str]:
-        json_data = {
-            "input": {
-                "texts": [text] if isinstance(text, str) else text
-            },
-            "model": self._embed_model_name
-        }
-        if len(kwargs) > 0:
-            json_data.update(kwargs)
-
-        return json_data
-
-    def _parse_response(self, response: Dict[str, Any], input: Union[List, str]) -> List[float]:
-        if isinstance(input, str):
-            return response['output']['embeddings'][0]['embedding']
+    def _encapsulated_data(self, text: Union[List, str], **kwargs):
+        if isinstance(text, str):
+            json_data = {
+                "input": {
+                    "texts": [text]
+                },
+                "model": self._embed_model_name
+            }
+            if len(kwargs) > 0:
+                json_data.update(kwargs)
+            return json_data
         else:
-            return [res['embedding'] for res in response['output']['embeddings']]
+            text_batch = [text[i: i + self.batch_size] for i in range(0, len(text), self.batch_size)]
+            json_data = [{"input": {"texts": texts}, "model": self._embed_model_name} for texts in text_batch]
+            if len(kwargs) > 0:
+                for i in range(len(json_data)):
+                    json_data[i].update(kwargs)
+            return json_data
+
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
+        output = response.get("output", {})
+        if not output:
+            return []
+        embeddings = output.get("embeddings", [])
+        if not embeddings:
+            return []
+        if isinstance(input, str):
+            return embeddings[0].get('embedding', [])
+        else:
+            return [res.get('embedding', []) for res in embeddings]
 
 
 class QwenReranking(OnlineEmbeddingModuleBase):
@@ -355,7 +370,7 @@ class QwenReranking(OnlineEmbeddingModuleBase):
 
         return json_data
 
-    def _parse_response(self, response: Dict[str, Any], input: Union[List, str]) -> List[float]:
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Tuple]:
         results = response['output']['results']
         return [(result["index"], result["relevance_score"]) for result in results]
 

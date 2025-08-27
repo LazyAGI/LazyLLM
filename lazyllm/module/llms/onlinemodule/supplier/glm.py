@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import requests
-from typing import Tuple, List, Any, Dict, Union
+from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
 import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
@@ -233,9 +233,27 @@ class GLMEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = "https://open.bigmodel.cn/api/paas/v4/embeddings",
                  embed_model_name: str = "embedding-2",
-                 api_key: str = None):
+                 api_key: str = None,
+                 **kw):
         super().__init__("GLM", embed_url, api_key or lazyllm.config["glm_api_key"], embed_model_name)
+        self.batch_size = kw.pop('batch_size', 16)
 
+    def _encapsulated_data(self, input: Union[List, str], **kwargs):
+        if isinstance(input, str):
+            json_data = {
+                "input": [input],
+                "model": self._embed_model_name
+            }
+            if len(kwargs) > 0:
+                json_data.update(kwargs)
+            return json_data
+        else:
+            text_batch = [input[i: i + self.batch_size] for i in range(0, len(input), self.batch_size)]
+            json_data = [{"input": texts, "model": self._embed_model_name} for texts in text_batch]
+            if len(kwargs) > 0:
+                for i in range(len(json_data)):
+                    json_data[i].update(kwargs)
+            return json_data
 
 class GLMReranking(OnlineEmbeddingModuleBase):
 
@@ -262,7 +280,7 @@ class GLMReranking(OnlineEmbeddingModuleBase):
 
         return json_data
 
-    def _parse_response(self, response: Dict[str, Any], input: Union[List, str]) -> List[float]:
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Tuple]:
         return [(result["index"], result["relevance_score"]) for result in response['results']]
 
 

@@ -1,5 +1,5 @@
 import lazyllm
-from typing import Dict, List, Any, Union
+from typing import Dict, List, Union
 from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 import requests
@@ -28,9 +28,27 @@ class DoubaoEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = "https://ark.cn-beijing.volces.com/api/v3/embeddings",
                  embed_model_name: str = "doubao-embedding-text-240715",
-                 api_key: str = None):
+                 api_key: str = None,
+                 **kw):
         super().__init__("DOUBAO", embed_url, api_key or lazyllm.config["doubao_api_key"], embed_model_name)
+        self.batch_size = kw.pop('batch_size', 10)
 
+    def _encapsulated_data(self, text: Union[List, str], **kwargs):
+        if isinstance(text, str):
+            json_data = {
+                "input": [text],
+                "model": self._embed_model_name
+            }
+            if len(kwargs) > 0:
+                json_data.update(kwargs)
+            return json_data
+        else:
+            text_batch = [text[i: i + self.batch_size] for i in range(0, len(text), self.batch_size)]
+            json_data = [{"input": texts, "model": self._embed_model_name} for texts in text_batch]
+            if len(kwargs) > 0:
+                for i in range(len(json_data)):
+                    json_data[i].update(kwargs)
+            return json_data
 
 class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self,
@@ -60,7 +78,7 @@ class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
 
         return json_data
 
-    def _parse_response(self, response: Dict[str, Any], input: Union[List, str]) -> List[float]:
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> List[float]:
         # 豆包多模态Embedding返回融合的单个embedding
         return response['data']['embedding']
 
