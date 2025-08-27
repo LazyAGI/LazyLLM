@@ -12,11 +12,17 @@ from fastapi import UploadFile, File, Form, HTTPException
 from fastapi.responses import JSONResponse
 from typing import List, Optional, Union
 
-from lazyllm import ServerModule, LOG
+from lazyllm import LOG
 from lazyllm import FastapiApp as app
 
-from mineru.cli.common import aio_do_parse, read_fn, pdf_suffixes, image_suffixes
-from . import mineru_patches  # noqa: F401
+from lazyllm.thirdparty import mineru
+
+
+def patch_mineru():
+    from . import mineru_patches  # noqa: F401
+
+
+mineru.register_patches(patch_mineru)
 
 
 def _check_libreoffice():
@@ -195,7 +201,7 @@ class MineruServerBase:
         if backend == 'vlm-sglang-engine':
             params['mem_fraction_static'] = self._mem_fraction_static
 
-        await aio_do_parse(**params)
+        await mineru.cli.common.aio_do_parse(**params)
 
         for pdf_name, pdf_path in zip(pdf_file_names, files_to_process):
             # Directory output by mineru
@@ -355,13 +361,13 @@ class MineruServerBase:
 
     def _load_files(self, file_path: str, unique_dir: str):
         suffix = file_path.suffix.lower()
-        if suffix in pdf_suffixes + image_suffixes + self._supported_office_types:
+        if suffix in mineru.cli.common.pdf_suffixes + mineru.cli.common.image_suffixes + self._supported_office_types:
             if suffix in self._supported_office_types:
                 self._convert_file_to_pdf(file_path, unique_dir)
                 output_path = os.path.join(unique_dir, file_path.name.replace(suffix, '.pdf'))
                 file_path = Path(output_path)
             try:
-                pdf_bytes = read_fn(file_path)
+                pdf_bytes = mineru.cli.common.read_fn(file_path)
                 return (file_path.stem, pdf_bytes)
             except Exception as e:
                 raise HTTPException(status_code=400, detail=f'File Not Found: {file_path}: {e}')
@@ -395,23 +401,3 @@ class MineruServerBase:
             for chunk in iter(lambda: f.read(8192), b''):
                 hasher.update(chunk)
         return hasher.hexdigest()
-
-
-class MineruServer(ServerModule):
-    def __init__(self,
-                 cache_dir: str = None,
-                 image_save_dir: str = None,
-                 default_backend: str = 'pipeline',
-                 default_lang: str = 'ch_server',
-                 default_parse_method: str = 'auto',
-                 default_formula_enable: bool = True,
-                 default_table_enable: bool = True,
-                 default_return_md: bool = False,
-                 default_return_content_list: bool = True,
-                 *args, **kwargs):
-        mineru_server = MineruServerBase(
-            cache_dir=cache_dir, image_save_dir=image_save_dir, default_backend=default_backend,
-            default_lang=default_lang, default_parse_method=default_parse_method,
-            default_formula_enable=default_formula_enable, default_table_enable=default_table_enable,
-            default_return_md=default_return_md, default_return_content_list=default_return_content_list)
-        super().__init__(mineru_server, *args, **kwargs)

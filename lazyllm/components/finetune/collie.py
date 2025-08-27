@@ -80,7 +80,7 @@ class CollieFinetune(LazyLLMFinetuneBase):
                    f'--base={self.base_model} '
                    f'--adapter={self.target_path} '
                    f'--save_path={self.merge_path} ',
-                   f' cp {os.path.join(self.base_model,self.cp_files)} {self.merge_path} '
+                   f' cp {os.path.join(self.base_model, self.cp_files)} {self.merge_path} '
                 ]
 
         return cmd

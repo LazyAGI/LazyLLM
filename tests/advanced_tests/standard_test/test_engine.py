@@ -1,13 +1,28 @@
 import os
 import time
 import pytest
+import requests
+from urllib.parse import urlparse
+import uuid
 
 import lazyllm
 from lazyllm.engine import LightEngine
+from lazyllm.tools.infer_service.serve import InferServer
 
 
 class TestEngine(object):
     # This test requires 4 GPUs and takes about 4 minutes to execute, skip this test to save time.
+    def setup_method(self):
+        self.infer_server = lazyllm.ServerModule(InferServer(), launcher=lazyllm.launcher.EmptyLauncher(sync=False))
+        self.infer_server.start()()
+        parsed_url = urlparse(self.infer_server._url)
+        self.infer_server_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        token = '123'
+        self.headers = {"token": token}
+
+    def teardown_method(self):
+        self.infer_server.stop()
+
     def _test_vqa(self):
         resource = [dict(id='0', kind='web', name='web', args=dict(port=None, title='多模态聊天机器人', history=[], audio=True))]
         node = [dict(id='1', kind='VQA', name='vqa', args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local'))]
@@ -142,95 +157,58 @@ class TestEngine(object):
             assert '您好，我的答案是' in stream_result and '24' in stream_result
             assert ('蓝鲸' in result or '动物' in result) and '水' in result
 
-    def test_engine_train_serve(self):
-        train_config = {
-            'finetune_model_name': 'my_super_model',
-            'base_model': 'qwen1.5-0.5b-chat',
-            'training_type': 'SFT',
-            'finetuning_type': 'LoRA',
-            'data_path': 'alpaca/alpaca_data_zh_128.json',
-            'val_size': 0.1,
-            'num_epochs': 1,
-            'learning_rate': 0.1,
-            'lr_scheduler_type': 'cosine',
-            'batch_size': 32,
-            'cutoff_len': 1024,
-            'lora_r': 8,
-            'lora_alpha': 32,
-            'lora_rate': 0.1,
+    def deploy_inference_service(self, model_name, deploy_method='auto', num_gpus=1):
+        service_name = 'test_engine_infer_' + uuid.uuid4().hex
+
+        data = {
+            "service_name": service_name,
+            "model_name": model_name,
+            "framework": deploy_method,
+            "num_gpus": num_gpus
         }
-        engine = LightEngine()
-        engine.launch_localllm_train_service()
+        response = requests.post(f"{self.infer_server_url}/v1/inference_services", json=data, headers=self.headers)
+        assert response.status_code == 200
 
-        token = 'test'
-        job_id = None
+        for _ in range(30):  # wait 5 minutes
+            response = requests.get(f"{self.infer_server_url}/v1/inference_services/{service_name}",
+                                    headers=self.headers)
+            assert response.status_code == 200
+            response_data = response.json()
+            if response_data['status'] == 'Ready':
+                return model_name, response_data['deploy_method'], response_data['endpoint']
+            elif response_data['status'] in ('Invalid', 'Cancelled', 'Failed'):
+                raise RuntimeError(f'Deploy service failed. status is {response_data["status"]}')
+            time.sleep(10)
 
-        # Launch train
-        res = engine.local_model_train(train_config, token=token)
-        job_id = res[0]
-        assert len(job_id) > 0
-        status = res[1]
-
-        n = 0
-        while status != 'Running':
-            time.sleep(1)
-            status = engine.local_model_get_training_status(token, job_id)
-            n += 1
-            assert n < 300, 'Launch training timeout.'
-
-        # After Launch, training 20s
-        time.sleep(20)
-
-        res = engine.local_model_cancel_training(token, job_id)
-        assert isinstance(res, bool)
-
-        res = engine.local_model_get_training_status(token, job_id)
-        assert res == 'Cancelled'
-
-        res = engine.local_model_get_training_log(token, job_id)
-        assert os.path.exists(res)
-
-        res = engine.local_model_get_all_trained_models(token)
-        assert len(res[0]) == 3
-
-        res = engine.local_model_get_training_cost(token, job_id)
-        assert res > 15
+        raise TimeoutError("inference service deploy timeout")
 
     def test_engine_infer_server(self):
-        token = '123'
+        model_name = 'internlm2-chat-7b'
+        model_name, deploy_method, url = self.deploy_inference_service(model_name)
+
+        model = lazyllm.TrainableModule(model_name).deploy_method(getattr(lazyllm.deploy, deploy_method), url=url)
+        assert model._impl._get_deploy_tasks.flag
+        assert '你好' in model('请重复下面一句话：你好')
+
         engine = LightEngine()
-        engine.launch_localllm_infer_service()
-        jobid, status = engine.deploy_model(token, 'internlm2-chat-7b')
-        engine.infer_client.wait_ready(token, jobid)
-        r = engine.get_infra_handle(token, jobid)
-        assert isinstance(r, lazyllm.TrainableModule) and r._impl._get_deploy_tasks.flag
-        assert '你好' in r('请重复下面一句话：你好')
-
-        nodes = [dict(id='0', kind='SharedModel', name='m1', args=dict(
-            llm=jobid, local=False, token=token, stream=True, cls='llm', prompt=dict(
-                system='请根据输入帮我计算，不要反问和发挥', user='输入: {query} \n, 答案:')))]
+        nodes = [dict(id='0', kind='LLM', name='m1',
+                 args=dict(base_model=model_name, deploy_method=deploy_method, type='local', url=url, stream=True,
+                           prompt=dict(system='请根据输入帮我计算，不要反问和发挥', user='输入: {query} \n, 答案:')))]
         gid = engine.start(nodes)
-        assert '2' in engine.run(gid, '1 + 1 = ?')
-
-        engine.stop(gid)
-        nodes = [dict(id='1', kind='OnlineLLM', name='m1', args=dict(
-            source='lazyllm', base_model=jobid, token=token, stream=True, prompt=dict(
-                system='请根据输入帮我计算，不要反问和发挥', user='输入: {query} \n, 答案:')))]
-        gid = engine.start(nodes)
-        assert '2' in engine.run(gid, '1 + 1 = ?')
+        r = engine.run(gid, '1 + 1 = ?')
+        assert '2' in r
 
     def test_engine_infer_server_vqa(self):
-        token = '123'
-        engine = LightEngine()
-        engine.launch_localllm_infer_service()
-        jobid, _ = engine.deploy_model(token, 'Mini-InternVL-Chat-2B-V1-5')
-        engine.infer_client.wait_ready(token, jobid)
-        r = engine.get_infra_handle(token, jobid)
-        assert isinstance(r, lazyllm.TrainableModule) and r._impl._get_deploy_tasks.flag
-        assert '你好' in r('请重复下面一句话：你好')
+        model_name = 'Mini-InternVL-Chat-2B-V1-5'
+        model_name, deploy_method, url = self.deploy_inference_service(model_name, num_gpus=1)
+        model = lazyllm.TrainableModule(model_name).deploy_method(getattr(lazyllm.deploy, deploy_method), url=url)
+        assert model._impl._get_deploy_tasks.flag
+        r = model("这张图片描述的是什么？", lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
+        assert '鸡' in r or 'chicken' in r
 
-        nodes = [dict(id='0', kind='SharedModel', name='vqa',
-                      args=dict(llm=jobid, local=False, token=token, stream=True, cls='vqa'))]
+        engine = LightEngine()
+        nodes = [dict(id='0', kind='VQA', name='vqa',
+                      args=dict(base_model=model_name, deploy_method=deploy_method, type='local', url=url))]
         gid = engine.start(nodes)
 
         r = engine.run(gid, "这张图片描述的是什么？", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
@@ -242,24 +220,22 @@ class TestEngine(object):
                           args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local'))]
 
         nodes = [dict(id='0', kind='SharedModel', name='vqa',
-                      args=dict(llm='vqa', local=True, cls='vqa'))]
+                      args=dict(llm='vqa', cls='vqa'))]
         gid = engine.start(nodes, resources=resources)
 
         r = engine.run(gid, "这张图片描述的是什么？", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
         assert '鸡' in r or 'chicken' in r
 
     def test_engine_infer_server_tts(self):
-        token = '123'
-        engine = LightEngine()
-        engine.launch_localllm_infer_service()
-        jobid, _ = engine.deploy_model(token, 'ChatTTS-new')
-        engine.infer_client.wait_ready(token, jobid)
-        r = engine.get_infra_handle(token, jobid)
-        assert isinstance(r, lazyllm.TrainableModule) and r._impl._get_deploy_tasks.flag
-        assert '.wav' in r('你好啊，很高兴认识你。')
+        model_name = 'ChatTTS-new'
+        model_name, deploy_method, url = self.deploy_inference_service(model_name)
+        model = lazyllm.TrainableModule(model_name).deploy_method(getattr(lazyllm.deploy, deploy_method), url=url)
+        assert model._impl._get_deploy_tasks.flag
+        assert '.wav' in model('你好啊，很高兴认识你。')
 
-        nodes = [dict(id='0', kind='SharedModel', name='chattts', args=dict(
-            llm=jobid, local=False, token=token, stream=False, cls='tts'))]
+        engine = LightEngine()
+        nodes = [dict(id='0', kind='TTS', name='tts',
+                      args=dict(base_model=model_name, deploy_method=deploy_method, type='local', url=url))]
         gid = engine.start(nodes)
 
         r = engine.run(gid, "这张图片描述的是什么？")

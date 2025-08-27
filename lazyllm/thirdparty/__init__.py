@@ -39,7 +39,7 @@ def get_pip_install_cmd(names):
     for name in names:
         if name in package_name_map:
             name = package_name_map[name]
-        install_parts.append("\"" + name + requirements[name] + "\"")
+        install_parts.append("\"" + name + requirements.get(name, '') + "\"")
     if len(install_parts) > 0:
         return "pip install " + " ".join(install_parts)
     return None
@@ -60,36 +60,58 @@ def prep_req_dict():
 
 
 class PackageWrapper(object):
-    def __init__(self, key, package=None) -> None:
+    def __init__(self, key, *sub_package, package=None, register_patches=None) -> None:
         self._Wrapper__key = key
         self._Wrapper__package = package
+        self._Wrapper__sub_packages = sorted(sub_package, reverse=True)
+        self._Wrapper__patches = []
+        self._Wrapper__lib = None
+        if register_patches: self.register_patches(register_patches)
+
+    def register_patches(self, patch_func):
+        if isinstance(patch_func, list):
+            self._Wrapper__patches.extend(patch_func)
+        else:
+            self._Wrapper__patches.append(patch_func)
 
     def __getattribute__(self, __name):
-        if __name in ('_Wrapper__key', '_Wrapper__package'):
+        if __name in ('_Wrapper__key', '_Wrapper__package', '_Wrapper__patches',
+                      '_Wrapper__lib', '_Wrapper__sub_packages', 'register_patches'):
             return super(__class__, self).__getattribute__(__name)
-        try:
-            return getattr(importlib.import_module(
-                self._Wrapper__key, package=self._Wrapper__package), __name)
-        except ImportError:
-            pip_cmd = get_pip_install_cmd([self._Wrapper__key])
-            if pip_cmd:
-                err_msg = f'Cannot import module {self._Wrapper__key}, please install it by {pip_cmd}'
-            else:
-                err_msg = f'Cannot import module {self._Wrapper__key}'
-            raise ImportError(err_msg)
+        for sub_package in self._Wrapper__sub_packages:
+            if __name == sub_package.split('.')[0]:
+                return PackageWrapper(f'{self._Wrapper__key}.{__name}', sub_package[len(__name) + 1:],
+                                      register_patches=self._Wrapper__patches)
+        if self._Wrapper__lib is None:
+            try:
+                self._Wrapper__lib = importlib.import_module(self._Wrapper__key, package=self._Wrapper__package)
+                for patch_func in self._Wrapper__patches: patch_func()
+            except ImportError:
+                pip_cmd = get_pip_install_cmd([self._Wrapper__key])
+                if pip_cmd:
+                    err_msg = f'Cannot import module {self._Wrapper__key}, please install it by {pip_cmd}'
+                else:
+                    err_msg = f'Cannot import module {self._Wrapper__key}'
+                raise ImportError(err_msg)
+        return getattr(self._Wrapper__lib, __name)
 
     def __setattr__(self, __name, __value):
-        if __name in ('_Wrapper__key', '_Wrapper__package'):
+        if __name in ('_Wrapper__key', '_Wrapper__package', '_Wrapper__patches',
+                      '_Wrapper__lib', '_Wrapper__sub_packages'):
             return super(__class__, self).__setattr__(__name, __value)
         setattr(importlib.import_module(
             self._Wrapper__key, package=self._Wrapper__package), __name, __value)
 
+# os.path is used for test
 modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', 'rank_bm25', 'redisvl', 'datasets',
            'deepspeed', 'fire', 'numpy', 'peft', 'torch', 'transformers', 'faiss', 'flash_attn', 'google',
            'lightllm', 'vllm', 'ChatTTS', 'wandb', 'funasr', 'sklearn', 'torchvision', 'scipy', 'pymilvus',
            'sentence_transformers', 'gradio', 'chromadb', 'nltk', 'PIL', 'httpx', 'bm25s', 'kubernetes', 'pymongo',
            'rapidfuzz', 'FlagEmbedding', 'mcp', 'diffusers', 'pypdf', 'pptx', 'html2text', 'ebooklib', 'docx2txt',
            'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr', 'volcenginesdkarkruntime',
-           'zhipuai', 'dashscope', 'mineru', 'opensearchpy']
+           'zhipuai', 'dashscope', ['mineru', 'cli.common'], 'opensearchpy', ['os', 'path']]
 for m in modules:
-    vars()[m] = PackageWrapper(m)
+    if isinstance(m, str):
+        vars()[m] = PackageWrapper(m)
+    else:
+        vars()[m[0]] = PackageWrapper(m[0], *m[1:])
