@@ -15,7 +15,11 @@
 ::: lazyllm.tools.rag.store.MilvusStore
     members:
     exclude-members:
-    
+
+::: lazyllm.tools.rag.store.hybrid.hybrid_store.HybridStore
+    members: connect, upsert, delete, get, search
+    exclude-members:
+
 ::: lazyllm.tools.rag.readers.ReaderBase
     members:
     exclude-members:
@@ -62,8 +66,8 @@
     members:
 	exclude-members:
 
-::: lazyllm.tools.rag.component.bm25
-    members:
+::: lazyllm.tools.rag.component.bm25.BM25
+    members: retrieve
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_to_db.DocInfoSchemaItem
@@ -71,7 +75,7 @@
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_to_db.DocGenreAnalyser
-    members:
+    members: gen_detection_query, analyse_doc_genre
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_to_db.DocInfoSchemaAnalyser
@@ -159,7 +163,7 @@
     exclude-members: 
 
 ::: lazyllm.tools.rag.DocManager
-    members:
+    members: document, list_kb_groups, add_files, reparse_files
 	exclude-members:
 
 ::: lazyllm.tools.rag.utils.SqliteDocListManager
@@ -185,6 +189,7 @@
       - get_file_status
       - update_kb_group
       - release
+      - get_status_cond_and_params
 	exclude-members:
 
 ::: lazyllm.tools.rag.data_loaders.DirectoryReader
@@ -199,7 +204,7 @@
     members:
     exclude-members:
 
-lazyllm.tools.rag.transform.NodeTransform
+::: lazyllm.tools.rag.transform.NodeTransform
     members:
     exclude-members:
 
@@ -212,7 +217,7 @@ lazyllm.tools.rag.transform.NodeTransform
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_node.DocNode
-    members:
+    members: get_children_str, get_parent_id, get_content, to_dict
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_processor.DocumentProcessor
@@ -323,7 +328,7 @@ lazyllm.tools.rag.transform.NodeTransform
     members: 
 
 ::: lazyllm.tools.BaseEvaluator
-    members: 
+    members: process_one_data, validate_inputs_key, batch_process, save_res
     exclude-members:
 
 ::: lazyllm.tools.ResponseRelevancy
@@ -387,4 +392,12 @@ lazyllm.tools.rag.transform.NodeTransform
 
 ::: lazyllm.tools.http_request.http_executor_response.HttpExecutorResponse
     members: extract_file, get_content_type
+    exclude-members:
+
+::: lazyllm.tools.rag.doc_impl.DocImpl
+    members: create_global_node_group, create_node_group, register_global_reader, register_index, add_reader, worker, activate_group, active_node_groups, retrieve, find, find_parent, find_children, clear_cache
+    exclude-members:
+
+::: lazyllm.tools.services.client.ClientBase
+    members: uniform_status
     exclude-members:

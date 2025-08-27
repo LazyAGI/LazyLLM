@@ -1496,3 +1496,334 @@ Get and process fine-tuning data files, including validating file format and con
 Args:
     filepath (str): Path to the fine-tuning data file, must be in .jsonl format
 ''')
+
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMModule', '''\
+GLMModule是智谱AI开放平台的LLM接口管理组件，继承自OnlineChatModuleBase和FileHandlerBase，具备对话和文件处理能力。
+
+Args:
+    base_url (str): API的基础URL，默认为"https://open.bigmodel.cn/api/paas/v4/"。
+    model (str): 使用的模型名称，默认为"glm-4"。
+    api_key (str): 智谱AI的API密钥，如果未提供则从lazyllm.config['glm_api_key']读取。
+    stream (bool): 是否启用流式输出，默认为True。
+    return_trace (bool): 是否返回调用链跟踪信息，默认为False。
+    **kwargs: 其他传递给基类的参数。
+
+该模块支持以下功能：
+1. 支持多种模型，包括glm-4、glm-4v、glm-3-turbo等。
+2. 提供模型微调能力，支持lora和full两种微调方式。
+3. 支持文件上传、微调任务创建和管理。
+4. 提供微调任务状态查询和日志获取功能。
+5. 支持取消正在进行的微调任务。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.glm.GLMModule', '''\
+GLMModule is the LLM interface management component for Zhipu AI's open platform, inheriting from OnlineChatModuleBase and FileHandlerBase, providing both chat and file handling capabilities.
+
+Args:
+    base_url (str): Base URL for the API, defaults to "https://open.bigmodel.cn/api/paas/v4/".
+    model (str): Name of the model to use, defaults to "glm-4".
+    api_key (str): Zhipu AI API key, if not provided will be read from lazyllm.config['glm_api_key'].
+    stream (bool): Whether to enable streaming output, defaults to True.
+    return_trace (bool): Whether to return trace information, defaults to False.
+    **kwargs: Additional arguments passed to the base class.
+
+The module supports the following features:
+1. Supports multiple models including glm-4, glm-4v, glm-3-turbo, etc.
+2. Provides model fine-tuning capabilities with both lora and full fine-tuning methods.
+3. Supports file upload, fine-tuning task creation and management.
+4. Provides fine-tuning task status query and log retrieval functionality.
+5. Supports cancellation of ongoing fine-tuning tasks.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMReranking', '''\
+智谱AI的重排序模块，继承自OnlineEmbeddingModuleBase，用于对文档进行相关性重排序。
+
+Args:
+    embed_url (str): 重排序API的基础URL，默认为"https://open.bigmodel.cn/api/paas/v4/rerank"。
+    embed_model_name (str): 使用的模型名称，默认为"rerank"。
+    api_key (str): 智谱AI的API密钥，如果未提供则从lazyllm.config['glm_api_key']读取。
+
+属性：
+    type: 返回模型类型，固定为"ONLINE_RERANK"。
+
+主要功能：
+    - 对输入的查询和文档列表进行相关性重排序
+    - 支持自定义排序参数
+    - 返回每个文档的相关性得分
+''')
+
+add_english_doc('llms.onlinemodule.supplier.glm.GLMReranking', '''\
+Reranking module for Zhipu AI, inheriting from OnlineEmbeddingModuleBase, used for relevance reranking of documents.
+
+Args:
+    embed_url (str): Base URL for reranking API, defaults to "https://open.bigmodel.cn/api/paas/v4/rerank".
+    embed_model_name (str): Model name to use, defaults to "rerank".
+    api_key (str): Zhipu AI API key, if not provided will be read from lazyllm.config['glm_api_key'].
+
+Properties:
+    type: Returns model type, fixed as "ONLINE_RERANK".
+
+Main Features:
+    - Performs relevance reranking for input query and document list
+    - Supports custom ranking parameters
+    - Returns relevance scores for each document
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMMultiModal', '''\
+智谱AI的多模态基础模块，继承自OnlineMultiModalBase，用于处理多模态任务。
+
+Args:
+    model_name (str): 模型名称。
+    api_key (str): API密钥，如果未提供则从lazyllm.config['glm_api_key']读取。
+    base_url (str): API的基础URL，默认为'https://open.bigmodel.cn/api/paas/v4'。
+    return_trace (bool): 是否返回调用追踪信息，默认为False。
+    **kwargs: 其他传递给基类的参数。
+
+功能特点：
+1. 支持多模态输入处理
+2. 使用ZhipuAI客户端进行API调用
+3. 提供统一的多模态接口
+4. 可自定义基础URL和API密钥
+
+注意：
+    该类作为GLM多模态功能的基础类，通常作为其他具体多模态实现（如语音转文本、文本生成图像等）的父类。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.glm.GLMMultiModal', '''\
+Zhipu AI's multimodal base module, inheriting from OnlineMultiModalBase, for handling multimodal tasks.
+
+Args:
+    model_name (str): Model name.
+    api_key (str): API key, if not provided will be read from lazyllm.config['glm_api_key'].
+    base_url (str): Base URL for API, defaults to 'https://open.bigmodel.cn/api/paas/v4'.
+    return_trace (bool): Whether to return call trace information, defaults to False.
+    **kwargs: Additional arguments passed to the base class.
+
+Features:
+1. Supports multimodal input processing
+2. Uses ZhipuAI client for API calls
+3. Provides unified multimodal interface
+4. Customizable base URL and API key
+
+Note:
+    This class serves as the base class for GLM multimodal functionality, typically used as the parent class for specific multimodal implementations (such as speech-to-text, text-to-image, etc.).
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenReranking', '''\
+通义千问的重排序模块，继承自OnlineEmbeddingModuleBase，用于对文档进行相关性重排序。
+
+Args:
+    embed_url (str): 重排序API的基础URL，默认为"https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank"。
+    embed_model_name (str): 使用的模型名称，默认为"gte-rerank"。
+    api_key (str): 通义千问的API密钥，如果未提供则从lazyllm.config['qwen_api_key']读取。
+    **kwargs: 其他传递给基类的参数。
+
+属性：
+    type: 返回模型类型，固定为"ONLINE_RERANK"。
+
+主要功能：
+    - 对输入的查询和文档列表进行相关性重排序
+    - 支持自定义排序参数
+    - 返回每个文档的索引和相关性得分
+''')
+
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenReranking', '''\
+Qwen reranking module, inheriting from OnlineEmbeddingModuleBase, used for relevance reranking of documents.
+
+Args:
+    embed_url (str): Base URL for reranking API, defaults to "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank".
+    embed_model_name (str): Model name to use, defaults to "gte-rerank".
+    api_key (str): Qwen API key, if not provided will be read from lazyllm.config['qwen_api_key'].
+    **kwargs: Additional arguments passed to the base class.
+
+Properties:
+    type: Returns model type, fixed as "ONLINE_RERANK".
+
+Main Features:
+    - Performs relevance reranking for input query and document list
+    - Supports custom ranking parameters
+    - Returns index and relevance score for each document
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenMultiModal', '''\
+通义千问的多模态基础模块，继承自OnlineMultiModalBase，用于处理多模态任务。
+
+Args:
+    api_key (str): API密钥，如果未提供则从lazyllm.config['qwen_api_key']读取。
+    model_name (str): 模型名称。
+    base_url (str): HTTP API的基础URL，默认为'https://dashscope.aliyuncs.com/api/v1'。
+    base_websocket_url (str): WebSocket API的基础URL，默认为'wss://dashscope.aliyuncs.com/api-ws/v1/inference'。
+    return_trace (bool): 是否返回调用追踪信息，默认为False。
+    **kwargs: 其他传递给基类的参数。
+
+功能特点：
+1. 支持HTTP和WebSocket两种API调用方式
+2. 使用DashScope客户端进行API调用
+3. 提供统一的多模态接口
+4. 可自定义基础URL和API密钥
+
+注意：
+    该类作为通义千问多模态功能的基础类，通常作为其他具体多模态实现（如语音转文本、文本生成图像等）的父类。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenMultiModal', '''\
+Qwen's multimodal base module, inheriting from OnlineMultiModalBase, for handling multimodal tasks.
+
+Args:
+    api_key (str): API key, if not provided will read from lazyllm.config['qwen_api_key'].
+    model_name (str): Model name.
+    base_url (str): Base URL for HTTP API, defaults to 'https://dashscope.aliyuncs.com/api/v1'.
+    base_websocket_url (str): Base URL for WebSocket API, defaults to 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'.
+    return_trace (bool): Whether to return call trace information, defaults to False.
+    **kwargs: Additional parameters passed to the base class.
+
+Features:
+1. Supports both HTTP and WebSocket API calls
+2. Uses DashScope client for API calls
+3. Provides unified multimodal interface
+4. Customizable base URLs and API key
+
+Note:
+    This class serves as the base class for Qwen's multimodal functionality, typically used as the parent class for other specific multimodal implementations (such as speech-to-text, text-to-image, etc.).
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenTTSModule', '''\
+通义千问的文本转语音模块，继承自QwenMultiModal，提供多种语音合成模型支持。
+
+Args:
+    model (str): 模型名称，默认为"qwen-tts"。可选模型包括：
+        - cosyvoice-v2
+        - cosyvoice-v1
+        - sambert
+        - qwen-tts
+        - qwen-tts-latest
+    api_key (str): API密钥，默认为None，将从lazyllm.config['qwen_api_key']读取。
+    return_trace (bool): 是否返回调用追踪信息，默认为False。
+    **kwargs: 其他传递给基类的参数。
+
+语音合成参数：
+    input (str): 要转换的文本内容。
+    voice (str): 说话人声音，默认使用模型默认声音。
+    speech_rate (float): 语速，默认为1.0。
+    volume (int): 音量，默认为50。
+    pitch (float): 音高，默认为1.0。
+
+注意：
+    - 不同的模型可能支持不同的声音选项
+    - 返回的音频数据会被自动编码为文件格式
+''')
+
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenTTSModule', '''\
+Qwen's text-to-speech module, inheriting from QwenMultiModal, providing support for multiple speech synthesis models.
+
+Args:
+    model (str): Model name, defaults to "qwen-tts". Available models include:
+        - cosyvoice-v2
+        - cosyvoice-v1
+        - sambert
+        - qwen-tts
+        - qwen-tts-latest
+    api_key (str): API key, defaults to None, will be read from lazyllm.config['qwen_api_key'].
+    return_trace (bool): Whether to return call trace information, defaults to False.
+    **kwargs: Additional arguments passed to the base class.
+
+Synthesis Parameters:
+    input (str): Text content to convert.
+    voice (str): Speaker voice, defaults to model's default voice.
+    speech_rate (float): Speech rate, defaults to 1.0.
+    volume (int): Volume, defaults to 50.
+    pitch (float): Pitch, defaults to 1.0.
+
+Note:
+    - Different models may support different voice options
+    - Returned audio data is automatically encoded into file format
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaModule', '''\
+SenseNovaModule是商汤科技开放平台的LLM接口管理组件，继承自OnlineChatModuleBase和FileHandlerBase，具备对话和文件处理能力。
+
+Args:
+    base_url (str): API的基础URL，默认为"https://api.sensenova.cn/compatible-mode/v1/"。
+    model (str): 使用的模型名称，默认为"SenseChat-5"。
+    api_key (str): 商汤API密钥，如果未提供则从lazyllm.config['sensenova_api_key']读取。
+    secret_key (str): 商汤密钥，如果未提供则从lazyllm.config['sensenova_secret_key']读取。
+    stream (bool): 是否启用流式输出，默认为True。
+    return_trace (bool): 是否返回调用链跟踪信息，默认为False。
+    **kwargs: 其他传递给基类的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaModule', '''\
+SenseNovaModule is the LLM interface management component for SenseTime's open platform, inheriting from OnlineChatModuleBase and FileHandlerBase, providing both chat and file handling capabilities.
+
+Args:
+    base_url (str): Base URL for the API, defaults to "https://api.sensenova.cn/compatible-mode/v1/".
+    model (str): Name of the model to use, defaults to "SenseChat-5".
+    api_key (str): SenseTime API key, if not provided will be read from lazyllm.config['sensenova_api_key'].
+    secret_key (str): SenseTime secret key, if not provided will be read from lazyllm.config['sensenova_secret_key'].
+    stream (bool): Whether to enable streaming output, defaults to True.
+    return_trace (bool): Whether to return trace information, defaults to False.
+    **kwargs: Additional arguments passed to the base class.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaModule.set_deploy_parameters', '''\
+设置模型部署的参数。
+
+Args:
+    **kw: 部署参数的键值对，这些参数将在创建部署时使用。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaModule.set_deploy_parameters', '''\
+Set parameters for model deployment.
+
+Args:
+    **kw: Key-value pairs of deployment parameters that will be used when creating deployment.
+''')
+
+add_chinese_doc('llms.onlinemodule.base.onlineMultiModalBase.OnlineMultiModalBase', '''\
+多模态在线模型的基类，继承自LLMBase，提供多模态模型的基础功能实现。
+
+Args:
+    model_series (str): 模型系列名称，不能为空。
+    model_name (str): 模型名称，默认为None。如果未指定会产生警告。
+    return_trace (bool): 是否返回调用追踪信息，默认为False。
+    **kwargs: 其他传递给基类的参数。
+
+属性：
+    series: 返回模型系列名称。
+    type: 返回模型类型，固定为"MultiModal"。
+
+主要方法：
+    share(): 创建模块的共享实例。
+    forward(input, lazyllm_files, **kwargs): 处理输入和文件的主要方法。
+    _forward(input, files, **kwargs): 需要被子类实现的具体前向处理方法。
+
+注意：
+    - 子类必须实现_forward方法。
+    - 模型系列名称(model_series)为必填项。
+    - 如果未指定模型名称(model_name)，系统会产生警告日志。
+''')
+
+add_english_doc('llms.onlinemodule.base.onlineMultiModalBase.OnlineMultiModalBase', '''\
+Base class for online multimodal models, inheriting from LLMBase, providing basic functionality for multimodal models.
+
+Args:
+    model_series (str): Model series name, cannot be empty.
+    model_name (str): Model name, defaults to None. A warning will be generated if not specified.
+    return_trace (bool): Whether to return call trace information, defaults to False.
+    **kwargs: Additional arguments passed to the base class.
+
+Properties:
+    series: Returns the model series name.
+    type: Returns the model type, fixed as "MultiModal".
+
+Main Methods:
+    share(): Create a shared instance of the module.
+    forward(input, lazyllm_files, **kwargs): Main method for handling input and files.
+    _forward(input, files, **kwargs): Forward method to be implemented by subclasses.
+
+Notes:
+    - Subclasses must implement the _forward method.
+    - Model series name (model_series) is required.
+    - A warning log will be generated if model name (model_name) is not specified.
+''')
+

@@ -586,6 +586,78 @@ add_example('auto.AutoFinetune', '''\
 <lazyllm.llm.finetune type=AlpacaloraFinetune>
 ''')
 
+add_chinese_doc('auto.configure.core.configuration.AutoConfig', '''\
+自动配置类，用于管理和查询微调和部署的配置参数。
+
+Args:
+    finetune_file (str): 微调配置文件路径，CSV格式。
+    deploy_file (str): 部署配置文件路径，CSV格式。
+''')
+
+add_english_doc('auto.configure.core.configuration.AutoConfig', '''\
+Auto configuration class for managing and querying fine-tuning and deployment configuration parameters.
+
+Args:
+    finetune_file (str): Path to fine-tuning configuration file in CSV format.
+    deploy_file (str): Path to deployment configuration file in CSV format.
+''')
+
+add_chinese_doc('auto.configure.core.configuration.AutoConfig.query_finetune', '''\
+查询微调配置参数。
+
+Args:
+    gpu_type (str): GPU类型。
+    gpu_num (int): GPU数量。
+    model_name (str): 模型名称。
+    ctx_len (int): 上下文长度。
+    batch_size (int): 批处理大小。
+    lora_r (int): LoRA秩。
+
+Returns:
+    List[TrainingConfiguration]: 返回按TGS（训练吞吐量得分）降序排序的训练配置列表。
+''')
+
+add_english_doc('auto.configure.core.configuration.AutoConfig.query_finetune', '''\
+Query fine-tuning configuration parameters.
+
+Args:
+    gpu_type (str): GPU type.
+    gpu_num (int): Number of GPUs.
+    model_name (str): Model name.
+    ctx_len (int): Context length.
+    batch_size (int): Batch size.
+    lora_r (int): LoRA rank.
+
+Returns:
+    List[TrainingConfiguration]: Returns a list of training configurations sorted by TGS (Training Goodput Score) in descending order.
+''')
+
+add_chinese_doc('auto.configure.core.configuration.AutoConfig.query_deploy', '''\
+查询部署配置参数。
+
+Args:
+    gpu_type (str): GPU类型。
+    gpu_num (int): GPU数量。
+    model_name (str): 模型名称。
+    max_token_num (int): 最大token数量。
+
+Returns:
+    List[DeployConfiguration]: 返回按TGS（推理吞吐量得分）降序排序的部署配置列表。
+''')
+
+add_english_doc('auto.configure.core.configuration.AutoConfig.query_deploy', '''\
+Query deployment configuration parameters.
+
+Args:
+    gpu_type (str): GPU type.
+    gpu_num (int): Number of GPUs.
+    model_name (str): Model name.
+    max_token_num (int): Maximum number of tokens.
+
+Returns:
+    List[DeployConfiguration]: Returns a list of deployment configurations sorted by TGS (Throughput Goodput Score) in descending order.
+''')
+
 # ============= Deploy
 
 add_chinese_doc('LazyLLMDeployBase', '''\
@@ -676,6 +748,80 @@ add_english_doc('deploy.embed.AbstractEmbedding.load_embed', '''\
 Abstract method for loading embedding models. This method is implemented by subclasses to perform specific model loading logic.
 
 **Note**: This method is currently under development.
+''')
+
+add_chinese_doc('deploy.embed.HuggingFaceEmbedding', '''\
+HuggingFace嵌入模型管理类，用于管理和注册不同的嵌入模型实现。
+
+属性：
+    _model_id_mapping (dict): 模型ID到具体实现类的映射字典。
+
+Args:
+    base_embed (str): 基础嵌入模型的路径或名称。
+    source (Optional[str]): 模型来源，默认为None。
+''')
+
+add_english_doc('deploy.embed.HuggingFaceEmbedding', '''\
+HuggingFace embedding model management class for managing and registering different embedding model implementations.
+
+Attributes:
+    _model_id_mapping (dict): Mapping dictionary from model IDs to implementation classes.
+
+Args:
+    base_embed (str): Path or name of the base embedding model.
+    source (Optional[str]): Model source, defaults to None.
+''')
+
+add_chinese_doc('deploy.embed.HuggingFaceEmbedding.get_emb_cls', '''\
+获取模型对应的嵌入实现类。
+
+Args:
+    model_name (str): 模型名称或路径。
+
+Returns:
+    type: 返回对应的嵌入模型实现类，如果未找到则返回默认实现LazyHuggingFaceDefaultEmbedding。
+''')
+
+add_english_doc('deploy.embed.HuggingFaceEmbedding.get_emb_cls', '''\
+Get the embedding implementation class for a model.
+
+Args:
+    model_name (str): Model name or path.
+
+Returns:
+    type: Returns corresponding embedding model implementation class, defaults to LazyHuggingFaceDefaultEmbedding if not found.
+''')
+
+add_chinese_doc('deploy.embed.HuggingFaceEmbedding.register', '''\
+注册模型ID到特定实现类的装饰器。
+
+Args:
+    model_ids (List[str]): 要注册的模型ID列表。
+
+Returns:
+    Callable: 返回装饰器函数。
+''')
+
+add_english_doc('deploy.embed.HuggingFaceEmbedding.register', '''\
+Decorator for registering model IDs to specific implementation classes.
+
+Args:
+    model_ids (List[str]): List of model IDs to register.
+
+Returns:
+    Callable: Returns decorator function.
+''')
+
+add_chinese_doc('deploy.embed.HuggingFaceEmbedding.load_embed', '''\
+加载嵌入模型。
+
+该方法会调用内部嵌入实现类的load_embed方法来加载模型。
+''')
+
+add_english_doc('deploy.embed.HuggingFaceEmbedding.load_embed', '''\
+Load the embedding model.
+
+This method calls the load_embed method of the internal embedding implementation class to load the model.
 ''')
 
 # Deploy-Lightllm
@@ -2548,6 +2694,50 @@ Args:
     show (bool): Whether to print the returned prompt. Defaults to False.
 ''')
 
+add_english_doc('prompter.builtinPrompt.LazyLLMPrompterBase', '''\
+LazyLLM prompter base class for managing and generating model prompts.
+
+Args:
+    show (bool): Whether to display generated prompts, defaults to False.
+    tools (Optional[List]): List of available tools, defaults to None.
+    history (Optional[List]): Conversation history, defaults to None.
+
+Attributes:
+    ISA (str): Instruction separator start token "<!lazyllm-spliter!>".
+    ISE (str): Instruction separator end token "</!lazyllm-spliter!>".
+
+Configuration Items:
+- system: System role setting
+- sos/eos: Session start/end markers
+- soh/eoh: Human input start/end markers
+- soa/eoa: AI response start/end markers
+- soe/eoe: Tool execution result start/end markers
+- tool_start_token/tool_end_token: Tool call start/end markers
+- tool_args_token: Tool arguments marker
+''')
+
+add_chinese_doc('prompter.builtinPrompt.LazyLLMPrompterBase', '''\
+LazyLLM提示词基类，用于管理和生成模型提示词。
+
+Args:
+    show (bool): 是否显示生成的提示词，默认为False。
+    tools (Optional[List]): 可用工具列表，默认为None。
+    history (Optional[List]): 对话历史记录，默认为None。
+
+属性：
+    ISA (str): 指令分隔符起始标记 "<!lazyllm-spliter!>"。
+    ISE (str): 指令分隔符结束标记 "</!lazyllm-spliter!>"。
+
+配置项：
+- system: 系统角色设定
+- sos/eos: 会话开始/结束标记
+- soh/eoh: 人类输入开始/结束标记
+- soa/eoa: AI回复开始/结束标记
+- soe/eoe: 工具执行结果开始/结束标记
+- tool_start_token/tool_end_token: 工具调用开始/结束标记
+- tool_args_token: 工具参数标记
+''')
+
 add_chinese_doc('AlpacaPrompter', '''\
 Alpaca格式的Prompter，支持工具调用，不支持历史对话。
 
@@ -2890,15 +3080,10 @@ SenseVoice Model Deployment Class. This class is used to deploy the SenseVoice m
 Constructor, initializes the deployment class.
 
 Args:
-    launcher (lazyllm.launcher): An instance of the launcher used to start the remote service.
-
-`__call__(self, finetuned_model=None, base_model=None)`
-Deploys the model and returns the remote service address.
-
-Args:
-    finetuned_model (str): If provided, this model will be used for deployment; if not provided or the path is invalid, `base_model` will be used.
-    base_model (str): The default model, which will be used for deployment if `finetuned_model` is invalid.
-    Return (str): The URL address of the remote service.
+    launcher (Optional[LazyLLMLaunchersBase]): Launcher instance, defaults to None.
+    log_path (Optional[str]): Log file path, defaults to None.
+    trust_remote_code (bool): Whether to trust remote code, defaults to True.
+    port (Optional[int]): Service port number, defaults to None.
 
 Notes:
     - Input for infer: `str`. The audio path or link.
@@ -2913,15 +3098,11 @@ SenseVoice 模型部署类。该类用于将SenseVoice模型部署到指定服�
 构造函数，初始化部署类。
 
 Args:
-    launcher(lazyllm.launcher): 用于启动远程服务的启动器实例。
+    launcher (Optional[LazyLLMLaunchersBase]): Launcher instance, defaults to None.
+    log_path (Optional[str]): Log file path, defaults to None.
+    trust_remote_code (bool): Whether to trust remote code, defaults to True.
+    port (Optional[int]): Service port number, defaults to None.
 
-`__call__(self, finetuned_model=None, base_model=None)`
-部署模型，并返回远程服务地址。
-
-Args: 
-    finetuned_model (str): 如果提供，则使用该模型进行部署；如果未提供或路径无效，则使用 `base_model`。
-    base_model (str): 默认模型，如果 `finetuned_model` 无效，则使用该模型进行部署。
-    返回值 (str): 远程服务的URL地址。
 Notes:
     - 推理的输入：字符串。音频路径或者链接。
     - 推理的返回值：字符串。识别出的内容。
@@ -3110,11 +3291,6 @@ Args:
     target_path: A string specifying the target path for fine-tuning outputs. Defaults to 'target'.
     launcher: A launcher instance for executing commands. Defaults to [launchers.remote()][lazyllm.launchers.remote].
     **kw: Additional keyword arguments that are stored for later use.
-     `cmd(self, *args, **kw) -> str`
-Generates a dummy command string for fine-tuning. This method is for testing purposes only.
-Args:
-    *args: Positional arguments to be included in the command.
-    **kw: Keyword arguments to be included in the command.
 Returns:
     A string representing a dummy command. The string includes the initial arguments passed during initialization.
 ''')
@@ -3127,12 +3303,6 @@ Args:
     target_path: 字符串，指定微调输出的目标路径，默认为 'target'。
     launcher: 启动器实例，用于执行命令。默认为 [launchers.remote()][lazyllm.launchers.remote]。
     **kw: 其他关键字参数，这些参数会被保存以供后续使用。
-
-     `cmd(self, *args, **kw) -> str`
-生成一个用于微调的占位命令字符串。此方法仅用于测试目的。
-Args:
-    *args: 要包含在命令中的位置参数。
-    **kw: 要包含在命令中的关键字参数。
 Returns:
     一个字符串，表示一个占位命令。该字符串包括初始化时传递的参数。
 ''')

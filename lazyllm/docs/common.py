@@ -686,6 +686,170 @@ Args:
     env_vars_dict (dict): Dictionary of environment variables to temporarily set; variables with None values are ignored.
 ''')
 
+add_chinese_doc('utils.SecurityVisitor', '''\
+基于AST的Python代码安全分析器，用于检测不安全的操作。
+
+属性：
+    DANGEROUS_BUILTINS (set): 危险的内置函数集合，包括exec、eval、open等。
+    DANGEROUS_OS_CALLS (set): 危险的os操作集合，包括system、popen、remove等。
+    DANGEROUS_SYS_CALLS (set): 危险的sys操作集合，包括exit、modules等。
+    DANGEROUS_MODULES (set): 危险的模块集合，包括pickle、subprocess、socket等。
+
+注意：
+    此类继承自ast.NodeVisitor，用于遍历和检查Python代码的抽象语法树。
+''')
+
+add_english_doc('utils.SecurityVisitor', '''\
+AST-based Python code security analyzer for detecting unsafe operations.
+
+Attributes:
+    DANGEROUS_BUILTINS (set): Set of dangerous built-in functions like exec, eval, open.
+    DANGEROUS_OS_CALLS (set): Set of dangerous os operations like system, popen, remove.
+    DANGEROUS_SYS_CALLS (set): Set of dangerous sys operations like exit, modules.
+    DANGEROUS_MODULES (set): Set of dangerous modules like pickle, subprocess, socket.
+
+Note:
+    This class inherits from ast.NodeVisitor for traversing and checking Python code's abstract syntax tree.
+''')
+
+add_chinese_doc('utils.SecurityVisitor.visit_Call', '''\
+检查函数调用的安全性。
+
+检查内容：
+1. 危险的内置函数调用
+2. 危险的os模块调用
+3. 危险的sys模块调用
+
+Args:
+    node (ast.Call): AST函数调用节点。
+
+Raises:
+    ValueError: 当检测到危险的函数调用时抛出。
+''')
+
+add_english_doc('utils.SecurityVisitor.visit_Call', '''\
+Check security of function calls.
+
+Checks:
+1. Dangerous built-in function calls
+2. Dangerous os module calls
+3. Dangerous sys module calls
+
+Args:
+    node (ast.Call): AST function call node.
+
+Raises:
+    ValueError: When dangerous function calls are detected.
+''')
+
+add_chinese_doc('utils.SecurityVisitor.visit_Import', '''\
+检查import语句的安全性。
+
+Args:
+    node (ast.Import): AST导入节点。
+
+Raises:
+    ValueError: 当检测到危险模块的导入时抛出。
+''')
+
+add_english_doc('utils.SecurityVisitor.visit_Import', '''\
+Check security of import statements.
+
+Args:
+    node (ast.Import): AST import node.
+
+Raises:
+    ValueError: When dangerous module imports are detected.
+''')
+
+add_chinese_doc('utils.SecurityVisitor.visit_ImportFrom', '''\
+检查from...import语句的安全性。
+
+Args:
+    node (ast.ImportFrom): AST from-import节点。
+
+Raises:
+    ValueError: 当检测到危险模块的导入时抛出。
+''')
+
+add_english_doc('utils.SecurityVisitor.visit_ImportFrom', '''\
+Check security of from...import statements.
+
+Args:
+    node (ast.ImportFrom): AST from-import node.
+
+Raises:
+    ValueError: When dangerous module imports are detected.
+''')
+
+add_chinese_doc('utils.SecurityVisitor.visit_Attribute', '''\
+检查属性访问的安全性。
+
+检查内容：
+1. os.environ的访问
+2. tempfile模块的使用
+
+Args:
+    node (ast.Attribute): AST属性访问节点。
+
+Raises:
+    ValueError: 当检测到危险的属性访问时抛出。
+''')
+
+add_english_doc('utils.SecurityVisitor.visit_Attribute', '''\
+Check security of attribute access.
+
+Checks:
+1. Access to os.environ
+2. Usage of tempfile module
+
+Args:
+    node (ast.Attribute): AST attribute access node.
+
+Raises:
+    ValueError: When dangerous attribute access is detected.
+''')
+
+add_chinese_doc('common.Finalizer', '''\
+终结器类，用于管理资源的清理和释放操作。可以作为上下文管理器使用，或通过对象销毁时自动触发清理。
+
+Args:
+    func1 (Callable): 主要的清理函数。如果提供了func2，则func1会立即执行，func2作为清理函数。
+    func2 (Optional[Callable]): 可选的清理函数，默认为None。
+    condition (Callable): 条件函数，返回True时才执行清理函数，默认总是返回True。
+
+用途：
+1. 可以作为上下文管理器使用（with语句）
+2. 可以通过对象销毁时自动触发清理
+3. 支持条件性清理
+4. 支持两阶段初始化和清理
+
+注意：
+    - 当提供func2时，func1会在初始化时立即执行
+    - 清理函数只会执行一次
+    - 清理操作会在对象销毁或退出上下文时执行
+''')
+
+add_english_doc('common.Finalizer', '''\
+Finalizer class for managing resource cleanup and release operations. Can be used as a context manager or trigger cleanup automatically when object is destroyed.
+
+Args:
+    func1 (Callable): Primary cleanup function. If func2 is provided, func1 is executed immediately and func2 becomes the cleanup function.
+    func2 (Optional[Callable]): Optional cleanup function, defaults to None.
+    condition (Callable): Condition function, cleanup is executed only when it returns True, defaults to always returning True.
+
+Uses:
+1. Can be used as a context manager (with statement)
+2. Can trigger cleanup automatically when object is destroyed
+3. Supports conditional cleanup
+4. Supports two-phase initialization and cleanup
+
+Note:
+    - When func2 is provided, func1 is executed immediately during initialization
+    - Cleanup function is executed only once
+    - Cleanup occurs when object is destroyed or context is exited
+''')
+
 add_chinese_doc('ReadOnlyWrapper', '''\ 
 一个轻量级只读包装器，用于包裹任意对象并对外提供只读访问（实际并未完全禁止修改，但复制时不会携带原始对象）。包装器可以动态替换内部对象，并提供判断对象是否为空的辅助方法。
 Args:

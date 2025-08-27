@@ -114,3 +114,47 @@ Args:
 Returns:
     LazyLLMLaunchersBase: The cloned launcher.
 ''')
+
+add_chinese_doc('EmptyLauncher', '''\
+本地执行启动器，用于在本地环境中执行任务，支持GPU设备管理。
+
+Args:
+    subprocess (bool): 是否使用子进程执行，默认为False。
+    ngpus (Optional[int]): 需要使用的GPU数量，默认为None。
+    sync (bool): 是否同步执行，默认为True。
+
+功能特点：
+1. 支持本地GPU设备的自动分配和管理
+2. 提供CUDA_VISIBLE_DEVICES环境变量的自动设置
+3. 支持同步和异步执行模式
+4. 支持进程状态监控和资源清理
+5. 提供子进程的优雅终止机制
+
+注意：
+    - 当ngpus为None时，将使用单个可用GPU
+    - 当ngpus为0时，不使用GPU
+    - 当请求的GPU数量超过可用数量时会抛出异常
+    - subprocess模式下不支持异步执行可调用对象
+''')
+
+add_english_doc('EmptyLauncher', '''\
+Local execution launcher for running tasks in local environment with GPU device management.
+
+Args:
+    subprocess (bool): Whether to use subprocess for execution, defaults to False.
+    ngpus (Optional[int]): Number of GPUs to use, defaults to None.
+    sync (bool): Whether to execute synchronously, defaults to True.
+
+Features:
+1. Supports automatic allocation and management of local GPU devices
+2. Provides automatic setting of CUDA_VISIBLE_DEVICES environment variable
+3. Supports both synchronous and asynchronous execution modes
+4. Supports process status monitoring and resource cleanup
+5. Provides graceful termination mechanism for subprocesses
+
+Note:
+    - When ngpus is None, will use a single available GPU
+    - When ngpus is 0, will not use GPU
+    - Raises exception when requested GPU count exceeds available count
+    - Asynchronous execution of callable objects is not supported in subprocess mode
+''')
