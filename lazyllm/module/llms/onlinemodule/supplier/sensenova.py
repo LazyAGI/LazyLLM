@@ -250,7 +250,7 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
                 json_data.update(kwargs)
             return json_data
         else:
-            text_batch = [text[i: i + self.batch_size] for i in range(0, len(text), self.batch_size)]
+            text_batch = [text[i: i + self._batch_size] for i in range(0, len(text), self._batch_size)]
             json_data = [{"input": texts, "model": self._embed_model_name} for texts in text_batch]
             if len(kwargs) > 0:
                 for i in range(len(json_data)):
@@ -258,10 +258,10 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
             return json_data
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
-        embeddings = response.get("embeddings", [])
+        embeddings = response.get('embeddings', [])
         if not embeddings:
             return []
         if isinstance(input, str):
-            return embeddings[0].get("embedding", [])
+            return embeddings[0].get('embedding', [])
         else:
-            return [res.get("embedding", []) for res in embeddings]
+            return [res.get('embedding', []) for res in embeddings]

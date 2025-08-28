@@ -247,7 +247,7 @@ class GLMEmbedding(OnlineEmbeddingModuleBase):
                 json_data.update(kwargs)
             return json_data
         else:
-            text_batch = [input[i: i + self.batch_size] for i in range(0, len(input), self.batch_size)]
+            text_batch = [input[i: i + self._batch_size] for i in range(0, len(input), self._batch_size)]
             json_data = [{"input": texts, "model": self._embed_model_name} for texts in text_batch]
             if len(kwargs) > 0:
                 for i in range(len(json_data)):
@@ -280,7 +280,7 @@ class GLMReranking(OnlineEmbeddingModuleBase):
         return json_data
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Tuple]:
-        return [(result["index"], result["relevance_score"]) for result in response['results']]
+        return [(result['index'], result['relevance_score']) for result in response['results']]
 
 
 class GLMMultiModal(OnlineMultiModalBase):

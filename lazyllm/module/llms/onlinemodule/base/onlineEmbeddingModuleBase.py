@@ -1,5 +1,6 @@
 from typing import Dict, List, Union
 import requests
+from concurrent.futures import ThreadPoolExecutor
 from ....module import ModuleBase
 
 class OnlineEmbeddingModuleBase(ModuleBase):
@@ -11,14 +12,16 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                  api_key: str,
                  embed_model_name: str,
                  return_trace: bool = False,
-                 **kw):
+                 batch_size: int = 10,
+                 num_worker: int = 1):
         super().__init__(return_trace=return_trace)
         self._model_series = model_series
         self._embed_url = embed_url
         self._api_key = api_key
         self._embed_model_name = embed_model_name
         self._set_headers()
-        self.batch_size = kw.pop('batch_size', 10)
+        self._batch_size = batch_size
+        self._num_worker = num_worker
 
     @property
     def series(self):
@@ -38,7 +41,10 @@ class OnlineEmbeddingModuleBase(ModuleBase):
         data = self._encapsulated_data(input, **kwargs)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         if isinstance(data, List):
-            return self.run_embed_batch(input, data, proxies, **kwargs)
+            if self._num_worker == 1:
+                return self.run_embed_batch(input, data, proxies, **kwargs)
+            else:
+                return self.run_embed_batch_parallel(input, data, proxies, **kwargs)
         else:
             with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies) as r:
                 if r.status_code == 200:
@@ -50,24 +56,25 @@ class OnlineEmbeddingModuleBase(ModuleBase):
         ret = []
         flag = False
         error_msg = ""
-        while not flag:
-            temp = []
-            for i in range(len(data)):
-                with requests.post(self._embed_url, json=data[i], headers=self._headers, proxies=proxies) as r:
+        with requests.Session() as session:
+            while not flag:
+                temp = []
+                for i in range(len(data)):
+                    r = session.post(self._embed_url, json=data[i], headers=self._headers, proxies=proxies)
                     if r.status_code == 200:
                         temp.extend(self._parse_response(r.json(), input))
                         if i == len(data) - 1:
                             flag = True
+                            ret = temp
                     else:
                         flag = False
                         error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
-                        if self.batch_size == 1 or r.status_code == 401:
+                        if self._batch_size == 1 or r.status_code == 401:
                             raise requests.RequestException(error_msg)
                         else:
-                            self.batch_size = max(self.batch_size // 2, 1)
+                            self._batch_size = max(self._batch_size // 2, 1)
                             data = self._encapsulated_data(input, **kwargs)
                         break
-            ret = temp
         if not flag:
             raise requests.RequestException(error_msg)
         return ret
@@ -83,10 +90,40 @@ class OnlineEmbeddingModuleBase(ModuleBase):
         return json_data
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
-        data = response.get("data", [])
+        data = response.get('data', [])
         if not data:
-            raise Exception("no data received")
+            raise Exception('no data received')
         if isinstance(input, str):
-            return data[0].get("embedding", [])
+            return data[0].get('embedding', [])
         else:
-            return [res.get("embedding", []) for res in data]
+            return [res.get('embedding', []) for res in data]
+
+    def run_embed_batch_parallel(self, input: Union[List, str], data: List, proxies, **kwargs):
+        ret = []
+        flag = False
+        error_msg = ""
+        with ThreadPoolExecutor(max_workers=self._num_worker) as executor:
+            while not flag:
+                temp = []
+                futures = [executor.submit(requests.post, self._embed_url, json=t,
+                                           headers=self._headers, proxies=proxies) for t in data]
+                for i in range(len(futures)):
+                    r = futures[i].result()
+                    if r.status_code == 200:
+                        temp.extend(self._parse_response(r.json(), input))
+                        if i == len(data) - 1:
+                            flag = True
+                            ret = temp
+                    else:
+                        executor.shutdown(wait=True)
+                        flag = False
+                        error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
+                        if self._batch_size == 1 or r.status_code == 401:
+                            raise requests.RequestException(error_msg)
+                        else:
+                            self._batch_size = max(self._batch_size // 2, 1)
+                            data = self._encapsulated_data(input, **kwargs)
+                        break
+        if not flag:
+            raise requests.RequestException(error_msg)
+        return ret
