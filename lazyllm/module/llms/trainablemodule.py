@@ -186,7 +186,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
 
         if url := self._deploy_args.get('url'):
             assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
-            self._set_url(url)
+            self._set_url(re.sub(r'/v1($|/.*)', '/v1/', url.rstrip('/')))
             self._get_deploy_tasks.flag.set()
         self._deploy_args.pop('url', None)
 
@@ -459,6 +459,26 @@ class TrainableModule(UrlModule):
 
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
                 *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
+        if self._url.endswith('v1/'):
+            return self.forward_openai(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
+                                       tools=tools, stream_output=stream_output, **kw)
+        elif self._url.endswith('generate'):
+            return self.forward_standard(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
+                                         tools=tools, stream_output=stream_output, **kw)
+        else:
+            raise ValueError(f'Unsupported url: {self._url}')
+
+    def forward_openai(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
+                       *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
+        if not getattr(self, '_openai_module', None):
+            self._openai_module = lazyllm.OnlineChatModule(
+                source='openai', model='lazyllm', base_url=self._url, skip_auth=True)
+            self._openai_module.used_by(self._module_id)
+        return self._openai_module.forward(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
+                                           tools=tools, stream_output=stream_output, **kw)
+
+    def forward_standard(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
+                         *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
         __input, files = self._get_files(__input, lazyllm_files)
         text_input_for_token_usage = __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
         url = self._url

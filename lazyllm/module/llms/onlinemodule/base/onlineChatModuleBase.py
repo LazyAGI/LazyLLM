@@ -37,9 +37,9 @@ class OnlineChatModuleBase(LLMBase):
                  skip_auth: bool = False, static_params: Optional[StaticParams] = None, **kwargs):
         super().__init__(stream=stream, return_trace=return_trace)
         self._model_series = model_series
-        if skip_auth and not api_key:
+        if not skip_auth and not api_key:
             raise ValueError("api_key is required")
-        self._api_key = api_key
+        self._api_key = api_key if skip_auth else ''
         self._base_url = base_url
         self._model_name = model_name
         self.trainable_models = self.TRAINABLE_MODEL_LIST
@@ -181,8 +181,8 @@ class OnlineChatModuleBase(LLMBase):
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         with requests.post(self._url, json=data, headers=self._headers, stream=stream_output, proxies=proxies) as r:
             if r.status_code != 200:  # request error
-                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
-                    if stream_output else requests.RequestException(r.text)
+                msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]) if stream_output else r.text
+                raise requests.RequestException(f'{r.status_code}: {msg}')
 
             with self.stream_output(stream_output):
                 msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()

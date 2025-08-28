@@ -27,32 +27,22 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
               'deepseek': DeepSeekModule}
 
     @staticmethod
-    def _encapsulate_parameters(base_url: str,
-                                model: str,
-                                stream: bool,
-                                return_trace: bool,
-                                **kwargs) -> Dict[str, Any]:
+    def _encapsulate_parameters(base_url: str, model: str, stream: bool, return_trace: bool, **kwargs) -> Dict[str, Any]:
         params = {"stream": stream, "return_trace": return_trace}
         if base_url is not None:
             params['base_url'] = base_url
         if model is not None:
             params['model'] = model
         params.update(kwargs)
-
         return params
 
-    def __new__(self,
-                model: str = None,
-                source: str = None,
-                base_url: str = None,
-                stream: bool = True,
-                return_trace: bool = False,
-                **kwargs):
+    def __new__(self, model: str = None, source: str = None, base_url: str = None, stream: bool = True,
+                return_trace: bool = False, skip_auth: bool = False, **kwargs):
         if model in OnlineChatModule.MODELS.keys() and source is None: source, model = model, source
+        params = OnlineChatModule._encapsulate_parameters(base_url, model, stream,
+                                                          return_trace, skip_auth=skip_auth, **kwargs)
 
-        params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace, **kwargs)
-
-        if kwargs.get("skip_auth", False):
+        if skip_auth:
             source = source or "openai"
             if not base_url:
                 raise KeyError("base_url must be set for local serving.")
