@@ -6,6 +6,7 @@ import codecs
 from typing import Callable, Dict, List, Union, Optional, Tuple
 import copy
 from dataclasses import dataclass
+from enum import Enum
 
 import lazyllm
 from lazyllm import launchers, LOG, package, encode_request, globals, is_valid_url, LazyLLMLaunchersBase
@@ -19,11 +20,20 @@ from .utils import light_reduce
 from .module import ModuleBase, ActionModule
 
 
+class LLMType(str, Enum):
+    LLM = 'LLM'
+    VLM = 'VLM'
+    SD = 'SD'
+    TTS = 'TTS'
+    STT = 'STT'
+
+
 class LLMBase(ModuleBase):
     def __init__(self, stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False,
-                 init_prompt: bool = True):
+                 init_prompt: bool = True, type: Optional[Union[str, LLMType]] = None):
         super().__init__(return_trace=return_trace)
         self._stream = stream
+        self._type = LLMType(type) if type else LLMType.LLM
         if init_prompt: self.prompt()
         __class__.formatter(self)
 
@@ -67,6 +77,10 @@ class LLMBase(ModuleBase):
         if format is not None: new.formatter(format)
         if stream is not None: new.stream = stream
         return new
+
+    @property
+    def type(self):
+        return self._type.value
 
     @property
     def stream(self):

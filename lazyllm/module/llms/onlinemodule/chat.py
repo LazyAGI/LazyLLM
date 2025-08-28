@@ -1,5 +1,5 @@
 import lazyllm
-from typing import Any, Dict
+from typing import Any, Dict, Optional
 from .base import OnlineChatModuleBase
 from .supplier.openai import OpenAIModule
 from .supplier.glm import GLMModule
@@ -37,10 +37,10 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
         return params
 
     def __new__(self, model: str = None, source: str = None, base_url: str = None, stream: bool = True,
-                return_trace: bool = False, skip_auth: bool = False, **kwargs):
+                return_trace: bool = False, skip_auth: bool = False, type: Optional[str] = None, **kwargs):
         if model in OnlineChatModule.MODELS.keys() and source is None: source, model = model, source
-        params = OnlineChatModule._encapsulate_parameters(base_url, model, stream,
-                                                          return_trace, skip_auth=skip_auth, **kwargs)
+        params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace,
+                                                          skip_auth=skip_auth, type=type, **kwargs)
 
         if skip_auth:
             source = source or "openai"
