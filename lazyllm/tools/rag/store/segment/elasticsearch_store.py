@@ -76,7 +76,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
         try:
             self._ddl_lock = threading.Lock()
             # Elastic Cloud
-            if self._client_kwargs.get("cloud_id") and self._client_kwargs.get('api_key'):
+            if self._client_kwargs.get('cloud_id') and self._client_kwargs.get('api_key'):
                 cloud_id = self._client_kwargs.get('cloud_id')
                 api_key = self._client_kwargs.get('api_key')
 
@@ -95,7 +95,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 f"ElasticSearch sever with cloud id {cloud_id} and api key {api_key} does not exist"
             )
             print(
-                "Ensure server exists, then try again with correct cloud_id and api_key"
+                'Ensure server exists, then try again with correct cloud_id and api_key'
             )
             raise e
         except elasticsearch.AuthenticationException as e:
