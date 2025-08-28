@@ -53,7 +53,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
         self,
         uris: List[str] = ["localhost:9200"],
         client_kwargs: Optional[Dict] = None,
-        mapping_kwargs: Optional[Union[Dict, List]] = None,
+        index_kwargs: Optional[Union[Dict, List]] = None,
         **kwargs,
     ):
         if isinstance(uris, str):
@@ -61,7 +61,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
 
         self._uris = uris
         self._client_kwargs = client_kwargs or {}
-        self._mapping_kwargs = mapping_kwargs or None
+        self._index_kwargs = index_kwargs or DEFAULT_MAPPING_BODY
         self._primary_key = "uid"
 
     @property
@@ -219,9 +219,9 @@ class ElasticSearchStore(LazyLLMStoreBase):
                     index=collection_name, body={"query": {"match_all": {}}}
                 )
                 for hit in resp["hits"]["hits"]:
-                    src = hit["_source"]
-                    src["uid"] = hit["_id"]
-                    results.append(self._deserialize_node(src))
+                    seg = self._transform_segment(hit)
+                    if seg:
+                        results.append(seg)
             # Query by primary key(mget)
             elif criteria and self._primary_key in criteria:
                 vals = criteria.pop(self._primary_key)
@@ -231,10 +231,9 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 resp = self._client.mget(index=collection_name, body={"ids": vals})
 
                 for doc in resp["docs"]:
-                    if doc.get("found", False):
-                        src = doc["_source"]
-                        src["uid"] = doc["_id"]
-                        results.append(self._deserialize_node(src))
+                    seg = self._transform_segment(doc, is_doc=True)
+                    if seg:
+                        results.append(seg)
 
             # Query by query(scroll + scan)
             else:
@@ -247,9 +246,9 @@ class ElasticSearchStore(LazyLLMStoreBase):
                     size=500,
                     preserve_order=False,
                 ):
-                    src = hit["_source"]
-                    src["uid"] = hit["_id"]
-                    results.append(self._deserialize_node(src))
+                    seg = self._transform_segment(hit)
+                    if seg:
+                        results.append(seg)
 
             return results
 
@@ -298,3 +297,17 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 must_clauses.append({"term": {"parent": criteria.pop("parent")}})
 
             return {"query": {"bool": {"must": must_clauses}}}
+
+    def _transform_segment(self, hit_or_doc: dict, is_doc: bool = False) -> dict:
+        """Convert ES hit/doc into normalized Python dict with uid. Return None if invalid (not found)."""
+        if is_doc:  # mget returns doc format
+            if not hit_or_doc.get("found", False):
+                return None
+            src = hit_or_doc["_source"]
+            uid = hit_or_doc["_id"]
+        else:  # search/scan returns hit format
+            src = hit_or_doc["_source"]
+            uid = hit_or_doc["_id"]
+
+        src["uid"] = uid
+        return self._deserialize_node(src)
