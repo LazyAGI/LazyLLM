@@ -85,7 +85,7 @@ class OnlineEmbeddingModuleBase(ModuleBase):
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
         data = response.get("data", [])
         if not data:
-            raise Exception("")
+            raise Exception("no data received")
         if isinstance(input, str):
             return data[0].get("embedding", [])
         else:
