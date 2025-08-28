@@ -238,8 +238,7 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
                  secret_key: str = None,
                  **kw):
         api_key = self._get_api_key(api_key, secret_key)
-        super().__init__("SENSENOVA", embed_url, api_key, embed_model_name)
-        self.batch_size = kw.pop('batch_size', 10)
+        super().__init__("SENSENOVA", embed_url, api_key, embed_model_name, **kw)
 
     def _encapsulated_data(self, text: Union[List, str], **kwargs):
         if isinstance(text, str):

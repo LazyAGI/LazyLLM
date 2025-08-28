@@ -222,8 +222,7 @@ class OpenAIEmbedding(OnlineEmbeddingModuleBase):
                  embed_model_name: str = "text-embedding-ada-002",
                  api_key: str = None,
                  *kw):
-        super().__init__("OPENAI", embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name)
-        self.batch_size = kw.pop('batch_size', 10)
+        super().__init__("OPENAI", embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name, **kw)
 
     def _encapsulated_data(self, text: Union[List, str], **kwargs):
         if isinstance(text, str):

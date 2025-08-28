@@ -306,8 +306,7 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
                  embed_model_name: str = "text-embedding-v1",
                  api_key: str = None,
                  **kw):
-        super().__init__("QWEN", embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name)
-        self.batch_size = kw.pop('batch_size', 10)
+        super().__init__("QWEN", embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name, **kw)
 
     def _encapsulated_data(self, text: Union[List, str], **kwargs):
         if isinstance(text, str):

@@ -30,8 +30,7 @@ class DoubaoEmbedding(OnlineEmbeddingModuleBase):
                  embed_model_name: str = "doubao-embedding-text-240715",
                  api_key: str = None,
                  **kw):
-        super().__init__("DOUBAO", embed_url, api_key or lazyllm.config["doubao_api_key"], embed_model_name)
-        self.batch_size = kw.pop('batch_size', 10)
+        super().__init__("DOUBAO", embed_url, api_key or lazyllm.config["doubao_api_key"], embed_model_name, **kw)
 
     def _encapsulated_data(self, text: Union[List, str], **kwargs):
         if isinstance(text, str):

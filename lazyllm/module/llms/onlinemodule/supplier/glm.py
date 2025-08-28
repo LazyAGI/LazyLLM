@@ -235,8 +235,7 @@ class GLMEmbedding(OnlineEmbeddingModuleBase):
                  embed_model_name: str = "embedding-2",
                  api_key: str = None,
                  **kw):
-        super().__init__("GLM", embed_url, api_key or lazyllm.config["glm_api_key"], embed_model_name)
-        self.batch_size = kw.pop('batch_size', 16)
+        super().__init__("GLM", embed_url, api_key or lazyllm.config["glm_api_key"], embed_model_name, **kw)
 
     def _encapsulated_data(self, input: Union[List, str], **kwargs):
         if isinstance(input, str):

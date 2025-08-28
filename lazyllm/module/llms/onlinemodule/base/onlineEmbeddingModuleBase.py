@@ -10,13 +10,15 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                  embed_url: str,
                  api_key: str,
                  embed_model_name: str,
-                 return_trace: bool = False):
+                 return_trace: bool = False,
+                 **kw):
         super().__init__(return_trace=return_trace)
         self._model_series = model_series
         self._embed_url = embed_url
         self._api_key = api_key
         self._embed_model_name = embed_model_name
         self._set_headers()
+        self.batch_size = kw.pop('batch_size', 10)
 
     @property
     def series(self):
@@ -83,7 +85,7 @@ class OnlineEmbeddingModuleBase(ModuleBase):
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
         data = response.get("data", [])
         if not data:
-            return []
+            raise Exception("")
         if isinstance(input, str):
             return data[0].get("embedding", [])
         else:
