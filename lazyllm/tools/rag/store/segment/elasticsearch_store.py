@@ -1,16 +1,19 @@
 import json
 import urllib3
 import threading
+import importlib.util
 
 from typing import Dict, Union, List, Optional
 
 from lazyllm import LOG
 from lazyllm.common import override
 from lazyllm.thirdparty import elasticsearch
-from elasticsearch import helpers
 
 from ..store_base import (LazyLLMStoreBase, StoreCapability, INSERT_BATCH_SIZE)
 from ...global_metadata import RAG_DOC_ID, RAG_KB_ID
+spec = importlib.util.find_spec("elasticsearch.helpers")
+helpers = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(helpers)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -73,23 +76,17 @@ class ElasticSearchStore(LazyLLMStoreBase):
         try:
             self._ddl_lock = threading.Lock()
             # Elastic Cloud
-            if self._client_kwargs.get("cloud_id") and self._client_kwargs.get(
-                "api_key"
-            ):
-                cloud_id = self._client_kwargs.get("cloud_id")
-                api_key = self._client_kwargs.get("api_key")
+            if self._client_kwargs.get("cloud_id") and self._client_kwargs.get('api_key'):
+                cloud_id = self._client_kwargs.get('cloud_id')
+                api_key = self._client_kwargs.get('api_key')
 
-                self._client = elasticsearch.Elasticsearch(
-                    cloud_id=cloud_id, api_key=api_key
-                )
+                self._client = elasticsearch.Elasticsearch(cloud_id=cloud_id, api_key=api_key)
                 if not self._client.ping():
-                    raise ConnectionError(f"Failed to ping {self._uris}")
+                    raise ConnectionError(f"Failed to ping ES {self._uris}")
                 print(f"Successfully connected to {self._uris}")
             # local or remote url Elasticsearch
             else:
-                self._client = elasticsearch.Elasticsearch(
-                    hosts=self._uris, **self._client_kwargs
-                )
+                self._client = elasticsearch.Elasticsearch(hosts=self._uris, **self._client_kwargs)
 
             return True
         # connection failed exception handling
@@ -102,12 +99,12 @@ class ElasticSearchStore(LazyLLMStoreBase):
             )
             raise e
         except elasticsearch.AuthenticationException as e:
-            LOG.error("ElasticSearch needs Authentication")
-            print("Ensure you have certificate in correct path")
+            LOG.error('ElasticSearch needs Authentication')
+            print('Ensure you have certificate in correct path')
             raise e
         except elasticsearch.AuthorizationException as e:
-            LOG.error("Unauthorized to access")
-            print("Unauthorized to access, contact Administrator")
+            LOG.error('Unauthorized to access')
+            print('Unauthorized to access, contact Administrator')
             raise e
         except Exception as e:
             LOG.error(
@@ -123,10 +120,10 @@ class ElasticSearchStore(LazyLLMStoreBase):
         if not index or self._client.indices.exists(index=index):
             return False
         try:
-            self._client.indices.create(index=index, body=self._mapping_kwargs)
+            self._client.indices.create(index=index, body=self._index_kwargs)
             return True
         except elasticsearch.TransportError as e:
-            if getattr(e, "error", "") != "resource_already_exists_exception":
+            if getattr(e, 'error', '') != 'resource_already_exists_exception':
                 raise e
         except Exception as e:
             LOG.error(
@@ -146,13 +143,11 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 for segment in batch_data:
                     segment = self._serialize_node(segment)
                     _id = segment.pop(self._primary_key, None)
-                    bulk_data.append({"index": {"_index": collection_name, "_id": _id}})
+                    bulk_data.append({'index': {'_index': collection_name, '_id': _id}})
                     bulk_data.append(segment)
 
-                response = self._client.bulk(
-                    index=collection_name, body=bulk_data, refresh="wait_for"
-                )
-                if response.get("errors"):
+                response = self._client.bulk(index=collection_name, body=bulk_data, refresh='wait_for')
+                if response.get('errors'):
                     raise ValueError(
                         f"Error upserting data to Elasticsearch: {response.get('errors')}"
                     )
@@ -185,11 +180,11 @@ class ElasticSearchStore(LazyLLMStoreBase):
                     conflicts="proceed",
                 )
 
-                if resp.get("version_conflicts", 0) > 0:
+                if resp.get('version_conflicts', 0) > 0:
                     LOG.warning(
                         f"[ElasticsearchStore - delete] Version conflicts: {resp.get('version_conflicts')}"
                     )
-                if resp.get("failures"):
+                if resp.get('failures'):
                     raise ValueError(
                         f"Error deleting data from Elasticsearch: {resp['failures']}"
                     )
@@ -215,10 +210,8 @@ class ElasticSearchStore(LazyLLMStoreBase):
 
             # Since criteria is empty, return all data
             if not criteria:
-                resp = self._client.search(
-                    index=collection_name, body={"query": {"match_all": {}}}
-                )
-                for hit in resp["hits"]["hits"]:
+                resp = self._client.search(index=collection_name, body={'query': {'match_all': {}}})
+                for hit in resp['hits']['hits']:
                     seg = self._transform_segment(hit)
                     if seg:
                         results.append(seg)
@@ -228,12 +221,13 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 if not isinstance(vals, list):
                     vals = [vals]
 
-                resp = self._client.mget(index=collection_name, body={"ids": vals})
+                resp = self._client.mget(index=collection_name, body={'ids': vals})
 
-                for doc in resp["docs"]:
-                    seg = self._transform_segment(doc, is_doc=True)
-                    if seg:
-                        results.append(seg)
+                for doc in resp['docs']:
+                    if doc.get('found', False):
+                        seg = self._transform_segment(doc)
+                        if seg:
+                            results.append(seg)
 
             # Query by query(scroll + scan)
             else:
@@ -242,7 +236,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                     client=self._client,
                     index=collection_name,
                     query=query,  # 8.x need to wrap a query
-                    scroll="2m",
+                    scroll='2m',
                     size=500,
                     preserve_order=False,
                 ):
@@ -260,21 +254,21 @@ class ElasticSearchStore(LazyLLMStoreBase):
 
     @override
     def search(self, collection_name: str = None, query: str = None, topk: int = 10, **kwargs) -> List[Dict]:
-        raise NotImplementedError("[ElasticSearchStore - search] Not implemented yet")
+        raise NotImplementedError('[ElasticSearchStore - search] Not implemented yet')
 
     def _serialize_node(self, segment: Dict) -> Dict:
         seg = dict(segment)
-        seg.pop("embedding", None)
-        seg["global_meta"] = json.dumps(seg.get("global_meta", {}), ensure_ascii=False)
-        seg["meta"] = json.dumps(seg.get("meta", {}), ensure_ascii=False)
-        seg["image_keys"] = json.dumps(seg.get("image_keys", []), ensure_ascii=False)
+        seg.pop('embedding', None)
+        seg['global_meta'] = json.dumps(seg.get('global_meta', {}), ensure_ascii=False)
+        seg['meta'] = json.dumps(seg.get('meta', {}), ensure_ascii=False)
+        seg['image_keys'] = json.dumps(seg.get('image_keys', []), ensure_ascii=False)
         return seg
 
     def _deserialize_node(self, segment: Dict) -> Dict:
         seg = dict(segment)
-        seg["global_meta"] = json.loads(seg.pop("global_meta", "{}"))
-        seg["meta"] = json.loads(seg.pop("meta", "{}"))
-        seg["image_keys"] = json.loads(seg.pop("image_keys", "[]"))
+        seg['global_meta'] = json.loads(seg.pop('global_meta', '{}'))
+        seg['meta'] = json.loads(seg.pop('meta', '{}'))
+        seg['image_keys'] = json.loads(seg.pop('image_keys', '[]'))
         return seg
 
     def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:
@@ -285,29 +279,21 @@ class ElasticSearchStore(LazyLLMStoreBase):
             vals = criteria.pop(self._primary_key)
             if not isinstance(vals, list):
                 vals = [vals]
-            return {"query": {"ids": {"values": vals}}}
+            return {'query': {'ids': {'values': vals}}}
         else:
             must_clauses = []
             if RAG_DOC_ID in criteria:
                 if isinstance(criteria.get(RAG_DOC_ID), list):
-                    must_clauses.append({"terms": {"doc_id": criteria.get(RAG_DOC_ID)}})
+                    must_clauses.append({'terms': {'doc_id': criteria.get(RAG_DOC_ID)}})
             if RAG_KB_ID in criteria:
-                must_clauses.append({"term": {"kb_id": criteria.get(RAG_KB_ID)}})
-            if "parent" in criteria:
-                must_clauses.append({"term": {"parent": criteria.pop("parent")}})
+                must_clauses.append({'term': {'kb_id': criteria.get(RAG_KB_ID)}})
+            if 'parent' in criteria:
+                must_clauses.append({'term': {'parent': criteria.pop('parent')}})
 
-            return {"query": {"bool": {"must": must_clauses}}}
+            return {'query': {'bool': {'must': must_clauses}}}
 
-    def _transform_segment(self, hit_or_doc: dict, is_doc: bool = False) -> dict:
-        """Convert ES hit/doc into normalized Python dict with uid. Return None if invalid (not found)."""
-        if is_doc:  # mget returns doc format
-            if not hit_or_doc.get("found", False):
-                return None
-            src = hit_or_doc["_source"]
-            uid = hit_or_doc["_id"]
-        else:  # search/scan returns hit format
-            src = hit_or_doc["_source"]
-            uid = hit_or_doc["_id"]
-
-        src["uid"] = uid
+    def _transform_segment(self, record: dict) -> dict:
+        """Convert ES into normalized Python dict with uid. Return None if invalid (not found)."""
+        src = record['_source']
+        src['uid'] = record['_id']
         return self._deserialize_node(src)
