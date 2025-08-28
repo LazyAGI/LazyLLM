@@ -629,7 +629,7 @@ class TestOpenSearchStore(unittest.TestCase):
         self.assertEqual(len(res), 2)
 
 
-@pytest.mark.skip(reason="To test open search store, please set up a open search server")
+@pytest.mark.skip(reason="To test elastic search store, please set up a elastic search server")
 class TestElasticSearchStore(unittest.TestCase):
     def setUp(self):
         self.collections = ["col_g1", "col_g2"]

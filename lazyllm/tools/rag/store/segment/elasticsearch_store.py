@@ -9,12 +9,8 @@ from lazyllm.common import override
 from lazyllm.thirdparty import elasticsearch
 from elasticsearch import helpers
 
-from lazyllm.tools.rag.store.store_base import (
-    LazyLLMStoreBase,
-    StoreCapability,
-    INSERT_BATCH_SIZE,
-)
-from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
+from ..store_base import (LazyLLMStoreBase, StoreCapability, INSERT_BATCH_SIZE)
+from ...global_metadata import RAG_DOC_ID, RAG_KB_ID
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -96,7 +92,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 )
 
             return True
-        # 连接失败异常处理
+        # connection failed exception handling
         except elasticsearch.NotFoundError as e:
             LOG.error(
                 f"ElasticSearch sever with cloud id {cloud_id} and api key {api_key} does not exist"
@@ -149,7 +145,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 batch_data = data[i: i + INSERT_BATCH_SIZE]
                 for segment in batch_data:
                     segment = self._serialize_node(segment)
-                    _id = segment.pop(self._primary_key, None)  # 用 primary_key 作为 _id
+                    _id = segment.pop(self._primary_key, None)
                     bulk_data.append({"index": {"_index": collection_name, "_id": _id}})
                     bulk_data.append(segment)
 
@@ -169,9 +165,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             raise e
 
     @override
-    def delete(
-        self, collection_name: str = None, criteria: Optional[Dict] = None, **kwargs
-    ) -> bool:
+    def delete(self, collection_name: str = None, criteria: Optional[Dict] = None, **kwargs) -> bool:
         try:
             if not self._client.indices.exists(index=collection_name):
                 LOG.warning(
@@ -208,9 +202,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             raise e
 
     @override
-    def get(
-        self, collection_name: str, criteria: Optional[dict] = None, **kwargs
-    ) -> List[dict]:
+    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         try:
             if not self._client.indices.exists(index=collection_name):
                 LOG.warning(
@@ -221,7 +213,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             results: List[dict] = []
             criteria = dict(criteria) if criteria else {}
 
-            # 情况 1：criteria 为空，则返回所有数据
+            # Since criteria is empty, return all data
             if not criteria:
                 resp = self._client.search(
                     index=collection_name, body={"query": {"match_all": {}}}
@@ -230,7 +222,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                     src = hit["_source"]
                     src["uid"] = hit["_id"]
                     results.append(self._deserialize_node(src))
-            # 情况 2：按主键查（mget）
+            # Query by primary key(mget)
             elif criteria and self._primary_key in criteria:
                 vals = criteria.pop(self._primary_key)
                 if not isinstance(vals, list):
@@ -244,13 +236,13 @@ class ElasticSearchStore(LazyLLMStoreBase):
                         src["uid"] = doc["_id"]
                         results.append(self._deserialize_node(src))
 
-            # 情况 3：按 query 查（scroll + scan）
+            # Query by query(scroll + scan)
             else:
                 query = self._construct_criteria(criteria)
                 for hit in helpers.scan(
                     client=self._client,
                     index=collection_name,
-                    query=query,  # 8.x 需要外包一层 query
+                    query=query,  # 8.x need to wrap a query
                     scroll="2m",
                     size=500,
                     preserve_order=False,
@@ -268,14 +260,12 @@ class ElasticSearchStore(LazyLLMStoreBase):
             return []
 
     @override
-    def search(
-        self, collection_name: str = None, query: str = None, topk: int = 10, **kwargs
-    ) -> List[Dict]:
+    def search(self, collection_name: str = None, query: str = None, topk: int = 10, **kwargs) -> List[Dict]:
         raise NotImplementedError("[ElasticSearchStore - search] Not implemented yet")
 
     def _serialize_node(self, segment: Dict) -> Dict:
         seg = dict(segment)
-        seg["embedding"] = seg.pop("embedding", None)
+        seg.pop("embedding", None)
         seg["global_meta"] = json.dumps(seg.get("global_meta", {}), ensure_ascii=False)
         seg["meta"] = json.dumps(seg.get("meta", {}), ensure_ascii=False)
         seg["image_keys"] = json.dumps(seg.get("image_keys", []), ensure_ascii=False)
@@ -283,7 +273,6 @@ class ElasticSearchStore(LazyLLMStoreBase):
 
     def _deserialize_node(self, segment: Dict) -> Dict:
         seg = dict(segment)
-        seg["embedding"] = seg.pop("embedding", None)
         seg["global_meta"] = json.loads(seg.pop("global_meta", "{}"))
         seg["meta"] = json.loads(seg.pop("meta", "{}"))
         seg["image_keys"] = json.loads(seg.pop("image_keys", "[]"))
@@ -307,6 +296,5 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 must_clauses.append({"term": {"kb_id": criteria.get(RAG_KB_ID)}})
             if "parent" in criteria:
                 must_clauses.append({"term": {"parent": criteria.pop("parent")}})
-            print(must_clauses)
 
             return {"query": {"bool": {"must": must_clauses}}}
