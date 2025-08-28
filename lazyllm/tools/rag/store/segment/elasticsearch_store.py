@@ -83,7 +83,6 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 self._client = elasticsearch.Elasticsearch(cloud_id=cloud_id, api_key=api_key)
                 if not self._client.ping():
                     raise ConnectionError(f"Failed to ping ES {self._uris}")
-                print(f"Successfully connected to {self._uris}")
             # local or remote url Elasticsearch
             else:
                 self._client = elasticsearch.Elasticsearch(hosts=self._uris, **self._client_kwargs)
@@ -91,28 +90,16 @@ class ElasticSearchStore(LazyLLMStoreBase):
             return True
         # connection failed exception handling
         except elasticsearch.NotFoundError as e:
-            LOG.error(
-                f"ElasticSearch sever with cloud id {cloud_id} and api key {api_key} does not exist"
-            )
-            print(
-                'Ensure server exists, then try again with correct cloud_id and api_key'
-            )
+            LOG.error(f"ElasticSearch sever with cloud id {cloud_id} and api key {api_key} does not exist")
             raise e
         except elasticsearch.AuthenticationException as e:
             LOG.error('ElasticSearch needs Authentication')
-            print('Ensure you have certificate in correct path')
             raise e
         except elasticsearch.AuthorizationException as e:
             LOG.error('Unauthorized to access')
-            print('Unauthorized to access, contact Administrator')
             raise e
         except Exception as e:
-            LOG.error(
-                f"Fail to connect ElasticSearch sever with cloud id {cloud_id} and api key {api_key}"
-            )
-            print(
-                f"[ElasticSearch - connect] Error connect with cloud id {cloud_id} and api key {api_key} : {e}"
-            )
+            LOG.error(f"Fail to connect ElasticSearch sever with cloud id {cloud_id} and api key {api_key}")
             raise e
 
     @override
@@ -126,9 +113,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             if getattr(e, 'error', '') != 'resource_already_exists_exception':
                 raise e
         except Exception as e:
-            LOG.error(
-                f"[ElasticSearch - _ensure_index] Error creating index {index}: {e}"
-            )
+            LOG.error(f"[ElasticSearch - _ensure_index] Error creating index {index}: {e}")
             raise e
 
     @override
@@ -154,18 +139,14 @@ class ElasticSearchStore(LazyLLMStoreBase):
             return True
 
         except Exception as e:
-            LOG.error(
-                f"[ElasticSearchStore - upsert] Error upserting documents to {collection_name}: {e}"
-            )
+            LOG.error(f"[ElasticSearchStore - upsert] Error upserting documents to {collection_name}: {e}")
             raise e
 
     @override
     def delete(self, collection_name: str = None, criteria: Optional[Dict] = None, **kwargs) -> bool:
         try:
             if not self._client.indices.exists(index=collection_name):
-                LOG.warning(
-                    f"[ElasticSearchStore - delete] Index {collection_name} does not exist"
-                )
+                LOG.warning(f"[ElasticSearchStore - delete] Index {collection_name} does not exist")
                 return True
             if not criteria:
                 with self._ddl_lock:
@@ -181,9 +162,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 )
 
                 if resp.get('version_conflicts', 0) > 0:
-                    LOG.warning(
-                        f"[ElasticsearchStore - delete] Version conflicts: {resp.get('version_conflicts')}"
-                    )
+                    LOG.warning(f"[ElasticsearchStore - delete] Version conflicts: {resp.get('version_conflicts')}")
                 if resp.get('failures'):
                     raise ValueError(
                         f"Error deleting data from Elasticsearch: {resp['failures']}"
@@ -191,18 +170,14 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 return True
 
         except Exception as e:
-            LOG.error(
-                f"[ElasticSearchStore - delete] Error deleting from {collection_name}: {e}"
-            )
+            LOG.error(f"[ElasticSearchStore - delete] Error deleting from {collection_name}: {e}")
             raise e
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         try:
             if not self._client.indices.exists(index=collection_name):
-                LOG.warning(
-                    f"[ElasticsearchStore - get] Index {collection_name} does not exist"
-                )
+                LOG.warning(f"[ElasticsearchStore - get] Index {collection_name} does not exist")
                 return []
 
             results: List[dict] = []
@@ -247,9 +222,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             return results
 
         except Exception as e:
-            LOG.error(
-                f"[ElasticsearchStore - get] Error getting data from Elasticsearch: {e}"
-            )
+            LOG.error(f"[ElasticsearchStore - get] Error getting data from Elasticsearch: {e}")
             return []
 
     @override

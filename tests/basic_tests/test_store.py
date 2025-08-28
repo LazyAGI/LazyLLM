@@ -3,10 +3,16 @@ import shutil
 import pytest
 import tempfile
 import unittest
+from typing import Dict, Any
 from lazyllm.tools.rag.store import (MapStore, ChromadbStore, MilvusStore, OpenSearchStore, ElasticSearchStore,
                                      SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
+
+SEGMENTSTORE_CLASS_MAP = {
+    "elasticsearch": ElasticSearchStore,
+    "opensearch": OpenSearchStore,
+}
 
 data = [
     {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
@@ -48,7 +54,7 @@ def clear_directory(directory_path):
     else:
         print(f"The directory {directory_path} does not exist.")
 
-
+@pytest.mark.skip(reason="To test the MapStore, please set up specific server")
 class TestMapStore(unittest.TestCase):
     def setUp(self):
         self.collections = ["col_g1", "col_g2"]
@@ -735,6 +741,133 @@ class TestElasticSearchStore(unittest.TestCase):
         res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1', 'doc3']})
         self.assertEqual(len(res), 2)
 
+@pytest.mark.skip(reason="To test elastic search or open search store, please set up specific server")
+class TestSegementStore(unittest.TestCase):
+    def setUp(self):
+        self.collections = ["col_g1", "col_g2"]
+        self.uri = {store_type: "" for store_type in SEGMENTSTORE_CLASS_MAP.keys()}
+        self.client_kwargs = {store_type: {} for store_type in SEGMENTSTORE_CLASS_MAP.keys()}
+        self.stores = self._store_connect(self.uri, self.client_kwargs)
+
+    def tearDown(self):
+        for store_type, store in self.stores.items():
+            for collection in self.collections:
+                store.delete(collection)
+
+    def test_upsert(self):
+        for store_type, store in self.stores.items():
+            store.upsert(self.collections[0], [data[0]])
+            res = store.get(collection_name=self.collections[0])
+            self.assertEqual(len(res), 1, msg=f"upsert {store_type}")
+            self.assertEqual(res[0].get('uid'), data[0].get('uid'), msg=f"upsert {store_type}")
+
+    def test_delete_segments_by_collection(self):
+        for store_type, store in self.stores.items():
+            store.upsert(self.collections[0], [data[0], data[2]])
+            store.upsert(self.collections[1], [data[1]])
+            store.delete(self.collections[0])
+            res = store.get(collection_name=self.collections[0])
+            self.assertEqual(len(res), 0, msg=f"delete_segments_by_collection {store_type}")
+            res = store.get(collection_name=self.collections[1])
+            self.assertEqual(len(res), 1, msg=f"delete_segments_by_collection {store_type}")
+            self.assertEqual(res[0].get('uid'), data[1].get('uid'), msg=f"delete_segments_by_collection {store_type}")
+
+    def test_delete_segments_by_kb_id(self):
+        for store_type, store in self.stores.items():
+            store.upsert(self.collections[0], [data[0], data[2]])
+            store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb1'})
+            res = store.get(collection_name=self.collections[0])
+            self.assertEqual(len(res), 1, msg=f"delete_segments_by_kb_id {store_type}")
+            self.assertEqual(res[0].get('uid'), data[2].get('uid'), msg=f"delete_segments_by_kb_id {store_type}")
+            store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb3'})
+            res = store.get(collection_name=self.collections[0])
+            self.assertEqual(len(res), 0, msg=f"delete_segments_by_kb_id {store_type}")
+
+    def test_delete_segments_by_uid(self):
+        for store_type, store in self.stores.items():
+            store.upsert(self.collections[0], [data[0], data[2]])
+            store.delete(self.collections[0], criteria={'uid': ['uid1']})
+            res = store.get(collection_name=self.collections[0])
+            self.assertEqual(len(res), 1, msg=f"delete_segments_by_uid {store_type}")
+            self.assertEqual(res[0].get('uid'), data[2].get('uid'), msg=f"delete_segments_by_uid {store_type}")
+
+    def test_delete_segments_by_doc_id(self):
+        for store_type, store in self.stores.items():
+            store.upsert(self.collections[0], [data[0], data[2]])
+            store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
+            res = store.get(collection_name=self.collections[0])
+            self.assertEqual(len(res), 2, msg=f"delete_segments_by_doc_id {store_type}")
+            store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
+            res = store.get(collection_name=self.collections[0])
+            self.assertEqual(len(res), 1, msg=f"delete_segments_by_doc_id {store_type}")
+            self.assertEqual(res[0].get('uid'), data[2].get('uid'), msg=f"delete_segments_by_doc_id {store_type}")
+
+    def test_get_segments_by_collection(self):
+        for store_type, store in self.stores.items():
+            store.upsert(self.collections[0], [data[0], data[2]])
+            store.upsert(self.collections[1], [data[1]])
+            res = store.get(collection_name=self.collections[0])
+            self.assertEqual(len(res), 2, msg=f"get_segments_by_collection {store_type}")
+            res = store.get(collection_name=self.collections[1])
+            self.assertEqual(len(res), 1, msg=f"get_segments_by_collection {store_type}")
+            self.assertEqual(res[0].get('uid'), data[1].get('uid'), msg=f"get_segments_by_collection {store_type}")
+
+    def test_get_segments_by_kb_id(self):
+        for store_type, store in self.stores.items():
+            store.upsert(self.collections[0], [data[0], data[2]])
+            store.upsert(self.collections[1], [data[1]])
+            res = store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb1'})
+            self.assertEqual(len(res), 1, msg=f"get_segments_by_kb_id {store_type}")
+            self.assertEqual(res[0].get('uid'), data[0].get('uid'), msg=f"get_segments_by_kb_id {store_type}")
+            res = store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb3'})
+            self.assertEqual(len(res), 1, msg=f"get_segments_by_kb_id {store_type}")
+            self.assertEqual(res[0].get('uid'), data[2].get('uid'), msg=f"get_segments_by_kb_id {store_type}")
+            res = store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb2'})
+            self.assertEqual(len(res), 0, msg=f"get_segments_by_kb_id {store_type}")
+            res = store.get(collection_name=self.collections[1], criteria={RAG_KB_ID: 'kb2'})
+            self.assertEqual(len(res), 1, msg=f"get_segments_by_kb_id {store_type}")
+            self.assertEqual(res[0].get('uid'), data[1].get('uid'), msg=f"get_segments_by_kb_id {store_type}")
+
+    def test_get_segments_by_uid(self):
+        for store_type, store in self.stores.items():
+            store.upsert(self.collections[0], [data[0], data[2]])
+            store.upsert(self.collections[1], [data[1]])
+            res = store.get(collection_name=self.collections[0], criteria={'uid': ['uid1']})
+            self.assertEqual(len(res), 1, msg=f"get_segments_by_uid {store_type}")
+            self.assertEqual(res[0].get('uid'), data[0].get('uid'), msg=f"get_segments_by_uid {store_type}")
+            res = store.get(collection_name=self.collections[0], criteria={'uid': ['uid3']})
+            self.assertEqual(len(res), 1, msg=f"get_segments_by_uid {store_type}")
+            self.assertEqual(res[0].get('uid'), data[2].get('uid'), msg=f"get_segments_by_uid {store_type}")
+            res = store.get(collection_name=self.collections[0], criteria={'uid': ['uid2']})
+            self.assertEqual(len(res), 0, msg=f"get_segments_by_uid {store_type}")
+            res = store.get(collection_name=self.collections[1], criteria={'uid': ['uid2']})
+            self.assertEqual(len(res), 1, msg=f"get_segments_by_uid {store_type}")
+            self.assertEqual(res[0].get('uid'), data[1].get('uid'), msg=f"get_segments_by_uid {store_type}")
+
+    def test_get_segments_by_doc_id(self):
+        for store_type, store in self.stores.items():
+            store.upsert(self.collections[0], [data[0], data[2]])
+            store.upsert(self.collections[1], [data[1]])
+            res = store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
+            self.assertEqual(len(res), 1, msg=f"get_segments_by_doc_id {store_type}")
+            self.assertEqual(res[0].get('uid'), data[0].get('uid'), msg=f"get_segments_by_doc_id {store_type}")
+            res = store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
+            self.assertEqual(len(res), 0, msg=f"get_segments_by_doc_id {store_type}")
+            res = store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1', 'doc3']})
+            self.assertEqual(len(res), 2, msg=f"get_segments_by_doc_id {store_type}")
+
+    def _store_connect(self, uris: Dict[str, str], client_kwargs: Dict[str, Dict[str, Any]]):
+        stores = {}
+        for store_type, url in uris.items():
+            if not url:
+                continue
+
+            store_cls = SEGMENTSTORE_CLASS_MAP[store_type]
+            store = store_cls(uris=url, client_kwargs=client_kwargs[store_type])
+            store.connect()
+            stores[store_type] = store
+
+        return stores
 
 @pytest.mark.skip(reason="To test sensecore store, please set up a sensecore rag-store server")
 class TestSenseCoreStore(unittest.TestCase):
