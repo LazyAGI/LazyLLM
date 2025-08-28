@@ -150,13 +150,6 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 for segment in batch_data:
                     segment = self._serialize_node(segment)
                     _id = segment.pop(self._primary_key, None)  # 用 primary_key 作为 _id
-                    # action = {
-                    #     "_op_type": "update",
-                    #     "_index": collection_name,
-                    #     "_id": _id,
-                    #     "doc": segment,
-                    #     "doc_as_upsert": True
-                    # }
                     bulk_data.append({"index": {"_index": collection_name, "_id": _id}})
                     bulk_data.append(segment)
 
