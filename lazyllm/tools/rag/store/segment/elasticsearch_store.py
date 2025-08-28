@@ -15,30 +15,30 @@ from ...global_metadata import RAG_DOC_ID, RAG_KB_ID
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
 DEFAULT_MAPPING_BODY = {
-    "settings": {
-        "index": {
-            "number_of_shards": 4,
-            "number_of_replicas": 1,
-            "refresh_interval": "1s",
+    'settings': {
+        'index': {
+            'number_of_shards': 4,
+            'number_of_replicas': 1,
+            'refresh_interval': '1s',
         }
     },
-    "mappings": {
-        "dynamic": "strict",
-        "properties": {
-            "uid": {"type": "keyword"},
-            "doc_id": {"type": "keyword"},
-            "group": {"type": "keyword"},
-            "kb_id": {"type": "keyword"},
-            "content": {"type": "text", "index": False, "store": True},
-            "answer": {"type": "text", "index": False, "store": True},
-            "meta": {"type": "text", "index": False, "store": True},
-            "global_meta": {"type": "text", "index": False, "store": True},
-            "type": {"type": "keyword", "store": True},
-            "number": {"type": "integer", "store": True},
-            "excluded_embed_metadata_keys": {"type": "keyword", "store": True},
-            "excluded_llm_metadata_keys": {"type": "keyword", "store": True},
-            "parent": {"type": "keyword", "store": True},
-            "image_keys": {"type": "keyword", "store": True},
+    'mappings': {
+        'dynamic': 'strict',
+        'properties': {
+            'uid': {'type': 'keyword'},
+            'doc_id': {'type': 'keyword'},
+            'group': {'type': 'keyword'},
+            'kb_id': {'type': 'keyword'},
+            'content': {'type': 'text', 'index': False, 'store': True},
+            'answer': {'type': 'text', 'index': False, 'store': True},
+            'meta': {'type': 'text', 'index': False, 'store': True},
+            'global_meta': {'type': 'text', 'index': False, 'store': True},
+            'type': {'type': 'keyword', 'store': True},
+            'number': {'type': 'integer', 'store': True},
+            'excluded_embed_metadata_keys': {'type': 'keyword', 'store': True},
+            'excluded_llm_metadata_keys': {'type': 'keyword', 'store': True},
+            'parent': {'type': 'keyword', 'store': True},
+            'image_keys': {'type': 'keyword', 'store': True},
         },
     },
 }
