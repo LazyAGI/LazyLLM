@@ -39,7 +39,7 @@ class OnlineChatModuleBase(LLMBase):
         self._model_series = model_series
         if not skip_auth and not api_key:
             raise ValueError("api_key is required")
-        self._api_key = api_key if skip_auth else ''
+        self._api_key = '' if skip_auth else api_key
         self._base_url = base_url
         self._model_name = model_name
         self.trainable_models = self.TRAINABLE_MODEL_LIST
