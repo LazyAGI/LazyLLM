@@ -36,7 +36,7 @@ class OnlineEmbeddingModuleBase(ModuleBase):
         data = self._encapsulated_data(input, **kwargs)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         if isinstance(data, List):
-            return self.run_embed_batch(input, data, proxies)
+            return self.run_embed_batch(input, data, proxies, **kwargs)
         else:
             with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies) as r:
                 if r.status_code == 200:
@@ -44,14 +44,30 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                 else:
                     raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
-    def run_embed_batch(self, input: Union[List, str], data: List, proxies):
+    def run_embed_batch(self, input: Union[List, str], data: List, proxies, **kwargs):
         ret = []
-        for i in range(len(data)):
-            with requests.post(self._embed_url, json=data[i], headers=self._headers, proxies=proxies) as r:
-                if r.status_code == 200:
-                    ret.extend(self._parse_response(r.json(), input))
-                else:
-                    raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        flag = False
+        error_msg = ""
+        while not flag:
+            temp = []
+            for i in range(len(data)):
+                with requests.post(self._embed_url, json=data[i], headers=self._headers, proxies=proxies) as r:
+                    if r.status_code == 200:
+                        temp.extend(self._parse_response(r.json(), input))
+                        if i == len(data) - 1:
+                            flag = True
+                    else:
+                        flag = False
+                        error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
+                        if self.batch_size == 1 or r.status_code == 401:
+                            raise requests.RequestException(error_msg)
+                        else:
+                            self.batch_size = max(self.batch_size // 2, 1)
+                            data = self._encapsulated_data(input, **kwargs)
+                        break
+            ret = temp
+        if not flag:
+            raise requests.RequestException(error_msg)
         return ret
 
     def _encapsulated_data(self, input: Union[List, str], **kwargs):
