@@ -187,7 +187,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
 
         if url := self._deploy_args.get('url'):
             assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
-            self._set_url(re.sub(r'/v1($|/.*)', '/v1/', url.rstrip('/')))
+            self._set_url(re.sub(r'v1(?:/chat/completions)?/?$', 'v1/', url))
             self._get_deploy_tasks.flag.set()
         self._deploy_args.pop('url', None)
 
@@ -462,7 +462,7 @@ class TrainableModule(UrlModule):
 
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
                 *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
-        if self._url.endswith('v1/'):
+        if self._url.endswith('/v1/'):
             return self.forward_openai(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
                                        tools=tools, stream_output=stream_output, **kw)
         else:
