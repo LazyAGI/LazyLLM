@@ -33,13 +33,16 @@ class OnlineChatModuleBase(LLMBase):
     NO_PROXY = True
 
     def __init__(self, model_series: str, api_key: str, base_url: str, model_name: str,
-                 stream: Union[bool, Dict[str, str]], return_trace: bool = False,
-                 skip_auth: bool = False, static_params: Optional[StaticParams] = None, **kwargs):
-        super().__init__(stream=stream, return_trace=return_trace)
+                 stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
+                 static_params: Optional[StaticParams] = None, type: Optional[str] = None, **kwargs):
+        if model_name in self.VLM_MODEL_LIST:
+            if type is None: type = 'VLM'
+            else: assert type == 'VLM', f'model_name {model_name} is a VLM model, but type is {type}'
+        super().__init__(stream=stream, return_trace=return_trace, type=type)
         self._model_series = model_series
-        if skip_auth and not api_key:
+        if not skip_auth and not api_key:
             raise ValueError("api_key is required")
-        self._api_key = api_key
+        self._api_key = '' if skip_auth else api_key
         self._base_url = base_url
         self._model_name = model_name
         self.trainable_models = self.TRAINABLE_MODEL_LIST
@@ -53,10 +56,6 @@ class OnlineChatModuleBase(LLMBase):
     @property
     def series(self):
         return self._model_series
-
-    @property
-    def type(self):
-        return "LLM"
 
     @property
     def static_params(self) -> StaticParams:
@@ -175,14 +174,14 @@ class OnlineChatModuleBase(LLMBase):
         if len(kw) > 0: data.update(kw)
         if len(self._model_optional_params) > 0: data.update(self._model_optional_params)
 
-        if files or (self._vlm_force_format_input_with_files and data["model"] in self.VLM_MODEL_LIST):
+        if files or (self._vlm_force_format_input_with_files and self.type == 'VLM'):
             data["messages"][-1]["content"] = self._format_input_with_files(data["messages"][-1]["content"], files)
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         with requests.post(self._url, json=data, headers=self._headers, stream=stream_output, proxies=proxies) as r:
             if r.status_code != 200:  # request error
-                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)])) \
-                    if stream_output else requests.RequestException(r.text)
+                msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]) if stream_output else r.text
+                raise requests.RequestException(f'{r.status_code}: {msg}')
 
             with self.stream_output(stream_output):
                 msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
