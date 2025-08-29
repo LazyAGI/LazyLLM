@@ -375,6 +375,6 @@ lazyllm.tools.rag.transform.NodeTransform
     members: [split_text]
     exclude-members:
 
-::: lazyllm.tools.LazyLLMStoreBase
+::: lazyllm.tools.rag.LazyLLMStoreBase
     members: [connect, upsert, delete, get, search]
     exclude-members:
