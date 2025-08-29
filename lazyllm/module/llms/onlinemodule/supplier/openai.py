@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import requests
-from typing import Tuple, List, Union
+from typing import Tuple, List, Union, Dict
 from urllib.parse import urljoin
 import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
@@ -240,3 +240,12 @@ class OpenAIEmbedding(OnlineEmbeddingModuleBase):
                 for i in range(len(json_data)):
                     json_data[i].update(kwargs)
             return json_data
+
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
+        data = response.get('data', [])
+        if not data:
+            raise Exception('no data received')
+        if isinstance(input, str):
+            return data[0].get('embedding', [])
+        else:
+            return [res.get('embedding', []) for res in data]

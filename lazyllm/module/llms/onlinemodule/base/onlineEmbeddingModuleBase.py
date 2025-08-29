@@ -37,7 +37,7 @@ class OnlineEmbeddingModuleBase(ModuleBase):
             "Authorization": f"Bearer {self._api_key}"
         }
 
-    def forward(self, input: Union[List, str], **kwargs) -> List[float]:
+    def forward(self, input: Union[List, str], **kwargs):
         data = self._encapsulated_data(input, **kwargs)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         if isinstance(data, List):
@@ -80,23 +80,10 @@ class OnlineEmbeddingModuleBase(ModuleBase):
         return ret
 
     def _encapsulated_data(self, input: Union[List, str], **kwargs):
-        json_data = {
-            "input": input,
-            "model": self._embed_model_name
-        }
-        if len(kwargs) > 0:
-            json_data.update(kwargs)
+        raise NotImplementedError
 
-        return json_data
-
-    def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
-        data = response.get('data', [])
-        if not data:
-            raise Exception('no data received')
-        if isinstance(input, str):
-            return data[0].get('embedding', [])
-        else:
-            return [res.get('embedding', []) for res in data]
+    def _parse_response(self, response: Dict, input: Union[List, str]):
+        raise NotImplementedError
 
     def run_embed_batch_parallel(self, input: Union[List, str], data: List, proxies, **kwargs):
         ret = []

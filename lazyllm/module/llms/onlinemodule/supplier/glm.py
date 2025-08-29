@@ -253,6 +253,15 @@ class GLMEmbedding(OnlineEmbeddingModuleBase):
                 for i in range(len(json_data)):
                     json_data[i].update(kwargs)
             return json_data
+        
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
+        data = response.get('data', [])
+        if not data:
+            raise Exception('no data received')
+        if isinstance(input, str):
+            return data[0].get('embedding', [])
+        else:
+            return [res.get('embedding', []) for res in data]        
 
 class GLMReranking(OnlineEmbeddingModuleBase):
 
