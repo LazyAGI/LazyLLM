@@ -465,11 +465,9 @@ class TrainableModule(UrlModule):
         if self._url.endswith('v1/'):
             return self.forward_openai(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
                                        tools=tools, stream_output=stream_output, **kw)
-        elif self._url.endswith('generate'):
+        else:
             return self.forward_standard(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
                                          tools=tools, stream_output=stream_output, **kw)
-        else:
-            raise ValueError(f'Unsupported url: {self._url}')
 
     def forward_openai(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
                        *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
