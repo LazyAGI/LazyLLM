@@ -4,4 +4,3 @@
 [submodule "Tutorial"]
 	path = Tutorial
 	url = https://github.com/LazyAGI/Tutorial.git
-	branch = main
