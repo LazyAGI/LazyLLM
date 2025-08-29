@@ -6,26 +6,18 @@ import codecs
 from typing import Callable, Dict, List, Union, Optional, Tuple
 import copy
 from dataclasses import dataclass
-from enum import Enum
 
 import lazyllm
 from lazyllm import launchers, LOG, package, encode_request, globals, is_valid_url, LazyLLMLaunchersBase
 from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
+from ..components.utils import LLMType
 from ..flow import FlowBase, Pipeline
 from ..client import get_redis, redis_client
 from urllib.parse import urljoin
 from .utils import light_reduce
 from .module import ModuleBase, ActionModule
-
-
-class LLMType(str, Enum):
-    LLM = 'LLM'
-    VLM = 'VLM'
-    SD = 'SD'
-    TTS = 'TTS'
-    STT = 'STT'
 
 
 class LLMBase(ModuleBase):
