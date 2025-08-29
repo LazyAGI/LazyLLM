@@ -55,8 +55,7 @@ class LLMType(str, Enum, metaclass=_CaseInsensitiveEnumMeta):
 
     def __eq__(self, other):
         if isinstance(other, str):
-            o = other.casefold()
-            return self.value.casefold() == o or self.name.casefold() == o
+            return self.value.casefold() == other.casefold()
         if isinstance(other, LLMType):
             return self.value.casefold() == other.value.casefold()
         return NotImplemented
