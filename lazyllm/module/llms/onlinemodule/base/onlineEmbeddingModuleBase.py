@@ -1,9 +1,10 @@
 from typing import Dict, List, Union
 import requests
 from concurrent.futures import ThreadPoolExecutor
+from abc import ABCMeta, abstractmethod
 from ....module import ModuleBase
 
-class OnlineEmbeddingModuleBase(ModuleBase):
+class OnlineEmbeddingModuleBase(ModuleBase, metaclass=ABCMeta):
     NO_PROXY = True
 
     def __init__(self,
@@ -79,11 +80,13 @@ class OnlineEmbeddingModuleBase(ModuleBase):
             raise requests.RequestException(error_msg)
         return ret
 
+    @abstractmethod
     def _encapsulated_data(self, input: Union[List, str], **kwargs):
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def _parse_response(self, response: Dict, input: Union[List, str]):
-        raise NotImplementedError
+        pass
 
     def run_embed_batch_parallel(self, input: Union[List, str], data: List, proxies, **kwargs):
         ret = []
