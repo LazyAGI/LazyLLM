@@ -147,7 +147,7 @@ model_name_mapping = {
             "huggingface": "BAAI/bge-m3",
             "modelscope": "Xorbits/bge-m3"
         },
-        # "type": "embed"
+        "type": "embed"
     },
     "jina-clip-v1": {
         "source": {
