@@ -1452,6 +1452,26 @@ Args:
     api_key (str, optional): The OpenAI API key. If not provided, it will be read from `lazyllm.config`.
 ''')
 
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenSTTModule', '''\
+基于千问多模态接口的语音转文本（STT）模块，默认使用 ``paraformer-v2`` 模型。
+
+Args:
+    model (str): 模型名称。默认为 ``None``，将依次从 ``lazyllm.config['qwen_stt_model_name']`` 或 ``QwenSTTModule.MODEL_NAME`` 获取。
+    api_key (str): 千问 API 的密钥。默认为 ``None``。
+    return_trace (bool): 是否返回推理的中间 trace 信息。默认为 ``False``。
+    **kwargs: 传递给父类 ``QwenMultiModal`` 的额外参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenSTTModule', '''\
+Speech-to-Text (STT) module based on Qwen's multimodal API, with ``paraformer-v2`` as the default model.
+
+Args:
+    model (str): Model name. Defaults to ``None``, in which case it will use ``lazyllm.config['qwen_stt_model_name']`` or ``QwenSTTModule.MODEL_NAME``.
+    api_key (str): API key for Qwen service. Defaults to ``None``.
+    return_trace (bool): Whether to return intermediate trace information during inference. Defaults to ``False``.
+    **kwargs: Additional parameters passed to the parent class ``QwenMultiModal``.
+''')
+
 add_chinese_doc('OnlineEmbeddingModule', '''\
 用来管理创建目前市面上的在线Embedding服务模块，目前支持openai、sensenova、glm、qwen、doubao
 

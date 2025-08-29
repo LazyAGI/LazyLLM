@@ -8,26 +8,33 @@ add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.flow)
 add_example = functools.partial(utils.add_example, module=lazyllm.flow)
 
 add_chinese_doc('FlowBase', """\
-一个用于创建可以包含各种项目的流式结构的基类。
-这个类提供了一种组织项目的方式，这些项目可以是 ``FlowBase`` 的实例或其他类型，组织成一个层次结构。每个项目都可以有一个名称，结构可以动态地遍历或修改。
+用于构建流式结构的基类，可以容纳多个项目并组织成层次化结构。
+
+该类允许将不同的对象（包括 ``FlowBase`` 实例或其他类型对象）组合在一起，
+并为其分配可选的名称，从而支持按名称或索引访问。结构中的项目可以动态添加或遍历。
 
 Args:
-    items (iterable): 要包含在流中的项目的可迭代对象。这些可以是 ``FlowBase`` 的实例或其他对象。
-    item_names (list of str, optional): 对应于项目的名称列表。这允许通过名称访问项目。如果未提供，则只能通过索引访问项目。
-    auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
-
-    auto_capture: 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 False。
+    *items: 要包含在流中的项目，可以是 ``FlowBase`` 的实例或其他对象。
+    item_names (list of str, optional): 对应于每个项目的名称列表，会与 ``items`` 按顺序配对。
+        如果未提供，所有项目的名称默认为 ``None``。
+    auto_capture (bool, optional): 是否启用自动捕获。如果为 ``True``，在上下文管理器模式下，
+        将自动捕获当前作用域中新定义的变量并加入流。默认为 ``False``。
 """)
 
 add_english_doc('FlowBase', """\
-A base class for creating flow-like structures that can contain various items.
+Base class for constructing flow-like structures that can hold multiple items and organize them hierarchically.
 
-This class provides a way to organize items, which can be instances of ``FlowBase`` or other types, into a hierarchical structure. Each item can have a name and the structure can be traversed or modified dynamically.
+This class allows combining different objects (including ``FlowBase`` instances or other types)
+into a structured flow, with optional names for each item, enabling both name-based and index-based access.
+Items in the structure can be added or traversed dynamically.
 
 Args:
-    items (iterable): An iterable of items to be included in the flow. These can be instances of ``FlowBase`` or other objects.
-    item_names (list of str, optional): A list of names corresponding to the items. This allows items to be accessed by name. If not provided, items can only be accessed by index.
-    auto_capture: If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
+    *items: Items to be included in the flow, which can be instances of ``FlowBase`` or other objects.
+    item_names (list of str, optional): A list of names corresponding to the items, paired with ``items`` in order.
+        If not provided, all items will be assigned ``None`` as their name.
+    auto_capture (bool, optional): Whether to enable automatic variable capture. If ``True``, when used
+        as a context manager, newly defined variables in the current scope will be automatically added to the flow.
+        Defaults to ``False``.
 """)
 
 add_chinese_doc('FlowBase.id', """\
@@ -596,35 +603,35 @@ add_example('save_pipeline_result', '''\
 add_chinese_doc('Loop', '''\
 初始化一个循环流结构，该结构将一系列函数重复应用于输入，直到满足停止条件或达到指定的迭代次数。
 
-Loop结构允许定义一个简单的控制流，其中一系列步骤在循环中应用，可以使用可选的停止条件来根据步骤的输出退出循环。
+Loop结构允许定义一个简单的控制流，其中一系列步骤在循环中应用，可以使用可选的停止条件来根据步骤的输出提前退出循环。
 
 Args:
     item (callable or list of callables): 将在循环中应用的函数或可调用对象。
     stop_condition (callable, optional): 一个函数，它接受循环中最后一个项目的输出作为输入并返回一个布尔值。如果返回 ``True``，循环将停止。如果为 ``None``，循环将继续直到达到 ``count``。默认为 ``None``。
-    count (int, optional): 运行循环的最大迭代次数。如果为 ``None``，循环将无限期地继续或直到 ``stop_condition`` 返回 ``True``。默认为 ``None``。
+    count (int, optional): 运行循环的最大迭代次数。默认为 ``sys.maxsize``。
     post_action (callable, optional): 循环结束后调用的函数。默认为 ``None``。
     auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
-    judge_on_full_input(bool): 如果设置为 ``True`` ， 则通过 ``stop_condition`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
+    judge_on_full_input (bool): 如果设置为 ``True`` ，则通过 ``stop_condition`` 的输入进行条件判断；否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
 
-抛出:
-    AssertionError: 如果同时提供了 ``stop_condition`` 和 ``count``，或者当提供的 ``count``不是一个整数。
+Raises:
+    AssertionError: 如果提供的 ``stop_condition`` 既不是 ``callable`` 也不是 ``None``。
 ''')
 
 add_english_doc('Loop', '''\
 Initializes a Loop flow structure which repeatedly applies a sequence of functions to an input until a stop condition is met or a specified count of iterations is reached.
 
-The Loop structure allows for the definition of a simple control flow where a series of steps are applied in a loop, with an optional stop condition that can be used to exit the loop based on the output of the steps.
+The Loop structure allows for the definition of a simple control flow where a series of steps are applied in a loop, with an optional stop condition that can be used to exit the loop early based on the output of the steps.
 
 Args:
     *item (callable or list of callables): The function(s) or callable object(s) that will be applied in the loop.
     stop_condition (callable, optional): A function that takes the output of the last item in the loop as input and returns a boolean. If it returns ``True``, the loop will stop. If ``None``, the loop will continue until ``count`` is reached. Defaults to ``None``.
-    count (int, optional): The maximum number of iterations to run the loop for. If ``None``, the loop will continue indefinitely or until ``stop_condition`` returns ``True``. Defaults to ``None``.
+    count (int, optional): The maximum number of iterations to run the loop for. Defaults to ``sys.maxsize``.
     post_action (callable, optional): A function to be called with the final output after the loop ends. Defaults to ``None``.
     auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
-    judge_on_full_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``stop_condition``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
+    judge_on_full_input (bool): If set to ``True``, the conditional judgment will be performed through the input of ``stop_condition``; otherwise, the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
 
 Raises:
-    AssertionError: If both ``stop_condition`` and ``count`` are provided or if ``count`` is not an integer when provided.
+    AssertionError: If the provided ``stop_condition`` is neither callable nor ``None``.
 ''')
 
 add_example('Loop', '''\

@@ -87,6 +87,10 @@
     members:
     exclude-members:
 
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenSTTModule
+    members:
+    exclude-members:
+
 ::: lazyllm.module.OnlineChatModuleBase
     options:
       members:
