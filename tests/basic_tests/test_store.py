@@ -7,8 +7,6 @@ from lazyllm.tools.rag.store import (MapStore, ChromadbStore, MilvusStore, OpenS
                                      SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
-
-
 data = [
     {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
      'global_meta': {RAG_DOC_ID: 'doc1', RAG_KB_ID: 'kb1'},
