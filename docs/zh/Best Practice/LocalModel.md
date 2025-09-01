@@ -308,10 +308,6 @@ embedding_model = lazyllm.TrainableModule('bge-reranker-large', type='rerank')
 
 通常情况下，我们不会单独使用Rerank模型，而是在RAG中进行使用，再RAG中使用Rerank模型可以参考 [RAG最佳实践](rag.md)
 
-```python
-
-```
-
 ## 多模态模型
 
 ### 图像生成 (SD)
