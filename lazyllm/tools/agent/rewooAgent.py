@@ -96,7 +96,7 @@ class ReWOOAgent(ModuleBase):
 
         worker_log = ""
         for idx, plan in enumerate(plans):
-            e = f"#E{idx+1}"
+            e = f"#E{idx + 1}"
             worker_log += f"{plan}\nEvidence:\n{worker_evidences[e]}\n"
         LOG.debug(f"worker_log: {worker_log}")
         return worker_log
