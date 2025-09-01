@@ -8,10 +8,6 @@ from lazyllm.tools.rag.store import (MapStore, ChromadbStore, MilvusStore, OpenS
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
 
-SEGMENTSTORE_CLASS_MAP = {
-    "elasticsearch": ElasticSearchStore,
-    "opensearch": OpenSearchStore,
-}
 
 data = [
     {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
