@@ -957,12 +957,12 @@ def ensure_call_endpoint(raw: str, *, default_path: str = "/_call") -> str:
         return raw
 
     raw = raw.strip()
-    has_scheme = "://" in raw
-    parts = urlsplit(raw if has_scheme else f"//{raw}", allow_fragments=True)
+    has_scheme = '://' in raw
+    parts = urlsplit(raw if has_scheme else f'//{raw}', allow_fragments=True)
 
     if not parts.netloc:
-        raise ValueError(f"Invalid endpoint (missing host): {raw}")
+        raise ValueError(f'Invalid endpoint (missing host): {raw}')
 
-    scheme = parts.scheme or "http"
+    scheme = parts.scheme or 'http'
     new_path = default_path
     return urlunsplit((scheme, parts.netloc, new_path, parts.query, parts.fragment))
