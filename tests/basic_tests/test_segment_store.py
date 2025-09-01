@@ -244,57 +244,57 @@ def get_segments_by_doc_id(request):
 
 
 class TestSegementStore(object):
-    @pytest.mark.parametrize("setUp", SEGMENTSTORE_TEST_INPUTS, indirect=True)
+    @pytest.mark.parametrize('setUp', SEGMENTSTORE_TEST_INPUTS, indirect=True)
     def test_setUp(self, setUp):
         res = setUp
         assert res
 
-    @pytest.mark.parametrize("tearDown", SEGMENTSTORE_TEST_INPUTS, indirect=True)
+    @pytest.mark.parametrize('tearDown', SEGMENTSTORE_TEST_INPUTS, indirect=True)
     def test_tearDown(self, tearDown):
         res = tearDown
         assert res
 
-    @pytest.mark.parametrize("upsert", SEGMENTSTORE_TEST_INPUTS, indirect=True)
+    @pytest.mark.parametrize('upsert', SEGMENTSTORE_TEST_INPUTS, indirect=True)
     def test_upsert(self, upsert):
         res = upsert
         assert res
 
-    @pytest.mark.parametrize("delete_segments_by_collection", SEGMENTSTORE_TEST_INPUTS, indirect=True)
+    @pytest.mark.parametrize('delete_segments_by_collection', SEGMENTSTORE_TEST_INPUTS, indirect=True)
     def test_delete_segments_by_collection(self, delete_segments_by_collection):
         res = delete_segments_by_collection
         assert res
 
-    @pytest.mark.parametrize("delete_segments_by_kb_id", SEGMENTSTORE_TEST_INPUTS, indirect=True)
+    @pytest.mark.parametrize('delete_segments_by_kb_id', SEGMENTSTORE_TEST_INPUTS, indirect=True)
     def test_delete_segments_by_kb_id(self, delete_segments_by_kb_id):
         res = delete_segments_by_kb_id
         assert res
 
-    @pytest.mark.parametrize("delete_segments_by_uid", SEGMENTSTORE_TEST_INPUTS, indirect=True)
+    @pytest.mark.parametrize('delete_segments_by_uid', SEGMENTSTORE_TEST_INPUTS, indirect=True)
     def test_delete_segments_by_uid(self, delete_segments_by_uid):
         res = delete_segments_by_uid
         assert res
 
-    @pytest.mark.parametrize("delete_segments_by_doc_id", SEGMENTSTORE_TEST_INPUTS, indirect=True)
+    @pytest.mark.parametrize('delete_segments_by_doc_id', SEGMENTSTORE_TEST_INPUTS, indirect=True)
     def test_delete_segments_by_doc_id(self, delete_segments_by_doc_id):
         res = delete_segments_by_doc_id
         assert res
 
-    @pytest.mark.parametrize("get_segments_by_collection", SEGMENTSTORE_TEST_INPUTS, indirect=True)
+    @pytest.mark.parametrize('get_segments_by_collection', SEGMENTSTORE_TEST_INPUTS, indirect=True)
     def test_get_segments_by_collection(self, get_segments_by_collection):
         res = get_segments_by_collection
         assert res
 
-    @pytest.mark.parametrize("get_segments_by_kb_id", SEGMENTSTORE_TEST_INPUTS, indirect=True)
+    @pytest.mark.parametrize('get_segments_by_kb_id', SEGMENTSTORE_TEST_INPUTS, indirect=True)
     def test_get_segments_by_kb_id(self, get_segments_by_kb_id):
         res = get_segments_by_kb_id
         assert res
 
-    @pytest.mark.parametrize("get_segments_by_uid", SEGMENTSTORE_TEST_INPUTS, indirect=True)
+    @pytest.mark.parametrize('get_segments_by_uid', SEGMENTSTORE_TEST_INPUTS, indirect=True)
     def test_get_segments_by_uid(self, get_segments_by_uid):
         res = get_segments_by_uid
         assert res
 
-    @pytest.mark.parametrize("get_segments_by_doc_id", SEGMENTSTORE_TEST_INPUTS, indirect=True)
+    @pytest.mark.parametrize('get_segments_by_doc_id', SEGMENTSTORE_TEST_INPUTS, indirect=True)
     def test_get_segments_by_doc_id(self, get_segments_by_doc_id):
         res = get_segments_by_doc_id
         assert res
