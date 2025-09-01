@@ -67,6 +67,37 @@ class Retriever(ModuleBase, _PostProcess):
         if not docs: raise RuntimeError(f'Group {self._group_name} not found in document {self._docs}')
         self._docs = docs
 
+    def __getstate__(self):
+        state = {'group_name': self._group_name, 'similarity': self._similarity,
+                 'similarity_cut_off': self._similarity_cut_off, 'index': self._index, 'topk': self._topk,
+                 'similarity_kw': self._similarity_kw, 'embed_keys': self._embed_keys, 'target': self._target,
+                 'output_format': self._output_format, 'join': self._join}
+        docs = []
+        for doc in self._docs:
+            if isinstance(doc, UrlDocument):
+                docs.append({'url': doc._manager._url, 'name': doc._curr_group})
+            else:
+                assert isinstance(doc._manager._kbs, lazyllm.ServerModule), \
+                    'Only UrlDocument and Document with ServerModule are supported'
+                docs.append({'url': doc._manager._kbs._url, 'name': doc._curr_group})
+        state['docs'] = docs
+        return state
+
+    def __setstate__(self, state):
+        ModuleBase.__init__(self)
+        self._group_name = state['group_name']
+        self._similarity = state['similarity']
+        self._similarity_cut_off = state['similarity_cut_off']
+        self._index = state['index']
+        self._topk = state['topk']
+        self._similarity_kw = state['similarity_kw']
+        self._embed_keys = state['embed_keys']
+        self._target = state['target']
+        self._output_format = state['output_format']
+        self._join = state['join']
+        self._docs = [Document(url=doc['url'], name=doc['name']) for doc in state['docs']]
+        _PostProcess.__init__(self, self._output_format, self._join)
+
     def forward(
             self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
             **kwargs
