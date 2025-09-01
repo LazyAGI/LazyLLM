@@ -376,9 +376,11 @@ class DocImpl:
     def _delete_doc_from_store(self, doc_ids: List[str] = None) -> None:
         self._processor.delete_doc(doc_ids=doc_ids)
 
-    def activate_group(self, group_name: str, embed_keys: List[str]):
+    def activate_group(self, group_name: str, embed_keys: Optional[List[str]] = None, enable_embed: bool = True):
         group_name = str(group_name)
         self._activated_groups.add(group_name)
+        if embed_keys is None and enable_embed:
+            embed_keys = self.embed.keys()
         if embed_keys:
             activated_embeddings = self._activated_embeddings.setdefault(group_name, set())
             if len(set(embed_keys) - activated_embeddings) == 0: return

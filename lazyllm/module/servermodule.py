@@ -219,6 +219,8 @@ class ServerModule(UrlModule):
         args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
         url = urljoin(self._url.rsplit("/", 1)[0], '_call')
         r = requests.post(url, json=(fname, args, kwargs), headers={'Content-Type': 'application/json'})
+        if r.status_code != 200:
+            raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         return pickle.loads(codecs.decode(r.content, "base64"))
 
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), **kw):  # noqa B008
