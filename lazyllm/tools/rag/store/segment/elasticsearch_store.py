@@ -54,7 +54,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
 
     def __init__(
         self,
-        uris: List[str] = ["localhost:9200"],
+        uris: List[str] = "",
         client_kwargs: Optional[Dict] = None,
         index_kwargs: Optional[Union[Dict, List]] = None,
         **kwargs,
@@ -90,7 +90,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             return True
         # connection failed exception handling
         except elasticsearch.NotFoundError as e:
-            LOG.error(f"ElasticSearch sever with cloud id {cloud_id} and api key {api_key} does not exist")
+            LOG.error(f'ElasticSearch sever with cloud id {cloud_id} and api key {api_key} does not exist')
             raise e
         except elasticsearch.AuthenticationException as e:
             LOG.error('ElasticSearch needs Authentication')
