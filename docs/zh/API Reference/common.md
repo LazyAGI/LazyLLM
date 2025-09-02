@@ -54,18 +54,18 @@
 ## Queue
 
 ::: lazyllm.common.FileSystemQueue
-    members: enqueue, dequeue, peek, size, clear
+    members: [enqueue, dequeue, peek, size, clear, init, get_instance, set_default]
     exclude-members:
 
 ::: lazyllm.common.multiprocessing.SpawnProcess
-    members: start
+    members: [start]
 
 ::: lazyllm.common.queue.SQLiteQueue
     options:
       heading_level: 3
 
 ::: lazyllm.common.ReadOnlyWrapper
-    members: set, isNone
+    members: [set, isNone]
     exclude-members:
 
 ::: lazyllm.common.queue.RedisQueue
@@ -77,7 +77,7 @@
 ## Multiprocessing
 
 ::: lazyllm.common.ForkProcess
-    members: work, start
+    members: [work, start]
     exclude-members:
 
 ---
@@ -102,7 +102,7 @@
     exclude-members:
 
 ::: lazyllm.common.ProcessPoolExecutor
-    members: submit
+    members: [submit]
     exclude-members:
 
 ---
@@ -110,7 +110,7 @@
 ## Threading
 
 ::: lazyllm.common.Thread
-    members: work, get_result
+    members: [work, get_result]
     exclude-members:
 
 ---
@@ -118,7 +118,7 @@
 ## LazyLLMCMD
 
 ::: lazyllm.common.LazyLLMCMD
-    members: with_cmd, get_args
+    members: [with_cmd, get_args]
     exclude-members:
 
 ::: lazyllm.common.utils.SecurityVisitor

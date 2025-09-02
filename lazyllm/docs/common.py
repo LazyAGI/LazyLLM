@@ -523,21 +523,17 @@ add_example('FileSystemQueue.dequeue', """\
 """)
 
 add_chinese_doc('FileSystemQueue.peek', """\
-查看队列头部的消息但不移除。
-
-此方法允许查看队列中最早的消息，但不会将其从队列中移除。
+获取队列中的下一个消息，但不移除。
 
 **Returns:**\n
-- 队列头部的消息，如果队列为空则返回None。
+- Any: 队列中下一个可用的消息；如果队列为空，返回 ``None``。
 """)
 
 add_english_doc('FileSystemQueue.peek', """\
-View the message at the head of the queue without removing it.
-
-This method allows viewing the earliest message in the queue without removing it from the queue.
+Retrieve the next message in the queue without removing it.
 
 **Returns:**\n
-- The message at the head of the queue, or None if the queue is empty.
+- Any: The next available message in the queue, or ``None`` if the queue is empty.
 """)
 
 add_example('FileSystemQueue.peek', """\
@@ -553,21 +549,17 @@ add_example('FileSystemQueue.peek', """\
 """)
 
 add_chinese_doc('FileSystemQueue.size', """\
-获取队列大小。
-
-此方法返回当前队列中的消息数量。
+获取队列中的消息数量。
 
 **Returns:**\n
-- int: 队列中的消息数量。
+- int: 队列中当前消息的数量。
 """)
 
 add_english_doc('FileSystemQueue.size', """\
-Get the queue size.
-
-This method returns the current number of messages in the queue.
+Get the number of messages in the queue.
 
 **Returns:**\n
-- int: Number of messages in the queue.
+- int: The current number of messages in the queue.
 """)
 
 add_example('FileSystemQueue.size', """\
@@ -590,13 +582,13 @@ add_example('FileSystemQueue.size', """\
 add_chinese_doc('FileSystemQueue.clear', """\
 清空队列。
 
-此方法移除队列中的所有消息，将队列重置为空状态。
+移除队列中的所有消息，使其恢复为空状态。
 """)
 
 add_english_doc('FileSystemQueue.clear', """\
 Clear the queue.
 
-This method removes all messages from the queue, resetting it to an empty state.
+Removes all messages from the queue, resetting it to an empty state.
 """)
 
 add_example('FileSystemQueue.clear', """\
@@ -613,6 +605,59 @@ add_example('FileSystemQueue.clear', """\
 True
 """)
 
+add_chinese_doc('FileSystemQueue.init', """\
+初始化队列。
+
+该方法会清空当前队列中的所有消息，相当于调用 ``clear()``。
+""")
+
+add_english_doc('FileSystemQueue.init', """\
+Initialize the queue.
+
+This method clears all messages in the current queue, equivalent to calling ``clear()``.
+""")
+
+add_chinese_doc('FileSystemQueue.get_instance', """\
+获取指定类名对应的队列实例。
+
+此方法会根据类名标识符返回对应的队列对象。如果该类名尚未注册，会触发自动初始化。
+
+Args:
+    klass (str): 队列类名标识符，不能为 ``'__default__'``。
+
+**Returns:**\n
+- FileSystemQueue: 与指定类名绑定的队列实例。
+""")
+
+add_english_doc('FileSystemQueue.get_instance', """\
+Get the queue instance for the specified class name.
+
+This method returns the queue object bound to the given class name. If the class name has not been registered, it will be initialized automatically.
+
+Args:
+    klass (str): Queue class name identifier, must not be ``'__default__'``.
+
+**Returns:**\n
+- FileSystemQueue: Queue instance bound to the specified class name.
+""")
+
+add_chinese_doc('FileSystemQueue.set_default', """\
+设置默认的队列实现。
+
+此方法用于指定默认的队列类，作为未传入 `klass` 参数时的后端实现。
+
+Args:
+    queue (Type): 默认队列类。
+""")
+
+add_english_doc('FileSystemQueue.set_default', """\
+Set the default queue implementation.
+
+This method specifies the default queue class, used as the backend implementation when `klass` is not provided.
+
+Args:
+    queue (Type): Default queue class.
+""")
 
 add_chinese_doc('common.ResultCollector', '''\
 结果收集器，用于在流程或任务执行过程中按名称存储和访问结果。  
@@ -1073,36 +1118,34 @@ add_chinese_doc('Option', '''\
 LazyLLM 提供的选项管理类，用于管理多个选项值并在它们之间进行迭代。此类主要用于参数网格搜索和超参数调优场景。
 
 Args:
-    *obj: 一个或多个选项值，可以是任意类型的对象。如果传入单个列表或元组，会自动展开。
+    *obj: 一个或多个选项值，可以是任意类型的对象。如果传入单个列表或元组，会自动展开。至少需要提供两个选项。
 
-此类的主要特性：
+主要特性：
 
-- **多选项管理**: 可以管理多个不同的选项值
-- **迭代支持**: 支持标准的 Python 迭代协议，可以遍历所有选项
-- **当前值访问**: 始终可以访问当前选中的选项值
-- **深度复制**: 支持深度复制当前选中的选项值
-- **多进程兼容**: 支持在多进程环境中使用
+- **多选项管理**: 可以管理多个不同的选项值。
+- **迭代支持**: 支持标准 Python 迭代协议，可以遍历所有选项。
+- **当前值访问**: 可直接访问当前选中的选项值。
+- **深度复制**: 支持获取当前选中选项值的深拷贝。
+- **循环迭代**: 可在所有选项之间循环迭代。
 
-**注意**: 此类主要用于 LazyLLM 内部的参数搜索和试验管理，特别是在 TrialModule 中进行参数网格搜索时。
-
+**注意**: 此类主要用于 LazyLLM 内部的参数搜索和实验管理，尤其在 `TrialModule` 中进行参数网格搜索时。
 ''')
 
 add_english_doc('Option', '''\
 Option management class provided by LazyLLM, used for managing multiple option values and iterating between them. This class is primarily used for parameter grid search and hyperparameter tuning scenarios.
 
 Args:
-    *obj: One or more option values, which can be objects of any type. If a single list or tuple is passed, it will be automatically expanded.
+    *obj: One or more option values, which can be objects of any type. If a single list or tuple is passed, it will be automatically expanded. At least two options must be provided.
 
-Key features of this class:
+Key features:
 
-- **Multi-option Management**: Can manage multiple different option values
-- **Iteration Support**: Supports standard Python iteration protocol, can iterate through all options
-- **Current Value Access**: Always can access the currently selected option value
-- **Deep Copy**: Supports deep copying of the currently selected option value
-- **Multi-process Compatibility**: Supports usage in multi-process environments
+- **Multi-option Management**: Can manage multiple different option values.
+- **Iteration Support**: Supports standard Python iteration protocol, allowing traversal of all options.
+- **Current Value Access**: Provides access to the currently selected option.
+- **Deep Copy**: Supports obtaining a deep copy of the currently selected option.
+- **Cyclic Iteration**: Options can be iterated over in a cyclic manner.
 
-**Note**: This class is primarily used for LazyLLM's internal parameter search and trial management, especially in TrialModule for parameter grid search.
-
+**Note**: This class is mainly used for LazyLLM's internal parameter search and trial management, especially in `TrialModule` for parameter grid search.
 ''')
 
 add_example('Option', '''\
