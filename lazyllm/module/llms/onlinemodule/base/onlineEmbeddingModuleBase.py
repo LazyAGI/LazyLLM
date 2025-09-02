@@ -14,7 +14,8 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                  embed_model_name: str,
                  return_trace: bool = False,
                  batch_size: int = 10,
-                 num_worker: int = 1):
+                 num_worker: int = 1,
+                 timeout: int = 10):
         super().__init__(return_trace=return_trace)
         self._model_series = model_series
         self._embed_url = embed_url
@@ -23,6 +24,7 @@ class OnlineEmbeddingModuleBase(ModuleBase):
         self._set_headers()
         self._batch_size = batch_size
         self._num_worker = num_worker
+        self._timeout = timeout
 
     @property
     def series(self):
@@ -44,7 +46,8 @@ class OnlineEmbeddingModuleBase(ModuleBase):
         if isinstance(data, list):
             return self.run_embed_batch(input, data, proxies, **kwargs)
         else:
-            with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies) as r:
+            with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies,
+                               timeout=self._timeout) as r:
                 if r.status_code == 200:
                     return self._parse_response(r.json(), input)
                 else:
@@ -83,12 +86,12 @@ class OnlineEmbeddingModuleBase(ModuleBase):
             with requests.Session() as session:
                 while not flag:
                     for i in range(len(data)):
-                        r = session.post(self._embed_url, json=data[i], headers=self._headers, proxies=proxies)
+                        r = session.post(self._embed_url, json=data[i], headers=self._headers,
+                                         proxies=proxies, timeout=self._timeout)
                         if r.status_code == 200:
                             vec = self._parse_response(r.json(), input)
                             start = i * self._batch_size
-                            end = start + len(vec)
-                            ret[start:end] = vec
+                            ret[start: start + len(vec)] = vec
                             if i == len(data) - 1:
                                 flag = True
                         else:
@@ -105,8 +108,8 @@ class OnlineEmbeddingModuleBase(ModuleBase):
         else:
             with ThreadPoolExecutor(max_workers=self._num_worker) as executor:
                 while not flag:
-                    futures = [executor.submit(requests.post, self._embed_url, json=t,
-                                               headers=self._headers, proxies=proxies) for t in data]
+                    futures = [executor.submit(requests.post, self._embed_url, json=t, headers=self._headers,
+                                               proxies=proxies, timeout=self._timeout) for t in data]
                     fut_to_index = {fut: idx for idx, fut in enumerate(futures)}
                     for fut in as_completed(futures):
                         r = fut.result()
@@ -114,8 +117,7 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                         if r.status_code == 200:
                             vec = self._parse_response(r.json(), input)
                             start = i * self._batch_size
-                            end = start + len(vec)
-                            ret[start:end] = vec
+                            ret[start: start + len(vec)] = vec
                             if len(fut_to_index) == 0:
                                 flag = True
                         else:
