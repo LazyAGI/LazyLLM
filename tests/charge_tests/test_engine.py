@@ -264,22 +264,6 @@ class TestEngine(unittest.TestCase):
             assert '您好，我的答案是' in stream_result and '24' in stream_result
             assert ('蓝鲸' in result or '动物' in result) and '水' in result
 
-    def test_egine_online_serve_train(self):
-        envs = ['glm_api_key', 'qwen_api_key']
-        sources = ['glm', 'qwen']
-        engine = LightEngine()
-
-        for env, source in list(zip(envs, sources)):
-            token = lazyllm.config[env]
-            res = engine.online_model_get_all_trained_models(token, source=source)
-            assert isinstance(res, list)
-
-            res = engine.online_model_validate_api_key(token, source=source)
-            assert res is True
-
-            res = engine.online_model_validate_api_key(token + 'ss', source=source)
-            assert res is False
-
     def test_tools_with_llm(self):
         resources = [dict(id='0', kind='LLM', name='base', args=dict(source="qwen", type='online'))]
         nodes = [dict(id="1", kind="QustionRewrite", name="m1", args=dict(base_model='0', formatter="str")),

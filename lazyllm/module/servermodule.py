@@ -12,6 +12,7 @@ from lazyllm import launchers, LOG, package, encode_request, globals, is_valid_u
 from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
+from ..components.utils import LLMType
 from ..flow import FlowBase, Pipeline
 from ..client import get_redis, redis_client
 from urllib.parse import urljoin
@@ -21,9 +22,10 @@ from .module import ModuleBase, ActionModule
 
 class LLMBase(ModuleBase):
     def __init__(self, stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False,
-                 init_prompt: bool = True):
+                 init_prompt: bool = True, type: Optional[Union[str, LLMType]] = None):
         super().__init__(return_trace=return_trace)
         self._stream = stream
+        self._type = LLMType(type) if type else LLMType.LLM
         if init_prompt: self.prompt()
         __class__.formatter(self)
 
@@ -67,6 +69,10 @@ class LLMBase(ModuleBase):
         if format is not None: new.formatter(format)
         if stream is not None: new.stream = stream
         return new
+
+    @property
+    def type(self):
+        return self._type.value
 
     @property
     def stream(self):
@@ -219,6 +225,12 @@ class ServerModule(UrlModule):
         args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
         url = urljoin(self._url.rsplit("/", 1)[0], '_call')
         r = requests.post(url, json=(fname, args, kwargs), headers={'Content-Type': 'application/json'})
+        if r.status_code != 200:
+            try:
+                error_info = r.json()
+            except ValueError:
+                error_info = r.text
+            raise requests.RequestException(f'{r.status_code}: {error_info}')
         return pickle.loads(codecs.decode(r.content, "base64"))
 
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), **kw):  # noqa B008

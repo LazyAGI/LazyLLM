@@ -238,7 +238,7 @@ After filtering out documents from the initial document collection that are rela
 For example, you can create a `Reranker` to perform another sorting on all documents returned by the `Retriever` using:
 
 ```python
-reranker = Reranker('ModuleReranker', model='bg-reranker-large', topk=1)
+reranker = Reranker('ModuleReranker', model='bge-reranker-large', topk=1)
 ```
 
 The constructor of the `Reranker` has the following parameters:

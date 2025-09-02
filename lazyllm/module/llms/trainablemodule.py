@@ -12,7 +12,7 @@ import lazyllm
 from lazyllm import globals, LOG, launchers, Option, package, LazyLLMDeployBase, LazyLLMFinetuneBase
 from ...components.formatter import decode_query_with_filepaths, encode_query_with_filepaths
 from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
-from ...components.utils import ModelManager
+from ...components.utils import ModelManager, LLMType
 from ...components.utils.file_operate import _base64_to_file, _is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
 from .utils import map_kw_for_framework, encode_files
@@ -56,11 +56,12 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def __init__(self, base_model: str = '', target_path: str = '', stream: bool = False, train: Optional[type] = None,
                  finetune: Optional[LazyLLMFinetuneBase] = None, deploy: Optional[LazyLLMDeployBase] = None,
                  template: Optional[_UrlTemplateStruct] = None, url_wrapper: Optional[_UrlHelper._Wrapper] = None,
-                 trust_remote_code: bool = True):
+                 trust_remote_code: bool = True, type: Optional[LLMType] = None):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
         base_model = base_model.rstrip('/\\')
+        self._type = LLMType(type) if type else type
         self._base_model = (ModelManager(lazyllm.config['model_source']).download(base_model) or ''
                             if trust_remote_code else base_model)
         if not self._base_model:
@@ -87,7 +88,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if not args.get('url'):
             if arg_cls == 'deploy' and self._deploy is lazyllm.deploy.AutoDeploy:
                 self._deploy, args['launcher'], self._deploy_args = lazyllm.deploy.AutoDeploy.get_deployer(
-                    base_model=self._base_model, **args)
+                    base_model=self._base_model, type=self._type, **args)
             args['launcher'] = args['launcher'].clone() if args.get('launcher') else launchers.remote(sync=False)
             self._launchers['default'][arg_cls] = args['launcher']
         return args
@@ -116,7 +117,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def _async_finetune(self, name: str, ngpus: int = 1, **kw):
         assert name and isinstance(name, str), 'Invalid name: {name}, expect a valid string'
         assert name not in self._launchers['manual'], 'Duplicate name: {name}'
-        self._launchers['manual'][name] = kw['launcher'] = launchers.remote(sync=False, ngpus=ngpus)
+        self._launchers['manual'][name] = kw['launcher'] = launchers.remote(sync=False, ngpus=ngpus, launch_type='train')
         self._set_file_name(name)
 
         def after_train(real_target_path):
@@ -186,7 +187,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
 
         if url := self._deploy_args.get('url'):
             assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
-            self._set_url(url)
+            self._set_url(re.sub(r'v1(?:/chat/completions)?/?$', 'v1/', url))
             self._get_deploy_tasks.flag.set()
         self._deploy_args.pop('url', None)
 
@@ -219,11 +220,12 @@ class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
 
     def __init__(self, base_model: Option = '', target_path='', *, stream: Union[bool, Dict[str, str]] = False,
-                 return_trace: bool = False, trust_remote_code: bool = True):
+                 return_trace: bool = False, trust_remote_code: bool = True, type: Optional[Union[str, LLMType]] = None):
         super().__init__(url=None, stream=stream, return_trace=return_trace, init_prompt=False)
         self._template = _UrlTemplateStruct()
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
-                                          lazyllm.deploy.auto, self._template, self._url_wrapper, trust_remote_code)
+                                          lazyllm.deploy.auto, self._template, self._url_wrapper,
+                                          trust_remote_code, type)
         self._stream = stream
         self.prompt()
 
@@ -245,6 +247,7 @@ class TrainableModule(UrlModule):
 
     @property
     def type(self):
+        if self._impl._type is not None: return self._impl._type.value
         return ModelManager.get_model_type(self.base_model).upper()
 
     def get_all_models(self):
@@ -278,9 +281,13 @@ class TrainableModule(UrlModule):
         launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
         return launcher.status
 
+    def log_path(self, task_name: Optional[str] = None):
+        launcher = self._impl._launchers['manual' if task_name else 'default'][task_name or 'deploy']
+        return launcher.log_path
+
     # modify default value to ''
     def prompt(self, prompt: Union[str, dict] = '', history: Optional[List[List[str]]] = None):
-        if self.base_model != '' and prompt == '' and ModelManager.get_model_type(self.base_model) != 'llm':
+        if self.base_model != '' and prompt == '' and self.type != 'LLM':
             prompt = None
         clear_system = isinstance(prompt, dict) and prompt.get('drop_builtin_system')
         prompter = super(__class__, self).prompt(prompt, history)._prompt
@@ -455,6 +462,24 @@ class TrainableModule(UrlModule):
 
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
                 *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
+        if self._url.endswith('/v1/'):
+            return self.forward_openai(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
+                                       tools=tools, stream_output=stream_output, **kw)
+        else:
+            return self.forward_standard(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
+                                         tools=tools, stream_output=stream_output, **kw)
+
+    def forward_openai(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
+                       *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
+        if not getattr(self, '_openai_module', None):
+            self._openai_module = lazyllm.OnlineChatModule(
+                source='openai', model='lazyllm', base_url=self._url, skip_auth=True)
+            self._openai_module.used_by(self._module_id)
+        return self._openai_module.forward(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
+                                           tools=tools, stream_output=stream_output, **kw)
+
+    def forward_standard(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
+                         *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
         __input, files = self._get_files(__input, lazyllm_files)
         text_input_for_token_usage = __input = self._prompt.generate_prompt(__input, llm_chat_history, tools)
         url = self._url

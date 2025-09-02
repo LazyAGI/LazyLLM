@@ -43,7 +43,7 @@ def distill_dataset(data_path, model=None, demo=False):
     res_list = []
     try_n = 0
     while inputs:
-        print(">>>" * 12, f"{try_n+1} times left: ", len(inputs))
+        print(">>>" * 12, f"{try_n + 1} times left: ", len(inputs))
         querys = [item['instruction'] for item in inputs]
         results = wp(querys)
         valid_data, inputs = filter(inputs, results)
@@ -87,7 +87,7 @@ def caculate_score(eval_set, infer_set):
             true_v = eval_item['output'].split('\n#### ')[-1].strip()
             if true_v == res.strip():
                 score += 1
-    return f'{score}/{len(eval_set)}, {round(score/len(eval_set),4)*100}%'
+    return f'{score}/{len(eval_set)}, {round(score / len(eval_set), 4) * 100}%'
 
 def main(techer_name, student_name, dataset_name, demo=False, sft_data_path=None):
     # Launcher Teacher
