@@ -1,10 +1,10 @@
 from typing import Dict, List, Union
 import requests
-from concurrent.futures import ThreadPoolExecutor
-from abc import ABCMeta, abstractmethod
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from ....module import ModuleBase
+from lazyllm import LOG
 
-class OnlineEmbeddingModuleBase(ModuleBase, metaclass=ABCMeta):
+class OnlineEmbeddingModuleBase(ModuleBase):
     NO_PROXY = True
 
     def __init__(self,
@@ -38,14 +38,11 @@ class OnlineEmbeddingModuleBase(ModuleBase, metaclass=ABCMeta):
             "Authorization": f"Bearer {self._api_key}"
         }
 
-    def forward(self, input: Union[List, str], **kwargs):
+    def forward(self, input: Union[List, str], **kwargs) -> Union[List[float], List[List[float]]]:
         data = self._encapsulated_data(input, **kwargs)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
-        if isinstance(data, List):
-            if self._num_worker == 1:
-                return self.run_embed_batch(input, data, proxies, **kwargs)
-            else:
-                return self.run_embed_batch_parallel(input, data, proxies, **kwargs)
+        if isinstance(data, list):
+            return self.run_embed_batch(input, data, proxies, **kwargs)
         else:
             with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies) as r:
                 if r.status_code == 200:
@@ -53,67 +50,81 @@ class OnlineEmbeddingModuleBase(ModuleBase, metaclass=ABCMeta):
                 else:
                     raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
-    def run_embed_batch(self, input: Union[List, str], data: List, proxies, **kwargs):
-        ret = []
-        flag = False
-        error_msg = ""
-        with requests.Session() as session:
-            while not flag:
-                temp = []
-                for i in range(len(data)):
-                    r = session.post(self._embed_url, json=data[i], headers=self._headers, proxies=proxies)
-                    if r.status_code == 200:
-                        temp.extend(self._parse_response(r.json(), input))
-                        if i == len(data) - 1:
-                            flag = True
-                            ret = temp
-                    else:
-                        flag = False
-                        error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
-                        if self._batch_size == 1 or r.status_code == 401:
-                            raise requests.RequestException(error_msg)
-                        else:
-                            self._batch_size = max(self._batch_size // 2, 1)
-                            data = self._encapsulated_data(input, **kwargs)
-                        break
-        if not flag:
-            raise requests.RequestException(error_msg)
-        return ret
-
-    @abstractmethod
     def _encapsulated_data(self, input: Union[List, str], **kwargs):
-        pass
+        if isinstance(input, str):
+            json_data = {
+                "input": [input],
+                "model": self._embed_model_name
+            }
+            if len(kwargs) > 0:
+                json_data.update(kwargs)
+            return json_data
+        else:
+            text_batch = [input[i: i + self._batch_size] for i in range(0, len(input), self._batch_size)]
+            json_data = [{"input": texts, "model": self._embed_model_name} for texts in text_batch]
+            if len(kwargs) > 0:
+                for i in range(len(json_data)):
+                    json_data[i].update(kwargs)
+            return json_data
 
-    @abstractmethod
-    def _parse_response(self, response: Dict, input: Union[List, str]):
-        pass
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
+        data = response.get('data', [])
+        if not data:
+            raise Exception('no data received')
+        if isinstance(input, str):
+            return data[0].get('embedding', [])
+        else:
+            return [res.get('embedding', []) for res in data]
 
-    def run_embed_batch_parallel(self, input: Union[List, str], data: List, proxies, **kwargs):
-        ret = []
-        flag = False
-        error_msg = ""
-        with ThreadPoolExecutor(max_workers=self._num_worker) as executor:
-            while not flag:
-                temp = []
-                futures = [executor.submit(requests.post, self._embed_url, json=t,
-                                           headers=self._headers, proxies=proxies) for t in data]
-                for i in range(len(futures)):
-                    r = futures[i].result()
-                    if r.status_code == 200:
-                        temp.extend(self._parse_response(r.json(), input))
-                        if i == len(data) - 1:
-                            flag = True
-                            ret = temp
-                    else:
-                        executor.shutdown(wait=True)
-                        flag = False
-                        error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
-                        if self._batch_size == 1 or r.status_code == 401:
-                            raise requests.RequestException(error_msg)
+    def run_embed_batch(self, input: List, data: List, proxies, **kwargs):
+        ret = [[] for _ in range(len(input))]
+        if self._num_worker == 1:
+            with requests.Session() as session:
+                while True:
+                    for i in range(len(data)):
+                        r = session.post(self._embed_url, json=data[i], headers=self._headers, proxies=proxies)
+                        if r.status_code == 200:
+                            vec = self._parse_response(r.json(), input)
+                            start = i * self._batch_size
+                            end = start + len(vec)
+                            ret[start:end] = vec
                         else:
-                            self._batch_size = max(self._batch_size // 2, 1)
-                            data = self._encapsulated_data(input, **kwargs)
-                        break
-        if not flag:
-            raise requests.RequestException(error_msg)
+                            error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
+                            if self._batch_size == 1 or r.status_code == 401:
+                                raise requests.RequestException(error_msg)
+                            else:
+                                msg = f"Online embedding:{self._embed_model_name} post failed, adjust batch_size: "
+                                msg = msg + f" from {self._batch_size} to {max(self._batch_size // 2, 1)}"
+                                LOG.warning(msg)
+                                self._batch_size = max(self._batch_size // 2, 1)
+                                data = self._encapsulated_data(input, **kwargs)
+                                break
+                    break
+        else:
+            with ThreadPoolExecutor(max_workers=self._num_worker) as executor:
+                while True:
+                    futures = [executor.submit(requests.post, self._embed_url, json=t,
+                                               headers=self._headers, proxies=proxies) for t in data]
+                    fut_to_index = {fut: idx for idx, fut in enumerate(futures)}
+                    for fut in as_completed(futures):
+                        r = fut.result()
+                        i = fut_to_index[fut]
+                        if r.status_code == 200:
+                            vec = self._parse_response(r.json(), input)
+                            start = i * self._batch_size
+                            end = start + len(vec)
+                            ret[start:end] = vec
+                        else:
+                            executor.shutdown(wait=True)
+                            error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
+                            if self._batch_size == 1 or r.status_code == 401:
+                                raise requests.RequestException(error_msg)
+                            else:
+                                msg = f"Online embedding:{self._embed_model_name} post failed, adjust batch_size: "
+                                msg = msg + f" from {self._batch_size} to {max(self._batch_size // 2, 1)}"
+                                LOG.warning(msg)
+                                self._batch_size = max(self._batch_size // 2, 1)
+                                data = self._encapsulated_data(input, **kwargs)
+                                break
+                    break
         return ret
