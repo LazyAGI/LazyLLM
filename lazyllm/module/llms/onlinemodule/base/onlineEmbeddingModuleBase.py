@@ -90,7 +90,7 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                             ret[start:end] = vec
                         else:
                             error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
-                            if self._batch_size == 1 or r.status_code == 401:
+                            if self._batch_size == 1 or r.status_code in [401, 429]:
                                 raise requests.RequestException(error_msg)
                             else:
                                 msg = f"Online embedding:{self._embed_model_name} post failed, adjust batch_size: "
@@ -117,7 +117,7 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                         else:
                             executor.shutdown(wait=True)
                             error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
-                            if self._batch_size == 1 or r.status_code == 401:
+                            if self._batch_size == 1 or r.status_code in [401, 429]:
                                 raise requests.RequestException(error_msg)
                             else:
                                 msg = f"Online embedding:{self._embed_model_name} post failed, adjust batch_size: "
