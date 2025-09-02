@@ -240,6 +240,23 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
         api_key = self._get_api_key(api_key, secret_key)
         super().__init__("SENSENOVA", embed_url, api_key, embed_model_name, **kw)
 
+    def _encapsulated_data(self, text: Union[List, str], **kwargs):
+        if isinstance(text, str):
+            json_data = {
+                "input": [text],
+                "model": self._embed_model_name
+            }
+            if len(kwargs) > 0:
+                json_data.update(kwargs)
+            return json_data
+        else:
+            text_batch = [text[i: i + self._batch_size] for i in range(0, len(text), self._batch_size)]
+            json_data = [{"input": texts, "model": self._embed_model_name} for texts in text_batch]
+            if len(kwargs) > 0:
+                for i in range(len(json_data)):
+                    json_data[i].update(kwargs)
+            return json_data
+
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
         embeddings = response.get('embeddings', [])
         if not embeddings:
