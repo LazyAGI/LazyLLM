@@ -23,3 +23,9 @@ class TestEmbed(object):
         assert len(vec3) == 8
         assert len(vec3[0]) == len(vec1)
         assert len(vec3[1]) == len(vec1)
+
+    def test__embed_adjust_batch(self):
+        embed_model = lazyllm.OnlineEmbeddingModule(source="qwen", embed_model_name="text-embedding-v3",
+                                                    num_worker=4, batch_size=20)
+        vec2 = embed_model(["床前明月光" for i in range(0, 20)])
+        assert len(vec2) == 20

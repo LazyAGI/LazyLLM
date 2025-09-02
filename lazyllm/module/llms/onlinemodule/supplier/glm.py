@@ -237,32 +237,6 @@ class GLMEmbedding(OnlineEmbeddingModuleBase):
                  **kw):
         super().__init__("GLM", embed_url, api_key or lazyllm.config["glm_api_key"], embed_model_name, **kw)
 
-    def _encapsulated_data(self, input: Union[List, str], **kwargs):
-        if isinstance(input, str):
-            json_data = {
-                "input": [input],
-                "model": self._embed_model_name
-            }
-            if len(kwargs) > 0:
-                json_data.update(kwargs)
-            return json_data
-        else:
-            text_batch = [input[i: i + self._batch_size] for i in range(0, len(input), self._batch_size)]
-            json_data = [{"input": texts, "model": self._embed_model_name} for texts in text_batch]
-            if len(kwargs) > 0:
-                for i in range(len(json_data)):
-                    json_data[i].update(kwargs)
-            return json_data
-        
-    def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
-        data = response.get('data', [])
-        if not data:
-            raise Exception('no data received')
-        if isinstance(input, str):
-            return data[0].get('embedding', [])
-        else:
-            return [res.get('embedding', []) for res in data]        
-
 class GLMReranking(OnlineEmbeddingModuleBase):
 
     def __init__(self,
