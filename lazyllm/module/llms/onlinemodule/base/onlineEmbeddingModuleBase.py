@@ -1,6 +1,6 @@
 from typing import Dict, List, Union
 import requests
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from ....module import ModuleBase
 from lazyllm import LOG
 
@@ -78,9 +78,10 @@ class OnlineEmbeddingModuleBase(ModuleBase):
 
     def run_embed_batch(self, input: List, data: List, proxies, **kwargs):
         ret = [[] for _ in range(len(input))]
+        flag = False
         if self._num_worker == 1:
             with requests.Session() as session:
-                while True:
+                while not flag:
                     for i in range(len(data)):
                         r = session.post(self._embed_url, json=data[i], headers=self._headers, proxies=proxies)
                         if r.status_code == 200:
@@ -88,6 +89,8 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                             start = i * self._batch_size
                             end = start + len(vec)
                             ret[start:end] = vec
+                            if i == len(data) - 1:
+                                flag = True
                         else:
                             error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
                             if self._batch_size == 1 or r.status_code in [401, 429]:
@@ -99,23 +102,24 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                                 self._batch_size = max(self._batch_size // 2, 1)
                                 data = self._encapsulated_data(input, **kwargs)
                                 break
-                    break
         else:
             with ThreadPoolExecutor(max_workers=self._num_worker) as executor:
-                while True:
+                while not flag:
                     futures = [executor.submit(requests.post, self._embed_url, json=t,
                                                headers=self._headers, proxies=proxies) for t in data]
                     fut_to_index = {fut: idx for idx, fut in enumerate(futures)}
                     for fut in as_completed(futures):
                         r = fut.result()
-                        i = fut_to_index[fut]
+                        i = fut_to_index.pop(fut)
                         if r.status_code == 200:
                             vec = self._parse_response(r.json(), input)
                             start = i * self._batch_size
                             end = start + len(vec)
                             ret[start:end] = vec
+                            if len(fut_to_index) == 0:
+                                flag = True
                         else:
-                            executor.shutdown(wait=True)
+                            wait(futures)
                             error_msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)])
                             if self._batch_size == 1 or r.status_code in [401, 429]:
                                 raise requests.RequestException(error_msg)
@@ -126,5 +130,4 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                                 self._batch_size = max(self._batch_size // 2, 1)
                                 data = self._encapsulated_data(input, **kwargs)
                                 break
-                    break
         return ret
