@@ -10,6 +10,15 @@
       - start
       - restart
       - update
+      - stream_output
+      - used_by
+      - register_hook
+      - unregister_hook
+      - clear_hooks
+      - update_server
+      - wait
+      - stop
+      - for_each
 
 ::: lazyllm.module.servermodule.LLMBase
     options:
@@ -49,6 +58,8 @@
       - start
       - restart
       - evalset
+      - wait
+      - stop
 
 ::: lazyllm.module.AutoModel
     options:
@@ -66,11 +77,19 @@
     members:
     exclude-members:
 
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultiModal
+    members:
+    exclude-members:
+
 ::: lazyllm.module.OnlineEmbeddingModule
     members:
     exclude-members:
 
 ::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIEmbedding
+    members:
+    exclude-members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenSTTModule
     members:
     exclude-members:
 
@@ -87,7 +106,27 @@
 ::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoEmbedding
     options:
       members:
-    
+
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultimodalEmbedding
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMTextToImageModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenTextToImageModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.kimi.KimiModule
+    options:
+      members:
+
 ::: lazyllm.module.llms.onlinemodule.fileHandler.FileHandlerBase
     members: get_finetune_data
     exclude-members: 

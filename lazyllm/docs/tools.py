@@ -128,38 +128,45 @@ Args:
 # rag/document.py
 
 add_english_doc('Document', '''\
-Initialize a document module with an optional user interface.
+Initialize a document management module with optional embedding, storage, and user interface.
 
-This constructor initializes a document module that can have an optional user interface. If the user interface is enabled, it also provides a UI to manage the document operation interface and offers a web page for user interface interaction.
+The ``Document`` module provides a unified interface for managing document datasets, including support for local files, cloud-based files, or temporary document files. It can optionally run with a document manager service or a web UI, and supports multiple embedding models and custom storage backends.
 
 Args:
-    dataset_path (str): The path to the dataset directory. This directory should contain the documents to be managed by the document module.
-    embed (Optional[Union[Callable, Dict[str, Callable]]]): The object used to generate document embeddings. If you need to generate multiple embeddings for the text, you need to specify multiple embedding models in a dictionary format. The key identifies the name corresponding to the embedding, and the value is the corresponding embedding model.
-    create_ui (bool): [Deprecated] Whether to create a user interface. Use 'manager' parameter instead.
-    manager (bool, optional): A flag indicating whether to create a user interface for the document module. Defaults to False.
-    server (Union[bool, int]): Server configuration. True for default server, False for no server, or an integer port number for custom server.
-    name (Optional[str]): Name identifier for this document collection. Required for cloud services.
-    launcher (optional): An object or function responsible for launching the server module. If not provided, the default asynchronous launcher from `lazyllm.launchers` is used (`sync=False`).
-    doc_fields (optional): Configure the fields that need to be stored and retrieved along with their corresponding types (currently only used by the Milvus backend).
-    doc_files (Optional[List[str]]): List of temporary document files (alternative to dataset_path).When used, dataset_path must be None and only map store is supported.
-    store_conf (optional): Configure which storage backend, MapStore is the default choice.      
+    dataset_path (Optional[str]): Path to the dataset directory. If not found, the system will attempt to locate it in ``lazyllm.config["data_path"]``.
+    embed (Optional[Union[Callable, Dict[str, Callable]]]): Embedding function or mapping of embedding functions. When a dictionary is provided, keys are embedding names and values are embedding models.
+    manager (Union[bool, str], optional): Whether to enable the document manager. If ``True``, launches a manager service. If ``'ui'``, also enables the document management web UI. Defaults to ``False``.
+    server (Union[bool, int], optional): Whether to run a server interface for knowledge bases. ``True`` enables a default server, an integer specifies a custom port, and ``False`` disables it. Defaults to ``False``.
+    name (Optional[str]): Name identifier for this document collection. Defaults to the system default name.
+    launcher (Optional[Launcher]): Launcher instance for managing server processes. Defaults to a remote asynchronous launcher.
+    store_conf (Optional[Dict]): Storage configuration. Defaults to in-memory MapStore.
+    doc_fields (Optional[Dict[str, DocField]]): Metadata field configuration for storing and retrieving document attributes.
+    cloud (bool): Whether the dataset is stored in the cloud. Defaults to ``False``.
+    doc_files (Optional[List[str]]): Temporary document files. When used, ``dataset_path`` must be ``None``. Only MapStore is supported in this mode.
+    processor (Optional[DocumentProcessor]): Document pre-processing module.
+    display_name (Optional[str]): Human-readable display name for this document module. Defaults to the collection name.
+    description (Optional[str]): Description of the document collection. Defaults to ``"algorithm description"``.
 ''')
 
 add_chinese_doc('Document', '''\
-初始化一个具有可选用户界面的文档模块。
+初始化一个文档管理模块，支持可选的向量化、存储和用户界面。
 
-此构造函数初始化一个可以有或没有用户界面的文档模块。如果启用了用户界面，它还会提供一个ui界面来管理文档操作接口，并提供一个用于用户界面交互的网页。
+``Document`` 模块提供了统一的文档数据集管理接口，支持本地文件、云端文件或临时文档文件。它可以选择运行文档管理服务或 Web UI，并支持多种向量化模型和自定义存储后端。
 
 Args:
-    dataset_path (str): 数据集目录的路径。此目录应包含要由文档模块管理的文档。
-    embed (Optional[Union[Callable, Dict[str, Callable]]]): 用于生成文档 embedding 的对象。如果需要对文本生成多个 embedding，此处需要通过字典的方式指定多个 embedding 模型，key 标识 embedding 对应的名字, value 为对应的 embedding 模型。
-    create_ui (bool):[已弃用] 是否创建用户界面。请改用'manager'参数
-    manager (bool, optional): 指示是否为文档模块创建用户界面的标志。默认为 False。
-    server (Union[bool, int]):服务器配置。True表示默认服务器，False表示已指定端口号作为自定义服务器
-    name (Optional[str]):文档集合的名称标识符。云服务模式下必须提供
-    launcher (optional): 负责启动服务器模块的对象或函数。如果未提供，则使用 `lazyllm.launchers` 中的默认异步启动器 (`sync=False`)。            
-    doc_files (Optional[List[str]]):临时文档文件列表（dataset_path的替代方案）。使用时dataset_path必须为None且仅支持map存储类型
-    store_conf (optional): 配置使用哪种存储后端, 默认使用MapStore将切片数据存于内存中。
+    dataset_path (Optional[str]): 数据集目录路径。如果路径不存在，系统会尝试在 ``lazyllm.config["data_path"]`` 中查找。
+    embed (Optional[Union[Callable, Dict[str, Callable]]]): 文档向量化函数或函数字典。若为字典，键为 embedding 名称，值为对应的模型。
+    manager (Union[bool, str], optional): 是否启用文档管理服务。``True`` 表示启动管理服务；``'ui'`` 表示同时启动 Web 管理界面；默认 ``False``。
+    server (Union[bool, int], optional): 是否为知识库运行服务接口。``True`` 表示启动默认服务；整型数值表示自定义端口；``False`` 表示关闭。默认为 ``False``。
+    name (Optional[str]): 文档集合的名称标识符。默认为系统默认名称。
+    launcher (Optional[Launcher]): 启动器实例，用于管理服务进程。默认使用远程异步启动器。
+    store_conf (Optional[Dict]): 存储配置。默认使用内存中的 MapStore。
+    doc_fields (Optional[Dict[str, DocField]]): 元数据字段配置，用于存储和检索文档属性。
+    cloud (bool): 是否为云端数据集。默认为 ``False``。
+    doc_files (Optional[List[str]]): 临时文档文件列表。当使用此参数时，``dataset_path`` 必须为 ``None``，且仅支持 MapStore。
+    processor (Optional[DocumentProcessor]): 文档预处理模块。
+    display_name (Optional[str]): 文档模块的可读显示名称。默认为集合名称。
+    description (Optional[str]): 文档集合的描述。默认为 ``"algorithm description"``。
 ''')
 
 add_example('Document', '''\
@@ -195,6 +202,268 @@ add_example('Document', '''\
 >>> document2 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, store_conf=store_conf, doc_fields=doc_fields)
 ''')
 
+add_chinese_doc('Document.connect_sql_manager', """\
+连接 SQL 管理器并初始化文档与数据库的映射处理器。
+
+此方法会验证数据库连接，并根据传入的文档表模式（schema）更新或重置数据库表结构。如果已存在的 schema 与新传入的 schema 不一致，则需要设置 ``force_refresh=True`` 以强制刷新。
+
+Args:
+    sql_manager (SqlManager): SQL 管理器实例，用于连接和操作数据库。
+    schma (Optional[DocInfoSchema]): 文档表模式定义。包含字段名称、类型及描述。
+    force_refresh (bool, optional): 当 schema 发生变化时，是否强制刷新数据库表结构。默认为 ``True``。
+
+Raises:
+    RuntimeError: 当数据库连接失败时抛出。
+    AssertionError: 当未提供 schema 或 schema 变更时未设置 ``force_refresh`` 抛出。
+""")
+
+add_english_doc('Document.connect_sql_manager', """\
+Connect to the SQL manager and initialize the document-to-database processor.
+
+This method validates the database connection and updates or resets the database table schema based on the provided document schema. If the existing schema differs from the new one, ``force_refresh=True`` must be set to enforce a reset.
+
+Args:
+    sql_manager (SqlManager): SQL manager instance for database connection and operations.
+    schma (Optional[DocInfoSchema]): Document table schema definition, including field names, types, and descriptions.
+    force_refresh (bool, optional): Whether to force refresh the database schema when changes are detected. Defaults to ``True``.
+
+Raises:
+    RuntimeError: If the database connection fails.
+    AssertionError: If schema is missing or schema change occurs without setting ``force_refresh``.
+""")
+
+add_chinese_doc('Document.get_sql_manager', """\
+获取当前文档模块绑定的 SQL 管理器实例。
+
+**Returns:**\n
+- SqlManager: 已连接的 SQL 管理器实例。
+""")
+
+add_english_doc('Document.get_sql_manager', """\
+Get the SQL manager instance currently bound to this document module.
+
+**Returns:**\n
+- SqlManager: The connected SQL manager instance.
+""")
+
+add_chinese_doc('Document.extract_db_schema', """\
+基于文档数据集和大语言模型自动提取数据库表模式（schema）。
+
+此方法会扫描数据集中的所有文件，并调用大语言模型提取文档信息结构。可选择是否打印提取的 schema。
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): 用于解析文档并提取 schema 的模型。
+    print_schema (bool, optional): 是否在日志中打印提取的 schema。默认为 ``False``。
+
+**Returns:**\n
+- DocInfoSchema: 提取的数据库表模式。
+""")
+
+add_english_doc('Document.extract_db_schema', """\
+Extract the database schema from the dataset using a large language model.
+
+This method scans all files in the dataset and uses the LLM to extract document information schema. Optionally, the schema can be printed to the logs.
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): Model used to parse documents and extract schema.
+    print_schema (bool, optional): Whether to log the extracted schema. Defaults to ``False``.
+
+**Returns:**\n
+- DocInfoSchema: The extracted database schema.
+""")
+
+add_chinese_doc('Document.update_database', """\
+使用大语言模型解析文档并将提取的信息更新到数据库。
+
+此方法会遍历数据集中的所有文件，提取文档结构化信息，并将其写入数据库。
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): 用于解析文档并提取信息的大语言模型。
+""")
+
+add_english_doc('Document.update_database', """\
+Update the database with information extracted from documents using a large language model.
+
+This method iterates through all files in the dataset, extracts structured information, and exports it into the database.
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): Model used to parse documents and extract information.
+""")
+
+add_chinese_doc('Document.create_kb_group', """\
+创建一个新的知识库分组（KB Group），并返回绑定到该分组的文档对象。
+
+知识库分组用于在同一个文档模块中划分不同的文档集合，每个分组可以有独立的字段定义和存储配置。
+
+Args:
+    name (str): 知识库分组的名称。
+    doc_fields (Optional[Dict[str, DocField]]): 文档字段定义。指定每个字段的名称、类型和描述。
+    store_conf (Optional[Dict]): 存储配置，用于定义存储后端及其参数。
+
+**Returns:**\n
+- Document: 一个绑定到新建知识库分组的文档对象副本。
+""")
+
+add_english_doc('Document.create_kb_group', """\
+Create a new knowledge base group (KB Group) and return a document object bound to that group.
+
+Knowledge base groups are used to partition different document collections within the same document module. Each group can have independent field definitions and storage configurations.
+
+Args:
+    name (str): Name of the knowledge base group.
+    doc_fields (Optional[Dict[str, DocField]]): Document field definitions, specifying field names, types, and descriptions.
+    store_conf (Optional[Dict]): Storage configuration, defining the backend and its parameters.
+
+**Returns:**\n
+- Document: A copy of the document object bound to the newly created knowledge base group.
+""")
+
+add_chinese_doc('Document.activate_group', """\
+激活指定的知识库分组，并可选择指定要启用的 embedding key。
+
+激活后，文档模块会在该分组下执行检索和存储操作。如果未指定 embedding key，则默认启用所有可用的 embedding。
+
+Args:
+    group_name (str): 要激活的知识库分组名称。
+    embed_keys (Optional[Union[str, List[str]]]): 需要启用的 embedding key，可以是单个字符串或字符串列表。默认为空列表，表示启用全部 embedding。
+""")
+
+add_english_doc('Document.activate_group', """\
+Activate the specified knowledge base group, optionally enabling specific embedding keys.
+
+After activation, the document module will perform retrieval and storage operations within the given group. If no embedding keys are provided, all available embeddings will be enabled by default.
+
+Args:
+    group_name (str): Name of the knowledge base group to activate.
+    embed_keys (Optional[Union[str, List[str]]]): Embedding keys to enable, either as a string or a list of strings. Defaults to an empty list, enabling all embeddings.
+""")
+
+add_chinese_doc('Document.activate_groups', """\
+批量激活多个知识库分组。
+
+该方法会依次调用 `activate_group` 来激活传入的所有分组。
+
+Args:
+    groups (Union[str, List[str]]): 要激活的分组名称或分组名称列表。
+""")
+
+add_english_doc('Document.activate_groups', """\
+Activate multiple knowledge base groups in batch.
+
+This method iteratively calls `activate_group` to activate all the provided groups.
+
+Args:
+    groups (Union[str, List[str]]): A single group name or a list of group names to activate.
+""")
+
+add_chinese_doc('Document.get_store', """\
+获取存储占位符对象。
+
+该方法返回一个存储层的占位符，用于延迟绑定具体的存储实现。调用者可以基于此对象进行存储相关的配置或扩展。
+
+**Returns:**\n
+- StorePlaceholder: 存储占位符对象。
+""")
+
+add_english_doc('Document.get_store', """\
+Get the storage placeholder object.
+
+This method returns a placeholder for the storage layer, allowing deferred binding of the actual storage implementation. 
+The caller can use this object for storage-related configuration or extension.
+
+**Returns:**\n
+- StorePlaceholder: Storage placeholder object.
+""")
+
+add_chinese_doc('Document.get_embed', """\
+获取 embedding 占位符对象。
+
+该方法返回一个 embedding 层的占位符，用于延迟绑定具体的 embedding 实现。调用者可以基于此对象进行 embedding 相关的配置或扩展。
+
+**Returns:**\n
+- EmbedPlaceholder: embedding 占位符对象。
+""")
+
+add_english_doc('Document.get_embed', """\
+Get the embedding placeholder object.
+
+This method returns a placeholder for the embedding layer, allowing deferred binding of the actual embedding implementation. 
+The caller can use this object for embedding-related configuration or extension.
+
+**Returns:**\n
+- EmbedPlaceholder: Embedding placeholder object.
+""")
+
+add_chinese_doc('Document.register_index', """\
+注册索引类型。
+
+该方法允许用户为文档模块注册新的索引类型，以便扩展检索能力。注册后，可以通过索引类型来调用对应的索引实现。
+
+Args:
+    index_type (str): 索引类型的名称。
+    index_cls (IndexBase): 索引类，需继承自 ``IndexBase``。
+    *args: 初始化索引类时的可变参数。
+    **kwargs: 初始化索引类时的关键字参数。
+""")
+
+add_english_doc('Document.register_index', """\
+Register a new index type.
+
+This method allows users to register a new index type for the document module, enabling extension of retrieval capabilities. 
+Once registered, the index can be referenced by its type.
+
+Args:
+    index_type (str): Name of the index type.
+    index_cls (IndexBase): Index class, must inherit from ``IndexBase``.
+    *args: Variable arguments for index initialization.
+    **kwargs: Keyword arguments for index initialization.
+""")
+
+add_chinese_doc('Document.find', """\
+查找目标。
+
+该方法返回一个可调用对象，用于执行目标查找操作。它会延迟调用底层实现以获取指定的目标对象。
+
+Args:
+    target: 需要查找的目标。
+
+**Returns:**\n
+- Callable: 可调用对象，用于执行目标查找。
+""")
+
+add_english_doc('Document.find', """\
+Find the target.
+
+This method returns a callable object that performs a deferred lookup operation. 
+It invokes the underlying implementation to retrieve the specified target.
+
+Args:
+    target: The target to be found.
+
+**Returns:**\n
+- Callable: Callable object for performing the target lookup.
+""")
+
+add_chinese_doc('Document.clear_cache', """\
+清理缓存。
+
+该方法用于清理文档模块的缓存，可以指定要清理的分组名称列表。如果未指定分组名称，则默认清理所有分组的缓存。
+
+Args:
+    group_names (Optional[List[str]]): 需要清理缓存的分组名称列表。默认为 ``None``，表示清理全部缓存。
+""")
+
+add_english_doc('Document.clear_cache', """\
+Clear cache.
+
+This method clears the cache of the document module. A list of group names can be specified to 
+clear cache for specific groups. If no group names are provided, all group caches will be cleared.
+
+Args:
+    group_names (Optional[List[str]]): List of group names whose cache should be cleared. 
+        Defaults to ``None``, meaning clear all caches.
+""")
+
 add_english_doc('Document.create_node_group', '''
 Generate a node group produced by the specified rule.
 
@@ -227,19 +496,30 @@ add_example('Document.create_node_group', '''
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 ''')
 
-add_english_doc('Document.find_parent', '''
-Find the parent node of the specified node.
+add_chinese_doc('Document.find_parent', """\
+查找目标的父节点。
+
+该方法返回一个可调用对象，用于执行父节点查找操作。它会延迟调用底层实现以获取指定目标的父节点。
 
 Args:
-    group (str): The name of the node group for which to find the parent.
-''')
+    target: 需要查找父节点的目标。
 
-add_chinese_doc('Document.find_parent', '''
-查找指定节点的父节点。
+**Returns:**\n
+- Callable: 可调用对象，用于执行父节点查找。
+""")
+
+add_english_doc('Document.find_parent', """\
+Find the parent node of the target.
+
+This method returns a callable object that performs a deferred parent lookup operation. 
+It invokes the underlying implementation to retrieve the parent node of the specified target.
 
 Args:
-    group (str): 需要查找的节点组名称
-''')
+    target: The target for which to find the parent.
+
+**Returns:**\n
+- Callable: Callable object for performing the parent lookup.
+""")
 
 add_example('Document.find_parent', '''
 >>> import lazyllm
@@ -251,19 +531,30 @@ add_example('Document.find_parent', '''
 >>> documents.find_parent('children')
 ''')
 
-add_english_doc('Document.find_children', '''
-Find the child nodes of the specified node.
+add_chinese_doc('Document.find_children', """\
+查找目标的子节点。
+
+该方法返回一个可调用对象，用于执行子节点查找操作。它会延迟调用底层实现以获取指定目标的所有子节点。
 
 Args:
-    group (str): The name of the node group for which to find the children.
-''')
+    target: 需要查找子节点的目标。
 
-add_chinese_doc('Document.find_children', '''
-查找指定节点的子节点。
+**Returns:**\n
+- Callable: 可调用对象，用于执行子节点查找。
+""")
+
+add_english_doc('Document.find_children', """\
+Find the children nodes of the target.
+
+This method returns a callable object that performs a deferred children lookup operation. 
+It invokes the underlying implementation to retrieve all children nodes of the specified target.
 
 Args:
-    group (str): 需要查找的节点组名称
-''')
+    target: The target for which to find the children.
+
+**Returns:**\n
+- Callable: Callable object for performing the children lookup.
+""")
 
 add_example('Document.find_children', '''
 >>> import lazyllm
@@ -1033,26 +1324,28 @@ Args:
 
 
 add_english_doc('rag.store.ChromadbStore', '''
-ChromadbStore is a vector-capable implementation of LazyLLMStoreBase, leveraging ChromaDB for persistence and vector search.
+ChromadbStore is a vector-capable store implementation based on ChromaDB, inheriting from LazyLLMStoreBase. 
+It supports vector insertion, retrieval, and persistence.
 
 Args:
-    dir (Optional[str]): Filesystem path for on-disk ChromaDB storage. If provided, a PersistentClient will be used.
-    host (Optional[str]): Hostname for ChromaDB HTTP server. Used if `dir` is not set.
-    port (Optional[int]): Port number for ChromaDB HTTP server. Used if `dir` is not set.
-    index_kwargs (Optional[Union[Dict, List]]): Configuration parameters for ChromaDB collections, e.g., index type and metrics.
-    client_kwargs (Optional[Dict]): Additional keyword arguments passed to the ChromaDB client constructor.
+    uri (Optional[str]): URI string for ChromaDB connection. Required if `dir` is not provided.
+    dir (Optional[str]): Filesystem path for local persistent storage. If provided, PersistentClient mode is used.
+    index_kwargs (Optional[Union[Dict, List]]): Configuration for ChromaDB collections, e.g., index type and distance metrics.
+    client_kwargs (Optional[Dict]): Additional arguments passed to the ChromaDB client constructor.
+    **kwargs: Reserved for future extension.
 ''')
 
 add_chinese_doc('rag.store.ChromadbStore', '''
 ChromadbStore 是基于 ChromaDB 的向量存储实现，继承自 LazyLLMStoreBase，支持向量写入、检索与持久化。
 
 Args:
-    dir (Optional[str]): 本地持久化存储目录，优先使用 PersistentClient 模式。
-    host (Optional[str]): HTTP 访问模式下的 ChromaDB 服务主机名。
-    port (Optional[int]): HTTP 模式下的 ChromaDB 服务端口。
-    index_kwargs (Optional[Union[Dict, List]]): Collection 配置参数，如索引类型、度量方式等。
+    uri (Optional[str]): ChromaDB 连接 URI，当未指定 `dir` 时必填。
+    dir (Optional[str]): 本地持久化存储路径，提供时使用 PersistentClient 模式。
+    index_kwargs (Optional[Union[Dict, List]]): Collection 配置参数，如索引类型、距离度量方式等。
     client_kwargs (Optional[Dict]): 传递给 ChromaDB 客户端的额外参数。
+    **kwargs: 预留扩展参数。
 ''')
+
 
 add_english_doc('rag.store.ChromadbStore.dir', '''
 Directory property of the store.
@@ -1069,21 +1362,23 @@ Returns:
 ''')
 
 add_english_doc('rag.store.ChromadbStore.connect', '''
-Initialize the ChromaDB client and configure embedding and metadata settings.
+Initialize the ChromaDB client and configure embedding and global metadata settings.
 
 Args:
-    embed_dims (Dict[str, int]): Dimensions for each embedding key.
-    embed_datatypes (Dict[str, DataType]): Data types for global metadata fields.
-    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Descriptions of global metadata fields.
+    embed_dims (Optional[Dict[str, int]]): Dimensions for each embedding key. Defaults to empty dict if not provided.
+    embed_datatypes (Optional[Dict[str, DataType]]): Data types for each embedding key. Only FLOAT_VECTOR or SPARSE_FLOAT_VECTOR are supported.
+    global_metadata_desc (Optional[Dict[str, GlobalMetadataDesc]]): Descriptions for global metadata fields. Supported types: string, int, float, bool.
+    **kwargs: Reserved for future extension.
 ''')
 
 add_chinese_doc('rag.store.ChromadbStore.connect', '''
-初始化 ChromaDB 客户端并配置向量化及元数据相关设定。
+初始化 ChromaDB 客户端并配置向量化及全局元数据设定。
 
 Args:
-    embed_dims (Dict[str, int]): 每个嵌入键对应的向量维度。
-    embed_datatypes (Dict[str, DataType]): 全局元数据字段的数据类型。
-    global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据字段的描述。
+    embed_dims (Optional[Dict[str, int]]): 每个嵌入键对应的向量维度，未提供时默认为空字典。
+    embed_datatypes (Optional[Dict[str, DataType]]): 每个嵌入键的数据类型，仅支持 FLOAT_VECTOR 或 SPARSE_FLOAT_VECTOR。
+    global_metadata_desc (Optional[Dict[str, GlobalMetadataDesc]]): 全局元数据字段的描述，支持类型：字符串、整型、浮点型、布尔型。
+    **kwargs: 预留扩展参数。
 ''')
 
 add_english_doc('rag.store.ChromadbStore.upsert', '''
@@ -1109,75 +1404,87 @@ Returns:
 ''')
 
 add_english_doc('rag.store.ChromadbStore.delete', '''
-Delete an entire collection or specific records.
+Delete an entire collection or specific records from ChromaDB.
 
 Args:
-    collection_name (str): Name of the collection.
-    criteria (Optional[dict]): If None, drop the collection. Otherwise, filter dict to delete matching records (e.x. delete by doc_id/uid/kb_id).
+    collection_name (str): Name of the collection to delete from.
+    criteria (Optional[dict]): If None, delete the entire collection. Otherwise, a dictionary specifying conditions to delete matching records (e.g., by doc_id, uid, kb_id).
+    **kwargs: Reserved for future extension.
 
-Returns:
-    bool: True if deletion succeeds, False otherwise.
+**Returns:**\n
+- bool: True if deletion succeeds, False otherwise.
 ''')
 
 add_chinese_doc('rag.store.ChromadbStore.delete', '''
-删除整个集合或指定记录。
+从 ChromaDB 中删除整个集合或指定记录。
 
 Args:
-    collection_name (str): 集合名称。
-    criteria (Optional[dict]): 若为 None，删除整个集合；否则按条件删除匹配记录（例如按照切片id、切片所属文件id、切片所属知识库id删除）。
+    collection_name (str): 要删除的集合名称。
+    criteria (Optional[dict]): 若为 None，则删除整个集合；否则按字典条件删除匹配的记录（例如按 doc_id、uid、kb_id 删除）。
+    **kwargs: 预留扩展参数。
 
-Returns:
-    bool: 删除成功返回 True，否则 False。
+**Returns:**\n
+- bool: 删除成功返回 True，否则返回 False。
 ''')
 
 add_english_doc('rag.store.ChromadbStore.get', '''
-Retrieve records matching criteria.
+Retrieve records from ChromaDB matching the given criteria.
 
 Args:
-    collection_name (str): Name of the collection.
-    criteria (Optional[dict]): Filter conditions such as primary key or metadata (docid/kb_id).
+    collection_name (str): Name of the collection to query.
+    criteria (Optional[dict]): Filter conditions such as primary key or metadata (e.g., doc_id, kb_id). If None, retrieves all records.
 
-Returns:
-    List[dict]: Each dict contains 'uid' and 'embedding'.
+**Returns:**\n
+- List[dict]: A list of records, where each record contains:
+    - 'uid': The unique identifier of the record.
+    - 'global_meta': A dictionary of global metadata fields.
+    - 'embedding': A dictionary mapping embedding keys to their corresponding vectors.
 ''')
 
 add_chinese_doc('rag.store.ChromadbStore.get', '''
-根据条件检索记录。
+从 ChromaDB 中根据条件检索记录。
 
 Args:
-    collection_name (str): 集合名称。
-    criteria (Optional[dict]): 过滤条件，如主键或元数据（例如文档id或知识库id）。
+    collection_name (str): 要查询的集合名称。
+    criteria (Optional[dict]): 过滤条件，如主键或元数据（例如 doc_id、kb_id）。若为 None，则返回集合中所有记录。
 
-Returns:
-    List[dict]: 每项包含 'uid' 和 'embedding'。
+**Returns:**\n
+- List[dict]: 记录列表，每条记录包含：
+    - 'uid': 记录的唯一标识符。
+    - 'global_meta': 全局元数据字段的字典。
+    - 'embedding': 嵌入键到对应向量的映射。
 ''')
 
 add_english_doc('rag.store.ChromadbStore.search', '''
-Perform a vector similarity search.
+Perform a vector similarity search within a specific collection.
 
 Args:
-    collection_name (str): Collection to query.
-    query_embedding (List[float]): Vector to search with.
-    embed_key (str): Which embedding to use.
-    topk (int): Number of top results to return.
-    filters (Optional[Dict[str, Union[str, int, List, Set]]]): Metadata filter conditions.
+    collection_name (str): Name of the collection to query.
+    query_embedding (List[float]): The query vector for similarity search.
+    embed_key (str): The embedding key specifying which embedding space to use.
+    topk (int, optional): Number of top results to return. Defaults to 10.
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): Optional metadata filter conditions to restrict search results.
 
-Returns:
-    List[dict]: Each dict has 'uid' and 'score' (similarity).
+**Returns:**\n
+- List[dict]: A list of matched records, where each record contains:
+    - 'uid': The unique identifier of the matched record.
+    - 'score': The similarity score (1 - distance).
 ''')
 
 add_chinese_doc('rag.store.ChromadbStore.search', '''
-执行向量相似度检索。
+在指定集合中执行向量相似度检索。
 
 Args:
     collection_name (str): 要查询的集合名称。
     query_embedding (List[float]): 用于检索的向量。
-    embed_key (str): 使用的向量模型的key。
-    topk (int): 返回的结果数量。
-    filters (Optional[Dict[str, Union[str, int, List, Set]]]): 元数据过滤条件。
+    embed_key (str): 指定使用的向量空间 key。
+    topk (int, optional): 返回的结果数量，默认为 10。
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): 可选的元数据过滤条件，用于限制检索结果。
 
-Returns:
-    List[dict]: 每项包含 'uid' 及 'score'（相似度）。
+**Returns:**\n
+- List[dict]: 匹配结果列表，每条记录包含：
+    - 'uid': 匹配记录的唯一标识符。
+    - 'score': 相似度分数（1 - 距离）。
 ''')
 
 add_english_doc('rag.store.MilvusStore', '''
@@ -1318,25 +1625,33 @@ Returns:
     List[dict]: 每项包含 'uid' 及相似度 'score'。
 ''')
 
-add_chinese_doc('rag.default_index.DefaultIndex', r'''\ 
-默认的索引实现，负责通过 embedding 和文本相似度在底层存储中查询、更新和删除文档节点。支持多种相似度度量方式，并在必要时对查询和节点进行 embedding 计算与更新。
+add_chinese_doc('rag.default_index.DefaultIndex', '''\
+默认的索引实现，负责在底层存储中基于 embedding 或文本相似度执行查询、更新和删除文档节点操作。  
+支持多种相似度度量方式，在需要时会对查询和节点进行 embedding 计算并同步更新存储。  
 
 Args:
-    embed (Dict[str, Callable]): 用于生成查询和节点 embedding 的字典，key 是 embedding 名称，value 是接收字符串返回向量的函数。
-    store (StoreBase): 底层存储，用于持久化和检索 DocNode 节点。
+    embed (Dict[str, Callable]): 用于生成查询和节点 embedding 的字典，key 为 embedding 名称，value 为接收字符串返回向量的函数。
+    store (StoreBase): 底层存储对象，用于持久化和检索 `DocNode` 节点。
     **kwargs: 预留扩展参数。
+
+**Returns:**\n
+- DefaultIndex: 默认索引实例。
 ''')
 
 add_english_doc('rag.default_index.DefaultIndex', '''\
-Default index implementation responsible for querying, updating, and removing document nodes in the underlying store using embedding or text similarity. Supports multiple similarity metrics and performs embedding computation and node updates when needed.
+Default index implementation responsible for querying, updating, and removing document nodes in the underlying store based on embedding or text similarity.  
+Supports multiple similarity metrics and performs embedding computation and node updates when required.  
 
 Args:
     embed (Dict[str, Callable]): Mapping of embedding names to functions that generate vector representations from strings.
-    store (StoreBase): Underlying storage to persist and retrieve DocNode objects.
+    store (StoreBase): Underlying storage to persist and retrieve `DocNode` objects.
     **kwargs: Reserved for future extension.
+
+**Returns:**\n
+- DefaultIndex: The default index instance.
 ''')
 
-add_chinese_doc('rag.default_index.DefaultIndex.update', r'''\ 
+add_chinese_doc('rag.default_index.DefaultIndex.update', '''\ 
 根据提供的节点列表更新索引中的内容。具体行为由子类或外部实现填充（此处为空实现，需在实际使用中覆盖/扩展）。
 
 Args:
@@ -1350,7 +1665,7 @@ Args:
     nodes (List[DocNode]): Document nodes to add or update in the index.
 ''')
 
-add_chinese_doc('rag.default_index.DefaultIndex.remove', r'''\ 
+add_chinese_doc('rag.default_index.DefaultIndex.remove', '''\ 
 从索引中删除指定 UID 的节点，可选指定分组名称以限定作用域。当前为空实现，使用时需要补全逻辑。
 
 Args:
@@ -1366,7 +1681,7 @@ Args:
     group_name (Optional[str]): Optional group name to scope the removal.
 ''')
 
-add_chinese_doc('rag.default_index.DefaultIndex.query', r'''\ 
+add_chinese_doc('rag.default_index.DefaultIndex.query', '''\ 
 执行一次查询，支持 embedding 和文本两种模式，依据相似度函数过滤并返回符合条件的 DocNode 结果。
 
 Args:
@@ -1942,38 +2257,49 @@ processor.drop_algorithm("pdf_processor", clean_db=True)
 
 add_english_doc('rag.dataReader.SimpleDirectoryReader', '''
 A modular document directory reader that inherits from ModuleBase, supporting reading various document formats from the file system and converting them into standardized DocNode objects.
+
+This class supports direct file input or directory input (mutually exclusive). It provides built-in readers for common formats such as PDF, DOCX, PPTX, images, CSV, Excel, audio/video, etc., while also allowing users to register custom file readers.
+
 Args:
-    input_dir (Optional[str]): Input directory path. Mutually exclusive with input_files.
-    input_files (Optional[List]): Directly specified list of files. Mutually exclusive with input_dir.
-    exclude (Optional[List]): List of file patterns to exclude.
-    exclude_hidden (bool): Whether to exclude hidden files.
-    recursive (bool): Whether to recursively read subdirectories.
-    encoding (str): Encoding format of text files.
-    required_exts (Optional[List[str]]): Whitelist of file extensions to process.
-    file_extractor (Optional[Dict[str, Callable]]): Dictionary of custom file readers.
-    fs (Optional[AbstractFileSystem]): Custom file system.
-    metadata_genf (Optional[Callable[[str], Dict]]): Metadata generation function that takes a file path and returns a metadata dictionary.
-    num_files_limit (Optional[int]): Maximum number of files to read.
-    return_trace (bool): Whether to return processing trace information.
-    metadatas (Optional[Dict]): Predefined global metadata dictionary.
+    input_dir (Optional[str]): Input directory path. Mutually exclusive with input_files. 
+                               Must exist in the file system if provided.
+    input_files (Optional[List]): Directly specified list of files. Mutually exclusive with input_dir. 
+                                  Each file must exist either in the provided path or under `config['data_path']`.
+    exclude (Optional[List]): List of file patterns to exclude from processing.
+    exclude_hidden (bool): Whether to exclude hidden files. Defaults to True.
+    recursive (bool): Whether to recursively read subdirectories. Defaults to False.
+    encoding (str): Encoding format of text files. Defaults to "utf-8".
+    filename_as_id (bool): Deprecated argument. No longer used. A warning will be logged if provided.
+    required_exts (Optional[List[str]]): Whitelist of file extensions to process. Only files with these extensions will be read.
+    file_extractor (Optional[Dict[str, Callable]]): Dictionary of custom file readers. Keys are filename patterns, values are reader callables.
+    fs (Optional[AbstractFileSystem]): Custom file system to use. Defaults to the system's default file system.
+    metadata_genf (Optional[Callable[[str], Dict]]): Metadata generation function that takes a file path and returns a metadata dictionary. 
+                                                     Defaults to an internal implementation (_DefaultFileMetadataFunc).
+    num_files_limit (Optional[int]): Maximum number of files to read. If exceeded, only the first N files are processed.
+    return_trace (bool): Whether to return processing trace information. Defaults to False.
+    metadatas (Optional[Dict]): Predefined global metadata dictionary to attach to all documents.
 ''')
 
 add_chinese_doc('rag.dataReader.SimpleDirectoryReader', '''
 模块化的文档目录读取器，继承自 ModuleBase，支持从文件系统读取多种格式的文档并转换为标准化的 DocNode 。
+
+该类支持直接指定文件列表或输入目录（二者互斥）。内置了对常见格式（如 PDF、DOCX、PPTX、图片、CSV、Excel、音视频等）的支持，也允许用户注册自定义的文件读取器。
+
 Args:
-    input_dir (Optional[str]): 输入目录路径。与input_files二选一，不可同时指定。
-    input_files (Optional[List]):直接指定的文件列表。与input_dir二选一。
-    exclude (Optional[List]):需要排除的文件模式列表。
-    exclude_hidden (bool): 是否排除隐藏文件。
-    recursive (bool):是否递归读取子目录。
-    encoding (str):文本文件的编码格式。
-    required_exts (Optional[List[str]]):需要处理的文件扩展名白名单。
-    file_extractor (Optional[Dict[str, Callable]]):自定义文件阅读器字典。
-    fs (Optional[AbstractFileSystem]):自定义文件系统。
-    metadata_genf (Optional[Callable[[str], Dict]]):元数据生成函数，接收文件路径返回元数据字典。
-    num_files_limit (Optional[int]):最大读取文件数量限制。
-    return_trace (bool):是否返回处理过程追踪信息。
-    metadatas (Optional[Dict]):预定义的全局元数据字典。
+    input_dir (Optional[str]): 输入目录路径。与 input_files 互斥。目录必须存在。
+    input_files (Optional[List]): 直接指定的文件列表。与 input_dir 互斥。文件必须存在于指定路径或 `config['data_path']` 下。
+    exclude (Optional[List]): 需要排除的文件模式列表。
+    exclude_hidden (bool): 是否排除隐藏文件。默认为 True。
+    recursive (bool): 是否递归读取子目录。默认为 False。
+    encoding (str): 文本文件的编码格式。默认为 "utf-8"。
+    filename_as_id (bool): 已弃用参数，不再使用。如果提供会打印警告日志。
+    required_exts (Optional[List[str]]): 需要处理的文件扩展名白名单。仅处理这些扩展名的文件。
+    file_extractor (Optional[Dict[str, Callable]]): 自定义文件读取器字典。键为文件名模式，值为读取器函数。
+    fs (Optional[AbstractFileSystem]): 自定义文件系统。默认为系统的默认文件系统。
+    metadata_genf (Optional[Callable[[str], Dict]]): 元数据生成函数，接收文件路径返回元数据字典。默认为内部实现 (_DefaultFileMetadataFunc)。
+    num_files_limit (Optional[int]): 最大读取文件数量限制。超过时仅处理前 N 个文件。
+    return_trace (bool): 是否返回处理过程追踪信息。默认为 False。
+    metadatas (Optional[Dict]): 预定义的全局元数据字典，将附加到所有文档上。
 ''')
 
 add_example('rag.dataReader.SimpleDirectoryReader', '''
@@ -1988,19 +2314,20 @@ load_file(input_file, metadata_genf, file_extractor, encoding='utf-8', pathm=Pat
 
 使用指定的 Reader 将单个文件加载为 `DocNode` 列表。
 
-该方法会根据文件名匹配合适的读取器（reader），并遵循以下优先级生成元数据：
-`用户提供 > reader 自动生成 > metadata_genf 生成`。支持自定义文件读取器，同时在配置允许的情况下支持回退到原始文本读取。
+该方法会根据文件名模式匹配合适的读取器（reader），并遵循以下优先级生成元数据：
+`用户提供 > reader 自动生成 > metadata_genf 生成`。  
+在配置允许的情况下支持回退到原始文本读取。
 
-参数说明：
-- input_file (Path): 要读取的文件路径。
-- metadata_genf (Callable): 用于根据路径生成元数据的函数。
-- file_extractor (Dict[str, Callable]): 文件扩展名与 reader 的映射表。
-- encoding (str): 文件读取时使用的文本编码，默认为 "utf-8"。
-- pathm (PurePath): 路径处理模块，适用于本地或远程路径。
-- fs (AbstractFileSystem): 可选的文件系统对象，支持 fsspec 抽象。
-- metadata (Dict): 可选的用户自定义元数据，优先于自动生成。
+Args:
+    input_file (Path): 要读取的文件路径。
+    metadata_genf (Callable): 根据文件路径生成元数据的函数。
+    file_extractor (Dict[str, Callable]): 文件扩展名模式与 reader 的映射表。
+    encoding (str): 文件读取时使用的文本编码，默认为 "utf-8"。
+    pathm (PurePath): 路径处理模块，支持本地或远程路径。
+    fs (AbstractFileSystem): 可选文件系统对象，兼容 fsspec 抽象。
+    metadata (Dict): 可选用户自定义元数据，优先于自动生成。
 
-返回：
+**Returns:**\n
 - List[DocNode]: 从文件中提取的文档对象列表。
 ''')
 
@@ -2009,20 +2336,20 @@ load_file(input_file, metadata_genf, file_extractor, encoding='utf-8', pathm=Pat
 
 Load a single file into a list of `DocNode` objects using the appropriate reader.
 
-This method supports automatic reader selection based on file extension patterns, and applies a priority order to metadata:
-`user > reader > metadata_genf`. It supports both default and user-supplied readers and can fall back to raw text decoding
-if enabled in config.
+This method selects the appropriate reader based on filename patterns and applies metadata with the following priority:
+`user > reader > metadata_genf`.  
+Optionally falls back to raw text decoding depending on config.
 
-Parameters:
-- input_file (Path): Path to the input file.
-- metadata_genf (Callable): Function to generate metadata from file path.
-- file_extractor (Dict[str, Callable]): Mapping of file extension patterns to reader callables.
-- encoding (str): Text encoding to use when reading files. Default is "utf-8".
-- pathm (PurePath): Path handling module to support local or remote paths.
-- fs (AbstractFileSystem): Optional filesystem abstraction from fsspec.
-- metadata (Dict): Optional user-defined metadata to override reader-generated data.
+Args:
+    input_file (Path): Path to the input file.
+    metadata_genf (Callable): Function to generate metadata from file path.
+    file_extractor (Dict[str, Callable]): Mapping of filename patterns to reader callables.
+    encoding (str): Text encoding to use when reading files. Default is "utf-8".
+    pathm (PurePath): Path handling module for local or remote paths.
+    fs (AbstractFileSystem): Optional filesystem abstraction from fsspec.
+    metadata (Dict): Optional user-defined metadata overriding auto-generated ones.
 
-Returns:
+**Returns:**\n
 - List[DocNode]: List of parsed documents extracted from the file.
 ''')
 
@@ -2046,29 +2373,21 @@ add_example('rag.dataReader.FileReader', '''
 ''')
 
 add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase', '''
-基础文档读取器类，提供了文档加载的基本接口。继承自ModuleBase，使用LazyLLMRegisterMetaClass作为元类。
+基础文档读取器类，提供文档加载的基本接口。继承自 ModuleBase，使用 LazyLLMRegisterMetaClass 作为元类。
 
 Args:
-    return_trace (bool): 是否返回处理过程的追踪信息。默认为True。
-
-**说明:**
-- 提供了惰性加载和普通加载两种方式
-- 子类需要实现_lazy_load_data方法
-- 支持批量处理文档
-- 自动转换为标准化的DocNode格式
+    *args: 位置参数，保留给子类或父类使用。
+    return_trace (bool): 是否返回处理过程的追踪信息，默认为 True。
+    **kwargs: 关键字参数，保留给子类或父类使用。
 ''')
 
 add_english_doc('rag.readers.readerBase.LazyLLMReaderBase', '''
-Base document reader class that provides basic interfaces for document loading. Inherits from ModuleBase and uses LazyLLMRegisterMetaClass as metaclass.
+Base document reader class that provides fundamental interfaces for document loading. Inherits from ModuleBase and uses LazyLLMRegisterMetaClass as metaclass.
 
 Args:
+    *args: Positional arguments, reserved for parent or subclass use.
     return_trace (bool): Whether to return processing trace information. Defaults to True.
-
-**Notes:**
-- Provides both lazy loading and regular loading methods
-- Subclasses need to implement _lazy_load_data method
-- Supports batch document processing
-- Automatically converts to standardized DocNode format
+    **kwargs: Keyword arguments, reserved for parent or subclass use.
 ''')
 
 add_example('rag.readers.readerBase.LazyLLMReaderBase', '''
@@ -2178,6 +2497,28 @@ add_example('SentenceSplitter', '''
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+''')
+
+add_chinese_doc('SentenceSplitter.split_text', '''\
+将输入文本按句子和块大小拆分为多个文本块。
+
+Args:
+    text (str): 待拆分的文本。
+    metadata_size (int): 附加元数据占用的长度，用于调整有效文本块大小。
+
+**Returns:**\n
+- List[str]: 拆分后的文本块列表。
+''')
+
+add_english_doc('SentenceSplitter.split_text', '''\
+Split the input text into multiple chunks based on sentence boundaries and chunk size.
+
+Args:
+    text (str): The text to be split.
+    metadata_size (int): Length occupied by additional metadata, used to adjust effective chunk size.
+
+**Returns:**\n
+- List[str]: List of resulting text chunks.
 ''')
 
 add_english_doc('LLMParser', '''
@@ -3987,6 +4328,34 @@ add_example('ParameterExtractor', ['''\
 >>> print(result)
 ... ['Alice', 25]
 '''])
+
+add_chinese_doc('ParameterExtractor.choose_prompt', '''
+根据参数描述内容选择合适的提示模板（Prompt）。
+
+此方法会检查传入的参数描述字符串中是否包含中文字符：
+- 如果包含中文字符，则返回中文提示模板 `ch_parameter_extractor_prompt`；
+- 如果不包含中文字符，则返回英文提示模板 `en_parameter_extractor_prompt`。
+
+Args:
+    prompt (str): 参数描述字符串，用于判断使用中文或英文提示模板。
+
+**Returns:**\n
+- str: 对应语言的提示模板（Prompt）。
+''')
+
+add_english_doc('ParameterExtractor.choose_prompt', '''
+Selects the appropriate prompt template based on the content of the parameter descriptions.
+
+This method checks whether the input parameter description string contains any Chinese characters:
+- If Chinese characters are present, returns the Chinese prompt template `ch_parameter_extractor_prompt`.
+- Otherwise, returns the English prompt template `en_parameter_extractor_prompt`.
+
+Args:
+    prompt (str): Parameter description string used to determine whether to use the Chinese or English prompt template.
+
+**Returns:**\n
+- str: Prompt template in the corresponding language.
+''')
 
 # actors/question_rewrite.py
 add_chinese_doc('QustionRewrite', '''\
@@ -6147,47 +6516,6 @@ Args:
     max_size (Optional[int]): 元数据的最大大小或长度。如果 `data_type` 为 `VARCHAR` 或 `ARRAY`，则此属性为必填项。
 ''')
 
-add_english_doc('rag.index_base.IndexBase', '''\
-An abstract base class for implementing indexing systems that support updating, removing, and querying document nodes.
-`class IndexBase(ABC)`
-This abstract base class defines the interface for an indexing system. It requires subclasses to implement methods for updating, removing, and querying document nodes.
-''')
-
-add_chinese_doc('rag.index_base.IndexBase', '''\
-用于实现索引系统的抽象基类，支持更新、删除和查询文档节点。
-`class IndexBase(ABC)`
-此抽象基类定义了索引系统的接口，要求子类实现更新、删除和查询文档节点的方法。
-''')
-
-add_example('rag.index_base.IndexBase', '''\
->>> from mymodule import IndexBase, DocNode
->>> class MyIndex(IndexBase):
-...     def __init__(self):
-...         self.nodes = []
-...     def update(self, nodes):
-...         self.nodes.extend(nodes)
-...         print(f"Updated nodes: {nodes}")
-...     def remove(self, uids, group_name=None):
-...         self.nodes = [node for node in self.nodes if node.uid not in uids]
-...         print(f"Removed nodes with uids: {uids}")
-...     def query(self, *args, **kwargs):
-...         print("Querying nodes...")
-...         return self.nodes
->>> index = MyIndex()
->>> doc1 = DocNode(uid="1", content="Document 1")
->>> doc2 = DocNode(uid="2", content="Document 2")
->>> index.update([doc1, doc2])
-Updated nodes: [DocNode(uid="1", content="Document 1"), DocNode(uid="2", content="Document 2")]
->>> index.query()
-Querying nodes...
-[DocNode(uid="1", content="Document 1"), DocNode(uid="2", content="Document 2")]
->>> index.remove(["1"])
-Removed nodes with uids: ['1']
->>> index.query()
-Querying nodes...
-[DocNode(uid="2", content="Document 2")]
-''')
-
 # agent/functionCall.py
 add_agent_chinese_doc('functionCall.StreamResponse', '''\
 StreamResponse类用于封装带有前缀和颜色配置的流式输出行为。  
@@ -6657,6 +6985,47 @@ Returns:
     gr.Blocks: A complete Gradio application instance.
 ''')
 
+add_english_doc('rag.index_base.IndexBase', '''\
+An abstract base class for implementing indexing systems that support updating, removing, and querying document nodes.
+`class IndexBase(ABC)`
+This abstract base class defines the interface for an indexing system. It requires subclasses to implement methods for updating, removing, and querying document nodes.
+''')
+
+add_chinese_doc('rag.index_base.IndexBase', '''\
+用于实现索引系统的抽象基类，支持更新、删除和查询文档节点。
+`class IndexBase(ABC)`
+此抽象基类定义了索引系统的接口，要求子类实现更新、删除和查询文档节点的方法。
+''')
+
+add_example('rag.index_base.IndexBase', '''\
+>>> from mymodule import IndexBase, DocNode
+>>> class MyIndex(IndexBase):
+...     def __init__(self):
+...         self.nodes = []
+...     def update(self, nodes):
+...         self.nodes.extend(nodes)
+...         print(f"Updated nodes: {nodes}")
+...     def remove(self, uids, group_name=None):
+...         self.nodes = [node for node in self.nodes if node.uid not in uids]
+...         print(f"Removed nodes with uids: {uids}")
+...     def query(self, *args, **kwargs):
+...         print("Querying nodes...")
+...         return self.nodes
+>>> index = MyIndex()
+>>> doc1 = DocNode(uid="1", content="Document 1")
+>>> doc2 = DocNode(uid="2", content="Document 2")
+>>> index.update([doc1, doc2])
+Updated nodes: [DocNode(uid="1", content="Document 1"), DocNode(uid="2", content="Document 2")]
+>>> index.query()
+Querying nodes...
+[DocNode(uid="1", content="Document 1"), DocNode(uid="2", content="Document 2")]
+>>> index.remove(["1"])
+Removed nodes with uids: ['1']
+>>> index.query()
+Querying nodes...
+[DocNode(uid="2", content="Document 2")]
+''')
+
 add_chinese_doc('rag.index_base.IndexBase.update', '''\
 更新索引内容。
 
@@ -6698,17 +7067,272 @@ Args:
 add_chinese_doc('rag.index_base.IndexBase.query', '''\
 执行索引查询。
 
-根据传入的参数执行查询操作，返回匹配的文档节点列表。具体查询逻辑由实现类定义。
+根据传入的参数执行查询操作，返回匹配的文档节点列表。  
+**注意:** 当前方法为接口占位，子类需要实现具体逻辑。
 
-Returns:
-    List[DocNode]: 查询结果的文档节点列表。
+**Args:**
+- *args: 任意位置参数，用于查询条件。
+- **kwargs: 任意关键字参数，用于查询条件。
 ''')
 
 add_english_doc('rag.index_base.IndexBase.query', '''\
 Execute a query over the index.
 
-Performs a query based on the given arguments and returns matching document nodes. The logic depends on the specific implementation.
+Performs a query based on the given arguments and returns matching document nodes.  
+**Note:** This method is a placeholder and should be implemented by subclasses.
 
-Returns:
-    List[DocNode]: A list of matched document nodes from the index.
+**Args:**
+- *args: Positional arguments for the query.
+- **kwargs: Keyword arguments for the query.
 ''')
+
+# infer_service.client.py
+add_chinese_doc('infer_service.InferClient', '''\
+推理服务客户端，继承自 ClientBase，用于与远程推理部署服务交互。  
+提供模型部署、任务取消、任务查询、服务句柄获取以及等待服务就绪等功能。  
+
+Args:
+    url (str): 推理服务的基础 URL。
+''')
+
+add_english_doc('infer_service.InferClient', '''\
+Inference service client inheriting from ClientBase, designed for interacting with a remote inference deployment service.  
+Provides functions for model deployment, job cancellation, job querying, service handle retrieval, and waiting for readiness.  
+
+Args:
+    url (str): Base URL of the inference service.
+''')
+
+add_chinese_doc('infer_service.InferClient.deploy', '''\
+部署推理服务。  
+
+Args:
+    base_model (str): 要部署的基础模型名称。  
+    token (str): 身份认证令牌。  
+    num_gpus (int): 部署所需的 GPU 数量，默认为 1。  
+
+**Returns:**\n
+- Tuple[Optional[str], str]: 任务 ID（失败时为 None）和任务状态。
+''')
+
+add_english_doc('infer_service.InferClient.deploy', '''\
+Deploy an inference service.  
+
+Args:
+    base_model (str): Name of the base model to deploy.  
+    token (str): Authentication token.  
+    num_gpus (int): Number of GPUs required for deployment, default is 1.  
+
+**Returns:**\n
+- Tuple[Optional[str], str]: Job ID (None if failed) and job status.
+''')
+
+add_chinese_doc('infer_service.InferClient.cancel', '''\
+取消部署任务。  
+
+Args:
+    token (str): 身份认证令牌。  
+    job_id (str): 任务 ID。  
+
+**Returns:**\n
+- bool: 取消成功时返回 True。  
+- str: 取消失败时返回失败原因。
+''')
+
+add_english_doc('infer_service.InferClient.cancel', '''\
+Cancel a deployment job.  
+
+Args:
+    token (str): Authentication token.  
+    job_id (str): Job identifier.  
+
+**Returns:**\n
+- bool: True if cancelled successfully.  
+- str: Failure reason if cancellation fails.
+''')
+
+add_chinese_doc('infer_service.InferClient.list_all_tasks', '''\
+获取所有当前部署任务的列表。  
+
+Args:
+    token (str): 身份认证令牌。  
+
+**Returns:**\n
+- Optional[List[List[str]]]: 任务信息列表 `[job_id, base_model, status]`，失败时为 None。
+''')
+
+add_english_doc('infer_service.InferClient.list_all_tasks', '''\
+Retrieve all current deployment tasks.  
+
+Args:
+    token (str): Authentication token.  
+
+**Returns:**\n
+- Optional[List[List[str]]]: List of job information `[job_id, base_model, status]`, or None if request fails.
+''')
+
+add_chinese_doc('infer_service.InferClient.get_infra_handle', '''\
+获取指定任务的推理服务句柄。  
+
+Args:
+    token (str): 身份认证令牌。  
+    job_id (str): 任务 ID。  
+
+**Returns:**\n
+- TrainableModule: 已部署服务的可调用句柄。
+''')
+
+add_english_doc('infer_service.InferClient.get_infra_handle', '''\
+Get inference service handle for a given job.  
+
+Args:
+    token (str): Authentication token.  
+    job_id (str): Job identifier.  
+
+**Returns:**\n
+- TrainableModule: Callable handle of the deployed service.
+''')
+
+add_chinese_doc('infer_service.InferClient.wait_ready', '''\
+阻塞等待指定任务进入 `Ready` 状态。  
+
+Args:
+    token (str): 身份认证令牌。  
+    job_id (str): 任务 ID。  
+    timeout (int): 超时时间（秒），默认为 1800 秒。  
+
+**Returns:**\n
+- None: 成功时返回 None，若超时或状态异常则抛出异常。
+''')
+
+add_english_doc('infer_service.InferClient.wait_ready', '''\
+Block until the given job reaches `Ready` status.  
+
+Args:
+    token (str): Authentication token.  
+    job_id (str): Job identifier.  
+    timeout (int): Timeout in seconds, default is 1800.  
+
+**Returns:**\n
+- None: Returns when service is ready, raises exception on timeout or invalid status.
+''')
+
+add_chinese_doc('StreamCallHelper', '''\
+流式调用辅助类，用于将阻塞调用包装为生成器形式，逐步返回执行结果。
+
+Args:
+    impl (Callable): 需要流式执行的函数或可调用对象。
+    interval (float): 轮询队列的时间间隔，单位为秒，默认为0.1。
+''')
+
+add_english_doc('StreamCallHelper', '''\
+Helper class for streaming function calls, wrapping a blocking callable into a generator that yields results incrementally.
+
+Args:
+    impl (Callable): The function or callable to execute in streaming mode.
+    interval (float): Time interval (in seconds) to poll the internal queue. Defaults to 0.1.
+''')
+
+add_chinese_doc('rag.LazyLLMStoreBase', '''\
+向量存储基类，定义了存储层的通用接口规范，所有具体的存储实现（如 ChromaDB、Milvus 等）需继承并实现该类。
+''')
+
+add_english_doc('rag.LazyLLMStoreBase', '''\
+Base class for vector storage, defining the common interface specification. 
+All concrete storage implementations (e.g., ChromaDB, Milvus) must inherit and implement this class.
+''')
+
+add_chinese_doc('rag.LazyLLMStoreBase.connect', '''\
+建立与存储后端的连接。
+
+Args:
+    *args: 可变位置参数。
+    **kwargs: 可变关键字参数。
+''')
+
+add_english_doc('rag.LazyLLMStoreBase.connect', '''\
+Establish connection to the storage backend.
+
+Args:
+    *args: Variable positional arguments.
+    **kwargs: Variable keyword arguments.
+''')
+
+add_chinese_doc('rag.LazyLLMStoreBase.upsert', '''\
+插入或更新集合中的数据。
+
+Args:
+    collection_name (str): 集合名称。
+    data (List[dict]): 数据列表，每条为一个记录。
+''')
+
+add_english_doc('rag.LazyLLMStoreBase.upsert', '''\
+Insert or update data in a collection.
+
+Args:
+    collection_name (str): The collection name.
+    data (List[dict]): List of records to upsert.
+''')
+
+add_chinese_doc('rag.LazyLLMStoreBase.delete', '''\
+删除集合中的数据。
+
+Args:
+    collection_name (str): 集合名称。
+    criteria (dict): 删除条件。
+    **kwargs: 额外参数。
+''')
+
+add_english_doc('rag.LazyLLMStoreBase.delete', '''\
+Delete data from a collection.
+
+Args:
+    collection_name (str): The collection name.
+    criteria (dict): Conditions for deletion.
+    **kwargs: Additional parameters.
+''')
+
+add_chinese_doc('rag.LazyLLMStoreBase.get', '''\
+根据条件获取集合中的数据。
+
+Args:
+    collection_name (str): 集合名称。
+    criteria (dict): 过滤条件。
+    **kwargs: 额外参数。
+''')
+
+add_english_doc('rag.LazyLLMStoreBase.get', '''\
+Retrieve data from a collection by criteria.
+
+Args:
+    collection_name (str): The collection name.
+    criteria (dict): Filter conditions.
+    **kwargs: Additional parameters.
+''')
+
+add_chinese_doc('rag.LazyLLMStoreBase.search', '''\
+执行检索操作，可以基于文本或向量。
+
+Args:
+    collection_name (str): 集合名称。
+    query (Optional[str]): 文本查询字符串。
+    query_embedding (Optional[Union[dict, List[float]]]): 查询向量。
+    topk (int): 返回的结果数量，默认为 10。
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): 元数据过滤条件。
+    embed_key (Optional[str]): 向量键。
+    **kwargs: 额外参数。
+''')
+
+add_english_doc('rag.LazyLLMStoreBase.search', '''\
+Perform a search operation, supporting both text and vector queries.
+
+Args:
+    collection_name (str): The collection name.
+    query (Optional[str]): Text query string.
+    query_embedding (Optional[Union[dict, List[float]]]): Query vector.
+    topk (int): Number of results to return. Defaults to 10.
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): Metadata filter conditions.
+    embed_key (Optional[str]): Embedding key.
+    **kwargs: Additional parameters.
+''')
+

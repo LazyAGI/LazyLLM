@@ -5,11 +5,11 @@
     exclude-members:
 
 ::: lazyllm.tools.Document
-    members:
+    members: [connect_sql_manager, get_sql_manager, extract_db_schema, update_database, create_kb_group, activate_group, activate_groups, get_store, get_embed, register_index, find, clear_cache, create_node_group, find_parent, find_children, register_global_reader, add_reader]
     exclude-members:
 
 ::: lazyllm.tools.rag.store.ChromadbStore
-    members:
+    members: [dir, connect, upsert, delete, get, search]
     exclude-members:
 
 ::: lazyllm.tools.rag.store.MilvusStore
@@ -173,7 +173,7 @@
 	exclude-members:
 
 ::: lazyllm.tools.SentenceSplitter
-    members:
+    members: [split_text]
     exclude-members:
 
 ::: lazyllm.tools.LLMParser
@@ -205,7 +205,7 @@ lazyllm.tools.rag.transform.NodeTransform
     exclude-members:
 
 ::: lazyllm.tools.rag.dataReader.SimpleDirectoryReader
-    members:
+    members: [load_file]
     exclude-members:
 
 ::: lazyllm.tools.rag.dataReader.FileReader
@@ -225,7 +225,7 @@ lazyllm.tools.rag.transform.NodeTransform
     exclude-members: forward
 
 ::: lazyllm.tools.ParameterExtractor
-    members: 
+    members: [choose_prompt]
     exclude-members: forward
 
 ::: lazyllm.tools.QustionRewrite
@@ -365,4 +365,16 @@ lazyllm.tools.rag.transform.NodeTransform
 
 ::: lazyllm.tools.http_request.http_executor_response.HttpExecutorResponse
     members: extract_file, get_content_type
+    exclude-members:
+
+::: lazyllm.tools.infer_service.InferClient
+    members: [deploy, cancel, list_all_tasks, get_infra_handle, wait_ready]
+    exclude-members:
+
+::: lazyllm.tools.StreamCallHelper
+    members: [split_text]
+    exclude-members:
+
+::: lazyllm.tools.rag.LazyLLMStoreBase
+    members: [connect, upsert, delete, get, search]
     exclude-members:

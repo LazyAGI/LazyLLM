@@ -3,6 +3,7 @@
 ::: lazyllm.components.finetune.AlpacaloraFinetune
     options:
       heading_level: 3
+      members: [cmd]
 
 ::: lazyllm.components.finetune.CollieFinetune
     options:
@@ -42,6 +43,7 @@
 ::: lazyllm.components.deploy.Vllm
     options:
       heading_level: 3
+      members: [cmd, geturl, extract_result]
 
 ::: lazyllm.components.deploy.LMDeploy
     options:
@@ -187,6 +189,7 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
 ::: lazyllm.components.deploy.speech_to_text.sense_voice.SenseVoice
     options:
       heading_level: 4
+      members: [load_stt, rebuild]
 
 ---
 
@@ -195,6 +198,7 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
 ::: lazyllm.components.ModelManager
     options:
       heading_level: 3
+      members: [get_model_type, get_model_prompt_keys, validate_model_path, download]
 
 ---
 

@@ -87,75 +87,71 @@ PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
 # ============= Finetune
 # Finetune-AlpacaloraFinetune
 add_chinese_doc('finetune.AlpacaloraFinetune', '''\
-此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [alpaca-lora](https://github.com/tloen/alpaca-lora) 项目提供的LoRA微调能力，用于对大语言模型进行LoRA微调。
+此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [alpaca-lora](https://github.com/tloen/alpaca-lora) 项目提供的 LoRA 微调能力，用于对大语言模型进行 LoRA 微调。
 
 Args:
-    base_model (str): 用于进行微调的基模型的本地绝对路径。
-    target_path (str): 微调后模型保存LoRA权重的本地绝对路径。
-    merge_path (str): 模型合并LoRA权重后的路径，默认为 ``None`` 。如果未指定，则会在 ``target_path`` 下创建 "lazyllm_lora" 和 "lazyllm_merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
-    model_name (str): 模型的名称，用于设置日志名的前缀，默认为 ``LLM``。
-    cp_files (str): 指定复制源自基模型路径下的配置文件，会被复制到  ``merge_path`` ，默认为 ``tokeniz*``
-    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
-    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
+    base_model (str): 用于微调的基模型本地路径。
+    target_path (str): 微调后 LoRA 权重保存路径。
+    merge_path (Optional[str]): 合并 LoRA 权重后的模型保存路径，默认 ``None``。
+        若未提供，则在 ``target_path`` 下创建 "lazyllm_lora" 与 "lazyllm_merge" 目录。
+    model_name (Optional[str]): 模型名称，用于日志前缀，默认 ``LLM``。
+    cp_files (Optional[str]): 从基模型路径复制配置文件到 ``merge_path``，默认 ``tokeniz*``。
+    launcher (lazyllm.launcher): 微调启动器，默认 ``launchers.remote(ngpus=1)``。
+    kw (dict): 用于更新默认训练参数的关键字参数，允许更新如下参数：
 
-此类的关键字参数及其默认值如下：
-
-Keyword Args: 
-    data_path (str): 数据路径，默认为 ``None``；一般在此类对象被调用时候，作为唯一位置参数传入。
-    batch_size (int): 批处理大小，默认为 ``64``。
-    micro_batch_size (int): 微批处理大小，默认为 ``4``。
-    num_epochs (int): 训练轮数，默认为 ``2``。
-    learning_rate (float): 学习率，默认为 ``5.e-4``。
-    cutoff_len (int): 截断长度，默认为 ``1030``；输入数据token超过该长度就会被截断。
-    filter_nums (int): 过滤器数量，默认为 ``1024``；仅保留低于该token长度数值的输入。
-    val_set_size (int): 验证集大小，默认为 ``200``。
-    lora_r (int): LoRA 的秩，默认为 ``8``；该数值决定添加参数的量，数值越小参数量越小。
-    lora_alpha (int): LoRA 的融合因子，默认为 ``32``；该数值决定LoRA参数对基模型参数的影响度，数值越大影响越大。
-    lora_dropout (float): LoRA 的丢弃率，默认为 ``0.05``，一般用于防止过拟合。
-    lora_target_modules (str): LoRA 的目标模块，默认为 ``[wo,wqkv]``，该默认值为 InternLM2 模型的；该配置项不同模型的不一样。
-    modules_to_save (str): 用于全量微调的模块，默认为 ``[tok_embeddings,output]``，该默认值为 InternLM2 模型的；该配置项不同模型的不一样。
-    deepspeed (str): DeepSpeed 配置文件的路径，默认使用 LazyLLM 代码仓库中预制的配置文件： ``ds.json``。
-    prompt_template_name (str): 提示模板的名称，默认为 ``alpaca``，即默认使用 LazyLLM 提供的提示模板。
-    train_on_inputs (bool): 是否在输入上训练，默认为 ``True``。
-    show_prompt (bool): 是否显示提示，默认为 ``False``。
-    nccl_port (int): NCCL 端口，默认为 ``19081``。
-
+Keyword Args (可选):
+    data_path (Optional[str]): 数据路径，默认 ``None``。
+    batch_size (Optional[int]): 批大小，默认 64。
+    micro_batch_size (Optional[int]): 微批大小，默认 4。
+    num_epochs (Optional[int]): 训练轮数，默认 2。
+    learning_rate (Optional[float]): 学习率，默认 5.e-4。
+    cutoff_len (Optional[int]): 截断长度，默认 1030。
+    filter_nums (Optional[int]): 过滤器数量，默认 1024。
+    val_set_size (Optional[int]): 验证集大小，默认 200。
+    lora_r (Optional[int]): LoRA 秩，默认 8。
+    lora_alpha (Optional[int]): LoRA 融合因子，默认 32。
+    lora_dropout (Optional[float]): LoRA 丢弃率，默认 0.05。
+    lora_target_modules (Optional[str]): LoRA 目标模块，默认 ``[wo,wqkv]``。
+    modules_to_save (Optional[str]): 全量微调模块，默认 ``[tok_embeddings,output]``。
+    deepspeed (Optional[str]): DeepSpeed 配置路径，默认使用仓库预制 ds.json。
+    prompt_template_name (Optional[str]): 提示模板名称，默认 ``alpaca``。
+    train_on_inputs (Optional[bool]): 是否在输入上训练，默认 ``True``。
+    show_prompt (Optional[bool]): 是否显示提示，默认 ``False``。
+    nccl_port (Optional[int]): NCCL 端口，默认随机在 19000-20500。
 ''')
 
 add_english_doc('finetune.AlpacaloraFinetune', '''\
 This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the [alpaca-lora](https://github.com/tloen/alpaca-lora) project, used for LoRA fine-tuning of large language models.
 
 Args:
-    base_model (str): The base model used for fine-tuning. It is required to be the path of the base model.
-    target_path (str): The path where the LoRA weights of the fine-tuned model are saved.
-    merge_path (str): The path where the model merges the LoRA weights, default to `None`. If not specified, "lazyllm_lora" and "lazyllm_merge" directories will be created under ``target_path`` as ``target_path`` and ``merge_path`` respectively.
-    model_name (str): The name of the model, used as the prefix for setting the log name, default to "LLM".
-    cp_files (str): Specify configuration files to be copied from the base model path, which will be copied to ``merge_path``, default to ``tokeniz*``
-    launcher (lazyllm.launcher): The launcher for fine-tuning, default to ``launchers.remote(ngpus=1)``.
-    kw: Keyword arguments, used to update the default training parameters. Note that additional keyword arguments cannot be arbitrarily specified.
+    base_model (str): Path to the base model for fine-tuning.
+    target_path (str): Path to save LoRA weights of the fine-tuned model.
+    merge_path (Optional[str]): Path to save merged LoRA weights, default ``None``.
+        If not provided, "lazyllm_lora" and "lazyllm_merge" directories are created under ``target_path``.
+    model_name (Optional[str]): Model name used as log prefix, default "LLM".
+    cp_files (Optional[str]): Configuration files copied from base model path to ``merge_path``, default ``tokeniz*``.
+    launcher (lazyllm.launcher): Launcher for fine-tuning, default ``launchers.remote(ngpus=1)``.
+    kw (dict): Keyword arguments to update default training parameters:
 
-The keyword arguments and their default values for this class are as follows:
-
-Keyword Args: 
-    data_path (str): Data path, default to ``None``; generally passed as the only positional argument when this object is called.
-    batch_size (int): Batch size, default to ``64``.
-    micro_batch_size (int): Micro-batch size, default to ``4``.
-    num_epochs (int): Number of training epochs, default to ``2``.
-    learning_rate (float): Learning rate, default to ``5.e-4``.
-    cutoff_len (int): Cutoff length, default to ``1030``; input data tokens will be truncated if they exceed this length.
-    filter_nums (int): Number of filters, default to ``1024``; only input with token length below this value is preserved.
-    val_set_size (int): Validation set size, default to ``200``.
-    lora_r (int): LoRA rank, default to ``8``; this value determines the amount of parameters added, the smaller the value, the fewer the parameters.
-    lora_alpha (int): LoRA fusion factor, default to ``32``; this value determines the impact of LoRA parameters on the base model parameters, the larger the value, the greater the impact.
-    lora_dropout (float): LoRA dropout rate, default to ``0.05``, generally used to prevent overfitting.
-    lora_target_modules (str): LoRA target modules, default to ``[wo,wqkv]``, which is the default for InternLM2 model; this configuration item varies for different models.
-    modules_to_save (str): Modules for full fine-tuning, default to ``[tok_embeddings,output]``, which is the default for InternLM2 model; this configuration item varies for different models.
-    deepspeed (str): The path of the DeepSpeed configuration file, default to use the pre-made configuration file in the LazyLLM code repository: ``ds.json``.
-    prompt_template_name (str): The name of the prompt template, default to "alpaca", i.e., use the prompt template provided by LazyLLM by default.
-    train_on_inputs (bool): Whether to train on inputs, default to ``True``.
-    show_prompt (bool): Whether to show the prompt, default to ``False``.
-    nccl_port (int): NCCL port, default to ``19081``.
-
+Keyword Args (Optional):
+    data_path (Optional[str]): Path to dataset, default ``None``.
+    batch_size (Optional[int]): Batch size, default 64.
+    micro_batch_size (Optional[int]): Micro-batch size, default 4.
+    num_epochs (Optional[int]): Number of training epochs, default 2.
+    learning_rate (Optional[float]): Learning rate, default 5.e-4.
+    cutoff_len (Optional[int]): Cutoff length, default 1030.
+    filter_nums (Optional[int]): Number of filters, default 1024.
+    val_set_size (Optional[int]): Validation set size, default 200.
+    lora_r (Optional[int]): LoRA rank, default 8.
+    lora_alpha (Optional[int]): LoRA fusion factor, default 32.
+    lora_dropout (Optional[float]): LoRA dropout rate, default 0.05.
+    lora_target_modules (Optional[str]): LoRA target modules, default ``[wo,wqkv]``.
+    modules_to_save (Optional[str]): Modules for full fine-tuning, default ``[tok_embeddings,output]``.
+    deepspeed (Optional[str]): Path to DeepSpeed config, default uses repository pre-made ds.json.
+    prompt_template_name (Optional[str]): Name of prompt template, default "alpaca".
+    train_on_inputs (Optional[bool]): Whether to train on inputs, default ``True``.
+    show_prompt (Optional[bool]): Whether to show the prompt, default ``False``.
+    nccl_port (Optional[int]): NCCL port, default random between 19000-20500.
 ''')
 
 add_example('finetune.AlpacaloraFinetune', '''\
@@ -163,75 +159,6 @@ add_example('finetune.AlpacaloraFinetune', '''\
 >>> trainer = finetune.alpacalora('path/to/base/model', 'path/to/target')
 ''')
 
-# Finetune-CollieFinetune
-add_chinese_doc('finetune.CollieFinetune', '''\
-此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [Collie](https://github.com/OpenLMLab/collie) 框架提供的LoRA微调能力，用于对大语言模型进行LoRA微调。
-
-Args:
-    base_model (str): 用于进行微调的基模型。要求是基模型的路径。
-    target_path (str): 微调后模型保存LoRA权重的路径。
-    merge_path (str): 模型合并LoRA权重后的路径，默认为None。如果未指定，则会在 ``target_path`` 下创建 "lazyllm_lora" 和 "lazyllm_merge" 目录，分别作为 ``target_path`` 和  ``merge_path`` 。
-    model_name (str): 模型的名称，用于设置日志名的前缀，默认为 "LLM"。
-    cp_files (str): 指定复制源自基模型路径下的配置文件，会被复制到  ``merge_path`` ，默认为 "tokeniz\*"
-    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
-    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
-
-此类的关键字参数及其默认值如下：
-
-Keyword Args: 
-    data_path (str): 数据路径，默认为 ``None``；一般在此类对象被调用时候，作为唯一位置参数传入。
-    batch_size (int): 批处理大小，默认为 ``64``。
-    micro_batch_size (int): 微批处理大小，默认为 ``4``。
-    num_epochs (int): 训练轮数，默认为 ``2``。
-    learning_rate (float): 学习率，默认为 ``5.e-4``。
-    dp_size (int): 数据并行参数，默认为 ``8``。
-    pp_size (int): 流水线并行参数，默认为 ``1``。
-    tp_size (int): 张量并行参数，默认为 ``1``。
-    lora_r (int): LoRA 的秩，默认为 ``8``；该数值决定添加参数的量，数值越小参数量越小。
-    lora_alpha (int): LoRA 的融合因子，默认为 ``32``；该数值决定LoRA参数对基模型参数的影响度，数值越大影响越大。
-    lora_dropout (float): LoRA 的丢弃率，默认为 ``0.05``，一般用于防止过拟合。
-    lora_target_modules (str): LoRA 的目标模块，默认为 ``[wo,wqkv]``，该默认值为 InternLM2 模型的；该配置项不同模型的不一样。
-    modules_to_save (str): 用于全量微调的模块，默认为 ``[tok_embeddings,output]``，该默认值为 InternLM2 模型的；该配置项不同模型的不一样。
-    prompt_template_name (str): 提示模板的名称，默认为 ``alpaca``，即默认使用 LazyLLM 提供的提示模板。
-
-''')
-
-add_english_doc('finetune.CollieFinetune', '''\
-This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the [Collie](https://github.com/OpenLMLab/collie) framework, used for LoRA fine-tuning of large language models.
-
-Args:
-    base_model (str): The base model used for fine-tuning. It is required to be the path of the base model.
-    target_path (str): The path where the LoRA weights of the fine-tuned model are saved.
-    merge_path (str): The path where the model merges the LoRA weights, default to ``None``. If not specified, "lazyllm_lora" and "lazyllm_merge" directories will be created under ``target_path`` as ``target_path`` and ``merge_path`` respectively.
-    model_name (str): The name of the model, used as the prefix for setting the log name, default to "LLM".
-    cp_files (str): Specify configuration files to be copied from the base model path, which will be copied to ``merge_path``, default to "tokeniz*"
-    launcher (lazyllm.launcher): The launcher for fine-tuning, default to ``launchers.remote(ngpus=1)``.
-    kw: Keyword arguments, used to update the default training parameters. Note that additional keyword arguments cannot be arbitrarily specified.
-
-The keyword arguments and their default values for this class are as follows:
-
-Keyword Args: 
-    data_path (str): Data path, default to ``None``; generally passed as the only positional argument when this object is called.
-    batch_size (int): Batch size, default to ``64``.
-    micro_batch_size (int): Micro-batch size, default to ``4``.
-    num_epochs (int): Number of training epochs, default to ``2``.
-    learning_rate (float): Learning rate, default to ``5.e-4``.
-    dp_size (int): Data parallelism parameter, default to `` 8``.
-    pp_size (int): Pipeline parallelism parameter, default to ``1``.
-    tp_size (int): Tensor parallelism parameter, default to ``1``.
-    lora_r (int): LoRA rank, default to ``8``; this value determines the amount of parameters added, the smaller the value, the fewer the parameters.
-    lora_alpha (int): LoRA fusion factor, default to ``32``; this value determines the impact of LoRA parameters on the base model parameters, the larger the value, the greater the impact.
-    lora_dropout (float): LoRA dropout rate, default to ``0.05``, generally used to prevent overfitting.
-    lora_target_modules (str): LoRA target modules, default to ``[wo,wqkv]``, which is the default for InternLM2 model; this configuration item varies for different models.
-    modules_to_save (str): Modules for full fine-tuning, default to ``[tok_embeddings,output]``, which is the default for InternLM2 model; this configuration item varies for different models.
-    prompt_template_name (str): The name of the prompt template, default to ``alpaca``, i.e., use the prompt template provided by LazyLLM by default.
-
-''')
-
-add_example('finetune.CollieFinetune', '''\
->>> from lazyllm import finetune
->>> trainer = finetune.collie('path/to/base/model', 'path/to/target')
-''')
 add_chinese_doc('finetune.AlpacaloraFinetune.cmd', """\
 生成用于执行Alpaca-LoRA微调和模型合并的shell命令序列。
 
@@ -239,9 +166,8 @@ Args:
     trainset (str): 训练数据集路径，支持相对data_path配置的路径或绝对路径
     valset (str, optional): 验证数据集路径，未指定时将从训练集中自动划分
 
-Returns:
-    str or list: 当不需要合并模型时返回单个命令字符串，需要合并时返回包含微调命令、合并命令和文件拷贝命令的列表
-
+**Returns:**\n
+- str or list: 当不需要合并模型时返回单个命令字符串，需要合并时返回包含微调命令、合并命令和文件拷贝命令的列表
 """)
 
 add_english_doc('finetune.AlpacaloraFinetune.cmd', """\
@@ -251,19 +177,83 @@ Args:
     trainset (str): Training dataset path, supports both relative path (to configured data_path) and absolute path
     valset (str, optional): Validation dataset path, will auto-split from trainset if not specified
 
-Returns:
-    str or list: Returns a single command string when no merging needed, otherwise returns a list containing:
+**Returns:**\n
+- str or list: Returns a single command string when no merging needed, otherwise returns a list containing:
                  [fine-tune command, merge command, file copy command]
-
-
 """)
 
 add_example('finetune.AlpacaloraFinetune.cmd', """\
 >>> from lazyllm import finetune
 >>> trainer = finetune.alpacalora('path/to/base/model', 'path/to/target')
 >>> cmd = trainer.cmd("my_dataset.json")
-
 """)
+
+# Finetune-CollieFinetune
+add_chinese_doc('finetune.CollieFinetune', '''\
+此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [Collie](https://github.com/OpenLMLab/collie) 框架提供的 LoRA 微调能力，用于对大语言模型进行 LoRA 微调。
+
+Args:
+    base_model (str): 用于微调的基模型路径。
+    target_path (str): 微调后 LoRA 权重保存路径。
+    merge_path (Optional[str]): 合并 LoRA 权重后的模型路径，默认 ``None``。
+        若未提供，则在 ``target_path`` 下创建 "lazyllm_lora" 与 "lazyllm_merge" 目录。
+    model_name (Optional[str]): 模型名称，用于日志前缀，默认 "LLM"。
+    cp_files (Optional[str]): 指定从基模型路径复制到 ``merge_path`` 的配置文件，默认 "tokeniz*"。
+    launcher (lazyllm.launcher): 微调启动器，默认 ``launchers.remote(ngpus=1)``。
+    kw (dict): 用于更新默认训练参数的关键字参数。仅允许更新如下参数：
+
+Keyword Args (Optional):
+    data_path (Optional[str]): 数据路径，默认 ``None``。
+    batch_size (Optional[int]): 批大小，默认 64。
+    micro_batch_size (Optional[int]): 微批大小，默认 4。
+    num_epochs (Optional[int]): 训练轮数，默认 3。
+    learning_rate (Optional[float]): 学习率，默认 5.e-4。
+    dp_size (Optional[int]): 数据并行参数，默认 8。
+    pp_size (Optional[int]): 流水线并行参数，默认 1。
+    tp_size (Optional[int]): 张量并行参数，默认 1。
+    lora_r (Optional[int]): LoRA 秩，默认 8。
+    lora_alpha (Optional[int]): LoRA 融合因子，默认 16。
+    lora_dropout (Optional[float]): LoRA 丢弃率，默认 0.05。
+    lora_target_modules (Optional[str]): LoRA 目标模块，默认 ``[wo,wqkv]``。
+    modules_to_save (Optional[str]): 全量微调模块，默认 ``[tok_embeddings,output]``。
+    prompt_template_name (Optional[str]): 提示模板名称，默认 "alpaca"。
+''')
+
+add_english_doc('finetune.CollieFinetune', '''\
+This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the [Collie](https://github.com/OpenLMLab/collie) framework, used for LoRA fine-tuning of large language models.
+
+Args:
+    base_model (str): Path to the base model for fine-tuning.
+    target_path (str): Path to save LoRA weights of the fine-tuned model.
+    merge_path (Optional[str]): Path to save merged LoRA weights, default ``None``.
+        If not provided, "lazyllm_lora" and "lazyllm_merge" directories are created under ``target_path``.
+    model_name (Optional[str]): Model name used as log prefix, default "LLM".
+    cp_files (Optional[str]): Configuration files copied from base model path to ``merge_path``, default "tokeniz*".
+    launcher (lazyllm.launcher): Launcher for fine-tuning, default ``launchers.remote(ngpus=1)``.
+    kw (dict): Keyword arguments to update default training parameters:
+
+Keyword Args (Optional):
+    data_path (Optional[str]): Path to dataset, default ``None``.
+    batch_size (Optional[int]): Batch size, default 64.
+    micro_batch_size (Optional[int]): Micro-batch size, default 4.
+    num_epochs (Optional[int]): Number of training epochs, default 3.
+    learning_rate (Optional[float]): Learning rate, default 5.e-4.
+    dp_size (Optional[int]): Data parallelism parameter, default 8.
+    pp_size (Optional[int]): Pipeline parallelism parameter, default 1.
+    tp_size (Optional[int]): Tensor parallelism parameter, default 1.
+    lora_r (Optional[int]): LoRA rank, default 8.
+    lora_alpha (Optional[int]): LoRA fusion factor, default 16.
+    lora_dropout (Optional[float]): LoRA dropout rate, default 0.05.
+    lora_target_modules (Optional[str]): LoRA target modules, default ``[wo,wqkv]``.
+    modules_to_save (Optional[str]): Modules for full fine-tuning, default ``[tok_embeddings,output]``.
+    prompt_template_name (Optional[str]): Name of prompt template, default "alpaca".
+''')
+
+add_example('finetune.CollieFinetune', '''\
+>>> from lazyllm import finetune
+>>> trainer = finetune.collie('path/to/base/model', 'path/to/target')
+''')
+
 # Finetune-LlamafactoryFinetune
 add_chinese_doc('finetune.LlamafactoryFinetune', '''\
 此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) 框架提供的训练能力，用于对大语言模型(或视觉语言模型)进行训练。
@@ -810,55 +800,58 @@ Raises:
 
 # Deploy-Vllm
 add_chinese_doc('deploy.Vllm', '''\
-此类是 ``LazyLLMDeployBase`` 的子类，基于 [VLLM](https://github.com/vllm-project/vllm) 框架提供的推理能力，用于对大语言模型进行推理。
+此类是 ``LazyLLMDeployBase`` 的子类，基于 [VLLM](https://github.com/vllm-project/vllm) 框架提供的推理能力，用于大语言模型的部署与推理。
 
 Args:
     trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
-    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
+    launcher (lazyllm.launcher): 模型启动器，默认为 ``launchers.remote(ngpus=1)``。
     log_path (str): 日志保存路径，若为 ``None`` 则不保存日志。
-    openai_api(bool):是否调用openai接口,默认为``None``。
-    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
+    openai_api (bool): 是否使用 OpenAI API 接口启动 VLLM 服务，默认为 ``False``。
+    kw: 关键字参数，用于更新默认的部署参数。除支持的关键字参数外，不允许传入额外参数。
 
-此类的关键字参数及其默认值如下：
+此类支持的关键字参数及其默认值如下：
 
 Keyword Args: 
-    tensor-parallel-size (int): 张量并行参数，默认为 ``1``。
-    dtype (str): 模型权重和激活值的数据类型，默认为 ``auto``。另外可选项还有： ``half``, ``float16``, ``bfloat16``, ``float``, ``float32``。
-    kv-cache-dtype (str): 看kv缓存的存储类型，默认为 ``auto``。另外可选的还有：``fp8``, ``fp8_e5m2``, ``fp8_e4m3``。
-    device (str): VLLM所支持的后端硬件类型，默认为 ``auto``。另外可选的还有：``cuda``, ``neuron``, ``cpu``。
-    block-size (int): 设置 token块的大小，默认为 ``16``。
-    port (int): 服务的端口号，默认为 ``auto``。
-    host (str): 服务的IP地址，默认为 ``0.0.0.0``。
+    tensor-parallel-size (int): 张量并行大小，默认为 ``1``。
+    dtype (str): 模型权重和激活值的数据类型，默认为 ``auto``。可选：``half``、``float16``、``bfloat16``、``float``、``float32``。
+    kv-cache-dtype (str): KV 缓存的数据类型，默认为 ``auto``。可选：``fp8``、``fp8_e5m2``、``fp8_e4m3``。
+    device (str): VLLM 支持的硬件类型，默认为 ``auto``。可选：``cuda``、``neuron``、``cpu``。
+    block-size (int): token 块大小，默认为 ``16``。
+    port (int | str): 服务端口号，默认为 ``auto``，即随机分配。
+    host (str): 服务绑定的 IP 地址，默认为 ``0.0.0.0``。
     seed (int): 随机数种子，默认为 ``0``。
-    tokenizer_mode (str): tokenizer的加载模式，默认为 ``auto``。
-    max-num-seqs (int): 推理引擎最大的并行请求数， 默认为 ``256``。
+    tokenizer_mode (str): Tokenizer 加载模式，默认为 ``auto``。
+    max-num-seqs (int): 推理引擎支持的最大并行请求数，默认为 ``256``。
+    pipeline-parallel-size (int): 流水线并行大小，默认为 ``1``。
+    max-num-batched-tokens (int): 最大批处理 token 数，默认为 ``64000``。
 
 ''')
 
 add_english_doc('deploy.Vllm', '''\
-This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the [VLLM](https://github.com/vllm-project/vllm) framework, used for inference with large language models.
+This class is a subclass of ``LazyLLMDeployBase``, leveraging the [VLLM](https://github.com/vllm-project/vllm) framework to deploy and run inference on large language models.
 
 Args:
-    trust_remote_code (bool): Whether to allow loading of model code from remote servers, default is ``True``.
-    launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1)``.
-    log_path (str): Path to save logs. If ``None``, logs will not be saved.
-    openai_api (bool): Whether to call the OpenAI API. Default is ``None``.
-    kw: Keyword arguments used to update default training parameters. Note that not any additional keyword arguments can be specified here.
+    trust_remote_code (bool): Whether to allow loading of model code from remote sources. Default is ``True``.
+    launcher (lazyllm.launcher): The launcher used to start the model. Default is ``launchers.remote(ngpus=1)``.
+    log_path (str): Path to store logs. If ``None``, logs will not be saved.
+    openai_api (bool): Whether to start VLLM with OpenAI-compatible API. Default is ``False``.
+    kw: Keyword arguments used to override default deployment parameters. No extra arguments beyond the supported ones are allowed.
 
-The keyword arguments and their default values for this class are as follows:
+The supported keyword arguments and their default values are as follows:
 
 Keyword Args: 
-    tensor-parallel-size (int): Tensor parallelism parameter, default is ``1``.
-    dtype (str): Data type for model weights and activations, default is ``auto``. Other options include: ``half``, ``float16``, ``bfloat16``, ``float``, ``float32``.
-    kv-cache-dtype (str): Data type for the key-value cache storage, default is ``auto``. Other options include: ``fp8``, ``fp8_e5m2``, ``fp8_e4m3``.
-    device (str): Backend hardware type supported by VLLM, default is ``auto``. Other options include: ``cuda``, ``neuron``, ``cpu``.
-    block-size (int): Sets the size of the token block, default is ``16``.
-    port (int): Service port number, default is ``auto``.
-    host (str): Service IP address, default is ``0.0.0.0``.
-    seed (int): Random number seed, default is ``0``.
-    tokenizer_mode (str): Tokenizer loading mode, default is ``auto``.
-    max-num-seqs (int): Maximum number of parallel requests for the inference engine, default is ``256``.
-
+    tensor-parallel-size (int): Tensor parallelism size. Default is ``1``.
+    dtype (str): Data type for model weights and activations. Default is ``auto``. Options include: ``half``, ``float16``, ``bfloat16``, ``float``, ``float32``.
+    kv-cache-dtype (str): Data type for KV cache. Default is ``auto``. Options include: ``fp8``, ``fp8_e5m2``, ``fp8_e4m3``.
+    device (str): Backend device type supported by VLLM. Default is ``auto``. Options include: ``cuda``, ``neuron``, ``cpu``.
+    block-size (int): Token block size. Default is ``16``.
+    port (int | str): Service port number. Default is ``auto`` (random assignment).
+    host (str): Service binding IP address. Default is ``0.0.0.0``.
+    seed (int): Random seed. Default is ``0``.
+    tokenizer_mode (str): Tokenizer loading mode. Default is ``auto``.
+    max-num-seqs (int): Maximum number of concurrent requests supported by the inference engine. Default is ``256``.
+    pipeline-parallel-size (int): Pipeline parallelism size. Default is ``1``.
+    max-num-batched-tokens (int): Maximum number of batched tokens. Default is ``64000``.
 ''')
 
 add_example('deploy.Vllm', '''\
@@ -866,47 +859,121 @@ add_example('deploy.Vllm', '''\
 >>> infer = deploy.vllm()
 ''')
 
-# Deploy-EmbeddingDeploy
-add_chinese_doc('deploy.EmbeddingDeploy', '''\
-此类是 ``LazyLLMDeployBase`` 的子类，用于部署文本嵌入（Embedding）服务。支持稠密向量（dense）和稀疏向量（sparse）两种嵌入方式，可以使用HuggingFace模型或FlagEmbedding模型。
+add_chinese_doc('deploy.Vllm.cmd', '''\
+构造用于启动 vLLM 推理服务的命令。
+
+该方法会自动检测模型路径是否有效，并根据当前配置参数动态生成可执行命令，支持多节点部署时自动加入 ray 启动命令。
 
 Args:
-    launcher (lazyllm.launcher): 启动器，默认为 ``None``。
-    model_type (str): 模型类型，默认为 ``'embed'``。
-    log_path (str): 日志文件路径，默认为 ``None``。
-    embed_type (str): 嵌入类型，可选 ``'dense'`` 或 ``'sparse'``，默认为 ``'dense'``。
+    finetuned_model (str): 微调后的模型路径。
+    base_model (str): 备用基础模型路径（当 finetuned_model 无效时启用）。
+    master_ip (str): 分布式部署中的主节点 IP，仅在多节点时启用。
+
+Returns:
+    LazyLLMCMD: 可执行命令对象，包含启动指令、结果回调函数及健康检查方法。
+''')
+
+add_english_doc('deploy.Vllm.cmd', '''\
+Build the command to launch the vLLM inference service.
+
+This method validates the model path and constructs an executable command string based on current configuration. In distributed mode, it will also prepend the ray cluster start command.
+
+Args:
+    finetuned_model (str): Path to the fine-tuned model.
+    base_model (str): Fallback base model path if finetuned_model is invalid.
+    master_ip (str): IP address of the master node in a distributed setup.
+
+Returns:
+    LazyLLMCMD: The command object with shell instruction, return value handler, and health checker.
+''')
+
+add_chinese_doc('deploy.Vllm.geturl', '''\
+获取 vLLM 服务的推理地址。
+
+根据运行模式（Display 模式或实际部署）返回相应的 URL，用于访问模型的生成接口。
+
+Args:
+    job (Job, optional): 部署任务对象。默认取当前模块绑定的 job。
+
+Returns:
+    str: 推理服务的 HTTP 地址。
+''')
+
+add_english_doc('deploy.Vllm.geturl', '''\
+Get the inference service URL for the vLLM deployment.
+
+Depending on the execution mode (Display or actual deployment), this method returns the appropriate URL for accessing the model's generate endpoint.
+
+Args:
+    job (Job, optional): Deployment job object. Defaults to the module's associated job.
+
+Returns:
+    str: The HTTP URL for inference service.
+''')
+
+add_chinese_doc('deploy.Vllm.extract_result', '''\
+从 VLLM 接口返回的 JSON 字符串中提取推理结果。
+
+Args:
+    x (str): VLLM 服务返回的原始 JSON 字符串。
+    inputs (Any): 输入参数（此处未使用，保留接口一致性）。
+
+**Returns:**\n
+- str: 模型生成的文本结果。
+''')
+
+add_english_doc('deploy.Vllm.extract_result', '''\
+Extracts the inference result from the JSON string returned by the VLLM service.
+
+Args:
+    x (str): Raw JSON string returned from the VLLM service.
+    inputs (Any): Input arguments (not used here, kept for interface consistency).
+
+**Returns:**\n
+- str: The generated text result from the model.
+''')
+
+# Deploy-EmbeddingDeploy
+add_chinese_doc('deploy.EmbeddingDeploy', '''\
+此类是 ``LazyLLMDeployBase`` 的子类，用于部署文本嵌入（Embedding）服务。支持稠密向量（dense）和稀疏向量（sparse）两种嵌入方式，可使用 HuggingFace 模型或 FlagEmbedding 模型。
+
+Args:
+    launcher (Optional[lazyllm.launcher]): 启动器实例，默认为 ``None``。
+    model_type (Optional[str]): 模型类型，默认为 ``'embed'``。
+    log_path (Optional[str]): 日志文件路径，默认为 ``None``。
+    embed_type (Optional[str]): 嵌入类型，可选 ``'dense'`` 或 ``'sparse'``，默认为 ``'dense'``。
     trust_remote_code (bool): 是否信任远程代码，默认为 ``True``。
-    port (int): 服务端口号，默认为 ``None``，此情况下LazyLLM会自动生成随机端口号。
+    port (Optional[int]): 服务端口号，默认为 ``None``，此情况下 LazyLLM 会自动生成随机端口号。
 
-调用参数:
-    finetuned_model: 微调后的模型路径或模型名称。
-    base_model: 基础模型路径或模型名称，当finetuned_model无效时会使用此模型。
+Call Arguments:
+    finetuned_model (Optional[str]): 微调后的模型路径或名称。
+    base_model (Optional[str]): 基础模型路径或名称，当 finetuned_model 无效时会使用此模型。
 
-消息格式:
-    输入格式为包含text（文本）和images（图像列表）的字典。
-    - text: 需要编码的文本内容
-    - images: 需要编码的图像列表（可选）
+Message Format:
+    输入格式为包含 text（文本）和 images（图像列表）的字典。
+    - text (str): 需要编码的文本内容
+    - images (Union[str, List[str]]): 需要编码的图像列表，可选
 ''')
 
 add_english_doc('deploy.EmbeddingDeploy', '''\
 This class is a subclass of ``LazyLLMDeployBase``, designed for deploying text embedding services. It supports both dense and sparse embedding methods, compatible with HuggingFace models and FlagEmbedding models.
 
 Args:
-    launcher (lazyllm.launcher): The launcher instance, defaults to ``None``.
-    model_type (str): Model type, defaults to ``'embed'``.
-    log_path (str): Path for log file, defaults to ``None``.
-    embed_type (str): Embedding type, either ``'dense'`` or ``'sparse'``, defaults to ``'dense'``.
+    launcher (Optional[lazyllm.launcher]): The launcher instance, defaults to ``None``.
+    model_type (Optional[str]): Model type, defaults to ``'embed'``.
+    log_path (Optional[str]): Path for log file, defaults to ``None``.
+    embed_type (Optional[str]): Embedding type, either ``'dense'`` or ``'sparse'``, defaults to ``'dense'``.
     trust_remote_code (bool): Whether to trust remote code, defaults to ``True``.
-    port (int): Service port number, defaults to ``None``, in which case LazyLLM will generate a random port.
+    port (Optional[int]): Service port number, defaults to ``None``, in which case LazyLLM will generate a random port.
 
 Call Arguments:
-    finetuned_model: Path or name of the fine-tuned model.
-    base_model: Path or name of the base model, used when finetuned_model is invalid.
+    finetuned_model (Optional[str]): Path or name of the fine-tuned model.
+    base_model (Optional[str]): Path or name of the base model, used when finetuned_model is invalid.
 
 Message Format:
     Input format is a dictionary containing text and images list.
-    - text: Text content to be encoded
-    - images: List of images to be encoded (optional)
+    - text (str): Text content to be encoded
+    - images (Union[str, List[str]]): List of images to be encoded (optional)
 ''')
 
 add_example('deploy.EmbeddingDeploy', '''\
@@ -999,14 +1066,16 @@ Args:
 
 add_chinese_doc('deploy.embed.LazyHuggingFaceRerank.load_reranker', '''\
 加载重排序模型。  
-该方法会使用 `sentence_transformers.CrossEncoder` 从指定的 `base_rerank` 路径或名称加载模型，  
-通常在延迟加载模式下由首次调用实例时自动触发。
+
+该方法会基于 `self.base_rerank` 初始化一个 `sentence_transformers.CrossEncoder` 实例，  
+并赋值给类属性 `self.reranker`，用于后续的重排序任务。  
 ''')
 
 add_english_doc('deploy.embed.LazyHuggingFaceRerank.load_reranker', '''\
 Load the rerank model.  
-Uses `sentence_transformers.CrossEncoder` to load the model from the specified `base_rerank` path or name.  
-Typically triggered automatically on first call when lazy loading is enabled.
+
+This method initializes a `sentence_transformers.CrossEncoder` instance using `self.base_rerank`  
+and assigns it to the class attribute `self.reranker` for subsequent reranking tasks.  
 ''')
 
 add_chinese_doc('deploy.embed.LazyHuggingFaceRerank.rebuild', '''\
@@ -1096,85 +1165,6 @@ Args:
 
 Returns:
     LazyFlagEmbedding: A newly constructed LazyFlagEmbedding instance.
-''')
-
-
-add_chinese_doc('deploy.Vllm.cmd', '''\
-构造用于启动 vLLM 推理服务的命令。
-
-该方法会自动检测模型路径是否有效，并根据当前配置参数动态生成可执行命令，支持多节点部署时自动加入 ray 启动命令。
-
-Args:
-    finetuned_model (str): 微调后的模型路径。
-    base_model (str): 备用基础模型路径（当 finetuned_model 无效时启用）。
-    master_ip (str): 分布式部署中的主节点 IP，仅在多节点时启用。
-
-Returns:
-    LazyLLMCMD: 可执行命令对象，包含启动指令、结果回调函数及健康检查方法。
-''')
-
-add_english_doc('deploy.Vllm.cmd', '''\
-Build the command to launch the vLLM inference service.
-
-This method validates the model path and constructs an executable command string based on current configuration. In distributed mode, it will also prepend the ray cluster start command.
-
-Args:
-    finetuned_model (str): Path to the fine-tuned model.
-    base_model (str): Fallback base model path if finetuned_model is invalid.
-    master_ip (str): IP address of the master node in a distributed setup.
-
-Returns:
-    LazyLLMCMD: The command object with shell instruction, return value handler, and health checker.
-''')
-
-add_chinese_doc('deploy.Vllm.geturl', '''\
-获取 vLLM 服务的推理地址。
-
-根据运行模式（Display 模式或实际部署）返回相应的 URL，用于访问模型的生成接口。
-
-Args:
-    job (Job, optional): 部署任务对象。默认取当前模块绑定的 job。
-
-Returns:
-    str: 推理服务的 HTTP 地址。
-''')
-
-add_english_doc('deploy.Vllm.geturl', '''\
-Get the inference service URL for the vLLM deployment.
-
-Depending on the execution mode (Display or actual deployment), this method returns the appropriate URL for accessing the model's generate endpoint.
-
-Args:
-    job (Job, optional): Deployment job object. Defaults to the module's associated job.
-
-Returns:
-    str: The HTTP URL for inference service.
-''')
-
-add_chinese_doc('deploy.Vllm.extract_result', '''\
-从 vLLM 返回结果中提取文本。
-
-该函数从 JSON 格式的返回值中提取模型输出的文本部分。
-
-Args:
-    x (str): JSON 格式的原始返回结果字符串。
-    inputs (dict): 原始输入数据（用于兼容接口，当前未使用）。
-
-Returns:
-    str: 提取出的文本内容。
-''')
-
-add_english_doc('deploy.Vllm.extract_result', '''\
-Extract the generated text from a vLLM response.
-
-This function parses the returned JSON and extracts the model-generated text content.
-
-Args:
-    x (str): Raw JSON string returned from the API.
-    inputs (dict): Original input data (unused; kept for compatibility).
-
-Returns:
-    str: The generated text extracted from the response.
 ''')
 
 # Deploy-Mindie
@@ -1395,45 +1385,41 @@ Args:
 
 # Deploy-LMDeploy
 add_chinese_doc('deploy.LMDeploy', '''\
-此类是 ``LazyLLMDeployBase`` 的子类，基于 [LMDeploy](https://github.com/InternLM/lmdeploy) 框架提供的推理能力，用于对大语言模型进行推理。
+``LMDeploy`` 类，继承自 ``LazyLLMDeployBase``，基于 [LMDeploy](https://github.com/InternLM/lmdeploy) 框架，  
+用于启动并管理大语言模型的推理服务。
 
 Args:
-    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
-    stream (bool): 是否为流式响应，默认为 ``False``。
-    trust_remote_code (bool): 是否信任远程代码，默认为 ``True``。
-    log_path (str): 日志文件路径，默认为 ``None``。
-    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
+    launcher (Optional[lazyllm.launcher]): 服务启动器，默认使用 ``launchers.remote(ngpus=1)``。  
+    trust_remote_code (bool): 是否信任远程代码，默认为 ``True``。  
+    log_path (Optional[str]): 日志输出路径，默认为 ``None``。  
+    **kw: 关键字参数，用于更新默认的部署配置。除下列参数外，不允许传入额外参数。  
 
-此类的关键字参数及其默认值如下：
-
-Keyword Args: 
-    tp (int): 张量并行参数，默认为 ``1``。
-    server-name (str): 服务的IP地址，默认为 ``0.0.0.0``。
-    server-port (int): 服务的端口号，默认为 ``None``,此情况下LazyLLM会自动生成随机端口号。
-    max-batch-size (int): 最大batch数，默认为 ``128``。
-    chat-template (str): 对话模板文件路径，默认为 ``None``。如果模型不是视觉语言模型且未指定模板，将使用默认模板。
-    eager-mode (bool): 是否启用eager模式，默认由环境变量 ``LMDEPLOY_EAGER_MODE`` 控制，默认为 ``False``。
-
+Keyword Args:
+    tp (int): 张量并行参数，默认为 ``1``。  
+    server-name (str): 服务监听的 IP 地址，默认为 ``0.0.0.0``。  
+    server-port (Optional[int]): 服务端口号，默认为 ``None``，此时会自动随机分配 30000–40000 区间的端口。  
+    max-batch-size (int): 最大批处理大小，默认为 ``128``。  
+    chat-template (Optional[str]): 对话模板文件路径。若模型不是视觉语言模型且未指定模板，将使用默认模板。  
+    eager-mode (bool): 是否启用 eager 模式，受环境变量 ``LMDEPLOY_EAGER_MODE`` 控制，默认为 ``False``。  
 ''')
 
 add_english_doc('deploy.LMDeploy', '''\
-This class is a subclass of ``LazyLLMDeployBase``, leveraging the inference capabilities provided by the [LMDeploy](https://github.com/InternLM/lmdeploy) framework for inference on large language models.
+The ``LMDeploy`` class, a subclass of ``LazyLLMDeployBase``,  
+leverages [LMDeploy](https://github.com/InternLM/lmdeploy) to launch and manage large language model inference services.
 
 Args:
-    launcher (lazyllm.launcher): The launcher for fine-tuning, defaults to ``launchers.remote(ngpus=1)``.
-    stream (bool): Whether to enable streaming response, defaults to ``False``.
-    trust_remote_code (bool): Whether to trust remote code, defaults to ``True``.
-    log_path (str): Path for log file, defaults to ``None``.
-    kw: Keyword arguments for updating default training parameters. Note that no additional keyword arguments beyond those listed below can be passed.
+    launcher (Optional[lazyllm.launcher]): The service launcher, defaults to ``launchers.remote(ngpus=1)``.  
+    trust_remote_code (bool): Whether to trust remote code, defaults to ``True``.  
+    log_path (Optional[str]): Path to store logs, defaults to ``None``.  
+    **kw: Keyword arguments used to update the default deployment configuration. No extra arguments beyond those listed below are allowed.  
 
-Keyword Args: 
-    tp (int): Tensor parallelism parameter, defaults to ``1``.
-    server-name (str): The IP address of the service, defaults to ``0.0.0.0``.
-    server-port (int): The port number of the service, defaults to ``None``. In this case, LazyLLM will automatically generate a random port number.
-    max-batch-size (int): Maximum batch size, defaults to ``128``.
-    chat-template (str): Path to chat template file, defaults to ``None``. If the model is not a vision-language model and no template is specified, a default template will be used.
-    eager-mode (bool): Whether to enable eager mode, controlled by environment variable ``LMDEPLOY_EAGER_MODE``, defaults to ``False``.
-
+Keyword Args:
+    tp (int): Tensor parallelism factor, defaults to ``1``.  
+    server-name (str): The IP address on which the service listens, defaults to ``0.0.0.0``.  
+    server-port (Optional[int]): Port number for the service. Defaults to ``None``; in this case, a random port between 30000–40000 will be assigned.  
+    max-batch-size (int): Maximum batch size, defaults to ``128``.  
+    chat-template (Optional[str]): Path to the chat template file. If the model is not a vision-language model and no template is specified, a default template will be used.  
+    eager-mode (bool): Whether to enable eager mode, controlled by the environment variable ``LMDEPLOY_EAGER_MODE``, defaults to ``False``.  
 ''')
 
 add_example('deploy.LMDeploy', '''\
@@ -1454,12 +1440,12 @@ add_example('deploy.LMDeploy', '''\
 add_chinese_doc('deploy.LMDeploy.cmd', '''\
 该方法用于生成启动LMDeploy服务的命令。
 
-参数:
+Args:
     finetuned_model (str): 微调后的模型路径。
     base_model (str): 基础模型路径，当finetuned_model无效时使用。
 
-返回值:
-    LazyLLMCMD: 一个包含启动命令的LazyLLMCMD对象。
+**Returns:**\n
+- LazyLLMCMD: 一个包含启动命令的LazyLLMCMD对象。
 ''')
 
 add_english_doc('deploy.LMDeploy.cmd', '''\
@@ -1469,18 +1455,18 @@ Args:
     finetuned_model (str): Path to the fine-tuned model.
     base_model (str): Path to the base model, used when finetuned_model is invalid.
 
-Returns:
-    LazyLLMCMD: A LazyLLMCMD object containing the startup command.
+**Returns:**\n
+- LazyLLMCMD: A LazyLLMCMD object containing the startup command.
 ''')
 
 add_chinese_doc('deploy.LMDeploy.geturl', '''\
 获取LMDeploy服务的URL地址。
 
-参数:
+Args:
     job (optional): 任务对象，默认为None，此时使用self.job。
 
-返回值:
-    str: 服务的URL地址，格式为"http://{ip}:{port}/v1/chat/interactive"。
+**Returns:**\n
+- str: 服务的URL地址，格式为"http://{ip}:{port}/v1/chat/interactive"。
 ''')
 
 add_english_doc('deploy.LMDeploy.geturl', '''\
@@ -1489,30 +1475,30 @@ Get the URL address of the LMDeploy service.
 Args:
     job (optional): Job object, defaults to None, in which case self.job is used.
 
-Returns:
-    str: The service URL address in the format "http://{ip}:{port}/v1/chat/interactive".
+**Returns:**\n
+- str: The service URL address in the format "http://{ip}:{port}/v1/chat/interactive".
 ''')
 
 add_chinese_doc('deploy.LMDeploy.extract_result', '''\
-从服务响应中提取生成的文本结果。
+解析模型推理结果，从返回的 JSON 字符串中提取文本输出。
 
-参数:
-    x (str): 服务返回的响应文本。
-    inputs (str): 输入文本。
+Args:
+    x (str): 模型返回的 JSON 格式字符串。  
+    inputs (dict): 原始输入数据（此参数未被直接使用，保留作接口兼容）。  
 
-返回值:
-    str: 提取出的生成文本。
+**Returns:**\n
+- str: 从响应中解析得到的文本结果。  
 ''')
 
 add_english_doc('deploy.LMDeploy.extract_result', '''\
-Extract generated text from the service response.
+Parses the model inference result and extracts the text output from a JSON response string.
 
 Args:
-    x (str): Response text from the service.
-    inputs (str): Input text.
+    x (str): JSON-formatted string returned by the model.  
+    inputs (dict): The original input data (not directly used, reserved for interface compatibility).  
 
-Returns:
-    str: The extracted generated text.
+**Returns:**\n
+- str: The text result extracted from the response.  
 ''')
 
 # Deploy-Infinity
@@ -1744,78 +1730,397 @@ add_example('auto.AutoDeploy', '''\
 <lazyllm.llm.deploy type=Lightllm> 
 ''')
 
+# ModelManager
 add_chinese_doc('ModelManager', '''\
-ModelManager是LazyLLM为开发者提供的自动下载模型的工具类。目前支持从一个本地目录列表查找指定模型，以及从huggingface或者modelscope自动下载模型数据至指定目录。
-在使用ModelManager之前，需要设置下列环境变量：
-
-- LAZYLLM_MODEL_SOURCE: 模型下载源，可以设置为 ``huggingface`` 或 ``modelscope`` 。
-- LAZYLLM_MODEL_SOURCE_TOKEN: ``huggingface`` 或 ``modelscope`` 提供的token，用于下载私有模型。
-- LAZYLLM_MODEL_PATH: 冒号 ``:`` 分隔的本地绝对路径列表用于搜索模型。
-- LAZYLLM_MODEL_CACHE_DIR: 下载后的模型在本地的存储目录
-
-Keyword Args: 
-    model_source (str, 可选): 模型下载源，目前仅支持 ``huggingface`` 或 ``modelscope`` 。如有必要，ModelManager将从此下载源下载模型数据。如果不提供，默认使用
-        LAZYLLM_MODEL_SOURCE环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE，ModelManager将从 ``modelscope`` 下载模型。
-    token (str, 可选): ``huggingface`` 或 ``modelscope`` 提供的token。如果token不为空，ModelManager将使用此token下载模型数据。如果不提供，默认使用
-        LAZYLLM_MODEL_SOURCE_TOKEN环境变量中的设置。如未设置LAZYLLM_MODEL_SOURCE_TOKEN，ModelManager将不会自动下载私有模型。
-    model_path (str, 可选)：冒号(:)分隔的本地绝对路径列表。在实际下载模型数据之前，ModelManager将在此列表包含的目录中尝试寻找目标模型。如果不提供，默认使用
-        LAZYLLM_MODEL_PATH环境变量中的设置。如果为空或LAZYLLM_MODEL_PATH未设置，ModelManager将跳过从model_path中寻找模型的步骤。
-    cache_dir (str, 可选): 一个本地目录的绝对路径。下载后的模型将存放在此目录下，如果不提供，默认使用LAZYLLM_MODEL_CACHE_DIR环境变量中的设置。如果
-        LAZYLLM_MODEL_PATH未设置，默认值为~/.lazyllm/model
-ModelManager.download(model) -> str
-
-用于从model_source下载模型。download函数首先在ModelManager类初始化参数model_path列出的目录中搜索目标模型。如果未找到，会在cache_dir下搜索目标模型。如果仍未找到，
-则从model_source上下载模型并存放于cache_dir下。
+ModelManager 是 LazyLLM 提供的模型管理与下载工具类，支持本地搜索和 Huggingface/Modelscope 下载。  
 
 Args:
-    model (str): 目标模型名称。download函数使用此名称从model_source上下载模型。为了方便开发者使用，LazyLLM为常用模型建立了简略模型名称到下载源实际模型名称的映射，
-        例如 ``Llama-3-8B`` , ``GLM3-6B`` 或 ``Qwen1.5-7B`` 。具体可参考文件 ``lazyllm/module/utils/downloader/model_mapping.py`` 。model可以接受简略模型名或下载源中的模型全名。
+    model_source (Optional[str]): 模型下载源，仅支持 ``huggingface`` 或 ``modelscope``。
+        未提供时使用 LAZYLLM_MODEL_SOURCE，若未设置则默认 ``modelscope``。
+    token (Optional[str]): 下载私有模型的访问令牌。未提供时使用 LAZYLLM_MODEL_SOURCE_TOKEN。
+    model_path (Optional[str]): 冒号分隔的本地绝对路径列表，用于下载前搜索模型。未提供时使用 LAZYLLM_MODEL_PATH。
+    cache_dir (Optional[str]): 本地缓存目录，用于存放下载的模型。未提供时使用 LAZYLLM_MODEL_CACHE_DIR，默认 ``~/.lazyllm/model``。
+
+Static Methods:
+    get_model_type(model: str) -> str
+        返回指定模型类型，如 ``llm``、``chat``，未识别返回 ``llm``。
+    get_model_prompt_keys(model: str) -> dict
+        返回模型的 prompt key 映射字典。
+    validate_model_path(model_path: str) -> bool
+        检查目录下是否存在有效模型文件（扩展名: ``.pt``, ``.bin``, ``.safetensors``）。
+
+Instance Methods:
+    download(model: Optional[str] = '', call_back: Optional[Callable] = None) -> str | bool
+        下载指定模型。流程：
+        1. 在 model_path 列出的本地目录搜索；
+        2. 未找到则在 cache_dir 下搜索；
+        3. 仍未找到则从 model_source 下载并存放 cache_dir。
+
+        Args:
+            model (Optional[str]): 目标模型名称，可使用简略名称或下载源完整名称。
+            call_back (Optional[Callable]): 下载进度回调函数，可选。
 ''')
 
 add_english_doc('ModelManager', '''\
-ModelManager is a utility class provided by LazyLLM for developers to automatically download models.
-Currently, it supports search for models from local directories, as well as automatically downloading model from
-huggingface or modelscope. Before using ModelManager, the following environment variables need to be set:
-
-- LAZYLLM_MODEL_SOURCE: The source for model downloads, which can be set to ``huggingface`` or ``modelscope`` .
-- LAZYLLM_MODEL_SOURCE_TOKEN: The token provided by ``huggingface`` or ``modelscope`` for private model download.
-- LAZYLLM_MODEL_PATH: A colon-separated ``:`` list of local absolute paths for model search.
-- LAZYLLM_MODEL_CACHE_DIR: Directory for downloaded models.
-
-Keyword Args: 
-    model_source (str, optional): The source for model downloads, currently only supports ``huggingface`` or ``modelscope`` .
-        If necessary, ModelManager downloads model data from the source. If not provided, LAZYLLM_MODEL_SOURCE
-        environment variable would be used, and if LAZYLLM_MODEL_SOURCE is not set, ModelManager will not download
-        any model.
-    token (str, optional): The token provided by ``huggingface`` or ``modelscope`` . If the token is present, ModelManager uses
-        the token to download model. If not provided, LAZYLLM_MODEL_SOURCE_TOKEN environment variable would be used.
-        and if LAZYLLM_MODEL_SOURCE_TOKEN is not set, ModelManager will not download private models, only public ones.
-    model_path (str, optional): A colon-separated list of absolute paths. Before actually start to download model,
-        ModelManager trys to find the target model in the directories in this list. If not provided,
-        LAZYLLM_MODEL_PATH environment variable would be used, and LAZYLLM_MODEL_PATH is not set, ModelManager skips
-        looking for models from model_path.
-    cache_dir (str, optional): An absolute path of a directory to save downloaded models. If not provided,
-        LAZYLLM_MODEL_CACHE_DIR environment variable would be used, and if LAZYLLM_MODEL_PATH is not set, the default
-        value is ~/.lazyllm/model.
-
-<span style="font-size: 20px;">&ensp;**`ModelManager.download(model) -> str`**</span>
-
-Download models from model_source. The function first searches for the target model in directories listed in the
-model_path parameter of ModelManager class. If not found, it searches under cache_dir. If still not found,
-it downloads the model from model_source and stores it under cache_dir.
+ModelManager is a utility class in LazyLLM for managing and downloading models, supporting local search and Huggingface/Modelscope downloads.  
 
 Args:
-    model (str): The name of the target model. The function uses this name to download the model from model_source.
-    To further simplify use of the function, LazyLLM provides a mapping dict from abbreviated model names to original
-    names on the download source for popular models, such as ``Llama-3-8B`` , ``GLM3-6B`` or ``Qwen1.5-7B``. For more details,
-    please refer to the file ``lazyllm/module/utils/downloader/model_mapping.py`` . The model argument can be either
-    an abbreviated name or one from the download source.
+    model_source (Optional[str]): Model download source, only ``huggingface`` or ``modelscope`` supported.
+        Defaults to LAZYLLM_MODEL_SOURCE, and ``modelscope`` if unset.
+    token (Optional[str]): Access token for private models. Defaults to LAZYLLM_MODEL_SOURCE_TOKEN.
+    model_path (Optional[str]): Colon-separated list of local absolute paths to search before download. Defaults to LAZYLLM_MODEL_PATH.
+    cache_dir (Optional[str]): Directory for downloaded models. Defaults to LAZYLLM_MODEL_CACHE_DIR, or ``~/.lazyllm/model``.
+
+Static Methods:
+    get_model_type(model: str) -> str
+        Returns model type, e.g., ``llm`` or ``chat``; returns ``llm`` if unrecognized.
+    get_model_prompt_keys(model: str) -> dict
+        Returns the prompt key mapping dictionary for the model.
+    validate_model_path(model_path: str) -> bool
+        Checks if directory contains valid model files (extensions: ``.pt``, ``.bin``, ``.safetensors``).
+
+Instance Methods:
+    download(model: Optional[str] = '', call_back: Optional[Callable] = None) -> str | bool
+        Downloads the specified model. Process:
+        1. Search in local directories listed in model_path;
+        2. If not found, search in cache_dir;
+        3. If still not found, download from model_source to cache_dir.
+
+        Args:
+            model (Optional[str]): Target model name, can be abbreviated or full name from source.
+            call_back (Optional[Callable]): Optional callback function for download progress.
 ''')
 
 add_example('ModelManager', '''\
 >>> from lazyllm.components import ModelManager
 >>> downloader = ModelManager(model_source='modelscope')
 >>> downloader.download('chatglm3-6b')
+''')
+
+add_chinese_doc('ModelManager.get_model_type', '''\
+根据模型名称获取模型类型（如 LLM、VLM 等）。
+
+Args:
+    model (str): 模型名称或路径，必须为非空字符串。
+
+**Returns:**\n
+- str: 模型类型，如果无法匹配则返回 ``llm``。
+''')
+
+add_english_doc('ModelManager.get_model_type', '''\
+Retrieve the type of a model (e.g., LLM, VLM) based on its name.
+
+Args:
+    model (str): Model name or path, must be a non-empty string.
+
+**Returns:**\n
+- str: Model type, returns ``llm`` if no match is found.
+''')
+
+add_chinese_doc('ModelManager.get_model_prompt_keys', '''\
+获取指定模型的 prompt key 映射字典，用于推理时构建输入。  
+
+Args:
+    model (str): 模型名称或路径。
+
+**Returns:**\n
+- dict: 模型对应的 prompt key 映射，如果不存在则返回空字典
+''')
+
+add_english_doc('ModelManager.get_model_prompt_keys', '''\
+Get the prompt key mapping dictionary for the specified model, used for constructing inputs during inference.  
+
+Args:
+    model (str): Model name or path.
+
+**Returns:**\n
+- dict: The prompt key mapping for the model, or an empty dictionary if none exists
+''')
+
+add_chinese_doc('ModelManager.validate_model_path', '''\
+检查指定路径下是否存在有效的模型文件（.pt, .bin, .safetensors）。  
+
+Args:
+    model_path (str): 模型目录路径。
+
+**Returns:**\n
+- bool: 如果目录中存在模型文件返回 True，否则返回 False
+''')
+
+add_english_doc('ModelManager.validate_model_path', '''\
+Check whether the specified path contains valid model files (.pt, .bin, .safetensors).  
+
+Args:
+    model_path (str): Path to the model directory.
+
+**Returns:**\n
+- bool: True if model files exist in the directory, False otherwise
+''')
+
+add_chinese_doc('ModelManager.download', '''\
+下载指定名称的模型，如果本地已有则直接返回本地路径；  
+支持 Huggingface 和 Modelscope 平台的自动下载，并会在缓存目录创建符号链接以便统一管理。  
+
+Args:
+    model (str, optional): 模型名称或路径，默认为空字符串，表示不下载。
+    call_back (Optional[Callable], optional): 下载进度回调函数，接受当前下载状态等参数。  
+
+**Returns:**\n
+- str | bool: 模型在本地的完整路径，如果下载失败返回 False
+''')
+
+add_english_doc('ModelManager.download', '''\
+Download the specified model by name. If it already exists locally, return the local path.  
+Supports automatic download from Huggingface and Modelscope, creating a symbolic link in the cache directory for unified management.  
+
+Args:
+    model (str, optional): Model name or path, defaults to empty string which means no download.
+    call_back (Optional[Callable], optional): Callback function for download progress, receives current download status.  
+
+**Returns:**\n
+- str | bool: Full local path to the model, or False if the download fails
+''')
+
+# Configure-Auto
+add_chinese_doc('auto.configure.core.Configurations', '''\
+配置管理类，用于管理一组规则（Rule），支持根据规则解析表头和数据值，并进行基于关键字段的查询。
+
+Args:
+    rules (List[Rule]): 规则列表，每个规则名称必须唯一。用于定义数据解析、类型转换及索引映射。
+''')
+
+add_english_doc('auto.configure.core.Configurations', '''\
+Configuration management class to handle a set of rules (Rule), supporting parsing of headers and data values, and lookup based on key fields.
+
+Args:
+    rules (List[Rule]): List of rules, each rule name must be unique. Defines data parsing, type conversion, and index mapping.
+''')
+
+add_chinese_doc('auto.configure.core.Configurations.parse_header', '''\
+解析表头，根据给定名称列表匹配已有规则，并确定关键规则和有序规则列表。
+
+Args:
+    names (List[str]): 表头名称列表，每个名称必须对应已有规则。
+
+**Returns:**\n
+- self (Configurations): 返回自身实例，便于链式调用
+''')
+
+add_english_doc('auto.configure.core.Configurations.parse_header', '''\
+Parse the header, match existing rules according to the given list of names, and determine key rules and the ordered rules list.
+
+Args:
+    names (List[str]): List of header names, each must correspond to an existing rule.
+
+**Returns:**\n
+- self (Configurations): Returns the instance itself for chaining
+''')
+
+add_chinese_doc('auto.configure.core.Configurations.parse_values', '''\
+解析数据值列表，将每行字符串值转换为对应规则的值，并生成按关键字段索引的有序值字典。
+
+Args:
+    values (Iterator[List[str]]): 数据值迭代器，每行是与表头对应的字符串列表。
+
+**Returns:**\n
+- self (Configurations): 返回自身实例，便于链式调用
+''')
+
+add_english_doc('auto.configure.core.Configurations.parse_values', '''\
+Parse the list of data values, convert each row of string values to the corresponding rule values, and generate an ordered values dictionary indexed by key fields.
+
+Args:
+    values (Iterator[List[str]]): Iterator of data rows, each row is a list of strings corresponding to the header.
+
+**Returns:**\n
+- self (Configurations): Returns the instance itself for chaining
+''')
+
+add_chinese_doc('auto.configure.core.Configurations.lookup', '''\
+根据关键字段的值进行查询，返回匹配的有序值列表，每个元素为字典形式映射规则名称与对应值。
+
+Args:
+    keys (List[Union[str, Any]]): 用于查询的关键字段值字典，键为规则名称，值为对应值。
+
+**Returns:**\n
+- List[Dict[str, Any]]: 匹配的结果列表，每个元素为规则名称到对应值的字典
+''')
+
+add_english_doc('auto.configure.core.Configurations.lookup', '''\
+Lookup based on the values of key fields, returning a list of matched ordered values, each element is a dictionary mapping rule names to their corresponding values.
+
+Args:
+    keys (List[Union[str, Any]]): Dictionary of key field values used for lookup, with rule names as keys and corresponding values.
+
+**Returns:**\n
+- List[Dict[str, Any]]: List of matched results, each element is a dictionary mapping rule names to values
+''')
+
+# Rule-Auto
+add_chinese_doc('auto.configure.core.Rule', '''\
+用于定义参数或字段的规则，支持在字符串、值和索引之间进行双向转换。  
+规则可以通过选项集合或类型推断方式构建，并提供校验功能，用于确保值在给定选项范围内。  
+同时支持不同的匹配模式（如线性匹配、二分查找等）。
+
+Args:
+    name (str): 规则名称，不能为空字符串。
+    options (Options[T] | None): 候选值集合，包含是否支持映射、索引以及匹配方式等信息。可选。
+    convert (Callable[[str], T] | None): 将字符串转换为目标值的函数。若未指定，将从 options 或类型自动推断。
+''')
+
+add_english_doc('auto.configure.core.Rule', '''\
+Defines a rule for parameters or fields, supporting bidirectional conversion between strings, values, and indices.  
+A rule can be constructed using an option set or type inference, and provides validation to ensure values fall within the allowed options.  
+It also supports different matching modes (e.g., linear search, binary search).
+
+Args:
+    name (str): Rule name, must not be an empty string.
+    options (Options[T] | None): Candidate values set, containing information about mapping, indexing, and matching modes. Optional.
+    convert (Callable[[str], T] | None): Function to convert strings to target values. If not provided, it will be inferred from options or value type.
+''')
+
+add_chinese_doc('auto.configure.core.Rule.from_indexed', '''\
+通过提供有序选项列表创建规则，启用映射和索引功能。适用于需要基于索引快速查找的场景。
+
+Args:
+    name (str): 规则名称。
+    options (List[T]): 候选值列表，不能为空。
+    matches (SearchMode): 匹配方式，默认为 ``SearchMode.LINEAR_EXACTLY``。
+
+**Returns:**\n
+- Rule[T]: 构建的规则对象
+''')
+
+add_english_doc('auto.configure.core.Rule.from_indexed', '''\
+Create a rule with an ordered option list, enabling mapping and indexing.  
+Suitable for scenarios requiring fast lookup by index.
+
+Args:
+    name (str): Rule name.
+    options (List[T]): Candidate values list, must not be empty.
+    matches (SearchMode): Matching mode, defaults to ``SearchMode.LINEAR_EXACTLY``.
+
+**Returns:**\n
+- Rule[T]: Constructed rule object
+''')
+
+add_chinese_doc('auto.configure.core.Rule.from_options', '''\
+通过提供候选值列表创建规则，可选择是否启用映射功能。  
+若 mapping 未指定，则在候选值全为字符串时自动启用。
+
+Args:
+    name (str): 规则名称。
+    options (List[T]): 候选值列表，不能为空。
+    mapping (bool | None): 是否启用映射，默认为 ``None``，此时由系统自动推断。
+    matches (SearchMode): 匹配方式，默认为 ``SearchMode.LINEAR_EXACTLY``。
+
+**Returns:**\n
+- Rule[T]: 构建的规则对象
+''')
+
+add_english_doc('auto.configure.core.Rule.from_options', '''\
+Create a rule from a candidate value list, with optional mapping support.  
+If mapping is not specified, it will be automatically enabled when all options are strings.
+
+Args:
+    name (str): Rule name.
+    options (List[T]): Candidate values list, must not be empty.
+    mapping (bool | None): Whether to enable mapping, defaults to ``None``, automatically inferred when not set.
+    matches (SearchMode): Matching mode, defaults to ``SearchMode.LINEAR_EXACTLY``.
+
+**Returns:**\n
+- Rule[T]: Constructed rule object
+''')
+
+add_chinese_doc('auto.configure.core.Rule.from_type', '''\
+通过指定值类型创建规则，系统将根据类型自动推断字符串转换函数。  
+适用于布尔型、整型和字符串类型的参数。
+
+Args:
+    name (str): 规则名称。
+    value_type (type): 值的类型，仅支持 ``bool``、``int`` 和 ``str``。
+
+**Returns:**\n
+- Rule[T]: 构建的规则对象
+''')
+
+add_english_doc('auto.configure.core.Rule.from_type', '''\
+Create a rule by specifying the value type.  
+The system will automatically infer the string-to-value converter based on the type.  
+Supports only ``bool``, ``int``, and ``str`` types.
+
+Args:
+    name (str): Rule name.
+    value_type (type): Type of the value, supports ``bool``, ``int``, and ``str`` only.
+
+**Returns:**\n
+- Rule[T]: Constructed rule object
+''')
+
+add_chinese_doc('auto.configure.core.Rule.convert_string_to_value', '''\
+将输入字符串转换为规则定义的值。  
+若定义了候选选项，则会额外检查转换后的值是否在候选范围内。
+
+Args:
+    source (str): 待转换的字符串。
+
+**Returns:**\n
+- T: 转换后的值
+''')
+
+add_english_doc('auto.configure.core.Rule.convert_string_to_value', '''\
+Convert the input string into a value defined by the rule.  
+If candidate options are defined, it additionally validates that the converted value exists in the option set.
+
+Args:
+    source (str): The input string to be converted.
+
+**Returns:**\n
+- T: Converted value
+''')
+
+add_chinese_doc('auto.configure.core.Rule.convert_value_to_index', '''\
+将值转换为在候选选项中的索引。  
+若定义了匹配函数，则优先使用匹配函数查找索引；否则尝试直接在候选列表中定位。
+
+Args:
+    value (T): 需要转换的值。
+
+**Returns:**\n
+- List[int]: 包含两个元素的列表，分别为匹配到的索引和候选项总数
+''')
+
+add_english_doc('auto.configure.core.Rule.convert_value_to_index', '''\
+Convert a value into its index within the candidate options.  
+If a match function is defined, it is used first; otherwise, the method tries to locate the value directly in the options list.
+
+Args:
+    value (T): The value to be converted.
+
+**Returns:**\n
+- List[int]: A two-element list containing the matched index and the total number of options
+''')
+
+add_chinese_doc('auto.configure.core.Rule.convert_index_to_value', '''\
+根据索引获取候选选项中的值。  
+若索引超出范围，将抛出异常。
+
+Args:
+    index (int): 候选列表中的索引。
+
+**Returns:**\n
+- T: 对应的候选值
+''')
+
+add_english_doc('auto.configure.core.Rule.convert_index_to_value', '''\
+Retrieve a value from the candidate options by its index.  
+Raises an error if the index is out of range.
+
+Args:
+    index (int): Index within the candidate options list.
+
+**Returns:**\n
+- T: The corresponding candidate value
 ''')
 
 add_chinese_doc('LLMType', '''\
@@ -3006,120 +3311,84 @@ add_example('SenseVoiceDeploy', ['''\
 ... xxxxxxxxxxxxxxxx
 '''])
 
-add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice', '''\
-SenseVoice(base_path, source=None, init=False)
+add_chinese_doc('deploy.speech_to_text.sense_voice.SenseVoice', '''\
+SenseVoice 类，封装了基于 FunASR 的语音转文本模型加载与调用逻辑。  
+支持懒加载、自动模型下载，输入可为字符串路径、URL 或包含音频的字典。  
 
-A speech-to-text wrapper using FunASR models for lazy initialization and audio transcription.
-This class supports automatic model downloading, safe initialization, and inference from audio paths or URLs.
-
-Parameters:
-- base_path (str): Path or model identifier to download the STT model.
-- source (str, optional): Model source name; defaults to `lazyllm.config['model_source']`.
-- init (bool): Whether to initialize the model immediately on creation.
+Args:
+    base_path (str): 模型路径或标识符，将通过 ModelManager 下载到本地。  
+    source (Optional[str]): 模型来源，若未指定则使用 ``lazyllm.config['model_source']``。  
+    init (bool): 是否在初始化时立即加载模型，默认为 ``False``。  
 
 Attributes:
-- base_path (str): Final resolved path of the model after download.
-- model: Loaded FunASR model instance.
-- init_flag: A lazy flag used to ensure model is only loaded once.
-
-Methods:
-- __call__(string: str | dict) -> str:
-    Transcribes the input audio file or URL to text. Accepts base64-encoded content, file paths, or URLs.
-- load_stt():
-    Loads the FunASR speech-to-text model and related VAD (Voice Activity Detection).
-- rebuild(base_path, init):
-    Rebuilds the class instance (used for serialization).
-- __reduce__():
-    Supports pickling by ensuring proper lazy-loading on deserialization.
+    base_path (str): 下载或解析后的模型路径。  
+    model (Optional[funasr.AutoModel]): FunASR 语音识别模型实例，初始化后可用。  
+    init_flag: 用于懒加载的标志，确保模型只加载一次。  
 ''')
 
-add_chinese_doc('deploy.speech_to_text.sense_voice.SenseVoice', '''\
-SenseVoice(base_path, source=None, init=False)
+add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice', '''\
+The SenseVoice class encapsulates FunASR-based speech-to-text model loading and invocation.  
+It supports lazy initialization, automatic model downloading, and accepts string paths, URLs, or dicts containing audio.  
 
-使用 FunASR 模型进行语音转文本的包装类，支持懒加载与自动模型下载。
-支持从音频路径、URL 或 base64 编码音频进行转写，适用于延迟初始化和高效部署。
+Args:
+    base_path (str): Model path or identifier, downloaded locally via ModelManager.  
+    source (Optional[str]): Model source, defaults to ``lazyllm.config['model_source']`` if not specified.  
+    init (bool): Whether to load the model immediately during initialization. Defaults to ``False``.  
 
-参数：
-- base_path (str): 用于下载语音识别模型的路径或模型标识。
-- source (str, 可选): 模型来源，默认使用 `lazyllm.config['model_source']`。
-- init (bool): 是否在初始化时立即加载模型。
-
-属性：
-- base_path (str): 下载后模型的实际路径。
-- model: 加载的 FunASR 模型对象。
-- init_flag: 用于懒加载的初始化标志，保证模型只加载一次。
-
-方法：
-- __call__(string: str | dict) -> str:
-    将输入的音频文件或 URL 转换为文本。支持 base64 编码、文件路径或 URL 输入。
-- load_stt():
-    加载 FunASR 的语音识别模型和语音活动检测（VAD）模型。
-- rebuild(base_path, init):
-    用于重新构造类实例（常用于序列化）。
-- __reduce__():
-    实现 pickling 支持，确保在反序列化时正确懒加载。
+Attributes:
+    base_path (str): Resolved local path of the downloaded model.  
+    model (Optional[funasr.AutoModel]): Instance of the FunASR speech recognition model, available after initialization.  
+    init_flag: A flag used for lazy loading, ensuring the model is loaded only once.  
 ''')
 
 add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice.load_stt', '''\
-load_stt()
+Initializes and loads the FunASR speech-to-text model. Supports Huawei NPU acceleration if `torch_npu` is available.
 
-Loads the speech-to-text model using FunASR with optional support for Huawei NPU via `torch_npu`.
+Key configurations:
+- Uses `fsmn-vad` for voice activity detection (VAD), supporting long utterances.
+- Maximum single segment duration is set to 30 seconds.
+- Default inference device is `cuda:0` (GPU).
 
-The method initializes the model with the following characteristics:
-- Uses `fsmn-vad` for voice activity detection with long utterance support.
-- Sets maximum single segment time to 30 seconds.
-- Selects `cuda:0` as the default inference device.
-
-The model is stored in `self.model` and will be used to transcribe audio input.
+The loaded model is assigned to `self.model` for subsequent audio transcription.
 
 Note:
-If `torch_npu` is available in the environment, the function attempts to load it for potential Huawei Ascend acceleration.
+- If the environment has `torch_npu` installed, the method will import it to enable Ascend NPU acceleration.
 ''')
 
 add_chinese_doc('deploy.speech_to_text.sense_voice.SenseVoice.load_stt', '''\
-load_stt()
+初始化并加载 FunASR 语音转文本模型，如果存在 `torch_npu` 则支持华为 NPU 加速。
 
-使用 FunASR 加载语音转文本模型，支持华为 NPU（如存在 `torch_npu`）。
+主要配置：
+- 使用 `fsmn-vad` 进行语音活动检测（VAD），支持长语音段。
+- 单段语音最大持续时间为 30 秒。
+- 默认推理设备为 `cuda:0`（GPU）。
 
-此方法将初始化模型，包含以下设置：
-- 使用 `fsmn-vad` 进行语音活动检测（VAD），支持最长 30 秒的单段语音。
-- 设置推理设备为 `cuda:0`（默认使用 GPU）。
-- 将模型实例保存在 `self.model` 中，用于后续音频转写。
+加载的模型将保存在 `self.model` 中，用于后续音频转写。
 
 注意：
-如果当前环境中存在 `torch_npu`，函数将自动导入以支持华为昇腾设备加速。
-''')
-
-add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice.rebuild', '''\
-rebuild(base_path: str, init: bool) -> SenseVoice
-
-Class method used to reconstruct a `SenseVoice` instance during deserialization (e.g., when using `cloudpickle`).
-
-Parameters:
-- base_path (str): Path to the speech-to-text model.
-- init (bool): Whether to immediately initialize and load the model upon creation.
-
-Returns:
-- A new instance of `SenseVoice` with the specified configuration.
-
-Note:
-This method is internally used to support model serialization and multiprocessing compatibility.
+- 如果当前环境中存在 `torch_npu`，函数会导入以支持昇腾 NPU 加速。
 ''')
 
 add_chinese_doc('deploy.speech_to_text.sense_voice.SenseVoice.rebuild', '''\
-rebuild(base_path: str, init: bool) -> SenseVoice
+类方法，用于在反序列化过程中重新构建 `SenseVoice` 实例（例如使用 `cloudpickle`）。  
 
-该类方法用于反序列化（如 `cloudpickle`）过程中重新构建 `SenseVoice` 实例。
+Args:
+    base_path (str): 语音识别模型路径。  
+    init (bool): 实例化时是否立即初始化并加载模型。
 
-参数：
-- base_path (str)：语音识别模型的路径。
-- init (bool)：是否在实例化时立即加载模型。
+**Returns:**\n
+- SenseVoice: 返回一个新的 `SenseVoice` 实例，用于支持序列化/多进程兼容。
+''')
 
-返回：
-- 一个新的 `SenseVoice` 实例。
+add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice.rebuild', '''\
+Class method to reconstruct a `SenseVoice` instance during deserialization (e.g., with `cloudpickle`).  
 
-说明：
-该方法主要用于支持对象的序列化与多进程环境下的兼容重建操作。
+Args:
+    base_path (str): Path to the speech-to-text model.  
+    init (bool): Whether to initialize and load the model upon instantiation.
+
+**Returns:**\n
+- SenseVoice: A new `SenseVoice` instance, used for serialization/multiprocessing compatibility.
 ''')
 
 add_english_doc('TTSDeploy', '''\
@@ -3318,222 +3587,8 @@ add_example('OCRDeploy', ['''\
 ... <RelayServer instance ready to handle OCR requests>
 '''])
 
-# ============= Launcher
-
-add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.launcher)
-add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.launcher)
-add_example = functools.partial(utils.add_example, module=lazyllm.launcher)
-
-# Launcher-EmptyLauncher
-add_chinese_doc('EmptyLauncher', '''\
-此类是 ``LazyLLMLaunchersBase`` 的子类，作为一个本地的启动器。
-
-Args:
-    subprocess (bool): 是否使用子进程来启动。默认为 `False`。
-    sync (bool): 是否同步执行作业。默认为 `True`，否则为异步执行。
-
-''')
-
-add_english_doc('EmptyLauncher', '''\
-This class is a subclass of ``LazyLLMLaunchersBase`` and serves as a local launcher.
-
-Args:
-    subprocess (bool): Whether to use a subprocess to launch. Default is ``False``.
-    sync (bool): Whether to execute jobs synchronously. Default is ``True``, otherwise it executes asynchronously.
-
-''')
-
-add_example('EmptyLauncher', '''\
->>> import lazyllm
->>> launcher = lazyllm.launchers.empty()
-''')
-
-# Launcher-SlurmLauncher
-add_chinese_doc('SlurmLauncher', '''\
-此类是 ``LazyLLMLaunchersBase`` 的子类，作为slurm启动器。
-
-具体而言，它提供了启动和配置 Slurm 作业的方法，包括指定分区、节点数量、进程数量、GPU 数量以及超时时间等参数。
-
-Args:
-    partition (str): 要使用的 Slurm 分区。默认为 ``None``，此时将使用 ``lazyllm.config['partition']`` 中的默认分区。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SLURM_PART=a100`` 。
-    nnode  (int): 要使用的节点数量。默认为 ``1``。
-    nproc (int): 每个节点要使用的进程数量。默认为 ``1``。
-    ngpus: (int): 每个节点要使用的 GPU 数量。默认为 ``None``, 即不使用 GPU。
-    timeout (int): 作业的超时时间（以秒为单位）。默认为 ``None``，此时将不设置超时时间。
-    sync (bool): 是否同步执行作业。默认为 ``True``，否则为异步执行。
-
-''')
-
-add_english_doc('SlurmLauncher', '''\
-This class is a subclass of ``LazyLLMLaunchersBase`` and acts as a Slurm launcher.
-
-Specifically, it provides methods to start and configure Slurm jobs, including specifying parameters such as the partition, number of nodes, number of processes, number of GPUs, and timeout settings.
-
-Args:
-    partition (str): The Slurm partition to use. Defaults to ``None``, in which case the default partition in ``lazyllm.config['partition']`` will be used. This configuration can be enabled by setting environment variables, such as ``export LAZYLLM_SLURM_PART=a100``.
-    nnode  (int): The number of nodes to use. Defaults to ``1``.
-    nproc (int): The number of processes per node. Defaults to ``1``.
-    ngpus (int): The number of GPUs per node. Defaults to ``None``, meaning no GPUs will be used.
-    timeout (int): The timeout for the job in seconds. Defaults to ``None``, in which case no timeout will be set.
-    sync (bool): Whether to execute the job synchronously. Defaults to ``True``, otherwise it will be executed asynchronously.
-
-''')
-
-add_example('SlurmLauncher', '''\
->>> import lazyllm
->>> launcher = lazyllm.launchers.slurm(partition='partition_name', nnode=1, nproc=1, ngpus=1, sync=False)
-''')
-
-# SlurmLauncher methods
-add_chinese_doc('SlurmLauncher.makejob', '''\
-创建并返回一个 SlurmLauncher.Job 对象。
-
-Args:
-    cmd: 要执行的命令字符串。
-
-Returns:
-    SlurmLauncher.Job: 配置好的 Slurm 作业对象。
-''')
-
-add_english_doc('SlurmLauncher.makejob', '''\
-Creates and returns a SlurmLauncher.Job object.
-
-Args:
-    cmd: The command string to execute.
-
-Returns:
-    SlurmLauncher.Job: A configured Slurm job object.
-''')
-
-add_chinese_doc('SlurmLauncher.get_idle_nodes', '''\
-获取指定分区中当前可用的节点数量，基于可用 GPU 数量。
-
-该方法通过查询 Slurm 队列状态和节点信息，计算每个节点的可用 GPU 数量，并返回一个字典，其中键为节点 IP，值为可用 GPU 数量。
-
-Args:
-    partion (str, optional): 要查询的分区名称。默认为 ``None``，此时使用当前启动器的分区。
-
-Returns:
-    dict: 以节点 IP 为键、可用 GPU 数量为值的字典。
-''')
-
-add_english_doc('SlurmLauncher.get_idle_nodes', '''\
-Obtains the current number of available nodes in the specified partition based on the available number of GPUs.
-
-This method queries the Slurm queue status and node information to calculate the number of available GPUs for each node, and returns a dictionary with node IP as the key and the number of available GPUs as the value.
-
-Args:
-    partion (str, optional): The partition name to query. Defaults to ``None``, in which case the current launcher's partition will be used.
-
-Returns:
-    dict: A dictionary with node IP as the key and the number of available GPUs as the value.
-''')
-
-add_chinese_doc('SlurmLauncher.launch', '''\
-启动 Slurm 作业并管理其执行。
-
-该方法启动指定的 Slurm 作业，并根据同步设置决定是否等待作业完成。如果设置为同步执行，会持续监控作业状态直到完成，然后停止作业。
-
-Args:
-    job: 要启动的 SlurmLauncher.Job 对象。
-
-Returns:
-    作业的返回值。
-
-Raises:
-    AssertionError: 如果传入的 job 不是 SlurmLauncher.Job 类型。
-''')
-
-add_english_doc('SlurmLauncher.launch', '''\
-Launches a Slurm job and manages its execution.
-
-This method starts the specified Slurm job and decides whether to wait for job completion based on the sync setting. If set to synchronous execution, it continuously monitors the job status until completion, then stops the job.
-
-Args:
-    job: The SlurmLauncher.Job object to launch.
-
-Returns:
-    The return value of the job.
-
-Raises:
-    AssertionError: If the provided job is not a SlurmLauncher.Job type.
-''')
-
-# Launcher-ScoLauncher
-add_chinese_doc('ScoLauncher', '''\
-此类是 ``LazyLLMLaunchersBase`` 的子类，作为SCO (Sensecore)启动器。
-
-具体而言，它提供了启动和配置 SCO 作业的方法，包括指定分区、工作空间名称、框架类型、节点数量、进程数量、GPU 数量以及是否使用 torchrun 等参数。
-
-Args:
-    partition (str): 要使用的分区。默认为 ``None``，此时将使用 ``lazyllm.config['partition']`` 中的默认分区。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SLURM_PART=a100`` 。
-    workspace_name (str): SCO 上的工作空间名称。默认为 ``lazyllm.config['sco.workspace']`` 中的配置。该配置可通过设置环境变量来生效，如 ``export LAZYLLM_SCO_WORKSPACE=myspace`` 。
-    framework (str): 要使用的框架类型，例如 ``pt`` 代表 PyTorch。默认为 ``pt``。
-    nnode  (int): 要使用的节点数量。默认为 ``1``。
-    nproc (int): 每个节点要使用的进程数量。默认为 ``1``。
-    ngpus: (int): 每个节点要使用的 GPU 数量。默认为 ``1``, 使用1块 GPU。
-    torchrun (bool): 是否使用 ``torchrun`` 启动作业。默认为 ``False``。
-    sync (bool): 是否同步执行作业。默认为 ``True``，否则为异步执行。
-
-''')
-
-add_english_doc('ScoLauncher', '''\
-This class is a subclass of ``LazyLLMLaunchersBase`` and acts as a SCO launcher.
-
-Specifically, it provides methods to start and configure SCO jobs, including specifying parameters such as the partition, workspace name, framework type, number of nodes, number of processes, number of GPUs, and whether to use torchrun or not.
-
-Args:
-    partition (str): The Slurm partition to use. Defaults to ``None``, in which case the default partition in ``lazyllm.config['partition']`` will be used. This configuration can be enabled by setting environment variables, such as ``export LAZYLLM_SLURM_PART=a100``.
-    workspace_name (str): The workspace name on SCO. Defaults to the configuration in ``lazyllm.config['sco.workspace']``. This configuration can be enabled by setting environment variables, such as ``export LAZYLLM_SCO_WORKSPACE=myspace``.
-    framework (str): The framework type to use, for example, ``pt`` for PyTorch. Defaults to ``pt``.
-    nnode  (int): The number of nodes to use. Defaults to ``1``.
-    nproc (int): The number of processes per node. Defaults to ``1``.
-    ngpus (int): The number of GPUs per node. Defaults to ``1``, using 1 GPU.
-    torchrun (bool): Whether to start the job with ``torchrun``. Defaults to ``False``.
-    sync (bool): Whether to execute the job synchronously. Defaults to ``True``, otherwise it will be executed asynchronously.
-
-''')
-
-add_example('ScoLauncher', '''\
->>> import lazyllm
->>> launcher = lazyllm.launchers.sco(partition='partition_name', nnode=1, nproc=1, ngpus=1, sync=False)
-''')
-
-# Launcher-RemoteLauncher
-add_chinese_doc('RemoteLauncher', '''\
-此类是 ``LazyLLMLaunchersBase`` 的一个子类，它充当了一个远程启动器的代理。它根据配置文件中的 ``lazyllm.config['launcher']`` 条目动态地创建并返回一个对应的启动器实例(例如：``SlurmLauncher`` 或 ``ScoLauncher``)。
-
-Args:
-    *args: 位置参数，将传递给动态创建的启动器构造函数。
-    sync (bool): 是否同步执行作业。默认为 ``False``。
-    **kwargs: 关键字参数，将传递给动态创建的启动器构造函数。
-
-注意事项: 
-    - ``RemoteLauncher`` 不是一个直接的启动器，而是根据配置动态创建一个启动器。 
-    - 配置文件中的 ``lazyllm.config['launcher']`` 指定一个存在于 ``lazyllm.launchers`` 模块中的启动器类名。该配置可通过设置环境变量 ``LAZYLLM_DEFAULT_LAUNCHER`` 来设置。如：``export LAZYLLM_DEFAULT_LAUNCHER=sco`` , ``export LAZYLLM_DEFAULT_LAUNCHER=slurm`` 。
-''')
-
-add_english_doc('RemoteLauncher', '''\
-This class is a subclass of ``LazyLLMLaunchersBase`` and acts as a proxy for a remote launcher. It dynamically creates and returns an instance of the corresponding launcher based on the ``lazyllm.config['launcher']`` entry in the configuration file (for example: ``SlurmLauncher`` or ``ScoLauncher``).
-
-Args:
-    *args: Positional arguments that will be passed to the constructor of the dynamically created launcher.
-    sync (bool): Whether to execute the job synchronously. Defaults to ``False``.
-    **kwargs: Keyword arguments that will be passed to the constructor of the dynamically created launcher.
-
-Notes: 
-    - ``RemoteLauncher`` is not a direct launcher but dynamically creates a launcher based on the configuration. 
-    - The ``lazyllm.config['launcher']`` in the configuration file specifies a launcher class name present in the ``lazyllm.launchers`` module. This configuration can be set by setting the environment variable ``LAZYLLM_DEAULT_LAUNCHER``. For example: ``export LAZYLLM_DEAULT_LAUNCHER=sco``, ``export LAZYLLM_DEAULT_LAUNCHER=slurm``.
-
-''')
-
-add_example('RemoteLauncher', '''\
->>> import lazyllm
->>> launcher = lazyllm.launchers.remote(ngpus=1)
-''')
-
 # core.py
-add_chinese_doc('lazyllm.components.core.ComponentBase', '''\
+add_chinese_doc('core.ComponentBase', '''\
 组件基类，提供统一的接口与基础实现，便于创建不同类型的组件。  
 组件通过指定的 Launcher 来执行任务，支持自定义任务执行逻辑。
 
@@ -3541,7 +3596,7 @@ Args:
     launcher (LazyLLMLaunchersBase or type, optional): 组件使用的启动器实例或启动器类，默认为空启动器（empty）。
 ''')
 
-add_english_doc('lazyllm.components.core.ComponentBase', '''\
+add_english_doc('core.ComponentBase', '''\
 Base class for components, providing a unified interface and basic implementation to facilitate creation of various components.  
 Components execute tasks via a specified launcher and support custom task execution logic.
 
@@ -3549,7 +3604,7 @@ Args:
     launcher (LazyLLMLaunchersBase or type, optional): Launcher instance or launcher class used by the component, defaults to empty launcher.
 ''')
 
-add_example('lazyllm.components.core.ComponentBase', '''\
+add_example('core.ComponentBase', '''\
 >>> from lazyllm.components.core import ComponentBase
 >>> class MyComponent(ComponentBase):
 ...     def apply(self, x):
@@ -3565,7 +3620,7 @@ ExampleComponent
 10
 ''')
 
-add_chinese_doc('lazyllm.components.core.ComponentBase.apply', '''\
+add_chinese_doc('core.ComponentBase.apply', '''\
 组件执行的核心方法，需由子类实现。  
 定义组件的具体业务逻辑或任务执行步骤。  
 
@@ -3573,7 +3628,7 @@ add_chinese_doc('lazyllm.components.core.ComponentBase.apply', '''\
 调用组件时，如果子类重写了此方法，则会调用此方法执行任务。  
 ''')
 
-add_english_doc('lazyllm.components.core.ComponentBase.apply', '''\
+add_english_doc('core.ComponentBase.apply', '''\
 Core execution method of the component, to be implemented by subclasses.  
 Defines the specific business logic or task execution steps of the component.
 
@@ -3581,7 +3636,7 @@ Defines the specific business logic or task execution steps of the component.
 If this method is overridden by the subclass, it will be called when the component is invoked.
 ''')
 
-add_chinese_doc('lazyllm.components.core.ComponentBase.cmd', '''\
+add_chinese_doc('core.ComponentBase.cmd', '''\
 生成组件的执行命令，需由子类实现。  
 返回的命令可以是字符串、元组或列表，表示具体执行任务的指令。  
 
@@ -3589,188 +3644,10 @@ add_chinese_doc('lazyllm.components.core.ComponentBase.cmd', '''\
 调用组件时，如果未重写 `apply` 方法，将通过此命令生成任务并由启动器执行。  
 ''')
 
-add_english_doc('lazyllm.components.core.ComponentBase.cmd', '''\
+add_english_doc('core.ComponentBase.cmd', '''\
 Generates the execution command of the component, to be implemented by subclasses.  
 The returned command can be a string, tuple, or list, representing the instruction to execute the task.
 
 **Note:**  
 If the `apply` method is not overridden, this command will be used to create a job for the launcher to run.
-''')
-
-add_chinese_doc('Job', '''\
-通用任务调度执行类。
-该类用于封装一个通过启动器（launcher）调度执行的任务，支持命令包装、同步控制、返回值提取、命令固定等功能。
-Args:
-    cmd (LazyLLMCMD): 要执行的命令对象。
-    launcher (Any): 启动器实例，用于实际任务调度执行。
-    sync (bool): 是否为同步执行，默认为 True。
-''')
-
-add_english_doc('Job', '''\
-Generic task scheduling executor.
-This class wraps a task that is launched via a launcher, with features like command fixing, output handling, sync control, and return value capturing.
-Args:
-    cmd (LazyLLMCMD): The command object to be executed.
-    launcher (Any): Launcher instance responsible for task dispatching.
-    sync (bool): Whether the task should run synchronously. Defaults to True.
-''')
-
-add_chinese_doc('Job.get_executable_cmd', '''\
-生成最终可执行命令。
-如果已缓存固定命令（fixed），则直接返回。否则根据原始命令进行包裹（wrap）并缓存为 `_fixed_cmd`。
-Args:
-    fixed (bool): 是否使用已固定的命令对象（若已存在）。
-Returns:
-    LazyLLMCMD: 可直接执行的命令对象。
-''')
-
-add_english_doc('Job.get_executable_cmd', '''\
-Generate the final executable command.
-If a fixed command already exists, return it. Otherwise, wrap the original command and cache it as `_fixed_cmd`.
-Args:
-    fixed (bool): Whether to use the cached fixed command.
-Returns:
-    LazyLLMCMD: The executable command object.
-''')
-
-add_chinese_doc('Job.start', '''\
-对外接口：启动作业，并支持失败时的自动重试。
-若作业执行失败，会根据 `restart` 参数控制重试次数。
-Args:
-    restart (int): 重试次数。默认为 3。
-    fixed (bool): 是否使用固定后的命令。用于避免多次构建。
-''')
-
-add_english_doc('Job.start', '''\
-Public interface to start the job with optional retry on failure.
-If the job fails, retries execution based on the `restart` parameter.
-Args:
-    restart (int): Number of times to retry upon failure. Default is 3.
-    fixed (bool): Whether to use the fixed version of the command.
-''')
-
-add_chinese_doc('Job.restart', '''\
-重新启动作业流程。
-该函数会先停止已有进程，等待 2 秒后重新启动作业。
-Args:
-    fixed (bool): 是否使用固定后的命令。
-''')
-
-add_english_doc('Job.restart', '''\
-Restart the job by first stopping it and then restarting after a short delay.
-Args:
-    fixed (bool): Whether to reuse the fixed command object.
-''')
-
-add_chinese_doc('Job.wait', '''\
-挂起当前线程，等待作业执行完成。当前实现为空方法（子类可重写）。
-''')
-
-add_english_doc('Job.wait', '''\
-Suspend the current thread until the job finishes.
-Empty implementation by default; can be overridden in subclasses.
-''')
-
-add_chinese_doc('Job.stop', '''\
-停止当前作业。
-该方法为接口定义，需子类实现，当前抛出 NotImplementedError。
-''')
-
-add_english_doc('Job.stop', '''\
-Stop the current job.
-This method is an interface placeholder and must be implemented by subclasses.
-''')
-
-add_chinese_doc('Job.status', '''\
-当前作业状态。
-该属性为接口定义，需子类实现，当前抛出 NotImplementedError。
-''')
-
-add_english_doc('Job.status', '''\
-Current job status.
-This property is abstract and must be implemented by subclasses.
-''')
-
-add_chinese_doc('K8sLauncher', '''\
-K8sLauncher是一个基于Kubernetes的部署启动器，用于在Kubernetes集群中部署和管理服务。
-
-参数:
-    kube_config_path (str): Kubernetes配置文件路径。
-    resource_config_path (str): 资源配置文件路径。
-    image (str): 容器镜像。
-    volume_configs (list): 卷配置列表。
-    svc_type (str): 服务类型，默认为"LoadBalancer"。
-    namespace (str): Kubernetes命名空间，默认为"default"。
-    gateway_name (str): 网关名称，默认为"lazyllm-gateway"。
-    gateway_class_name (str): 网关类名称，默认为"istio"。
-    host (str): HTTP主机名，默认为None。
-    path (str): HTTP路径，默认为'/generate'。
-    gateway_retry (int): 网关重试次数。
-''')
-
-add_english_doc('K8sLauncher', '''\
-K8sLauncher is a Kubernetes-based deployment launcher for deploying and managing services in a Kubernetes cluster.
-
-Args:
-    kube_config_path (str): Path to the Kubernetes configuration file.
-    resource_config_path (str): Path to the resource configuration file.
-    image (str): Container image.
-    volume_configs (list): List of volume configurations.
-    svc_type (str): Service type, defaults to "LoadBalancer".
-    namespace (str): Kubernetes namespace, defaults to "default".
-    gateway_name (str): Gateway name, defaults to "lazyllm-gateway".
-    gateway_class_name (str): Gateway class name, defaults to "istio".
-    host (str): HTTP hostname, defaults to None.
-    path (str): HTTP path, defaults to '/generate'.
-    gateway_retry (int): Number of gateway retries.
-''')
-
-add_chinese_doc('K8sLauncher.makejob', '''\
-创建一个Kubernetes作业实例。
-
-参数:
-    cmd (str): 要执行的命令。
-
-返回值:
-    K8sLauncher.Job: 一个新的Kubernetes作业实例。
-''')
-
-add_english_doc('K8sLauncher.makejob', '''\
-Create a Kubernetes job instance.
-
-Args:
-    cmd (str): The command to execute.
-
-Returns:
-    K8sLauncher.Job: A new Kubernetes job instance.
-''')
-
-add_chinese_doc('K8sLauncher.launch', '''\
-启动一个Kubernetes作业或可调用对象。
-
-参数:
-    f (K8sLauncher.Job): 要启动的Kubernetes作业实例。
-    *args: 位置参数。
-    **kw: 关键字参数。
-
-返回值:
-    Any: 作业的返回值。
-
-异常:
-    RuntimeError: 当提供的不是Deployment对象时抛出。
-''')
-
-add_english_doc('K8sLauncher.launch', '''\
-Launch a Kubernetes job or callable object.
-
-Args:
-    f (K8sLauncher.Job): The Kubernetes job instance to launch.
-    *args: Positional arguments.
-    **kw: Keyword arguments.
-
-Returns:
-    Any: The return value of the job.
-
-Raises:
-    RuntimeError: When the provided object is not a Deployment object.
 ''')
