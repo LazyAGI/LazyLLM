@@ -41,6 +41,15 @@ A `Document` instance may be further subdivided into several sets of nodes with 
 * `transform`: Specifies the transformation rule of the `Node Group`, which can be a subclass of [NodeTransformer][lazyllm.tools.rag.NodeTransformer], or a function that takes content as input.
 * `parent`: Specifies the parent `Node Group`, if not specified, it defaults to the entire document, which is the root `Node` named `lazyllm-root`.
 
+!!! Note
+
+    `LazyLLM` provides three built-in `Node Group`s:
+    * `FineChunk`: A `Node Group` with a length of 128 tokens and an overlap of 12.
+    * `MediumChunk`: A `Node Group` with a length of 256 tokens and an overlap of 25.
+    * `CoarseChunk`: A `Node Group` with a length of 1024 tokens and an overlap of 100.
+
+    For these three `Node Group`s, users do not need to manually create them, and they can be used directly in subsequent retrieval.
+
 Below, we will introduce `Node` and `Node Group` through an example:
 
 ```python

@@ -41,6 +41,14 @@ docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), mana
 * `transform`：期望当前节点组按照什么规则分割节点，支持传入基于[NodeTransform][lazyllm.tool.rag.NodeTransform]的变换类，同时支持传入一个`lambda`函数，用于操作传入节点的实际内容。
 * `parent`：当前定义节点组的父节点组，用于指定本次转换是基于哪个节点组进行的，默认是整篇文档（名为 `lazyllm-root` 的根节点组）。
 
+!!! 注意
+
+    `LazyLLM` 中提供了三种内置的节点组：
+    * `FineChunk`：长度为 128 个 token，overlap 为 12 的节点组；
+    * `MediumChunk`：长度为 256 个 token，overlap 为 25 的节点组；
+    * `CoarseChunk`：长度为 1024 个 token，overlap 为 100 的节点组。
+    对于以上三种节点组，用户无需手动创建，即可在后续的检索中使用。
+
 
 我们可以通过以下例子，了解节点组是如何创建的：
 ```python
