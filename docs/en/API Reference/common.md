@@ -109,6 +109,9 @@
 
 ---
 
+::: lazyllm.common.ArgsDict
+    members: check_and_update, parse_kwargs
+    exclude-members:
 ## Threading
 
 ::: lazyllm.common.Thread
@@ -122,3 +125,7 @@
 ::: lazyllm.common.LazyLLMCMD
     members: [with_cmd, get_args]
     exclude-members:
+
+::: lazyllm.common.FlatList.absorb
+    members: 
+    exclude-members:    

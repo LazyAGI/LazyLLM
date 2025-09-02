@@ -1508,6 +1508,17 @@ OnlineChatModuleBase是管理开放平台的LLM接口的公共组件，具备训
 3、如果新平台支持模型的微调，则需要实现文件上传、创建微调服务、查询微调服务的接口。即使新平台不用对微调后的模型进行部署，也请实现一个假的创建部署服务和查询部署服务的接口即可\n
 4、如果新平台支持模型的微调，可以提供一个支持微调的模型列表，有助于在微调服务时进行判断\n
 5、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
+
+Args:
+    model_series (str): 模型系列名称
+    api_key (str): API访问密钥
+    base_url (str): API基础URL
+    model_name (str): 模型名称
+    stream (Union[bool, Dict[str, str]]): 流式输出或流式配置
+    return_trace (bool, optional): 返回追踪信息，默认为False
+    skip_auth (bool, optional): 跳过认证，默认为False
+    static_params (Optional[StaticParams], optional): 静态参数配置，默认为None
+    **kwargs: 其他模型参数
 ''')
 
 add_english_doc('OnlineChatModuleBase', '''\
@@ -1518,6 +1529,16 @@ If you need to support the capabilities of a new open platform's LLM, please ext
 3. If the new platform supports model fine-tuning, you must implement interfaces for file upload, creating fine-tuning services, and querying fine-tuning services. Even if the new platform does not require deployment of the fine-tuned model, please implement dummy interfaces for creating and querying deployment services.\n
 4. If the new platform supports model fine-tuning, provide a list of models that support fine-tuning to facilitate judgment during the fine-tuning service process.\n
 5. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
+Args:
+    model_series (str): Model series name
+    api_key (str): API access key
+    base_url (str): API base URL
+    model_name (str): Model name
+    stream (Union[bool, Dict[str, str]]): Whether to stream output or stream configuration
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    skip_auth (bool, optional): Whether to skip authentication, defaults to False
+    static_params (Optional[StaticParams], optional): Static parameter configuration, defaults to None
+    **kwargs: Other model parameters
 ''')
 
 add_example('OnlineChatModuleBase', '''\
@@ -1582,6 +1603,54 @@ add_example('OnlineChatModuleBase', '''\
 ...
 ''')
 
+add_chinese_doc('OnlineChatModuleBase.set_train_tasks', """\
+设置模型微调训练任务参数。
+
+配置微调训练所需的训练数据文件和训练超参数，为后续训练任务做准备。
+
+Args:
+    train_file: 训练数据文件路径或文件对象
+    **kw: 训练超参数，如学习率、训练轮数等
+
+""")
+
+add_english_doc('OnlineChatModuleBase.set_train_tasks', """\
+Set model fine-tuning training task parameters.
+
+Configure training data file and training hyperparameters required for fine-tuning, preparing for subsequent training tasks.
+
+Args:
+    train_file: Training data file path or file object
+    **kw: Training hyperparameters such as learning rate, training epochs, etc.
+
+""")
+
+add_chinese_doc('OnlineChatModuleBase.set_specific_finetuned_model', """\
+设置并使用特定的已微调模型。
+
+从已完成的微调模型列表中选择指定模型ID作为当前使用的模型。
+
+Args:
+    model_id (str): 要使用的微调模型ID
+
+**异常:** \n
+- ValueError: 当提供的model_id不在有效微调模型列表中时抛出
+
+""")
+
+add_english_doc('OnlineChatModuleBase.set_specific_finetuned_model', """\
+Set and use specific fine-tuned model.
+
+Select specified model ID from completed fine-tuned model list as current model to use.
+
+Args:
+    model_id (str): Fine-tuned model ID to use
+
+**Exceptions:** \n
+- ValueError: Raised when provided model_id is not in valid fine-tuned model list
+
+""")
+
 add_chinese_doc('OnlineEmbeddingModuleBase', '''\
 OnlineEmbeddingModuleBase是管理开放平台的嵌入模型接口的基类，用于请求文本获取嵌入向量。不建议直接对该类进行直接实例化。需要特定平台类继承该类进行实例化。
 
@@ -1589,6 +1658,13 @@ OnlineEmbeddingModuleBase是管理开放平台的嵌入模型接口的基类，�
 1、如果新平台的嵌入模型的请求和返回数据格式都和openai一样，可以不用做任何处理，只传url和模型即可\n
 2、如果新平台的嵌入模型的请求或者返回的数据格式和openai不一样，需要重写_encapsulated_data或_parse_response方法。\n
 3、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
+
+Args:
+    model_series (str): 模型系列名称标识。
+    embed_url (str): 嵌入API的URL地址。
+    api_key (str): API访问密钥。
+    embed_model_name (str): 嵌入模型名称。
+    return_trace (bool, optional): 是否返回追踪信息，默认为False。
 ''')
 
 add_english_doc('OnlineEmbeddingModuleBase', '''
@@ -1597,6 +1673,13 @@ If you need to support the capabilities of embedding models on a new open platfo
 1. If the request and response data formats of the new platform's embedding model are the same as OpenAI's, no additional processing is needed; simply pass the URL and model.\n
 2. If the request or response data formats of the new platform's embedding model differ from OpenAI's, you need to override the _encapsulated_data or _parse_response methods.\n
 3. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
+
+Args:
+    model_series (str): Model series name identifier.
+    embed_url (str): Embedding API URL address.
+    api_key (str): API access key.
+    embed_model_name (str): Embedding model name.
+    return_trace (bool, optional): Whether to return trace information, defaults to False.
 ''')
 
 add_example('OnlineEmbeddingModuleBase', '''\
@@ -1832,3 +1915,199 @@ Get and process fine-tuning data files, including validating file format and con
 Args:
     filepath (str): Path to the fine-tuning data file, must be in .jsonl format
 ''')
+
+add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIModule', '''\
+OpenAI API集成模块，用于聊天完成和微调操作。
+
+提供与OpenAI聊天模型交互的接口，支持推理和微调功能。继承自OnlineChatModuleBase和FileHandlerBase。
+
+Args:
+    base_url (str, optional): OpenAI API基础URL，默认为"https://api.openai.com/v1/"。
+    model (str, optional): 用于聊天完成的模型名称，默认为"gpt-3.5-turbo"。
+    api_key (str, optional): OpenAI API密钥，默认为lazyllm.config['openai_api_key']。
+    stream (bool, optional): 使用流式响应，默认为True。
+    return_trace (bool, optional): 返回追踪信息，默认为False。
+    **kwargs: 传递给OnlineChatModuleBase的额外参数。
+
+''')
+add_english_doc('llms.onlinemodule.supplier.openai.OpenAIModule', '''\
+OpenAI API integration module for chat completion and fine-tuning operations.
+
+Provides interface to interact with OpenAI's chat models, supporting both inference
+and fine-tuning capabilities. Inherits from OnlineChatModuleBase and FileHandlerBase.
+
+Args:
+    base_url (str, optional): OpenAI API base URL, defaults to "https://api.openai.com/v1/".
+    model (str, optional): Model name to use for chat completion, defaults to "gpt-3.5-turbo".
+    api_key (str, optional): OpenAI API key, defaults to lazyllm.config['openai_api_key'].
+    stream (bool, optional): Whether to use streaming response, defaults to True.
+    return_trace (bool, optional): Whether to return trace information, defaults to False.
+    **kwargs: Additional arguments passed to OnlineChatModuleBase.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding', '''\
+商汤科技SenseNova嵌入模型模块，用于文本向量化操作。提供与商汤科技SenseNova嵌入模型交互的接口，支持文本到向量的转换功能。继承自OnlineEmbeddingModuleBase和_SenseNovaBase。
+
+Args:
+    embed_url (str, optional): 嵌入API的URL地址，默认为"https://api.sensenova.cn/v1/llm/embeddings"。
+    embed_model_name (str, optional): 嵌入模型名称，默认为"nova-embedding-stable"。
+    api_key (str, optional): API访问密钥，默认为None。
+    secret_key (str, optional): API秘密密钥，默认为None。
+
+''')
+
+add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding', '''\
+SenseTime SenseNova Embedding module for text vectorization operations.Provides interface to interact with SenseTime's SenseNova embedding models, supporting text-to-vector conversion functionality. Inherits from OnlineEmbeddingModuleBase and _SenseNovaBase.
+
+Args:
+    embed_url (str, optional): Embedding API URL, defaults to "https://api.sensenova.cn/v1/llm/embeddings".
+    embed_model_name (str, optional): Embedding model name, defaults to "nova-embedding-stable".
+    api_key (str, optional): API access key, defaults to None.
+    secret_key (str, optional): API secret key, defaults to None.
+
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule', '''\
+字节跳动豆包文生图模块，支持文本到图像的生成。
+
+基于字节跳动豆包多模态模型的文生图功能，继承自DoubaoMultiModal，
+提供高质量的文本到图像生成能力。
+
+Args:
+    api_key (str, optional): 豆包API密钥，默认为None。
+    model_name (str, optional): 模型名称，默认为"doubao-seedream-3-0-t2i-250415"。
+    return_trace (bool, optional): 是否返回追踪信息，默认为False。
+    **kwargs: 其他传递给父类的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule', '''\
+ByteDance Doubao Text-to-Image module supporting text to image generation.
+
+Based on ByteDance Doubao multimodal model's text-to-image functionality, 
+inherits from DoubaoMultiModal, providing high-quality text to image generation capability.
+
+Args:
+    api_key (str, optional): Doubao API key, defaults to None.
+    model_name (str, optional): Model name, defaults to "doubao-seedream-3-0-t2i-250415".
+    return_trace (bool, optional): Whether to return trace information, defaults to False.
+    **kwargs: Other parameters passed to parent class.
+
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.deepseek.DeepSeekModule', """\
+DeepSeek大语言模型接口模块。
+
+Args:
+    base_url (str): API基础URL，默认为"https://api.deepseek.com"
+    model (str): 模型名称，默认为"deepseek-chat"
+    api_key (str): API密钥，如果为None则从配置中获取
+    stream (bool): 启用流式输出，默认为True
+    return_trace (bool): 返回追踪信息，默认为False
+    **kwargs: 其他传递给基类的参数
+
+""")
+
+add_english_doc('llms.onlinemodule.supplier.deepseek.DeepSeekModule', """\
+DeepSeek large language model interface module.
+
+Args:
+    base_url (str): API base URL, defaults to "https://api.deepseek.com"
+    model (str): Model name, defaults to "deepseek-chat"
+    api_key (str): API key, if None, gets from configuration
+    stream (bool): Whether to enable streaming output, defaults to True
+    return_trace (bool): Whether to return trace information, defaults to False
+    **kwargs: Other parameters passed to base class
+
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMEmbedding', """\
+GLM嵌入模型接口类，用于调用智谱AI的文本嵌入服务。
+
+Args:
+    embed_url (str): 嵌入服务API地址，默认为"https://open.bigmodel.cn/api/paas/v4/embeddings"
+    embed_model_name (str): 嵌入模型名称，默认为"embedding-2"
+    api_key (str): API密钥
+
+""")
+
+add_english_doc('llms.onlinemodule.supplier.glm.GLMEmbedding', """\
+GLM embedding model interface class for calling Zhipu AI's text embedding services.
+
+Args:
+    embed_url (str): Embedding service API address, defaults to "https://open.bigmodel.cn/api/paas/v4/embeddings"
+    embed_model_name (str): Embedding model name, defaults to "embedding-2"
+    api_key (str): API key
+
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenEmbedding', """\
+通义千问在线文本嵌入模块。
+
+该类继承自OnlineEmbeddingModuleBase，提供了与通义千问文本嵌入API的交互能力，支持将文本转换为向量表示。
+
+Args:
+    embed_url (str, optional): 嵌入API的URL地址。默认为通义千问官方API地址
+    embed_model_name (str, optional): 嵌入模型名称。默认为 'text-embedding-v1'
+    api_key (str, optional): API密钥。默认为从配置中获取的 'qwen_api_key'
+
+""")
+
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenEmbedding', """\
+Qwen online text embedding module.
+
+This class inherits from OnlineEmbeddingModuleBase and provides interaction capabilities with the Qwen text embedding API, supporting conversion of text to vector representations.
+
+Args:
+    embed_url (str, optional): Embedding API URL address. Defaults to Qwen official API address
+    embed_model_name (str, optional): Embedding model name. Defaults to 'text-embedding-v1'
+    api_key (str, optional): API key. Defaults to 'qwen_api_key' from configuration
+
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenModule', """\
+通义千问模型模块，继承自OnlineChatModuleBase和FileHandlerBase。
+
+提供通义千问大语言模型的API调用、微调训练和部署管理功能，支持阿里云DashScope平台。
+
+Args:
+    base_url (str, optional): API基础URL，默认为"https://dashscope.aliyuncs.com/"
+    model (str, optional): 模型名称，默认为配置中的模型名或"qwen-plus"
+    api_key (str, optional): API密钥，默认为配置中的密钥
+    stream (bool, optional): 是否流式输出，默认为True
+    return_trace (bool, optional): 是否返回追踪信息，默认为False
+    **kwargs: 其他模型参数
+
+""")
+
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenModule', """\
+Qwen (Tongyi Qianwen) model module, inherits from OnlineChatModuleBase and FileHandlerBase.
+
+Provides API calls, fine-tuning training and deployment management for Qwen large language model, supports Alibaba Cloud DashScope platform.
+
+Args:
+    base_url (str, optional): API base URL, defaults to "https://dashscope.aliyuncs.com/"
+    model (str, optional): Model name, defaults to configured model name or "qwen-plus"
+    api_key (str, optional): API key, defaults to configured key
+    stream (bool, optional): Whether to stream output, defaults to True
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    **kwargs: Other model parameters
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenModule.set_deploy_parameters', """\
+设置模型部署参数。
+
+配置部署任务的相关参数，如容量规格等，用于后续模型部署。
+
+Args:
+    **kw: 部署参数键值对。
+
+""")
+
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenModule.set_deploy_parameters', """\
+Set model deployment parameters.
+
+Configure relevant parameters for deployment tasks, such as capacity specifications, for subsequent model deployment.
+
+Args:
+    **kw: Deployment parameter key-value pairs.
+""")

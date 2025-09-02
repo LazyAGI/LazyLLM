@@ -945,6 +945,31 @@ Returns:
     dict: Extracted key information dictionary with field names as keys and corresponding information values as values.
 ''')
 
+add_chinese_doc('http_request.http_executor_response.HttpExecutorResponse', """\
+HTTP执行器响应类，用于封装和处理HTTP请求的响应结果。
+
+提供对HTTP响应内容的统一访问接口，支持文件类型检测和内容提取。
+
+Args:
+    response (httpx.Response, optional): httpx库的响应对象，默认为None
+
+
+**Returns:**\n
+- HttpExecutorResponse实例，提供多种响应内容访问方式
+""")
+
+add_english_doc('http_request.http_executor_response.HttpExecutorResponse', """\
+HTTP executor response class for encapsulating and processing HTTP request response results.
+
+Provides unified access interface for HTTP response content, supporting file type detection and content extraction.
+
+Args:
+    response (httpx.Response, optional): httpx library response object, defaults to None
+
+**Returns:**\n
+- HttpExecutorResponse instance, providing multiple response content access methods
+""")
+
 add_chinese_doc('http_request.http_executor_response.HttpExecutorResponse.get_content_type', '''\
 获取HTTP响应的内容类型。
 
@@ -1018,8 +1043,8 @@ add_chinese_doc('rag.doc_to_db.DocToDbProcessor', '''\
 该类通过分析文档主题、抽取字段结构、从文档中提取关键信息，并将其保存至数据库表中。
 
 Args:
-    sql_manager (SqlManager): 数据库管理模块。
-    doc_table_name (str): 存储文档字段的数据库表名，默认为`lazyllm_doc_elements`。
+    sql_manager (SqlManager): SQL数据库管理器实例
+    doc_table_name (str, optional): 文档信息存储表名，默认为"lazyllm_doc_elements"
 
 Note:
     - 如果表已存在，会自动检测并避免重复创建。
@@ -1032,9 +1057,8 @@ Used to extract information from documents and export it to a database.
 This class analyzes document topics, extracts schema structure, pulls out key information, and saves it into a database table.
 
 Args:
-    sql_manager (SqlManager): The SQL management module.
-    doc_table_name (str): The table name to store document fields. Default is ``lazyllm_doc_elements``.
-
+    sql_manager (SqlManager): SQL database manager instance
+    doc_table_name (str, optional): Document information storage table name, defaults to "lazyllm_doc_elements"
 Note:
     - If the table already exists, it checks and avoids redundant creation.
     - Use `reset_doc_info_schema` to reset the schema if necessary.
@@ -1046,11 +1070,12 @@ add_chinese_doc('rag.doc_to_db.DocToDbProcessor.extract_info_from_docs', '''\
 该函数使用嵌入和检索技术，在提供的文档中获取数据库相关的文本片段，用于后续模式生成。
 
 Args:
-    docs (list[DocNode]): 输入文档列表。
-    num_nodes (int): 要提取的片段数量，默认为10。
+    llm (Union[OnlineChatModule, TrainableModule]): 大语言模型实例
+    doc_paths (List[str]): 要处理的文档路径列表
+    extra_desc (str, optional): 额外的描述信息，用于辅助提取
 
 Returns:
-    list[DocNode]: 提取出的相关文档片段。
+    List[dict]: 提取的信息字典列表，每个字典对应一个文档的提取结果
 ''')
 
 add_english_doc('rag.doc_to_db.DocToDbProcessor.extract_info_from_docs', '''\
@@ -1059,32 +1084,66 @@ Extract structured database-related information from documents.
 This function uses embedding and retrieval techniques to identify relevant text fragments in the provided documents for schema generation.
 
 Args:
-    docs (list[DocNode]): List of input documents.
-    num_nodes (int): Number of text fragments to retrieve. Default is 10.
-
+    llm (Union[OnlineChatModule, TrainableModule]): Large language model instance
+    doc_paths (List[str]): Document paths to process
+    extra_desc (str, optional): Additional description information to assist extraction
 Returns:
-    list[DocNode]: The relevant extracted document nodes.
+    List[dict]: Extracted information dictionary list, each dictionary corresponds to one document's extraction result
 ''')
+add_chinese_doc('rag.doc_to_db.DocToDbProcessor.export_info_to_db', """\
+将提取的信息导出到数据库。
 
+将提取的结构化信息批量插入到数据库表中，自动生成UUID和时间戳。
+
+Args:
+    info_dicts (List[dict]): 要导出的信息字典列表
+
+""")
+
+add_english_doc('rag.doc_to_db.DocToDbProcessor.export_info_to_db', """\
+Export extracted information to database.
+
+Bulk inserts extracted structured information into database table, automatically generating UUID and timestamps.
+
+Args:
+    info_dicts (List[dict]): Information dictionary list to export
+
+""")
 add_chinese_doc('rag.doc_to_db.DocToDbProcessor.analyze_info_schema_by_llm', '''\
 使用大语言模型从文档节点中推断数据库信息结构。
 
 Args:
-    nodes (list[DocNode]): 文档节点列表。
+    llm (Union[OnlineChatModule, TrainableModule]): 大语言模型实例
+    doc_paths (List[str]): 文档路径列表
+    doc_topic (str, optional): 文档主题，如果为空会自动分析
 
 Returns:
-    dict: 结构化信息模式，包含表名、字段、关系等信息。
+    DocInfoSchema: 分析得到的文档信息模式列表
 ''')
-
 add_english_doc('rag.doc_to_db.DocToDbProcessor.analyze_info_schema_by_llm', '''\
 Infer structured database information using a large language model from document nodes.
 
 Args:
-    nodes (list[DocNode]): List of document nodes.
-
+    llm (Union[OnlineChatModule, TrainableModule]): Large language model instance
+    doc_paths (List[str]): Document path list
+    doc_topic (str, optional): Document topic, will be automatically analyzed if empty
 Returns:
-    dict: The inferred database schema, including table names, fields, and relationships.
+    DocInfoSchema: Analyzed document information schema list
 ''')
+add_chinese_doc('rag.doc_to_db.DocToDbProcessor.clear', """\
+清除处理器状态和数据库表结构。
+
+清空当前文档信息模式、移除ORM类映射，并可选地删除数据库中的文档表。
+
+""")
+
+add_english_doc('rag.doc_to_db.DocToDbProcessor.clear', """\
+Clear processor state and database table structures.
+
+Clears current document information schema, removes ORM class mappings, and optionally deletes document table from database.
+""")
+
+
 
 
 add_chinese_doc('rag.doc_to_db.extract_db_schema_from_files', '''\
@@ -1528,6 +1587,7 @@ Args:
     embed_dims (Dict[str, int]): Embedding dimensions per embed key.
     embed_datatypes (Dict[str, DataType]): Data types for each embed key.
     global_metadata_desc (Dict[str, GlobalMetadataDesc]): Descriptions for metadata fields.
+    kwargs: Other connection parameters
 ''')
 
 add_chinese_doc('rag.store.MilvusStore.connect', '''
@@ -1537,6 +1597,7 @@ Args:
     embed_dims (Dict[str, int]): 每个嵌入键对应的向量维度。
     embed_datatypes (Dict[str, DataType]): 每个嵌入键的数据类型。
     global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据字段的描述。
+    kwargs: 其他连接参数
 ''')
 
 add_english_doc('rag.store.MilvusStore.upsert', '''
@@ -1565,6 +1626,7 @@ Delete entire collection or subset of records by criteria.
 Args:
     collection_name (str): Target collection.
     criteria (Optional[dict]): If None, drop the entire collection; otherwise a dict of filters (uid list or metadata conditions).
+    kwargs: Other delete parameters
 Returns:
     bool: True if deletion succeeds, False otherwise.
 ''')
@@ -1575,8 +1637,9 @@ add_chinese_doc('rag.store.MilvusStore.delete', '''
 Args:
     collection_name (str): 目标集合名称。
     criteria (Optional[dict]): 若为 None 则删除整个集合；否则按 uid 列表或元数据条件过滤。
+    kwargs: 其他查询参数
 Returns:
-    bool: 删除成功返回 True，否则 False。
+    bool: 如果删除成功返回True，否则返回False。
 ''')
 
 add_english_doc('rag.store.MilvusStore.get', '''
@@ -1585,6 +1648,7 @@ Retrieve records matching primary-key or metadata filters.
 Args:
     collection_name (str): Collection to query.
     criteria (Optional[dict]): Dict containing 'uid' list or metadata field filters.
+    kwargs: Other query parameters
 Returns: 
     List[dict]: Each entry contains 'uid' and 'embedding'.
 ''')
@@ -1595,6 +1659,7 @@ add_chinese_doc('rag.store.MilvusStore.get', '''
 Args:
     collection_name (str): 待查询集合。
     criteria (Optional[dict]): 包含 'uid' 列表或元数据字段过滤条件。
+    kwargs: 其他查询参数
 Returns:
     List[dict]: 每项包含 'uid' 及 'embedding' 映射。
 ''')
@@ -1608,6 +1673,8 @@ Args:
     topk (int): Number of nearest neighbors.
     filters (Optional[Dict[str, Union[List, Set]]]): Metadata filter map.
     embed_key (str): Which embedding field to use.
+    filter_str (Optional[str], optional): 过滤表达式字符串。默认为空字符串
+    kwargs: 其他搜索参数
 Returns:
     List[dict]: Each dict has 'uid' and similarity 'score'.
 ''')
@@ -1621,6 +1688,8 @@ Args:
     topk (int): 返回邻近数量。
     filters (Optional[Dict[str, Union[List, Set]]]): 元数据过滤映射。
     embed_key (str): 使用的嵌入字段。
+    filter_str (Optional[str], optional): Filter expression string. Defaults to empty string
+    kwargs: Other search parameters
 Returns:
     List[dict]: 每项包含 'uid' 及相似度 'score'。
 ''')
@@ -1919,7 +1988,7 @@ add_example('rag.retriever.TempDocRetriever', '''
 ''')
 
 add_english_doc('rag.retriever.TempDocRetriever.create_node_group', '''
-Create a node group with specific processing pipeline.
+Create document processing node group for configuring document chunking and transformation strategies.
 
 Args:
     name (str): Name of the node group. Auto-generated if None.
@@ -1928,10 +1997,13 @@ Args:
     trans_node (bool): Whether to transform nodes. Inherits from parent if None.
     num_workers (int): Parallel workers for processing. Default 0 (sequential).
     **kwargs: Additional group parameters.
+
+**Returns:**\n
+- self: Current instance supporting chained calls
 ''')
 
 add_chinese_doc('rag.retriever.TempDocRetriever.create_node_group', '''
-创建具有特定处理流程的节点组。
+创建文档处理节点组，用于配置文档的分块和转换策略。
 
 Args:
     name (str): 节点组名称，None时自动生成。
@@ -1940,6 +2012,9 @@ Args:
     trans_node (bool): 是否转换节点，None时继承父组设置。
     num_workers (int): 并行处理worker数，0表示串行。
     **kwargs: 其他组参数。
+
+**Returns:**\n
+- self: 支持链式调用的当前实例
 ''')
 
 add_english_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
@@ -1947,7 +2022,9 @@ Add a sub-retriever with search configuration.
 
 Args:
     group (str): Target node group name.
-    **kwargs: Retriever parameters (e.g., similarity='cosine').
+    **kwargs: Retriever configuration parameters including:
+        - similarity (str): Similarity calculation method, 'cosine' (cosine similarity) or 'bm25' (BM25 algorithm)
+        - Other retriever-specific parameters
 
 **Returns:**\n
 - self: For method chaining.
@@ -1957,8 +2034,10 @@ add_chinese_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
 添加带搜索配置的子检索器。
 
 Args:
-    group (str): 目标节点组名称。
-    **kwargs: 检索器参数（如similarity='cosine'）。
+    group (str): 节点组名称，指定使用哪个已配置的节点组进行检索
+    **kwargs: 检索器配置参数，包括：
+        - similarity (str): 相似度计算方法，'cosine'（余弦相似度）或'bm25'（BM25算法）
+        - 其他检索器特定参数
 
 **Returns:**\n
 - self: 支持链式调用。
@@ -4141,7 +4220,20 @@ WebModule页面还提供“使用上下文”，“流式输出”和“追加�
 之后返回整个页面。WebModule的__init__函数调用此方法生成页面。
 
 Args:
-    component_descs (list): 用于动态向页面添加组件的列表。列表中的每个元素也是一个列表，其中包含5个元素，分别是组件对应的模块ID，模块名，组件名，组件类型（目前仅支持Checkbox和Text），组件默认值。
+    m (Any): 要包装的模型对象，可以是lazyllm.FlowBase子类或其他可调用对象。
+    components (Dict[Any, Any], optional): 额外的UI组件配置，默认为空字典。
+    title (str, optional): Web页面标题，默认为'对话演示终端'。
+    port (Optional[Union[int, range, tuple, list]], optional): 服务端口号或端口范围，默认为20500-20799。
+    history (List[Any], optional): 历史会话模块列表，默认为空列表。
+    text_mode (Optional[Mode], optional): 文本输出模式（Dynamic/Refresh/Appendix），默认为Dynamic。
+    trace_mode (Optional[Mode], optional): 追踪模式参数(已弃用)。
+    audio (bool, optional): 是否启用音频输入功能，默认为False。
+    stream (bool, optional): 是否启用流式输出，默认为False。
+    files_target (Optional[Union[Any, List[Any]]], optional): 文件处理的目标模块，默认为None。
+    static_paths (Optional[Union[str, Path, List[Union[str, Path]]]], optional): 静态资源路径，默认为None。
+    encode_files (bool, optional): 是否对文件路径进行编码处理，默认为False。
+    share (bool, optional): 是否生成可分享的公共链接，默认为False。
+
 ''')
 
 add_english_doc('WebModule', '''\
@@ -4161,9 +4253,20 @@ parameter, and set the corresponding functions for the buttons and text boxes on
 WebModule’s __init__ function calls this method to generate the page.
 
 Args:
-    component_descs (list): A list used to add components to the page. Each element in the list is also a list containing
-    5 elements, which are the module ID, the module name, the component name, the component type (currently only
-    supports Checkbox and Text), and the default value of the component.
+    m (Any): The model object to wrap, can be a lazyllm.FlowBase subclass or other callable object.
+    components (Dict[Any, Any], optional): Additional UI component configurations, defaults to empty dict.
+    title (str, optional): Web page title, defaults to 'Dialogue Demo Terminal'.
+    port (Optional[Union[int, range, tuple, list]], optional): Service port number or port range, defaults to 20500-20799.
+    history (List[Any], optional): List of historical session modules, defaults to empty list.
+    text_mode (Optional[Mode], optional): Text output mode (Dynamic/Refresh/Appendix), defaults to Dynamic.
+    trace_mode (Optional[Mode], optional): Deprecated trace mode parameter.
+    audio (bool, optional): Whether to enable audio input functionality, defaults to False.
+    stream (bool, optional): Whether to enable streaming output, defaults to False.
+    files_target (Optional[Union[Any, List[Any]]], optional): Target module for file processing, defaults to None.
+    static_paths (Optional[Union[str, Path, List[Union[str, Path]]]], optional): Static resource paths, defaults to None.
+    encode_files (bool, optional): Whether to encode file paths, defaults to False.
+    share (bool, optional): Whether to generate a shareable public link, defaults to False.
+
 
 ''')
 
@@ -4447,7 +4550,6 @@ ToolManager是一个工具管理类，用于提供工具信息和工具调用给
 Args:
     tools (List[str]): 工具名称字符串列表。
     return_trace (bool): 是否返回中间步骤和工具调用信息。
-    stream (bool): 是否以流式方式输出规划和解决过程。
 ''')
 
 add_english_doc('ToolManager', '''\
@@ -4458,7 +4560,7 @@ When constructing this management class, you need to pass in a list of tool name
 Args:
     tools (List[str]): A list of tool name strings.
     return_trace (bool): If True, return intermediate steps and tool calls.
-    stream (bool): Whether to stream the planning and solving process.
+
 ''')
 
 add_example('ToolManager', """\
@@ -4559,20 +4661,34 @@ add_example('ModuleTool', """
 """)
 
 add_chinese_doc("ModuleTool.apply", '''
-抽象方法，需在子类中实现具体逻辑。
+工具函数的具体实现方法。
 
-此方法应根据传入的参数执行特定任务。
+这是一个抽象方法，需要在子类中具体实现工具的核心功能。
 
-Raises:
+Args:
+    *args (Any): 位置参数
+    **kwargs (Any): 关键字参数
+
+**Returns:**\n
+- 工具执行的结果
+
+**Raises:**\n
     NotImplementedError: 如果未在子类中重写该方法。
 ''')
 
 add_english_doc("ModuleTool.apply", '''
-Abstract method to be implemented in subclasses.
+Concrete implementation method of the tool function.
 
-This method should perform a specific task based on the provided arguments.
+This is an abstract method that needs to be implemented in subclasses to provide the core functionality of the tool.
 
-Raises:
+Args:
+    *args (Any): Positional arguments
+    **kwargs (Any): Keyword arguments
+
+**Returns:**\n
+- Result of tool execution
+
+**Raises:**\n
     NotImplementedError: If the method is not overridden in a subclass.
 ''')
 
@@ -4797,22 +4913,25 @@ add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
 
 Args:
-    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。
-    tools (List[str]): LLM 使用的工具名称列表。
-    max_retries (int): 工具调用迭代的最大次数。默认值为5。
-    return_trace (bool): 是否返回中间步骤和工具调用信息。
-    stream (bool): 是否以流式方式输出规划和解决过程。
+    llm: 大语言模型实例，用于生成推理和工具调用决策
+    tools (List[str]): 可用工具列表，可以是工具函数或工具名称
+    max_retries (int): 最大重试次数，当工具调用失败时自动重试，默认为5
+    return_trace (bool): 是否返回完整的执行轨迹，用于调试和分析，默认为False
+    prompt (str): 自定义提示词模板，如果为None则使用内置模板
+    stream (bool): 是否启用流式输出，用于实时显示生成过程，默认为False
 ''')
 
 add_english_doc('ReactAgent', '''\
 ReactAgent follows the process of `Thought->Action->Observation->Thought...->Finish` step by step through LLM and tool calls to display the steps to solve user questions and the final answer to the user.
 
 Args:
-    llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
-    tools (List[str]): A list of tool names for LLM to use.
-    max_retries (int): The maximum number of tool call iterations. The default value is 5.
-    return_trace (bool): If True, return intermediate steps and tool calls.
-    stream (bool): Whether to stream the planning and solving process.
+    llm: Large language model instance for generating reasoning and tool calling decisions
+    tools (List[str]): List of available tools, can be tool functions or tool names
+    max_retries (int): Maximum retry count, automatically retries when tool calling fails, defaults to 5
+    return_trace (bool): Whether to return complete execution trace for debugging and analysis, defaults to False
+    prompt (str): Custom prompt template, uses built-in template if None
+    stream (bool): Whether to enable streaming output for real-time generation display, defaults to False
+
 ''')
 
 add_example('ReactAgent', """\
@@ -5293,32 +5412,28 @@ add_example('HttpRequest', ['''\
 add_chinese_doc('JobDescription', '''\
 模型部署任务描述的数据结构。
 
-用于创建模型推理任务时指定部署配置，包括服务名称、模型名称、框架类型与所需 GPU 数量。
+用于创建模型推理任务时指定部署配置，包括模型名称与所需 GPU 数量。
 
 Args:
-    service_name (str): 服务名称，必需参数。
-    model_name (str): 要部署的模型名称，默认为 "qwen1.5-0.5b-chat"。
-    framework (str): 推理框架类型，默认为 "auto"。
+    deploy_model (str): 要部署的模型名称，默认为 "qwen1.5-0.5b-chat"。
     num_gpus (int): 所需的 GPU 数量，默认为 1。
 ''')
 
 add_english_doc('JobDescription', '''\
 Model deployment job description schema.
 
-Used to specify the configuration for creating a model inference job, including service name, model name, framework type and GPU requirements.
+Used to specify the configuration for creating a model inference job, including model name and GPU requirements.
 
 Args:
-    service_name (str): Service name, required parameter.
-    model_name (str): The model to be deployed. Default is "qwen1.5-0.5b-chat".
-    framework (str): Inference framework type. Default is "auto".
+    deploy_model (str): The model to be deployed. Default is "qwen1.5-0.5b-chat".
     num_gpus (int): Number of GPUs required for deployment. Default is 1.
 ''')
 
 add_example('JobDescription', ['''\
 >>> from lazyllm.components import JobDescription
->>> job = JobDescription(service_name="my-service", model_name="deepseek-coder", framework="vllm", num_gpus=2)
+>>> job = JobDescription(deploy_model="deepseek-coder", num_gpus=2)
 >>> print(job.dict())
-... {'service_name': 'my-service', 'model_name': 'deepseek-coder', 'framework': 'vllm', 'num_gpus': 2}
+... {'deploy_model': 'deepseek-coder', 'num_gpus': 2}
 '''])
 
 
@@ -5395,13 +5510,14 @@ add_chinese_doc(
 SqlManager是与数据库进行交互的专用工具。它提供了连接数据库，设置、创建、检查数据表，插入数据，执行查询的方法。
 
 Arguments:
-    db_type (str): "PostgreSQL"，"SQLite", "MySQL", "MSSQL"。注意当类型为"SQLite"时，db_name为文件路径或者":memory:"
-    user (str): 用户名
-    password (str): 密码
-    host (str): 主机名或IP
-    port (int): 端口号
-    db_name (str): 数据仓库名
-    **options_str (str): k1=v1&k2=v2形式表示的选项设置
+    db_type (str): 数据库类型，支持: postgresql, mysql, mssql, sqlite, mysql+pymysql
+    user (str): 数据库用户名
+    password (str): 数据库密码
+    host (str): 数据库主机地址
+    port (int): 数据库端口号
+    db_name (str): 数据库名称
+    options_str (str, optional): 连接选项字符串，默认为None
+    tables_info_dict (Dict, optional): 表结构信息字典，用于初始化表结构，默认为None
 """,
 )
 
@@ -5412,13 +5528,15 @@ SqlManager is a specialized tool for interacting with databases.
 It provides methods for creating tables, executing queries, and performing updates on databases.
 
 Arguments:
-    db_type (str): "PostgreSQL"，"SQLite", "MySQL", "MSSQL". Note that when the type is "SQLite", db_name is a file path or ":memory:"
-    user (str): Username for connection
-    password (str): Password for connection
-    host (str): Hostname or IP
-    port (int): Port number
-    db_name (str): Name of the database
-    **options_str (str): Options represented in the format k1=v1&k2=v2
+    db_type (str): Database type, supports: postgresql, mysql, mssql, sqlite, mysql+pymysql
+    user (str): Database username
+    password (str): Database password
+    host (str): Database host address
+    port (int): Database port number
+    db_name (str): Database name
+    options_str (str, optional): Connection options string, defaults to None
+    tables_info_dict (Dict, optional): Table structure information dictionary for initializing table structure, defaults to None
+
 """,
 )
 
@@ -5427,8 +5545,6 @@ add_chinese_doc(
     """\
 这是一个上下文管理器，它创建并返回一个数据库连接Session，并在完成时自动提交或回滚更改并在使用完成后自动关闭会话。
 
-**Returns:**\n
-- sqlalchemy.orm.Session: sqlalchemy 数据库会话
 """,
 )
 
@@ -5437,15 +5553,15 @@ add_english_doc(
     """\
 This is a context manager that creates and returns a database session, yields it for use, and then automatically commits or rolls back changes and closes the session when done.
 
-**Returns:**\n
-- sqlalchemy.orm.Session: sqlalchemy database session
 """,
 )
 
 add_chinese_doc(
     "SqlManager.check_connection",
     """\
-检查当前SqlManager的连接状态。
+检查数据库连接状态。
+
+测试与数据库的连接是否正常建立。
 
 **Returns:**\n
 - DBResult: DBResult.status 连接成功(True), 连接失败(False)。DBResult.detail 包含失败信息
@@ -5455,7 +5571,9 @@ add_chinese_doc(
 add_english_doc(
     "SqlManager.check_connection",
     """\
-Check the current connection status of the SqlManagerBase.
+Check database connection status.
+
+Tests whether the connection to the database is successfully established.
 
 **Returns:**\n
 - DBResult: DBResult.status True if the connection is successful, False if it fails. DBResult.detail contains failure information.
@@ -5487,42 +5605,78 @@ Args:
 add_chinese_doc(
     "SqlManager.get_all_tables",
     """\
-返回当前数据库中的所有表名。
+获取数据库中所有表的列表。
+
+刷新元数据后返回当前数据库中的所有表名。
+
+**Returns:**\n
+- List[str]: 数据库中所有表名的列表
 """,
 )
 
 add_english_doc(
     "SqlManager.get_all_tables",
     """\
-Return all table names in the current database.
+Get list of all tables in the database.
+
+Refreshes metadata and returns all table names in the current database.
+
+**Returns:**\n
+- List[str]: List of all table names in the database
 """,
 )
 
 add_chinese_doc(
     "SqlManager.get_table_orm_class",
     """\
-返回数据表名对应的sqlalchemy orm类。结合get_session，进行orm操作
+根据表名获取对应的ORM类。
+
+通过表名反射获取SQLAlchemy自动映射的ORM类。
+
+Args:
+    table_name (str): 要获取的表名
+
+**Returns:**\n
+- sqlalchemy.ext.automap.Class: 对应的ORM类，如果表不存在返回None
 """,
 )
 
 add_english_doc(
     "SqlManager.get_table_orm_class",
     """\
-Return the sqlalchemy orm class corresponding to the given table name. Combine with get_session to perform orm operations.
+Get corresponding ORM class by table name.
+
+Reflects and gets SQLAlchemy automapped ORM class through table name.
+
+Args:
+    table_name (str): Table name to retrieve
+
+**Returns:**\n
+- sqlalchemy.ext.automap.Class: Corresponding ORM class, returns None if table doesn't exist
 """,
 )
 
 add_chinese_doc(
     "SqlManager.execute_commit",
     """\
-执行无返回的sql脚本并提交更改。
+执行SQL提交语句。
+
+执行DDL或DML语句并自动提交事务，适用于CREATE、ALTER、INSERT、UPDATE、DELETE等操作。
+
+Args:
+    statement (str): 要执行的SQL语句
 """,
 )
 
 add_english_doc(
     "SqlManager.execute_commit",
     """\
-Execute the SQL script without return and submit changes.
+Execute SQL commit statements.
+
+Executes DDL or DML statements and automatically commits transactions. Suitable for CREATE, ALTER, INSERT, UPDATE, DELETE operations.
+
+Args:
+    statement (str): SQL statement to execute
 """,
 )
 
@@ -5602,20 +5756,19 @@ Args:
 """,
 )
 
-add_chinese_doc(
-    "MongoDBManager",
-    """\
+add_chinese_doc("MongoDBManager", """\
 MongoDBManager是与MongoB数据库进行交互的专用工具。它提供了检查连接，获取数据库连接对象，执行查询的方法。
 
-Arguments:
-    user (str): 用户名
-    password (str): 密码
-    host (str): 主机名或IP
-    port (int): 端口号
-    db_name (str): 数据仓库名
-    collection_name (str): 集合名
-    **options_str (str): k1=v1&k2=v2形式表示的选项设置
-    **collection_desc_dict (dict): 集合内文档关键字描述，默认为空。不同于关系型数据库行和列的概念，MongoDB集合中的文档可以有完全不同的关键字，因此当配合LLM进行自然语言查询时需要提供必须的关键字的描述以获得更好的结果。
+Args:
+   user (str): MongoDB用户名
+    password (str): MongoDB密码
+    host (str): MongoDB服务器地址
+    port (int): MongoDB服务器端口
+    db_name (str): 数据库名称
+    collection_name (str): 集合名称
+    **kwargs: 额外配置参数，包括：
+        - options_str (str): 连接选项字符串
+        - collection_desc_dict (dict): 集合描述字典
 """,
 )
 
@@ -5625,15 +5778,16 @@ add_english_doc(
 MongoDBManager is a specialized tool for interacting with MongoB databases.
 It provides methods to check the connection, obtain the database connection object, and execute query.
 
-Arguments:
-    user (str): Username for connection
-    password (str): Password for connection
-    host (str): Hostname or IP
-    port (int): Port number
-    db_name (str): Name of the database
-    collection_name (str): Name of the collection
-    **options_str (str): Options represented in the format k1=v1&k2=v2
-    **collection_desc_dict (dict): Document keyword description in the collection, which is None by default. Different from the concept of rows and columns in relational databases, documents in MongoDB collections can have completely different keywords. Therefore, when using LLM to perform natural language queries, it is necessary to provide descriptions of necessary keywords to obtain better results.
+Args:
+   user (str): MongoDB username
+    password (str): MongoDB password
+    host (str): MongoDB server address
+    port (int): MongoDB server port
+    db_name (str): Database name
+    collection_name (str): Collection name
+    **kwargs: Additional configuration parameters including:
+        - options_str (str): Connection options string
+        - collection_desc_dict (dict): Collection description dictionary
 """,
 )
 
@@ -5727,10 +5881,11 @@ SqlCall 是一个扩展自 ModuleBase 的类,提供了使用语言模型(LLM)生
 
 Arguments:
     llm: 用于生成和解释 SQL 查询及解释的大语言模型。
-    sql_manager (SqlManager): 一个 SqlManager 实例，用于处理与 SQL 数据库的交互。
-    sql_examples (str, 可选): JSON字符串表示的自然语言转到SQL语句的示例，格式为[{"Question": "查询表中与smith同部门的人员名字", "Answer": "SELECT...;"}]
-    use_llm_for_sql_result (bool, 可选): 默认值为True。如果设置为False, 则只输出JSON格式表示的sql执行结果；True则会使用LLM对sql执行结果进行解读并返回自然语言结果。
-    return_trace (bool, 可选): 如果设置为 True,则将结果记录在trace中。默认为 False。
+    sql_manager (DBManager): 数据库管理器实例，包含数据库连接和描述信息
+    sql_examples (str, optional): SQL示例字符串，用于提示工程。默认为空字符串
+    sql_post_func (Callable, optional): 对生成的SQL语句进行后处理的函数。默认为 ``None``
+    use_llm_for_sql_result (bool, optional): 是否使用LLM来解释SQL执行结果。默认为 ``True``
+    return_trace (bool, optional): 是否返回执行跟踪信息。默认为 ``False``
 """,
 )
 
@@ -5742,10 +5897,11 @@ It is designed to interact with a SQL database, extract SQL queries from LLM res
 
 Arguments:
     llm: A language model to be used for generating and interpreting SQL queries and explanations.
-    sql_manager (SqlManager): An instance of SqlManager that handles interaction with the SQL database.
-    sql_examples (str, optional): An example of converting natural language represented by a JSON string into an SQL statement, formatted as: [{"Question": "Find the names of people in the same department as Smith", "Answer": "SELECT...;"}]
-    use_llm_for_sql_result (bool, optional): Default is True. If set to False, the module will only output raw SQL results in JSON without further processing.
-    return_trace (bool, optional): If set to True, the results will be recorded in the trace. Defaults to False.
+    sql_manager (DBManager): Database manager instance containing connection and description information
+    sql_examples (str, optional): SQL example strings for prompt engineering. Defaults to empty string
+    sql_post_func (Callable, optional): Function for post-processing generated SQL statements. Defaults to ``None``
+    use_llm_for_sql_result (bool, optional): Whether to use LLM to explain SQL execution results. Defaults to ``True``
+    return_trace (bool, optional): Whether to return execution trace information. Defaults to ``False``
 """,
 )
 
@@ -5895,11 +6051,15 @@ assert tool(v=10, n=2) == 100
 """)
 
 add_tools_chinese_doc("Weather", """
-创建用于查询天气的工具。
+天气信息查询工具类，继承自HttpTool。
+
+提供城市天气信息的实时查询功能，通过中国气象局API获取指定城市的天气数据。
 """)
 
 add_tools_english_doc("Weather", """
-Create a tool for querying weather.
+Weather information query tool class, inherits from HttpTool.
+
+Provides real-time weather information query functionality, retrieves weather data for specified cities through China Meteorological Administration API.
 """)
 
 add_tools_example("Weather", """
@@ -5913,6 +6073,8 @@ add_tools_chinese_doc("Weather.forward", """
 
 Args:
     city_name (str): 需要获取天气的城市名称。
+**Returns:**\n
+- Optional[Dict]: 天气信息的字典数据，如果城市不存在返回None
 """)
 
 add_tools_english_doc("Weather.forward", """
@@ -5920,6 +6082,8 @@ Query the weather of a specific city. The minimum input scope for cities is at t
 
 Args:
     city_name (str): The name of the city for which weather information is needed.
+**Returns:**\n
+- Optional[Dict]: Dictionary containing weather information, returns None if city doesn't exist
 """)
 
 add_tools_example("Weather.forward", """
@@ -5987,11 +6151,15 @@ res = google(query='商汤科技', date_restrict='m1')
 """)
 
 add_tools_chinese_doc('Calculator', '''
-这是一个计算器应用，可以计算用户输入的表达式的值。
+简单计算器模块，继承自ModuleBase。
+
+提供数学表达式计算功能，支持基本的算术运算和数学函数。
 ''')
 
 add_tools_english_doc('Calculator', '''
-This is a calculator application that can calculate the value of expressions entered by the user.
+Simple calculator module, inherits from ModuleBase.
+
+Provides mathematical expression calculation functionality, supports basic arithmetic operations and math functions.
 ''')
 
 add_tools_example('Calculator', '''
@@ -6004,6 +6172,8 @@ add_tools_chinese_doc('Calculator.forward', '''
 
 Args:
     exp (str): 需要计算的表达式的值。必须符合 Python 计算表达式的语法。可使用 Python math 库中的数学函数。
+    *args: 可变位置参数
+    **kwargs: 可变关键字参数
 ''')
 
 add_tools_english_doc('Calculator.forward', '''
@@ -6011,19 +6181,36 @@ Calculate the value of the user input expression.
 
 Args:
     exp (str): The expression to be calculated. It must conform to the syntax for evaluating expressions in Python. Mathematical functions from the Python math library can be used.
+    *args: Variable positional arguments
+    **kwargs: Variable keyword arguments 
 ''')
 
 add_tools_example('Calculator.forward', '''
 from lazyllm.tools.tools import Calculator
 calc = Calculator()
+result1 = calc.forward("2 + 3 * 4")  
+print(f"2 + 3 * 4 = {result1}")
 ''')
 
 add_tools_chinese_doc('TencentSearch', '''
-这是一个搜索增强工具。
+腾讯搜索接口封装类，用于调用腾讯云的内容搜索服务。
+
+提供对腾讯云搜索API的封装，支持关键词搜索和结果处理。
+
+Args:
+    secret_id (str): 腾讯云API密钥ID，用于身份认证
+    secret_key (str): 腾讯云API密钥，用于身份认证
 ''')
 
 add_tools_english_doc('TencentSearch', '''
-This is a search enhancement tool.
+Tencent search interface wrapper class for calling Tencent Cloud content search services.
+
+Provides encapsulation of Tencent Cloud search API, supporting keyword search and result processing.
+
+Args:
+    secret_id (str): Tencent Cloud API key ID for authentication
+    secret_key (str): Tencent Cloud API key for authentication
+
 ''')
 
 add_tools_example('TencentSearch', '''
@@ -6038,6 +6225,9 @@ add_tools_chinese_doc('TencentSearch.forward', '''
 
 Args:
     query (str): 用户待查询的内容。
+
+**Returns:**\n
+- package: 包含搜索结果的对象，如果发生错误则返回空package
 ''')
 
 add_tools_english_doc('TencentSearch.forward', '''
@@ -6045,6 +6235,9 @@ Searches for the query entered by the user.
 
 Args:
     query (str): The content that the user wants to query.
+
+**Returns:**\n
+- package: Object containing search results, returns empty package if error occurs
 ''')
 
 add_tools_example('TencentSearch.forward', '''
@@ -6545,17 +6738,17 @@ add_agent_example('functionCall.StreamResponse', '''\
 >>> resp("Hello, world!")
 Hello, world!
 ''')
- 
+
 add_chinese_doc('rag.web.DocWebModule', """\
 文档Web界面模块，继承自ModuleBase，提供基于Web的文档管理交互界面。
 
 Args:
     doc_server (ServerModule): 文档服务模块实例，提供后端API支持
-    title (str): 界面标题，默认为"文档管理演示终端"
-    port (int/range/list): 服务端口号或端口范围，默认为20800-20999
-    history (list): 初始聊天历史记录，默认为空列表
-    text_mode (Mode): 文本处理模式，默认为Mode.Dynamic(动态模式)
-    trace_mode (Mode): 追踪模式，默认为Mode.Refresh(刷新模式)
+    title (str, optional): 界面标题，默认为"文档管理演示终端"
+    port (optional): 服务端口号或端口范围。默认为 ``None``（使用20800-20999范围）
+    history (optional): 初始聊天历史记录，默认为 ``None``
+    text_mode (optional): 文本处理模式，默认为``None``(动态模式)
+    trace_mode (optional): 追踪模式，默认为``None``(刷新模式)
 
 类属性:
     Mode: 模式枚举类，包含:
@@ -6574,11 +6767,12 @@ Document Web Interface Module, inherits from ModuleBase, provides web-based docu
 
 Args:
     doc_server (ServerModule): Document server module instance providing backend API support
-    title (str): Interface title, defaults to "文档管理演示终端"
-    port (int/range/list): Service port number or range, defaults to 20800-20999
-    history (list): Initial chat history, defaults to empty list
-    text_mode (Mode): Text processing mode, defaults to Mode.Dynamic
-    trace_mode (Mode): Trace mode, defaults to Mode.Refresh
+    title (str, optional): Interface title. Defaults to 'Document Management Demo Terminal'
+    port (optional): Service port number or port range. Defaults to ``None`` (uses range 20800-20999)
+    history (optional): History record list. Defaults to ``None``
+    text_mode (optional): Text display mode. Defaults to ``None`` (uses dynamic mode)
+    trace_mode (optional): Trace mode. Defaults to ``None`` (uses refresh mode)
+
 
 Class Attributes:
     Mode: Mode enumeration class containing:
@@ -6629,12 +6823,16 @@ add_example('rag.web.DocWebModule', '''\
 ''')
 
 add_english_doc('rag.web.DocWebModule.wait', '''\
-Blocks the current thread to keep the web interface running until manually stopped.
+Block current thread waiting for web service to run.
+
+This method blocks the calling thread until the web service is explicitly stopped.
 
 ''')
 
 add_chinese_doc('rag.web.DocWebModule.wait', '''\
-阻塞当前线程以保持Web界面运行，直到手动停止。
+阻塞当前线程等待Web服务运行。
+
+该方法会阻塞调用线程，直到Web服务被显式停止。
 
 ''')
 
@@ -6776,17 +6974,19 @@ Returns:
 ''')
 
 add_chinese_doc("rag.web.WebUi.muti_headers", '''
-生成用于上传文件的 HTTP 请求头。
+生成多部分表单的HTTP请求头。
+用于文件上传等需要multipart/form-data格式的请求。
 
-Returns:
-    dict: HTTP 请求头字典。
+**Returns:**\n
+- Dict: 返回包含accept头部的HTTP请求头字典。
 ''')
 
 add_english_doc("rag.web.WebUi.muti_headers", '''
-Generate HTTP headers for file upload.
+Generates multipart form HTTP request headers.
+Used for requests requiring multipart/form-data format such as file uploads.
 
-Returns:
-    dict: Dictionary of HTTP headers.
+**Returns:**\n
+- Dict: Returns HTTP request header dictionary containing accept header.
 ''')
 
 add_chinese_doc("rag.web.WebUi.post_request", '''
@@ -6872,17 +7072,19 @@ Returns:
 ''')
 
 add_chinese_doc("rag.web.WebUi.list_groups", '''
-列出所有文件分组。
+获取所有知识库分组列表。
+向后台API发送请求，获取当前所有的知识库分组信息。
 
-Returns:
-    List[str]: 分组名称列表。
+**Returns:**\n
+- List: 返回分组名称列表。
 ''')
 
 add_english_doc("rag.web.WebUi.list_groups", '''
-List all available file groups.
+Gets all knowledge base group list.
+Sends request to backend API to get all current knowledge base group information.
 
-Returns:
-    List[str]: List of group names.
+**Returns:**\n
+- List: Returns group name list.
 ''')
 
 add_chinese_doc("rag.web.WebUi.upload_files", '''
@@ -6972,14 +7174,22 @@ Returns:
 ''')
 
 add_chinese_doc("rag.web.WebUi.create_ui", '''
-构建基于 Gradio 的文件管理图形界面，包含分组列表、上传、查看、删除等功能标签页。
+构建包含多个标签页的Gradio界面，提供以下功能：
+- 分组列表：查看所有分组信息
+- 上传文件：选择分组并上传文件
+- 分组文件列表：查看指定分组中的文件
+- 删除文件：从分组中删除指定文件
 
 Returns:
     gr.Blocks: 完整的 Gradio UI 应用实例。
 ''')
 
 add_english_doc("rag.web.WebUi.create_ui", '''
-Build a Gradio-based file management UI, including tabs for group listing, file uploading, viewing, and deletion.
+Builds Gradio interface with multiple tabs, providing the following functionalities:
+- Group List: View all group information
+- Upload Files: Select group and upload files
+- Group File List: View files in specified group
+- Delete Files: Delete specified files from group
 
 Returns:
     gr.Blocks: A complete Gradio application instance.
@@ -7086,136 +7296,6 @@ Performs a query based on the given arguments and returns matching document node
 - **kwargs: Keyword arguments for the query.
 ''')
 
-# infer_service.client.py
-add_chinese_doc('infer_service.InferClient', '''\
-推理服务客户端，继承自 ClientBase，用于与远程推理部署服务交互。  
-提供模型部署、任务取消、任务查询、服务句柄获取以及等待服务就绪等功能。  
-
-Args:
-    url (str): 推理服务的基础 URL。
-''')
-
-add_english_doc('infer_service.InferClient', '''\
-Inference service client inheriting from ClientBase, designed for interacting with a remote inference deployment service.  
-Provides functions for model deployment, job cancellation, job querying, service handle retrieval, and waiting for readiness.  
-
-Args:
-    url (str): Base URL of the inference service.
-''')
-
-add_chinese_doc('infer_service.InferClient.deploy', '''\
-部署推理服务。  
-
-Args:
-    base_model (str): 要部署的基础模型名称。  
-    token (str): 身份认证令牌。  
-    num_gpus (int): 部署所需的 GPU 数量，默认为 1。  
-
-**Returns:**\n
-- Tuple[Optional[str], str]: 任务 ID（失败时为 None）和任务状态。
-''')
-
-add_english_doc('infer_service.InferClient.deploy', '''\
-Deploy an inference service.  
-
-Args:
-    base_model (str): Name of the base model to deploy.  
-    token (str): Authentication token.  
-    num_gpus (int): Number of GPUs required for deployment, default is 1.  
-
-**Returns:**\n
-- Tuple[Optional[str], str]: Job ID (None if failed) and job status.
-''')
-
-add_chinese_doc('infer_service.InferClient.cancel', '''\
-取消部署任务。  
-
-Args:
-    token (str): 身份认证令牌。  
-    job_id (str): 任务 ID。  
-
-**Returns:**\n
-- bool: 取消成功时返回 True。  
-- str: 取消失败时返回失败原因。
-''')
-
-add_english_doc('infer_service.InferClient.cancel', '''\
-Cancel a deployment job.  
-
-Args:
-    token (str): Authentication token.  
-    job_id (str): Job identifier.  
-
-**Returns:**\n
-- bool: True if cancelled successfully.  
-- str: Failure reason if cancellation fails.
-''')
-
-add_chinese_doc('infer_service.InferClient.list_all_tasks', '''\
-获取所有当前部署任务的列表。  
-
-Args:
-    token (str): 身份认证令牌。  
-
-**Returns:**\n
-- Optional[List[List[str]]]: 任务信息列表 `[job_id, base_model, status]`，失败时为 None。
-''')
-
-add_english_doc('infer_service.InferClient.list_all_tasks', '''\
-Retrieve all current deployment tasks.  
-
-Args:
-    token (str): Authentication token.  
-
-**Returns:**\n
-- Optional[List[List[str]]]: List of job information `[job_id, base_model, status]`, or None if request fails.
-''')
-
-add_chinese_doc('infer_service.InferClient.get_infra_handle', '''\
-获取指定任务的推理服务句柄。  
-
-Args:
-    token (str): 身份认证令牌。  
-    job_id (str): 任务 ID。  
-
-**Returns:**\n
-- TrainableModule: 已部署服务的可调用句柄。
-''')
-
-add_english_doc('infer_service.InferClient.get_infra_handle', '''\
-Get inference service handle for a given job.  
-
-Args:
-    token (str): Authentication token.  
-    job_id (str): Job identifier.  
-
-**Returns:**\n
-- TrainableModule: Callable handle of the deployed service.
-''')
-
-add_chinese_doc('infer_service.InferClient.wait_ready', '''\
-阻塞等待指定任务进入 `Ready` 状态。  
-
-Args:
-    token (str): 身份认证令牌。  
-    job_id (str): 任务 ID。  
-    timeout (int): 超时时间（秒），默认为 1800 秒。  
-
-**Returns:**\n
-- None: 成功时返回 None，若超时或状态异常则抛出异常。
-''')
-
-add_english_doc('infer_service.InferClient.wait_ready', '''\
-Block until the given job reaches `Ready` status.  
-
-Args:
-    token (str): Authentication token.  
-    job_id (str): Job identifier.  
-    timeout (int): Timeout in seconds, default is 1800.  
-
-**Returns:**\n
-- None: Returns when service is ready, raises exception on timeout or invalid status.
-''')
 
 add_chinese_doc('StreamCallHelper', '''\
 流式调用辅助类，用于将阻塞调用包装为生成器形式，逐步返回执行结果。
@@ -7335,4 +7415,581 @@ Args:
     embed_key (Optional[str]): Embedding key.
     **kwargs: Additional parameters.
 ''')
+add_chinese_doc('infer_service.serve.InferServer', """\
+推理服务服务器类，负责管理模型部署任务的生命周期。
+
+提供完整的模型部署、状态监控、日志管理和任务取消等功能。支持异步任务处理和多用户隔离。
+
+**主要功能:**\n
+- 创建和管理模型部署任务
+- 监控任务状态和自动清理
+- 提供任务日志和状态查询接口
+- 支持任务取消和超时处理
+""")
+
+add_english_doc('infer_service.serve.InferServer', """\
+Inference service server class, responsible for managing the lifecycle of model deployment tasks.
+
+Provides complete model deployment, status monitoring, log management, and task cancellation functions. Supports asynchronous task processing and multi-user isolation.
+
+**Main Features:**\n
+- Create and manage model deployment tasks
+- Monitor task status and automatic cleanup
+- Provide task log and status query interfaces
+- Support task cancellation and timeout handling
+""")
+
+add_chinese_doc('infer_service.serve.InferServer.create_job', """\
+创建新的模型部署任务API接口。
+
+这是一个POST接口，接收任务描述信息，启动异步模型部署过程，并立即返回任务ID和初始状态。
+
+Args:
+    job (JobDescription): 任务描述对象，包含以下字段：
+        - deploy_model: 要部署的模型名称或路径
+        - num_gpus: 需要的GPU数量
+    token (str): 用户认证令牌，通过HTTP头部传递
+
+**Returns:**\n
+- dict: 包含以下字段的响应字典：
+    - job_id: 唯一任务标识符
+    - status: 任务初始状态（Running、Pending等）
+
+**Raises:**\n
+- HTTPException(401): 当token无效或缺失时
+
+""")
+
+add_english_doc('infer_service.serve.InferServer.create_job', """\
+API interface for creating new model deployment tasks.
+
+This is a POST interface that receives job description information, starts an asynchronous model deployment process, and immediately returns the job ID and initial status.
+
+Args:
+    job (JobDescription): Job description object containing:
+        - deploy_model: Model name or path to deploy
+        - num_gpus: Number of GPUs required
+    token (str): User authentication token, passed through HTTP header
+
+**Returns:**\n
+- dict: Response dictionary with fields:
+    - job_id: Unique job identifier
+    - status: Initial job status (Running, Pending, etc.)
+
+**Raises:**\n
+- HTTPException(401): When token is invalid or missing
+""")
+
+
+add_chinese_doc('infer_service.serve.InferServer.cancel_job', """\
+取消指定部署任务API接口。
+
+这是一个POST接口，用于停止正在运行的模型部署任务，并清理相关资源。
+
+Args:
+    job_id (str): 要取消的任务ID，通过URL路径参数传递
+    token (str): 用户认证令牌，通过HTTP头部传递
+
+**Returns:**\n
+- dict: 包含最终状态的响应字典：
+    - status: 任务取消后的最终状态
+
+**Raises:**\n
+- HTTPException(404): 当任务不存在或取消超时时
+
+""")
+
+add_english_doc('infer_service.serve.InferServer.cancel_job', """\
+API interface for cancelling specified deployment tasks.
+
+This is a POST interface used to stop running model deployment tasks and clean up related resources.
+
+Args:
+    job_id (str): Job ID to be cancelled, passed through URL path parameter
+    token (str): User authentication token, passed through HTTP header
+
+**Returns:**\n
+- dict: Response dictionary with final status:
+    - status: Final status after job cancellation
+
+**Raises:**\n
+- HTTPException(404): When job not found or cancellation times out
+
+""")
+
+
+add_chinese_doc('infer_service.serve.InferServer.list_jobs', """\
+获取用户所有任务列表API接口。
+
+这是一个GET接口，返回用户的所有部署任务信息，包括运行中、已完成和已取消的任务。
+
+Args:
+    token (str): 用户认证令牌，通过HTTP头部传递
+
+**Returns:**\n
+- dict: 包含所有任务信息的字典，键为job_id，值为任务详细信息
+
+""")
+
+add_english_doc('infer_service.serve.InferServer.list_jobs', """\
+API interface for getting all job lists of the user.
+
+This is a GET interface that returns all deployment task information of the user, including running, completed, and cancelled tasks.
+
+Args:
+    token (str): User authentication token, passed through HTTP header
+
+**Returns:**\n
+- dict: Dictionary containing all job information, key is job_id, value is detailed job information
+
+""")
+
+
+add_chinese_doc('infer_service.serve.InferServer.get_job_info', """\
+获取指定任务详细信息API接口。
+
+这是一个GET接口，返回特定任务的完整详细信息，包括实时状态更新。
+
+Args:
+    job_id (str): 任务ID，通过URL路径参数传递
+    token (str): 用户认证令牌，通过HTTP头部传递
+
+**Returns:**\n
+- dict: 任务详细信息字典
+
+**Raises:**\n
+- HTTPException(404): 当任务不存在时
+
+""")
+
+add_english_doc('infer_service.serve.InferServer.get_job_info', """\
+API interface for getting detailed information of specified task.
+
+This is a GET interface that returns complete detailed information of a specific task, including real-time status updates.
+
+Args:
+    job_id (str): Job ID, passed through URL path parameter
+    token (str): User authentication token, passed through HTTP header
+
+**Returns:**\n
+- dict: Detailed job information dictionary
+
+**Raises:**\n
+- HTTPException(404): When job not found
+
+""")
+
+
+add_chinese_doc('infer_service.serve.InferServer.get_job_log', """\
+获取任务日志文件信息API接口。
+
+这是一个GET接口，返回任务日志文件的路径信息。
+
+Args:
+    job_id (str): 任务ID，通过URL路径参数传递
+    token (str): 用户认证令牌，通过HTTP头部传递
+
+**Returns:**\n
+- dict: 包含日志路径的字典：
+    - log: 日志文件路径或'invalid'（如果无效）
+
+**Raises:**\n
+- HTTPException(404): 当任务不存在时
+
+
+""")
+
+add_english_doc('infer_service.serve.InferServer.get_job_log', """\
+API interface for getting job log file information.
+
+This is a GET interface that returns the path information of the job log file.
+
+Args:
+    job_id (str): Job ID, passed through URL path parameter
+    token (str): User authentication token, passed through HTTP header
+
+**Returns:**\n
+- dict: Dictionary containing log path:
+    - log: Log file path or 'invalid' (if invalid)
+
+**Raises:**\n
+- HTTPException(404): When job not found
+
+""")
+
+add_chinese_doc('services.services.ServerBase', """\
+服务器基础类，提供作业管理和状态监控功能。
+
+实现多用户作业管理、状态追踪和线程安全的字典操作，支持作业信息的增删改查和状态轮询检查。
+
+**主要功能:**\n
+- 多用户作业信息管理
+- 活跃作业状态监控
+- 线程安全的数据操作
+- 自动状态轮询检查
+- 用户认证验证
+""")
+
+add_english_doc('services.services.ServerBase', """\
+Server base class providing job management and status monitoring functionality.
+
+Implements multi-user job management, status tracking and thread-safe dictionary operations, supports CRUD operations for job information and status polling checks.
+
+**Main Features:**\n
+- Multi-user job information management
+- Active job status monitoring
+- Thread-safe data operations
+- Automatic status polling checks
+- User authentication verification
+""")
+
+add_chinese_doc('services.services.ServerBase.authorize_current_user', """\
+验证当前用户的认证令牌。
+
+检查提供的Bearer令牌是否在用户作业信息中存在。
+
+Args:
+    Bearer (str, optional): Bearer认证令牌
+
+**Returns:**\n
+- str: 验证通过的令牌
+
+**异常:**\n
+- HTTPException: 当令牌无效时抛出401异常
+""")
+
+add_english_doc('services.services.ServerBase.authorize_current_user', """\
+Authenticate current user's authentication token.
+
+Checks if provided Bearer token exists in user job information.
+
+Args:
+    Bearer (str, optional): Bearer authentication token
+
+**Returns:**\n
+- str: Verified token
+
+**Exceptions:**\n
+- HTTPException: Raises 401 exception when token is invalid
+""")
+
+add_chinese_doc('rag.store.segment.opensearch_store.OpenSearchStore', """\
+基于OpenSearch的向量存储实现。
+
+该类提供了与OpenSearch数据库的集成，支持文档的存储、检索、更新和删除操作。
+支持批量插入、条件查询和索引自动创建等功能。
+
+Args:
+    uris (List[str]): OpenSearch服务器URI列表
+    client_kwargs (Dict, optional): OpenSearch客户端配置参数
+    index_kwargs (Union[Dict, List], optional): 索引创建配置参数
+    **kwargs: 其他关键字参数
+
+""")
+
+add_english_doc('rag.store.segment.opensearch_store.OpenSearchStore', """\
+OpenSearch-based vector storage implementation.
+
+This class provides integration with OpenSearch database, supporting document storage, retrieval, update, and deletion operations.
+Supports batch insertion, conditional queries, and automatic index creation.
+
+Args:
+    uris (List[str]): List of OpenSearch server URIs
+    client_kwargs (Dict, optional): OpenSearch client configuration parameters
+    index_kwargs (Union[Dict, List], optional): Index creation configuration parameters
+    **kwargs: Additional keyword arguments
+
+""")
+
+add_chinese_doc('rag.store.segment.opensearch_store.OpenSearchStore.connect', """\
+建立与OpenSearch服务器的连接。
+
+初始化OpenSearch客户端并配置认证信息。如果提供了用户名和密码，会自动转换为HTTP认证格式。
+
+Args:
+    *args: 可变位置参数
+    **kwargs: 可变关键字参数
+
+""")
+
+add_english_doc('rag.store.segment.opensearch_store.OpenSearchStore.connect', """\
+Establish connection to OpenSearch server.
+
+Initializes OpenSearch client and configures authentication information. If username and password are provided, automatically converts to HTTP auth format.
+
+Args:
+    *args: Variable positional arguments
+    **kwargs: Variable keyword arguments
+
+""")
+
+add_chinese_doc('rag.store.segment.opensearch_store.OpenSearchStore.upsert', """\
+插入或更新文档到指定集合。
+
+批量插入或更新文档数据到OpenSearch索引中。支持自动创建索引和批量操作。
+
+Args:
+    collection_name (str): 集合/索引名称
+    data (List[dict]): 要插入的文档数据列表
+
+**Returns:**\n
+- bool: 操作是否成功
+""")
+
+add_english_doc('rag.store.segment.opensearch_store.OpenSearchStore.upsert', """\
+Insert or update documents to specified collection.
+
+Batch insert or update document data to OpenSearch index. Supports automatic index creation and batch operations.
+
+Args:
+    collection_name (str): Collection/index name
+    data (List[dict]): List of document data to insert
+
+**Returns:**\n
+- bool: Whether the operation was successful
+""")
+
+add_chinese_doc('rag.store.segment.opensearch_store.OpenSearchStore.delete', """\
+从指定集合中删除文档。
+
+根据条件删除文档或删除整个索引。支持条件删除和全量删除。
+
+Args:
+    collection_name (str): 集合/索引名称
+    criteria (dict, optional): 删除条件
+    **kwargs: 其他关键字参数
+
+**Returns:**\n
+- bool: 操作是否成功
+""")
+
+add_english_doc('rag.store.segment.opensearch_store.OpenSearchStore.delete', """\
+Delete documents from specified collection.
+
+Delete documents based on conditions or delete entire index. Supports conditional deletion and full deletion.
+
+Args:
+    collection_name (str): Collection/index name
+    criteria (dict, optional): Deletion criteria
+    **kwargs: Additional keyword arguments
+
+**Returns:**\n
+- bool: Whether the operation was successful
+""")
+
+add_chinese_doc('rag.store.segment.opensearch_store.OpenSearchStore.get', """\
+从指定集合中获取文档。
+
+根据条件查询文档数据，支持主键查询和条件查询。
+
+Args:
+    collection_name (str): 集合/索引名称
+    criteria (dict, optional): 查询条件
+    **kwargs: 其他关键字参数
+
+**Returns:**\n
+- List[dict]: 查询结果文档列表
+""")
+
+add_english_doc('rag.store.segment.opensearch_store.OpenSearchStore.get', """\
+Retrieve documents from specified collection.
+
+Query document data based on conditions, supports primary key query and conditional query.
+
+Args:
+    collection_name (str): Collection/index name
+    criteria (dict, optional): Query criteria
+    **kwargs: Additional keyword arguments
+
+**Returns:**\n
+- List[dict]: Query result document list
+""")
+
+add_chinese_doc('rag.store.segment.opensearch_store.OpenSearchStore.search', """\
+在指定集合中搜索文档。
+
+暂未实现的搜索功能。
+
+Args:
+    collection_name (str): 集合/索引名称
+    query (str): 搜索查询字符串
+    topk (int): 返回结果数量
+    **kwargs: 其他关键字参数
+
+**Raises:**\n
+- NotImplementedError: 功能尚未实现
+""")
+
+add_english_doc('rag.store.segment.opensearch_store.OpenSearchStore.search', """\
+Search documents in specified collection.
+
+Search functionality not yet implemented.
+
+Args:
+    collection_name (str): Collection/index name
+    query (str): Search query string
+    topk (int): Number of results to return
+    **kwargs: Additional keyword arguments
+
+**Raises:**\n
+- NotImplementedError: Functionality not implemented yet
+""")
+
+add_chinese_doc('rag.store.hybrid.MapStore', """\
+基于SQLite的本地映射存储实现。
+
+提供基于SQLite数据库的持久化存储能力，支持文档的增删改查操作，具有完整的内存映射和磁盘持久化功能。
+
+Args:
+    uri (str, optional): SQLite数据库文件路径。如果为None则使用纯内存模式
+    **kwargs: 其他关键字参数
+
+""")
+
+add_english_doc('rag.store.hybrid.MapStore', """\
+SQLite-based local mapping storage implementation.
+
+Provides persistent storage capability based on SQLite database, supports CRUD operations for documents, with complete memory mapping and disk persistence functionality.
+
+Args:
+    uri (str, optional): SQLite database file path. Uses pure memory mode if None
+    **kwargs: Additional keyword arguments
+
+""")
+
+add_chinese_doc('rag.store.hybrid.MapStore.connect', """\
+连接到存储系统并加载数据。
+
+初始化内存数据结构并从SQLite数据库加载已有数据。如果数据库文件不存在会自动创建。
+
+Args:
+    collections (List[str], optional): 要加载的集合名称列表
+    **kwargs: 其他关键字参数
+
+""")
+
+add_english_doc('rag.store.hybrid.MapStore.connect', """\
+Connect to storage system and load data.
+
+Initialize memory data structures and load existing data from SQLite database. Automatically creates database file if it doesn't exist.
+
+Args:
+    collections (List[str], optional): List of collection names to load
+    **kwargs: Additional keyword arguments
+
+""")
+
+add_chinese_doc('rag.store.hybrid.MapStore.upsert', """\
+插入或更新文档到指定集合。
+
+将文档数据插入内存映射并持久化到SQLite数据库，支持批量操作。
+
+Args:
+    collection_name (str): 集合名称
+    data (List[dict]): 要插入的文档数据列表
+
+**Returns:**\n
+- bool: 操作是否成功
+""")
+
+add_english_doc('rag.store.hybrid.MapStore.upsert', """\
+Insert or update documents to specified collection.
+
+Insert document data into memory mapping and persist to SQLite database, supports batch operations.
+
+Args:
+    collection_name (str): Collection name
+    data (List[dict]): List of document data to insert
+
+**Returns:**\n
+- bool: Whether the operation was successful
+""")
+
+add_chinese_doc('rag.store.hybrid.MapStore.delete', """\
+从指定集合中删除文档。
+
+根据条件删除内存中和SQLite数据库中的文档数据。
+
+Args:
+    collection_name (str): 集合名称
+    criteria (dict, optional): 删除条件
+    **kwargs: 其他关键字参数
+
+**Returns:**\n
+- bool: 操作是否成功
+""")
+
+add_english_doc('rag.store.hybrid.MapStore.delete', """\
+Delete documents from specified collection.
+
+Delete document data from memory and SQLite database based on conditions.
+
+Args:
+    collection_name (str): Collection name
+    criteria (dict, optional): Deletion criteria
+    **kwargs: Additional keyword arguments
+
+**Returns:**\n
+- bool: Whether the operation was successful
+""")
+
+add_chinese_doc('rag.store.hybrid.MapStore.get', """\
+从指定集合中获取文档。
+
+根据条件查询内存中的文档数据，支持多种查询条件组合。
+
+Args:
+    collection_name (str): 集合名称
+    criteria (dict, optional): 查询条件
+    **kwargs: 其他关键字参数
+
+**Returns:**\n
+- List[dict]: 查询结果文档列表
+""")
+
+add_english_doc('rag.store.hybrid.MapStore.get', """\
+Retrieve documents from specified collection.
+
+Query document data from memory based on conditions, supports multiple query condition combinations.
+
+Args:
+    collection_name (str): Collection name
+    criteria (dict, optional): Query criteria
+    **kwargs: Additional keyword arguments
+
+**Returns:**\n
+- List[dict]: Query result document list
+""")
+
+add_chinese_doc('rag.store.hybrid.MapStore.search', """\
+在指定集合中搜索文档。
+
+暂未实现的搜索功能，建议使用默认索引进行搜索。
+
+Args:
+    collection_name (str): 集合名称
+    query (str): 搜索查询字符串
+    topk (int): 返回结果数量
+    filters (dict, optional): 过滤条件
+    **kwargs: 其他关键字参数
+
+**Raises:**\n
+- NotImplementedError: 功能尚未实现
+""")
+
+add_english_doc('rag.store.hybrid.MapStore.search', """\
+Search documents in specified collection.
+
+Search functionality not yet implemented, recommend using default index for searching.
+
+Args:
+    collection_name (str): Collection name
+    query (str): Search query string
+    topk (int): Number of results to return
+    filters (dict, optional): Filter conditions
+    **kwargs: Additional keyword arguments
+
+**Raises:**\n
+- NotImplementedError: Functionality not implemented yet
+""")
 

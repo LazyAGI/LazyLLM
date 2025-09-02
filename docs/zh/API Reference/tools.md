@@ -78,6 +78,9 @@
     members: 
         - extract_info_from_docs
         - analyze_info_schema_by_llm
+        - clear
+        - export_info_to_db
+
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_to_db.extract_db_schema_from_files
@@ -276,6 +279,14 @@ lazyllm.tools.rag.transform.NodeTransform
     members: transform
     exclude-members:
 
+::: lazyllm.tools.rag.store.hybrid.MapStore
+    members: connect, upsert, delete, get, search
+    exclude-members:
+
+::: lazyllm.tools.rag.store.segment.opensearch_store.OpenSearchStore
+    members: connect, upsert, delete, get, search
+    exclude-members:
+
 ::: lazyllm.tools.rag.rerank.ModuleReranker
     members: forward
     exclude-members:
@@ -367,9 +378,6 @@ lazyllm.tools.rag.transform.NodeTransform
     members: extract_file, get_content_type
     exclude-members:
 
-::: lazyllm.tools.infer_service.InferClient
-    members: [deploy, cancel, list_all_tasks, get_infra_handle, wait_ready]
-    exclude-members:
 
 ::: lazyllm.tools.StreamCallHelper
     members: [split_text]
@@ -377,4 +385,13 @@ lazyllm.tools.rag.transform.NodeTransform
 
 ::: lazyllm.tools.rag.LazyLLMStoreBase
     members: [connect, upsert, delete, get, search]
+    exclude-members:
+
+
+::: lazyllm.tools.services.services.ServerBase
+    members: authorize_current_user
+    exclude-members:
+
+::: lazyllm.tools.infer_service.serve.InferServer
+    members: create_job, cancel_job, list_jobs, get_job_info, get_job_log
     exclude-members:

@@ -85,6 +85,29 @@ PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
 '''])
 
 # ============= Finetune
+add_chinese_doc('finetune.LazyLLMFinetuneBase', """\
+LazyLLM微调基础组件类，继承自ComponentBase。
+
+提供大语言模型微调的基础功能，支持远程启动器配置和模型路径管理。
+
+Args:
+    base_model (str): 基础模型路径或标识
+    target_path (str): 微调后模型输出路径
+    launcher (Launcher, optional): 任务启动器，默认为远程启动器
+
+""")
+
+add_english_doc('finetune.LazyLLMFinetuneBase', """\
+LazyLLM fine-tuning base component class, inherits from ComponentBase.
+
+Provides base functionality for large language model fine-tuning, supports remote launcher configuration and model path management.
+
+Args:
+    base_model (str): Base model path or identifier
+    target_path (str): Fine-tuned model output path
+    launcher (Launcher, optional): Task launcher, defaults to remote launcher
+""")
+
 # Finetune-AlpacaloraFinetune
 add_chinese_doc('finetune.AlpacaloraFinetune', '''\
 此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [alpaca-lora](https://github.com/tloen/alpaca-lora) 项目提供的 LoRA 微调能力，用于对大语言模型进行 LoRA 微调。
@@ -259,8 +282,8 @@ add_chinese_doc('finetune.LlamafactoryFinetune', '''\
 此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) 框架提供的训练能力，用于对大语言模型(或视觉语言模型)进行训练。
 
 Args:
-    base_model (str): 用于进行训练的基模型路径。支持本地路径，若路径不存在则尝试从配置的模型路径中查找。
-    target_path (str): 训练完成后，模型权重保存的目标路径。
+    base_model: 用于进行训练的基模型路径。支持本地路径，若路径不存在则尝试从配置的模型路径中查找。
+    target_path: 训练完成后，模型权重保存的目标路径。
     merge_path (str, optional): 模型合并LoRA权重后的保存路径，默认为None。
         如果未指定，将在 ``target_path`` 下自动创建两个目录：
         - "lazyllm_lora"（用于存放LoRA训练权重）
@@ -313,8 +336,8 @@ add_english_doc('finetune.LlamafactoryFinetune', '''\
 This class is a subclass of ``LazyLLMFinetuneBase``, based on the training capabilities provided by the [LLaMA-Factory](https://github.com/hiyouga/LLaMA-Factory) framework, used for training large language models(or visual language models).
 
 Args:
-    base_model (str): Path to the base model used for training. Supports local paths; if the path does not exist, it will attempt to locate it from the configured model directory.
-    target_path (str): Target directory to save model weights after training is completed.
+    base_model: Path to the base model used for training. Supports local paths; if the path does not exist, it will attempt to locate it from the configured model directory.
+    target_path: Target directory to save model weights after training is completed.
     merge_path (str, optional): Path to save the model after merging LoRA weights. Defaults to None.
         If not specified, two directories will be automatically created under ``target_path``:
         - "lazyllm_lora" (for storing LoRA fine-tuned weights)
@@ -576,6 +599,25 @@ add_example('auto.AutoFinetune', '''\
 <lazyllm.llm.finetune type=AlpacaloraFinetune>
 ''')
 
+add_chinese_doc('formatter.LazyLLMFormatterBase.format', """\
+格式化输入消息。
+
+Args:
+    msg: 输入消息，可以是字符串或其他格式
+
+**返回:**\n
+- 格式化后的数据，具体类型由子类实现决定
+""")
+
+add_english_doc('formatter.LazyLLMFormatterBase.format', """\
+Format input message.
+
+Args:
+    msg: Input message, can be string or other format
+
+**Returns:**\n
+- Formatted data, specific type determined by subclass implementation
+""")
 # ============= Deploy
 
 add_chinese_doc('LazyLLMDeployBase', '''\
@@ -659,13 +701,11 @@ Args:
 add_chinese_doc('deploy.embed.AbstractEmbedding.load_embed', '''\
 加载嵌入模型的抽象方法。此方法由子类实现，用于执行具体的模型加载逻辑。
 
-**注意**: 此方法目前正在开发中。
 ''')
 
 add_english_doc('deploy.embed.AbstractEmbedding.load_embed', '''\
 Abstract method for loading embedding models. This method is implemented by subclasses to perform specific model loading logic.
 
-**Note**: This method is currently under development.
 ''')
 
 # Deploy-Lightllm
@@ -673,11 +713,10 @@ add_chinese_doc('deploy.Lightllm', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [LightLLM](https://github.com/ModelTC/lightllm) 框架提供的推理能力，用于对大语言模型进行推理。
 
 Args:
-    trust_remote_code (bool): 是否允许加载来自远程服务器的模型代码，默认为 ``True``。
-    launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
-    stream (bool): 是否为流式响应，默认为 ``False``。
-    kw: 关键字参数，用于更新默认的训练参数。请注意，除了以下列出的关键字参数外，这里不能传入额外的关键字参数。
-
+    trust_remote_code (bool, optional): 是否信任远程代码，默认为True
+    launcher (Launcher, optional): 任务启动器，默认为单GPU远程启动器
+    log_path (str, optional): 日志文件路径，默认为None
+    **kw: 其他LightLLM服务器配置参数
 此类的关键字参数及其默认值如下：
 
 Keyword Args: 
@@ -700,11 +739,10 @@ add_english_doc('deploy.Lightllm', '''\
 This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the [LightLLM](https://github.com/ModelTC/lightllm) framework, used for inference with large language models.
 
 Args:
-    trust_remote_code (bool): Whether to allow loading of model code from remote servers, default is ``True``.
-    launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1)``.
-    stream (bool): Whether the response is streaming, default is ``False``.
-    kw: Keyword arguments used to update default training parameters. Note that not any additional keyword arguments can be specified here.
-
+    trust_remote_code (bool, optional): Whether to trust remote code, defaults to True
+    launcher (Launcher, optional): Task launcher, defaults to single GPU remote launcher
+    log_path (str, optional): Log file path, defaults to None
+    **kw: Other LightLLM server configuration parameters
 The keyword arguments and their default values for this class are as follows:
 
 Keyword Args: 
@@ -773,11 +811,11 @@ Returns:
 add_chinese_doc('deploy.Lightllm.extract_result', '''\
 从服务响应中提取生成的文本结果。
 
-参数:
+Args:
     x (str): 服务返回的响应文本。
     inputs (str): 输入文本。
 
-返回值:
+Returns:
     str: 提取出的生成文本。
 
 异常:
@@ -797,7 +835,6 @@ Returns:
 Raises:
     Exception: When JSON response parsing fails.
 ''')
-
 # Deploy-Vllm
 add_chinese_doc('deploy.Vllm', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [VLLM](https://github.com/vllm-project/vllm) 框架提供的推理能力，用于大语言模型的部署与推理。
@@ -1500,7 +1537,28 @@ Args:
 **Returns:**\n
 - str: The text result extracted from the response.  
 ''')
+add_chinese_doc('deploy.text_to_speech.utils.TTSBase', """\
+TTS（文本转语音）服务的基类。
 
+提供文本转语音服务的部署基础框架，支持模型加载和RelayServer部署。
+
+Args:
+    launcher (LazyLLMLaunchersBase, optional): 任务启动器
+    log_path (str, optional): 日志文件路径
+    port (int, optional): 服务端口号
+""")
+
+add_english_doc('deploy.text_to_speech.utils.TTSBase', """\
+Base class for TTS (Text-to-Speech) services.
+
+Provides the deployment framework for text-to-speech services, supporting model loading and RelayServer deployment.
+
+Args:
+    launcher (LazyLLMLaunchersBase, optional): Task launcher
+    log_path (str, optional): Log file path
+    port (int, optional): Service port number
+
+""")
 # Deploy-Infinity
 add_chinese_doc('deploy.Infinity', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [Infinity](https://github.com/michaelfeil/infinity) 框架提供的高性能文本嵌入、重排序和CLIP等能力。
@@ -1512,9 +1570,11 @@ Args:
 此类的关键字参数及其默认值如下：
 
 Keyword Args: 
-    host (str): 服务的IP地址，默认为 ``0.0.0.0``。
-    port (int): 服务的端口号，默认为 ``None``,此情况下LazyLLM会自动生成随机端口号。
-    batch-size (int): 最大batch数， 默认为 ``256``。
+    launcher (Launcher, optional): 启动器配置，默认为remote(ngpus=1)。
+    model_type (str, optional): 模型类型，默认为'embed'。
+    log_path (str, optional): 日志文件路径，默认为None。
+    **kw: 额外的配置参数，包括host、port、batch-size等。
+
 ''')
 
 add_english_doc('deploy.Infinity', '''\
@@ -1527,9 +1587,10 @@ Args:
 The keyword arguments and their default values for this class are as follows:
 
 Keyword Args: 
-    host (str): The IP address of the service, defaulting to ``0.0.0.0``.
-    port (int): The port number of the service, defaulting to ``None``, in which case LazyLLM will automatically generate a random port number.
-    batch-size (int): The maximum batch size, defaulting to ``256``.
+    keys_name_handle (Dict): Key name mapping dictionary.
+    message_format (Dict): Default message format template.
+    default_headers (Dict): Default HTTP request headers.
+    target_name (str): API target endpoint name.
 ''')
 
 add_example('deploy.Infinity', '''\
@@ -1539,20 +1600,151 @@ add_example('deploy.Infinity', '''\
 <lazyllm.llm.deploy type=Infinity>
 ''')
 
+add_chinese_doc('deploy.Infinity.extract_result', '''\
+从Infinity API响应中提取结果数据。
+解析Infinity服务的JSON响应，根据返回的对象类型提取嵌入向量或重排序结果。
+
+Args:
+    x (str): API返回的JSON字符串响应。
+    inputs (Dict): 原始输入数据，用于确定返回结果的格式。
+''')
+add_english_doc('deploy.Infinity.extract_result', '''\
+Extract result data from Infinity API response.
+Parses JSON response from Infinity service and extracts embedding vectors or reranking results based on the returned object type.
+
+Args:
+    x (str): JSON string response returned by API.
+    inputs (Dict): Original input data used to determine the return format.
+
+''')
+
+add_chinese_doc('deploy.Infinity.geturl', '''\
+获取Infinity服务的URL地址。根据部署模式和作业状态，返回对应的API访问URL地址。
+
+Args:
+    job (Optional[Any]): 作业对象，如果为None则使用当前实例的job属性。
+''')
+add_english_doc('deploy.Infinity.geturl', '''\
+Get the URL address of the Infinity service. Returns the corresponding API access URL address based on deployment mode and job status.
+
+Args:
+    job (Optional[Any]): Job object, if None uses the current instance's job property.
+
+''')
+
+
+add_chinese_doc('deploy.relay.base.FastapiApp.get', """\
+注册GET请求路由装饰器。
+
+Args:
+    path (str): 路由路径
+    **kw: 其他FastAPI路由参数
+
+**返回:**\n
+- 装饰器函数
+""")
+
+add_english_doc('deploy.relay.base.FastapiApp.get', """\
+Register GET request route decorator.
+
+Args:
+    path (str): Route path
+    **kw: Other FastAPI route parameters
+
+**Returns:**\n
+- Decorator function
+""")
+
+add_chinese_doc('deploy.relay.base.FastapiApp.post', """\
+注册POST请求路由装饰器。
+
+Args:
+    path (str): 路由路径
+    **kw: 其他FastAPI路由参数
+
+**返回:**\n
+- 装饰器函数
+""")
+
+add_english_doc('deploy.relay.base.FastapiApp.post', """\
+Register POST request route decorator.
+
+Args:
+    path (str): Route path
+    **kw: Other FastAPI route parameters
+
+**Returns:**\n
+- Decorator function
+""")
+
+add_chinese_doc('deploy.relay.base.FastapiApp.list', """\
+注册LIST请求路由装饰器。
+
+Args:
+    path (str): 路由路径
+    **kw: 其他FastAPI路由参数
+
+**返回:**\n
+- 装饰器函数
+""")
+
+add_english_doc('deploy.relay.base.FastapiApp.list', """\
+Register LIST request route decorator.
+
+Args:
+    path (str): Route path
+    **kw: Other FastAPI route parameters
+
+**Returns:**\n
+- Decorator function
+""")
+
+add_chinese_doc('deploy.relay.base.FastapiApp.delete', """\
+注册DELETE请求路由装饰器。
+
+Args:
+    path (str): 路由路径
+    **kw: 其他FastAPI路由参数
+
+**返回:**\n
+- 装饰器函数
+""")
+
+add_english_doc('deploy.relay.base.FastapiApp.delete', """\
+Register DELETE request route decorator.
+
+Args:
+    path (str): Route path
+    **kw: Other FastAPI route parameters
+
+**Returns:**\n
+- Decorator function
+""")
+
+add_chinese_doc('deploy.relay.base.FastapiApp.update', """\
+更新并清空路由服务注册表。
+
+""")
+
+add_english_doc('deploy.relay.base.FastapiApp.update', """\
+Update and clear route service registry.
+
+
+""")
 # RelayServer class documentation
 add_chinese_doc('deploy.relay.base.RelayServer', '''\
 RelayServer类是一个用于部署FastAPI服务的基类，它可以将一个函数转换为HTTP服务。这个类支持设置前处理函数、后处理函数，
 并可以自动分配端口号。它主要用于将模型推理功能转换为HTTP服务，便于分布式部署和调用。
 
-主要参数：
-    port: 服务端口号，如果为None则随机分配30000-40000之间的端口
-    func: 要部署的主函数
-    pre_func: 请求预处理函数
-    post_func: 响应后处理函数
-    pythonpath: 额外的Python路径
-    log_path: 日志存储路径
-    cls: 服务名称
-    launcher: 启动器类型，默认为异步远程启动
+Args:
+    port (int, optional): 服务监听端口号。如果为None则自动分配30000-40000之间的随机端口
+    func (callable): 主要的模型推理函数，接收请求数据并返回推理结果
+    pre_func (callable, optional): 预处理函数，在调用主函数前执行，用于数据清洗和转换
+    post_func (callable, optional): 后处理函数，在调用主函数后执行，用于结果格式化和增强
+    pythonpath (str, optional): 额外的Python模块搜索路径，用于解决依赖导入问题
+    log_path (str, optional): 服务日志文件的存储目录路径
+    cls (str, optional): 服务类别的标识符，用于日志目录命名
+    launcher (Launcher): 任务启动器实例，控制服务的部署方式，默认为远程异步启动器
 ''')
 
 add_english_doc('deploy.relay.base.RelayServer', '''\
@@ -1560,15 +1752,15 @@ RelayServer is a base class for deploying FastAPI services that converts a funct
 setting pre-processing and post-processing functions, and can automatically allocate port numbers. It's mainly used 
 to convert model inference functionality into HTTP services for distributed deployment and invocation.
 
-Main parameters:
-    port: Service port number, randomly assigned between 30000-40000 if None
-    func: Main function to be deployed
-    pre_func: Request pre-processing function
-    post_func: Response post-processing function
-    pythonpath: Additional Python path
-    log_path: Log storage path
-    cls: Service name
-    launcher: Launcher type, defaults to asynchronous remote launch
+Args:
+    port (int, optional): Service listening port number. If None, automatically assigns a random port between 30000-40000
+    func (callable): Main model inference function that receives request data and returns inference results
+    pre_func (callable, optional): Pre-processing function, executed before calling the main function for data cleaning and transformation
+    post_func (callable, optional): Post-processing function, executed after calling the main function for result formatting and enhancement
+    pythonpath (str, optional): Additional Python module search path for resolving dependency import issues
+    log_path (str, optional): Storage directory path for service log files
+    cls (str, optional): Service category identifier for log directory naming
+    launcher (Launcher): Task launcher instance that controls service deployment method, defaults to remote asynchronous launche
 ''')
 
 add_example('deploy.relay.base.RelayServer', '''\
@@ -1729,7 +1921,39 @@ add_example('auto.AutoDeploy', '''\
 >>> deploy.auto('internlm2-chat-7b')
 <lazyllm.llm.deploy type=Lightllm> 
 ''')
+add_chinese_doc('auto.AutoDeploy.get_deployer', '''\
+根据模型类型获取对应的部署器类。
 
+自动检测模型类型并返回最适合的部署器类、启动器和配置参数。
+
+Args:
+    base_model (str): 基础模型名称或路径。
+    source (Optional[str], optional): 模型来源。
+    trust_remote_code (bool, optional): 是否信任远程代码。
+    launcher (Optional[LazyLLMLaunchersBase], optional): 启动器实例。
+    type (Optional[str], optional): 模型类型。
+    log_path (Optional[str], optional): 日志文件路径。
+    **kw: 其他配置参数。
+
+''')
+add_english_doc('auto.AutoDeploy.get_deployer', '''\
+Get corresponding deployer class based on model type.
+
+Automatically detects model type and returns the most suitable deployer class, 
+launcher and configuration parameters.
+
+Args:
+    base_model (str): Base model name or path.
+    source (Optional[str], optional): Model source.
+    trust_remote_code (bool, optional): Whether to trust remote code.
+    launcher (Optional[LazyLLMLaunchersBase], optional): Launcher instance.
+    type (Optional[str], optional): Model type.
+    log_path (Optional[str], optional): Log file path.
+    **kw: Other configuration parameters.
+
+**Returns:**\n
+- Tuple: Returns (deployer class, launcher, configuration parameters dict) triple.
+''')
 # ModelManager
 add_chinese_doc('ModelManager', '''\
 ModelManager 是 LazyLLM 提供的模型管理与下载工具类，支持本地搜索和 Huggingface/Modelscope 下载。  
@@ -2275,6 +2499,25 @@ add_example('formatter.formatterbase.JsonLikeFormatter', '''\
 >>> from lazyllm.components.formatter.formatterbase import JsonLikeFormatter
 >>> formatter = JsonLikeFormatter("[{a,b}]")
 ''')
+add_chinese_doc('formatter.formatterbase.PipelineFormatter', """\
+流水线格式化器，用于将数据处理流水线封装为格式化器。
+
+该类将Pipeline实例包装为格式化器，支持通过管道操作符组合多个格式化器。
+
+Args:
+    formatter (Pipeline): 要封装的流水线实例
+
+""")
+
+add_english_doc('formatter.formatterbase.PipelineFormatter', """\
+Pipeline formatter for encapsulating data processing pipelines as formatters.
+
+This class wraps Pipeline instances as formatters and supports combining multiple formatters through pipe operators.
+
+Args:
+    formatter (Pipeline): Pipeline instance to encapsulate
+
+""")
 
 # PythonFormatter
 add_chinese_doc('formatter.formatterbase.PythonFormatter', '''\
@@ -3030,47 +3273,21 @@ add_example('ChatPrompter', '''\
 add_english_doc('StableDiffusionDeploy', '''\
 Stable Diffusion Model Deployment Class. This class is used to deploy the stable diffusion model to a specified server for network invocation.
 
-`__init__(self, launcher=None)`
-Constructor, initializes the deployment class.
-
 Args:
-    launcher (lazyllm.launcher): An instance of the launcher used to start the remote service.
-
-`__call__(self, finetuned_model=None, base_model=None)`
-Deploys the model and returns the remote service address.
-
-Args:
-    finetuned_model (str): If provided, this model will be used for deployment; if not provided or the path is invalid, `base_model` will be used.
-    base_model (str): The default model, which will be used for deployment if `finetuned_model` is invalid.
-    Return (str): The URL address of the remote service.
-
-Notes: 
-    - Input for infer: `str`. A description of the image to be generated.
-    - Return of infer: The string encoded from the generated file paths, starting with the encoding flag "<lazyllm-query>", followed by the serialized dictionary. The key `files` in the dictionary stores a list, with elements being the paths of the generated image files.
-    - Supported models: [stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
+    launcher (Optional[LazyLLMLaunchersBase], optional): Launcher instance. Defaults to ``None``
+    log_path (Optional[str], optional): Log file path. Defaults to ``None``
+    trust_remote_code (bool, optional): Whether to trust remote code. Defaults to ``True``
+    port (Optional[int], optional): Service port number. Defaults to ``None``
 ''')
 
 add_chinese_doc('StableDiffusionDeploy', '''\
 Stable Diffusion 模型部署类。该类用于将SD模型部署到指定服务器上，以便可以通过网络进行调用。
-
-`__init__(self, launcher=None)`
-构造函数，初始化部署类。
-
 Args:
-    launcher(lazyllm.launcher): 用于启动远程服务的启动器实例。
+    launcher (Optional[LazyLLMLaunchersBase], optional): 启动器实例。默认为 ``None``
+    log_path (Optional[str], optional): 日志文件路径。默认为 ``None``
+    trust_remote_code (bool, optional): 是否信任远程代码。默认为 ``True``
+    port (Optional[int], optional): 服务端口号。默认为 ``None``
 
-`__call__(self, finetuned_model=None, base_model=None)`
-部署模型，并返回远程服务地址。
-
-Args: 
-    finetuned_model (str): 如果提供，则使用该模型进行部署；如果未提供或路径无效，则使用 `base_model`。
-    base_model (str): 默认模型，如果 `finetuned_model` 无效，则使用该模型进行部署。
-    返回值 (str): 远程服务的URL地址。
-
-Notes:
-    - 推理的输入：字符串。待生成图像的描述。
-    - 推理的返回值：从生成的文件路径编码的字符串， 编码标志以 "<lazyllm-query>"开头，后面跟序列化后的字典, 字典中 `files`键存放了一个列表，元素是生成的图像文件路径。
-    - 支持的模型为：[stable-diffusion-3-medium](https://huggingface.co/stabilityai/stable-diffusion-3-medium)
 ''')
 
 add_example('StableDiffusionDeploy', ['''\
@@ -3083,6 +3300,7 @@ add_example('StableDiffusionDeploy', ['''\
 >>> print(res)
 ... <lazyllm-query>{"query": "", "files": ["path/to/sd3/image_xxx.png"]}
 '''])
+
 
 add_english_doc('ChatTTSDeploy', '''\
 ChatTTS Model Deployment Class. This class is used to deploy the ChatTTS model to a specified server for network invocation.
@@ -3535,15 +3753,9 @@ Args:
     log_path: A string specifying the path where logs should be saved. Defaults to `None`.
     trust_remote_code: A boolean indicating whether to trust remote code execution. Defaults to `True`.
     port: An integer specifying the port for the deployment server. Defaults to `None`.
-    finetuned_model: A string specifying the path or name of the fine-tuned OCR model. Defaults to `None`.
-    base_model: A string specifying the base model name. If `finetuned_model` is not provided, `base_model` will be used. Defaults to `None`.
+
 Returns:
-    An instance of [RelayServer][lazyllm.deploy.RelayServer], which acts as the deployment server for the OCR model.
-Example:
-    ```python
-    deployer = OCRDeploy(launcher=launchers.local(), log_path='./logs', port=8080)
-    server = deployer(finetuned_model='ocr-model')
-    print(server)  # RelayServer instance ready to handle OCR requests
+    OCRDeploy instance, can be started by calling
     ```
 ''')
 
@@ -3563,16 +3775,10 @@ Args:
     log_path: 字符串，指定日志保存的路径。默认为 `None`。
     trust_remote_code: 布尔值，指示是否信任远程代码执行。默认为 `True`。
     port: 整数，指定部署服务器的端口号。默认为 `None`。
-    finetuned_model: 字符串，指定微调 OCR 模型的路径或名称。默认为 `None`。
-    base_model: 字符串，指定基础模型的名称。如果未提供 `finetuned_model`，将使用 `base_model`。默认为 `None`。
+
 Returns:
-    [RelayServer][lazyllm.deploy.RelayServer] 的实例，作为 OCR 模型的部署服务器。
-Example:
-    ```python
-    deployer = OCRDeploy(launcher=launchers.local(), log_path='./logs', port=8080)
-    server = deployer(finetuned_model='ocr-model')
-    print(server)  # RelayServer 实例，准备处理 OCR 请求
-    ```
+    OCRDeploy实例，可通过调用方式启动服务
+
 ''')
 
 add_example('OCRDeploy', ['''\
