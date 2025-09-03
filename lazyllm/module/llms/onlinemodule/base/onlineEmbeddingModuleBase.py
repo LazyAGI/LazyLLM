@@ -11,12 +11,17 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                  embed_url: str,
                  api_key: str,
                  embed_model_name: str,
-                 return_trace: bool = False):
+                 return_trace: bool = False,
+                 instruct: str = None,
+                 instruct_format: str = 'Instruct: {instruct}\nQuery: {text}'
+                 ):
         super().__init__(return_trace=return_trace)
         self._model_series = model_series
         self._embed_url = embed_url
         self._api_key = api_key
         self._embed_model_name = embed_model_name
+        self._instruct = instruct
+        self._instruct_format = instruct_format
         self._set_headers()
 
     @property
@@ -33,7 +38,22 @@ class OnlineEmbeddingModuleBase(ModuleBase):
             "Authorization": f"Bearer {self._api_key}"
         }
 
+    def _set_instruct_for_input(self, input: Union[List, str]) -> Union[List, str]:
+        if isinstance(input, str):
+            return self._get_detailed_instruction(input)
+        elif isinstance(input, list):
+            return [self._get_detailed_instruction(i) for i in input]
+        else:
+            raise ValueError(f'Invalid input type: {type(input)}')
+
+    def _get_detailed_instruction(self, text: str) -> str:
+        return self._instruct_format.format(instruct=self._instruct, text=text)
+
     def forward(self, input: Union[List, str], **kwargs) -> List[float]:
+        is_query = kwargs.pop('is_query', False)
+        if is_query and self._instruct:
+            input = self._set_instruct_for_input(input)
+
         data = self._encapsulated_data(input, **kwargs)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies) as r:
