@@ -177,6 +177,11 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             files_list.extend(files)
         return files_list
 
+    @property
+    def url(self):
+        assert isinstance(self._manager._kbs, ServerModule), 'Document is not a service, please set `manager` to `True`'
+        return self._manager._kbs._url
+
     def connect_sql_manager(
         self,
         sql_manager: SqlManager,

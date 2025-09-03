@@ -1,4 +1,5 @@
 import lazyllm
+from lazyllm.components import LLMType
 
 
 class TestPrompter(object):
@@ -170,3 +171,20 @@ class TestChatPrompter(object):
             {'role': 'user', 'content': '输入为c+d'},
             {'role': 'assistant', 'content': 'c+d'},
             {'role': 'user', 'content': '输入为e+f'}]}
+
+
+class TestLLMType(object):
+    def test_llm_type(self):
+        assert LLMType("llm") == LLMType.LLM
+        assert LLMType("LLM") == LLMType.LLM
+        assert LLMType(LLMType.LLM) == LLMType.LLM
+        assert LLMType.LLM == "llm"
+        assert "llm" == LLMType.LLM
+        assert LLMType.LLM == "LLM"
+        assert "LLM" == LLMType.LLM
+        assert LLMType.LLM in ('LLM',)
+        assert LLMType.LLM in (LLMType.LLM,)
+        assert LLMType.LLM in ('llm',)
+        assert 'llm' in (LLMType.LLM,)
+        assert LLMType("CROSS_modal_embed") == LLMType.CROSS_MODAL_EMBED
+        assert LLMType("CROSS_MODAL_EMBED") == LLMType.CROSS_MODAL_EMBED
