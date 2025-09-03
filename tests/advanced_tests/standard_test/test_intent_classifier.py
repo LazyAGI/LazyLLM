@@ -48,6 +48,25 @@ class TestIntentClassifier(object):
         assert ic('Who are you picture<attachments>who.png</attachments>') == 'Image Question and Answer'
         assert ic('Song of weather <attachments>weather.mp3</attachments>') == 'Music'
 
+    def test_intent_classifier_input_processor(self):
+        intent_list = ["Chat", "Image Question and Answer", "Music", "Weather Query"]
+        
+        ic = IntentClassifier(self._llm, intent_list=intent_list, input_processor=lambda x, **kwargs: {
+            "human_input": x,
+            "intent_hints": {
+                "Image Question and Answer": "If the input contains attachments with image suffix such as .jpg, .png, etc.",
+                "Music": "If the input contains attachments with audio suffix such as .mp3, .wav, etc.",
+                "Weather Query": kwargs.get('hints', ''),
+                "Chat": "If the input is a general conversation or question not related to specific domains."
+            }
+        })
+        ic.start()
+        assert ic('What is the weather today', 
+                  hints="If the input contains weather-related keywords such as temperature, humidity, etc.") == 'Weather Query'
+        assert ic('Who are you?') == 'Chat'
+        assert ic('Who are you picture<attachments>who.png</attachments>') == 'Image Question and Answer'
+        assert ic('Song of weather <attachments>weather.mp3</attachments>') == 'Music'
+
     def test_intent_classifier_enter(self):
         with IntentClassifier(self._llm) as ic:
             ic.case['Weather Query', lambda x: '38.5°C']
