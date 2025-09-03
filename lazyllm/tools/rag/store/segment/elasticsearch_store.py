@@ -11,9 +11,6 @@ from lazyllm.thirdparty import elasticsearch
 
 from ..store_base import (LazyLLMStoreBase, StoreCapability, INSERT_BATCH_SIZE)
 from ...global_metadata import RAG_DOC_ID, RAG_KB_ID
-spec = importlib.util.find_spec("elasticsearch.helpers")
-helpers = importlib.util.module_from_spec(spec)
-spec.loader.exec_module(helpers)
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -206,6 +203,9 @@ class ElasticSearchStore(LazyLLMStoreBase):
 
             # Query by query(scroll + scan)
             else:
+                spec = importlib.util.find_spec("elasticsearch.helpers")
+                helpers = importlib.util.module_from_spec(spec)
+                spec.loader.exec_module(helpers)
                 query = self._construct_criteria(criteria)
                 for hit in helpers.scan(
                     client=self._client,
