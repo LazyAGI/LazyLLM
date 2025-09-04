@@ -35,7 +35,7 @@ class LLMBase(ModuleBase):
         if isinstance(input, str) and input.startswith(LAZYLLM_QUERY_PREFIX):
             assert not lazyllm_files, 'Argument `files` is already provided by query'
             deinput = decode_query_with_filepaths(input)
-            assert isinstance(deinput, dict), "decode_query_with_filepaths must return a dict."
+            assert isinstance(deinput, dict), 'decode_query_with_filepaths must return a dict.'
             input, files = deinput['query'], deinput['files']
         else:
             files = _lazyllm_get_file_list(lazyllm_files) if lazyllm_files else []
@@ -51,7 +51,7 @@ class LLMBase(ModuleBase):
         elif isinstance(prompt, (str, dict)):
             self._prompt = ChatPrompter(prompt, history=history)
         else:
-            raise TypeError(f"{prompt} type is not supported.")
+            raise TypeError(f'{prompt} type is not supported.')
         return self
 
     def formatter(self, format: Optional[FormatterBase] = None):
@@ -106,9 +106,9 @@ class _UrlHelper(object):
                         url = redis_client['url'].get(self._url_id)
                         self._url_wrapper.url = url.decode('utf-8') if url else None
                         if self._url_wrapper.url: break
-                        time.sleep(lazyllm.config["redis_recheck_delay"])
+                        time.sleep(lazyllm.config['redis_recheck_delay'])
                 except Exception as e:
-                    LOG.error(f"Error accessing Redis: {e}")
+                    LOG.error(f'Error accessing Redis: {e}')
                     raise
         return self._url_wrapper.url
 
@@ -138,17 +138,17 @@ class UrlModule(LLMBase, _UrlHelper):
         if not isinstance(text, str):
             return 0
         # extract english words, number and comma
-        pattern = r"\b[a-zA-Z0-9]+\b|,"
+        pattern = r'\b[a-zA-Z0-9]+\b|,'
         ascii_words = re.findall(pattern, text)
         ascii_ch_count = sum(len(ele) for ele in ascii_words)
-        non_ascii_pattern = r"[^\x00-\x7F]"
+        non_ascii_pattern = r'[^\x00-\x7F]'
         non_ascii_chars = re.findall(non_ascii_pattern, text)
         non_ascii_char_count = len(non_ascii_chars)
         return int(ascii_ch_count / 3.0 + non_ascii_char_count + 1)
 
     def _decode_line(self, line: bytes):
         try:
-            return pickle.loads(codecs.decode(line, "base64"))
+            return pickle.loads(codecs.decode(line, 'base64'))
         except Exception:
             return line.decode('utf-8')
 
@@ -158,7 +158,7 @@ class UrlModule(LLMBase, _UrlHelper):
     def forward(self, *args, **kw): raise NotImplementedError
 
     def __call__(self, *args, **kw):
-        assert self._url is not None, f'Please start {self.__class__} first'
+        if not self._url: self.start()
         if len(args) > 1:
             return super(__class__, self).__call__(package(args), **kw)
         return super(__class__, self).__call__(*args, **kw)
@@ -166,6 +166,10 @@ class UrlModule(LLMBase, _UrlHelper):
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Url', name=self._module_name, url=self._url,
                                  stream=self._stream, return_trace=self._return_trace)
+
+    @lazyllm.once_wrapper(reset_on_pickle=False)
+    def _cache_miss_func(self):
+        self.start(force=True)
 
 
 @light_reduce
@@ -226,7 +230,7 @@ class ServerModule(UrlModule):
 
     def _call(self, fname, *args, **kwargs):
         args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
-        url = urljoin(self._url.rsplit("/", 1)[0], '_call')
+        url = urljoin(self._url.rsplit('/', 1)[0], '_call')
         r = requests.post(url, json=(fname, args, kwargs), headers={'Content-Type': 'application/json'})
         if r.status_code != 200:
             try:
@@ -234,7 +238,7 @@ class ServerModule(UrlModule):
             except ValueError:
                 error_info = r.text
             raise requests.RequestException(f'{r.status_code}: {error_info}')
-        return pickle.loads(codecs.decode(r.content, "base64"))
+        return pickle.loads(codecs.decode(r.content, 'base64'))
 
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), **kw):  # noqa B008
         headers = {
@@ -252,7 +256,7 @@ class ServerModule(UrlModule):
 
             messages = ''
             with self.stream_output(self._stream):
-                for line in r.iter_lines(delimiter=b"<|lazyllm_delimiter|>"):
+                for line in r.iter_lines(delimiter=b'<|lazyllm_delimiter|>'):
                     line = self._decode_line(line)
                     if self._stream:
                         self._stream_output(str(line), getattr(self._stream, 'get', lambda x: None)('color'))

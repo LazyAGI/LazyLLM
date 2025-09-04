@@ -24,7 +24,7 @@ lazyllm.config.add(
     "<level>{level}</level>: ({name}:{line}) <cyan>{message}</cyan>",
     "LOG_FORMAT",
 )
-lazyllm.config.add("log_dir", str, os.path.join(os.path.expanduser('~'), '.lazyllm'), "LOG_DIR")
+lazyllm.config.add("log_dir", str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'logs'), "LOG_DIR")
 lazyllm.config.add("log_file_level", str, "ERROR", "LOG_FILE_LEVEL")
 lazyllm.config.add("log_file_size", str, "4 MB", "LOG_FILE_SIZE")
 lazyllm.config.add("log_file_retention", str, "7 days", "LOG_FILE_RETENTION")

@@ -42,7 +42,7 @@ class RedisClient(object):
         return getattr(redis_client, key)
 
     def __bool__(self):
-        return bool(redis_client)
+        return bool(_redis_client)
 
 
 redis_client = RedisClient()

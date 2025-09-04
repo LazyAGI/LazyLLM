@@ -11,7 +11,7 @@ import uuid
 from ..hook import LazyLLMHook
 from lazyllm import FileSystemQueue
 from contextlib import contextmanager
-from typing import Optional, Union, Dict
+from typing import Optional, Union, Dict, List
 import copy
 from collections import defaultdict
 import sqlite3
@@ -21,7 +21,7 @@ from abc import ABC, abstractmethod
 from filelock import FileLock
 
 
-lazyllm.config.add('cache_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'cache'), 'CACHE_DIR')
+lazyllm.config.add('cache_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'cache'), 'CACHE_DIR')
 lazyllm.config.add('cache_strategy', str, 'memory', 'CACHE_STRATEGY')
 lazyllm.config.add('cache_mode', str, 'RW', 'CACHE_MODE', options=['RW', 'RO', 'WO'])
 redis_client = redis_client['module']
@@ -184,6 +184,7 @@ class ModuleCache(object):
         self._strategy = self._create_strategy(strategy or lazyllm.config['cache_strategy'])
 
     def _create_strategy(self, strategy: str) -> _CacheStorageStrategy:
+        strategy = strategy.lower()
         strategies = {
             'memory': _MemoryCacheStrategy,
             'file': _FileCacheStrategy,
@@ -317,7 +318,7 @@ class ModuleBase(metaclass=_MetaBind):
             try:
                 return module_cache.get(self.__cache_hash__, args, kw)
             except CacheNotFoundError:
-                pass
+                self._cache_miss_func()
         r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
         if self._use_cache and 'W' in lazyllm.config['cache_mode']:
             module_cache.set(self.__cache_hash__, args, kw, r)
@@ -400,8 +401,8 @@ class ModuleBase(metaclass=_MetaBind):
         return None
 
     # update module(train or finetune),
-    def _update(self, *, mode=None, recursive=True):  # noqa C901
-        if self._use_cache: return self
+    def _update(self, *, mode: Optional[Union[str, List[str]]] = None,  # noqa C901
+                recursive: bool = True, force: bool = False):
         if not mode: mode = list(self.mode_list)
         if type(mode) is not list: mode = [mode]
         for item in mode:
@@ -418,7 +419,7 @@ class ModuleBase(metaclass=_MetaBind):
                 if top._module_id in visited: continue
                 visited.add(top._module_id)
                 if 'train' in mode: train_tasks.absorb(top._get_train_tasks())
-                if 'server' in mode: deploy_tasks.absorb(top._get_deploy_tasks())
+                if 'server' in mode and (force or not self._use_cache): deploy_tasks.absorb(top._get_deploy_tasks())
                 if 'eval' in mode: eval_tasks.absorb(top._get_eval_tasks())
                 post_process_tasks.absorb(top._get_post_process_tasks())
 
@@ -434,11 +435,21 @@ class ModuleBase(metaclass=_MetaBind):
         Parallel.sequential(*post_process_tasks)()
         return self
 
-    def update(self, *, recursive=True): return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
-    def update_server(self, *, recursive=True): return self._update(mode=['server'], recursive=recursive)
-    def eval(self, *, recursive=True): return self._update(mode=['eval'], recursive=recursive)
-    def start(self): return self._update(mode=['server'], recursive=True)
-    def restart(self): return self.start()
+    def update(self, *, recursive: bool = True):
+        return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
+
+    def update_server(self, *, recursive: bool = True):
+        return self._update(mode=['server'], recursive=recursive)
+
+    def eval(self, *, recursive: bool = True):
+        return self._update(mode=['eval'], recursive=recursive)
+
+    def start(self, *, force: bool = False):
+        return self._update(mode=['server'], recursive=True, force=force)
+
+    def restart(self, *, force: bool = False):
+        return self.start(force=force)
+
     def wait(self): pass
 
     def stop(self):
@@ -473,6 +484,8 @@ class ModuleBase(metaclass=_MetaBind):
     def use_cache(self, flag: Union[bool, str] = True):
         self._use_cache = flag or False
         return self
+
+    def _cache_miss_func(self): pass
 
 
 class ActionModule(ModuleBase):
