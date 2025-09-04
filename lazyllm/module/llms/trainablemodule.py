@@ -564,3 +564,7 @@ class TrainableModule(UrlModule):
 
     def set_default_parameters(self, *, optional_keys: Optional[List[str]] = None, **kw):
         self._modify_parameters(self.template_message, kw, optional_keys=optional_keys or [])
+
+    def _cache_miss_handler(self):
+        if not self._url:
+            raise RuntimeError('Cache miss, please use `start()` to deploy the module first')

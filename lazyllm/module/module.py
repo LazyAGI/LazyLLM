@@ -298,7 +298,8 @@ class ModuleBase(metaclass=_MetaBind):
             if (files := globals['lazyllm_files'].get(self._module_id)) is not None: kw['lazyllm_files'] = files
             if (history := globals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
 
-            r = self._call(**args[0], **kw) if args and isinstance(args[0], kwargs) else self._call(*args, **kw)
+            r = (self._call_impl(**args[0], **kw)
+                 if args and isinstance(args[0], kwargs) else self._call_impl(*args, **kw))
             if self._return_trace:
                 lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
         except Exception as e:
@@ -313,12 +314,12 @@ class ModuleBase(metaclass=_MetaBind):
         self._clear_usage()
         return r
 
-    def _call(self, *args, **kw):
+    def _call_impl(self, *args, **kw):
         if self._use_cache and 'R' in lazyllm.config['cache_mode']:
             try:
                 return module_cache.get(self.__cache_hash__, args, kw)
             except CacheNotFoundError:
-                pass
+                self._cache_miss_handler()
         r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
         if self._use_cache and 'W' in lazyllm.config['cache_mode']:
             module_cache.set(self.__cache_hash__, args, kw, r)
@@ -476,6 +477,8 @@ class ModuleBase(metaclass=_MetaBind):
     def use_cache(self, flag: Union[bool, str] = True):
         self._use_cache = flag or False
         return self
+
+    def _cache_miss_handler(self): pass
 
 
 class ActionModule(ModuleBase):
