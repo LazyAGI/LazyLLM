@@ -50,6 +50,7 @@ class _UrlTemplateStruct(object):
 
 
 lazyllm.config.add('trainable_magic_mock', bool, False, 'TRAINABLE_MAGIC_MOCK')  # used for unit test
+fake_url = 'dummy.url/generate'
 
 
 @light_reduce
@@ -157,7 +158,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def _get_deploy_tasks(self):
         if self._deploy is None: return None
         if lazyllm.config['trainable_magic_mock']:
-            return Pipeline(lambda *args, **kwargs: 'dummy.url/generate', self._set_url)
+            return Pipeline(lambda *args, **kwargs: fake_url, self._set_url)
         if self._deploy is lazyllm.deploy.AutoDeploy:
             raise RuntimeError('No appropriate inference framework was selected, specify it with `.deploy_method()`.')
 
@@ -566,5 +567,5 @@ class TrainableModule(UrlModule):
         self._modify_parameters(self.template_message, kw, optional_keys=optional_keys or [])
 
     def _cache_miss_handler(self):
-        if not self._url:
+        if not self._url or self._url == fake_url:
             raise RuntimeError('Cache miss, please use `start()` to deploy the module first')
