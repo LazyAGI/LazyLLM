@@ -237,7 +237,7 @@ doc_list = retriever(query=query, filters=filters)
 例如，我们可以使用
 
 ```python
-reranker = Reranker('ModuleReranker', model='bg-reranker-large', topk=1)
+reranker = Reranker('ModuleReranker', model='bge-reranker-large', topk=1)
 ```
 
 来创建一个 `Reranker` 对所有 `Retriever` 返回的文档再做一次排序。

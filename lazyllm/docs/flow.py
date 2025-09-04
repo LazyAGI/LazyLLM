@@ -165,6 +165,7 @@ Args:
     args: 可变长度参数列表。
     post_action: 在主流程结束后对输出进行进一步处理的可调用对象。默认为 ``None``。
     auto_capture: 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 False。
+    **kw: 命名组件的键值对。
 
 """)
 
@@ -182,7 +183,7 @@ Args:
     args: A sequence of callables representing the flow modules.
     post_action: An optional callable applied to the output after main flow execution. Defaults to ``None``。
     auto_capture: If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
-
+    **kw: Key-value pairs for named components.
 """)
 
 add_chinese_doc('LazyLLMFlowsBase.register_hook', '''\
