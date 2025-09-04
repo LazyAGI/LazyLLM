@@ -12,9 +12,7 @@
 ---
 
 ::: lazyllm.common.common.ResultCollector
-    members: 
-    - keys
-    - items
+    members: keys, items
     exclude-members:
 
 ::: lazyllm.common.common.EnvVarContextManager
@@ -124,6 +122,15 @@
 
 ::: lazyllm.common.LazyLLMCMD
     members: [with_cmd, get_args]
+    exclude-members:
+
+
+::: lazyllm.common.utils.SecurityVisitor
+    members: visit_Call, visit_Import, visit_ImportFrom, visit_Attribute
+    exclude-members:
+
+::: lazyllm.common.common.Finalizer
+    members: 
     exclude-members:
 
 ::: lazyllm.common.FlatList.absorb

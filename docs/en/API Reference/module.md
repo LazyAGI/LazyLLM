@@ -129,7 +129,33 @@
     members: get_finetune_data
     exclude-members: 
 
-::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenModule
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMReranking
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMMultiModal
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenReranking
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenTTSModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaModule
+    members: set_deploy_parameters
+    exclude-members:
+
+::: lazyllm.module.llms.onlinemodule.base.onlineMultiModalBase.OnlineMultiModalBase
+    members:
+    exclude-members:::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenModule
     options:
       members:
         - set_deploy_parameters

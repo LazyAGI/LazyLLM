@@ -787,6 +787,7 @@ Args:
     nodes (List[DocNode]): 需要建立索引的文本节点列表。
     language (str): 所使用的语言，支持 ``en``（英文）或 ``zh``（中文）。默认为 ``en``。
     topk (int): 每次检索返回的最大节点数量，默认值为2。
+    **kwargs: 其他参数。
 ''')
 
 add_english_doc('rag.component.bm25.BM25', '''\
@@ -796,6 +797,27 @@ Args:
     nodes (List[DocNode]): A list of text nodes to index.
     language (str): The language to use, supports ``en`` (English) and ``zh`` (Chinese). Defaults to ``en``.
     topk (int): The maximum number of nodes to return in each retrieval. Defaults to 2.
+    **kwargs: Other parameters.
+''')
+
+add_chinese_doc('rag.component.bm25.BM25.retrieve', '''\
+使用BM25算法检索与查询最相关的文档节点。
+
+Args:
+    query (str): 查询文本。
+
+Returns:
+    List[Tuple[DocNode, float]]: 返回一个列表，每个元素为(文档节点, 相关度分数)的元组。
+''')
+
+add_english_doc('rag.component.bm25.BM25.retrieve', '''\
+Retrieve the most relevant document nodes for a query using BM25 algorithm.
+
+Args:
+    query (str): Query text.
+
+Returns:
+    List[Tuple[DocNode, float]]: Returns a list of tuples containing (document node, relevance score).
 ''')
 
 add_chinese_doc('rag.doc_to_db.DocInfoSchemaItem', '''\
@@ -839,6 +861,54 @@ add_example('rag.doc_to_db.DocGenreAnalyser', '''\
 >>> genre = analyser.analyse_doc_genre(m, "path/to/document.txt")
 >>> print(genre)
 contract
+''')
+
+add_chinese_doc('rag.doc_to_db.DocGenreAnalyser.gen_detection_query', '''\
+生成用于文档类型检测的查询。
+
+Args:
+    doc_path (str): 文档路径。
+
+Returns:
+    str: 返回格式化的查询字符串，包含文档内容和检测提示。
+
+注意：
+    生成的查询会自动根据 ONE_DOC_TOKEN_LIMIT 限制文档内容的长度。
+''')
+
+add_english_doc('rag.doc_to_db.DocGenreAnalyser.gen_detection_query', '''\
+Generate a query for document type detection.
+
+Args:
+    doc_path (str): Path to the document.
+
+Returns:
+    str: Returns a formatted query string containing document content and detection prompts.
+
+Note:
+    The generated query will automatically limit document content length based on ONE_DOC_TOKEN_LIMIT.
+''')
+
+add_chinese_doc('rag.doc_to_db.DocGenreAnalyser.analyse_doc_genre', '''\
+分析文档类型。
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): 用于分析的语言模型实例。
+    doc_path (str): 要分析的文档路径。
+
+Returns:
+    str: 返回检测到的文档类型。如果检测失败则返回空字符串。
+''')
+
+add_english_doc('rag.doc_to_db.DocGenreAnalyser.analyse_doc_genre', '''\
+Analyze document genre.
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): Language model instance for analysis.
+    doc_path (str): Path to the document to analyze.
+
+Returns:
+    str: Returns the detected document type. Returns empty string if detection fails.
 ''')
 
 add_chinese_doc('rag.doc_to_db.DocInfoSchemaAnalyser', '''\
@@ -1694,13 +1764,152 @@ Returns:
     List[dict]: 每项包含 'uid' 及相似度 'score'。
 ''')
 
-add_chinese_doc('rag.default_index.DefaultIndex', '''\
-默认的索引实现，负责在底层存储中基于 embedding 或文本相似度执行查询、更新和删除文档节点操作。  
-支持多种相似度度量方式，在需要时会对查询和节点进行 embedding 计算并同步更新存储。  
+add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore', '''\
+混合存储类，结合了分段存储和向量存储的功能。
 
 Args:
-    embed (Dict[str, Callable]): 用于生成查询和节点 embedding 的字典，key 为 embedding 名称，value 为接收字符串返回向量的函数。
-    store (StoreBase): 底层存储对象，用于持久化和检索 `DocNode` 节点。
+    segment_store (LazyLLMStoreBase): 分段存储实例，用于存储文档的原始内容。
+    vector_store (LazyLLMStoreBase): 向量存储实例，用于存储文档的向量表示。
+''')
+
+add_english_doc('rag.store.hybrid.hybrid_store.HybridStore', '''\
+Hybrid storage class that combines segment storage and vector storage capabilities.
+
+Args:
+    segment_store (LazyLLMStoreBase): Segment storage instance for storing original document content.
+    vector_store (LazyLLMStoreBase): Vector storage instance for storing document vector representations.
+''')
+
+add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore.connect', '''\
+连接到底层的分段存储和向量存储。
+
+Args:
+    *args: 传递给存储连接方法的位置参数。
+    **kwargs: 传递给存储连接方法的关键字参数。
+''')
+
+add_english_doc('rag.store.hybrid.hybrid_store.HybridStore.connect', '''\
+Connect to underlying segment and vector stores.
+
+Args:
+    *args: Positional arguments passed to store connection methods.
+    **kwargs: Keyword arguments passed to store connection methods.
+''')
+
+add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore.upsert', '''\
+向存储中插入或更新数据。
+
+Args:
+    collection_name (str): 集合名称。
+    data (List[dict]): 要插入或更新的数据列表，每个数据项都是一个字典。
+
+Returns:
+    bool: 操作成功返回True，否则返回False。
+''')
+
+add_english_doc('rag.store.hybrid.hybrid_store.HybridStore.upsert', '''\
+Insert or update data in the stores.
+
+Args:
+    collection_name (str): Name of the collection.
+    data (List[dict]): List of data items to insert or update, each item is a dictionary.
+
+Returns:
+    bool: Returns True if operation is successful, False otherwise.
+''')
+
+add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore.delete', '''\
+从存储中删除数据。
+
+Args:
+    collection_name (str): 集合名称。
+    criteria (Optional[dict]): 删除条件，默认为None。
+    **kwargs: 其他参数。
+
+Returns:
+    bool: 操作成功返回True，否则返回False。
+''')
+
+add_english_doc('rag.store.hybrid.hybrid_store.HybridStore.delete', '''\
+Delete data from the stores.
+
+Args:
+    collection_name (str): Name of the collection.
+    criteria (Optional[dict]): Deletion criteria, defaults to None.
+    **kwargs: Additional arguments.
+
+Returns:
+    bool: Returns True if operation is successful, False otherwise.
+''')
+
+add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore.get', '''\
+从存储中获取数据。
+
+Args:
+    collection_name (str): 集合名称。
+    criteria (Optional[dict]): 查询条件，默认为None。
+    **kwargs: 其他参数。
+
+Returns:
+    List[dict]: 返回符合条件的数据列表。
+
+Raises:
+    ValueError: 当向量存储中的uid在分段存储中找不到时抛出。
+''')
+
+add_english_doc('rag.store.hybrid.hybrid_store.HybridStore.get', '''\
+Retrieve data from the stores.
+
+Args:
+    collection_name (str): Name of the collection.
+    criteria (Optional[dict]): Query criteria, defaults to None.
+    **kwargs: Additional arguments.
+
+Returns:
+    List[dict]: List of matching data items.
+
+Raises:
+    ValueError: When a uid found in vector store is not found in segment store.
+''')
+
+add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore.search', '''\
+在存储中搜索数据。
+
+Args:
+    collection_name (str): 集合名称。
+    query (str): 搜索查询字符串。
+    query_embedding (Optional[Union[dict, List[float]]]): 查询的向量表示，默认为None。
+    topk (int): 返回的最大结果数量，默认为10。
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): 过滤条件，默认为None。
+    embed_key (Optional[str]): 嵌入向量的键名，默认为None。
+    **kwargs: 其他参数。
+
+Returns:
+    List[dict]: 返回搜索结果列表。
+''')
+
+add_english_doc('rag.store.hybrid.hybrid_store.HybridStore.search', '''\
+Search data in the stores.
+
+Args:
+    collection_name (str): Name of the collection.
+    query (str): Search query string.
+    query_embedding (Optional[Union[dict, List[float]]]): Vector representation of the query, defaults to None.
+    topk (int): Maximum number of results to return, defaults to 10.
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): Filter conditions, defaults to None.
+    embed_key (Optional[str]): Key name for embedding vector, defaults to None.
+    **kwargs: Additional arguments.
+
+Returns:
+    List[dict]: List of search results.
+''')
+
+add_chinese_doc('rag.default_index.DefaultIndex', r'''\ 
+默认的索引实现，负责通过 embedding 和文本相似度在底层存储中查询、更新和删除文档节点。支持多种相似度度量方式，并在必要时对查询和节点进行 embedding 计算与更新。
+
+Args:
+    embed (Dict[str, Callable]): 用于生成查询和节点 embedding 的字典，key 是 embedding 名称，value 是接收字符串返回向量的函数。
+    store (StoreBase): 底层存储，用于持久化和检索 DocNode 节点。
     **kwargs: 预留扩展参数。
 
 **Returns:**\n
@@ -2253,7 +2462,10 @@ Args:
     store (StoreBase): 存储实例，用于管理文档数据。
     reader (ReaderBase): 读取器实例，用于解析文档内容。
     node_groups (Dict[str, Dict]): 节点组配置信息。
+    display_name (Optional[str]): 算法的显示名称，默认为None。
+    description (Optional[str]): 算法的描述信息，默认为None。
     force_refresh (bool): 是否强制刷新已存在的算法。默认为False。
+    **kwargs: 其他参数。
 
 **说明:**
 - 如果算法名称已存在且force_refresh为False，将跳过注册
@@ -2268,8 +2480,11 @@ Args:
     store (StoreBase): Storage instance for managing document data.
     reader (ReaderBase): Reader instance for parsing document content.
     node_groups (Dict[str, Dict]): Node group configuration information.
+    display_name (Optional[str]): Display name for the algorithm, defaults to None.
+    description (Optional[str]): Description of the algorithm, defaults to None.
     force_refresh (bool): Whether to force refresh existing algorithm. Defaults to False.
-
+    **kwargs: Additional arguments.
+    
 **Notes:**
 - If algorithm name exists and force_refresh is False, registration will be skipped
 - After successful registration, the algorithm can be used to process documents
@@ -2808,7 +3023,7 @@ Args:
 - BaseResponse: 上传结果和文件ID。
 """)
 
-add_chinese_doc('rag.doc_manager.DocManager.add_files', """
+add_chinese_doc('rag.DocManager.add_files', """
 批量添加文件。
 Args:
     files (List[UploadFile]): 上传的文件列表。
@@ -3098,6 +3313,35 @@ Args:
 **Returns:**\n
 - BaseResponse: Returns the field value if key is specified and exists; otherwise returns full metadata. If the key does not exist, returns an error.
 """)
+
+add_chinese_doc('rag.DocManager.reparse_files', '''\
+重新解析指定的文件。
+
+Args:
+    file_ids (List[str]): 需要重新解析的文件ID列表。
+    group_name (Optional[str]): 文件组名称，默认为None。
+
+Returns:
+    BaseResponse: 包含以下字段的响应对象：
+        code (int): 状态码，200表示成功。
+        msg (str): 错误信息（如果有）。
+        data: None。
+''')
+
+add_english_doc('rag.DocManager.reparse_files', '''\
+Reparse specified files.
+
+Args:
+    file_ids (List[str]): List of file IDs to reparse.
+    group_name (Optional[str]): Group name for the files, defaults to None.
+
+Returns:
+    BaseResponse: Response object containing:
+        code (int): Status code, 200 for success.
+        msg (str): Error message if any.
+        data: None.
+''')
+
 # ---------------------------------------------------------------------------- #
 
 # rag/data_loaders.py
@@ -3227,10 +3471,8 @@ add_chinese_doc('rag.utils.DocListManager.update_need_reparsing', '''\
 参数:
     doc_id (str): 要更新的文档ID。
     need_reparse (bool): `need_reparse` 标志的新值。
-    group_name (Optional[str]): 如果提供，仅对指定分组应用更新；如果未提供，则对包含该文档的所有分组应用更新。
 说明:
     - 使用线程安全锁 (`self._db_lock`) 确保数据库访问安全。
-    - `group_name` 参数允许将更新限定到特定分组；如果未提供，则更新应用于包含该文档的所有分组。
     - 方法会立刻将更改提交到数据库。
 ''')
 
@@ -3496,10 +3738,8 @@ This method sets the `need_reparse` flag for a specific document, optionally sco
 Args:
     doc_id (str): The ID of the document to update.
     need_reparse (bool): The new value for the `need_reparse` flag.
-    group_name (Optional[str]): If provided, the update will be applied only to the specified group.
 Notes:
     - Uses a thread-safe lock (`self._db_lock`) to ensure safe database access.
-    - The `group_name` parameter allows scoping the update to a specific group; if not provided, the update applies to all groups containing the document.
     - The method commits the change to the database immediately.
 ''')
 
@@ -4809,6 +5049,8 @@ Args:
     llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。
     tools (List[str]): LLM 使用的工具名称列表。
     max_retries (int): 工具调用迭代的最大次数。默认值为5。
+    return_trace (bool): 是否返回执行追踪信息，默认为False。
+    stream (bool): 是否启用流式输出，默认为False。
 ''')
 
 add_english_doc('FunctionCallAgent', '''\
@@ -4818,6 +5060,8 @@ Args:
     llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
     tools (List[str]): A list of tool names for LLM to use.
     max_retries (int): The maximum number of tool call iterations. The default value is 5.
+    return_trace (bool): Whether to return execution trace information, defaults to False.
+    stream (bool): Whether to enable streaming output, defaults to False.
 ''')
 
 add_example('FunctionCallAgent', """\
@@ -5036,7 +5280,6 @@ Args:
     tools (List[str]): LLM使用的工具名称列表。
     plan_llm (ModuleBase): planner要使用的LLM，可以是TrainableModule或OnlineChatModule。
     solve_llm (ModuleBase): solver要使用的LLM，可以是TrainableModule或OnlineChatModule。
-    max_retries (int): 工具调用迭代的最大次数。默认值为5。
     return_trace (bool): 是否返回中间步骤和工具调用信息。
     stream (bool): 是否以流式方式输出规划和解决过程。
 
@@ -5050,7 +5293,6 @@ Args:
     tools (List[str]): A list of tool names for LLM to use.
     plan_llm (ModuleBase): The LLM to be used by the planner, which can be either TrainableModule or OnlineChatModule.
     solve_llm (ModuleBase): The LLM to be used by the solver, which can be either TrainableModule or OnlineChatModule.
-    max_retries (int): The maximum number of tool call iterations. The default value is 5.
     return_trace (bool): If True, return intermediate steps and tool calls.
     stream (bool): Whether to stream the planning and solving process.
 ''')
@@ -5140,6 +5382,120 @@ add_example('BaseEvaluator', ['''\
 >>> print(score)
 ... 0.5
 '''])
+
+add_chinese_doc('BaseEvaluator.process_one_data', '''\
+处理单条数据。
+
+Args:
+    data: 要处理的数据项。
+    progress_bar (Optional[tqdm]): 进度条对象，默认为None。
+
+Returns:
+    Any: 返回处理结果。
+
+注意：
+    该方法会在处理数据时自动更新进度条，并使用线程锁确保线程安全。
+''')
+
+add_english_doc('BaseEvaluator.process_one_data', '''\
+Process a single data item.
+
+Args:
+    data: Data item to process.
+    progress_bar (Optional[tqdm]): Progress bar object, defaults to None.
+
+Returns:
+    Any: Returns processing result.
+
+Note:
+    This method automatically updates the progress bar during processing and uses thread lock to ensure thread safety.
+''')
+
+add_chinese_doc('BaseEvaluator.validate_inputs_key', '''\
+验证输入数据的格式和必要键。
+
+Args:
+    data: 要验证的数据。
+
+Raises:
+    RuntimeError: 当数据格式不正确或缺少必要键时抛出。
+        - 如果data不是列表
+        - 如果列表中的项不是字典
+        - 如果字典中缺少必要的键
+''')
+
+add_english_doc('BaseEvaluator.validate_inputs_key', '''\
+Validate input data format and required keys.
+
+Args:
+    data: Data to validate.
+
+Raises:
+    RuntimeError: Raised when data format is incorrect or missing required keys.
+        - If data is not a list
+        - If items in the list are not dictionaries
+        - If dictionaries are missing required keys
+''')
+
+add_chinese_doc('BaseEvaluator.batch_process', '''\
+批量处理数据。
+
+Args:
+    data: 要处理的数据列表。
+    progress_bar (tqdm): 进度条对象。
+
+Returns:
+    List: 返回处理结果列表。
+
+流程：
+1. 验证输入数据的格式和必要键
+2. 使用并发处理器处理数据
+3. 保存处理结果
+''')
+
+add_english_doc('BaseEvaluator.batch_process', '''\
+Process data in batch.
+
+Args:
+    data: List of data to process.
+    progress_bar (tqdm): Progress bar object.
+
+Returns:
+    List: Returns list of processing results.
+
+Flow:
+1. Validates input data format and required keys
+2. Processes data using concurrent processor
+3. Saves processing results
+''')
+
+add_chinese_doc('BaseEvaluator.save_res', '''\
+保存评估结果。
+
+Args:
+    data: 要保存的数据。
+    eval_res_save_name (Optional[str]): 保存文件的基础名称，默认使用类名。
+
+保存格式：
+    - 文件名格式：{filename}_{timestamp}.json
+    - 时间戳格式：YYYYMMDDHHmmSS
+    - 保存路径：lazyllm.config['eval_result_dir']
+    - JSON格式，使用4空格缩进
+''')
+
+add_english_doc('BaseEvaluator.save_res', '''\
+Save evaluation results.
+
+Args:
+    data: Data to save.
+    eval_res_save_name (Optional[str]): Base name for the save file, defaults to class name.
+
+Save Format:
+    - Filename format: {filename}_{timestamp}.json
+    - Timestamp format: YYYYMMDDHHmmSS
+    - Save path: lazyllm.config['eval_result_dir']
+    - JSON format with 4-space indentation
+''')
 
 add_chinese_doc('ResponseRelevancy', '''\
 用于评估用户问题与模型生成问题之间语义相关性的指标类。
@@ -7296,7 +7652,6 @@ Performs a query based on the given arguments and returns matching document node
 - **kwargs: Keyword arguments for the query.
 ''')
 
-
 add_chinese_doc('StreamCallHelper', '''\
 流式调用辅助类，用于将阻塞调用包装为生成器形式，逐步返回执行结果。
 
@@ -7415,581 +7770,401 @@ Args:
     embed_key (Optional[str]): Embedding key.
     **kwargs: Additional parameters.
 ''')
-add_chinese_doc('infer_service.serve.InferServer', """\
-推理服务服务器类，负责管理模型部署任务的生命周期。
 
-提供完整的模型部署、状态监控、日志管理和任务取消等功能。支持异步任务处理和多用户隔离。
-
-**主要功能:**\n
-- 创建和管理模型部署任务
-- 监控任务状态和自动清理
-- 提供任务日志和状态查询接口
-- 支持任务取消和超时处理
-""")
-
-add_english_doc('infer_service.serve.InferServer', """\
-Inference service server class, responsible for managing the lifecycle of model deployment tasks.
-
-Provides complete model deployment, status monitoring, log management, and task cancellation functions. Supports asynchronous task processing and multi-user isolation.
-
-**Main Features:**\n
-- Create and manage model deployment tasks
-- Monitor task status and automatic cleanup
-- Provide task log and status query interfaces
-- Support task cancellation and timeout handling
-""")
-
-add_chinese_doc('infer_service.serve.InferServer.create_job', """\
-创建新的模型部署任务API接口。
-
-这是一个POST接口，接收任务描述信息，启动异步模型部署过程，并立即返回任务ID和初始状态。
+add_chinese_doc('rag.doc_impl.DocImpl', '''\
+文档实现类，用于管理文档处理、存储和检索的核心功能。
 
 Args:
-    job (JobDescription): 任务描述对象，包含以下字段：
-        - deploy_model: 要部署的模型名称或路径
-        - num_gpus: 需要的GPU数量
-    token (str): 用户认证令牌，通过HTTP头部传递
+    embed (Dict[str, Callable]): 嵌入函数字典。
+    dlm (Optional[DocListManager]): 文档列表管理器，默认为None。
+    doc_files (Optional[str]): 文档文件路径，默认为None。
+    kb_group_name (Optional[str]): 知识库组名称，默认为默认组名。
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据描述。
+    store (Optional[Union[Dict, LazyLLMStoreBase]]): 存储实例或配置。
+    processor (Optional[DocumentProcessor]): 文档处理器。
+    algo_name (Optional[str]): 算法名称。
+    display_name (Optional[str]): 显示名称。
+    description (Optional[str]): 描述信息。
+''')
 
-**Returns:**\n
-- dict: 包含以下字段的响应字典：
-    - job_id: 唯一任务标识符
-    - status: 任务初始状态（Running、Pending等）
-
-**Raises:**\n
-- HTTPException(401): 当token无效或缺失时
-
-""")
-
-add_english_doc('infer_service.serve.InferServer.create_job', """\
-API interface for creating new model deployment tasks.
-
-This is a POST interface that receives job description information, starts an asynchronous model deployment process, and immediately returns the job ID and initial status.
+add_english_doc('rag.doc_impl.DocImpl', '''\
+Document implementation class for managing core document processing, storage, and retrieval functionalities.
 
 Args:
-    job (JobDescription): Job description object containing:
-        - deploy_model: Model name or path to deploy
-        - num_gpus: Number of GPUs required
-    token (str): User authentication token, passed through HTTP header
+    embed (Dict[str, Callable]): Dictionary of embedding functions.
+    dlm (Optional[DocListManager]): Document list manager, defaults to None.
+    doc_files (Optional[str]): Document files path, defaults to None.
+    kb_group_name (Optional[str]): Knowledge base group name, defaults to default group name.
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Global metadata description.
+    store (Optional[Union[Dict, LazyLLMStoreBase]]): Storage instance or configuration.
+    processor (Optional[DocumentProcessor]): Document processor.
+    algo_name (Optional[str]): Algorithm name.
+    display_name (Optional[str]): Display name.
+    description (Optional[str]): Description information.
+''')
 
-**Returns:**\n
-- dict: Response dictionary with fields:
-    - job_id: Unique job identifier
-    - status: Initial job status (Running, Pending, etc.)
-
-**Raises:**\n
-- HTTPException(401): When token is invalid or missing
-""")
-
-
-add_chinese_doc('infer_service.serve.InferServer.cancel_job', """\
-取消指定部署任务API接口。
-
-这是一个POST接口，用于停止正在运行的模型部署任务，并清理相关资源。
+add_chinese_doc('rag.doc_impl.DocImpl.create_global_node_group', '''\
+创建全局节点组。
 
 Args:
-    job_id (str): 要取消的任务ID，通过URL路径参数传递
-    token (str): 用户认证令牌，通过HTTP头部传递
+    name (str): 节点组名称。
+    transform (Union[str, Callable]): 转换函数或名称。
+    parent (str): 父节点组名称，默认为LAZY_ROOT_NAME。
+    trans_node (Optional[bool]): 是否转换节点，默认为None。
+    num_workers (int): 工作线程数，默认为0。
+    display_name (Optional[str]): 显示名称。
+    group_type (NodeGroupType): 节点组类型。
+    **kwargs: 其他参数。
+''')
 
-**Returns:**\n
-- dict: 包含最终状态的响应字典：
-    - status: 任务取消后的最终状态
-
-**Raises:**\n
-- HTTPException(404): 当任务不存在或取消超时时
-
-""")
-
-add_english_doc('infer_service.serve.InferServer.cancel_job', """\
-API interface for cancelling specified deployment tasks.
-
-This is a POST interface used to stop running model deployment tasks and clean up related resources.
+add_english_doc('rag.doc_impl.DocImpl.create_global_node_group', '''\
+Create a global node group.
 
 Args:
-    job_id (str): Job ID to be cancelled, passed through URL path parameter
-    token (str): User authentication token, passed through HTTP header
+    name (str): Node group name.
+    transform (Union[str, Callable]): Transform function or name.
+    parent (str): Parent node group name, defaults to LAZY_ROOT_NAME.
+    trans_node (Optional[bool]): Whether to transform node, defaults to None.
+    num_workers (int): Number of worker threads, defaults to 0.
+    display_name (Optional[str]): Display name.
+    group_type (NodeGroupType): Node group type.
+    **kwargs: Additional arguments.
+''')
 
-**Returns:**\n
-- dict: Response dictionary with final status:
-    - status: Final status after job cancellation
-
-**Raises:**\n
-- HTTPException(404): When job not found or cancellation times out
-
-""")
-
-
-add_chinese_doc('infer_service.serve.InferServer.list_jobs', """\
-获取用户所有任务列表API接口。
-
-这是一个GET接口，返回用户的所有部署任务信息，包括运行中、已完成和已取消的任务。
+add_chinese_doc('rag.doc_impl.DocImpl.create_node_group', '''\
+创建局部节点组。
 
 Args:
-    token (str): 用户认证令牌，通过HTTP头部传递
+    name (str): 节点组名称。
+    transform (Union[str, Callable]): 转换函数或名称。
+    parent (str): 父节点组名称，默认为LAZY_ROOT_NAME。
+    trans_node (Optional[bool]): 是否转换节点，默认为None。
+    num_workers (int): 工作线程数，默认为0。
+    display_name (Optional[str]): 显示名称。
+    group_type (NodeGroupType): 节点组类型。
+    **kwargs: 其他参数。
+''')
 
-**Returns:**\n
-- dict: 包含所有任务信息的字典，键为job_id，值为任务详细信息
-
-""")
-
-add_english_doc('infer_service.serve.InferServer.list_jobs', """\
-API interface for getting all job lists of the user.
-
-This is a GET interface that returns all deployment task information of the user, including running, completed, and cancelled tasks.
-
-Args:
-    token (str): User authentication token, passed through HTTP header
-
-**Returns:**\n
-- dict: Dictionary containing all job information, key is job_id, value is detailed job information
-
-""")
-
-
-add_chinese_doc('infer_service.serve.InferServer.get_job_info', """\
-获取指定任务详细信息API接口。
-
-这是一个GET接口，返回特定任务的完整详细信息，包括实时状态更新。
+add_english_doc('rag.doc_impl.DocImpl.create_node_group', '''\
+Create a local node group.
 
 Args:
-    job_id (str): 任务ID，通过URL路径参数传递
-    token (str): 用户认证令牌，通过HTTP头部传递
+    name (str): Node group name.
+    transform (Union[str, Callable]): Transform function or name.
+    parent (str): Parent node group name, defaults to LAZY_ROOT_NAME.
+    trans_node (Optional[bool]): Whether to transform node, defaults to None.
+    num_workers (int): Number of worker threads, defaults to 0.
+    display_name (Optional[str]): Display name.
+    group_type (NodeGroupType): Node group type.
+    **kwargs: Additional arguments.
+''')
 
-**Returns:**\n
-- dict: 任务详细信息字典
-
-**Raises:**\n
-- HTTPException(404): 当任务不存在时
-
-""")
-
-add_english_doc('infer_service.serve.InferServer.get_job_info', """\
-API interface for getting detailed information of specified task.
-
-This is a GET interface that returns complete detailed information of a specific task, including real-time status updates.
+add_chinese_doc('rag.doc_impl.DocImpl.register_global_reader', '''\
+注册全局文件读取器。
 
 Args:
-    job_id (str): Job ID, passed through URL path parameter
-    token (str): User authentication token, passed through HTTP header
+    pattern (str): 文件模式。
+    func (Optional[Callable]): 读取函数，默认为None。
 
-**Returns:**\n
-- dict: Detailed job information dictionary
+Returns:
+    Optional[Callable]: 装饰器函数或None。
+''')
 
-**Raises:**\n
-- HTTPException(404): When job not found
-
-""")
-
-
-add_chinese_doc('infer_service.serve.InferServer.get_job_log', """\
-获取任务日志文件信息API接口。
-
-这是一个GET接口，返回任务日志文件的路径信息。
+add_english_doc('rag.doc_impl.DocImpl.register_global_reader', '''\
+Register a global file reader.
 
 Args:
-    job_id (str): 任务ID，通过URL路径参数传递
-    token (str): 用户认证令牌，通过HTTP头部传递
+    pattern (str): File pattern.
+    func (Optional[Callable]): Reader function, defaults to None.
 
-**Returns:**\n
-- dict: 包含日志路径的字典：
-    - log: 日志文件路径或'invalid'（如果无效）
+Returns:
+    Optional[Callable]: Decorator function or None.
+''')
 
-**Raises:**\n
-- HTTPException(404): 当任务不存在时
-
-
-""")
-
-add_english_doc('infer_service.serve.InferServer.get_job_log', """\
-API interface for getting job log file information.
-
-This is a GET interface that returns the path information of the job log file.
+add_chinese_doc('rag.doc_impl.DocImpl.register_index', '''\
+注册索引。
 
 Args:
-    job_id (str): Job ID, passed through URL path parameter
-    token (str): User authentication token, passed through HTTP header
+    index_type (str): 索引类型。
+    index_cls (IndexBase): 索引类。
+    *args: 位置参数。
+    **kwargs: 关键字参数。
+''')
 
-**Returns:**\n
-- dict: Dictionary containing log path:
-    - log: Log file path or 'invalid' (if invalid)
-
-**Raises:**\n
-- HTTPException(404): When job not found
-
-""")
-
-add_chinese_doc('services.services.ServerBase', """\
-服务器基础类，提供作业管理和状态监控功能。
-
-实现多用户作业管理、状态追踪和线程安全的字典操作，支持作业信息的增删改查和状态轮询检查。
-
-**主要功能:**\n
-- 多用户作业信息管理
-- 活跃作业状态监控
-- 线程安全的数据操作
-- 自动状态轮询检查
-- 用户认证验证
-""")
-
-add_english_doc('services.services.ServerBase', """\
-Server base class providing job management and status monitoring functionality.
-
-Implements multi-user job management, status tracking and thread-safe dictionary operations, supports CRUD operations for job information and status polling checks.
-
-**Main Features:**\n
-- Multi-user job information management
-- Active job status monitoring
-- Thread-safe data operations
-- Automatic status polling checks
-- User authentication verification
-""")
-
-add_chinese_doc('services.services.ServerBase.authorize_current_user', """\
-验证当前用户的认证令牌。
-
-检查提供的Bearer令牌是否在用户作业信息中存在。
+add_english_doc('rag.doc_impl.DocImpl.register_index', '''\
+Register an index.
 
 Args:
-    Bearer (str, optional): Bearer认证令牌
+    index_type (str): Index type.
+    index_cls (IndexBase): Index class.
+    *args: Positional arguments.
+    **kwargs: Keyword arguments.
+''')
 
-**Returns:**\n
-- str: 验证通过的令牌
-
-**异常:**\n
-- HTTPException: 当令牌无效时抛出401异常
-""")
-
-add_english_doc('services.services.ServerBase.authorize_current_user', """\
-Authenticate current user's authentication token.
-
-Checks if provided Bearer token exists in user job information.
+add_chinese_doc('rag.doc_impl.DocImpl.add_reader', '''\
+添加局部文件读取器。
 
 Args:
-    Bearer (str, optional): Bearer authentication token
+    pattern (str): 文件模式。
+    func (Optional[Callable]): 读取函数。
+''')
 
-**Returns:**\n
-- str: Verified token
-
-**Exceptions:**\n
-- HTTPException: Raises 401 exception when token is invalid
-""")
-
-add_chinese_doc('rag.store.segment.opensearch_store.OpenSearchStore', """\
-基于OpenSearch的向量存储实现。
-
-该类提供了与OpenSearch数据库的集成，支持文档的存储、检索、更新和删除操作。
-支持批量插入、条件查询和索引自动创建等功能。
+add_english_doc('rag.doc_impl.DocImpl.add_reader', '''\
+Add a local file reader.
 
 Args:
-    uris (List[str]): OpenSearch服务器URI列表
-    client_kwargs (Dict, optional): OpenSearch客户端配置参数
-    index_kwargs (Union[Dict, List], optional): 索引创建配置参数
-    **kwargs: 其他关键字参数
+    pattern (str): File pattern.
+    func (Optional[Callable]): Reader function.
+''')
 
-""")
+add_chinese_doc('rag.doc_impl.DocImpl.worker', '''\
+后台工作线程，处理文档的解析、删除、添加等操作。
+''')
 
-add_english_doc('rag.store.segment.opensearch_store.OpenSearchStore', """\
-OpenSearch-based vector storage implementation.
+add_english_doc('rag.doc_impl.DocImpl.worker', '''\
+Background worker thread for handling document parsing, deletion, addition, and other operations.
+''')
 
-This class provides integration with OpenSearch database, supporting document storage, retrieval, update, and deletion operations.
-Supports batch insertion, conditional queries, and automatic index creation.
-
-Args:
-    uris (List[str]): List of OpenSearch server URIs
-    client_kwargs (Dict, optional): OpenSearch client configuration parameters
-    index_kwargs (Union[Dict, List], optional): Index creation configuration parameters
-    **kwargs: Additional keyword arguments
-
-""")
-
-add_chinese_doc('rag.store.segment.opensearch_store.OpenSearchStore.connect', """\
-建立与OpenSearch服务器的连接。
-
-初始化OpenSearch客户端并配置认证信息。如果提供了用户名和密码，会自动转换为HTTP认证格式。
+add_chinese_doc('rag.doc_impl.DocImpl.activate_group', '''\
+激活节点组。
 
 Args:
-    *args: 可变位置参数
-    **kwargs: 可变关键字参数
+    group_name (str): 节点组名称。
+    embed_keys (List[str]): 嵌入键列表。
+''')
 
-""")
-
-add_english_doc('rag.store.segment.opensearch_store.OpenSearchStore.connect', """\
-Establish connection to OpenSearch server.
-
-Initializes OpenSearch client and configures authentication information. If username and password are provided, automatically converts to HTTP auth format.
+add_english_doc('rag.doc_impl.DocImpl.activate_group', '''\
+Activate a node group.
 
 Args:
-    *args: Variable positional arguments
-    **kwargs: Variable keyword arguments
+    group_name (str): Node group name.
+    embed_keys (List[str]): List of embedding keys.
+''')
 
-""")
+add_chinese_doc('rag.doc_impl.DocImpl.active_node_groups', '''\
+获取当前激活的节点组。
 
-add_chinese_doc('rag.store.segment.opensearch_store.OpenSearchStore.upsert', """\
-插入或更新文档到指定集合。
+Returns:
+    Dict: 激活的节点组及其嵌入键。
+''')
 
-批量插入或更新文档数据到OpenSearch索引中。支持自动创建索引和批量操作。
+add_english_doc('rag.doc_impl.DocImpl.active_node_groups', '''\
+Get currently active node groups.
 
-Args:
-    collection_name (str): 集合/索引名称
-    data (List[dict]): 要插入的文档数据列表
+Returns:
+    Dict: Active node groups and their embedding keys.
+''')
 
-**Returns:**\n
-- bool: 操作是否成功
-""")
-
-add_english_doc('rag.store.segment.opensearch_store.OpenSearchStore.upsert', """\
-Insert or update documents to specified collection.
-
-Batch insert or update document data to OpenSearch index. Supports automatic index creation and batch operations.
+add_chinese_doc('rag.doc_impl.DocImpl.retrieve', '''\
+检索文档节点。
 
 Args:
-    collection_name (str): Collection/index name
-    data (List[dict]): List of document data to insert
+    query (str): 查询字符串。
+    group_name (str): 节点组名称。
+    similarity (str): 相似度计算方法。
+    similarity_cut_off (Union[float, Dict[str, float]]): 相似度阈值。
+    index (str): 索引类型。
+    topk (int): 返回结果数量。
+    similarity_kws (dict): 相似度计算参数。
+    embed_keys (Optional[List[str]]): 嵌入键列表。
+    filters (Optional[Dict]): 过滤条件。
+    **kwargs: 其他参数。
 
-**Returns:**\n
-- bool: Whether the operation was successful
-""")
+Returns:
+    List[DocNode]: 检索到的文档节点列表。
+''')
 
-add_chinese_doc('rag.store.segment.opensearch_store.OpenSearchStore.delete', """\
-从指定集合中删除文档。
-
-根据条件删除文档或删除整个索引。支持条件删除和全量删除。
-
-Args:
-    collection_name (str): 集合/索引名称
-    criteria (dict, optional): 删除条件
-    **kwargs: 其他关键字参数
-
-**Returns:**\n
-- bool: 操作是否成功
-""")
-
-add_english_doc('rag.store.segment.opensearch_store.OpenSearchStore.delete', """\
-Delete documents from specified collection.
-
-Delete documents based on conditions or delete entire index. Supports conditional deletion and full deletion.
+add_english_doc('rag.doc_impl.DocImpl.retrieve', '''\
+Retrieve document nodes.
 
 Args:
-    collection_name (str): Collection/index name
-    criteria (dict, optional): Deletion criteria
-    **kwargs: Additional keyword arguments
+    query (str): Query string.
+    group_name (str): Node group name.
+    similarity (str): Similarity calculation method.
+    similarity_cut_off (Union[float, Dict[str, float]]): Similarity threshold.
+    index (str): Index type.
+    topk (int): Number of results to return.
+    similarity_kws (dict): Similarity calculation parameters.
+    embed_keys (Optional[List[str]]): List of embedding keys.
+    filters (Optional[Dict]): Filter conditions.
+    **kwargs: Additional arguments.
 
-**Returns:**\n
-- bool: Whether the operation was successful
-""")
+Returns:
+    List[DocNode]: List of retrieved document nodes.
+''')
 
-add_chinese_doc('rag.store.segment.opensearch_store.OpenSearchStore.get', """\
-从指定集合中获取文档。
-
-根据条件查询文档数据，支持主键查询和条件查询。
-
-Args:
-    collection_name (str): 集合/索引名称
-    criteria (dict, optional): 查询条件
-    **kwargs: 其他关键字参数
-
-**Returns:**\n
-- List[dict]: 查询结果文档列表
-""")
-
-add_english_doc('rag.store.segment.opensearch_store.OpenSearchStore.get', """\
-Retrieve documents from specified collection.
-
-Query document data based on conditions, supports primary key query and conditional query.
+add_chinese_doc('rag.doc_impl.DocImpl.find', '''\
+在指定组中查找节点。
 
 Args:
-    collection_name (str): Collection/index name
-    criteria (dict, optional): Query criteria
-    **kwargs: Additional keyword arguments
+    nodes (List[DocNode]): 节点列表。
+    group (str): 目标组名称。
 
-**Returns:**\n
-- List[dict]: Query result document list
-""")
+Returns:
+    List[DocNode]: 找到的节点列表。
+''')
 
-add_chinese_doc('rag.store.segment.opensearch_store.OpenSearchStore.search', """\
-在指定集合中搜索文档。
-
-暂未实现的搜索功能。
+add_english_doc('rag.doc_impl.DocImpl.find', '''\
+Find nodes in specified group.
 
 Args:
-    collection_name (str): 集合/索引名称
-    query (str): 搜索查询字符串
-    topk (int): 返回结果数量
-    **kwargs: 其他关键字参数
+    nodes (List[DocNode]): List of nodes.
+    group (str): Target group name.
 
-**Raises:**\n
-- NotImplementedError: 功能尚未实现
-""")
+Returns:
+    List[DocNode]: List of found nodes.
+''')
 
-add_english_doc('rag.store.segment.opensearch_store.OpenSearchStore.search', """\
-Search documents in specified collection.
-
-Search functionality not yet implemented.
+add_chinese_doc('rag.doc_impl.DocImpl.find_parent', '''\
+查找父节点。
 
 Args:
-    collection_name (str): Collection/index name
-    query (str): Search query string
-    topk (int): Number of results to return
-    **kwargs: Additional keyword arguments
+    nodes (List[DocNode]): 节点列表。
+    group (str): 目标组名称。
 
-**Raises:**\n
-- NotImplementedError: Functionality not implemented yet
-""")
+Returns:
+    List[DocNode]: 找到的父节点列表。
+''')
 
-add_chinese_doc('rag.store.hybrid.MapStore', """\
-基于SQLite的本地映射存储实现。
-
-提供基于SQLite数据库的持久化存储能力，支持文档的增删改查操作，具有完整的内存映射和磁盘持久化功能。
+add_english_doc('rag.doc_impl.DocImpl.find_parent', '''\
+Find parent nodes.
 
 Args:
-    uri (str, optional): SQLite数据库文件路径。如果为None则使用纯内存模式
-    **kwargs: 其他关键字参数
+    nodes (List[DocNode]): List of nodes.
+    group (str): Target group name.
 
-""")
+Returns:
+    List[DocNode]: List of found parent nodes.
+''')
 
-add_english_doc('rag.store.hybrid.MapStore', """\
-SQLite-based local mapping storage implementation.
-
-Provides persistent storage capability based on SQLite database, supports CRUD operations for documents, with complete memory mapping and disk persistence functionality.
-
-Args:
-    uri (str, optional): SQLite database file path. Uses pure memory mode if None
-    **kwargs: Additional keyword arguments
-
-""")
-
-add_chinese_doc('rag.store.hybrid.MapStore.connect', """\
-连接到存储系统并加载数据。
-
-初始化内存数据结构并从SQLite数据库加载已有数据。如果数据库文件不存在会自动创建。
+add_chinese_doc('rag.doc_impl.DocImpl.find_children', '''\
+查找子节点。
 
 Args:
-    collections (List[str], optional): 要加载的集合名称列表
-    **kwargs: 其他关键字参数
+    nodes (List[DocNode]): 节点列表。
+    group (str): 目标组名称。
 
-""")
+Returns:
+    List[DocNode]: 找到的子节点列表。
+''')
 
-add_english_doc('rag.store.hybrid.MapStore.connect', """\
-Connect to storage system and load data.
-
-Initialize memory data structures and load existing data from SQLite database. Automatically creates database file if it doesn't exist.
-
-Args:
-    collections (List[str], optional): List of collection names to load
-    **kwargs: Additional keyword arguments
-
-""")
-
-add_chinese_doc('rag.store.hybrid.MapStore.upsert', """\
-插入或更新文档到指定集合。
-
-将文档数据插入内存映射并持久化到SQLite数据库，支持批量操作。
+add_english_doc('rag.doc_impl.DocImpl.find_children', '''\
+Find child nodes.
 
 Args:
-    collection_name (str): 集合名称
-    data (List[dict]): 要插入的文档数据列表
+    nodes (List[DocNode]): List of nodes.
+    group (str): Target group name.
 
-**Returns:**\n
-- bool: 操作是否成功
-""")
+Returns:
+    List[DocNode]: List of found child nodes.
+''')
 
-add_english_doc('rag.store.hybrid.MapStore.upsert', """\
-Insert or update documents to specified collection.
-
-Insert document data into memory mapping and persist to SQLite database, supports batch operations.
+add_chinese_doc('rag.doc_impl.DocImpl.clear_cache', '''\
+清除缓存。
 
 Args:
-    collection_name (str): Collection name
-    data (List[dict]): List of document data to insert
+    group_names (Optional[List[str]]): 要清除缓存的组名列表，默认为None表示清除所有缓存。
+''')
 
-**Returns:**\n
-- bool: Whether the operation was successful
-""")
-
-add_chinese_doc('rag.store.hybrid.MapStore.delete', """\
-从指定集合中删除文档。
-
-根据条件删除内存中和SQLite数据库中的文档数据。
+add_english_doc('rag.doc_impl.DocImpl.clear_cache', '''\
+Clear cache.
 
 Args:
-    collection_name (str): 集合名称
-    criteria (dict, optional): 删除条件
-    **kwargs: 其他关键字参数
+    group_names (Optional[List[str]]): List of group names to clear cache for, defaults to None for clearing all cache.
+''')
 
-**Returns:**\n
-- bool: 操作是否成功
-""")
-
-add_english_doc('rag.store.hybrid.MapStore.delete', """\
-Delete documents from specified collection.
-
-Delete document data from memory and SQLite database based on conditions.
+add_chinese_doc('services.client.ClientBase', '''\
+客户端基类，用于管理服务连接和状态转换。
 
 Args:
-    collection_name (str): Collection name
-    criteria (dict, optional): Deletion criteria
-    **kwargs: Additional keyword arguments
+    url (str): 服务端点的URL地址。
 
-**Returns:**\n
-- bool: Whether the operation was successful
-""")
+属性：
+    url: 服务端点的URL地址。
+''')
 
-add_chinese_doc('rag.store.hybrid.MapStore.get', """\
-从指定集合中获取文档。
-
-根据条件查询内存中的文档数据，支持多种查询条件组合。
+add_english_doc('services.client.ClientBase', '''\
+Base client class for managing service connections and status conversions.
 
 Args:
-    collection_name (str): 集合名称
-    criteria (dict, optional): 查询条件
-    **kwargs: 其他关键字参数
+    url (str): URL of the service endpoint.
 
-**Returns:**\n
-- List[dict]: 查询结果文档列表
-""")
+Attributes:
+    url: URL of the service endpoint.
+''')
 
-add_english_doc('rag.store.hybrid.MapStore.get', """\
-Retrieve documents from specified collection.
-
-Query document data from memory based on conditions, supports multiple query condition combinations.
+add_chinese_doc('services.client.ClientBase.uniform_status', '''\
+统一化任务状态字符串。
 
 Args:
-    collection_name (str): Collection name
-    criteria (dict, optional): Query criteria
-    **kwargs: Additional keyword arguments
+    status (str): 原始状态字符串。
 
-**Returns:**\n
-- List[dict]: Query result document list
-""")
+Returns:
+    str: 标准化的状态字符串，可能的值包括：
+        - 'Invalid': 无效状态
+        - 'Ready': 就绪状态
+        - 'Done': 完成状态
+        - 'Cancelled': 已取消状态
+        - 'Failed': 失败状态
+        - 'Running': 运行中状态
+        - 'Pending': 等待中状态（包括TBSubmitted、InQueue、Pending）
+''')
 
-add_chinese_doc('rag.store.hybrid.MapStore.search', """\
-在指定集合中搜索文档。
-
-暂未实现的搜索功能，建议使用默认索引进行搜索。
-
-Args:
-    collection_name (str): 集合名称
-    query (str): 搜索查询字符串
-    topk (int): 返回结果数量
-    filters (dict, optional): 过滤条件
-    **kwargs: 其他关键字参数
-
-**Raises:**\n
-- NotImplementedError: 功能尚未实现
-""")
-
-add_english_doc('rag.store.hybrid.MapStore.search', """\
-Search documents in specified collection.
-
-Search functionality not yet implemented, recommend using default index for searching.
+add_english_doc('services.client.ClientBase.uniform_status', '''\
+Standardize task status string.
 
 Args:
-    collection_name (str): Collection name
-    query (str): Search query string
-    topk (int): Number of results to return
-    filters (dict, optional): Filter conditions
-    **kwargs: Additional keyword arguments
+    status (str): Original status string.
 
-**Raises:**\n
-- NotImplementedError: Functionality not implemented yet
-""")
+Returns:
+    str: Standardized status string, possible values include:
+        - 'Invalid': Invalid status
+        - 'Ready': Ready status
+        - 'Done': Completed status
+        - 'Cancelled': Cancelled status
+        - 'Failed': Failed status
+        - 'Running': Running status
+        - 'Pending': Pending status (includes TBSubmitted, InQueue, Pending)
+''')
 
+add_chinese_doc('rag.doc_node.DocNode.get_children_str', '''\
+获取子节点的字符串表示。
+
+Returns:
+    str: 返回一个字符串，表示子节点的字典格式，其中键为组名，值为该组中所有子节点的UID列表。
+''')
+
+add_english_doc('rag.doc_node.DocNode.get_children_str', '''\
+Get string representation of child nodes.
+
+Returns:
+    str: Returns a string representing a dictionary where keys are group names and values are lists of child node UIDs in that group.
+''')
+
+add_chinese_doc('rag.doc_node.DocNode.get_parent_id', '''\
+获取父节点的唯一标识符。
+
+Returns:
+    str: 返回父节点的UID，如果没有父节点则返回空字符串。
+''')
+
+add_english_doc('rag.doc_node.DocNode.get_parent_id', '''\
+Get the unique identifier of the parent node.
+
+Returns:
+    str: Returns the parent node's UID, or an empty string if there is no parent node.
+''')
+
+add_chinese_doc('rag.doc_node.DocNode.get_content', '''\
+获取节点的内容文本，包含LLM模式的元数据。
+
+Returns:
+    str: 返回节点的文本内容，包含根据LLM模式格式化的元数据信息。
+''')
+
+add_english_doc('rag.doc_node.DocNode.get_content', '''\
+Get the node's content text with metadata in LLM mode.
+
+Returns:
+    str: Returns the node's text content with formatted metadata information according to LLM mode.
+''')

@@ -36,6 +36,12 @@
 ::: lazyllm.components.finetune.LazyLLMFinetuneBase
     options:
       heading_level: 3
+
+::: lazyllm.components.auto.configure.core.configuration.AutoConfig
+    options:
+      heading_level: 3
+      members: [query_finetune, query_deploy]
+
 ---
 
 ## Deploy
@@ -79,6 +85,16 @@
     options:
       heading_level: 3
       members: [load_reranker, rebuild]
+
+::: lazyllm.components.deploy.embed.HuggingFaceEmbedding
+    options:
+      heading_level: 3
+      members: [get_emb_cls, register, load_embed]
+
+::: lazyllm.components.deploy.embed.LazyFlagEmbedding
+    options:
+      heading_level: 3
+      members: [load_embed, rebuild]
 
 ::: lazyllm.components.deploy.Mindie
     options:
