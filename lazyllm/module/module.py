@@ -245,7 +245,7 @@ class ModuleBase(metaclass=_MetaBind):
         self._module_name = None
         self._options = []
         self.eval_result = None
-        self._use_cache = False
+        self._use_cache: Union[bool, str] = False
         self._hooks = set()
 
     def __setattr__(self, name: str, value):
@@ -461,10 +461,12 @@ class ModuleBase(metaclass=_MetaBind):
 
     @property
     def __cache_hash__(self):
-        return self.__class__.__name__
+        cache_hash = self.__class__.__name__
+        if isinstance(self._use_cache, str): cache_hash += f'@{self._use_cache}'
+        return cache_hash
 
-    def use_cache(self, flag: bool = True):
-        self._use_cache = flag
+    def use_cache(self, flag: Union[bool, str] = True):
+        self._use_cache = flag or False
         return self
 
 
