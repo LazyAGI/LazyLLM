@@ -4,18 +4,16 @@ import traceback
 from lazyllm import ThreadPoolExecutor
 
 import lazyllm
-from lazyllm import FlatList, Option, kwargs, globals, colored_text
+from lazyllm import FlatList, Option, kwargs, globals, colored_text, redis_client
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
-from ..client import redis_client
 from ..hook import LazyLLMHook
 from lazyllm import FileSystemQueue
 from contextlib import contextmanager
 from typing import Optional, Union, Dict
 import copy
 from collections import defaultdict
-from lazyllm.thirdparty import redis
 import sqlite3
 import pickle
 import hashlib
@@ -23,15 +21,19 @@ from abc import ABC, abstractmethod
 from filelock import FileLock
 
 
+lazyllm.config.add('cache_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'cache'), 'CACHE_DIR')
+lazyllm.config.add('cache_strategy', str, 'memory', 'CACHE_STRATEGY')
+redis_client = redis_client['module']
+
 class CacheNotFoundError(Exception): pass
 
 
 class _CacheStorageStrategy(ABC):
-    def __init__(self, cache_dir: Optional[str] = None):
-        self._cache_dir = cache_dir
-        if cache_dir:
-            os.makedirs(cache_dir, exist_ok=True)
-            self._lock = FileLock(os.path.join(cache_dir, 'cache.lock'))
+    def __init__(self, cache: Optional[bool] = False):
+        if cache:
+            self._cache_dir = os.path.join(lazyllm.config['cache_dir'], 'module')
+            os.makedirs(self._cache_dir, exist_ok=True)
+            self._lock = FileLock(os.path.join(self._cache_dir, 'cache.lock'))
         else:
             self._lock = lambda: contextmanager(lambda: (yield))()
 
@@ -41,11 +43,10 @@ class _CacheStorageStrategy(ABC):
     @abstractmethod
     def set(self, key: str, hash_key: str, value): pass
 
-    @abstractmethod
-    def close(self): pass
+    def close(self): pass  # noqa B027
 
 
-class MemoryCacheStrategy(_CacheStorageStrategy):
+class _MemoryCacheStrategy(_CacheStorageStrategy):
     def __init__(self):
         super().__init__()
         self._cache = defaultdict(dict)
@@ -62,10 +63,10 @@ class MemoryCacheStrategy(_CacheStorageStrategy):
         self._cache.clear()
 
 
-class FileCacheStrategy(_CacheStorageStrategy):
-    def __init__(self, cache_dir: str = './cache'):
-        super().__init__(cache_dir)
-        self.cache_file = os.path.join(cache_dir, 'cache.dat')
+class _FileCacheStrategy(_CacheStorageStrategy):
+    def __init__(self):
+        super().__init__(cache=True)
+        self.cache_file = os.path.join(self._cache_dir, 'cache.dat')
 
     def _load_cache(self):
         if not os.path.exists(self.cache_file): return {}
@@ -97,14 +98,11 @@ class FileCacheStrategy(_CacheStorageStrategy):
             cache_data[key][hash_key] = value
             self._save_cache(cache_data)
 
-    def close(self):
-        pass
 
-
-class SQLiteCacheStrategy(_CacheStorageStrategy):
-    def __init__(self, cache_dir: str = './cache', enable_file_lock: bool = True):
-        super().__init__(cache_dir, enable_file_lock)
-        self.db_path = os.path.join(cache_dir, 'cache.db')
+class _SQLiteCacheStrategy(_CacheStorageStrategy):
+    def __init__(self):
+        super().__init__(cache=True)
+        self.db_path = os.path.join(self._cache_dir, 'cache.db')
         self.conn = None
         self._init_db()
 
@@ -151,64 +149,50 @@ class SQLiteCacheStrategy(_CacheStorageStrategy):
             self.conn.close()
 
 
-class RedisCacheStrategy(_CacheStorageStrategy):
-    def __init__(self, host: str = 'localhost', port: int = 6379, db: int = 0,
-                 password: str = None, prefix: str = 'lazyllm_cache:'):
-        super().__init__(enable_file_lock=False)
-        try:
-            self.redis_client = redis.Redis(
-                host=host, port=port, db=db, password=password, decode_responses=False
-            )
-            self.redis_client.ping()
-            self.prefix = prefix
-        except ImportError:
-            raise ImportError('Redis package not installed. Please install with: pip install redis')
-        except Exception as e:
-            raise ConnectionError(f'Failed to connect to Redis: {e}')
+class _RedisCacheStrategy(_CacheStorageStrategy):
+    def __init__(self, prefix: str = ''):
+        if not redis_client: raise RuntimeError('Redis url should be set by `export LAZYLLM_REDIS_URL = xxx`')
+        self._client = redis_client[prefix] if prefix else redis_client
+        super().__init__()
 
     def _get_redis_key(self, key: str, hash_key: str):
-        return f'{self.prefix}{key}:{hash_key}'
+        return f'{key}:{hash_key}'
 
     def get(self, key: str, hash_key: str):
         redis_key = self._get_redis_key(key, hash_key)
-        value = self.redis_client.get(redis_key)
+        value = self._client.get(redis_key)
         if value is None:
             raise CacheNotFoundError(f'Cache not found for {key}')
         try:
             return pickle.loads(value)
         except Exception as e:
-            raise CacheNotFoundError(f'Failed to deserialize cache for {key}: {e}')
+            raise RuntimeError(f'Failed to deserialize cache for {key}: {e}')
 
     def set(self, key: str, hash_key: str, value):
         try:
             redis_key = self._get_redis_key(key, hash_key)
             serialized_value = pickle.dumps(value)
-            self.redis_client.set(redis_key, serialized_value)
+            self._client.set(redis_key, serialized_value)
         except Exception:
             pass
 
-    def close(self):
-        if hasattr(self, 'redis_client'):
-            self.redis_client.close()
 
+class ModuleCache(object):
+    def __init__(self, strategy: Optional[str] = None):
+        self._strategy = self._create_strategy(strategy or lazyllm.config['cache_strategy'])
 
-class MagicMockCache(object):
-    def __init__(self, strategy: str = 'memory', **strategy_kwargs):
-        self.strategy = self._create_strategy(strategy, **strategy_kwargs)
-
-    def _create_strategy(self, strategy: str, **kwargs) -> _CacheStorageStrategy:
+    def _create_strategy(self, strategy: str) -> _CacheStorageStrategy:
         strategies = {
-            'memory': MemoryCacheStrategy,
-            'file': FileCacheStrategy,
-            'sqlite': SQLiteCacheStrategy,
-            'redis': RedisCacheStrategy,
+            'memory': _MemoryCacheStrategy,
+            'file': _FileCacheStrategy,
+            'sqlite': _SQLiteCacheStrategy,
+            'redis': _RedisCacheStrategy,
         }
 
         if strategy not in strategies:
             raise ValueError(f'Unsupported cache strategy: {strategy}. '
                              f'Available strategies: {list(strategies.keys())}')
-
-        return strategies[strategy](**kwargs)
+        return strategies[strategy]()
 
     def _hash(self, args, kw):
         content = str(args) + str(sorted(kw.items()) if kw else '')
@@ -216,17 +200,17 @@ class MagicMockCache(object):
 
     def get(self, key, args, kw):
         hash_key = self._hash(args, kw)
-        return self.strategy.get(key, hash_key)
+        return self._strategy.get(key, hash_key)
 
     def set(self, key, args, kw, value):
         hash_key = self._hash(args, kw)
-        self.strategy.set(key, hash_key, value)
+        self._strategy.set(key, hash_key, value)
 
     def close(self):
-        self.strategy.close()
+        self._strategy.close()
 
 
-magic_mock_cache = MagicMockCache()
+module_cache = ModuleCache()
 
 
 # use _MetaBind:
@@ -261,7 +245,7 @@ class ModuleBase(metaclass=_MetaBind):
         self._module_name = None
         self._options = []
         self.eval_result = None
-        self._magic_mock = False
+        self._use_cache = False
         self._hooks = set()
 
     def __setattr__(self, name: str, value):
@@ -324,14 +308,14 @@ class ModuleBase(metaclass=_MetaBind):
         return r
 
     def _call(self, *args, **kw):
-        if self._magic_mock:
+        if self._use_cache:
             try:
-                return magic_mock_cache.get(self.__mock_hash__, args, kw)
+                return module_cache.get(self.__cache_hash__, args, kw)
             except CacheNotFoundError:
                 pass
         r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
-        if self._magic_mock:
-            magic_mock_cache.set(self.__mock_hash__, args, kw, r)
+        if self._use_cache:
+            module_cache.set(self.__cache_hash__, args, kw, r)
         return r
 
     def _stream_output(self, text: str, color: Optional[str] = None, *, cls: Optional[str] = None):
@@ -412,7 +396,7 @@ class ModuleBase(metaclass=_MetaBind):
 
     # update module(train or finetune),
     def _update(self, *, mode=None, recursive=True):  # noqa C901
-        if self._magic_mock: return self
+        if self._use_cache: return self
         if not mode: mode = list(self.mode_list)
         if type(mode) is not list: mode = [mode]
         for item in mode:
@@ -476,11 +460,11 @@ class ModuleBase(metaclass=_MetaBind):
             submodule.for_each(filter, action)
 
     @property
-    def __mock_hash__(self):
+    def __cache_hash__(self):
         return self.__class__.__name__
 
-    def magic_mock(self, flag: bool = True):
-        self._magic_mock = flag
+    def use_cache(self, flag: bool = True):
+        self._use_cache = flag
         return self
 
 

@@ -1,3 +1,4 @@
+from .redis_client import redis_client
 from .registry import LazyLLMRegisterMetaClass, LazyLLMRegisterMetaABCClass, _get_base_cls_from_registry, Register
 from .common import package, kwargs, arguments, LazyLLMCMD, timeout, final, ReadOnlyWrapper, DynamicDescriptor, override
 from .common import FlatList, Identity, ResultCollector, ArgsDict, CaseInsensitiveDict
@@ -22,6 +23,7 @@ __all__ = [
     'Register',
 
     # utils
+    'redis_client',
     'FlatList',
     'ReadOnlyWrapper',
     'Identity',

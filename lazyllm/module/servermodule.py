@@ -8,13 +8,12 @@ import copy
 from dataclasses import dataclass
 
 import lazyllm
-from lazyllm import launchers, LOG, package, encode_request, globals, is_valid_url, LazyLLMLaunchersBase
+from lazyllm import launchers, LOG, package, encode_request, globals, is_valid_url, LazyLLMLaunchersBase, redis_client
 from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.utils import LLMType
 from ..flow import FlowBase, Pipeline
-from ..client import get_redis, redis_client
 from urllib.parse import urljoin
 from .utils import light_reduce
 from .module import ModuleBase, ActionModule
@@ -104,7 +103,8 @@ class _UrlHelper(object):
             if redis_client:
                 try:
                     while not self._url_wrapper.url:
-                        self._url_wrapper.url = get_redis(self._url_id)
+                        url = redis_client['url'].get(self._url_id)
+                        self._url_wrapper.url = url.decode('utf-8') if url else None
                         if self._url_wrapper.url: break
                         time.sleep(lazyllm.config["redis_recheck_delay"])
                 except Exception as e:
@@ -114,10 +114,13 @@ class _UrlHelper(object):
 
     def _set_url(self, url):
         if redis_client:
-            redis_client.set(self._url_id, url)
+            redis_client['url'].set(self._url_id, url)
         LOG.debug(f'url: {url}')
         self._url_wrapper.url = url
 
+    def _release_url(self):
+        if redis_client:
+            redis_client['url'].delete(self._url_id)
 
 class UrlModule(LLMBase, _UrlHelper):
 
