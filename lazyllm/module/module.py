@@ -23,7 +23,9 @@ from filelock import FileLock
 
 lazyllm.config.add('cache_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'cache'), 'CACHE_DIR')
 lazyllm.config.add('cache_strategy', str, 'memory', 'CACHE_STRATEGY')
+lazyllm.config.add('cache_mode', str, 'RW', 'CACHE_MODE', options=['RW', 'RO', 'WO'])
 redis_client = redis_client['module']
+
 
 class CacheNotFoundError(Exception): pass
 
@@ -199,10 +201,13 @@ class ModuleCache(object):
         return hashlib.md5(content.encode()).hexdigest()
 
     def get(self, key, args, kw):
+        if 'R' not in lazyllm.config['cache_mode']:
+            raise CacheNotFoundError('Cannot read cache due to `LAZYLLM_CACHE_MODE = WO`')
         hash_key = self._hash(args, kw)
         return self._strategy.get(key, hash_key)
 
     def set(self, key, args, kw, value):
+        if 'W' not in lazyllm.config['cache_mode']: return
         hash_key = self._hash(args, kw)
         self._strategy.set(key, hash_key, value)
 
@@ -308,13 +313,13 @@ class ModuleBase(metaclass=_MetaBind):
         return r
 
     def _call(self, *args, **kw):
-        if self._use_cache:
+        if self._use_cache and 'R' in lazyllm.config['cache_mode']:
             try:
                 return module_cache.get(self.__cache_hash__, args, kw)
             except CacheNotFoundError:
                 pass
         r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
-        if self._use_cache:
+        if self._use_cache and 'W' in lazyllm.config['cache_mode']:
             module_cache.set(self.__cache_hash__, args, kw, r)
         return r
 
