@@ -49,6 +49,9 @@ class _UrlTemplateStruct(object):
         self.stream_url_suffix = stream_url_suffix or ''
 
 
+lazyllm.config.add('trainable_magic_mock', bool, False, 'TRAINABLE_MAGIC_MOCK')  # used for unit test
+
+
 @light_reduce
 class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
@@ -153,8 +156,11 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
         if self._deploy is None: return None
+        if lazyllm.config['trainable_magic_mock']:
+            return Pipeline(lambda *args, **kwargs: 'dummy.url/generate', self._set_url)
         if self._deploy is lazyllm.deploy.AutoDeploy:
             raise RuntimeError('No appropriate inference framework was selected, specify it with `.deploy_method()`.')
+
         kwargs = {'stream': self._stream} if self._deploy is lazyllm.deploy.dummy else {}
         self._deployer = self._deploy(**kwargs, **self._deploy_args)
 

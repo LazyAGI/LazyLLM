@@ -167,10 +167,6 @@ class UrlModule(LLMBase, _UrlHelper):
         return lazyllm.make_repr('Module', 'Url', name=self._module_name, url=self._url,
                                  stream=self._stream, return_trace=self._return_trace)
 
-    @lazyllm.once_wrapper(reset_on_pickle=False)
-    def _cache_miss_func(self):
-        self.start(force=True)
-
 
 @light_reduce
 class _ServerModuleImpl(ModuleBase, _UrlHelper):

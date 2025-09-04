@@ -6,8 +6,7 @@ def light_reduce(cls):
 
     def _impl(self):
         if os.getenv('LAZYLLM_ON_CLOUDPICKLE', False) == 'ON':
-            assert self._get_deploy_tasks.flag, (
-                f'{cls.__name__[1:-4]} shoule be deployed before used, if you use cache, please use `start(force=True)`')
+            assert self._get_deploy_tasks.flag, f'{cls.__name__[1:-4]} shoule be deployed before used'
             return rebuild, (self._module_id,)
         return super(cls, self).__reduce__()
     cls.__reduce__ = _impl
