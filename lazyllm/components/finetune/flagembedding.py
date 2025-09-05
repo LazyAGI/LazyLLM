@@ -101,7 +101,7 @@ class FlagembeddingFinetune(LazyLLMFinetuneBase):
 
         formatted_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
         self.log_file_path = f'{self.target_path}/train_log_{formatted_date}_{random.randint(1000, 9999)}.log'
-        cache_path = os.path.join(os.path.expanduser('~'), '.lazyllm', 'fintune', 'embeding')
+        cache_path = os.path.join(os.path.expanduser(lazyllm.config['home']), 'fintune', 'embeding')
         cache_model_path = os.path.join(cache_path, "model")
         cache_data_path = os.path.join(cache_path, "data")
         os.system(f'mkdir -p {cache_model_path} {cache_data_path}')

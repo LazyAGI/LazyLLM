@@ -8,22 +8,20 @@ import copy
 from dataclasses import dataclass
 
 import lazyllm
-from lazyllm import launchers, LOG, package, encode_request, globals, is_valid_url, LazyLLMLaunchersBase
+from lazyllm import launchers, LOG, package, encode_request, globals, is_valid_url, LazyLLMLaunchersBase, redis_client
 from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
 from ..components.utils import LLMType
 from ..flow import FlowBase, Pipeline
-from ..client import get_redis, redis_client
 from urllib.parse import urljoin
 from .utils import light_reduce
 from .module import ModuleBase, ActionModule
 
 
-class LLMBase(ModuleBase):
-    def __init__(self, stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False,
+class LLMBase(object):
+    def __init__(self, stream: Union[bool, Dict[str, str]] = False,
                  init_prompt: bool = True, type: Optional[Union[str, LLMType]] = None):
-        super().__init__(return_trace=return_trace)
         self._stream = stream
         self._type = LLMType(type) if type else LLMType.LLM
         if init_prompt: self.prompt()
@@ -36,7 +34,7 @@ class LLMBase(ModuleBase):
         if isinstance(input, str) and input.startswith(LAZYLLM_QUERY_PREFIX):
             assert not lazyllm_files, 'Argument `files` is already provided by query'
             deinput = decode_query_with_filepaths(input)
-            assert isinstance(deinput, dict), "decode_query_with_filepaths must return a dict."
+            assert isinstance(deinput, dict), 'decode_query_with_filepaths must return a dict.'
             input, files = deinput['query'], deinput['files']
         else:
             files = _lazyllm_get_file_list(lazyllm_files) if lazyllm_files else []
@@ -52,7 +50,7 @@ class LLMBase(ModuleBase):
         elif isinstance(prompt, (str, dict)):
             self._prompt = ChatPrompter(prompt, history=history)
         else:
-            raise TypeError(f"{prompt} type is not supported.")
+            raise TypeError(f'{prompt} type is not supported.')
         return self
 
     def formatter(self, format: Optional[FormatterBase] = None):
@@ -104,22 +102,26 @@ class _UrlHelper(object):
             if redis_client:
                 try:
                     while not self._url_wrapper.url:
-                        self._url_wrapper.url = get_redis(self._url_id)
+                        url = redis_client['url'].get(self._url_id)
+                        self._url_wrapper.url = url.decode('utf-8') if url else None
                         if self._url_wrapper.url: break
-                        time.sleep(lazyllm.config["redis_recheck_delay"])
+                        time.sleep(lazyllm.config['redis_recheck_delay'])
                 except Exception as e:
-                    LOG.error(f"Error accessing Redis: {e}")
+                    LOG.error(f'Error accessing Redis: {e}')
                     raise
         return self._url_wrapper.url
 
     def _set_url(self, url):
         if redis_client:
-            redis_client.set(self._url_id, url)
+            redis_client['url'].set(self._url_id, url)
         LOG.debug(f'url: {url}')
         self._url_wrapper.url = url
 
+    def _release_url(self):
+        if redis_client:
+            redis_client['url'].delete(self._url_id)
 
-class UrlModule(LLMBase, _UrlHelper):
+class UrlModule(ModuleBase, LLMBase, _UrlHelper):
 
     def __new__(cls, *args, **kw):
         if cls is not UrlModule:
@@ -128,24 +130,25 @@ class UrlModule(LLMBase, _UrlHelper):
 
     def __init__(self, *, url: Optional[str] = '', stream: Union[bool, Dict[str, str]] = False,
                  return_trace: bool = False, init_prompt: bool = True):
-        super().__init__(stream=stream, return_trace=return_trace, init_prompt=init_prompt)
+        super().__init__(return_trace=return_trace)
+        LLMBase.__init__(self, stream=stream, init_prompt=init_prompt)
         _UrlHelper.__init__(self, url)
 
     def _estimate_token_usage(self, text):
         if not isinstance(text, str):
             return 0
         # extract english words, number and comma
-        pattern = r"\b[a-zA-Z0-9]+\b|,"
+        pattern = r'\b[a-zA-Z0-9]+\b|,'
         ascii_words = re.findall(pattern, text)
         ascii_ch_count = sum(len(ele) for ele in ascii_words)
-        non_ascii_pattern = r"[^\x00-\x7F]"
+        non_ascii_pattern = r'[^\x00-\x7F]'
         non_ascii_chars = re.findall(non_ascii_pattern, text)
         non_ascii_char_count = len(non_ascii_chars)
         return int(ascii_ch_count / 3.0 + non_ascii_char_count + 1)
 
     def _decode_line(self, line: bytes):
         try:
-            return pickle.loads(codecs.decode(line, "base64"))
+            return pickle.loads(codecs.decode(line, 'base64'))
         except Exception:
             return line.decode('utf-8')
 
@@ -223,7 +226,7 @@ class ServerModule(UrlModule):
 
     def _call(self, fname, *args, **kwargs):
         args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
-        url = urljoin(self._url.rsplit("/", 1)[0], '_call')
+        url = urljoin(self._url.rsplit('/', 1)[0], '_call')
         r = requests.post(url, json=(fname, args, kwargs), headers={'Content-Type': 'application/json'})
         if r.status_code != 200:
             try:
@@ -231,7 +234,7 @@ class ServerModule(UrlModule):
             except ValueError:
                 error_info = r.text
             raise requests.RequestException(f'{r.status_code}: {error_info}')
-        return pickle.loads(codecs.decode(r.content, "base64"))
+        return pickle.loads(codecs.decode(r.content, 'base64'))
 
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), **kw):  # noqa B008
         headers = {
@@ -249,7 +252,7 @@ class ServerModule(UrlModule):
 
             messages = ''
             with self.stream_output(self._stream):
-                for line in r.iter_lines(delimiter=b"<|lazyllm_delimiter|>"):
+                for line in r.iter_lines(delimiter=b'<|lazyllm_delimiter|>'):
                     line = self._decode_line(line)
                     if self._stream:
                         self._stream_output(str(line), getattr(self._stream, 'get', lambda x: None)('color'))
