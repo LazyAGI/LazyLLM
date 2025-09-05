@@ -267,15 +267,17 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     @property
     def manager(self): return self._manager._processor or self._manager
 
-    def activate_group(self, group_name: str, embed_keys: Optional[Union[str, List[str]]] = None):
+    def activate_group(self, group_name: str, embed_keys: Optional[Union[str, List[str]]] = None,
+                       enable_embed: bool = True):
+        if embed_keys and not enable_embed:
+            raise ValueError('`enable_embed` must be set to True when `embed_keys` is provided')
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
-        elif embed_keys is None: embed_keys = []
-        self._impl.activate_group(group_name, embed_keys)
+        self._impl.activate_group(group_name, embed_keys, enable_embed)
 
-    def activate_groups(self, groups: Union[str, List[str]]):
+    def activate_groups(self, groups: Union[str, List[str]], **kwargs):
         if isinstance(groups, str): groups = [groups]
         for group in groups:
-            self.activate_group(group)
+            self.activate_group(group, **kwargs)
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
