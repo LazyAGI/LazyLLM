@@ -50,7 +50,6 @@ class TestIntentClassifier(object):
 
     def test_intent_classifier_intent_hints_hook(self):
         intent_list = ["Chat", "Image Question and Answer", "Music", "Weather Query"]
-        
         ic = IntentClassifier(self._llm, intent_list=intent_list, intent_hints_hook=lambda x, **kwargs: {
             "human_input": x,
             "intent_hints": {
