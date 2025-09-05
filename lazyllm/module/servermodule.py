@@ -19,10 +19,9 @@ from .utils import light_reduce
 from .module import ModuleBase, ActionModule
 
 
-class LLMBase(ModuleBase):
-    def __init__(self, stream: Union[bool, Dict[str, str]] = False, return_trace: bool = False,
+class LLMBase(object):
+    def __init__(self, stream: Union[bool, Dict[str, str]] = False,
                  init_prompt: bool = True, type: Optional[Union[str, LLMType]] = None):
-        super().__init__(return_trace=return_trace)
         self._stream = stream
         self._type = LLMType(type) if type else LLMType.LLM
         if init_prompt: self.prompt()
@@ -122,7 +121,7 @@ class _UrlHelper(object):
         if redis_client:
             redis_client['url'].delete(self._url_id)
 
-class UrlModule(LLMBase, _UrlHelper):
+class UrlModule(ModuleBase, LLMBase, _UrlHelper):
 
     def __new__(cls, *args, **kw):
         if cls is not UrlModule:
@@ -131,7 +130,8 @@ class UrlModule(LLMBase, _UrlHelper):
 
     def __init__(self, *, url: Optional[str] = '', stream: Union[bool, Dict[str, str]] = False,
                  return_trace: bool = False, init_prompt: bool = True):
-        super().__init__(stream=stream, return_trace=return_trace, init_prompt=init_prompt)
+        super().__init__(return_trace=return_trace)
+        LLMBase.__init__(self, stream=stream, init_prompt=init_prompt)
         _UrlHelper.__init__(self, url)
 
     def _estimate_token_usage(self, text):

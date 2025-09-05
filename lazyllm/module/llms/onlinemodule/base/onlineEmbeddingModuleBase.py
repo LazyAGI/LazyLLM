@@ -1,9 +1,9 @@
 from typing import Dict, Any, List, Union
 import requests
-from ....module import ModuleBase
+from .utils import OnlineModuleBase
 
 
-class OnlineEmbeddingModuleBase(ModuleBase):
+class OnlineEmbeddingModuleBase(OnlineModuleBase):
     NO_PROXY = True
 
     def __init__(self,
@@ -25,12 +25,12 @@ class OnlineEmbeddingModuleBase(ModuleBase):
 
     @property
     def type(self):
-        return "EMBED"
+        return 'EMBED'
 
     def _set_headers(self) -> Dict[str, str]:
         self._headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self._api_key}"
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {self._api_key}'
         }
 
     def forward(self, input: Union[List, str], **kwargs) -> List[float]:
@@ -44,8 +44,8 @@ class OnlineEmbeddingModuleBase(ModuleBase):
 
     def _encapsulated_data(self, input: Union[List, str], **kwargs) -> Dict[str, str]:
         json_data = {
-            "input": input,
-            "model": self._embed_model_name
+            'input': input,
+            'model': self._embed_model_name
         }
         if len(kwargs) > 0:
             json_data.update(kwargs)
