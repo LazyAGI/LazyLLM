@@ -202,7 +202,6 @@ class ElasticSearchStore(LazyLLMStoreBase):
                         if seg:
                             results.append(seg)
 
-            # Query by query(scroll + scan)
             else:
                 spec = importlib.util.find_spec("elasticsearch.helpers")
                 helpers = importlib.util.module_from_spec(spec)
