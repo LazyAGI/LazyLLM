@@ -1,5 +1,4 @@
 import importlib
-import pkg_resources
 from lazyllm.common import LOG
 import os
 
@@ -15,22 +14,6 @@ package_name_map = {
 }
 
 requirements = {}
-
-def check_packages(names):
-    assert isinstance(names, list)
-    missing_pack = []
-    for name in names:
-        try:
-            pkg_resources.get_distribution(name)
-        except pkg_resources.DistributionNotFound:
-            missing_pack.append(name)
-    if len(missing_pack) > 0:
-        packs = get_pip_install_cmd(missing_pack)
-        if packs:
-            LOG.warning(f'Some packages not found, please install it by \'pip install {packs}\'')
-        else:
-            # should not be here.
-            LOG.warning('Some packages not found: ' + " ".join(missing_pack))
 
 def get_pip_install_cmd(names):
     if len(requirements) == 0:
@@ -109,9 +92,25 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'sentence_transformers', 'gradio', 'chromadb', 'nltk', 'PIL', 'httpx', 'bm25s', 'kubernetes', 'pymongo',
            'rapidfuzz', 'FlagEmbedding', 'mcp', 'diffusers', 'pypdf', 'pptx', 'html2text', 'ebooklib', 'docx2txt',
            'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr', 'volcenginesdkarkruntime',
-           'zhipuai', 'dashscope', ['mineru', 'cli.common'], 'opensearchpy', ['os', 'path']]
+           'zhipuai', 'dashscope', ['mineru', 'cli.common'], 'opensearchpy', ['os', 'path'], 'pkg_resources', 'fastapi']
 for m in modules:
     if isinstance(m, str):
         vars()[m] = PackageWrapper(m)
     else:
         vars()[m[0]] = PackageWrapper(m[0], *m[1:])
+
+def check_packages(names):
+    assert isinstance(names, list)
+    missing_pack = []
+    for name in names:
+        try:
+            pkg_resources.get_distribution(name)  # noqa: F821
+        except pkg_resources.DistributionNotFound:  # noqa: F821
+            missing_pack.append(name)
+    if len(missing_pack) > 0:
+        packs = get_pip_install_cmd(missing_pack)
+        if packs:
+            LOG.warning(f'Some packages not found, please install it by \'pip install {packs}\'')
+        else:
+            # should not be here.
+            LOG.warning('Some packages not found: ' + " ".join(missing_pack))

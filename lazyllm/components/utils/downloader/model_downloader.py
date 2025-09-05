@@ -235,28 +235,41 @@ class ModelManager():
 class _HubDownloader(ABC):
 
     def __init__(self, token=None):
-        self._token = token if self._verify_hub_token(token) else None
+        self._token = token
+
+    @lazyllm.once_wrapper
+    def _lazy_init(self):
+        self._token = self._token if self._token and self._verify_hub_token(self._token) else None
         self._api = self._build_hub_api(self._token)
 
     @abstractmethod
-    def _verify_hub_token(self, token):
-        pass
+    def _verify_hub_token(self, token): pass
 
     @abstractmethod
-    def _build_hub_api(self, token):
-        pass
+    def _build_hub_api(self, token): pass
 
-    @abstractmethod
     def _verify_model_id(self, model_id):
-        pass
+        self._lazy_init()
+        return self._verify_model_id_impl(model_id)
 
     @abstractmethod
+    def _verify_model_id_impl(self, model_id): pass
+
     def _do_download(self, model_id, model_dir):
-        pass
+        if not self._verify_model_id(model_id):
+            lazyllm.LOG.warning(f"Invalid model id:{model_id}")
+            return False
+        return self._do_download_impl(model_id, model_dir)
 
     @abstractmethod
+    def _do_download_impl(self, model_id, model_dir): pass
+
     def _get_repo_files(self, model_id):
-        pass
+        self._lazy_init()
+        return self._get_repo_files_impl(model_id)
+
+    @abstractmethod
+    def _get_repo_files_impl(self, model_id): pass
 
     def _polling_progress(self, model_dir, total, polling_event, call_back):
         while not polling_event.is_set():
@@ -299,6 +312,7 @@ class _HubDownloader(ABC):
         return downloaded_path
 
     def verify_hub_token(self):
+        self._lazy_init()
         return True if self._token else False
 
 class _HuggingfaceDownloader(_HubDownloader):
@@ -317,7 +331,7 @@ class _HuggingfaceDownloader(_HubDownloader):
             if token: lazyllm.LOG.warning(f'Huggingface token {token} verified failed')
             return False
 
-    def _verify_model_id(self, model_id):
+    def _verify_model_id_impl(self, model_id):
         try:
             self._api.model_info(model_id)
             return True
@@ -325,17 +339,14 @@ class _HuggingfaceDownloader(_HubDownloader):
             lazyllm.LOG.warning('Verify failed: ', e)
             return False
 
-    def _do_download(self, model_id, model_dir):
+    def _do_download_impl(self, model_id, model_dir):
         from huggingface_hub import snapshot_download
         # refer to https://huggingface.co/docs/huggingface_hub/v0.23.1/en/package_reference/file_download
-        if not self._verify_model_id(model_id):
-            lazyllm.LOG.warning(f"Invalid model id:{model_id}")
-            return False
         downloaded_path = snapshot_download(repo_id=model_id, local_dir=model_dir, token=self._token)
         lazyllm.LOG.info(f"model downloaded at {downloaded_path}")
         return downloaded_path
 
-    def _get_repo_files(self, model_id):
+    def _get_repo_files_impl(self, model_id):
         assert self._api
         orgin_info = self._api.list_repo_tree(model_id, expand=True, recursive=True)
         hub_model_info = []
@@ -367,7 +378,7 @@ class _ModelscopeDownloader(_HubDownloader):
             if token: lazyllm.LOG.warning(f'Modelscope token {token} verified failed')
             return False
 
-    def _verify_model_id(self, model_id):
+    def _verify_model_id_impl(self, model_id):
         try:
             self._api.get_model(model_id)
             return True
@@ -375,17 +386,14 @@ class _ModelscopeDownloader(_HubDownloader):
             lazyllm.LOG.warning('Verify failed: ', e)
             return False
 
-    def _do_download(self, model_id, model_dir):
+    def _do_download_impl(self, model_id, model_dir):
         from modelscope.hub.snapshot_download import snapshot_download
         # refer to https://www.modelscope.cn/docs/models/download
-        if not self._verify_model_id(model_id):
-            lazyllm.LOG.warning(f"Invalid model id:{model_id}")
-            return False
         downloaded_path = snapshot_download(model_id=model_id, local_dir=model_dir)
         lazyllm.LOG.info(f"Model downloaded at {downloaded_path}")
         return downloaded_path
 
-    def _get_repo_files(self, model_id):
+    def _get_repo_files_impl(self, model_id):
         assert self._api
         orgin_info = self._api.get_model_files(model_id, recursive=True)
         hub_model_info = []

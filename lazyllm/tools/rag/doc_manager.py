@@ -5,10 +5,10 @@ import traceback
 from typing import List, Optional, Dict, Union
 from pydantic import BaseModel, Field
 from starlette.responses import RedirectResponse
-from fastapi import UploadFile
 
 import lazyllm
 from lazyllm import FastapiApp as app
+from lazyllm.thirdparty import fastapi
 from .utils import DocListManager, BaseResponse, gen_docid
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 import uuid
@@ -60,7 +60,7 @@ class DocManager(lazyllm.ModuleBase):
         return f"{str(uuid.uuid4())}{suffix}"
 
     @app.post("/upload_files")
-    def upload_files(self, files: List[UploadFile], override: bool = False,  # noqa C901
+    def upload_files(self, files: List['fastapi.UploadFile'], override: bool = False,  # noqa C901
                      metadatas: Optional[str] = None, user_path: Optional[str] = None):
         try:
             if user_path: user_path = user_path.lstrip('/')
@@ -197,7 +197,7 @@ class DocManager(lazyllm.ModuleBase):
             return BaseResponse(code=500, msg=str(e), data=None)
 
     @app.post("/add_files_to_group")
-    def add_files_to_group(self, files: List[UploadFile], group_name: str, override: bool = False,
+    def add_files_to_group(self, files: List['fastapi.UploadFile'], group_name: str, override: bool = False,
                            metadatas: Optional[str] = None, user_path: Optional[str] = None):
         try:
             response = self.upload_files(files, override=override, metadatas=metadatas, user_path=user_path)

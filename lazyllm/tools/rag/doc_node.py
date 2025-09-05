@@ -1,7 +1,7 @@
 from typing import Optional, Dict, Any, Union, Callable, List
 from enum import Enum, auto
 from collections import defaultdict
-from PIL import Image
+from lazyllm.thirdparty import PIL
 from lazyllm import config, reset_on_pickle
 from lazyllm.components.utils.file_operate import _image_to_base64
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
@@ -307,7 +307,7 @@ class ImageDocNode(DocNode):
 
     def get_content(self, metadata_mode=MetadataMode.LLM) -> str:
         if metadata_mode == MetadataMode.LLM:
-            return Image.open(self._image_path)
+            return PIL.Image.open(self._image_path)
         elif metadata_mode == MetadataMode.EMBED:
             image_base64, mime = _image_to_base64(self._image_path)
             return [f"data:{mime};base64,{image_base64}"]
