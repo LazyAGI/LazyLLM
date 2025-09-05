@@ -1,7 +1,7 @@
 import os
 import requests
 from pathlib import Path
-from bs4 import BeautifulSoup
+from lazyllm.thirdparty import bs4
 from typing import Dict, List, Optional, Callable
 import unicodedata
 
@@ -157,7 +157,7 @@ class MineruPDFReader(LazyLLMReaderBase):
         if not html_table:
             return ''
         try:
-            soup = BeautifulSoup(html_table.strip(), 'html.parser')
+            soup = bs4.BeautifulSoup(html_table.strip(), 'html.parser')
             table = soup.find('table')
             if not table:
                 raise ValueError('No <table> found in the HTML.')

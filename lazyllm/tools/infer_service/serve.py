@@ -14,7 +14,7 @@ from ..services import ServerBase
 
 DEFAULT_TOKEN = 'default_token'
 
-class JobDescription(BaseModel):
+class _JobDescription(BaseModel):
     service_name: str
     model_name: str = Field(default='qwen1.5-0.5b-chat')
     framework: str = Field(default='auto')
@@ -130,7 +130,7 @@ class InferServer(ServerBase):
         return newest_file
 
     @app.post('/v1/inference_services')
-    async def create_job(self, job: JobDescription, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
+    async def create_job(self, job: _JobDescription, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
         if self._in_active_jobs(token, job.service_name):

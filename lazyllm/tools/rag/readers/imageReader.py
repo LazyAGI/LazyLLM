@@ -3,7 +3,7 @@ import re
 from io import BytesIO
 from pathlib import Path
 from typing import Dict, List, Optional, cast
-from fsspec import AbstractFileSystem
+from lazyllm.thirdparty import fsspec
 
 from lazyllm import thirdparty
 from lazyllm.thirdparty import PIL
@@ -49,7 +49,7 @@ class ImageReader(LazyLLMReaderBase):
         self._parse_text = parse_text
         self._pytesseract_model_kwargs = pytesseract_model_kwargs or {}
 
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[ImageDocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[ImageDocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:

@@ -21,7 +21,6 @@ from .common import StreamCallHelper
 from .eval import (BaseEvaluator, ResponseRelevancy, Faithfulness, LLMContextRecall,
                    NonLLMContextRecall, ContextRelevance)
 from .http_request import HttpRequest, HttpExecutorResponse
-from .infer_service import JobDescription
 
 __all__ = [
     "Document",
@@ -61,5 +60,4 @@ __all__ = [
     "StreamCallHelper",
     "HttpRequest",
     "HttpExecutorResponse",
-    "JobDescription"
 ]

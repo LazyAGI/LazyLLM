@@ -68,7 +68,7 @@ class TrainingArgs(BaseModel):
     class Config:
         extra = "allow"  # extra fields are allowed
 
-class JobDescription(BaseModel):
+class _JobDescription(BaseModel):
     name: str
     model: str
     training_args: TrainingArgs = Field(default_factory=TrainingArgs)
@@ -149,7 +149,7 @@ class TrainServer(ServerBase):
         return model._impl._temp_finetuned_model_path
 
     @app.post('/v1/finetuneTasks')
-    async def create_job(self, job: JobDescription, finetune_task_id: str = Query(None),  # noqa B008
+    async def create_job(self, job: _JobDescription, finetune_task_id: str = Query(None),  # noqa B008
                          token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)

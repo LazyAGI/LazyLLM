@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import List, Optional, cast
-from fsspec import AbstractFileSystem
+from lazyllm.thirdparty import fsspec
 
 from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
@@ -19,7 +19,7 @@ class VideoAudioReader(LazyLLMReaderBase):
         model = whisper.load_model(self._model_version)
         self._parser_config = {"model": model}
 
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         import whisper
 
         if not isinstance(file, Path): file = Path(file)

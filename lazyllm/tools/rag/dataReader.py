@@ -12,7 +12,7 @@ from functools import reduce
 from itertools import repeat
 from typing import Dict, Optional, List, Callable, Type
 from pathlib import Path, PurePosixPath, PurePath
-from fsspec import AbstractFileSystem
+from lazyllm.thirdparty import fsspec
 from lazyllm import ModuleBase, LOG, config
 from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list
 from .doc_node import DocNode
@@ -31,7 +31,7 @@ def _file_timestamp_format(timestamp: float, include_time: bool = False) -> Opti
         return None
 
 class _DefaultFileMetadataFunc:
-    def __init__(self, fs: Optional[AbstractFileSystem] = None):
+    def __init__(self, fs: Optional['fsspec.AbstractFileSystem'] = None):
         self._fs = fs or get_default_fs()
 
     def __call__(self, file_path: str) -> Dict:
@@ -84,7 +84,7 @@ class SimpleDirectoryReader(ModuleBase):
     def __init__(self, input_dir: Optional[str] = None, input_files: Optional[List] = None,
                  exclude: Optional[List] = None, exclude_hidden: bool = True, recursive: bool = False,
                  encoding: str = "utf-8", filename_as_id: bool = False, required_exts: Optional[List[str]] = None,
-                 file_extractor: Optional[Dict[str, Callable]] = None, fs: Optional[AbstractFileSystem] = None,
+                 file_extractor: Optional[Dict[str, Callable]] = None, fs: Optional['fsspec.AbstractFileSystem'] = None,
                  metadata_genf: Optional[Callable[[str], Dict]] = None, num_files_limit: Optional[int] = None,
                  return_trace: bool = False, metadatas: Optional[Dict] = None) -> None:
         super().__init__(return_trace=return_trace)
@@ -196,7 +196,7 @@ class SimpleDirectoryReader(ModuleBase):
 
     @staticmethod
     def load_file(input_file: Path, metadata_genf: Callable[[str], Dict], file_extractor: Dict[str, Callable],
-                  encoding: str = "utf-8", pathm: PurePath = Path, fs: Optional[AbstractFileSystem] = None,
+                  encoding: str = "utf-8", pathm: PurePath = Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
                   metadata: Optional[Dict] = None) -> List[DocNode]:
         # metadata priority: user > reader > metadata_genf
         user_metadata: Dict = metadata or {}
@@ -246,7 +246,7 @@ class SimpleDirectoryReader(ModuleBase):
         return documents
 
     def _load_data(self, show_progress: bool = False, num_workers: Optional[int] = None,
-                   fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+                   fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         documents = []
 
         fs = fs or self._fs

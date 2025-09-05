@@ -1,7 +1,7 @@
 import re
 from pathlib import Path
 from typing import Dict, List, Optional
-from fsspec import AbstractFileSystem
+from lazyllm.thirdparty import fsspec
 
 from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
@@ -12,7 +12,7 @@ class IPYNBReader(LazyLLMReaderBase):
         self._parser_config = parser_config
         self._concatenate = concatenate
 
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if file.name.endswith(".ipynb"):

@@ -1,6 +1,6 @@
 import os
 import tempfile
-from fsspec import AbstractFileSystem
+from lazyllm.thirdparty import fsspec
 from pathlib import Path
 from typing import Optional, List
 
@@ -51,7 +51,7 @@ class PPTXReader(LazyLLMReaderBase):
         preds = tokenizer.batch_decode(output_ids, skip_special_tokens=True)
         return preds[0].strip()
 
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:

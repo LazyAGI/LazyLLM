@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import List, Optional
-from fsspec import AbstractFileSystem
+from lazyllm.thirdparty import fsspec
 
 from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
@@ -26,7 +26,7 @@ class MboxReader(LazyLLMReaderBase):
         self._max_count = max_count
         self._message_format = message_format
 
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         import mailbox
         from email.parser import BytesParser
         from email.policy import default

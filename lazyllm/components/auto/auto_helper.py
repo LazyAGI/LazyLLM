@@ -1,10 +1,10 @@
 import re
-import pkg_resources
 import functools
 from packaging import version
 
 from .dependencies.modelsconfig import models_config
 from lazyllm import LOG
+from lazyllm.thirdparty import pkg_resources
 
 def model_map(name: str):
     match = re.search(r'(\d+)[bB]', name)

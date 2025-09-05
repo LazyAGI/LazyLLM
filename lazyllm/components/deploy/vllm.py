@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import random
-import importlib
+import importlib.metadata
 from packaging.version import parse
 from typing import Optional
 
@@ -21,7 +21,7 @@ class _VllmStreamParseParametersMeta(LazyLLMRegisterMetaClass):
         if name == 'stream_parse_parameters':
             if not hasattr(cls, '_stream_parse_parameters'):
                 try:
-                    vllm_version = parse(importlib.import_module('vllm').__version__)
+                    vllm_version = parse(importlib.metadata.version('vllm'))
                     cls._stream_parse_parameters = {"decode_unicode": False}
                     if vllm_version <= parse("0.5.0"): cls._stream_parse_parameters.update({"delimiter": b"\0"})
                 except ImportError:

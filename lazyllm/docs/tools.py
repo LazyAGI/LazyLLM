@@ -4920,38 +4920,6 @@ add_example('HttpRequest', ['''\
 ... '{"id":123456,"name":"openai-python", ...}'
 '''])
 
-#infer_service/serve.py/JobDescription
-add_chinese_doc('JobDescription', '''\
-模型部署任务描述的数据结构。
-
-用于创建模型推理任务时指定部署配置，包括服务名称、模型名称、框架类型与所需 GPU 数量。
-
-Args:
-    service_name (str): 服务名称，必需参数。
-    model_name (str): 要部署的模型名称，默认为 "qwen1.5-0.5b-chat"。
-    framework (str): 推理框架类型，默认为 "auto"。
-    num_gpus (int): 所需的 GPU 数量，默认为 1。
-''')
-
-add_english_doc('JobDescription', '''\
-Model deployment job description schema.
-
-Used to specify the configuration for creating a model inference job, including service name, model name, framework type and GPU requirements.
-
-Args:
-    service_name (str): Service name, required parameter.
-    model_name (str): The model to be deployed. Default is "qwen1.5-0.5b-chat".
-    framework (str): Inference framework type. Default is "auto".
-    num_gpus (int): Number of GPUs required for deployment. Default is 1.
-''')
-
-add_example('JobDescription', ['''\
->>> from lazyllm.components import JobDescription
->>> job = JobDescription(service_name="my-service", model_name="deepseek-coder", framework="vllm", num_gpus=2)
->>> print(job.dict())
-... {'service_name': 'my-service', 'model_name': 'deepseek-coder', 'framework': 'vllm', 'num_gpus': 2}
-'''])
-
 
 add_chinese_doc('DBManager', '''\
 数据库管理器的抽象基类。
