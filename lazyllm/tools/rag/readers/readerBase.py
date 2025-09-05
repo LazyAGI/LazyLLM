@@ -1,5 +1,4 @@
-import fsspec
-from fsspec.implementations.local import LocalFileSystem
+from lazyllm.thirdparty import fsspec
 from typing import Iterable, List
 
 from lazyllm.thirdparty import torch
@@ -23,10 +22,10 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
 
 def get_default_fs():
-    return LocalFileSystem()
+    return fsspec.implementations.local.LocalFileSystem()
 
-def is_default_fs(fs: fsspec.AbstractFileSystem) -> bool:
-    return isinstance(fs, LocalFileSystem) or not fs.auto_mkdir
+def is_default_fs(fs: 'fsspec.AbstractFileSystem') -> bool:
+    return isinstance(fs, fsspec.implementations.local.LocalFileSystem) or not fs.auto_mkdir
 
 def infer_torch_device() -> str:
     try:

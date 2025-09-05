@@ -92,7 +92,8 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'sentence_transformers', 'gradio', 'chromadb', 'nltk', 'PIL', 'httpx', 'bm25s', 'kubernetes', 'pymongo',
            'rapidfuzz', 'FlagEmbedding', 'mcp', 'diffusers', 'pypdf', 'pptx', 'html2text', 'ebooklib', 'docx2txt',
            'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr', 'volcenginesdkarkruntime',
-           'zhipuai', 'dashscope', ['mineru', 'cli.common'], 'opensearchpy', ['os', 'path'], 'pkg_resources', 'fastapi']
+           'zhipuai', 'dashscope', ['mineru', 'cli.common'], 'opensearchpy', ['os', 'path'], 'pkg_resources', 'fastapi',
+           ['fsspec', 'implementations.local'], 'bs4']
 for m in modules:
     if isinstance(m, str):
         vars()[m] = PackageWrapper(m)

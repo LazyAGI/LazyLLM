@@ -2,7 +2,7 @@ import importlib.util
 
 from pathlib import Path
 from typing import List, Optional
-from fsspec import AbstractFileSystem
+from lazyllm.thirdparty import fsspec
 
 from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
@@ -10,7 +10,7 @@ from lazyllm.thirdparty import html2text, ebooklib
 from lazyllm import LOG
 
 class EpubReader(LazyLLMReaderBase):
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:

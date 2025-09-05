@@ -350,10 +350,6 @@ lazyllm.tools.rag.transform.NodeTransform
     members: 
     exclude-members:
 
-::: lazyllm.tools.JobDescription
-    members: 
-    exclude-members:
-
 ::: lazyllm.tools.DBManager
     members: execute_query
     exclude-members:

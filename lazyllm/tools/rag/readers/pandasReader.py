@@ -1,6 +1,6 @@
 from pathlib import Path
 from typing import Dict, List, Optional
-from fsspec import AbstractFileSystem
+from lazyllm.thirdparty import fsspec
 import importlib
 from lazyllm.thirdparty import pandas as pd
 
@@ -16,7 +16,7 @@ class PandasCSVReader(LazyLLMReaderBase):
         self._row_joiner = row_joiner
         self._pandas_config = pandas_config or {}
 
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:
@@ -38,7 +38,7 @@ class PandasExcelReader(LazyLLMReaderBase):
         self._sheet_name = sheet_name
         self._pandas_config = pandas_config or {}
 
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         openpyxl_spec = importlib.util.find_spec("openpyxl")
         if openpyxl_spec is not None: pass
         else: raise ImportError("Please install openpyxl to read Excel files. "

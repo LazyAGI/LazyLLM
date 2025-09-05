@@ -1,6 +1,6 @@
 import json
 import copy
-import numpy as np
+from lazyllm.thirdparty import numpy as np
 
 import lazyllm
 from lazyllm.components.formatter import JsonFormatter

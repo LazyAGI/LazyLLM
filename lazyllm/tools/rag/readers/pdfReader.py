@@ -2,7 +2,7 @@ import io
 from tenacity import retry, stop_after_attempt
 from pathlib import Path
 from typing import List, Optional
-from fsspec import AbstractFileSystem
+from lazyllm.thirdparty import fsspec
 
 from lazyllm.thirdparty import pypdf
 
@@ -17,7 +17,7 @@ class PDFReader(LazyLLMReaderBase):
         self._return_full_document = return_full_document
 
     @retry(stop=stop_after_attempt(RETRY_TIMES))
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         fs = fs or get_default_fs()

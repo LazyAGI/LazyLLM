@@ -16,7 +16,7 @@ from urllib.parse import urlsplit, urlunsplit
 
 import pydantic
 import sqlalchemy
-from fastapi import UploadFile
+from lazyllm.thirdparty import fastapi
 from filelock import FileLock
 from pydantic import BaseModel
 from sqlalchemy import Column, Row, bindparam, insert, select, update
@@ -749,7 +749,7 @@ def run_in_thread_pool(func: Callable, params: Optional[List[Dict]] = None) -> G
 Default_Suport_File_Types = [".docx", ".pdf", ".txt", ".json"]
 
 
-def _save_file(_file: UploadFile, _file_path: str):
+def _save_file(_file: 'fastapi.UploadFile', _file_path: str):
     file_content = _file.file.read()
     with open(_file_path, "wb") as f:
         f.write(file_content)
@@ -760,7 +760,7 @@ def _convert_path_to_underscores(file_path: str) -> str:
 
 
 def _save_file_to_cache(
-    file: UploadFile, cache_dir: str, suport_file_types: List[str]
+    file: 'fastapi.UploadFile', cache_dir: str, suport_file_types: List[str]
 ) -> list:
     to_file_path = os.path.join(cache_dir, file.filename)
 
@@ -798,7 +798,7 @@ def _save_file_to_cache(
 
 
 def save_files_in_threads(
-    files: List[UploadFile],
+    files: List['fastapi.UploadFile'],
     override: bool,
     source_path,
     suport_file_types: List[str] = Default_Suport_File_Types,

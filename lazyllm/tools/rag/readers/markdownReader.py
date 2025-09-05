@@ -1,7 +1,6 @@
 import re
 from pathlib import Path
-from fsspec import AbstractFileSystem
-from fsspec.implementations.local import LocalFileSystem
+from lazyllm.thirdparty import fsspec
 from typing import List, Optional, Tuple
 
 from .readerBase import LazyLLMReaderBase
@@ -46,8 +45,8 @@ class MarkdownReader(LazyLLMReaderBase):
         return re.sub(pattern, r"\1", content)
 
     def _parse_tups(self, filepath: Path, errors: str = "ignore",
-                    fs: Optional[AbstractFileSystem] = None) -> List[Tuple[Optional[str], str]]:
-        fs = fs or LocalFileSystem()
+                    fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[Tuple[Optional[str], str]]:
+        fs = fs or fsspec.implementations.local.LocalFileSystem()
 
         with fs.open(filepath, encoding="utf-8") as f:
             content = f.read().decode(encoding="utf-8")
@@ -56,7 +55,7 @@ class MarkdownReader(LazyLLMReaderBase):
         if self._remove_images: content = self.remove_images(content)
         return self._markdown_to_tups(content)
 
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         tups = self._parse_tups(file, fs=fs)
