@@ -158,7 +158,7 @@ class UrlModule(LLMBase, _UrlHelper):
     def forward(self, *args, **kw): raise NotImplementedError
 
     def __call__(self, *args, **kw):
-        if not self._url: self.start()
+        assert self._url is not None, f'Please start {self.__class__} first'
         if len(args) > 1:
             return super(__class__, self).__call__(package(args), **kw)
         return super(__class__, self).__call__(*args, **kw)
