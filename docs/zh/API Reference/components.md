@@ -28,7 +28,12 @@
 ::: lazyllm.components.auto.AutoFinetune
     options:
       heading_level: 3
+      
 ::: lazyllm.components.finetune.base.DummyFinetune
+    options:
+      heading_level: 3
+
+::: lazyllm.components.finetune.LazyLLMFinetuneBase
     options:
       heading_level: 3
 
@@ -99,17 +104,26 @@
 ::: lazyllm.components.deploy.OCRDeploy
     options:
       heading_level: 3
----
+
+::: lazyllm.components.deploy.Infinity
+    options:
+      heading_level: 3
 
 ::: lazyllm.components.deploy.relay.base.RelayServer
     options:
       heading_level: 3
-      members: [cmd, geturl]
 
 ::: lazyllm.components.deploy.OCRDeploy
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.text_to_speech.utils.TTSBase
+    options:
+      heading_level: 3
+      
+::: lazyllm.components.deploy.relay.base.FastapiApp
+    options:
+      heading_level: 3
 ---
 
 ## Prompter
@@ -243,6 +257,9 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
     options:
       heading_level: 3
 
+::: lazyllm.components.formatter.formatterbase.PipelineFormatter
+    options:
+      heading_level: 3
 ---
 
 ## ComponentBase
@@ -250,3 +267,8 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
     options:
       heading_level: 3
       members: [apply, cmd]
+
+::: lazyllm.components.deploy.ray.Distributed
+    options:
+      heading_level: 3
+      members: [get, post, list, delete, update]

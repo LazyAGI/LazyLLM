@@ -10,8 +10,17 @@ add_example = functools.partial(utils.add_example, module=lazyllm.common)
 utils.add_doc.__doc__ = 'Add document for lazyllm functions'
 
 add_chinese_doc('Register', '''\
-LazyLLM提供的Component的注册机制，可以将任意函数注册成LazyLLM的Component。被注册的函数无需显式的import，即可通过注册器提供的分组机制，在任一位置被索引到。
+LazyLLM提供了一套组件注册机制，允许将任意函数注册为LazyLLM的Component。通过注册器提供的分组机制，注册后的函数可在任意位置通过分组索引进行调用，无需显式导入。
 
+<span style="font-size: 18px;">&ensp;**`lazyllm.components.register(cls, *, rewrite_func)→ 装饰器`**</span>
+
+该函数调用后返回一个装饰器，将被装饰函数包装为Component并注册到名为cls的分组中。
+
+Args:
+    base (type): 基类
+    fnames (Union[str, List[str]]): 要重写的函数名或函数名列表
+    template (str, optional): 注册模板字符串，默认为标准注册模板
+    default_group (str, optional): 默认组名，默认为None
 ''')
 
 add_english_doc('Register', '''\
@@ -22,11 +31,13 @@ LazyLLM provides a registration mechanism for Components, allowing any function 
 After the function is called, it returns a decorator which wraps the decorated function into a Component and registers it in a group named cls.
 
 Args:
-    cls (str) :The name of the group to which the function will be registered. The group must exist. Default groups include ``finetune`` and ``deploy``. Users can create new groups by calling the ``new_group`` function.
-    rewrite_func (str) :The name of the function to be rewritten after registration. Default is ``apply``. When registering a bash command, you need to pass ``cmd`` as the argument.
+    base (type): Base class
+    fnames (Union[str, List[str]]): Function name or function name list to rewrite
+    template (str, optional): Registration template string, defaults to standard registration template
+    default_group (str, optional): Default group name, defaults to None
 
-**Examples:**\n
-```python
+''')
+add_example('Register', '''\
 >>> import lazyllm
 >>> @lazyllm.component_register('mygroup')
 ... def myfunc(input):
@@ -34,18 +45,6 @@ Args:
 ...
 >>> lazyllm.mygroup.myfunc()(1)
 1
-```
-
-<span style="font-size: 20px;">&ensp;**`register.cmd(cls)→ Decorator `**</span>
-
-After the function is called, it returns a decorator that wraps the decorated function into a Component and registers it in a group named cls. The wrapped function needs to return an executable bash command.
-
-Args:
-    cls (str) :The name of the group to which the function will be registered. The group must exist. Default groups include ``finetune`` and ``deploy``. Users can create new groups by calling the ``new_group`` function.
-
-**Examples:**\n
-```python
->>> import lazyllm
 >>> @lazyllm.component_register.cmd('mygroup')
 ... def mycmdfunc(input):
 ...     return f'echo {input}'
@@ -53,9 +52,7 @@ Args:
 >>> lazyllm.mygroup.mycmdfunc()(1)
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) Command: echo 1
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
-```
 ''')
-
 add_english_doc('Register.new_group', '''\
 
 Creates a new ComponentGroup. The newly created group will be automatically added to __builtin__ and can be accessed at any location without the need for import.
@@ -1272,3 +1269,82 @@ The queue database is saved at ~/.lazyllm_filesystem_queue.db, with a file lock 
 Args:
     klass (str): Name of the queue category used to logically separate queues. Default is '__default__'.
 ''')
+
+add_chinese_doc('common.FlatList.absorb', """\
+添加元素到列表中。
+
+Args:
+    item: 要添加的元素，可以是单个元素或列表
+
+""")
+
+add_english_doc('common.FlatList.absorb', """\
+Absorb elements into the list.
+
+Args:
+    item: Element to add, can be a single element or a list
+
+""")
+
+add_chinese_doc('common.ArgsDict', """\
+参数字典类，用于管理和验证命令行参数。
+
+Args:
+    *args: 传递给父类dict的 positional arguments
+    **kwargs: 传递给父类dict的 keyword arguments
+
+**返回:**\n
+- ArgsDict实例，提供参数检查和格式化功能
+""")
+
+add_english_doc('common.ArgsDict', """\
+Parameter dictionary class for managing and validating command line arguments.
+
+Args:
+    *args: Positional arguments passed to parent dict class
+    **kwargs: Keyword arguments passed to parent dict class
+
+**Returns:**\n
+- ArgsDict instance providing parameter checking and formatting functionality
+""")
+add_chinese_doc('common.ArgsDict.check_and_update', """\
+检查并更新参数字典。
+
+Args:
+    kw (dict): 要更新的参数字典
+
+""")
+
+add_english_doc('common.ArgsDict.check_and_update', """\
+Check and update parameter dictionary.
+
+Args:
+    kw (dict): Parameter dictionary to update
+
+""")
+
+add_chinese_doc('common.ArgsDict.parse_kwargs', """\
+将参数字典解析为命令行参数字符串。
+
+""")
+
+add_english_doc('common.ArgsDict.parse_kwargs', """\
+Parse parameter dictionary into command line argument string.
+
+""")
+
+add_chinese_doc('common.DynamicDescriptor', """\
+动态描述符类，用于创建支持实例和类级别调用的描述符。
+
+
+Args:
+    func (callable): 要包装的函数或方法
+
+""")
+
+add_english_doc('common.DynamicDescriptor', """\
+Dynamic descriptor class for creating descriptors that support both instance and class level calls.
+
+Args:
+    func (callable): Function or method to be wrapped
+""")

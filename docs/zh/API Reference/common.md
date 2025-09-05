@@ -105,6 +105,9 @@
     members: [submit]
     exclude-members:
 
+::: lazyllm.common.ArgsDict
+    members: check_and_update, parse_kwargs
+    exclude-members:
 ---
 
 ## Threading
@@ -126,5 +129,9 @@
     exclude-members:
 
 ::: lazyllm.common.common.Finalizer
+    members: 
+    exclude-members:
+
+::: lazyllm.common.FlatList.absorb
     members: 
     exclude-members:

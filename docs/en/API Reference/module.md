@@ -128,7 +128,7 @@
 ::: lazyllm.module.llms.onlinemodule.fileHandler.FileHandlerBase
     members: get_finetune_data
     exclude-members: 
-    
+
 ::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMModule
     options:
       members:
@@ -155,4 +155,31 @@
 
 ::: lazyllm.module.llms.onlinemodule.base.onlineMultiModalBase.OnlineMultiModalBase
     members:
-    exclude-members:
+    exclude-members:::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenModule
+    options:
+      members:
+        - set_deploy_parameters
+
+
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenEmbedding
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMEmbedding
+    options:
+      members: 
+
+::: lazyllm.module.llms.onlinemodule.supplier.deepseek.DeepSeekModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule
+    options:
+      members:
+::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding
+    options:
+      members:    

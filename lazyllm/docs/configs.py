@@ -9,9 +9,13 @@ add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm)
 add_example = functools.partial(utils.add_example, module=lazyllm)
 
 
-add_chinese_doc('Config', r'''\
+add_chinese_doc('Config', '''\
 Config是LazyLLM提供的配置类，可以支持通过加载配置文件、设置环境变量、编码写入默认值等方式设置LazyLLM框架的相关配置，以及导出当前所有的配置项和对应的值。
 Config模块自动生成一个config对象，其中包含所有的配置。
+Args:
+    prefix (str, optional): 环境变量前缀。默认为 'LAZYLLM'
+    home (str, optional): 配置文件目录路径。默认为 '~/.lazyllm'
+
 ''')
 
 
@@ -19,6 +23,9 @@ add_english_doc('Config', '''\
 Config is a configuration class provided by LazyLLM, which loads configurations of LazyLLM framework from config files,
 environment variables, or specify them explicitly. it can export all configuration items as well.
 The Config module automatically generates an object named 'config' containing all configurations.
+Args:
+    prefix (str, optional): Environment variable prefix. Defaults to 'LAZYLLM'
+    home (str, optional): Configuration file directory path. Defaults to '~/.lazyllm'
 ''')
 
 
@@ -106,23 +113,24 @@ add_example('Config.get_all_configs', '''\
 {'home': '~/.lazyllm/', 'mode': <Mode.Normal: (1,)>, 'repr_ml': False, 'rag_store': 'None', 'redis_url': 'None', ...}
 ''')
 
-add_chinese_doc('Config.get_config', r'''\ 
-将传入的配置字典原样返回。该方法可作为处理 config.json 解析结果的扩展点，用户可根据需要重写该方法实现自定义转换逻辑。
-
+add_chinese_doc('Config.get_config', '''\ 
+静态方法：从配置字典中获取配置。
+这是一个简单的配置获取方法，主要用于从已加载的配置字典中提取配置信息。
 Args:
     cfg (dict): 从配置文件中读取的配置字典。
 ''')
 
 add_english_doc('Config.get_config', '''
-Return the provided configuration dictionary as-is.  
-This method can be overridden to customize the transformation logic for the parsed config.json content.
-
+Static method: Get configuration from config dictionary.
+This is a simple configuration retrieval method mainly used to extract configuration information from already loaded configuration dictionaries.
 Args:
     cfg (dict): The configuration dictionary read from the config file.
 ''')
 
 add_chinese_doc('Config.temp', '''
-在上下文管理器作用域内临时修改某个配置项的值，退出上下文时恢复原值。
+临时修改配置项的上下文管理器。
+
+在with语句块内临时修改指定配置项的值，退出语句块后自动恢复原值。
 
 Args:
     name (str): 要临时修改的配置项名称。
@@ -130,8 +138,9 @@ Args:
 ''')
 
 add_english_doc('Config.temp', '''
-Temporarily override a configuration item within a context manager scope, restoring the original value upon exit.
+Context manager for temporary configuration modification.
 
+Temporarily modifies the value of the specified configuration item within the with statement block, and automatically restores the original value when exiting the block.
 Args:
     name (str): The name of the configuration item to temporarily change.
     value (Any): The temporary value to set.

@@ -96,12 +96,13 @@
 ::: lazyllm.module.OnlineChatModuleBase
     options:
       members:
-      filters:
-      - '!forward'
+      - set_train_tasks
+      - set_specific_finetuned_model
 
 ::: lazyllm.module.OnlineEmbeddingModuleBase
     members:
-    exclude-members: forward
+        - forward
+
 
 ::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoEmbedding
     options:
@@ -158,3 +159,35 @@
 ::: lazyllm.module.llms.onlinemodule.base.onlineMultiModalBase.OnlineMultiModalBase
     members:
     exclude-members:
+    options:
+      members:
+        - get_finetune_data 
+
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenModule
+    options:
+      members:
+        - set_deploy_parameters
+
+
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenEmbedding
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMEmbedding
+    options:
+      members: 
+
+::: lazyllm.module.llms.onlinemodule.supplier.deepseek.DeepSeekModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule
+    options:
+      members:
+::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding
+    options:
+      members:
