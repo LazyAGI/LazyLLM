@@ -104,7 +104,7 @@ class DocInfoSchemaAnalyser:
         query = DOC_KWS_PROMPTS["kws_generation"].format(number=len(doc_contents), doc_type=doc_type)
         query += "\nBelow is the content of each document sample.\n\n"
         for i, doc_content in enumerate(doc_contents):
-            query += f"Document {i+1}:\n```\n{doc_content}\n```\n\n"
+            query += f"Document {i + 1}:\n```\n{doc_content}\n```\n\n"
         return query
 
     def _extract_schema_from_response(self, str_response: str) -> List[dict]:

@@ -1,10 +1,11 @@
 from typing import Dict, List, Union
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
-from ....module import ModuleBase
 from lazyllm import LOG
+from .utils import OnlineModuleBase
 
-class OnlineEmbeddingModuleBase(ModuleBase):
+
+class OnlineEmbeddingModuleBase(OnlineModuleBase):
     NO_PROXY = True
 
     def __init__(self,
@@ -32,12 +33,12 @@ class OnlineEmbeddingModuleBase(ModuleBase):
 
     @property
     def type(self):
-        return "EMBED"
+        return 'EMBED'
 
     def _set_headers(self) -> Dict[str, str]:
         self._headers = {
-            "Content-Type": "application/json",
-            "Authorization": f"Bearer {self._api_key}"
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {self._api_key}'
         }
 
     def forward(self, input: Union[List, str], **kwargs) -> Union[List[float], List[List[float]]]:
@@ -56,15 +57,15 @@ class OnlineEmbeddingModuleBase(ModuleBase):
     def _encapsulated_data(self, input: Union[List, str], **kwargs):
         if isinstance(input, str):
             json_data = {
-                "input": [input],
-                "model": self._embed_model_name
+                'input': [input],
+                'model': self._embed_model_name
             }
             if len(kwargs) > 0:
                 json_data.update(kwargs)
             return json_data
         else:
             text_batch = [input[i: i + self._batch_size] for i in range(0, len(input), self._batch_size)]
-            json_data = [{"input": texts, "model": self._embed_model_name} for texts in text_batch]
+            json_data = [{'input': texts, 'model': self._embed_model_name} for texts in text_batch]
             if len(kwargs) > 0:
                 for i in range(len(json_data)):
                     json_data[i].update(kwargs)
@@ -99,8 +100,8 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                             if self._batch_size == 1 or r.status_code in [401, 429]:
                                 raise requests.RequestException(error_msg)
                             else:
-                                msg = f"Online embedding:{self._embed_model_name} post failed, adjust batch_size: "
-                                msg = msg + f" from {self._batch_size} to {max(self._batch_size // 2, 1)}"
+                                msg = f'Online embedding:{self._embed_model_name} post failed, adjust batch_size: '
+                                msg = msg + f' from {self._batch_size} to {max(self._batch_size // 2, 1)}'
                                 LOG.warning(msg)
                                 self._batch_size = max(self._batch_size // 2, 1)
                                 data = self._encapsulated_data(input, **kwargs)
@@ -126,8 +127,8 @@ class OnlineEmbeddingModuleBase(ModuleBase):
                             if self._batch_size == 1 or r.status_code in [401, 429]:
                                 raise requests.RequestException(error_msg)
                             else:
-                                msg = f"Online embedding:{self._embed_model_name} post failed, adjust batch_size: "
-                                msg = msg + f" from {self._batch_size} to {max(self._batch_size // 2, 1)}"
+                                msg = f'Online embedding:{self._embed_model_name} post failed, adjust batch_size: '
+                                msg = msg + f' from {self._batch_size} to {max(self._batch_size // 2, 1)}'
                                 LOG.warning(msg)
                                 self._batch_size = max(self._batch_size // 2, 1)
                                 data = self._encapsulated_data(input, **kwargs)

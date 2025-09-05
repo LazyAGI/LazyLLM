@@ -23,7 +23,7 @@ def _parse_line_spans(para_block, page_idx):
 
 # patches to pipeline
 
-def pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # noqa: C901
+def _pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # noqa: C901
     para_type = para_block['type']
     para_content = {}
     if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX]:
@@ -108,12 +108,12 @@ def pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx): 
     return para_content
 
 
-pipeline_middle_json_mkcontent.make_blocks_to_content_list = pipeline_make_blocks_to_content_list
+pipeline_middle_json_mkcontent.make_blocks_to_content_list = _pipeline_make_blocks_to_content_list
 
 
 # patches to vlm
 
-def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # noqa: C901
+def _vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # noqa: C901
     para_type = para_block['type']
     para_content = {}
     if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX]:
@@ -193,4 +193,4 @@ def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # no
     para_content['bbox'] = para_block['bbox']
     return para_content
 
-vlm_middle_json_mkcontent.make_blocks_to_content_list = vlm_make_blocks_to_content_list
+vlm_middle_json_mkcontent.make_blocks_to_content_list = _vlm_make_blocks_to_content_list

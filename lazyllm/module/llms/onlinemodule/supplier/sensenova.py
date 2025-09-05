@@ -40,7 +40,8 @@ class _SenseNovaBase(object):
 
 class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     TRAINABLE_MODEL_LIST = ["nova-ptc-s-v2"]
-    VLM_MODEL_LIST = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner']
+    VLM_MODEL_LIST = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
+                      'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']
 
     def __init__(self, base_url: str = "https://api.sensenova.cn/compatible-mode/v1/", model: str = "SenseChat-5",
                  api_key: str = None, secret_key: str = None, stream: bool = True,
@@ -157,7 +158,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
             return (fine_tuning_job_id, status)
 
     def _validate_api_key(self):
-        fine_tune_url = urljoin(self._base_url, "models")
+        fine_tune_url = urljoin('https://api.sensenova.cn/v1/llm/', "models")
         headers = {
             "Authorization": f"Bearer {self._api_key}",
             "Content-Type": "application/json"

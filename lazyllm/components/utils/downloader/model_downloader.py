@@ -4,16 +4,64 @@ import shutil
 import functools
 import threading
 from abc import ABC, abstractmethod
+from enum import Enum, EnumMeta
 
 import lazyllm
 from .model_mapping import model_name_mapping, model_provider, model_groups
 
 lazyllm.config.add('model_source', str, 'modelscope', 'MODEL_SOURCE')
-lazyllm.config.add('model_cache_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'model'),
+lazyllm.config.add('model_cache_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'model'),
                    'MODEL_CACHE_DIR')
 lazyllm.config.add('model_path', str, '', 'MODEL_PATH')
 lazyllm.config.add('model_source_token', str, '', 'MODEL_SOURCE_TOKEN')
 lazyllm.config.add('data_path', str, '', 'DATA_PATH')
+
+
+class _CaseInsensitiveEnumMeta(EnumMeta):
+    def __getitem__(cls, name):
+        try:
+            return super().__getitem__(name)
+        except KeyError:
+            if isinstance(name, str):
+                lowered = name.casefold()
+                for m in cls:
+                    if m.name.casefold() == lowered:
+                        return m
+            raise
+
+
+class LLMType(str, Enum, metaclass=_CaseInsensitiveEnumMeta):
+    LLM = 'LLM'
+    VLM = 'VLM'
+    SD = 'SD'
+    TTS = 'TTS'
+    STT = 'STT'
+    EMBED = 'EMBED'
+    RERANK = 'RERANK'
+    CROSS_MODAL_EMBED = 'CROSS_MODAL_EMBED'
+    OCR = 'OCR'
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str):
+            v = value.casefold()
+            for m in cls:
+                if m.value.casefold() == v:
+                    return m
+            for m in cls:
+                if m.name.casefold() == v:
+                    return m
+        return None
+
+    def __eq__(self, other):
+        if isinstance(other, str):
+            return self.value.casefold() == other.casefold()
+        if isinstance(other, LLMType):
+            return self.value.casefold() == other.value.casefold()
+        return NotImplemented
+
+    def __hash__(self):
+        return hash(self.value.casefold())
 
 
 class ModelManager():
