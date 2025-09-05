@@ -1,10 +1,11 @@
 import copy
 from typing import List, Dict, Union
 import lazyllm
+from ....servermodule import LLMBase
 from .utils import OnlineModuleBase
 
 
-class OnlineMultiModalBase(OnlineModuleBase):
+class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
     def __init__(self, model_series: str, model_name: str = None, return_trace: bool = False, **kwargs):
         super().__init__(return_trace=return_trace)
         self._model_series = model_series
