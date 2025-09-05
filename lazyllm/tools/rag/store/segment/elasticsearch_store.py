@@ -96,7 +96,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             LOG.error('Unauthorized to access')
             raise e
         except Exception as e:
-            LOG.error(f"Fail to connect ElasticSearch sever with cloud id {cloud_id} and api key {api_key}")
+            LOG.error(f'Fail to connect ElasticSearch sever with cloud id {cloud_id} and api key {api_key}')
             raise e
 
     @override
@@ -187,6 +187,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                     seg = self._transform_segment(hit)
                     if seg:
                         results.append(seg)
+
             # Query by primary key(mget)
             elif criteria and self._primary_key in criteria:
                 vals = criteria.pop(self._primary_key)
