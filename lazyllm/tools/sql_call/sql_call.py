@@ -2,52 +2,11 @@ from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
 from lazyllm.tools.utils import chat_history_to_str
 from lazyllm import pipeline, globals, bind, _0, switch
+from lazyllm.prompts import SqlCallPrompts
 from typing import List, Any, Dict, Optional, Union, Callable
 import datetime
 import re
 from lazyllm.tools.sql import DBManager
-
-sql_query_instruct_template = """
-Given the following SQL tables and current date {current_date}, your job is to write sql queries in {db_type} given a user’s request.
-
-{desc}
-
-Alert: Just reply the sql query in a code block start with triple-backticks and keyword "sql"
-"""  # noqa E501
-
-
-mongodb_query_instruct_template = """
-Current date is {current_date}.
-You are a seasoned expert with 10 years of experience in crafting NoSQL queries for {db_type}. 
-I will provide a collection description in a specified format. 
-Your task is to analyze the user_question, which follows certain guidelines, and generate a NoSQL MongoDB aggregation pipeline accordingly.
-
-{desc}
-
-Note: Please return the json pipeline in a code block start with triple-backticks and keyword "json".
-"""  # noqa E501
-
-db_explain_instruct_template = """
-According to chat history
-```
-{{history_info}}
-```
-
-and the {db_type} database description
-```
-{{desc}}
-```
-
-bellowing {statement_type} is executed
-
-```
-{{query}}
-```
-the result is
-```
-{{result}}
-```
-"""
 
 
 class SqlCall(ModuleBase):
@@ -60,6 +19,7 @@ class SqlCall(ModuleBase):
         sql_examples: str = "",
         sql_post_func: Callable = None,
         use_llm_for_sql_result=True,
+        prompts: Optional[SqlCallPrompts] = None,
         return_trace: bool = False,
     ) -> None:
         super().__init__(return_trace=return_trace)
@@ -68,14 +28,17 @@ class SqlCall(ModuleBase):
         self._sql_tool = sql_manager
         self.sql_post_func = sql_post_func
 
+        # Initialize prompts
+        self._prompts = prompts or SqlCallPrompts()
+
         if sql_manager.db_type == "mongodb":
-            self._query_prompter = ChatPrompter(instruction=mongodb_query_instruct_template).pre_hook(
+            self._query_prompter = ChatPrompter(instruction=self._prompts.mongodb_query_template).pre_hook(
                 self.sql_query_promt_hook
             )
             statement_type = "mongodb json pipeline"
             self._pattern = re.compile(r"```json(.+?)```", re.DOTALL)
         else:
-            self._query_prompter = ChatPrompter(instruction=sql_query_instruct_template).pre_hook(
+            self._query_prompter = ChatPrompter(instruction=self._prompts.sql_query_template).pre_hook(
                 self.sql_query_promt_hook
             )
             statement_type = "sql query"
@@ -83,7 +46,9 @@ class SqlCall(ModuleBase):
 
         self._llm_query = llm.share(prompt=self._query_prompter).used_by(self._module_id)
         self._answer_prompter = ChatPrompter(
-            instruction=db_explain_instruct_template.format(statement_type=statement_type, db_type=sql_manager.db_type)
+            instruction=self._prompts.db_explain_template.format(
+                statement_type=statement_type, db_type=sql_manager.db_type
+            )
         ).pre_hook(self.sql_explain_prompt_hook)
         self._llm_answer = llm.share(prompt=self._answer_prompter).used_by(self._module_id)
         self.example = sql_examples

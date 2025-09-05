@@ -2,9 +2,10 @@ from lazyllm.module import ModuleBase, OnlineChatModule
 from lazyllm.components import ChatPrompter
 from .functionCallFormatter import FunctionCallFormatter
 from lazyllm import pipeline, ifs, loop, globals, bind, LOG, Color, package, FileSystemQueue, colored_text
+from lazyllm.prompts import FunctionCallPrompts
 import json5 as json
 from .toolsManager import ToolManager
-from typing import List, Any, Dict, Union, Callable
+from typing import List, Any, Dict, Union, Callable, Optional
 
 
 def function_call_hook(input: Dict[str, Any], history: List[Dict[str, Any]], tools: List[Dict[str, Any]], label: Any):
@@ -20,18 +21,6 @@ def function_call_hook(input: Dict[str, Any], history: List[Dict[str, Any]], too
         input = {"input": input[-1]} if isinstance(input[-1], (dict, list)) and "input" not in input[-1] else input[-1]
     return input, history, tools, label
 
-FC_PROMPT_LOCAL = """# Tools
-
-## You have access to the following tools:
-## When you need to call a tool, please insert the following command in your reply, \
-which can be called zero or multiple times according to your needs:
-
-{tool_start_token}The tool to use, should be one of tools list.
-{tool_args_token}The input of the tool. The output format is: {"input1": param1, "input2": param2}. Can only return json.
-{tool_end_token}End of tool."""
-
-FC_PROMPT_ONLINE = ("Don't make assumptions about what values to plug into functions."
-                    "Ask for clarification if a user request is ambiguous.\n")
 
 class StreamResponse():
     def __init__(self, prefix: str, prefix_color: str = None, color: str = None, stream: bool = False):
@@ -52,12 +41,18 @@ class StreamResponse():
 class FunctionCall(ModuleBase):
 
     def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False,
-                 stream: bool = False, _prompt: str = None):
+                 prompts: Optional[FunctionCallPrompts] = None, stream: bool = False):
         super().__init__(return_trace=return_trace)
         if isinstance(llm, OnlineChatModule) and llm.series == "QWEN" and llm._stream is True:
             raise ValueError("The qwen platform does not currently support stream function calls.")
-        if _prompt is None:
-            _prompt = FC_PROMPT_ONLINE if isinstance(llm, OnlineChatModule) else FC_PROMPT_LOCAL
+
+        # Initialize prompts
+        self._prompts = prompts or FunctionCallPrompts()
+
+        if prompts is None:
+            _prompt = self._prompts.online if isinstance(llm, OnlineChatModule) else self._prompts.local
+        else:
+            _prompt = self._prompts.online if isinstance(llm, OnlineChatModule) else self._prompts.local
 
         self._tools_manager = ToolManager(tools, return_trace=return_trace)
         self._prompter = ChatPrompter(instruction=_prompt, tools=self._tools_manager.tools_description)\
@@ -126,10 +121,11 @@ class FunctionCall(ModuleBase):
         return self._impl(input)
 
 class FunctionCallAgent(ModuleBase):
-    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False):
+    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False,
+                 stream: bool = False, prompts: Optional[FunctionCallPrompts] = None):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
-        self._fc = FunctionCall(llm, tools, return_trace=return_trace, stream=stream)
+        self._fc = FunctionCall(llm, tools, return_trace=return_trace, stream=stream, prompts=prompts)
         self._agent = loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
         self._fc._llm.used_by(self._module_id)
 
