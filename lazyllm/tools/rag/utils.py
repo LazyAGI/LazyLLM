@@ -1,4 +1,3 @@
-import concurrent
 import hashlib
 import json
 import os
@@ -29,7 +28,7 @@ from lazyllm.common import override
 from lazyllm.common.queue import sqlite3_check_threadsafety
 from lazyllm.thirdparty import tarfile
 
-from .doc_node import DocNode
+from .doc_node import DocNode, MetadataMode
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 from .index_base import IndexBase
 from pathlib import Path
@@ -845,30 +844,68 @@ def save_files_in_threads(
     return (already_exist_files, new_add_files, overwritten_files)
 
 # returns a list of modified nodes
-def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union[List[str], Set[str]]],
+def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union[List[str], Set[str]]],  # noqa: C901
                           nodes: List[DocNode], group_embed_keys: Dict[str, List[str]] = None) -> List[DocNode]:
-    modified_nodes = []
-    with ThreadPoolExecutor(config["max_embedding_workers"]) as executor:
-        futures = []
-        for node in nodes:
-            if group_embed_keys:
-                embed_keys = group_embed_keys.get(node._group)
-                if not embed_keys:
-                    continue
-            miss_keys = node.has_missing_embedding(embed_keys)
-            if not miss_keys:
-                continue
-            modified_nodes.append(node)
-            for k in miss_keys:
-                with node._lock:
-                    if node.has_missing_embedding(k):
-                        future = executor.submit(node.do_embedding, {k: embed[k]}) \
-                            if k not in node._embedding_state else executor.submit(node.check_embedding_state, k)
-                        node._embedding_state.add(k)
-                        futures.append(future)
-        if len(futures) > 0:
-            for future in concurrent.futures.as_completed(futures):
-                future.result()
+    if not nodes: return []
+
+    max_workers = config["max_embedding_workers"]
+
+    tasks_by_key: Dict[str, List[DocNode]] = defaultdict(list)
+    modified_nodes: List[DocNode] = []
+    for node in nodes:
+        if group_embed_keys and not group_embed_keys.get(node._group):
+            continue
+        keys_for_node = (group_embed_keys.get(node._group) if group_embed_keys else embed_keys) or embed.keys()
+        miss = node.has_missing_embedding(keys_for_node)
+        if not miss:
+            continue
+        modified_nodes.append(node)
+        for k in miss:
+            tasks_by_key[k].append(node)
+            if hasattr(node, "_embedding_state"):
+                node._embedding_state.add(k)
+
+    if not tasks_by_key:
+        return []
+    concurrent_workers = min(max_workers, len(tasks_by_key))
+    max_workers_per_key = max(1, max_workers // max(1, concurrent_workers))
+
+    def _check_batch(fn: Callable):
+        return bool(getattr(fn, 'support_batch', False) or getattr(fn, 'batch_size', 1) > 1)
+
+    def _process_key(k: str, knodes: List[DocNode]):
+        try:
+            fn = embed[k]
+            if _check_batch(fn):
+                texts = [n.get_text(MetadataMode.EMBED) for n in knodes]
+                vecs = fn(texts)
+                if len(vecs) != len(texts):
+                    raise ValueError(f'[LazyLLM - parallel_do_embedding][{k}] batch size mismatch: '
+                                     f'[text_num:{len(texts)}] vs [vec_num:{len(vecs)}]')
+                for n, v in zip(knodes, vecs):
+                    n.set_embedding(k, v)
+                return
+
+            if max_workers_per_key == 1:
+                for n in knodes:
+                    n.do_embedding({k: fn})
+            else:
+                with ThreadPoolExecutor(max_workers=max_workers_per_key) as ex2:
+                    futs = [ex2.submit(n.do_embedding, {k: fn}) for n in knodes]
+                    for fut in as_completed(futs):
+                        fut.result()
+        except Exception as e:
+            lazyllm.LOG.error(f'[LazyLLM - parallel_do_embedding][{k}] error: {e}')
+            for n in knodes:
+                if hasattr(n, "_embedding_state") and k in n._embedding_state:
+                    with n._lock:
+                        n._embedding_state.remove(k)
+            raise e
+
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(tasks_by_key))) as ex:
+        futs = [ex.submit(_process_key, k, k_nodes) for k, k_nodes in tasks_by_key.items()]
+        for fut in as_completed(futs):
+            fut.result()
     return modified_nodes
 
 class _FileNodeIndex(IndexBase):

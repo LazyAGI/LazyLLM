@@ -1,9 +1,7 @@
 import json
-import ast
 import threading
 import time
 from enum import Enum
-from functools import wraps
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
 from lazyllm import LOG, once_wrapper
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
@@ -17,42 +15,11 @@ from .utils import DocListManager, is_sparse
 from .global_metadata import GlobalMetadataDesc, RAG_KB_ID
 from .data_type import DataType
 from .doc_processor import _Processor, DocumentProcessor
+from .embed_wrapper import _EmbedWrapper
 from dataclasses import dataclass
 from itertools import repeat
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
-
-def embed_wrapper(func: Optional[Callable[..., Any]]) -> Optional[Callable[..., List[float]]]:
-    if not func:
-        return None
-
-    @wraps(func)
-    def wrapper(*args, **kwargs) -> List[float]:
-        result = func(*args, **kwargs)
-        if isinstance(result, str):
-            try:
-                # Use json.loads as it's generally more robust for list-like strings
-                return json.loads(result)
-            except json.JSONDecodeError:
-                # Fallback or raise error if json.loads also fails
-                # For example, if ast.literal_eval was truly necessary for some non-JSON compatible Python literal
-                try:
-                    LOG.warning("json.loads failed, attempting ast.literal_eval as a "
-                                "fallback (might hit recursion limit).")
-                    return ast.literal_eval(result)
-                except Exception as e:
-                    LOG.error(f"Both json.loads and ast.literal_eval failed. Error: {e}")
-                    raise  # Re-raise the original or a new error
-        # Explicitly check if it's already a list for dense embedding or dict for sparse embedding
-        elif isinstance(result, (list, dict)):
-            return result
-        else:
-            # Handle unexpected types by raising an error
-            error_message = f"Expected List[float] or str (convertible to List[float]), but got {type(result)}"
-            LOG.error(f"{error_message}")
-            raise TypeError(error_message)
-
-    return wrapper
 
 class StorePlaceholder:
     pass
@@ -112,7 +79,7 @@ class DocImpl:
             LAZY_ROOT_NAME: dict(parent=None, display_name='Original Source', group_type=NodeGroupType.ORIGINAL),
             LAZY_IMAGE_GROUP: dict(parent=None, display_name='Image Node', group_type=NodeGroupType.OTHER)
         }
-        self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
+        self.embed = {k: _EmbedWrapper(e) for k, e in embed.items()}
         self._global_metadata_desc = global_metadata_desc
         self.store = store  # NOTE: will be initialized in _lazy_init()
         self._activated_groups = set([LAZY_ROOT_NAME, LAZY_IMAGE_GROUP])

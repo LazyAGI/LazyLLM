@@ -234,8 +234,10 @@ class GLMEmbedding(OnlineEmbeddingModuleBase):
                  embed_url: str = "https://open.bigmodel.cn/api/paas/v4/embeddings",
                  embed_model_name: str = "embedding-2",
                  api_key: str = None,
+                 batch_size: int = 16,
                  **kw):
-        super().__init__("GLM", embed_url, api_key or lazyllm.config["glm_api_key"], embed_model_name, **kw)
+        super().__init__("GLM", embed_url, api_key or lazyllm.config["glm_api_key"], embed_model_name,
+                         batch_size=batch_size, **kw)
 
 class GLMReranking(OnlineEmbeddingModuleBase):
 

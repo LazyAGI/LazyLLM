@@ -237,9 +237,11 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
                  embed_model_name: str = "nova-embedding-stable",
                  api_key: str = None,
                  secret_key: str = None,
+                 batch_size: int = 16,
                  **kw):
         api_key = self._get_api_key(api_key, secret_key)
-        super().__init__("SENSENOVA", embed_url, api_key, embed_model_name, **kw)
+        super().__init__("SENSENOVA", embed_url, api_key, embed_model_name,
+                         batch_size=batch_size, **kw)
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
         embeddings = response.get('embeddings', [])
