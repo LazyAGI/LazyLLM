@@ -10,7 +10,7 @@ import lazyllm
 from .model_mapping import model_name_mapping, model_provider, model_groups
 
 lazyllm.config.add('model_source', str, 'modelscope', 'MODEL_SOURCE')
-lazyllm.config.add('model_cache_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'model'),
+lazyllm.config.add('model_cache_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'model'),
                    'MODEL_CACHE_DIR')
 lazyllm.config.add('model_path', str, '', 'MODEL_PATH')
 lazyllm.config.add('model_source_token', str, '', 'MODEL_SOURCE_TOKEN')

@@ -49,7 +49,8 @@ class Config(object):
         yield
         self.impl[name] = old_value
 
-    def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None):
+    def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
+            *, options: Optional[List] = None):
         update_params = (type, default, env)
         if name not in self._config_params or self._config_params[name] != update_params:
             if name in self._config_params:

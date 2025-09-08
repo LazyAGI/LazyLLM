@@ -34,6 +34,7 @@ documents = lazyllm.Document(dataset_path="/path/to/your/doc/dir",
 retriever = lazyllm.Retriever(doc=documents,
                               group_name="CoarseChunk",
                               similarity="bm25_chinese",
+                              similarity_cut_off=0.003,
                               topk=3)
 
 # Part3
@@ -69,7 +70,7 @@ Let's briefly explain the code in each part.
 
 1. Part0 imports `lazyllm`.
 
-2. Part1 loads the local knowledge base directory and uses the built-in `OnlineEmbeddingModule` as the embedding function.
+2. Part1 loads the local knowledge base directory and uses the built-in `OnlineEmbeddingModule` as the embedding model.
 
 3. Part2 creates a `Retriever` for document retrieval, and uses the built-in `CoarseChunk` (refer to [definition of CoarseChunk][llm.tools.Retriever]) to chunk the documents into specified sizes, then uses the built-in `bm25_chinese` as the similarity calculation function, discards results with a similarity less than 0.003, and finally takes the closest 3 documents.
 
@@ -169,6 +170,7 @@ documents.create_node_group(name="sentences",
 retriever1 = lazyllm.Retriever(doc=documents,
                                group_name="CoarseChunk",
                                similarity="bm25_chinese",
+                               similarity_cut_off=0.003,
                                topk=3)
 
 retriever2 = lazyllm.Retriever(doc=documents,
@@ -329,13 +331,13 @@ Here, we've simply introduced how to use the `LazyLLM` extension registration me
 
 After defining the transformation rules for the Node Group, `LazyLLM` will save the content of the Node Group obtained during the retrieval process, so as to avoid repeating the transformation operation when it is used subsequently. To facilitate users’ access to different types of data, `LazyLLM` supports custom storage backends.
 
-If not specified, `LazyLLM` uses a dict-based key/value as the default storage backend. Users can specify other storage backends through the `Document` parameter `store_conf`. For example, if you want to use Milvus as the storage backend, you can configure it like this:
+If not specified, `LazyLLM` uses `MapStore` (based on dict key/value storage) as the default storage backend. Users can specify other storage backends through the `Document` parameter `store_conf`. For example, if you want to use Milvus as the storage backend, you can configure it like this:
 
 ```python
 milvus_store_conf = {
     'type': 'milvus',
     'kwargs': {
-        'uri': store_file,
+        'uri': '/path/to/milvus/dir/milvus.db',
         'index_kwargs': {
             'index_type': 'HNSW',
             'metric_type': 'COSINE',
@@ -344,17 +346,34 @@ milvus_store_conf = {
 }
 ```
 
-The `type` parameter is the backend type, and `kwargs` are the parameters that need to be passed to the backend. The meanings of each field are as follows:
+The `type` parameter is the backend type, and `kwargs` are the parameters that need to be passed to the backend. The meanings of each field are as follows [RAG Best Practices](../Best%20Practice/rag.md#store-and-index):
 
-* `type`: The backend type to be used. Currently supported:
-    - `map`: In-memory key/value storage;
-    - `chroma`: Use Chroma to store data;
-        - `dir` (required): The directory where data is stored.
-    - `milvus`: Use Milvus to store data.
-        - `uri` (required): The Milvus storage address, which can be a file path or a URL in the format of `ip:port`;
-        - `index_kwargs` (optional): Milvus index configuration, which can be a dict or a list. If it is a dict, it means all embedding indexes use the same configuration; if it is a list, the elements in the list are dict, indicating the configuration used by the embedding specified by `embed_key`. Currently, only `floating point embedding` and `sparse embedding` are supported for embedding types, with the following supported parameters respectively:
-            - `floating point embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
-            - `sparse embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
+!!! Note
+
+    In the latest version of `LazyLLM`, it is recommended to pass in `segment_store` and `vector_store` two fields, respectively specifying the configuration of slice storage and vector storage. For the case of passing in the `type` field, `LazyLLM` will automatically map the `type` field, if it is for vector storage, the default slice storage will be `MapStore`.
+
+If users expect to store slice data locally, they can pass in the `segment_store` field, specifying `type` as `map` and passing in the `uri` field, specifying the directory of the slice storage.
+
+```python
+store_conf = {
+    'segment_store': {
+        'type': 'map',
+        'kwargs': {
+            'uri': '/path/to/segment/dir/sqlite3.db',
+        },
+    },
+    'vector_store': {
+        'type': 'milvus',
+        'kwargs': {
+            'uri': '/path/to/milvus/dir/milvus.db',
+            'index_kwargs': {
+                'index_type': 'HNSW',
+                'metric_type': 'COSINE',
+            }
+        },
+    },
+}
+```
 
 If using Milvus, we also need to pass the `doc_fields` parameter to `Document`, which is used to specify the fields and types of information that need to be stored. For example, the following configuration:
 
@@ -449,109 +468,39 @@ if __name__ == '__main__':
 
 </details>
 
-## Version-6: Customizing Index Backend
+## Version-6: Separating Online and Offline, Accessing the Remote `Document`
 
-To accelerate data retrieval and meet various retrieval needs, `LazyLLM` also supports specifying index backends for different storage backends. This can be done through the indices field in the `store_conf` parameter of `Document`. The index types configured in `indices` can be used in `Retriever` (by specifying the `index` parameter).
+RAG systems often include document parsing and online Q&A phases, where the document parsing phase is time-consuming, but can be executed offline, while the Q&A phase needs to respond quickly. To meet this need, `LazyLLM` provides the function of remote deployment and access of `Document`, allowing users to deploy `Document` on a remote server and use it through url.
 
-For instance, if you want to use a key/value store based on dict and use Milvus as the retrieval backend for this storage, you can configure it as follows:
-
-```python
-milvus_store_conf = {
-    'type': 'map',
-    'indices': {
-        'smart_embedding_index': {
-            'backend': 'milvus',
-            'kwargs': {
-                'uri': store_file,
-                'index_kwargs': {
-                    'index_type': 'HNSW',
-                    'metric_type': 'COSINE',
-                }
-            },
-        },
-    },
-}
-```
-
-The parameter `type` has been introduced in Version-5 and will not be repeated here. `indices` is a dict where the key is the index type, and the value is a dict whose content varies depending on the different index types.
-
-Currently, indices only supports `smart_embedding_index`, with the following parameters:
-
-* `backend`: Specifies the type of index backend used for embedding retrieval. Only milvus is supported at the moment;
-* `kwargs`: The parameters that need to be passed to the index backend. In this case, the parameters passed to the milvus backend are the same as those introduced for the milvus storage backend in the section of Version-5.
-
-Here is a complete example using milvus as the index backend:
-
-<details>
-
-<summary>Here is the complete code (click to expand):</summary>
+### Using Service Mode to Start `Document`
 
 ```python
-# -*- coding: utf-8 -*-
+docs = lazyllm.Document(dataset_path="rag_master",
+                        name="doc_server",
+                        embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
+                        server=9200,
+                        store_conf=milvus_store_conf,
+                        doc_fields=doc_fields)
+docs.create_node_group(name="sentences", transform=lambda s: '。'.split(s))
+docs.activate_groups(["sentences", "CoarseChunk"]) # Use docs.activate_group('sentences', embed_keys=['xxx']) to activate a single node group
 
-import os
-import lazyllm
-from lazyllm import bind
-import tempfile
-
-def run(query):
-    _, store_file = tempfile.mkstemp(suffix=".db")
-
-    milvus_store_conf = {
-        'type': 'map',
-        'indices': {
-            'smart_embedding_index': {
-                'backend': 'milvus',
-                'kwargs': {
-                    'uri': store_file,
-                    'index_kwargs': {
-                        'index_type': 'HNSW',
-                        'metric_type': 'COSINE',
-                    }
-                },
-            },
-        },
-    }
-
-    documents = lazyllm.Document(dataset_path="rag_master",
-                                 embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
-                                 manager=False,
-                                 store_conf=milvus_store_conf)
-
-    documents.create_node_group(name="sentences",
-                                transform=lambda s: '。'.split(s))
-
-    prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\
-        ' In this task, you need to provide your answer based on the given context and question.'
-
-    with lazyllm.pipeline() as ppl:
-        ppl.retriever = lazyllm.Retriever(doc=documents, group_name="sentences", topk=3,
-                                          index='smart_embedding_index')
-
-        ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
-                                        model="bge-reranker-large",
-                                        topk=1,
-                                        output_format='content',
-                                        join=True) | bind(query=ppl.input)
-
-        ppl.formatter = (
-            lambda nodes, query: dict(context_str=nodes, query=query)
-        ) | bind(query=ppl.input)
-
-        ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
-            lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
-
-        rag = lazyllm.ActionModule(ppl)
-        rag.start()
-        res = rag(query)
-
-    os.remove(store_file)
-
-    return res
-
-if __name__ == '__main__':
-    res = run('What is the way of heaven?')
-    print(f'answer: {res}')
+docs.start()
 ```
 
-</details>
+The `server` parameter is specified as `9200`, indicating that the `Document` is started in service mode, and after calling `docs.start()`, the `Document` will start a service and specify the port as `9200`. (It can also be specified as `True`, indicating that a random port is assigned)
+
+Before starting, ensure that the document service has created all the necessary node groups, and executes `docs.activate_groups()` according to the needs to activate the corresponding node groups, only the activated node groups will be discovered by the service, and used in the subsequent document parsing and retrieval. Here, we activate the `sentences` and `CoarseChunk` two node groups, defaulting to activate all vector models, if `docs` passes in a dictionary format of multiple vector models, the parameter when passing in only needs to pass the key of the corresponding vector model.
+
+### Using url to Access `Document`
+
+After starting, assuming that the document service is deployed on port `9200` of `127.0.0.1`, it can be accessed through `http://127.0.0.1:9200/`. We use `lazyllm.UrlDocument` to access the document service, and specify the name of the document service as `doc_server`.
+
+```python
+docs2 = lazyllm.Document(url="http://127.0.0.1:9200/", name="doc_server")
+retriever = lazyllm.Retriever(doc=docs2, group_name="sentences", topk=3)
+
+query = "What is the way of heaven?"
+res = retriever(query=query)
+print(f"answer: {res}")
+
+By this way, the `url` parameter of `docs2` points to the address of the document service, and the `name` parameter specifies the name of the document service. Users can directly use `docs2` for retrieval without worrying about where the document service is deployed.

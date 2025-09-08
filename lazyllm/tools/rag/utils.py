@@ -952,19 +952,17 @@ def is_sparse(embedding: Union[Dict[int, float], List[Tuple[int, float]], List[f
     raise TypeError(f'unsupported embedding type `{type(embedding[0])}`')
 
 
-def ensure_call_endpoint(raw: str) -> str:
-    if not raw: return raw
-    if '://' not in raw:
-        raw = f'http://{raw}'
+def ensure_call_endpoint(raw: str, *, default_path: str = "/_call") -> str:
+    if not raw:
+        return raw
 
-    parts = urlsplit(raw)
-    path = parts.path or ''
+    raw = raw.strip()
+    has_scheme = '://' in raw
+    parts = urlsplit(raw if has_scheme else f'//{raw}', allow_fragments=True)
 
-    if path.rstrip('/').endswith('_call'):
-        new_path = path.rstrip('/')
-    elif path == '' or path.endswith('/'):
-        new_path = (path or '') + '_call' if path.endswith('/') else '/_call'
-    else:
-        new_path = path + '/_call'
+    if not parts.netloc:
+        raise ValueError(f'Invalid endpoint (missing host): {raw}')
 
-    return urlunsplit((parts.scheme, parts.netloc, new_path, parts.query, parts.fragment))
+    scheme = parts.scheme or 'http'
+    new_path = default_path
+    return urlunsplit((scheme, parts.netloc, new_path, parts.query, parts.fragment))
