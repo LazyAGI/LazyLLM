@@ -2,7 +2,7 @@ import io
 from tenacity import retry, stop_after_attempt
 from pathlib import Path
 from typing import List, Optional
-from fsspec import AbstractFileSystem
+from lazyllm.thirdparty import fsspec
 
 from lazyllm.thirdparty import pypdf
 
@@ -17,7 +17,7 @@ class PDFReader(LazyLLMReaderBase):
         self._return_full_document = return_full_document
 
     @retry(stop=stop_after_attempt(RETRY_TIMES))
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         fs = fs or get_default_fs()
@@ -27,12 +27,12 @@ class PDFReader(LazyLLMReaderBase):
             num_pages = len(pdf.pages)
             docs = []
             if self._return_full_document:
-                text = "\n".join(pdf.pages[page].extract_text() for page in range(num_pages))
+                text = '\n'.join(pdf.pages[page].extract_text() for page in range(num_pages))
                 docs.append(DocNode(text=text))
             else:
                 for page in range(num_pages):
                     page_text = pdf.pages[page].extract_text()
                     page_label = pdf.page_labels[page]
-                    metadata = {"page_label": page_label}
+                    metadata = {'page_label': page_label}
                     docs.append(DocNode(text=page_text, metadata=metadata))
             return docs

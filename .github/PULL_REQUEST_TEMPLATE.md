@@ -13,6 +13,7 @@
 - [ ] 重构 / Refactor (no functionality change, code structure optimized)
 - [ ] 重大变更 / Breaking change (fix or feature that would cause existing functionality to change)
 - [ ] 文档更新 / Documentation update (changes to docs only)
+- [ ] 性能优化 / Performance optimization
 
 ## 🧪 如何测试 / How Has This Been Tested?
 <!-- 描述测试步骤 / Describe the tests that you ran to verify your changes -->
@@ -21,7 +22,7 @@
 3. 
 
 ## 📷 截图 / Demo (Optional)
-<!-- 如果是文档改动 / If document changes, please attach screenshots -->
+<!-- 如果是文档改动或者性能优化 / If document changes or performance optimization, please attach screenshots -->
 - 
 
 ## ⚡ 更新后的用法示例 / Usage After Update
