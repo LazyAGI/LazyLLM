@@ -166,36 +166,45 @@ class DocListManager(ABC):
         return document_list
 
     @abstractmethod
-    def table_inited(self): pass
+    def table_inited(self):
+        pass
 
     @abstractmethod
     def _init_tables(self): pass
 
     @abstractmethod
-    def validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]: pass
+    def validate_paths(self, paths: List[str]) -> Tuple[bool, str, List[bool]]:
+        pass
 
     @abstractmethod
-    def update_need_reparsing(self, doc_id: str, need_reparse: bool): pass
+    def update_need_reparsing(self, doc_id: str, need_reparse: bool):
+        pass
 
     @abstractmethod
     def list_files(self, limit: Optional[int] = None, details: bool = False,
                    status: Union[str, List[str]] = Status.all,
-                   exclude_status: Optional[Union[str, List[str]]] = None): pass
+                   exclude_status: Optional[Union[str, List[str]]] = None):
+        pass
 
     @abstractmethod
-    def get_docs(self, doc_ids: List[str]) -> List[KBDocument]: pass
+    def get_docs(self, doc_ids: List[str]) -> List[KBDocument]:
+        pass
 
     @abstractmethod
-    def set_docs_new_meta(self, doc_meta: Dict[str, dict]): pass
+    def set_docs_new_meta(self, doc_meta: Dict[str, dict]):
+        pass
 
     @abstractmethod
-    def fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]: pass
+    def fetch_docs_changed_meta(self, group: str) -> List[DocMetaChangedRow]:
+        pass
 
     @abstractmethod
-    def list_all_kb_group(self): pass
+    def list_all_kb_group(self):
+        pass
 
     @abstractmethod
-    def add_kb_group(self, name): pass
+    def add_kb_group(self, name):
+        pass
 
     @abstractmethod
     def list_kb_group_files(self, group: str = None, limit: Optional[int] = None, details: bool = False,
@@ -203,7 +212,8 @@ class DocListManager(ABC):
                             exclude_status: Optional[Union[str, List[str]]] = None,
                             upload_status: Union[str, List[str]] = Status.all,
                             exclude_upload_status: Optional[Union[str, List[str]]] = None,
-                            need_reparse: Optional[bool] = False): pass
+                            need_reparse: Optional[bool] = False):
+        pass
 
     def add_files(
         self,
@@ -228,37 +238,47 @@ class DocListManager(ABC):
                          status: Optional[str] = Status.waiting, batch_size: int = 64) -> List[DocPartRow]: pass
 
     @abstractmethod
-    def delete_unreferenced_doc(self): pass
+    def delete_unreferenced_doc(self):
+        pass
 
     @abstractmethod
-    def get_docs_need_reparse(self, group: Optional[str] = None) -> List[KBDocument]: pass
+    def get_docs_need_reparse(self, group: Optional[str] = None) -> List[KBDocument]:
+        pass
 
     @abstractmethod
-    def get_existing_paths_by_pattern(self, file_path: str) -> List[str]: pass
+    def get_existing_paths_by_pattern(self, file_path: str) -> List[str]:
+        pass
 
     @abstractmethod
-    def update_file_message(self, fileid: str, **kw): pass
+    def update_file_message(self, fileid: str, **kw):
+        pass
 
     @abstractmethod
     def update_file_status(self, file_ids: List[str], status: str,
-                           cond_status_list: Union[None, List[str]] = None) -> List[DocPartRow]: pass
+                           cond_status_list: Union[None, List[str]] = None) -> List[DocPartRow]:
+        pass
 
     @abstractmethod
-    def add_files_to_kb_group(self, file_ids: List[str], group: str): pass
+    def add_files_to_kb_group(self, file_ids: List[str], group: str):
+        pass
 
     @abstractmethod
-    def delete_files_from_kb_group(self, file_ids: List[str], group: str): pass
+    def delete_files_from_kb_group(self, file_ids: List[str], group: str):
+        pass
 
     @abstractmethod
-    def get_file_status(self, fileid: str): pass
+    def get_file_status(self, fileid: str):
+        pass
 
     @abstractmethod
     def update_kb_group(self, cond_file_ids: List[str], cond_group: Optional[str] = None,
                         cond_status_list: Optional[List[str]] = None, new_status: Optional[str] = None,
-                        new_need_reparse: Optional[bool] = None) -> List[GroupDocPartRow]: pass
+                        new_need_reparse: Optional[bool] = None) -> List[GroupDocPartRow]:
+        pass
 
     @abstractmethod
-    def release(self): pass
+    def release(self):
+        pass
 
     @property
     def enable_path_monitoring(self):

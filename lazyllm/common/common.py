@@ -14,7 +14,8 @@ try:
     from typing import final
 except ImportError:
     _F = typing.TypeVar("_F", bound=Callable[..., Any])
-    def final(f: _F) -> _F: return f
+    def final(f: _F) -> _F:
+        return f
 
 try:
     from typing import override
@@ -226,8 +227,10 @@ class ResultCollector(object):
     def __call__(self, name): return ResultCollector.Impl(name, self._value)
     def __getitem__(self, name): return self._value[name]
     def __repr__(self): return repr(self._value)
-    def keys(self): return self._value.keys()
-    def items(self): return self._value.items()
+    def keys(self):
+        return self._value.keys()
+    def items(self):
+        return self._value.items()
 
 
 class ReprRule(object):

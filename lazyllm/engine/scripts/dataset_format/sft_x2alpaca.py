@@ -14,14 +14,6 @@ from lazyllm.components.utils.file_operate import _delete_old_files
 default_mapping = {'instruction': 'instruction', 'input': 'input', 'output': 'output'}
 
 def csv2alpaca(dataset_path: str, header_mapping=None, target_path: str = None) -> str:
-    """
-    Convert a CSV file to a JSON file with custom header mapping.
-
-    :param dataset_path: path of the CSV file to be converted.
-    :param header_mapping: A dictionary representing the header mapping. Default is None.
-    :param target_path: The path of the folder where the converted files are stored.
-        The default is None, and it will be stored in the working path + `.temp/dataset`.
-    """
     save_dir = _build_target_dir(target_path)
 
     mapping = header_mapping if header_mapping else default_mapping
@@ -38,14 +30,6 @@ def csv2alpaca(dataset_path: str, header_mapping=None, target_path: str = None) 
     return res_path
 
 def parquet2alpaca(dataset_path: str, header_mapping=None, target_path: str = None) -> str:
-    """
-    Convert a Parquet file to a JSON file with custom header mapping.
-
-    :param dataset_path: path of the Parquet file to be converted.
-    :param header_mapping: A dictionary representing the header mapping. Default is None.
-    :param target_path: The path of the folder where the converted files are stored.
-        The default is None, and it will be stored in the working path + `.temp/dataset`.
-    """
     save_dir = _build_target_dir(target_path)
 
     mapping = header_mapping if header_mapping else default_mapping
@@ -62,14 +46,6 @@ def parquet2alpaca(dataset_path: str, header_mapping=None, target_path: str = No
     return res_path
 
 def json2alpaca(dataset_path: str, header_mapping=None, target_path: str = None) -> str:
-    """
-    Convert a JSON file to a JSON file with custom header mapping.
-
-    :param dataset_path: path of the JSON file to be converted.
-    :param header_mapping: A dictionary representing the header mapping. Default is None.
-    :param target_path: The path of the folder where the converted files are stored.
-        The default is None, and it will be stored in the working path + `.temp/dataset`.
-    """
     save_dir = _build_target_dir(target_path)
 
     mapping = header_mapping if header_mapping else default_mapping
@@ -87,20 +63,6 @@ def json2alpaca(dataset_path: str, header_mapping=None, target_path: str = None)
     return res_path
 
 def merge2alpaca(dataset_paths: List[str], target_path: str = None) -> str:
-    """
-    Merge multiple JSON files into a single JSON file formatted for Alpaca.
-    This function reads multiple JSON files(Alpaca or OpenAI format), converts them to Alpaca format.
-    The merged file is saved to the specified target directory or to a default temporary directory
-    if no target is provided.
-
-    :param dataset_paths: A list of paths to the JSON files to be merged.
-    :param target_path: The path of the folder where the merged file will be stored.
-        If `None`, the file will be stored in the working path + `.temp/merged`.
-    :return: The path to the merged dataset file.
-
-    Raises:
-        RuntimeError: If any of the provided file paths do not exist.
-    """
     if isinstance(dataset_paths, str):
         dataset_paths = [dataset_paths]
     non_existent_files = [path for path in dataset_paths if not os.path.exists(path)]

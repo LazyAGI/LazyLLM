@@ -287,7 +287,8 @@ class Pipeline(LazyLLMFlowsBase):
     def input(self): return bind.Args(self.id())
     @property
     def kwargs(self): return bind.Args(self.id(), 'kwargs')
-    def output(self, module, unpack=False): return bind.Args(self.id(), self.id(module), unpack=unpack)
+    def output(self, module, unpack=False):
+        return bind.Args(self.id(), self.id(module), unpack=unpack)
 
     def _run(self, __input, **kw):
         output = __input
@@ -596,10 +597,12 @@ class Graph(LazyLLMFlowsBase):
             self._nodes[node_name].arg_names = name
 
     @property
-    def start_node(self): return self._nodes[Graph.start_node_name]
+    def start_node(self):
+        return self._nodes[Graph.start_node_name]
 
     @property
-    def end_node(self): return self._nodes[Graph.end_node_name]
+    def end_node(self):
+        return self._nodes[Graph.end_node_name]
 
     def add_edge(self, from_node, to_node, formatter=None):
         if isinstance(from_node, (tuple, list)):

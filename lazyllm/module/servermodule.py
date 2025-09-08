@@ -152,7 +152,8 @@ class UrlModule(LLMBase, _UrlHelper):
     def _extract_and_format(self, output: str) -> str:
         return output
 
-    def forward(self, *args, **kw): raise NotImplementedError
+    def forward(self, *args, **kw):
+        raise NotImplementedError
 
     def __call__(self, *args, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'

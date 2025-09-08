@@ -233,7 +233,6 @@ class DocNode:
         return self.get_text(MetadataMode.LLM)
 
     def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
-        """Metadata info string."""
         if mode == MetadataMode.NONE:
             return ''
 

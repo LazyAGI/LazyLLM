@@ -161,6 +161,7 @@ add_chinese_doc('LazyLLMFlowsBase', """\
                    ↑             ↓
                pre_hook       post_hook
 ```
+
 Args:
     args: 可变长度参数列表。
     post_action: 在主流程结束后对输出进行进一步处理的可调用对象。默认为 ``None``。
@@ -179,6 +180,7 @@ input --> [Flow module1 -> Flow module2 -> ... -> Flow moduleN] --> output
                    ↑             ↓
                pre_hook       post_hook
 ```
+
 Args:
     args: A sequence of callables representing the flow modules.
     post_action: An optional callable applied to the output after main flow execution. Defaults to ``None``。
@@ -332,11 +334,11 @@ Args:
 
 标记Parellel，使得Parallel每次调用时的返回值由package变为dict。当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)`` 。
 
-<span style="font-size: 20px;">&ensp;**`tuple property`**</span>
+<span style="font-size: 20px;">&ensp;**`astuple property`**</span>
 
 标记Parellel，使得Parallel每次调用时的返回值由package变为tuple。
 
-<span style="font-size: 20px;">&ensp;**`list property`**</span>
+<span style="font-size: 20px;">&ensp;**`aslist property`**</span>
 
 标记Parellel，使得Parallel每次调用时的返回值由package变为list。
 
@@ -381,11 +383,11 @@ Args:
 
 Tag ``Parallel`` so that the return value of each call to ``Parallel`` is changed from a tuple to a dict. When using ``asdict``, make sure that the elements of ``parallel`` are named, for example: ``parallel(name=value)``.
 
-`tuple property`
+`astuple property`
 
 Mark Parallel so that the return value of Parallel changes from package to tuple each time it is called.
 
-`list property`
+`aslist property`
 
 Mark Parallel so that the return value of Parallel changes from package to list each time it is called.
 

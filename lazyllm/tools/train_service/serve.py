@@ -29,9 +29,6 @@ def is_url(path):
     return bool(re.match(r'^https?://', path))
 
 def get_filename_from_url(url: str, timeout: int = 10) -> str:
-    """
-    Get filename from URL Content-Disposition header
-    """
     try:
         resp = requests.get(url, stream=True, timeout=timeout)
         resp.raise_for_status()

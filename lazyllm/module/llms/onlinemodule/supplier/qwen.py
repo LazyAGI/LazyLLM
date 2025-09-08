@@ -14,11 +14,6 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 
 
 class QwenModule(OnlineChatModuleBase, FileHandlerBase):
-    """
-    #TODO: The Qianwen model has been finetuned and deployed successfully,
-           but it is not compatible with the OpenAI interface and can only
-           be accessed through the Dashscope SDK.
-    """
     TRAINABLE_MODEL_LIST = ["qwen-turbo", "qwen-7b-chat", "qwen-72b-chat"]
     MODEL_NAME = "qwen-plus"
 

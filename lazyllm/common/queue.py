@@ -41,11 +41,16 @@ class FileSystemQueue(ABC):
     def sid(self):
         return f'{globals._sid}-{self._class}'
 
-    def enqueue(self, message): return self._enqueue(self.sid, message)
-    def dequeue(self, limit=None): return self._dequeue(self.sid, limit=limit)
-    def peek(self): return self._peek(self.sid)
-    def size(self): return self._size(self.sid)
-    def init(self): self.clear()
+    def enqueue(self, message):
+        return self._enqueue(self.sid, message)
+    def dequeue(self, limit=None):
+        return self._dequeue(self.sid, limit=limit)
+    def peek(self):
+        return self._peek(self.sid)
+    def size(self):
+        return self._size(self.sid)
+    def init(self):
+        self.clear()
 
     def clear(self):
         self._clear(self.sid)
@@ -113,7 +118,6 @@ class SQLiteQueue(FileSystemQueue):
                 conn.commit()
 
     def _dequeue(self, id, limit=None):
-        """Retrieve and remove all messages from the queue."""
         with self._lock:
             with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
                 cursor = conn.cursor()

@@ -12,7 +12,6 @@ class OnlineMultiModalBase(LLMBase):
         self._validate_model_config()
 
     def _validate_model_config(self):
-        """Validate model configuration"""
         if not self._model_series:
             raise ValueError("model_series cannot be empty")
         if not self._model_name:
@@ -27,16 +26,13 @@ class OnlineMultiModalBase(LLMBase):
         return "MultiModal"
 
     def share(self):
-        """Create a shared instance of the module"""
         new = copy.copy(self)
         return new
 
     def _forward(self, input: Union[Dict, str] = None, files: List[str] = None, **kwargs):
-        """Forward method to be implemented by subclasses"""
         raise NotImplementedError(f"Subclass {self.__class__.__name__} must implement this method")
 
     def forward(self, input: Union[Dict, str] = None, *, lazyllm_files=None, **kwargs):
-        """Main forward method with file handling"""
         try:
             input, files = self._get_files(input, lazyllm_files)
             call_params = {"input": input, **kwargs}

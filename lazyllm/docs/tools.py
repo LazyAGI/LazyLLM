@@ -2484,7 +2484,7 @@ Args:
     description (Optional[str]): Description of the algorithm, defaults to None.
     force_refresh (bool): Whether to force refresh existing algorithm. Defaults to False.
     **kwargs: Additional arguments.
-    
+
 **Notes:**
 - If algorithm name exists and force_refresh is False, registration will be skipped
 - After successful registration, the algorithm can be used to process documents

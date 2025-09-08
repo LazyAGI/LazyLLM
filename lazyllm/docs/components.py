@@ -156,7 +156,7 @@ Args:
     launcher (lazyllm.launcher): Launcher for fine-tuning, default ``launchers.remote(ngpus=1)``.
     kw (dict): Keyword arguments to update default training parameters:
 
-Keyword Args (Optional):
+Keyword Args:
     data_path (Optional[str]): Path to dataset, default ``None``.
     batch_size (Optional[int]): Batch size, default 64.
     micro_batch_size (Optional[int]): Micro-batch size, default 4.
@@ -225,7 +225,7 @@ Args:
     launcher (lazyllm.launcher): 微调启动器，默认 ``launchers.remote(ngpus=1)``。
     kw (dict): 用于更新默认训练参数的关键字参数。仅允许更新如下参数：
 
-Keyword Args (Optional):
+Keyword Args:
     data_path (Optional[str]): 数据路径，默认 ``None``。
     batch_size (Optional[int]): 批大小，默认 64。
     micro_batch_size (Optional[int]): 微批大小，默认 4。
@@ -255,7 +255,7 @@ Args:
     launcher (lazyllm.launcher): Launcher for fine-tuning, default ``launchers.remote(ngpus=1)``.
     kw (dict): Keyword arguments to update default training parameters:
 
-Keyword Args (Optional):
+Keyword Args:
     data_path (Optional[str]): Path to dataset, default ``None``.
     batch_size (Optional[int]): Batch size, default 64.
     micro_batch_size (Optional[int]): Micro-batch size, default 4.
@@ -671,25 +671,7 @@ Returns:
     List[DeployConfiguration]: Returns a list of deployment configurations sorted by TGS (Throughput Goodput Score) in descending order.
 ''')
 
-add_chinese_doc('formatter.LazyLLMFormatterBase.format', """\
-格式化输入消息。
 
-Args:
-    msg: 输入消息，可以是字符串或其他格式
-
-**返回:**\n
-- 格式化后的数据，具体类型由子类实现决定
-""")
-
-add_english_doc('formatter.LazyLLMFormatterBase.format', """\
-Format input message.
-
-Args:
-    msg: Input message, can be string or other format
-
-**Returns:**\n
-- Formatted data, specific type determined by subclass implementation
-""")
 # ============= Deploy
 
 add_chinese_doc('LazyLLMDeployBase', '''\
@@ -1130,13 +1112,13 @@ Args:
     port (Optional[int]): 服务端口号，默认为 ``None``，此情况下 LazyLLM 会自动生成随机端口号。
 
 Call Arguments:
-    finetuned_model (Optional[str]): 微调后的模型路径或名称。
-    base_model (Optional[str]): 基础模型路径或名称，当 finetuned_model 无效时会使用此模型。
+    finetuned_model (Optional[str]): 微调后的模型路径或名称。\\n
+    base_model (Optional[str]): 基础模型路径或名称，当 finetuned_model 无效时会使用此模型。\\n
 
 Message Format:
-    输入格式为包含 text（文本）和 images（图像列表）的字典。
-    - text (str): 需要编码的文本内容
-    - images (Union[str, List[str]]): 需要编码的图像列表，可选
+    输入格式为包含 text（文本）和 images（图像列表）的字典。\\n
+    - text (str): 需要编码的文本内容 \\n
+    - images (Union[str, List[str]]): 需要编码的图像列表，可选 \\n
 ''')
 
 add_english_doc('deploy.EmbeddingDeploy', '''\
@@ -1151,13 +1133,13 @@ Args:
     port (Optional[int]): Service port number, defaults to ``None``, in which case LazyLLM will generate a random port.
 
 Call Arguments:
-    finetuned_model (Optional[str]): Path or name of the fine-tuned model.
-    base_model (Optional[str]): Path or name of the base model, used when finetuned_model is invalid.
+    finetuned_model (Optional[str]): Path or name of the fine-tuned model. \n
+    base_model (Optional[str]): Path or name of the base model, used when finetuned_model is invalid. \n
 
 Message Format:
-    Input format is a dictionary containing text and images list.
-    - text (str): Text content to be encoded
-    - images (Union[str, List[str]]): List of images to be encoded (optional)
+    Input format is a dictionary containing text and images list.\n
+    - text (str): Text content to be encoded\n
+    - images (Union[str, List[str]]): List of images to be encoded (optional)\n
 ''')
 
 add_example('deploy.EmbeddingDeploy', '''\
@@ -1177,15 +1159,15 @@ Args:
     trust_remote_code (bool): 是否信任远程代码，默认为 ``True``。
     port (int): 服务端口号，默认为 ``None``，此情况下LazyLLM会自动生成随机端口号。
 
-调用参数:
-    finetuned_model: 微调后的模型路径或模型名称。
-    base_model: 基础模型路径或模型名称，当finetuned_model无效时会使用此模型。
+Call Arguments:
+    finetuned_model: 微调后的模型路径或模型名称。\n
+    base_model: 基础模型路径或模型名称，当finetuned_model无效时会使用此模型。\n
 
-消息格式:
-    输入格式为包含query（查询文本）、documents（候选文档列表）和top_n（返回的文档数量）的字典。
-    - query: 查询文本
-    - documents: 候选文档列表
-    - top_n: 返回的文档数量，默认为1
+Message Format:
+    输入格式为包含query（查询文本）、documents（候选文档列表）和top_n（返回的文档数量）的字典。\n
+    - query: 查询文本\n
+    - documents: 候选文档列表\n
+    - top_n: 返回的文档数量，默认为1\n
 ''')
 
 add_english_doc('deploy.embed.RerankDeploy', '''\
@@ -1199,14 +1181,14 @@ Args:
     port (int): Service port number, defaults to ``None``, in which case LazyLLM will generate a random port.
 
 Call Arguments:
-    finetuned_model: Path or name of the fine-tuned model.
-    base_model: Path or name of the base model, used when finetuned_model is invalid.
+    finetuned_model: Path or name of the fine-tuned model. \n
+    base_model: Path or name of the base model, used when finetuned_model is invalid.\n
 
 Message Format:
-    Input format is a dictionary containing query (query text), documents (list of candidate documents), and top_n (number of documents to return).
-    - query: Query text
-    - documents: List of candidate documents
-    - top_n: Number of documents to return, defaults to 1
+    Input format is a dictionary containing query (query text), documents (list of candidate documents), and top_n (number of documents to return).\\n
+    - query: Query text \n
+    - documents: List of candidate documents \n
+    - top_n: Number of documents to return, defaults to 1 \n
 ''')
 
 add_example('deploy.embed.RerankDeploy', '''\
@@ -1354,37 +1336,46 @@ Returns:
 # Deploy-Mindie
 add_chinese_doc('deploy.Mindie', '''\
 此类是 ``LazyLLMDeployBase`` 的一个子类, 用于部署和管理MindIE大模型推理服务。它封装了MindIE服务的配置生成、进程启动和API交互的全流程。
+
 Args:
     trust_remote_code (bool): 是否信任远程代码(如HuggingFace模型)。默认为 ``True``。
     launcher: 任务启动器实例，默认为 ``launchers.remote()``。
     log_path (str): 日志保存路径，若为 ``None`` 则不保存日志。
-    **kw: 其他配置参数，支持以下关键参数：
-        - npuDeviceIds: NPU设备ID列表(如 ``[[0,1]]`` 表示使用2张卡)
-        - worldSize: 模型并行数量
-        - port: 服务端口（设为 ``'auto'`` 时自动分配30000-40000的随机端口)
-        - maxSeqLen: 最大序列长度
-        - maxInputTokenLen: 单次输入最大token数
-        - maxPrefillTokens: 预填充token上限
-        - config: 自定义配置文件
-注意事项: 
+    **kw: 其他配置参数
+
+Keyword Args: 
+            npuDeviceIds: NPU设备ID列表(如 ``[[0,1]]`` 表示使用2张卡)
+            worldSize: 模型并行数量
+            port: 服务端口（设为 ``'auto'`` 时自动分配30000-40000的随机端口)
+            maxSeqLen: 最大序列长度
+            maxInputTokenLen: 单次输入最大token数
+            maxPrefillTokens: 预填充token上限
+            config: 自定义配置文件
+
+Notes
+                : 
    必须预先设置环境变量 ``LAZYLLM_MINDIE_HOME`` 指向MindIE安装目录, 若未指定 ``finetuned_model`` 或路径无效，会自动回退到 ``base_model``
 ''')
 
 add_english_doc('deploy.Mindie', '''\
 This class is a subclass of ``LazyLLMDeployBase``, designed for deploying and managing the MindIE large language model inference service. It encapsulates the full workflow including configuration generation, process launching, and API interaction for the MindIE service.
+
 Args:
     trust_remote_code (bool): Whether to trust remote code (e.g., from HuggingFace models). Default is ``True``.
     launcher: Instance of the task launcher. Default is ``launchers.remote()``.
     log_path (str): Path to save logs. If ``None``, logs will not be saved.
-    **kw: Other configuration parameters. Supports the following keys:
-        - npuDeviceIds: List of NPU device IDs (e.g., ``[[0,1]]`` indicates using 2 devices)
-        - worldSize: Model parallelism size
-        - port: Service port (set to ``'auto'`` for auto-assignment between 30000–40000)
-        - maxSeqLen: Maximum sequence length
-        - maxInputTokenLen: Maximum number of tokens per input
-        - maxPrefillTokens: Maximum number of prefill tokens
-        - config: Custom configuration file
-Note:
+    **kw: Other configuration parameters.
+
+Keyword Args: 
+            npuDeviceIds: List of NPU device IDs (e.g., ``[[0,1]]`` indicates using 2 devices)
+            worldSize: Model parallelism size
+            port: Service port (set to ``'auto'`` for auto-assignment between 30000–40000)
+            maxSeqLen: Maximum sequence length
+            maxInputTokenLen: Maximum number of tokens per input
+            maxPrefillTokens: Maximum number of prefill tokens
+            config: Custom configuration file
+
+Notes:
     You must set the environment variable ``LAZYLLM_MINDIE_HOME`` to point to the MindIE installation directory. 
     If ``finetuned_model`` is not specified or the path is invalid, it will automatically fall back to ``base_model``.
 ''')
@@ -1989,18 +1980,15 @@ DummyDeploy(launcher=launchers.remote(sync=False), *, stream=False, **kw)
 该类主要用于内部测试和示例用途。它接收符合 `message_format` 格式的输入，根据是否启用 `stream` 参数，返回
 字符串或逐步输出的模拟响应。
 
-属性：
-- keys_name_handle (dict): 输入字段名的映射。
-- message_format (dict): 默认请求模板，包括输入内容与生成参数。
 
-参数：
-- launcher: 部署器实例，默认值为 `launchers.remote(sync=False)`。
-- stream (bool): 是否以流式方式输出结果。
-- kw: 其他传递给父类的关键字参数。
+Args：
+    launcher: 部署器实例，默认值为 `launchers.remote(sync=False)`。
+    stream (bool): 是否以流式方式输出结果。
+    kw: 其他传递给父类的关键字参数。
 
-方法：
-- __call__(*args): 启动部署并返回服务地址。
-- __repr__(): 返回流水线的字符串表示。
+Call Arguments:
+    keys_name_handle (dict): 输入字段名的映射。 \n
+    message_format (dict): 默认请求模板，包括输入内容与生成参数。 \n
 ''')
 
 add_english_doc('deploy.base.DummyDeploy', '''\
@@ -2012,18 +2000,15 @@ simulating a simple pipeline-style deployable service with optional streaming su
 This class is primarily intended for internal testing and demonstration. It receives inputs in the format defined
 by `message_format`, and returns a dummy response or a streaming response depending on the `stream` flag.
 
-Attributes:
-- keys_name_handle (dict): Mapping of input keys for request formatting.
-- message_format (dict): Default request template including input and generation parameters.
 
-Parameters:
-- launcher: Deployment launcher instance, defaulting to `launchers.remote(sync=False)`.
-- stream (bool): Whether to simulate streaming output.
-- kw: Additional keyword arguments passed to the superclass.
+Args:
+    launcher: Deployment launcher instance, defaulting to `launchers.remote(sync=False)`.
+    stream (bool): Whether to simulate streaming output.
+    kw: Additional keyword arguments passed to the superclass.
 
-Methods:
-- __call__(*args): Starts the deployment and returns the service URL.
-- __repr__(): Returns a string representation of the underlying pipeline.
+Call Arguments:
+    keys_name_handle (dict): Mapping of input keys for request formatting. \n
+    message_format (dict): Default request template including input and generation parameters. \n
 ''')
 
 # Deploy-Auto
@@ -2563,19 +2548,19 @@ True
 # ============= Formatter
 
 # FormatterBase
-add_chinese_doc('formatter.FormatterBase', '''\
+add_chinese_doc('formatter.LazyLLMFormatterBase', '''\
 此类是格式化器的基类，格式化器是模型输出结果的格式化器，用户可以自定义格式化器，也可以使用LazyLLM提供的格式化器。
-主要方法：_parse_formatter:解析索引内容。_load:解析str对象，其中包含python对象的部分被解析出来，比如list，dict等对象。_parse_py_data_by_formatter:根据自定义的格式化器和索引对python对象进行格式化。format:对传入的内容进行格式化，如果内容是字符串类型，先将字符串转化为python对象，再进行格式化。如果内容是python对象，直接进行格式化。
+
 ''')
 
-add_english_doc('formatter.FormatterBase', '''\
+add_english_doc('formatter.LazyLLMFormatterBase', '''\
 This class is the base class of the formatter. The formatter is the formatter of the model output result. Users can customize the formatter or use the formatter provided by LazyLLM.
-Main methods: _parse_formatter: parse the index content. _load: Parse the str object, and the part containing Python objects is parsed out, such as list, dict and other objects. _parse_py_data_by_formatter: format the python object according to the custom formatter and index. format: format the passed content. If the content is a string type, convert the string into a python object first, and then format it. If the content is a python object, format it directly.
+
 ''')
 
-add_example('formatter.FormatterBase', '''\
->>> from lazyllm.components.formatter import FormatterBase
->>> class MyFormatter(FormatterBase):
+add_example('formatter.LazyLLMFormatterBase', '''\
+>>> from lazyllm.components.formatter import LazyLLMFormatterBase
+>>> class MyFormatter(LazyLLMFormatterBase):
 ...     def __init__(self, formatter: str = None):
 ...         self._formatter = formatter
 ...         if self._formatter:
@@ -2610,7 +2595,25 @@ add_example('formatter.FormatterBase', '''\
 >>> print(res)
 [2, 3]
 ''')
+add_chinese_doc('formatter.LazyLLMFormatterBase.format', """\
+格式化输入消息。
 
+Args:
+    msg: 输入消息，可以是字符串或其他格式
+
+**返回:**\n
+- 格式化后的数据，具体类型由子类实现决定
+""")
+
+add_english_doc('formatter.LazyLLMFormatterBase.format', """\
+Format input message.
+
+Args:
+    msg: Input message, can be string or other format
+
+**Returns:**\n
+- Formatted data, specific type determined by subclass implementation
+""")
 # JsonLikeFormatter
 add_chinese_doc('formatter.formatterbase.JsonLikeFormatter', '''\
 该类用于以类 JSON 的格式提取嵌套结构（如 dict、list、tuple）中的子字段内容。
@@ -3268,15 +3271,11 @@ This class performs no formatting and is useful for debugging, testing, or as a 
 
 add_example('prompter.EmptyPrompter', '''\
 >>> from lazyllm.components.prompter import EmptyPrompter
-
 >>> prompter = EmptyPrompter()
-
 >>> prompter.generate_prompt("Hello LazyLLM")
 'Hello LazyLLM'
-
 >>> prompter.generate_prompt({"query": "Tell me a joke"})
 {'query': 'Tell me a joke'}
-
 >>> # Even with additional parameters, the input is returned unchanged
 >>> prompter.generate_prompt("No-op", history=[["Hi", "Hello"]], tools=[{"name": "search"}], label="debug")
 'No-op'
@@ -3322,13 +3321,13 @@ Attributes:
     ISE (str): Instruction separator end token "</!lazyllm-spliter!>".
 
 Configuration Items:
-- system: System role setting
-- sos/eos: Session start/end markers
-- soh/eoh: Human input start/end markers
-- soa/eoa: AI response start/end markers
-- soe/eoe: Tool execution result start/end markers
-- tool_start_token/tool_end_token: Tool call start/end markers
-- tool_args_token: Tool arguments marker
+    system: System role setting \n
+    sos/eos: Session start/end markers \n
+    soh/eoh: Human input start/end markers \n
+    soa/eoa: AI response start/end markers \n
+    soe/eoe: Tool execution result start/end markers \n
+    tool_start_token/tool_end_token: Tool call start/end markers \n
+    tool_args_token: Tool arguments marker \n
 ''')
 
 add_chinese_doc('prompter.builtinPrompt.LazyLLMPrompterBase', '''\
@@ -3494,49 +3493,58 @@ add_example('StableDiffusionDeploy', ['''\
 
 
 add_english_doc('ChatTTSDeploy', '''\
-ChatTTS Model Deployment Class. This class is used to deploy the ChatTTS model to a specified server for network invocation.
+ChatTTS Model Deployment Class.
 
-`__init__(self, launcher=None)`
-Constructor, initializes the deployment class.
+Keyword Args: 
+    keys_name_handle (dict): A key mapping dictionary used to handle parameter name conversion between 
+                            internal and external API interfaces. Defaults to `{'inputs': 'inputs'}`.
 
-Args:
-    launcher (lazyllm.launcher): An instance of the launcher used to start the remote service.
+    message_format (dict): The request payload structure containing three main sections: \n
+        - `inputs` (str): The raw text content to be synthesized into speech. \n
+        - `refinetext` (dict): Text refinement and stylization parameters controlling speech expression: \n
+            * `prompt` (str): Voice style control tags, e.g., "[oral_2][laugh_0][break_6]" \n
+            * `top_P` (float): Nucleus sampling parameter for decoding strategy (default: 0.7) \n
+            * `top_K` (int): Top-K sampling parameter (default: 20) \n
+            * `temperature` (float): Sampling temperature controlling randomness (default: 0.7) \n
+            * `repetition_penalty` (float): Repetition penalty to avoid redundant generation (default: 1.0) \n
+            * `max_new_token` (int): Maximum number of tokens to generate (default: 384) \n
+            * `min_new_token` (int): Minimum number of tokens to generate (default: 0) \n
+            * `show_tqdm` (bool): Whether to display progress bar during generation (default: True) \n
+            * `ensure_non_empty` (bool): Ensure non-empty generation result (default: True) \n
+        - `infercode` (dict): Inference and encoding parameters affecting audio quality: \n
+            * `prompt` (str): Voice speed control tags, e.g., "[speed_5]" \n
+            * `spk_emb` (Optional): Speaker embedding vector for specifying voice characteristics (default: None) \n
+            * `temperature` (float): Sampling temperature for audio generation (default: 0.3) \n
+            * `repetition_penalty` (float): Repetition penalty coefficient (default: 1.05) \n
+            * `max_new_token` (int): Maximum number of tokens for audio generation (default: 2048) \n
 
-`__call__(self, finetuned_model=None, base_model=None)`
-Deploys the model and returns the remote service address.
-
-Args:
-    finetuned_model (str): If provided, this model will be used for deployment; if not provided or the path is invalid, `base_model` will be used.
-    base_model (str): The default model, which will be used for deployment if `finetuned_model` is invalid.
-    Return (str): The URL address of the remote service.
-
-Notes:
-    - Input for infer: `str`.  The text corresponding to the audio to be generated.
-    - Return of infer: The string encoded from the generated file paths, starting with the encoding flag "<lazyllm-query>", followed by the serialized dictionary. The key `files` in the dictionary stores a list, with elements being the paths of the generated audio files.
-    - Supported models: [ChatTTS](https://huggingface.co/2Noise/ChatTTS)
 ''')
 
 add_chinese_doc('ChatTTSDeploy', '''\
-ChatTTS 模型部署类。该类用于将ChatTTS模型部署到指定服务器上，以便可以通过网络进行调用。
+ChatTTS 模型部署类。
 
-`__init__(self, launcher=None)`
-构造函数，初始化部署类。
+Keyword Args: 
+    keys_name_handle (dict): 键名映射字典，用于处理内部和外部API接口之间的参数名称转换。
+                            默认为 `{'inputs': 'inputs'}`。
 
-Args:
-    launcher(lazyllm.launcher): 用于启动远程服务的启动器实例。
-
-`__call__(self, finetuned_model=None, base_model=None)`
-部署模型，并返回远程服务地址。
-
-Args: 
-    finetuned_model (str): 如果提供，则使用该模型进行部署；如果未提供或路径无效，则使用 `base_model`。
-    base_model (str): 默认模型，如果 `finetuned_model` 无效，则使用该模型进行部署。
-    返回值 (str): 远程服务的URL地址。
-
-Notes:
-    - 推理的输入：字符串。待生成音频的对应文字。
-    - 推理的返回值：从生成的文件路径编码的字符串， 编码标志以 "<lazyllm-query>"开头，后面跟序列化后的字典, 字典中 `files`键存放了一个列表，元素是生成的音频文件路径。
-    - 支持的模型为：[ChatTTS](https://huggingface.co/2Noise/ChatTTS)
+    message_format (dict): 请求负载结构，包含三个主要部分：\n
+        - `inputs` (str): 要合成为语音的原始文本内容。\n
+        - `refinetext` (dict): 文本细化和风格化参数，控制语音表达：\n
+            * `prompt` (str): 语音风格控制标签，例如："[oral_2][laugh_0][break_6]"\n
+            * `top_P` (float): 核采样参数，用于解码策略（默认值：0.7）\n
+            * `top_K` (int): Top-K 采样参数（默认值：20）\n
+            * `temperature` (float): 采样温度，控制随机性（默认值：0.7）\n
+            * `repetition_penalty` (float): 重复惩罚，避免冗余生成（默认值：1.0）\n
+            * `max_new_token` (int): 最大生成token数（默认值：384）\n
+            * `min_new_token` (int): 最小生成token数（默认值：0）\n
+            * `show_tqdm` (bool): 是否在生成过程中显示进度条（默认值：True）\n
+            * `ensure_non_empty` (bool): 确保生成非空结果（默认值：True）\n
+        - `infercode` (dict): 推理和编码参数，影响音频质量：\n
+            * `prompt` (str): 语速控制标签，例如："[speed_5]"\n
+            * `spk_emb` (可选): 说话人嵌入向量，用于指定音色特征（默认值：None）\n
+            * `temperature` (float): 音频生成的采样温度（默认值：0.3）\n
+            * `repetition_penalty` (float): 重复惩罚系数（默认值：1.05）\n
+            * `max_new_token` (int): 音频生成的最大token数（默认值：2048）\n
 ''')
 
 add_example('ChatTTSDeploy', ['''\
@@ -3744,10 +3752,9 @@ Attributes:
 add_english_doc('deploy.speech_to_text.sense_voice.SenseVoice.load_stt', '''\
 Initializes and loads the FunASR speech-to-text model. Supports Huawei NPU acceleration if `torch_npu` is available.
 
-Key configurations:
-- Uses `fsmn-vad` for voice activity detection (VAD), supporting long utterances.
-- Maximum single segment duration is set to 30 seconds.
-- Default inference device is `cuda:0` (GPU).
+Uses `fsmn-vad` for voice activity detection (VAD), supporting long utterances.
+Maximum single segment duration is set to 30 seconds.
+Default inference device is `cuda:0` (GPU).
 
 The loaded model is assigned to `self.model` for subsequent audio transcription.
 
@@ -3758,10 +3765,9 @@ Note:
 add_chinese_doc('deploy.speech_to_text.sense_voice.SenseVoice.load_stt', '''\
 初始化并加载 FunASR 语音转文本模型，如果存在 `torch_npu` 则支持华为 NPU 加速。
 
-主要配置：
-- 使用 `fsmn-vad` 进行语音活动检测（VAD），支持长语音段。
-- 单段语音最大持续时间为 30 秒。
-- 默认推理设备为 `cuda:0`（GPU）。
+使用 `fsmn-vad` 进行语音活动检测（VAD），支持长语音段。
+单段语音最大持续时间为 30 秒。
+默认推理设备为 `cuda:0`（GPU）。
 
 加载的模型将保存在 `self.model` 中，用于后续音频转写。
 
@@ -3791,11 +3797,8 @@ Args:
 - SenseVoice: A new `SenseVoice` instance, used for serialization/multiprocessing compatibility.
 ''')
 
-add_english_doc('TTSDeploy', '''\
+add_english_doc('deploy.text_to_speech.TTSDeploy', '''\
 TTSDeploy is a factory class for creating instances of different Text-to-Speech (TTS) deployment types based on the specified name.
-
-`__new__(cls, name, **kwarg)`
-The constructor dynamically creates and returns the corresponding deployment instance based on the provided name argument.
 
 Args:
     name: A string specifying the type of deployment instance to be created.
@@ -3808,11 +3811,9 @@ Returns:
     If the name argument does not match any of the above cases, a RuntimeError exception is raised, indicating the unsupported model.            
 ''')
 
-add_chinese_doc('TTSDeploy', '''\
+add_chinese_doc('deploy.text_to_speech.TTSDeploy', '''\
 TTSDeploy 是一个用于根据指定的名称创建不同类型文本到语音(TTS)部署实例的工厂类。
 
-`__new__(cls, name, **kwarg)`
-构造函数，根据提供的名称参数动态创建并返回相应的部署实例。
 
 Args:
     name：字符串，用于指定要创建的部署实例的类型。
@@ -3852,11 +3853,13 @@ Returns:
 add_chinese_doc('finetune.base.DummyFinetune', '''\
 DummyFinetune 是 [LazyLLMFinetuneBase][lazyllm.components.LazyLLMFinetuneBase] 的子类，用于占位实现微调逻辑。
 此类主要用于演示或测试目的，因为它不执行任何实际的微调操作。
+
 Args:
     base_model: 字符串，指定基础模型的名称，默认为 'base'。
     target_path: 字符串，指定微调输出的目标路径，默认为 'target'。
     launcher: 启动器实例，用于执行命令。默认为 [launchers.remote()][lazyllm.launchers.remote]。
     **kw: 其他关键字参数，这些参数会被保存以供后续使用。
+
 Returns:
     一个字符串，表示一个占位命令。该字符串包括初始化时传递的参数。
 ''')
@@ -3874,11 +3877,14 @@ add_example('finetune.base.DummyFinetune', ['''\
 
 add_english_doc('finetune.base.DummyFinetune.cmd', '''\
 The `cmd` method generates a dummy command string for fine-tuning. This method is primarily for testing or demonstration purposes.
+
 Args:
     *args: Positional arguments to be included in the command (not used in this implementation).
     **kw: Keyword arguments to be included in the command (not used in this implementation).
+
 Returns:
     A string representing a dummy command. The string includes the initial arguments (`**kw`) passed during the instance initialization, which are stored in `self.kw`.
+
 Example:
     If the class is initialized with `custom_arg='value'`, calling the `cmd` method will return:
     `"echo 'dummy finetune!, and init-args is {'custom_arg': 'value'}'"`
@@ -3886,11 +3892,14 @@ Example:
 
 add_chinese_doc('finetune.base.DummyFinetune.cmd', '''\
 `cmd` 方法生成一个用于微调的占位命令字符串。此方法主要用于测试或演示目的。
+
 Args:
     *args: 要包含在命令中的位置参数（在本实现中未使用）。
     **kw: 要包含在命令中的关键字参数（在本实现中未使用）。
+
 Returns:
     一个字符串，表示一个占位命令。该字符串包括初始化时传递的关键字参数 (`**kw`)，存储在 `self.kw` 中。
+
 Example:
     如果类初始化时使用 `custom_arg='value'`，调用 `cmd` 方法将返回：
     `"echo 'dummy finetune!, and init-args is {'custom_arg': 'value'}'"`
@@ -3919,6 +3928,7 @@ This class is designed to deploy OCR models with additional configurations such 
         - {"inputs": "/path/to/pdf"} indicates that the model expects a PDF file path as input.
     default_headers: A dictionary specifying default headers for API requests. Defaults to:
         - {"Content-Type": "application/json"}
+
 Args:
     launcher: A launcher instance for deploying the model. Defaults to `None`.
     log_path: A string specifying the path where logs should be saved. Defaults to `None`.
@@ -3927,7 +3937,7 @@ Args:
 
 Returns:
     OCRDeploy instance, can be started by calling
-    ```
+
 ''')
 
 add_chinese_doc('OCRDeploy', '''\
@@ -3941,6 +3951,7 @@ OCRDeploy 是 [LazyLLMDeployBase][lazyllm.components.LazyLLMDeployBase] 的子�
         - {"inputs": "/path/to/pdf"} 表示模型需要一个 PDF 文件路径作为输入。
     default_headers: 一个字典，指定 API 请求的默认头部。默认为：
         - {"Content-Type": "application/json"}
+
 Args:
     launcher: 启动器实例，用于部署模型。默认为 `None`。
     log_path: 字符串，指定日志保存的路径。默认为 `None`。

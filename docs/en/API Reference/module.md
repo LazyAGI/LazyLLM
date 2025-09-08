@@ -2,8 +2,6 @@
 ::: lazyllm.module.ModuleBase
     options:
       members:
-      - _get_deploy_tasks
-      - _get_train_tasks
       - eval
       - evalset
       - forward

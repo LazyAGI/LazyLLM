@@ -417,14 +417,6 @@ class TrainableModule(UrlModule):
             return content
 
     def _extract_and_format(self, output: str) -> str:
-        """
-        1.extract tool calls information;
-            a. If 'tool_start_token' exists, the boundary of tool_calls can be found according to 'tool_start_token',
-               and then the function name and arguments of tool_calls can be extracted according to 'tool_args_token'
-               and 'tool_end_token'.
-            b. If 'tool_start_token' does not exist, the text is segmented using '\n' according to the incoming tools
-               information, and then processed according to the rules.
-        """
         content, tool_calls = self._extract_tool_calls(output)
         if isinstance(content, str) and content.startswith(LAZYLLM_QUERY_PREFIX):
             content = self._decode_base64_to_file(content)

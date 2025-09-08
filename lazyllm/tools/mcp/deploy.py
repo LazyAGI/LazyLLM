@@ -14,7 +14,6 @@ from starlette.routing import Mount, Route
 
 @dataclass
 class SseServerSettings:
-    """Settings for the SSE server."""
     bind_host: str
     port: int
     allow_origins: Optional[List[str]] = None
@@ -22,17 +21,6 @@ class SseServerSettings:
 
 
 def _create_starlette_app(mcp_server, *, allow_origins=None, debug=False) -> Starlette:
-    """
-    Create a Starlette application to serve the provided MCP server with SSE.
-
-    Args:
-        mcp_server: The MCP server instance.
-        allow_origins: Allowed origins for CORS middleware.
-        debug: Flag indicating whether to enable debug mode.
-
-    Returns:
-        A configured Starlette application.
-    """
     sse = mcp.server.sse.SseServerTransport("/messages/")
 
     async def handle_sse(request: Request) -> None:
@@ -69,15 +57,6 @@ def _create_starlette_app(mcp_server, *, allow_origins=None, debug=False) -> Sta
 
 
 async def _create_proxy_server(remote_app): # noqa C901
-    """
-    Create a proxy server instance based on a remote client session.
-
-    Args:
-        remote_app: A client session for a remote MCP application.
-
-    Returns:
-        An instance of Server with request and notification handlers mapped.
-    """
     response = await remote_app.initialize()
     capabilities = response.capabilities
 
@@ -172,13 +151,6 @@ async def start_sse_server(
     client_session,
     sse_settings: SseServerSettings,
 ) -> None:
-    """
-    Start the SSE server by creating a proxy MCP server and serving it via Starlette.
-
-    Args:
-        client_session: The client session for the remote MCP app.
-        sse_settings: The settings for configuring the SSE server.
-    """
     mcp_server = await _create_proxy_server(client_session)
 
     # Create the Starlette app with SSE routes and middleware.

@@ -128,7 +128,8 @@ class ModuleBase(metaclass=_MetaBind):
         globals["usage"].pop(self._module_id, None)
 
     # interfaces
-    def forward(self, *args, **kw): raise NotImplementedError
+    def forward(self, *args, **kw):
+        raise NotImplementedError
 
     def register_hook(self, hook_type: LazyLLMHook):
         self._hooks.add(hook_type)
@@ -140,8 +141,10 @@ class ModuleBase(metaclass=_MetaBind):
     def clear_hooks(self):
         self._hooks = set()
 
-    def _get_train_tasks(self): return None
-    def _get_deploy_tasks(self): return None
+    def _get_train_tasks(self):
+        return None
+    def _get_deploy_tasks(self):
+        return None
     def _get_post_process_tasks(self): return None
 
     def _set_mid(self, mid=None):
@@ -218,12 +221,18 @@ class ModuleBase(metaclass=_MetaBind):
         Parallel.sequential(*post_process_tasks)()
         return self
 
-    def update(self, *, recursive=True): return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
-    def update_server(self, *, recursive=True): return self._update(mode=['server'], recursive=recursive)
-    def eval(self, *, recursive=True): return self._update(mode=['eval'], recursive=recursive)
-    def start(self): return self._update(mode=['server'], recursive=True)
-    def restart(self): return self.start()
-    def wait(self): pass
+    def update(self, *, recursive=True):
+        return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
+    def update_server(self, *, recursive=True):
+        return self._update(mode=['server'], recursive=recursive)
+    def eval(self, *, recursive=True):
+        return self._update(mode=['eval'], recursive=recursive)
+    def start(self):
+        return self._update(mode=['server'], recursive=True)
+    def restart(self):
+        return self.start()
+    def wait(self):
+        pass
 
     def stop(self):
         for m in self.submodules:
