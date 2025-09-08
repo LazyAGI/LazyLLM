@@ -1322,6 +1322,7 @@ Iterates through all configuration options of the module, updates the module in 
 
 add_chinese_doc('AutoModel', '''\
 用于部署在线 API 模型或本地模型的模块，支持加载在线推理模块或本地可微调模块。
+
 Args:
     model (str): 指定要加载的模型名称，例如 ``internlm2-chat-7b``，可为空。为空时默认加载 ``internlm2-chat-7b``。
     source (str): 指定要使用的在线模型服务，如需使用在线模型，必须传入此参数。支持 ``qwen`` / ``glm`` / ``openai`` / ``moonshot`` 等。
@@ -1330,6 +1331,7 @@ Args:
 
 add_english_doc('AutoModel', '''\
 A module for deploying either online API-based models or local models, supporting both online inference and locally trainable modules.
+
 Args:
     model (str): The name of the model to load, e.g., ``internlm2-chat-7b``. If None, ``internlm2-chat-7b`` will be loaded by default.
     source (str): Specifies the online model service to use. Required when using online models. Supported values include ``qwen``, ``glm``, ``openai``, ``moonshot``, etc.
@@ -1437,6 +1439,7 @@ Args:
 add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIEmbedding', '''\
 OpenAI 在线嵌入模块。
 该类封装了对 OpenAI 嵌入 API 的调用，默认使用模型 `text-embedding-ada-002`，用于将文本编码为向量表示。
+
 Args:
     embed_url (str): OpenAI 嵌入 API 的 URL，默认为 "https://api.openai.com/v1/embeddings"。
     embed_model_name (str): 使用的嵌入模型名称，默认为 "text-embedding-ada-002"。
@@ -1446,6 +1449,7 @@ Args:
 add_english_doc('llms.onlinemodule.supplier.openai.OpenAIEmbedding', '''\
 Online embedding module using OpenAI.
 This class wraps the OpenAI Embedding API, defaulting to the `text-embedding-ada-002` model, and converts text into vector representations.
+
 Args:
     embed_url (str): The URL endpoint of the OpenAI embedding API. Default is "https://api.openai.com/v1/embeddings".
     embed_model_name (str): The name of the embedding model to use. Default is "text-embedding-ada-002".
@@ -1529,6 +1533,7 @@ If you need to support the capabilities of a new open platform's LLM, please ext
 3. If the new platform supports model fine-tuning, you must implement interfaces for file upload, creating fine-tuning services, and querying fine-tuning services. Even if the new platform does not require deployment of the fine-tuned model, please implement dummy interfaces for creating and querying deployment services.\n
 4. If the new platform supports model fine-tuning, provide a list of models that support fine-tuning to facilitate judgment during the fine-tuning service process.\n
 5. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
+
 Args:
     model_series (str): Model series name
     api_key (str): API access key
