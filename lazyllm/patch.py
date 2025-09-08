@@ -108,7 +108,10 @@ class LazyPatchFinder(importlib.abc.MetaPathFinder):
                                                    origin=original_spec.origin)
         return None
 
-sys.meta_path.insert(0, LazyPatchFinder())
+if 'httpx' in sys.modules or 'requests' in sys.modules:
+    patch_requests_and_httpx()
+else:
+    sys.meta_path.insert(0, LazyPatchFinder())
 
 
 def patch_os_env(set_action: Callable[[str, str], None], unset_action: Callable[[str], None]):
