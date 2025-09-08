@@ -1,5 +1,5 @@
 import re
-import httpx
+from lazyllm.thirdparty import httpx
 import json
 from lazyllm.module.module import ModuleBase
 from lazyllm.tools.http_request.http_executor_response import HttpExecutorResponse
