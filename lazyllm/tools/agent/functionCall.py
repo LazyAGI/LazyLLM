@@ -52,21 +52,22 @@ class StreamResponse():
 class FunctionCall(ModuleBase):
 
     def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False,
-                 stream: bool = False, _prompt: str = None):
+                 stream: bool = False, infer_config: dict = None, prompt: str = None):
         super().__init__(return_trace=return_trace)
         if isinstance(llm, OnlineChatModule) and llm.series == "QWEN" and llm._stream is True:
             raise ValueError("The qwen platform does not currently support stream function calls.")
-        if _prompt is None:
-            _prompt = FC_PROMPT_ONLINE if isinstance(llm, OnlineChatModule) else FC_PROMPT_LOCAL
+        if prompt is None:
+            prompt = FC_PROMPT_ONLINE if isinstance(llm, OnlineChatModule) else FC_PROMPT_LOCAL
 
+        self._infer_config = infer_config or dict()
         self._tools_manager = ToolManager(tools, return_trace=return_trace)
-        self._prompter = ChatPrompter(instruction=_prompt, tools=self._tools_manager.tools_description)\
+        self._prompter = ChatPrompter(instruction=prompt, tools=self._tools_manager.tools_description)\
             .pre_hook(function_call_hook)
         self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
         with pipeline() as self._impl:
             self._impl.ins = StreamResponse('Received instruction:', prefix_color=Color.yellow,
                                             color=Color.green, stream=stream)
-            self._impl.m1 = self._llm
+            self._impl.m1 = lambda x: self._llm(x, **self._infer_config)
             self._impl.m2 = self._parser
             self._impl.dis = StreamResponse('Decision-making or result in this round:',
                                             prefix_color=Color.yellow, color=Color.green, stream=stream)
@@ -125,11 +126,16 @@ class FunctionCall(ModuleBase):
             globals['chat_history'][self._llm._module_id] = llm_chat_history
         return self._impl(input)
 
+    def set_infer_config(self, config: dict):
+        self._infer_config = config
+
 class FunctionCallAgent(ModuleBase):
-    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False):
+    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False,
+                 infer_config: dict = None, prompt: str = None):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
-        self._fc = FunctionCall(llm, tools, return_trace=return_trace, stream=stream)
+        self._fc = FunctionCall(llm, tools, return_trace=return_trace, stream=stream,
+                                infer_config=infer_config, prompt=prompt)
         self._agent = loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
         self._fc._llm.used_by(self._module_id)
 
