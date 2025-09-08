@@ -1,4 +1,4 @@
-import uvicorn
+from lazyllm.thirdparty import uvicorn
 
 from dataclasses import dataclass
 from typing import Literal, Any, Optional, List
