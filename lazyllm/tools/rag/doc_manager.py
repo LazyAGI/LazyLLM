@@ -20,6 +20,8 @@ class DocManager(lazyllm.ModuleBase):
         # disable path monitoring in case of competition adding/deleting files
         self._manager = dlm
         self._manager.enable_path_monitoring = False
+        self.upload_files.__annotations__['files'] = List[fastapi.UploadFile]
+        self.add_files_to_group.__annotations__['files'] = List[fastapi.UploadFile]
 
     def __reduce__(self):
         self._manager.enable_path_monitoring = False
