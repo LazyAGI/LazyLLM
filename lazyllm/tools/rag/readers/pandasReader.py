@@ -8,7 +8,7 @@ from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
 
 class PandasCSVReader(LazyLLMReaderBase):
-    def __init__(self, concat_rows: bool = True, col_joiner: str = ", ", row_joiner: str = "\n",
+    def __init__(self, concat_rows: bool = True, col_joiner: str = ', ', row_joiner: str = '\n',
                  pandas_config: Optional[Dict] = None, return_trace: bool = True) -> None:
         super().__init__(return_trace=return_trace)
         self._concat_rows = concat_rows
@@ -39,10 +39,10 @@ class PandasExcelReader(LazyLLMReaderBase):
         self._pandas_config = pandas_config or {}
 
     def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
-        openpyxl_spec = importlib.util.find_spec("openpyxl")
+        openpyxl_spec = importlib.util.find_spec('openpyxl')
         if openpyxl_spec is not None: pass
-        else: raise ImportError("Please install openpyxl to read Excel files. "
-                                "You can install it with `pip install openpyxl`")
+        else: raise ImportError('Please install openpyxl to read Excel files. '
+                                'You can install it with `pip install openpyxl`')
 
         if not isinstance(file, Path): file = Path(file)
         if fs:
@@ -53,17 +53,17 @@ class PandasExcelReader(LazyLLMReaderBase):
 
         documents = []
         if isinstance(dfs, pd.DataFrame):
-            df = dfs.fillna("")
-            text_list = (df.astype(str).apply(lambda row: " ".join(row.values), axis=1).tolist())
+            df = dfs.fillna('')
+            text_list = (df.astype(str).apply(lambda row: ' '.join(row.values), axis=1).tolist())
 
-            if self._concat_rows: documents.append(DocNode(text="\n".join(text_list)))
+            if self._concat_rows: documents.append(DocNode(text='\n'.join(text_list)))
             else: documents.extend([DocNode(text=text) for text in text_list])
         else:
             for df in dfs.values():
-                df = df.fillna("")
-                text_list = (df.astype(str).apply(lambda row: " ".join(row), axis=1).tolist())
+                df = df.fillna('')
+                text_list = (df.astype(str).apply(lambda row: ' '.join(row), axis=1).tolist())
 
-                if self._concat_rows: documents.append(DocNode(text="\n".join(text_list)))
+                if self._concat_rows: documents.append(DocNode(text='\n'.join(text_list)))
                 else: documents.extend([DocNode(text=text) for text in text_list])
 
         return documents

@@ -174,7 +174,7 @@ class Faithfulness(BaseEvaluator):
         eval_result = self._execute_with_retries(
             query2, self._eval_llm, self._validate_eval_result, self._post_processor)
         if not self._validate_eval_result(eval_result):
-            lazyllm.LOG.error("Invalid evaluation result format")
+            lazyllm.LOG.error('Invalid evaluation result format')
             res.update({'scores': [], 'final_score': 0.0})
             return res
 

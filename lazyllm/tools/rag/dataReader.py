@@ -1,7 +1,7 @@
-"""
+'''
 The overall process of SimpleDirectoryReader is borrowed from LLAMA_INDEX, but we have added a customized part
 based on it, that is, allowing users to register custom rules instead of processing only based on file suffixes.
-"""
+'''
 import os
 import mimetypes
 import multiprocessing
@@ -25,8 +25,8 @@ from .global_metadata import (RAG_DOC_PATH, RAG_DOC_FILE_NAME, RAG_DOC_FILE_TYPE
 def _file_timestamp_format(timestamp: float, include_time: bool = False) -> Optional[str]:
     try:
         if include_time:
-            return datetime.utcfromtimestamp(timestamp).strftime("%Y-%m-%dT%H:%M:%SZ")
-        return datetime.fromtimestamp(timestamp).strftime("%Y-%m-%d")
+            return datetime.utcfromtimestamp(timestamp).strftime('%Y-%m-%dT%H:%M:%SZ')
+        return datetime.fromtimestamp(timestamp).strftime('%Y-%m-%d')
     except Exception:
         return None
 
@@ -42,14 +42,14 @@ class _DefaultFileMetadataFunc:
         except Exception:
             file_name = os.path.basename(file_path)
 
-        creation_date = _file_timestamp_format(stat_result.get("created"))
-        last_modified_date = _file_timestamp_format(stat_result.get("mtime"))
-        last_accessed_date = _file_timestamp_format(stat_result.get("atime"))
+        creation_date = _file_timestamp_format(stat_result.get('created'))
+        last_modified_date = _file_timestamp_format(stat_result.get('mtime'))
+        last_accessed_date = _file_timestamp_format(stat_result.get('atime'))
         default_meta = {
             RAG_DOC_PATH: file_path,
             RAG_DOC_FILE_NAME: file_name,
             RAG_DOC_FILE_TYPE: mimetypes.guess_type(file_path)[0],
-            RAG_DOC_FILE_SIZE: stat_result.get("size"),
+            RAG_DOC_FILE_SIZE: stat_result.get('size'),
             RAG_DOC_CREATION_DATE: creation_date,
             RAG_DOC_LAST_MODIFIED_DATE: last_modified_date,
             RAG_DOC_LAST_ACCESSED_DATE: last_accessed_date,
@@ -59,38 +59,38 @@ class _DefaultFileMetadataFunc:
 
 class SimpleDirectoryReader(ModuleBase):
     default_file_readers: Dict[str, Type[ReaderBase]] = {
-        "*.pdf": PDFReader,
-        "*.docx": DocxReader,
-        "*.hwp": HWPReader,
-        "*.pptx": PPTXReader,
-        "*.ppt": PPTXReader,
-        "*.pptm": PPTXReader,
-        "*.gif": ImageReader,
-        "*.jpeg": ImageReader,
-        "*.jpg": ImageReader,
-        "*.png": ImageReader,
-        "*.webp": ImageReader,
-        "*.ipynb": IPYNBReader,
-        "*.epub": EpubReader,
-        "*.md": MarkdownReader,
-        "*.mbox": MboxReader,
-        "*.csv": PandasCSVReader,
-        "*.xls": PandasExcelReader,
-        "*.xlsx": PandasExcelReader,
-        "*.mp3": VideoAudioReader,
-        "*.mp4": VideoAudioReader,
+        '*.pdf': PDFReader,
+        '*.docx': DocxReader,
+        '*.hwp': HWPReader,
+        '*.pptx': PPTXReader,
+        '*.ppt': PPTXReader,
+        '*.pptm': PPTXReader,
+        '*.gif': ImageReader,
+        '*.jpeg': ImageReader,
+        '*.jpg': ImageReader,
+        '*.png': ImageReader,
+        '*.webp': ImageReader,
+        '*.ipynb': IPYNBReader,
+        '*.epub': EpubReader,
+        '*.md': MarkdownReader,
+        '*.mbox': MboxReader,
+        '*.csv': PandasCSVReader,
+        '*.xls': PandasExcelReader,
+        '*.xlsx': PandasExcelReader,
+        '*.mp3': VideoAudioReader,
+        '*.mp4': VideoAudioReader,
     }
 
     def __init__(self, input_dir: Optional[str] = None, input_files: Optional[List] = None,
                  exclude: Optional[List] = None, exclude_hidden: bool = True, recursive: bool = False,
-                 encoding: str = "utf-8", filename_as_id: bool = False, required_exts: Optional[List[str]] = None,
+                 encoding: str = 'utf-8', filename_as_id: bool = False, required_exts: Optional[List[str]] = None,
                  file_extractor: Optional[Dict[str, Callable]] = None, fs: Optional['fsspec.AbstractFileSystem'] = None,
                  metadata_genf: Optional[Callable[[str], Dict]] = None, num_files_limit: Optional[int] = None,
                  return_trace: bool = False, metadatas: Optional[Dict] = None) -> None:
         super().__init__(return_trace=return_trace)
 
         if (not input_dir and not input_files) or (input_dir and input_files):
-            raise ValueError("Must provide either `input_dir` or `input_files`.")
+            raise ValueError('Must provide either `input_dir` or `input_files`.')
 
         self._fs = fs or get_default_fs()
         self._encoding = encoding
@@ -109,12 +109,12 @@ class SimpleDirectoryReader(ModuleBase):
                 if not self._fs.isfile(path):
                     path = os.path.join(config['data_path'], path)
                     if not self._fs.isfile(path):
-                        raise ValueError(f"File {path} does not exist.")
+                        raise ValueError(f'File {path} does not exist.')
                 input_file = self._Path(path)
                 self._input_files.append(input_file)
         elif input_dir:
             if not self._fs.isdir(input_dir):
-                raise ValueError(f"Directory {input_dir} does not exist.")
+                raise ValueError(f'Directory {input_dir} does not exist.')
             self._input_dir = self._Path(input_dir)
             self._input_files = self._add_files(self._input_dir)
 
@@ -131,7 +131,7 @@ class SimpleDirectoryReader(ModuleBase):
         if self._exclude is not None:
             for excluded_pattern in self._exclude:
                 if self._recursive:
-                    excluded_glob = self._Path(input_dir) / self._Path("**") / excluded_pattern
+                    excluded_glob = self._Path(input_dir) / self._Path('**') / excluded_pattern
                 else:
                     excluded_glob = self._Path(input_dir) / excluded_pattern
                 for file in self._fs.glob(str(excluded_glob)):
@@ -142,9 +142,9 @@ class SimpleDirectoryReader(ModuleBase):
 
         file_refs: List[str] = []
         if self._recursive:
-            file_refs = self._fs.glob(str(input_dir) + "/**/*")
+            file_refs = self._fs.glob(str(input_dir) + '/**/*')
         else:
-            file_refs = self._fs.glob(str(input_dir) + "/*")
+            file_refs = self._fs.glob(str(input_dir) + '/*')
 
         for ref in file_refs:
             ref = self._Path(ref)
@@ -160,8 +160,8 @@ class SimpleDirectoryReader(ModuleBase):
                 for rejected_dir in rejected_dirs:
                     if str(ref_parent_dir).startswith(str(rejected_dir)):
                         skip_excluded = True
-                        LOG.warning(f"Skipping {ref} because it in parent dir "
-                                    f"{ref_parent_dir} which is in {rejected_dir}.")
+                        LOG.warning(f'Skipping {ref} because it in parent dir '
+                                    f'{ref_parent_dir} which is in {rejected_dir}.')
                         break
 
             if is_dir or skip_hidden or skip_bad_exts or skip_excluded:
@@ -172,31 +172,31 @@ class SimpleDirectoryReader(ModuleBase):
         new_input_files = sorted(all_files)
 
         if len(new_input_files) == 0:
-            raise ValueError(f"No files found in {input_dir}.")
+            raise ValueError(f'No files found in {input_dir}.')
         if self._num_files_limit is not None and self._num_files_limit > 0:
             new_input_files = new_input_files[0: self._num_files_limit]
 
-        LOG.debug(f"[SimpleDirectoryReader] Total files add: {len(new_input_files)}")
+        LOG.debug(f'[SimpleDirectoryReader] Total files add: {len(new_input_files)}')
 
-        LOG.info(f"input_files: {new_input_files}")
+        LOG.info(f'input_files: {new_input_files}')
         return new_input_files
 
     def _is_hidden(self, path: Path) -> bool:
-        return any(part.startswith(".") and part not in [".", ".."] for part in path.parts)
+        return any(part.startswith('.') and part not in ['.', '..'] for part in path.parts)
 
     def _exclude_metadata(self, documents: List[DocNode]) -> List[DocNode]:
         for doc in documents:
             doc._excluded_embed_metadata_keys.extend(
-                ["file_name", "file_type", "file_size", "creation_date",
-                 "last_modified_date", "last_accessed_date", "lazyllm_store_num"])
+                ['file_name', 'file_type', 'file_size', 'creation_date',
+                 'last_modified_date', 'last_accessed_date', 'lazyllm_store_num'])
             doc._excluded_llm_metadata_keys.extend(
-                ["file_name", "file_type", "file_size", "creation_date",
-                 "last_modified_date", "last_accessed_date", "lazyllm_store_num"])
+                ['file_name', 'file_type', 'file_size', 'creation_date',
+                 'last_modified_date', 'last_accessed_date', 'lazyllm_store_num'])
         return documents
 
     @staticmethod
     def load_file(input_file: Path, metadata_genf: Callable[[str], Dict], file_extractor: Dict[str, Callable],
-                  encoding: str = "utf-8", pathm: PurePath = Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
+                  encoding: str = 'utf-8', pathm: PurePath = Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
                   metadata: Optional[Dict] = None) -> List[DocNode]:
         # metadata priority: user > reader > metadata_genf
         user_metadata: Dict = metadata or {}
@@ -207,8 +207,8 @@ class SimpleDirectoryReader(ModuleBase):
 
         for pattern, extractor in file_extractor.items():
             pt_lower = str(pathm(pattern)).lower()
-            match_pattern = pt_lower if pt_lower.endswith("*") else os.path.join(str(pathm.cwd()).lower(), pt_lower)
-            if pt_lower.startswith("*"):
+            match_pattern = pt_lower if pt_lower.endswith('*') else os.path.join(str(pathm.cwd()).lower(), pt_lower)
+            if pt_lower.startswith('*'):
                 match_pattern = pt_lower
             else:
                 base = str(pathm.cwd()).lower()
@@ -227,7 +227,7 @@ class SimpleDirectoryReader(ModuleBase):
 
                 if config['rag_filename_as_id']:
                     for i, doc in enumerate(docs):
-                        doc._uid = f"{input_file!s}_index_{i}"
+                        doc._uid = f'{input_file!s}_index_{i}'
                 documents.extend(docs)
                 break
         else:
@@ -257,9 +257,9 @@ class SimpleDirectoryReader(ModuleBase):
 
         if num_workers and num_workers >= 1:
             if num_workers > multiprocessing.cpu_count():
-                LOG.warning("Specified num_workers exceed number of CPUs in the system. "
-                            "Setting `num_workers` down to the maximum CPU count.")
-            with multiprocessing.get_context("spawn").Pool(num_workers) as p:
+                LOG.warning('Specified num_workers exceed number of CPUs in the system. '
+                            'Setting `num_workers` down to the maximum CPU count.')
+            with multiprocessing.get_context('spawn').Pool(num_workers) as p:
                 results = p.starmap(SimpleDirectoryReader.load_file,
                                     zip(process_file, repeat(self._metadata_genf), repeat(file_readers),
                                         repeat(self._encoding), repeat(self._Path),
@@ -267,7 +267,7 @@ class SimpleDirectoryReader(ModuleBase):
                 documents = reduce(lambda x, y: x + y, results)
         else:
             if show_progress:
-                process_file = tqdm(self._input_files, desc="Loading files", unit="file")
+                process_file = tqdm(self._input_files, desc='Loading files', unit='file')
             for input_file, metadata in zip(process_file, self._metadatas or repeat(None)):
                 documents.extend(
                     SimpleDirectoryReader.load_file(
@@ -294,4 +294,4 @@ class FileReader(object):
             return []
         nodes = SimpleDirectoryReader(input_files=file_list)._load_data()
         txt = [node.get_text() for node in nodes]
-        return "\n".join(txt)
+        return '\n'.join(txt)

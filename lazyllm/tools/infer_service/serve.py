@@ -55,7 +55,7 @@ class InferServer(ServerBase):
             first_seen = info.get('first_cancelled_time')
             if not first_seen:
                 update['first_cancelled_time'] = datetime.now().strftime(self._time_format)
-                update['status'] = "Pending"
+                update['status'] = 'Pending'
             else:
                 first_seen_time = datetime.strptime(first_seen, self._time_format)
                 if (datetime.now() - first_seen_time).total_seconds() > 60:  # Observe for 60 seconds
@@ -70,7 +70,7 @@ class InferServer(ServerBase):
                     return
                 else:
                     # Still in the obsesrvation period, not cleaned up
-                    update['status'] = "Pending"
+                    update['status'] = 'Pending'
         else:
             # The status is restored, clear first_cancelled_time
             if 'first_cancelled_time' in info:
@@ -177,7 +177,7 @@ class InferServer(ServerBase):
         self._update_user_job_info(token, job_id, {
             'lwsName': job_id,
             'status': status,
-            'endpoint': "unknown",
+            'endpoint': 'unknown',
             'service_name': job.service_name,
             'model_name': job.model_name,
             'created_at': create_time,

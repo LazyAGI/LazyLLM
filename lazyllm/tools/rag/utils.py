@@ -36,13 +36,13 @@ from pathlib import Path
 
 # min(32, (os.cpu_count() or 1) + 4) is the default number of workers for ThreadPoolExecutor
 config.add(
-    "max_embedding_workers",
+    'max_embedding_workers',
     int,
     min(32, (os.cpu_count() or 1) + 4),
-    "MAX_EMBEDDING_WORKERS",
+    'MAX_EMBEDDING_WORKERS',
 )
 
-config.add("default_dlmanager", str, "sqlite", "DEFAULT_DOCLIST_MANAGER")
+config.add('default_dlmanager', str, 'sqlite', 'DEFAULT_DOCLIST_MANAGER')
 
 def gen_docid(file_path: str) -> str:
     return hashlib.sha256(file_path.encode()).hexdigest()
@@ -53,7 +53,7 @@ class KBDataBase(DeclarativeBase):
 
 
 class KBOperationLogs(KBDataBase):
-    __tablename__ = "operation_logs"
+    __tablename__ = 'operation_logs'
     id = Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
     log = Column(sqlalchemy.Text, nullable=False)
     created_at = Column(sqlalchemy.DateTime, default=sqlalchemy.func.now(), nullable=False)
@@ -61,7 +61,7 @@ class KBOperationLogs(KBDataBase):
 
 DocPartRow = Row
 class KBDocument(KBDataBase):
-    __tablename__ = "documents"
+    __tablename__ = 'documents'
 
     doc_id = Column(sqlalchemy.Text, primary_key=True)
     filename = Column(sqlalchemy.Text, nullable=False, index=True)
@@ -73,7 +73,7 @@ class KBDocument(KBDataBase):
     count = Column(sqlalchemy.Integer, default=0)
 
 class KBGroup(KBDataBase):
-    __tablename__ = "document_groups"
+    __tablename__ = 'document_groups'
 
     group_id = Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
     group_name = Column(sqlalchemy.String, nullable=False, unique=True)
@@ -82,11 +82,11 @@ DocMetaChangedRow = Row
 GroupDocPartRow = Row
 
 class KBGroupDocuments(KBDataBase):
-    __tablename__ = "kb_group_documents"
+    __tablename__ = 'kb_group_documents'
 
     id = Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
-    doc_id = Column(sqlalchemy.String, sqlalchemy.ForeignKey("documents.doc_id"), nullable=False)
-    group_name = Column(sqlalchemy.String, sqlalchemy.ForeignKey("document_groups.group_name"), nullable=False)
+    doc_id = Column(sqlalchemy.String, sqlalchemy.ForeignKey('documents.doc_id'), nullable=False)
+    group_name = Column(sqlalchemy.String, sqlalchemy.ForeignKey('document_groups.group_name'), nullable=False)
     status = Column(sqlalchemy.Text, nullable=True)
     log = Column(sqlalchemy.Text, nullable=True)
     need_reparse = Column(sqlalchemy.Boolean, default=False, nullable=False)
@@ -121,7 +121,7 @@ class DocListManager(ABC):
         lazyllm.LOG.info(f'DocManager use file-system monitoring worker: {enable_path_monitoring}')
         self._id = hashlib.sha256(f'{name}@+@{path}'.encode()).hexdigest()
         if not os.path.isabs(path):
-            raise ValueError(f"path [{path}] is not an absolute path")
+            raise ValueError(f'path [{path}] is not an absolute path')
 
         self._init_sql()
         self._delete_nonexistent_docs_on_startup()
@@ -159,7 +159,7 @@ class DocListManager(ABC):
             files_list.extend(files)
         return set(files_list)
 
-    # Actually it shoule be "set_docs_status_deleting"
+    # Actually it shoule be 'set_docs_status_deleting'
     def delete_files(self, file_ids: List[str]) -> List[DocPartRow]:
         document_list = self.update_file_status(file_ids, DocListManager.Status.deleting)
         self.update_kb_group(cond_file_ids=file_ids, new_status=DocListManager.Status.deleting)
@@ -325,7 +325,7 @@ class DocListManager(ABC):
                 self._init_monitor_event.set()
             is_first_run = False
             time.sleep(10)
-        lazyllm.LOG.warning("END MONITORING")
+        lazyllm.LOG.warning('END MONITORING')
 
     def __del__(self):
         self.enable_path_monitoring = False
@@ -343,7 +343,7 @@ class SqliteDocListManager(DocListManager):
         # ensure that this connection is not used in another thread when sqlite3 is not threadsafe
         self._check_same_thread = not sqlite3_check_threadsafety()
         self._engine = sqlalchemy.create_engine(
-            f"sqlite:///{self._db_path}?check_same_thread={self._check_same_thread}"
+            f'sqlite:///{self._db_path}?check_same_thread={self._check_same_thread}'
         )
         self._Session = sessionmaker(bind=self._engine)
         self.init_tables()
@@ -353,7 +353,7 @@ class SqliteDocListManager(DocListManager):
 
     def table_inited(self):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
-            cursor = conn.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='documents'")
+            cursor = conn.execute('SELECT name FROM sqlite_master WHERE type=\'table\' AND name=\'documents\'')
             return cursor.fetchone() is not None
 
     @staticmethod
@@ -404,7 +404,7 @@ class SqliteDocListManager(DocListManager):
                 select(KBDocument.doc_id).where(KBDocument.doc_id.in_(doc_ids))
             ).fetchall()
             if len(rows) == 0:
-                return True, "Success", paths_is_new
+                return True, 'Success', paths_is_new
             found_doc_ids = [row.doc_id for row in rows]
             found_doc_group_rows = session.execute(
                 select(KBGroupDocuments.doc_id, KBGroupDocuments.need_reparse, KBGroupDocuments.status)
@@ -412,16 +412,16 @@ class SqliteDocListManager(DocListManager):
 
         for doc_group_record in found_doc_group_rows:
             if doc_group_record.need_reparse:
-                msg = f"Failed: {doc_id_to_path[doc_group_record.doc_id]} lasttime reparsing has not been finished"
+                msg = f'Failed: {doc_id_to_path[doc_group_record.doc_id]} lasttime reparsing has not been finished'
                 return False, msg, None
             if doc_group_record.status in unsafe_staus_set:
-                return False, f"Failed: {doc_id_to_path[doc_group_record.doc_id]} is being parsed by kbgroup", None
+                return False, f'Failed: {doc_id_to_path[doc_group_record.doc_id]} is being parsed by kbgroup', None
         found_doc_ids = set(found_doc_ids)
         for i in range(len(paths)):
             cur_doc_id = doc_ids[i]
             if cur_doc_id in found_doc_ids:
                 paths_is_new[i] = False
-        return True, "Success", paths_is_new
+        return True, 'Success', paths_is_new
 
     def update_need_reparsing(self, doc_id: str, need_reparse: bool, group_name: Optional[str] = None):
         with self._db_lock, self._Session() as session:
@@ -433,14 +433,14 @@ class SqliteDocListManager(DocListManager):
     def list_files(self, limit: Optional[int] = None, details: bool = False,
                    status: Union[str, List[str]] = DocListManager.Status.all,
                    exclude_status: Optional[Union[str, List[str]]] = None):
-        query = "SELECT * FROM documents"
+        query = 'SELECT * FROM documents'
         params = []
         status_cond, status_params = self.get_status_cond_and_params(status, exclude_status, prefix=None)
         if status_cond:
             query += f' WHERE {status_cond}'
             params.extend(status_params)
         if limit:
-            query += " LIMIT ?"
+            query += ' LIMIT ?'
             params.append(limit)
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
             cursor = conn.execute(query, params)
@@ -453,17 +453,17 @@ class SqliteDocListManager(DocListManager):
         return []
 
     def set_docs_new_meta(self, doc_meta: Dict[str, dict]):
-        data_to_update = [{"_doc_id": k, "_meta": json.dumps(v)} for k, v in doc_meta.items()]
+        data_to_update = [{'_doc_id': k, '_meta': json.dumps(v)} for k, v in doc_meta.items()]
         with self._db_lock, self._Session() as session:
             # Use sqlalchemy core bulk update
             stmt = KBDocument.__table__.update().where(
-                KBDocument.doc_id == bindparam("_doc_id")).values(meta=bindparam("_meta"))
+                KBDocument.doc_id == bindparam('_doc_id')).values(meta=bindparam('_meta'))
             session.execute(stmt, data_to_update)
             session.commit()
 
             stmt = KBGroupDocuments.__table__.update().where(
-                KBGroupDocuments.doc_id == bindparam("_doc_id"),
-                KBGroupDocuments.status != DocListManager.Status.waiting).values(new_meta=bindparam("_meta"))
+                KBGroupDocuments.doc_id == bindparam('_doc_id'),
+                KBGroupDocuments.status != DocListManager.Status.waiting).values(new_meta=bindparam('_meta'))
             session.execute(stmt, data_to_update)
             session.commit()
 
@@ -483,7 +483,7 @@ class SqliteDocListManager(DocListManager):
 
     def list_all_kb_group(self):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
-            cursor = conn.execute("SELECT group_name FROM document_groups")
+            cursor = conn.execute('SELECT group_name FROM document_groups')
             return [row[0] for row in cursor]
 
     def add_kb_group(self, name):
@@ -497,12 +497,12 @@ class SqliteDocListManager(DocListManager):
                             upload_status: Union[str, List[str]] = DocListManager.Status.all,
                             exclude_upload_status: Optional[Union[str, List[str]]] = None,
                             need_reparse: Optional[bool] = None):
-        query = """
+        query = '''
             SELECT documents.doc_id, documents.path, documents.status, documents.meta,
                    kb_group_documents.group_name, kb_group_documents.status, kb_group_documents.log
             FROM kb_group_documents
             JOIN documents ON kb_group_documents.doc_id = documents.doc_id
-        """
+        '''
         conds, params = [], []
         if group:
             conds.append('kb_group_documents.group_name = ?')
@@ -545,7 +545,7 @@ class SqliteDocListManager(DocListManager):
             )
             for doc in docs_to_delete:
                 session.delete(doc)
-                log = KBOperationLogs(log=f"Delete obsolete file, doc_id:{doc.doc_id}, path:{doc.path}.")
+                log = KBOperationLogs(log=f'Delete obsolete file, doc_id:{doc.doc_id}, path:{doc.path}.')
                 session.add(log)
             session.commit()
 
@@ -606,10 +606,10 @@ class SqliteDocListManager(DocListManager):
 
     # TODO(wangzhihong): set to metadatas and enable this function
     def update_file_message(self, fileid: str, **kw):
-        set_clause = ", ".join([f"{k} = ?" for k in kw.keys()])
+        set_clause = ', '.join([f'{k} = ?' for k in kw.keys()])
         params = list(kw.values()) + [fileid]
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
-            conn.execute(f"UPDATE documents SET {set_clause} WHERE doc_id = ?", params)
+            conn.execute(f'UPDATE documents SET {set_clause} WHERE doc_id = ?', params)
             conn.commit()
 
     def update_file_status(self, file_ids: List[str], status: str,
@@ -667,11 +667,11 @@ class SqliteDocListManager(DocListManager):
                     doc.count = max(0, doc.count - 1)
                     session.commit()
                 except NoResultFound:
-                    lazyllm.LOG.warning(f"No document found for {doc_id}")
+                    lazyllm.LOG.warning(f'No document found for {doc_id}')
 
     def get_file_status(self, fileid: str):
         with self._db_lock, sqlite3.connect(self._db_path, check_same_thread=self._check_same_thread) as conn:
-            cursor = conn.execute("SELECT status FROM documents WHERE doc_id = ?", (fileid,))
+            cursor = conn.execute('SELECT status FROM documents WHERE doc_id = ?', (fileid,))
         return cursor.fetchone()
 
     def update_kb_group(self, cond_file_ids: List[str], cond_group: Optional[str] = None,
@@ -722,15 +722,15 @@ DocListManager.__pool__ = dict(sqlite=SqliteDocListManager)
 
 
 class BaseResponse(BaseModel):
-    code: int = pydantic.Field(200, description="API status code")
-    msg: str = pydantic.Field("success", description="API status message")
-    data: Any = pydantic.Field(None, description="API data")
+    code: int = pydantic.Field(200, description='API status code')
+    msg: str = pydantic.Field('success', description='API status message')
+    data: Any = pydantic.Field(None, description='API data')
 
     class Config:
         json_schema_extra = {
-            "example": {
-                "code": 200,
-                "msg": "success",
+            'example': {
+                'code': 200,
+                'msg': 'success',
             }
         }
 
@@ -746,17 +746,17 @@ def run_in_thread_pool(func: Callable, params: Optional[List[Dict]] = None) -> G
             yield obj.result()
 
 
-Default_Suport_File_Types = [".docx", ".pdf", ".txt", ".json"]
+Default_Suport_File_Types = ['.docx', '.pdf', '.txt', '.json']
 
 
 def _save_file(_file: 'fastapi.UploadFile', _file_path: str):
     file_content = _file.file.read()
-    with open(_file_path, "wb") as f:
+    with open(_file_path, 'wb') as f:
         f.write(file_content)
 
 
 def _convert_path_to_underscores(file_path: str) -> str:
-    return file_path.replace("/", "_").replace("\\", "_")
+    return file_path.replace('/', '_').replace('\\', '_')
 
 
 def _save_file_to_cache(
@@ -765,13 +765,13 @@ def _save_file_to_cache(
     to_file_path = os.path.join(cache_dir, file.filename)
 
     sub_result_list_real_name = []
-    if file.filename.endswith(".tar"):
+    if file.filename.endswith('.tar'):
 
         def unpack_archive(tar_file_path: str, extract_folder_path: str):
 
             out_file_names = []
             try:
-                with tarfile.open(tar_file_path, "r") as tar:
+                with tarfile.open(tar_file_path, 'r') as tar:
                     file_info_list = tar.getmembers()
                     for file_info in list(file_info_list):
                         file_extension = os.path.splitext(file_info.name)[-1]
@@ -779,7 +779,7 @@ def _save_file_to_cache(
                             tar.extract(file_info.name, path=extract_folder_path)
                             out_file_names.append(file_info.name)
             except tarfile.TarError as e:
-                lazyllm.LOG.error(f"untar error: {e}")
+                lazyllm.LOG.error(f'untar error: {e}')
                 raise e
 
             return out_file_names
@@ -804,7 +804,7 @@ def save_files_in_threads(
     suport_file_types: List[str] = Default_Suport_File_Types,
 ):
     real_dir = source_path
-    cache_dir = os.path.join(source_path, "cache")
+    cache_dir = os.path.join(source_path, 'cache')
 
     if os.path.exists(cache_dir):
         shutil.rmtree(cache_dir)
@@ -814,7 +814,7 @@ def save_files_in_threads(
             os.makedirs(dir)
 
     param_list = [
-        {"file": file, "cache_dir": cache_dir, "suport_file_types": suport_file_types}
+        {'file': file, 'cache_dir': cache_dir, 'suport_file_types': suport_file_types}
         for file in files
     ]
 
@@ -848,7 +848,7 @@ def save_files_in_threads(
 def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union[List[str], Set[str]]],
                           nodes: List[DocNode], group_embed_keys: Dict[str, List[str]] = None) -> List[DocNode]:
     modified_nodes = []
-    with ThreadPoolExecutor(config["max_embedding_workers"]) as executor:
+    with ThreadPoolExecutor(config['max_embedding_workers']) as executor:
         futures = []
         for node in nodes:
             if group_embed_keys:
@@ -952,7 +952,7 @@ def is_sparse(embedding: Union[Dict[int, float], List[Tuple[int, float]], List[f
     raise TypeError(f'unsupported embedding type `{type(embedding[0])}`')
 
 
-def ensure_call_endpoint(raw: str, *, default_path: str = "/_call") -> str:
+def ensure_call_endpoint(raw: str, *, default_path: str = '/_call') -> str:
     if not raw:
         return raw
 

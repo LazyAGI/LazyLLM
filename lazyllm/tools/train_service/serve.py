@@ -29,15 +29,15 @@ def is_url(path):
     return bool(re.match(r'^https?://', path))
 
 def get_filename_from_url(url: str, timeout: int = 10) -> str:
-    """
+    '''
     Get filename from URL Content-Disposition header
-    """
+    '''
     try:
         resp = requests.get(url, stream=True, timeout=timeout)
         resp.raise_for_status()
 
-        cd = resp.headers.get("Content-Disposition", "")
-        for pattern in [r"filename\*=UTF-8''(.+)", r'filename="?([^"]+)"?']:
+        cd = resp.headers.get('Content-Disposition', '')
+        for pattern in [r'filename\*=UTF-8\'\'(.+)', r'filename=\'?([^\']+)\'?']:
             match = re.search(pattern, cd)
             if match:
                 return unquote(match.group(1))
@@ -66,7 +66,7 @@ class TrainingArgs(BaseModel):
     ngpus: int = 1
 
     class Config:
-        extra = "allow"  # extra fields are allowed
+        extra = 'allow'  # extra fields are allowed
 
 class _JobDescription(BaseModel):
     name: str
@@ -75,7 +75,7 @@ class _JobDescription(BaseModel):
     training_dataset: List[Dataset] = []
     validation_dataset: List[Dataset] = []
     validate_dataset_split_percent: float = Field(default=0.0)
-    stage: str = ""
+    stage: str = ''
 
 class ModelExport(BaseModel):
     name: str
@@ -172,14 +172,14 @@ class TrainServer(ServerBase):
         hypram = job.training_args.model_dump()
 
         # Uniform Training DataSet:
-        assert len(job.training_dataset) == 1, "just support one train dataset"
+        assert len(job.training_dataset) == 1, 'just support one train dataset'
         data_path = job.training_dataset[0].dataset_download_uri
         if is_url(data_path):
             response = requests.get(data_path, stream=True)
             if response.status_code == 200:
                 file_name = get_filename_from_url(data_path)
                 target_path = os.path.join(save_root, file_name)
-                with open(target_path, "wb") as f:
+                with open(target_path, 'wb') as f:
                     for chunk in response.iter_content(chunk_size=8192):
                         f.write(chunk)
                 data_path = target_path
@@ -319,10 +319,10 @@ class TrainServer(ServerBase):
                 for line in f:
                     if line.strip():
                         res = json.dumps({'result': {'log_data': line.strip()}})
-                        yield f"data: {res}\n\n"
-            yield "data: [DONE]"
+                        yield f'data: {res}\n\n'
+            yield 'data: [DONE]'
 
-        return StreamingResponse(generate_log_stream(), media_type="text/event-stream")
+        return StreamingResponse(generate_log_stream(), media_type='text/event-stream')
 
     @app.post('/v1/finetuneTasks/{job_id}/model:export')
     async def export_model(self, job_id: str, model: ModelExport, token: str = Header(DEFAULT_TOKEN)):  # noqa B008

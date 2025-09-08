@@ -22,14 +22,14 @@ def get_pip_install_cmd(names):
     for name in names:
         if name in package_name_map:
             name = package_name_map[name]
-        install_parts.append("\"" + name + requirements.get(name, '') + "\"")
+        install_parts.append('\"' + name + requirements.get(name, '') + '\"')
     if len(install_parts) > 0:
-        return "pip install " + " ".join(install_parts)
+        return 'pip install ' + ' '.join(install_parts)
     return None
 
 
 def prep_req_dict():
-    req_file_path = os.path.abspath(__file__).replace("lazyllm/thirdparty/__init__.py", "requirements.full.txt")
+    req_file_path = os.path.abspath(__file__).replace('lazyllm/thirdparty/__init__.py', 'requirements.full.txt')
     try:
         with open(req_file_path, 'r') as req_f:
             lines = req_f.readlines()
@@ -39,7 +39,7 @@ def prep_req_dict():
             if len(req_parts) == 2:
                 requirements[req_parts[0]] = '>=' + req_parts[1]
     except FileNotFoundError:
-        LOG.error("requirements.full.txt missing. Cannot generate pip install command.")
+        LOG.error('requirements.full.txt missing. Cannot generate pip install command.')
 
 
 class PackageWrapper(object):
@@ -114,4 +114,4 @@ def check_packages(names):
             LOG.warning(f'Some packages not found, please install it by \'pip install {packs}\'')
         else:
             # should not be here.
-            LOG.warning('Some packages not found: ' + " ".join(missing_pack))
+            LOG.warning('Some packages not found: ' + ' '.join(missing_pack))

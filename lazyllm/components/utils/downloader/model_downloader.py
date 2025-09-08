@@ -70,14 +70,14 @@ class ModelManager():
         self.model_source = model_source or lazyllm.config['model_source']
         self.token = token or None
         self.cache_dir = cache_dir
-        self.model_paths = model_path.split(":") if len(model_path) > 0 else []
+        self.model_paths = model_path.split(':') if len(model_path) > 0 else []
         if self.model_source == 'huggingface':
             self.hub_downloader = _HuggingfaceDownloader(token=self.token)
         else:
             self.hub_downloader = _ModelscopeDownloader(token=self.token)
             if self.model_source != 'modelscope':
-                lazyllm.LOG.error("Only support Huggingface and Modelscope currently. "
-                                  f"Unsupported model source: {self.model_source}. Forcing use of Modelscope.")
+                lazyllm.LOG.error('Only support Huggingface and Modelscope currently. '
+                                  f'Unsupported model source: {self.model_source}. Forcing use of Modelscope.')
 
     @staticmethod
     @functools.lru_cache
@@ -103,17 +103,17 @@ class ModelManager():
         for model_name, sources in model_name_mapping.items():
             if model_name.lower() == search_string.lower() or any(
                     os.path.basename(source_file).lower() == search_string.lower()
-                    for source_file in sources["source"].values()):
+                    for source_file in sources['source'].values()):
                 return model_name
-        return ""
+        return ''
 
     @staticmethod
     @functools.lru_cache
     def get_model_prompt_keys(model) -> dict:
         model_name = __class__._get_model_name(model)
         __class__._try_add_mapping(model_name)
-        if model_name and "prompt_keys" in model_name_mapping[model_name.lower()]:
-            return model_name_mapping[model_name.lower()]["prompt_keys"]
+        if model_name and 'prompt_keys' in model_name_mapping[model_name.lower()]:
+            return model_name_mapping[model_name.lower()]['prompt_keys']
         else:
             return dict()
 
@@ -138,16 +138,16 @@ class ModelManager():
             if matching_keys:
                 matched_groups = max(matching_keys, key=len)
                 model_name_mapping[model] = {
-                    "prompt_keys": model_groups[matched_groups]["prompt_keys"],
-                    "source": {k: v + '/' + model_base for k, v in model_provider[matched_model_prefix].items()}
+                    'prompt_keys': model_groups[matched_groups]['prompt_keys'],
+                    'source': {k: v + '/' + model_base for k, v in model_provider[matched_model_prefix].items()}
                 }
 
     def download(self, model='', call_back=None):
-        assert isinstance(model, str), "model name should be a string."
+        assert isinstance(model, str), 'model name should be a string.'
         if len(model) == 0 or model[0] in (os.sep, '.', '~') or os.path.isabs(model): return model
         if (model_at_path := self._model_exists_at_path(model)): return model_at_path
         if self.model_source == '' or self.model_source not in ('huggingface', 'modelscope'):
-            lazyllm.LOG.error("model automatic downloads only support Huggingface and Modelscope currently.")
+            lazyllm.LOG.error('model automatic downloads only support Huggingface and Modelscope currently.')
             return model
 
         self._try_add_mapping(model)
@@ -201,7 +201,7 @@ class ModelManager():
         for model_path in self.model_paths:
             if len(model_path) == 0: continue
             if model_path[0] != os.sep:
-                lazyllm.LOG.warning(f"skipping path {model_path} as only absolute paths is accepted.")
+                lazyllm.LOG.warning(f'skipping path {model_path} as only absolute paths is accepted.')
                 continue
             for model_dir in model_dirs:
                 full_model_dir = os.path.join(model_path, model_dir)
@@ -222,14 +222,14 @@ class ModelManager():
             return self.hub_downloader.download(model, full_model_dir, call_back)
         # Use `BaseException` to capture `KeyboardInterrupt` and normal `Exceptioin`.
         except BaseException as e:  # noqa B036
-            lazyllm.LOG.warning(f"Download encountered an error: {e}")
+            lazyllm.LOG.warning(f'Download encountered an error: {e}')
             if not self.token and 'Permission denied' not in str(e):
                 lazyllm.LOG.warning('Token is empty, which may prevent private models from being downloaded, '
                                     'as indicated by "the model does not exist." Please set the token with the '
                                     'environment variable LAZYLLM_MODEL_SOURCE_TOKEN to download private models.')
             if os.path.isdir(full_model_dir):
                 shutil.rmtree(full_model_dir)
-                lazyllm.LOG.warning(f"{full_model_dir} removed due to exceptions.")
+                lazyllm.LOG.warning(f'{full_model_dir} removed due to exceptions.')
         return False
 
 class _HubDownloader(ABC):
@@ -257,7 +257,7 @@ class _HubDownloader(ABC):
 
     def _do_download(self, model_id, model_dir):
         if not self._verify_model_id(model_id):
-            lazyllm.LOG.warning(f"Invalid model id:{model_id}")
+            lazyllm.LOG.warning(f'Invalid model id:{model_id}')
             return False
         return self._do_download_impl(model_id, model_dir)
 
@@ -279,7 +279,7 @@ class _HubDownloader(ABC):
                 try:
                     call_back(n, total)
                 except Exception as e:
-                    lazyllm.LOG.error(f"Error in callback: {e}")
+                    lazyllm.LOG.error(f'Error in callback: {e}')
             time.sleep(1)
 
     def _get_current_files_size(self, model_dir):
@@ -343,7 +343,7 @@ class _HuggingfaceDownloader(_HubDownloader):
         from huggingface_hub import snapshot_download
         # refer to https://huggingface.co/docs/huggingface_hub/v0.23.1/en/package_reference/file_download
         downloaded_path = snapshot_download(repo_id=model_id, local_dir=model_dir, token=self._token)
-        lazyllm.LOG.info(f"model downloaded at {downloaded_path}")
+        lazyllm.LOG.info(f'model downloaded at {downloaded_path}')
         return downloaded_path
 
     def _get_repo_files_impl(self, model_id):
@@ -390,7 +390,7 @@ class _ModelscopeDownloader(_HubDownloader):
         from modelscope.hub.snapshot_download import snapshot_download
         # refer to https://www.modelscope.cn/docs/models/download
         downloaded_path = snapshot_download(model_id=model_id, local_dir=model_dir)
-        lazyllm.LOG.info(f"Model downloaded at {downloaded_path}")
+        lazyllm.LOG.info(f'Model downloaded at {downloaded_path}')
         return downloaded_path
 
     def _get_repo_files_impl(self, model_id):
