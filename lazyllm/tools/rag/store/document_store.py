@@ -267,7 +267,7 @@ class _DocumentStore(object):
               similarity_cut_off: Union[float, Dict[str, float]] = float('-inf'),
               topk: Optional[int] = 10, embed_keys: Optional[List[str]] = None,
               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
-        self._validate_query_params(group_name, similarity_name, embed_keys)
+        embed_keys = self._validate_query_params(group_name, similarity_name, embed_keys)
         segments = []
         if embed_keys:
             if self.impl.capability == StoreCapability.SEGMENT:
@@ -293,7 +293,7 @@ class _DocumentStore(object):
         return [self._deserialize_node(segment, segment.get('score', 0)) for segment in segments]
 
     def _validate_query_params(self, group_name: str, similarity: str,
-                               embed_keys: Optional[List[str]] = None, **kwargs) -> bool:
+                               embed_keys: Optional[List[str]] = None, **kwargs):
         assert self.is_group_active(group_name), f'[_DocumentStore - {self._algo_name}] Group {group_name} is not active'
         if similarity:
             if similarity in registered_similarities:
@@ -304,6 +304,8 @@ class _DocumentStore(object):
                 elif mode == 'text' and self.impl.capability == StoreCapability.VECTOR:
                     raise ValueError(f'[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported, '
                                      'text similarity is supported for segment or hybrid store')
+                if mode == 'embedding' and embed_keys is None:
+                    embed_keys = list(self._embed.keys())
             else:
                 raise ValueError(f'[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported')
 
@@ -312,7 +314,7 @@ class _DocumentStore(object):
                 f'[_DocumentStore - {self._algo_name}] Embed {embed_keys} not supported when no vector store provided'
             assert all(key in self._embed for key in embed_keys), \
                 f'[_DocumentStore - {self._algo_name}] Embed {embed_keys} not supported'
-        return True
+        return embed_keys
 
     def clear_cache(self, groups: Optional[List[str]] = None) -> None:
         if not groups:

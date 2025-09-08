@@ -1818,6 +1818,72 @@ add_example('ModelManager', '''\
 >>> downloader.download('chatglm3-6b')
 ''')
 
+add_chinese_doc('LLMType', '''\
+LLMType 枚举类
+
+该枚举用于表示不同类型的大模型（如 LLM、VLM、TTS 等）。
+特点：
+- 成员值为字符串（继承自 str）。
+- 支持大小写不敏感的构造与比较：
+    - 构造时，既可以用成员名称，也可以用成员值，大小写不敏感。
+    - 比较时，可以直接与字符串进行比较，大小写不敏感。
+    - 成员名称索引（如 LLMType['xxx']）同样大小写不敏感。
+
+可用类型：
+    - LLM
+    - VLM
+    - SD
+    - TTS
+    - STT
+    - EMBED
+    - REANK
+    - CROSS_MODAL_EMBED
+    - OCR
+''')
+
+add_english_doc('LLMType', '''\
+LLMType Enum Class
+
+This enum represents different types of large models (e.g., LLM, VLM, TTS).
+Features:
+- Members are strings (inherits from str).
+- Case-insensitive construction and comparison:
+    - When constructing, both member names and values are accepted, case-insensitive.
+    - When comparing, it can be directly compared with strings, case-insensitive.
+    - Member name lookup (LLMType['xxx']) is also case-insensitive.
+
+Available types:
+    - LLM
+    - VLM
+    - SD
+    - TTS
+    - STT
+    - EMBED
+    - REANK
+    - CROSS_MODAL_EMBED
+    - OCR
+''')
+
+add_example('LLMType', '''\
+>>> LLMType("llm")
+<LLMType.LLM: 'LLM'>
+
+>>> LLMType("llm") == LLMType.LLM
+True
+
+>>> LLMType("LLM") == LLMType.LLM
+True
+
+>>> LLMType.LLM == "llm"
+True
+
+>>> LLMType.LLM == "LLM"
+True
+
+>>> LLMType("CROSS_modal_embed")
+<LLMType.CROSS_MODAL_EMBED: 'CROSS_MODAL_EMBED'>
+''')
+
 # ============= Formatter
 
 # FormatterBase

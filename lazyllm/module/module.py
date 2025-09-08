@@ -4,16 +4,220 @@ import traceback
 from lazyllm import ThreadPoolExecutor
 
 import lazyllm
-from lazyllm import FlatList, Option, kwargs, globals, colored_text
+from lazyllm import FlatList, Option, kwargs, globals, colored_text, redis_client
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
-from ..client import redis_client
 from ..hook import LazyLLMHook
 from lazyllm import FileSystemQueue
 from contextlib import contextmanager
-from typing import Optional, Union, Dict
+from typing import Optional, Union, Dict, List
 import copy
+from collections import defaultdict
+import sqlite3
+import pickle
+import hashlib
+from abc import ABC, abstractmethod
+from filelock import FileLock
+
+
+lazyllm.config.add('cache_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'cache'), 'CACHE_DIR')
+lazyllm.config.add('cache_strategy', str, 'memory', 'CACHE_STRATEGY')
+lazyllm.config.add('cache_mode', str, 'RW', 'CACHE_MODE', options=['RW', 'RO', 'WO', 'NONE'])
+redis_client = redis_client['module']
+
+
+class CacheNotFoundError(Exception): pass
+
+
+class _CacheStorageStrategy(ABC):
+    def __init__(self, cache: Optional[bool] = False):
+        if cache:
+            self._cache_dir = os.path.join(lazyllm.config['cache_dir'], 'module')
+            os.makedirs(self._cache_dir, exist_ok=True)
+            self._lock = FileLock(os.path.join(self._cache_dir, 'cache.lock'))
+        else:
+            self._lock = lambda: contextmanager(lambda: (yield))()
+
+    @abstractmethod
+    def get(self, key: str, hash_key: str): pass
+
+    @abstractmethod
+    def set(self, key: str, hash_key: str, value): pass
+
+    def close(self): pass  # noqa B027
+
+
+class _MemoryCacheStrategy(_CacheStorageStrategy):
+    def __init__(self):
+        super().__init__()
+        self._cache = defaultdict(dict)
+
+    def get(self, key: str, hash_key: str):
+        if key not in self._cache or hash_key not in self._cache[key]:
+            raise CacheNotFoundError(f'Cache not found for {key}')
+        return self._cache[key][hash_key]
+
+    def set(self, key: str, hash_key: str, value):
+        self._cache[key][hash_key] = value
+
+    def close(self):
+        self._cache.clear()
+
+
+class _FileCacheStrategy(_CacheStorageStrategy):
+    def __init__(self):
+        super().__init__(cache=True)
+        self.cache_file = os.path.join(self._cache_dir, 'cache.dat')
+
+    def _load_cache(self):
+        if not os.path.exists(self.cache_file): return {}
+        try:
+            with open(self.cache_file, 'rb') as f:
+                return pickle.load(f)
+        except Exception:
+            return {}
+
+    def _save_cache(self, cache_data):
+        try:
+            with open(self.cache_file, 'wb') as f:
+                pickle.dump(cache_data, f)
+        except Exception:
+            pass
+
+    def get(self, key: str, hash_key: str):
+        with self._lock:
+            cache_data = self._load_cache()
+            if key not in cache_data or hash_key not in cache_data[key]:
+                raise CacheNotFoundError(f'Cache not found for {key}')
+            return cache_data[key][hash_key]
+
+    def set(self, key: str, hash_key: str, value):
+        with self._lock:
+            cache_data = self._load_cache()
+            if key not in cache_data:
+                cache_data[key] = {}
+            cache_data[key][hash_key] = value
+            self._save_cache(cache_data)
+
+
+class _SQLiteCacheStrategy(_CacheStorageStrategy):
+    def __init__(self):
+        super().__init__(cache=True)
+        self.db_path = os.path.join(self._cache_dir, 'cache.db')
+        self.conn = None
+        self._init_db()
+
+    def _init_db(self):
+        self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
+        self.conn.execute('''
+            CREATE TABLE IF NOT EXISTS cache (
+                key TEXT,
+                hash_key TEXT,
+                value BLOB,
+                PRIMARY KEY (key, hash_key)
+            )
+        ''')
+        self.conn.commit()
+
+    def get(self, key: str, hash_key: str):
+        with self._lock:
+            cursor = self.conn.execute(
+                'SELECT value FROM cache WHERE key = ? AND hash_key = ?',
+                (key, hash_key)
+            )
+            row = cursor.fetchone()
+            if row is None:
+                raise CacheNotFoundError(f'Cache not found for {key}')
+            try:
+                return pickle.loads(row[0])
+            except Exception as e:
+                raise CacheNotFoundError(f'Failed to deserialize cache for {key}: {e}')
+
+    def set(self, key: str, hash_key: str, value):
+        with self._lock:
+            try:
+                serialized_value = pickle.dumps(value)
+                self.conn.execute(
+                    'INSERT OR REPLACE INTO cache (key, hash_key, value) VALUES (?, ?, ?)',
+                    (key, hash_key, serialized_value)
+                )
+                self.conn.commit()
+            except Exception:
+                pass
+
+    def close(self):
+        if self.conn:
+            self.conn.close()
+
+
+class _RedisCacheStrategy(_CacheStorageStrategy):
+    def __init__(self, prefix: str = ''):
+        if not redis_client: raise RuntimeError('Redis url should be set by `export LAZYLLM_REDIS_URL = xxx`')
+        self._client = redis_client[prefix] if prefix else redis_client
+        super().__init__()
+
+    def _get_redis_key(self, key: str, hash_key: str):
+        return f'{key}:{hash_key}'
+
+    def get(self, key: str, hash_key: str):
+        redis_key = self._get_redis_key(key, hash_key)
+        value = self._client.get(redis_key)
+        if value is None:
+            raise CacheNotFoundError(f'Cache not found for {key}')
+        try:
+            return pickle.loads(value)
+        except Exception as e:
+            raise RuntimeError(f'Failed to deserialize cache for {key}: {e}')
+
+    def set(self, key: str, hash_key: str, value):
+        try:
+            redis_key = self._get_redis_key(key, hash_key)
+            serialized_value = pickle.dumps(value)
+            self._client.set(redis_key, serialized_value)
+        except Exception:
+            pass
+
+
+class ModuleCache(object):
+    def __init__(self, strategy: Optional[str] = None):
+        self._strategy = self._create_strategy(strategy or lazyllm.config['cache_strategy'])
+
+    def _create_strategy(self, strategy: str) -> _CacheStorageStrategy:
+        strategy = strategy.lower()
+        strategies = {
+            'memory': _MemoryCacheStrategy,
+            'file': _FileCacheStrategy,
+            'sqlite': _SQLiteCacheStrategy,
+            'redis': _RedisCacheStrategy,
+        }
+
+        if strategy not in strategies:
+            raise ValueError(f'Unsupported cache strategy: {strategy}. '
+                             f'Available strategies: {list(strategies.keys())}')
+        return strategies[strategy]()
+
+    def _hash(self, args, kw):
+        content = str(args) + str(sorted(kw.items()) if kw else '')
+        return hashlib.md5(content.encode()).hexdigest()
+
+    def get(self, key, args, kw):
+        if 'R' not in lazyllm.config['cache_mode']:
+            raise CacheNotFoundError('Cannot read cache due to `LAZYLLM_CACHE_MODE = WO`')
+        hash_key = self._hash(args, kw)
+        return self._strategy.get(key, hash_key)
+
+    def set(self, key, args, kw, value):
+        if 'W' not in lazyllm.config['cache_mode']: return
+        hash_key = self._hash(args, kw)
+        self._strategy.set(key, hash_key, value)
+
+    def close(self):
+        self._strategy.close()
+
+
+module_cache = ModuleCache()
+
 
 # use _MetaBind:
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
@@ -47,6 +251,7 @@ class ModuleBase(metaclass=_MetaBind):
         self._module_name = None
         self._options = []
         self.eval_result = None
+        self._use_cache: Union[bool, str] = False
         self._hooks = set()
 
     def __setattr__(self, name: str, value):
@@ -93,19 +298,31 @@ class ModuleBase(metaclass=_MetaBind):
             if (files := globals['lazyllm_files'].get(self._module_id)) is not None: kw['lazyllm_files'] = files
             if (history := globals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
 
-            r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
+            r = (self._call_impl(**args[0], **kw)
+                 if args and isinstance(args[0], kwargs) else self._call_impl(*args, **kw))
             if self._return_trace:
                 lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
         except Exception as e:
             raise RuntimeError(
-                f"\nAn error occured in {self.__class__} with name {self.name}.\n"
-                f"Args:\n{args}\nKwargs\n{kw}\nError messages:\n{e}\n"
-                f"Original traceback:\n{''.join(traceback.format_tb(e.__traceback__))}")
+                f'\nAn error occured in {self.__class__} with name {self.name}.\n'
+                f'Args:\n{args}\nKwargs\n{kw}\nError messages:\n{e}\n'
+                f'Original traceback:\n{"".join(traceback.format_tb(e.__traceback__))}')
         for hook_obj in hook_objs[::-1]:
             hook_obj.post_hook(r)
         for hook_obj in hook_objs:
             hook_obj.report()
         self._clear_usage()
+        return r
+
+    def _call_impl(self, *args, **kw):
+        if self._use_cache and 'R' in lazyllm.config['cache_mode']:
+            try:
+                return module_cache.get(self.__cache_hash__, args, kw)
+            except CacheNotFoundError:
+                self._cache_miss_handler()
+        r = self.forward(**args[0], **kw) if args and isinstance(args[0], kwargs) else self.forward(*args, **kw)
+        if self._use_cache and 'W' in lazyllm.config['cache_mode']:
+            module_cache.set(self.__cache_hash__, args, kw, r)
         return r
 
     def _stream_output(self, text: str, color: Optional[str] = None, *, cls: Optional[str] = None):
@@ -125,7 +342,7 @@ class ModuleBase(metaclass=_MetaBind):
         return self
 
     def _clear_usage(self):
-        globals["usage"].pop(self._module_id, None)
+        globals['usage'].pop(self._module_id, None)
 
     # interfaces
     def forward(self, *args, **kw): raise NotImplementedError
@@ -185,11 +402,11 @@ class ModuleBase(metaclass=_MetaBind):
         return None
 
     # update module(train or finetune),
-    def _update(self, *, mode=None, recursive=True):  # noqa C901
+    def _update(self, *, mode: Optional[Union[str, List[str]]] = None, recursive: bool = True):  # noqa C901
         if not mode: mode = list(self.mode_list)
         if type(mode) is not list: mode = [mode]
         for item in mode:
-            assert item in self.mode_list, f"Cannot find {item} in mode list: {self.mode_list}"
+            assert item in self.mode_list, f'Cannot find {item} in mode list: {self.mode_list}'
         # dfs to get all train tasks
         train_tasks, deploy_tasks, eval_tasks, post_process_tasks = FlatList(), FlatList(), FlatList(), FlatList()
         stack, visited = [(self, iter(self.submodules if recursive else []))], set()
@@ -218,11 +435,14 @@ class ModuleBase(metaclass=_MetaBind):
         Parallel.sequential(*post_process_tasks)()
         return self
 
-    def update(self, *, recursive=True): return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
-    def update_server(self, *, recursive=True): return self._update(mode=['server'], recursive=recursive)
-    def eval(self, *, recursive=True): return self._update(mode=['eval'], recursive=recursive)
+    def update(self, *, recursive: bool = True):
+        return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
+
+    def update_server(self, *, recursive: bool = True): return self._update(mode=['server'], recursive=recursive)
+    def eval(self, *, recursive: bool = True): return self._update(mode=['eval'], recursive=recursive)
     def start(self): return self._update(mode=['server'], recursive=True)
     def restart(self): return self.start()
+
     def wait(self): pass
 
     def stop(self):
@@ -248,6 +468,18 @@ class ModuleBase(metaclass=_MetaBind):
                 action(submodule)
             submodule.for_each(filter, action)
 
+    @property
+    def __cache_hash__(self):
+        cache_hash = self.__class__.__name__
+        if isinstance(self._use_cache, str): cache_hash += f'@{self._use_cache}'
+        return cache_hash
+
+    def use_cache(self, flag: Union[bool, str] = True):
+        self._use_cache = flag or False
+        return self
+
+    def _cache_miss_handler(self): pass
+
 
 class ActionModule(ModuleBase):
     def __init__(self, *action, return_trace=False):
@@ -269,7 +501,7 @@ class ActionModule(ModuleBase):
                 self.action.for_each(lambda x: isinstance(x, ModuleBase), lambda x: submodule.append(x))
                 return submodule
         except Exception as e:
-            raise RuntimeError(f"{str(e)}\nOriginal traceback:\n{''.join(traceback.format_tb(e.__traceback__))}")
+            raise RuntimeError(f'{str(e)}\nOriginal traceback:\n{"".join(traceback.format_tb(e.__traceback__))}')
         return super().submodules
 
     def __repr__(self):

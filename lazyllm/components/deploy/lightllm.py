@@ -6,6 +6,7 @@ import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
 from .utils import make_log_dir, get_log_path
+from typing import Optional
 
 
 class Lightllm(LazyLLMDeployBase):
@@ -33,7 +34,8 @@ class Lightllm(LazyLLMDeployBase):
     stream_url_suffix = '_stream'
     stream_parse_parameters = {"delimiter": b"\n\n"}
 
-    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None, **kw):  # noqa B008
+    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None,  # noqa B008
+                 openai_api: Optional[bool] = None, **kw):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'tp': 1,

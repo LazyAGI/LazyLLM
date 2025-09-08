@@ -1,5 +1,5 @@
 import lazyllm
-from typing import Dict, List, Any, Union
+from typing import Dict, List, Union
 from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 import requests
@@ -28,8 +28,9 @@ class DoubaoEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = "https://ark.cn-beijing.volces.com/api/v3/embeddings",
                  embed_model_name: str = "doubao-embedding-text-240715",
-                 api_key: str = None):
-        super().__init__("DOUBAO", embed_url, api_key or lazyllm.config["doubao_api_key"], embed_model_name)
+                 api_key: str = None,
+                 **kw):
+        super().__init__("DOUBAO", embed_url, api_key or lazyllm.config["doubao_api_key"], embed_model_name, **kw)
 
 
 class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
@@ -42,7 +43,7 @@ class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
     def _encapsulated_data(self, input: Union[List, str], **kwargs) -> Dict[str, str]:
         if isinstance(input, str):
             input = [{"text": input}]
-        elif isinstance(input, List):
+        elif isinstance(input, list):
             # 验证输入格式，最多为1段文本+1张图片
             if len(input) == 0:
                 raise ValueError("Input list cannot be empty")
@@ -60,7 +61,7 @@ class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
 
         return json_data
 
-    def _parse_response(self, response: Dict[str, Any]) -> List[float]:
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> List[float]:
         # 豆包多模态Embedding返回融合的单个embedding
         return response['data']['embedding']
 

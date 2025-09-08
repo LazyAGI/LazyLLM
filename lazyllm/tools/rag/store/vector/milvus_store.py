@@ -19,6 +19,7 @@ from ...global_metadata import GlobalMetadataDesc
 
 MILVUS_UPSERT_BATCH_SIZE = 500
 MILVUS_PAGINATION_OFFSET = 1000
+MILVUS_INDEX_MAX_RETRY = 3
 
 
 class _ClientPool:
@@ -240,14 +241,16 @@ class MilvusStore(LazyLLMStoreBase):
                                                    default_value=desc.default_value, **field_args))
         return field_list
 
-    def _create_collection(self, client, collection_name: str, embed_kwargs: Dict[str, Dict]):  # noqa: C901
+    def _create_collection(self, client, collection_name: str, embed_kwargs: Dict[str, Dict],  # noqa: C901
+                           retry: int = 0):
         field_list = copy.deepcopy(self._constant_fields)
         index_params = client.prepare_index_params()
+        original_index_kwargs = copy.deepcopy(self._index_kwargs)
         for k, kws in embed_kwargs.items():
             embed_field_name = self._gen_embed_key(k)
             field_list.append(pymilvus.FieldSchema(name=embed_field_name, **kws))
-            if isinstance(self._index_kwargs, list):
-                for item in self._index_kwargs:
+            if isinstance(original_index_kwargs, list):
+                for item in original_index_kwargs:
                     embed_key = item.get('embed_key', None)
                     if not embed_key:
                         raise ValueError(f'cannot find `embed_key` in `index_kwargs` of `{item}`')
@@ -256,10 +259,43 @@ class MilvusStore(LazyLLMStoreBase):
                         index_kwarg.pop('embed_key', None)
                         index_params.add_index(field_name=embed_field_name, **index_kwarg)
                         break
-            elif isinstance(self._index_kwargs, dict):
-                index_params.add_index(field_name=embed_field_name, **self._index_kwargs)
+            elif isinstance(original_index_kwargs, dict):
+                index_params.add_index(field_name=embed_field_name, **original_index_kwargs)
         schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_field=False)
-        client.create_collection(collection_name=collection_name, schema=schema, index_params=index_params)
+        try:
+            client.create_collection(collection_name=collection_name, schema=schema, index_params=index_params)
+        except pymilvus.MilvusException as e:
+            msg = getattr(e, 'message', str(e))
+            if 'invalid index type' in msg.lower():
+                if retry >= MILVUS_INDEX_MAX_RETRY:
+                    LOG.error(f'[Milvus Store] index fallback exceeded max retries ({MILVUS_INDEX_MAX_RETRY}),'
+                              f' last error: {msg}')
+                    raise
+                try:
+                    wrong_index_type = msg.split('invalid index type: ')[1]
+                    if ',' in wrong_index_type:
+                        wrong_index_type = wrong_index_type.split(',')[0].strip()
+                except Exception:
+                    LOG.error(f'[Milvus Store] failed to parse invalid index type from error: {msg}')
+                    raise
+                self._replace_index_type_to_autoindex(wrong_index_type)
+                LOG.warning(f'[Milvus Store] Unsupported index type: {wrong_index_type}. '
+                            f'Fallback to AUTOINDEX and retry (try #{retry + 1}).')
+                self._create_collection(client, collection_name, embed_kwargs, retry=retry + 1)
+            else:
+                raise e
+
+    def _replace_index_type_to_autoindex(self, index_type: str):
+        if index_type == 'AUTOINDEX':
+            raise ValueError(f'[Milvus Store - replace_index_type_to_autoindex] Invalid index type: {index_type}')
+        if isinstance(self._index_kwargs, list):
+            for item in self._index_kwargs:
+                if item.get('index_type') == index_type:
+                    item['index_type'] = 'AUTOINDEX'
+        elif isinstance(self._index_kwargs, dict):
+            if self._index_kwargs.get('index_type') == index_type:
+                self._index_kwargs['index_type'] = 'AUTOINDEX'
+        return
 
     def _serialize_data(self, d: dict) -> dict:
         # only keep primary_key, embedding and global_meta

@@ -2,7 +2,7 @@ import json
 import time
 import os
 import requests
-from typing import Tuple, Any, Dict, List
+from typing import Tuple, Dict, List, Union
 from urllib.parse import urljoin
 import uuid
 
@@ -40,7 +40,8 @@ class _SenseNovaBase(object):
 
 class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     TRAINABLE_MODEL_LIST = ["nova-ptc-s-v2"]
-    VLM_MODEL_LIST = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner']
+    VLM_MODEL_LIST = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
+                      'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']
 
     def __init__(self, base_url: str = "https://api.sensenova.cn/compatible-mode/v1/", model: str = "SenseChat-5",
                  api_key: str = None, secret_key: str = None, stream: bool = True,
@@ -235,19 +236,16 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
                  embed_url: str = "https://api.sensenova.cn/v1/llm/embeddings",
                  embed_model_name: str = "nova-embedding-stable",
                  api_key: str = None,
-                 secret_key: str = None):
+                 secret_key: str = None,
+                 **kw):
         api_key = self._get_api_key(api_key, secret_key)
-        super().__init__("SENSENOVA", embed_url, api_key, embed_model_name)
+        super().__init__("SENSENOVA", embed_url, api_key, embed_model_name, **kw)
 
-    def _encapsulated_data(self, text: str, **kwargs) -> Dict[str, str]:
-        json_data = {
-            "input": [text],
-            "model": self._embed_model_name
-        }
-        if len(kwargs) > 0:
-            json_data.update(kwargs)
-
-        return json_data
-
-    def _parse_response(self, response: Dict[str, Any]) -> List[float]:
-        return response['embeddings'][0]['embedding']
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
+        embeddings = response.get('embeddings', [])
+        if not embeddings:
+            return []
+        if isinstance(input, str):
+            return embeddings[0].get('embedding', [])
+        else:
+            return [res.get('embedding', []) for res in embeddings]

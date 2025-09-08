@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import requests
-from typing import Tuple, List, Any, Dict
+from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
 import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
@@ -233,9 +233,9 @@ class GLMEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = "https://open.bigmodel.cn/api/paas/v4/embeddings",
                  embed_model_name: str = "embedding-2",
-                 api_key: str = None):
-        super().__init__("GLM", embed_url, api_key or lazyllm.config["glm_api_key"], embed_model_name)
-
+                 api_key: str = None,
+                 **kw):
+        super().__init__("GLM", embed_url, api_key or lazyllm.config["glm_api_key"], embed_model_name, **kw)
 
 class GLMReranking(OnlineEmbeddingModuleBase):
 
@@ -262,8 +262,8 @@ class GLMReranking(OnlineEmbeddingModuleBase):
 
         return json_data
 
-    def _parse_response(self, response: Dict[str, Any]) -> List[float]:
-        return [(result["index"], result["relevance_score"]) for result in response['results']]
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Tuple]:
+        return [(result['index'], result['relevance_score']) for result in response['results']]
 
 
 class GLMMultiModal(OnlineMultiModalBase):

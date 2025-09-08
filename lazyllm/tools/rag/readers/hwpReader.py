@@ -1,4 +1,4 @@
-from fsspec import AbstractFileSystem
+from lazyllm.thirdparty import fsspec
 from pathlib import Path
 from typing import Optional, List, Any
 
@@ -10,23 +10,23 @@ from lazyllm import LOG
 class HWPReader(LazyLLMReaderBase):
     def __init__(self, return_trace: bool = True) -> None:
         super().__init__(return_trace=return_trace)
-        self._FILE_HEADER_SECTION = "FileHeader"
-        self._HWP_SUMMARY_SECTION = "\x05HwpSummaryInformation"
-        self._SECTION_NAME_LENGTH = len("Section")
-        self._BODYTEXT_SECTION = "BodyText"
+        self._FILE_HEADER_SECTION = 'FileHeader'
+        self._HWP_SUMMARY_SECTION = '\x05HwpSummaryInformation'
+        self._SECTION_NAME_LENGTH = len('Section')
+        self._BODYTEXT_SECTION = 'BodyText'
         self._HWP_TEXT_TAGS = [67]
-        self._text = ""
+        self._text = ''
 
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[DocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if fs:
-            LOG.warning("fs was specified but HWPReader doesn't support loading from "
-                        "fsspec filesystems. Will load from local filesystem instead.")
+            LOG.warning('fs was specified but HWPReader doesn\'t support loading from '
+                        'fsspec filesystems. Will load from local filesystem instead.')
 
         if not isinstance(file, Path): file = Path(file)
 
         load_file = olefile.OleFileIO(file)
         file_dir = load_file.listdir()
-        if self._is_valid(file_dir) is False: raise Exception("Not Valid HwpFile")
+        if self._is_valid(file_dir) is False: raise Exception('Not Valid HwpFile')
 
         result_text = self._get_text(load_file, file_dir)
         return [DocNode(text=result_text)]
@@ -37,10 +37,10 @@ class HWPReader(LazyLLMReaderBase):
 
     def _get_text(self, load_file: Any, file_dirs: List[str]) -> str:
         sections = self._get_body_sections(file_dirs)
-        text = ""
+        text = ''
         for section in sections:
             text += self._get_text_from_section(load_file, section)
-            text += "\n"
+            text += '\n'
 
         self._text = text
         return self._text
@@ -51,10 +51,10 @@ class HWPReader(LazyLLMReaderBase):
             if d[0] == self._BODYTEXT_SECTION:
                 m.append(int(d[1][self._SECTION_NAME_LENGTH:]))
 
-        return ["BodyText/Section" + str(x) for x in sorted(m)]
+        return ['BodyText/Section' + str(x) for x in sorted(m)]
 
     def _is_compressed(self, load_file: Any) -> bool:
-        header = load_file.openstream("FileHeader")
+        header = load_file.openstream('FileHeader')
         header_data = header.read()
         return (header_data[36] & 1) == 1
 
@@ -66,17 +66,17 @@ class HWPReader(LazyLLMReaderBase):
         size = len(unpacked_data)
 
         i = 0
-        text = ""
+        text = ''
         while i < size:
-            header = struct.unpack_from("<I", unpacked_data, i)[0]
+            header = struct.unpack_from('<I', unpacked_data, i)[0]
             rec_type = header & 0x3FF
             (header >> 10) & 0x3FF
             rec_len = (header >> 20) & 0xFFF
 
             if rec_type in self._HWP_TEXT_TAGS:
                 rec_data = unpacked_data[i + 4: i + 4 + rec_len]
-                text += rec_data.decode("utf-16")
-                text += "\n"
+                text += rec_data.decode('utf-16')
+                text += '\n'
 
             i += 4 + rec_len
         return text

@@ -1,5 +1,4 @@
-import fsspec
-from fsspec.implementations.local import LocalFileSystem
+from lazyllm.thirdparty import fsspec
 from typing import Iterable, List
 
 from lazyllm.thirdparty import torch
@@ -13,7 +12,7 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         super().__init__(return_trace=return_trace)
 
     def _lazy_load_data(self, *args, **load_kwargs) -> Iterable[DocNode]:
-        raise NotImplementedError(f"{self.__class__.__name__} does not implement lazy_load_data method.")
+        raise NotImplementedError(f'{self.__class__.__name__} does not implement lazy_load_data method.')
 
     def _load_data(self, *args, **load_kwargs) -> List[DocNode]:
         return list(self._lazy_load_data(*args, **load_kwargs))
@@ -23,10 +22,10 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
 
 def get_default_fs():
-    return LocalFileSystem()
+    return fsspec.implementations.local.LocalFileSystem()
 
-def is_default_fs(fs: fsspec.AbstractFileSystem) -> bool:
-    return isinstance(fs, LocalFileSystem) or not fs.auto_mkdir
+def is_default_fs(fs: 'fsspec.AbstractFileSystem') -> bool:
+    return isinstance(fs, fsspec.implementations.local.LocalFileSystem) or not fs.auto_mkdir
 
 def infer_torch_device() -> str:
     try:
@@ -34,6 +33,6 @@ def infer_torch_device() -> str:
     except NameError:
         has_cuda = torch.cuda.is_available()
 
-    if has_cuda: return "cuda"
-    if torch.backends.mps.is_available(): return "mps"
-    return "cpu"
+    if has_cuda: return 'cuda'
+    if torch.backends.mps.is_available(): return 'mps'
+    return 'cpu'

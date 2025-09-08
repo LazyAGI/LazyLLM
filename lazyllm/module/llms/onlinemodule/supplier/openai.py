@@ -15,10 +15,10 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
     NO_PROXY = False
 
     def __init__(self, base_url: str = "https://api.openai.com/v1/", model: str = "gpt-3.5-turbo",
-                 api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
+                 api_key: str = None, stream: bool = True, return_trace: bool = False, skip_auth: bool = False, **kw):
         OnlineChatModuleBase.__init__(self, model_series="OPENAI", api_key=api_key or lazyllm.config['openai_api_key'],
-                                      base_url=base_url, model_name=model, stream=stream,
-                                      return_trace=return_trace, **kwargs)
+                                      base_url=base_url, model_name=model, stream=stream, return_trace=return_trace,
+                                      skip_auth=skip_auth, **kw)
         FileHandlerBase.__init__(self)
         self.default_train_data = {
             "model": "gpt-3.5-turbo-0613",
@@ -220,5 +220,6 @@ class OpenAIEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = "https://api.openai.com/v1/embeddings",
                  embed_model_name: str = "text-embedding-ada-002",
-                 api_key: str = None):
-        super().__init__("OPENAI", embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name)
+                 api_key: str = None,
+                 *kw):
+        super().__init__("OPENAI", embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name, **kw)

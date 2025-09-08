@@ -10,7 +10,7 @@ from lazyllm.module import ModuleBase
 from lazyllm import warp
 
 
-lazyllm.config.add('eval_result_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'eval_res'),
+lazyllm.config.add('eval_result_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'eval_res'),
                    'EVAL_RESULT_DIR')
 
 class BaseEvaluator(ModuleBase):

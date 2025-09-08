@@ -14,6 +14,7 @@
   - 工作流: Best Practice/flow.md
   - 流程应用: Best Practice/flowapp.md
   - 模块: Best Practice/module.md
+  - 本地模型: Best Practice/LocalModel.md
   - 提示词: Best Practice/prompt.md
   - 检索增强: Best Practice/rag.md
   - 函数调用: Best Practice/functionCall.md
