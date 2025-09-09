@@ -895,33 +895,33 @@ Note:
     - Cleanup occurs when object is destroyed or context is exited
 ''')
 
-add_chinese_doc('ReadOnlyWrapper', '''\ 
+add_chinese_doc('ReadOnlyWrapper', '''
 一个轻量级只读包装器，用于包裹任意对象并对外提供只读访问（实际并未完全禁止修改，但复制时不会携带原始对象）。包装器可以动态替换内部对象，并提供判断对象是否为空的辅助方法。
 Args:
     obj (Optional[Any]): 初始被包装的对象，默认为 None。
 ''')
 
-add_english_doc('ReadOnlyWrapper', '''\
+add_english_doc('ReadOnlyWrapper', '''
 A lightweight read-only wrapper that holds an arbitrary object and exposes its attributes. It supports swapping the internal object dynamically and provides utility for checking emptiness. Note: it does not enforce deep immutability, but deepcopy drops the wrapped object.
 Args:
     obj (Optional[Any]): The initial wrapped object, defaults to None.
 ''')
 
-add_chinese_doc('ReadOnlyWrapper.set', '''\ 
+add_chinese_doc('ReadOnlyWrapper.set', '''
 替换当前包装的内部对象。
 
 Args:
     obj (Any): 新的内部对象。
 ''')
 
-add_english_doc('ReadOnlyWrapper.set', '''\
+add_english_doc('ReadOnlyWrapper.set', '''
 Replace the currently wrapped internal object.
 
 Args:
     obj (Any): New object to wrap.
 ''')
 
-add_chinese_doc('ReadOnlyWrapper.isNone', '''\ 
+add_chinese_doc('ReadOnlyWrapper.isNone', '''
 检查当前包装器是否未持有任何对象。
 
 Args:
@@ -931,7 +931,7 @@ Args:
 - bool: 如果内部对象为 None 返回 True，否则 False。
 ''')
 
-add_english_doc('ReadOnlyWrapper.isNone', '''\
+add_english_doc('ReadOnlyWrapper.isNone', '''
 Check whether the wrapper currently holds no object.
 
 Args:
@@ -941,14 +941,14 @@ Args:
 - bool: True if the internal object is None, otherwise False.
 ''')
 
-add_chinese_doc('queue.RedisQueue', '''\ 
+add_chinese_doc('queue.RedisQueue', '''
 基于 Redis 实现的文件系统队列（继承自 FileSystemQueue），用于跨进程/节点的消息传递与队列管理。内部使用指定的 redis_url 初始化并管理底层存储，同时提供线程安全的初始化逻辑。
 
 Args:
     klass (str): 队列的分类名称，用于区分不同队列实例，默认值为 '__default__'。
 ''')
 
-add_english_doc('queue.RedisQueue', '''\
+add_english_doc('queue.RedisQueue', '''
 Redis-backed file system queue (inherits from FileSystemQueue) for cross-process/node message passing and queue management. It initializes its underlying storage using a configured Redis URL and employs thread-safe setup logic.
 
 Args:
@@ -956,7 +956,7 @@ Args:
 ''')
 
 
-add_chinese_doc('Identity', '''\
+add_chinese_doc('Identity', '''
 恒等模块，用于直接返回输入值。
 
 该模块常用于模块拼接结构中占位，无实际处理逻辑。若输入为多个参数，将自动打包为一个整体结构输出。
@@ -966,7 +966,7 @@ Args:
     **kw: 可选的关键字参数，占位用。
 ''')
 
-add_english_doc('Identity', '''\
+add_english_doc('Identity', '''
 Identity module that directly returns the input as output.
 
 This module serves as a no-op placeholder in composition pipelines. If multiple inputs are provided, they are packed together before returning.
@@ -978,7 +978,7 @@ Args:
 
 
 
-add_chinese_doc('ProcessPoolExecutor.submit', '''\
+add_chinese_doc('ProcessPoolExecutor.submit', '''
 将任务提交到进程池中执行。
 
 此方法将一个函数及其参数序列化后提交到进程池中执行，返回一个 `Future` 对象，用于获取任务执行结果或状态。
@@ -992,7 +992,7 @@ Args:
 - concurrent.futures.Future: 表示任务执行状态的 `Future` 对象。
 ''')
 
-add_english_doc('ProcessPoolExecutor.submit', '''\
+add_english_doc('ProcessPoolExecutor.submit', '''
 Submit a task to the process pool for execution.
 
 This method serializes a function and its arguments, then submits them to the process pool for execution. It returns a `Future` object to track the task's status or result.
@@ -1006,7 +1006,7 @@ Args:
 - concurrent.futures.Future: A `Future` object representing the task's execution status.
 ''')
 
-add_example('ProcessPoolExecutor.submit', '''\
+add_example('ProcessPoolExecutor.submit', '''
 >>> from lazyllm.common.multiprocessing import ProcessPoolExecutor
 >>> import time
 >>> 
@@ -1039,7 +1039,7 @@ Args:
 **注意**: 此类主要用于 LazyLLM 内部的进程管理，特别是在需要长期运行的服务器进程中。
 ''')
 
-add_english_doc('ForkProcess', '''\
+add_english_doc('ForkProcess', '''
 Enhanced process class provided by LazyLLM, inheriting from Python's standard library `multiprocessing.Process`. This class specifically uses the fork start method to create child processes and provides support for synchronous/asynchronous execution modes.
 
 Args:
@@ -1054,7 +1054,7 @@ Args:
 **Note**: This class is primarily used for LazyLLM's internal process management, especially in long-running server processes.
 ''')
 
-add_example('ForkProcess', '''\
+add_example('ForkProcess', '''
 >>> import lazyllm
 >>> from lazyllm.common import ForkProcess
 >>> import time
@@ -1069,7 +1069,7 @@ Process 12345 executing task 1
 ''')
 
 # ForkProcess.work
-add_chinese_doc('ForkProcess.work', '''\
+add_chinese_doc('ForkProcess.work', '''
 ForkProcess 的核心工作方法，负责包装目标函数并处理同步/异步执行逻辑。
 
 Args:
@@ -1077,7 +1077,7 @@ Args:
     sync: 是否为同步模式。在同步模式下，执行完目标函数后进程会退出；在异步模式下，进程会持续运行。
 ''')
 
-add_english_doc('ForkProcess.work', '''\
+add_english_doc('ForkProcess.work', '''
 Core working method of ForkProcess, responsible for wrapping the target function and handling synchronous/asynchronous execution logic.
 
 Args:
@@ -1086,7 +1086,7 @@ Args:
 ''')
 
 # ForkProcess.start
-add_chinese_doc('ForkProcess.start', '''\
+add_chinese_doc('ForkProcess.start', '''
 启动 ForkProcess 进程。此方法会使用 fork 启动方法来创建子进程，并开始执行目标函数。
 
 此方法的特点：
@@ -1099,7 +1099,7 @@ add_chinese_doc('ForkProcess.start', '''\
 
 ''')
 
-add_english_doc('ForkProcess.start', '''\
+add_english_doc('ForkProcess.start', '''
 Start the ForkProcess. This method uses the fork start method to create a child process and begin executing the target function.
 
 Features of this method:
@@ -1114,7 +1114,7 @@ Features of this method:
 
 # ============= Options
 # Option
-add_chinese_doc('Option', '''\
+add_chinese_doc('Option', '''
 LazyLLM 提供的选项管理类，用于管理多个选项值并在它们之间进行迭代。此类主要用于参数网格搜索和超参数调优场景。
 
 Args:
@@ -1131,7 +1131,7 @@ Args:
 **注意**: 此类主要用于 LazyLLM 内部的参数搜索和实验管理，尤其在 `TrialModule` 中进行参数网格搜索时。
 ''')
 
-add_english_doc('Option', '''\
+add_english_doc('Option', '''
 Option management class provided by LazyLLM, used for managing multiple option values and iterating between them. This class is primarily used for parameter grid search and hyperparameter tuning scenarios.
 
 Args:
