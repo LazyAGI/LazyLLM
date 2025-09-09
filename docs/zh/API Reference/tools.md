@@ -15,7 +15,11 @@
 ::: lazyllm.tools.rag.store.MilvusStore
     members:
     exclude-members:
-    
+
+::: lazyllm.tools.rag.store.ElasticSearchStore
+    members:
+    exclude-members:
+   
 ::: lazyllm.tools.rag.readers.ReaderBase
     members:
     exclude-members:
