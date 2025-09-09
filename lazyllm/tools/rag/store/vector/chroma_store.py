@@ -33,7 +33,7 @@ class ChromadbStore(LazyLLMStoreBase):
     def __init__(self, uri: Optional[str] = None, dir: Optional[str] = None,
                  index_kwargs: Optional[Union[Dict, List]] = None, client_kwargs: Optional[Dict] = None,
                  **kwargs) -> None:
-        assert uri or (dir), "uri or dir must be provided"
+        assert uri or (dir), 'uri or dir must be provided'
         self._index_kwargs = index_kwargs or DEFAULT_INDEX_CONFIG
         self._client_kwargs = client_kwargs or {}
         if dir:
@@ -46,36 +46,36 @@ class ChromadbStore(LazyLLMStoreBase):
     def dir(self):
         if not self._dir: return None
         p = Path(self._dir)
-        p = p if p.suffix else (p / "chroma.sqlite3")
+        p = p if p.suffix else (p / 'chroma.sqlite3')
         return str(p.resolve(strict=False))
 
     def _parse_uri(self, uri: str):
-        windows_drive = re.match(r"^[a-zA-Z]:[\\/]", uri or "")
-        if ("://" not in uri) and (windows_drive or os.path.isabs(uri)):
+        windows_drive = re.match(r'^[a-zA-Z]:[\\/]', uri or '')
+        if ('://' not in uri) and (windows_drive or os.path.isabs(uri)):
             return os.path.abspath(uri), None, None
 
         p = urlparse(uri)
 
-        if p.scheme == "":
+        if p.scheme == '':
             return os.path.abspath(uri), None, None
 
-        if p.scheme == "file":
+        if p.scheme == 'file':
             path = p.path
-            if os.name == "nt" and path.startswith("/") and re.match(r"^/[a-zA-Z]:", path):
-                path = path.lstrip("/")  # file:///C:/... -> C:/...
+            if os.name == 'nt' and path.startswith('/') and re.match(r'^/[a-zA-Z]:', path):
+                path = path.lstrip('/')  # file:///C:/... -> C:/...
             return os.path.abspath(path), None, None
 
         scheme = p.scheme
-        if scheme.startswith("chroma+"):
-            scheme = scheme.split("+", 1)[1]  # http or https
+        if scheme.startswith('chroma+'):
+            scheme = scheme.split('+', 1)[1]  # http or https
 
-        if scheme in ("http", "https"):
-            host = p.hostname or "127.0.0.1"
-            port = p.port or (443 if scheme == "https" else 80)
+        if scheme in ('http', 'https'):
+            host = p.hostname or '127.0.0.1'
+            port = p.port or (443 if scheme == 'https' else 80)
             return None, host, port
 
-        raise ValueError(f"Unsupported URI scheme in '{uri}'. "
-                         "Use file:///path or plain path for local; http(s)://host:port for remote.")
+        raise ValueError(f'Unsupported URI scheme in "{uri}". '
+                         'Use file:///path or plain path for local; http(s)://host:port for remote.')
 
     @override
     def connect(self, embed_dims: Optional[Dict[str, int]] = None,
@@ -86,18 +86,18 @@ class ChromadbStore(LazyLLMStoreBase):
         self._embed_datatypes = embed_datatypes or {}
         for k, v in self._global_metadata_desc.items():
             if v.data_type not in [DataType.VARCHAR, DataType.INT32, DataType.FLOAT, DataType.BOOLEAN]:
-                raise ValueError(f"[Chromadb Store] Unsupported data type {v.data_type} for global metadata {k}"
-                                 " (only string, int, float, bool are supported)")
+                raise ValueError(f'[Chromadb Store] Unsupported data type {v.data_type} for global metadata {k}'
+                                 ' (only string, int, float, bool are supported)')
         for k, v in self._embed_datatypes.items():
             if v not in [DataType.FLOAT_VECTOR, DataType.SPARSE_FLOAT_VECTOR]:
-                raise ValueError(f"[Chromadb Store] Unsupported data type {v} for embed key {k}"
-                                 " (only float vector and sparse float vector are supported)")
+                raise ValueError(f'[Chromadb Store] Unsupported data type {v} for embed key {k}'
+                                 ' (only float vector and sparse float vector are supported)')
         if self._dir:
             self._client = chromadb.PersistentClient(path=self._dir, **self._client_kwargs)
-            LOG.success(f"Initialzed chromadb in path: {self._dir}")
+            LOG.success(f'Initialzed chromadb in path: {self._dir}')
         else:
             self._client = chromadb.HttpClient(host=self._host, port=self._port, **self._client_kwargs)
-            LOG.success(f"Initialzed chromadb in host: {self._host}, port: {self._port}")
+            LOG.success(f'Initialzed chromadb in host: {self._host}, port: {self._port}')
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
@@ -109,14 +109,14 @@ class ChromadbStore(LazyLLMStoreBase):
             embed_keys = list(data_embeddings.keys())
             for embed_key in embed_keys:
                 if embed_key not in self._embed_datatypes:
-                    raise ValueError(f"Embed key {embed_key} not found in embed_datatypes")
+                    raise ValueError(f'Embed key {embed_key} not found in embed_datatypes')
                 collection = self._client.get_or_create_collection(
                     name=self._gen_collection_name(collection_name, embed_key), configuration=self._index_kwargs)
                 for i in range(0, len(data), INSERT_BATCH_SIZE):
                     collection.upsert(**self._serialize_data(data[i: i + INSERT_BATCH_SIZE], embed_key))
             return True
         except Exception as e:
-            LOG.error(f"[Chromadb Store - upsert] Failed to create collection {collection_name}: {e}")
+            LOG.error(f'[Chromadb Store - upsert] Failed to create collection {collection_name}: {e}')
             LOG.error(traceback.format_exc())
             return False
 
@@ -146,7 +146,7 @@ class ChromadbStore(LazyLLMStoreBase):
                     collection.delete(**filters)
                 return True
         except Exception as e:
-            LOG.error(f"[Chromadb Store - delete] Failed to delete collection {collection_name}: {e}")
+            LOG.error(f'[Chromadb Store - delete] Failed to delete collection {collection_name}: {e}')
             LOG.error(traceback.format_exc())
             return False
 
@@ -183,7 +183,7 @@ class ChromadbStore(LazyLLMStoreBase):
                     entry['embedding'][embed_key] = list(emb)
             return list(res.values())
         except Exception as e:
-            LOG.error(f"[ChromadbStore - get] task fail: {e}")
+            LOG.error(f'[ChromadbStore - get] task fail: {e}')
             LOG.error(traceback.format_exc())
 
     @override
@@ -202,7 +202,7 @@ class ChromadbStore(LazyLLMStoreBase):
                     res.append({'uid': uid, 'score': 1 - dis})
             return res
         except Exception as e:
-            LOG.error(f"[ChromadbStore - search] task fail: {e}")
+            LOG.error(f'[ChromadbStore - search] task fail: {e}')
             LOG.error(traceback.format_exc())
 
     def _construct_criteria(self, criteria: dict) -> dict:
@@ -241,4 +241,4 @@ class ChromadbStore(LazyLLMStoreBase):
         return GLOBAL_META_KEY_PREFIX + k
 
     def _gen_collection_name(self, collection_name: str, embed_key: str) -> str:
-        return collection_name + '_' + embed_key + "_embed"
+        return collection_name + '_' + embed_key + '_embed'

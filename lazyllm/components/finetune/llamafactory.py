@@ -36,7 +36,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
                 base_model = defatult_path
         if not merge_path:
             save_path = os.path.join(lazyllm.config['train_target_root'], target_path)
-            target_path, merge_path = os.path.join(save_path, "lazyllm_lora"), os.path.join(save_path, "lazyllm_merge")
+            target_path, merge_path = os.path.join(save_path, 'lazyllm_lora'), os.path.join(save_path, 'lazyllm_merge')
             os.system(f'mkdir -p {target_path} {merge_path}')
         super().__init__(
             base_model,
@@ -128,15 +128,15 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
                         media_types.append(media)
                 if media_types:
                     columns = {item: item for item in media_types}
-                    columns.update({"messages": "messages"})
+                    columns.update({'messages': 'messages'})
                     temp_dataset_dict[file_name].update({
-                        "tags": {
-                            "role_tag": "role",
-                            "content_tag": "content",
-                            "user_tag": "user",
-                            "assistant_tag": "assistant"
+                        'tags': {
+                            'role_tag': 'role',
+                            'content_tag': 'content',
+                            'user_tag': 'user',
+                            'assistant_tag': 'assistant'
                         },
-                        "columns": columns
+                        'columns': columns
                     })
             except Exception:
                 pass
@@ -170,7 +170,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         updated_template_str = yaml.dump(dict(self.template_dict), default_flow_style=False)
         self.temp_yaml_file = self._build_temp_yaml(updated_template_str)
 
-        formatted_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        formatted_date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         random_value = random.randint(1000, 9999)
         self.log_file_path = f'{self.target_path}/train_log_{formatted_date}_{random_value}.log'
 

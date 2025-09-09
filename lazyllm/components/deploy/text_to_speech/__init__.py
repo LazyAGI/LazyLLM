@@ -19,7 +19,7 @@ class TTSDeploy:
         elif name.startswith('musicgen'):
             return MusicGenDeploy
         else:
-            raise RuntimeError(f"Not support model: {name}")
+            raise RuntimeError(f'Not support model: {name}')
 
 __all__ = [
     'TTSDeploy',

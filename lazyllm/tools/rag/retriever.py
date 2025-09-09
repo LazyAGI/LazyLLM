@@ -29,7 +29,7 @@ class _PostProcess(object):
 
 class Retriever(ModuleBase, _PostProcess):
     def __init__(self, doc: object, group_name: str, similarity: Optional[str] = None,
-                 similarity_cut_off: Union[float, Dict[str, float]] = float("-inf"), index: str = "default",
+                 similarity_cut_off: Union[float, Dict[str, float]] = float('-inf'), index: str = 'default',
                  topk: int = 6, embed_keys: Optional[List[str]] = None, target: Optional[str] = None,
                  output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs):
         super().__init__()

@@ -6,13 +6,13 @@ from lazyllm import LOG
 templates = dict(
     # Template used by Alpaca-LoRA.
     alpaca={
-        "prompt": "Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.\n\n### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:\n",  # noqa E501
-        "response_split": "### Response:",
+        'prompt': 'Below is an instruction that describes a task, paired with an input that provides further context. Write a response that appropriately completes the request.\n\n### Instruction:\n{instruction}\n\n### Input:\n{input}\n\n### Response:\n',  # noqa E501
+        'response_split': '### Response:',
     },
     # Template used by internLM
     puyu={
-        "prompt": "<bos><|System|>:You are an AI assistant whose name is InternLM (书生·浦语).\n- InternLM (书生·浦语) is a conversational language model that is developed by Shanghai AI Laboratory (上海人工智能实验室). It is designed to be helpful, honest, and harmless.\n- InternLM (书生·浦语) can understand and communicate fluently in the language chosen by the user such as English and 中文.<eosys>\n<|Human|>:{instruction}<eoh>\n<|Assistant|>:please tell me what to do。ി\n<|Human|>:{input}<eoh>\n<|Assistant|>:", # noqa E501
-        "response_split": "<|Assistant|>:",
+        'prompt': '<bos><|System|>:You are an AI assistant whose name is InternLM (书生·浦语).\n- InternLM (书生·浦语) is a conversational language model that is developed by Shanghai AI Laboratory (上海人工智能实验室). It is designed to be helpful, honest, and harmless.\n- InternLM (书生·浦语) can understand and communicate fluently in the language chosen by the user such as English and 中文.<eosys>\n<|Human|>:{instruction}<eoh>\n<|Assistant|>:please tell me what to do。ി\n<|Human|>:{input}<eoh>\n<|Assistant|>:', # noqa E501
+        'response_split': '<|Assistant|>:',
     }
 )
 

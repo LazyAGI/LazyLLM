@@ -113,7 +113,7 @@ class MineruPDFReader(LazyLLMReaderBase):
                 if cur_title:
                     block['title'] = cur_title
                 block['text'] = f'![{block["img_caption"]}]({block["image_path"]})'
-                block['text'] += f'\n{block["img_footnote"]}\n' if block["img_footnote"] else '\n'
+                block['text'] += f'\n{block["img_footnote"]}\n' if block['img_footnote'] else '\n'
                 blocks.append(block)
             elif content['type'] == 'table':
                 if self._extract_table:
@@ -125,7 +125,7 @@ class MineruPDFReader(LazyLLMReaderBase):
                         self._normalize_content_recursively(content.get('table_footnote', [])))
                     if block.get('text', None):
                         block['text'] = f'{block["table_caption"]}\n{block["text"]}'.lstrip('\n')
-                        block['text'] += f'\n{block["table_footnote"]}\n' if block["table_footnote"] else '\n'
+                        block['text'] += f'\n{block["table_footnote"]}\n' if block['table_footnote'] else '\n'
                 else:
                     block['image_path'] = content.get('img_path', '')
                     block['text'] = f'![table]({block["image_path"]})'

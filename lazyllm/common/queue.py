@@ -8,8 +8,8 @@ from typing import Type
 from lazyllm.thirdparty import redis
 from filelock import FileLock
 
-config.add("default_fsqueue", str, "sqlite", "DEFAULT_FSQUEUE")
-config.add("fsqredis_url", str, "", "FSQREDIS_URL")
+config.add('default_fsqueue', str, 'sqlite', 'DEFAULT_FSQUEUE')
+config.add('fsqredis_url', str, '', 'FSQREDIS_URL')
 
 class FileSystemQueue(ABC):
 
@@ -68,11 +68,11 @@ class FileSystemQueue(ABC):
 # true means one connection can be used in multiple thread
 # refer to: https://sqlite.org/compile.html#threadsafe
 def sqlite3_check_threadsafety() -> bool:
-    conn = sqlite3.connect(":memory:")
-    res = conn.execute("""
+    conn = sqlite3.connect(':memory:')
+    res = conn.execute('''
         select * from pragma_compile_options
         where compile_options like 'THREADSAFE=%'
-    """).fetchall()
+    ''').fetchall()
     conn.close()
     return True if res[0][0] == 'THREADSAFE=1' else False
 
@@ -113,7 +113,7 @@ class SQLiteQueue(FileSystemQueue):
                 conn.commit()
 
     def _dequeue(self, id, limit=None):
-        """Retrieve and remove all messages from the queue."""
+        '''Retrieve and remove all messages from the queue.'''
         with self._lock:
             with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
                 cursor = conn.cursor()
@@ -167,7 +167,7 @@ class SQLiteQueue(FileSystemQueue):
 class RedisQueue(FileSystemQueue):
     def __init__(self, klass='__default__'):
         super(__class__, self).__init__(klass=klass)
-        self.redis_url = config["fsqredis_url"]
+        self.redis_url = config['fsqredis_url']
         self._lock = threading.Lock()
         self._initialize_db()
 
@@ -176,7 +176,7 @@ class RedisQueue(FileSystemQueue):
             conn = redis.Redis.from_url(self.redis_url)
             assert (
                 conn.ping()
-            ), "Found fsque reids config but can not connect, please check your config `LAZYLLM_FSQREDIS_URL`."
+            ), 'Found fsque reids config but can not connect, please check your config `LAZYLLM_FSQREDIS_URL`.'
             if not conn.exists(self.sid):
                 conn.rpush(self.sid, '<start>')
 
