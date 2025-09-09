@@ -101,8 +101,8 @@ add_chinese_doc('LazyLLMLaunchersBase.clone', '''\
 Args:
     None.
 
-Returns:
-    LazyLLMLaunchersBase: 克隆出的启动器实例。
+**Returns:**\n
+- LazyLLMLaunchersBase: 克隆出的启动器实例。
 ''')
 
 add_english_doc('LazyLLMLaunchersBase.clone', '''\
@@ -111,8 +111,8 @@ Deep-copy this launcher, assign a new unique _id, and return the cloned instance
 Args:
     None.
 
-Returns:
-    LazyLLMLaunchersBase: The cloned launcher.
+**Returns:**\n
+- LazyLLMLaunchersBase: The cloned launcher.
 ''')
 
 # Launcher-EmptyLauncher
@@ -122,7 +122,6 @@ add_chinese_doc('EmptyLauncher', '''\
 Args:
     subprocess (bool): 是否使用子进程来启动。默认为 `False`。
     sync (bool): 是否同步执行作业。默认为 `True`，否则为异步执行。
-
 ''')
 
 add_english_doc('EmptyLauncher', '''\
@@ -131,7 +130,6 @@ This class is a subclass of ``LazyLLMLaunchersBase`` and serves as a local launc
 Args:
     subprocess (bool): Whether to use a subprocess to launch. Default is ``False``.
     sync (bool): Whether to execute jobs synchronously. Default is ``True``, otherwise it executes asynchronously.
-
 ''')
 
 add_example('EmptyLauncher', '''\
@@ -155,7 +153,6 @@ Args:
     sync (bool): 是否同步执行作业。默认为 ``True``，否则为异步执行。
     **kwargs: 额外参数，其中支持：
         - num_can_use_nodes (int): 可使用的最大节点数。默认为 ``5``。
-
 ''')
 
 add_english_doc('SlurmLauncher', '''\
@@ -173,7 +170,6 @@ Args:
     sync (bool): Whether to execute the job synchronously. Defaults to ``True``, otherwise it will be executed asynchronously.
     **kwargs: Extra keyword arguments, including:
         - num_can_use_nodes (int): The maximum number of nodes that can be used. Defaults to ``5``.
-
 ''')
 
 add_example('SlurmLauncher', '''\
@@ -188,8 +184,8 @@ add_chinese_doc('SlurmLauncher.makejob', '''\
 Args:
     cmd: 要执行的命令字符串。
 
-Returns:
-    SlurmLauncher.Job: 配置好的 Slurm 作业对象。
+**Returns:**\n
+- SlurmLauncher.Job: 配置好的 Slurm 作业对象。
 ''')
 
 add_english_doc('SlurmLauncher.makejob', '''\
@@ -198,8 +194,8 @@ Creates and returns a SlurmLauncher.Job object.
 Args:
     cmd: The command string to execute.
 
-Returns:
-    SlurmLauncher.Job: A configured Slurm job object.
+**Returns:**\n
+- SlurmLauncher.Job: A configured Slurm job object.
 ''')
 
 add_chinese_doc('SlurmLauncher.get_idle_nodes', '''\
@@ -210,8 +206,8 @@ add_chinese_doc('SlurmLauncher.get_idle_nodes', '''\
 Args:
     partion (str, optional): 要查询的分区名称。默认为 ``None``，此时使用当前启动器的分区。
 
-Returns:
-    dict: 以节点 IP 为键、可用 GPU 数量为值的字典。
+**Returns:**\n
+- dict: 以节点 IP 为键、可用 GPU 数量为值的字典。
 ''')
 
 add_english_doc('SlurmLauncher.get_idle_nodes', '''\
@@ -222,8 +218,8 @@ This method queries the Slurm queue status and node information to calculate the
 Args:
     partion (str, optional): The partition name to query. Defaults to ``None``, in which case the current launcher's partition will be used.
 
-Returns:
-    dict: A dictionary with node IP as the key and the number of available GPUs as the value.
+**Returns:**\n
+- dict: A dictionary with node IP as the key and the number of available GPUs as the value.
 ''')
 
 add_chinese_doc('SlurmLauncher.launch', '''\
@@ -234,8 +230,8 @@ add_chinese_doc('SlurmLauncher.launch', '''\
 Args:
     job: 要启动的 SlurmLauncher.Job 对象。
 
-Returns:
-    作业的返回值。
+**Returns:**\n
+- 作业的返回值。
 
 Raises:
     AssertionError: 如果传入的 job 不是 SlurmLauncher.Job 类型。
@@ -249,8 +245,8 @@ This method starts the specified Slurm job and decides whether to wait for job c
 Args:
     job: The SlurmLauncher.Job object to launch.
 
-Returns:
-    The return value of the job.
+**Returns:**\n
+- The return value of the job.
 
 Raises:
     AssertionError: If the provided job is not a SlurmLauncher.Job type.
@@ -271,7 +267,6 @@ Args:
     ngpus: (int): 每个节点要使用的 GPU 数量。默认为 ``1``, 使用1块 GPU。
     torchrun (bool): 是否使用 ``torchrun`` 启动作业。默认为 ``False``。
     sync (bool): 是否同步执行作业。默认为 ``True``，否则为异步执行。
-
 ''')
 
 add_english_doc('ScoLauncher', '''\
@@ -288,7 +283,6 @@ Args:
     ngpus (int): The number of GPUs per node. Defaults to ``1``, using 1 GPU.
     torchrun (bool): Whether to start the job with ``torchrun``. Defaults to ``False``.
     sync (bool): Whether to execute the job synchronously. Defaults to ``True``, otherwise it will be executed asynchronously.
-
 ''')
 
 add_example('ScoLauncher', '''\
@@ -321,7 +315,6 @@ Args:
 Notes: 
     - ``RemoteLauncher`` is not a direct launcher but dynamically creates a launcher based on the configuration. 
     - The ``lazyllm.config['launcher']`` in the configuration file specifies a launcher class name present in the ``lazyllm.launchers`` module. This configuration can be set by setting the environment variable ``LAZYLLM_DEAULT_LAUNCHER``. For example: ``export LAZYLLM_DEAULT_LAUNCHER=sco``, ``export LAZYLLM_DEAULT_LAUNCHER=slurm``.
-
 ''')
 
 add_example('RemoteLauncher', '''\
@@ -333,6 +326,7 @@ add_example('RemoteLauncher', '''\
 add_chinese_doc('Job', '''\
 通用任务调度执行类。
 该类用于封装一个通过启动器（launcher）调度执行的任务，支持命令包装、同步控制、返回值提取、命令固定等功能。
+
 Args:
     cmd (LazyLLMCMD): 要执行的命令对象。
     launcher (Any): 启动器实例，用于实际任务调度执行。
@@ -342,6 +336,7 @@ Args:
 add_english_doc('Job', '''\
 Generic task scheduling executor.
 This class wraps a task that is launched via a launcher, with features like command fixing, output handling, sync control, and return value capturing.
+
 Args:
     cmd (LazyLLMCMD): The command object to be executed.
     launcher (Any): Launcher instance responsible for task dispatching.
@@ -351,24 +346,29 @@ Args:
 add_chinese_doc('Job.get_executable_cmd', '''\
 生成最终可执行命令。
 如果已缓存固定命令（fixed），则直接返回。否则根据原始命令进行包裹（wrap）并缓存为 `_fixed_cmd`。
+
 Args:
     fixed (bool): 是否使用已固定的命令对象（若已存在）。
-Returns:
-    LazyLLMCMD: 可直接执行的命令对象。
+
+**Returns:**\n
+- LazyLLMCMD: 可直接执行的命令对象。
 ''')
 
 add_english_doc('Job.get_executable_cmd', '''\
 Generate the final executable command.
 If a fixed command already exists, return it. Otherwise, wrap the original command and cache it as `_fixed_cmd`.
+
 Args:
     fixed (bool): Whether to use the cached fixed command.
-Returns:
-    LazyLLMCMD: The executable command object.
+
+**Returns:**\n
+- LazyLLMCMD: The executable command object.
 ''')
 
 add_chinese_doc('Job.start', '''\
 对外接口：启动作业，并支持失败时的自动重试。
 若作业执行失败，会根据 `restart` 参数控制重试次数。
+
 Args:
     restart (int): 重试次数。默认为 3。
     fixed (bool): 是否使用固定后的命令。用于避免多次构建。
@@ -377,6 +377,7 @@ Args:
 add_english_doc('Job.start', '''\
 Public interface to start the job with optional retry on failure.
 If the job fails, retries execution based on the `restart` parameter.
+
 Args:
     restart (int): Number of times to retry upon failure. Default is 3.
     fixed (bool): Whether to use the fixed version of the command.
@@ -385,12 +386,14 @@ Args:
 add_chinese_doc('Job.restart', '''\
 重新启动作业流程。
 该函数会先停止已有进程，等待 2 秒后重新启动作业。
+
 Args:
     fixed (bool): 是否使用固定后的命令。
 ''')
 
 add_english_doc('Job.restart', '''\
 Restart the job by first stopping it and then restarting after a short delay.
+
 Args:
     fixed (bool): Whether to reuse the fixed command object.
 ''')
@@ -428,7 +431,7 @@ This property is abstract and must be implemented by subclasses.
 add_chinese_doc('K8sLauncher', '''\
 K8sLauncher是一个基于Kubernetes的部署启动器，用于在Kubernetes集群中部署和管理服务。
 
-参数:
+Args:
     kube_config_path (str): Kubernetes配置文件路径。
     resource_config_path (str): 资源配置文件路径。
     image (str): 容器镜像。
@@ -462,11 +465,11 @@ Args:
 add_chinese_doc('K8sLauncher.makejob', '''\
 创建一个Kubernetes作业实例。
 
-参数:
+Args:
     cmd (str): 要执行的命令。
 
-返回值:
-    K8sLauncher.Job: 一个新的Kubernetes作业实例。
+**Returns:**\n
+- K8sLauncher.Job: 一个新的Kubernetes作业实例。
 ''')
 
 add_english_doc('K8sLauncher.makejob', '''\
@@ -475,22 +478,22 @@ Create a Kubernetes job instance.
 Args:
     cmd (str): The command to execute.
 
-Returns:
-    K8sLauncher.Job: A new Kubernetes job instance.
+**Returns:**\n
+- K8sLauncher.Job: A new Kubernetes job instance.
 ''')
 
 add_chinese_doc('K8sLauncher.launch', '''\
 启动一个Kubernetes作业或可调用对象。
 
-参数:
+Args:
     f (K8sLauncher.Job): 要启动的Kubernetes作业实例。
     *args: 位置参数。
     **kw: 关键字参数。
 
-返回值:
-    Any: 作业的返回值。
+**Returns:**\n
+- Any: 作业的返回值。
 
-异常:
+Raises:
     RuntimeError: 当提供的不是Deployment对象时抛出。
 ''')
 
@@ -502,8 +505,8 @@ Args:
     *args: Positional arguments.
     **kw: Keyword arguments.
 
-Returns:
-    Any: The return value of the job.
+**Returns:**\n
+- Any: The return value of the job.
 
 Raises:
     RuntimeError: When the provided object is not a Deployment object.

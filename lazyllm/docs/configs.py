@@ -12,10 +12,10 @@ add_example = functools.partial(utils.add_example, module=lazyllm)
 add_chinese_doc('Config', '''\
 Config是LazyLLM提供的配置类，可以支持通过加载配置文件、设置环境变量、编码写入默认值等方式设置LazyLLM框架的相关配置，以及导出当前所有的配置项和对应的值。
 Config模块自动生成一个config对象，其中包含所有的配置。
+
 Args:
     prefix (str, optional): 环境变量前缀。默认为 'LAZYLLM'
     home (str, optional): 配置文件目录路径。默认为 '~/.lazyllm'
-
 ''')
 
 
@@ -23,16 +23,18 @@ add_english_doc('Config', '''\
 Config is a configuration class provided by LazyLLM, which loads configurations of LazyLLM framework from config files,
 environment variables, or specify them explicitly. it can export all configuration items as well.
 The Config module automatically generates an object named 'config' containing all configurations.
+
 Args:
     prefix (str, optional): Environment variable prefix. Defaults to 'LAZYLLM'
     home (str, optional): Configuration file directory path. Defaults to '~/.lazyllm'
 ''')
 
 
-add_chinese_doc('Config.done', r'''\
+add_chinese_doc('Config.done', '''\
 用于检查config.json配置文件中是否还有没有通过add方法载入的配置项
 ''')
-add_chinese_doc('Config.getenv', r'''\
+
+add_chinese_doc('Config.getenv', '''\
 用于检查config.json配置文件中是否还有没有通过add方法载入的配置项
 Config.getenv(name, type, default): -> str\n
 获取LazyLLM相关环境变量的值
@@ -41,10 +43,9 @@ Args:
     name (str): 不包含前缀的环境变量名字，不区分大小写。函数将从拼接了前缀和此名字的全大写的环境变量中获取对应的值。
     type (type): 指定该配置的类型，例如str。对于bool型，函数会将'TRUE', 'True', 1, 'ON', '1'这5种输入转换为True。
     default (可选): 若无法获取到环境变量的值，将返回此变量。
-
 ''')
 
-add_chinese_doc('Config.add', r'''\
+add_chinese_doc('Config.add', '''\
 将值加载至LazyLLM的配置项中。函数首先尝试从加载自config.json的字典中查找名字为name的值。若找到则从该字典中删去名为name的键。并将对应的值写入config。
 若env是一个字符串，函数会调用getenv寻找env对应的LazyLLM环境变量，若找到则写入config。如果env为一个字典，函数将尝试调用getenv寻找字典中的key对于的环境变量并转换为bool型。
 若转换完成的bool值是True，则将字典中当前的key对应的值写入config。
@@ -54,11 +55,10 @@ Args:
     type (type): 该配置的类型
     default (可选): 若无法获取到任何值，该配置的默认值
     env (可选): 不包含前缀的环境变量名称，或者一个字典，其中的key是不包含前缀的环境变量名称，value是要加入配置的值。
-
 ''')
-add_chinese_doc('Config.get_all_configs', r'''\
-获取config中所有的配置
 
+add_chinese_doc('Config.get_all_configs', '''\
+获取config中所有的配置
 ''')
 
 add_english_doc('Config.done', '''\
@@ -100,7 +100,6 @@ Get all configurations from the config.
 
 Args:
     None.
-
 ''')
 
 
@@ -116,6 +115,7 @@ add_example('Config.get_all_configs', '''\
 add_chinese_doc('Config.get_config', '''\ 
 静态方法：从配置字典中获取配置。
 这是一个简单的配置获取方法，主要用于从已加载的配置字典中提取配置信息。
+
 Args:
     cfg (dict): 从配置文件中读取的配置字典。
 ''')
@@ -123,6 +123,7 @@ Args:
 add_english_doc('Config.get_config', '''
 Static method: Get configuration from config dictionary.
 This is a simple configuration retrieval method mainly used to extract configuration information from already loaded configuration dictionaries.
+
 Args:
     cfg (dict): The configuration dictionary read from the config file.
 ''')
@@ -141,6 +142,7 @@ add_english_doc('Config.temp', '''
 Context manager for temporary configuration modification.
 
 Temporarily modifies the value of the specified configuration item within the with statement block, and automatically restores the original value when exiting the block.
+
 Args:
     name (str): The name of the configuration item to temporarily change.
     value (Any): The temporary value to set.
