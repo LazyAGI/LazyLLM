@@ -4039,3 +4039,93 @@ The returned command can be a string, tuple, or list, representing the instructi
 **Note:**  
 If the `apply` method is not overridden, this command will be used to create a job for the launcher to run.
 ''')
+
+add_chinese_doc('deploy.ray.Distributed', """\
+分布式部署类，继承自LazyLLMDeployBase。
+
+提供基于Ray框架的分布式模型部署功能，支持多节点集群部署。
+
+Args:
+    launcher: 启动器配置，默认为远程启动器(ngpus=1)
+    port (int, optional): 服务端口号，默认为随机端口(30000-40000)
+
+Attributes:
+    finetuned_model: 微调后的模型路径
+    base_model: 基础模型路径
+    master_ip: 主节点IP地址
+
+Methods:
+    cmd(finetuned_model, base_model, master_ip): 生成部署命令
+    geturl(job): 获取部署服务的URL地址
+""")
+
+add_english_doc('deploy.ray.Distributed', """\
+Distributed deployment class, inherits from LazyLLMDeployBase.
+
+Provides distributed model deployment functionality based on Ray framework, supports multi-node cluster deployment.
+
+Args:
+    launcher: Launcher configuration, defaults to remote launcher(ngpus=1)
+    port (int, optional): Service port number, defaults to random port(30000-40000)
+
+Attributes:
+    finetuned_model: Fine-tuned model path
+    base_model: Base model path
+    master_ip: Master node IP address
+
+Methods:
+    cmd(finetuned_model, base_model, master_ip): Generate deployment command
+    geturl(job): Get deployed service URL address
+""")
+
+add_chinese_doc('deploy.ray.Distributed.cmd', """\
+生成Ray分布式部署命令。
+
+根据是否为主节点生成相应的Ray启动命令，支持头节点和工作节点两种模式。
+
+Args:
+    finetuned_model: 微调后的模型路径
+    base_model: 基础模型路径
+    master_ip: 主节点IP地址，如果为空则作为头节点启动
+
+Returns:
+    LazyLLMCMD: 包含部署命令的对象
+""")
+
+add_english_doc('deploy.ray.Distributed.cmd', """\
+Generate Ray distributed deployment command.
+
+Generate corresponding Ray startup command based on whether it is a master node, supports both head node and worker node modes.
+
+Args:
+    finetuned_model: Fine-tuned model path
+    base_model: Base model path
+    master_ip: Master node IP address, if empty starts as head node
+
+Returns:
+    LazyLLMCMD: Object containing deployment command
+""")
+
+add_chinese_doc('deploy.ray.Distributed.geturl', """\
+获取分布式部署服务的URL地址。
+
+根据部署模式返回相应的服务地址信息，支持显示模式和实际部署模式。
+
+Args:
+    job: 任务对象，默认为当前任务
+
+Returns:
+    Package: 包含模型路径和服务地址的打包对象
+""")
+
+add_english_doc('deploy.ray.Distributed.geturl', """\
+Get URL address of distributed deployment service.
+
+Return corresponding service address information based on deployment mode, supports display mode and actual deployment mode.
+
+Args:
+    job: Job object, defaults to current job
+
+Returns:
+    Package: Packaged object containing model path and service address
+""")
