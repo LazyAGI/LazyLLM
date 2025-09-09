@@ -556,7 +556,7 @@ Args:
     prompt (str/dict/PrompterBase/None): 要设置的 Prompt。
     history (list): 对话历史，仅当 prompt 为字符串或字典时有效。
 
-**Returns**\n
+**Returns:**\n
 - self: 便于链式调用。
 ''')
 
@@ -567,7 +567,7 @@ Args:
     prompt (str/dict/PrompterBase/None): The prompt to set.
     history (list): Conversation history, only valid when prompt is str or dict.
 
-**Returns**\n
+**Returns:**\n
 - self: For chaining calls.
 ''')
 
@@ -577,7 +577,7 @@ add_chinese_doc('servermodule.LLMBase.formatter', '''\
 Args:
     format (FormatterBase/Callable/None): 格式化器对象或函数，默认为 None。
 
-**Returns**\n
+**Returns:**\n
 - self: 便于链式调用。
 ''')
 
@@ -587,7 +587,7 @@ Set or switch the output formatter. Supports None, FormatterBase subclass or cal
 Args:
     format (FormatterBase/Callable/None): Formatter object or function, default is None.
 
-**Returns**\n
+**Returns:**\n
 - self: For chaining calls.
 ''')
 
@@ -601,7 +601,7 @@ Args:
     stream (bool/dict/None): 新的流式设置，可选。
     history (list/None): 新的对话历史，仅在设置 Prompt 时有效。
 
-**Returns**\n
+**Returns:**\n
 - LLMBase: 新的共享实例。
 ''')
 
@@ -615,7 +615,7 @@ Args:
     stream (bool/dict/None): New streaming settings, optional.
     history (list/None): New conversation history, effective only when setting prompt.
 
-**Returns**\n
+**Returns:**\n
 - LLMBase: The new shared instance.
 ''')
 
@@ -940,12 +940,14 @@ add_example('TrainableModule.wait', '''\
 
 add_chinese_doc('TrainableModule.stop', '''\
 暂停模型特定任务。
+
 Args:
     task_name(str): 需要暂停的任务名, 默认为None(默认暂停deploy任务)
 ''')
 
 add_english_doc('TrainableModule.stop', '''\
 Pause a specific task of the model.
+
 Args:
     task_name (str): The name of the task to pause. Defaults to None (pauses the 'deploy' task by default).
 ''')
@@ -959,6 +961,7 @@ add_example('TrainableModule.stop', '''\
 
 add_chinese_doc('TrainableModule.prompt', '''\
 处理输入的prompt生成符合模型需求的格式。
+
 Args:
     prompt(str): 输入的prompt, 默认为空。
     history(**List): 对话历史记忆。
@@ -966,6 +969,7 @@ Args:
 
 add_english_doc('TrainableModule.prompt', '''\
 Processes the input prompt and generates a format compatible with the model.
+
 Args:
     prompt (str): The input prompt. Defaults to an empty string.
     history (List): Conversation history.
@@ -1002,7 +1006,7 @@ get_all_models() -> List[str]
 
 Returns a list of all fine-tuned model paths under the current target path.
 
-Returns:
+**Returns:**\n
 - List[str]: A list of fine-tuned model identifiers or directories.
 ''')
 
@@ -1011,7 +1015,7 @@ get_all_models() -> List[str]
 
 返回当前目标路径下所有微调模型的路径列表。
 
-返回值：
+**Returns:**\n
 - List[str]：所有微调模型的名称或路径列表。
 ''')
 
@@ -1021,9 +1025,9 @@ status(task_name: Optional[str] = None) -> str
 Returns the current status of a specific task in the module.
 
 Args:
-- task_name (Optional[str]): Name of the task (e.g., 'deploy'). Defaults to 'deploy' if not provided.
+    task_name (Optional[str]): Name of the task (e.g., 'deploy'). Defaults to 'deploy' if not provided.
 
-Returns:
+**Returns:**\n
 - str: Status string such as 'running', 'finished', or 'stopped'.
 ''')
 
@@ -1032,10 +1036,10 @@ status(task_name: Optional[str] = None) -> str
 
 返回模块中指定任务的当前状态。
 
-参数：
-- task_name (Optional[str])：任务名称（如 'deploy'），默认返回 'deploy' 任务的状态。
+Args：
+    task_name (Optional[str])：任务名称（如 'deploy'），默认返回 'deploy' 任务的状态。
 
-返回值：
+**Returns:**\n
 - str：状态字符串，例如 'running'、'finished' 或 'stopped'。
 ''')
 
@@ -1045,7 +1049,7 @@ set_specific_finetuned_model(model_path: str) -> None
 Sets the model to be used from a specific fine-tuned model path.
 
 Args:
-- model_path (str): The path to the fine-tuned model to use.
+    model_path (str): The path to the fine-tuned model to use.
 ''')
 
 add_chinese_doc("TrainableModule.set_specific_finetuned_model", '''\
@@ -1053,8 +1057,8 @@ set_specific_finetuned_model(model_path: str) -> None
 
 设置要使用的特定微调模型路径。
 
-参数：
-- model_path (str)：要使用的微调模型的路径。
+Args:
+    model_path (str)：要使用的微调模型的路径。
 ''')
 
 add_english_doc("TrainableModule.set_default_parameters", '''\
@@ -1063,9 +1067,8 @@ set_default_parameters(*, optional_keys: List[str] = [], **kw) -> None
 Sets the default parameters to be used during inference or evaluation.
 
 Args:
-- optional_keys (List[str]): A list of optional keys to allow additional parameters without error.
-- **kw: Key-value pairs for default parameters such as temperature, top_k, etc.
-
+    optional_keys (List[str]): A list of optional keys to allow additional parameters without error.
+    **kw: Key-value pairs for default parameters such as temperature, top_k, etc.
 ''')
 
 add_chinese_doc("TrainableModule.set_default_parameters", '''\
@@ -1073,10 +1076,9 @@ set_default_parameters(*, optional_keys: List[str] = [], **kw) -> None
 
 设置用于推理或评估的默认参数。
 
-参数：
-- optional_keys (List[str])：允许传入额外参数的可选键列表。
-- **kw：用于设置默认参数的键值对，如 temperature、top_k 等。
-
+Args:
+    optional_keys (List[str])：允许传入额外参数的可选键列表。
+    **kw：用于设置默认参数的键值对，如 temperature、top_k 等。
 ''')
 
 # add_example('TrainableModule', '''\
@@ -1139,7 +1141,6 @@ add_chinese_doc('UrlModule.forward', '''\
 
 add_english_doc('UrlModule.forward', '''\
 Defines the computation steps to be executed each time. All subclasses of ModuleBase need to override this function.
-
 ''')
 
 add_example('UrlModule.forward', '''\
@@ -1506,12 +1507,12 @@ add_chinese_doc('OnlineChatModuleBase', '''\
 OnlineChatModuleBase是管理开放平台的LLM接口的公共组件，具备训练、部署、推理等关键能力。OnlineChatModuleBase本身不支持直接实例化，
                 需要子类继承该类，并实现微调相关的上传文件、创建微调任务、查询微调任务以及和部署相关的创建部署服务、查询部署任务等接口。
 
-如果你需要支持新的开放平台的LLM的能力，请让你自定义的类继承自OnlineChatModuleBase：\n
-1、根据新平台的模型返回参数情况考虑对返回结果进行后处理，如果模型返回的格式和openai一致，可以不用做任何处理\n
-2、如果新平台支持模型的微调，也需要继承FileHandlerBase类，该类主要是验证文件格式，并在自定义类中把.jsonl格式数据转换为模型支持的数据才能用于后面的模型训练\n
-3、如果新平台支持模型的微调，则需要实现文件上传、创建微调服务、查询微调服务的接口。即使新平台不用对微调后的模型进行部署，也请实现一个假的创建部署服务和查询部署服务的接口即可\n
-4、如果新平台支持模型的微调，可以提供一个支持微调的模型列表，有助于在微调服务时进行判断\n
-5、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
+如果你需要支持新的开放平台的LLM的能力，请让你自定义的类继承自OnlineChatModuleBase：
+    1、根据新平台的模型返回参数情况考虑对返回结果进行后处理，如果模型返回的格式和openai一致，可以不用做任何处理
+    2、如果新平台支持模型的微调，也需要继承FileHandlerBase类，该类主要是验证文件格式，并在自定义类中把.jsonl格式数据转换为模型支持的数据才能用于后面的模型训练
+    3、如果新平台支持模型的微调，则需要实现文件上传、创建微调服务、查询微调服务的接口。即使新平台不用对微调后的模型进行部署，也请实现一个假的创建部署服务和查询部署服务的接口即可
+    4、如果新平台支持模型的微调，可以提供一个支持微调的模型列表，有助于在微调服务时进行判断
+    5、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
 
 Args:
     model_series (str): 模型系列名称
@@ -1527,12 +1528,12 @@ Args:
 
 add_english_doc('OnlineChatModuleBase', '''\
 OnlineChatModuleBase is a public component that manages the LLM interface for open platforms, and has key capabilities such as training, deployment, and inference. OnlineChatModuleBase itself does not support direct instantiation; it requires subclasses to inherit from this class and implement interfaces related to fine-tuning, such as uploading files, creating fine-tuning tasks, querying fine-tuning tasks, and deployment-related interfaces, such as creating deployment services and querying deployment tasks.
-If you need to support the capabilities of a new open platform's LLM, please extend your custom class from OnlineChatModuleBase:\n
-1. Consider post-processing the returned results based on the parameters returned by the new platform's model. If the model's return format is consistent with OpenAI, no processing is necessary.\n
-2. If the new platform supports model fine-tuning, you must also inherit from the FileHandlerBase class. This class primarily validates file formats and converts .jsonl formatted data into a format supported by the model for subsequent training. \n
-3. If the new platform supports model fine-tuning, you must implement interfaces for file upload, creating fine-tuning services, and querying fine-tuning services. Even if the new platform does not require deployment of the fine-tuned model, please implement dummy interfaces for creating and querying deployment services.\n
-4. If the new platform supports model fine-tuning, provide a list of models that support fine-tuning to facilitate judgment during the fine-tuning service process.\n
-5. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
+If you need to support the capabilities of a new open platform's LLM, please extend your custom class from OnlineChatModuleBase:
+    1. Consider post-processing the returned results based on the parameters returned by the new platform's model. If the model's return format is consistent with OpenAI, no processing is necessary.
+    2. If the new platform supports model fine-tuning, you must also inherit from the FileHandlerBase class. This class primarily validates file formats and converts .jsonl formatted data into a format supported by the model for subsequent training. 
+    3. If the new platform supports model fine-tuning, you must implement interfaces for file upload, creating fine-tuning services, and querying fine-tuning services. Even if the new platform does not require deployment of the fine-tuned model, please implement dummy interfaces for creating and querying deployment services.
+    4. If the new platform supports model fine-tuning, provide a list of models that support fine-tuning to facilitate judgment during the fine-tuning service process.
+    5. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
 
 Args:
     model_series (str): Model series name
@@ -1616,7 +1617,6 @@ add_chinese_doc('OnlineChatModuleBase.set_train_tasks', """\
 Args:
     train_file: 训练数据文件路径或文件对象
     **kw: 训练超参数，如学习率、训练轮数等
-
 """)
 
 add_english_doc('OnlineChatModuleBase.set_train_tasks', """\
@@ -1627,7 +1627,6 @@ Configure training data file and training hyperparameters required for fine-tuni
 Args:
     train_file: Training data file path or file object
     **kw: Training hyperparameters such as learning rate, training epochs, etc.
-
 """)
 
 add_chinese_doc('OnlineChatModuleBase.set_specific_finetuned_model', """\
@@ -1640,7 +1639,6 @@ Args:
 
 **异常:** \n
 - ValueError: 当提供的model_id不在有效微调模型列表中时抛出
-
 """)
 
 add_english_doc('OnlineChatModuleBase.set_specific_finetuned_model', """\
@@ -1653,16 +1651,15 @@ Args:
 
 **Exceptions:** \n
 - ValueError: Raised when provided model_id is not in valid fine-tuned model list
-
 """)
 
 add_chinese_doc('OnlineEmbeddingModuleBase', '''\
 OnlineEmbeddingModuleBase是管理开放平台的嵌入模型接口的基类，用于请求文本获取嵌入向量。不建议直接对该类进行直接实例化。需要特定平台类继承该类进行实例化。
 
-如果你需要支持新的开放平台的嵌入模型的能力，请让你自定义的类继承自OnlineEmbeddingModuleBase：\n
-1、如果新平台的嵌入模型的请求和返回数据格式都和openai一样，可以不用做任何处理，只传url和模型即可\n
-2、如果新平台的嵌入模型的请求或者返回的数据格式和openai不一样，需要重写_encapsulated_data或_parse_response方法。\n
-3、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
+如果你需要支持新的开放平台的嵌入模型的能力，请让你自定义的类继承自OnlineEmbeddingModuleBase：
+    1、如果新平台的嵌入模型的请求和返回数据格式都和openai一样，可以不用做任何处理，只传url和模型即可
+    2、如果新平台的嵌入模型的请求或者返回的数据格式和openai不一样，需要重写_encapsulated_data或_parse_response方法。
+    3、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
 
 Args:
     model_series (str): 模型系列名称标识。
@@ -1674,10 +1671,10 @@ Args:
 
 add_english_doc('OnlineEmbeddingModuleBase', '''
 OnlineEmbeddingModuleBase is the base class for managing embedding model interfaces on open platforms, used for requesting text to obtain embedding vectors. It is not recommended to directly instantiate this class. Specific platform classes should inherit from this class for instantiation.
-If you need to support the capabilities of embedding models on a new open platform, please extend your custom class from OnlineEmbeddingModuleBase:\n
-1. If the request and response data formats of the new platform's embedding model are the same as OpenAI's, no additional processing is needed; simply pass the URL and model.\n
-2. If the request or response data formats of the new platform's embedding model differ from OpenAI's, you need to override the _encapsulated_data or _parse_response methods.\n
-3. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
+If you need to support the capabilities of embedding models on a new open platform, please extend your custom class from OnlineEmbeddingModuleBase:
+    1. If the request and response data formats of the new platform's embedding model are the same as OpenAI's, no additional processing is needed; simply pass the URL and model.
+    2. If the request or response data formats of the new platform's embedding model differ from OpenAI's, you need to override the _encapsulated_data or _parse_response methods.
+    3. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
 
 Args:
     model_series (str): Model series name identifier.
@@ -1852,11 +1849,11 @@ FileHandlerBase 是处理微调数据文件的基类，主要用于验证和转�
 该类不支持直接实例化，需要子类继承并实现特定的文件格式转换逻辑。
 
 功能包括：
-1. 验证微调数据文件格式是否为标准的 `.jsonl`。
-2. 检查每条数据是否包含符合规范的消息格式（包含 `role` 和 `content` 字段）。
-3. 验证角色类型是否在允许范围内（system、knowledge、user、assistant）。
-4. 确保每个对话示例包含至少一条 assistant 回复。
-5. 提供临时文件存储机制，便于后续处理。
+    1. 验证微调数据文件格式是否为标准的 `.jsonl`。
+    2. 检查每条数据是否包含符合规范的消息格式（包含 `role` 和 `content` 字段）。
+    3. 验证角色类型是否在允许范围内（system、knowledge、user、assistant）。
+    4. 确保每个对话示例包含至少一条 assistant 回复。
+    5. 提供临时文件存储机制，便于后续处理。
 ''')
 
 add_english_doc('llms.onlinemodule.fileHandler.FileHandlerBase', '''\
@@ -1864,11 +1861,11 @@ FileHandlerBase is a base class for handling fine-tuning data files, mainly used
 This class cannot be instantiated directly; it must be inherited by a subclass that implements specific file format conversion logic.
 
 Capabilities include:
-1. Validate that the fine-tuning data file is in standard `.jsonl` format.
-2. Check that each data entry contains messages in the correct format (with `role` and `content` fields).
-3. Verify that roles are within the allowed range (system, knowledge, user, assistant).
-4. Ensure each conversation example contains at least one assistant response.
-5. Provide temporary file storage for further processing.
+    1. Validate that the fine-tuning data file is in standard `.jsonl` format.
+    2. Check that each data entry contains messages in the correct format (with `role` and `content` fields).
+    3. Verify that roles are within the allowed range (system, knowledge, user, assistant).
+    4. Ensure each conversation example contains at least one assistant response.
+    5. Provide temporary file storage for further processing.
 ''')
 
 add_example('llms.onlinemodule.fileHandler.FileHandlerBase', '''\
@@ -1966,10 +1963,10 @@ Args:
     **kwargs: 其他传递给基类的参数。
 
 功能特点：
-1. 支持多模态输入处理
-2. 使用ZhipuAI客户端进行API调用
-3. 提供统一的多模态接口
-4. 可自定义基础URL和API密钥
+    1. 支持多模态输入处理
+    2. 使用ZhipuAI客户端进行API调用
+    3. 提供统一的多模态接口
+    4. 可自定义基础URL和API密钥
 
 注意：
     该类作为GLM多模态功能的基础类，通常作为其他具体多模态实现（如语音转文本、文本生成图像等）的父类。
@@ -1986,10 +1983,10 @@ Args:
     **kwargs: Additional arguments passed to the base class.
 
 Features:
-1. Supports multimodal input processing
-2. Uses ZhipuAI client for API calls
-3. Provides unified multimodal interface
-4. Customizable base URL and API key
+    1. Supports multimodal input processing
+    2. Uses ZhipuAI client for API calls
+    3. Provides unified multimodal interface
+    4. Customizable base URL and API key
 
 Note:
     This class serves as the base class for GLM multimodal functionality, typically used as the parent class for specific multimodal implementations (such as speech-to-text, text-to-image, etc.).
@@ -2043,10 +2040,10 @@ Args:
     **kwargs: 其他传递给基类的参数。
 
 功能特点：
-1. 支持HTTP和WebSocket两种API调用方式
-2. 使用DashScope客户端进行API调用
-3. 提供统一的多模态接口
-4. 可自定义基础URL和API密钥
+    1. 支持HTTP和WebSocket两种API调用方式
+    2. 使用DashScope客户端进行API调用
+    3. 提供统一的多模态接口
+    4. 可自定义基础URL和API密钥
 
 注意：
     该类作为通义千问多模态功能的基础类，通常作为其他具体多模态实现（如语音转文本、文本生成图像等）的父类。
@@ -2064,10 +2061,10 @@ Args:
     **kwargs: Additional parameters passed to the base class.
 
 Features:
-1. Supports both HTTP and WebSocket API calls
-2. Uses DashScope client for API calls
-3. Provides unified multimodal interface
-4. Customizable base URLs and API key
+    1. Supports both HTTP and WebSocket API calls
+    2. Uses DashScope client for API calls
+    3. Provides unified multimodal interface
+    4. Customizable base URLs and API key
 
 Note:
     This class serves as the base class for Qwen's multimodal functionality, typically used as the parent class for other specific multimodal implementations (such as speech-to-text, text-to-image, etc.).
@@ -2213,7 +2210,6 @@ Notes:
     - A warning log will be generated if model name (model_name) is not specified.
 ''')
 
-
 add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIModule', '''\
 OpenAI API集成模块，用于聊天完成和微调操作。
 
@@ -2226,8 +2222,8 @@ Args:
     stream (bool, optional): 使用流式响应，默认为True。
     return_trace (bool, optional): 返回追踪信息，默认为False。
     **kwargs: 传递给OnlineChatModuleBase的额外参数。
-
 ''')
+
 add_english_doc('llms.onlinemodule.supplier.openai.OpenAIModule', '''\
 OpenAI API integration module for chat completion and fine-tuning operations.
 
@@ -2251,7 +2247,6 @@ Args:
     embed_model_name (str, optional): 嵌入模型名称，默认为"nova-embedding-stable"。
     api_key (str, optional): API访问密钥，默认为None。
     secret_key (str, optional): API秘密密钥，默认为None。
-
 ''')
 
 add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding', '''\
@@ -2262,7 +2257,6 @@ Args:
     embed_model_name (str, optional): Embedding model name, defaults to "nova-embedding-stable".
     api_key (str, optional): API access key, defaults to None.
     secret_key (str, optional): API secret key, defaults to None.
-
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule', '''\
@@ -2289,7 +2283,6 @@ Args:
     model_name (str, optional): Model name, defaults to "doubao-seedream-3-0-t2i-250415".
     return_trace (bool, optional): Whether to return trace information, defaults to False.
     **kwargs: Other parameters passed to parent class.
-
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.deepseek.DeepSeekModule', """\
@@ -2302,7 +2295,6 @@ Args:
     stream (bool): 启用流式输出，默认为True
     return_trace (bool): 返回追踪信息，默认为False
     **kwargs: 其他传递给基类的参数
-
 """)
 
 add_english_doc('llms.onlinemodule.supplier.deepseek.DeepSeekModule', """\
@@ -2315,7 +2307,6 @@ Args:
     stream (bool): Whether to enable streaming output, defaults to True
     return_trace (bool): Whether to return trace information, defaults to False
     **kwargs: Other parameters passed to base class
-
 """)
 
 add_chinese_doc('llms.onlinemodule.supplier.glm.GLMEmbedding', """\
@@ -2325,7 +2316,6 @@ Args:
     embed_url (str): 嵌入服务API地址，默认为"https://open.bigmodel.cn/api/paas/v4/embeddings"
     embed_model_name (str): 嵌入模型名称，默认为"embedding-2"
     api_key (str): API密钥
-
 """)
 
 add_english_doc('llms.onlinemodule.supplier.glm.GLMEmbedding', """\
@@ -2335,7 +2325,6 @@ Args:
     embed_url (str): Embedding service API address, defaults to "https://open.bigmodel.cn/api/paas/v4/embeddings"
     embed_model_name (str): Embedding model name, defaults to "embedding-2"
     api_key (str): API key
-
 """)
 
 add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenEmbedding', """\
@@ -2347,7 +2336,6 @@ Args:
     embed_url (str, optional): 嵌入API的URL地址。默认为通义千问官方API地址
     embed_model_name (str, optional): 嵌入模型名称。默认为 'text-embedding-v1'
     api_key (str, optional): API密钥。默认为从配置中获取的 'qwen_api_key'
-
 """)
 
 add_english_doc('llms.onlinemodule.supplier.qwen.QwenEmbedding', """\
@@ -2359,7 +2347,6 @@ Args:
     embed_url (str, optional): Embedding API URL address. Defaults to Qwen official API address
     embed_model_name (str, optional): Embedding model name. Defaults to 'text-embedding-v1'
     api_key (str, optional): API key. Defaults to 'qwen_api_key' from configuration
-
 """)
 
 add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenModule', """\
@@ -2374,7 +2361,6 @@ Args:
     stream (bool, optional): 是否流式输出，默认为True
     return_trace (bool, optional): 是否返回追踪信息，默认为False
     **kwargs: 其他模型参数
-
 """)
 
 add_english_doc('llms.onlinemodule.supplier.qwen.QwenModule', """\
@@ -2398,7 +2384,6 @@ add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenModule.set_deploy_parameter
 
 Args:
     **kw: 部署参数键值对。
-
 """)
 
 add_english_doc('llms.onlinemodule.supplier.qwen.QwenModule.set_deploy_parameters', """\

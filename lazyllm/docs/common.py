@@ -35,8 +35,8 @@ Args:
     fnames (Union[str, List[str]]): Function name or function name list to rewrite
     template (str, optional): Registration template string, defaults to standard registration template
     default_group (str, optional): Default group name, defaults to None
-
 ''')
+
 add_example('Register', '''\
 >>> import lazyllm
 >>> @lazyllm.component_register('mygroup')
@@ -53,6 +53,7 @@ add_example('Register', '''\
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) Command: echo 1
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
 ''')
+
 add_english_doc('Register.new_group', '''\
 
 Creates a new ComponentGroup. The newly created group will be automatically added to __builtin__ and can be accessed at any location without the need for import.
@@ -78,7 +79,7 @@ add_chinese_doc('registry.LazyDict', '''\
 4. 支持动态默认键
 5. 如果组名出现在名称中，允许省略组名
 
-参数:
+Args:
     name (str): 字典的名称，默认为空字符串。
     base: 基类引用，默认为None。
     *args: 位置参数，传递给dict父类。
@@ -105,7 +106,7 @@ Args:
 add_chinese_doc('registry.LazyDict.remove', '''\
 从字典中移除指定的键值对。
 
-参数:
+Args:
     key (str): 要移除的键。支持与__getattr__相同的键匹配规则，包括首字母小写和组名省略等特性。
 
 注意:
@@ -126,7 +127,7 @@ Note:
 add_chinese_doc('registry.LazyDict.set_default', '''\
 设置字典的默认键。设置后可以通过.default属性访问该键对应的值。
 
-参数:
+Args:
     key (str): 要设置为默认的键名。
 
 注意:
@@ -276,6 +277,7 @@ Method to retrieve the thread execution result. This method blocks until the thr
 
 **Note**: This method should be used after calling `thread.start()` to retrieve the thread execution result.
 ''')
+
 # ============= Bind/bind
 add_chinese_doc('bind', '''\
 Bind 类用于函数绑定与延迟调用，支持动态参数传入和上下文参数解析，实现灵活的函数组合与流水线式调用。
@@ -667,6 +669,7 @@ A result collector used to store and access results by name during the execution
 Calling the instance with a name returns a callable Impl object that collects results for that name.  
 Useful for scenarios where intermediate results need to be shared across steps.
 ''')
+
 add_chinese_doc('common.ResultCollector.Impl', '''\
 ResultCollector 的内部实现类，负责为指定名称收集结果。  
 不应直接实例化，需通过 ResultCollector(name) 获取。
@@ -689,28 +692,28 @@ Args:
 add_chinese_doc('common.ResultCollector.keys', '''\
 获取所有已存储结果的名称。
 
-**Returns**\n
+**Returns:**\n
 - KeysView[str]: 结果名称集合。
 ''')
 
 add_english_doc('common.ResultCollector.keys', '''\
 Get all stored result names.
 
-**Returns**\n
+**Returns:**\n
 - KeysView[str]: A set-like object containing result names.
 ''')
 
 add_chinese_doc('common.ResultCollector.items', '''\
 获取所有已存储的 (名称, 值) 对。
 
-**Returns**\n
+**Returns:**\n
 - ItemsView[str, Any]: 结果的键值对集合。
 ''')
 
 add_english_doc('common.ResultCollector.items', '''\
 Get all stored (name, value) pairs.
 
-**Returns**\n
+**Returns:**\n
 - ItemsView[str, Any]: A set-like object containing name-value pairs of results.
 ''')
 
@@ -924,7 +927,7 @@ add_chinese_doc('ReadOnlyWrapper.isNone', '''\
 Args:
     None.
 
-**Returns**\n
+**Returns:**\n
 - bool: 如果内部对象为 None 返回 True，否则 False。
 ''')
 
@@ -934,7 +937,7 @@ Check whether the wrapper currently holds no object.
 Args:
     None.
 
-**Returns**\n
+**Returns:**\n
 - bool: True if the internal object is None, otherwise False.
 ''')
 
@@ -985,8 +988,8 @@ Args:
     *args: 传递给函数的位置参数。
     **kwargs: 传递给函数的关键字参数。
 
-Returns:
-    concurrent.futures.Future: 表示任务执行状态的 `Future` 对象。
+**Returns:**\n
+- concurrent.futures.Future: 表示任务执行状态的 `Future` 对象。
 ''')
 
 add_english_doc('ProcessPoolExecutor.submit', '''\
@@ -999,8 +1002,8 @@ Args:
     *args: Positional arguments passed to the function.
     **kwargs: Keyword arguments passed to the function.
 
-Returns:
-    concurrent.futures.Future: A `Future` object representing the task's execution status.
+**Returns:**\n
+- concurrent.futures.Future: A `Future` object representing the task's execution status.
 ''')
 
 add_example('ProcessPoolExecutor.submit', '''\
@@ -1227,7 +1230,7 @@ add_example('LazyLLMCMD', '''\
 add_chinese_doc('LazyLLMCMD.with_cmd', '''\
 创建新命令对象并继承当前配置。
 
-参数:
+Args:
     cmd: 新的命令内容（类型需与原始命令一致）
 
 ''')
@@ -1243,7 +1246,7 @@ Args:
 add_chinese_doc('LazyLLMCMD.get_args', '''\
 从命令字符串中提取指定参数的值。
 
-参数:
+Args:
     key: 要提取的参数名
 ''')
 
@@ -1258,6 +1261,7 @@ add_chinese_doc('queue.SQLiteQueue', '''\
 基于 SQLite 的持久化文件系统队列。
 该类扩展自 FileSystemQueue，使用 SQLite 数据库存储队列数据，通过 position 字段保证先进先出顺序，并支持并发安全的消息入队、出队、查看队头、队列大小查询和清空操作。
 队列数据库默认存储在 ~/.lazyllm_filesystem_queue.db，通过文件锁机制确保多进程安全访问。
+
 Args:
     klass (str): 队列分类名，用于逻辑隔离不同的队列，默认为 '__default__'。
 ''')
@@ -1266,6 +1270,7 @@ add_english_doc('queue.SQLiteQueue', '''\
 Persistent file system queue backed by SQLite.
 This class extends FileSystemQueue and stores queue data in an SQLite database. Messages are ordered by a position field to preserve FIFO behavior. The class supports concurrent-safe operations including enqueue, dequeue, peek, size checking, and clearing the queue.
 The queue database is saved at ~/.lazyllm_filesystem_queue.db, with a file lock mechanism ensuring safe access in multi-process environments.
+
 Args:
     klass (str): Name of the queue category used to logically separate queues. Default is '__default__'.
 ''')
@@ -1275,7 +1280,6 @@ add_chinese_doc('common.FlatList.absorb', """\
 
 Args:
     item: 要添加的元素，可以是单个元素或列表
-
 """)
 
 add_english_doc('common.FlatList.absorb', """\
@@ -1283,7 +1287,6 @@ Absorb elements into the list.
 
 Args:
     item: Element to add, can be a single element or a list
-
 """)
 
 add_chinese_doc('common.ArgsDict', """\
@@ -1293,7 +1296,7 @@ Args:
     *args: 传递给父类dict的 positional arguments
     **kwargs: 传递给父类dict的 keyword arguments
 
-**返回:**\n
+**Returns:**\n
 - ArgsDict实例，提供参数检查和格式化功能
 """)
 
@@ -1307,12 +1310,12 @@ Args:
 **Returns:**\n
 - ArgsDict instance providing parameter checking and formatting functionality
 """)
+
 add_chinese_doc('common.ArgsDict.check_and_update', """\
 检查并更新参数字典。
 
 Args:
     kw (dict): 要更新的参数字典
-
 """)
 
 add_english_doc('common.ArgsDict.check_and_update', """\
@@ -1320,26 +1323,21 @@ Check and update parameter dictionary.
 
 Args:
     kw (dict): Parameter dictionary to update
-
 """)
 
 add_chinese_doc('common.ArgsDict.parse_kwargs', """\
 将参数字典解析为命令行参数字符串。
-
 """)
 
 add_english_doc('common.ArgsDict.parse_kwargs', """\
 Parse parameter dictionary into command line argument string.
-
 """)
 
 add_chinese_doc('common.DynamicDescriptor', """\
 动态描述符类，用于创建支持实例和类级别调用的描述符。
 
-
 Args:
     func (callable): 要包装的函数或方法
-
 """)
 
 add_english_doc('common.DynamicDescriptor', """\

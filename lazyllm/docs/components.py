@@ -94,7 +94,6 @@ Args:
     base_model (str): 基础模型路径或标识
     target_path (str): 微调后模型输出路径
     launcher (Launcher, optional): 任务启动器，默认为远程启动器
-
 """)
 
 add_english_doc('finetune.LazyLLMFinetuneBase', """\
@@ -329,7 +328,6 @@ Keyword Args:
     per_device_eval_batch_size (int): 默认值是：``1``。每个GPU/TPU/MPS/NPU核心/CPU的验证集批次大小。
     eval_strategy (typing.Union[transformers.trainer_utils.IntervalStrategy, str]): 默认值是：``steps``。要使用的验证评估策略。
     eval_steps (typing.Optional[float]): 默认值是：``500``。每X个步骤运行一次验证评估。应该是整数或范围在`[0,1)`的浮点数。如果小于1，将被解释为总训练步骤的比例。
-
 ''')
 
 add_english_doc('finetune.LlamafactoryFinetune', '''\
@@ -381,7 +379,6 @@ Keyword Args:
     per_device_eval_batch_size (int): Default is: ``1``. Batch size per GPU/TPU/MPS/NPU core/CPU for evaluation.
     eval_strategy (typing.Union[transformers.trainer_utils.IntervalStrategy, str]): Default is: ``steps``. The evaluation strategy to use.
     eval_steps (typing.Optional[float]): Default is: ``500``. Run an evaluation every X steps. Should be an integer or a float in range `[0,1)`. If smaller than 1, will be interpreted as ratio of total training steps.
-
 ''')
 
 add_example('finetune.LlamafactoryFinetune', '''\
@@ -396,11 +393,11 @@ Args:
     trainset (str): 训练数据集路径(支持相对lazyllm.config['data_path']的路径)
     valset (str, optional): 验证数据集路径(当前实现中未直接使用)
 
-返回:
-    str: 完整的shell命令字符串，包含:
-         - 训练命令(自动配置参数)
-         - 日志重定向(保存到目标路径)
-         - 可选的模型合并命令(当配置LoRA时)
+**Returns:**\n
+- str: 完整的shell命令字符串，包含:
+    - 训练命令(自动配置参数)
+    - 日志重定向(保存到目标路径)
+    - 可选的模型合并命令(当配置LoRA时)
 
 注意事项:
     - 自动生成带时间戳的训练日志文件
@@ -416,11 +413,11 @@ Args:
     trainset (str): Training dataset path (supports relative path to lazyllm.config['data_path'])
     valset (str, optional): Validation dataset path (not directly used in current implementation)
 
-Returns:
-    str: Complete shell command string containing:
-         - Training command (with auto-configured parameters)
-         - Log redirection (saved to target path)
-         - Optional model merge command (when LoRA is configured)
+**Returns:**\n
+- str: Complete shell command string containing:
+    - Training command (with auto-configured parameters)
+    - Log redirection (saved to target path)
+    - Optional model merge command (when LoRA is configured)
 
 Notes:
     - Automatically generates timestamped training log files
@@ -487,7 +484,6 @@ Keyword Args:
     overwrite_output_dir (bool): 默认为：``True``。用于允许程序覆盖现有的输出目录。
     fp16 (bool): 默认为：``True``。是否使用 fp16（混合）精度而不是 32 位。
     gradient_checkpointing (bool): 默认为：``True``。是否启用梯度检查点。
-
 ''')
 
 add_english_doc('finetune.FlagembeddingFinetune', '''\
@@ -547,7 +543,6 @@ Keyword Args:
     overwrite_output_dir (bool): Default is: ``True``. It is used to allow the program to overwrite an existing output directory.
     fp16 (bool): Default is: ``True``.  Whether to use fp16 (mixed) precision instead of 32-bit.
     gradient_checkpointing (bool): Default is: ``True``. Whether enable gradient checkpointing.
-
 ''')
 
 add_example('finetune.FlagembeddingFinetune', '''\
@@ -572,7 +567,6 @@ Args:
     lora_r (int): LoRA 的秩，默认为 ``8``；该数值决定添加参数的量，数值越小参数量越小。
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
     kw: 关键字参数，用于更新默认的训练参数。注意这里能够指定的关键字参数取决于 LazyLLM 推测出的框架，因此建议谨慎设置。
-
 ''')
 
 add_english_doc('auto.AutoFinetune', '''\
@@ -590,7 +584,6 @@ Args:
     lora_r (int): LoRA rank, default to ``8``; this value determines the amount of parameters added, the smaller the value, the fewer the parameters.
     launcher (lazyllm.launcher): The launcher for fine-tuning, default to ``launchers.remote(ngpus=1)``.
     kw: Keyword arguments, used to update the default training parameters. Note that additional keyword arguments cannot be arbitrarily specified, as they depend on the framework inferred by LazyLLM, so it is recommended to set them with caution.
-
 ''')
 
 add_example('auto.AutoFinetune', '''\
@@ -626,8 +619,8 @@ Args:
     batch_size (int): 批处理大小。
     lora_r (int): LoRA秩。
 
-Returns:
-    List[TrainingConfiguration]: 返回按TGS（训练吞吐量得分）降序排序的训练配置列表。
+**Returns:**\n
+- List[TrainingConfiguration]: 返回按TGS（训练吞吐量得分）降序排序的训练配置列表。
 ''')
 
 add_english_doc('auto.configure.core.configuration.AutoConfig.query_finetune', '''\
@@ -641,8 +634,8 @@ Args:
     batch_size (int): Batch size.
     lora_r (int): LoRA rank.
 
-Returns:
-    List[TrainingConfiguration]: Returns a list of training configurations sorted by TGS (Training Goodput Score) in descending order.
+**Returns:**\n
+- List[TrainingConfiguration]: Returns a list of training configurations sorted by TGS (Training Goodput Score) in descending order.
 ''')
 
 add_chinese_doc('auto.configure.core.configuration.AutoConfig.query_deploy', '''\
@@ -654,8 +647,8 @@ Args:
     model_name (str): 模型名称。
     max_token_num (int): 最大token数量。
 
-Returns:
-    List[DeployConfiguration]: 返回按TGS（推理吞吐量得分）降序排序的部署配置列表。
+**Returns:**\n
+- List[DeployConfiguration]: 返回按TGS（推理吞吐量得分）降序排序的部署配置列表。
 ''')
 
 add_english_doc('auto.configure.core.configuration.AutoConfig.query_deploy', '''\
@@ -667,8 +660,8 @@ Args:
     model_name (str): Model name.
     max_token_num (int): Maximum number of tokens.
 
-Returns:
-    List[DeployConfiguration]: Returns a list of deployment configurations sorted by TGS (Throughput Goodput Score) in descending order.
+**Returns:**\n
+- List[DeployConfiguration]: Returns a list of deployment configurations sorted by TGS (Throughput Goodput Score) in descending order.
 ''')
 
 
@@ -715,9 +708,8 @@ Args:
     output: 模型原始输出
     inputs: 原始输入数据，可用于结果后处理
 
-Returns:
-    处理后的最终结果
-
+**Returns:**\n
+- 处理后的最终结果
 """)
 
 add_english_doc('LazyLLMDeployBase.extract_result', """\
@@ -727,9 +719,8 @@ Args:
     output: Raw model output
     inputs: Original input data, can be used for post-processing
 
-Returns:
-    Processed final result
-
+**Returns:**\n
+- Processed final result
 """)
 
 
@@ -754,7 +745,6 @@ Args:
 
 add_chinese_doc('deploy.embed.AbstractEmbedding.load_embed', '''\
 加载嵌入模型的抽象方法。此方法由子类实现，用于执行具体的模型加载逻辑。
-
 ''')
 
 add_english_doc('deploy.embed.AbstractEmbedding.load_embed', '''\
@@ -791,8 +781,8 @@ add_chinese_doc('deploy.embed.HuggingFaceEmbedding.get_emb_cls', '''\
 Args:
     model_name (str): 模型名称或路径。
 
-Returns:
-    type: 返回对应的嵌入模型实现类，如果未找到则返回默认实现LazyHuggingFaceDefaultEmbedding。
+**Returns:**\n
+- type: 返回对应的嵌入模型实现类，如果未找到则返回默认实现LazyHuggingFaceDefaultEmbedding。
 ''')
 
 add_english_doc('deploy.embed.HuggingFaceEmbedding.get_emb_cls', '''\
@@ -801,8 +791,8 @@ Get the embedding implementation class for a model.
 Args:
     model_name (str): Model name or path.
 
-Returns:
-    type: Returns corresponding embedding model implementation class, defaults to LazyHuggingFaceDefaultEmbedding if not found.
+**Returns:**\n
+- type: Returns corresponding embedding model implementation class, defaults to LazyHuggingFaceDefaultEmbedding if not found.
 ''')
 
 add_chinese_doc('deploy.embed.HuggingFaceEmbedding.register', '''\
@@ -811,8 +801,8 @@ add_chinese_doc('deploy.embed.HuggingFaceEmbedding.register', '''\
 Args:
     model_ids (List[str]): 要注册的模型ID列表。
 
-Returns:
-    Callable: 返回装饰器函数。
+**Returns:**\n
+- Callable: 返回装饰器函数。
 ''')
 
 add_english_doc('deploy.embed.HuggingFaceEmbedding.register', '''\
@@ -821,8 +811,8 @@ Decorator for registering model IDs to specific implementation classes.
 Args:
     model_ids (List[str]): List of model IDs to register.
 
-Returns:
-    Callable: Returns decorator function.
+**Returns:**\n
+- Callable: Returns decorator function.
 ''')
 
 add_chinese_doc('deploy.embed.HuggingFaceEmbedding.load_embed', '''\
@@ -861,7 +851,6 @@ Keyword Args:
     max_req_total_len (int): 请求的最大总长度，默认为 ``64000``。
     max_req_input_len (int): 输入的最大长度，默认为 ``4096``。
     long_truncation_mode (str): 长文本的截断模式，默认为 ``head``。
-
 ''')
 
 add_english_doc('deploy.Lightllm', '''\
@@ -887,7 +876,6 @@ Keyword Args:
     max_req_total_len (int): Maximum total length for requests, default is ``64000``.
     max_req_input_len (int): Maximum input length, default is ``4096``.
     long_truncation_mode (str): Truncation mode for long texts, default is ``head``.
-
 ''')
 
 add_example('deploy.Lightllm', '''\
@@ -898,12 +886,12 @@ add_example('deploy.Lightllm', '''\
 add_chinese_doc('deploy.Lightllm.cmd', '''\
 该方法用于生成启动LightLLM服务的命令。
 
-参数:
+Args:
     finetuned_model (str): 微调后的模型路径。
     base_model (str): 基础模型路径，当finetuned_model无效时使用。
 
-返回值:
-    LazyLLMCMD: 一个包含启动命令的LazyLLMCMD对象。
+**Returns:**\n
+- LazyLLMCMD: 一个包含启动命令的LazyLLMCMD对象。
 ''')
 
 add_english_doc('deploy.Lightllm.cmd', '''\
@@ -913,18 +901,18 @@ Args:
     finetuned_model (str): Path to the fine-tuned model.
     base_model (str): Path to the base model, used when finetuned_model is invalid.
 
-Returns:
-    LazyLLMCMD: A LazyLLMCMD object containing the startup command.
+**Returns:**\n
+- LazyLLMCMD: A LazyLLMCMD object containing the startup command.
 ''')
 
 add_chinese_doc('deploy.Lightllm.geturl', '''\
 获取LightLLM服务的URL地址。
 
-参数:
+Args:
     job (optional): 任务对象，默认为None，此时使用self.job。
 
-返回值:
-    str: 服务的URL地址，格式为"http://{ip}:{port}/generate"。
+**Returns:**\n
+- str: 服务的URL地址，格式为"http://{ip}:{port}/generate"。
 ''')
 
 add_english_doc('deploy.Lightllm.geturl', '''\
@@ -933,8 +921,8 @@ Get the URL address of the LightLLM service.
 Args:
     job (optional): Job object, defaults to None, in which case self.job is used.
 
-Returns:
-    str: The service URL address in the format "http://{ip}:{port}/generate".
+**Returns:**\n
+- str: The service URL address in the format "http://{ip}:{port}/generate".
 ''')
 
 add_chinese_doc('deploy.Lightllm.extract_result', '''\
@@ -944,8 +932,8 @@ Args:
     x (str): 服务返回的响应文本。
     inputs (str): 输入文本。
 
-Returns:
-    str: 提取出的生成文本。
+**Returns:**\n
+- str: 提取出的生成文本。
 
 异常:
     Exception: 当解析JSON响应失败时抛出异常。
@@ -958,12 +946,13 @@ Args:
     x (str): Response text from the service.
     inputs (str): Input text.
 
-Returns:
-    str: The extracted generated text.
+**Returns:**\n
+- str: The extracted generated text.
 
 Raises:
     Exception: When JSON response parsing fails.
 ''')
+
 # Deploy-Vllm
 add_chinese_doc('deploy.Vllm', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [VLLM](https://github.com/vllm-project/vllm) 框架提供的推理能力，用于大语言模型的部署与推理。
@@ -990,7 +979,6 @@ Keyword Args:
     max-num-seqs (int): 推理引擎支持的最大并行请求数，默认为 ``256``。
     pipeline-parallel-size (int): 流水线并行大小，默认为 ``1``。
     max-num-batched-tokens (int): 最大批处理 token 数，默认为 ``64000``。
-
 ''')
 
 add_english_doc('deploy.Vllm', '''\
@@ -1035,8 +1023,8 @@ Args:
     base_model (str): 备用基础模型路径（当 finetuned_model 无效时启用）。
     master_ip (str): 分布式部署中的主节点 IP，仅在多节点时启用。
 
-Returns:
-    LazyLLMCMD: 可执行命令对象，包含启动指令、结果回调函数及健康检查方法。
+**Returns:**\n
+- LazyLLMCMD: 可执行命令对象，包含启动指令、结果回调函数及健康检查方法。
 ''')
 
 add_english_doc('deploy.Vllm.cmd', '''\
@@ -1049,8 +1037,8 @@ Args:
     base_model (str): Fallback base model path if finetuned_model is invalid.
     master_ip (str): IP address of the master node in a distributed setup.
 
-Returns:
-    LazyLLMCMD: The command object with shell instruction, return value handler, and health checker.
+**Returns:**\n
+- LazyLLMCMD: The command object with shell instruction, return value handler, and health checker.
 ''')
 
 add_chinese_doc('deploy.Vllm.geturl', '''\
@@ -1061,8 +1049,8 @@ add_chinese_doc('deploy.Vllm.geturl', '''\
 Args:
     job (Job, optional): 部署任务对象。默认取当前模块绑定的 job。
 
-Returns:
-    str: 推理服务的 HTTP 地址。
+**Returns:**\n
+- str: 推理服务的 HTTP 地址。
 ''')
 
 add_english_doc('deploy.Vllm.geturl', '''\
@@ -1073,8 +1061,8 @@ Depending on the execution mode (Display or actual deployment), this method retu
 Args:
     job (Job, optional): Deployment job object. Defaults to the module's associated job.
 
-Returns:
-    str: The HTTP URL for inference service.
+**Returns:**\n
+- str: The HTTP URL for inference service.
 ''')
 
 add_chinese_doc('deploy.Vllm.extract_result', '''\
@@ -1315,8 +1303,8 @@ Args:
     sparse (bool): 是否启用稀疏嵌入。
     init (bool): 是否在构造时立即加载模型。
 
-Returns:
-    LazyFlagEmbedding: 一个新的 LazyFlagEmbedding 实例。
+**Returns:**\n
+- LazyFlagEmbedding: 一个新的 LazyFlagEmbedding 实例。
 ''')
 
 add_english_doc('deploy.embed.LazyFlagEmbedding.rebuild', '''\
@@ -1329,8 +1317,8 @@ Args:
     sparse (bool): Whether to enable sparse embedding mode.
     init (bool): Whether to load the model immediately during instantiation.
 
-Returns:
-    LazyFlagEmbedding: A newly constructed LazyFlagEmbedding instance.
+**Returns:**\n
+- LazyFlagEmbedding: A newly constructed LazyFlagEmbedding instance.
 ''')
 
 # Deploy-Mindie
@@ -1396,14 +1384,15 @@ add_example('deploy.Mindie', '''\
 >>> print("Service URL:", cmd.geturl())
 
 ''')
+
 add_english_doc('deploy.Mindie.load_config', '''\
 Loads and parses the MindIE configuration file.
 
 Args:
     config_path (str): Path to the JSON configuration file
 
-Returns:
-    dict: Parsed configuration dictionary
+**Returns:**\n
+- dict: Parsed configuration dictionary
 
 Notes:
     - Handles both default and custom configuration files
@@ -1417,8 +1406,8 @@ add_chinese_doc('deploy.Mindie.load_config', '''\
 Args:
     config_path (str): JSON配置文件的路径
 
-Returns:
-    dict: 解析后的配置字典
+**Returns:**\n
+- dict: 解析后的配置字典
 
 注意事项:
     - 处理默认和自定义配置文件
@@ -1474,8 +1463,8 @@ Args:
     base_model (str): Path to the base model (fallback if finetuned_model is invalid)
     master_ip (str): Master node IP address (currently unused)
 
-Returns:
-    LazyLLMCMD: Command object for starting the service
+**Returns:**\n
+- LazyLLMCMD: Command object for starting the service
 
 Notes:
     - Automatically handles model path validation
@@ -1491,8 +1480,8 @@ Args:
     base_model (str): 基础模型路径(当微调模型无效时作为后备)
     master_ip (str): 主节点IP地址(当前未使用)
 
-返回:
-    LazyLLMCMD: 启动服务的命令对象
+**Returns:**\n
+- LazyLLMCMD: 启动服务的命令对象
 
 注意事项:
     - 自动处理模型路径验证
@@ -1506,8 +1495,8 @@ Gets the service URL after deployment.
 Args:
     job: Job object (optional, defaults to self.job)
 
-Returns:
-    str: The generate endpoint URL
+**Returns:**\n
+- str: The generate endpoint URL
 
 Notes:
     - Returns different formats based on display mode
@@ -1520,8 +1509,8 @@ add_chinese_doc('deploy.Mindie.geturl', '''\
 Args:
     job: 任务对象(可选，默认为self.job)
 
-返回:
-    str: generate接口的URL
+**Returns:**\n
+- str: generate接口的URL
 
 注意事项:
     - 根据显示模式返回不同格式
@@ -1535,8 +1524,8 @@ Args:
     x: Raw API response
     inputs: Original inputs (unused)
 
-Returns:
-    str: The generated text
+**Returns:**\n
+- str: The generated text
 
 Notes:
     - Parses JSON response
@@ -1550,8 +1539,8 @@ Args:
     x: 原始API响应
     inputs: 原始输入(未使用)
 
-返回:
-    str: 生成的文本
+**Returns:**\n
+- str: 生成的文本
 
 注意事项:
     - 解析JSON响应
@@ -1695,8 +1684,8 @@ Args:
     launcher (LazyLLMLaunchersBase, optional): Task launcher
     log_path (str, optional): Log file path
     port (int, optional): Service port number
-
 """)
+
 # Deploy-Infinity
 add_chinese_doc('deploy.Infinity', '''\
 此类是 ``LazyLLMDeployBase`` 的子类，基于 [Infinity](https://github.com/michaelfeil/infinity) 框架提供的高性能文本嵌入、重排序和CLIP等能力。
@@ -1746,6 +1735,7 @@ Args:
     x (str): API返回的JSON字符串响应。
     inputs (Dict): 原始输入数据，用于确定返回结果的格式。
 ''')
+
 add_english_doc('deploy.Infinity.extract_result', '''\
 Extract result data from Infinity API response.
 Parses JSON response from Infinity service and extracts embedding vectors or reranking results based on the returned object type.
@@ -1753,7 +1743,6 @@ Parses JSON response from Infinity service and extracts embedding vectors or rer
 Args:
     x (str): JSON string response returned by API.
     inputs (Dict): Original input data used to determine the return format.
-
 ''')
 
 add_chinese_doc('deploy.Infinity.geturl', '''\
@@ -1762,12 +1751,12 @@ add_chinese_doc('deploy.Infinity.geturl', '''\
 Args:
     job (Optional[Any]): 作业对象，如果为None则使用当前实例的job属性。
 ''')
+
 add_english_doc('deploy.Infinity.geturl', '''\
 Get the URL address of the Infinity service. Returns the corresponding API access URL address based on deployment mode and job status.
 
 Args:
     job (Optional[Any]): Job object, if None uses the current instance's job property.
-
 ''')
 
 
@@ -1778,7 +1767,7 @@ Args:
     path (str): 路由路径
     **kw: 其他FastAPI路由参数
 
-**返回:**\n
+**Returns:**\n
 - 装饰器函数
 """)
 
@@ -1800,7 +1789,7 @@ Args:
     path (str): 路由路径
     **kw: 其他FastAPI路由参数
 
-**返回:**\n
+**Returns:**\n
 - 装饰器函数
 """)
 
@@ -1822,7 +1811,7 @@ Args:
     path (str): 路由路径
     **kw: 其他FastAPI路由参数
 
-**返回:**\n
+**Returns:**\n
 - 装饰器函数
 """)
 
@@ -1844,7 +1833,7 @@ Args:
     path (str): 路由路径
     **kw: 其他FastAPI路由参数
 
-**返回:**\n
+**Returns:**\n
 - 装饰器函数
 """)
 
@@ -1861,14 +1850,12 @@ Args:
 
 add_chinese_doc('deploy.relay.base.FastapiApp.update', """\
 更新并清空路由服务注册表。
-
 """)
 
 add_english_doc('deploy.relay.base.FastapiApp.update', """\
 Update and clear route service registry.
-
-
 """)
+
 # RelayServer class documentation
 add_chinese_doc('deploy.relay.base.RelayServer', '''\
 RelayServer类是一个用于部署FastAPI服务的基类，它可以将一个函数转换为HTTP服务。这个类支持设置前处理函数、后处理函数，
@@ -1915,11 +1902,11 @@ http://localhost:35000/generate
 add_chinese_doc('deploy.relay.base.RelayServer.cmd', '''\
 cmd方法用于生成启动服务器的命令。它会将当前的函数和配置转换为一个可执行的命令字符串。
 
-参数：
+Args:
     func: 可选，要部署的新函数。如果不提供，则使用初始化时的函数。
 
-返回值：
-    返回一个LazyLLMCMD对象，包含服务器启动命令和相关配置。
+**Returns:**\n
+- 返回一个LazyLLMCMD对象，包含服务器启动命令和相关配置。
 ''')
 
 add_english_doc('deploy.relay.base.RelayServer.cmd', '''\
@@ -1929,8 +1916,8 @@ an executable command string.
 Args:
     func: Optional, new function to deploy. If not provided, uses the function from initialization.
 
-Returns:
-    Returns a LazyLLMCMD object containing the server start command and related configuration.
+**Returns:**\n
+- Returns a LazyLLMCMD object containing the server start command and related configuration.
 ''')
 
 add_example('deploy.relay.base.RelayServer.cmd', '''\
@@ -1945,11 +1932,11 @@ add_example('deploy.relay.base.RelayServer.cmd', '''\
 add_chinese_doc('deploy.relay.base.RelayServer.geturl', '''\
 geturl方法用于获取服务的访问URL。该URL可用于向服务发送HTTP请求。
 
-参数：
+Args:
     job: 可选，指定的任务对象。如果为None，则使用当前实例的任务。
 
-返回值：
-    返回服务的完整URL地址，格式为 http://<ip>:<port>/generate
+**Returns:**\n
+- 返回服务的完整URL地址，格式为 http://<ip>:<port>/generate
 ''')
 
 add_english_doc('deploy.relay.base.RelayServer.geturl', '''\
@@ -1958,8 +1945,8 @@ The geturl method returns the access URL for the service. This URL can be used t
 Args:
     job: Optional, specified job object. If None, uses the current instance's job.
 
-Returns:
-    Returns the complete URL of the service in the format http://<ip>:<port>/generate
+**Returns:**\n
+- Returns the complete URL of the service in the format http://<ip>:<port>/generate
 ''')
 
 add_example('deploy.relay.base.RelayServer.geturl', '''\
@@ -1980,7 +1967,6 @@ DummyDeploy(launcher=launchers.remote(sync=False), *, stream=False, **kw)
 该类主要用于内部测试和示例用途。它接收符合 `message_format` 格式的输入，根据是否启用 `stream` 参数，返回
 字符串或逐步输出的模拟响应。
 
-
 Args：
     launcher: 部署器实例，默认值为 `launchers.remote(sync=False)`。
     stream (bool): 是否以流式方式输出结果。
@@ -1999,7 +1985,6 @@ simulating a simple pipeline-style deployable service with optional streaming su
 
 This class is primarily intended for internal testing and demonstration. It receives inputs in the format defined
 by `message_format`, and returns a dummy response or a streaming response depending on the `stream` flag.
-
 
 Args:
     launcher: Deployment launcher instance, defaulting to `launchers.remote(sync=False)`.
@@ -2027,7 +2012,6 @@ Args:
     max_token_num (int): 输入微调模型的token最大长度，默认为``1024``。
     launcher (lazyllm.launcher): 微调的启动器，默认为 ``launchers.remote(ngpus=1)``。
     kw: 关键字参数，用于更新默认的训练参数。注意这里能够指定的关键字参数取决于 LazyLLM 推测出的框架，因此建议谨慎设置。
-
 ''')
 
 add_english_doc('auto.AutoDeploy', '''\
@@ -2045,7 +2029,6 @@ Args:
     max_token_num (int): The maximum token length for the input fine-tuning model, default is ``1024``.
     launcher (lazyllm.launcher): The launcher for fine-tuning, default is ``launchers.remote(ngpus=1)``.
     kw: Keyword arguments used to update default training parameters. Note that whether additional keyword arguments can be specified depends on the framework inferred by LazyLLM, so it is recommended to set them carefully.
-
 ''')
 
 add_example('auto.AutoDeploy', '''\
@@ -2053,6 +2036,7 @@ add_example('auto.AutoDeploy', '''\
 >>> deploy.auto('internlm2-chat-7b')
 <lazyllm.llm.deploy type=Lightllm> 
 ''')
+
 add_chinese_doc('auto.AutoDeploy.get_deployer', '''\
 根据模型类型获取对应的部署器类。
 
@@ -2066,8 +2050,8 @@ Args:
     type (Optional[str], optional): 模型类型。
     log_path (Optional[str], optional): 日志文件路径。
     **kw: 其他配置参数。
-
 ''')
+
 add_english_doc('auto.AutoDeploy.get_deployer', '''\
 Get corresponding deployer class based on model type.
 
@@ -2086,6 +2070,7 @@ Args:
 **Returns:**\n
 - Tuple: Returns (deployer class, launcher, configuration parameters dict) triple.
 ''')
+
 # ModelManager
 add_chinese_doc('ModelManager', '''\
 ModelManager 是 LazyLLM 提供的模型管理与下载工具类，支持本地搜索和 Huggingface/Modelscope 下载。  
@@ -2550,12 +2535,10 @@ True
 # FormatterBase
 add_chinese_doc('formatter.LazyLLMFormatterBase', '''\
 此类是格式化器的基类，格式化器是模型输出结果的格式化器，用户可以自定义格式化器，也可以使用LazyLLM提供的格式化器。
-
 ''')
 
 add_english_doc('formatter.LazyLLMFormatterBase', '''\
 This class is the base class of the formatter. The formatter is the formatter of the model output result. Users can customize the formatter or use the formatter provided by LazyLLM.
-
 ''')
 
 add_example('formatter.LazyLLMFormatterBase', '''\
@@ -2595,13 +2578,14 @@ add_example('formatter.LazyLLMFormatterBase', '''\
 >>> print(res)
 [2, 3]
 ''')
+
 add_chinese_doc('formatter.LazyLLMFormatterBase.format', """\
 格式化输入消息。
 
 Args:
     msg: 输入消息，可以是字符串或其他格式
 
-**返回:**\n
+**Returns:**\n
 - 格式化后的数据，具体类型由子类实现决定
 """)
 
@@ -2614,6 +2598,7 @@ Args:
 **Returns:**\n
 - Formatted data, specific type determined by subclass implementation
 """)
+
 # JsonLikeFormatter
 add_chinese_doc('formatter.formatterbase.JsonLikeFormatter', '''\
 该类用于以类 JSON 的格式提取嵌套结构（如 dict、list、tuple）中的子字段内容。
@@ -2649,6 +2634,7 @@ add_example('formatter.formatterbase.JsonLikeFormatter', '''\
 >>> from lazyllm.components.formatter.formatterbase import JsonLikeFormatter
 >>> formatter = JsonLikeFormatter("[{a,b}]")
 ''')
+
 add_chinese_doc('formatter.formatterbase.PipelineFormatter', """\
 流水线格式化器，用于将数据处理流水线封装为格式化器。
 
@@ -2656,7 +2642,6 @@ add_chinese_doc('formatter.formatterbase.PipelineFormatter', """\
 
 Args:
     formatter (Pipeline): 要封装的流水线实例
-
 """)
 
 add_english_doc('formatter.formatterbase.PipelineFormatter', """\
@@ -2666,7 +2651,6 @@ This class wraps Pipeline instances as formatters and supports combining multipl
 
 Args:
     formatter (Pipeline): Pipeline instance to encapsulate
-
 """)
 
 # PythonFormatter
@@ -2844,8 +2828,8 @@ Args:
     query (str): 用户查询字符串，默认为空字符串。
     files (str or List[str]): 与查询相关的文档路径，可为单个字符串或字符串列表。
 
-Returns:
-    str: 编码后的结构化查询字符串，或原始查询。
+**Returns:**\n
+- str: 编码后的结构化查询字符串，或原始查询。
 
 Raises:
     AssertionError: 如果 `files` 不是字符串或字符串列表，或列表中元素类型错误。
@@ -2860,8 +2844,8 @@ Args:
     query (str): The user query string. Defaults to an empty string.
     files (str or List[str]): File path(s) associated with the query. Can be a single string or a list of strings.
 
-Returns:
-    str: A structured encoded query string or the raw query.
+**Returns:**\n
+- str: A structured encoded query string or the raw query.
 
 Raises:
     AssertionError: If `files` is not a string or list of strings.
@@ -2884,8 +2868,8 @@ add_chinese_doc('formatter.decode_query_with_filepaths', '''\
 Args:
     query_files (str): 编码后的查询字符串，可能包含文档路径和查询内容。
 
-Returns:
-    Union[dict, str]: 若为结构化格式则返回包含 'query' 和 'files' 的字典，否则返回原始查询字符串。
+**Returns:**\n
+- Union[dict, str]: 若为结构化格式则返回包含 'query' 和 'files' 的字典，否则返回原始查询字符串。
 
 Raises:
     AssertionError: 如果输入参数不是字符串类型。
@@ -2900,8 +2884,8 @@ If the input string starts with the special prefix ``__lazyllm_docs__``, it atte
 Args:
     query_files (str): The encoded query string that may include both query and file paths.
 
-Returns:
-    Union[dict, str]: A dictionary containing 'query' and 'files' if structured, otherwise the original query string.
+**Returns:**\n
+- Union[dict, str]: A dictionary containing 'query' and 'files' if structured, otherwise the original query string.
 
 Raises:
     AssertionError: If the input is not a string.
@@ -2929,8 +2913,8 @@ add_chinese_doc('formatter.lazyllm_merge_query', '''\
 Args:
     *args (str): 多个查询字符串。每个字符串可以是普通文本或已编码的带文件路径的结构化查询。
 
-Returns:
-    str: 合并后的结构化查询字符串，包含统一的查询内容与文件路径。
+**Returns:**\n
+- str: 合并后的结构化查询字符串，包含统一的查询内容与文件路径。
 ''')
 
 add_english_doc('formatter.lazyllm_merge_query', '''\
@@ -2941,8 +2925,8 @@ Each argument can be a plain query string or a structured query created by ``enc
 Args:
     *args (str): Multiple query strings. Each can be either plain text or an encoded structured query with files.
 
-Returns:
-    str: A single structured query string containing the merged query and file paths.
+**Returns:**\n
+- str: A single structured query string containing the merged query and file paths.
 ''')
 
 add_example('formatter.lazyllm_merge_query', '''\
@@ -3038,8 +3022,8 @@ Args:
     prompt (Dict): 包含 prompt 相关字段的配置字典，需包含 `prompt` 键，其他为可选。
     show (bool): 是否显示生成的 prompt，默认为 False。
 
-Returns:
-    Prompter: 返回一个初始化的 Prompter 实例。
+**Returns:**\n
+- Prompter: 返回一个初始化的 Prompter 实例。
 ''')
 
 add_english_doc('Prompter.from_dict', '''\
@@ -3049,8 +3033,8 @@ Args:
     prompt (Dict): A dictionary containing prompt-related configuration. Must include 'prompt' key.
     show (bool): Whether to display the generated prompt. Defaults to False.
 
-Returns:
-    Prompter: An initialized Prompter instance.
+**Returns:**\n
+- Prompter: An initialized Prompter instance.
 ''')
 
 # Prompter.from_template
@@ -3061,8 +3045,8 @@ Args:
     template_name (str): 模板名称，必须在 `templates` 中存在。
     show (bool): 是否显示生成的 prompt，默认为 False。
 
-Returns:
-    Prompter: 返回一个初始化的 Prompter 实例。
+**Returns:**\n
+- Prompter: 返回一个初始化的 Prompter 实例。
 ''')
 
 add_english_doc('Prompter.from_template', '''\
@@ -3072,8 +3056,8 @@ Args:
     template_name (str): Name of the template. Must exist in the `templates` dictionary.
     show (bool): Whether to display the generated prompt. Defaults to False.
 
-Returns:
-    Prompter: An initialized Prompter instance.
+**Returns:**\n
+- Prompter: An initialized Prompter instance.
 ''')
 
 # Prompter.from_file
@@ -3392,7 +3376,6 @@ add_example('AlpacaPrompter', '''\
 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello word\\\\n\\\\n\\\\n\\\\nthis is user instruction my input### Response:\\\\n'
 >>> p.generate_prompt(dict(input="my input"), return_dict=True)
 {'messages': [{'role': 'system', 'content': 'You are an AI-Agent developed by LazyLLM.\\\\nBelow is an instruction that describes a task, paired with extra messages such as input that provides further context if possible. Write a response that appropriately completes the request.\\\\n\\\\n ### Instruction:\\\\nhello world'}, {'role': 'user', 'content': 'this is user instruction my input'}]}
-
 ''')
 
 add_chinese_doc('ChatPrompter', '''\
@@ -3491,7 +3474,6 @@ add_example('StableDiffusionDeploy', ['''\
 ... <lazyllm-query>{"query": "", "files": ["path/to/sd3/image_xxx.png"]}
 '''])
 
-
 add_english_doc('ChatTTSDeploy', '''\
 ChatTTS Model Deployment Class.
 
@@ -3517,7 +3499,6 @@ Keyword Args:
             * `temperature` (float): Sampling temperature for audio generation (default: 0.3) \n
             * `repetition_penalty` (float): Repetition penalty coefficient (default: 1.05) \n
             * `max_new_token` (int): Maximum number of tokens for audio generation (default: 2048) \n
-
 ''')
 
 add_chinese_doc('ChatTTSDeploy', '''\
@@ -3814,7 +3795,6 @@ Returns:
 add_chinese_doc('deploy.text_to_speech.TTSDeploy', '''\
 TTSDeploy 是一个用于根据指定的名称创建不同类型文本到语音(TTS)部署实例的工厂类。
 
-
 Args:
     name：字符串，用于指定要创建的部署实例的类型。
     **kwarg：关键字参数，用于传递给对应部署实例的构造函数。
@@ -3841,11 +3821,13 @@ add_example('TTSDeploy', ['''\
 add_english_doc('finetune.base.DummyFinetune', '''\
 DummyFinetune is a subclass of [LazyLLMFinetuneBase][lazyllm.components.LazyLLMFinetuneBase] that serves as a placeholder implementation for fine-tuning.
 The class is primarily used for demonstration or testing purposes, as it does not perform any actual fine-tuning logic.
+
 Args:
     base_model: A string specifying the base model name. Defaults to 'base'.
     target_path: A string specifying the target path for fine-tuning outputs. Defaults to 'target'.
     launcher: A launcher instance for executing commands. Defaults to [launchers.remote()][lazyllm.launchers.remote].
     **kw: Additional keyword arguments that are stored for later use.
+
 Returns:
     A string representing a dummy command. The string includes the initial arguments passed during initialization.
 ''')
@@ -3937,7 +3919,6 @@ Args:
 
 Returns:
     OCRDeploy instance, can be started by calling
-
 ''')
 
 add_chinese_doc('OCRDeploy', '''\
@@ -3960,7 +3941,6 @@ Args:
 
 Returns:
     OCRDeploy实例，可通过调用方式启动服务
-
 ''')
 
 add_example('OCRDeploy', ['''\

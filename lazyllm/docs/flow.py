@@ -134,6 +134,7 @@ Args:
 **Returns:**\n
 - None
 """)
+
 add_example('FlowBase.for_each', """\
 >>> import lazyllm
 >>> def test1(): print('1')
@@ -167,7 +168,6 @@ Args:
     post_action: 在主流程结束后对输出进行进一步处理的可调用对象。默认为 ``None``。
     auto_capture: 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 False。
     **kw: 命名组件的键值对。
-
 """)
 
 add_english_doc('LazyLLMFlowsBase', """\
@@ -230,7 +230,7 @@ add_chinese_doc('LazyLLMFlowsBase.set_sync', '''\
 Args:
     sync (bool): 是否同步执行，默认为 True。
 
-**Returns**\n
+**Returns:**\n
 - LazyLLMFlowsBase: 当前实例。
 ''')
 
@@ -240,21 +240,21 @@ Set whether the flow executes synchronously.
 Args:
     sync (bool): Whether to execute synchronously. Default is True.
 
-**Returns**\n
+**Returns:**\n
 - LazyLLMFlowsBase: The current instance.
 ''')
 
 add_chinese_doc('LazyLLMFlowsBase.wait', '''\
 等待流程中所有异步任务完成。
 
-**Returns**\n
+**Returns:**\n
 - LazyLLMFlowsBase: 当前实例。
 ''')
 
 add_english_doc('LazyLLMFlowsBase.wait', '''\
 Wait for all asynchronous tasks in the flow to complete.
 
-**Returns**\n
+**Returns:**\n
 - LazyLLMFlowsBase: The current instance.
 ''')
 
@@ -287,7 +287,7 @@ Args:
     *args: 位置参数。
     **kw: 关键字参数。
 
-**Returns**\n
+**Returns:**\n
 - bind: 绑定后的 bind 对象。
 ''')
 
@@ -298,7 +298,7 @@ Args:
     *args: Positional arguments.
     **kw: Keyword arguments.
 
-**Returns**\n
+**Returns:**\n
 - bind: The bound bind object.
 ''')
 
@@ -518,7 +518,6 @@ Args:
 
 **Returns:**\n
 - 管道的最后一个阶段的输出。
-
 """)
 
 add_english_doc('Pipeline', """\
@@ -551,12 +550,12 @@ add_example('Pipeline', """\
 add_chinese_doc('Pipeline.output', '''\
 获取流水线中指定模块的输出结果。
 
-参数:
+Args:
     module: 要获取输出的模块。可以是模块对象或模块名称。
     unpack (bool): 是否解包输出结果。默认为False。
 
-返回值:
-    bind.Args: 一个绑定参数对象，用于在流水线中传递数据。
+**Returns:**\n
+- bind.Args: 一个绑定参数对象，用于在流水线中传递数据。
 ''')
 
 add_english_doc('Pipeline.output', '''\
@@ -566,8 +565,8 @@ Args:
     module: The module to get output from. Can be a module object or module name.
     unpack (bool): Whether to unpack the output result. Defaults to False.
 
-Returns:
-    bind.Args: A bound argument object for data passing in the pipeline.
+**Returns:**\n
+- bind.Args: A bound argument object for data passing in the pipeline.
 ''')
 
 add_chinese_doc('save_pipeline_result', """\
@@ -719,7 +718,7 @@ Args:
     post_action (callable, optional): 在执行选定流后要调用的函数。默认为 ``None``。
     judge_on_full_input(bool): 如果设置为 ``True`` ， 则通过 ``switch`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
 
-抛出:
+Raises:
     TypeError: 如果提供的参数数量为奇数，或者如果第一个参数不是字典且条件没有成对提供。
 """)
 
@@ -808,7 +807,6 @@ Args:
     asdict
 
     和 ``parallel.asdict`` 一样
-
 """)
 
 add_english_doc('Diverter', """\
@@ -829,7 +827,6 @@ Args:
     _concurrent (bool, optional): A flag to control whether the modules should be run concurrently. Defaults to ``True``. You can use ``Diverter.sequential`` instead of ``Diverter`` to set this variable.
     auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
     kwargs : Arbitrary keyword arguments representing additional modules, where the key is the name of the module.
-
 """)
 
 add_example('Diverter', """\
@@ -854,6 +851,7 @@ Warp类设计用于将同一个处理模块应用于一组输入。它有效地�
 # (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
 #                 \> in3 /                            \> out3 /
 ```
+
 Args:
     args: 可变长度参数列表，代表要应用于所有输入的单个模块。
     _scatter (bool): 是否以分片方式拆分输入，默认 False。
@@ -1130,7 +1128,7 @@ add_chinese_doc('Graph.topological_sort', """\
 **Returns:**\n
 - List[Node]: 按拓扑顺序排列的节点列表。
 
-**抛出:**\n
+Raises:
 - ValueError: 如果图中存在循环依赖。
 """)
 
@@ -1142,7 +1140,7 @@ This method uses Kahn's algorithm to perform topological sorting on the directed
 **Returns:**\n
 - List[Node]: List of nodes arranged in topological order.
 
-**Raises:**\n
+Raises:
 - ValueError: If there are circular dependencies in the graph.
 """)
 
