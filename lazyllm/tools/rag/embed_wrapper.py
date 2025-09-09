@@ -12,7 +12,7 @@ EmbeddingRet = Union[Vector, Matrix, Sparse]
 class _EmbedWrapper:
     def __init__(self, func: Callable[..., Any]):
         self.func = func
-        target = getattr(func, "__call__", func)
+        target = getattr(func, '__call__', func)
         update_wrapper(self, target)
         self.__wrapped__ = func
 
@@ -25,12 +25,12 @@ class _EmbedWrapper:
 
     def _normalize(self, res: Any) -> EmbeddingRet:
         if isinstance(res, (bytes, bytearray)):
-            res = res.decode("utf-8", "ignore")
+            res = res.decode('utf-8', 'ignore')
         if isinstance(res, str):
             try:
                 res = json.loads(res)
             except json.JSONDecodeError as e:
-                raise ValueError("Embedding string is not valid JSON.") from e
+                raise ValueError('Embedding string is not valid JSON.') from e
 
         if isinstance(res, dict):
             return res
@@ -38,9 +38,9 @@ class _EmbedWrapper:
         if isinstance(res, list):
             if self._is_vector(res) or self._is_matrix(res):
                 return res  # List[Dict[str, Any]] or List[List[float]] or List[float]
-            raise TypeError("Embedding list must be List[float] or List[List[float]].")
+            raise TypeError('Embedding list must be List[float] or List[List[float]].')
 
-        raise TypeError(f"Unexpected embedding type: {type(res)}")
+        raise TypeError(f'Unexpected embedding type: {type(res)}')
 
     @staticmethod
     def _is_vector(x: list) -> bool:
