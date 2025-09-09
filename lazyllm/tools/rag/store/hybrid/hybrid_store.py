@@ -48,8 +48,8 @@ class HybridStore(LazyLLMStoreBase):
             if item.get('uid') in data:
                 data[item.get('uid')]['embedding'] = item.get('embedding')
             else:
-                raise ValueError(f"[HybridStore - get] uid {item['uid']} in vector store"
-                                 " but not found in segment store")
+                raise ValueError(f'[HybridStore - get] uid {item["uid"]} in vector store'
+                                 ' but not found in segment store')
         return list(data.values())
 
     @override

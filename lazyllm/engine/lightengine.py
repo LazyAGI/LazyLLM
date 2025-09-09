@@ -130,14 +130,14 @@ class LightEngine(Engine):
                 raise RuntimeError('History shoule be [[str, str], ..., [str, str]] (list of list of str)')
             lazyllm.globals['chat_history'] = {Engine().build_node(i).func._module_id: history for i in f._history_ids}
         for node in nodes:
-            if isinstance(node, Node) and node.hyperparameter is not None and hasattr(node.func, "_module_id"):
+            if isinstance(node, Node) and node.hyperparameter is not None and hasattr(node.func, '_module_id'):
                 lazyllm.globals['global_parameters'][node.func._module_id] = node.hyperparameter
         result = self.build_node(id).func(*args, **kw)
         lazyllm.globals['lazyllm_files'] = {}
         lazyllm.globals['chat_history'] = {}
         if isinstance(result, str) and result.startswith(LAZYLLM_QUERY_PREFIX):
             decoded_result = lazyllm.formatter.file(formatter='decode')(result)
-            if decoded_result["query"] and decoded_result["files"]: return result
-            return decoded_result["query"] or decoded_result["files"][0]
+            if decoded_result['query'] and decoded_result['files']: return result
+            return decoded_result['query'] or decoded_result['files'][0]
         else:
             return result

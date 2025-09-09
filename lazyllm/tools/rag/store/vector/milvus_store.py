@@ -63,7 +63,7 @@ class MilvusStore(LazyLLMStoreBase):
     def dir(self):
         if self._is_remote: return None
         p = Path(self._uri)
-        p = p if p.suffix else (p / "milvus.db")
+        p = p if p.suffix else (p / 'milvus.db')
         return str(p.resolve(strict=False))
 
     @override
@@ -81,7 +81,7 @@ class MilvusStore(LazyLLMStoreBase):
 
         max_pool_size = int(self._client_kwargs.pop('max_pool_size', 8))
         self._client_pool = _ClientPool(self._new_client, max_size=max_pool_size)
-        LOG.info("[Milvus Vector Store] init success!")
+        LOG.info('[Milvus Vector Store] init success!')
 
     def _new_client(self):
         kwargs = dict(self._client_kwargs)

@@ -6,12 +6,12 @@ lint-flake8:
 lint-flake8-only-diff:
 	@echo "🔍 Collecting changed Python files..."
 	@FILES=$$( \
-		git diff --name-status origin/main..HEAD -- 'lazyllm/**.py'  'docs/**.py' 'scripts/**.py' 'tests/**.py' examples/**.py; \
-		git diff --cached --name-status -- 'lazyllm/**.py' 'docs/**.py' 'scripts/**.py' 'tests/**.py' examples/**.py; \
-		git diff --name-status -- 'lazyllm/**.py' 'docs/**.py' 'scripts/**.py' 'tests/**.py' examples/**.py \
-		| cat \
-		| awk '$$1 ~ /^(A|M)$$/ {print $$2}' \
-	); \
+		{ \
+			git diff --name-status origin/main..HEAD -- 'lazyllm/**.py'  'docs/**.py' 'scripts/**.py' 'tests/**.py' 'examples/**.py'; \
+			git diff --cached --name-status -- 'lazyllm/**.py' 'docs/**.py' 'scripts/**.py' 'tests/**.py' 'examples/**.py'; \
+			git diff --name-status -- 'lazyllm/**.py' 'docs/**.py' 'scripts/**.py' 'tests/**.py' 'examples/**.py'; \
+		} | awk '$$1 ~ /^(A|M)$$/ {print $$2}' \
+	);  \
 	if [ -n "$$FILES" ]; then \
 		echo "➡️  Running flake8 on:"; \
 		echo "$$FILES"; \

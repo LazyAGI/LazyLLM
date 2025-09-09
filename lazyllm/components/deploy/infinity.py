@@ -7,7 +7,7 @@ from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
 from .utils import get_log_path, make_log_dir
 
-lazyllm.config.add("default_embedding_engine", str, "", "DEFAULT_EMBEDDING_ENGINE")
+lazyllm.config.add('default_embedding_engine', str, '', 'DEFAULT_EMBEDDING_ENGINE')
 
 class Infinity(LazyLLMDeployBase):
     keys_name_handle = {
@@ -37,8 +37,8 @@ class Infinity(LazyLLMDeployBase):
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
             if not finetuned_model:
-                LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                            f"base_model({base_model}) will be used")
+                LOG.warning(f'Note! That finetuned_model({finetuned_model}) is an invalid path, '
+                            f'base_model({base_model}) will be used')
             finetuned_model = base_model
 
         def impl():
@@ -53,8 +53,8 @@ class Infinity(LazyLLMDeployBase):
                     cmd += f'--device-id={gpu_ids} '
                 else:
                     raise RuntimeError(
-                        f"Insufficient GPUs available (required: {required_count}, "
-                        f"available: {len(available_gpus)})"
+                        f'Insufficient GPUs available (required: {required_count}, '
+                        f'available: {len(available_gpus)})'
                     )
             cmd += self.kw.parse_kwargs()
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'

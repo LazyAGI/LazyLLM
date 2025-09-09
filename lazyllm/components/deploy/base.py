@@ -68,13 +68,13 @@ def verify_func_factory(error_message='ERROR:',
         while True:
             line = job.queue.get()
             if line.startswith(error_message):
-                LOG.error(f"Capture error message: {line} \n\n")
+                LOG.error(f'Capture error message: {line} \n\n')
                 return False
             elif running_message in line:
-                LOG.info(f"Capture startup message: {line}")
+                LOG.info(f'Capture startup message: {line}')
                 break
             if job.status == lazyllm.launchers.status.Failed:
-                LOG.error("Service Startup Failed.")
+                LOG.error('Service Startup Failed.')
                 return False
         return True
     return verify_func

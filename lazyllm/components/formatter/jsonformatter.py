@@ -6,7 +6,7 @@ class JsonFormatter(JsonLikeFormatter):
     def _extract_json_from_string(self, mixed_str: str):
         json_objects = []
         brace_level = 0
-        current_json = ""
+        current_json = ''
         in_string = False
 
         for char in mixed_str:
@@ -16,7 +16,7 @@ class JsonFormatter(JsonLikeFormatter):
             if not in_string:
                 if char in '{[':
                     if brace_level == 0:
-                        current_json = ""
+                        current_json = ''
                     brace_level += 1
                 elif char in '}]':
                     brace_level -= 1
@@ -28,7 +28,7 @@ class JsonFormatter(JsonLikeFormatter):
                 try:
                     json.loads(current_json)
                     json_objects.append(current_json)
-                    current_json = ""
+                    current_json = ''
                 except json.JSONDecodeError:
                     continue
 
@@ -36,15 +36,15 @@ class JsonFormatter(JsonLikeFormatter):
 
     def _load(self, msg: str):
         # Convert str to json format
-        assert msg.count("{") == msg.count("}"), f"{msg} is not a valid json string."
+        assert msg.count('{') == msg.count('}'), f'{msg} is not a valid json string.'
         try:
             json_strs = self._extract_json_from_string(msg)
             if len(json_strs) == 0:
-                raise TypeError(f"{msg} is not a valid json string.")
+                raise TypeError(f'{msg} is not a valid json string.')
             res = []
             for json_str in json_strs:
                 res.append(json.loads(json_str))
             return res if len(res) > 1 else res[0]
         except Exception as e:
-            lazyllm.LOG.info(f"Error: {e}")
-            return ""
+            lazyllm.LOG.info(f'Error: {e}')
+            return ''
