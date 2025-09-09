@@ -3455,6 +3455,7 @@ Args:
 
 add_chinese_doc('StableDiffusionDeploy', '''\
 Stable Diffusion 模型部署类。该类用于将SD模型部署到指定服务器上，以便可以通过网络进行调用。
+
 Args:
     launcher (Optional[LazyLLMLaunchersBase], optional): 启动器实例。默认为 ``None``
     log_path (Optional[str], optional): 日志文件路径。默认为 ``None``

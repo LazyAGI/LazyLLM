@@ -897,12 +897,14 @@ Note:
 
 add_chinese_doc('ReadOnlyWrapper', '''
 一个轻量级只读包装器，用于包裹任意对象并对外提供只读访问（实际并未完全禁止修改，但复制时不会携带原始对象）。包装器可以动态替换内部对象，并提供判断对象是否为空的辅助方法。
+
 Args:
     obj (Optional[Any]): 初始被包装的对象，默认为 None。
 ''')
 
 add_english_doc('ReadOnlyWrapper', '''
 A lightweight read-only wrapper that holds an arbitrary object and exposes its attributes. It supports swapping the internal object dynamically and provides utility for checking emptiness. Note: it does not enforce deep immutability, but deepcopy drops the wrapped object.
+
 Args:
     obj (Optional[Any]): The initial wrapped object, defaults to None.
 ''')
