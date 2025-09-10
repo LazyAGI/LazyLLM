@@ -2,6 +2,7 @@ import time
 import os
 import yaml
 import requests
+import json
 
 from ..core import ComponentBase
 import lazyllm
@@ -15,6 +16,43 @@ lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODUL
 if os.path.exists(lazyllm.config['trainable_module_config_map_path']):
     trainable_module_config_map = yaml.safe_load(open(lazyllm.config['trainable_module_config_map_path'], 'r'))
 lazyllm.config.add('openai_api', bool, False, 'OPENAI_API')
+
+
+def _normalize_value_for_comparison(value):
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            return value
+    return value
+
+def _values_equal_for_dict(dict1, dict2):
+    check_status = True
+    for k in dict2:
+        if k not in dict1:
+            return False
+        check_status &= _values_equal_for_config(dict1[k], dict2[k])
+    return check_status
+
+def _values_equal_for_config(config_value, deploy_value):
+    norm_config_value = _normalize_value_for_comparison(config_value)
+    norm_deploy_value = _normalize_value_for_comparison(deploy_value)
+
+    if isinstance(norm_config_value, str) and isinstance(norm_deploy_value, str):
+        for converter in [int, float, bool]:
+            try:
+                return converter(norm_config_value) == converter(norm_deploy_value)
+            except (ValueError, TypeError):
+                continue
+        return norm_config_value == norm_deploy_value
+
+    if isinstance(norm_config_value, dict) and isinstance(norm_deploy_value, dict):
+        return _values_equal_for_dict(norm_config_value, norm_deploy_value)
+
+    if isinstance(norm_config_value, list) and isinstance(norm_deploy_value, list):
+        return set(norm_deploy_value).issubset(set(norm_config_value))
+
+    return norm_config_value == norm_deploy_value
 
 class LazyLLMDeployBase(ComponentBase):
     keys_name_handle = None
@@ -38,23 +76,19 @@ class LazyLLMDeployBase(ComponentBase):
         model_configs = trainable_module_config_map[base_model]
         for model_config in model_configs:
             url = model_config.get('url')
-            deploy_config = model_config.get('deploy_config')
-            framework = deploy_config.get('framework')
-            check_status = True
-            check_status &= framework and url and framework.lower() == self.__class__.__name__.lower()
-            for key, value in self.kw.items():
-                check_status &= deploy_config.get(key) == value
-            check_status &= set(self.store_true_keys).issubset(set(deploy_config.get('lazyllm-store-true-keys', [])))
+            check_status = url and _values_equal_for_config(
+                model_config.get('deploy_config'),
+                {
+                    'lazyllm-store-true-keys': self.store_true_keys,
+                    'framework': self.__class__.__name__.lower(),
+                    **self.kw
+                }
+            )
 
             try:
-                requests.get(url, timeout=3)
-                check_status &= True
+                if check_status and requests.get(url, timeout=3): return url
             except Exception:
                 LOG.info(f"url not available: {url}")
-                check_status &= False
-
-            if check_status:
-                return url
         return None
 
     def _add_config(self, base_model: str, url: str):
@@ -69,6 +103,7 @@ class LazyLLMDeployBase(ComponentBase):
         }
         trainable_module_config_map.setdefault(base_model, [])
         trainable_module_config_map[base_model].append(model_config)
+        LOG.info(f'add config: {model_config}')
 
     def __call__(self, *args, **kw):
         assert len(args) >= 2 and os.path.exists(args[1]), (

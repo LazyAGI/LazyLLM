@@ -7,6 +7,7 @@ from contextlib import contextmanager
 import copy
 import threading
 import types
+import json
 from ..configs import config
 from urllib.parse import urlparse
 
@@ -40,7 +41,12 @@ class ArgsDict(dict):
         self.update(kw)
 
     def parse_kwargs(self):
-        string = ' '.join(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"' for k, v in self.items())
+        string = []
+        for k, v in self.items():
+            if type(v) is dict:
+                v = json.dumps(v).replace('\"', '\\\"')
+            string.append(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"')
+        string = ' '.join(string)
         return string
 
 class CaseInsensitiveDict(dict):
