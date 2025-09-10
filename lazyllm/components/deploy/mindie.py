@@ -52,6 +52,8 @@ class Mindie(LazyLLMDeployBase):
             'maxPrefillTokens': 8192,
         })
         self.trust_remote_code = trust_remote_code
+        self.store_true_keys = kw.pop('lazyllm-store-true-keys', [])
+        assert len(self.store_true_keys) == 0, 'store_true_keys is not supported'
         self.kw.check_and_update(kw)
         self.kw['npuDeviceIds'] = [[i for i in range(self.kw.get('worldSize', 1))]]
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True

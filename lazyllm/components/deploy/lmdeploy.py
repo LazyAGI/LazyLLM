@@ -7,7 +7,7 @@ import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG, config
 from .base import LazyLLMDeployBase, verify_fastapi_func
 from ..utils import ModelManager
-from .utils import get_log_path, make_log_dir
+from .utils import get_log_path, make_log_dir, parse_store_true_keys
 
 
 config.add('lmdeploy_eager_mode', bool, False, 'LMDEPLOY_EAGER_MODE')
@@ -54,6 +54,7 @@ class LMDeploy(LazyLLMDeployBase):
             "max-batch-size": 128,
             "chat-template": None,
         })
+        self.store_true_keys = kw.pop('lazyllm-store-true-keys', [])
         self.kw.check_and_update(kw)
         self._trust_remote_code = trust_remote_code
         self.random_port = False if 'server-port' in kw and kw['server-port'] else True
@@ -86,6 +87,7 @@ class LMDeploy(LazyLLMDeployBase):
             if importlib.util.find_spec("torch_npu") is not None: cmd += '--device ascend '
             if config['lmdeploy_eager_mode']: cmd += '--eager-mode '
             cmd += self.kw.parse_kwargs()
+            cmd += ' ' + parse_store_true_keys(self.store_true_keys)
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 

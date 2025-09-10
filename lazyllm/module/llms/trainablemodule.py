@@ -88,6 +88,9 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if len(set(args.keys()).intersection(set(disable))) > 0:
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
+        args = {k.replace('_', '-'): v for k, v in args.items()}
+        if 'lazyllm-store-true-keys' in args:
+            args['lazyllm-store-true-keys'] = [k.replace('_', '-') for k in args['lazyllm-store-true-keys']]
 
         if not args.get('url'):
             if arg_cls == 'deploy' and self._deploy is lazyllm.deploy.AutoDeploy:
@@ -485,7 +488,7 @@ class TrainableModule(UrlModule):
                        *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
         if not getattr(self, '_openai_module', None):
             self._openai_module = lazyllm.OnlineChatModule(
-                source='openai', model='lazyllm', base_url=self._url, skip_auth=True)
+                source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=self.type)
             self._openai_module.used_by(self._module_id)
         return self._openai_module.forward(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
                                            tools=tools, stream_output=stream_output, **kw)
