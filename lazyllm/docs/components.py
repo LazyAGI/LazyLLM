@@ -121,7 +121,7 @@ Args:
     launcher (lazyllm.launcher): 微调启动器，默认 ``launchers.remote(ngpus=1)``。
     kw (dict): 用于更新默认训练参数的关键字参数，允许更新如下参数：
 
-Keyword Args (可选):
+Keyword Args:
     data_path (Optional[str]): 数据路径，默认 ``None``。
     batch_size (Optional[int]): 批大小，默认 64。
     micro_batch_size (Optional[int]): 微批大小，默认 4。
@@ -3301,8 +3301,8 @@ Args:
     history (Optional[List]): Conversation history, defaults to None.
 
 Attributes:
-    ISA (str): Instruction separator start token "<!lazyllm-spliter!>".
-    ISE (str): Instruction separator end token "</!lazyllm-spliter!>".
+    ISA (str): Instruction separator start token "<!lazyllm-spliter!>".\n
+    ISE (str): Instruction separator end token "</!lazyllm-spliter!>".\n
 
 Configuration Items:
     system: System role setting \n
@@ -3322,18 +3322,18 @@ Args:
     tools (Optional[List]): 可用工具列表，默认为None。
     history (Optional[List]): 对话历史记录，默认为None。
 
-属性：
-    ISA (str): 指令分隔符起始标记 "<!lazyllm-spliter!>"。
-    ISE (str): 指令分隔符结束标记 "</!lazyllm-spliter!>"。
+Attributes:
+    ISA (str): 指令分隔符起始标记 "<!lazyllm-spliter!>"。\n
+    ISE (str): 指令分隔符结束标记 "</!lazyllm-spliter!>"。\n
 
-配置项：
-- system: 系统角色设定
-- sos/eos: 会话开始/结束标记
-- soh/eoh: 人类输入开始/结束标记
-- soa/eoa: AI回复开始/结束标记
-- soe/eoe: 工具执行结果开始/结束标记
-- tool_start_token/tool_end_token: 工具调用开始/结束标记
-- tool_args_token: 工具参数标记
+Configuration Items:
+    - system: 系统角色设定\n
+    - sos/eos: 会话开始/结束标记\n
+    - soh/eoh: 人类输入开始/结束标记\n
+    - soa/eoa: AI回复开始/结束标记\n
+    - soe/eoe: 工具执行结果开始/结束标记\n
+    - tool_start_token/tool_end_token: 工具调用开始/结束标记\n
+    - tool_args_token: 工具参数标记\n
 ''')
 
 add_chinese_doc('AlpacaPrompter', '''\
