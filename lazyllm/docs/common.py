@@ -35,8 +35,8 @@ Args:
     fnames (Union[str, List[str]]): Function name or function name list to rewrite
     template (str, optional): Registration template string, defaults to standard registration template
     default_group (str, optional): Default group name, defaults to None
-
 ''')
+
 add_example('Register', '''\
 >>> import lazyllm
 >>> @lazyllm.component_register('mygroup')
@@ -53,6 +53,7 @@ add_example('Register', '''\
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) Command: echo 1
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
 ''')
+
 add_english_doc('Register.new_group', '''\
 
 Creates a new ComponentGroup. The newly created group will be automatically added to __builtin__ and can be accessed at any location without the need for import.
@@ -78,7 +79,7 @@ add_chinese_doc('registry.LazyDict', '''\
 4. 支持动态默认键
 5. 如果组名出现在名称中，允许省略组名
 
-参数:
+Args:
     name (str): 字典的名称，默认为空字符串。
     base: 基类引用，默认为None。
     *args: 位置参数，传递给dict父类。
@@ -105,7 +106,7 @@ Args:
 add_chinese_doc('registry.LazyDict.remove', '''\
 从字典中移除指定的键值对。
 
-参数:
+Args:
     key (str): 要移除的键。支持与__getattr__相同的键匹配规则，包括首字母小写和组名省略等特性。
 
 注意:
@@ -126,7 +127,7 @@ Note:
 add_chinese_doc('registry.LazyDict.set_default', '''\
 设置字典的默认键。设置后可以通过.default属性访问该键对应的值。
 
-参数:
+Args:
     key (str): 要设置为默认的键名。
 
 注意:
@@ -276,6 +277,7 @@ Method to retrieve the thread execution result. This method blocks until the thr
 
 **Note**: This method should be used after calling `thread.start()` to retrieve the thread execution result.
 ''')
+
 # ============= Bind/bind
 add_chinese_doc('bind', '''\
 Bind 类用于函数绑定与延迟调用，支持动态参数传入和上下文参数解析，实现灵活的函数组合与流水线式调用。
@@ -667,6 +669,7 @@ A result collector used to store and access results by name during the execution
 Calling the instance with a name returns a callable Impl object that collects results for that name.  
 Useful for scenarios where intermediate results need to be shared across steps.
 ''')
+
 add_chinese_doc('common.ResultCollector.Impl', '''\
 ResultCollector 的内部实现类，负责为指定名称收集结果。  
 不应直接实例化，需通过 ResultCollector(name) 获取。
@@ -689,28 +692,28 @@ Args:
 add_chinese_doc('common.ResultCollector.keys', '''\
 获取所有已存储结果的名称。
 
-**Returns**\n
+**Returns:**\n
 - KeysView[str]: 结果名称集合。
 ''')
 
 add_english_doc('common.ResultCollector.keys', '''\
 Get all stored result names.
 
-**Returns**\n
+**Returns:**\n
 - KeysView[str]: A set-like object containing result names.
 ''')
 
 add_chinese_doc('common.ResultCollector.items', '''\
 获取所有已存储的 (名称, 值) 对。
 
-**Returns**\n
+**Returns:**\n
 - ItemsView[str, Any]: 结果的键值对集合。
 ''')
 
 add_english_doc('common.ResultCollector.items', '''\
 Get all stored (name, value) pairs.
 
-**Returns**\n
+**Returns:**\n
 - ItemsView[str, Any]: A set-like object containing name-value pairs of results.
 ''')
 
@@ -892,60 +895,62 @@ Note:
     - Cleanup occurs when object is destroyed or context is exited
 ''')
 
-add_chinese_doc('ReadOnlyWrapper', '''\ 
+add_chinese_doc('ReadOnlyWrapper', '''
 一个轻量级只读包装器，用于包裹任意对象并对外提供只读访问（实际并未完全禁止修改，但复制时不会携带原始对象）。包装器可以动态替换内部对象，并提供判断对象是否为空的辅助方法。
+
 Args:
     obj (Optional[Any]): 初始被包装的对象，默认为 None。
 ''')
 
-add_english_doc('ReadOnlyWrapper', '''\
+add_english_doc('ReadOnlyWrapper', '''
 A lightweight read-only wrapper that holds an arbitrary object and exposes its attributes. It supports swapping the internal object dynamically and provides utility for checking emptiness. Note: it does not enforce deep immutability, but deepcopy drops the wrapped object.
+
 Args:
     obj (Optional[Any]): The initial wrapped object, defaults to None.
 ''')
 
-add_chinese_doc('ReadOnlyWrapper.set', '''\ 
+add_chinese_doc('ReadOnlyWrapper.set', '''
 替换当前包装的内部对象。
 
 Args:
     obj (Any): 新的内部对象。
 ''')
 
-add_english_doc('ReadOnlyWrapper.set', '''\
+add_english_doc('ReadOnlyWrapper.set', '''
 Replace the currently wrapped internal object.
 
 Args:
     obj (Any): New object to wrap.
 ''')
 
-add_chinese_doc('ReadOnlyWrapper.isNone', '''\ 
+add_chinese_doc('ReadOnlyWrapper.isNone', '''
 检查当前包装器是否未持有任何对象。
 
 Args:
     None.
 
-**Returns**\n
+**Returns:**\n
 - bool: 如果内部对象为 None 返回 True，否则 False。
 ''')
 
-add_english_doc('ReadOnlyWrapper.isNone', '''\
+add_english_doc('ReadOnlyWrapper.isNone', '''
 Check whether the wrapper currently holds no object.
 
 Args:
     None.
 
-**Returns**\n
+**Returns:**\n
 - bool: True if the internal object is None, otherwise False.
 ''')
 
-add_chinese_doc('queue.RedisQueue', '''\ 
+add_chinese_doc('queue.RedisQueue', '''
 基于 Redis 实现的文件系统队列（继承自 FileSystemQueue），用于跨进程/节点的消息传递与队列管理。内部使用指定的 redis_url 初始化并管理底层存储，同时提供线程安全的初始化逻辑。
 
 Args:
     klass (str): 队列的分类名称，用于区分不同队列实例，默认值为 '__default__'。
 ''')
 
-add_english_doc('queue.RedisQueue', '''\
+add_english_doc('queue.RedisQueue', '''
 Redis-backed file system queue (inherits from FileSystemQueue) for cross-process/node message passing and queue management. It initializes its underlying storage using a configured Redis URL and employs thread-safe setup logic.
 
 Args:
@@ -953,7 +958,7 @@ Args:
 ''')
 
 
-add_chinese_doc('Identity', '''\
+add_chinese_doc('Identity', '''
 恒等模块，用于直接返回输入值。
 
 该模块常用于模块拼接结构中占位，无实际处理逻辑。若输入为多个参数，将自动打包为一个整体结构输出。
@@ -963,7 +968,7 @@ Args:
     **kw: 可选的关键字参数，占位用。
 ''')
 
-add_english_doc('Identity', '''\
+add_english_doc('Identity', '''
 Identity module that directly returns the input as output.
 
 This module serves as a no-op placeholder in composition pipelines. If multiple inputs are provided, they are packed together before returning.
@@ -975,7 +980,7 @@ Args:
 
 
 
-add_chinese_doc('ProcessPoolExecutor.submit', '''\
+add_chinese_doc('ProcessPoolExecutor.submit', '''
 将任务提交到进程池中执行。
 
 此方法将一个函数及其参数序列化后提交到进程池中执行，返回一个 `Future` 对象，用于获取任务执行结果或状态。
@@ -985,11 +990,11 @@ Args:
     *args: 传递给函数的位置参数。
     **kwargs: 传递给函数的关键字参数。
 
-Returns:
-    concurrent.futures.Future: 表示任务执行状态的 `Future` 对象。
+**Returns:**\n
+- concurrent.futures.Future: 表示任务执行状态的 `Future` 对象。
 ''')
 
-add_english_doc('ProcessPoolExecutor.submit', '''\
+add_english_doc('ProcessPoolExecutor.submit', '''
 Submit a task to the process pool for execution.
 
 This method serializes a function and its arguments, then submits them to the process pool for execution. It returns a `Future` object to track the task's status or result.
@@ -999,11 +1004,11 @@ Args:
     *args: Positional arguments passed to the function.
     **kwargs: Keyword arguments passed to the function.
 
-Returns:
-    concurrent.futures.Future: A `Future` object representing the task's execution status.
+**Returns:**\n
+- concurrent.futures.Future: A `Future` object representing the task's execution status.
 ''')
 
-add_example('ProcessPoolExecutor.submit', '''\
+add_example('ProcessPoolExecutor.submit', '''
 >>> from lazyllm.common.multiprocessing import ProcessPoolExecutor
 >>> import time
 >>> 
@@ -1036,7 +1041,7 @@ Args:
 **注意**: 此类主要用于 LazyLLM 内部的进程管理，特别是在需要长期运行的服务器进程中。
 ''')
 
-add_english_doc('ForkProcess', '''\
+add_english_doc('ForkProcess', '''
 Enhanced process class provided by LazyLLM, inheriting from Python's standard library `multiprocessing.Process`. This class specifically uses the fork start method to create child processes and provides support for synchronous/asynchronous execution modes.
 
 Args:
@@ -1051,7 +1056,7 @@ Args:
 **Note**: This class is primarily used for LazyLLM's internal process management, especially in long-running server processes.
 ''')
 
-add_example('ForkProcess', '''\
+add_example('ForkProcess', '''
 >>> import lazyllm
 >>> from lazyllm.common import ForkProcess
 >>> import time
@@ -1066,7 +1071,7 @@ Process 12345 executing task 1
 ''')
 
 # ForkProcess.work
-add_chinese_doc('ForkProcess.work', '''\
+add_chinese_doc('ForkProcess.work', '''
 ForkProcess 的核心工作方法，负责包装目标函数并处理同步/异步执行逻辑。
 
 Args:
@@ -1074,7 +1079,7 @@ Args:
     sync: 是否为同步模式。在同步模式下，执行完目标函数后进程会退出；在异步模式下，进程会持续运行。
 ''')
 
-add_english_doc('ForkProcess.work', '''\
+add_english_doc('ForkProcess.work', '''
 Core working method of ForkProcess, responsible for wrapping the target function and handling synchronous/asynchronous execution logic.
 
 Args:
@@ -1083,7 +1088,7 @@ Args:
 ''')
 
 # ForkProcess.start
-add_chinese_doc('ForkProcess.start', '''\
+add_chinese_doc('ForkProcess.start', '''
 启动 ForkProcess 进程。此方法会使用 fork 启动方法来创建子进程，并开始执行目标函数。
 
 此方法的特点：
@@ -1096,7 +1101,7 @@ add_chinese_doc('ForkProcess.start', '''\
 
 ''')
 
-add_english_doc('ForkProcess.start', '''\
+add_english_doc('ForkProcess.start', '''
 Start the ForkProcess. This method uses the fork start method to create a child process and begin executing the target function.
 
 Features of this method:
@@ -1111,7 +1116,7 @@ Features of this method:
 
 # ============= Options
 # Option
-add_chinese_doc('Option', '''\
+add_chinese_doc('Option', '''
 LazyLLM 提供的选项管理类，用于管理多个选项值并在它们之间进行迭代。此类主要用于参数网格搜索和超参数调优场景。
 
 Args:
@@ -1128,7 +1133,7 @@ Args:
 **注意**: 此类主要用于 LazyLLM 内部的参数搜索和实验管理，尤其在 `TrialModule` 中进行参数网格搜索时。
 ''')
 
-add_english_doc('Option', '''\
+add_english_doc('Option', '''
 Option management class provided by LazyLLM, used for managing multiple option values and iterating between them. This class is primarily used for parameter grid search and hyperparameter tuning scenarios.
 
 Args:
@@ -1227,7 +1232,7 @@ add_example('LazyLLMCMD', '''\
 add_chinese_doc('LazyLLMCMD.with_cmd', '''\
 创建新命令对象并继承当前配置。
 
-参数:
+Args:
     cmd: 新的命令内容（类型需与原始命令一致）
 
 ''')
@@ -1243,7 +1248,7 @@ Args:
 add_chinese_doc('LazyLLMCMD.get_args', '''\
 从命令字符串中提取指定参数的值。
 
-参数:
+Args:
     key: 要提取的参数名
 ''')
 
@@ -1258,6 +1263,7 @@ add_chinese_doc('queue.SQLiteQueue', '''\
 基于 SQLite 的持久化文件系统队列。
 该类扩展自 FileSystemQueue，使用 SQLite 数据库存储队列数据，通过 position 字段保证先进先出顺序，并支持并发安全的消息入队、出队、查看队头、队列大小查询和清空操作。
 队列数据库默认存储在 ~/.lazyllm_filesystem_queue.db，通过文件锁机制确保多进程安全访问。
+
 Args:
     klass (str): 队列分类名，用于逻辑隔离不同的队列，默认为 '__default__'。
 ''')
@@ -1266,6 +1272,7 @@ add_english_doc('queue.SQLiteQueue', '''\
 Persistent file system queue backed by SQLite.
 This class extends FileSystemQueue and stores queue data in an SQLite database. Messages are ordered by a position field to preserve FIFO behavior. The class supports concurrent-safe operations including enqueue, dequeue, peek, size checking, and clearing the queue.
 The queue database is saved at ~/.lazyllm_filesystem_queue.db, with a file lock mechanism ensuring safe access in multi-process environments.
+
 Args:
     klass (str): Name of the queue category used to logically separate queues. Default is '__default__'.
 ''')
@@ -1275,7 +1282,6 @@ add_chinese_doc('common.FlatList.absorb', """\
 
 Args:
     item: 要添加的元素，可以是单个元素或列表
-
 """)
 
 add_english_doc('common.FlatList.absorb', """\
@@ -1283,7 +1289,6 @@ Absorb elements into the list.
 
 Args:
     item: Element to add, can be a single element or a list
-
 """)
 
 add_chinese_doc('common.ArgsDict', """\
@@ -1293,7 +1298,7 @@ Args:
     *args: 传递给父类dict的 positional arguments
     **kwargs: 传递给父类dict的 keyword arguments
 
-**返回:**\n
+**Returns:**\n
 - ArgsDict实例，提供参数检查和格式化功能
 """)
 
@@ -1307,12 +1312,12 @@ Args:
 **Returns:**\n
 - ArgsDict instance providing parameter checking and formatting functionality
 """)
+
 add_chinese_doc('common.ArgsDict.check_and_update', """\
 检查并更新参数字典。
 
 Args:
     kw (dict): 要更新的参数字典
-
 """)
 
 add_english_doc('common.ArgsDict.check_and_update', """\
@@ -1320,26 +1325,21 @@ Check and update parameter dictionary.
 
 Args:
     kw (dict): Parameter dictionary to update
-
 """)
 
 add_chinese_doc('common.ArgsDict.parse_kwargs', """\
 将参数字典解析为命令行参数字符串。
-
 """)
 
 add_english_doc('common.ArgsDict.parse_kwargs', """\
 Parse parameter dictionary into command line argument string.
-
 """)
 
 add_chinese_doc('common.DynamicDescriptor', """\
 动态描述符类，用于创建支持实例和类级别调用的描述符。
 
-
 Args:
     func (callable): 要包装的函数或方法
-
 """)
 
 add_english_doc('common.DynamicDescriptor', """\
