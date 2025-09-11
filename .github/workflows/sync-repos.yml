@@ -12,7 +12,7 @@ jobs:
         uses: Yikun/hub-mirror-action@master
         with:
           src: github/LazyAGI
-          dst: gitee/LazyAGI
+          dst: gitee/lazy-agi
           dst_key: ${{ secrets.GITEE_GITCODE_PRIVATE_KEY }}
           dst_token: ${{ secrets.GITEE_TOKEN }}
           static_list: "LazyLLM"
