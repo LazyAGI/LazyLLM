@@ -7,6 +7,7 @@ import copy
 import uuid
 import re
 import requests
+import yaml
 
 import lazyllm
 from lazyllm import globals, LOG, launchers, Option, package, LazyLLMDeployBase, LazyLLMFinetuneBase, config
@@ -15,11 +16,16 @@ from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from ...components.utils import ModelManager, LLMType
 from ...components.utils.file_operate import _base64_to_file, _is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
-from .utils import map_kw_for_framework, encode_files
+from .utils import map_kw_for_framework, encode_files, values_equal_for_config
 from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
 
+trainable_module_config_map = {}
+lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH')
+if os.path.exists(lazyllm.config['trainable_module_config_map_path']):
+    trainable_module_config_map = yaml.safe_load(open(lazyllm.config['trainable_module_config_map_path'], 'r'))
+lazyllm.config.add('openai_api', bool, False, 'OPENAI_API')
 
 class _UrlTemplateStruct(object):
     def __init__(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
@@ -187,6 +193,18 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
 
         if hasattr(self._deploy, 'auto_map') and self._deploy.auto_map:
             self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
+
+        base_model_name = os.path.basename(self._base_model)
+        if base_model_name in trainable_module_config_map:
+            for module_config in trainable_module_config_map[base_model_name]:
+                url = module_config.get('url')
+                if ('launcher' in self._deploy_args
+                        or values_equal_for_config(module_config.get('deploy_config'), self._deploy_args)):
+                    try:
+                        requests.get(url, timeout=3)
+                        self._deploy_args = {'url': url}
+                    except Exception:
+                        continue
 
         stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
 

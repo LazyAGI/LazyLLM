@@ -10,6 +10,7 @@ from lazyllm.thirdparty import datasets
 from ...components.utils.file_operate import _delete_old_files
 from lazyllm.common.utils import check_path
 
+
 @dataclass
 class TrainConfig:
     finetune_model_name: str = 'llm'
@@ -229,3 +230,36 @@ def map_kw_for_framework(
             LOG.warning(f"Type conversion error for key '{k}': {e}, using original value")
             result[k] = v
     return result
+
+def _normalize_value_for_comparison(value):
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, TypeError):
+            pass
+    return value
+
+def values_equal_for_config(config_value, deploy_value):
+    norm_config_value = _normalize_value_for_comparison(config_value)
+    norm_deploy_value = _normalize_value_for_comparison(deploy_value)
+
+    if isinstance(norm_config_value, str) and isinstance(norm_deploy_value, str):
+        for converter in [int, float, bool]:
+            try:
+                return converter(norm_config_value) == converter(norm_deploy_value)
+            except (ValueError, TypeError):
+                continue
+        return norm_config_value == norm_deploy_value
+
+    if isinstance(norm_config_value, dict) and isinstance(norm_deploy_value, dict):
+        check_status = True
+        for k in norm_deploy_value:
+            if k not in norm_config_value:
+                return False
+            check_status &= values_equal_for_config(norm_config_value[k], norm_deploy_value[k])
+        return check_status
+
+    if isinstance(norm_config_value, list) and isinstance(norm_deploy_value, list):
+        return set(norm_deploy_value).issubset(set(norm_config_value))
+
+    return norm_config_value == norm_deploy_value
