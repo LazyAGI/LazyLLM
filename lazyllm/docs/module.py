@@ -1080,7 +1080,73 @@ Args:
     optional_keys (List[str])：允许传入额外参数的可选键列表。
     **kw：用于设置默认参数的键值对，如 temperature、top_k 等。
 ''')
+add_chinese_doc('TrainableModule.forward_openai', """\
+使用OpenAI兼容接口进行前向推理。
 
+通过OpenAI标准API格式调用部署的模型服务，支持聊天历史、文件处理、工具调用和流式输出。
+
+Args:
+    __input (Union[Tuple[Union[str, Dict], str], str, Dict]): 输入数据，可以是文本、字典或打包数据
+    llm_chat_history: 聊天历史记录
+    lazyllm_files: 文件数据
+    tools: 工具调用配置
+    stream_output (bool): 是否流式输出
+    **kw: 其他关键字参数
+
+Returns:
+    模型推理结果
+""")
+
+add_english_doc('TrainableModule.forward_openai', """\
+Perform forward inference using OpenAI compatible interface.
+
+Call deployed model service through OpenAI standard API format, supports chat history, file processing, tool calling and streaming output.
+
+Args:
+    __input (Union[Tuple[Union[str, Dict], str], str, Dict]): Input data, can be text, dictionary or packaged data
+    llm_chat_history: Chat history records
+    lazyllm_files: File data
+    tools: Tool calling configuration
+    stream_output (bool): Whether to stream output
+    **kw: Other keyword arguments
+
+Returns:
+    Model inference result
+""")
+
+add_chinese_doc('TrainableModule.forward_standard', """\
+使用标准接口进行前向推理。
+
+通过自定义标准API格式调用部署的模型服务，支持模板消息、文件编码和流式输出。
+
+Args:
+    __input (Union[Tuple[Union[str, Dict], str], str, Dict]): 输入数据，可以是文本、字典或打包数据
+    llm_chat_history: 聊天历史记录
+    lazyllm_files: 文件数据
+    tools: 工具调用配置
+    stream_output (bool): 是否流式输出
+    **kw: 其他关键字参数
+
+Returns:
+    模型推理结果
+""")
+
+add_english_doc('TrainableModule.forward_standard', """\
+Perform forward inference using standard interface.
+
+Call deployed model service through custom standard API format, supports template messages, file encoding and streaming output.
+
+Args:
+    __input (Union[Tuple[Union[str, Dict], str], str, Dict]): Input data, can be text, dictionary or packaged data
+    llm_chat_history: Chat history records
+    lazyllm_files: File data
+    tools: Tool calling configuration
+    stream_output (bool): Whether to stream output
+    **kw: Other keyword arguments
+
+Returns:
+    Model inference result
+""")
 # add_example('TrainableModule', '''\
 # >>> import lazyllm
 # >>> m = lazyllm.module.TrainableModule().finetune_method(finetune.dummy).trainset('/file/to/path').deploy_method(None).mode('finetune')
@@ -2393,4 +2459,28 @@ Configure relevant parameters for deployment tasks, such as capacity specificati
 
 Args:
     **kw: Deployment parameter key-value pairs.
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMSTTModule', """\
+GLM语音识别模块，继承自GLMMultiModal。
+
+提供基于智谱AI的语音转文本(STT)功能，支持音频文件的语音识别。
+
+Args:
+    model_name (str, optional): 模型名称，默认为配置中的模型名或"glm-asr"
+    api_key (str, optional): API密钥，默认为配置中的密钥
+    return_trace (bool, optional): 是否返回追踪信息，默认为False
+    **kwargs: 其他模型参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.glm.GLMSTTModule', """\
+GLM Speech-to-Text module, inherits from GLMMultiModal.
+
+Provides speech-to-text (STT) functionality based on Zhipu AI, supports audio file speech recognition.
+
+Args:
+    model_name (str, optional): Model name, defaults to configured model name or "glm-asr"
+    api_key (str, optional): API key, defaults to configured key
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    **kwargs: Other model parameters
 """)

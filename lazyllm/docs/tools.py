@@ -2484,7 +2484,7 @@ Args:
     description (Optional[str]): Description of the algorithm, defaults to None.
     force_refresh (bool): Whether to force refresh existing algorithm. Defaults to False.
     **kwargs: Additional arguments.
-    
+
 **Notes:**
 - If algorithm name exists and force_refresh is False, registration will be skipped
 - After successful registration, the algorithm can be used to process documents
@@ -4699,7 +4699,23 @@ Args:
 **Returns:**\n
 - str: Prompt template in the corresponding language.
 ''')
+add_chinese_doc('ParameterExtractor.check_int_value', """\
+检查并转换整数值。
 
+确保整型参数的值正确转换为int类型。
+
+Args:
+    res (dict): 包含参数值的字典
+""")
+
+add_english_doc('ParameterExtractor.check_int_value', """\
+Check and convert integer values.
+
+Ensure integer parameter values are correctly converted to int type.
+
+Args:
+    res (dict): Dictionary containing parameter values
+""")
 # actors/question_rewrite.py
 add_chinese_doc('QustionRewrite', '''\
 问题改写模块。
@@ -8168,3 +8184,476 @@ Get the node's content text with metadata in LLM mode.
 Returns:
     str: Returns the node's text content with formatted metadata information according to LLM mode.
 ''')
+
+add_chinese_doc('rag.store.hybrid.MapStore', """\
+基于SQLite的Map存储类，继承自LazyLLMStoreBase。
+
+提供基于SQLite数据库的向量存储功能，支持数据持久化、多集合管理和复杂查询。
+
+Args:
+    uri (Optional[str]): SQLite数据库文件路径，默认为None（内存模式）
+    **kwargs: 其他关键字参数
+
+Attributes:
+    capability: 存储能力标志，支持所有操作
+    need_embedding: 是否需要嵌入向量
+    supports_index_registration: 是否支持索引注册
+
+""")
+
+add_english_doc('rag.store.hybrid.MapStore', """\
+SQLite-based Map storage class, inherits from LazyLLMStoreBase.
+
+Provides vector storage functionality based on SQLite database, supports data persistence, multi-collection management and complex queries.
+
+Args:
+    uri (Optional[str]): SQLite database file path, defaults to None (in-memory mode)
+    **kwargs: Other keyword arguments
+
+Attributes:
+    capability: Storage capability flag, supports all operations
+    need_embedding: Whether embedding is needed
+    supports_index_registration: Whether index registration is supported
+""")
+
+add_chinese_doc('rag.store.hybrid.MapStore.connect', """\
+连接SQLite数据库并加载数据。
+
+初始化存储连接，创建必要的数据库表和索引，加载现有数据到内存。
+
+Args:
+    collections (Optional[List[str]]): 要连接的集合名称列表
+    **kwargs: 其他连接参数
+
+Returns:
+    None
+""")
+
+add_english_doc('rag.store.hybrid.MapStore.connect', """\
+Connect to SQLite database and load data.
+
+Initialize storage connection, create necessary database tables and indexes, load existing data into memory.
+
+Args:
+    collections (Optional[List[str]]): List of collection names to connect
+    **kwargs: Other connection parameters
+
+Returns:
+    None
+""")
+
+add_chinese_doc('rag.store.hybrid.MapStore.upsert', """\
+插入或更新数据。
+
+将数据插入到指定集合中，如果已存在则更新，支持批量操作。
+
+Args:
+    collection_name (str): 集合名称
+    data (List[dict]): 要插入的数据列表
+
+Returns:
+    bool: 操作是否成功
+""")
+
+add_english_doc('rag.store.hybrid.MapStore.upsert', """\
+Insert or update data.
+
+Insert data into specified collection, update if exists, supports batch operations.
+
+Args:
+    collection_name (str): Collection name
+    data (List[dict]): Data list to insert
+
+Returns:
+    bool: Whether operation succeeded
+""")
+
+add_chinese_doc('rag.store.hybrid.MapStore.delete', """\
+删除数据。
+
+根据条件删除指定集合中的数据，支持批量删除。
+
+Args:
+    collection_name (str): 集合名称
+    criteria (Optional[dict]): 删除条件
+    **kwargs: 其他删除参数
+
+Returns:
+    bool: 操作是否成功
+""")
+
+add_english_doc('rag.store.hybrid.MapStore.delete', """\
+Delete data.
+
+Delete data from specified collection based on criteria, supports batch deletion.
+
+Args:
+    collection_name (str): Collection name
+    criteria (Optional[dict]): Delete criteria
+    **kwargs: Other delete parameters
+
+Returns:
+    bool: Whether operation succeeded
+""")
+
+add_chinese_doc('rag.store.hybrid.MapStore.get', """\
+查询数据。
+
+根据条件查询指定集合中的数据，支持多种查询条件。
+
+Args:
+    collection_name (str): 集合名称
+    criteria (Optional[dict]): 查询条件
+    **kwargs: 其他查询参数
+
+Returns:
+    List[dict]: 查询结果数据列表
+""")
+
+add_english_doc('rag.store.hybrid.MapStore.get', """\
+Query data.
+
+Query data from specified collection based on criteria, supports multiple query conditions.
+
+Args:
+    collection_name (str): Collection name
+    criteria (Optional[dict]): Query criteria
+    **kwargs: Other query parameters
+
+Returns:
+    List[dict]: Query result data list
+""")
+
+add_chinese_doc('infer_service.InferServer', """\
+推理服务服务器类，继承自ServerBase。
+
+提供模型推理服务的创建、管理、监控和日志查询等RESTful API接口。
+
+""")
+
+add_english_doc('infer_service.InferServer', """\
+Inference service server class, inherits from ServerBase.
+
+Provides RESTful API interfaces for model inference service creation, management, monitoring and log query.
+
+""")
+
+
+add_chinese_doc('infer_service.InferServer.create_job', """\
+创建推理任务。
+
+根据任务描述创建新的模型推理服务，启动部署线程并初始化任务状态。
+
+Args:
+    job (JobDescription): 任务描述对象
+    token (str): 用户令牌
+
+Returns:
+    dict: 包含任务ID的响应
+""")
+
+add_english_doc('infer_service.InferServer.create_job', """\
+Create inference task.
+
+Create new model inference service based on job description, start deployment thread and initialize task status.
+
+Args:
+    job (JobDescription): Job description object
+    token (str): User token
+
+Returns:
+    dict: Response containing job ID
+""")
+
+add_chinese_doc('infer_service.InferServer.cancel_job', """\
+取消推理任务。
+
+停止指定的推理任务，清理资源并更新任务状态。
+
+Args:
+    job_id (str): 任务ID
+    token (str): 用户令牌
+
+Returns:
+    dict: 包含任务状态的响应
+""")
+
+add_english_doc('infer_service.InferServer.cancel_job', """\
+Cancel inference task.
+
+Stop specified inference task, clean up resources and update task status.
+
+Args:
+    job_id (str): Job ID
+    token (str): User token
+
+Returns:
+    dict: Response containing task status
+""")
+
+add_chinese_doc('infer_service.InferServer.list_jobs', """\
+列出所有推理任务。
+
+获取当前用户的所有推理任务列表。
+
+Args:
+    token (str): 用户令牌
+
+Returns:
+    dict: 任务列表信息
+""")
+
+add_english_doc('infer_service.InferServer.list_jobs', """\
+List all inference tasks.
+
+Get all inference tasks list for current user.
+
+Args:
+    token (str): User token
+
+Returns:
+    dict: Task list information
+""")
+
+add_chinese_doc('infer_service.InferServer.get_job_info', """\
+获取任务详细信息。
+
+查询指定任务的详细信息，包括状态、端点、耗时等。
+
+Args:
+    job_id (str): 任务ID
+    token (str): 用户令牌
+
+Returns:
+    dict: 任务详细信息
+""")
+
+add_english_doc('infer_service.InferServer.get_job_info', """\
+Get task detailed information.
+
+Query detailed information of specified task, including status, endpoint, cost time, etc.
+
+Args:
+    job_id (str): Job ID
+    token (str): User token
+
+Returns:
+    dict: Task detailed information
+""")
+
+add_chinese_doc('infer_service.InferServer.get_job_log', """\
+获取任务日志。
+
+获取指定任务的日志文件路径或日志内容。
+
+Args:
+    job_id (str): 任务ID
+    token (str): 用户令牌
+
+Returns:
+    dict: 日志信息
+""")
+
+add_english_doc('infer_service.InferServer.get_job_log', """\
+Get task log.
+
+Get log file path or log content of specified task.
+
+Args:
+    job_id (str): Job ID
+    token (str): User token
+
+Returns:
+    dict: Log information
+""")
+
+add_chinese_doc('rag.store.segment.OpenSearchStore', """\
+OpenSearch存储类，继承自LazyLLMStoreBase。
+
+提供基于OpenSearch的文档存储和检索功能，支持大规模文档管理和高效查询。
+
+Args:
+    uris (List[str]): OpenSearch服务URI列表
+    client_kwargs (Optional[Dict]): OpenSearch客户端配置参数
+    index_kwargs (Optional[Union[Dict, List]]): 索引配置参数
+    **kwargs: 其他关键字参数
+
+Attributes:
+    capability: 存储能力标志，支持分段操作
+    need_embedding: 是否需要嵌入向量
+    supports_index_registration: 是否支持索引注册
+
+""")
+
+add_english_doc('llms.store.OpenSearchStore', """\
+OpenSearch storage class, inherits from LazyLLMStoreBase.
+
+Provides document storage and retrieval functionality based on OpenSearch, supports large-scale document management and efficient query.
+
+Args:
+    uris (List[str]): OpenSearch service URI list
+    client_kwargs (Optional[Dict]): OpenSearch client configuration parameters
+    index_kwargs (Optional[Union[Dict, List]]): Index configuration parameters
+    **kwargs: Other keyword arguments
+
+Attributes:
+    capability: Storage capability flag, supports segment operations
+    need_embedding: Whether embedding is needed
+    supports_index_registration: Whether index registration is supported
+
+
+""")
+
+add_chinese_doc('rag.store.segment.OpenSearchStore.connect', """\
+连接OpenSearch服务。
+
+初始化OpenSearch客户端连接，配置认证信息。
+
+Args:
+    *args: 位置参数
+    **kwargs: 关键字参数
+
+Returns:
+    None
+""")
+
+add_english_doc('rag.store.segment.OpenSearchStore.connect', """\
+Connect to OpenSearch service.
+
+Initialize OpenSearch client connection, configure authentication information.
+
+Args:
+    *args: Positional arguments
+    **kwargs: Keyword arguments
+
+Returns:
+    None
+""")
+
+add_chinese_doc('rag.store.segment.OpenSearchStore.upsert', """\
+插入或更新数据到OpenSearch。
+
+批量插入或更新文档数据到指定集合（索引），支持自动创建索引。
+
+Args:
+    collection_name (str): 集合名称（索引名）
+    data (List[dict]): 要插入的数据列表
+
+Returns:
+    bool: 操作是否成功
+""")
+
+add_english_doc('rag.store.segment.OpenSearchStore.upsert', """\
+Insert or update data to OpenSearch.
+
+Batch insert or update document data to specified collection (index), supports automatic index creation.
+
+Args:
+    collection_name (str): Collection name (index name)
+    data (List[dict]): Data list to insert
+
+Returns:
+    bool: Whether operation succeeded
+""")
+
+add_chinese_doc('rag.store.segment.OpenSearchStore.delete', """\
+从OpenSearch删除数据。
+
+根据条件删除指定集合中的数据，支持批量删除和索引删除。
+
+Args:
+    collection_name (str): 集合名称（索引名）
+    criteria (Optional[dict]): 删除条件
+    **kwargs: 其他删除参数
+
+Returns:
+    bool: 操作是否成功
+""")
+
+add_english_doc('rag.store.segment.OpenSearchStore.delete', """\
+Delete data from OpenSearch.
+
+Delete data from specified collection based on criteria, supports batch deletion and index deletion.
+
+Args:
+    collection_name (str): Collection name (index name)
+    criteria (Optional[dict]): Delete criteria
+    **kwargs: Other delete parameters
+
+Returns:
+    bool: Whether operation succeeded
+""")
+
+add_chinese_doc('rag.store.segment.OpenSearchStore.get', """\
+从OpenSearch查询数据。
+
+根据条件查询指定集合中的数据，支持主键查询和复杂条件查询。
+
+Args:
+    collection_name (str): 集合名称（索引名）
+    criteria (Optional[dict]): 查询条件
+    **kwargs: 其他查询参数
+
+Returns:
+    List[dict]: 查询结果数据列表
+""")
+
+add_english_doc('rag.store.segment.OpenSearchStore.get', """\
+Query data from OpenSearch.
+
+Query data from specified collection based on criteria, supports primary key query and complex condition query.
+
+Args:
+    collection_name (str): Collection name (index name)
+    criteria (Optional[dict]): Query criteria
+    **kwargs: Other query parameters
+
+Returns:
+    List[dict]: Query result data list
+""")
+
+add_chinese_doc('services.ServerBase', """\
+服务器基类，提供任务管理和状态监控的基础功能。
+
+实现多用户任务信息存储、状态轮询检查和线程安全的字典操作。
+
+
+""")
+
+add_english_doc('services.ServerBase', """\
+Server base class, provides basic functionality for task management and status monitoring.
+
+Implements multi-user task information storage, status polling check and thread-safe dictionary operations.
+
+""")
+
+
+add_chinese_doc('services.ServerBase.authorize_current_user', """\
+用户认证授权。
+
+验证用户令牌的有效性，确保只有授权用户可以访问相关资源。
+
+Args:
+    Bearer: Bearer令牌字符串
+
+Returns:
+    str: 验证通过的令牌
+
+Raises:
+    HTTPException: 令牌无效时抛出401异常
+""")
+
+add_english_doc('services.ServerBase.authorize_current_user', """\
+User authentication and authorization.
+
+Verify the validity of user token, ensure only authorized users can access related resources.
+
+Args:
+    Bearer: Bearer token string
+
+Returns:
+    str: Verified token
+
+Raises:
+    HTTPException: 401 exception when token is invalid
+""")
