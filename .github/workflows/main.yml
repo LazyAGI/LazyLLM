@@ -64,6 +64,8 @@ jobs:
           
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Build doc
         run: |
@@ -158,7 +160,69 @@ jobs:
     runs-on: tps_sco_nv
     needs: [ Clone ]
     steps:
+      - name: Create Output and Cache Directories
+        run: |
+          mkdir -p github_cache
+          mkdir -p github_cache/output
+          mkdir -p github_cache/paid_llm_cache
+          echo "LAZYLLM_TEMP_DIR=github_cache/output" >> $GITHUB_ENV
+          echo "LAZYLLM_CACHE_DIR=github_cache/paid_llm_cache" >> $GITHUB_ENV
+
+      - name: Set Cache Mode Based on Run Context
+        run: |
+          echo "GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT"
+          echo "LAZYLLM_CACHE_ONLINE_MODULE=True" >> $GITHUB_ENV
+          if [ "$GITHUB_RUN_ATTEMPT" = "1" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "This is the first run, and push to main branch."
+            echo "LAZYLLM_CACHE_MODE=RW" >> $GITHUB_ENV
+          elif [ "$GITHUB_RUN_ATTEMPT" != "1" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "This is a re-run! (GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT), and push to main branch."
+            echo "LAZYLLM_CACHE_MODE=WO" >> $GITHUB_ENV
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "This is a pull request from other branch to main."
+            echo "LAZYLLM_CACHE_MODE=RO" >> $GITHUB_ENV
+          fi
+
+      - name: Show ENV
+        run: |
+          echo "LAZYLLM_TEMP_DIR: $LAZYLLM_TEMP_DIR"
+          echo "LAZYLLM_CACHE_DIR: $LAZYLLM_CACHE_DIR"
+          echo "LAZYLLM_CACHE_MODE: $LAZYLLM_CACHE_MODE"
+          echo "LAZYLLM_CACHE_ONLINE_MODULE: $LAZYLLM_CACHE_ONLINE_MODULE"
+
+      - name: Get SHAs
+        run: |
+          CURRENT_SHA=$(git rev-parse HEAD)
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            PREVIOUS_SHA=$(git rev-parse HEAD^)
+          else
+            PREVIOUS_SHA=$CURRENT_SHA
+          fi
+          echo "CURRENT_SHA=$CURRENT_SHA" >> $GITHUB_ENV
+          echo "PREVIOUS_SHA=$PREVIOUS_SHA" >> $GITHUB_ENV
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+          fi
+
+      - name: Restore Cache (Push)
+        if: ${{ github.event_name == 'push' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: github_cache/
+          key: python-result-cache-${{ env.PREVIOUS_SHA }}
+          enableCrossOsArchive: true
+
+      - name: Restore Cache (Pull Request)
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: github_cache/
+          key: python-result-cache-${{ env.BASE_SHA }}
+          enableCrossOsArchive: true
+
       - name: RunTests
+        id: exe_ci
         run: |
           cd ${{ env.CI_PATH }}
           pip install -r tests/requirements.txt
@@ -173,6 +237,14 @@ jobs:
           else
             python -m pytest -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
           fi
+
+      - name: Success On Main Branch
+        if: ${{ success() && steps.exe_ci.conclusion == 'success' && github.event_name == 'push' }}
+        uses: actions/cache/save@v4
+        with:
+          path: github_cache/
+          key: python-result-cache-${{ env.CURRENT_SHA }}
+          enableCrossOsArchive: true
 
   Coverage_linux:
     runs-on: ubuntu-latest

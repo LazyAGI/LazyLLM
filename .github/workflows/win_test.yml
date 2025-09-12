@@ -193,6 +193,57 @@ jobs:
           git submodule init LazyLLM-Env
           git submodule update LazyLLM-Env
 
+      - name: Create Output and Cache Directories
+        run: |
+          mkdir -p github_cache
+          mkdir -p github_cache/output
+          mkdir -p github_cache/paid_llm_cache
+          echo "LAZYLLM_TEMP_DIR=github_cache/output" >> $GITHUB_ENV
+          echo "LAZYLLM_CACHE_DIR=github_cache/paid_llm_cache" >> $GITHUB_ENV
+      
+      - name: Set Cache Mode Based on Run Context
+        run: |
+          echo "GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT"
+          echo "LAZYLLM_CACHE_ONLINE_MODULE=True" >> $GITHUB_ENV
+          echo "LAZYLLM_CACHE_MODE=RO" >> $GITHUB_ENV
+      
+      - name: Show ENV
+        run: |
+          echo "LAZYLLM_TEMP_DIR: $LAZYLLM_TEMP_DIR"
+          echo "LAZYLLM_CACHE_DIR: $LAZYLLM_CACHE_DIR"
+          echo "LAZYLLM_CACHE_MODE: $LAZYLLM_CACHE_MODE"
+          echo "LAZYLLM_CACHE_ONLINE_MODULE: $LAZYLLM_CACHE_ONLINE_MODULE"
+      
+      - name: Get SHAs
+        run: |
+          CURRENT_SHA=$(git rev-parse HEAD)
+          if git rev-parse HEAD^ >/dev/null 2>&1; then
+            PREVIOUS_SHA=$(git rev-parse HEAD^)
+          else
+            PREVIOUS_SHA=$CURRENT_SHA
+          fi
+          echo "PREVIOUS_SHA=$PREVIOUS_SHA" >> $GITHUB_ENV
+          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            BASE_SHA="${{ github.event.pull_request.base.sha }}"
+            echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+          fi
+
+      - name: Restore Cache (Push)
+        if: ${{ github.event_name == 'push' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: github_cache/
+          key: python-result-cache-${{ env.PREVIOUS_SHA }}
+          enableCrossOsArchive: true
+
+      - name: Restore Cache (Pull Request)
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: actions/cache/restore@v4
+        with:
+          path: github_cache/
+          key: python-result-cache-${{ env.BASE_SHA }}
+          enableCrossOsArchive: true
+
       - name: Merge PR branch into main
         shell: bash
         if: github.event_name == 'pull_request_target'
