@@ -6,8 +6,7 @@ import re
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
-from lazyllm import LOG
-from lazyllm import config
+from lazyllm import LOG, config
 
 try:
     import magic
