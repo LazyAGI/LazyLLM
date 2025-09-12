@@ -8475,7 +8475,7 @@ Attributes:
 
 """)
 
-add_english_doc('llms.store.OpenSearchStore', """\
+add_english_doc('rag.store.OpenSearchStore', """\
 OpenSearch storage class, inherits from LazyLLMStoreBase.
 
 Provides document storage and retrieval functionality based on OpenSearch, supports large-scale document management and efficient query.
