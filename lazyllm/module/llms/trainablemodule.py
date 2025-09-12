@@ -25,6 +25,7 @@ trainable_module_config_map = {}
 lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH')
 if os.path.exists(lazyllm.config['trainable_module_config_map_path']):
     trainable_module_config_map = yaml.safe_load(open(lazyllm.config['trainable_module_config_map_path'], 'r'))
+ignore_config_keys = trainable_module_config_map.pop('ignore_keys', ['log_path', 'launcher'])
 lazyllm.config.add('openai_api', bool, False, 'OPENAI_API')
 
 class _UrlTemplateStruct(object):
@@ -94,7 +95,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if len(set(args.keys()).intersection(set(disable))) > 0:
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
-        args = {k.replace('_', '-'): v for k, v in args.items()}
+        args = {k.replace('_', '-') if k not in ignore_config_keys else k: v for k, v in args.items()}
         if 'lazyllm-store-true-keys' in args:
             args['lazyllm-store-true-keys'] = [k.replace('_', '-') for k in args['lazyllm-store-true-keys']]
 
@@ -198,8 +199,11 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if base_model_name in trainable_module_config_map:
             for module_config in trainable_module_config_map[base_model_name]:
                 url = module_config.get('url')
-                if ('launcher' in self._deploy_args
-                        or values_equal_for_config(module_config.get('deploy_config'), self._deploy_args)):
+                deploy_args_for_check = {
+                    'framework': self._deploy.__name__.lower(),
+                    **{k: v for k, v in self._deploy_args.items() if k not in ignore_config_keys}
+                }
+                if values_equal_for_config(module_config.get('deploy_config'), deploy_args_for_check):
                     try:
                         requests.get(url, timeout=3)
                         self._deploy_args = {'url': url}
@@ -505,8 +509,13 @@ class TrainableModule(UrlModule):
     def forward_openai(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
                        *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
         if not getattr(self, '_openai_module', None):
-            self._openai_module = lazyllm.OnlineChatModule(
-                source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=self.type)
+            if self.type.lower() in ['llm', 'vllm']:
+                self._openai_module = lazyllm.OnlineChatModule(
+                    source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=self.type)
+            if self.type.lower() in ['embed', 'reranker']:
+                embed_type = 'embed' if self.type.lower() == 'embed' else 'rerank'
+                self._openai_module = lazyllm.OnlineEmbeddingModule(
+                    source='openai', embed_model_name='lazyllm', embed_url=self._url, type=embed_type)
             self._openai_module.used_by(self._module_id)
         return self._openai_module.forward(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
                                            tools=tools, stream_output=stream_output, **kw)

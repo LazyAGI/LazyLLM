@@ -40,8 +40,6 @@ class LMDeploy(LazyLLMDeployBase):
     auto_map = {
         'port': 'server-port',
         'host': 'server-name',
-        'max_batch_size': 'max-batch-size',
-        'chat_template': 'chat-template',
     }
     stream_parse_parameters = {"delimiter": b"\n"}
 

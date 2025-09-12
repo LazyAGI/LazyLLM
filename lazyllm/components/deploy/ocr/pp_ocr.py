@@ -94,7 +94,7 @@ class OCRDeploy(LazyLLMDeployBase):
     message_format = {"inputs": "/path/to/pdf"}
     default_headers = {"Content-Type": "application/json"}
 
-    def __init__(self, launcher=None, log_path=None, trust_remote_code=True, port=None):
+    def __init__(self, launcher=None, log_path=None, trust_remote_code=True, port=None, **kw):
         super().__init__(launcher=launcher)
         self._log_path = log_path
         self._trust_remote_code = trust_remote_code

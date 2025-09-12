@@ -29,9 +29,9 @@ class Mindie(LazyLLMDeployBase):
     auto_map = {
         'port': int,
         'tp': ('world_size', int),
-        'max_input_token_len': ('maxInputTokenLen', int),
-        'max_prefill_tokens': ('maxPrefillTokens', int),
-        'max_seq_len': ('maxSeqLen', int)
+        'max-input-token-len': ('maxInputTokenLen', int),
+        'max-prefill-tokens': ('maxPrefillTokens', int),
+        'max-seq-len': ('maxSeqLen', int)
     }
 
     def __init__(self, trust_remote_code=True, launcher=launchers.remote(), log_path=None, **kw):  # noqa B008

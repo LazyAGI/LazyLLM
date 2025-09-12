@@ -149,6 +149,13 @@ model_name_mapping = {
         },
         "type": "embed"
     },
+    "bge-reranker-v2-m3": {
+        "source": {
+            "huggingface": "BAAI/bge-reranker-v2-m3",
+            "modelscope": "BAAI/bge-reranker-v2-m3"
+        },
+        "type": "reranker"
+    },
     "jina-clip-v1": {
         "source": {
             "huggingface": "jinaai/jina-clip-v1",
@@ -258,6 +265,20 @@ model_name_mapping = {
             "modelscope": "Qwen/Qwen2.5-VL-32B-Instruct"
         },
         "type": "vlm"
+    },
+    "Qwen3-Embedding-8B": {
+        "source": {
+            "huggingface": "Qwen/Qwen3-Embedding-8B",
+            "modelscope": "Qwen/Qwen3-Embedding-8B"
+        },
+        "type": "embed"
+    },
+    "Qwen3-Reranker-8B": {
+        "source": {
+            "huggingface": "Qwen/Qwen3-Reranker-8B",
+            "modelscope": "Qwen/Qwen3-Reranker-8B"
+        },
+        "type": "reranker"
     },
     "musicgen-medium": {
         "source": {
