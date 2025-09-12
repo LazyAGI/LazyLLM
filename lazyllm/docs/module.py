@@ -1080,6 +1080,31 @@ Args:
     optional_keys (List[str])：允许传入额外参数的可选键列表。
     **kw：用于设置默认参数的键值对，如 temperature、top_k 等。
 ''')
+
+add_chinese_doc('TrainableModule.log_path', """\
+获取任务日志路径。
+
+根据任务名称获取对应的日志文件路径，支持默认部署任务和手动指定任务。
+
+Args:
+    task_name (Optional[str]): 任务名称，默认为None（获取默认部署任务日志）
+
+Returns:
+    str: 日志文件路径
+""")
+
+add_english_doc('TrainableModule.log_path', """\
+Get task log path.
+
+Get corresponding log file path based on task name, supports default deployment tasks and manually specified tasks.
+
+Args:
+    task_name (Optional[str]): Task name, defaults to None (get default deployment task log)
+
+Returns:
+    str: Log file path
+""")
+
 add_chinese_doc('TrainableModule.forward_openai', """\
 使用OpenAI兼容接口进行前向推理。
 

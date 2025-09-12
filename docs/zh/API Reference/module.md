@@ -1,274 +1,196 @@
-## Finetune
-
-::: lazyllm.components.finetune.AlpacaloraFinetune
+::: lazyllm.module.ModuleBase
     options:
-      heading_level: 3
-      members: [cmd]
+      members:
+      - eval
+      - evalset
+      - forward
+      - start
+      - restart
+      - update
+      - stream_output
+      - used_by
+      - register_hook
+      - unregister_hook
+      - clear_hooks
+      - update_server
+      - wait
+      - stop
+      - for_each
 
-::: lazyllm.components.finetune.CollieFinetune
+::: lazyllm.module.servermodule.LLMBase
     options:
-      heading_level: 3
+      members:
+      - prompt
+      - formatter
+      - share
 
-::: lazyllm.components.finetune.LlamafactoryFinetune
+::: lazyllm.module.ActionModule
     options:
-      heading_level: 3
+      members:
+      - evalset
+      - forward
+      - submodules
 
-::: lazyllm.components.deploy.LazyLLMDeployBase
+::: lazyllm.module.TrainableModule
     options:
-      heading_level: 3
+      members:
+      - start
+      - restart
+      - update
+      - evalset
+      - eval
+      - wait
+      - stop
+      - prompt
+      - log_path
+      - forward_openai
+      - forward_standard
+      - forward
 
-::: lazyllm.components.deploy.LazyLLMDeployBase.extract_result
+::: lazyllm.module.UrlModule
     options:
-      heading_level: 3
-      
-::: lazyllm.components.finetune.FlagembeddingFinetune
+      members:
+      - forward
+
+::: lazyllm.module.ServerModule
     options:
-      heading_level: 3
+      members:
+      - start
+      - restart
+      - evalset
+      - wait
+      - stop
 
-::: lazyllm.components.auto.AutoFinetune
+::: lazyllm.module.AutoModel
     options:
-      heading_level: 3
-      
-::: lazyllm.components.finetune.base.DummyFinetune
+      members:
+
+::: lazyllm.module.TrialModule
+    members: [start]
+    exclude-members:
+
+::: lazyllm.module.OnlineChatModule
+    members:
+    exclude-members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoModule
+    members:
+    exclude-members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultiModal
+    members:
+    exclude-members:
+
+::: lazyllm.module.OnlineEmbeddingModule
+    members:
+    exclude-members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIEmbedding
+    members:
+    exclude-members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenSTTModule
+    members:
+    exclude-members:
+
+::: lazyllm.module.OnlineChatModuleBase
     options:
-      heading_level: 3
+      members:
+      - set_train_tasks
+      - set_specific_finetuned_model
 
-::: lazyllm.components.finetune.LazyLLMFinetuneBase
+::: lazyllm.module.OnlineEmbeddingModuleBase
+    members:
+        - forward
+
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoEmbedding
     options:
-      heading_level: 3
+      members:
 
-::: lazyllm.components.auto.configure.core.configuration.AutoConfig
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultimodalEmbedding
     options:
-      heading_level: 3
-      members: [query_finetune, query_deploy]
+      members:
 
----
-
-## Deploy
-
-::: lazyllm.components.deploy.Lightllm
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMModule
     options:
-      heading_level: 3
-      members: [cmd, geturl, extract_result]
+      members:
 
-::: lazyllm.components.deploy.Vllm
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMTextToImageModule
     options:
-      heading_level: 3
-      members: [cmd, geturl, extract_result]
+      members:
 
-::: lazyllm.components.deploy.LMDeploy
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenTextToImageModule
     options:
-      heading_level: 3
-      members: [cmd, geturl, extract_result]
+      members:
 
-::: lazyllm.components.deploy.base.DummyDeploy
+::: lazyllm.module.llms.onlinemodule.supplier.kimi.KimiModule
     options:
-      heading_level: 3
+      members:
 
-::: lazyllm.components.auto.AutoDeploy
+::: lazyllm.module.llms.onlinemodule.fileHandler.FileHandlerBase
+    members: get_finetune_data
+    exclude-members: 
+
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMModule
     options:
-      heading_level: 3
+      members:
 
-::: lazyllm.components.deploy.embed.AbstractEmbedding
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMReranking
     options:
-      heading_level: 3
+      members:
 
-::: lazyllm.components.deploy.EmbeddingDeploy
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMMultiModal
     options:
-      heading_level: 3
+      members:
 
-::: lazyllm.components.deploy.embed.RerankDeploy
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenReranking
     options:
-      heading_level: 3
+      members:
 
-::: lazyllm.components.deploy.embed.LazyHuggingFaceRerank
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenTTSModule
     options:
-      heading_level: 3
-      members: [load_reranker, rebuild]
+      members:
 
-::: lazyllm.components.deploy.embed.HuggingFaceEmbedding
+::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaModule
+    members: set_deploy_parameters
+    exclude-members:
+
+::: lazyllm.module.llms.onlinemodule.base.onlineMultiModalBase.OnlineMultiModalBase
+    members:
+    exclude-members:
     options:
-      heading_level: 3
-      members: [get_emb_cls, register, load_embed]
+      members:
+        - get_finetune_data 
 
-::: lazyllm.components.deploy.embed.LazyFlagEmbedding
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenModule
     options:
-      heading_level: 3
-      members: [load_embed, rebuild]
+      members:
+        - set_deploy_parameters
 
-::: lazyllm.components.deploy.Mindie
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenEmbedding
     options:
-      heading_level: 3
+      members:
 
-      
-::: lazyllm.components.deploy.OCRDeploy
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMEmbedding
     options:
-      heading_level: 3
+      members: 
 
-::: lazyllm.components.deploy.Infinity
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMSTTModule
     options:
-      heading_level: 3
+      members: 
 
-::: lazyllm.components.deploy.relay.base.RelayServer
+::: lazyllm.module.llms.onlinemodule.supplier.deepseek.DeepSeekModule
     options:
-      heading_level: 3
+      members:
 
-::: lazyllm.components.deploy.OCRDeploy
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule
     options:
-      heading_level: 3
+      members:
 
-::: lazyllm.components.deploy.text_to_speech.utils.TTSBase
+::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIModule
     options:
-      heading_level: 3
-      
-::: lazyllm.components.deploy.relay.base.FastapiApp
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding
     options:
-      heading_level: 3
----
-
-## Prompter
-
-::: lazyllm.components.prompter.LazyLLMPrompterBase
-    options:
-      heading_level: 3
-    inherited_members:
-      - generate_prompt
-      - get_response
-    members: [pre_hook]
-
-::: lazyllm.components.prompter.EmptyPrompter
-    options:
-      heading_level: 3
-      members: true
-
-::: lazyllm.components.Prompter
-    options:
-      heading_level: 3
-      members: [from_dict, from_template, from_file, empty, generate_prompt, get_response]
-
-::: lazyllm.components.AlpacaPrompter
-    options:
-      heading_level: 3
-	  inherited_members:
-	    - generate_prompt
-	    - get_response
-    members: false
-
-::: lazyllm.components.ChatPrompter
-    options:
-      heading_level: 3
-	  inherited_members:
-	    - generate_prompt
-	    - get_response
-    members: false
-
----
-
-## MultiModal
-
-### Text to Image
-
-::: lazyllm.components.StableDiffusionDeploy
-    options:
-      heading_level: 4
-
-### Visual Question Answering
-
-Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Visual Question Answering model.
-
-### Text to Sound
-
-::: lazyllm.components.TTSDeploy
-    options:
-      heading_level: 4
-
-::: lazyllm.components.ChatTTSDeploy
-    options:
-      heading_level: 4
-
-::: lazyllm.components.BarkDeploy
-    options:
-      heading_level: 4
-
-::: lazyllm.components.MusicGenDeploy
-    options:
-      heading_level: 4
-
-### Speech to Text
-
-::: lazyllm.components.SenseVoiceDeploy
-    options:
-      heading_level: 4
-
-::: lazyllm.components.deploy.speech_to_text.sense_voice.SenseVoice
-    options:
-      heading_level: 4
-      members: [load_stt, rebuild]
----
-
-## ModelManager
-
-::: lazyllm.components.ModelManager
-    options:
-      heading_level: 3
-      members: [get_model_type, get_model_prompt_keys, validate_model_path, download]
-
----
-
-## Formatter
-
-::: lazyllm.components.formatter.LazyLLMFormatterBase
-    options:
-      heading_level: 3
-
-::: lazyllm.components.formatter.formatterbase.JsonLikeFormatter
-    options:
-      heading_level: 3
-
-::: lazyllm.components.formatter.formatterbase.PythonFormatter
-    options:
-      heading_level: 3
-
-::: lazyllm.components.formatter.FileFormatter
-    options:
-      heading_level: 3
-
-::: lazyllm.components.formatter.YamlFormatter
-    options:
-      heading_level: 3
-
-::: lazyllm.components.formatter.encode_query_with_filepaths
-    options:
-      heading_level: 3
-
-::: lazyllm.components.formatter.decode_query_with_filepaths
-    options:
-      heading_level: 3
-
-::: lazyllm.components.formatter.lazyllm_merge_query
-    options:
-      heading_level: 3
-
-::: lazyllm.components.JsonFormatter
-    options:
-      heading_level: 3
-
-::: lazyllm.components.EmptyFormatter
-    options:
-      heading_level: 3
-
-::: lazyllm.components.formatter.formatterbase.PipelineFormatter
-    options:
-      heading_level: 3
----
-
-## ComponentBase
-::: lazyllm.components.core.ComponentBase
-    options:
-      heading_level: 3
-      members: [apply, cmd]
-
-::: lazyllm.components.deploy.ray.Distributed
-    options:
-      heading_level: 3
-      members: [cmd, geturl]
+      members:
