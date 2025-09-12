@@ -12,26 +12,26 @@ def function_call_hook(input: Dict[str, Any], history: List[Dict[str, Any]], too
         for idx in range(len(input[:-1])):
             data = input[idx]
             if isinstance(data, str):
-                history.append({"role": "user", "content": data})
+                history.append({'role': 'user', 'content': data})
             elif isinstance(data, dict):
                 history.append(data)
             else:
                 history.extend(data)
-        input = {"input": input[-1]} if isinstance(input[-1], (dict, list)) and "input" not in input[-1] else input[-1]
+        input = {'input': input[-1]} if isinstance(input[-1], (dict, list)) and 'input' not in input[-1] else input[-1]
     return input, history, tools, label
 
-FC_PROMPT_LOCAL = """# Tools
+FC_PROMPT_LOCAL = '''# Tools
 
 ## You have access to the following tools:
 ## When you need to call a tool, please insert the following command in your reply, \
 which can be called zero or multiple times according to your needs:
 
 {tool_start_token}The tool to use, should be one of tools list.
-{tool_args_token}The input of the tool. The output format is: {"input1": param1, "input2": param2}. Can only return json.
-{tool_end_token}End of tool."""
+{tool_args_token}The input of the tool. The output format is: {'input1': param1, 'input2': param2}. Can only return json.
+{tool_end_token}End of tool.'''
 
-FC_PROMPT_ONLINE = ("Don't make assumptions about what values to plug into functions."
-                    "Ask for clarification if a user request is ambiguous.\n")
+FC_PROMPT_ONLINE = ('Don\'t make assumptions about what values to plug into functions.'
+                    'Ask for clarification if a user request is ambiguous.\n')
 
 class StreamResponse():
     def __init__(self, prefix: str, prefix_color: str = None, color: str = None, stream: bool = False):
@@ -54,8 +54,8 @@ class FunctionCall(ModuleBase):
     def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False,
                  stream: bool = False, _prompt: str = None):
         super().__init__(return_trace=return_trace)
-        if isinstance(llm, OnlineChatModule) and llm.series == "QWEN" and llm._stream is True:
-            raise ValueError("The qwen platform does not currently support stream function calls.")
+        if isinstance(llm, OnlineChatModule) and llm.series == 'QWEN' and llm._stream is True:
+            raise ValueError('The qwen platform does not currently support stream function calls.')
         if _prompt is None:
             _prompt = FC_PROMPT_ONLINE if isinstance(llm, OnlineChatModule) else FC_PROMPT_LOCAL
 
@@ -77,7 +77,7 @@ class FunctionCall(ModuleBase):
             self._impl.m4 = self._tool_post_action | bind(input=self._impl.input, llm_output=self._impl.m1)
 
     def _parser(self, llm_output: Union[str, List[Dict[str, Any]]]):
-        LOG.debug(f"llm_output: {llm_output}")
+        LOG.debug(f'llm_output: {llm_output}')
         if isinstance(llm_output, list):
             res = []
             for item in llm_output:
@@ -85,13 +85,13 @@ class FunctionCall(ModuleBase):
                     continue
                 arguments = item.get('function', {}).get('arguments', '')
                 arguments = json.loads(arguments) if isinstance(arguments, str) else arguments
-                res.append({"name": item.get('function', {}).get('name', ''), 'arguments': arguments})
+                res.append({'name': item.get('function', {}).get('name', ''), 'arguments': arguments})
             return res
         elif isinstance(llm_output, str):
             return llm_output
         else:
-            raise TypeError(f"The {llm_output} type currently is only supports `list` and `str`,"
-                            f" and does not support {type(llm_output)}.")
+            raise TypeError(f'The {llm_output} type currently is only supports `list` and `str`,'
+                            f' and does not support {type(llm_output)}.')
 
     def _tool_post_action(self, output: Union[str, List[str]], input: Union[str, List],
                           llm_output: List[Dict[str, Any]]):
@@ -102,22 +102,22 @@ class FunctionCall(ModuleBase):
             elif isinstance(input, list):
                 ret.append(input[-1])
             else:
-                raise TypeError(f"The input type currently only supports `str` and `list`, "
-                                f"and does not support {type(input)}.")
+                raise TypeError(f'The input type currently only supports `str` and `list`, '
+                                f'and does not support {type(input)}.')
 
-            content = "".join([item for item in llm_output if isinstance(item, str)])
+            content = ''.join([item for item in llm_output if isinstance(item, str)])
             llm_output = [item for item in llm_output if not isinstance(item, str)]
-            ret.append({"role": "assistant", "content": content, "tool_calls": llm_output})
-            ret.append([{"role": "tool", "content": out, "tool_call_id": llm_output[idx]["id"],
-                         "name": llm_output[idx]["function"]["name"]}
+            ret.append({'role': 'assistant', 'content': content, 'tool_calls': llm_output})
+            ret.append([{'role': 'tool', 'content': out, 'tool_call_id': llm_output[idx]['id'],
+                         'name': llm_output[idx]['function']['name']}
                         for idx, out in enumerate(output)])
-            LOG.debug(f"functionCall result: {ret}")
+            LOG.debug(f'functionCall result: {ret}')
             return ret
         elif isinstance(output, str):
             return output
         else:
-            raise TypeError(f"The {output} type currently is only supports `list` and `str`,"
-                            f" and does not support {type(output)}.")
+            raise TypeError(f'The {output} type currently is only supports `list` and `str`,'
+                            f' and does not support {type(output)}.')
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         globals['chat_history'].setdefault(self._llm._module_id, [])
@@ -136,5 +136,5 @@ class FunctionCallAgent(ModuleBase):
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
         ret = self._agent(query, llm_chat_history) if llm_chat_history is not None else self._agent(query)
         return ret if isinstance(ret, str) else (_ for _ in ()).throw(
-            ValueError(f"After retrying {self._max_retries} times, the function call agent still "
-                       "failed to call successfully."))
+            ValueError(f'After retrying {self._max_retries} times, the function call agent still '
+                       'failed to call successfully.'))

@@ -18,7 +18,7 @@ from lazyllm.components.formatter import decode_query_with_filepaths, encode_que
 from ...module.module import ModuleBase
 
 
-css = """
+css = '''
 #logging {background-color: #FFCCCB}
 
 #module {
@@ -26,7 +26,7 @@ css = """
   font-size: 16px;
   white-space: pre !important;
 }
-"""
+'''
 
 class WebModule(ModuleBase):
     class Mode:
@@ -49,7 +49,7 @@ class WebModule(ModuleBase):
         elif static_paths is None:
             self._static_paths = []
         else:
-            raise ValueError(f"static_paths only supported str, path or list types. Not supported {static_paths}")
+            raise ValueError(f'static_paths only supported str, path or list types. Not supported {static_paths}')
         self.m = lazyllm.ActionModule(m) if isinstance(m, lazyllm.FlowBase) else m
         self.pool = lazyllm.ThreadPoolExecutor(max_workers=50)
         self.title = title
@@ -83,7 +83,7 @@ class WebModule(ModuleBase):
         )
 
     def _signal_handler(self, signum, frame):
-        LOG.info(f"Signal {signum} received, terminating subprocess.")
+        LOG.info(f'Signal {signum} received, terminating subprocess.')
         atexit._run_exitfuncs()
         sys.exit(0)
 
@@ -113,13 +113,13 @@ class WebModule(ModuleBase):
                     with gr.Row():
                         with lazyllm.config.temp('repr_show_child', True):
                             gr.Textbox(elem_id='module', interactive=False, show_label=True,
-                                       label="模型结构", value=repr(self.m))
+                                       label='模型结构', value=repr(self.m))
                     with gr.Row():
-                        chat_use_context = gr.Checkbox(interactive=True, value=False, label="使用上下文")
+                        chat_use_context = gr.Checkbox(interactive=True, value=False, label='使用上下文')
                     with gr.Row():
-                        stream_output = gr.Checkbox(interactive=self.stream, value=self.stream, label="流式输出")
+                        stream_output = gr.Checkbox(interactive=self.stream, value=self.stream, label='流式输出')
                         text_mode = gr.Checkbox(interactive=(self.text_mode == WebModule.Mode.Dynamic),
-                                                value=(self.text_mode != WebModule.Mode.Refresh), label="追加输出")
+                                                value=(self.text_mode != WebModule.Mode.Refresh), label='追加输出')
                     components = []
                     for _, gname, name, ctype, value in component_descs:
                         if ctype in ('Checkbox', 'Text'):
@@ -132,15 +132,15 @@ class WebModule(ModuleBase):
                     with gr.Row():
                         dbg_msg = gr.Textbox(show_label=True, label='处理日志',
                                              elem_id='logging', interactive=False, max_lines=10)
-                    clear_btn = gr.Button(value="🗑️  Clear history", interactive=True)
+                    clear_btn = gr.Button(value='🗑️  Clear history', interactive=True)
                 with gr.Column(scale=6):
                     with gr.Row():
-                        add_sess_btn = gr.Button("添加新会话")
-                        sess_drpdn = gr.Dropdown(choices=sess_data.value['sess_titles'], label="选择会话：", value='')
-                        del_sess_btn = gr.Button("删除当前会话")
+                        add_sess_btn = gr.Button('添加新会话')
+                        sess_drpdn = gr.Dropdown(choices=sess_data.value['sess_titles'], label='选择会话：', value='')
+                        del_sess_btn = gr.Button('删除当前会话')
                     chatbot = gr.Chatbot(height=700)
                     query_box = gr.MultimodalTextbox(show_label=False, placeholder='输入内容并回车!!!', interactive=True)
-                    recordor = gr.Audio(sources=["microphone"], type="filepath", visible=self.audio)
+                    recordor = gr.Audio(sources=['microphone'], type='filepath', visible=self.audio)
 
             query_box.submit(self._init_session, [query_box, sess_data, recordor],
                                                  [sess_drpdn, chatbot, dbg_msg, sess_data, recordor], queue=True
@@ -178,11 +178,11 @@ class WebModule(ModuleBase):
         if session['curr_sess'] != '':  # remain unchanged.
             return gr.Dropdown(), gr.Chatbot(), gr.Textbox(), session, audio
 
-        if "text" in query and query["text"] is not None:
+        if 'text' in query and query['text'] is not None:
             id_name = query['text']
         else:
             id_name = id(id_name)
-        session['curr_sess'] = f"({session['sess_num']})  {id_name}"
+        session['curr_sess'] = f'({session["sess_num"]})  {id_name}'
         session['sess_num'] += 1
         session['sess_titles'][0] = session['curr_sess']
 
@@ -247,9 +247,9 @@ class WebModule(ModuleBase):
             query = session['frozen_query']
         if chat_history is None:
             chat_history = []
-        for x in query["files"]:
+        for x in query['files']:
             chat_history.append([[x,], None])
-        if "text" in query and query["text"]:
+        if 'text' in query and query['text']:
             chat_history.append([query['text'], None])
         return {}, chat_history
 
@@ -314,20 +314,20 @@ class WebModule(ModuleBase):
 
             def get_log_and_message(s):
                 if isinstance(s, dict):
-                    s = s.get("message", {}).get("content", "")
+                    s = s.get('message', {}).get('content', '')
                 else:
                     try:
                         r = decode_query_with_filepaths(s)
                         if isinstance(r, str):
                             r = json.loads(r)
                         if 'choices' in r:
-                            if "type" not in r["choices"][0] or (
-                                    "type" in r["choices"][0] and r["choices"][0]["type"] != "tool_calls"):
-                                delta = r["choices"][0]["delta"]
-                                if "content" in delta:
-                                    s = delta["content"]
+                            if 'type' not in r['choices'][0] or (
+                                    'type' in r['choices'][0] and r['choices'][0]['type'] != 'tool_calls'):
+                                delta = r['choices'][0]['delta']
+                                if 'content' in delta:
+                                    s = delta['content']
                                 else:
-                                    s = ""
+                                    s = ''
                         elif isinstance(r, dict) and 'files' in r and 'query' in r:
                             return r['query'], ''.join(log_history), r['files'] if len(r['files']) > 0 else None
                         else:
@@ -335,15 +335,15 @@ class WebModule(ModuleBase):
                     except (ValueError, KeyError, TypeError):
                         s = s
                     except Exception as e:
-                        LOG.error(f"Uncaptured error `{e}` when parsing `{s}`, please contact us if you see this.")
-                return s, "".join(log_history), None
+                        LOG.error(f'Uncaptured error `{e}` when parsing `{s}`, please contact us if you see this.')
+                return s, ''.join(log_history), None
 
             def contains_markdown_image(text: str):
-                pattern = r"!\[.*?\]\((.*?)\)"
+                pattern = r'!\[.*?\]\((.*?)\)'
                 return bool(re.search(pattern, text))
 
             def extract_img_path(text: str):
-                pattern = r"!\[.*?\]\((.*?)\)"
+                pattern = r'!\[.*?\]\((.*?)\)'
                 urls = re.findall(pattern, text)
                 return urls
 
@@ -376,11 +376,11 @@ class WebModule(ModuleBase):
                     for url in urls:
                         suffix = os.path.splitext(url)[-1].lower()
                         if suffix in PIL.Image.registered_extensions().keys() and os.path.exists(url):
-                            show_result = show_result.replace(url, "file=" + url)
+                            show_result = show_result.replace(url, 'file=' + url)
                 if result:
                     count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
                     if not (result in chat_history[-1][1][-count:]):
-                        chat_history[-1][1] += "\n\n" + show_result
+                        chat_history[-1][1] += '\n\n' + show_result
                     elif show_result != result:
                         chat_history[-1][1] = chat_history[-1][1].replace(result, show_result)
         except requests.RequestException as e:
@@ -408,7 +408,7 @@ class WebModule(ModuleBase):
         self.url = f'http://127.0.0.1:{port}'
         self.broadcast_url = f'http://0.0.0.0:{port}'
 
-        self.demo.queue().launch(server_name="0.0.0.0", server_port=port, prevent_thread_lock=True, share=self.share)
+        self.demo.queue().launch(server_name='0.0.0.0', server_port=port, prevent_thread_lock=True, share=self.share)
         LOG.success('LazyLLM webmodule launched successfully: Running on: '
                     f'{self.broadcast_url}, local URL: {self.url}')
 

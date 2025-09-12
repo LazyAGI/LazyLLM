@@ -1,4 +1,4 @@
-import uvicorn
+from lazyllm.thirdparty import uvicorn
 
 from dataclasses import dataclass
 from typing import Literal, Any, Optional, List
@@ -14,15 +14,15 @@ from starlette.routing import Mount, Route
 
 @dataclass
 class SseServerSettings:
-    """Settings for the SSE server."""
+    '''Settings for the SSE server.'''
     bind_host: str
     port: int
     allow_origins: Optional[List[str]] = None
-    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR", "CRITICAL"] = "INFO"
+    log_level: Literal['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'] = 'INFO'
 
 
 def _create_starlette_app(mcp_server, *, allow_origins=None, debug=False) -> Starlette:
-    """
+    '''
     Create a Starlette application to serve the provided MCP server with SSE.
 
     Args:
@@ -32,8 +32,8 @@ def _create_starlette_app(mcp_server, *, allow_origins=None, debug=False) -> Sta
 
     Returns:
         A configured Starlette application.
-    """
-    sse = mcp.server.sse.SseServerTransport("/messages/")
+    '''
+    sse = mcp.server.sse.SseServerTransport('/messages/')
 
     async def handle_sse(request: Request) -> None:
         async with sse.connect_sse(
@@ -53,8 +53,8 @@ def _create_starlette_app(mcp_server, *, allow_origins=None, debug=False) -> Sta
             Middleware(
                 CORSMiddleware,
                 allow_origins=allow_origins,
-                allow_methods=["*"],
-                allow_headers=["*"],
+                allow_methods=['*'],
+                allow_headers=['*'],
             )
         )
 
@@ -62,14 +62,14 @@ def _create_starlette_app(mcp_server, *, allow_origins=None, debug=False) -> Sta
         debug=debug,
         middleware=middleware,
         routes=[
-            Route("/sse", endpoint=handle_sse),
-            Mount("/messages/", app=sse.handle_post_message),
+            Route('/sse', endpoint=handle_sse),
+            Mount('/messages/', app=sse.handle_post_message),
         ],
     )
 
 
 async def _create_proxy_server(remote_app): # noqa C901
-    """
+    '''
     Create a proxy server instance based on a remote client session.
 
     Args:
@@ -77,7 +77,7 @@ async def _create_proxy_server(remote_app): # noqa C901
 
     Returns:
         An instance of Server with request and notification handlers mapped.
-    """
+    '''
     response = await remote_app.initialize()
     capabilities = response.capabilities
 
@@ -139,7 +139,7 @@ async def _create_proxy_server(remote_app): # noqa C901
             except Exception as e:
                 return mcp.types.ServerResult(
                     mcp.types.CallToolResult(
-                        content=[mcp.types.TextContent(type="text", text=str(e))],
+                        content=[mcp.types.TextContent(type='text', text=str(e))],
                         isError=True,
                     )
                 )
@@ -172,20 +172,20 @@ async def start_sse_server(
     client_session,
     sse_settings: SseServerSettings,
 ) -> None:
-    """
+    '''
     Start the SSE server by creating a proxy MCP server and serving it via Starlette.
 
     Args:
         client_session: The client session for the remote MCP app.
         sse_settings: The settings for configuring the SSE server.
-    """
+    '''
     mcp_server = await _create_proxy_server(client_session)
 
     # Create the Starlette app with SSE routes and middleware.
     starlette_app = _create_starlette_app(
         mcp_server,
         allow_origins=sse_settings.allow_origins,
-        debug=(sse_settings.log_level == "DEBUG"),
+        debug=(sse_settings.log_level == 'DEBUG'),
     )
 
     # Configure and start the HTTP server using uvicorn.

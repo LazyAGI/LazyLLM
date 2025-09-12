@@ -427,13 +427,13 @@ class Parallel(LazyLLMFlowsBase):
                     error_msgs = []
                     for future in not_done:
                         if (exc := future.exception()) is not None:
-                            if (tb := getattr(future, "_traceback", None)):
+                            if (tb := getattr(future, '_traceback', None)):
                                 tb_str = ''.join(traceback.format_exception(type(exc), exc, tb))
                             else:
                                 tb_str = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-                            error_msgs.append(f"Future: {future}\n{tb_str}")
+                            error_msgs.append(f'Future: {future}\n{tb_str}')
                         else:
-                            error_msgs.append(f"Future: {future} not complete without exception。")
+                            error_msgs.append(f'Future: {future} not complete without exception。')
                     raise RuntimeError('Parallel execute failed!\n' + '\n'.join(error_msgs))
                 return package([future.result() for future in futures])
         else:
@@ -636,7 +636,7 @@ class Graph(LazyLLMFlowsBase):
                     queue.append(output_node)
 
         if len(sorted_nodes) != len(self._nodes):
-            raise ValueError("Graph has a cycle")
+            raise ValueError('Graph has a cycle')
 
         return [n for n in sorted_nodes if (self._in_degree[n] > 0 or self._out_degree[n] > 0)]
 
