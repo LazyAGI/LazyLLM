@@ -1,11 +1,6 @@
 ::: lazyllm.LazyLLMLaunchersBase
     options:
-      members:
-      - makejob
-      - launch
-      - cleanup
-      - wait
-      - clone
+      members: [makejob, launch, cleanup, wait, clone]
 
 ::: lazyllm.launcher.EmptyLauncher
     options:
@@ -18,8 +13,7 @@
 ::: lazyllm.launcher.SlurmLauncher
     options:
       heading_level: 3
-      filters:
-      - '!get_idle'
+      members: [makejob, get_idle_nodes, launch]
 
 ::: lazyllm.launcher.ScoLauncher
     options:

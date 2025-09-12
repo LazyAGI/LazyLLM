@@ -17,7 +17,7 @@ LazyLLM 提供的钩子系统抽象基类，用于在函数或方法执行前后
 
 Args:
     obj: 要监控的对象（通常是函数或方法）。此对象会被存储在钩子实例中，供其他方法使用。
-                
+
 **注意**: 此类是抽象基类，不能直接实例化。必须继承此类并实现所有抽象方法才能使用。
 ''')
 
@@ -33,51 +33,51 @@ Args:
 ''')
 
 add_chinese_doc('LazyLLMHook.pre_hook', '''\
-前置钩子方法，在函数执行前调用。
+前置钩子方法，在被监控函数执行前调用。
+
+这是一个抽象方法，需要在子类中实现。
 
 Args:
-    *args: 传递给被监控函数的参数
-    **kwargs: 传递给被监控函数的关键字参数
+    *args: 传递给被监控函数的位置参数。
+    **kwargs: 传递给被监控函数的关键字参数。
 ''')
 
 add_english_doc('LazyLLMHook.pre_hook', '''\
-Pre-hook method, called before function execution.
+Pre-hook method, called before the monitored function executes.
+
+This is an abstract method and must be implemented in subclasses.
 
 Args:
-    *args: Arguments passed to the monitored function
-    **kwargs: Keyword arguments passed to the monitored function
+    *args: Positional arguments passed to the monitored function.
+    **kwargs: Keyword arguments passed to the monitored function.
 ''')
 
 add_chinese_doc('LazyLLMHook.post_hook', '''\
-后置钩子方法，在函数执行后调用。
+后置钩子方法，在被监控函数执行后调用。
+
+这是一个抽象方法，需要在子类中实现。
 
 Args:
-    output: 被监控函数的返回值
-
-**Returns:**\n
-- 处理后的输出值。通常返回原始输出，但也可以修改或包装输出。
+    output: 被监控函数的返回值。
 ''')
 
 add_english_doc('LazyLLMHook.post_hook', '''\
-Post-hook method, called after function execution.
+Post-hook method, called after the monitored function executes.
+
+This is an abstract method and must be implemented in subclasses.
 
 Args:
-    output: The return value of the monitored function
-
-**Returns:**\n
-- The processed output value. Usually returns the original output, but can also modify or wrap the output.
+    output: The return value of the monitored function.
 ''')
 
 add_chinese_doc('LazyLLMHook.report', '''\
-生成钩子执行报告。
+生成钩子的执行报告。
 
-**Returns:**\n
-- 钩子执行的相关信息或统计数据。
+这是一个抽象方法，需要在子类中实现。
 ''')
 
 add_english_doc('LazyLLMHook.report', '''\
-Generate a report of hook execution.
+Generate a report of the hook execution.
 
-**Returns:**\n
-- Relevant information or statistics about hook execution.
+This is an abstract method and must be implemented in subclasses.
 ''')
