@@ -18,12 +18,12 @@ add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.
 add_agent_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools.agent)
 add_agent_example = functools.partial(utils.add_example, module=lazyllm.tools.agent)
 
-# services for lazyllm.tools.agent
+# functions for lazyllm.tools.services
 add_services_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.services'))
 add_services_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.services'))
 add_services_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.services'))
 
-# infer_service for lazyllm.tools.agent
+# functions for lazyllm.tools.infer_service
 add_infer_service_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.infer_service'))
 add_infer_service_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.infer_service'))
 add_infer_service_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.infer_service'))
