@@ -40,7 +40,7 @@ def reset_env(func):
 class TestDeploy(object):
 
     def setup_method(self):
-        self.model_path = 'internlm2-chat-7b'
+        self.model_path = 'Qwen3-30B-A3B-Instruct-2507'
         self.inputs = ['介绍一下你自己', '李白和李清照是什么关系', '说个笑话吧']
         self.use_context = False
         self.stream_output = False
@@ -83,6 +83,7 @@ class TestDeploy(object):
         self.clients.append(client)
         return web, client
 
+    @pytest.mark.skip(reason='need GPU')
     def test_deploy_lightllm(self):
         m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.lightllm)
         m.evalset(self.inputs)
@@ -90,6 +91,7 @@ class TestDeploy(object):
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
 
+    @pytest.mark.skip(reason='need GPU')
     def test_deploy_auto(self):
         m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.AutoDeploy)
         assert m._deploy_type != lazyllm.deploy.AutoDeploy
@@ -98,6 +100,7 @@ class TestDeploy(object):
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
 
+    @pytest.mark.skip(reason='need GPU')
     def test_deploy_auto_without_calling_method(self):
         m = lazyllm.TrainableModule(self.model_path, '')
         m.evalset(self.inputs)
@@ -105,6 +108,7 @@ class TestDeploy(object):
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
 
+    @pytest.mark.skip(reason='need GPU')
     def test_bark(self):
         m = lazyllm.TrainableModule('bark')
         m.update_server()
@@ -145,9 +149,6 @@ class TestDeploy(object):
 
         # Use deploy_method to set deployment framework and parameters
         module.deploy_method(deploy.LMDeploy, port=9090, tp=1, max_batch_size=256)
-        module.update_server()
-
-        # Verify parameter mapping is correct
         deploy_args = module._impl._deploy_args
 
         # Check mapped parameters

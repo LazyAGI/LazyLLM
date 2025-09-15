@@ -9,6 +9,7 @@ from lazyllm.launcher import cleanup
 from lazyllm.components.formatter import encode_query_with_filepaths
 
 
+@pytest.mark.skip(reason='need GPU')
 class TestFinetune(object):
 
     def setup_method(self):

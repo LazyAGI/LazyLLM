@@ -26,7 +26,7 @@ def set_enviroment(request):
 class TestDeploy(object):
 
     def setup_method(self):
-        self.model_path = 'internlm2-chat-7b'
+        self.model_path = 'Qwen3-30B-A3B-Instruct-2507'
         self.inputs = ['介绍一下你自己', '李白和李清照是什么关系', '说个笑话吧']
         self.use_context = False
         self.stream_output = False
@@ -81,17 +81,17 @@ class TestDeploy(object):
                               ('LAZYLLM_DEFAULT_EMBEDDING_ENGINE', 'transformers')],
                              indirect=True)
     def test_embedding(self, set_enviroment):
-        m = lazyllm.TrainableModule('bge-large-zh-v1.5').deploy_method(deploy.AutoDeploy)
+        m = lazyllm.TrainableModule('Qwen3-Embedding-8B').deploy_method(deploy.AutoDeploy)
         m.update_server()
         res = m('你好')
-        assert len(json.loads(res)) == 1024
+        assert len(res) == 4096
         res = m(['你好'])
-        assert len(json.loads(res)) == 1
+        assert len(res) == 1
         res = m(['你好', '世界'])
-        assert len(json.loads(res)) == 2
+        assert len(res) == 2
 
     def test_sparse_embedding(self):
-        m = lazyllm.TrainableModule('bge-m3').deploy_method((deploy.AutoDeploy, {'embed_type': 'sparse'}))
+        m = lazyllm.TrainableModule('bge-m3').deploy_method((deploy.AutoDeploy, {'embed-type': 'sparse'}))
         m.update_server()
         res = m('你好')
         assert isinstance(json.loads(res), dict)
@@ -101,7 +101,7 @@ class TestDeploy(object):
         assert len(json.loads(res)) == 2
 
     def test_cross_modal_embedding(self):
-        m = lazyllm.TrainableModule('siglip')
+        m = lazyllm.TrainableModule('siglip').deploy_method((deploy.Infinity))
         m.update_server()
         res = m('你好')
         assert len(json.loads(res)) == 1152
@@ -130,7 +130,7 @@ class TestDeploy(object):
         assert len(res['files']) == 1
 
     def test_musicgen(self):
-        m = lazyllm.TrainableModule('musicgen-stereo-small')
+        m = lazyllm.TrainableModule('musicgen-small')
         m.update_server()
         r = m('lo-fi music with a soothing melody')
         res = decode_query_with_filepaths(r)
@@ -138,7 +138,7 @@ class TestDeploy(object):
         assert len(res['files']) == 1
 
     def test_chattts(self):
-        m = lazyllm.TrainableModule('ChatTTS-new')
+        m = lazyllm.TrainableModule('bark')
         m.update_server()
         r = m('你好啊，很高兴认识你。')
         res = decode_query_with_filepaths(r)
@@ -201,7 +201,7 @@ class TestDeploy(object):
         assert '但愿人长久' in res
 
     def test_vlm_and_lmdeploy(self):
-        chat = lazyllm.TrainableModule('Mini-InternVL-Chat-2B-V1-5')
+        chat = lazyllm.TrainableModule('Qwen2.5-VL-32B-Instruct')
         m = lazyllm.ServerModule(chat)
         m.update_server()
         query = '这是啥？'

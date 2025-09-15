@@ -207,6 +207,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
                     try:
                         requests.get(url, timeout=3)
                         self._deploy_args = {'url': url}
+                        break
                     except Exception:
                         continue
 
@@ -509,13 +510,19 @@ class TrainableModule(UrlModule):
     def forward_openai(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
                        *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
         if not getattr(self, '_openai_module', None):
-            if self.type.lower() in ['llm', 'vllm']:
+            if self.type.lower() in ['llm', 'vlm']:
                 self._openai_module = lazyllm.OnlineChatModule(
-                    source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=self.type)
-            if self.type.lower() in ['embed', 'reranker']:
-                embed_type = 'embed' if self.type.lower() == 'embed' else 'rerank'
+                    source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=self.type,
+                    stream=self._stream).share(prompt=self._prompt, format=self._formatter)
+                self._openai_module._prompt._set_model_configs(system="You are LazyLLM, \
+                    a large language model developed by SenseTime.")
+                if self.type.lower() == 'vlm': self._openai_module._vlm_force_format_input_with_files = True
+            elif self.type.lower() in ['embed', 'reranker']:
+                embed_type = 'rerank' if self.type.lower() == 'reranker' else 'embed'
                 self._openai_module = lazyllm.OnlineEmbeddingModule(
                     source='openai', embed_model_name='lazyllm', embed_url=self._url, type=embed_type)
+            else:
+                raise ValueError(f'Unsupported type: {self.type} for openai compatible module')
             self._openai_module.used_by(self._module_id)
         return self._openai_module.forward(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
                                            tools=tools, stream_output=stream_output, **kw)
@@ -604,3 +611,12 @@ class TrainableModule(UrlModule):
     def _cache_miss_handler(self):
         if not self._url or self._url == fake_url:
             raise RuntimeError('Cache miss, please use `start()` to deploy the module first')
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['base_model'] = self._impl._base_model
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._impl._base_model = state['base_model']

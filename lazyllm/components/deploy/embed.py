@@ -178,7 +178,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
         self._port = port
         self._model_type = model_type
         self._log_path = log_path
-        self._sparse_embed = True if embed_type == 'sparse' else False
+        self._sparse_embed = True if embed_type == 'sparse' or kw.get('embed-type') == 'sparse' else False
         self._trust_remote_code = trust_remote_code
         self._port = port
 

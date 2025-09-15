@@ -1,6 +1,6 @@
 import unittest
 from unittest.mock import MagicMock
-from lazyllm import LLMParser, TrainableModule
+from lazyllm import LLMParser, TrainableModule, deploy
 from lazyllm.launcher import cleanup
 from lazyllm.tools.rag import DocNode
 
@@ -8,7 +8,7 @@ from lazyllm.tools.rag import DocNode
 class TestLLMParser(unittest.TestCase):
     @classmethod
     def setup_class(cls):
-        cls.llm = TrainableModule("internlm2-chat-7b").start()
+        cls.llm = TrainableModule('Qwen3-30B-A3B-Instruct-2507').deploy_method(deploy.vllm)
         cls.mock_node = MagicMock()
         cls.mock_node.get_text.return_value = (
             "Hello, I am an AI robot developed by SenseTime, named LazyLLM. "

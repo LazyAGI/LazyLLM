@@ -1,11 +1,13 @@
 import os
 import time
-
+import pytest
 import requests
+
 import lazyllm
 from lazyllm.tools.train_service.serve import TrainServer
 from urllib.parse import urlparse
 
+@pytest.mark.skip(reason='need GPU')
 class TestTrainServe:
     def test_train_serve(self):
         train_server = lazyllm.ServerModule(TrainServer(), launcher=lazyllm.launcher.EmptyLauncher(sync=False))

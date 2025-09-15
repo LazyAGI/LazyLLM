@@ -3,7 +3,7 @@ from lazyllm.tools.rag.doc_impl import embed_wrapper
 
 class TestEmbed(object):
     def test_embed_batch(self):
-        embed_model = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
+        embed_model = lazyllm.TrainableModule("Qwen3-Embedding-8B").deploy_method(lazyllm.deploy.vllm).start()
         embed_model = embed_wrapper(embed_model)
         vec1 = embed_model("床前明月光")
         vec2 = embed_model(["床前明月光", "疑是地上霜"])
@@ -24,7 +24,7 @@ class TestEmbed(object):
         assert len(vec3[0]) == len(vec1)
         assert len(vec3[1]) == len(vec1)
 
-    def test__embed_adjust_batch(self):
+    def test_embed_adjust_batch(self):
         embed_model = lazyllm.OnlineEmbeddingModule(source="qwen", embed_model_name="text-embedding-v3",
                                                     num_worker=4, batch_size=20)
         vec2 = embed_model(["床前明月光" for i in range(0, 20)])

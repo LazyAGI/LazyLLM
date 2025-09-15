@@ -1,6 +1,5 @@
 import json
 import pytest
-import random
 from typing import Literal
 import wikipedia
 
@@ -188,9 +187,9 @@ rewooquery2 = "3是奇数还是偶数？"
 class TestTrainableFunctionCall(object):
     @classmethod
     def setup_class(cls):
-        models = ["internlm2-chat-20b", "glm-4-9b-chat", "qwen2-7b-instruct", "qwen2-72b-instruct-awq"]
-        model = random.choice(models)
-        cls.llm = lazyllm.TrainableModule(model).deploy_method(deploy.vllm).start()
+        cls.llm = lazyllm.TrainableModule("Qwen3-30B-A3B-Instruct-2507").deploy_method(
+            deploy.vllm,
+            lazyllm_store_true_keys=['enable-auto-tool-choice', 'tool-call-parser']).start()
 
     @classmethod
     def teardown_class(cls):

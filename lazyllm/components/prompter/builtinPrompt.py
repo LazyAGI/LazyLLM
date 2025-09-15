@@ -210,6 +210,8 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
 
 class EmptyPrompter(LazyLLMPrompterBase):
 
-    def generate_prompt(self, input, history=None, tools=None, label=None, show=False):
+    def generate_prompt(self, input, history=None, tools=None, label=None, show=False, return_dict=False):
+        if return_dict:
+            return {"messages": [{"role": "user", "content": input}]}
         if self._show or show: LOG.info(input)
         return input

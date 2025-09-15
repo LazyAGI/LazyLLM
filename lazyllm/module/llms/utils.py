@@ -249,7 +249,7 @@ def values_equal_for_config(config_value, deploy_value):
                 return converter(norm_config_value) == converter(norm_deploy_value)
             except (ValueError, TypeError):
                 continue
-        return norm_config_value == norm_deploy_value
+        return norm_config_value.lower() == norm_deploy_value.lower()
 
     if isinstance(norm_config_value, dict) and isinstance(norm_deploy_value, dict):
         check_status = True
