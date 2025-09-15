@@ -1326,6 +1326,7 @@ Args:
     index_kwargs (Optional[Union[Dict, List]]): Index creation parameters (e.g., {"index_type": "IVF_FLAT", "metric_type": "COSINE"} or a list of per-embed-key configs).
     **kwargs: Additional keyword arguments.
 ''')
+
 add_chinese_doc('rag.store.ElasticSearchStore', '''
 基于 Elasticsearch 的向量存储实现，继承自 StoreBase。支持向量写入、删除、相似度检索，兼容标量过滤。
 Args:
@@ -1335,9 +1336,19 @@ Args:
     **kwargs: 预留扩展参数。
 ''')
 
+add_example('rag.store.ElasticSearchStore', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.rag.store import ElasticSearchStore
+>>> store = ElasticSearchStore(uris=["localhost:9200"], client_kwargs={}, index_kwargs={})
+>>> store.connect(embed_dims={"vec_dense": 128, "vec_sparse": 128}, embed_datatypes={"vec_dense": DataType.FLOAT32, "vec_sparse": DataType.FLOAT32}, global_metadata_desc={})
+>>> store.upsert(collection_name="test", data=[{"uid": "1", "embedding": {"vec_dense": [0.1, 0.2, 0.3], "vec_sparse": {"1": 0.1, "2": 0.2, "3": 0.3}}, "metadata": {"key1": "value1", "key2": "value2"}}])
+>>> store.get(collection_name="test", criteria={"uid": "1"})
+>>> store.delete(collection_name="test", criteria={"uid": "1"})
+''')
+
 add_english_doc('rag.store.ElasticSearchStore.dir', '''
 Returns None when using remote Elasticsearch.
-Returns:
+**Returns:**\n
     Optional[str]: None if remote.
 ''')
 
@@ -1381,7 +1392,7 @@ add_chinese_doc('rag.store.ElasticSearchStore.upsert', '''
 Args:
     collection_name (str): 集合名称，通常为 "group_embedKey" 格式。
     data (List[dict]): 切片数据列表。
-Returns:
+**Returns:**\n
     bool: 操作成功返回 True，否则 False。
 ''')
 
