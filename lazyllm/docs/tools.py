@@ -4557,9 +4557,6 @@ WebModule是LazyLLM为开发者提供的基于Web的交互界面。在初始化�
 模块返回的结果和日志会直接显示在网页的“处理日志”和Chatbot组件上。除此之外，WebModule支持在网页上动态加入Checkbox或Text组件用于向模块发送额外的参数。
 WebModule页面还提供“使用上下文”，“流式输出”和“追加输出”的Checkbox，可以用来改变页面和后台模块的交互方式。
 
-<span style="font-size: 20px;">&ensp;**`WebModule.init_web(component_descs) -> gradio.Blocks`**</span>
-使用gradio库生成演示web页面，初始化session相关数据以便在不同的页面保存各自的对话和日志，然后使用传入的component_descs参数为页面动态添加Checkbox和Text组件，最后设置页面上的按钮和文本框的相应函数
-之后返回整个页面。WebModule的__init__函数调用此方法生成页面。
 
 Args:
     m (Any): 要包装的模型对象，可以是lazyllm.FlowBase子类或其他可调用对象。
@@ -4585,13 +4582,6 @@ of the Chatbot component to their modules. The results and logs returned by the 
 programmatically to the web page for additional parameters to the background module. Meanwhile, The WebModule page
 provides Checkboxes of “Use Context,” “Stream Output,” and “Append Output,” which can be used to adjust the
 interaction between the page and the module behind.
-
-<span style="font-size: 20px;">&ensp;**`WebModule.init_web(component_descs) -> gradio.Blocks`**</span>
-
-Generate a demonstration web page based on gradio. The function initializes session-related data to save chat history
-and logs for different pages, then dynamically add Checkbox and Text components to the page according to component_descs
-parameter, and set the corresponding functions for the buttons and text boxes on the page at last.
-WebModule’s __init__ function calls this method to generate the page.
 
 Args:
     m (Any): The model object to wrap, can be a lazyllm.FlowBase subclass or other callable object.
@@ -4779,6 +4769,7 @@ add_chinese_doc('ParameterExtractor.choose_prompt', '''
 根据参数描述内容选择合适的提示模板（Prompt）。
 
 此方法会检查传入的参数描述字符串中是否包含中文字符：
+
 - 如果包含中文字符，则返回中文提示模板 `ch_parameter_extractor_prompt`；
 - 如果不包含中文字符，则返回英文提示模板 `en_parameter_extractor_prompt`。
 
@@ -4793,6 +4784,7 @@ add_english_doc('ParameterExtractor.choose_prompt', '''
 Selects the appropriate prompt template based on the content of the parameter descriptions.
 
 This method checks whether the input parameter description string contains any Chinese characters:
+
 - If Chinese characters are present, returns the Chinese prompt template `ch_parameter_extractor_prompt`.
 - Otherwise, returns the English prompt template `en_parameter_extractor_prompt`.
 
@@ -7095,6 +7087,7 @@ Args:
     trace_mode (optional): 追踪模式，默认为``None``(刷新模式)
 
 类属性:
+
     Mode: 模式枚举类，包含:
         - Dynamic: 动态模式
         - Refresh: 刷新模式
@@ -7119,6 +7112,7 @@ Args:
 
 
 Class Attributes:
+
     Mode: Mode enumeration class containing:
         - Dynamic: Dynamic mode
         - Refresh: Refresh mode

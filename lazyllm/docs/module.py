@@ -75,8 +75,10 @@ add_chinese_doc('ModuleBase.stream_output', '''\
 
 Args:
     stream_output (Optional[Union[bool, Dict]]): 流式输出配置。
+
         - 如果为布尔值 True，则开启默认流式输出。
         - 如果为字典，可包含以下键：
+
             - 'prefix' (str): 输出前缀文本。
             - 'prefix_color' (str, optional): 前缀颜色。
             - 'suffix' (str): 输出后缀文本。
@@ -89,8 +91,10 @@ When a dictionary is provided to ``stream_output``, a prefix and suffix can be s
 
 Args:
     stream_output (Optional[Union[bool, Dict]]): Configuration for streaming output.
+
         - If True, enables default streaming output.
         - If a dictionary, may include:
+
             - 'prefix' (str): Text to output at the beginning.
             - 'prefix_color' (str, optional): Color of the prefix.
             - 'suffix' (str): Text to output at the end.
@@ -1599,6 +1603,7 @@ OnlineChatModuleBase是管理开放平台的LLM接口的公共组件，具备训
                 需要子类继承该类，并实现微调相关的上传文件、创建微调任务、查询微调任务以及和部署相关的创建部署服务、查询部署任务等接口。
 
 如果你需要支持新的开放平台的LLM的能力，请让你自定义的类继承自OnlineChatModuleBase：
+
     1、根据新平台的模型返回参数情况考虑对返回结果进行后处理，如果模型返回的格式和openai一致，可以不用做任何处理
     2、如果新平台支持模型的微调，也需要继承FileHandlerBase类，该类主要是验证文件格式，并在自定义类中把.jsonl格式数据转换为模型支持的数据才能用于后面的模型训练
     3、如果新平台支持模型的微调，则需要实现文件上传、创建微调服务、查询微调服务的接口。即使新平台不用对微调后的模型进行部署，也请实现一个假的创建部署服务和查询部署服务的接口即可
@@ -1619,7 +1624,9 @@ Args:
 
 add_english_doc('OnlineChatModuleBase', '''\
 OnlineChatModuleBase is a public component that manages the LLM interface for open platforms, and has key capabilities such as training, deployment, and inference. OnlineChatModuleBase itself does not support direct instantiation; it requires subclasses to inherit from this class and implement interfaces related to fine-tuning, such as uploading files, creating fine-tuning tasks, querying fine-tuning tasks, and deployment-related interfaces, such as creating deployment services and querying deployment tasks.
+
 If you need to support the capabilities of a new open platform's LLM, please extend your custom class from OnlineChatModuleBase:
+
     1. Consider post-processing the returned results based on the parameters returned by the new platform's model. If the model's return format is consistent with OpenAI, no processing is necessary.
     2. If the new platform supports model fine-tuning, you must also inherit from the FileHandlerBase class. This class primarily validates file formats and converts .jsonl formatted data into a format supported by the model for subsequent training. 
     3. If the new platform supports model fine-tuning, you must implement interfaces for file upload, creating fine-tuning services, and querying fine-tuning services. Even if the new platform does not require deployment of the fine-tuned model, please implement dummy interfaces for creating and querying deployment services.
@@ -1748,6 +1755,7 @@ add_chinese_doc('OnlineEmbeddingModuleBase', '''\
 OnlineEmbeddingModuleBase是管理开放平台的嵌入模型接口的基类，用于请求文本获取嵌入向量。不建议直接对该类进行直接实例化。需要特定平台类继承该类进行实例化。
 
 如果你需要支持新的开放平台的嵌入模型的能力，请让你自定义的类继承自OnlineEmbeddingModuleBase：
+
     1、如果新平台的嵌入模型的请求和返回数据格式都和openai一样，可以不用做任何处理，只传url和模型即可
     2、如果新平台的嵌入模型的请求或者返回的数据格式和openai不一样，需要重写_encapsulated_data或_parse_response方法。
     3、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
@@ -1761,8 +1769,10 @@ Args:
 ''')
 
 add_english_doc('OnlineEmbeddingModuleBase', '''
-OnlineEmbeddingModuleBase is the base class for managing embedding model interfaces on open platforms, used for requesting text to obtain embedding vectors. It is not recommended to directly instantiate this class. Specific platform classes should inherit from this class for instantiation.
+OnlineEmbeddingModuleBase is the base class for managing embedding model interfaces on open platforms, used for requesting text to obtain embedding vectors. It is not recommended to directly instantiate this class. Specific platform classes should inherit from this class for instantiation.\n
+
 If you need to support the capabilities of embedding models on a new open platform, please extend your custom class from OnlineEmbeddingModuleBase:
+
     1. If the request and response data formats of the new platform's embedding model are the same as OpenAI's, no additional processing is needed; simply pass the URL and model.
     2. If the request or response data formats of the new platform's embedding model differ from OpenAI's, you need to override the _encapsulated_data or _parse_response methods.
     3. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
@@ -2054,6 +2064,7 @@ Args:
     **kwargs: 其他传递给基类的参数。
 
 功能特点：
+
     1. 支持多模态输入处理
     2. 使用ZhipuAI客户端进行API调用
     3. 提供统一的多模态接口
@@ -2074,6 +2085,7 @@ Args:
     **kwargs: Additional arguments passed to the base class.
 
 Features:
+
     1. Supports multimodal input processing
     2. Uses ZhipuAI client for API calls
     3. Provides unified multimodal interface
@@ -2176,6 +2188,7 @@ Args:
     **kwargs: 其他传递给基类的参数。
 
 语音合成参数：
+
     input (str): 要转换的文本内容。
     voice (str): 说话人声音，默认使用模型默认声音。
     speech_rate (float): 语速，默认为1.0。
@@ -2202,6 +2215,7 @@ Args:
     **kwargs: Additional arguments passed to the base class.
 
 Synthesis Parameters:
+
     input (str): Text content to convert.
     voice (str): Speaker voice, defaults to model's default voice.
     speech_rate (float): Speech rate, defaults to 1.0.
@@ -2263,10 +2277,12 @@ Args:
     **kwargs: 其他传递给基类的参数。
 
 属性：
+
     series: 返回模型系列名称。
     type: 返回模型类型，固定为"MultiModal"。
 
 主要方法：
+
     share(): 创建模块的共享实例。
     forward(input, lazyllm_files, **kwargs): 处理输入和文件的主要方法。
     _forward(input, files, **kwargs): 需要被子类实现的具体前向处理方法。
@@ -2287,10 +2303,12 @@ Args:
     **kwargs: Additional arguments passed to the base class.
 
 Properties:
+
     series: Returns the model series name.
     type: Returns the model type, fixed as "MultiModal".
 
 Main Methods:
+
     share(): Create a shared instance of the module.
     forward(input, lazyllm_files, **kwargs): Main method for handling input and files.
     _forward(input, files, **kwargs): Forward method to be implemented by subclasses.

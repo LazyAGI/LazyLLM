@@ -73,7 +73,8 @@ add_chinese_doc('registry.LazyDict', '''\
 一个为懒惰的程序员设计的特殊字典类。支持多种便捷的访问和操作方式。
 
 特性：
-1. 使用点号代替['str']访问字典元素
+
+1. 使用点号代替['str']访问字典元素 
 2. 支持首字母小写来使语句更像函数调用
 3. 当字典只有一个元素时支持直接调用
 4. 支持动态默认键
@@ -90,6 +91,7 @@ add_english_doc('registry.LazyDict', '''\
 A special dictionary class designed for lazy programmers. Supports various convenient access and operation methods.
 
 Features:
+
 1. Use dot notation instead of ['str'] to access dictionary elements
 2. Support lowercase first character to make statements more like function calls
 3. Support direct calls when dictionary has only one element
