@@ -534,7 +534,7 @@ class TestSegementStore(object):
     }
 
     @pytest.fixture(scope="class")
-    def SetUP(self, request):
+    def setUP(self, request):
         collections = ["col_g1", "col_g2", "col_g3", "col_g4"]
         data = [
             {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
