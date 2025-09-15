@@ -2671,9 +2671,9 @@ add_chinese_doc('formatter.FileFormatter', '''\
 用于处理带文档上下文的查询字符串格式转换的格式化器。
 
 支持三种模式：
-- "decode"：将结构化查询字符串解码为包含 query 和 files 的字典。
-- "encode"：将包含 query 和 files 的字典编码为结构化查询字符串。
-- "merge"：将多个结构化查询字符串合并为一个整体查询。
+- "decode"：将结构化查询字符串解码为包含 query 和 files 的字典。\n
+- "encode"：将包含 query 和 files 的字典编码为结构化查询字符串。\n
+- "merge"：将多个结构化查询字符串合并为一个整体查询。\n
 
 Args:
     formatter (str): 指定操作模式，可为 "decode"、"encode" 或 "merge"（默认为 "decode"）。
@@ -2683,9 +2683,9 @@ add_english_doc('formatter.FileFormatter', '''\
 A formatter that transforms query strings with document context between structured formats.
 
 Supports three modes:
-- "decode": Decodes structured query strings into dictionaries with `query` and `files`.
-- "encode": Encodes a dictionary with `query` and `files` into a structured query string.
-- "merge": Merges multiple structured query strings into one.
+- "decode": Decodes structured query strings into dictionaries with `query` and `files`.\n
+- "encode": Encodes a dictionary with `query` and `files` into a structured query string.\n
+- "merge": Merges multiple structured query strings into one.\n
 
 Args:
     formatter (str): The operation mode. Must be one of "decode", "encode", or "merge". Defaults to "decode".
@@ -3903,7 +3903,8 @@ add_example('finetune.base.DummyFinetune.cmd', ['''\
 add_english_doc('OCRDeploy', '''\
 OCRDeploy is a subclass of [LazyLLMDeployBase][lazyllm.components.LazyLLMDeployBase] that provides deployment for OCR (Optical Character Recognition) models.
 This class is designed to deploy OCR models with additional configurations such as logging, trust for remote code, and port customization.
-     Attributes:
+
+Attributes:
     keys_name_handle: A dictionary mapping input keys to their corresponding handler keys. For example:
         - "inputs": Handles general inputs.
         - "ocr_files": Also mapped to "inputs".
@@ -3925,7 +3926,8 @@ Returns:
 add_chinese_doc('OCRDeploy', '''\
 OCRDeploy 是 [LazyLLMDeployBase][lazyllm.components.LazyLLMDeployBase] 的子类，用于部署 OCR（光学字符识别）模型。
 此类支持额外的配置，例如日志记录、远程代码信任以及端口自定义。
-     属性:
+
+属性:
     keys_name_handle: 一个字典，用于将输入键映射到相应的处理键。例如：
         - "inputs": 处理一般输入。
         - "ocr_files": 同样映射到 "inputs"。

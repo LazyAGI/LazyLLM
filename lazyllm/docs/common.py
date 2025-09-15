@@ -73,11 +73,11 @@ add_chinese_doc('registry.LazyDict', '''\
 一个为懒惰的程序员设计的特殊字典类。支持多种便捷的访问和操作方式。
 
 特性：
-1. 使用点号代替['str']访问字典元素
-2. 支持首字母小写来使语句更像函数调用
-3. 当字典只有一个元素时支持直接调用
-4. 支持动态默认键
-5. 如果组名出现在名称中，允许省略组名
+1. 使用点号代替['str']访问字典元素 \n
+2. 支持首字母小写来使语句更像函数调用\n
+3. 当字典只有一个元素时支持直接调用\n
+4. 支持动态默认键\n
+5. 如果组名出现在名称中，允许省略组名\n
 
 Args:
     name (str): 字典的名称，默认为空字符串。
@@ -90,11 +90,11 @@ add_english_doc('registry.LazyDict', '''\
 A special dictionary class designed for lazy programmers. Supports various convenient access and operation methods.
 
 Features:
-1. Use dot notation instead of ['str'] to access dictionary elements
-2. Support lowercase first character to make statements more like function calls
-3. Support direct calls when dictionary has only one element
-4. Support dynamic default keys
-5. Allow omitting group name if it appears in the name
+1. Use dot notation instead of ['str'] to access dictionary elements\n
+2. Support lowercase first character to make statements more like function calls\n
+3. Support direct calls when dictionary has only one element\n
+4. Support dynamic default keys\n
+5. Allow omitting group name if it appears in the name\n
 
 Args:
     name (str): Name of the dictionary, defaults to empty string.
