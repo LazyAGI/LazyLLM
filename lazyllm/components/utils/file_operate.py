@@ -196,7 +196,7 @@ def bytes_to_file(bytes_str: Union[bytes, list[bytes]], target_dir: Optional[str
         return [bytes_to_file(item, target_dir) for item in bytes_str]
     elif isinstance(bytes_str, bytes):
         output_dir = target_dir if target_dir and os.path.isdir(target_dir) else config['temp_dir']
-        os.makedirs(target_dir, exist_ok=True)
+        os.makedirs(output_dir, exist_ok=True)
         file_extension = infer_file_extension(bytes_str)
         temp_file = tempfile.NamedTemporaryFile(mode='wb', suffix=file_extension, delete=False, dir=output_dir)
         temp_file.write(bytes_str)
