@@ -1,4 +1,5 @@
 # flake8: noqa E501
+import importlib
 from . import utils
 import functools
 import lazyllm
@@ -16,6 +17,16 @@ add_tools_example = functools.partial(utils.add_example, module=lazyllm.tools.to
 add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools.agent)
 add_agent_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools.agent)
 add_agent_example = functools.partial(utils.add_example, module=lazyllm.tools.agent)
+
+# services for lazyllm.tools.agent
+add_services_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.services'))
+add_services_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.services'))
+add_services_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.services'))
+
+# infer_service for lazyllm.tools.agent
+add_infer_service_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.infer_service'))
+add_infer_service_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.infer_service'))
+add_infer_service_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.infer_service'))
 
 # ---------------------------------------------------------------------------- #
 
@@ -8050,7 +8061,7 @@ Args:
     group_names (Optional[List[str]]): List of group names to clear cache for, defaults to None for clearing all cache.
 ''')
 
-add_chinese_doc('services.client.ClientBase', '''\
+add_services_chinese_doc('client.ClientBase', '''\
 客户端基类，用于管理服务连接和状态转换。
 
 Args:
@@ -8060,7 +8071,7 @@ Args:
     url: 服务端点的URL地址。
 ''')
 
-add_english_doc('services.client.ClientBase', '''\
+add_services_english_doc('client.ClientBase', '''\
 Base client class for managing service connections and status conversions.
 
 Args:
@@ -8070,7 +8081,7 @@ Attributes:
     url: URL of the service endpoint.
 ''')
 
-add_chinese_doc('services.client.ClientBase.uniform_status', '''\
+add_services_chinese_doc('client.ClientBase.uniform_status', '''\
 统一化任务状态字符串。
 
 Args:
@@ -8087,7 +8098,7 @@ Args:
     - 'Pending': 等待中状态（包括TBSubmitted、InQueue、Pending）
 ''')
 
-add_english_doc('services.client.ClientBase.uniform_status', '''\
+add_services_english_doc('client.ClientBase.uniform_status', '''\
 Standardize task status string.
 
 Args:
@@ -8285,14 +8296,14 @@ Returns:
     List[dict]: Query result data list
 """)
 
-add_chinese_doc('infer_service.InferServer', """\
+add_infer_service_chinese_doc('InferServer', """\
 推理服务服务器类，继承自ServerBase。
 
 提供模型推理服务的创建、管理、监控和日志查询等RESTful API接口。
 
 """)
 
-add_english_doc('infer_service.InferServer', """\
+add_infer_service_english_doc('InferServer', """\
 Inference service server class, inherits from ServerBase.
 
 Provides RESTful API interfaces for model inference service creation, management, monitoring and log query.
@@ -8300,7 +8311,7 @@ Provides RESTful API interfaces for model inference service creation, management
 """)
 
 
-add_chinese_doc('infer_service.InferServer.create_job', """\
+add_infer_service_chinese_doc('InferServer.create_job', """\
 创建推理任务。
 
 根据任务描述创建新的模型推理服务，启动部署线程并初始化任务状态。
@@ -8313,7 +8324,7 @@ Returns:
     dict: 包含任务ID的响应
 """)
 
-add_english_doc('infer_service.InferServer.create_job', """\
+add_infer_service_english_doc('InferServer.create_job', """\
 Create inference task.
 
 Create new model inference service based on job description, start deployment thread and initialize task status.
@@ -8326,7 +8337,7 @@ Returns:
     dict: Response containing job ID
 """)
 
-add_chinese_doc('infer_service.InferServer.cancel_job', """\
+add_infer_service_chinese_doc('InferServer.cancel_job', """\
 取消推理任务。
 
 停止指定的推理任务，清理资源并更新任务状态。
@@ -8339,7 +8350,7 @@ Returns:
     dict: 包含任务状态的响应
 """)
 
-add_english_doc('infer_service.InferServer.cancel_job', """\
+add_infer_service_english_doc('InferServer.cancel_job', """\
 Cancel inference task.
 
 Stop specified inference task, clean up resources and update task status.
@@ -8352,7 +8363,7 @@ Returns:
     dict: Response containing task status
 """)
 
-add_chinese_doc('infer_service.InferServer.list_jobs', """\
+add_infer_service_chinese_doc('InferServer.list_jobs', """\
 列出所有推理任务。
 
 获取当前用户的所有推理任务列表。
@@ -8364,7 +8375,7 @@ Returns:
     dict: 任务列表信息
 """)
 
-add_english_doc('infer_service.InferServer.list_jobs', """\
+add_infer_service_english_doc('InferServer.list_jobs', """\
 List all inference tasks.
 
 Get all inference tasks list for current user.
@@ -8376,7 +8387,7 @@ Returns:
     dict: Task list information
 """)
 
-add_chinese_doc('infer_service.InferServer.get_job_info', """\
+add_infer_service_chinese_doc('InferServer.get_job_info', """\
 获取任务详细信息。
 
 查询指定任务的详细信息，包括状态、端点、耗时等。
@@ -8389,7 +8400,7 @@ Returns:
     dict: 任务详细信息
 """)
 
-add_english_doc('infer_service.InferServer.get_job_info', """\
+add_infer_service_english_doc('InferServer.get_job_info', """\
 Get task detailed information.
 
 Query detailed information of specified task, including status, endpoint, cost time, etc.
@@ -8402,7 +8413,7 @@ Returns:
     dict: Task detailed information
 """)
 
-add_chinese_doc('infer_service.InferServer.get_job_log', """\
+add_infer_service_chinese_doc('InferServer.get_job_log', """\
 获取任务日志。
 
 获取指定任务的日志文件路径或日志内容。
@@ -8415,7 +8426,7 @@ Returns:
     dict: 日志信息
 """)
 
-add_english_doc('infer_service.InferServer.get_job_log', """\
+add_infer_service_english_doc('InferServer.get_job_log', """\
 Get task log.
 
 Get log file path or log content of specified task.
