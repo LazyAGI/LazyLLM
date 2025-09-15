@@ -1539,7 +1539,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
             # Delete 'python' in cmd
             if self.torchrun and cmd.strip().startswith('python'):
                 cmd = cmd.strip()[6:]
-            return f'{sco_cmd} bash -c "{precmd} {torchrun_cmd if self.torchrun else ""} {cmd}"'
+            return f'{sco_cmd} bash -c \'{precmd} {torchrun_cmd if self.torchrun else ""} {cmd}\''
 
         def _get_jobid(self):
             for i in range(5):
