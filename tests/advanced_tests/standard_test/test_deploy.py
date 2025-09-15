@@ -137,7 +137,7 @@ class TestDeploy(object):
         assert "files" in res
         assert len(res['files']) == 1
 
-    def test_chattts(self):
+    def test_tts_bark(self):
         m = lazyllm.TrainableModule('bark')
         m.update_server()
         r = m('你好啊，很高兴认识你。')

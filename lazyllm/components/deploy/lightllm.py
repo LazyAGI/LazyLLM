@@ -34,8 +34,7 @@ class Lightllm(LazyLLMDeployBase):
     stream_url_suffix = '_stream'
     stream_parse_parameters = {"delimiter": b"\n\n"}
 
-    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None,  # noqa B008
-                 openai_api: Optional[bool] = None, **kw):
+    def __init__(self, launcher=launchers.remote(ngpus=1), log_path=None, openai_api: Optional[bool] = None, **kw):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'tp': 1,
@@ -51,7 +50,6 @@ class Lightllm(LazyLLMDeployBase):
             "max_req_input_len": 4096,
             "long_truncation_mode": "head",
         })
-        self.trust_remote_code = trust_remote_code
         self.store_true_keys = kw.pop('lazyllm-store-true-keys', [])
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] else True
@@ -75,8 +73,6 @@ class Lightllm(LazyLLMDeployBase):
             cmd = f'python -m lightllm.server.api_server --model_dir {finetuned_model} '
             cmd += self.kw.parse_kwargs()
             cmd += ' ' + parse_store_true_keys(self.store_true_keys)
-            if self.trust_remote_code:
-                cmd += ' --trust_remote_code '
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 
