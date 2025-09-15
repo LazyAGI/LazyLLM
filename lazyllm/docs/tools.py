@@ -4768,9 +4768,10 @@ add_example('ParameterExtractor', ['''\
 add_chinese_doc('ParameterExtractor.choose_prompt', '''
 根据参数描述内容选择合适的提示模板（Prompt）。
 
-此方法会检查传入的参数描述字符串中是否包含中文字符：\n
-- 如果包含中文字符，则返回中文提示模板 `ch_parameter_extractor_prompt`；\n
-- 如果不包含中文字符，则返回英文提示模板 `en_parameter_extractor_prompt`。\n
+此方法会检查传入的参数描述字符串中是否包含中文字符：
+
+- 如果包含中文字符，则返回中文提示模板 `ch_parameter_extractor_prompt`；
+- 如果不包含中文字符，则返回英文提示模板 `en_parameter_extractor_prompt`。
 
 Args:
     prompt (str): 参数描述字符串，用于判断使用中文或英文提示模板。
@@ -4782,9 +4783,10 @@ Args:
 add_english_doc('ParameterExtractor.choose_prompt', '''
 Selects the appropriate prompt template based on the content of the parameter descriptions.
 
-This method checks whether the input parameter description string contains any Chinese characters:\n
-- If Chinese characters are present, returns the Chinese prompt template `ch_parameter_extractor_prompt`.\n
-- Otherwise, returns the English prompt template `en_parameter_extractor_prompt`.\n
+This method checks whether the input parameter description string contains any Chinese characters:
+
+- If Chinese characters are present, returns the Chinese prompt template `ch_parameter_extractor_prompt`.
+- Otherwise, returns the English prompt template `en_parameter_extractor_prompt`.
 
 Args:
     prompt (str): Parameter description string used to determine whether to use the Chinese or English prompt template.
@@ -7085,10 +7087,11 @@ Args:
     trace_mode (optional): 追踪模式，默认为``None``(刷新模式)
 
 类属性:
-    Mode: 模式枚举类，包含:\n
-        - Dynamic: 动态模式\n
-        - Refresh: 刷新模式\n
-        - Appendix: 附录模式\n
+
+    Mode: 模式枚举类，包含:
+        - Dynamic: 动态模式
+        - Refresh: 刷新模式
+        - Appendix: 附录模式
 
 注意事项:
     - 需要配合有效的doc_server实例使用
@@ -7109,10 +7112,11 @@ Args:
 
 
 Class Attributes:
-    Mode: Mode enumeration class containing:\n
-        - Dynamic: Dynamic mode\n
-        - Refresh: Refresh mode\n
-        - Appendix: Appendix mode\n
+
+    Mode: Mode enumeration class containing:
+        - Dynamic: Dynamic mode
+        - Refresh: Refresh mode
+        - Appendix: Appendix mode
 
 Notes:
     - Requires a valid doc_server instance to work with
