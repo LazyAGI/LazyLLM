@@ -90,7 +90,7 @@ jobs:
       - name: Move code to custom directory
         run: |
           set -ex
-          mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
+          mv $GITHUB_WORKSPACE ${{ env.CI_PATH }}/
 
   BasicTests:
     runs-on: tps_sco_nv
@@ -162,6 +162,7 @@ jobs:
     steps:
       - name: Create Output and Cache Directories
         run: |
+          cd ${{ env.CI_PATH }}
           mkdir -p github_cache
           mkdir -p github_cache/output
           mkdir -p github_cache/paid_llm_cache
@@ -192,6 +193,7 @@ jobs:
 
       - name: Get SHAs
         run: |
+          cd ${{ env.CI_PATH }}
           CURRENT_SHA=$(git rev-parse HEAD)
           if git rev-parse HEAD^ >/dev/null 2>&1; then
             PREVIOUS_SHA=$(git rev-parse HEAD^)
@@ -207,19 +209,21 @@ jobs:
 
       - name: Restore Cache (Push)
         if: ${{ github.event_name == 'push' }}
-        uses: actions/cache/restore@v4
+        uses: lwj-st/cache/restore@v4.2.4
         with:
           path: github_cache/
           key: python-result-cache-${{ env.PREVIOUS_SHA }}
           enableCrossOsArchive: true
+          ci_path: ${{ env.CI_PATH }}
 
       - name: Restore Cache (Pull Request)
         if: ${{ github.event_name == 'pull_request' }}
-        uses: actions/cache/restore@v4
+        uses: lwj-st/cache/restore@v4.2.4
         with:
           path: github_cache/
           key: python-result-cache-${{ env.BASE_SHA }}
           enableCrossOsArchive: true
+          ci_path: ${{ env.CI_PATH }}
 
       - name: RunTests
         id: exe_ci
@@ -240,11 +244,12 @@ jobs:
 
       - name: Success On Main Branch
         if: ${{ success() && steps.exe_ci.conclusion == 'success' && github.event_name == 'push' }}
-        uses: actions/cache/save@v4
+        uses: lwj-st/cache/save@v4.2.4
         with:
           path: github_cache/
           key: python-result-cache-${{ env.CURRENT_SHA }}
           enableCrossOsArchive: true
+          ci_path: ${{ env.CI_PATH }}
 
   Coverage_linux:
     runs-on: ubuntu-latest
