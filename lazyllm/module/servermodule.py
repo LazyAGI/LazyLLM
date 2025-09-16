@@ -89,7 +89,10 @@ class LLMBase(object):
 
     @property
     def appendix_hash_key(self):
-        prompts = self._prompt.generate_prompt('x')
+        try:
+            prompts = self._prompt.generate_prompt('x')
+        except Exception:
+            prompts = self._prompt._instruction_template
         if not isinstance(prompts, str):
             try:
                 content = json.dumps(prompts, sort_keys=True)
