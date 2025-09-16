@@ -174,7 +174,7 @@ class MilvusStore(LazyLLMStoreBase):
             return False
 
     @override
-    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
+    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:  # noqa: C901
         try:
             with self._client_context() as client:
                 if not client.has_collection(collection_name):
@@ -184,7 +184,23 @@ class MilvusStore(LazyLLMStoreBase):
                 field_names = [field.get('name') for field in col_desc.get('fields', [])
                                if field.get('name').startswith(EMBED_PREFIX)]
                 if criteria and self._primary_key in criteria:
-                    res = client.get(collection_name=collection_name, ids=criteria[self._primary_key])
+                    ids = criteria[self._primary_key]
+                    if isinstance(ids, str):
+                        ids = [ids]
+
+                    batch_size = MILVUS_PAGINATION_OFFSET
+                    if len(ids) > batch_size:
+                        LOG.warning(f'!!![Milvus Store - get] Many ids, {collection_name}: len={len(ids)}')
+                    res = []
+                    for i in range(0, len(ids), batch_size):
+                        batch_ids = ids[i:i + batch_size]
+                        try:
+                            batch_res = client.get(collection_name=collection_name, ids=batch_ids)
+                            res.extend(batch_res)
+                        except Exception as e:
+                            LOG.error(f'[Milvus Store - get] error: {e}')
+                            LOG.error(traceback.format_exc())
+                            return []
                 else:
                     filters = self._construct_criteria(criteria) if criteria else {}
                     if version.parse(pymilvus.__version__) >= version.parse('2.4.11'):
