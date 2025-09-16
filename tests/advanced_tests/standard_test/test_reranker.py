@@ -42,8 +42,7 @@ class TestReranker(unittest.TestCase):
         for value in test_cases:
             with self.subTest(value=value):
                 os.environ[env_key] = value
-                # TODO: change to Qwen3-Reranker-8B need custom prompt
-                reranker = Reranker(name="ModuleReranker", model="bge-reranker-large", topk=2)
+                reranker = Reranker(name="ModuleReranker", model="bge-reranker-v2-m3", topk=2)
                 reranker.start()
                 results = reranker.forward(self.nodes, query='cherry')
 
