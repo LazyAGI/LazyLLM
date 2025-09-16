@@ -472,6 +472,7 @@ class ModuleBase(metaclass=_MetaBind):
     def __cache_hash__(self):
         cache_hash = self.__class__.__name__
         if isinstance(self._use_cache, str): cache_hash += f'@{self._use_cache}'
+        if hasattr(self, 'appendix_hash_key'): cache_hash += f'@{self.appendix_hash_key}'
         return cache_hash
 
     def use_cache(self, flag: Union[bool, str] = True):
