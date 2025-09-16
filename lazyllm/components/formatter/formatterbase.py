@@ -11,17 +11,17 @@ def _is_number(s: str):
         int(s)
         return True
     except ValueError:
-        if s == "None" or len(s) == 0:
+        if s == 'None' or len(s) == 0:
             return False
         else:
-            raise ValueError("Invalid number: " + s + ". You can enter an integer, None or an empyt string.")
+            raise ValueError('Invalid number: ' + s + '. You can enter an integer, None or an empyt string.')
 
 class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
     def _load(self, msg: str):
         return msg
 
     def _parse_py_data_by_formatter(self, py_data):
-        raise NotImplementedError("This data parse function is not implemented.")
+        raise NotImplementedError('This data parse function is not implemented.')
 
     def format(self, msg):
         if isinstance(msg, str): msg = self._load(msg)
@@ -81,15 +81,15 @@ class JsonLikeFormatter(LazyLLMFormatterBase):
         # Remove the surrounding brackets
         assert self._formatter.startswith('[') and self._formatter.endswith(']')
         slice_str = self._formatter.strip()[1:-1]
-        dimensions = slice_str.split("][")
+        dimensions = slice_str.split('][')
         slices = []
 
         for dim in dimensions:
             if '{' in dim:
                 slices.append(__class__._DictKeys(d.strip() for d in dim[1:-1].split(',') if d.strip()))
-            elif ":" in dim:
+            elif ':' in dim:
                 assert ',' not in dim, '[a, b:c] is not supported'
-                parts = dim.split(":")
+                parts = dim.split(':')
                 start = int(parts[0]) if _is_number(parts[0]) else None
                 end = int(parts[1]) if len(parts) > 1 and _is_number(parts[1]) else None
                 step = int(parts[2]) if len(parts) > 2 and _is_number(parts[2]) else None
@@ -147,21 +147,21 @@ def encode_query_with_filepaths(query: str = None, files: Union[str, List[str]] 
     query = query if query else ''
     if files:
         if isinstance(files, str): files = [files]
-        assert isinstance(files, list), "files must be a list."
-        assert all(isinstance(item, str) for item in files), "All items in files must be strings"
+        assert isinstance(files, list), 'files must be a list.'
+        assert all(isinstance(item, str) for item in files), 'All items in files must be strings'
         return LAZYLLM_QUERY_PREFIX + json.dumps({'query': query, 'files': files})
     else:
         return query
 
 def decode_query_with_filepaths(query_files: str) -> Union[dict, str]:
-    assert isinstance(query_files, str), "query_files must be a str."
+    assert isinstance(query_files, str), 'query_files must be a str.'
     query_files = query_files.strip()
     if query_files.startswith(LAZYLLM_QUERY_PREFIX):
         try:
             obj = json.loads(query_files[len(LAZYLLM_QUERY_PREFIX):])
             return obj
         except json.JSONDecodeError as e:
-            raise ValueError(f"JSON parsing failed: {e}")
+            raise ValueError(f'JSON parsing failed: {e}')
     else:
         return query_files
 
@@ -169,7 +169,7 @@ def lazyllm_merge_query(*args: str) -> str:
     if len(args) == 1:
         return args[0]
     for item in args:
-        assert isinstance(item, str), "Merge object must be str!"
+        assert isinstance(item, str), 'Merge object must be str!'
     querys = ''
     files = []
     for item in args:

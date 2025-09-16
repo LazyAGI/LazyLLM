@@ -15,13 +15,13 @@ def register_similarity(
     def decorator(f):
         @functools.wraps(f)
         def wrapper(query, nodes, **kwargs):
-            if mode != "embedding":
+            if mode != 'embedding':
                 if batch:
                     return f(query, nodes, **kwargs)
                 else:
                     return [(node, f(query, node, **kwargs)) for node in nodes]
             else:
-                assert isinstance(query, dict), "query must be of dict type, used for similarity calculation."
+                assert isinstance(query, dict), 'query must be of dict type, used for similarity calculation.'
                 similarity = {}
                 if batch:
                     for key, val in query.items():
@@ -36,19 +36,19 @@ def register_similarity(
 
     return decorator(func) if func else decorator
 
-@register_similarity(mode="text", batch=True)
+@register_similarity(mode='text', batch=True)
 def bm25(query: str, nodes: List[DocNode], **kwargs) -> List:
-    bm25_retriever = BM25(nodes, language="en", **kwargs)
+    bm25_retriever = BM25(nodes, language='en', **kwargs)
     return bm25_retriever.retrieve(query)
 
 
-@register_similarity(mode="text", batch=True)
+@register_similarity(mode='text', batch=True)
 def bm25_chinese(query: str, nodes: List[DocNode], **kwargs) -> List:
-    bm25_retriever = BM25(nodes, language="zh", **kwargs)
+    bm25_retriever = BM25(nodes, language='zh', **kwargs)
     return bm25_retriever.retrieve(query)
 
 
-@register_similarity(mode="embedding")
+@register_similarity(mode='embedding')
 def cosine(query: List[float], node: List[float], **kwargs) -> float:
     product = np.dot(query, node)
     norm = np.linalg.norm(query) * np.linalg.norm(node)

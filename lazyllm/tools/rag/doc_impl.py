@@ -182,7 +182,7 @@ class DocImpl:
                                        num_workers=num_workers, kwargs=kwargs)
 
         if name in groups:
-            LOG.warning(f"Duplicate group name: {name}")
+            LOG.warning(f'Duplicate group name: {name}')
         for t in (transforms if isinstance(transform, list) else [transforms]):
             if isinstance(t.f, str):
                 t.f = _transmap[t.f.lower()]
@@ -193,7 +193,7 @@ class DocImpl:
                     'between nodes may become unreliable, `Document.get_parent/get_child` functions and the '
                     'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
             else:
-                assert callable(t.f), f"transform should be callable, but get {t.f}"
+                assert callable(t.f), f'transform should be callable, but get {t.f}'
         groups[name] = dict(transform=transforms, parent=parent, display_name=display_name or name,
                             group_type=group_type)
 
@@ -231,7 +231,7 @@ class DocImpl:
 
         def decorator(klass):
             if callable(klass): cls._registered_file_reader[pattern] = klass
-            else: raise TypeError(f"The registered object {klass} is not a callable object.")
+            else: raise TypeError(f'The registered object {klass} is not a callable object.')
             return klass
         return decorator
 
@@ -261,7 +261,7 @@ class DocImpl:
                                        metadatas=[metadata] if metadata is not None else None)
                 success_ids.append(doc_id)
             except Exception as e:
-                LOG.error(f"Error adding document {doc_id} ({filepath}) to store: {e}")
+                LOG.error(f'Error adding document {doc_id} ({filepath}) to store: {e}')
                 failed_ids.append(doc_id)
 
         if success_ids:
@@ -375,7 +375,7 @@ class DocImpl:
         if index and index != 'default':
             query_instance = self.store.get_index(type=index)
             if query_instance is None:
-                raise NotImplementedError(f"Index type '{index}' is not registered in the store.")
+                raise NotImplementedError(f'Index type "{index}" is not registered in the store.')
         else:
             query_instance = self.store.get_index(type='default') or self.store
         try:
@@ -424,7 +424,7 @@ class DocImpl:
             nodes = self.find_children(nodes, next_group)
 
         if not nodes:
-            LOG.warning(f"We can not find any nodes for group `{group}`, please check your input")
+            LOG.warning(f'We can not find any nodes for group `{group}`, please check your input')
             return []
         return nodes
 
@@ -435,9 +435,9 @@ class DocImpl:
             result = self._find_parent_with_uid(nodes, group)
         if not result:
             LOG.warning(
-                f"We can not find any nodes for group `{group}`, please check your input"
+                f'We can not find any nodes for group `{group}`, please check your input'
             )
-        LOG.debug(f"Found parent node for {group}: {result}")
+        LOG.debug(f'Found parent node for {group}: {result}')
         return result
 
     def _find_parent_with_node(self, nodes: list[DocNode], group: str):
@@ -472,8 +472,8 @@ class DocImpl:
         kb_id = nodes[0].global_metadata.get(RAG_KB_ID, None)
         result = self.store.get_nodes(group=group, kb_id=kb_id, parent=[n._uid for n in nodes], display=True)
         if not result:
-            LOG.warning(f"We cannot find any nodes for group `{group}`, please check your input.")
-        LOG.debug(f"Found children nodes for {group}: {result}")
+            LOG.warning(f'We cannot find any nodes for group `{group}`, please check your input.')
+        LOG.debug(f'Found children nodes for {group}: {result}')
         return list(result)
 
     def clear_cache(self, group_names: Optional[List[str]] = None):

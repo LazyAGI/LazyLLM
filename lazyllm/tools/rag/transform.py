@@ -65,7 +65,7 @@ class _Split:
 
 
 def split_text_keep_separator(text: str, separator: str) -> List[str]:
-    """Split text and keep the separator."""
+    '''Split text and keep the separator.'''
     parts = text.split(separator)
     result = [separator + s if i > 0 else s for i, s in enumerate(parts)]
     return result[1:] if len(result) > 0 and not result[0] else result
@@ -225,7 +225,7 @@ class SentenceSplitter(NodeTransform):
         return chunks
 
     def _split(self, text: str, chunk_size: int) -> List[_Split]:
-        """Break text into splits that are smaller than chunk size.
+        '''Break text into splits that are smaller than chunk size.
 
         The order of splitting is:
         1. split by paragraph separator
@@ -233,7 +233,7 @@ class SentenceSplitter(NodeTransform):
         3. split by second chunking regex
         4. split by default separator (' ')
         5. split by character
-        """
+        '''
         token_size = self._token_size(text)
         if token_size <= chunk_size:
             return [_Split(text, is_sentence=True, token_size=token_size)]
@@ -328,7 +328,7 @@ class SentenceSplitter(NodeTransform):
 
 
 class FuncNodeTransform(NodeTransform):
-    """Used for user defined function.
+    '''Used for user defined function.
 
     Wrapped the transform to: List[Docnode] -> List[Docnode]
 
@@ -339,7 +339,7 @@ class FuncNodeTransform(NodeTransform):
     This wrapper supports when trans_node is True:
         1. DocNode -> list: pipeline(lambda x:x, SentenceSplitter)
         2. DocNode -> DocNode: pipeline(LLMParser)
-    """
+    '''
 
     def __init__(self, func: Union[Callable[[str], List[str]], Callable[[DocNode], List[DocNode]]],
                  trans_node: bool = None, num_workers: int = 0):
@@ -351,7 +351,7 @@ class FuncNodeTransform(NodeTransform):
 
 
 templates = dict(
-    en=dict(summary="""
+    en=dict(summary='''
 ## Role: Text Summarizer
 You are a text summarization engine responsible for analyzing user input text and providing a concise summary based on \
 the requested task.
@@ -371,7 +371,7 @@ My mission is to assist you in building the most powerful large-scale model appl
 Introduction of AI robot LazyLLM
 
 You should not have any unnecessary output. Lets begin:
-""", keywords="""
+''', keywords='''
 ## Role: Keyword Extractor
 You are a text keyword extraction engine responsible for analyzing user input text and providing a extracting relevant \
 keywords based on the requested task.
@@ -385,13 +385,13 @@ The input is a string contains the user's raw input text
 
 ## Example:
 #input:
-"Hello, I am an AI robot developed by SenseTime, named LazyLLM.
-My mission is to assist you in building the most powerful large-scale model applications with minimal cost."
+'Hello, I am an AI robot developed by SenseTime, named LazyLLM.
+My mission is to assist you in building the most powerful large-scale model applications with minimal cost.'
 #output:
 LazyLLM, SenseTime, AI robot, large-scale model applications
 
 You should not have any unnecessary output. Lets begin:
-""", qa="""
+''', qa='''
 ## Role: QA-pair Extractor
 You are a question-answer extraction engine responsible for analyzing user input text and providing a extracting \
 query and answer based on the requested task.
@@ -405,8 +405,8 @@ The input is a string contains the user's raw input text
 
 ## Example:
 #input:
-"Hello, I am an AI robot developed by SenseTime, named LazyLLM.
-My mission is to assist you in building the most powerful large-scale model applications with minimal cost."
+'Hello, I am an AI robot developed by SenseTime, named LazyLLM.
+My mission is to assist you in building the most powerful large-scale model applications with minimal cost.'
 #output:
 Q: What is LazyLLM developed by?
 A: LazyLLM is developed by SenseTime.
@@ -414,7 +414,7 @@ Q: What can LazyLLM do?
 A: LazyLLM can assist you in building the most powerful large-scale model applications with minimal cost.
 
 You should not have any unnecessary output. Lets begin:
-""", qa_img="""
+''', qa_img='''
 ## Role: Q&A Pair Extraction Engine
 You are a Q&A pair extraction engine, responsible for analyzing and extracting Q&A pairs from images.
 
@@ -431,8 +431,8 @@ Q: What is the pig doing?
 A: The pig is running on the lawn.
 
 You should not output any extra characters. Let's start now.
-"""),
-    zh=dict(summary="""
+'''),
+    zh=dict(summary='''
 ## 角色：文本摘要
 你是一个文本摘要引擎，负责分析用户输入的文本，并根据请求任务提供简洁的摘要。
 
@@ -450,7 +450,7 @@ You should not output any extra characters. Let's start now.
 人工智能机器人LazyLLM的简介
 
 你不应输出任何多余的字符，现在我们开始吧
-""", keywords="""
+''', keywords='''
 ## 角色：关键词提取引擎
 你是一个关键词提取引擎，负责分析用户输入的文本，提取其中的关键词。
 
@@ -468,7 +468,7 @@ You should not output any extra characters. Let's start now.
 LazyLLM, 商汤, 人工智能机器人, 大模型应用
 
 你不应输出任何多余的字符，现在我们开始吧
-""", qa="""
+''', qa='''
 ## 角色：问答对提取引擎
 你是一个问答对提取引擎，负责分析用户输入的文本，提取其中的问答对。
 
@@ -489,7 +489,7 @@ Q: LazyLLM能做什么？
 A: LazyLLM可以协助用户，用最低的成本，构建最强大的大模型应用
 
 你不应输出任何多余的字符，现在我们开始吧
-""", qa_img="""
+''', qa_img='''
 ## 角色：问答对提取引擎
 你是一个问答对提取引擎，负责分析从图像中提取其中的问答对。
 
@@ -506,7 +506,7 @@ Q: 小猪在做啥呢？
 A: 小猪在草坪上奔跑。
 
 你不应输出任何多余的字符，现在我们开始吧
-"""))
+'''))
 
 class LLMParser(NodeTransform):
     def __init__(self, llm: TrainableModule, language: str, task_type: str, num_workers: int = 30):
@@ -534,6 +534,6 @@ class LLMParser(NodeTransform):
             return [s.strip() for s in input.split(',')]
         elif self._task_type in ('qa', 'qa_img'):
             return [QADocNode(query=q.strip()[3:].strip(), answer=a.strip()[3:].strip()) for q, a in zip(
-                list(filter(None, map(str.strip, input.split("\n"))))[::2],
-                list(filter(None, map(str.strip, input.split("\n"))))[1::2])]
+                list(filter(None, map(str.strip, input.split('\n'))))[::2],
+                list(filter(None, map(str.strip, input.split('\n'))))[1::2])]
         return input

@@ -23,14 +23,14 @@ for _ in range(5):
 sys.path.append(lazyllm_module_dir)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--open_ip", type=str, default="0.0.0.0",
-                    help="IP: Receive for Client")
-parser.add_argument("--open_port", type=int, default=17782,
-                    help="Port: Receive for Client")
-parser.add_argument("--function", required=True)
-parser.add_argument("--before_function")
-parser.add_argument("--after_function")
-parser.add_argument("--pythonpath")
+parser.add_argument('--open_ip', type=str, default='0.0.0.0',
+                    help='IP: Receive for Client')
+parser.add_argument('--open_port', type=int, default=17782,
+                    help='Port: Receive for Client')
+parser.add_argument('--function', required=True)
+parser.add_argument('--before_function')
+parser.add_argument('--after_function')
+parser.add_argument('--pythonpath')
 args = parser.parse_args()
 
 if args.pythonpath:
@@ -57,7 +57,7 @@ async def async_wrapper(func, *args, **kwargs):
     result = await loop.run_in_executor(None, partial(impl, func, globals._sid, globals._data, *args, **kwargs))
     return result
 
-@app.post("/_call")
+@app.post('/_call')
 async def lazyllm_call(request: Request):
     try:
         fname, args, kwargs = await request.json()
@@ -69,7 +69,7 @@ async def lazyllm_call(request: Request):
     except Exception as e:
         return Response(content=f'{e}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
 
-@app.post("/generate")
+@app.post('/generate')
 async def generate(request: Request): # noqa C901
     try:
         globals._init_sid(decode_request(request.headers.get('Session-ID')))
@@ -136,5 +136,5 @@ def find_services(cls):
 
 find_services(func.__class__)
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     uvicorn.run(app, host=args.open_ip, port=args.open_port)
