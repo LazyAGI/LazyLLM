@@ -9,7 +9,6 @@ from lazyllm import LOG
 from lazyllm.thirdparty import datasets
 from ...components.utils.file_operate import _delete_old_files
 from lazyllm.common.utils import check_path
-from lazyllm.components.auto.configure.core.rule import convert_to_bool
 
 
 @dataclass
@@ -232,46 +231,6 @@ def map_kw_for_framework(
             result[k] = v
     return result
 
-def _normalize_value_for_comparison(value):
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except (json.JSONDecodeError, TypeError):
-            pass
-    if isinstance(value, dict):
-        value = {k.replace('-', '_'): v for k, v in value.items()}
-    if isinstance(value, list):
-        value = [v.replace('-', '_') if isinstance(v, str) else v for v in value]
-    return value
-
-def values_equal_for_config(config_value, deploy_value):
-    norm_config_value = _normalize_value_for_comparison(config_value)
-    norm_deploy_value = _normalize_value_for_comparison(deploy_value)
-
-    if isinstance(norm_config_value, str) and isinstance(norm_deploy_value, str):
-        if norm_config_value.strip().lower() == norm_deploy_value.strip().lower():
-            return True
-        try:
-            return convert_to_bool(norm_config_value) == convert_to_bool(norm_deploy_value)
-        except Exception:
-            return False
-
-    if isinstance(norm_config_value, dict) and isinstance(norm_deploy_value, dict):
-        check_status = True
-        for k in norm_deploy_value:
-            if k not in norm_config_value:
-                return False
-            check_status &= values_equal_for_config(norm_config_value[k], norm_deploy_value[k])
-        return check_status
-
-    if isinstance(norm_config_value, list) and isinstance(norm_deploy_value, list):
-        try:
-            return set(norm_deploy_value).issubset(set(norm_config_value))
-        except Exception:
-            return False
-
-    return norm_config_value == norm_deploy_value
-
 def check_config_map_format(config_map: dict):
     assert isinstance(config_map, dict), 'config_map should be a dict'
     for k, v in config_map.items():
@@ -282,7 +241,7 @@ def check_config_map_format(config_map: dict):
                 raise ValueError(f'config item for model {k} should be a dict')
             if not isinstance(item.get('url'), str):
                 raise ValueError(f'url for model {k} should be a string')
-            if not isinstance(item.get('deploy_config'), dict):
-                raise ValueError(f'deploy_config for model {k} should be a dict')
-            if not isinstance(item.get('deploy_config').get('framework'), str):
+            if not isinstance(item.get('framework'), str):
                 raise ValueError(f'framework for model {k} should be a string')
+            if not isinstance(item.get('deploy_config', {}), dict):
+                raise ValueError(f'deploy_config for model {k} should be a dict')

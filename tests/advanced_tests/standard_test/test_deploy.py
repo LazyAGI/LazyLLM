@@ -23,7 +23,7 @@ def set_enviroment(request):
     else:
         os.environ.pop(env_key, None)
 
-@pytest.mark.skipif(os.path.exists(os.getenv('LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH', '')), reason='need GPU')
+@pytest.mark.skipif(os.getenv('LAZYLLM_SKIP_GPU_TEST', 'True'), reason='NEED GPU!')
 class TestDeploy(object):
 
     def setup_method(self):

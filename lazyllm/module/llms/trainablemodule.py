@@ -8,6 +8,7 @@ import uuid
 import re
 import requests
 import yaml
+from deepdiff import DeepDiff
 
 import lazyllm
 from lazyllm import globals, LOG, launchers, Option, package, LazyLLMDeployBase, LazyLLMFinetuneBase, config
@@ -16,7 +17,7 @@ from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from ...components.utils import ModelManager, LLMType
 from ...components.utils.file_operate import _base64_to_file, _is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
-from .utils import map_kw_for_framework, encode_files, values_equal_for_config, check_config_map_format
+from .utils import map_kw_for_framework, encode_files, check_config_map_format
 from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
@@ -202,14 +203,13 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
 
         base_model_name = os.path.basename(self._base_model)
         if base_model_name in trainable_module_config_map:
+            deploy_args_for_check = {k: v for k, v in self._deploy_args.items() if k not in ignore_config_keys}
             for module_config in trainable_module_config_map[base_model_name]:
-                url = module_config.get('url')
-                deploy_args_for_check = {
-                    'framework': self._deploy.__name__.lower(),
-                    **{k: v for k, v in self._deploy_args.items() if k not in ignore_config_keys}
-                }
-                if values_equal_for_config(module_config.get('deploy_config'), deploy_args_for_check):
+                if (self._deploy.__name__.lower() == module_config.get('framework').lower()
+                    and ((not deploy_args_for_check and not module_config.get('strict'))
+                         or not DeepDiff(module_config.get('deploy_config', {}), deploy_args_for_check))):
                     try:
+                        url = module_config.get('url')
                         requests.get(url, timeout=3)
                         self._deploy_args = {'url': url}
                         break

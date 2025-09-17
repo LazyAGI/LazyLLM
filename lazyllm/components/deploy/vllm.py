@@ -67,7 +67,7 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
         'hf_overrides'])
 
     # TODO(wangzhihong): change default value for `openai_api` argument to True
-    def __init__(self, launcher: LazyLLMLaunchersBase = launchers.remote(ngpus=1),  # noqa B008
+    def __init__(self, trust_remote_code: bool = True, launcher: LazyLLMLaunchersBase = launchers.remote(ngpus=1),  # noqa B008
                  log_path: str = None, openai_api: Optional[bool] = None, **kw):
         self.launcher_list, launcher = reallocate_launcher(launcher)
         super().__init__(launcher=launcher)
@@ -78,6 +78,8 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
         self._vllm_cmd = 'vllm.entrypoints.openai.api_server' if openai_api else 'vllm.entrypoints.api_server'
         self._openai_api = openai_api
         self.options_keys = kw.pop('options_keys', [])
+        if trust_remote_code and 'trust_remote_code' not in self.options_keys:
+            self.options_keys.append('trust_remote_code')
         self.kw.update(**{key: kw[key] for key in self.optional_keys if key in kw})
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True

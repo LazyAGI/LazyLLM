@@ -34,7 +34,7 @@ class Lightllm(LazyLLMDeployBase):
     stream_url_suffix = '_stream'
     stream_parse_parameters = {'delimiter': b'\n\n'}
 
-    def __init__(self, launcher=launchers.remote(ngpus=1), log_path=None, openai_api: Optional[bool] = None, **kw): # noqa B008
+    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None, openai_api: Optional[bool] = None, **kw): # noqa B008
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'tp': 1,
@@ -51,6 +51,8 @@ class Lightllm(LazyLLMDeployBase):
             'long_truncation_mode': 'head',
         })
         self.options_keys = kw.pop('options_keys', [])
+        if trust_remote_code and 'trust_remote_code' not in self.options_keys:
+            self.options_keys.append('trust_remote_code')
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] else True
         self.random_nccl_port = False if 'nccl_port' in kw and kw['nccl_port'] else True

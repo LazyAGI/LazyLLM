@@ -9,7 +9,7 @@ from lazyllm.launcher import cleanup
 from lazyllm.components.formatter import encode_query_with_filepaths
 
 
-@pytest.mark.skipif(os.path.exists(os.getenv('LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH', '')), reason='need GPU')
+@pytest.mark.skipif(os.getenv('LAZYLLM_SKIP_GPU_TEST', 'True'), reason='NEED GPU!')
 class TestFinetune(object):
 
     def setup_method(self):

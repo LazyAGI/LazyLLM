@@ -9,7 +9,7 @@ from urllib.parse import urlparse
 import pytest
 
 
-@pytest.mark.skipif(os.path.exists(os.getenv('LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH', '')), reason='need GPU')
+@pytest.mark.skipif(os.getenv('LAZYLLM_SKIP_GPU_TEST', 'True'), reason='NEED GPU!')
 class TestInferServer:
     def setup_method(self):
         self.infer_server = lazyllm.ServerModule(InferServer(), launcher=lazyllm.launcher.EmptyLauncher(sync=False))
