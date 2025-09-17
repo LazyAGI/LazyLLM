@@ -3,7 +3,8 @@ import shutil
 import pytest
 import tempfile
 import unittest
-from lazyllm.tools.rag.store import (MapStore, ChromadbStore, MilvusStore, OpenSearchStore, ElasticSearchStore,
+import lazyllm
+from lazyllm.tools.rag.store import (MapStore, ChromadbStore, MilvusStore,
                                      SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
@@ -522,20 +523,22 @@ class TestMilvusStore(unittest.TestCase):
 
 
 class TestSegementStore(object):
+    os_password = os.environ.get('OPENSEARCH_INITIAL_ADMIN_PASSWORD')
     SEGMENTSTORE_CLASS_MAP = {
-        "elasticsearch": [{
-            'segment_store_type': "elasticsearch", 'segment_store_cls': ElasticSearchStore,
-            'segment_store_uri': '', 'client_kwargs': {},
-            'is_skip': True, 'skip_reason': 'To test elasticsearch store, please set up a elasticsearch server'}],
-        "opensearch": [{
-            'segment_store_type': 'opensearch', 'segment_store_cls': OpenSearchStore,
-            'segment_store_uri': '', 'client_kwargs': {},
-            'is_skip': True, 'skip_reason': 'To test opensearch store, please set up a opensearch server'}],
+        'elasticsearch': [{
+            'segment_store_type': 'ElasticSearchStore',
+            'init_kwargs': {'uris': 'localhost:9201'},
+            'is_skip': False, 'skip_reason': 'To test elasticsearch store, please set up a elasticsearch server'}],
+        'opensearch': [{
+            'segment_store_type': 'OpenSearchStore',
+            'init_kwargs': {'uris': 'localhost:9200',
+                            'client_kwargs': {"user": "admin", "password": os_password, "verify_certs": False}},
+            'is_skip': False, 'skip_reason': 'To test opensearch store, please set up a opensearch server'}],
     }
 
     @pytest.fixture(scope="class")
     def setUP(self, request):
-        collections = ["col_g1", "col_g2", "col_g3", "col_g4"]
+        collections = ['col_g1', 'col_g2', 'col_g3', 'col_g4']
         data = [
             {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
              'global_meta': {RAG_DOC_ID: 'doc1', RAG_KB_ID: 'kb1'},
@@ -570,19 +573,19 @@ class TestSegementStore(object):
              'parent': None, 'answer': "", 'image_keys': []},
         ]
         params = request.param if hasattr(request, 'param') else {}
-        segment_store_cls = params.get('segment_store_cls')
-        segment_store_uri = params.get('segment_store_uri')
-        client_kwargs = params.get('client_kwargs')
+        segment_store_type = params.get('segment_store_type')
+        segment_store_cls = getattr(lazyllm.tools.rag.store, segment_store_type, None)
+        segment_store_init_kwargs = params.get('init_kwargs')
         is_skip = params.get('is_skip')
         skip_reason = params.get('skip_reason')
         if is_skip:
             pytest.skip(skip_reason)
-        store = segment_store_cls(segment_store_uri, client_kwargs=client_kwargs)
+        store = segment_store_cls(**segment_store_init_kwargs)
         store.connect()
         request.cls.store = store
         request.cls.params = params
         request.cls.collections = collections
-        request.cls.segment_store_type = params.get('segment_store_type')
+        request.cls.segment_store_type = segment_store_type
         request.cls.data = data
         return True
 
@@ -700,9 +703,9 @@ class TestSegementStore(object):
         return pytest.mark.order(order_value)
 
     @round_order("elasticsearch", 0)
-    @pytest.mark.parametrize('SetUP', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
-    def test_es_setUp(self, SetUP):
-        assert SetUP
+    @pytest.mark.parametrize('setUP', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_setUp(self, setUP):
+        assert setUP
 
     @round_order("elasticsearch", 1)
     @pytest.mark.parametrize('upsert', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
@@ -755,9 +758,9 @@ class TestSegementStore(object):
         assert tearDown
 
     @round_order("opensearch", 0)
-    @pytest.mark.parametrize('SetUP', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
-    def test_os_setUp(self, SetUP):
-        assert SetUP
+    @pytest.mark.parametrize('setUP', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_setUp(self, setUP):
+        assert setUP
 
     @round_order("opensearch", 1)
     @pytest.mark.parametrize('upsert', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
