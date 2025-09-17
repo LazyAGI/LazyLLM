@@ -284,7 +284,34 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 >>> print(m.eval_result)
 ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
 ''')
+add_chinese_doc('ModuleBase.use_cache', """\
+启用或禁用模块的缓存功能。
 
+此方法用于控制模块是否使用缓存来存储和检索执行结果，以提高性能并避免重复计算。
+
+Args:
+    flag (bool or str, optional): 缓存控制标志。如果为True，启用缓存；如果为False，禁用缓存；
+                                 如果为字符串，使用特定的缓存标识符。默认为True。
+
+**Returns:**\n
+- 返回模块实例本身，支持方法链式调用。
+
+""")
+
+add_english_doc('ModuleBase.use_cache', """\
+Enable or disable the caching functionality for the module.
+
+This method controls whether the module uses caching to store and retrieve execution results, 
+improving performance and avoiding redundant computations.
+
+Args:
+    flag (bool or str, optional): Cache control flag. If True, enables caching; if False, disables caching;
+                                 if a string, uses a specific cache identifier. Defaults to True.
+
+**Returns:**\n
+- Returns the module instance itself, supporting method chaining.
+
+""")
 add_chinese_doc('ModuleBase.update_server', '''\
 更新模块及其子模块的部署（server）部分。当模块或子模块实现了部署功能时，会进行相应的服务启动。  
 
@@ -1808,7 +1835,41 @@ add_example('OnlineEmbeddingModuleBase', '''\
 ...         pass
 ...         return embedding
 ''')
+add_chinese_doc('OnlineEmbeddingModuleBase.run_embed_batch', """\
+执行批量嵌入处理的内部方法。
 
+此方法负责处理批量文本嵌入请求，支持单线程和多线程两种处理模式。
+当遇到请求失败时，会自动调整批处理大小并重试，提供健壮的错误处理机制。
+
+Args:
+    input (List): 原始的输入文本列表
+    data (List): 封装好的批量请求数据列表
+    proxies: 代理设置，如果NO_PROXY为True则设置为None
+    **kwargs: 其他关键字参数
+
+**Returns:**\n
+- 嵌入向量列表的列表，每个子列表对应一个输入文本的嵌入向量
+
+""")
+
+add_english_doc('OnlineEmbeddingModuleBase.run_embed_batch', """\
+Internal method for executing batch embedding processing.
+
+This method handles batch text embedding requests, supporting both single-threaded 
+and multi-threaded processing modes. It automatically adjusts batch size and retries 
+on request failures, providing robust error handling mechanisms.
+
+Args:
+    input (List): Original input text list
+    data (List): Encapsulated batch request data list
+    proxies: Proxy settings, set to None if NO_PROXY is True
+    **kwargs: Additional keyword arguments
+
+
+**Returns:**\n
+- A list of embedding vector lists, each sublist corresponds to an input text's embedding vector
+
+""")
 add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoEmbedding', '''\
 豆包嵌入类，继承自 OnlineEmbeddingModuleBase，封装了调用豆包在线文本嵌入服务的功能。  
 通过指定服务接口 URL、模型名称及 API Key，支持远程获取文本向量表示。
