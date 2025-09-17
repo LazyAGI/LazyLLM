@@ -405,3 +405,7 @@
 ::: lazyllm.tools.infer_service.serve.InferServer
     members: create_job, cancel_job, list_jobs, get_job_info, get_job_log
     exclude-members:
+
+::: lazyllm.tools.rag.store.hybrid.sensecore_store.SenseCoreStore
+    members:
+    exclude-members:
