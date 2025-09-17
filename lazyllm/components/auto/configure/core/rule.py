@@ -19,7 +19,7 @@ def convert_to_bool(source: str) -> bool:
         return True
     if source in ['FALSE', 'False', 'false', '0', 'OFF', 'off']:
         return False
-    raise ValueError(f"'{source}' is not a valid bool")
+    raise ValueError(f'"{source}" is not a valid bool')
 
 def linear_search_exactly(values: List[Any], value: Any) -> Union[int, None]:
     return values.index(value) if value in values else None
@@ -98,15 +98,15 @@ class Rule(Generic[T]):
     def __init__(self, name: str, *, options: Union[Options[T], None] = None,
                  convert: Union[Callable[[str], T], None] = None):
         if len(name) == 0:
-            raise ValueError("empty name is invalid")
+            raise ValueError('empty name is invalid')
         if options is None and convert is None:
-            raise ValueError("either 'options' or 'convert' should be provided")
+            raise ValueError('either "options" or "convert" should be provided')
         if options is not None and len(options.options) == 0:
-            raise ValueError("empty options is invalid")
+            raise ValueError('empty options is invalid')
         if (options is not None and options.matches
            in [SearchMode.BINARY_EXACTLY, SearchMode.BINARY_FLOOR, SearchMode.BINARY_CEIL] and not
            Rule.__is_ordered(options.options)):
-            raise ValueError("cannot perform binary-search on unordered options")
+            raise ValueError('cannot perform binary-search on unordered options')
 
         self._name = name
         self._convert = convert if convert is not None else Rule.__infer_converter_from_options(options)
@@ -119,9 +119,9 @@ class Rule(Generic[T]):
     @property
     def value_type(self) -> type[T]:
         try:
-            return self._convert.__annotations__["return"]
+            return self._convert.__annotations__['return']
         except KeyError as e:
-            raise ValueError(f"missing return-type annotation in {self.name} convert function") from e
+            raise ValueError(f'missing return-type annotation in {self.name} convert function') from e
 
     @property
     def options(self) -> Union[List[T], None]:
@@ -143,27 +143,27 @@ class Rule(Generic[T]):
         try:
             value = self._convert(source)
         except ValueError as e:
-            raise ValueError(f"while parse value as {self._name}") from e
+            raise ValueError(f'while parse value as {self._name}') from e
 
         if self.options is not None and value not in self.options:
-            raise ValueError(f"value '{value}' is not in {self._name} options {self.options}")
+            raise ValueError(f'value "{value}" is not in {self._name} options {self.options}')
         return value
 
     def convert_value_to_index(self, value: T) -> List[int]:
-        assert self.options is not None, f"index is unavailable if rule {self.name} has no options"
+        assert self.options is not None, f'index is unavailable if rule {self.name} has no options'
         index = None
         if self.matches is not None:
             index = self.matches(self.options, value)
         if index is None and value in self.options:
             index = self.options.index(value)
         if index is None:
-            raise ValueError(f"value {value} is out of {self._name} options {self.options}")
+            raise ValueError(f'value {value} is out of {self._name} options {self.options}')
         return index, len(self.options)
 
     def convert_index_to_value(self, index: int) -> T:
-        assert self.options is not None, f"index is unavailable if rule {self.name} has no options"
+        assert self.options is not None, f'index is unavailable if rule {self.name} has no options'
         if not 0 <= index < len(self.options):
-            raise ValueError(f"index {index} out of range [0, {len(self.options)})")
+            raise ValueError(f'index {index} out of range [0, {len(self.options)})')
         return self.options[index]
 
     @staticmethod
@@ -176,7 +176,7 @@ class Rule(Generic[T]):
         if issubclass(tp, bool): return convert_to_bool  # type: ignore
         elif issubclass(tp, int): return convert_to_integer  # type: ignore
         elif issubclass(tp, str): return convert_to_string  # type: ignore
-        else: raise ValueError(f"unknown type {tp} of options")
+        else: raise ValueError(f'unknown type {tp} of options')
 
     @staticmethod
     def __is_ordered(options: List[Any]) -> bool:
@@ -195,17 +195,17 @@ class Configurations:
         self._ordered_rules: list[Rule] = []
         self._ordered_values: dict[int, list[list[Any]]] = {}
         if len(self._rules) != len(rules):
-            raise ValueError("rule name should be unique")
+            raise ValueError('rule name should be unique')
 
     def parse_header(self, names: List[str]):
         if len(names) == 0:
-            raise ValueError("header should not be empty")
+            raise ValueError('header should not be empty')
 
         output: list[Rule] = []
         for name in names:
             rule = self._rules.get(name)
             if rule is None:
-                raise ValueError(f"name {name} does not match any rules")
+                raise ValueError(f'name {name} does not match any rules')
             output.append(rule)
 
         self._key_rules = [rule for rule in output if rule.indexed]
@@ -213,7 +213,7 @@ class Configurations:
         return self
 
     def parse_values(self, values: Iterator[List[str]]):
-        assert len(self._ordered_rules) != 0, "must call parse_header before parse_values"
+        assert len(self._ordered_rules) != 0, 'must call parse_header before parse_values'
         output: dict[int, List[List[Any]]] = {}
         for row in values:
             item_key = 0
@@ -234,13 +234,13 @@ class Configurations:
         return self
 
     def lookup(self, keys: List[Union[str, Any]]) -> List[Dict[str, Any]]:
-        assert len(self._ordered_rules) != 0, "must invoke parse_header before lookup"
-        assert len(self._ordered_values) != 0, "must invoke parse_values before lookup"
+        assert len(self._ordered_rules) != 0, 'must invoke parse_header before lookup'
+        assert len(self._ordered_values) != 0, 'must invoke parse_values before lookup'
 
         get = sorted(keys.keys())
         expect = sorted([rule.name for rule in self._key_rules])
         if expect != get:
-            raise ValueError(f"expect keys ({expect}) but get ({get})")
+            raise ValueError(f'expect keys ({expect}) but get ({get})')
 
         key = 0
         for rule in self._key_rules:

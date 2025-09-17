@@ -4,7 +4,7 @@ from dataclasses import dataclass
 
 
 def extract_all_ids(data) -> list[str]:
-    """Recursively extract all 'id' fields in any nested structure"""
+    '''Recursively extract all 'id' fields in any nested structure'''
     result = []
 
     if isinstance(data, (list, tuple)):

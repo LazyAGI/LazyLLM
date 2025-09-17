@@ -199,7 +199,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
             self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
 
         trainable_module_config_map = get_trainable_module_config_map(lazyllm.config['trainable_module_config_map_path'])
-        
+
         base_model_name = os.path.basename(self._base_model)
         if base_model_name in trainable_module_config_map:
             for module_config in trainable_module_config_map[base_model_name]:
@@ -520,8 +520,8 @@ class TrainableModule(UrlModule):
                 self._openai_module = lazyllm.OnlineChatModule(
                     source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=model_type,
                     stream=self._stream).share(prompt=self._prompt, format=self._formatter)
-                self._openai_module._prompt._set_model_configs(system="You are LazyLLM, \
-                    a large language model developed by SenseTime.")
+                self._openai_module._prompt._set_model_configs(system='You are LazyLLM, \
+                    a large language model developed by SenseTime.')
             elif model_type in ['embed', 'rerank']:
                 self._openai_module = lazyllm.OnlineEmbeddingModule(
                     source='openai', embed_model_name='lazyllm', embed_url=self._url, type=model_type)

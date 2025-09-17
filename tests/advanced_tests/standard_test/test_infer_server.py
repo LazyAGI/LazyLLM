@@ -9,15 +9,15 @@ from urllib.parse import urlparse
 import pytest
 
 
-@pytest.mark.skipif(os.path.exists(os.getenv('LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH', "")), reason='need GPU')
+@pytest.mark.skipif(os.path.exists(os.getenv('LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH', '')), reason='need GPU')
 class TestInferServer:
     def setup_method(self):
         self.infer_server = lazyllm.ServerModule(InferServer(), launcher=lazyllm.launcher.EmptyLauncher(sync=False))
         self.infer_server.start()()
         parsed_url = urlparse(self.infer_server._url)
-        self.infer_server_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        self.infer_server_url = f'{parsed_url.scheme}://{parsed_url.netloc}'
         token = '123'
-        self.headers = {"token": token}
+        self.headers = {'token': token}
 
     def teardown_method(self):
         self.infer_server.stop()
@@ -26,16 +26,16 @@ class TestInferServer:
         service_name = 'test_engine_infer_' + uuid.uuid4().hex
 
         data = {
-            "service_name": service_name,
-            "model_name": model_name,
-            "framework": deploy_method,
-            "num_gpus": num_gpus
+            'service_name': service_name,
+            'model_name': model_name,
+            'framework': deploy_method,
+            'num_gpus': num_gpus
         }
-        response = requests.post(f"{self.infer_server_url}/v1/inference_services", json=data, headers=self.headers)
+        response = requests.post(f'{self.infer_server_url}/v1/inference_services', json=data, headers=self.headers)
         assert response.status_code == 200
 
         for _ in range(30):  # wait 5 minutes
-            response = requests.get(f"{self.infer_server_url}/v1/inference_services/{service_name}",
+            response = requests.get(f'{self.infer_server_url}/v1/inference_services/{service_name}',
                                     headers=self.headers)
             assert response.status_code == 200
             response_data = response.json()
@@ -45,7 +45,7 @@ class TestInferServer:
                 raise RuntimeError(f'Deploy service failed. status is {response_data["status"]}')
             time.sleep(10)
 
-        raise TimeoutError("inference service deploy timeout")
+        raise TimeoutError('inference service deploy timeout')
 
     def test_engine_infer_server(self):
         model_name = 'Qwen3-30B-A3B-Instruct-2507'
@@ -68,7 +68,7 @@ class TestInferServer:
         model_name, deploy_method, url = self.deploy_inference_service(model_name, deploy_method='vllm', num_gpus=1)
         model = lazyllm.TrainableModule(model_name).deploy_method(getattr(lazyllm.deploy, deploy_method), url=url)
         assert model._impl._get_deploy_tasks.flag
-        r = model("这张图片描述的是什么？", lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
+        r = model('这张图片描述的是什么？', lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
         assert '鸡' in r or 'chicken' in r
 
         engine = LightEngine()
@@ -76,7 +76,7 @@ class TestInferServer:
                       args=dict(base_model=model_name, deploy_method=deploy_method, type='local', url=url))]
         gid = engine.start(nodes)
 
-        r = engine.run(gid, "这张图片描述的是什么？", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
+        r = engine.run(gid, '这张图片描述的是什么？', _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
         assert '鸡' in r or 'chicken' in r
 
     def test_engine_infer_server_tts(self):
@@ -91,5 +91,5 @@ class TestInferServer:
                       args=dict(base_model=model_name, deploy_method=deploy_method, type='local', url=url))]
         gid = engine.start(nodes)
 
-        r = engine.run(gid, "这张图片描述的是什么？")
+        r = engine.run(gid, '这张图片描述的是什么？')
         assert '.wav' in r

@@ -9,19 +9,19 @@ from lazyllm.tools.rag.rerank import Reranker, register_reranker
 class TestReranker(unittest.TestCase):
 
     def setUp(self):
-        self.doc1 = DocNode(text="This is a test document with the keyword apple.")
+        self.doc1 = DocNode(text='This is a test document with the keyword apple.')
         self.doc2 = DocNode(
-            text="This is another test document with the keyword banana."
+            text='This is another test document with the keyword banana.'
         )
-        self.doc3 = DocNode(text="This document contains the keyword cherry.")
+        self.doc3 = DocNode(text='This document contains the keyword cherry.')
         self.nodes = [self.doc1, self.doc2, self.doc3]
-        self.query = "test query"
+        self.query = 'test query'
 
     def test_keyword_filter_with_required_keys(self):
-        required_keys = ["apple"]
+        required_keys = ['apple']
         exclude_keys = []
         reranker = Reranker(
-            name="KeywordFilter", required_keys=required_keys, exclude_keys=exclude_keys
+            name='KeywordFilter', required_keys=required_keys, exclude_keys=exclude_keys
         )
         results = reranker.forward(self.nodes, query=self.query)
         self.assertEqual(len(results), 1)
@@ -29,9 +29,9 @@ class TestReranker(unittest.TestCase):
 
     def test_keyword_filter_with_exclude_keys(self):
         required_keys = []
-        exclude_keys = ["banana"]
+        exclude_keys = ['banana']
         reranker = Reranker(
-            name="KeywordFilter", required_keys=required_keys, exclude_keys=exclude_keys
+            name='KeywordFilter', required_keys=required_keys, exclude_keys=exclude_keys
         )
         results = reranker.forward(self.nodes, query=self.query)
         self.assertEqual(len(results), 2)
@@ -45,7 +45,7 @@ class TestReranker(unittest.TestCase):
             with self.subTest(value=value):
                 os.environ[env_key] = value
                 model = TrainableModule('bge-reranker-v2-m3').deploy_method(deploy.vllm)
-                reranker = Reranker(name="ModuleReranker", model=model, topk=2)
+                reranker = Reranker(name='ModuleReranker', model=model, topk=2)
                 reranker.start()
                 results = reranker.forward(self.nodes, query='cherry')
 
@@ -60,14 +60,14 @@ class TestReranker(unittest.TestCase):
     def test_register_reranker_decorator(self):
         @register_reranker
         def CustomReranker(node, **kwargs):
-            if "custom" in node.get_text():
+            if 'custom' in node.get_text():
                 return node
             return None
 
-        custom_doc = DocNode(text="This document contains custom keyword.")
+        custom_doc = DocNode(text='This document contains custom keyword.')
         nodes = [self.doc1, self.doc2, self.doc3, custom_doc]
 
-        reranker = Reranker(name="CustomReranker")
+        reranker = Reranker(name='CustomReranker')
         results = reranker.forward(nodes)
 
         self.assertEqual(len(results), 1)

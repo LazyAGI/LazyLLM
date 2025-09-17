@@ -10,7 +10,7 @@ class TestEngine(object):
     def _test_vqa(self):
         resource = [dict(id='0', kind='web', name='web', args=dict(port=None, title='多模态聊天机器人', history=[], audio=True))]
         node = [dict(id='1', kind='VQA', name='vqa', args=dict(base_model='Qwen2.5-VL-32B-Instruct', type='local'))]
-        edge = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
+        edge = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
         engine = LightEngine()
         engine.start(node, edge, resource)
 
@@ -19,17 +19,17 @@ class TestEngine(object):
         yield
         LightEngine().reset()
         lazyllm.FileSystemQueue().dequeue()
-        lazyllm.FileSystemQueue(klass="lazy_trace").dequeue()
+        lazyllm.FileSystemQueue(klass='lazy_trace').dequeue()
 
     def test_http(self):
         nodes = [
             dict(
-                id="1",
-                kind="HTTP",
-                name="visit_sensetime",
+                id='1',
+                kind='HTTP',
+                name='visit_sensetime',
                 args=dict(
-                    method="GET",
-                    url="https://www.sensetime.com/cn",
+                    method='GET',
+                    url='https://www.sensetime.com/cn',
                     api_key=None,
                     headers=None,
                     params=None,
@@ -37,7 +37,7 @@ class TestEngine(object):
                 )
             )
         ]
-        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
         engine = LightEngine()
         gid = engine.start(nodes, edges)
         ret = engine.run(gid)
@@ -62,8 +62,8 @@ class TestEngine(object):
             dict(id='6', kind='JoinFormatter', name='merge_sd_vqa2', args=dict(type='file')),
         ]
         edges1 = [
-            dict(iid='__start__', oid='2'), dict(iid='6', oid='__end__'), dict(iid="2", oid="3"),
-            dict(constant='描述图片', oid="5"), dict(iid="3", oid="5"), dict(iid="3", oid="6"), dict(iid="5", oid="6"),
+            dict(iid='__start__', oid='2'), dict(iid='6', oid='__end__'), dict(iid='2', oid='3'),
+            dict(constant='描述图片', oid='5'), dict(iid='3', oid='5'), dict(iid='3', oid='6'), dict(iid='5', oid='6'),
         ]
 
         nodes = [dict(id='7', kind='STT', name='stt', args=dict(base_model='sensevoicesmall', type='local')),
@@ -78,7 +78,7 @@ class TestEngine(object):
                      'Image Question Answering': dict(id='13', kind='SharedModel', name='vqa2',
                                                       args=dict(llm='vqa', file_resource_id='file-resource', cls='vqa')),
                      'Chat': dict(id='14', kind='SharedModel', name='chat', args=dict(llm='llm', cls='llm'))}))]
-        edges = [dict(iid="__start__", oid="7"), dict(iid="7", oid="8"), dict(iid="8", oid="__end__")]
+        edges = [dict(iid='__start__', oid='7'), dict(iid='7', oid='8'), dict(iid='8', oid='__end__')]
 
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
@@ -89,13 +89,13 @@ class TestEngine(object):
         r = engine.run(gid, '翻译：我喜欢敲代码。')
         assert 'code' in r or 'coding' in r
 
-        r = engine.run(gid, "", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/draw_pig.mp3'))
+        r = engine.run(gid, '', _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/draw_pig.mp3'))
         assert '.png' in r
 
-        r = engine.run(gid, "这张图片描述的是什么？", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
+        r = engine.run(gid, '这张图片描述的是什么？', _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
         assert '鸡' in r or 'chicken' in r
 
-        r = engine.run(gid, "这张图片描述的是什么？",
+        r = engine.run(gid, '这张图片描述的是什么？',
                        _file_resources={'file-resource': os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg')})
         assert '鸡' in r or 'chicken' in r
 
@@ -151,7 +151,7 @@ class TestEngine(object):
                       args=dict(llm='vqa', cls='vqa'))]
         gid = engine.start(nodes, resources=resources)
 
-        r = engine.run(gid, "这张图片描述的是什么？", _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
+        r = engine.run(gid, '这张图片描述的是什么？', _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
         assert '鸡' in r or 'chicken' in r
 
     def test_engine_tts_with_target_dir(self):
@@ -169,22 +169,22 @@ class TestEngine(object):
 
     @pytest.mark.skip(reason='environment not ready')
     def test_OCR(self):
-        nodes = [dict(id='1', kind='OCR', name='m1', args=dict(model="PP-OCRv5_mobile"))]
+        nodes = [dict(id='1', kind='OCR', name='m1', args=dict(model='PP-OCRv5_mobile'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
-        data_root_dir = os.getenv("LAZYLLM_DATA_PATH")
-        input = os.path.join(data_root_dir, "rag_master/default/__data/pdfs/reading_report_p1.pdf")
+        data_root_dir = os.getenv('LAZYLLM_DATA_PATH')
+        input = os.path.join(data_root_dir, 'rag_master/default/__data/pdfs/reading_report_p1.pdf')
         engine = LightEngine()
         gid = engine.start(nodes, edges)
         data = engine.run(gid, input)
-        verify = lazyllm.components.ocr.pp_ocr.OCR("PP-OCRv5_mobile")(input)
+        verify = lazyllm.components.ocr.pp_ocr.OCR('PP-OCRv5_mobile')(input)
         assert len(data) == len(verify)
 
     def test_mcptool(self):
         resource = [dict(id='0', kind='LLM', name='base',
                          args=dict(base_model='Qwen3-30B-A3B-Instruct-2507', type='local')),
                     dict(id='1', kind='MCPTool', name='list_allowed_directories',
-                         args=dict(command_or_url="npx", tool_name="list_allowed_directories",
-                                   args=["-y", "@modelcontextprotocol/server-filesystem", "./"]))]
+                         args=dict(command_or_url='npx', tool_name='list_allowed_directories',
+                                   args=['-y', '@modelcontextprotocol/server-filesystem', './']))]
         nodes = [dict(id='2', kind='FunctionCall', name='fc', args=dict(base_model='0', tools=['1']))]
         edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
         engine = LightEngine()
@@ -193,8 +193,8 @@ class TestEngine(object):
         assert isinstance(data, str)
 
         resource = [dict(id='3', kind='MCPTool', name='listdirectories',
-                         args=dict(command_or_url="npx", tool_name="listdirectories",
-                                   args=["-y", "@modelcontextprotocol/server-filesystem", "./"]))]
+                         args=dict(command_or_url='npx', tool_name='listdirectories',
+                                   args=['-y', '@modelcontextprotocol/server-filesystem', './']))]
         nodes = [dict(id='4', kind='FunctionCall', name='fc', args=dict(base_model='0', tools=['3']))]
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         with pytest.raises(AssertionError):

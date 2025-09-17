@@ -323,7 +323,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         return [{'type': 'text', 'text': query}]
 
     def _format_vl_chat_image_url(self, image_url: str, mime: str) -> List[Dict[str, str]]:
-        return [{'type': 'image_url', 'image_url': {'url': f"data:{mime};base64,{image_url}"}}]
+        return [{'type': 'image_url', 'image_url': {'url': f'data:{mime};base64,{image_url}'}}]
 
     # for online vlm
     def _format_input_with_files(self, query: str, query_files: list[str]) -> List[Dict[str, str]]:

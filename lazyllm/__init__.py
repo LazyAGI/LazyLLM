@@ -79,7 +79,7 @@ __all__ = [
     'FunctionCall',
     'FunctionCallAgent',
     'fc_register',
-    "LLMParser",
+    'LLMParser',
     'ReactAgent',
     'PlanAndSolveAgent',
     'ReWOOAgent',

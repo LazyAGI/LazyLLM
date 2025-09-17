@@ -27,11 +27,11 @@ class MapStore(LazyLLMStoreBase):
         return path if path.endswith(os.sep) else path + os.sep
 
     def _ensure_table(self, cursor: sqlite3.Cursor, table: str):
-        cursor.execute(f"""
+        cursor.execute(f'''
         CREATE TABLE IF NOT EXISTS {table} (
             uid TEXT PRIMARY KEY,
             doc_id TEXT,
-            "group" TEXT,
+            'group' TEXT,
             content TEXT,
             meta TEXT,
             global_meta TEXT,
@@ -44,24 +44,24 @@ class MapStore(LazyLLMStoreBase):
             answer TEXT,
             image_keys TEXT
         )
-        """)
-        cursor.execute(f"CREATE INDEX IF NOT EXISTS idx_{table}_parent ON {table}(parent)")
+        ''')
+        cursor.execute(f'CREATE INDEX IF NOT EXISTS idx_{table}_parent ON {table}(parent)')
 
     def _load_from_uri(self, collection_name: str, uri: str):
         conn = sqlite3.connect(uri)
         cursor = conn.cursor()
 
-        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name=?", (collection_name,))
+        cursor.execute('SELECT name FROM sqlite_master WHERE type="table" AND name=?', (collection_name,))
         if not cursor.fetchone():
-            LOG.warning(f"[MapStore] Table '{collection_name}' does not exist in SQLite DB {uri}, skipping.")
+            LOG.warning(f'[MapStore] Table "{collection_name}" does not exist in SQLite DB {uri}, skipping.')
             conn.close()
             return
 
         res = []
         for row in cursor.execute(
-            f"SELECT uid, doc_id, \"group\", content, meta, global_meta,"
-            f" type, number, kb_id, excluded_embed_metadata_keys, excluded_llm_metadata_keys,"
-            f" parent, answer, image_keys FROM {collection_name}"
+            f'SELECT uid, doc_id, \'group\', content, meta, global_meta,'
+            f' type, number, kb_id, excluded_embed_metadata_keys, excluded_llm_metadata_keys,'
+            f' parent, answer, image_keys FROM {collection_name}'
         ):
             (uid, doc_id, group, content, meta_str, global_meta_str, type_, number,
              kb_id, excl_emb_str, excl_llm_str, parent, answer, image_keys_str) = row
@@ -86,12 +86,12 @@ class MapStore(LazyLLMStoreBase):
         conn = sqlite3.connect(uri)
         cursor = conn.cursor()
         self._ensure_table(cursor, collection_name)
-        sql = f"INSERT OR REPLACE INTO {collection_name} (\
-                uid, doc_id, \"group\", content,\
+        sql = f'INSERT OR REPLACE INTO {collection_name} (\
+                uid, doc_id, \'group\', content,\
                 meta, global_meta, type, number, kb_id,\
                 excluded_embed_metadata_keys, excluded_llm_metadata_keys,\
                 parent, answer, image_keys)\
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         params = []
         for item in data:
             params.append((item['uid'], item['doc_id'], item['group'], item['content'],
@@ -100,7 +100,7 @@ class MapStore(LazyLLMStoreBase):
                            json.dumps(item['excluded_embed_metadata_keys']),
                            json.dumps(item['excluded_llm_metadata_keys']),
                            item['parent'], item['answer'], json.dumps(item['image_keys'])))
-        LOG.info(f"executemany {sql} with {len(params)} params")
+        LOG.info(f'executemany {sql} with {len(params)} params')
         cursor.executemany(sql, params)
         conn.commit()
         conn.close()
@@ -115,12 +115,12 @@ class MapStore(LazyLLMStoreBase):
         self._col_parent_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
         if self._uri:
             if not os.path.exists(self._uri):
-                LOG.info(f"[MapStore] SQLite DB {self._uri} does not exist, creating...")
+                LOG.info(f'[MapStore] SQLite DB {self._uri} does not exist, creating...')
                 db_path = Path(self._uri)
                 db_path.parent.mkdir(parents=True, exist_ok=True)
                 db_path.touch(exist_ok=True)
                 self._uri = str(db_path)
-            LOG.info(f"[MapStore] Loading data from {self._uri}")
+            LOG.info(f'[MapStore] Loading data from {self._uri}')
             for collection_name in collections:
                 self._load_from_uri(collection_name, self._uri)
         return
@@ -131,7 +131,7 @@ class MapStore(LazyLLMStoreBase):
             for item in data:
                 uid = item.get('uid')
                 doc_id = item.get('doc_id')
-                assert uid and doc_id, "[MapStore - upsert] uid and doc_id are required"
+                assert uid and doc_id, '[MapStore - upsert] uid and doc_id are required'
                 self._uid2data[uid] = item
                 self._collection2uids[collection_name].add(uid)
                 self._col_kb_doc_uids[collection_name][item.get(RAG_KB_ID, DEFAULT_KB_ID)][doc_id].add(uid)
@@ -140,7 +140,7 @@ class MapStore(LazyLLMStoreBase):
             if self._uri:
                 self._save_to_uri(collection_name, self._uri, data)
         except Exception as e:
-            LOG.error(f"[MapStore - upsert] Error upserting data: {e}")
+            LOG.error(f'[MapStore - upsert] Error upserting data: {e}')
             return False
         return True
 
@@ -164,13 +164,13 @@ class MapStore(LazyLLMStoreBase):
             if self._uri:
                 conn = sqlite3.connect(self._uri)
                 cursor = conn.cursor()
-                sql_del = f"DELETE FROM {collection_name} WHERE uid = ?"
+                sql_del = f'DELETE FROM {collection_name} WHERE uid = ?'
                 cursor.executemany(sql_del, [(uid,) for uid in need_delete])
                 conn.commit()
                 conn.close()
             return True
         except Exception as e:
-            LOG.error(f"[MapStore - delete] Error deleting data: {e}")
+            LOG.error(f'[MapStore - delete] Error deleting data: {e}')
             return False
 
     @override
@@ -181,7 +181,7 @@ class MapStore(LazyLLMStoreBase):
             if uid in self._uid2data:
                 data.append(self._uid2data[uid])
             else:
-                LOG.warning(f"[MapStore - get] uid {uid} not found in data")
+                LOG.warning(f'[MapStore - get] uid {uid} not found in data')
         return data
 
     def _get_uids_by_criteria(self, collection_name: str, criteria: dict) -> List[str]:
@@ -207,11 +207,11 @@ class MapStore(LazyLLMStoreBase):
                 return [uid for parent in parents for uid in
                         self._col_parent_uids.get(collection_name, {}).get(parent, ())]
             else:
-                raise ValueError(f"[MapStore - get] Invalid criteria: {criteria}")
+                raise ValueError(f'[MapStore - get] Invalid criteria: {criteria}')
 
     @override
     def search(self, collection_name: str, query: str, topk: int,
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[dict]:
         # TODO(chenjiahao): implement search in map store, using default index to search data in map store
         raise NotImplementedError(
-            "[MapStore - search] Not implemented, please use default index to search data in map store...")
+            '[MapStore - search] Not implemented, please use default index to search data in map store...')

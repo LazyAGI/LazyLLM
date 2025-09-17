@@ -14,7 +14,7 @@ from urllib.parse import urlparse
 try:
     from typing import final
 except ImportError:
-    _F = typing.TypeVar("_F", bound=Callable[..., Any])
+    _F = typing.TypeVar('_F', bound=Callable[..., Any])
     def final(f: _F) -> _F: return f
 
 try:
@@ -138,7 +138,7 @@ class LazyLLMCMD(object):
         if self.no_displays:
             for item in self.no_displays:
                 pattern = r'(-{1,2}' + re.escape(item) + r')(\s|=|)(\S+|)'
-                cmd = re.sub(pattern, "", cmd)
+                cmd = re.sub(pattern, '', cmd)
             return cmd
         else:
             return cmd

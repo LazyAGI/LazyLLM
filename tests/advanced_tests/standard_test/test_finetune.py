@@ -9,7 +9,7 @@ from lazyllm.launcher import cleanup
 from lazyllm.components.formatter import encode_query_with_filepaths
 
 
-@pytest.mark.skipif(os.path.exists(os.getenv('LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH', "")), reason='need GPU')
+@pytest.mark.skipif(os.path.exists(os.getenv('LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH', '')), reason='need GPU')
 class TestFinetune(object):
 
     def setup_method(self):
@@ -34,7 +34,7 @@ class TestFinetune(object):
 
     def has_bin_file(self, path):
         if not os.path.exists(path):
-            raise RuntimeError(f"Cannot find model path: {path}")
+            raise RuntimeError(f'Cannot find model path: {path}')
         for filename in os.listdir(path):
             if filename.endswith('.bin') or filename.endswith('.safetensors'):
                 return True

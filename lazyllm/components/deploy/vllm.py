@@ -2,7 +2,7 @@ import os
 import sys
 import json
 import random
-import importlib
+import importlib.metadata
 from packaging.version import parse
 from typing import Optional
 
@@ -21,11 +21,11 @@ class _VllmStreamParseParametersMeta(LazyLLMRegisterMetaClass):
         if name == 'stream_parse_parameters':
             if not hasattr(cls, '_stream_parse_parameters'):
                 try:
-                    vllm_version = parse(importlib.import_module('vllm').__version__)
-                    cls._stream_parse_parameters = {"decode_unicode": False}
-                    if vllm_version <= parse("0.5.0"): cls._stream_parse_parameters.update({"delimiter": b"\0"})
+                    vllm_version = parse(importlib.metadata.version('vllm'))
+                    cls._stream_parse_parameters = {'decode_unicode': False}
+                    if vllm_version <= parse('0.5.0'): cls._stream_parse_parameters.update({'delimiter': b'\0'})
                 except ImportError:
-                    cls._stream_parse_parameters = {"decode_unicode": False}
+                    cls._stream_parse_parameters = {'decode_unicode': False}
             return cls._stream_parse_parameters
         return super().__getattribute__(name)
 
@@ -93,8 +93,8 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
             if not finetuned_model:
-                LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                            f"base_model({base_model}) will be used")
+                LOG.warning(f'Note! That finetuned_model({finetuned_model}) is an invalid path, '
+                            f'base_model({base_model}) will be used')
             finetuned_model = base_model
 
         def impl():
@@ -103,7 +103,7 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
 
             cmd = ''
             if self.launcher_list:
-                cmd += f"ray start --address='{master_ip}' && "
+                cmd += f'ray start --address="{master_ip}" && '
             cmd += f'{sys.executable} -m {self._vllm_cmd} --model {finetuned_model} '
             if self._openai_api: cmd += '--served-model-name lazyllm '
             cmd += self.kw.parse_kwargs()

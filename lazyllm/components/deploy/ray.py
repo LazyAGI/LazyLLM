@@ -26,7 +26,7 @@ def reallocate_launcher(launcher):
     else:
         erro_info = (
             f'At least 1 node is required. The number of GPUs({ngpus}) in a single node exceeds the upper '
-            f"limit{(lazyllm.config['num_gpus_per_node'])}. Please check the actual "
+            f'limit{(lazyllm.config["num_gpus_per_node"])}. Please check the actual '
             'number of GPUs in a single node and set the environment variable: LAZYLLM_NUM_GPUS_PER_NODE.')
         lazyllm.LOG.error(erro_info)
         raise RuntimeError(erro_info)
