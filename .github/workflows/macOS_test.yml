@@ -217,7 +217,7 @@ jobs:
 
       - name: Restore Cache (Push)
         if: ${{ github.event_name == 'push' }}
-        uses: actions/cache/restore@v4
+        uses: lwj-st/cache/restore@v4.2.4
         with:
           path: github_cache/
           key: python-result-cache-${{ env.PREVIOUS_SHA }}
@@ -225,7 +225,7 @@ jobs:
 
       - name: Restore Cache (Pull Request)
         if: ${{ github.event_name == 'pull_request' }}
-        uses: actions/cache/restore@v4
+        uses: lwj-st/cache/restore@v4.2.4
         with:
           path: github_cache/
           key: python-result-cache-${{ env.BASE_SHA }}
