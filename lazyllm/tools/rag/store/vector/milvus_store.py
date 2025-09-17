@@ -190,17 +190,12 @@ class MilvusStore(LazyLLMStoreBase):
 
                     batch_size = MILVUS_PAGINATION_OFFSET
                     if len(ids) > batch_size:
-                        LOG.warning(f'!!![Milvus Store - get] Many ids, {collection_name}: len={len(ids)}')
+                        LOG.debug(f'!!![Milvus Store - get] Many ids, {collection_name}: len={len(ids)}')
                     res = []
                     for i in range(0, len(ids), batch_size):
                         batch_ids = ids[i:i + batch_size]
-                        try:
-                            batch_res = client.get(collection_name=collection_name, ids=batch_ids)
-                            res.extend(batch_res)
-                        except Exception as e:
-                            LOG.error(f'[Milvus Store - get] error: {e}')
-                            LOG.error(traceback.format_exc())
-                            return []
+                        batch_res = client.get(collection_name=collection_name, ids=batch_ids)
+                        res.extend(batch_res)
                 else:
                     filters = self._construct_criteria(criteria) if criteria else {}
                     if version.parse(pymilvus.__version__) >= version.parse('2.4.11'):
@@ -215,12 +210,38 @@ class MilvusStore(LazyLLMStoreBase):
                                 break
                             res += result
                     else:
-                        res = client.query(collection_name=collection_name, output_fields=field_names, **filters)
+                        # For older versions, batch query manually
+                        res = self._batch_query_legacy(client, collection_name, field_names, filters)
             return [self._deserialize_data(r) for r in res]
         except Exception as e:
             LOG.error(f'[Milvus Store - get] error: {e}')
             LOG.error(traceback.format_exc())
             return []
+
+    def _batch_query_legacy(self, client, collection_name: str, field_names: List[str], filters: dict) -> List[dict]:
+        res = []
+        offset = 0
+        batch_size = MILVUS_PAGINATION_OFFSET
+
+        while True:
+            try:
+                # Add offset and limit to filters for pagination
+                batch_filters = dict(filters)
+                batch_filters['offset'] = offset
+                batch_filters['limit'] = batch_size
+
+                batch_res = client.query(collection_name=collection_name, output_fields=field_names, **batch_filters)
+                if not batch_res:
+                    break
+
+                res.extend(batch_res)
+                if len(batch_res) < batch_size:
+                    break
+                offset += batch_size
+            except Exception as e:
+                LOG.error(f'[Milvus Store - _batch_query_legacy] error: {e}')
+                raise
+        return res
 
     def _set_constants(self):
         self._type2milvus = {
