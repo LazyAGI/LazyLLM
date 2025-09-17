@@ -91,6 +91,7 @@ jobs:
         run: |
           set -ex
           mv $GITHUB_WORKSPACE ${{ env.CI_PATH }}/
+          mkdir -p LazyLLM
 
   BasicTests:
     runs-on: tps_sco_nv
