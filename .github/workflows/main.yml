@@ -90,8 +90,7 @@ jobs:
       - name: Move code to custom directory
         run: |
           set -ex
-          mv $GITHUB_WORKSPACE ${{ env.CI_PATH }}/
-          mkdir -p LazyLLM
+          cp -r $GITHUB_WORKSPACE ${{ env.CI_PATH }}/
 
   BasicTests:
     runs-on: tps_sco_nv
