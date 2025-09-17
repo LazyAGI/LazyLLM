@@ -90,7 +90,7 @@ jobs:
       - name: Move code to custom directory
         run: |
           set -ex
-          cp -r $GITHUB_WORKSPACE/ ${{ env.CI_PATH }}/
+          cp -r $GITHUB_WORKSPACE/. ${{ env.CI_PATH }}/
 
   BasicTests:
     runs-on: tps_sco_nv
