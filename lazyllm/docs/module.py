@@ -2527,3 +2527,171 @@ Args:
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Other model parameters
 """)
+
+add_chinese_doc('llms.onlinemodule.base.utils.OnlineModuleBase', '''\
+在线模块基类，继承自 ModuleBase，为所有在线服务模块提供统一的基础功能。  
+该类封装了在线模块的通用行为，包括缓存机制和调试追踪功能，是构建各种在线API服务模块的基础类。
+
+功能特性:
+    - 继承 ModuleBase 的所有基础功能，包括子模块管理、钩子注册等。
+    - 支持在线模块缓存机制，可通过配置控制是否启用缓存。
+    - 提供调试追踪功能，便于问题排查和性能分析。
+    - 作为所有在线服务模块（如聊天、嵌入、多模态等）的公共基类。
+
+Args:
+    return_trace (bool): 是否将推理结果写入 trace 队列，用于调试和追踪。默认为 ``False``。
+
+使用场景:
+    1. 作为在线聊天模块（OnlineChatModuleBase）的基类。
+    2. 作为在线嵌入模块（OnlineEmbeddingModuleBase）的基类。
+    3. 作为在线多模态模块（OnlineMultiModalBase）的基类。
+    4. 为自定义在线服务模块提供统一的基础功能。
+''')
+
+add_english_doc('llms.onlinemodule.base.utils.OnlineModuleBase', '''\
+Base class for online modules, inheriting from ModuleBase, providing unified basic functionality for all online service modules.  
+This class encapsulates common behaviors of online modules, including caching mechanisms and debug tracing functionality, serving as the foundation for building various online API service modules.
+
+Key Features:
+    - Inherits all basic functionality from ModuleBase, including submodule management, hook registration, etc.
+    - Supports online module caching mechanism, controllable through configuration.
+    - Provides debug tracing functionality for troubleshooting and performance analysis.
+    - Serves as a common base class for all online service modules (chat, embedding, multimodal, etc.).
+
+Args:
+    return_trace (bool): Whether to write inference results into the trace queue for debugging and tracking. Default is ``False``.
+
+Use Cases:
+    1. As a base class for online chat modules (OnlineChatModuleBase).
+    2. As a base class for online embedding modules (OnlineEmbeddingModuleBase).
+    3. As a base class for online multimodal modules (OnlineMultiModalBase).
+    4. Providing unified basic functionality for custom online service modules.
+''')
+
+add_chinese_doc('module.ModuleCache', '''\
+模块缓存管理器，提供统一的缓存存储和检索功能。  
+该类封装了多种缓存策略（内存、文件、SQLite、Redis），支持根据配置自动选择缓存存储方式，为模块执行结果提供高效的缓存机制。
+
+功能特性:
+    - 支持多种缓存策略：内存缓存、文件缓存、SQLite数据库缓存、Redis缓存。
+    - 自动根据配置选择缓存策略，默认为内存缓存。
+    - 支持缓存模式控制（读写、只读、只写、禁用）。
+    - 提供统一的缓存接口，隐藏底层存储实现细节。
+    - 支持参数哈希化，确保缓存键的唯一性。
+
+Args:
+    strategy (Optional[str]): 缓存策略，可选值为 'memory'、'file'、'sqlite'、'redis'。默认为 None，将使用配置中的策略。
+
+使用场景:
+    1. 为模块执行结果提供缓存，避免重复计算。
+    2. 在分布式环境中使用 Redis 缓存实现共享。
+    3. 使用文件或数据库缓存实现持久化存储。
+    4. 根据性能需求选择不同的缓存策略。
+''')
+
+add_english_doc('module.ModuleCache', '''\
+Module cache manager providing unified cache storage and retrieval functionality.  
+This class encapsulates multiple cache strategies (memory, file, SQLite, Redis), automatically selecting cache storage methods based on configuration, providing efficient caching mechanisms for module execution results.
+
+Key Features:
+    - Supports multiple cache strategies: memory cache, file cache, SQLite database cache, Redis cache.
+    - Automatically selects cache strategy based on configuration, defaults to memory cache.
+    - Supports cache mode control (read-write, read-only, write-only, disabled).
+    - Provides unified cache interface, hiding underlying storage implementation details.
+    - Supports parameter hashing to ensure uniqueness of cache keys.
+
+Args:
+    strategy (Optional[str]): Cache strategy, options include 'memory', 'file', 'sqlite', 'redis'. Defaults to None, will use strategy from configuration.
+
+Use Cases:
+    1. Provide caching for module execution results to avoid redundant computation.
+    2. Use Redis cache in distributed environments for sharing.
+    3. Use file or database cache for persistent storage.
+    4. Select different cache strategies based on performance requirements.
+''')
+
+add_chinese_doc('module.ModuleCache.get', '''\
+从缓存中获取数据。
+
+根据提供的键和参数从缓存中检索数据。如果缓存模式不允许读取或数据不存在，将抛出异常。
+
+Args:
+    key: 缓存键，用于标识缓存数据。
+    args: 位置参数，用于生成缓存哈希键。
+    kw: 关键字参数，用于生成缓存哈希键。
+
+**Returns:**\n
+- 任意类型：缓存中存储的数据。
+
+**异常:** \n
+- CacheNotFoundError: 当缓存中不存在指定数据时抛出。
+- RuntimeError: 当缓存模式设置为只写（WO）时抛出。
+''')
+
+add_english_doc('module.ModuleCache.get', '''\
+Retrieve data from cache.
+
+Retrieves data from cache based on the provided key and parameters. Throws an exception if cache mode doesn't allow reading or data doesn't exist.
+
+Args:
+    key: Cache key used to identify cached data.
+    args: Positional arguments used to generate cache hash key.
+    kw: Keyword arguments used to generate cache hash key.
+
+**Returns:**\n
+- Any: Data stored in cache.
+
+**Exceptions:** \n
+- CacheNotFoundError: Raised when specified data doesn't exist in cache.
+- RuntimeError: Raised when cache mode is set to write-only (WO).
+''')
+
+add_chinese_doc('module.ModuleCache.set', '''\
+将数据存储到缓存中。
+
+根据提供的键和参数将数据存储到缓存中。如果缓存模式不允许写入，则直接返回不执行存储操作。
+
+Args:
+    key: 缓存键，用于标识缓存数据。
+    args: 位置参数，用于生成缓存哈希键。
+    kw: 关键字参数，用于生成缓存哈希键。
+    value: 要存储的数据。
+
+**注意:** \n
+- 如果缓存模式设置为只读（RO）或禁用（NONE），此方法将直接返回而不执行存储操作。
+''')
+
+add_english_doc('module.ModuleCache.set', '''\
+Store data in cache.
+
+Stores data in cache based on the provided key and parameters. If cache mode doesn't allow writing, returns directly without executing storage operation.
+
+Args:
+    key: Cache key used to identify cached data.
+    args: Positional arguments used to generate cache hash key.
+    kw: Keyword arguments used to generate cache hash key.
+    value: Data to be stored.
+
+**Note:** \n
+- If cache mode is set to read-only (RO) or disabled (NONE), this method will return directly without executing storage operation.
+''')
+
+add_chinese_doc('module.ModuleCache.close', '''\
+关闭缓存存储策略。
+
+释放缓存存储策略占用的资源，如关闭数据库连接、清理内存缓存等。调用此方法后，缓存将不再可用。
+
+**注意:** \n
+- 调用此方法后，缓存实例将无法继续使用。
+- 不同的缓存策略可能有不同的资源清理行为。
+''')
+
+add_english_doc('module.ModuleCache.close', '''\
+Close cache storage strategy.
+
+Releases resources occupied by the cache storage strategy, such as closing database connections, clearing memory cache, etc. After calling this method, the cache will no longer be available.
+
+**Note:** \n
+- After calling this method, the cache instance will no longer be usable.
+- Different cache strategies may have different resource cleanup behaviors.
+''')

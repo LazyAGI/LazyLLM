@@ -1922,6 +1922,50 @@ Args:
 - List[dict]: List of search results.
 ''')
 
+add_chinese_doc('rag.store.hybrid.sensecore_store.SenseCoreStore', '''\
+SenseCore 混合存储实现，继承自 LazyLLMStoreBase，提供基于 SenseCore 平台的文档存储和检索功能。  
+该类支持文档的序列化存储、多模态内容处理、混合搜索等功能，通过 S3 存储和 SenseCore API 实现高效的文档管理。
+
+功能特性:
+    - 支持全功能存储能力（StoreCapability.ALL），包括插入、删除、查询、搜索等操作。
+    - 自动处理图像内容，将本地图像上传到 S3 存储并生成访问链接。
+    - 支持多模态搜索，包括文本和图像混合查询。
+    - 提供文档序列化和反序列化功能，支持复杂数据结构存储。
+    - 支持批量操作和异步任务处理，提高存储效率。
+    - 集成 S3 存储和 SenseCore API，实现云端文档管理。
+
+Args:
+    uri (str): SenseCore 服务的 API 地址，默认为空字符串。
+    **kwargs: 其他配置参数，包括 s3_config 和 image_url_config。
+
+配置参数:
+    s3_config (dict): S3 存储配置，包含 bucket_name、access_key、secret_access_key 等。
+    image_url_config (dict): 图像 URL 生成配置，用于多模态搜索。
+
+''')
+
+add_english_doc('rag.store.hybrid.sensecore_store.SenseCoreStore', '''\
+SenseCore hybrid storage implementation, inheriting from LazyLLMStoreBase, providing document storage and retrieval functionality based on the SenseCore platform.  
+This class supports document serialization storage, multimodal content processing, hybrid search, and other features, implementing efficient document management through S3 storage and SenseCore API.
+
+Key Features:
+    - Supports full storage capabilities (StoreCapability.ALL), including insert, delete, query, search operations.
+    - Automatically handles image content, uploading local images to S3 storage and generating access links.
+    - Supports multimodal search, including text and image hybrid queries.
+    - Provides document serialization and deserialization functionality, supporting complex data structure storage.
+    - Supports batch operations and asynchronous task processing for improved storage efficiency.
+    - Integrates S3 storage and SenseCore API for cloud-based document management.
+
+Args:
+    uri (str): SenseCore service API address, defaults to empty string.
+    **kwargs: Additional configuration parameters, including s3_config and image_url_config.
+
+Configuration Parameters:
+    s3_config (dict): S3 storage configuration, including bucket_name, access_key, secret_access_key, etc.
+    image_url_config (dict): Image URL generation configuration for multimodal search.
+
+''')
+
 add_chinese_doc('rag.default_index.DefaultIndex', '''\ 
 默认的索引实现，负责通过 embedding 和文本相似度在底层存储中查询、更新和删除文档节点。支持多种相似度度量方式，并在必要时对查询和节点进行 embedding 计算与更新。
 
