@@ -205,6 +205,7 @@ jobs:
         run: |
           echo "GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT"
           echo "LAZYLLM_CACHE_ONLINE_MODULE=True" >> $GITHUB_ENV
+          echo "LAZYLLM_CACHE_STRATEGY=sqlite" >> $GITHUB_ENV
           echo "LAZYLLM_CACHE_MODE=RO" >> $GITHUB_ENV
       
       - name: Show ENV
@@ -212,6 +213,7 @@ jobs:
           echo "LAZYLLM_TEMP_DIR: $LAZYLLM_TEMP_DIR"
           echo "LAZYLLM_CACHE_DIR: $LAZYLLM_CACHE_DIR"
           echo "LAZYLLM_CACHE_MODE: $LAZYLLM_CACHE_MODE"
+          echo "LAZYLLM_CACHE_STRATEGY: $LAZYLLM_CACHE_STRATEGY"
           echo "LAZYLLM_CACHE_ONLINE_MODULE: $LAZYLLM_CACHE_ONLINE_MODULE"
       
       - name: Get SHAs
