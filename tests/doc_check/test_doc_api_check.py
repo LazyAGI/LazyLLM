@@ -219,7 +219,14 @@ def gen_check_cls_and_funtions():
         for name, obj in cls.__dict__.items():
             if name not in defined_methods:
                 continue
-
+            
+            if inspect.isfunction(obj):
+                try:
+                    if obj.__module__ != cls.__module__:
+                        continue
+                except (AttributeError, TypeError):
+                    continue
+            
             if isinstance(obj, classmethod):
                 all_methods.append((name, obj.__func__))
             elif isinstance(obj, staticmethod):
