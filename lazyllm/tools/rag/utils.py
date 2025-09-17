@@ -12,6 +12,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import (Any, Callable, Dict, Generator, List, Optional, Set, Tuple,
                     Union)
 from urllib.parse import urlsplit, urlunsplit
+from numbers import Integral
 
 import pydantic
 import sqlalchemy
@@ -870,8 +871,12 @@ def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union
     concurrent_workers = min(max_workers, len(tasks_by_key))
     max_workers_per_key = max(1, max_workers // max(1, concurrent_workers))
 
-    def _check_batch(fn: Callable):
-        return bool(getattr(fn, 'support_batch', False) or getattr(fn, 'batch_size', 1) > 1)
+    def _check_batch(fn):
+        support_batch = getattr(fn, 'support_batch', None)
+        if support_batch is True:
+            return True
+        batch_size = getattr(fn, 'batch_size', None)
+        return isinstance(batch_size, Integral) and batch_size > 1
 
     def _process_key(k: str, knodes: List[DocNode]):
         try:

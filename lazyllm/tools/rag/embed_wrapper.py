@@ -1,4 +1,5 @@
 import json
+import inspect
 from typing import Any, Callable, Union, List, Dict
 from functools import update_wrapper
 
@@ -12,7 +13,10 @@ EmbeddingRet = Union[Vector, Matrix, Sparse]
 class _EmbedWrapper:
     def __init__(self, func: Callable[..., Any]):
         self.func = func
-        target = getattr(func, '__call__', func)
+        try:
+            target = func if inspect.isroutine(func) else func.__call__
+        except AttributeError:
+            target = func
         update_wrapper(self, target)
         self.__wrapped__ = func
 
