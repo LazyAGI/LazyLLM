@@ -48,7 +48,7 @@ class TestInferServer:
         raise TimeoutError('inference service deploy timeout')
 
     def test_engine_infer_server(self):
-        model_name = 'Qwen3-30B-A3B-Instruct-2507'
+        model_name = 'internlm2-chat-7b'
         model_name, deploy_method, url = self.deploy_inference_service(model_name)
 
         model = lazyllm.TrainableModule(model_name).deploy_method(getattr(lazyllm.deploy, deploy_method), url=url)
@@ -64,7 +64,7 @@ class TestInferServer:
         assert '2' in r
 
     def test_engine_infer_server_vqa(self):
-        model_name = 'Qwen2.5-VL-32B-Instruct'
+        model_name = 'Mini-InternVL-Chat-2B-V1-5'
         model_name, deploy_method, url = self.deploy_inference_service(model_name, deploy_method='vllm', num_gpus=1)
         model = lazyllm.TrainableModule(model_name).deploy_method(getattr(lazyllm.deploy, deploy_method), url=url)
         assert model._impl._get_deploy_tasks.flag
@@ -80,7 +80,7 @@ class TestInferServer:
         assert '鸡' in r or 'chicken' in r
 
     def test_engine_infer_server_tts(self):
-        model_name = 'bark'
+        model_name = 'ChatTTS-new'
         model_name, deploy_method, url = self.deploy_inference_service(model_name)
         model = lazyllm.TrainableModule(model_name).deploy_method(getattr(lazyllm.deploy, deploy_method), url=url)
         assert model._impl._get_deploy_tasks.flag
