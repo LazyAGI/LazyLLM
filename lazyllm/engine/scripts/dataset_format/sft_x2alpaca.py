@@ -14,14 +14,14 @@ from lazyllm.components.utils.file_operate import _delete_old_files
 default_mapping = {'instruction': 'instruction', 'input': 'input', 'output': 'output'}
 
 def csv2alpaca(dataset_path: str, header_mapping=None, target_path: str = None) -> str:
-    """
+    '''
     Convert a CSV file to a JSON file with custom header mapping.
 
     :param dataset_path: path of the CSV file to be converted.
     :param header_mapping: A dictionary representing the header mapping. Default is None.
     :param target_path: The path of the folder where the converted files are stored.
         The default is None, and it will be stored in the working path + `.temp/dataset`.
-    """
+    '''
     save_dir = _build_target_dir(target_path)
 
     mapping = header_mapping if header_mapping else default_mapping
@@ -38,14 +38,14 @@ def csv2alpaca(dataset_path: str, header_mapping=None, target_path: str = None) 
     return res_path
 
 def parquet2alpaca(dataset_path: str, header_mapping=None, target_path: str = None) -> str:
-    """
+    '''
     Convert a Parquet file to a JSON file with custom header mapping.
 
     :param dataset_path: path of the Parquet file to be converted.
     :param header_mapping: A dictionary representing the header mapping. Default is None.
     :param target_path: The path of the folder where the converted files are stored.
         The default is None, and it will be stored in the working path + `.temp/dataset`.
-    """
+    '''
     save_dir = _build_target_dir(target_path)
 
     mapping = header_mapping if header_mapping else default_mapping
@@ -62,14 +62,14 @@ def parquet2alpaca(dataset_path: str, header_mapping=None, target_path: str = No
     return res_path
 
 def json2alpaca(dataset_path: str, header_mapping=None, target_path: str = None) -> str:
-    """
+    '''
     Convert a JSON file to a JSON file with custom header mapping.
 
     :param dataset_path: path of the JSON file to be converted.
     :param header_mapping: A dictionary representing the header mapping. Default is None.
     :param target_path: The path of the folder where the converted files are stored.
         The default is None, and it will be stored in the working path + `.temp/dataset`.
-    """
+    '''
     save_dir = _build_target_dir(target_path)
 
     mapping = header_mapping if header_mapping else default_mapping
@@ -87,7 +87,7 @@ def json2alpaca(dataset_path: str, header_mapping=None, target_path: str = None)
     return res_path
 
 def merge2alpaca(dataset_paths: List[str], target_path: str = None) -> str:
-    """
+    '''
     Merge multiple JSON files into a single JSON file formatted for Alpaca.
     This function reads multiple JSON files(Alpaca or OpenAI format), converts them to Alpaca format.
     The merged file is saved to the specified target directory or to a default temporary directory
@@ -100,18 +100,18 @@ def merge2alpaca(dataset_paths: List[str], target_path: str = None) -> str:
 
     Raises:
         RuntimeError: If any of the provided file paths do not exist.
-    """
+    '''
     if isinstance(dataset_paths, str):
         dataset_paths = [dataset_paths]
     non_existent_files = [path for path in dataset_paths if not os.path.exists(path)]
     if non_existent_files:
-        raise RuntimeError(f"These files does not exist at {non_existent_files}")
+        raise RuntimeError(f'These files does not exist at {non_existent_files}')
     save_dir = _build_target_dir(target_path)
 
     merge_list = []
     for path in dataset_paths:
         data = load_dataset('json', data_files=path)
-        if "messages" in data["train"][0]:
+        if 'messages' in data['train'][0]:
             alpaca_data = openai2alpaca(data)
             merge_list.extend(alpaca_data)
         else:
@@ -123,7 +123,7 @@ def _build_target_dir(target_path: str = None) -> str:
     if target_path:
         save_dir = target_path
         if not os.path.exists(save_dir):
-            raise RuntimeError(f"The target_path at {save_dir} does not exist.")
+            raise RuntimeError(f'The target_path at {save_dir} does not exist.')
     else:
         save_dir = os.path.join(lazyllm.config['temp_dir'], 'dataset')
         if not os.path.exists(save_dir):

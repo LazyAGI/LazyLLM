@@ -19,17 +19,17 @@ class TrainingConfiguration:
 
     @classmethod
     def from_dict(cls, data: Dict[str, Any]):
-        tp = data["TP"]
-        gpu_num = data["GPU_NUM"]
-        batch_size = data["BATCH_SIZE"]
-        gradient_step = data["GRADIENT_STEP"]
+        tp = data['TP']
+        gpu_num = data['GPU_NUM']
+        batch_size = data['BATCH_SIZE']
+        gradient_step = data['GRADIENT_STEP']
 
         ddp = gpu_num // tp
         micro_batch_size = batch_size * tp // gpu_num // gradient_step
-        assert ddp > 0, f"(gpu num {gpu_num} / tp {tp}  must be greater than 0"
+        assert ddp > 0, f'(gpu num {gpu_num} / tp {tp}  must be greater than 0'
         assert micro_batch_size > 0, (
-            f"(batch size {batch_size} * tp {tp} / gpu number {gpu_num} / "
-            f"gradient step {gradient_step}) must be greater than 0")
+            f'(batch size {batch_size} * tp {tp} / gpu number {gpu_num} / '
+            f'gradient step {gradient_step}) must be greater than 0')
 
         data.update(SP=1, MICRO_BATCH_SIZE=micro_batch_size, DDP=ddp)
 

@@ -1,4 +1,5 @@
 import sys
+import pytest
 from lazyllm.thirdparty import faiss
 
 class TestThirdparty(object):
@@ -25,3 +26,29 @@ class TestThirdparty(object):
         monkeypatch.delitem(sys.modules, "faiss", raising=False)
         assert faiss is not None
         assert not check_lazy_import(faiss)
+
+    def test_lazy_import_with_path(self):
+        class Flag(object): pass
+        flag = Flag()
+        flag.flag = False
+
+        def patch():
+            flag.flag = True
+
+        from lazyllm.thirdparty import mineru
+        mineru.register_patches(patch)
+        assert not flag.flag
+        cli = mineru.cli
+        common = cli.common
+        assert not flag.flag
+
+        with pytest.raises(ImportError):
+            _ = common.aio_do_parse
+        assert not flag.flag
+
+        from lazyllm.thirdparty import os
+        os.register_patches(patch)
+        path = os.path
+        assert not flag.flag
+        _ = path.join
+        assert flag.flag

@@ -12,7 +12,7 @@ class _ChatTTSModule(_TTSInfer):
     def _load_model(self):
         self.model = ChatTTS.Chat()
         self.model.load(compile=False,
-                        source="custom",
+                        source='custom',
                         custom_path=self.base_path)
         self.spk = self._set_spk(self.seed)
 
@@ -38,7 +38,7 @@ class _ChatTTSModule(_TTSInfer):
             string['infercode']['spk_emb'] = self.spk
             params_infer_code = ChatTTS.Chat.InferCodeParams(**string['infercode'])
         else:
-            raise TypeError(f"Not support input type:{type(string)}, requires str or dict.")
+            raise TypeError(f'Not support input type:{type(string)}, requires str or dict.')
         speech = self.model.infer(query,
                                   params_refine_text=params_refine_text,
                                   params_infer_code=params_infer_code,
@@ -52,7 +52,7 @@ class ChatTTSDeploy(TTSBase):
     message_format = {
         'inputs': 'Who are you ?',
         'refinetext': {
-            'prompt': "[oral_2][laugh_0][break_6]",
+            'prompt': '[oral_2][laugh_0][break_6]',
             'top_P': 0.7,
             'top_K': 20,
             'temperature': 0.7,
@@ -63,7 +63,7 @@ class ChatTTSDeploy(TTSBase):
             'ensure_non_empty': True,
         },
         'infercode': {
-            'prompt': "[speed_5]",
+            'prompt': '[speed_5]',
             'spk_emb': None,
             'temperature': 0.3,
             'repetition_penalty': 1.05,

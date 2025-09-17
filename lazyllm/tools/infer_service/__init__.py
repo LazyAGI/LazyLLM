@@ -1,8 +1,5 @@
-from .serve import InferServer, JobDescription
-from .client import InferClient
+from .serve import InferServer
 
 __all__ = [
     'InferServer',
-    'InferClient',
-    "JobDescription"
 ]

@@ -79,8 +79,10 @@ jobs:
       - name: Merge PR branch into main
         if: github.event_name == 'pull_request_target'
         run: |
+          git config user.name "GitHub Actions Bot"
+          git config user.email "actions@github.com"
           git checkout main
-          git merge --no-ff pr_branch
+          git merge --no-ff pr_branch  -m "Auto merge PR branch into main"
           git submodule update --init
           
       - name: Copy poetry.lock to root directory

@@ -10,23 +10,23 @@ from .markdownReader import MarkdownReader
 from .mboxreader import MboxReader
 from .pandasReader import PandasCSVReader, PandasExcelReader
 from .videoAudioReader import VideoAudioReader
-from .magic_pdf_reader import MagicPDFReader
+from .mineru_pdf_reader import MineruPDFReader
 
 __all__ = [
-    "ReaderBase",
-    "get_default_fs",
-    "is_default_fs",
-    "PDFReader",
-    "DocxReader",
-    "HWPReader",
-    "PPTXReader",
-    "ImageReader",
-    "IPYNBReader",
-    "EpubReader",
-    "MarkdownReader",
-    "MboxReader",
-    "PandasCSVReader",
-    "PandasExcelReader",
-    "VideoAudioReader",
-    "MagicPDFReader",
+    'ReaderBase',
+    'get_default_fs',
+    'is_default_fs',
+    'PDFReader',
+    'DocxReader',
+    'HWPReader',
+    'PPTXReader',
+    'ImageReader',
+    'IPYNBReader',
+    'EpubReader',
+    'MarkdownReader',
+    'MboxReader',
+    'PandasCSVReader',
+    'PandasExcelReader',
+    'VideoAudioReader',
+    'MineruPDFReader',
 ]

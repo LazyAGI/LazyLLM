@@ -60,8 +60,8 @@ class Mindie(LazyLLMDeployBase):
         if self.custom_config:
             self.config_dict = (ArgsDict(self.load_config(self.custom_config))
                                 if isinstance(self.custom_config, str) else ArgsDict(self.custom_config))
-            self.kw['host'] = self.config_dict["ServerConfig"]["ipAddress"]
-            self.kw['port'] = self.config_dict["ServerConfig"]["port"]
+            self.kw['host'] = self.config_dict['ServerConfig']['ipAddress']
+            self.kw['port'] = self.config_dict['ServerConfig']['port']
         else:
             default_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mindie', 'config.json')
             self.config_dict = ArgsDict(self.load_config(default_config_path))
@@ -83,22 +83,22 @@ class Mindie(LazyLLMDeployBase):
             json.dump(self.config_dict, file)
 
     def update_config(self):
-        backend_config = self.config_dict["BackendConfig"]
-        backend_config["npuDeviceIds"] = self.kw["npuDeviceIds"]
+        backend_config = self.config_dict['BackendConfig']
+        backend_config['npuDeviceIds'] = self.kw['npuDeviceIds']
         model_config = {
-            "modelName": self.finetuned_model.split('/')[-1],
-            "modelWeightPath": self.finetuned_model,
-            "worldSize": self.kw["worldSize"],
-            "trust_remote_code": self.trust_remote_code
+            'modelName': self.finetuned_model.split('/')[-1],
+            'modelWeightPath': self.finetuned_model,
+            'worldSize': self.kw['worldSize'],
+            'trust_remote_code': self.trust_remote_code
         }
-        backend_config["ModelDeployConfig"]["ModelConfig"][0].update(model_config)
-        backend_config["ModelDeployConfig"]["maxSeqLen"] = self.kw["maxSeqLen"]
-        backend_config["ModelDeployConfig"]["maxInputTokenLen"] = self.kw["maxInputTokenLen"]
-        backend_config["ScheduleConfig"]["maxPrefillTokens"] = self.kw["maxPrefillTokens"]
-        self.config_dict["BackendConfig"] = backend_config
-        if self.kw["host"] != '0.0.0.0':
-            self.config_dict["ServerConfig"]["ipAddress"] = self.kw["host"]
-        self.config_dict["ServerConfig"]["port"] = self.kw["port"]
+        backend_config['ModelDeployConfig']['ModelConfig'][0].update(model_config)
+        backend_config['ModelDeployConfig']['maxSeqLen'] = self.kw['maxSeqLen']
+        backend_config['ModelDeployConfig']['maxInputTokenLen'] = self.kw['maxInputTokenLen']
+        backend_config['ScheduleConfig']['maxPrefillTokens'] = self.kw['maxPrefillTokens']
+        self.config_dict['BackendConfig'] = backend_config
+        if self.kw['host'] != '0.0.0.0':
+            self.config_dict['ServerConfig']['ipAddress'] = self.kw['host']
+        self.config_dict['ServerConfig']['port'] = self.kw['port']
 
     def cmd(self, finetuned_model=None, base_model=None, master_ip=None):
         if self.custom_config is None:
@@ -108,8 +108,8 @@ class Mindie(LazyLLMDeployBase):
                     not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                             for filename in os.listdir(finetuned_model)):
                     if not finetuned_model:
-                        LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                                    f"base_model({base_model}) will be used")
+                        LOG.warning(f'Note! That finetuned_model({finetuned_model}) is an invalid path, '
+                                    f'base_model({base_model}) will be used')
                     self.finetuned_model = base_model
 
             if self.random_port:
@@ -132,7 +132,7 @@ class Mindie(LazyLLMDeployBase):
         if lazyllm.config['mode'] == lazyllm.Mode.Display:
             return f'http://{job.get_jobip()}:{self.kw["port"]}/generate'
         else:
-            LOG.info(f"MindIE Server running on http://{job.get_jobip()}:{self.kw['port']}")
+            LOG.info(f'MindIE Server running on http://{job.get_jobip()}:{self.kw["port"]}')
             return f'http://{job.get_jobip()}:{self.kw["port"]}/generate'
 
     @staticmethod

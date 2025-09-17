@@ -2,27 +2,30 @@ import os
 import sys
 import json
 import random
-import importlib
+import importlib.metadata
 from packaging.version import parse
+from typing import Optional
 
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG, LazyLLMLaunchersBase
-from .base import LazyLLMDeployBase, verify_fastapi_func
+from .base import LazyLLMDeployBase, verify_fastapi_func, verify_func_factory
 from ...common import LazyLLMRegisterMetaClass
 from .utils import get_log_path, make_log_dir
 from .ray import reallocate_launcher, Distributed, sleep_moment
 
+
+verify_vllm_openai_func = verify_func_factory(running_message='Application startup complete.')
 
 class _VllmStreamParseParametersMeta(LazyLLMRegisterMetaClass):
     def __getattribute__(cls, name):
         if name == 'stream_parse_parameters':
             if not hasattr(cls, '_stream_parse_parameters'):
                 try:
-                    vllm_version = parse(importlib.import_module('vllm').__version__)
-                    cls._stream_parse_parameters = {"decode_unicode": False}
-                    if vllm_version <= parse("0.5.0"): cls._stream_parse_parameters.update({"delimiter": b"\0"})
+                    vllm_version = parse(importlib.metadata.version('vllm'))
+                    cls._stream_parse_parameters = {'decode_unicode': False}
+                    if vllm_version <= parse('0.5.0'): cls._stream_parse_parameters.update({'delimiter': b'\0'})
                 except ImportError:
-                    cls._stream_parse_parameters = {"decode_unicode": False}
+                    cls._stream_parse_parameters = {'decode_unicode': False}
             return cls._stream_parse_parameters
         return super().__getattribute__(name)
 
@@ -41,12 +44,12 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
         'max_tokens': 4096
     }
     auto_map = {'tp': 'tensor-parallel-size'}
-    optional_keys = set(["max-model-len"])
+    optional_keys = set(['max-model-len'])
 
     # TODO(wangzhihong): change default value for `openai_api` argument to True
     def __init__(self, trust_remote_code: bool = True,
                  launcher: LazyLLMLaunchersBase = launchers.remote(ngpus=1),  # noqa B008
-                 log_path: str = None, openai_api: bool = False, **kw):
+                 log_path: str = None, openai_api: Optional[bool] = None, **kw):
         self.launcher_list, launcher = reallocate_launcher(launcher)
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
@@ -63,7 +66,9 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
             'pipeline-parallel-size': 1,
             'max-num-batched-tokens': 64000,
         })
+        if openai_api is None: openai_api = lazyllm.config['openai_api']
         self._vllm_cmd = 'vllm.entrypoints.openai.api_server' if openai_api else 'vllm.entrypoints.api_server'
+        self._openai_api = openai_api
         self.trust_remote_code = trust_remote_code
         self.kw.update(**{key: kw[key] for key in self.optional_keys if key in kw})
         self.kw.check_and_update(kw)
@@ -80,8 +85,8 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
             if not finetuned_model:
-                LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                            f"base_model({base_model}) will be used")
+                LOG.warning(f'Note! That finetuned_model({finetuned_model}) is an invalid path, '
+                            f'base_model({base_model}) will be used')
             finetuned_model = base_model
 
         def impl():
@@ -90,15 +95,17 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
 
             cmd = ''
             if self.launcher_list:
-                cmd += f"ray start --address='{master_ip}' && "
+                cmd += f'ray start --address="{master_ip}" && '
             cmd += f'{sys.executable} -m {self._vllm_cmd} --model {finetuned_model} '
+            if self._openai_api: cmd += '--served-model-name lazyllm '
             cmd += self.kw.parse_kwargs()
             if self.trust_remote_code:
                 cmd += ' --trust-remote-code '
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 
-        return LazyLLMCMD(cmd=impl, return_value=self.geturl, checkf=verify_fastapi_func)
+        return LazyLLMCMD(cmd=impl, return_value=self.geturl,
+                          checkf=(verify_vllm_openai_func if self._openai_api else verify_fastapi_func))
 
     def geturl(self, job=None):
         if job is None:
@@ -106,7 +113,8 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
         if lazyllm.config['mode'] == lazyllm.Mode.Display:
             return 'http://{ip}:{port}/generate'
         else:
-            return f'http://{job.get_jobip()}:{self.kw["port"]}/generate'
+            return f'http://{job.get_jobip()}:{self.kw["port"]}' + (
+                '/v1/' if self._openai_api else '/generate')
 
     @staticmethod
     def extract_result(x, inputs):
