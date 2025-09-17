@@ -66,7 +66,7 @@ def deploy(commands):
                             choices=['ON', 'on', '1', 'true', 'True', 'OFF', 'off', '0', 'False', 'false'])
 
         args, unknown = parser.parse_known_args(commands)
-        kwargs = {'lazyllm-store-true-keys': []}
+        kwargs = {'options_keys': []}
         for arg in unknown:
             assert arg.startswith('--'), f'Argument {arg} must start with --'
             key = arg[2:]
@@ -74,7 +74,7 @@ def deploy(commands):
                 key, value = key.split('=', 1)
                 kwargs[key] = value
             else:
-                kwargs['lazyllm-store-true-keys'].append(key)
+                kwargs['options_keys'].append(key)
 
         lazyllm.LOG.debug(f'Use arguments: {kwargs}')
         t = lazyllm.TrainableModule(args.model).deploy_method(getattr(lazyllm.deploy, args.framework), **kwargs)

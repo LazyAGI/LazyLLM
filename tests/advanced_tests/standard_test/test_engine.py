@@ -52,7 +52,7 @@ class TestEngine(object):
                           args=dict(base_model='Qwen3-30B-A3B-Instruct-2507', type='local')),
                      dict(id='file-resource', kind='File', name='file', args=dict(id='file-resource')),
                      dict(id='vqa', kind='VQA', name='vqa',
-                          args=dict(base_model='Qwen2.5-VL-32B-Instruct', type='local')),
+                          args=dict(base_model='Qwen2.5-VL-32B-Instruct', type='local', deploy_method='vllm')),
                      dict(id='web', kind='web', name='web', args=dict(port=None, title='多模态聊天机器人', audio=True))]
 
         nodes1 = [
@@ -145,7 +145,7 @@ class TestEngine(object):
     def test_engine_shared_vqa(self):
         engine = LightEngine()
         resources = [dict(id='vqa', kind='VQA', name='vqa',
-                          args=dict(base_model='Qwen2.5-VL-32B-Instruct', type='local'))]
+                          args=dict(base_model='Qwen2.5-VL-32B-Instruct', type='local', deploy_method='vllm'))]
 
         nodes = [dict(id='0', kind='SharedModel', name='vqa',
                       args=dict(llm='vqa', cls='vqa'))]

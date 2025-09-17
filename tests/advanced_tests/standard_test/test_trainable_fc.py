@@ -189,7 +189,7 @@ class TestTrainableFunctionCall(object):
     def setup_class(cls):
         cls.llm = lazyllm.TrainableModule("Qwen3-30B-A3B-Instruct-2507").deploy_method(
             deploy.vllm,
-            lazyllm_store_true_keys=['enable-auto-tool-choice', 'tool-call-parser']).start()
+            options_keys=['enable_auto_tool_choice', 'tool_call_parser']).start()
 
     @classmethod
     def teardown_class(cls):

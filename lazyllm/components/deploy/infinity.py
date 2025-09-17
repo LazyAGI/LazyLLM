@@ -5,7 +5,7 @@ import random
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
-from .utils import get_log_path, make_log_dir, parse_store_true_keys
+from .utils import get_log_path, make_log_dir, parse_options_keys
 
 lazyllm.config.add("default_embedding_engine", str, "", "DEFAULT_EMBEDDING_ENGINE")
 
@@ -28,7 +28,7 @@ class Infinity(LazyLLMDeployBase):
         })
         self._model_type = model_type
         kw.pop('stream', '')
-        self.store_true_keys = kw.pop('lazyllm-store-true-keys', [])
+        self.options_keys = kw.pop('options_keys', [])
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] else True
         self.temp_folder = make_log_dir(log_path, 'lmdeploy') if log_path else None
@@ -58,7 +58,7 @@ class Infinity(LazyLLMDeployBase):
                         f"available: {len(available_gpus)})"
                     )
             cmd += self.kw.parse_kwargs()
-            cmd += ' ' + parse_store_true_keys(self.store_true_keys)
+            cmd += ' ' + parse_options_keys(self.options_keys)
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 

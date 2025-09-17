@@ -243,7 +243,7 @@ class OpenAIReranking(OnlineEmbeddingModuleBase):
 
     @property
     def type(self):
-        return "ONLINE_RERANK"
+        return "RERANK"
 
     def _encapsulated_data(self, query: str, documents: List[str], top_n: int, **kwargs) -> Dict[str, str]:
         json_data = {

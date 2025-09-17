@@ -9,6 +9,7 @@ from lazyllm import LOG
 from lazyllm.thirdparty import datasets
 from ...components.utils.file_operate import _delete_old_files
 from lazyllm.common.utils import check_path
+from lazyllm.components.auto.configure.core.rule import convert_to_bool, convert_to_integer, convert_to_float
 
 
 @dataclass
@@ -234,9 +235,13 @@ def map_kw_for_framework(
 def _normalize_value_for_comparison(value):
     if isinstance(value, str):
         try:
-            return json.loads(value)
+            value = json.loads(value)
         except (json.JSONDecodeError, TypeError):
             pass
+    if isinstance(value, dict):
+        value = {k.replace('-', '_'): v for k, v in value.items()}
+    if isinstance(value, list):
+        value = [v.replace('-', '_') if isinstance(v, str) else v for v in value]
     return value
 
 def values_equal_for_config(config_value, deploy_value):
@@ -244,12 +249,12 @@ def values_equal_for_config(config_value, deploy_value):
     norm_deploy_value = _normalize_value_for_comparison(deploy_value)
 
     if isinstance(norm_config_value, str) and isinstance(norm_deploy_value, str):
-        for converter in [int, float, bool]:
-            try:
-                return converter(norm_config_value) == converter(norm_deploy_value)
-            except (ValueError, TypeError):
-                continue
-        return norm_config_value.lower() == norm_deploy_value.lower()
+        if norm_config_value.strip().lower() == norm_deploy_value.strip().lower():
+            return True
+        try:
+            return convert_to_bool(norm_config_value) == convert_to_bool(norm_deploy_value)
+        except Exception:
+            return False
 
     if isinstance(norm_config_value, dict) and isinstance(norm_deploy_value, dict):
         check_status = True
@@ -260,6 +265,24 @@ def values_equal_for_config(config_value, deploy_value):
         return check_status
 
     if isinstance(norm_config_value, list) and isinstance(norm_deploy_value, list):
-        return set(norm_deploy_value).issubset(set(norm_config_value))
+        try:
+            return set(norm_deploy_value).issubset(set(norm_config_value))
+        except Exception:
+            return False
 
     return norm_config_value == norm_deploy_value
+
+def check_config_map_format(config_map: dict):
+    assert isinstance(config_map, dict), "config_map should be a dict"
+    for k, v in config_map.items():
+        if not isinstance(v, list):
+            raise ValueError(f"config for model {k} should be a list")
+        for item in v:
+            if not isinstance(item, dict):
+                raise ValueError(f"config item for model {k} should be a dict")
+            if not isinstance(item.get('url'), str):
+                raise ValueError(f"url for model {k} should be a string")
+            if not isinstance(item.get('deploy_config'), dict):
+                raise ValueError(f"deploy_config for model {k} should be a dict")
+            if not isinstance(item.get('deploy_config').get('framework'), str):
+                raise ValueError(f"framework for model {k} should be a string")

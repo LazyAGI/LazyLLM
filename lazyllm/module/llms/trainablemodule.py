@@ -16,17 +16,23 @@ from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from ...components.utils import ModelManager, LLMType
 from ...components.utils.file_operate import _base64_to_file, _is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
-from .utils import map_kw_for_framework, encode_files, values_equal_for_config
+from .utils import map_kw_for_framework, encode_files, values_equal_for_config, check_config_map_format
 from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
 
-trainable_module_config_map = {}
 lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH')
-if os.path.exists(lazyllm.config['trainable_module_config_map_path']):
-    trainable_module_config_map = yaml.safe_load(open(lazyllm.config['trainable_module_config_map_path'], 'r'))
-ignore_config_keys = trainable_module_config_map.pop('ignore_keys', ['log_path', 'launcher'])
-lazyllm.config.add('openai_api', bool, False, 'OPENAI_API')
+ignore_config_keys = ['log_path', 'launcher']
+
+@functools.lru_cache(maxsize=1)
+def get_trainable_module_config_map(path):
+    try:
+        cfg = yaml.safe_load(open(path, 'r')) if os.path.exists(path) else {}
+        check_config_map_format(cfg)
+    except Exception:
+        LOG.warning(f'Failed to load trainable module config map from {path}')
+        cfg = {}
+    return cfg
 
 class _UrlTemplateStruct(object):
     def __init__(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
@@ -95,9 +101,6 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if len(set(args.keys()).intersection(set(disable))) > 0:
             raise ValueError(f'Key `{", ".join(disable)}` can not be set in '
                              '{arg_cls}_args, please pass them from Module.__init__()')
-        args = {k.replace('_', '-') if k not in ignore_config_keys else k: v for k, v in args.items()}
-        if 'lazyllm-store-true-keys' in args:
-            args['lazyllm-store-true-keys'] = [k.replace('_', '-') for k in args['lazyllm-store-true-keys']]
 
         if not args.get('url'):
             if arg_cls == 'deploy' and self._deploy is lazyllm.deploy.AutoDeploy:
@@ -195,6 +198,8 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if hasattr(self._deploy, 'auto_map') and self._deploy.auto_map:
             self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
 
+        trainable_module_config_map = get_trainable_module_config_map(lazyllm.config['trainable_module_config_map_path'])
+        
         base_model_name = os.path.basename(self._base_model)
         if base_model_name in trainable_module_config_map:
             for module_config in trainable_module_config_map[base_model_name]:
@@ -510,19 +515,18 @@ class TrainableModule(UrlModule):
     def forward_openai(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
                        *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
         if not getattr(self, '_openai_module', None):
-            if self.type.lower() in ['llm', 'vlm']:
+            model_type = self.type.lower()
+            if model_type in ['llm', 'vlm']:
                 self._openai_module = lazyllm.OnlineChatModule(
-                    source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=self.type,
+                    source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=model_type,
                     stream=self._stream).share(prompt=self._prompt, format=self._formatter)
                 self._openai_module._prompt._set_model_configs(system="You are LazyLLM, \
                     a large language model developed by SenseTime.")
-                if self.type.lower() == 'vlm': self._openai_module._vlm_force_format_input_with_files = True
-            elif self.type.lower() in ['embed', 'reranker']:
-                embed_type = 'rerank' if self.type.lower() == 'reranker' else 'embed'
+            elif model_type in ['embed', 'rerank']:
                 self._openai_module = lazyllm.OnlineEmbeddingModule(
-                    source='openai', embed_model_name='lazyllm', embed_url=self._url, type=embed_type)
+                    source='openai', embed_model_name='lazyllm', embed_url=self._url, type=model_type)
             else:
-                raise ValueError(f'Unsupported type: {self.type} for openai compatible module')
+                raise ValueError(f'Unsupported type: {model_type} for openai compatible module')
             self._openai_module.used_by(self._module_id)
         return self._openai_module.forward(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
                                            tools=tools, stream_output=stream_output, **kw)

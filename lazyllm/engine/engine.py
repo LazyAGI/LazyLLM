@@ -1060,7 +1060,7 @@ def setup_deploy_method(model: lazyllm.TrainableModule, deploy_method: str, url:
         url: Optional deployment URL
     """
     deploy_method = getattr(lazyllm.deploy, deploy_method)
-    if deploy_method is lazyllm.deploy.AutoDeploy:
+    if not url or url == '':
         model.deploy_method(deploy_method)
     else:
         model.deploy_method(deploy_method, url=url)

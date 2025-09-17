@@ -10,7 +10,7 @@ import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG, LazyLLMLaunchersBase
 from .base import LazyLLMDeployBase, verify_fastapi_func, verify_func_factory
 from ...common import LazyLLMRegisterMetaClass
-from .utils import get_log_path, make_log_dir, parse_store_true_keys
+from .utils import get_log_path, make_log_dir, parse_options_keys
 from .ray import reallocate_launcher, Distributed, sleep_moment
 
 
@@ -43,25 +43,28 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
         'top_p': 0.8,
         'max_tokens': 4096
     }
-    auto_map = {'tp': 'tensor-parallel-size'}  # from cli to vllm
+    auto_map = {
+        'tp': 'tensor_parallel_size'
+    }  # from cli to vllm
     optional_keys = set([
-        'max-model-len',
-        'gpu-memory-utilization',
+        'max_model_len',
+        'gpu_memory_utilization',
         'task',
         'dtype',
-        'kv-cache-dtype',
-        'tokenizer-mode',
-        'block-size',
-        'max-num-seqs',
-        'pipeline-parallel-size',
+        'kv_cache_dtype',
+        'tokenizer_mode',
+        'block_size',
+        'max_num_seqs',
+        'pipeline_parallel_size',
+        'tensor_parallel_size',
         'seed',
         'port',
-        'max-num-batched-tokens',
-        'tool-call-parser',
-        'swap-space',
-        'mm-processor-kwargs',
-        'limit-mm-per-prompt',
-        'hf-overrides'])
+        'max_num_batched_tokens',
+        'tool_call_parser',
+        'swap_space',
+        'mm_processor_kwargs',
+        'limit_mm_per_prompt',
+        'hf_overrides'])
 
     # TODO(wangzhihong): change default value for `openai_api` argument to True
     def __init__(self, launcher: LazyLLMLaunchersBase = launchers.remote(ngpus=1),  # noqa B008
@@ -74,7 +77,7 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
         if openai_api is None: openai_api = lazyllm.config['openai_api']
         self._vllm_cmd = 'vllm.entrypoints.openai.api_server' if openai_api else 'vllm.entrypoints.api_server'
         self._openai_api = openai_api
-        self.store_true_keys = kw.pop('lazyllm-store-true-keys', [])
+        self.options_keys = kw.pop('options_keys', [])
         self.kw.update(**{key: kw[key] for key in self.optional_keys if key in kw})
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
@@ -104,7 +107,7 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
             cmd += f'{sys.executable} -m {self._vllm_cmd} --model {finetuned_model} '
             if self._openai_api: cmd += '--served-model-name lazyllm '
             cmd += self.kw.parse_kwargs()
-            cmd += ' ' + parse_store_true_keys(self.store_true_keys)
+            cmd += ' ' + parse_options_keys(self.options_keys)
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 

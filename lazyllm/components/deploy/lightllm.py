@@ -5,7 +5,7 @@ import random
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
-from .utils import make_log_dir, get_log_path, parse_store_true_keys
+from .utils import make_log_dir, get_log_path, parse_options_keys
 from typing import Optional
 
 
@@ -50,7 +50,7 @@ class Lightllm(LazyLLMDeployBase):
             "max_req_input_len": 4096,
             "long_truncation_mode": "head",
         })
-        self.store_true_keys = kw.pop('lazyllm-store-true-keys', [])
+        self.options_keys = kw.pop('options_keys', [])
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] else True
         self.random_nccl_port = False if 'nccl_port' in kw and kw['nccl_port'] else True
@@ -72,7 +72,7 @@ class Lightllm(LazyLLMDeployBase):
                 self.kw['nccl_port'] = random.randint(20000, 30000)
             cmd = f'python -m lightllm.server.api_server --model_dir {finetuned_model} '
             cmd += self.kw.parse_kwargs()
-            cmd += ' ' + parse_store_true_keys(self.store_true_keys)
+            cmd += ' ' + parse_options_keys(self.options_keys)
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 

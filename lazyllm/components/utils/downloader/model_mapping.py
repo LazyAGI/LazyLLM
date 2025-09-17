@@ -154,7 +154,7 @@ model_name_mapping = {
             "huggingface": "BAAI/bge-reranker-v2-m3",
             "modelscope": "BAAI/bge-reranker-v2-m3"
         },
-        "type": "reranker"
+        "type": "rerank"
     },
     "jina-clip-v1": {
         "source": {
@@ -180,14 +180,14 @@ model_name_mapping = {
             "huggingface": "BAAI/bge-reranker-large",
             "modelscope": "Xorbits/bge-reranker-large"
         },
-        "type": "reranker"
+        "type": "rerank"
     },
     "bge-reranker-v2-m3": {
         "source": {
             "huggingface": "BAAI/bge-reranker-v2-m3",
             "modelscope": "BAAI/bge-reranker-v2-m3"
         },
-        "type": "reranker"
+        "type": "rerank"
     },
     "bge-vl-v1.5-mmeb": {
         "source": {
@@ -278,7 +278,7 @@ model_name_mapping = {
             "huggingface": "Qwen/Qwen3-Reranker-8B",
             "modelscope": "Qwen/Qwen3-Reranker-8B"
         },
-        "type": "reranker"
+        "type": "rerank"
     },
     "musicgen-medium": {
         "source": {

@@ -1,6 +1,7 @@
 from lazyllm.module import ModuleBase
-from lazyllm.components import AlpacaPrompter
-from lazyllm import pipeline, globals, switch
+from lazyllm.components import AlpacaPrompter, LLMType
+from lazyllm import pipeline, globals, switch, formatter
+from lazyllm.components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from lazyllm.tools.utils import chat_history_to_str
 from typing import Dict, Union, Any, List, Optional
 import json
@@ -117,11 +118,17 @@ class IntentClassifier(ModuleBase):
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         if llm_chat_history is not None and self._llm._module_id not in globals["chat_history"]:
             globals["chat_history"][self._llm._module_id] = llm_chat_history
-        return self._impl(input)
+        query = input
+        if self._llm.type == LLMType.LLM and input.startswith(LAZYLLM_QUERY_PREFIX):
+            query = formatter.file(formatter='decode')(input).get("query")
+        if hasattr(self, '_sw'):
+            return self._impl(query, input)
+        else:
+            return self._impl(query)
 
     def __enter__(self):
         assert not self._intent_list, 'Intent list is already set'
-        self._sw = switch()
+        self._sw = switch(judge_on_full_input=False)
         self._sw.__enter__()
         return self
 
