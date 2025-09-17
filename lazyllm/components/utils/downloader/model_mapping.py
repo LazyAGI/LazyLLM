@@ -149,19 +149,12 @@ model_name_mapping = {
         },
         'type': 'embed'
     },
-    "bge-reranker-v2-m3": {
-        "source": {
-            "huggingface": "BAAI/bge-reranker-v2-m3",
-            "modelscope": "BAAI/bge-reranker-v2-m3"
+    'bge-reranker-v2-m3': {
+        'source': {
+            'huggingface': 'BAAI/bge-reranker-v2-m3',
+            'modelscope': 'BAAI/bge-reranker-v2-m3'
         },
-        "type": "rerank"
-    },
-    "jina-clip-v1": {
-        "source": {
-            "huggingface": "jinaai/jina-clip-v1",
-            "modelscope": "jinaai/jina-clip-v1"
-        },
-        "type": "cross_modal_embed"
+        'type': 'rerank'
     },
     'jina-clip-v1': {
         'source': {
@@ -187,14 +180,14 @@ model_name_mapping = {
             'huggingface': 'BAAI/bge-reranker-large',
             'modelscope': 'Xorbits/bge-reranker-large'
         },
-        "type": "rerank"
+        'type': 'rerank'
     },
     'bge-reranker-v2-m3': {
         'source': {
             'huggingface': 'BAAI/bge-reranker-v2-m3',
             'modelscope': 'BAAI/bge-reranker-v2-m3'
         },
-        "type": "rerank"
+        'type': 'rerank'
     },
     'bge-vl-v1.5-mmeb': {
         'source': {
@@ -273,24 +266,24 @@ model_name_mapping = {
         },
         'type': 'vlm'
     },
-    "Qwen3-Embedding-8B": {
-        "source": {
-            "huggingface": "Qwen/Qwen3-Embedding-8B",
-            "modelscope": "Qwen/Qwen3-Embedding-8B"
+    'Qwen3-Embedding-8B': {
+        'source': {
+            'huggingface': 'Qwen/Qwen3-Embedding-8B',
+            'modelscope': 'Qwen/Qwen3-Embedding-8B'
         },
-        "type": "embed"
+        'type': 'embed'
     },
-    "Qwen3-Reranker-8B": {
-        "source": {
-            "huggingface": "Qwen/Qwen3-Reranker-8B",
-            "modelscope": "Qwen/Qwen3-Reranker-8B"
+    'Qwen3-Reranker-8B': {
+        'source': {
+            'huggingface': 'Qwen/Qwen3-Reranker-8B',
+            'modelscope': 'Qwen/Qwen3-Reranker-8B'
         },
-        "type": "rerank"
+        'type': 'rerank'
     },
-    "musicgen-medium": {
-        "source": {
-            "huggingface": "facebook/musicgen-medium",
-            "modelscope": "AI-ModelScope/musicgen-medium"
+    'musicgen-medium': {
+        'source': {
+            'huggingface': 'facebook/musicgen-medium',
+            'modelscope': 'AI-ModelScope/musicgen-medium'
         },
         'type': 'tts'
     },

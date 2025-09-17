@@ -8,6 +8,7 @@ from ...components.utils.file_operate import _image_to_base64, _audio_to_base64,
 
 lazyllm.config.add('openai_api', bool, False, 'OPENAI_API')
 
+
 class LazyLLMDeployBase(ComponentBase):
     keys_name_handle = None
     message_format = None

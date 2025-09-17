@@ -8,9 +8,6 @@ T = TypeVar('T')
 def convert_to_integer(source: str) -> int:
     return int(source)
 
-def convert_to_float(source: str) -> float:
-    return float(source)
-
 def convert_to_string(source: str) -> str:
     return source
 

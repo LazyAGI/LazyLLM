@@ -9,7 +9,8 @@ class TestEngine(object):
     # This test requires 4 GPUs and takes about 4 minutes to execute, skip this test to save time.
     def _test_vqa(self):
         resource = [dict(id='0', kind='web', name='web', args=dict(port=None, title='多模态聊天机器人', history=[], audio=True))]
-        node = [dict(id='1', kind='VQA', name='vqa', args=dict(base_model='Qwen2.5-VL-32B-Instruct', type='local'))]
+        node = [dict(id='1', kind='VQA', name='vqa',
+                     args=dict(base_model='Qwen2.5-VL-32B-Instruct', type='local', deploy_method='vllm'))]
         edge = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
         engine = LightEngine()
         engine.start(node, edge, resource)
