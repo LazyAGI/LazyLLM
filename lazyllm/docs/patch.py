@@ -71,3 +71,62 @@ Args:
     module (ModuleType): The module object to be executed.
 
 """)
+add_chinese_doc('LazyPatchFinder', """\
+延迟补丁查找器，用于在导入时拦截特定模块并应用补丁。
+
+``LazyPatchFinder`` 是一个元路径查找器，它在导入过程中拦截对'requests'和'httpx'模块的导入请求，
+并使用自定义的LazyPatchLoader来加载这些模块，从而在模块加载时自动应用补丁。
+
+**Note:**\n
+- 此查找器只在模块尚未导入时生效
+- 如果模块已经导入，会直接调用patch_requests_and_httpx()函数
+- 支持模块的原始属性和路径保持完整
+""")
+
+add_english_doc('LazyPatchFinder', """\
+Lazy Patch Finder for intercepting specific module imports and applying patches.
+
+The ``LazyPatchFinder`` is a meta path finder that intercepts import requests for 
+'requests' and 'httpx' modules during the import process, and uses a custom 
+LazyPatchLoader to load these modules, automatically applying patches during module loading.
+
+**Note:**\n
+- This finder only takes effect when modules are not already imported
+- If modules are already imported, directly calls patch_requests_and_httpx() function
+- Maintains the original attributes and paths of the modules
+""")
+add_chinese_doc('LazyPatchFinder.find_spec', """\
+查找并返回模块的规范对象，用于自定义模块加载过程。
+
+此方法是MetaPathFinder的核心方法，负责在导入过程中查找指定模块的规范对象。
+在LazyPatchFinder中，它专门拦截'requests'和'httpx'模块的导入请求，使用自定义的LazyPatchLoader来包装原始模块规范。
+
+Args:
+    fullname (str): 要导入的完整模块名称
+    path (list): 搜索路径列表，对于顶级模块为None
+    target (module, optional): 目标模块对象（重载时使用）
+
+**Returns:**\n
+- 对于'requests'和'httpx'模块：返回使用LazyPatchLoader包装的模块规范
+- 对于其他模块：返回None，让其他查找器继续处理
+
+""")
+
+add_english_doc('LazyPatchFinder.find_spec', """\
+Find and return the module specification object for custom module loading process.
+
+This method is the core method of MetaPathFinder, responsible for finding the specification 
+object of the specified module during the import process. In LazyPatchFinder, it specifically 
+intercepts import requests for 'requests' and 'httpx' modules, using a custom LazyPatchLoader 
+to wrap the original module specification.
+
+Args:
+    fullname (str): The full name of the module to import
+    path (list): Search path list, None for top-level modules
+    target (module, optional): Target module object (used during reloading)
+
+**Returns:**\n
+- For 'requests' and 'httpx' modules: Returns module specification wrapped with LazyPatchLoader
+- For other modules: Returns None, allowing other finders to continue processing
+
+""")

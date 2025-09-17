@@ -32,6 +32,7 @@
   - Configs: API Reference/configs.md
   - Launcher: API Reference/launcher.md
   - Hook: API Reference/hook.md
+  - patch: API Reference/patch.md
 - Tutorials:
   - Overview: Tutorial/index.md
   # - 1. RAG Fundamentals: Tutorial/1.md
