@@ -14,6 +14,7 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 
 class GLMModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ['chatglm3-6b', 'chatglm_12b', 'chatglm_32b', 'chatglm_66b', 'chatglm_130b']
+    VLM_MODEL_PREFIX = ['glm-4.5v', 'glm-4.1v', 'glm-4v']
     MODEL_NAME = 'glm-4'
 
     def __init__(self, base_url: str = 'https://open.bigmodel.cn/api/paas/v4/', model: str = None,

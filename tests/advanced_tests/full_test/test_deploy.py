@@ -149,7 +149,7 @@ class TestDeploy(object):
         deploy_args = module._impl._deploy_args
 
         # Check mapped parameters
-        assert deploy_args.get('server-port') == 9090, f'Expected server-port=9090, got {deploy_args.get('server-port')}'
-        assert deploy_args.get('tp') == 1, f'Expected tp=1, got {deploy_args.get('tp')}'
+        assert deploy_args.get('server-port') == 9090, f'Expected server-port=9090, got {deploy_args.get("server-port")}'
+        assert deploy_args.get('tp') == 1, f'Expected tp=1, got {deploy_args.get("tp")}'
         assert deploy_args.get('max-batch-size') == 256, \
-            f'Expected max-batch-size=256, got {deploy_args.get('max-batch-size')}'
+            f'Expected max-batch-size=256, got {deploy_args.get("max-batch-size")}'
