@@ -43,10 +43,6 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
     def batch_size(self, value: int):
         self._batch_size = value
 
-    @property
-    def support_batch(self):
-        return self.batch_size > 1
-
     def _set_headers(self) -> Dict[str, str]:
         self._headers = {
             'Content-Type': 'application/json',

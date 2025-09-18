@@ -872,9 +872,6 @@ def parallel_do_embedding(embed: Dict[str, Callable], embed_keys: Optional[Union
     max_workers_per_key = max(1, max_workers // max(1, concurrent_workers))
 
     def _check_batch(fn):
-        support_batch = getattr(fn, 'support_batch', None)
-        if support_batch is True:
-            return True
         batch_size = getattr(fn, 'batch_size', None)
         return isinstance(batch_size, Integral) and batch_size > 1
 
