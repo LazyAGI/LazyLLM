@@ -3,9 +3,11 @@ import random
 import inspect
 import sys
 
-from lazyllm import launchers, LazyLLMCMD, dump_obj
-from ..base import LazyLLMDeployBase, verify_fastapi_func
+from lazyllm import launchers, LazyLLMCMD, dump_obj, config
+from ..base import LazyLLMDeployBase, verify_fastapi_func, verify_ray_func
 from ..utils import get_log_path, make_log_dir
+
+config.add('use_ray', bool, False, 'USE_RAY')
 
 
 class RelayServer(LazyLLMDeployBase):
@@ -42,7 +44,8 @@ class RelayServer(LazyLLMDeployBase):
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 
-        return LazyLLMCMD(cmd=impl, return_value=self.geturl, checkf=verify_fastapi_func,
+        return LazyLLMCMD(cmd=impl, return_value=self.geturl,
+                          checkf=verify_ray_func if config['use_ray'] else verify_fastapi_func,
                           no_displays=['function', 'before_function', 'after_function'])
 
     def geturl(self, job=None):
