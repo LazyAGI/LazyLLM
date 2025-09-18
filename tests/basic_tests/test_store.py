@@ -523,16 +523,18 @@ class TestMilvusStore(unittest.TestCase):
 
 
 class TestSegementStore(object):
-    os_password = os.environ.get('OPENSEARCH_INITIAL_ADMIN_PASSWORD')
     SEGMENTSTORE_CLASS_MAP = {
         'elasticsearch': [{
-            'segment_store_type': 'ElasticSearchStore',
-            'init_kwargs': {'uris': 'localhost:9201'},
+            'segment_store_type': 'elasticsearch',
+            'init_kwargs': {'uris': os.getenv('ELASTICSEARCH_HOST', 'localhost:9200')},
             'is_skip': False, 'skip_reason': 'To test elasticsearch store, please set up a elasticsearch server'}],
         'opensearch': [{
-            'segment_store_type': 'OpenSearchStore',
-            'init_kwargs': {'uris': 'localhost:9200',
-                            'client_kwargs': {"user": "admin", "password": os_password, "verify_certs": False}},
+            'segment_store_type': 'opensearch',
+            'init_kwargs': {'uris': os.getenv('OPENSEARCH_HOST', 'localhost:9201'),
+                            'client_kwargs': {
+                                "user": os.getenv('OPENSEARCH_USER', 'admin'),
+                                "password": os.getenv('OPENSEARCH_INITIAL_ADMIN_PASSWORD'),
+                                "verify_certs": False}},
             'is_skip': False, 'skip_reason': 'To test opensearch store, please set up a opensearch server'}],
     }
 
@@ -574,13 +576,13 @@ class TestSegementStore(object):
         ]
         params = request.param if hasattr(request, 'param') else {}
         segment_store_type = params.get('segment_store_type')
-        segment_store_cls = getattr(lazyllm.tools.rag.store, segment_store_type, None)
         segment_store_init_kwargs = params.get('init_kwargs')
         is_skip = params.get('is_skip')
         skip_reason = params.get('skip_reason')
         if is_skip:
             pytest.skip(skip_reason)
-        store = segment_store_cls(**segment_store_init_kwargs)
+        cls = getattr(lazyllm.store, segment_store_type, None)
+        store = cls(**segment_store_init_kwargs)
         store.connect()
         request.cls.store = store
         request.cls.params = params
