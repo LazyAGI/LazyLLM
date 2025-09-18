@@ -1,7 +1,7 @@
 import os
 import yaml
 
-language = os.getenv('LAZYLLM_LANGUAGE', 'ENGLISH').upper()
+language = os.getenv('LAZYLLM_LANGUAGE', 'CHINESE').upper()
 assert language in ('ENGLISH', 'CHINESE')
 
 with open(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mkdocs.template.yml')) as f:
