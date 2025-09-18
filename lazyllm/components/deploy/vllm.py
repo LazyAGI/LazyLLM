@@ -14,7 +14,7 @@ from .utils import get_log_path, make_log_dir
 from .ray import reallocate_launcher, Distributed, sleep_moment
 
 
-verify_vllm_openai_func = verify_func_factory(running_message='Application startup complete.')
+verify_vllm_openai_func = verify_func_factory('ERROR:', 'Application startup complete.')
 
 class _VllmStreamParseParametersMeta(LazyLLMRegisterMetaClass):
     def __getattribute__(cls, name):

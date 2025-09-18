@@ -5,8 +5,10 @@ import sys
 import inspect
 import traceback
 from types import GeneratorType
+import lazyllm
 from lazyllm import kwargs, package, load_obj
 from lazyllm import FastapiApp, globals, decode_request
+import time
 import pickle
 import codecs
 import asyncio
@@ -15,6 +17,7 @@ from functools import partial
 from fastapi import FastAPI, Request
 from fastapi.responses import Response, StreamingResponse
 import requests
+
 
 # TODO(sunxiaoye): delete in the future
 lazyllm_module_dir = os.path.abspath(__file__)
@@ -41,7 +44,6 @@ if args.before_function:
     before_func = load_obj(args.before_function)
 if args.after_function:
     after_func = load_obj(args.after_function)
-
 
 app = FastAPI()
 FastapiApp.update()
@@ -136,5 +138,25 @@ def find_services(cls):
 
 find_services(func.__class__)
 
+class _Dummy: pass
+
 if __name__ == '__main__':
-    uvicorn.run(app, host=args.open_ip, port=args.open_port)
+    if lazyllm.config['use_ray']:
+        import ray
+        from ray import serve
+        ray.init()
+        _Dummy = serve.deployment(serve.ingress(app)(_Dummy))
+        serve.start(http_options={'host': args.open_ip, 'port': args.open_port})
+        serve.run(_Dummy.bind())
+
+        printed = False
+        while True:
+            if not printed:
+                status = serve.status()
+                app_status = status.applications.get('default')
+                if app_status and app_status.status == 'RUNNING':
+                    lazyllm.LOG.success(f'Deployment is ready on {args.open_ip}:{args.open_port}!')
+                    printed = True
+            time.sleep(2)
+    else:
+        uvicorn.run(app, host=args.open_ip, port=args.open_port)
