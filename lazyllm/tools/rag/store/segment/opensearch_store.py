@@ -80,7 +80,7 @@ class OpenSearchStore(LazyLLMStoreBase):
                 if getattr(e, 'error', '') != 'resource_already_exists_exception':
                     raise e
             except Exception as e:
-                LOG.error(f"[OpenSearchStore - _ensure_index] Error creating index {name}: {e}")
+                LOG.error(f'[OpenSearchStore - _ensure_index] Error creating index {name}: {e}')
                 raise e
 
     @override
@@ -97,17 +97,17 @@ class OpenSearchStore(LazyLLMStoreBase):
                     bulk_data.append(segment)
                 response = self._client.bulk(index=collection_name, body=bulk_data, refresh='wait_for')
                 if response.get('errors'):
-                    raise ValueError(f"Error upserting data to OpenSearch: {response.get('errors')}")
+                    raise ValueError(f'Error upserting data to OpenSearch: {response.get("errors")}')
             return True
         except Exception as e:
-            LOG.error(f"[OpenSearchStore - upsert] Error upserting data to OpenSearch: {e}")
+            LOG.error(f'[OpenSearchStore - upsert] Error upserting data to OpenSearch: {e}')
             return False
 
     @override
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
         try:
             if not self._client.indices.exists(index=collection_name):
-                LOG.warning(f"[OpenSearchStore - delete] Index {collection_name} does not exist")
+                LOG.warning(f'[OpenSearchStore - delete] Index {collection_name} does not exist')
                 return True
             if not criteria:
                 with self._ddl_lock:
@@ -118,19 +118,19 @@ class OpenSearchStore(LazyLLMStoreBase):
                 resp = self._client.delete_by_query(index=collection_name, body=self._construct_criteria(criteria),
                                                     refresh=True, conflicts='proceed')
                 if resp.get('version_conflicts', 0) > 0:
-                    LOG.warning(f"[OpenSearchStore - delete] Version conflicts: {resp.get('version_conflicts')}")
+                    LOG.warning(f'[OpenSearchStore - delete] Version conflicts: {resp.get("version_conflicts")}')
                 if resp.get('failures'):
-                    raise ValueError(f"Error deleting data from OpenSearch: {resp['failures']}")
+                    raise ValueError(f'Error deleting data from OpenSearch: {resp["failures"]}')
                 return True
         except Exception as e:
-            LOG.error(f"[OpenSearchStore - delete] Error deleting data from OpenSearch: {e}")
+            LOG.error(f'[OpenSearchStore - delete] Error deleting data from OpenSearch: {e}')
             return False
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
         try:
             if not self._client.indices.exists(index=collection_name):
-                LOG.warning(f"[OpenSearchStore - get] Index {collection_name} does not exist")
+                LOG.warning(f'[OpenSearchStore - get] Index {collection_name} does not exist')
                 return []
             results: List[dict] = []
             criteria = dict(criteria) if criteria else {}
@@ -154,12 +154,12 @@ class OpenSearchStore(LazyLLMStoreBase):
                     results.append(self._deserialize_node(src))
             return results
         except Exception as e:
-            LOG.error(f"[OpenSearchStore - get] Error getting data from OpenSearch: {e}")
+            LOG.error(f'[OpenSearchStore - get] Error getting data from OpenSearch: {e}')
             return []
 
     @override
     def search(self, collection_name: str, query: str, topk: int, **kwargs) -> List[dict]:
-        raise NotImplementedError("[OpenSearchStore - search] Not implemented yet")
+        raise NotImplementedError('[OpenSearchStore - search] Not implemented yet')
 
     def _serialize_node(self, segment: dict):
         seg = dict(segment)
@@ -170,9 +170,9 @@ class OpenSearchStore(LazyLLMStoreBase):
         return seg
 
     def _deserialize_node(self, segment: dict) -> dict:
-        segment['meta'] = json.loads(segment.get('meta', "{}"))
-        segment['global_meta'] = json.loads(segment.get('global_meta', "{}"))
-        segment['image_keys'] = json.loads(segment.get('image_keys', "[]"))
+        segment['meta'] = json.loads(segment.get('meta', '{}'))
+        segment['global_meta'] = json.loads(segment.get('global_meta', '{}'))
+        segment['image_keys'] = json.loads(segment.get('image_keys', '[]'))
         return segment
 
     def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:

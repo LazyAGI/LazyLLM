@@ -35,8 +35,8 @@ class DefaultIndex(IndexBase):
     ) -> List[DocNode]:
         if similarity_name not in registered_similarities:
             raise ValueError(
-                f"{similarity_name} not registered, please check your input. "
-                f"Available options now: {registered_similarities.keys()}"
+                f'{similarity_name} not registered, please check your input. '
+                f'Available options now: {registered_similarities.keys()}'
             )
         similarity_func, mode, descend = registered_similarities[similarity_name]
 
@@ -44,9 +44,9 @@ class DefaultIndex(IndexBase):
         if filters:
             nodes = generic_process_filters(nodes, filters)
 
-        if mode == "embedding":
-            assert self.embed, "Chosen similarity needs embed model."
-            assert len(query) > 0, "Query should not be empty."
+        if mode == 'embedding':
+            assert self.embed, 'Chosen similarity needs embed model.'
+            assert len(query) > 0, 'Query should not be empty.'
             if not embed_keys:
                 embed_keys = list(self.embed.keys())
             query_embedding = {k: self.embed[k](query) for k in embed_keys}
@@ -54,10 +54,10 @@ class DefaultIndex(IndexBase):
             modified_nodes = parallel_do_embedding(self.embed, embed_keys, nodes)
             self.store.update_nodes(modified_nodes)
             similarities = similarity_func(query_embedding, nodes, topk=topk, **kwargs)
-        elif mode == "text":
+        elif mode == 'text':
             similarities = similarity_func(query, nodes, topk=topk, **kwargs)
         else:
-            raise NotImplementedError(f"Mode {mode} is not supported.")
+            raise NotImplementedError(f'Mode {mode} is not supported.')
 
         if not isinstance(similarities, dict):
             results = self._filter_nodes_by_score(similarities, topk, similarity_cut_off, descend)
@@ -68,7 +68,7 @@ class DefaultIndex(IndexBase):
                 sim_cut_off = similarity_cut_off if isinstance(similarity_cut_off, float) else similarity_cut_off[key]
                 results.extend(self._filter_nodes_by_score(sims, topk, sim_cut_off, descend))
         results = list(set(results))
-        LOG.debug(f"Retrieving query `{query}` and get results: {results}")
+        LOG.debug(f'Retrieving query `{query}` and get results: {results}')
         return results
 
     def _filter_nodes_by_score(self, similarities: List[Tuple[DocNode, float]], topk: int,

@@ -18,7 +18,7 @@ class DirectoryReader:
         file_readers = self._local_readers.copy()
         for key, func in self._global_readers.items():
             if key not in file_readers: file_readers[key] = func
-        LOG.info(f"DirectoryReader loads data, input files: {input_files}")
+        LOG.info(f'DirectoryReader loads data, input files: {input_files}')
         reader = SimpleDirectoryReader(input_files=input_files, file_extractor=file_readers, metadatas=metadatas)
         nodes: List[DocNode] = []
         image_nodes: List[ImageDocNode] = []
@@ -30,7 +30,7 @@ class DirectoryReader:
                 image_nodes.append(doc)
         if not nodes and not image_nodes:
             LOG.warning(
-                f"No nodes load from path {input_files}, please check your data path."
+                f'No nodes load from path {input_files}, please check your data path.'
             )
-        LOG.info("DirectoryReader loads data done!")
+        LOG.info('DirectoryReader loads data done!')
         return (nodes, image_nodes) if split_image_nodes else nodes

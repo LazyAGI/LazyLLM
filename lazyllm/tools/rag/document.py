@@ -39,12 +39,12 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
                      doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
-                     display_name: Optional[str] = "", description: Optional[str] = "algorithm description"):
+                     display_name: Optional[str] = '', description: Optional[str] = 'algorithm description'):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
             if dataset_path and not os.path.exists(dataset_path):
-                defatult_path = os.path.join(lazyllm.config["data_path"], dataset_path)
+                defatult_path = os.path.join(lazyllm.config['data_path'], dataset_path)
                 if os.path.exists(defatult_path):
                     dataset_path = defatult_path
             elif dataset_path:
@@ -123,11 +123,11 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             return super().__new__(cls)
 
     def __init__(self, dataset_path: Optional[str] = None, embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
-                 create_ui: bool = False, manager: Union[bool, str, "Document._Manager", DocumentProcessor] = False,
+                 create_ui: bool = False, manager: Union[bool, str, 'Document._Manager', DocumentProcessor] = False,
                  server: Union[bool, int] = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
-                 store_conf: Optional[Dict] = None, display_name: Optional[str] = "",
-                 description: Optional[str] = "algorithm description"):
+                 store_conf: Optional[Dict] = None, display_name: Optional[str] = '',
+                 description: Optional[str] = 'algorithm description'):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
@@ -191,8 +191,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         def format_schema_to_dict(schema: DocInfoSchema):
             if schema is None:
                 return None, None
-            desc_dict = {ele["key"]: ele["desc"] for ele in schema}
-            type_dict = {ele["key"]: ele["type"] for ele in schema}
+            desc_dict = {ele['key']: ele['desc'] for ele in schema}
+            type_dict = {ele['key']: ele['type'] for ele in schema}
             return desc_dict, type_dict
 
         def compare_schema(old_schema: DocInfoSchema, new_schema: DocInfoSchema):
@@ -206,12 +206,12 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         pre_doc_table_schema = None
         if self._doc_to_db_processor:
             pre_doc_table_schema = self._doc_to_db_processor.doc_info_schema
-        assert pre_doc_table_schema or schma, "doc_table_schma must be given"
+        assert pre_doc_table_schema or schma, 'doc_table_schma must be given'
 
         schema_equal = compare_schema(pre_doc_table_schema, schma)
         assert (
             schema_equal or force_refresh is True
-        ), "When changing doc_table_schema, force_refresh should be set to True"
+        ), 'When changing doc_table_schema, force_refresh should be set to True'
 
         # 2. Init handler if needed
         need_init_processor = False
@@ -226,12 +226,12 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
         # 3. Reset doc_table_schema if needed
         if schma and not schema_equal:
-            # This api call will clear existing db table "lazyllm_doc_elements"
+            # This api call will clear existing db table 'lazyllm_doc_elements'
             self._doc_to_db_processor._reset_doc_info_schema(schma)
 
     def get_sql_manager(self):
         if self._doc_to_db_processor is None:
-            raise ValueError("Please call connect_sql_manager to init handler first")
+            raise ValueError('Please call connect_sql_manager to init handler first')
         return self._doc_to_db_processor.sql_manager
 
     def extract_db_schema(
@@ -240,18 +240,18 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         file_paths = self._list_all_files_in_dataset()
         schema = extract_db_schema_from_files(file_paths, llm)
         if print_schema:
-            lazyllm.LOG.info(f"Extracted Schema:\n\t{schema}\n")
+            lazyllm.LOG.info(f'Extracted Schema:\n\t{schema}\n')
         return schema
 
     def update_database(self, llm: Union[OnlineChatModule, TrainableModule]):
-        assert self._doc_to_db_processor, "Please call connect_db to init handler first"
+        assert self._doc_to_db_processor, 'Please call connect_db to init handler first'
         file_paths = self._list_all_files_in_dataset()
         info_dicts = self._doc_to_db_processor.extract_info_from_docs(llm, file_paths)
         self._doc_to_db_processor.export_info_to_db(info_dicts)
 
     @deprecated('Document(dataset_path, manager=doc.manager, name=xx, doc_fields=xx, store_conf=xx)')
     def create_kb_group(self, name: str, doc_fields: Optional[Dict[str, DocField]] = None,
-                        store_conf: Optional[Dict] = None) -> "Document":
+                        store_conf: Optional[Dict] = None) -> 'Document':
         self._manager.add_kb_group(name=name, doc_fields=doc_fields, store_conf=store_conf)
         doc = copy.copy(self)
         doc._curr_group = name
@@ -267,15 +267,17 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     @property
     def manager(self): return self._manager._processor or self._manager
 
-    def activate_group(self, group_name: str, embed_keys: Optional[Union[str, List[str]]] = None):
+    def activate_group(self, group_name: str, embed_keys: Optional[Union[str, List[str]]] = None,
+                       enable_embed: bool = True):
+        if embed_keys and not enable_embed:
+            raise ValueError('`enable_embed` must be set to True when `embed_keys` is provided')
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
-        elif embed_keys is None: embed_keys = []
-        self._impl.activate_group(group_name, embed_keys)
+        self._impl.activate_group(group_name, embed_keys, enable_embed)
 
-    def activate_groups(self, groups: Union[str, List[str]]):
+    def activate_groups(self, groups: Union[str, List[str]], **kwargs):
         if isinstance(groups, str): groups = [groups]
         for group in groups:
-            self.activate_group(group)
+            self.activate_group(group, **kwargs)
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
@@ -332,7 +334,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))
 
     def __repr__(self):
-        return lazyllm.make_repr("Module", "Document", manager=hasattr(self._manager, '_manager'),
+        return lazyllm.make_repr('Module', 'Document', manager=hasattr(self._manager, '_manager'),
                                  server=isinstance(self._manager._kbs, ServerModule))
 
 class UrlDocument(ModuleBase):
@@ -344,7 +346,7 @@ class UrlDocument(ModuleBase):
 
     def _forward(self, func_name: str, *args, **kwargs):
         args = (self._curr_group, func_name, *args)
-        return self._manager._call("__call__", *args, **kwargs)
+        return self._manager._call('__call__', *args, **kwargs)
 
     def find(self, target) -> Callable:
         return functools.partial(self._forward, 'find', group=target)

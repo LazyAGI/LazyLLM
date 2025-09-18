@@ -13,18 +13,18 @@ class TencentSearch(ModuleBase):
 
         self.cred = credential.Credential(secret_id, secret_key)
         httpProfile = HttpProfile()
-        httpProfile.endpoint = "tms.tencentcloudapi.com"
+        httpProfile.endpoint = 'tms.tencentcloudapi.com'
         clientProfile = ClientProfile()
         clientProfile.httpProfile = httpProfile
-        self.headers = {"X-TC-Action": "SearchPro"}
+        self.headers = {'X-TC-Action': 'SearchPro'}
         self.common_client = CommonClient(
-            "tms", '2020-12-29', self.cred, "", profile=clientProfile)
+            'tms', '2020-12-29', self.cred, '', profile=clientProfile)
 
     def forward(self, query: str):
         try:
-            res_dict = self.common_client.call_json("SearchPro", {'Query': query, 'Mode': 2}, headers=self.headers)
-            res = package(res_dict["Response"]["Pages"])
+            res_dict = self.common_client.call_json('SearchPro', {'Query': query, 'Mode': 2}, headers=self.headers)
+            res = package(res_dict['Response']['Pages'])
         except Exception as err:
-            lazyllm.LOG.error("Request Tencent Search meets error: ", err)
+            lazyllm.LOG.error('Request Tencent Search meets error: ', err)
             res = package()
         return res
