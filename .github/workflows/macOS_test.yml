@@ -212,7 +212,7 @@ jobs:
             PREVIOUS_SHA=$CURRENT_SHA
           fi
           echo "PREVIOUS_SHA=$PREVIOUS_SHA" >> $GITHUB_ENV
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request_target" ]; then
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
             echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
           fi
@@ -226,7 +226,7 @@ jobs:
           enableCrossOsArchive: true
 
       - name: Restore Cache (Pull Request)
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request_target' }}
         uses: lwj-st/cache/restore@v4.2.4
         with:
           path: github_cache/

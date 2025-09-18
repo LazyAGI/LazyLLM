@@ -194,6 +194,7 @@ jobs:
           git submodule update LazyLLM-Env
 
       - name: Create Output and Cache Directories
+        shell: bash
         run: |
           mkdir -p github_cache
           mkdir -p github_cache/output
@@ -202,6 +203,7 @@ jobs:
           echo "LAZYLLM_CACHE_DIR=github_cache/paid_llm_cache" >> $GITHUB_ENV
       
       - name: Set Cache Mode Based on Run Context
+        shell: bash
         run: |
           echo "GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT"
           echo "LAZYLLM_CACHE_ONLINE_MODULE=True" >> $GITHUB_ENV
@@ -209,6 +211,7 @@ jobs:
           echo "LAZYLLM_CACHE_MODE=RO" >> $GITHUB_ENV
       
       - name: Show ENV
+        shell: bash
         run: |
           echo "LAZYLLM_TEMP_DIR: $LAZYLLM_TEMP_DIR"
           echo "LAZYLLM_CACHE_DIR: $LAZYLLM_CACHE_DIR"
@@ -217,6 +220,7 @@ jobs:
           echo "LAZYLLM_CACHE_ONLINE_MODULE: $LAZYLLM_CACHE_ONLINE_MODULE"
       
       - name: Get SHAs
+        shell: bash
         run: |
           CURRENT_SHA=$(git rev-parse HEAD)
           if git rev-parse HEAD^ >/dev/null 2>&1; then
@@ -225,7 +229,7 @@ jobs:
             PREVIOUS_SHA=$CURRENT_SHA
           fi
           echo "PREVIOUS_SHA=$PREVIOUS_SHA" >> $GITHUB_ENV
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+          if [ "$GITHUB_EVENT_NAME" = "pull_request_target" ]; then
             BASE_SHA="${{ github.event.pull_request.base.sha }}"
             echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
           fi
@@ -239,7 +243,7 @@ jobs:
           enableCrossOsArchive: true
 
       - name: Restore Cache (Pull Request)
-        if: ${{ github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request_target' }}
         uses: lwj-st/cache/restore@v4.2.4
         with:
           path: github_cache/
