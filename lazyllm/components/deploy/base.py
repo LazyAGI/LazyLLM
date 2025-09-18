@@ -10,6 +10,27 @@ lazyllm.config.add('openai_api', bool, False, 'OPENAI_API')
 
 
 class LazyLLMDeployBase(ComponentBase):
+    """This class is a subclass of ``ComponentBase`` that provides basic functionality for LazyLLM deployment. It supports encoding conversion for various media types and provides configuration options for result extraction and streaming processing.
+
+Args:
+    launcher (LauncherBase): Launcher instance for deployment, defaults to remote launcher (``launchers.remote()``).
+
+Notes: 
+    - Need to implement specific deployment logic when inheriting this class
+    - Can customize result extraction logic by overriding the extract_result method
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.components.deploy.base import LazyLLMDeployBase
+    >>> class MyDeployer(LazyLLMDeployBase):
+    ...     def __call__(self, inputs):
+    ...         return processed_result
+            def extract_result(output, inputs):
+    ...         return output.json()['result']
+    >>> deployer = MyDeployer()
+    >>> result = deployer.extract_result(raw_output, input_data)
+    """
     keys_name_handle = None
     message_format = None
     default_headers = {'Content-Type': 'application/json'}
@@ -20,6 +41,16 @@ class LazyLLMDeployBase(ComponentBase):
 
     @staticmethod
     def extract_result(output, inputs):
+        """Extract final result from model output. The default implementation returns raw output directly, subclasses can override this method to implement custom result extraction logic.
+
+Args:
+    output: Raw model output
+    inputs: Original input data, can be used for post-processing
+
+**Returns:**
+
+- Processed final result
+"""
         return output
 
     def __init__(self, *, launcher=launchers.remote()):  # noqa B008
@@ -27,6 +58,25 @@ class LazyLLMDeployBase(ComponentBase):
 
 
 class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
+    """DummyDeploy(launcher=launchers.remote(sync=False), *, stream=False, **kw)
+
+A mock deployment class for testing purposes. It extends both `LazyLLMDeployBase` and `flows.Pipeline`,
+simulating a simple pipeline-style deployable service with optional streaming support.
+
+This class is primarily intended for internal testing and demonstration. It receives inputs in the format defined
+by `message_format`, and returns a dummy response or a streaming response depending on the `stream` flag.
+
+Args:
+    launcher: Deployment launcher instance, defaulting to `launchers.remote(sync=False)`.
+    stream (bool): Whether to simulate streaming output.
+    kw: Additional keyword arguments passed to the superclass.
+
+Call Arguments:
+    keys_name_handle (dict): Mapping of input keys for request formatting. 
+
+    message_format (dict): Default request template including input and generation parameters. 
+
+"""
     keys_name_handle = {'inputs': 'inputs'}
     message_format = {
         'inputs': '',

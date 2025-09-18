@@ -9,16 +9,39 @@ from .similarity import registered_similarities
 # ---------------------------------------------------------------------------- #
 
 class DefaultIndex(IndexBase):
+    """Default index implementation responsible for querying, updating, and removing document nodes in the underlying store based on embedding or text similarity.  
+Supports multiple similarity metrics and performs embedding computation and node updates when required.  
+
+Args:
+    embed (Dict[str, Callable]): Mapping of embedding names to functions that generate vector representations from strings.
+    store (StoreBase): Underlying storage to persist and retrieve `DocNode` objects.
+    **kwargs: Reserved for future extension.
+
+**Returns:**
+
+- DefaultIndex: The default index instance.
+"""
     def __init__(self, embed: Dict[str, Callable], store, **kwargs):
         self.embed = embed
         self.store = store
 
     @override
     def update(self, nodes: List[DocNode]) -> None:
+        """Update the index with the given list of document nodes. This is a placeholder implementation and should be provided/extended in concrete usage.
+
+Args:
+    nodes (List[DocNode]): Document nodes to add or update in the index.
+"""
         pass
 
     @override
     def remove(self, uids: List[str], group_name: Optional[str] = None) -> None:
+        """Remove nodes with specified UIDs from the index. Optionally scoped to a group. This is a no-op placeholder and should be implemented in concrete usage.
+
+Args:
+    uids (List[str]): List of unique IDs of nodes to remove.
+    group_name (Optional[str]): Optional group name to scope the removal.
+"""
         pass
 
     @override
@@ -33,6 +56,22 @@ class DefaultIndex(IndexBase):
         filters: Optional[Dict[str, List]] = None,
         **kwargs,
     ) -> List[DocNode]:
+        """Perform a query against the index, supporting both embedding-based and text-based similarity modes. Filters and ranks nodes according to similarity functions and cutoffs.
+
+Args:
+    query (str): The raw query string.
+    group_name (str): The group name from which to retrieve nodes.
+    similarity_name (str): Name of the similarity metric to use; must be registered in registered_similarities.
+    similarity_cut_off (Union[float, Dict[str, float]]): Similarity threshold(s) used to filter results; can be a single float or a mapping per embedding.
+    topk (int): Maximum number of candidates to keep per similarity channel before final filtering.
+    embed_keys (Optional[List[str]]): Specific embedding keys to use; defaults to all available if not provided.
+    filters (Optional[Dict[str, List]]): Additional pre-filters applied to nodes before similarity computation.
+    **kwargs: Extra keyword arguments forwarded to the similarity function.
+
+**Returns**
+
+- list: List[DocNode]: Deduplicated list of document nodes passing similarity and cutoff criteria.
+"""
         if similarity_name not in registered_similarities:
             raise ValueError(
                 f'{similarity_name} not registered, please check your input. '

@@ -35,6 +35,19 @@ class TablesInfo(pydantic.BaseModel):
     tables: list[TableInfo]
 
 class SqlManager(DBManager):
+    """SqlManager is a specialized tool for interacting with databases.
+It provides methods for creating tables, executing queries, and performing updates on databases.
+
+Args:
+    db_type (str): Database type, supports: postgresql, mysql, mssql, sqlite, mysql+pymysql
+    user (str): Database username
+    password (str): Database password
+    host (str): Database host address
+    port (int): Database port number
+    db_name (str): Database name
+    options_str (str, optional): Connection options string, defaults to None
+    tables_info_dict (Dict, optional): Table structure information dictionary for initializing table structure, defaults to None
+"""
     DB_TYPE_SUPPORTED = set(['postgresql', 'mysql', 'mssql', 'sqlite', 'mysql+pymysql'])
     DB_DRIVER_MAP = {'mysql': 'pymysql'}
     PYTYPE_TO_SQL_MAP = {
@@ -129,6 +142,8 @@ class SqlManager(DBManager):
 
     @contextmanager
     def get_session(self):
+        """This is a context manager that creates and returns a database session, yields it for use, and then automatically commits or rolls back changes and closes the session when done.
+"""
         _Session = sessionmaker(bind=self.engine)
         session = _Session()
         try:
@@ -141,6 +156,14 @@ class SqlManager(DBManager):
             session.close()
 
     def check_connection(self) -> DBResult:
+        """Check database connection status.
+
+Tests whether the connection to the database is successfully established.
+
+**Returns:**
+
+- DBResult: DBResult.status True if the connection is successful, False if it fails. DBResult.detail contains failure information.
+"""
         try:
             with self.engine.connect() as _:
                 return DBResult()
@@ -154,6 +177,11 @@ class SqlManager(DBManager):
         return self._desc
 
     def set_desc(self, tables_desc_dict: dict = {}):  # noqa B006
+        """When using SqlManager with LLM to query table entries in natural language, set descriptions for better results, especially when table names, column names, and values are not self-explanatory.
+
+Args:
+    tables_desc_dict (dict): descriptive comment for tables
+"""
         self._desc = ''
         if not isinstance(tables_desc_dict, dict):
             raise ValueError(f'desc type {type(tables_desc_dict)} not supported')
@@ -200,20 +228,48 @@ class SqlManager(DBManager):
         self._metadata.reflect(bind=self.engine, only=only)
 
     def get_all_tables(self) -> list:
+        """Get list of all tables in the database.
+
+Refreshes metadata and returns all table names in the current database.
+
+**Returns:**
+
+- List[str]: List of all table names in the database
+"""
         self._refresh_metadata()
         return list(self._metadata.tables.keys())
 
     def get_table_orm_class(self, table_name):
+        """Get corresponding ORM class by table name.
+
+Reflects and gets SQLAlchemy automapped ORM class through table name.
+
+Args:
+    table_name (str): Table name to retrieve
+
+**Returns:**
+
+- sqlalchemy.ext.automap.Class: Corresponding ORM class, returns None if table doesn't exist
+"""
         self._refresh_metadata(only=[table_name])
         Base = automap_base(metadata=self._metadata)
         Base.prepare()
         return getattr(Base.classes, table_name, None)
 
     def execute_commit(self, statement: str):
+        """Execute SQL commit statements.
+
+Executes DDL or DML statements and automatically commits transactions. Suitable for CREATE, ALTER, INSERT, UPDATE, DELETE operations.
+
+Args:
+    statement (str): SQL statement to execute
+"""
         with self.get_session() as session:
             session.execute(sqlalchemy.text(statement))
 
     def execute_query(self, statement: str) -> str:
+        """Execute the SQL query script and return the result as a JSON string.
+"""
         statement = re.sub(r'/\*.*?\*/', '', statement, flags=re.DOTALL).strip()
         create_table_pattern = r'.*\s*create\s+table\s+.*'
         drop_table_pattern = r'.*\s*drop\s+table\s+.*'
@@ -252,6 +308,11 @@ class SqlManager(DBManager):
         return DBResult()
 
     def create_table(self, table: Union[str, Type[DeclarativeBase], DeclarativeMeta]) -> DBResult:
+        """Create a table
+
+Args:
+    table (str/Type[DeclarativeBase]/DeclarativeMeta): table schema。Supports three types of parameters: SQL statements with type str, ORM classes that inherit from DeclarativeBase or declarative_base().
+"""
         status = DBStatus.SUCCESS
         detail = 'Success'
         if isinstance(table, str):
@@ -265,6 +326,11 @@ class SqlManager(DBManager):
         return DBResult(status=status, detail=detail)
 
     def drop_table(self, table: Union[str, Type[DeclarativeBase], DeclarativeMeta]) -> DBResult:
+        """Delete a table
+
+Args:
+    table (str/Type[DeclarativeBase]/DeclarativeMeta): table schema。Supports three types of parameters: Table name with type str, ORM classes that inherit from DeclarativeBase or declarative_base().
+"""
         metadata = self._metadata
         if isinstance(table, str):
             tablename = table
@@ -277,6 +343,12 @@ class SqlManager(DBManager):
         return DBResult()
 
     def insert_values(self, table_name: str, vals: List[dict]) -> DBResult:
+        """Bulk insert data
+
+Args:
+    table_name (str): Table name
+    vals (List[dict]): data to be inserted, format as [{"col_name1": v01, "col_name2": v02, ...}, {"col_name1": v11, "col_name2": v12, ...}, ...]
+"""
         # Refresh metadata in case of tables created by other api
         TableCls = self.get_table_orm_class(table_name)
         if TableCls is None:

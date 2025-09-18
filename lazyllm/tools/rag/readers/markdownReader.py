@@ -7,6 +7,13 @@ from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
 
 class MarkdownReader(LazyLLMReaderBase):
+    """Module for reading and parsing Markdown files. Supports removing hyperlinks and images, and splits Markdown into text segments by headers, returning document nodes.
+
+Args:
+    remove_hyperlinks (bool): Whether to remove hyperlinks, default is True.
+    remove_images (bool): Whether to remove image tags, default is True.
+    return_trace (bool): Whether to record processing trace, default is True.
+"""
     def __init__(self, remove_hyperlinks: bool = True, remove_images: bool = True, return_trace: bool = True) -> None:
         super().__init__(return_trace=return_trace)
         self._remove_hyperlinks = remove_hyperlinks
@@ -37,10 +44,28 @@ class MarkdownReader(LazyLLMReaderBase):
                 for key, value in markdown_tups]
 
     def remove_images(self, content: str) -> str:
+        """Remove custom image tags of the form ![[...]] from the content.
+
+Args:
+    content (str): Input markdown content.
+
+**Returns:**
+
+- str: Content with image tags removed.
+"""
         pattern = r'!{1}\[\[(.*)\]\]'
         return re.sub(pattern, '', content)
 
     def remove_hyperlinks(self, content: str) -> str:
+        """Remove markdown hyperlinks, converting [text](url) to just text.
+
+Args:
+    content (str): Input markdown content.
+
+**Returns:**
+
+- str: Content with hyperlinks removed, only link text retained.
+"""
         pattern = r'\[(.*)\]\((.*)\)'
         return re.sub(pattern, r'\1', content)
 

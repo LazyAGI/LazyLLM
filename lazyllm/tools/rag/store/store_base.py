@@ -36,6 +36,7 @@ IMAGE_PATTERN = re.compile(r'!\[([^\]]*)\]\(([^)]+)\)')
 
 
 class SegmentType(IntFlag):
+    """An enumeration."""
     TEXT = auto()
     IMAGE = auto()
     HYBRID = auto()
@@ -63,12 +64,16 @@ class Segment(BaseModel):
 
 
 class StoreCapability(IntFlag):
+    """An enumeration."""
     SEGMENT = auto()
     VECTOR = auto()
     ALL = SEGMENT | VECTOR
 
 
 class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
+    """Base class for vector storage, defining the common interface specification. 
+All concrete storage implementations (e.g., ChromaDB, Milvus) must inherit and implement this class.
+"""
     capability: StoreCapability
     need_embedding: bool = True
     supports_index_registration: bool = False
@@ -79,18 +84,44 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
 
     @abstractmethod
     def connect(self, *args, **kwargs):
+        """Establish connection to the storage backend.
+
+Args:
+    *args: Variable positional arguments.
+    **kwargs: Variable keyword arguments.
+"""
         raise NotImplementedError
 
     @abstractmethod
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
+        """Insert or update data in a collection.
+
+Args:
+    collection_name (str): The collection name.
+    data (List[dict]): List of records to upsert.
+"""
         raise NotImplementedError
 
     @abstractmethod
     def delete(self, collection_name: str, criteria: dict, **kwargs) -> bool:
+        """Delete data from a collection.
+
+Args:
+    collection_name (str): The collection name.
+    criteria (dict): Conditions for deletion.
+    **kwargs: Additional parameters.
+"""
         raise NotImplementedError
 
     @abstractmethod
     def get(self, collection_name: str, criteria: dict, **kwargs) -> List[dict]:
+        """Retrieve data from a collection by criteria.
+
+Args:
+    collection_name (str): The collection name.
+    criteria (dict): Filter conditions.
+    **kwargs: Additional parameters.
+"""
         raise NotImplementedError
 
     @abstractmethod
@@ -98,4 +129,15 @@ class LazyLLMStoreBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
                query_embedding: Optional[Union[dict, List[float]]] = None, topk: int = 10,
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                embed_key: Optional[str] = None, **kwargs) -> List[dict]:
+        """Perform a search operation, supporting both text and vector queries.
+
+Args:
+    collection_name (str): The collection name.
+    query (Optional[str]): Text query string.
+    query_embedding (Optional[Union[dict, List[float]]]): Query vector.
+    topk (int): Number of results to return. Defaults to 10.
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): Metadata filter conditions.
+    embed_key (Optional[str]): Embedding key.
+    **kwargs: Additional parameters.
+"""
         raise NotImplementedError

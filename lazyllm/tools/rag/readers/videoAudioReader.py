@@ -6,6 +6,12 @@ from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
 
 class VideoAudioReader(LazyLLMReaderBase):
+    """Reader for extracting speech content from video or audio files using OpenAI's Whisper model for transcription.
+
+Args:
+    model_version (str): Whisper model version (e.g., "base", "small", "medium", "large"). Default is "base".
+    return_trace (bool): Whether to return the processing trace. Default is True.
+"""
     def __init__(self, model_version: str = 'base', return_trace: bool = True) -> None:
         super().__init__(return_trace=return_trace)
         self._model_version = model_version

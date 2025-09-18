@@ -87,6 +87,40 @@ class _OCR(object):
 
 
 class OCRDeploy(LazyLLMDeployBase):
+    """OCRDeploy is a subclass of [LazyLLMDeployBase][lazyllm.components.LazyLLMDeployBase] that provides deployment for OCR (Optical Character Recognition) models.
+This class is designed to deploy OCR models with additional configurations such as logging, trust for remote code, and port customization.
+
+Attributes:
+
+    keys_name_handle: A dictionary mapping input keys to their corresponding handler keys. For example:
+        - "inputs": Handles general inputs.
+        - "ocr_files": Also mapped to "inputs".
+    message_format: A dictionary specifying the expected message format. For example:
+        - {"inputs": "/path/to/pdf"} indicates that the model expects a PDF file path as input.
+    default_headers: A dictionary specifying default headers for API requests. Defaults to:
+        - {"Content-Type": "application/json"}
+
+Args:
+    launcher: A launcher instance for deploying the model. Defaults to `None`.
+    log_path: A string specifying the path where logs should be saved. Defaults to `None`.
+    trust_remote_code: A boolean indicating whether to trust remote code execution. Defaults to `True`.
+    port: An integer specifying the port for the deployment server. Defaults to `None`.
+
+Returns:
+    OCRDeploy instance, can be started by calling
+
+
+Examples:
+    >>> from lazyllm.components import OCRDeploy
+    >>> from lazyllm import launchers
+    >>> # 创建一个 OCRDeploy 实例
+    >>> deployer = OCRDeploy(launcher=launchers.local(), log_path='./logs', port=8080)
+    >>> # 使用微调的 OCR 模型部署服务器
+    >>> server = deployer(finetuned_model='ocr-model')
+    >>> # 打印部署服务器信息
+    >>> print(server)
+    ... <RelayServer instance ready to handle OCR requests>
+    """
     keys_name_handle = {
         'inputs': 'inputs',
         'ocr_files': 'inputs',

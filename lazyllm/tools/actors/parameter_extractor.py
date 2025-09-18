@@ -43,6 +43,34 @@ Each parameter has a name, type, description, and a 'require' flag.
 '''
 
 class ParameterExtractor(ModuleBase):
+    """Parameter Extraction Module.
+
+This module extracts structured parameters from a given text using a language model, based on the parameter names, types, descriptions, and whether they are required.
+
+`__init__(self, base_model, param, type, description, require)`
+Initializes the parameter extractor with the parameter specification and base model.
+
+Args:
+    base_model (Union[str, TrainableModule, OnlineChatModuleBase]): A model path or model instance used for extraction.
+    param (list[str]): List of parameter names to extract.
+    type (list[str]): List of parameter types (e.g., "int", "str", "bool").
+    description (list[str]): List of descriptions for each parameter.
+    require (list[bool]): List indicating whether each parameter is required.
+
+
+Examples:
+    >>> from lazyllm.components import ParameterExtractor
+    >>> extractor = ParameterExtractor(
+    ...     base_model="deepseek-chat",
+    ...     param=["name", "age"],
+    ...     type=["str", "int"],
+    ...     description=["The user's name", "The user's age"],
+    ...     require=[True, True]
+    ... )
+    >>> result = extractor("My name is Alice and I am 25 years old.")
+    >>> print(result)
+    ... ['Alice', 25]
+    """
     type_map = {
         int.__name__: int,
         str.__name__: str,
@@ -72,6 +100,21 @@ class ParameterExtractor(ModuleBase):
             self._m = base_model.share(self._prompt)
 
     def choose_prompt(self, prompt: str):
+        """
+Selects the appropriate prompt template based on the content of the parameter descriptions.
+
+This method checks whether the input parameter description string contains any Chinese characters:
+
+- If Chinese characters are present, returns the Chinese prompt template `ch_parameter_extractor_prompt`.
+- Otherwise, returns the English prompt template `en_parameter_extractor_prompt`.
+
+Args:
+    prompt (str): Parameter description string used to determine whether to use the Chinese or English prompt template.
+
+**Returns:**
+
+- str: Prompt template in the corresponding language.
+"""
         # Use chinese prompt if intent elements have chinese character, otherwise use english version
         for ele in prompt:
             # chinese unicode range
@@ -80,6 +123,13 @@ class ParameterExtractor(ModuleBase):
         return en_parameter_extractor_prompt
 
     def check_int_value(self, res: dict):
+        """Check and convert integer values.
+
+Ensure integer parameter values are correctly converted to int type.
+
+Args:
+    res (dict): Dictionary containing parameter values
+"""
         for param_name in self._param_dict:
             if self._param_dict[param_name] == int.__name__ and param_name in res:
                 if not isinstance(res[param_name], int):

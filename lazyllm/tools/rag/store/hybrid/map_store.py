@@ -14,6 +14,19 @@ from ...global_metadata import RAG_DOC_ID, RAG_KB_ID
 
 
 class MapStore(LazyLLMStoreBase):
+    """SQLite-based Map storage class, inherits from LazyLLMStoreBase.
+
+Provides vector storage functionality based on SQLite database, supports data persistence, multi-collection management and complex queries.
+
+Args:
+    uri (Optional[str]): SQLite database file path, defaults to None (in-memory mode)
+    **kwargs: Other keyword arguments
+
+Attributes:
+    capability: Storage capability flag, supports all operations
+    need_embedding: Whether embedding is needed
+    supports_index_registration: Whether index registration is supported
+"""
     capability = StoreCapability.ALL
     need_embedding = True
     supports_index_registration = True
@@ -107,6 +120,17 @@ class MapStore(LazyLLMStoreBase):
 
     @override
     def connect(self, collections: Optional[List[str]] = None, **kwargs):
+        """Connect to SQLite database and load data.
+
+Initialize storage connection, create necessary database tables and indexes, load existing data into memory.
+
+Args:
+    collections (Optional[List[str]]): List of collection names to connect
+    **kwargs: Other connection parameters
+
+Returns:
+    None
+"""
         self._uid2data: Dict[str, dict] = {}
         self._collection2uids: Dict[str, Set[str]] = defaultdict(set)
         self._col_doc_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
@@ -127,6 +151,17 @@ class MapStore(LazyLLMStoreBase):
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> None:
+        """Insert or update data.
+
+Insert data into specified collection, update if exists, supports batch operations.
+
+Args:
+    collection_name (str): Collection name
+    data (List[dict]): Data list to insert
+
+Returns:
+    bool: Whether operation succeeded
+"""
         try:
             for item in data:
                 uid = item.get('uid')
@@ -146,6 +181,18 @@ class MapStore(LazyLLMStoreBase):
 
     @override
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
+        """Delete data.
+
+Delete data from specified collection based on criteria, supports batch deletion.
+
+Args:
+    collection_name (str): Collection name
+    criteria (Optional[dict]): Delete criteria
+    **kwargs: Other delete parameters
+
+Returns:
+    bool: Whether operation succeeded
+"""
         try:
             need_delete = self._get_uids_by_criteria(collection_name, criteria)
             if not need_delete:
@@ -175,6 +222,18 @@ class MapStore(LazyLLMStoreBase):
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
+        """Query data.
+
+Query data from specified collection based on criteria, supports multiple query conditions.
+
+Args:
+    collection_name (str): Collection name
+    criteria (Optional[dict]): Query criteria
+    **kwargs: Other query parameters
+
+Returns:
+    List[dict]: Query result data list
+"""
         uids = self._get_uids_by_criteria(collection_name, criteria)
         data = []
         for uid in uids:

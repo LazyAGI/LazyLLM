@@ -8,6 +8,37 @@ from ..doc_node import DocNode
 from lazyllm.module import ModuleBase
 
 class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
+    """
+Base document reader class that provides fundamental interfaces for document loading. Inherits from ModuleBase and uses LazyLLMRegisterMetaClass as metaclass.
+
+Args:
+    *args: Positional arguments, reserved for parent or subclass use.
+    return_trace (bool): Whether to return processing trace information. Defaults to True.
+    **kwargs: Keyword arguments, reserved for parent or subclass use.
+
+
+Examples:
+    
+    from lazyllm.tools.rag.readers.readerBase import LazyLLMReaderBase
+    from lazyllm.tools.rag.doc_node import DocNode
+    from typing import Iterable
+    
+    class CustomReader(LazyLLMReaderBase):
+        def _lazy_load_data(self, file_paths: list, **kwargs) -> Iterable[DocNode]:
+            for file_path in file_paths:
+                # Process each file and yield DocNode
+                content = self._read_file(file_path)
+                yield DocNode(
+                    text=content,
+                    metadata={"source": file_path}
+                )
+    
+    # Create reader instance
+    reader = CustomReader(return_trace=True)
+    
+    # Load documents
+    documents = reader.forward(file_paths=["doc1.txt", "doc2.txt"])
+    """
     def __init__(self, *args, return_trace: bool = True, **kwargs):
         super().__init__(return_trace=return_trace)
 

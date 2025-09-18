@@ -15,6 +15,12 @@ import uuid
 
 
 class DocManager(lazyllm.ModuleBase):
+    """
+The `DocManager` class manages document lists and related operations, providing APIs for uploading, deleting, and grouping documents.
+
+Args:
+    dlm (DocListManager): Document list manager responsible for handling document-related operations.
+"""
     def __init__(self, dlm: DocListManager) -> None:
         super().__init__()
         # disable path monitoring in case of competition adding/deleting files
@@ -29,10 +35,24 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.get('/', response_model=BaseResponse, summary='docs')
     def document(self):
+        """
+An endpoint to redirect to the default documentation page.
+
+**Returns:**
+
+- RedirectResponse: Redirects to the `/docs` page.
+"""
         return RedirectResponse(url='/docs')
 
     @app.get('/list_kb_groups')
     def list_kb_groups(self):
+        """
+An endpoint to list all document groups.
+
+**Returns:**
+
+- BaseResponse: Contains the data of all document groups.
+"""
         try:
             return BaseResponse(data=self._manager.list_all_kb_group())
         except Exception as e:
@@ -64,6 +84,19 @@ class DocManager(lazyllm.ModuleBase):
     @app.post('/upload_files')
     def upload_files(self, files: List['fastapi.UploadFile'], override: bool = False,  # noqa C901
                      metadatas: Optional[str] = None, user_path: Optional[str] = None):
+        """
+An endpoint to upload files and update their status. Multiple files can be uploaded at once.
+
+Args:
+    files (List[UploadFile]): List of files to upload.
+    override (bool): Whether to overwrite existing files. Default is False.
+    metadatas (Optional[str]): Metadata for the files in JSON format.
+    user_path (Optional[str]): User-defined path for file uploads.
+
+**Returns:**
+
+- BaseResponse: Upload results and file IDs.
+"""
         try:
             if user_path: user_path = user_path.lstrip('/')
             if metadatas:
@@ -115,6 +148,18 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post('/add_files')
     def add_files(self, request: AddFilesRequest):
+        """
+Batch add files.
+
+Args:
+    files (List[UploadFile]): List of uploaded files.
+    group_name (str): Target knowledge base group name; if empty, files are not added to any group.
+    metadatas (Optional[str]): Metadata of the files in JSON format.
+
+**Returns:**
+
+- BaseResponse: Returns a list of unique file IDs corresponding to all input files, including newly added and existing ones. In case of exceptions, returns error codes and exception information.
+"""
         files = request.files
         group_name = request.group_name
         metadatas = request.metadatas
@@ -161,6 +206,18 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.get('/list_files')
     def list_files(self, limit: Optional[int] = None, details: bool = True, alive: Optional[bool] = None):
+        """
+An endpoint to list uploaded files.
+
+Args:
+    limit (Optional[int]): Limit on the number of files returned. Default is None.
+    details (bool): Whether to return detailed information. Default is True.
+    alive (Optional[bool]): If True, only returns non-deleted files. Default is None.
+
+**Returns:**
+
+- BaseResponse: File list data.
+"""
         try:
             status = [DocListManager.Status.success, DocListManager.Status.waiting, DocListManager.Status.working,
                       DocListManager.Status.failed] if alive else DocListManager.Status.all
@@ -170,6 +227,19 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.get('/reparse_files')
     def reparse_files(self, file_ids: List[str], group_name: Optional[str] = None):
+        """Reparse specified files.
+
+Args:
+    file_ids (List[str]): List of file IDs to reparse.
+    group_name (Optional[str]): Group name for the files, defaults to None.
+
+**Returns:**
+
+- BaseResponse: Response object containing:
+    - code (int): Status code, 200 for success.
+    - msg (str): Error message if any.
+    - data: None.
+"""
         try:
             self._manager.update_need_reparsing(file_ids, group_name)
             return BaseResponse()
@@ -179,6 +249,18 @@ class DocManager(lazyllm.ModuleBase):
     @app.get('/list_files_in_group')
     def list_files_in_group(self, group_name: Optional[str] = None,
                             limit: Optional[int] = None, alive: Optional[bool] = None):
+        """
+An endpoint to list files in a specific group.
+
+Args:
+    group_name (Optional[str]): The name of the file group.
+    limit (Optional[int]): Limit on the number of files returned. Default is None.
+    alive (Optional[bool]): Whether to return only non-deleted files.
+
+**Returns:**
+
+- BaseResponse: List of files in the group.
+"""
         try:
             status = [DocListManager.Status.success, DocListManager.Status.waiting, DocListManager.Status.working,
                       DocListManager.Status.failed] if alive else DocListManager.Status.all
@@ -192,6 +274,16 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post('/add_files_to_group_by_id')
     def add_files_to_group_by_id(self, request: FileGroupRequest):
+        """
+An endpoint to add files to a specific group by file IDs.
+
+Args:
+    request (FileGroupRequest): Request containing file IDs and group name.
+
+**Returns:**
+
+- BaseResponse: Operation result.
+"""
         try:
             self._manager.add_files_to_kb_group(request.file_ids, request.group_name)
             return BaseResponse()
@@ -201,6 +293,20 @@ class DocManager(lazyllm.ModuleBase):
     @app.post('/add_files_to_group')
     def add_files_to_group(self, files: List['fastapi.UploadFile'], group_name: str, override: bool = False,
                            metadatas: Optional[str] = None, user_path: Optional[str] = None):
+        """
+An endpoint to upload files and directly add them to a specified group.
+
+Args:
+    files (List[UploadFile]): List of files to upload.
+    group_name (str): Name of the group to add the files to.
+    override (bool): Whether to overwrite existing files. Default is False.
+    metadatas (Optional[str]): Metadata for the files in JSON format.
+    user_path (Optional[str]): User-defined path for file uploads.
+
+**Returns:**
+
+- BaseResponse: Operation result and file IDs.
+"""
         try:
             response = self.upload_files(files, override=override, metadatas=metadatas, user_path=user_path)
             if response.code != 200: return response
@@ -212,6 +318,16 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post('/delete_files')
     def delete_files(self, request: FileGroupRequest):
+        """
+An endpoint to delete specified files.
+
+Args:
+    request (FileGroupRequest): Request containing file IDs and group name.
+
+**Returns:**
+
+- BaseResponse: Deletion operation result.
+"""
         try:
             if request.group_name:
                 return self.delete_files_from_group(request)
@@ -228,6 +344,16 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post('/delete_files_from_group')
     def delete_files_from_group(self, request: FileGroupRequest):
+        """
+An endpoint to delete specified files in a group.
+
+Args:
+    request (FileGroupRequest): Request containing a list of file IDs and the group name.
+
+**Returns:**
+
+- BaseResponse: Deletion operation result.
+"""
         try:
             self._manager.update_kb_group(cond_file_ids=request.file_ids, cond_group=request.group_name,
                                           new_status=DocListManager.Status.deleting)
@@ -241,6 +367,16 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post('/add_metadata')
     def add_metadata(self, add_metadata_request: AddMetadataRequest):
+        """
+An endpoint to add or update metadata for specified documents.
+
+Args:
+    add_metadata_request (AddMetadataRequest): Request containing list of document IDs and key-value metadata.
+
+**Returns:**
+
+- BaseResponse: Operation result information.
+"""
         doc_ids = add_metadata_request.doc_ids
         kv_pair = add_metadata_request.kv_pair
         try:
@@ -287,6 +423,16 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post('/delete_metadata_item')
     def delete_metadata_item(self, del_metadata_request: DeleteMetadataRequest):
+        """
+An endpoint to delete metadata fields or field values from specified documents.
+
+Args:
+    del_metadata_request (DeleteMetadataRequest): Request containing list of document IDs, field names, and/or deletion rules.
+
+**Returns:**
+
+- BaseResponse: Deletion operation result.
+"""
         doc_ids = del_metadata_request.doc_ids
         kv_pair = del_metadata_request.kv_pair
         keys = del_metadata_request.keys
@@ -320,6 +466,16 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post('/update_or_create_metadata_keys')
     def update_or_create_metadata_keys(self, update_metadata_request: UpdateMetadataRequest):
+        """
+An endpoint to update or create metadata fields for specified documents.
+
+Args:
+    update_metadata_request (UpdateMetadataRequest): Request containing a list of document IDs and metadata key-value pairs to update or create.
+
+**Returns:**
+
+- BaseResponse: Deletion operation result.
+"""
         doc_ids = update_metadata_request.doc_ids
         kv_pair = update_metadata_request.kv_pair
         try:
@@ -343,6 +499,16 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post('/reset_metadata')
     def reset_metadata(self, reset_metadata_request: ResetMetadataRequest):
+        """
+An endpoint to reset all metadata fields of specified documents.
+
+Args:
+    reset_metadata_request (ResetMetadataRequest): Request containing a list of document IDs and the new metadata dictionary to apply.
+
+**Returns:**
+
+- BaseResponse: Deletion operation result.
+"""
         doc_ids = reset_metadata_request.doc_ids
         new_meta = reset_metadata_request.new_meta
         try:
@@ -360,6 +526,16 @@ class DocManager(lazyllm.ModuleBase):
 
     @app.post('/query_metadata')
     def query_metadata(self, query_metadata_request: QueryMetadataRequest):
+        """
+An endpoint to query metadata of a specific document.
+
+Args:
+    query_metadata_request (QueryMetadataRequest): Request containing the document ID and an optional metadata field name.
+
+**Returns:**
+
+- BaseResponse: Returns the field value if key is specified and exists; otherwise returns full metadata. If the key does not exist, returns an error.
+"""
         doc_id = query_metadata_request.doc_id
         key = query_metadata_request.key
         try:

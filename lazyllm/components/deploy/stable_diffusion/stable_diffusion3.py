@@ -211,6 +211,25 @@ def call_wan(model, prompt):
 
 
 class StableDiffusionDeploy(LazyLLMDeployBase):
+    """Stable Diffusion Model Deployment Class. This class is used to deploy the stable diffusion model to a specified server for network invocation.
+
+Args:
+    launcher (Optional[LazyLLMLaunchersBase], optional): Launcher instance. Defaults to ``None``
+    log_path (Optional[str], optional): Log file path. Defaults to ``None``
+    trust_remote_code (bool, optional): Whether to trust remote code. Defaults to ``True``
+    port (Optional[int], optional): Service port number. Defaults to ``None``
+
+
+Examples:
+    >>> from lazyllm import launchers, UrlModule
+    >>> from lazyllm.components import StableDiffusionDeploy
+    >>> deployer = StableDiffusionDeploy(launchers.remote())
+    >>> url = deployer(base_model='stable-diffusion-3-medium')
+    >>> model = UrlModule(url=url)
+    >>> res = model('a tiny cat.')
+    >>> print(res)
+    ... <lazyllm-query>{"query": "", "files": ["path/to/sd3/image_xxx.png"]}
+    """
     message_format = None
     keys_name_handle = None
     default_headers = {'Content-Type': 'application/json'}

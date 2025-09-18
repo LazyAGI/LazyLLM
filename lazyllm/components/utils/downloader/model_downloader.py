@@ -31,6 +31,47 @@ class _CaseInsensitiveEnumMeta(EnumMeta):
 
 
 class LLMType(str, Enum, metaclass=_CaseInsensitiveEnumMeta):
+    """LLMType Enum Class
+
+This enum represents different types of large models (e.g., LLM, VLM, TTS).
+Features:
+- Members are strings (inherits from str).
+- Case-insensitive construction and comparison:
+    - When constructing, both member names and values are accepted, case-insensitive.
+    - When comparing, it can be directly compared with strings, case-insensitive.
+    - Member name lookup (LLMType['xxx']) is also case-insensitive.
+
+Available types:
+    - LLM
+    - VLM
+    - SD
+    - TTS
+    - STT
+    - EMBED
+    - REANK
+    - CROSS_MODAL_EMBED
+    - OCR
+
+
+Examples:
+    >>> LLMType("llm")
+    <LLMType.LLM: 'LLM'>
+    
+    >>> LLMType("llm") == LLMType.LLM
+    True
+    
+    >>> LLMType("LLM") == LLMType.LLM
+    True
+    
+    >>> LLMType.LLM == "llm"
+    True
+    
+    >>> LLMType.LLM == "LLM"
+    True
+    
+    >>> LLMType("CROSS_modal_embed")
+    <LLMType.CROSS_MODAL_EMBED: 'CROSS_MODAL_EMBED'>
+    """
     LLM = 'LLM'
     VLM = 'VLM'
     SD = 'SD'
@@ -65,6 +106,40 @@ class LLMType(str, Enum, metaclass=_CaseInsensitiveEnumMeta):
 
 
 class ModelManager():
+    """ModelManager is a utility class in LazyLLM for managing and downloading models, supporting local search and Huggingface/Modelscope downloads.  
+
+Args:
+    model_source (Optional[str]): Model download source, only ``huggingface`` or ``modelscope`` supported.
+        Defaults to LAZYLLM_MODEL_SOURCE, and ``modelscope`` if unset.
+    token (Optional[str]): Access token for private models. Defaults to LAZYLLM_MODEL_SOURCE_TOKEN.
+    model_path (Optional[str]): Colon-separated list of local absolute paths to search before download. Defaults to LAZYLLM_MODEL_PATH.
+    cache_dir (Optional[str]): Directory for downloaded models. Defaults to LAZYLLM_MODEL_CACHE_DIR, or ``~/.lazyllm/model``.
+
+Static Methods:
+    get_model_type(model: str) -> str
+        Returns model type, e.g., ``llm`` or ``chat``; returns ``llm`` if unrecognized.
+    get_model_prompt_keys(model: str) -> dict
+        Returns the prompt key mapping dictionary for the model.
+    validate_model_path(model_path: str) -> bool
+        Checks if directory contains valid model files (extensions: ``.pt``, ``.bin``, ``.safetensors``).
+
+Instance Methods:
+    download(model: Optional[str] = '', call_back: Optional[Callable] = None) -> str | bool
+        Downloads the specified model. Process:
+        1. Search in local directories listed in model_path;
+        2. If not found, search in cache_dir;
+        3. If still not found, download from model_source to cache_dir.
+
+        Args:
+            model (Optional[str]): Target model name, can be abbreviated or full name from source.
+            call_back (Optional[Callable]): Optional callback function for download progress.
+
+
+Examples:
+    >>> from lazyllm.components import ModelManager
+    >>> downloader = ModelManager(model_source='modelscope')
+    >>> downloader.download('chatglm3-6b')
+    """
     def __init__(self, model_source, token=lazyllm.config['model_source_token'],
                  cache_dir=lazyllm.config['model_cache_dir'], model_path=lazyllm.config['model_path']):
         self.model_source = model_source or lazyllm.config['model_source']
@@ -82,6 +157,15 @@ class ModelManager():
     @staticmethod
     @functools.lru_cache
     def get_model_type(model) -> str:
+        """Retrieve the type of a model (e.g., LLM, VLM) based on its name.
+
+Args:
+    model (str): Model name or path, must be a non-empty string.
+
+**Returns:**
+
+- str: Model type, returns ``llm`` if no match is found.
+"""
         assert isinstance(model, str) and len(model) > 0, f'model name should be a non-empty string, get {model}'
         __class__._try_add_mapping(model)
         for name, info in model_name_mapping.items():
@@ -110,6 +194,15 @@ class ModelManager():
     @staticmethod
     @functools.lru_cache
     def get_model_prompt_keys(model) -> dict:
+        """Get the prompt key mapping dictionary for the specified model, used for constructing inputs during inference.  
+
+Args:
+    model (str): Model name or path.
+
+**Returns:**
+
+- dict: The prompt key mapping for the model, or an empty dictionary if none exists
+"""
         model_name = __class__._get_model_name(model)
         __class__._try_add_mapping(model_name)
         if model_name and 'prompt_keys' in model_name_mapping[model_name.lower()]:
@@ -119,6 +212,15 @@ class ModelManager():
 
     @staticmethod
     def validate_model_path(model_path):
+        """Check whether the specified path contains valid model files (.pt, .bin, .safetensors).  
+
+Args:
+    model_path (str): Path to the model directory.
+
+**Returns:**
+
+- bool: True if model files exist in the directory, False otherwise
+"""
         extensions = {'.pt', '.bin', '.safetensors'}
         for _, _, files in os.walk(model_path):
             for file in files:
@@ -143,6 +245,17 @@ class ModelManager():
                 }
 
     def download(self, model='', call_back=None):
+        """Download the specified model by name. If it already exists locally, return the local path.  
+Supports automatic download from Huggingface and Modelscope, creating a symbolic link in the cache directory for unified management.  
+
+Args:
+    model (str, optional): Model name or path, defaults to empty string which means no download.
+    call_back (Optional[Callable], optional): Callback function for download progress, receives current download status.  
+
+**Returns:**
+
+- str | bool: Full local path to the model, or False if the download fails
+"""
         assert isinstance(model, str), 'model name should be a string.'
         if len(model) == 0 or model[0] in (os.sep, '.', '~') or os.path.isabs(model): return model
         if (model_at_path := self._model_exists_at_path(model)): return model_at_path

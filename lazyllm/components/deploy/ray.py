@@ -32,6 +32,23 @@ def reallocate_launcher(launcher):
         raise RuntimeError(erro_info)
 
 class Distributed(LazyLLMDeployBase):
+    """Distributed deployment class, inherits from LazyLLMDeployBase.
+
+Provides distributed model deployment functionality based on Ray framework, supports multi-node cluster deployment.
+
+Args:
+    launcher: Launcher configuration, defaults to remote launcher(ngpus=1)
+    port (int, optional): Service port number, defaults to random port(30000-40000)
+
+Attributes:
+    finetuned_model: Fine-tuned model path
+    base_model: Base model path
+    master_ip: Master node IP address
+
+Methods:
+    cmd(finetuned_model, base_model, master_ip): Generate deployment command
+    geturl(job): Get deployed service URL address
+"""
 
     def __init__(self, launcher=launchers.remote(ngpus=1), port=None):  # noqa B008
         super().__init__(launcher=launcher)
@@ -41,6 +58,18 @@ class Distributed(LazyLLMDeployBase):
         self.master_ip = None
 
     def cmd(self, finetuned_model=None, base_model=None, master_ip=None):
+        """Generate Ray distributed deployment command.
+
+Generate corresponding Ray startup command based on whether it is a master node, supports both head node and worker node modes.
+
+Args:
+    finetuned_model: Fine-tuned model path
+    base_model: Base model path
+    master_ip: Master node IP address, if empty starts as head node
+
+Returns:
+    LazyLLMCMD: Object containing deployment command
+"""
         self.finetuned_model = finetuned_model
         self.base_model = base_model
         self.master_ip = master_ip
@@ -51,6 +80,16 @@ class Distributed(LazyLLMDeployBase):
         return LazyLLMCMD(cmd=cmd, return_value=self.geturl)
 
     def geturl(self, job=None):
+        """Get URL address of distributed deployment service.
+
+Return corresponding service address information based on deployment mode, supports display mode and actual deployment mode.
+
+Args:
+    job: Job object, defaults to current job
+
+Returns:
+    Package: Packaged object containing model path and service address
+"""
         time.sleep(5)
         if job is None:
             job = self.job

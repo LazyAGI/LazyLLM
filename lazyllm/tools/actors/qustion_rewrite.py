@@ -41,6 +41,26 @@ ch_qustion_rewrite_prompt = """
 不要输出任何其他内容，仅输出改写后的问题
 """
 class QustionRewrite(ModuleBase):
+    """Question Rewrite Module.
+
+This module rewrites or reformulates a user query using a language model. It supports both string and list output formats based on the formatter.
+
+`__init__(self, base_model, rewrite_prompt="", formatter="str")`
+Initializes the question rewrite module with a prompt and model.
+
+Args:
+    base_model (Union[str, TrainableModule, OnlineChatModuleBase]): A path string or initialized model for question rewriting.
+    rewrite_prompt (str): Custom prompt to guide the rewrite behavior.
+    formatter (str): Output format type; either "str" or "list".
+
+
+Examples:
+    >>> from lazyllm.components import QustionRewrite
+    >>> rewriter = QustionRewrite(base_model="chatglm", rewrite_prompt="请将问题改写为更适合检索的形式", formatter="list")
+    >>> result = rewriter("中国的最高山峰是什么？")
+    >>> print(result)
+    ... ['中国的最高山峰是哪一座？', '中国海拔最高的山是什么？']
+    """
     def __init__(
         self,
         base_model: Union[str, TrainableModule, OnlineChatModuleBase],
@@ -56,6 +76,39 @@ class QustionRewrite(ModuleBase):
         self.formatter = formatter
 
     def choose_prompt(self, prompt: str):
+        """
+Choose the appropriate prompt template based on the language of the input prompt.
+
+This method analyzes the input prompt string and determines whether to use the Chinese or English prompt template. It checks each character in the prompt string and if any character falls within the Chinese Unicode range (\u4e00-\u9fff), it returns the Chinese prompt template; otherwise, it returns the English prompt template.
+
+Args:
+    prompt (str): The input prompt string to be analyzed for language detection.
+
+**Returns:**
+
+- str: The selected prompt template string (either Chinese or English version).
+
+
+Examples:
+    
+    >>> from lazyllm.tools.actors.qustion_rewrite import QustionRewrite
+    
+    # Example 1: English prompt (no Chinese characters)
+    >>> rewriter = QustionRewrite("gpt-3.5-turbo")
+    >>> prompt_template = rewriter.choose_prompt("How to implement machine learning?")
+    >>> print("Template contains Chinese:", "中文" in prompt_template)
+    Template contains Chinese: False
+    
+    # Example 2: Chinese prompt (contains Chinese characters)
+    >>> prompt_template = rewriter.choose_prompt("如何实现机器学习？")
+    >>> print("Template contains Chinese:", "中文" in prompt_template)
+    Template contains Chinese: True
+    
+    # Example 3: Mixed language prompt (contains Chinese characters)
+    >>> prompt_template = rewriter.choose_prompt("What is 机器学习?")
+    >>> print("Template contains Chinese:", "中文" in prompt_template)
+    Template contains Chinese: True
+    """
         # Use chinese prompt if intent elements have chinese character, otherwise use english version
         for ele in prompt:
             # chinese unicode range

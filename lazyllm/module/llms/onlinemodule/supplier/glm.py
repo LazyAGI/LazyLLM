@@ -13,6 +13,17 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 
 
 class GLMModule(OnlineChatModuleBase, FileHandlerBase):
+    """GLMModule class inherits from OnlineChatModuleBase and FileHandlerBase, encapsulating the functionality of accessing Zhipu's GLM series models online.  
+It supports chat generation, file handling, and fine-tuning. The default model is GLM-4, but other trainable models (e.g., chatglm3-6b, chatglm_12b) are also supported.
+
+Args:
+    base_url (Optional[str]): API endpoint for Zhipu GLM service, default is "https://open.bigmodel.cn/api/paas/v4/".
+    model (Optional[str]): Name of the GLM model to use. Defaults to "glm-4", or one from the TRAINABLE_MODEL_LIST.
+    api_key (Optional[str]): API key for accessing GLM service. If not provided, it is read from lazyllm config.
+    stream (Optional[bool]): Whether to enable streaming output. Defaults to True.
+    return_trace (Optional[bool]): Whether to return debug trace information. Defaults to False.
+    **kwargs: Additional optional parameters passed to OnlineChatModuleBase.
+"""
     TRAINABLE_MODEL_LIST = ['chatglm3-6b', 'chatglm_12b', 'chatglm_32b', 'chatglm_66b', 'chatglm_130b']
     MODEL_NAME = 'glm-4'
 
@@ -230,6 +241,13 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
 
 
 class GLMEmbedding(OnlineEmbeddingModuleBase):
+    """GLM embedding model interface class for calling Zhipu AI's text embedding services.
+
+Args:
+    embed_url (str): Embedding service API address, defaults to "https://open.bigmodel.cn/api/paas/v4/embeddings"
+    embed_model_name (str): Embedding model name, defaults to "embedding-2"
+    api_key (str): API key
+"""
     def __init__(self,
                  embed_url: str = 'https://open.bigmodel.cn/api/paas/v4/embeddings',
                  embed_model_name: str = 'embedding-2',
@@ -238,6 +256,21 @@ class GLMEmbedding(OnlineEmbeddingModuleBase):
         super().__init__('GLM', embed_url, api_key or lazyllm.config['glm_api_key'], embed_model_name, **kw)
 
 class GLMReranking(OnlineEmbeddingModuleBase):
+    """Reranking module for Zhipu AI, inheriting from OnlineEmbeddingModuleBase, used for relevance reranking of documents.
+
+Args:
+    embed_url (str): Base URL for reranking API, defaults to "https://open.bigmodel.cn/api/paas/v4/rerank".
+    embed_model_name (str): Model name to use, defaults to "rerank".
+    api_key (str): Zhipu AI API key, if not provided will be read from lazyllm.config['glm_api_key'].
+
+Properties:
+    type: Returns model type, fixed as "ONLINE_RERANK".
+
+Main Features:
+    - Performs relevance reranking for input query and document list
+    - Supports custom ranking parameters
+    - Returns relevance scores for each document
+"""
 
     def __init__(self,
                  embed_url: str = 'https://open.bigmodel.cn/api/paas/v4/rerank',
@@ -267,6 +300,25 @@ class GLMReranking(OnlineEmbeddingModuleBase):
 
 
 class GLMMultiModal(OnlineMultiModalBase):
+    """Zhipu AI's multimodal base module, inheriting from OnlineMultiModalBase, for handling multimodal tasks.
+
+Args:
+    model_name (str): Model name.
+    api_key (str): API key, if not provided will be read from lazyllm.config['glm_api_key'].
+    base_url (str): Base URL for API, defaults to 'https://open.bigmodel.cn/api/paas/v4'.
+    return_trace (bool): Whether to return call trace information, defaults to False.
+    **kwargs: Additional arguments passed to the base class.
+
+Features:
+
+    1. Supports multimodal input processing
+    2. Uses ZhipuAI client for API calls
+    3. Provides unified multimodal interface
+    4. Customizable base URL and API key
+
+Note:
+    This class serves as the base class for GLM multimodal functionality, typically used as the parent class for specific multimodal implementations (such as speech-to-text, text-to-image, etc.).
+"""
     def __init__(self, model_name: str, api_key: str = None,
                  base_url: str = 'https://open.bigmodel.cn/api/paas/v4', return_trace: bool = False,
                  **kwargs):
@@ -276,6 +328,16 @@ class GLMMultiModal(OnlineMultiModalBase):
 
 
 class GLMSTTModule(GLMMultiModal):
+    """GLM Speech-to-Text module, inherits from GLMMultiModal.
+
+Provides speech-to-text (STT) functionality based on Zhipu AI, supports audio file speech recognition.
+
+Args:
+    model_name (str, optional): Model name, defaults to configured model name or "glm-asr"
+    api_key (str, optional): API key, defaults to configured key
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    **kwargs: Other model parameters
+"""
     MODEL_NAME = 'glm-asr'
 
     def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
@@ -294,6 +356,15 @@ class GLMSTTModule(GLMMultiModal):
 
 
 class GLMTextToImageModule(GLMMultiModal):
+    """GLM Text-to-Image module, inheriting from GLMMultiModal, encapsulates the functionality to generate images using the GLM CogView-4 model.  
+It supports generating a specified number of images with given resolution based on a text prompt and can call the remote service via an API key.
+
+Args:
+    model_name (Optional[str]): Name of the GLM model to use, defaulting to "cogview-4-250304" or the 'glm_text_to_image_model_name' in config.
+    api_key (Optional[str]): API key to access the GLM image generation service.
+    return_trace (bool): Whether to return debug trace information, default is False.
+    **kwargs: Additional parameters passed to GLMMultiModal.
+"""
     MODEL_NAME = 'cogview-4-250304'
 
     def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False, **kwargs):

@@ -44,6 +44,23 @@ DEFAULT_INDEX_BODY = {
 
 
 class OpenSearchStore(LazyLLMStoreBase):
+    """OpenSearch storage class, inherits from LazyLLMStoreBase.
+
+Provides document storage and retrieval functionality based on OpenSearch, supports large-scale document management and efficient query.
+
+Args:
+    uris (List[str]): OpenSearch service URI list
+    client_kwargs (Optional[Dict]): OpenSearch client configuration parameters
+    index_kwargs (Optional[Union[Dict, List]]): Index configuration parameters
+    **kwargs: Other keyword arguments
+
+Attributes:
+    capability: Storage capability flag, supports segment operations
+    need_embedding: Whether embedding is needed
+    supports_index_registration: Whether index registration is supported
+
+
+"""
     capability = StoreCapability.SEGMENT
     need_embedding = False
     supports_index_registration = False
@@ -63,6 +80,17 @@ class OpenSearchStore(LazyLLMStoreBase):
 
     @override
     def connect(self, *args, **kwargs) -> None:
+        """Connect to OpenSearch service.
+
+Initialize OpenSearch client connection, configure authentication information.
+
+Args:
+    *args: Positional arguments
+    **kwargs: Keyword arguments
+
+Returns:
+    None
+"""
         if self._client_kwargs.get('user') and self._client_kwargs.get('password'):
             self._client_kwargs['http_auth'] = (self._client_kwargs.pop('user'), self._client_kwargs.pop('password'))
         self._ddl_lock = threading.Lock()
@@ -85,6 +113,17 @@ class OpenSearchStore(LazyLLMStoreBase):
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
+        """Insert or update data to OpenSearch.
+
+Batch insert or update document data to specified collection (index), supports automatic index creation.
+
+Args:
+    collection_name (str): Collection name (index name)
+    data (List[dict]): Data list to insert
+
+Returns:
+    bool: Whether operation succeeded
+"""
         if not data: return
         try:
             self._ensure_index(collection_name)
@@ -105,6 +144,18 @@ class OpenSearchStore(LazyLLMStoreBase):
 
     @override
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
+        """Delete data from OpenSearch.
+
+Delete data from specified collection based on criteria, supports batch deletion and index deletion.
+
+Args:
+    collection_name (str): Collection name (index name)
+    criteria (Optional[dict]): Delete criteria
+    **kwargs: Other delete parameters
+
+Returns:
+    bool: Whether operation succeeded
+"""
         try:
             if not self._client.indices.exists(index=collection_name):
                 LOG.warning(f'[OpenSearchStore - delete] Index {collection_name} does not exist')
@@ -128,6 +179,18 @@ class OpenSearchStore(LazyLLMStoreBase):
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
+        """Query data from OpenSearch.
+
+Query data from specified collection based on criteria, supports primary key query and complex condition query.
+
+Args:
+    collection_name (str): Collection name (index name)
+    criteria (Optional[dict]): Query criteria
+    **kwargs: Other query parameters
+
+Returns:
+    List[dict]: Query result data list
+"""
         try:
             if not self._client.indices.exists(index=collection_name):
                 LOG.warning(f'[OpenSearchStore - get] Index {collection_name} does not exist')

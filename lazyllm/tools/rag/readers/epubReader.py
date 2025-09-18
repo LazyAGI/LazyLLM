@@ -10,6 +10,16 @@ from lazyllm.thirdparty import html2text, ebooklib
 from lazyllm import LOG
 
 class EpubReader(LazyLLMReaderBase):
+    """A file reader for `.epub` format eBooks.
+
+Inherits from `LazyLLMReaderBase`, and only needs to implement `_load_data`. The `Document` module can automatically use this class to load `.epub` files.
+
+Note: Reading from fsspec file systems (e.g., remote paths) is not supported in this version. If `fs` is specified, it will fall back to reading from the local file system.
+
+**Returns:**
+
+- List[DocNode]: A single node containing all merged chapter content from the EPUB file.
+"""
     def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
 

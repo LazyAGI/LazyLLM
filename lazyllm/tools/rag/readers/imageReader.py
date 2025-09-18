@@ -22,6 +22,16 @@ def b64_2_img(data: str) -> 'PIL.Image':
     return 'PIL.Image'.open(buff)
 
 class ImageReader(LazyLLMReaderBase):
+    """Module for reading content from image files. Supports keeping the image as base64, parsing text from images using OCR or pretrained vision models, and returns a list of nodes with text and image path.
+
+Args:
+    parser_config (Optional[Dict]): Parser configuration containing the model and processor. Defaults to None. When parse_text=True and parser_config is None, relevant models will be auto-loaded based on text_type.
+    keep_image (bool): Whether to keep the image as base64 string. Default is False.
+    parse_text (bool): Whether to parse text from the image. Default is False.
+    text_type (str): Type of text parsing. Supports ``text`` (default) and ``plain_text``. If ``plain_text``, pytesseract OCR is used; otherwise a pretrained vision encoder-decoder model is used.
+    pytesseract_model_kwargs (Optional[Dict]): Optional arguments passed to pytesseract OCR. Defaults to empty dict.
+    return_trace (bool): Whether to record the processing trace. Default is True.
+"""
     def __init__(self, parser_config: Optional[Dict] = None, keep_image: bool = False, parse_text: bool = False,
                  text_type: str = 'text', pytesseract_model_kwargs: Optional[Dict] = None,
                  return_trace: bool = True) -> None:

@@ -4,6 +4,11 @@ import threading
 from fastapi import HTTPException
 
 class ServerBase(object):
+    """Server base class, provides basic functionality for task management and status monitoring.
+
+Implements multi-user task information storage, status polling check and thread-safe dictionary operations.
+
+"""
     def __init__(self):
         self._user_job_info = {'default': dict()}
         self._active_jobs = dict()
@@ -122,6 +127,19 @@ class ServerBase(object):
         self._polling_thread.start()
 
     async def authorize_current_user(self, Bearer: str = None):
+        """User authentication and authorization.
+
+Verify the validity of user token, ensure only authorized users can access related resources.
+
+Args:
+    Bearer: Bearer token string
+
+Returns:
+    str: Verified token
+
+Raises:
+    HTTPException: 401 exception when token is invalid
+"""
         if not self._in_user_job_info(Bearer):
             raise HTTPException(
                 status_code=401,

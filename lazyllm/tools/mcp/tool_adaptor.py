@@ -65,6 +65,12 @@ def _handle_tool_result(result, tool_name: str) -> str:
 
 
 def generate_lazyllm_tool(client, mcp_tool) -> Callable:
+    """Dynamically build a function for the LazyLLM agent based on a tool provided by the MCP server.
+
+Args:
+    client (mcp.ClientSession): MCP client which connects to the MCP server.
+    mcp_tool (mcp.types.Tool): A tool provided by the MCP server.
+"""
     tool_name = mcp_tool.name
     tool_desc = mcp_tool.description
     input_schema = mcp_tool.inputSchema

@@ -1,7 +1,7 @@
-'''
+"""
 The overall process of SimpleDirectoryReader is borrowed from LLAMA_INDEX, but we have added a customized part
 based on it, that is, allowing users to register custom rules instead of processing only based on file suffixes.
-'''
+"""
 import os
 import mimetypes
 import multiprocessing
@@ -58,6 +58,38 @@ class _DefaultFileMetadataFunc:
         return {meta_key: meta_value for meta_key, meta_value in default_meta.items() if meta_value is not None}
 
 class SimpleDirectoryReader(ModuleBase):
+    """
+A modular document directory reader that inherits from ModuleBase, supporting reading various document formats from the file system and converting them into standardized DocNode objects.
+
+This class supports direct file input or directory input (mutually exclusive). It provides built-in readers for common formats such as PDF, DOCX, PPTX, images, CSV, Excel, audio/video, etc., while also allowing users to register custom file readers.
+
+Args:
+    input_dir (Optional[str]): Input directory path. Mutually exclusive with input_files. 
+                               Must exist in the file system if provided.
+    input_files (Optional[List]): Directly specified list of files. Mutually exclusive with input_dir. 
+                                  Each file must exist either in the provided path or under `config['data_path']`.
+    exclude (Optional[List]): List of file patterns to exclude from processing.
+    exclude_hidden (bool): Whether to exclude hidden files. Defaults to True.
+    recursive (bool): Whether to recursively read subdirectories. Defaults to False.
+    encoding (str): Encoding format of text files. Defaults to "utf-8".
+    filename_as_id (bool): Deprecated argument. No longer used. A warning will be logged if provided.
+    required_exts (Optional[List[str]]): Whitelist of file extensions to process. Only files with these extensions will be read.
+    file_extractor (Optional[Dict[str, Callable]]): Dictionary of custom file readers. Keys are filename patterns, values are reader callables.
+    fs (Optional[AbstractFileSystem]): Custom file system to use. Defaults to the system's default file system.
+    metadata_genf (Optional[Callable[[str], Dict]]): Metadata generation function that takes a file path and returns a metadata dictionary. 
+                                                     Defaults to an internal implementation (_DefaultFileMetadataFunc).
+    num_files_limit (Optional[int]): Maximum number of files to read. If exceeded, only the first N files are processed.
+    return_trace (bool): Whether to return processing trace information. Defaults to False.
+    metadatas (Optional[Dict]): Predefined global metadata dictionary to attach to all documents.
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools.dataReader import SimpleDirectoryReader
+    >>> reader = SimpleDirectoryReader(input_dir="yourpath/",recursive=True,exclude=["*.tmp"],required_exts=[".pdf", ".docx"])
+    >>> documents = reader.load_data()
+    """
     default_file_readers: Dict[str, Type[ReaderBase]] = {
         '*.pdf': PDFReader,
         '*.docx': DocxReader,
@@ -198,6 +230,25 @@ class SimpleDirectoryReader(ModuleBase):
     def load_file(input_file: Path, metadata_genf: Callable[[str], Dict], file_extractor: Dict[str, Callable],
                   encoding: str = 'utf-8', pathm: PurePath = Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
                   metadata: Optional[Dict] = None) -> List[DocNode]:
+        """Load a single file into a list of `DocNode` objects using the appropriate reader.
+
+This method selects the appropriate reader based on filename patterns and applies metadata with the following priority:
+`user > reader > metadata_genf`.  
+Optionally falls back to raw text decoding depending on config.
+
+Args:
+    input_file (Path): Path to the input file.
+    metadata_genf (Callable): Function to generate metadata from file path.
+    file_extractor (Dict[str, Callable]): Mapping of filename patterns to reader callables.
+    encoding (str): Text encoding to use when reading files. Default is "utf-8".
+    pathm (PurePath): Path handling module for local or remote paths.
+    fs (AbstractFileSystem): Optional filesystem abstraction from fsspec.
+    metadata (Dict): Optional user-defined metadata overriding auto-generated ones.
+
+**Returns:**
+
+- List[DocNode]: List of parsed documents extracted from the file.
+"""
         # metadata priority: user > reader > metadata_genf
         user_metadata: Dict = metadata or {}
         metadata_generated: Dict = metadata_genf(str(input_file)) if metadata_genf else {}
@@ -285,6 +336,20 @@ config.add('use_fallback_reader', bool, True, 'USE_FALLBACK_READER')
 
 
 class FileReader(object):
+    """
+File content reader whose main function is to convert various input file formats into concatenated plain text content.
+
+Args:
+    input_files (Optional[List]): Directly specified list of input files.
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools.dataReader import FileReader
+    >>> reader = FileReader()
+    >>> content = reader("yourpath/") 
+    """
 
     def __call__(self, input_files):
         file_list = _lazyllm_get_file_list(input_files)

@@ -15,6 +15,35 @@ class CollectionDesc(pydantic.BaseModel):
 
 
 class MongoDBManager(DBManager):
+    """MongoDBManager is a specialized tool for interacting with MongoB databases.
+It provides methods to check the connection, obtain the database connection object, and execute query.
+
+Args:
+   user (str): MongoDB username
+    password (str): MongoDB password
+    host (str): MongoDB server address
+    port (int): MongoDB server port
+    db_name (str): Database name
+    collection_name (str): Collection name
+    **kwargs: Additional configuration parameters including:
+        - options_str (str): Connection options string
+        - collection_desc_dict (dict): Collection description dictionary
+
+
+Examples:
+    >>> from lazyllm.components import MongoDBManager
+    >>> mgr = MongoDBManager(
+    ...     user="admin",
+    ...     password="123456",
+    ...     host="localhost",
+    ...     port=27017,
+    ...     db_name="mydb",
+    ...     collection_name="books"
+    ... )
+    >>> result = mgr.execute_query('[{"$match": {"author": "Tolstoy"}}]')
+    >>> print(result)
+    ... '[{"title": "War and Peace", "author": "Tolstoy"}]'
+    """
     MAX_TIMEOUT_MS = 5000
 
     def __init__(self, user: str, password: str, host: str, port: int, db_name: str, collection_name: str, **kwargs):
@@ -46,6 +75,16 @@ class MongoDBManager(DBManager):
 
     @contextmanager
     def get_client(self):
+        """This is a context manager that creates a database session, yields it for use, and closes the session when done.
+Usage example:
+
+with mongodb_manager.get_client() as client:
+    all_dbs = client.list_database_names()
+
+**Returns:**
+
+- pymongo.MongoClient: MongoDB client used to connect to MongoDB database
+"""
         client = pymongo.MongoClient(self._conn_url, serverSelectionTimeoutMS=self.MAX_TIMEOUT_MS)
         try:
             yield client
@@ -59,6 +98,11 @@ class MongoDBManager(DBManager):
         return self._desc
 
     def set_desc(self, schema_desc_dict: dict):
+        """When using MongoDBManager with LLM to query documents in natural language, set descriptions for the necessary keywords. Note that all relevant keywords needed for queries must be provided because MongoDB cannot obtain like structural information like a SQL database.
+
+Args:
+    tables_desc_dict (dict): descriptive comment for documents
+"""
         self._collection_desc_dict = schema_desc_dict
         if schema_desc_dict is None:
             with self.get_client() as client:
@@ -84,6 +128,12 @@ class MongoDBManager(DBManager):
             self._desc += json.dumps(collection_desc.schema_type, ensure_ascii=False, indent=4)
 
     def check_connection(self) -> DBResult:
+        """Check the current connection status of the MongoDBManager.
+
+**Returns:**
+
+- DBResult: DBResult.status True if the connection is successful, False if it fails. DBResult.detail contains failure information.
+"""
         try:
             with pymongo.MongoClient(self._conn_url, serverSelectionTimeoutMS=self.MAX_TIMEOUT_MS) as client:
                 _ = client.server_info()

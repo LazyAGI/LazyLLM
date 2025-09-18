@@ -28,6 +28,74 @@ class _PostProcess(object):
         return nodes
 
 class Retriever(ModuleBase, _PostProcess):
+    """
+Create a retrieval module for document querying and retrieval. This constructor initializes a retrieval module that configures the document retrieval process based on the specified similarity metric.
+
+Args:
+    doc: An instance of the document module. The document module can be a single instance or a list of instances. If it is a single instance, it means searching for a single Document, and if it is a list of instances, it means searching for multiple Documents.
+    group_name: The name of the node group on which to perform the retrieval.
+    similarity: The similarity function to use for setting up document retrieval. Defaults to 'dummy'. Candidates include ["bm25", "bm25_chinese", "cosine"].
+    similarity_cut_off: Discard the document when the similarity is below the specified value. In a multi-embedding scenario, if you need to specify different values for different embeddings, you need to specify them in a dictionary, where the key indicates which embedding is specified and the value indicates the corresponding threshold. If all embeddings use the same threshold, you only need to specify one value.
+    index: The type of index to use for document retrieval. Currently, only 'default' is supported.
+    topk: The number of documents to retrieve with the highest similarity.
+    embed_keys: Indicates which embeddings are used for retrieval. If not specified, all embeddings are used for retrieval.
+    target:The name of the target document group for result conversion
+    output_format: Represents the output format, with a default value of None. Optional values include 'content' and 'dict', where 'content' corresponds to a string output format and 'dict' corresponds to a dictionary.
+    join:  Determines whether to concatenate the output of k nodes - when output format is 'content', setting True returns a single concatenated string while False returns a list of strings (each corresponding to a node's text content); when output format is 'dict', joining is unsupported (join defaults to False) and the output will be a dictionary containing 'content', 'embedding' and 'metadata' keys.
+
+The `group_name` has three built-in splitting strategies, all of which use `SentenceSplitter` for splitting, with the difference being in the chunk size:
+
+- CoarseChunk: Chunk size is 1024, with an overlap length of 100
+- MediumChunk: Chunk size is 256, with an overlap length of 25
+- FineChunk: Chunk size is 128, with an overlap length of 12
+
+Also, `Image` is available for `group_name` since LazyLLM supports image embedding and retrieval.
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools import Retriever, Document, SentenceSplitter
+    >>> m = lazyllm.OnlineEmbeddingModule()
+    >>> documents = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
+    >>> rm = Retriever(documents, group_name='CoarseChunk', similarity='bm25', similarity_cut_off=0.01, topk=6)
+    >>> rm.start()
+    >>> print(rm("user query"))
+    >>> m1 = lazyllm.TrainableModule('bge-large-zh-v1.5').start()
+    >>> document1 = Document(dataset_path='/path/to/user/data', embed={'online':m , 'local': m1}, manager=False)
+    >>> document1.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+    >>> retriever = Retriever(document1, group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
+    >>> print(retriever("user query"))
+    >>> document2 = Document(dataset_path='/path/to/user/data', embed={'online':m , 'local': m1}, manager=False)
+    >>> document2.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+    >>> retriever2 = Retriever([document1, document2], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
+    >>> print(retriever2("user query"))
+    >>>
+    >>> filters = {
+    >>>     "author": ["A", "B", "C"],
+    >>>     "public_year": [2002, 2003, 2004],
+    >>> }
+    >>> document3 = Document(dataset_path='/path/to/user/data', embed={'online':m , 'local': m1}, manager=False)
+    >>> document3.create_node_group(name='sentences', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+    >>> retriever3 = Retriever([document1, document3], group_name='sentences', similarity='cosine', similarity_cut_off=0.4, embed_keys=['local'], topk=3)
+    >>> print(retriever3(query="user query", filters=filters))
+    >>> document4 = Document(dataset_path='/path/to/user/data', embed=lazyllm.TrainableModule('siglip'))
+    >>> retriever4 = Retriever(document4, group_name='Image', similarity='cosine')
+    >>> nodes = retriever4("user query")
+    >>> print([node.get_content() for node in nodes])
+    >>> document5 = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
+    >>> rm = Retriever(document5, group_name='CoarseChunk', similarity='bm25_chinese', similarity_cut_off=0.01, topk=3, output_format='content')
+    >>> rm.start()
+    >>> print(rm("user query"))
+    >>> document6 = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
+    >>> rm = Retriever(document6, group_name='CoarseChunk', similarity='bm25_chinese', similarity_cut_off=0.01, topk=3, output_format='content', join=True)
+    >>> rm.start()
+    >>> print(rm("user query"))
+    >>> document7 = Document(dataset_path='/path/to/user/data', embed=m, manager=False)
+    >>> rm = Retriever(document7, group_name='CoarseChunk', similarity='bm25_chinese', similarity_cut_off=0.01, topk=3, output_format='dict')
+    >>> rm.start()
+    >>> print(rm("user query"))
+    """
     def __init__(self, doc: object, group_name: str, similarity: Optional[str] = None,
                  similarity_cut_off: Union[float, Dict[str, float]] = float('-inf'), index: str = 'default',
                  topk: int = 6, embed_keys: Optional[List[str]] = None, target: Optional[str] = None,
@@ -116,6 +184,29 @@ class Retriever(ModuleBase, _PostProcess):
 
 
 class TempDocRetriever(ModuleBase, _PostProcess):
+    """
+A temporary document retriever that inherits from ModuleBase and _PostProcess, used for quickly processing temporary files and performing retrieval tasks.
+
+Args:
+    embed: The embedding function.
+    output_format: The format of the output result (e.g., JSON). Optional, defaults to None.
+    join: Whether to merge multiple result segments (set to True or specify a separator like "
+").
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools import TempDocRetriever, Document, SentenceSplitter
+    >>> retriever = TempDocRetriever(output_format="text", join="
+    ---------------
+    ")
+        retriever.create_node_group(transform=lambda text: [s.strip() for s in text.split("。") if s] )
+        retriever.add_subretriever(group=Document.MediumChunk, topk=3)
+        files = ["机器学习是AI的核心领域。深度学习是其重要分支。"]
+        results = retriever.forward(files, "什么是机器学习?")
+        print(results)
+    """
     def __init__(self, embed: Callable = None, output_format: Optional[str] = None, join: Union[bool, str] = False):
         super().__init__()
         self._doc = Document(doc_files=[])
@@ -125,11 +216,39 @@ class TempDocRetriever(ModuleBase, _PostProcess):
 
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
                           trans_node: bool = None, num_workers: int = 0, **kwargs):
+        """
+Create document processing node group for configuring document chunking and transformation strategies.
+
+Args:
+    name (str): Name of the node group. Auto-generated if None.
+    transform (Callable): Function to process documents in this group.
+    parent (str): Parent group name. Defaults to root group.
+    trans_node (bool): Whether to transform nodes. Inherits from parent if None.
+    num_workers (int): Parallel workers for processing. Default 0 (sequential).
+    **kwargs: Additional group parameters.
+
+**Returns:**
+
+- self: Current instance supporting chained calls
+"""
         self._doc.create_node_group(name, transform=transform, parent=parent,
                                     trans_node=trans_node, num_workers=num_workers, **kwargs)
         return self
 
     def add_subretriever(self, group: str, **kwargs):
+        """
+Add a sub-retriever with search configuration.
+
+Args:
+    group (str): Target node group name.
+    **kwargs: Retriever configuration parameters including:
+        - similarity (str): Similarity calculation method, 'cosine' (cosine similarity) or 'bm25' (BM25 algorithm)
+        - Other retriever-specific parameters
+
+**Returns:**
+
+- self: For method chaining.
+"""
         if 'similarity' not in kwargs: kwargs['similarity'] = ('cosine' if self._embed else 'bm25')
         self._node_groups.append((group, kwargs))
         return self

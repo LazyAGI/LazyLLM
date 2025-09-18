@@ -8,6 +8,15 @@ from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
 
 class PandasCSVReader(LazyLLMReaderBase):
+    """Reader for parsing CSV files using pandas.
+
+Args:
+    concat_rows (bool): Whether to concatenate all rows into a single text block. Default is True.
+    col_joiner (str): String used to join column values.
+    row_joiner (str): String used to join rows.
+    pandas_config (Optional[Dict]): Optional config for pandas.read_csv.
+    return_trace (bool): Whether to return the processing trace.
+"""
     def __init__(self, concat_rows: bool = True, col_joiner: str = ', ', row_joiner: str = '\n',
                  pandas_config: Optional[Dict] = None, return_trace: bool = True) -> None:
         super().__init__(return_trace=return_trace)
@@ -31,6 +40,14 @@ class PandasCSVReader(LazyLLMReaderBase):
         else: return [DocNode(text=text) for text in text_list]
 
 class PandasExcelReader(LazyLLMReaderBase):
+    """Reader for extracting text content from Excel (.xlsx) files.
+
+Args:
+    concat_rows (bool): Whether to concatenate all rows into a single block.
+    sheet_name (Optional[str]): Name of the sheet to read. If None, all sheets will be read.
+    pandas_config (Optional[Dict]): Optional config for pandas.read_excel.
+    return_trace (bool): Whether to return the processing trace.
+"""
     def __init__(self, concat_rows: bool = True, sheet_name: Optional[str] = None,
                  pandas_config: Optional[Dict] = None, return_trace: bool = True) -> None:
         super().__init__(return_trace=return_trace)

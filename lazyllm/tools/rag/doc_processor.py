@@ -204,6 +204,34 @@ class CancelDocRequest(BaseModel):
 
 
 class DocumentProcessor(ModuleBase):
+    """
+Document processor class for managing document addition, deletion and update operations.
+
+Args:
+    server (bool): Whether to run in server mode. Defaults to True.
+    port (Optional[int]): Server port number. Defaults to None.
+    url (Optional[str]): Remote service URL. Defaults to None.
+
+**Notes:**
+- Supports asynchronous document task processing
+- Provides document metadata update functionality
+- Supports task status callback notifications
+- Configurable database storage
+
+
+Examples:
+    
+    ```python
+    # Create local document processor
+    processor = DocumentProcessor(server=False)
+    
+    # Create server mode document processor
+    processor = DocumentProcessor(server=True, port=8080)
+    
+    # Create remote document processor
+    processor = DocumentProcessor(url="http://remote-server:8080")
+    ```
+    """
 
     class Impl():
         def __init__(self, server: bool):
@@ -607,8 +635,73 @@ class DocumentProcessor(ModuleBase):
     def register_algorithm(self, name: str, store: _DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
                            display_name: Optional[str] = None, description: Optional[str] = None,
                            force_refresh: bool = False, **kwargs):
+        """
+Register an algorithm to the document processor.
+
+Args:
+    name (str): Algorithm name as unique identifier.
+    store (StoreBase): Storage instance for managing document data.
+    reader (ReaderBase): Reader instance for parsing document content.
+    node_groups (Dict[str, Dict]): Node group configuration information.
+    display_name (Optional[str]): Display name for the algorithm, defaults to None.
+    description (Optional[str]): Description of the algorithm, defaults to None.
+    force_refresh (bool): Whether to force refresh existing algorithm. Defaults to False.
+    **kwargs: Additional arguments.
+
+**Notes:**
+- If algorithm name exists and force_refresh is False, registration will be skipped
+- After successful registration, the algorithm can be used to process documents
+
+
+Examples:
+    
+    ```python
+    from lazyllm.rag import DocumentProcessor, FileStore, PDFReader
+    
+    # Create storage and reader instances
+    store = FileStore(path="./data")
+    reader = PDFReader()
+    
+    # Define node group configuration
+    node_groups = {
+        "text": {"transform": "text", "parent": "root"},
+        "summary": {"transform": "summary", "parent": "text"}
+    }
+    
+    # Register algorithm
+    processor = DocumentProcessor()
+    processor.register_algorithm(
+        name="pdf_processor",
+        store=store,
+        reader=reader,
+        node_groups=node_groups
+    )
+    ```
+    """
         self._dispatch('register_algorithm', name, store, reader, node_groups,
                        display_name, description, force_refresh, **kwargs)
 
     def drop_algorithm(self, name: str, clean_db: bool = False) -> None:
+        """
+Remove specified algorithm from document processor.
+
+Args:
+    name (str): Name of the algorithm to remove.
+    clean_db (bool): Whether to clean related database data. Defaults to False.
+
+**Notes:**
+- If algorithm name does not exist, a warning message will be output
+- After removal, the algorithm will no longer be available
+
+
+Examples:
+    
+    ```python
+    # Remove algorithm
+    processor.drop_algorithm("pdf_processor")
+    
+    # Remove algorithm and clean database
+    processor.drop_algorithm("pdf_processor", clean_db=True)
+    ```
+    """
         return self._dispatch('drop_algorithm', name, clean_db)

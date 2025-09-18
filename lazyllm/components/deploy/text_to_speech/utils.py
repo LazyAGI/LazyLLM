@@ -26,6 +26,15 @@ def _sounds_to_files(sounds: list, directory: str, sample_rate: int = 24000) -> 
     return path_list
 
 class TTSBase(LazyLLMDeployBase):
+    """Base class for TTS (Text-to-Speech) services.
+
+Provides the deployment framework for text-to-speech services, supporting model loading and RelayServer deployment.
+
+Args:
+    launcher (LazyLLMLaunchersBase, optional): Task launcher
+    log_path (str, optional): Log file path
+    port (int, optional): Service port number
+"""
     func = None
 
     def __init__(self, launcher: LazyLLMLaunchersBase = None,

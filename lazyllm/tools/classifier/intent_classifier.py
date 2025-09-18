@@ -62,6 +62,39 @@ Assistant:  查看天气
 
 
 class IntentClassifier(ModuleBase):
+    """Intent classification module that classifies input text into a given intent list.  
+Supports automatic selection of Chinese or English prompt templates, and allows enhancement through examples, prompt text, constraints, and attention notes.
+
+Args:
+    llm: The large language model instance used for intent classification.
+    intent_list (list): Optional, list of intent categories, e.g., ["chat", "weather", "QA"].
+    prompt (str): Optional, custom prompt inserted into the system prompt template.
+    constrain (str): Optional, classification constraint description.
+    attention (str): Optional, attention notes for classification.
+    examples (list[list[str, str]]): Optional, classification examples, each element is [input text, label].
+    return_trace (bool): Whether to return execution trace. Default is False.
+
+
+Examples:
+        >>> import lazyllm
+        >>> from lazyllm.tools import IntentClassifier
+        >>> classifier_llm = lazyllm.OnlineChatModule(source="openai")
+        >>> chatflow_intent_list = ["Chat", "Financial Knowledge Q&A", "Employee Information Query", "Weather Query"]
+        >>> classifier = IntentClassifier(classifier_llm, intent_list=chatflow_intent_list)
+        >>> classifier.start()
+        >>> print(classifier('What is the weather today'))
+        Weather Query
+        >>>
+        >>> with IntentClassifier(classifier_llm) as ic:
+        >>>     ic.case['Weather Query', lambda x: '38.5°C']
+        >>>     ic.case['Chat', lambda x: 'permission denied']
+        >>>     ic.case['Financial Knowledge Q&A', lambda x: 'Calling Financial RAG']
+        >>>     ic.case['Employee Information Query', lambda x: 'Beijing']
+        ...
+        >>> ic.start()
+        >>> print(ic('What is the weather today'))
+        38.5°C
+    """
     def __init__(self, llm, intent_list: list = None,
                  *, prompt: str = '', constrain: str = '', attention: str = '',
                  examples: Optional[list[list[str, str]]] = None, return_trace: bool = False) -> None:
@@ -99,6 +132,19 @@ class IntentClassifier(ModuleBase):
         tools: Union[List[Dict[str, Any]], None] = None,
         label: Union[str, None] = None,
     ):
+        """Pre-processing hook for intent classification.  
+Packages the input text and intent list into JSON and generates a string of conversation history.
+
+Args:
+    input (str | List | Dict | None): The input text, only string type is supported.
+    history (List): Conversation history, default empty list.
+    tools (List[Dict] | None): Optional tool information.
+    label (str | None): Optional label.
+
+**Returns:**
+
+- tuple: input data dict, history list, tools, label
+"""
         input_json = {}
         if isinstance(input, str):
             input_json = {'human_input': input, 'intent_list': self._intent_list}
@@ -111,6 +157,16 @@ class IntentClassifier(ModuleBase):
         return dict(history_info=history_info, input=input_text), history, tools, label
 
     def post_process_result(self, input):
+        """Post-processing of intent classification result.  
+Returns the result directly if it is in the intent list, otherwise returns the first element of the intent list.
+
+Args:
+    input (str): Output result from the classification model.
+
+**Returns:**
+
+- str: The final classification label.
+"""
         input = input.strip()
         return input if input in self._intent_list else self._intent_list[0]
 

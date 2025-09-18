@@ -10,6 +10,27 @@ from .utils import get_log_path, make_log_dir
 lazyllm.config.add('default_embedding_engine', str, '', 'DEFAULT_EMBEDDING_ENGINE')
 
 class Infinity(LazyLLMDeployBase):
+    """This class is a subclass of ``LazyLLMDeployBase``, providing high-performance text-embeddings, reranking, and CLIP capabilities based on the [Infinity](https://github.com/michaelfeil/infinity) framework.
+
+Args:
+    launcher (lazyllm.launcher): The launcher for Infinity, defaulting to ``launchers.remote(ngpus=1)``.
+    kw: Keyword arguments for updating default training parameters. Note that no additional keyword arguments can be passed here except those listed below.
+
+The keyword arguments and their default values for this class are as follows:
+
+Keyword Args: 
+    keys_name_handle (Dict): Key name mapping dictionary.
+    message_format (Dict): Default message format template.
+    default_headers (Dict): Default HTTP request headers.
+    target_name (str): API target endpoint name.
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm import deploy
+    >>> deploy.Infinity()
+    <lazyllm.llm.deploy type=Infinity>
+    """
     keys_name_handle = {
         'inputs': 'input',
     }
@@ -63,6 +84,11 @@ class Infinity(LazyLLMDeployBase):
         return LazyLLMCMD(cmd=impl, return_value=self.geturl, checkf=verify_fastapi_func)
 
     def geturl(self, job=None):
+        """Get the URL address of the Infinity service. Returns the corresponding API access URL address based on deployment mode and job status.
+
+Args:
+    job (Optional[Any]): Job object, if None uses the current instance's job property.
+"""
         if job is None:
             job = self.job
         if lazyllm.config['mode'] == lazyllm.Mode.Display:
@@ -72,6 +98,13 @@ class Infinity(LazyLLMDeployBase):
 
     @staticmethod
     def extract_result(x, inputs):
+        """Extract result data from Infinity API response.
+Parses JSON response from Infinity service and extracts embedding vectors or reranking results based on the returned object type.
+
+Args:
+    x (str): JSON string response returned by API.
+    inputs (Dict): Original input data used to determine the return format.
+"""
         try:
             res_object = json.loads(x)
         except Exception as e:

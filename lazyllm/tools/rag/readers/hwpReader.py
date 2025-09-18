@@ -8,6 +8,14 @@ from lazyllm.thirdparty import zlib, struct, olefile
 from lazyllm import LOG
 
 class HWPReader(LazyLLMReaderBase):
+    """
+A HWP format file parser. It supports loading from the local filesystem. It extracts body text from the `.hwp` file and returns it as a list of DocNode objects.
+
+HWP is a proprietary binary document format used primarily in Korea. This reader focuses on extracting the plain text from the body sections of the document.
+
+Args:
+    return_trace (bool): Whether to enable trace logging. Defaults to ``True``.
+"""
     def __init__(self, return_trace: bool = True) -> None:
         super().__init__(return_trace=return_trace)
         self._FILE_HEADER_SECTION = 'FileHeader'

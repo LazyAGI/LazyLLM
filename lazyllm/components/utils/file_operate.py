@@ -83,7 +83,7 @@ def _is_base64_with_mime(input_str: str):
     return False
 
 def _split_base64_with_mime(input_str: str):
-    '''
+    """
     Split base64 string with MIME type
 
     Args:
@@ -91,7 +91,7 @@ def _split_base64_with_mime(input_str: str):
 
     Returns:
         Tuple of (base64_str, mime_type) or (input_str, None) if invalid format
-    '''
+    """
     pattern = r'^data:([^;]+);base64,(.+)$'
     if match := re.match(pattern, input_str):
         return match.group(2), match.group(1)
@@ -99,7 +99,7 @@ def _split_base64_with_mime(input_str: str):
 
 
 def _file_to_base64(file_path: str, mime_types: dict) -> Optional[Tuple[str, Optional[str]]]:
-    '''
+    """
     Convert file to base64 string with MIME type
 
     Args:
@@ -108,7 +108,7 @@ def _file_to_base64(file_path: str, mime_types: dict) -> Optional[Tuple[str, Opt
 
     Returns:
         Tuple of (base64_str, mime_type) or None if error
-    '''
+    """
     try:
         with open(file_path, 'rb') as f:
             file_base64 = base64.b64encode(f.read()).decode('utf-8')
@@ -132,7 +132,7 @@ def ocr_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
 
 
 def _base64_to_file(base64_str: Union[str, list[str]], target_dir: Optional[str] = None) -> Union[str, list[str]]:
-    '''
+    """
     Convert base64 string to file
 
     Args:
@@ -144,7 +144,7 @@ def _base64_to_file(base64_str: Union[str, list[str]], target_dir: Optional[str]
 
     Raises:
         ValueError: If base64 format is invalid or MIME type is unsupported
-    '''
+    """
     if isinstance(base64_str, list):
         return [_base64_to_file(item, target_dir) for item in base64_str]
     base64_data, mime_type = _split_base64_with_mime(base64_str)
@@ -187,9 +187,9 @@ def simple_magic_detection(data: bytes) -> str:
     return '.bin'
 
 def bytes_to_file(bytes_str: Union[bytes, list[bytes]], target_dir: Optional[str] = None) -> Union[str, list[str]]:
-    '''
+    """
     Convert byte string to file
-    '''
+    """
     assert isinstance(bytes_str, (bytes, list)), 'bytes_str must be a bytes or list of bytes'
     if isinstance(bytes_str, list):
         return [bytes_to_file(item, target_dir) for item in bytes_str]

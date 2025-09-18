@@ -12,6 +12,16 @@ def register_similarity(
     descend: bool = True,
     batch: bool = False,
 ) -> Callable:
+    """
+Similarity computation registration decorator, used for unified registration and management of different types of similarity computation methods.
+
+Args:
+    func (Callable): The name of the similarity computation function.
+    mode (Literal['text', 'embedding']): 'text' indicates direct text matching, while 'embedding' indicates vector-based similarity computation.
+    descend (bool): Controls whether multithreading is enabled (enabled when > 0).
+    kwargs (Dict): Whether the results are sorted in descending order of similarity.
+    batch (bool): Whether to process nodes in batch.
+"""
     def decorator(f):
         @functools.wraps(f)
         def wrapper(query, nodes, **kwargs):

@@ -22,6 +22,11 @@ class _JobDescription(BaseModel):
 
 
 class InferServer(ServerBase):
+    """Inference service server class, inherits from ServerBase.
+
+Provides RESTful API interfaces for model inference service creation, management, monitoring and log query.
+
+"""
 
     def _update_status(self, token, job_id):  # noqa: C901
         if not self._in_active_jobs(token, job_id):
@@ -131,6 +136,17 @@ class InferServer(ServerBase):
 
     @app.post('/v1/inference_services')
     async def create_job(self, job: _JobDescription, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
+        """Create inference task.
+
+Create new model inference service based on job description, start deployment thread and initialize task status.
+
+Args:
+    job (JobDescription): Job description object
+    token (str): User token
+
+Returns:
+    dict: Response containing job ID
+"""
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
         if self._in_active_jobs(token, job.service_name):
@@ -193,6 +209,17 @@ class InferServer(ServerBase):
 
     @app.delete('/v1/inference_services/{job_id}')
     async def cancel_job(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
+        """Cancel inference task.
+
+Stop specified inference task, clean up resources and update task status.
+
+Args:
+    job_id (str): Job ID
+    token (str): User token
+
+Returns:
+    dict: Response containing task status
+"""
         await self.authorize_current_user(token)
         if not self._in_active_jobs(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
@@ -219,6 +246,16 @@ class InferServer(ServerBase):
 
     @app.get('/v1/inference_services')
     async def list_jobs(self, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
+        """List all inference tasks.
+
+Get all inference tasks list for current user.
+
+Args:
+    token (str): User token
+
+Returns:
+    dict: Task list information
+"""
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
         server_running_dict = self._read_user_job_info(token)
@@ -226,6 +263,17 @@ class InferServer(ServerBase):
 
     @app.get('/v1/inference_services/{job_id}')
     async def get_job_info(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
+        """Get task detailed information.
+
+Query detailed information of specified task, including status, endpoint, cost time, etc.
+
+Args:
+    job_id (str): Job ID
+    token (str): User token
+
+Returns:
+    dict: Task detailed information
+"""
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
@@ -236,6 +284,17 @@ class InferServer(ServerBase):
 
     @app.get('/v1/inference_services/{job_id}/events')
     async def get_job_log(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
+        """Get task log.
+
+Get log file path or log content of specified task.
+
+Args:
+    job_id (str): Job ID
+    token (str): User token
+
+Returns:
+    dict: Log information
+"""
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')

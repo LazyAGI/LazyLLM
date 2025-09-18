@@ -28,6 +28,17 @@ class LazyllmDocTableDesc(TableBase):
 
 
 class DocToDbProcessor:
+    """Used to extract information from documents and export it to a database.
+
+This class analyzes document topics, extracts schema structure, pulls out key information, and saves it into a database table.
+
+Args:
+    sql_manager (SqlManager): SQL database manager instance
+    doc_table_name (str, optional): Document information storage table name, defaults to "lazyllm_doc_elements"
+Note:
+    - If the table already exists, it checks and avoids redundant creation.
+    - Use `reset_doc_info_schema` to reset the schema if necessary.
+"""
 
     DB_TYPE_MAP = {
         'int': sqlalchemy.Integer,
@@ -104,6 +115,10 @@ class DocToDbProcessor:
             self._table_class = None
 
     def clear(self):
+        """Clear processor state and database table structures.
+
+Clears current document information schema, removes ORM class mappings, and optionally deletes document table from database.
+"""
         self._clear_table_orm()
         self._table_class = None
         self._doc_info_schema = None
@@ -138,6 +153,17 @@ class DocToDbProcessor:
     def analyze_info_schema_by_llm(
         self, llm: Union[OnlineChatModule, TrainableModule], doc_paths: List[str], doc_topic: str = ''
     ) -> DocInfoSchema:
+        """Infer structured database information using a large language model from document nodes.
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): Large language model instance
+    doc_paths (List[str]): Document path list
+    doc_topic (str, optional): Document topic, will be automatically analyzed if empty
+
+**Returns:**
+
+- DocInfoSchema: Analyzed document information schema list
+"""
         assert len(doc_paths) > 0, 'doc_paths should not be empty'
         if not doc_topic:
             doc_topic = self._doc_genre_analyser.analyse_doc_genre(llm, doc_paths[0])
@@ -148,6 +174,18 @@ class DocToDbProcessor:
     def extract_info_from_docs(
         self, llm: Union[OnlineChatModule, TrainableModule], doc_paths: List[str], extra_desc: str = ''
     ) -> List[dict]:
+        """Extract structured database-related information from documents.
+
+This function uses embedding and retrieval techniques to identify relevant text fragments in the provided documents for schema generation.
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): Large language model instance
+    doc_paths (List[str]): Document paths to process
+    extra_desc (str, optional): Additional description information to assist extraction
+**Returns:**
+
+- List[dict]: Extracted information dictionary list, each dictionary corresponds to one document's extraction result
+"""
         existent_doc_paths = self._list_existent_doc_paths_in_db(doc_paths)
         # skip docs already in db
         doc_paths = list(set(doc_paths) - set(existent_doc_paths))
@@ -162,6 +200,13 @@ class DocToDbProcessor:
         return info_dicts
 
     def export_info_to_db(self, info_dicts: List[dict]):
+        """Export extracted information to database.
+
+Bulk inserts extracted structured information into database table, automatically generating UUID and timestamps.
+
+Args:
+    info_dicts (List[dict]): Information dictionary list to export
+"""
         # Generate uuid explicitly because SQLite doesn't support auto gen uuid
         new_values = []
         for kws_value in info_dicts:
@@ -183,4 +228,23 @@ class DocToDbProcessor:
             return [ele[0] for ele in result]
 
 def extract_db_schema_from_files(file_paths: List[str], llm: Union[OnlineChatModule, TrainableModule]) -> DocInfoSchema:
+    """Extract the schema information from documents using a given LLM.
+
+Args:
+    file_paths (List[str]): Paths of the documents to analyze.
+    llm (Union[OnlineChatModule, TrainableModule]): A chat-supported LLM module.
+
+**Returns:**
+
+- DocInfoSchema: The extracted field structure schema.
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.components.document_to_db import extract_db_schema_from_files
+    >>> llm = lazyllm.OnlineChatModule()
+    >>> file_paths = ["doc1.pdf", "doc2.pdf"]
+    >>> schema = extract_db_schema_from_files(file_paths, llm)
+    >>> print(schema)
+    """
     return DocToDbProcessor(sql_manager=None).analyze_info_schema_by_llm(llm, file_paths)

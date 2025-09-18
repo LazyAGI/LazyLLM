@@ -5,6 +5,12 @@ import time
 g_thread_pool = lazyllm.ThreadPoolExecutor(max_workers=lazyllm.config['thread_pool_worker_num'])
 
 class StreamCallHelper:
+    """Helper class for streaming function calls, wrapping a blocking callable into a generator that yields results incrementally.
+
+Args:
+    impl (Callable): The function or callable to execute in streaming mode.
+    interval (float): Time interval (in seconds) to poll the internal queue. Defaults to 0.1.
+"""
     def __init__(self, impl: Callable, interval: float = 0.1):
         self._impl = impl
         self._sleep_interval = interval

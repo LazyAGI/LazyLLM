@@ -51,6 +51,27 @@ the result is
 
 
 class SqlCall(ModuleBase):
+    """SqlCall is a class that extends ModuleBase and provides an interface for generating and executing SQL queries using a language model (LLM).
+It is designed to interact with a SQL database, extract SQL queries from LLM responses, execute those queries, and return results or explanations.
+
+Args:
+    llm: A language model to be used for generating and interpreting SQL queries and explanations.
+    sql_manager (DBManager): Database manager instance containing connection and description information
+    sql_examples (str, optional): SQL example strings for prompt engineering. Defaults to empty string
+    sql_post_func (Callable, optional): Function for post-processing generated SQL statements. Defaults to ``None``
+    use_llm_for_sql_result (bool, optional): Whether to use LLM to explain SQL execution results. Defaults to ``True``
+    return_trace (bool, optional): Whether to return execution trace information. Defaults to ``False``
+
+
+Examples:
+        >>> # First, run SqlManager example
+        >>> import lazyllm
+        >>> from lazyllm.tools import SQLManger, SqlCall
+        >>> sql_tool = SQLManger("personal.db")
+        >>> sql_llm = lazyllm.OnlineChatModule(model="gpt-4o", source="openai", base_url="***")
+        >>> sql_call = SqlCall(sql_llm, sql_tool, use_llm_for_sql_result=True)
+        >>> print(sql_call("去年一整年销售额最多的员工是谁?"))
+    """
     EXAMPLE_TITLE = 'Here are some example: '
 
     def __init__(
@@ -107,6 +128,18 @@ class SqlCall(ModuleBase):
         tools: Union[List[Dict[str, Any]], None] = None,
         label: Union[str, None] = None,
     ):
+        """Hook to prepare the prompt inputs for generating a database query from user input.
+
+Args:
+    input (Union[str, List, Dict[str, str], None]): The user's natural language query.
+    history (List[Union[List[str], Dict[str, Any]]]): Conversation history.
+    tools (Union[List[Dict[str, Any]], None]): Available tool descriptions.
+    label (Union[str, None]): Optional label for the prompt.
+
+**Returns:**
+
+- Tuple: A tuple containing the formatted prompt dict (with current_date, db_type, desc, user_query), history, tools, and label.
+"""
         current_date = datetime.datetime.now().strftime('%Y-%m-%d')
         schema_desc = self._sql_tool.desc
         if self.example:
@@ -127,6 +160,18 @@ class SqlCall(ModuleBase):
         tools: Union[List[Dict[str, Any]], None] = None,
         label: Union[str, None] = None,
     ):
+        """Hook to prepare the prompt for explaining the execution result of a database query.
+
+Args:
+    input (Union[str, List, Dict[str, str], None]): A list containing the query and its result.
+    history (List[Union[List[str], Dict[str, Any]]]): Conversation history.
+    tools (Union[List[Dict[str, Any]], None]): Available tool descriptions.
+    label (Union[str, None]): Optional label for the prompt.
+
+**Returns:**
+
+- Tuple: A tuple containing the formatted prompt dict (history_info, desc, query, result, explain_query), history, tools, and label.
+"""
         explain_query = 'Tell the user based on the execution results, making sure to keep the language consistent \
             with the user\'s input and don\'t translate original result.'
         if not isinstance(input, list) and len(input) != 2:
@@ -149,6 +194,15 @@ class SqlCall(ModuleBase):
         )
 
     def extract_sql_from_response(self, str_response: str) -> tuple[bool, str]:
+        """Extract SQL (or MongoDB pipeline) statement from the raw LLM response.
+
+Args:
+    str_response (str): Raw text returned by the LLM which may contain code fences.
+
+**Returns:**
+
+- tuple[bool, str]: A tuple where the first element indicates whether extraction succeeded, and the second is the cleaned or original content. If sql_post_func is provided, it is applied to the extracted content.
+"""
         # Remove the triple backticks if present
         matches = self._pattern.findall(str_response)
         if matches:

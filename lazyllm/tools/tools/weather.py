@@ -22,12 +22,42 @@ def get_city2code():
 
 
 class Weather(HttpTool):
+    """
+Weather information query tool class, inherits from HttpTool.
+
+Provides real-time weather information query functionality, retrieves weather data for specified cities through China Meteorological Administration API.
+
+
+Examples:
+    
+    from lazyllm.tools.tools import Weather
+    
+    weather = Weather()
+    """
     def __init__(self):
         self._city2code = get_city2code()
         url = 'http://www.nmc.cn/rest/real/{{city_code}}'
         super().__init__(method='GET', url=url)
 
     def forward(self, city_name: str) -> Optional[Dict]:
+        """
+Query the weather of a specific city. The minimum input scope for cities is at the prefecture level, and for municipalities, it is at the district level. The input city or district name should not include the suffix "市" (city) or "区" (district). Refer to the examples below.
+
+Args:
+    city_name (str): The name of the city for which weather information is needed.
+
+**Returns:**
+
+- Optional[Dict]: Dictionary containing weather information, returns None if city doesn't exist
+
+
+Examples:
+    
+    from lazyllm.tools.tools import Weather
+    
+    weather = Weather()
+    res = weather('海淀')
+    """
         city_code = self._city2code.get(city_name)
         if not city_code:
             return None

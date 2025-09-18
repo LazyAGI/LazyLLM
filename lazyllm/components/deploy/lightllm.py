@@ -10,6 +10,34 @@ from typing import Optional
 
 
 class Lightllm(LazyLLMDeployBase):
+    """This class is a subclass of ``LazyLLMDeployBase``, based on the inference capabilities provided by the [LightLLM](https://github.com/ModelTC/lightllm) framework, used for inference with large language models.
+
+Args:
+    trust_remote_code (bool, optional): Whether to trust remote code, defaults to True
+    launcher (Launcher, optional): Task launcher, defaults to single GPU remote launcher
+    log_path (str, optional): Log file path, defaults to None
+    **kw: Other LightLLM server configuration parameters
+The keyword arguments and their default values for this class are as follows:
+
+Keyword Args: 
+    tp (int): Tensor parallelism parameter, default is ``1``.
+    max_total_token_num (int): Maximum total token number, default is ``64000``.
+    eos_id (int): End-of-sentence ID, default is ``2``.
+    port (int): Service port number, default is ``None``, in which case LazyLLM will automatically generate a random port number.
+    host (str): Service IP address, default is ``0.0.0.0``.
+    nccl_port (int): NCCL port, default is ``None``, in which case LazyLLM will automatically generate a random port number.
+    tokenizer_mode (str): Tokenizer loading mode, default is ``auto``.
+    running_max_req_size (int): Maximum number of parallel requests for the inference engine, default is ``256``.
+    data_type (str): Data type for model weights, default is ``float16``.
+    max_req_total_len (int): Maximum total length for requests, default is ``64000``.
+    max_req_input_len (int): Maximum input length, default is ``4096``.
+    long_truncation_mode (str): Truncation mode for long texts, default is ``head``.
+
+
+Examples:
+    >>> from lazyllm import deploy
+    >>> infer = deploy.lightllm()
+    """
     keys_name_handle = {
         'inputs': 'inputs',
         'stop': 'stop_sequences'
@@ -58,6 +86,16 @@ class Lightllm(LazyLLMDeployBase):
         self.temp_folder = make_log_dir(log_path, 'lightllm') if log_path else None
 
     def cmd(self, finetuned_model=None, base_model=None):
+        """This method generates the command to start the LightLLM service.
+
+Args:
+    finetuned_model (str): Path to the fine-tuned model.
+    base_model (str): Path to the base model, used when finetuned_model is invalid.
+
+**Returns:**
+
+- LazyLLMCMD: A LazyLLMCMD object containing the startup command.
+"""
         if not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
@@ -81,6 +119,15 @@ class Lightllm(LazyLLMDeployBase):
         return LazyLLMCMD(cmd=impl, return_value=self.geturl, checkf=verify_fastapi_func)
 
     def geturl(self, job=None):
+        """Get the URL address of the LightLLM service.
+
+Args:
+    job (optional): Job object, defaults to None, in which case self.job is used.
+
+**Returns:**
+
+- str: The service URL address in the format "http://{ip}:{port}/generate".
+"""
         if job is None:
             job = self.job
         if lazyllm.config['mode'] == lazyllm.Mode.Display:
@@ -90,6 +137,19 @@ class Lightllm(LazyLLMDeployBase):
 
     @staticmethod
     def extract_result(x, inputs):
+        """Extract generated text from the service response.
+
+Args:
+    x (str): Response text from the service.
+    inputs (str): Input text.
+
+**Returns:**
+
+- str: The extracted generated text.
+
+Raises:
+    Exception: When JSON response parsing fails.
+"""
         try:
             if x.startswith('data:'): return json.loads(x[len('data:'):])['token']['text']
             else: return json.loads(x)['generated_text'][0]

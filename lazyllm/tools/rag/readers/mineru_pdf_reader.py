@@ -11,6 +11,16 @@ from .readerBase import LazyLLMReaderBase
 
 
 class MineruPDFReader(LazyLLMReaderBase):
+    """Module to parse PDF content via the MineruPDFReader service. Supports file upload or URL-based parsing, with a callback to process the parsed elements into document nodes.
+
+Args:
+    url (str): The MineruPDFReader service API URL.
+    upload_mode (bool): Whether to use file upload mode for the API call. Default is False, meaning JSON request with file path.
+    extract_table (bool): Whether to extract tables. Default is True.
+    extract_formula (bool): Whether to extract formulas. Default is True.
+    split_doc (bool): Whether to split the document. Default is True.
+    post_func (Optional[Callable]): Post-processing function.
+"""
     def __init__(self, url, backend='pipeline',
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  upload_mode: bool = False,

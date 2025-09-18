@@ -41,6 +41,15 @@ class _ClientPool:
 
 
 class MilvusStore(LazyLLMStoreBase):
+    """
+Vector store implementation based on Milvus, inheriting from StoreBase. Supports vector insertion, deletion, flexible querying (including scalar filtering).
+
+Args:
+    uri (str): Milvus connection URI (e.g., "tcp://localhost:19530"). If scheme is local file path, uses milvus-lite version; otherwise remote (need to set up a milvus service, e.x. standalone/distributed version).
+    db_name (str): Database name to use in Milvus. Defaults to "lazyllm".
+    index_kwargs (Optional[Union[Dict, List]]): Index creation parameters (e.g., {"index_type": "IVF_FLAT", "metric_type": "COSINE"} or a list of per-embed-key configs).
+    client_kwargs (Optional[Dict]): Additional keyword arguments for milvus client.
+"""
     capability = StoreCapability.VECTOR
     need_embedding = True
     supports_index_registration = False
@@ -61,6 +70,13 @@ class MilvusStore(LazyLLMStoreBase):
 
     @property
     def dir(self):
+        """
+Local storage directory derived from URI if running embedded. Returns None when using remote Milvus.
+
+**Returns:**
+
+- Optional[str]: Directory path for local milvus.db file, or None if remote.
+"""
         if self._is_remote: return None
         p = Path(self._uri)
         p = p if p.suffix else (p / 'milvus.db')
@@ -70,6 +86,15 @@ class MilvusStore(LazyLLMStoreBase):
     def connect(self, embed_dims: Optional[Dict[str, int]] = None,
                 embed_datatypes: Optional[Dict[str, DataType]] = None,
                 global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs):
+        """
+Initialize Milvus client, pass in embedding model parameters and global metadata descriptions.
+
+Args:
+    embed_dims (Dict[str, int]): Embedding dimensions per embed key.
+    embed_datatypes (Dict[str, DataType]): Data types for each embed key.
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Descriptions for metadata fields.
+    kwargs: Other connection parameters
+"""
         self._embed_dims = embed_dims or {}
         self._embed_datatypes = embed_datatypes or {}
         self._global_metadata_desc = global_metadata_desc or {}
@@ -128,6 +153,17 @@ class MilvusStore(LazyLLMStoreBase):
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
+        """
+Insert or update a batch of segment data into the Milvus collection.
+
+Args:
+    collection_name (str): Collection name (per embed key grouping).
+    data (List[dict]): List of segment data.
+
+**Returns:**
+
+- bool: True if successful, False otherwise.
+"""
         try:
             if not data: return True
             data_embeddings = data[0].get('embedding', {})
@@ -156,6 +192,18 @@ class MilvusStore(LazyLLMStoreBase):
 
     @override
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
+        """
+Delete entire collection or subset of records by criteria.
+
+Args:
+    collection_name (str): Target collection.
+    criteria (Optional[dict]): If None, drop the entire collection; otherwise a dict of filters (uid list or metadata conditions).
+    kwargs: Other delete parameters
+
+**Returns:**
+
+- bool: True if deletion succeeds, False otherwise.
+"""
         try:
             with self._client_context() as client:
                 if not client.has_collection(collection_name):
@@ -175,6 +223,18 @@ class MilvusStore(LazyLLMStoreBase):
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
+        """
+Retrieve records matching primary-key or metadata filters.
+
+Args:
+    collection_name (str): Collection to query.
+    criteria (Optional[dict]): Dict containing 'uid' list or metadata field filters.
+    kwargs: Other query parameters
+
+**Returns:**
+
+- List[dict]: Each entry contains 'uid' and 'embedding'.
+"""
         try:
             with self._client_context() as client:
                 if not client.has_collection(collection_name):
@@ -353,6 +413,22 @@ class MilvusStore(LazyLLMStoreBase):
     def search(self, collection_name: str, query_embedding: Union[dict, List[float]], topk: int,
                filters: Optional[Dict[str, Union[List, set]]] = None, embed_key: Optional[str] = None,
                filter_str: Optional[str] = '', **kwargs) -> List[dict]:
+        """
+Perform vector similarity search with optional metadata filtering.
+
+Args:
+    collection_name (str): Collection to search.
+    query_embedding (List[float]): Query vector.
+    topk (int): Number of nearest neighbors.
+    filters (Optional[Dict[str, Union[List, Set]]]): Metadata filter map.
+    embed_key (str): Which embedding field to use.
+    filter_str (Optional[str], optional): 过滤表达式字符串。默认为空字符串
+    kwargs: 其他搜索参数
+
+**Returns:**
+
+- List[dict]: Each dict has 'uid' and similarity 'score'.
+"""
         with self._client_context() as client:
             if not embed_key or embed_key not in self._embed_datatypes:
                 raise ValueError(f'[Milvus Store - search] Not supported or None `embed_key`: {embed_key}')

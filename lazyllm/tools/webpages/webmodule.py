@@ -29,6 +29,43 @@ css = '''
 '''
 
 class WebModule(ModuleBase):
+    """WebModule is a web-based interactive interface provided by LazyLLM for developers. After initializing and starting
+a WebModule, developers can see structure of the module they provides behind the WebModule, and transmit the input
+of the Chatbot component to their modules. The results and logs returned by the module will be displayed on the
+“Processing Logs” and Chatbot component on the web page. In addition, Checkbox or Text components can be added
+programmatically to the web page for additional parameters to the background module. Meanwhile, The WebModule page
+provides Checkboxes of “Use Context,” “Stream Output,” and “Append Output,” which can be used to adjust the
+interaction between the page and the module behind.
+
+Args:
+    m (Any): The model object to wrap, can be a lazyllm.FlowBase subclass or other callable object.
+    components (Dict[Any, Any], optional): Additional UI component configurations, defaults to empty dict.
+    title (str, optional): Web page title, defaults to 'Dialogue Demo Terminal'.
+    port (Optional[Union[int, range, tuple, list]], optional): Service port number or port range, defaults to 20500-20799.
+    history (List[Any], optional): List of historical session modules, defaults to empty list.
+    text_mode (Optional[Mode], optional): Text output mode (Dynamic/Refresh/Appendix), defaults to Dynamic.
+    trace_mode (Optional[Mode], optional): Deprecated trace mode parameter.
+    audio (bool, optional): Whether to enable audio input functionality, defaults to False.
+    stream (bool, optional): Whether to enable streaming output, defaults to False.
+    files_target (Optional[Union[Any, List[Any]]], optional): Target module for file processing, defaults to None.
+    static_paths (Optional[Union[str, Path, List[Union[str, Path]]]], optional): Static resource paths, defaults to None.
+    encode_files (bool, optional): Whether to encode file paths, defaults to False.
+    share (bool, optional): Whether to generate a shareable public link, defaults to False.
+
+
+Examples:
+    >>> import lazyllm
+    >>> def func2(in_str, do_sample=True, temperature=0.0, *args, **kwargs):
+    ...     return f"func2:{in_str}|do_sample:{str(do_sample)}|temp:{temperature}"
+    ...
+    >>> m1=lazyllm.ActionModule(func2)
+    >>> m1.name="Module1"
+    >>> w = lazyllm.WebModule(m1, port=[20570, 20571, 20572], components={
+    ...         m1:[('do_sample', 'Checkbox', True), ('temperature', 'Text', 0.1)]},
+    ...                       text_mode=lazyllm.tools.WebModule.Mode.Refresh)
+    >>> w.start()
+    193703: 2024-06-07 10:26:00 lazyllm SUCCESS: ...
+    """
     class Mode:
         Dynamic = 0
         Refresh = 1
@@ -98,6 +135,17 @@ class WebModule(ModuleBase):
         return cach_path
 
     def init_web(self, component_descs):
+        """Initialize the Web UI page.
+This method uses Gradio to build the interactive chat interface and binds all components to the appropriate logic. It supports session selection, streaming output, context toggling, multimodal input, and control tools. The method returns the constructed Gradio Blocks object.
+
+Args:
+    component_descs (List[Tuple]): A list of component descriptors. Each element is a 5-tuple 
+        (module, group_name, name, component_type, value), e.g. ('MyModule', 'GroupA', 'use_cache', 'Checkbox', True).
+
+**Returns:**
+
+- gr.Blocks: The constructed Gradio UI object, which can be launched via `.launch()`.
+"""
         gr.set_static_paths(self._static_paths)
         with gr.Blocks(css=css, title=self.title, analytics_enabled=False) as demo:
             sess_data = gr.State(value={
@@ -418,9 +466,15 @@ class WebModule(ModuleBase):
         return self
 
     def wait(self):
+        """Block the main thread until the web interface is closed.
+This method blocks the current thread until the Gradio demo is closed. Useful in deployment scenarios to prevent premature program exit.
+"""
         self.demo.block_thread()
 
     def stop(self):
+        """Stop the web interface and clean up resources.
+If the web demo has been initialized, this method closes the Gradio demo, frees related resources, and resets `demo` and `url` attributes.
+"""
         if self.demo:
             self.demo.close()
             del self.demo

@@ -69,6 +69,54 @@ class _MetaBind(type):
 
 
 class Bind(object):
+    """The Bind class provides function binding and deferred invocation capabilities, supporting dynamic argument passing and context-based argument resolution for flexible function composition and pipeline-style calls.
+
+The bind function binds a callable with fixed positional and keyword arguments, supporting placeholders (e.g. _0, _1) to reference outputs of upstream nodes within the current pipeline, enabling flexible data jumps and function composition.
+
+Notes:
+    - Bound arguments can be concrete values or placeholders referring to upstream pipeline outputs.
+    - Bindings are local to the current pipeline context and do not support cross-pipeline or external variable binding.
+
+Args:
+    __bind_func (Callable or type): The function or function type to bind. If a type is given, it will be instantiated automatically.
+    *args: Fixed positional arguments to bind, supporting placeholders.
+    **kw: Fixed keyword arguments to bind, supporting placeholders.
+
+
+Examples:
+    >>> from lazyllm import bind, _0, _1
+    >>> def f1(x):
+    ...     return x ** 2
+    >>> def f21(input1, input2=0):
+    ...     return input1 + input2 + 1
+    >>> def f22(input1, input2=0):
+    ...     return input1 + input2 - 1
+    >>> def f3(in1='placeholder1', in2='placeholder2', in3='placeholder3'):
+    ...     return f"get [input:{in1}], [f21:{in2}], [f22:{in3}]"
+    
+    >>> from lazyllm import pipeline, parallel
+    
+    >>> with pipeline() as ppl:
+    ...     ppl.f1 = f1
+    ...     with parallel() as ppl.subprl2:
+    ...         ppl.subprl2.path1 = f21
+    ...         ppl.subprl2.path2 = f22
+    ...     ppl.f3 = bind(f3, ppl.input, _0, _1)
+    ...
+    >>> print(ppl(2))
+    get [input:2], [f21:5], [f22:3]
+    
+    >>> # Demonstrate operator '|' overloading for bind
+    >>> with pipeline() as ppl2:
+    ...     ppl2.f1 = f1
+    ...     with parallel().bind(ppl2.input, _0) as ppl2.subprl2:
+    ...         ppl2.subprl2.path1 = f21
+    ...         ppl2.subprl2.path2 = f22
+    ...     ppl2.f3 = f3 | bind(ppl2.input, _0, _1)
+    ...
+    >>> print(ppl2(2))
+    get [input:2], [f21:7], [f22:5]
+    """
     class _None: pass
 
     class Args(object):

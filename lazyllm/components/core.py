@@ -5,6 +5,28 @@ from lazyllm import launchers, LazyLLMLaunchersBase
 from typing import Union
 
 class ComponentBase(object, metaclass=LazyLLMRegisterMetaClass):
+    """Base class for components, providing a unified interface and basic implementation to facilitate creation of various components.  
+Components execute tasks via a specified launcher and support custom task execution logic.
+
+Args:
+    launcher (LazyLLMLaunchersBase or type, optional): Launcher instance or launcher class used by the component, defaults to empty launcher.
+
+
+Examples:
+    >>> from lazyllm.components.core import ComponentBase
+    >>> class MyComponent(ComponentBase):
+    ...     def apply(self, x):
+    ...         return x * 2
+    >>> comp = MyComponent()
+    >>> comp.name = "ExampleComponent"
+    >>> print(comp.name)
+    ExampleComponent
+    >>> result = comp(10)
+    >>> print(result)
+    20
+    >>> print(comp.apply(5))
+    10
+    """
     def __init__(self, *, launcher=launchers.empty()):  # noqa B008
         self._llm_name = None
         self.job = ReadOnlyWrapper()
@@ -16,9 +38,21 @@ class ComponentBase(object, metaclass=LazyLLMRegisterMetaClass):
             raise RuntimeError('Invalid launcher given:', launcher)
 
     def apply():
+        """Core execution method of the component, to be implemented by subclasses.  
+Defines the specific business logic or task execution steps of the component.
+
+**Note:**  
+If this method is overridden by the subclass, it will be called when the component is invoked.
+"""
         raise NotImplementedError('please implement function \'apply\'')
 
     def cmd(self, *args, **kw) -> Union[str, tuple, list]:
+        """Generates the execution command of the component, to be implemented by subclasses.  
+The returned command can be a string, tuple, or list, representing the instruction to execute the task.
+
+**Note:**  
+If the `apply` method is not overridden, this command will be used to create a job for the launcher to run.
+"""
         raise NotImplementedError('please implement function \'cmd\'')
 
     @property

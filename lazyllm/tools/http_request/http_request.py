@@ -5,6 +5,37 @@ from lazyllm.module.module import ModuleBase
 from lazyllm.tools.http_request.http_executor_response import HttpExecutorResponse
 
 class HttpRequest(ModuleBase):
+    """General HTTP request executor.
+
+This class builds and sends HTTP requests with support for dynamic variable substitution, API key injection, JSON or form data encoding, and file-aware response parsing.
+
+Args:
+    method (str): HTTP method, such as 'GET', 'POST', etc.
+    url (str): The target URL for the HTTP request.
+    api_key (str): Optional API key, inserted into query parameters.
+    headers (dict): HTTP request headers.
+    params (dict): URL query parameters.
+    body (Union[str, dict]): HTTP request body (raw string or JSON-formatted dict).
+    timeout (int): Timeout duration for the request (in seconds).
+    proxies (dict, optional): Proxy settings for the request, if needed.
+
+
+Examples:
+    >>> from lazyllm.components import HttpRequest
+    >>> request = HttpRequest(
+    ...     method="GET",
+    ...     url="https://api.github.com/repos/openai/openai-python",
+    ...     api_key="",
+    ...     headers={"Accept": "application/json"},
+    ...     params={},
+    ...     body=None
+    ... )
+    >>> result = request()
+    >>> print(result["status_code"])
+    ... 200
+    >>> print(result["content"][:100])
+    ... '{"id":123456,"name":"openai-python", ...}'
+    """
     def __init__(self, method, url, api_key, headers, params, body, timeout=10, proxies=None):
         super().__init__()
         if not url:

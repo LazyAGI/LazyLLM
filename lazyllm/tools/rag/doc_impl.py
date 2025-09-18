@@ -62,6 +62,7 @@ class EmbedPlaceholder:
 
 
 class NodeGroupType(str, Enum):
+    """An enumeration."""
     ORIGINAL = 'Original Source'
     CHUNK = 'Chunk'
     SUMMARY = 'Summary'
@@ -93,6 +94,20 @@ class BuiltinGroups(object):
 
 
 class DocImpl:
+    """Document implementation class for managing core document processing, storage, and retrieval functionalities.
+
+Args:
+    embed (Dict[str, Callable]): Dictionary of embedding functions.
+    dlm (Optional[DocListManager]): Document list manager, defaults to None.
+    doc_files (Optional[str]): Document files path, defaults to None.
+    kb_group_name (Optional[str]): Knowledge base group name, defaults to default group name.
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Global metadata description.
+    store (Optional[Union[Dict, LazyLLMStoreBase]]): Storage instance or configuration.
+    processor (Optional[DocumentProcessor]): Document processor.
+    algo_name (Optional[str]): Algorithm name.
+    display_name (Optional[str]): Display name.
+    description (Optional[str]): Description information.
+"""
     _builtin_node_groups: Dict[str, Dict] = {}
     _global_node_groups: Dict[str, Dict] = {}
     _registered_file_reader: Dict[str, Callable] = {}
@@ -244,6 +259,18 @@ class DocImpl:
                                  trans_node: Optional[bool] = None, num_workers: int = 0,
                                  display_name: Optional[str] = None,
                                  group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
+        """Create a global node group.
+
+Args:
+    name (str): Node group name.
+    transform (Union[str, Callable]): Transform function or name.
+    parent (str): Parent node group name, defaults to LAZY_ROOT_NAME.
+    trans_node (Optional[bool]): Whether to transform node, defaults to None.
+    num_workers (int): Number of worker threads, defaults to 0.
+    display_name (Optional[str]): Display name.
+    group_type (NodeGroupType): Node group type.
+    **kwargs: Additional arguments.
+"""
         DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
                                         group_type=group_type, **kwargs)
@@ -251,6 +278,18 @@ class DocImpl:
     def create_node_group(self, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
                           trans_node: Optional[bool] = None, num_workers: int = 0, display_name: Optional[str] = None,
                           group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
+        """Create a local node group.
+
+Args:
+    name (str): Node group name.
+    transform (Union[str, Callable]): Transform function or name.
+    parent (str): Parent node group name, defaults to LAZY_ROOT_NAME.
+    trans_node (Optional[bool]): Whether to transform node, defaults to None.
+    num_workers (int): Number of worker threads, defaults to 0.
+    display_name (Optional[str]): Display name.
+    group_type (NodeGroupType): Node group type.
+    **kwargs: Additional arguments.
+"""
         assert not self._lazy_init.flag, 'Cannot add node group after document started'
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
@@ -258,6 +297,16 @@ class DocImpl:
 
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
+        """Register a global file reader.
+
+Args:
+    pattern (str): File pattern.
+    func (Optional[Callable]): Reader function, defaults to None.
+
+**Returns:**
+
+- Optional[Callable]: Decorator function or None.
+"""
         if func is not None:
             cls._registered_file_reader[pattern] = func
             return None
@@ -274,6 +323,14 @@ class DocImpl:
         return value
 
     def register_index(self, index_type: str, index_cls: IndexBase, *args, **kwargs) -> None:
+        """Register an index.
+
+Args:
+    index_type (str): Index type.
+    index_cls (IndexBase): Index class.
+    *args: Positional arguments.
+    **kwargs: Keyword arguments.
+"""
         if bool(self._lazy_init.flag):
             args = [self._resolve_index_placeholder(arg) for arg in args]
             kwargs = {k: self._resolve_index_placeholder(v) for k, v in kwargs.items()}
@@ -282,6 +339,12 @@ class DocImpl:
             self._index_pending_registrations.append((index_type, index_cls, args, kwargs))
 
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
+        """Add a local file reader.
+
+Args:
+    pattern (str): File pattern.
+    func (Optional[Callable]): Reader function.
+"""
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
 
@@ -310,6 +373,8 @@ class DocImpl:
             func(*[arg[i:i + batch_size] if isinstance(arg, (list, tuple)) else arg for arg in args], **kwargs)
 
     def worker(self):
+        """Background worker thread for handling document parsing, deletion, addition, and other operations.
+"""
         is_first_run = True
         while True:
             # Apply meta changes
@@ -377,6 +442,12 @@ class DocImpl:
         self._processor.delete_doc(doc_ids=doc_ids)
 
     def activate_group(self, group_name: str, embed_keys: Optional[List[str]] = None, enable_embed: bool = True):
+        """Activate a node group.
+
+Args:
+    group_name (str): Node group name.
+    embed_keys (List[str]): List of embedding keys.
+"""
         group_name = str(group_name)
         self._activated_groups.add(group_name)
         if embed_keys is None and enable_embed:
@@ -398,11 +469,35 @@ class DocImpl:
             if self.store.is_group_empty(group_name): self._processor.reparse(group_name)
 
     def active_node_groups(self):
+        """Get currently active node groups.
+
+**Returns:**
+
+- Dict: Active node groups and their embedding keys.
+"""
         return {k: v for k, v in self._activated_embeddings.items() if k in self._activated_groups}
 
     def retrieve(self, query: str, group_name: str, similarity: str, similarity_cut_off: Union[float, Dict[str, float]],
                  index: str, topk: int, similarity_kws: dict, embed_keys: Optional[List[str]] = None,
                  filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
+        """Retrieve document nodes.
+
+Args:
+    query (str): Query string.
+    group_name (str): Node group name.
+    similarity (str): Similarity calculation method.
+    similarity_cut_off (Union[float, Dict[str, float]]): Similarity threshold.
+    index (str): Index type.
+    topk (int): Number of results to return.
+    similarity_kws (dict): Similarity calculation parameters.
+    embed_keys (Optional[List[str]]): List of embedding keys.
+    filters (Optional[Dict]): Filter conditions.
+    **kwargs: Additional arguments.
+
+**Returns:**
+
+- List[DocNode]: List of retrieved document nodes.
+"""
         self._lazy_init()
 
         if index and index != 'default':
@@ -425,6 +520,16 @@ class DocImpl:
         return nodes
 
     def find(self, nodes: List[DocNode], group: str) -> List[DocNode]:
+        """Find nodes in specified group.
+
+Args:
+    nodes (List[DocNode]): List of nodes.
+    group (str): Target group name.
+
+**Returns:**
+
+- List[DocNode]: List of found nodes.
+"""
         if len(nodes) == 0: return nodes
         self._lazy_init()
 
@@ -462,6 +567,16 @@ class DocImpl:
         return nodes
 
     def find_parent(self, nodes: List[DocNode], group: str) -> List[DocNode]:
+        """Find parent nodes.
+
+Args:
+    nodes (List[DocNode]): List of nodes.
+    group (str): Target group name.
+
+**Returns:**
+
+- List[DocNode]: List of found parent nodes.
+"""
         if isinstance(nodes[0].parent, DocNode):
             result = self._find_parent_with_node(nodes, group)
         else:
@@ -501,6 +616,16 @@ class DocImpl:
         return cur_nodes if cur_group == group else []
 
     def find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:
+        """Find child nodes.
+
+Args:
+    nodes (List[DocNode]): List of nodes.
+    group (str): Target group name.
+
+**Returns:**
+
+- List[DocNode]: List of found child nodes.
+"""
         if not nodes: return []
         kb_id = nodes[0].global_metadata.get(RAG_KB_ID, None)
         result = self.store.get_nodes(group=group, kb_id=kb_id, parent=[n._uid for n in nodes], display=True)
@@ -510,6 +635,11 @@ class DocImpl:
         return list(result)
 
     def clear_cache(self, group_names: Optional[List[str]] = None):
+        """Clear cache.
+
+Args:
+    group_names (Optional[List[str]]): List of group names to clear cache for, defaults to None for clearing all cache.
+"""
         self.store.clear_cache(group_names)
 
     def __call__(self, func_name: str, *args, **kwargs):

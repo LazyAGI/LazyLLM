@@ -8,6 +8,7 @@ from .protocol import FINETUNE_RULE_SET, DEPLOY_RULE_SET
 
 @dataclass(frozen=True)
 class TrainingConfiguration:
+    """TrainingConfiguration(framework: str, tp: int, zero: bool, gradient_step: int, sp: int, ddp: int, micro_batch_size: int, tgs: int)"""
     framework: str
     tp: int
     zero: bool
@@ -40,6 +41,7 @@ class TrainingConfiguration:
 
 @dataclass(frozen=True)
 class DeployConfiguration:
+    """DeployConfiguration(framework: str, tp: int, tgs: int)"""
     framework: str
     tp: int
     tgs: int
@@ -55,6 +57,12 @@ OutputConfiguration = TypeVar('OutputConfiguration', bound=Union[TrainingConfigu
 
 
 class AutoConfig(object):
+    """Auto configuration class for managing and querying fine-tuning and deployment configuration parameters.
+
+Args:
+    finetune_file (str): Path to fine-tuning configuration file in CSV format.
+    deploy_file (str): Path to deployment configuration file in CSV format.
+"""
     def __init__(self, finetune_file, deploy_file):
         with open(finetune_file) as file:
             reader = csv.reader(file)
@@ -71,10 +79,36 @@ class AutoConfig(object):
 
     def query_finetune(self, gpu_type: str, gpu_num: int, model_name: str,
                        ctx_len: int, batch_size: int, lora_r: int):
+        """Query fine-tuning configuration parameters.
+
+Args:
+    gpu_type (str): GPU type.
+    gpu_num (int): Number of GPUs.
+    model_name (str): Model name.
+    ctx_len (int): Context length.
+    batch_size (int): Batch size.
+    lora_r (int): LoRA rank.
+
+**Returns:**
+
+- List[TrainingConfiguration]: Returns a list of training configurations sorted by TGS (Training Goodput Score) in descending order.
+"""
         return self._query(clazz=TrainingConfiguration, gpu_type=gpu_type, gpu_num=gpu_num, model_name=model_name,
                            ctx_len=ctx_len, batch_size=batch_size, lora_r=lora_r)
 
     def query_deploy(self, gpu_type: str, gpu_num: int, model_name: str, max_token_num):
+        """Query deployment configuration parameters.
+
+Args:
+    gpu_type (str): GPU type.
+    gpu_num (int): Number of GPUs.
+    model_name (str): Model name.
+    max_token_num (int): Maximum number of tokens.
+
+**Returns:**
+
+- List[DeployConfiguration]: Returns a list of deployment configurations sorted by TGS (Throughput Goodput Score) in descending order.
+"""
         return self._query(clazz=DeployConfiguration, gpu_type=gpu_type, gpu_num=gpu_num,
                            model_name=model_name, max_token_num=max_token_num)
 

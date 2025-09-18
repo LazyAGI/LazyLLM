@@ -66,6 +66,7 @@ def get_all_examples():   # Examples are not always exported, so process them in
 lazyllm.config.add('language', str, 'ENGLISH', 'LANGUAGE')
 
 def add_doc(obj_name, docstr, module, append=''):
+    """Add document for lazyllm functions"""
     _guard_register_once(obj_name, module, append)
 
     obj = module

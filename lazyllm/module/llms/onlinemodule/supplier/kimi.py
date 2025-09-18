@@ -3,6 +3,17 @@ from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase
 
 class KimiModule(OnlineChatModuleBase):
+    """KimiModule class, inheriting from OnlineChatModuleBase, encapsulates the functionality to call Kimi chat service provided by Moonshot AI.  
+By specifying the API key, model name, and service URL, it supports safe and accurate Chinese and English Q&A interactions, as well as image input in base64 format.
+
+Args:
+    base_url (str): Base URL of the Kimi service, default is "https://api.moonshot.cn/".
+    model (str): Kimi model name to use, default is "moonshot-v1-8k".
+    api_key (Optional[str]): API key for accessing Kimi service. If not provided, it is read from lazyllm config.
+    stream (bool): Whether to enable streaming output, default is True.
+    return_trace (bool): Whether to return debug trace information, default is False.
+    **kwargs: Additional parameters passed to OnlineChatModuleBase.
+"""
 
     def __init__(self, base_url: str = 'https://api.moonshot.cn/', model: str = 'moonshot-v1-8k',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):

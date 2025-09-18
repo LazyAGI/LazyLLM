@@ -12,6 +12,12 @@ from ..doc_node import DocNode
 RETRY_TIMES = 3
 
 class PDFReader(LazyLLMReaderBase):
+    """Reader for extracting text content from PDF files.
+
+Args:
+    return_full_document (bool): Whether to merge the entire PDF into a single document node. If False, each page becomes a separate node.
+    return_trace (bool): Whether to return the processing trace. Default is True.
+"""
     def __init__(self, return_full_document: bool = False, return_trace: bool = True) -> None:
         super().__init__(return_trace=return_trace)
         self._return_full_document = return_full_document

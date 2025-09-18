@@ -55,6 +55,7 @@ def binary_search_equal_or_greater(values: List[Any], value: Any) -> Union[int, 
 
 
 class SearchMode(Enum):
+    """An enumeration."""
     LINEAR_EXACTLY = 0
     BINARY_EXACTLY = auto()
     BINARY_FLOOR = auto()
@@ -71,6 +72,7 @@ class SearchMode(Enum):
 
 @dataclass
 class Options(Generic[T]):
+    """Options(options: List[~T], mapping: bool = False, indexed: bool = False, matches: collections.abc.Callable[[typing.List[typing.Any], typing.Any], typing.Optional[int]] = <SearchMode.LINEAR_EXACTLY: 0>)"""
     options: List[T]
     mapping: bool = False
     indexed: bool = False
@@ -78,18 +80,64 @@ class Options(Generic[T]):
 
 
 class Rule(Generic[T]):
+    """Defines a rule for parameters or fields, supporting bidirectional conversion between strings, values, and indices.  
+A rule can be constructed using an option set or type inference, and provides validation to ensure values fall within the allowed options.  
+It also supports different matching modes (e.g., linear search, binary search).
+
+Args:
+    name (str): Rule name, must not be an empty string.
+    options (Options[T] | None): Candidate values set, containing information about mapping, indexing, and matching modes. Optional.
+    convert (Callable[[str], T] | None): Function to convert strings to target values. If not provided, it will be inferred from options or value type.
+"""
     @classmethod
     def from_indexed(cls, name: str, options: List[T], matches: SearchMode = SearchMode.LINEAR_EXACTLY):
+        """Create a rule with an ordered option list, enabling mapping and indexing.  
+Suitable for scenarios requiring fast lookup by index.
+
+Args:
+    name (str): Rule name.
+    options (List[T]): Candidate values list, must not be empty.
+    matches (SearchMode): Matching mode, defaults to ``SearchMode.LINEAR_EXACTLY``.
+
+**Returns:**
+
+- Rule[T]: Constructed rule object
+"""
         return cls(name, options=Options(options=options, mapping=True, indexed=True, matches=matches))
 
     @classmethod
     def from_options(cls, name: str, options: List[T], mapping: Union[bool, None] = None,
                      matches: SearchMode = SearchMode.LINEAR_EXACTLY):
+        """Create a rule from a candidate value list, with optional mapping support.  
+If mapping is not specified, it will be automatically enabled when all options are strings.
+
+Args:
+    name (str): Rule name.
+    options (List[T]): Candidate values list, must not be empty.
+    mapping (bool | None): Whether to enable mapping, defaults to ``None``, automatically inferred when not set.
+    matches (SearchMode): Matching mode, defaults to ``SearchMode.LINEAR_EXACTLY``.
+
+**Returns:**
+
+- Rule[T]: Constructed rule object
+"""
         mapping = all(isinstance(o, str) for o in options) if mapping is None else mapping
         return cls(name, options=Options(options=options, mapping=mapping, matches=matches))
 
     @classmethod
     def from_type(cls, name: str, value_type: Union[type[bool], type[int], type[str]]):
+        """Create a rule by specifying the value type.  
+The system will automatically infer the string-to-value converter based on the type.  
+Supports only ``bool``, ``int``, and ``str`` types.
+
+Args:
+    name (str): Rule name.
+    value_type (type): Type of the value, supports ``bool``, ``int``, and ``str`` only.
+
+**Returns:**
+
+- Rule[T]: Constructed rule object
+"""
         return cls(name, convert=Rule.__infer_converter_from_type(value_type))
 
     def __init__(self, name: str, *, options: Union[Options[T], None] = None,
@@ -137,6 +185,16 @@ class Rule(Generic[T]):
         return None if self._options is None else self._options.matches
 
     def convert_string_to_value(self, source: str) -> T:
+        """Convert the input string into a value defined by the rule.  
+If candidate options are defined, it additionally validates that the converted value exists in the option set.
+
+Args:
+    source (str): The input string to be converted.
+
+**Returns:**
+
+- T: Converted value
+"""
         try:
             value = self._convert(source)
         except ValueError as e:
@@ -147,6 +205,16 @@ class Rule(Generic[T]):
         return value
 
     def convert_value_to_index(self, value: T) -> List[int]:
+        """Convert a value into its index within the candidate options.  
+If a match function is defined, it is used first; otherwise, the method tries to locate the value directly in the options list.
+
+Args:
+    value (T): The value to be converted.
+
+**Returns:**
+
+- List[int]: A two-element list containing the matched index and the total number of options
+"""
         assert self.options is not None, f'index is unavailable if rule {self.name} has no options'
         index = None
         if self.matches is not None:
@@ -158,6 +226,16 @@ class Rule(Generic[T]):
         return index, len(self.options)
 
     def convert_index_to_value(self, index: int) -> T:
+        """Retrieve a value from the candidate options by its index.  
+Raises an error if the index is out of range.
+
+Args:
+    index (int): Index within the candidate options list.
+
+**Returns:**
+
+- T: The corresponding candidate value
+"""
         assert self.options is not None, f'index is unavailable if rule {self.name} has no options'
         if not 0 <= index < len(self.options):
             raise ValueError(f'index {index} out of range [0, {len(self.options)})')
@@ -186,6 +264,11 @@ class Rule(Generic[T]):
 
 
 class Configurations:
+    """Configuration management class to handle a set of rules (Rule), supporting parsing of headers and data values, and lookup based on key fields.
+
+Args:
+    rules (List[Rule]): List of rules, each rule name must be unique. Defines data parsing, type conversion, and index mapping.
+"""
     def __init__(self, rules: List[Rule]):
         self._rules: dict[str, Rule] = {rule.name: rule for rule in rules}
         self._key_rules: list[Rule] = []
@@ -195,6 +278,15 @@ class Configurations:
             raise ValueError('rule name should be unique')
 
     def parse_header(self, names: List[str]):
+        """Parse the header, match existing rules according to the given list of names, and determine key rules and the ordered rules list.
+
+Args:
+    names (List[str]): List of header names, each must correspond to an existing rule.
+
+**Returns:**
+
+- self (Configurations): Returns the instance itself for chaining
+"""
         if len(names) == 0:
             raise ValueError('header should not be empty')
 
@@ -210,6 +302,15 @@ class Configurations:
         return self
 
     def parse_values(self, values: Iterator[List[str]]):
+        """Parse the list of data values, convert each row of string values to the corresponding rule values, and generate an ordered values dictionary indexed by key fields.
+
+Args:
+    values (Iterator[List[str]]): Iterator of data rows, each row is a list of strings corresponding to the header.
+
+**Returns:**
+
+- self (Configurations): Returns the instance itself for chaining
+"""
         assert len(self._ordered_rules) != 0, 'must call parse_header before parse_values'
         output: dict[int, List[List[Any]]] = {}
         for row in values:
@@ -231,6 +332,15 @@ class Configurations:
         return self
 
     def lookup(self, keys: List[Union[str, Any]]) -> List[Dict[str, Any]]:
+        """Lookup based on the values of key fields, returning a list of matched ordered values, each element is a dictionary mapping rule names to their corresponding values.
+
+Args:
+    keys (List[Union[str, Any]]): Dictionary of key field values used for lookup, with rule names as keys and corresponding values.
+
+**Returns:**
+
+- List[Dict[str, Any]]: List of matched results, each element is a dictionary mapping rule names to values
+"""
         assert len(self._ordered_rules) != 0, 'must invoke parse_header before lookup'
         assert len(self._ordered_values) != 0, 'must invoke parse_values before lookup'
 

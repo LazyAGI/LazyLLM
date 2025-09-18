@@ -46,6 +46,28 @@ def [函数名](参数) -> 返回类型:
 '''
 
 class CodeGenerator(ModuleBase):
+    """Code Generation Module.
+
+This module generates code based on a user-defined prompt. It automatically selects a Chinese or English system prompt based on the input, and extracts Python code snippets from the output.
+
+`__init__(self, base_model, prompt="")`
+Initializes the code generator with a base model and prompt.
+
+Args:
+    base_model (Union[str, TrainableModule, OnlineChatModuleBase]): A path string to load the model, or an initialized model instance.
+    prompt (str): A user-defined prompt to guide the code generation. May contain Chinese or English.
+
+
+Examples:
+    >>> from lazyllm.components import CodeGenerator
+    >>> generator = CodeGenerator(base_model="deepseek-coder", prompt="写一个Python函数，计算斐波那契数列。")
+    >>> result = generator("请给出实现代码")
+    >>> print(result)
+    ... def fibonacci(n):
+    ...     if n <= 1:
+    ...         return n
+    ...     return fibonacci(n-1) + fibonacci(n-2)
+    """
     def __init__(
         self,
         base_model: Union[str, TrainableModule, OnlineChatModuleBase],
@@ -59,6 +81,16 @@ class CodeGenerator(ModuleBase):
             self._m = base_model.share(self._prompt)
 
     def choose_prompt(self, prompt: str):
+        """Selects an appropriate code generation prompt template based on the content of the input prompt.  
+Returns the Chinese prompt template if Chinese characters are detected; otherwise returns the English prompt template.
+
+Args:
+    prompt (str): Input prompt text.
+
+**Returns:**
+
+- str: The selected code generation prompt template string.
+"""
         # Use chinese prompt if intent elements have chinese character, otherwise use english version
         for ele in prompt:
             # chinese unicode range

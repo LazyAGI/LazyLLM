@@ -6,6 +6,47 @@ from .utils import OnlineModuleBase
 
 
 class OnlineEmbeddingModuleBase(OnlineModuleBase):
+    """
+OnlineEmbeddingModuleBase is the base class for managing embedding model interfaces on open platforms, used for requesting text to obtain embedding vectors. It is not recommended to directly instantiate this class. Specific platform classes should inherit from this class for instantiation.
+
+
+If you need to support the capabilities of embedding models on a new open platform, please extend your custom class from OnlineEmbeddingModuleBase:
+
+    1. If the request and response data formats of the new platform's embedding model are the same as OpenAI's, no additional processing is needed; simply pass the URL and model.
+    2. If the request or response data formats of the new platform's embedding model differ from OpenAI's, you need to override the _encapsulated_data or _parse_response methods.
+    3. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
+
+Args:
+    model_series (str): Model series name identifier.
+    embed_url (str): Embedding API URL address.
+    api_key (str): API access key.
+    embed_model_name (str): Embedding model name.
+    return_trace (bool, optional): Whether to return trace information, defaults to False.
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.module import OnlineEmbeddingModuleBase
+    >>> class NewPlatformEmbeddingModule(OnlineEmbeddingModuleBase):
+    ...     def __init__(self,
+    ...                 embed_url: str = '<new platform embedding url>',
+    ...                 embed_model_name: str = '<new platform embedding model name>'):
+    ...         super().__init__(embed_url, lazyllm.config['new_platform_api_key'], embed_model_name)
+    ...
+    >>> class NewPlatformEmbeddingModule1(OnlineEmbeddingModuleBase):
+    ...     def __init__(self,
+    ...                 embed_url: str = '<new platform embedding url>',
+    ...                 embed_model_name: str = '<new platform embedding model name>'):
+    ...         super().__init__(embed_url, lazyllm.config['new_platform_api_key'], embed_model_name)
+    ...
+    ...     def _encapsulated_data(self, text:str, **kwargs):
+    ...         pass
+    ...         return json_data
+    ...
+    ...     def _parse_response(self, response: dict[str, any]):
+    ...         pass
+    ...         return embedding
+    """
     NO_PROXY = True
 
     def __init__(self,
@@ -81,6 +122,24 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
             return [res.get('embedding', []) for res in data]
 
     def run_embed_batch(self, input: List, data: List, proxies, **kwargs):
+        """Internal method for executing batch embedding processing.
+
+This method handles batch text embedding requests, supporting both single-threaded 
+and multi-threaded processing modes. It automatically adjusts batch size and retries 
+on request failures, providing robust error handling mechanisms.
+
+Args:
+    input (List): Original input text list
+    data (List): Encapsulated batch request data list
+    proxies: Proxy settings, set to None if NO_PROXY is True
+    **kwargs: Additional keyword arguments
+
+
+**Returns:**
+
+- A list of embedding vector lists, each sublist corresponds to an input text's embedding vector
+
+"""
         ret = [[] for _ in range(len(input))]
         flag = False
         if self._num_worker == 1:

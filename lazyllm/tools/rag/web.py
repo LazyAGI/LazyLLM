@@ -12,10 +12,27 @@ from lazyllm.flow import Pipeline
 
 
 class WebUi:
+    """A Gradio-based web UI for managing knowledge base files.
+
+This class provides an interactive UI to create/delete groups, upload files, list files, and perform deletion operations via RESTful APIs. It is designed for rapid integration of file and group management.
+
+Args:
+    base_url (str): Base URL of the backend API service.
+"""
     def __init__(self, base_url) -> None:
         self.base_url = base_url
 
     def basic_headers(self, content_type=True):
+        """
+Generate standard HTTP headers.
+
+Args:
+    content_type (bool): Whether to include Content-Type in the headers (default: True).
+
+**Returns:**
+
+- dict: Dictionary of HTTP headers.
+"""
         return {
             'accept': 'application/json',
             'Content-Type': 'application/json' if content_type else None,
@@ -24,19 +41,58 @@ class WebUi:
     def muti_headers(
         self,
     ):
+        """
+Generates multipart form HTTP request headers.
+Used for requests requiring multipart/form-data format such as file uploads.
+
+**Returns:**
+
+- Dict: Returns HTTP request header dictionary containing accept header.
+"""
         return {'accept': 'application/json'}
 
     def post_request(self, url, data):
+        """
+Send a POST request.
+
+Args:
+    url (str): Target request URL.
+    data (dict): Request data (will be serialized as JSON).
+
+**Returns:**
+
+- dict: JSON response from the server.
+"""
         response = requests.post(
             url, headers=self.basic_headers(), data=json.dumps(data)
         )
         return response.json()
 
     def get_request(self, url):
+        """
+Send a GET request.
+
+Args:
+    url (str): Target request URL.
+
+**Returns:**
+
+- dict: JSON response from the server.
+"""
         response = requests.get(url, headers=self.basic_headers(False))
         return response.json()
 
     def new_group(self, group_name: str):
+        """
+Create a new file group.
+
+Args:
+    group_name (str): Name of the new group.
+
+**Returns:**
+
+- str: Server message about the creation result.
+"""
         response = requests.post(
             f'{self.base_url}/new_group?group_name={group_name}',
             headers=self.basic_headers(True),
@@ -44,6 +100,16 @@ class WebUi:
         return response.json()['msg']
 
     def delete_group(self, group_name: str):
+        """
+Delete a specific file group.
+
+Args:
+    group_name (str): Name of the group to delete.
+
+**Returns:**
+
+- str: Server message about the deletion.
+"""
         response = requests.post(
             f'{self.base_url}/delete_group?group_name={group_name}',
             headers=self.basic_headers(True),
@@ -51,12 +117,31 @@ class WebUi:
         return response.json()['msg']
 
     def list_groups(self):
+        """
+Gets all knowledge base group list.
+Sends request to backend API to get all current knowledge base group information.
+
+**Returns:**
+
+- List: Returns group name list.
+"""
         response = requests.get(
             f'{self.base_url}/list_kb_groups', headers=self.basic_headers(False)
         )
         return response.json()['data']
 
     def upload_files(self, group_name: str, override: bool = True):
+        """
+Upload files to a specified group.
+
+Args:
+    group_name (str): Name of the group.
+    override (bool): Whether to override existing files (default: True).
+
+**Returns:**
+
+- Any: Data returned by the backend.
+"""
         response = requests.post(
             f'{self.base_url}/upload_files?group_name={group_name}&override={override}',
             headers=self.basic_headers(True),
@@ -64,6 +149,16 @@ class WebUi:
         return response.json()['data']
 
     def list_files_in_group(self, group_name: str):
+        """
+List all files within a specific group.
+
+Args:
+    group_name (str): Name of the group.
+
+**Returns:**
+
+- List: List of file information.
+"""
         response = requests.get(
             f'{self.base_url}/list_files_in_group?group_name={group_name}&alive=True',
             headers=self.basic_headers(False),
@@ -71,6 +166,17 @@ class WebUi:
         return response.json()['data']
 
     def delete_file(self, group_name: str, file_ids: list[str]):
+        """
+Delete specific files from a group.
+
+Args:
+    group_name (str): Name of the group.
+    file_ids (List[str]): IDs of files to delete.
+
+**Returns:**
+
+- str: Deletion result message.
+"""
         response = requests.post(
             f'{self.base_url}/delete_files_from_group',
             headers=self.basic_headers(True),
@@ -79,6 +185,17 @@ class WebUi:
         return response.json()['msg']
 
     def gr_show_list(self, str_list: list, list_name: Union[str, list]):
+        """
+Display a list of strings as a Gradio DataFrame.
+
+Args:
+    str_list (List): List of strings or rows.
+    list_name (Union[str, List]): Column name(s) for the table.
+
+**Returns:**
+
+- gr.DataFrame: Gradio DataFrame component.
+"""
         if isinstance(list_name, str):
             headers = ['index', list_name]
             value = [[index, str_list[index]] for index in range(len(str_list))]
@@ -88,6 +205,17 @@ class WebUi:
         return gr.DataFrame(headers=headers, value=value)
 
     def create_ui(self):
+        """
+Builds Gradio interface with multiple tabs, providing the following functionalities:
+    - Group List: View all group information
+    - Upload Files: Select group and upload files
+    - Group File List: View files in specified group
+    - Delete Files: Delete specified files from group
+
+**Returns:**
+
+- gr.Blocks: A complete Gradio application instance.
+"""
         with gr.Blocks(analytics_enabled=False) as demo:
             with gr.Tabs():
                 select_group_list = []
@@ -176,6 +304,44 @@ class WebUi:
 
 
 class DocWebModule(ModuleBase):
+    """Document Web Interface Module, inherits from ModuleBase, provides web-based document management interface.
+
+Args:
+    doc_server (ServerModule): Document server module instance providing backend API support
+    title (str, optional): Interface title. Defaults to 'Document Management Demo Terminal'
+    port (optional): Service port number or port range. Defaults to ``None`` (uses range 20800-20999)
+    history (optional): History record list. Defaults to ``None``
+    text_mode (optional): Text display mode. Defaults to ``None`` (uses dynamic mode)
+    trace_mode (optional): Trace mode. Defaults to ``None`` (uses refresh mode)
+
+
+Class Attributes:
+
+    Mode: Mode enumeration class containing:
+        - Dynamic: Dynamic mode
+        - Refresh: Refresh mode
+        - Appendix: Appendix mode
+
+Notes:
+    - Requires a valid doc_server instance to work with
+    - Automatically tries other ports in range when port conflict occurs
+    - Releases resources when service is stopped
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.tools.rag.web import DocWebModule
+    >>> from lazyllm import
+    >>> doc_server = ServerModule(url="your_url")
+    >>> doc_web = DocWebModule(
+    >>>   doc_server=doc_server,
+    >>>   title="文档管理演示终端",
+    >>>   port=range(20800, 20805)  # 自动寻找可用端口)
+    >>> deploy_task = doc_web._get_deploy_tasks()
+    >>> deploy_task()  
+    >>> print(doc_web.url)
+    >>> doc_web.stop()
+    """
     class Mode:
         Dynamic = 0
         Refresh = 1
@@ -226,9 +392,17 @@ class DocWebModule(ModuleBase):
         return Pipeline(self._print_url)
 
     def wait(self):
+        """Block current thread waiting for web service to run.
+
+This method blocks the calling thread until the web service is explicitly stopped.
+
+"""
         self.demo.block_thread()
 
     def stop(self):
+        """Stops the web interface service and releases related resources.
+
+"""
         if self.demo:
             self.demo.close()
             del self.demo

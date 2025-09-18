@@ -27,6 +27,89 @@ class StaticParams(TypedDict, total=False):
 
 
 class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
+    """OnlineChatModuleBase is a public component that manages the LLM interface for open platforms, and has key capabilities such as training, deployment, and inference. OnlineChatModuleBase itself does not support direct instantiation; it requires subclasses to inherit from this class and implement interfaces related to fine-tuning, such as uploading files, creating fine-tuning tasks, querying fine-tuning tasks, and deployment-related interfaces, such as creating deployment services and querying deployment tasks.
+
+If you need to support the capabilities of a new open platform's LLM, please extend your custom class from OnlineChatModuleBase:
+
+    1. Consider post-processing the returned results based on the parameters returned by the new platform's model. If the model's return format is consistent with OpenAI, no processing is necessary.
+    2. If the new platform supports model fine-tuning, you must also inherit from the FileHandlerBase class. This class primarily validates file formats and converts .jsonl formatted data into a format supported by the model for subsequent training. 
+    3. If the new platform supports model fine-tuning, you must implement interfaces for file upload, creating fine-tuning services, and querying fine-tuning services. Even if the new platform does not require deployment of the fine-tuned model, please implement dummy interfaces for creating and querying deployment services.
+    4. If the new platform supports model fine-tuning, provide a list of models that support fine-tuning to facilitate judgment during the fine-tuning service process.
+    5. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
+
+Args:
+    model_series (str): Model series name
+    api_key (str): API access key
+    base_url (str): API base URL
+    model_name (str): Model name
+    stream (Union[bool, Dict[str, str]]): Whether to stream output or stream configuration
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    skip_auth (bool, optional): Whether to skip authentication, defaults to False
+    static_params (Optional[StaticParams], optional): Static parameter configuration, defaults to None
+    **kwargs: Other model parameters
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.module import OnlineChatModuleBase
+    >>> from lazyllm.module.onlineChatModule.fileHandler import FileHandlerBase
+    >>> class NewPlatformChatModule(OnlineChatModuleBase):
+    ...     def __init__(self,
+    ...                   base_url: str = "<new platform base url>",
+    ...                   model: str = "<new platform model name>",
+    ...                   system_prompt: str = "<new platform system prompt>",
+    ...                   stream: bool = True,
+    ...                   return_trace: bool = False):
+    ...         super().__init__(model_type="new_class_name",
+    ...                          api_key=lazyllm.config['new_platform_api_key'],
+    ...                          base_url=base_url,
+    ...                          system_prompt=system_prompt,
+    ...                          stream=stream,
+    ...                          return_trace=return_trace)
+    ...
+    >>> class NewPlatformChatModule1(OnlineChatModuleBase, FileHandlerBase):
+    ...     TRAINABLE_MODELS_LIST = ['model_t1', 'model_t2', 'model_t3']
+    ...     def __init__(self,
+    ...                   base_url: str = "<new platform base url>",
+    ...                   model: str = "<new platform model name>",
+    ...                   system_prompt: str = "<new platform system prompt>",
+    ...                   stream: bool = True,
+    ...                   return_trace: bool = False):
+    ...         OnlineChatModuleBase.__init__(self,
+    ...                                       model_type="new_class_name",
+    ...                                       api_key=lazyllm.config['new_platform_api_key'],
+    ...                                       base_url=base_url,
+    ...                                       system_prompt=system_prompt,
+    ...                                       stream=stream,
+    ...                                       trainable_models=NewPlatformChatModule1.TRAINABLE_MODELS_LIST,
+    ...                                       return_trace=return_trace)
+    ...         FileHandlerBase.__init__(self)
+    ...     
+    ...     def _convert_file_format(self, filepath:str) -> str:
+    ...         pass
+    ...         return data_str
+    ...
+    ...     def _upload_train_file(self, train_file):
+    ...         pass
+    ...         return train_file_id
+    ...
+    ...     def _create_finetuning_job(self, train_model, train_file_id, **kw):
+    ...         pass
+    ...         return fine_tuning_job_id, status
+    ...
+    ...     def _query_finetuning_job(self, fine_tuning_job_id):
+    ...         pass
+    ...         return fine_tuned_model, status
+    ...
+    ...     def _create_deployment(self):
+    ...         pass
+    ...         return self._model_name, "RUNNING"
+    ... 
+    ...     def _query_deployment(self, deployment_id):
+    ...         pass
+    ...         return "RUNNING"
+    ...
+    """
     TRAINABLE_MODEL_LIST = []
     VLM_MODEL_LIST = []
     NO_PROXY = True
@@ -163,7 +246,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
 
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
                 tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):
-        '''LLM inference interface'''
+        """LLM inference interface"""
         stream_output = stream_output or self._stream
         __input, files = self._get_files(__input, lazyllm_files)
         params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
@@ -226,10 +309,29 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         raise NotImplementedError(f'{self._model_series} not implemented _get_finetuned_model_names method in subclass')
 
     def set_train_tasks(self, train_file, **kw):
+        """Set model fine-tuning training task parameters.
+
+Configure training data file and training hyperparameters required for fine-tuning, preparing for subsequent training tasks.
+
+Args:
+    train_file: Training data file path or file object
+    **kw: Training hyperparameters such as learning rate, training epochs, etc.
+"""
         self._train_file = train_file
         self._train_parameters = kw
 
     def set_specific_finetuned_model(self, model_id):
+        """Set and use specific fine-tuned model.
+
+Select specified model ID from completed fine-tuned model list as current model to use.
+
+Args:
+    model_id (str): Fine-tuned model ID to use
+
+**Exceptions:** 
+
+- ValueError: Raised when provided model_id is not in valid fine-tuned model list
+"""
         valid_jobs, _ = self._get_finetuned_model_names()
         valid_model_id = [model for _, model in valid_jobs]
         if model_id in valid_model_id:
@@ -263,9 +365,6 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
                                   you can ignore this warning.')
 
         def _create_for_finetuning_job():
-            '''
-            create for finetuning job to finish
-            '''
             file_id = self._upload_train_file(train_file=self._train_file)
             lazyllm.LOG.info(f'{os.path.basename(self._train_file)} upload success! file id is {file_id}')
             (fine_tuning_job_id, status) = self._create_finetuning_job(self._model_name,

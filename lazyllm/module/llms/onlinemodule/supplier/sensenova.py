@@ -39,6 +39,17 @@ class _SenseNovaBase(object):
         return token
 
 class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
+    """SenseNovaModule is the LLM interface management component for SenseTime's open platform, inheriting from OnlineChatModuleBase and FileHandlerBase, providing both chat and file handling capabilities.
+
+Args:
+    base_url (str): Base URL for the API, defaults to "https://api.sensenova.cn/compatible-mode/v1/".
+    model (str): Name of the model to use, defaults to "SenseChat-5".
+    api_key (str): SenseTime API key, if not provided will be read from lazyllm.config['sensenova_api_key'].
+    secret_key (str): SenseTime secret key, if not provided will be read from lazyllm.config['sensenova_secret_key'].
+    stream (bool): Whether to enable streaming output, defaults to True.
+    return_trace (bool): Whether to return trace information, defaults to False.
+    **kwargs: Additional arguments passed to the base class.
+"""
     TRAINABLE_MODEL_LIST = ['nova-ptc-s-v2']
     VLM_MODEL_LIST = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
                       'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']
@@ -185,6 +196,11 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
             return (fine_tuned_model, status)
 
     def set_deploy_parameters(self, **kw):
+        """Set parameters for model deployment.
+
+Args:
+    **kw: Key-value pairs of deployment parameters that will be used when creating deployment.
+"""
         self._deploy_paramters = kw
 
     def _create_deployment(self) -> Tuple[str, str]:
@@ -231,6 +247,14 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
 
 
 class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
+    """SenseTime SenseNova Embedding module for text vectorization operations.Provides interface to interact with SenseTime's SenseNova embedding models, supporting text-to-vector conversion functionality. Inherits from OnlineEmbeddingModuleBase and _SenseNovaBase.
+
+Args:
+    embed_url (str, optional): Embedding API URL, defaults to "https://api.sensenova.cn/v1/llm/embeddings".
+    embed_model_name (str, optional): Embedding model name, defaults to "nova-embedding-stable".
+    api_key (str, optional): API access key, defaults to None.
+    secret_key (str, optional): API secret key, defaults to None.
+"""
 
     def __init__(self,
                  embed_url: str = 'https://api.sensenova.cn/v1/llm/embeddings',

@@ -21,6 +21,22 @@ from abc import ABCMeta
 # 5. allowed to omit the group name if the group name appears in the name
 #    >>> ld.a
 class LazyDict(dict):
+    """A special dictionary class designed for lazy programmers. Supports various convenient access and operation methods.
+
+Features:
+
+1. Use dot notation instead of ['str'] to access dictionary elements
+2. Support lowercase first character to make statements more like function calls
+3. Support direct calls when dictionary has only one element
+4. Support dynamic default keys
+5. Allow omitting group name if it appears in the name
+
+Args:
+    name (str): Name of the dictionary, defaults to empty string.
+    base: Base class reference, defaults to None.
+    *args: Positional arguments passed to dict parent class.
+    **kw: Keyword arguments passed to dict parent class.
+"""
     def __init__(self, name='', base=None, *args, **kw):
         super(__class__, self).__init__(*args, **kw)
         self._default: Optional[str] = None
@@ -64,6 +80,15 @@ class LazyDict(dict):
         return self[self._match(key)]
 
     def remove(self, key):
+        """Remove the specified key-value pair from the dictionary.
+
+Args:
+    key (str): The key to remove. Supports the same key matching rules as __getattr__, 
+              including lowercase first character and group name omission features.
+
+Note:
+    Raises AttributeError if no matching key is found.
+"""
         super(__class__, self).pop(self._match(key))
 
     def __call__(self, *args, **kwargs):
@@ -71,6 +96,15 @@ class LazyDict(dict):
         return (self.default if self._default else self[list(self.keys())[0]])(*args, **kwargs)
 
     def set_default(self, key: str):
+        """Set the default key for the dictionary. After setting, the value can be accessed through the .default property.
+
+Args:
+    key (str): The key name to set as default.
+
+Note:
+    - key must be a string type
+    - After setting, can be accessed via .default, or called directly when dictionary has only one element
+"""
         assert isinstance(key, str), 'default key must be str'
         self._default = key.lower()
 
@@ -131,6 +165,35 @@ def bind_to_instance(func):
     return wrapper
 
 class Register(object):
+    """LazyLLM provides a registration mechanism for Components, allowing any function to be registered as a Component of LazyLLM. The registered functions can be indexed at any location through the grouping mechanism provided by the registrar, without the need for explicit import.
+
+<span style="font-size: 18px;">&ensp;**`lazyllm.components.register(cls, *, rewrite_func)→ Decorator`**</span>
+
+After the function is called, it returns a decorator which wraps the decorated function into a Component and registers it in a group named cls.
+
+Args:
+    base (type): Base class
+    fnames (Union[str, List[str]]): Function name or function name list to rewrite
+    template (str, optional): Registration template string, defaults to standard registration template
+    default_group (str, optional): Default group name, defaults to None
+
+
+Examples:
+    >>> import lazyllm
+    >>> @lazyllm.component_register('mygroup')
+    ... def myfunc(input):
+    ...    return input
+    ...
+    >>> lazyllm.mygroup.myfunc()(1)
+    1
+    >>> @lazyllm.component_register.cmd('mygroup')
+    ... def mycmdfunc(input):
+    ...     return f'echo {input}'
+    ...
+    >>> lazyllm.mygroup.mycmdfunc()(1)
+    PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) Command: echo 1
+    PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
+    """
     def __init__(self, base, fnames, template: str = reg_template, default_group: Optional[str] = None):
         self.basecls = base
         self.fnames = [fnames] if isinstance(fnames, str) else fnames
@@ -184,4 +247,10 @@ class Register(object):
         return impl
 
     def new_group(self, group_name):
+        """
+Creates a new ComponentGroup. The newly created group will be automatically added to __builtin__ and can be accessed at any location without the need for import.
+
+Args:
+    group_name (str): The name of the group to be created.
+"""
         exec('class LazyLLM{name}Base(self.basecls):\n    pass\n'.format(name=group_name))

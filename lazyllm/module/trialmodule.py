@@ -11,17 +11,45 @@ def get_options(x):
 
 # TODO(wangzhihong): add process pool to control parallel-number and collect result
 class TrialModule(object):
+    """Parameter grid search module will traverse all its submodules, collect all searchable parameters, and iterate over these parameters for fine-tuning, deployment, and evaluation.
+
+Args:
+    m (Callable): The submodule whose parameters will be grid-searched. Fine-tuning, deployment, and evaluation will be based on this module.
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm import finetune, deploy
+    >>> m = lazyllm.TrainableModule('b1', 't').finetune_method(finetune.dummy, **dict(a=lazyllm.Option(['f1', 'f2'])))
+    >>> m.deploy_method(deploy.dummy).mode('finetune').prompt(None)
+    >>> s = lazyllm.ServerModule(m, post=lambda x, ori: f'post2({x})')
+    >>> s.evalset([1, 2, 3])
+    >>> t = lazyllm.TrialModule(s)
+    >>> t.update()
+    >>>
+    dummy finetune!, and init-args is {a: f1}
+    dummy finetune!, and init-args is {a: f2}
+    [["post2(reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1})"], ["post2(reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1})", "post2(reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1})"]]
+    """
     def __init__(self, m):
         self.m = m
 
     @staticmethod
     def work(m, q):
+        """Static method to deepcopy the module, perform update in a subprocess, and put the evaluation result into a queue.
+
+Args:
+    m (Callable): The module to perform update on.
+    q (multiprocessing.Queue): Queue to store evaluation results.
+"""
         # update option at module.update()
         m = copy.deepcopy(m)
         m.update()
         q.put(m.eval_result)
 
     def update(self):
+        """Iterates through all configuration options of the module, updates the module in parallel using multiprocessing, and collects the evaluation results for each configuration.
+"""
         options = get_options(self.m)
         q = multiprocessing.Queue()
         ps = []

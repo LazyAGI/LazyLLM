@@ -6,6 +6,56 @@ from typing import Dict
 import lazyllm
 
 class FileHandlerBase:
+    """FileHandlerBase is a base class for handling fine-tuning data files, mainly used for validating and converting fine-tuning data formats.  
+This class cannot be instantiated directly; it must be inherited by a subclass that implements specific file format conversion logic.
+
+Capabilities include:
+    1. Validate that the fine-tuning data file is in standard `.jsonl` format.
+    2. Check that each data entry contains messages in the correct format (with `role` and `content` fields).
+    3. Verify that roles are within the allowed range (system, knowledge, user, assistant).
+    4. Ensure each conversation example contains at least one assistant response.
+    5. Provide temporary file storage for further processing.
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.module.llms.onlinemodule.fileHandler import FileHandlerBase
+    >>> import tempfile
+    >>> import json
+    >>> sample_data = [
+    ...     {"messages": [{"role": "user", "content": "Hello"}, {"role": "assistant", "content": "Hi there!"}]},
+    ...     {"messages": [{"role": "user", "content": "How are you?"}, {"role": "assistant", "content": "I'm doing well, thank you!"}]}
+    ... ] 
+    >>> with tempfile.NamedTemporaryFile(mode='w', suffix='.jsonl', delete=False) as f:
+    ...     for item in sample_data:
+    ...         f.write(json.dumps(item, ensure_ascii=False) + '
+    ')
+    ...     temp_file_path = f.name
+    >>> class CustomFileHandler(FileHandlerBase):
+    ...     def _convert_file_format(self, filepath: str) -> str:
+    ...         with open(filepath, 'r', encoding='utf-8') as f:
+    ...             data = [json.loads(line) for line in f]
+    ...         converted_data = []
+    ...         for item in data:
+    ...             messages = item.get('messages', [])
+    ...             conversation = []
+    ...             for msg in messages:
+    ...                 conversation.append(f"{msg['role']}: {msg['content']}")
+    ...             converted_data.append('
+    '.join(conversation))
+    ...         return '
+    ---
+    '.join(converted_data)
+    >>> handler = CustomFileHandler()
+    >>> try:
+    ...     result = handler.get_finetune_data(temp_file_path)
+    ...     print("数据验证和转换成功")
+    ... except Exception as e:
+    ...     print(f"错误: {e}")
+    ... finally:
+    ...     import os
+    ...     os.unlink(temp_file_path)
+    """
 
     def __init__(self):
         self._roles = ['system', 'knowledge', 'user', 'assistant']
@@ -68,6 +118,11 @@ class FileHandlerBase:
             lazyllm.LOG.info('No errors found')
 
     def get_finetune_data(self, filepath: str) -> str:
+        """Get and process fine-tuning data files, including validating file format and converting to the format supported by the target platform.
+
+Args:
+    filepath (str): Path to the fine-tuning data file, must be in .jsonl format
+"""
         self._validate_json(filepath)
         self._save_tempfile(self._convert_file_format(filepath))
 

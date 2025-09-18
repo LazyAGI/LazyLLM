@@ -16,9 +16,9 @@ def check_path(
     file: bool = True,
     parents: bool = True,
 ) -> str:
-    '''
+    """
     Check path and return corrected path.
-    '''
+    """
     # normalize and expand a path
     path = normpath(expandvars(expanduser(path)))
     if exist and file and not isfile(path):
@@ -33,13 +33,17 @@ def check_path(
     return path
 
 class SecurityVisitor(ast.NodeVisitor):
-    '''
-    AST-based security analyzer to detect unsafe operations in Python code.
+    """AST-based Python code security analyzer for detecting unsafe operations.
 
-    IMPORTANT: Method names within this class (e.g., `visit_Call`, `visit_Import`) **should not**
-    be renamed to lowercase. These method names are part of the `NodeVisitor` pattern from the `ast`
-    module and must remain consistant with this naming convention to function correctly.
-    '''
+Attributes:
+    DANGEROUS_BUILTINS (set): Set of dangerous built-in functions like exec, eval, open.
+    DANGEROUS_OS_CALLS (set): Set of dangerous os operations like system, popen, remove.
+    DANGEROUS_SYS_CALLS (set): Set of dangerous sys operations like exit, modules.
+    DANGEROUS_MODULES (set): Set of dangerous modules like pickle, subprocess, socket.
+
+Note:
+    This class inherits from ast.NodeVisitor for traversing and checking Python code's abstract syntax tree.
+"""
 
     # **Dangerous built-in functions**
     DANGEROUS_BUILTINS = {'exec', 'eval', 'open', 'compile', 'getattr', 'setattr'}
@@ -54,7 +58,19 @@ class SecurityVisitor(ast.NodeVisitor):
     DANGEROUS_MODULES = {'pickle', 'subprocess', 'socket', 'shutil', 'requests', 'inspect', 'tempfile'}
 
     def visit_Call(self, node):
-        '''Check function calls'''
+        """Check security of function calls.
+
+Checks:
+1. Dangerous built-in function calls
+2. Dangerous os module calls
+3. Dangerous sys module calls
+
+Args:
+    node (ast.Call): AST function call node.
+
+Raises:
+    ValueError: When dangerous function calls are detected.
+"""
         # Direct calls to dangerous built-in functions
         if isinstance(node.func, ast.Name) and node.func.id in self.DANGEROUS_BUILTINS:
             raise ValueError(f'⚠️ Detected dangerous function call: {node.func.id}')
@@ -69,18 +85,43 @@ class SecurityVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
     def visit_Import(self, node):
-        '''Check import statements'''
+        """Check security of import statements.
+
+Args:
+    node (ast.Import): AST import node.
+
+Raises:
+    ValueError: When dangerous module imports are detected.
+"""
         for alias in node.names:
             if alias.name in self.DANGEROUS_MODULES:
                 raise ValueError(f'⚠️ Detected dangerous module import: {alias.name}')
 
     def visit_ImportFrom(self, node):
-        '''Check from ... import statements'''
+        """Check security of from...import statements.
+
+Args:
+    node (ast.ImportFrom): AST from-import node.
+
+Raises:
+    ValueError: When dangerous module imports are detected.
+"""
         if node.module in self.DANGEROUS_MODULES:
             raise ValueError(f'⚠️ Detected dangerous module import: {node.module}')
 
     def visit_Attribute(self, node):
-        '''Check os.environ and tempfile usage'''
+        """Check security of attribute access.
+
+Checks:
+1. Access to os.environ
+2. Usage of tempfile module
+
+Args:
+    node (ast.Attribute): AST attribute access node.
+
+Raises:
+    ValueError: When dangerous attribute access is detected.
+"""
         if isinstance(node.value, ast.Name):
             if node.value.id == 'os' and node.attr == 'environ':
                 raise ValueError('⚠️ Detected dangerous access: os.environ')
@@ -90,6 +131,21 @@ class SecurityVisitor(ast.NodeVisitor):
         self.generic_visit(node)
 
 def compile_func(func_code: str, global_env: Optional[Dict[str, Any]] = None) -> Callable:
+    """
+Compile a Python function string into an executable function and return it.
+
+Args:
+    func_code (str): A string containing Python function code
+    global_env (str): Packages and global variables used in the Python function
+
+
+Examples:
+    
+    from lazyllm.common import compile_func
+    code_str = 'def Identity(v): return v'
+    identity = compile_func(code_str)
+    assert identity('hello') == 'hello'
+    """
     fname = re.search(r'def\s+(\w+)\s*\(', func_code).group(1)
     module = ast.parse(func_code)
     SecurityVisitor().visit(module)
@@ -105,7 +161,7 @@ def str2obj(data: str) -> Any:
     return None if data is None else pickle.loads(base64.b64decode(data.encode('utf-8')))
 
 def str2bool(v: str) -> bool:
-    ''' Boolean type converter '''
+    """ Boolean type converter """
     if isinstance(v, bool):
         return v
     if v.lower() in ('yes', 'true', 't', 'y', '1', 'on'):

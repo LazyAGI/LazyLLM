@@ -7,12 +7,21 @@ import logging
 
 
 class Mode(Enum):
+    """An enumeration."""
     Display = 0,
     Normal = 1,
     Debug = 2,
 
 
 class Config(object):
+    """Config is a configuration class provided by LazyLLM, which loads configurations of LazyLLM framework from config files,
+environment variables, or specify them explicitly. it can export all configuration items as well.
+The Config module automatically generates an object named 'config' containing all configurations.
+
+Args:
+    prefix (str, optional): Environment variable prefix. Defaults to 'LAZYLLM'
+    home (str, optional): Configuration file directory path. Defaults to '~/.lazyllm'
+"""
     def __init__(self, prefix='LAZYLLM', home=os.path.join(os.path.expanduser('~'), '.lazyllm')):  # noqa B008
         self._config_params = dict()
         self._env_map_name = dict()
@@ -26,10 +35,24 @@ class Config(object):
                 self.cfgs = Config.get_config(json.loads(f))
 
     def done(self):
+        """Check if any configuration items in the config.json file that is not loaded by the add method.
+
+Args:
+    None.
+"""
         assert len(self.cfgs) == 0, f'Invalid cfgs ({"".join(self.cfgs.keys())}) are given in {self.cgf_path}'
         return self
 
     def getenv(self, name, type, default=None):
+        """Get value of LazyLLM-related environment variables.
+
+Args:
+    name (str): The name of the environment variable （without the prefix）, case-insensitive. The function obtains value
+    from environment variable by concatenating the prefix and this name, with all uppercase letters.
+    type (type): Specifies the type of the configuration, for example, str. For boolean types, the function will
+    convert inputs ‘TRUE’, ‘True’, 1, ‘ON’, and ‘1’ to True.
+    default (optional): If the value of the environment variable cannot be obtained, this value is returned.
+"""
         r = os.getenv(f'{self.prefix}_{name.upper()}', default)
         if type == bool:
             return r in (True, 'TRUE', 'True', 1, 'ON', '1')
@@ -37,13 +60,43 @@ class Config(object):
 
     @staticmethod
     def get_config(cfg):
+        """
+Static method: Get configuration from config dictionary.
+This is a simple configuration retrieval method mainly used to extract configuration information from already loaded configuration dictionaries.
+
+Args:
+    cfg (dict): The configuration dictionary read from the config file.
+"""
         return cfg
 
     def get_all_configs(self):
+        """Get all configurations from the config.
+
+Args:
+    None.
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.configs import config
+    >>> config['launcher']
+    'empty'
+    >>> config.get_all_configs()
+    {'home': '~/.lazyllm/', 'mode': <Mode.Normal: (1,)>, 'repr_ml': False, 'rag_store': 'None', 'redis_url': 'None', ...}
+    """
         return self.impl
 
     @contextmanager
     def temp(self, name, value):
+        """
+Context manager for temporary configuration modification.
+
+Temporarily modifies the value of the specified configuration item within the with statement block, and automatically restores the original value when exiting the block.
+
+Args:
+    name (str): The name of the configuration item to temporarily change.
+    value (Any): The temporary value to set.
+"""
         old_value = self[name]
         self.impl[name] = value
         yield
@@ -51,6 +104,20 @@ class Config(object):
 
     def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
             *, options: Optional[List] = None):
+        """Loads value into LazyLLM configuration item. The function first attempts to find the value with the given name from the
+dict loaded from config.json. If found, it removes the key from the dict and saves the value to the config.
+If 'env' is a string, the function calls getenv to look for the corresponding LazyLLM environment variable, and if
+it's found, writes it to the config. If 'env' is a dictionary, the function attempts to call getenv to find the
+environment variables corresponding to the keys in the dict and convert them to boolean type.
+If the converted boolean value is True, the value corresponding to the current key in the dict is written to the config.
+
+Args:
+    name (str): The name of the configuration item
+    type (type): The type of the configuration
+    default (optional): The default value of the configuration if no value can be obtained
+    env (optional): The name of the environment variable without the prefix, or a dictionary where the keys are the
+    names of the environment variables(without the prefix), and the values are what to be added to the configuration.
+"""
         update_params = (type, default, env)
         if name not in self._config_params or self._config_params[name] != update_params:
             if name in self._config_params:
@@ -89,6 +156,15 @@ class Config(object):
         return str(self.impl)
 
     def refresh(self, targets: Union[bytes, str, List[str]] = None) -> None:
+        """
+Refresh configuration items based on the latest environment variable values.  
+If `targets` is a string, updates the single corresponding configuration item;  
+if it's a list, updates multiple;  
+if None, scans all environment-variable-mapped configuration items and updates them.
+
+Args:
+    targets (str | list[str] | None): Name of the config key or list of keys to refresh, or None to refresh all environment-backed keys.
+"""
         names = targets
         if isinstance(targets, bytes): targets = targets.decode('utf-8')
         if isinstance(targets, str):

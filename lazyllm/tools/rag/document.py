@@ -33,6 +33,58 @@ class _MetaDocument(_MetaBind):
 
 
 class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
+    """Initialize a document management module with optional embedding, storage, and user interface.
+
+The ``Document`` module provides a unified interface for managing document datasets, including support for local files, cloud-based files, or temporary document files. It can optionally run with a document manager service or a web UI, and supports multiple embedding models and custom storage backends.
+
+Args:
+    dataset_path (Optional[str]): Path to the dataset directory. If not found, the system will attempt to locate it in ``lazyllm.config["data_path"]``.
+    embed (Optional[Union[Callable, Dict[str, Callable]]]): Embedding function or mapping of embedding functions. When a dictionary is provided, keys are embedding names and values are embedding models.
+    manager (Union[bool, str], optional): Whether to enable the document manager. If ``True``, launches a manager service. If ``'ui'``, also enables the document management web UI. Defaults to ``False``.
+    server (Union[bool, int], optional): Whether to run a server interface for knowledge bases. ``True`` enables a default server, an integer specifies a custom port, and ``False`` disables it. Defaults to ``False``.
+    name (Optional[str]): Name identifier for this document collection. Defaults to the system default name.
+    launcher (Optional[Launcher]): Launcher instance for managing server processes. Defaults to a remote asynchronous launcher.
+    store_conf (Optional[Dict]): Storage configuration. Defaults to in-memory MapStore.
+    doc_fields (Optional[Dict[str, DocField]]): Metadata field configuration for storing and retrieving document attributes.
+    cloud (bool): Whether the dataset is stored in the cloud. Defaults to ``False``.
+    doc_files (Optional[List[str]]): Temporary document files. When used, ``dataset_path`` must be ``None``. Only MapStore is supported in this mode.
+    processor (Optional[DocumentProcessor]): Document pre-processing module.
+    display_name (Optional[str]): Human-readable display name for this document module. Defaults to the collection name.
+    description (Optional[str]): Description of the document collection. Defaults to ``"algorithm description"``.
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.tools import Document
+    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+    >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)  # or documents = Document(dataset_path='your_doc_path', embed={"key": m}, manager=False)
+    >>> m1 = lazyllm.TrainableModule("bge-large-zh-v1.5").start()
+    >>> document1 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, manager=False)
+    
+    >>> store_conf = {
+    >>>     "segment_store": {
+    >>>         "type": "map",
+    >>>         "kwargs": {
+    >>>             "uri": "/tmp/tmp_segments.db",
+    >>>         },
+    >>>     },
+    >>>     "vector_store": {
+    >>>         "type": "milvus",
+    >>>         "kwargs": {
+    >>>             "uri": "/tmp/tmp_milvus.db",
+    >>>             "index_kwargs": {
+    >>>                 "index_type": "FLAT",
+    >>>                 "metric_type": "COSINE",
+    >>>             },
+    >>>         },
+    >>>     },
+    >>> }
+    >>> doc_fields = {
+    >>>     'author': DocField(data_type=DataType.VARCHAR, max_size=128, default_value=' '),
+    >>>     'public_year': DocField(data_type=DataType.INT32),
+    >>> }
+    >>> document2 = Document(dataset_path='your_doc_path', embed={"online": m, "local": m1}, store_conf=store_conf, doc_fields=doc_fields)
+    """
     class _Manager(ModuleBase):
         def __init__(self, dataset_path: Optional[str], embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
                      manager: Union[bool, str] = False, server: Union[bool, int] = False, name: Optional[str] = None,
@@ -188,6 +240,19 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         schma: Optional[DocInfoSchema] = None,
         force_refresh: bool = True,
     ):
+        """Connect to the SQL manager and initialize the document-to-database processor.
+
+This method validates the database connection and updates or resets the database table schema based on the provided document schema. If the existing schema differs from the new one, ``force_refresh=True`` must be set to enforce a reset.
+
+Args:
+    sql_manager (SqlManager): SQL manager instance for database connection and operations.
+    schma (Optional[DocInfoSchema]): Document table schema definition, including field names, types, and descriptions.
+    force_refresh (bool, optional): Whether to force refresh the database schema when changes are detected. Defaults to ``True``.
+
+Raises:
+    RuntimeError: If the database connection fails.
+    AssertionError: If schema is missing or schema change occurs without setting ``force_refresh``.
+"""
         def format_schema_to_dict(schema: DocInfoSchema):
             if schema is None:
                 return None, None
@@ -230,6 +295,12 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._doc_to_db_processor._reset_doc_info_schema(schma)
 
     def get_sql_manager(self):
+        """Get the SQL manager instance currently bound to this document module.
+
+**Returns:**
+
+- SqlManager: The connected SQL manager instance.
+"""
         if self._doc_to_db_processor is None:
             raise ValueError('Please call connect_sql_manager to init handler first')
         return self._doc_to_db_processor.sql_manager
@@ -237,6 +308,18 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def extract_db_schema(
         self, llm: Union[OnlineChatModule, TrainableModule], print_schema: bool = False
     ) -> DocInfoSchema:
+        """Extract the database schema from the dataset using a large language model.
+
+This method scans all files in the dataset and uses the LLM to extract document information schema. Optionally, the schema can be printed to the logs.
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): Model used to parse documents and extract schema.
+    print_schema (bool, optional): Whether to log the extracted schema. Defaults to ``False``.
+
+**Returns:**
+
+- DocInfoSchema: The extracted database schema.
+"""
         file_paths = self._list_all_files_in_dataset()
         schema = extract_db_schema_from_files(file_paths, llm)
         if print_schema:
@@ -244,6 +327,13 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         return schema
 
     def update_database(self, llm: Union[OnlineChatModule, TrainableModule]):
+        """Update the database with information extracted from documents using a large language model.
+
+This method iterates through all files in the dataset, extracts structured information, and exports it into the database.
+
+Args:
+    llm (Union[OnlineChatModule, TrainableModule]): Model used to parse documents and extract information.
+"""
         assert self._doc_to_db_processor, 'Please call connect_db to init handler first'
         file_paths = self._list_all_files_in_dataset()
         info_dicts = self._doc_to_db_processor.extract_info_from_docs(llm, file_paths)
@@ -252,6 +342,19 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     @deprecated('Document(dataset_path, manager=doc.manager, name=xx, doc_fields=xx, store_conf=xx)')
     def create_kb_group(self, name: str, doc_fields: Optional[Dict[str, DocField]] = None,
                         store_conf: Optional[Dict] = None) -> 'Document':
+        """Create a new knowledge base group (KB Group) and return a document object bound to that group.
+
+Knowledge base groups are used to partition different document collections within the same document module. Each group can have independent field definitions and storage configurations.
+
+Args:
+    name (str): Name of the knowledge base group.
+    doc_fields (Optional[Dict[str, DocField]]): Document field definitions, specifying field names, types, and descriptions.
+    store_conf (Optional[Dict]): Storage configuration, defining the backend and its parameters.
+
+**Returns:**
+
+- Document: A copy of the document object bound to the newly created knowledge base group.
+"""
         self._manager.add_kb_group(name=name, doc_fields=doc_fields, store_conf=store_conf)
         doc = copy.copy(self)
         doc._curr_group = name
@@ -269,12 +372,27 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def activate_group(self, group_name: str, embed_keys: Optional[Union[str, List[str]]] = None,
                        enable_embed: bool = True):
+        """Activate the specified knowledge base group, optionally enabling specific embedding keys.
+
+After activation, the document module will perform retrieval and storage operations within the given group. If no embedding keys are provided, all available embeddings will be enabled by default.
+
+Args:
+    group_name (str): Name of the knowledge base group to activate.
+    embed_keys (Optional[Union[str, List[str]]]): Embedding keys to enable, either as a string or a list of strings. Defaults to an empty list, enabling all embeddings.
+"""
         if embed_keys and not enable_embed:
             raise ValueError('`enable_embed` must be set to True when `embed_keys` is provided')
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
         self._impl.activate_group(group_name, embed_keys, enable_embed)
 
     def activate_groups(self, groups: Union[str, List[str]], **kwargs):
+        """Activate multiple knowledge base groups in batch.
+
+This method iteratively calls `activate_group` to activate all the provided groups.
+
+Args:
+    groups (Union[str, List[str]]): A single group name or a list of group names to activate.
+"""
         if isinstance(groups, str): groups = [groups]
         for group in groups:
             self.activate_group(group, **kwargs)
@@ -283,6 +401,26 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
                           trans_node: bool = None, num_workers: int = 0, display_name: str = None,
                           group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
+        """
+Generate a node group produced by the specified rule.
+
+Args:
+    name (str): The name of the node group.
+    transform (Callable): The transformation rule that converts a node into a node group. The function prototype is `(DocNode, group_name, **kwargs) -> List[DocNode]`. Currently built-in options include [SentenceSplitter][lazyllm.tools.SentenceSplitter], and users can define their own transformation rules.
+    trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`.
+    num_workers (int): number of new threads used for transform. default: 0
+    parent (str): The node that needs further transformation. The series of new nodes obtained after transformation will be child nodes of this parent node. If not specified, the transformation starts from the root node.
+    kwargs: Parameters related to the specific implementation.
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools import Document, SentenceSplitter
+    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+    >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+    >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+    """
         if isinstance(self, type):
             DocImpl.create_global_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
                                              num_workers=num_workers, display_name=display_name,
@@ -294,6 +432,49 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     @DynamicDescriptor
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
+        """
+Used to specify the file reader for an instance. The scope of action is visible only to the registered Document object. The registered file reader must be a Callable object. It can only be registered by calling a function. The priority of the file reader registered by the instance is higher than that of the file reader registered by the class, and the priority of the file reader registered by the instance and class is higher than the system default file reader. That is, the order of priority is: instance file reader > class file reader > system default file reader.
+
+Args:
+    pattern (str): Matching rules applied by the file reader.
+    func (Callable): File reader, must be a Callable object.
+
+
+Examples:
+    
+    >>> from lazyllm.tools.rag import Document, DocNode
+    >>> from lazyllm.tools.rag.readers import ReaderBase
+    >>> class YmlReader(ReaderBase):
+    ...     def _load_data(self, file, fs=None):
+    ...         try:
+    ...             import yaml
+    ...         except ImportError:
+    ...             raise ImportError("yaml is required to read YAML file: `pip install pyyaml`")
+    ...         with open(file, 'r') as f:
+    ...             data = yaml.safe_load(f)
+    ...         print("Call the class YmlReader.")
+    ...         return [DocNode(text=data)]
+    ...
+    >>> def processYml(file):
+    ...     with open(file, 'r') as f:
+    ...         data = f.read()
+    ...     print("Call the function processYml.")
+    ...     return [DocNode(text=data)]
+    ...
+    >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
+    >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
+    >>> doc1.add_reader("**/*.yml", YmlReader)
+    >>> print(doc1._impl._local_file_reader)
+    {'**/*.yml': <class '__main__.YmlReader'>}
+    >>> print(doc2._impl._local_file_reader)
+    {}
+    >>> files = ["your_yml_files"]
+    >>> Document.register_global_reader("**/*.yml", processYml)
+    >>> doc1._impl._reader.load_data(input_files=files)
+    Call the class YmlReader.
+    >>> doc2._impl._reader.load_data(input_files=files)
+    Call the function processYml.
+    """
         if isinstance(self, type):
             return DocImpl.register_global_reader(pattern=pattern, func=func)
         else:
@@ -301,33 +482,154 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
+        """
+Used to specify a file reader, which is visible to all Document objects. The registered file reader must be a Callable object. It can be registered using a decorator or by a function call.
+
+Args:
+    pattern (str): Matching rules applied by the file reader.
+    func (Callable): File reader, must be a Callable object.
+
+
+Examples:
+    
+    >>> from lazyllm.tools.rag import Document, DocNode
+    >>> @Document.register_global_reader("**/*.yml")
+    >>> def processYml(file):
+    ...     with open(file, 'r') as f:
+    ...         data = f.read()
+    ...     return [DocNode(text=data)]
+    ...
+    >>> doc1 = Document(dataset_path="your_files_path", create_ui=False)
+    >>> doc2 = Document(dataset_path="your_files_path", create_ui=False)
+    >>> files = ["your_yml_files"]
+    >>> docs1 = doc1._impl._reader.load_data(input_files=files)
+    >>> docs2 = doc2._impl._reader.load_data(input_files=files)
+    >>> print(docs1[0].text == docs2[0].text)
+    # True
+    """
         return cls.add_reader(pattern, func)
 
     def get_store(self):
+        """Get the storage placeholder object.
+
+This method returns a placeholder for the storage layer, allowing deferred binding of the actual storage implementation. 
+The caller can use this object for storage-related configuration or extension.
+
+**Returns:**
+
+- StorePlaceholder: Storage placeholder object.
+"""
         return StorePlaceholder()
 
     def get_embed(self):
+        """Get the embedding placeholder object.
+
+This method returns a placeholder for the embedding layer, allowing deferred binding of the actual embedding implementation. 
+The caller can use this object for embedding-related configuration or extension.
+
+**Returns:**
+
+- EmbedPlaceholder: Embedding placeholder object.
+"""
         return EmbedPlaceholder()
 
     def register_index(self, index_type: str, index_cls: IndexBase, *args, **kwargs) -> None:
+        """Register a new index type.
+
+This method allows users to register a new index type for the document module, enabling extension of retrieval capabilities. 
+Once registered, the index can be referenced by its type.
+
+Args:
+    index_type (str): Name of the index type.
+    index_cls (IndexBase): Index class, must inherit from ``IndexBase``.
+    *args: Variable arguments for index initialization.
+    **kwargs: Keyword arguments for index initialization.
+"""
         self._impl.register_index(index_type, index_cls, *args, **kwargs)
 
     def _forward(self, func_name: str, *args, **kw):
         return self._manager(self._curr_group, func_name, *args, **kw)
 
     def find_parent(self, target) -> Callable:
+        """Find the parent node of the target.
+
+This method returns a callable object that performs a deferred parent lookup operation. 
+It invokes the underlying implementation to retrieve the parent node of the specified target.
+
+Args:
+    target: The target for which to find the parent.
+
+**Returns:**
+
+- Callable: Callable object for performing the parent lookup.
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools import Document, SentenceSplitter
+    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+    >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+    >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+    >>> documents.create_node_group(name="children", transform=SentenceSplitter, parent="parent", chunk_size=1024, chunk_overlap=100)
+    >>> documents.find_parent('children')
+    """
         return functools.partial(self._forward, 'find_parent', group=target)
 
     def find_children(self, target) -> Callable:
+        """Find the children nodes of the target.
+
+This method returns a callable object that performs a deferred children lookup operation. 
+It invokes the underlying implementation to retrieve all children nodes of the specified target.
+
+Args:
+    target: The target for which to find the children.
+
+**Returns:**
+
+- Callable: Callable object for performing the children lookup.
+
+
+Examples:
+    
+    >>> import lazyllm
+    >>> from lazyllm.tools import Document, SentenceSplitter
+    >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+    >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+    >>> documents.create_node_group(name="parent", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+    >>> documents.create_node_group(name="children", transform=SentenceSplitter, parent="parent", chunk_size=1024, chunk_overlap=100)
+    >>> documents.find_children('parent')
+    """
         return functools.partial(self._forward, 'find_children', group=target)
 
     def find(self, target) -> Callable:
+        """Find the target.
+
+This method returns a callable object that performs a deferred lookup operation. 
+It invokes the underlying implementation to retrieve the specified target.
+
+Args:
+    target: The target to be found.
+
+**Returns:**
+
+- Callable: Callable object for performing the target lookup.
+"""
         return functools.partial(self._forward, 'find', group=target)
 
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._forward('retrieve', *args, **kw)
 
     def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
+        """Clear cache.
+
+This method clears the cache of the document module. A list of group names can be specified to 
+clear cache for specific groups. If no group names are provided, all group caches will be cleared.
+
+Args:
+    group_names (Optional[List[str]]): List of group names whose cache should be cleared. 
+        Defaults to ``None``, meaning clear all caches.
+"""
         return self._forward('clear_cache', group_names)
 
     def _get_post_process_tasks(self):
@@ -338,6 +640,13 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                                  server=isinstance(self._manager._kbs, ServerModule))
 
 class UrlDocument(ModuleBase):
+    """UrlDocument class inherits from ModuleBase, used to manage remote document resources by specifying a URL and a name.  
+Internally delegates calls to lazyllm's UrlModule, supporting document find, retrieve, and querying active node groups.
+
+Args:
+    url (str): Access URL for the remote document resource.
+    name (str): Current document group name used to identify the document group.
+"""
     def __init__(self, url: str, name: str = None):
         super().__init__()
         self._missing_keys = set(dir(Document)) - set(dir(UrlDocument))
@@ -349,6 +658,15 @@ class UrlDocument(ModuleBase):
         return self._manager._call('__call__', *args, **kwargs)
 
     def find(self, target) -> Callable:
+        """Creates a partially applied function to find a specified target within the current document group.
+
+Args:
+    target (str): The target identifier to find.
+
+**Returns:**
+
+- Callable: A partially applied function that executes the find operation when called.
+"""
         return functools.partial(self._forward, 'find', group=target)
 
     def forward(self, *args, **kw):

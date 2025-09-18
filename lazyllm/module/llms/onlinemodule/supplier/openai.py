@@ -9,6 +9,19 @@ from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
 from ..fileHandler import FileHandlerBase
 
 class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
+    """OpenAI API integration module for chat completion and fine-tuning operations.
+
+Provides interface to interact with OpenAI's chat models, supporting both inference
+and fine-tuning capabilities. Inherits from OnlineChatModuleBase and FileHandlerBase.
+
+Args:
+    base_url (str, optional): OpenAI API base URL, defaults to "https://api.openai.com/v1/".
+    model (str, optional): Model name to use for chat completion, defaults to "gpt-3.5-turbo".
+    api_key (str, optional): OpenAI API key, defaults to lazyllm.config['openai_api_key'].
+    stream (bool, optional): Whether to use streaming response, defaults to True.
+    return_trace (bool, optional): Whether to return trace information, defaults to False.
+    **kwargs: Additional arguments passed to OnlineChatModuleBase.
+"""
     TRAINABLE_MODEL_LIST = ['gpt-3.5-turbo-0125', 'gpt-3.5-turbo-1106',
                             'gpt-3.5-turbo-0613', 'babbage-002',
                             'davinci-002', 'gpt-4-0613']
@@ -215,6 +228,14 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
 
 
 class OpenAIEmbedding(OnlineEmbeddingModuleBase):
+    """Online embedding module using OpenAI.
+This class wraps the OpenAI Embedding API, defaulting to the `text-embedding-ada-002` model, and converts text into vector representations.
+
+Args:
+    embed_url (str): The URL endpoint of the OpenAI embedding API. Default is "https://api.openai.com/v1/embeddings".
+    embed_model_name (str): The name of the embedding model to use. Default is "text-embedding-ada-002".
+    api_key (str, optional): The OpenAI API key. If not provided, it will be read from `lazyllm.config`.
+"""
     NO_PROXY = True
 
     def __init__(self,

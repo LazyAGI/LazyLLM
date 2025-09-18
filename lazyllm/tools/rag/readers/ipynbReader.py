@@ -7,6 +7,13 @@ from .readerBase import LazyLLMReaderBase
 from ..doc_node import DocNode
 
 class IPYNBReader(LazyLLMReaderBase):
+    """Module for reading and parsing Jupyter Notebook (.ipynb) files. Converts the notebook to script text, then splits it by code cells into multiple document nodes or concatenates into a single text node.
+
+Args:
+    parser_config (Optional[Dict]): Reserved parser configuration parameter, currently unused. Defaults to None.
+    concatenate (bool): Whether to concatenate all code cells into one text node. Defaults to False (split into multiple nodes).
+    return_trace (bool): Whether to record processing trace. Default is True.
+"""
     def __init__(self, parser_config: Optional[Dict] = None, concatenate: bool = False, return_trace: bool = True):
         super().__init__(return_trace=return_trace)
         self._parser_config = parser_config

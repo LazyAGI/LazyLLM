@@ -13,6 +13,38 @@ from .utils import get_log_path, make_log_dir
 config.add('lmdeploy_eager_mode', bool, False, 'LMDEPLOY_EAGER_MODE')
 
 class LMDeploy(LazyLLMDeployBase):
+    """The ``LMDeploy`` class, a subclass of ``LazyLLMDeployBase``,  
+leverages [LMDeploy](https://github.com/InternLM/lmdeploy) to launch and manage large language model inference services.
+
+Args:
+    launcher (Optional[lazyllm.launcher]): The service launcher, defaults to ``launchers.remote(ngpus=1)``.  
+    trust_remote_code (bool): Whether to trust remote code, defaults to ``True``.  
+    log_path (Optional[str]): Path to store logs, defaults to ``None``.  
+    **kw: Keyword arguments used to update the default deployment configuration. No extra arguments beyond those listed below are allowed.  
+
+Keyword Args:
+    tp (int): Tensor parallelism factor, defaults to ``1``.  
+    server-name (str): The IP address on which the service listens, defaults to ``0.0.0.0``.  
+    server-port (Optional[int]): Port number for the service. Defaults to ``None``; in this case, a random port between 30000–40000 will be assigned.  
+    max-batch-size (int): Maximum batch size, defaults to ``128``.  
+    chat-template (Optional[str]): Path to the chat template file. If the model is not a vision-language model and no template is specified, a default template will be used.  
+    eager-mode (bool): Whether to enable eager mode, controlled by the environment variable ``LMDEPLOY_EAGER_MODE``, defaults to ``False``.  
+
+
+Examples:
+    >>> # Basic use:
+    >>> from lazyllm import deploy
+    >>> infer = deploy.LMDeploy()
+    >>>
+    >>> # MultiModal:
+    >>> import lazyllm
+    >>> from lazyllm import deploy, globals
+    >>> from lazyllm.components.formatter import encode_query_with_filepaths
+    >>> chat = lazyllm.TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)
+    >>> chat.update_server()
+    >>> inputs = encode_query_with_filepaths('What is it?', ['path/to/image'])
+    >>> res = chat(inputs)
+    """
     keys_name_handle = {
         'inputs': 'prompt',
         'stop': 'stop',
@@ -60,6 +92,16 @@ class LMDeploy(LazyLLMDeployBase):
         self.temp_folder = make_log_dir(log_path, 'lmdeploy') if log_path else None
 
     def cmd(self, finetuned_model=None, base_model=None):
+        """This method generates the command to start the LMDeploy service.
+
+Args:
+    finetuned_model (str): Path to the fine-tuned model.
+    base_model (str): Path to the base model, used when finetuned_model is invalid.
+
+**Returns:**
+
+- LazyLLMCMD: A LazyLLMCMD object containing the startup command.
+"""
         if not os.path.exists(finetuned_model) or \
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
@@ -92,6 +134,15 @@ class LMDeploy(LazyLLMDeployBase):
         return LazyLLMCMD(cmd=impl, return_value=self.geturl, checkf=verify_fastapi_func)
 
     def geturl(self, job=None):
+        """Get the URL address of the LMDeploy service.
+
+Args:
+    job (optional): Job object, defaults to None, in which case self.job is used.
+
+**Returns:**
+
+- str: The service URL address in the format "http://{ip}:{port}/v1/chat/interactive".
+"""
         if job is None:
             job = self.job
         if lazyllm.config['mode'] == lazyllm.Mode.Display:
@@ -101,4 +152,14 @@ class LMDeploy(LazyLLMDeployBase):
 
     @staticmethod
     def extract_result(x, inputs):
+        """Parses the model inference result and extracts the text output from a JSON response string.
+
+Args:
+    x (str): JSON-formatted string returned by the model.  
+    inputs (dict): The original input data (not directly used, reserved for interface compatibility).  
+
+**Returns:**
+
+- str: The text result extracted from the response.  
+"""
         return json.loads(x)['text']

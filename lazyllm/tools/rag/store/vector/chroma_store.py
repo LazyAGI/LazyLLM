@@ -26,6 +26,17 @@ DEFAULT_INDEX_CONFIG = {
 
 
 class ChromadbStore(LazyLLMStoreBase):
+    """
+ChromadbStore is a vector-capable store implementation based on ChromaDB, inheriting from LazyLLMStoreBase. 
+It supports vector insertion, retrieval, and persistence.
+
+Args:
+    uri (Optional[str]): URI string for ChromaDB connection. Required if `dir` is not provided.
+    dir (Optional[str]): Filesystem path for local persistent storage. If provided, PersistentClient mode is used.
+    index_kwargs (Optional[Union[Dict, List]]): Configuration for ChromaDB collections, e.g., index type and distance metrics.
+    client_kwargs (Optional[Dict]): Additional arguments passed to the ChromaDB client constructor.
+    **kwargs: Reserved for future extension.
+"""
     capability = StoreCapability.VECTOR
     need_embedding = True
     supports_index_registration = False
@@ -44,6 +55,13 @@ class ChromadbStore(LazyLLMStoreBase):
 
     @property
     def dir(self):
+        """
+Directory property of the store.
+
+**Returns:**
+
+- Optional[str]: Normalized directory path ending with a slash, or None if not set.
+"""
         if not self._dir: return None
         p = Path(self._dir)
         p = p if p.suffix else (p / 'chroma.sqlite3')
@@ -81,6 +99,15 @@ class ChromadbStore(LazyLLMStoreBase):
     def connect(self, embed_dims: Optional[Dict[str, int]] = None,
                 embed_datatypes: Optional[Dict[str, DataType]] = None,
                 global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs):
+        """
+Initialize the ChromaDB client and configure embedding and global metadata settings.
+
+Args:
+    embed_dims (Optional[Dict[str, int]]): Dimensions for each embedding key. Defaults to empty dict if not provided.
+    embed_datatypes (Optional[Dict[str, DataType]]): Data types for each embedding key. Only FLOAT_VECTOR or SPARSE_FLOAT_VECTOR are supported.
+    global_metadata_desc (Optional[Dict[str, GlobalMetadataDesc]]): Descriptions for global metadata fields. Supported types: string, int, float, bool.
+    **kwargs: Reserved for future extension.
+"""
         self._global_metadata_desc = global_metadata_desc or {}
         self._embed_dims = embed_dims or {}
         self._embed_datatypes = embed_datatypes or {}
@@ -101,6 +128,17 @@ class ChromadbStore(LazyLLMStoreBase):
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
+        """
+Insert or update a batch of records(segment's uid and vectors) into ChromaDB.
+
+Args:
+    collection_name (str): Logical name for the collection.
+    data (List[dict]): List of documents.
+
+**Returns:**
+
+- bool: True if operation succeeds, False otherwise.
+"""
         try:
             # NOTE chromadb only support single embedding for each collection
             if not data: return
@@ -131,6 +169,18 @@ class ChromadbStore(LazyLLMStoreBase):
 
     @override
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
+        """
+Delete an entire collection or specific records from ChromaDB.
+
+Args:
+    collection_name (str): Name of the collection to delete from.
+    criteria (Optional[dict]): If None, delete the entire collection. Otherwise, a dictionary specifying conditions to delete matching records (e.g., by doc_id, uid, kb_id).
+    **kwargs: Reserved for future extension.
+
+**Returns:**
+
+- bool: True if deletion succeeds, False otherwise.
+"""
         try:
             if not criteria:
                 for embed_key in self._embed_datatypes.keys():
@@ -152,6 +202,20 @@ class ChromadbStore(LazyLLMStoreBase):
 
     @override
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
+        """
+Retrieve records from ChromaDB matching the given criteria.
+
+Args:
+    collection_name (str): Name of the collection to query.
+    criteria (Optional[dict]): Filter conditions such as primary key or metadata (e.g., doc_id, kb_id). If None, retrieves all records.
+
+**Returns:**
+
+- List[dict]: A list of records, where each record contains:
+    - 'uid': The unique identifier of the record.
+    - 'global_meta': A dictionary of global metadata fields.
+    - 'embedding': A dictionary mapping embedding keys to their corresponding vectors.
+"""
         try:
             filters = self._construct_criteria(criteria) if criteria else {}
             all_data = []
@@ -190,6 +254,22 @@ class ChromadbStore(LazyLLMStoreBase):
     def search(self, collection_name: str, query_embedding: List[float], embed_key: str, topk: Optional[int] = 10,
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                **kwargs) -> List[dict]:
+        """
+Perform a vector similarity search within a specific collection.
+
+Args:
+    collection_name (str): Name of the collection to query.
+    query_embedding (List[float]): The query vector for similarity search.
+    embed_key (str): The embedding key specifying which embedding space to use.
+    topk (int, optional): Number of top results to return. Defaults to 10.
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): Optional metadata filter conditions to restrict search results.
+
+**Returns:**
+
+- List[dict]: A list of matched records, where each record contains:
+    - 'uid': The unique identifier of the matched record.
+    - 'score': The similarity score (1 - distance).
+"""
         try:
             collection = self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
 

@@ -78,6 +78,23 @@ def patch_requests_and_httpx():  # noqa: C901
 
 
 class LazyPatchLoader(importlib.abc.Loader):
+    """Lazy Patch Loader for automatically applying patches during module loading.
+
+The ``LazyPatchLoader`` is an import system loader that automatically applies patches 
+to the requests and httpx libraries when a module is executed. This loader wraps the 
+original module specification and automatically calls patch functions after module execution.
+
+Args:
+    original_spec (ModuleSpec): The original module's specification object containing 
+                                module loading information and paths.
+
+Features:
+
+- Automatically sets correct package and path attributes during module loading
+- Executes the original loader's module execution logic
+- Automatically applies patches to requests and httpx libraries after module execution
+
+"""
     def __init__(self, original_spec):
         self.original_spec = original_spec
 
@@ -85,6 +102,18 @@ class LazyPatchLoader(importlib.abc.Loader):
         return None
 
     def exec_module(self, module):
+        """Execute the module loading and initialization process.
+
+This method is the core method of the import system loader, responsible for executing 
+the module's code and initializing the module object. In LazyPatchLoader, this method 
+first sets the module's package and path attributes, then executes the original loader's 
+module execution logic, and finally automatically applies patches to the requests and 
+httpx libraries.
+
+Args:
+    module (ModuleType): The module object to be executed.
+
+"""
         if self.original_spec.submodule_search_locations is not None:
             module.__package__ = self.original_spec.name
         elif '.' in self.original_spec.name:
@@ -99,7 +128,37 @@ class LazyPatchLoader(importlib.abc.Loader):
         patch_requests_and_httpx()
 
 class LazyPatchFinder(importlib.abc.MetaPathFinder):
+    """Lazy Patch Finder for intercepting specific module imports and applying patches.
+
+The ``LazyPatchFinder`` is a meta path finder that intercepts import requests for 
+'requests' and 'httpx' modules during the import process, and uses a custom 
+LazyPatchLoader to load these modules, automatically applying patches during module loading.
+
+**Note:**
+
+- This finder only takes effect when modules are not already imported
+- If modules are already imported, directly calls patch_requests_and_httpx() function
+- Maintains the original attributes and paths of the modules
+"""
     def find_spec(self, fullname, path, target=None):
+        """Find and return the module specification object for custom module loading process.
+
+This method is the core method of MetaPathFinder, responsible for finding the specification 
+object of the specified module during the import process. In LazyPatchFinder, it specifically 
+intercepts import requests for 'requests' and 'httpx' modules, using a custom LazyPatchLoader 
+to wrap the original module specification.
+
+Args:
+    fullname (str): The full name of the module to import
+    path (list): Search path list, None for top-level modules
+    target (module, optional): Target module object (used during reloading)
+
+**Returns:**
+
+- For 'requests' and 'httpx' modules: Returns module specification wrapped with LazyPatchLoader
+- For other modules: Returns None, allowing other finders to continue processing
+
+"""
         if fullname in ['requests', 'httpx']:
             if self in sys.meta_path: sys.meta_path.remove(self)
             original_spec = importlib.util.find_spec(fullname)

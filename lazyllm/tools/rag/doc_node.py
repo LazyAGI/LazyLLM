@@ -14,6 +14,7 @@ _pickle_blacklist = {'_store', '_node_groups'}
 
 
 class MetadataMode(str, Enum):
+    """An enumeration."""
     ALL = auto()
     EMBED = auto()
     LLM = auto()
@@ -22,6 +23,21 @@ class MetadataMode(str, Enum):
 
 @reset_on_pickle(('_lock', threading.Lock))
 class DocNode:
+    """
+Execute assigned tasks on the specified document.
+
+Args:
+    uid (str): Unique identifier.
+    content (Union[str, List[Any]]): Node content.
+    group (str): Document group name.
+    embedding (Dict[str, List[float]]): Dictionary of embedding vectors.
+    parent (Union[str, "DocNode"]): Reference to the parent node.
+    store: Storage representation.
+    node_groups (Dict[str, Dict]): Node storage groups.
+    metadata (Dict[str, Any]): Node-level metadata.
+    global_metadata (Dict[str, Any]): Document-level metadata.
+    text (str): Node content, mutually exclusive with content.
+"""
     def __init__(self, uid: Optional[str] = None, content: Optional[Union[str, List[Any]]] = None,
                  group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
                  parent: Optional[Union[str, 'DocNode']] = None, store=None,
@@ -179,11 +195,23 @@ class DocNode:
         self.global_metadata[RAG_DOC_PATH] = str(path)
 
     def get_children_str(self) -> str:
+        """Get string representation of child nodes.
+
+**Returns:**
+
+- str: Returns a string representing a dictionary where keys are group names and values are lists of child node UIDs in that group.
+"""
         return str(
             {key: [node._uid for node in nodes] for key, nodes in self.children.items()}
         )
 
     def get_parent_id(self) -> str:
+        """Get the unique identifier of the parent node.
+
+**Returns:**
+
+- str: Returns the parent node's UID, or an empty string if there is no parent node.
+"""
         return self.parent._uid if self.parent else ''
 
     def __str__(self) -> str:
@@ -210,18 +238,36 @@ class DocNode:
         return st
 
     def has_missing_embedding(self, embed_keys: Union[str, List[str]]) -> List[str]:
+        """
+Check for missing embedding vectors.
+
+Args:
+    embed_keys (Union[str, List[str]]): List of target keys.
+"""
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
         assert len(embed_keys) > 0, 'The ebmed_keys to be checked must be passed in.'
         if self.embedding is None: return embed_keys
         return [k for k in embed_keys if k not in self.embedding]
 
     def do_embedding(self, embed: Dict[str, Callable]) -> None:
+        """
+Execute embedding computation.
+
+Args:
+    embed (Dict[str, Callable]): Target embedding objects.
+"""
         generate_embed = {k: e(self.get_text(MetadataMode.EMBED)) for k, e in embed.items()}
         with self._lock:
             self.embedding = self.embedding or {}
             self.embedding = {**self.embedding, **generate_embed}
 
     def check_embedding_state(self, embed_key: str) -> None:
+        """
+Block to check the embedding status and ensure that asynchronous embedding computation is completed.
+
+Args:
+    embed_key (str): List of target keys.
+"""
         while True:
             with self._lock:
                 if not self.has_missing_embedding(embed_key):
@@ -230,10 +276,24 @@ class DocNode:
             time.sleep(1)
 
     def get_content(self) -> str:
+        """Get the node's content text with metadata in LLM mode.
+
+**Returns:**
+
+- str: Returns the node's text content with formatted metadata information according to LLM mode.
+"""
         return self.get_text(MetadataMode.LLM)
 
     def get_metadata_str(self, mode: MetadataMode = MetadataMode.ALL) -> str:
-        '''Metadata info string.'''
+        """
+Get formatted metadata string.
+
+Args:
+    mode: MetadataMode.NONE returns an empty string;  
+          MetadataMode.LLM filters out metadata not needed by LLM;  
+          MetadataMode.EMBED filters out metadata not needed by embedding model;  
+          MetadataMode.ALL returns all metadata.
+"""
         if mode == MetadataMode.NONE:
             return ''
 
@@ -250,26 +310,60 @@ class DocNode:
         return '\n'.join([f'{key}: {self.metadata[key]}' for key in metadata_keys])
 
     def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
+        """
+Combine metadata and content.
+
+Args:
+    metadata_mode: Same as the parameter in get_metadata_str.
+"""
         metadata_str = self.get_metadata_str(metadata_mode).strip()
         if not metadata_str:
             return self.text if self.text else ''
         return f'{metadata_str}\n\n{self.text}'.strip()
 
     def to_dict(self) -> Dict:
+        """
+Convert to dictionary format
+"""
         return dict(content=self._content, embedding=self.embedding, metadata=self.metadata)
 
     def with_score(self, score):
+        """
+Shallow copy the original node and add a semantic relevance score.
+
+Args:
+    score: Relevance score.
+"""
         node = copy.copy(self)
         node.relevance_score = score
         return node
 
     def with_sim_score(self, score):
+        """
+Shallow copy the original node and add a similarity score.
+
+Args:
+    score: Similarity score.
+"""
         node = copy.copy(self)
         node.similarity_score = score
         return node
 
 
 class QADocNode(DocNode):
+    """Question-Answer document node class for storing QA pair data.
+
+Args:
+    query (str): The question text.
+    answer (str): The answer text.
+    uid (str): Unique identifier.
+    group (str): Document group name.
+    embedding (Dict[str, List[float]]): Dictionary of embedding vectors.
+    parent (DocNode): Reference to the parent node.
+    metadata (Dict[str, Any]): Node-level metadata.
+    global_metadata (Dict[str, Any]): Document-level metadata.
+    text (str): Node content, mutually exclusive with query.
+"""
     def __init__(self, query: str, answer: str, uid: Optional[str] = None, group: Optional[str] = None,
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional['DocNode'] = None,
                  metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None,
@@ -282,12 +376,57 @@ class QADocNode(DocNode):
         return self._answer
 
     def get_text(self, metadata_mode: MetadataMode = MetadataMode.NONE) -> str:
+        """Get the text content of the node.
+
+Args:
+    metadata_mode (MetadataMode): Metadata mode, defaults to MetadataMode.NONE.
+        When set to MetadataMode.LLM, returns formatted QA pair.
+        For other modes, returns base class text format.
+
+**Returns:**
+
+- str: The formatted text content.
+"""
         if metadata_mode == MetadataMode.LLM:
             return f'query:\n{self.text}\nanswer\n{self._answer}'
         return super().get_text(metadata_mode)
 
 
 class ImageDocNode(DocNode):
+    """A specialized document node for handling image content in RAG systems.
+
+ImageDocNode extends DocNode to provide specialized functionality for image processing and embedding generation. It automatically handles image loading, base64 encoding for embedding, and PIL Image objects for LLM processing.
+
+Args:
+    image_path (str): The file path to the image file. This should be a valid path to an image file (e.g., .jpg, .png, .jpeg).
+    uid (Optional[str]): Unique identifier for the document node. If not provided, a UUID will be automatically generated.
+    group (Optional[str]): The group name this node belongs to. Used for organizing and filtering nodes.
+    embedding (Optional[Dict[str, List[float]]]): Pre-computed embeddings for the image. Keys are embedding model names, values are embedding vectors.
+    parent (Optional[DocNode]): Parent node in the document hierarchy. Used for building document trees.
+    metadata (Optional[Dict[str, Any]]): Additional metadata associated with the image node.
+    global_metadata (Optional[Dict[str, Any]]): Global metadata that applies to all nodes in the document.
+    text (Optional[str]): Optional text description or caption for the image.
+
+
+Examples:
+    >>> from lazyllm.tools.rag.doc_node import ImageDocNode, MetadataMode
+    >>> import numpy as np
+    >>> image_node = ImageDocNode(
+    ...     image_path="/home/mnt/yehongfei/Code/Test/framework.jpg",
+    ...     text="这是一张照片"
+    )
+    >>> def clip_emb(content, modality="image"):
+    ...     if modality == "image":
+    ...         return [np.random.rand(512).tolist()]
+    ...     return [np.random.rand(256).tolist()]
+    >>> embed_functions = {"clip": clip_emb}
+    >>> image_node.do_embedding(embed_functions)
+    >>> print(f"嵌入维度: {len(image_node.embedding['clip'])}")
+    >>> text_representation = image_node.get_text()
+    >>> content_representation = image_node.get_content(MetadataMode.EMBED)
+    >>> print(f"text属性: {text_representation}")
+    >>> print(f"content属性: {content_representation}")    
+    """
     def __init__(self, image_path: str, uid: Optional[str] = None, group: Optional[str] = None,
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional['DocNode'] = None,
                  metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None,
@@ -297,6 +436,13 @@ class ImageDocNode(DocNode):
         self._modality = 'image'
 
     def do_embedding(self, embed: Dict[str, Callable]) -> None:
+        """Generate embeddings for the image using the provided embedding functions.
+
+This method overrides the parent class method to handle image-specific embedding generation. It automatically converts the image to the appropriate format (base64 for embedding) and calls the embedding functions with the image modality.
+
+Args:
+    embed (Dict[str, Callable]): Dictionary of embedding functions. Keys are embedding model names, values are callable functions that accept (content, modality) and return embedding vectors.
+"""
         for k, e in embed.items():
             emb = e(self.get_content(MetadataMode.EMBED), modality=self._modality)
             generate_embed = {k: emb[0]}
@@ -306,6 +452,20 @@ class ImageDocNode(DocNode):
             self.embedding = {**self.embedding, **generate_embed}
 
     def get_content(self, metadata_mode=MetadataMode.LLM) -> str:
+        """Get the image content in different formats based on the metadata mode.
+
+This method returns the image content in different formats depending on the intended use case. For LLM processing, it returns a PIL Image object. For embedding generation, it returns a base64-encoded image string.
+
+Args:
+    metadata_mode (MetadataMode, optional): The mode for content retrieval. Defaults to MetadataMode.LLM.
+        - MetadataMode.LLM: Returns PIL Image object for LLM processing
+        - MetadataMode.EMBED: Returns base64-encoded image for embedding generation
+        - Other modes: Returns the image path as text
+
+**Returns:**
+
+- Union[PIL.Image.Image, List[str], str]: The image content in the requested format.
+"""
         if metadata_mode == MetadataMode.LLM:
             return PIL.Image.open(self._image_path)
         elif metadata_mode == MetadataMode.EMBED:
@@ -319,6 +479,14 @@ class ImageDocNode(DocNode):
         return self._image_path
 
     def get_text(self) -> str:  # Disable access to self._content
+        """Get the image path as text representation.
+
+This method overrides the parent class method to return the image path instead of the content field, since ImageDocNode doesn't use the content field for storing text.
+
+**Returns:**
+
+- str: The image file path.
+"""
         return self._image_path
 
     @property

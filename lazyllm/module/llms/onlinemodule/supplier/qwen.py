@@ -14,11 +14,18 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 
 
 class QwenModule(OnlineChatModuleBase, FileHandlerBase):
-    '''
-    #TODO: The Qianwen model has been finetuned and deployed successfully,
-           but it is not compatible with the OpenAI interface and can only
-           be accessed through the Dashscope SDK.
-    '''
+    """Qwen (Tongyi Qianwen) model module, inherits from OnlineChatModuleBase and FileHandlerBase.
+
+Provides API calls, fine-tuning training and deployment management for Qwen large language model, supports Alibaba Cloud DashScope platform.
+
+Args:
+    base_url (str, optional): API base URL, defaults to "https://dashscope.aliyuncs.com/"
+    model (str, optional): Model name, defaults to configured model name or "qwen-plus"
+    api_key (str, optional): API key, defaults to configured key
+    stream (bool, optional): Whether to stream output, defaults to True
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    **kwargs: Other model parameters
+"""
     TRAINABLE_MODEL_LIST = ['qwen-turbo', 'qwen-7b-chat', 'qwen-72b-chat']
     MODEL_NAME = 'qwen-plus'
 
@@ -256,6 +263,13 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             return None
 
     def set_deploy_parameters(self, **kw):
+        """Set model deployment parameters.
+
+Configure relevant parameters for deployment tasks, such as capacity specifications, for subsequent model deployment.
+
+Args:
+    **kw: Deployment parameter key-value pairs.
+"""
         self._deploy_paramters = kw
 
     def _create_deployment(self) -> Tuple[str, str]:
@@ -299,6 +313,15 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
 
 
 class QwenEmbedding(OnlineEmbeddingModuleBase):
+    """Qwen online text embedding module.
+
+This class inherits from OnlineEmbeddingModuleBase and provides interaction capabilities with the Qwen text embedding API, supporting conversion of text to vector representations.
+
+Args:
+    embed_url (str, optional): Embedding API URL address. Defaults to Qwen official API address
+    embed_model_name (str, optional): Embedding model name. Defaults to 'text-embedding-v1'
+    api_key (str, optional): API key. Defaults to 'qwen_api_key' from configuration
+"""
 
     def __init__(self,
                  embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
@@ -341,6 +364,22 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
 
 
 class QwenReranking(OnlineEmbeddingModuleBase):
+    """Qwen reranking module, inheriting from OnlineEmbeddingModuleBase, used for relevance reranking of documents.
+
+Args:
+    embed_url (str): Base URL for reranking API, defaults to "https://dashscope.aliyuncs.com/api/v1/services/rerank/text-rerank/text-rerank".
+    embed_model_name (str): Model name to use, defaults to "gte-rerank".
+    api_key (str): Qwen API key, if not provided will be read from lazyllm.config['qwen_api_key'].
+    **kwargs: Additional arguments passed to the base class.
+
+Properties:
+    type: Returns model type, fixed as "ONLINE_RERANK".
+
+Main Features:
+    - Performs relevance reranking for input query and document list
+    - Supports custom ranking parameters
+    - Returns index and relevance score for each document
+"""
 
     def __init__(self,
                  embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
@@ -375,6 +414,25 @@ class QwenReranking(OnlineEmbeddingModuleBase):
 
 
 class QwenMultiModal(OnlineMultiModalBase):
+    """Qwen's multimodal base module, inheriting from OnlineMultiModalBase, for handling multimodal tasks.
+
+Args:
+    api_key (str): API key, if not provided will read from lazyllm.config['qwen_api_key'].
+    model_name (str): Model name.
+    base_url (str): Base URL for HTTP API, defaults to 'https://dashscope.aliyuncs.com/api/v1'.
+    base_websocket_url (str): Base URL for WebSocket API, defaults to 'wss://dashscope.aliyuncs.com/api-ws/v1/inference'.
+    return_trace (bool): Whether to return call trace information, defaults to False.
+    **kwargs: Additional parameters passed to the base class.
+
+Features:
+    1. Supports both HTTP and WebSocket API calls
+    2. Uses DashScope client for API calls
+    3. Provides unified multimodal interface
+    4. Customizable base URLs and API key
+
+Note:
+    This class serves as the base class for Qwen's multimodal functionality, typically used as the parent class for other specific multimodal implementations (such as speech-to-text, text-to-image, etc.).
+"""
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
@@ -388,6 +446,14 @@ class QwenMultiModal(OnlineMultiModalBase):
 
 
 class QwenSTTModule(QwenMultiModal):
+    """Speech-to-Text (STT) module based on Qwen's multimodal API, with ``paraformer-v2`` as the default model.
+
+Args:
+    model (str): Model name. Defaults to ``None``, in which case it will use ``lazyllm.config['qwen_stt_model_name']`` or ``QwenSTTModule.MODEL_NAME``.
+    api_key (str): API key for Qwen service. Defaults to ``None``.
+    return_trace (bool): Whether to return intermediate trace information during inference. Defaults to ``False``.
+    **kwargs: Additional parameters passed to the parent class ``QwenMultiModal``.
+"""
     MODEL_NAME = 'paraformer-v2'
 
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
@@ -416,6 +482,15 @@ class QwenSTTModule(QwenMultiModal):
 
 
 class QwenTextToImageModule(QwenMultiModal):
+    """Qwen Text-to-Image module, inheriting from QwenMultiModal, encapsulates the functionality to generate images using the Qwen Wanx2.1-t2i-turbo model.  
+It supports generating a specified number of images with given resolution based on a text prompt, and allows setting negative prompts, random seeds, and prompt extension. The service is called remotely via DashScope API.
+
+Args:
+    model (Optional[str]): Name of the Qwen model to use, default is taken from config 'qwen_text2image_model_name', or "wanx2.1-t2i-turbo" if not set.
+    api_key (Optional[str]): API key for accessing DashScope service.
+    return_trace (bool): Whether to return debug trace information, default is False.
+    **kwargs: Additional parameters passed to QwenMultiModal.
+"""
     MODEL_NAME = 'wanx2.1-t2i-turbo'
 
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
@@ -488,6 +563,31 @@ def synthesize_v2(input: str, model_name: str, voice: str, speech_rate: float, v
 
 
 class QwenTTSModule(QwenMultiModal):
+    """Qwen's text-to-speech module, inheriting from QwenMultiModal, providing support for multiple speech synthesis models.
+
+Args:
+    model (str): Model name, defaults to "qwen-tts". Available models include:
+        - cosyvoice-v2
+        - cosyvoice-v1
+        - sambert
+        - qwen-tts
+        - qwen-tts-latest
+    api_key (str): API key, defaults to None, will be read from lazyllm.config['qwen_api_key'].
+    return_trace (bool): Whether to return call trace information, defaults to False.
+    **kwargs: Additional arguments passed to the base class.
+
+Synthesis Parameters:
+
+    input (str): Text content to convert.
+    voice (str): Speaker voice, defaults to model's default voice.
+    speech_rate (float): Speech rate, defaults to 1.0.
+    volume (int): Volume, defaults to 50.
+    pitch (float): Pitch, defaults to 1.0.
+
+Note:
+    - Different models may support different voice options
+    - Returned audio data is automatically encoded into file format
+"""
     MODEL_NAME = 'qwen-tts'
     SYNTHESIZERS = {
         'cosyvoice-v2': (synthesize_v2, 'longxiaochun_v2'),

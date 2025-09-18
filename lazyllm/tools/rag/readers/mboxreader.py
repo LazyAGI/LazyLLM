@@ -7,6 +7,13 @@ from ..doc_node import DocNode
 from lazyllm import LOG
 
 class MboxReader(LazyLLMReaderBase):
+    """Module to parse Mbox email archive files. Reads email messages and formats them into text. Supports limiting the maximum number of messages and custom message formatting.
+
+Args:
+    max_count (int): Maximum number of emails to read. Default 0 means read all.
+    message_format (str): Template string for formatting each message, supports placeholders ``{_date}``, ``{_from}``, ``{_to}``, ``{_subject}``, and ``{_content}``.
+    return_trace (bool): Whether to record processing trace. Default is True.
+"""
     DEFAULT_MESSAGE_FORMAT: str = (
         'Date: {_date}\n'
         'From: {_from}\n'

@@ -20,6 +20,14 @@ from .module import ModuleBase, ActionModule
 
 
 class LLMBase(object):
+    """Base class for large language model modules, inheriting from ModuleBase.  
+Manages initialization and switching of streaming output, prompts, and formatters; processes file information in inputs; supports instance sharing.
+
+Args:
+    stream (bool or dict): Whether to enable streaming output or streaming configuration, default is False.
+    return_trace (bool): Whether to return execution trace, default is False.
+    init_prompt (bool): Whether to automatically create a default prompt at initialization, default is True.
+"""
     def __init__(self, stream: Union[bool, Dict[str, str]] = False,
                  init_prompt: bool = True, type: Optional[Union[str, LLMType]] = None):
         self._stream = stream
@@ -41,6 +49,16 @@ class LLMBase(object):
         return input, files
 
     def prompt(self, prompt: Optional[str] = None, history: Optional[List[List[str]]] = None):
+        """Set or switch the prompt. Supports None, PrompterBase subclass, or string/dict to create ChatPrompter.
+
+Args:
+    prompt (str/dict/PrompterBase/None): The prompt to set.
+    history (list): Conversation history, only valid when prompt is str or dict.
+
+**Returns:**
+
+- self: For chaining calls.
+"""
         if prompt is None:
             assert not history, 'history is not supported in EmptyPrompter'
             self._prompt = EmptyPrompter()
@@ -54,12 +72,34 @@ class LLMBase(object):
         return self
 
     def formatter(self, format: Optional[FormatterBase] = None):
+        """Set or switch the output formatter. Supports None, FormatterBase subclass or callable.
+
+Args:
+    format (FormatterBase/Callable/None): Formatter object or function, default is None.
+
+**Returns:**
+
+- self: For chaining calls.
+"""
         assert format is None or isinstance(format, FormatterBase) or callable(format), 'format must be None or Callable'
         self._formatter = format or EmptyFormatter()
         return self
 
     def share(self, prompt: Optional[Union[str, dict, PrompterBase]] = None, format: Optional[FormatterBase] = None,
               stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None):
+        """Creates a shallow copy of the current instance, with optional resetting of prompt, formatter, and stream attributes.  
+Useful for scenarios where multiple sessions or agents share a base configuration but customize certain parameters.
+
+Args:
+    prompt (str/dict/PrompterBase/None): New prompt, optional.
+    format (FormatterBase/None): New formatter, optional.
+    stream (bool/dict/None): New streaming settings, optional.
+    history (list/None): New conversation history, effective only when setting prompt.
+
+**Returns:**
+
+- LLMBase: The new shared instance.
+"""
         new = copy.copy(self)
         new._hooks = set()
         new._set_mid()
@@ -122,6 +162,26 @@ class _UrlHelper(object):
             redis_client['url'].delete(self._url_id)
 
 class UrlModule(ModuleBase, LLMBase, _UrlHelper):
+    """The URL obtained from deploying the ServerModule can be wrapped into a Module. When calling ``__call__`` , it will access the service.
+
+Args:
+    url (str): The URL of the service to be wrapped, defaults to empty string.
+    stream (bool|Dict[str, str]): Whether to request and output in streaming mode, default is non-streaming.
+    return_trace (bool): Whether to record the results in trace, default is False.
+    init_prompt (bool): Whether to initialize prompt, defaults to True.
+
+
+Examples:
+    >>> import lazyllm
+    >>> def demo(input): return input * 2
+    ... 
+    >>> s = lazyllm.ServerModule(demo, launcher=lazyllm.launchers.empty(sync=False))
+    >>> s.start()
+    INFO:     Uvicorn running on http://0.0.0.0:35485
+    >>> u = lazyllm.UrlModule(url=s._url)
+    >>> print(u(1))
+    2
+    """
 
     def __new__(cls, *args, **kw):
         if cls is not UrlModule:
@@ -155,7 +215,20 @@ class UrlModule(ModuleBase, LLMBase, _UrlHelper):
     def _extract_and_format(self, output: str) -> str:
         return output
 
-    def forward(self, *args, **kw): raise NotImplementedError
+    def forward(self, *args, **kw):
+        """Defines the computation steps to be executed each time. All subclasses of ModuleBase need to override this function.
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...    def forward(self, input):
+    ...        return input + 1
+    ...
+    >>> MyModule()(1)
+    2
+    """
+        raise NotImplementedError
 
     def __call__(self, *args, **kw):
         assert self._url is not None, f'Please start {self.__class__} first'
@@ -196,6 +269,52 @@ class _ServerModuleImpl(ModuleBase, _UrlHelper):
 
 
 class ServerModule(UrlModule):
+    """The ServerModule class inherits from UrlModule and provides functionality to deploy any callable object as an API service.  
+Built on FastAPI, it supports launching a main service with multiple satellite services, as well as preprocessing, postprocessing, and streaming capabilities.  
+A local callable can be deployed as a service, or an existing service can be accessed directly via a URL.
+
+Args:
+    m (Optional[Union[str, ModuleBase]]): The module or its name to be wrapped as a service.  
+        If a string is provided, it is treated as a URL and `url` must be None.  
+        If a ModuleBase is provided, it will be wrapped as a service.
+    pre (Optional[Callable]): Preprocessing function executed in the service process. Default is ``None``.
+    post (Optional[Callable]): Postprocessing function executed in the service process. Default is ``None``.
+    stream (Union[bool, Dict]): Whether to enable streaming output. Can be a boolean or a dictionary with streaming configuration. Default is ``False``.
+    return_trace (Optional[bool]): Whether to return debug trace information. Default is ``False``.
+    port (Optional[int]): Port to deploy the service. If ``None``, a random port will be assigned.
+    pythonpath (Optional[str]): PYTHONPATH environment variable passed to the subprocess. Defaults to ``None``.
+    launcher (Optional[LazyLLMLaunchersBase]): The launcher used to deploy the service. Defaults to asynchronous remote deployment.
+    url (Optional[str]): URL of an already deployed service. If provided, `m` must be None.
+
+
+Examples:
+    >>> import lazyllm
+    >>> def demo(input): return input * 2
+    ...
+    >>> s = lazyllm.ServerModule(demo, launcher=launchers.empty(sync=False))
+    >>> s.start()
+    INFO:     Uvicorn running on http://0.0.0.0:35485
+    >>> print(s(1))
+    2
+    
+    >>> class MyServe(object):
+    ...     def __call__(self, input):
+    ...         return 2 * input
+    ...
+    ...     @lazyllm.FastapiApp.post
+    ...     def server1(self, input):
+    ...         return f'reply for {input}'
+    ...
+    ...     @lazyllm.FastapiApp.get
+    ...     def server2(self):
+    ...        return f'get method'
+    ...
+    >>> m = lazyllm.ServerModule(MyServe(), launcher=launchers.empty(sync=False))
+    >>> m.start()
+    INFO:     Uvicorn running on http://0.0.0.0:32028
+    >>> print(m(1))
+    2
+    """
     def __init__(self, m: Optional[Union[str, ModuleBase]] = None, pre: Optional[Callable] = None,
                  post: Optional[Callable] = None, stream: Union[bool, Dict] = False,
                  return_trace: bool = False, port: Optional[int] = None, pythonpath: Optional[str] = None,
@@ -215,9 +334,15 @@ class ServerModule(UrlModule):
     _url_id = property(lambda self: self._impl._module_id)
 
     def wait(self):
+        """Wait for the current module service to finish starting or executing.  
+Typically used to block the main thread until the service finishes or is interrupted.  
+"""
         self._impl._launcher.wait()
 
     def stop(self):
+        """Stop the current module service and its related subprocesses.  
+After this call, the module will no longer respond to requests.  
+"""
         self._impl.stop()
 
     @property

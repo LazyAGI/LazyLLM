@@ -1,6 +1,16 @@
 from typing import Optional, Any
 
 class GlobalMetadataDesc:
+    """A descriptor for global metadata, defining its type, optional element type, default value, and size constraints.
+`class GlobalMetadataDesc`
+This class is used to describe metadata properties such as type, optional constraints, and default values. It supports scalar and array data types, with specific size limitations for certain types.
+
+Args:
+    data_type (int): The type of the metadata as an integer, representing various data types (e.g., VARCHAR, ARRAY, etc.).
+    element_type (Optional[int]): The type of individual elements if `data_type` is an array. Defaults to `None`.
+    default_value (Optional[Any]): The default value for the metadata. If not provided, the default will be `None`.
+    max_size (Optional[int]): The maximum size or length for the metadata. Required if `data_type` is `VARCHAR` or `ARRAY`.
+"""
     # max_size MUST be set when data_type is DataType.VARCHAR or DataType.ARRAY
     def __init__(self, data_type: int, element_type: Optional[int] = None,
                  default_value: Optional[Any] = None, max_size: Optional[int] = None):

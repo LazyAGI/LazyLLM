@@ -23,6 +23,32 @@ class _OptionIterator(object):
 
 
 class Option(object):
+    """
+Option management class provided by LazyLLM, used for managing multiple option values and iterating between them. This class is primarily used for parameter grid search and hyperparameter tuning scenarios.
+
+Args:
+    *obj: One or more option values, which can be objects of any type. If a single list or tuple is passed, it will be automatically expanded. At least two options must be provided.
+
+Key features:
+
+- **Multi-option Management**: Can manage multiple different option values.
+- **Iteration Support**: Supports standard Python iteration protocol, allowing traversal of all options.
+- **Current Value Access**: Provides access to the currently selected option.
+- **Deep Copy**: Supports obtaining a deep copy of the currently selected option.
+- **Cyclic Iteration**: Options can be iterated over in a cyclic manner.
+
+**Note**: This class is mainly used for LazyLLM's internal parameter search and trial management, especially in `TrialModule` for parameter grid search.
+
+
+Examples:
+    >>> import lazyllm
+    >>> from lazyllm.common.option import Option
+    >>> learning_rates = Option(0.001, 0.01, 0.1)
+    >>> print(f"当前学习率: {learning_rates}")
+    当前学习率: <Option options="(0.001, 0.01, 0.1)" curr="0.001">
+    >>> print(f"所有选项: {list(learning_rates)}")
+    所有选项: [0.001, 0.01, 0.1]
+    """
     def __init__(self, *obj):
         if len(obj) == 1 and isinstance(obj[0], (tuple, list)): obj = obj[0]
         assert isinstance(obj, (tuple, list)) and len(obj) > 1, 'More than one option shoule be given'

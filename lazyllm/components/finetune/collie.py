@@ -7,6 +7,39 @@ from .base import LazyLLMFinetuneBase
 
 
 class CollieFinetune(LazyLLMFinetuneBase):
+    """This class is a subclass of ``LazyLLMFinetuneBase``, based on the LoRA fine-tuning capabilities provided by the [Collie](https://github.com/OpenLMLab/collie) framework, used for LoRA fine-tuning of large language models.
+
+Args:
+    base_model (str): Path to the base model for fine-tuning.
+    target_path (str): Path to save LoRA weights of the fine-tuned model.
+    merge_path (Optional[str]): Path to save merged LoRA weights, default ``None``.
+        If not provided, "lazyllm_lora" and "lazyllm_merge" directories are created under ``target_path``.
+    model_name (Optional[str]): Model name used as log prefix, default "LLM".
+    cp_files (Optional[str]): Configuration files copied from base model path to ``merge_path``, default "tokeniz*".
+    launcher (lazyllm.launcher): Launcher for fine-tuning, default ``launchers.remote(ngpus=1)``.
+    kw (dict): Keyword arguments to update default training parameters:
+
+Keyword Args:
+    data_path (Optional[str]): Path to dataset, default ``None``.
+    batch_size (Optional[int]): Batch size, default 64.
+    micro_batch_size (Optional[int]): Micro-batch size, default 4.
+    num_epochs (Optional[int]): Number of training epochs, default 3.
+    learning_rate (Optional[float]): Learning rate, default 5.e-4.
+    dp_size (Optional[int]): Data parallelism parameter, default 8.
+    pp_size (Optional[int]): Pipeline parallelism parameter, default 1.
+    tp_size (Optional[int]): Tensor parallelism parameter, default 1.
+    lora_r (Optional[int]): LoRA rank, default 8.
+    lora_alpha (Optional[int]): LoRA fusion factor, default 16.
+    lora_dropout (Optional[float]): LoRA dropout rate, default 0.05.
+    lora_target_modules (Optional[str]): LoRA target modules, default ``[wo,wqkv]``.
+    modules_to_save (Optional[str]): Modules for full fine-tuning, default ``[tok_embeddings,output]``.
+    prompt_template_name (Optional[str]): Name of prompt template, default "alpaca".
+
+
+Examples:
+    >>> from lazyllm import finetune
+    >>> trainer = finetune.collie('path/to/base/model', 'path/to/target')
+    """
     defatult_kw = ArgsDict({
         'data_path': None,
         'batch_size': 64,

@@ -7,6 +7,35 @@ import copy
 import re
 
 class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
+    """LazyLLM prompter base class for managing and generating model prompts.
+
+Args:
+    show (bool): Whether to display generated prompts, defaults to False.
+    tools (Optional[List]): List of available tools, defaults to None.
+    history (Optional[List]): Conversation history, defaults to None.
+
+Attributes:
+    ISA (str): Instruction separator start token "<!lazyllm-spliter!>".
+
+    ISE (str): Instruction separator end token "</!lazyllm-spliter!>".
+
+
+Configuration Items:
+    system: System role setting 
+
+    sos/eos: Session start/end markers 
+
+    soh/eoh: Human input start/end markers 
+
+    soa/eoa: AI response start/end markers 
+
+    soe/eoe: Tool execution result start/end markers 
+
+    tool_start_token/tool_end_token: Tool call start/end markers 
+
+    tool_args_token: Tool arguments marker 
+
+"""
     ISA = '<!lazyllm-spliter!>'
     ISE = '</!lazyllm-spliter!>'
 
@@ -170,6 +199,15 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         return dict(messages=history, tools=tools) if tools else dict(messages=history)
 
     def pre_hook(self, func: Optional[Callable] = None):
+        """Sets a pre-processing hook function, allowing external custom processing of input data before prompt generation.
+
+Args:
+    func (Optional[Callable]): A callable object to be used as the pre-processing hook function, which receives and processes input data.
+
+**Returns:**
+
+- LazyLLMPrompterBase: Returns the instance itself to support method chaining.
+"""
         self._pre_hook = func
         return self
 
@@ -190,6 +228,17 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                         tools: Union[List[Dict[str, Any]], None] = None,
                         label: Union[str, None] = None,
                         *, show: bool = False, return_dict: bool = False) -> Union[str, Dict]:
+        """
+Generate a corresponding Prompt based on user input.
+
+Args:
+    input (Option[str | Dict]): The input from the prompter, if it's a dict, it will be filled into the slots of the instruction; if it's a str, it will be used as input.
+    history (Option[List[List | Dict]]): Historical conversation, can be ``[[u, s], [u, s]]`` or in openai's history format, defaults to None.
+    tools (Option[List[Dict]]): A collection of tools that can be used, used when the large model performs FunctionCall, defaults to None.
+    label (Option[str]): Label, used during fine-tuning or training, defaults to None.
+    show (bool): Flag indicating whether to print the generated Prompt, defaults to False.
+    return_dict (bool): Flag indicating whether to return a dict, generally set to True when using ``OnlineChatModule``. If returning a dict, only the ``instruction`` will be filled. Defaults to False.
+"""
         input = copy.deepcopy(input)
         if self._pre_hook:
             input, history, tools, label = self._pre_hook(input, history, tools, label)
@@ -204,12 +253,45 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         return result
 
     def get_response(self, output: str, input: Union[str, None] = None) -> str:
+        """Used to truncate the Prompt, keeping only valuable output.
+
+Args:
+        output (str): The output of the large model.
+        input (Option[str]): The input of the large model. If this parameter is specified, any part of the output that includes the input will be completely truncated. Defaults to None.
+"""
         if input and output.startswith(input):
             return output[len(input):]
         return output if getattr(self, '_split', None) is None else output.split(self._split)[-1]
 
 class EmptyPrompter(LazyLLMPrompterBase):
+    """An empty prompt generator that inherits from `LazyLLMPrompterBase`, and directly returns the original input.
+
+This class performs no formatting and is useful for debugging, testing, or as a placeholder.
+
+
+Examples:
+    >>> from lazyllm.components.prompter import EmptyPrompter
+    >>> prompter = EmptyPrompter()
+    >>> prompter.generate_prompt("Hello LazyLLM")
+    'Hello LazyLLM'
+    >>> prompter.generate_prompt({"query": "Tell me a joke"})
+    {'query': 'Tell me a joke'}
+    >>> # Even with additional parameters, the input is returned unchanged
+    >>> prompter.generate_prompt("No-op", history=[["Hi", "Hello"]], tools=[{"name": "search"}], label="debug")
+    'No-op'
+    """
 
     def generate_prompt(self, input, history=None, tools=None, label=None, show=False):
+        """A prompt passthrough implementation that inherits from `LazyLLMPrompterBase`.
+
+This method directly returns the input without any formatting. Useful for debugging, testing, or placeholder use.
+
+Args:
+    input (Any): The input to be returned directly as the prompt.
+    history (Option[List[List | Dict]]): Dialogue history, ignored. Defaults to None.
+    tools (Option[List[Dict]]): Tool definitions, ignored. Defaults to None.
+    label (Option[str]): Label, ignored. Defaults to None.
+    show (bool): Whether to print the returned prompt. Defaults to False.
+"""
         if self._show or show: LOG.info(input)
         return input

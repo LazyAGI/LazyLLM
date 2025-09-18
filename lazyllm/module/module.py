@@ -223,6 +223,44 @@ module_cache = ModuleCache()
 # if bind a ModuleBase: x, then hope: isinstance(x, ModuleBase)==True,
 # example: ActionModule.submodules:: isinstance(x, ModuleBase) will add submodule.
 class ModuleBase(metaclass=_MetaBind):
+    """ModuleBase is the core base class in LazyLLM, defining the common interface and fundamental capabilities for all modules.  
+It abstracts training, deployment, inference, and evaluation logic, while also providing mechanisms for submodule management, hook registration, parameter passing, and recursive updates.  
+Custom modules should inherit from ModuleBase and implement the ``forward`` method to define specific inference logic.  
+
+Key Features:
+    - Unified management of submodules, automatically tracking held ModuleBase instances.
+    - Support for Option type hyperparameters, enabling grid search and automated tuning.
+    - Hook system that allows executing custom logic before and after calls.
+    - Encapsulated update pipeline covering training, server deployment, and evaluation.
+    - Built-in evalset loading and parallel inference evaluation.
+
+Args:
+    return_trace (bool): Whether to write inference results into the trace queue for debugging and tracking. Default is ``False``.
+
+Use Cases:
+    1. When combining some or all of training, deployment, inference, and evaluation capabilities, e.g., an embedding model requiring both training and inference.
+    2. When you want to recursively manage submodules through root-level methods such as ``start``, ``update``, and ``eval``.
+    3. When you want user parameters to be automatically propagated from outer modules to inner implementations (see WebModule).
+    4. When you want the module to support parameter grid search (see TrialModule).
+
+
+Examples:
+    >>> import lazyllm
+    >>> class Module(lazyllm.module.ModuleBase):
+    ...     pass
+    ... 
+    >>> class Module2(lazyllm.module.ModuleBase):
+    ...     def __init__(self):
+    ...         super(__class__, self).__init__()
+    ...         self.m = Module()
+    ... 
+    >>> m = Module2()
+    >>> m.submodules
+    [<Module type=Module>]
+    >>> m.m3 = Module()
+    >>> m.submodules
+    [<Module type=Module>, <Module type=Module>]
+    """
     builder_keys = []  # keys in builder support Option by default
 
     def __new__(cls, *args, **kw):
@@ -331,6 +369,20 @@ class ModuleBase(metaclass=_MetaBind):
 
     @contextmanager
     def stream_output(self, stream_output: Optional[Union[bool, Dict]] = None):
+        """Context manager for streaming output during inference or execution.  
+When a dictionary is provided to ``stream_output``, a prefix and suffix can be specified along with optional colors.
+
+Args:
+    stream_output (Optional[Union[bool, Dict]]): Configuration for streaming output.
+
+        - If True, enables default streaming output.
+        - If a dictionary, may include:
+
+            - 'prefix' (str): Text to output at the beginning.
+            - 'prefix_color' (str, optional): Color of the prefix.
+            - 'suffix' (str): Text to output at the end.
+            - 'suffix_color' (str, optional): Color of the suffix.
+"""
         if stream_output and isinstance(stream_output, dict) and (prefix := stream_output.get('prefix')):
             self._stream_output(prefix, stream_output.get('prefix_color'))
         yield
@@ -338,6 +390,16 @@ class ModuleBase(metaclass=_MetaBind):
             self._stream_output(suffix, stream_output.get('suffix_color'))
 
     def used_by(self, module_id):
+        """Mark which module is using the current module, indicating the calling relationship.  
+Supports chaining by returning the module itself.
+
+Args:
+    module_id (str): Unique ID of the parent module that uses this module.
+
+**Returns:**
+
+- ModuleBase: Returns the module itself for method chaining.
+"""
         self._used_by_moduleid = module_id
         return self
 
@@ -345,20 +407,69 @@ class ModuleBase(metaclass=_MetaBind):
         globals['usage'].pop(self._module_id, None)
 
     # interfaces
-    def forward(self, *args, **kw): raise NotImplementedError
+    def forward(self, *args, **kw):
+        """Forward computation interface that must be implemented by subclasses.  
+This method defines the logic for receiving inputs and returning outputs, and is the core function of the module as a functor.
+
+Args:
+    *args: Variable positional arguments, subclass can define the input as needed.
+    **kw: Variable keyword arguments, subclass can define the input as needed.
+"""
+        raise NotImplementedError
 
     def register_hook(self, hook_type: LazyLLMHook):
+        """Register a hook to execute specific logic during module invocation.  
+The hook must inherit from ``LazyLLMHook`` and can be used to add custom operations before or after the module's forward computation, such as logging or metrics collection.
+
+Args:
+    hook_type (LazyLLMHook): Hook object to register.
+"""
         self._hooks.add(hook_type)
 
     def unregister_hook(self, hook_type: LazyLLMHook):
+        """Unregister a previously registered hook.  
+If the hook exists in the module, it will be removed and no longer executed during module invocation.
+
+Args:
+    hook_type (LazyLLMHook): Hook object to unregister.
+"""
         if hook_type in self._hooks:
             self._hooks.remove(hook_type)
 
     def clear_hooks(self):
+        """Clear all hooks registered in the module.  
+After calling this, the module will no longer execute any hook logic.
+"""
         self._hooks = set()
 
-    def _get_train_tasks(self): return None
-    def _get_deploy_tasks(self): return None
+    def _get_train_tasks(self):
+        """Define a training task. This function returns a training pipeline. Subclasses that override this function can be trained or fine-tuned during the update phase.
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...     def _get_train_tasks(self):
+    ...         return lazyllm.pipeline(lambda : 1, lambda x: print(x))
+    ... 
+    >>> MyModule().update()
+    1
+    """
+        return None
+    def _get_deploy_tasks(self):
+        """Define a deployment task. This function returns a deployment pipeline. Subclasses that override this function can be deployed during the update/start phase.
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...     def _get_deploy_tasks(self):
+    ...         return lazyllm.pipeline(lambda : 1, lambda x: print(x))
+    ... 
+    >>> MyModule().start()
+    1
+    """
+        return None
     def _get_post_process_tasks(self): return None
 
     def _set_mid(self, mid=None):
@@ -378,6 +489,24 @@ class ModuleBase(metaclass=_MetaBind):
         return self._submodules
 
     def evalset(self, evalset, load_f=None, collect_f=lambda x: x):
+        """Set the evaluation set for the module.  
+During ``update`` or ``eval``, the module will perform inference on the evaluation set, and the results will be stored in the ``eval_result`` variable.  
+
+Args:
+    evalset (Union[list, str]): Evaluation data list or path to an evaluation data file.
+    load_f (Optional[Callable]): Function to load and parse the evaluation file into a list if ``evalset`` is a file path, default is None.
+    collect_f (Callable): Function to post-process evaluation results, default is ``lambda x: x``.
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.module.TrainableModule().deploy_method(lazyllm.deploy.dummy).finetune_method(lazyllm.finetune.dummy).trainset("").mode("finetune").prompt(None)
+    >>> m.evalset([1, 2, 3])
+    >>> m.update()
+    INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+    >>> print(m.eval_result)
+    ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+    """
         if isinstance(evalset, str) and os.path.exists(evalset):
             with open(evalset) as f:
                 assert callable(load_f)
@@ -436,16 +565,92 @@ class ModuleBase(metaclass=_MetaBind):
         return self
 
     def update(self, *, recursive: bool = True):
+        """Update the module (and all its submodules). The module will be updated when the ``_get_train_tasks`` method is overridden.
+
+Args:
+    recursive (bool): Whether to recursively update all submodules, default is True.
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.module.TrainableModule().finetune_method(lazyllm.finetune.dummy).trainset("").deploy_method(lazyllm.deploy.dummy).mode('finetune').prompt(None)
+    >>> m.evalset([1, 2, 3])
+    >>> m.update()
+    INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+    >>> print(m.eval_result)
+    ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+    """
         return self._update(mode=['train', 'server', 'eval'], recursive=recursive)
 
-    def update_server(self, *, recursive: bool = True): return self._update(mode=['server'], recursive=recursive)
-    def eval(self, *, recursive: bool = True): return self._update(mode=['eval'], recursive=recursive)
-    def start(self): return self._update(mode=['server'], recursive=True)
-    def restart(self): return self.start()
+    def update_server(self, *, recursive: bool = True):
+        """Update the deployment (server) part of the module and its submodules. When a module or submodule implements deployment functionality, the corresponding services will be started.
 
-    def wait(self): pass
+Args:
+    recursive (bool): Whether to recursively update deployment tasks of all submodules, default is True.
+"""
+        return self._update(mode=['server'], recursive=recursive)
+    def eval(self, *, recursive: bool = True):
+        """Evaluate the module (and all its submodules). This function takes effect after the module has been set with an evaluation set using 'evalset'.
+
+Args:
+    recursive (bool): Whether to recursively evaluate all submodules. Defaults to True.
+
+
+Examples:
+    >>> import lazyllm
+    >>> class MyModule(lazyllm.module.ModuleBase):
+    ...     def forward(self, input):
+    ...         return f'reply for input'
+    ... 
+    >>> m = MyModule()
+    >>> m.evalset([1, 2, 3])
+    >>> m.eval().eval_result
+    ['reply for input', 'reply for input', 'reply for input']
+    """
+        return self._update(mode=['eval'], recursive=recursive)
+    def start(self):
+        """Start the deployment services of the module and all its submodules. This ensures that the server functionality of the module and its submodules is executed, suitable for initialization or restarting services.
+
+**Returns:**
+
+- ModuleBase: Returns itself to support method chaining
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.TrainableModule().deploy_method(lazyllm.deploy.dummy).prompt(None)
+    >>> m.start()
+    <Module type=Trainable mode=None basemodel= target= stream=False return_trace=False>
+    >>> m(1)
+    "reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+    """
+        return self._update(mode=['server'], recursive=True)
+    def restart(self):
+        """Restart the deployment services of the module and its submodules. Internally calls the ``start`` method to reinitialize the services.
+
+**Returns:**
+
+- ModuleBase: Returns itself to support method chaining
+
+
+Examples:
+    >>> import lazyllm
+    >>> m = lazyllm.TrainableModule().deploy_method(lazyllm.deploy.dummy).prompt(None)
+    >>> m.restart()
+    <Module type=Trainable mode=None basemodel= target= stream=False return_trace=False>
+    >>> m(1)
+    "reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}"
+    """
+        return self.start()
+
+    def wait(self):
+        """Wait for the module or its submodules to finish execution. Currently, this method is a no-op and can be implemented by subclasses according to specific deployment logic.
+"""
+        pass
 
     def stop(self):
+        """Stop the module and all its submodules. This method recursively calls the ``stop`` method of each submodule, suitable for releasing resources or shutting down services.
+"""
         for m in self.submodules:
             m.stop()
 
@@ -463,6 +668,12 @@ class ModuleBase(metaclass=_MetaBind):
         return lazyllm.make_repr('Module', self.__class__, name=self.name)
 
     def for_each(self, filter, action):
+        """Execute a specified action on all submodules of the module. Recursively traverses all submodules, and if a submodule satisfies the ``filter`` condition, executes the ``action``.
+
+Args:
+    filter (Callable): A function that takes a submodule as input and returns a boolean, used to determine whether to perform the action.
+    action (Callable): A function to perform on submodules that meet the condition.
+"""
         for submodule in self.submodules:
             if filter(submodule):
                 action(submodule)
@@ -475,6 +686,20 @@ class ModuleBase(metaclass=_MetaBind):
         return cache_hash
 
     def use_cache(self, flag: Union[bool, str] = True):
+        """Enable or disable the caching functionality for the module.
+
+This method controls whether the module uses caching to store and retrieve execution results, 
+improving performance and avoiding redundant computations.
+
+Args:
+    flag (bool or str, optional): Cache control flag. If True, enables caching; if False, disables caching;
+                                 if a string, uses a specific cache identifier. Defaults to True.
+
+**Returns:**
+
+- Returns the module instance itself, supporting method chaining.
+
+"""
         self._use_cache = flag or False
         return self
 
@@ -482,6 +707,78 @@ class ModuleBase(metaclass=_MetaBind):
 
 
 class ActionModule(ModuleBase):
+    """Used to wrap a Module around functions, modules, flows, Module, and other callable objects. The wrapped Module (including the Module within the flow) will become a submodule of this Module.
+
+Args:
+    action (Callable|list[Callable]): The object to be wrapped, which is one or a set of callable objects.
+    return_trace (bool): Whether to enable trace mode to record the execution stack. Defaults to ``False``.
+
+**Examples:**
+
+```python
+>>> import lazyllm
+>>> def myfunc(input): return input + 1
+... 
+>>> class MyModule1(lazyllm.module.ModuleBase):
+...     def forward(self, input): return input * 2
+... 
+>>> class MyModule2(lazyllm.module.ModuleBase):
+...     def _get_deploy_tasks(self): return lazyllm.pipeline(lambda : print('MyModule2 deployed!'))
+...     def forward(self, input): return input * 4
+... 
+>>> class MyModule3(lazyllm.module.ModuleBase):
+...     def _get_deploy_tasks(self): return lazyllm.pipeline(lambda : print('MyModule3 deployed!'))
+...     def forward(self, input): return f'get {input}'
+... 
+>>> m = lazyllm.ActionModule(myfunc, lazyllm.pipeline(MyModule1(), MyModule2), MyModule3())
+>>> print(m(1))
+get 16
+>>> 
+>>> m.evalset([1, 2, 3])
+>>> m.update()
+MyModule2 deployed!
+MyModule3 deployed!
+>>> print(m.eval_result)
+['get 16', 'get 24', 'get 32']
+```
+
+
+<span style="font-size: 20px;">**`evalset(evalset, load_f=None, collect_f=<function ModuleBase.<lambda>>)`**</span>
+
+Set the evaluation set for the Module. Modules that have been set with an evaluation set will be evaluated during ``update`` or ``eval``, and the evaluation results will be stored in the eval_result variable. 
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, collect_f=lambda x: ...)→ None `**</span>
+
+
+Args:
+    evalset (list) :Evaluation set
+    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.
+
+
+
+<span style="font-size: 18px;">&ensp;**`evalset(evalset, load_f=None, collect_f=lambda x: ...)→ None`**</span>
+
+
+Args:
+    evalset (str) :Path to the evaluation set
+    load_f (Callable) :Method for loading the evaluation set, including parsing file formats and converting to a list
+    collect_f (Callable) :Post-processing method for evaluation results, no post-processing by default.
+
+**Examples:**
+
+```python
+>>> import lazyllm
+>>> m = lazyllm.module.TrainableModule().deploy_method(deploy.dummy)
+>>> m.evalset([1, 2, 3])
+>>> m.update()
+INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
+>>> m.eval_result
+["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
+```
+
+
+"""
     def __init__(self, *action, return_trace=False):
         super().__init__(return_trace=return_trace)
         if len(action) == 1 and isinstance(action, FlowBase): action = action[0]
@@ -491,10 +788,26 @@ class ActionModule(ModuleBase):
         self.action = action
 
     def forward(self, *args, **kw):
+        """Executes the wrapped action with the provided input arguments. Equivalent to directly calling the module.
+
+Args:
+    args (list of callables or single callable): Positional arguments to be passed to the wrapped action.
+    kwargs (dict of callables): Keyword arguments to be passed to the wrapped action.
+
+**Returns:**
+
+- Any: The result of executing the wrapped action.
+"""
         return self.action(*args, **kw)
 
     @property
     def submodules(self):
+        """Returns all submodules of type ModuleBase contained in the wrapped action. This automatically traverses any nested modules inside a Pipeline.
+
+**Returns:**
+
+- list[ModuleBase]: List of submodules
+"""
         try:
             if isinstance(self.action, FlowBase):
                 submodule = []
@@ -510,6 +823,22 @@ class ActionModule(ModuleBase):
 
 
 def flow_start(self):
+    """Start flow processing execution (deprecated).
+
+This method is deprecated, it is recommended to directly call the flow instance as a function. Executes the flow processing and returns the result.
+
+Args:
+    *args: Variable positional arguments passed to the flow processing.
+    **kw: Named arguments passed to the flow processing.
+
+**Returns:**
+
+- The result of flow processing.
+
+**Note:**
+
+- This method is marked as deprecated, please use direct invocation of the flow instance instead.
+"""
     ActionModule(self).start()
     return self
 
