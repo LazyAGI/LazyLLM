@@ -1,7 +1,10 @@
+import os
 import json
 import uuid
+import hashlib
 from typing import Callable, Optional, List, Union, Any
 
+import lazyllm
 from lazyllm.flow.flow import Pipeline
 
 from ...common import LazyLLMRegisterMetaClass, package, Finalizer
@@ -229,3 +232,102 @@ class FileFormatter(LazyLLMFormatterBase):
                 return encode_query_with_filepaths(**py_data)
             else:
                 return py_data
+
+
+class FileContentHash(str):
+
+    def __hash__(self):
+        res = decode_query_with_filepaths(self)
+        if isinstance(res, str):
+            return hashlib.md5(self.encode()).hexdigest()
+        query = res['query']
+        file_path_list = res['files']
+
+        hash_obj = hashlib.md5()
+        hash_obj.update(query.encode('utf-8'))
+
+        search_paths = [
+            '',
+            lazyllm.config['temp_dir'],
+        ]
+        for file_path in file_path_list:
+            if os.path.isabs(file_path):
+                full_path = file_path
+            else:
+                full_path = None
+                for base_path in search_paths:
+                    candidate_path = os.path.join(base_path, file_path) if base_path else file_path
+                    if os.path.exists(candidate_path) and os.path.isfile(candidate_path):
+                        full_path = candidate_path
+                        break
+                if full_path is None:
+                    full_path = file_path
+            try:
+                with open(full_path, 'rb') as f:
+                    while chunk := f.read(8192):
+                        hash_obj.update(chunk)
+            except (FileNotFoundError, IOError):
+                lazyllm.LOG.debug(f'Error: File not found or cannot be read: {full_path}')
+                hash_obj.update(full_path.encode('utf-8'))
+        return int(hash_obj.hexdigest(), 16)
+
+
+def proccess_path_recursively(value, process_func):
+    if isinstance(value, str):
+        if LAZYLLM_QUERY_PREFIX in value:
+            res = decode_query_with_filepaths(value)
+            if res['files']:
+                replace_path = []
+                for file_path in res['files']:
+                    replace_path.append(process_func(file_path))
+                res['files'] = replace_path
+            return encode_query_with_filepaths(res['query'], res['files'])
+        else:
+            return value
+    elif isinstance(value, (list, tuple)):
+        process_items = []
+        for item in value:
+            process_items.append(proccess_path_recursively(item, process_func))
+        if isinstance(value, tuple):
+            return tuple(process_items)
+        return process_items
+    elif isinstance(value, dict):
+        process_dict = {}
+        for key, val in value.items():
+            process_dict[key] = proccess_path_recursively(val, process_func)
+        return process_dict
+    elif isinstance(value, set):
+        process_set = set()
+        for item in value:
+            process_set.add(proccess_path_recursively(item, process_func))
+        return process_set
+    else:
+        return value
+
+def path_relative_to_absolute(path):
+    if os.path.isabs(path):
+        return path
+    absolute_path = os.path.join(lazyllm.config['temp_dir'], path)
+    if os.path.exists(absolute_path):
+        return os.path.abspath(absolute_path)
+    else:
+        return path
+
+def path_absolute_to_relative(path):
+    if not os.path.isabs(path):
+        return path
+    temp_dir_abs = os.path.abspath(lazyllm.config['temp_dir'])
+    if path.startswith(temp_dir_abs):
+        relative_path = path[len(temp_dir_abs):]
+        if relative_path.startswith(os.sep):
+            relative_path = relative_path[1:]
+        return relative_path
+    else:
+        return path
+
+def transform_path(value, mode='r2a'):
+    assert mode in ('r2a', 'a2r')
+    if mode == 'r2a':
+        return proccess_path_recursively(value, path_relative_to_absolute)
+    else:
+        return proccess_path_recursively(value, path_absolute_to_relative)

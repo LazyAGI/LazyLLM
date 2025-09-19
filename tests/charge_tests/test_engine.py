@@ -1,4 +1,6 @@
+import os
 import lazyllm
+from lazyllm import config
 from lazyllm.engine import LightEngine, NodeMetaHook
 import pytest
 from .utils import SqlEgsData, get_db_init_keywords
@@ -260,8 +262,9 @@ class TestEngine(unittest.TestCase):
                 elif future.done():
                     break
             result = future.result()
-            assert '一天' in stream_result and '小时' in stream_result
-            assert '您好，我的答案是' in stream_result and '24' in stream_result
+            if not config['cache_online_module']:
+                assert '一天' in stream_result and '小时' in stream_result
+                assert '您好，我的答案是' in stream_result and '24' in stream_result
             assert ('蓝鲸' in result or '动物' in result) and '水' in result
 
     def test_tools_with_llm(self):
@@ -301,7 +304,8 @@ class TestEngine(unittest.TestCase):
         nodes = [
             dict(id="1", kind="TTS", name="m1", args=dict(source='qwen', type='online')),
             dict(id="2", kind="STT", name="m2", args=dict(source='glm', type='online')),
-            dict(id="3", kind="SD", name="m3", args=dict(source='qwen', type='online', target_dir='./test_online_mm')),
+            dict(id="3", kind="SD", name="m3", args=dict(source='qwen', type='online',
+                                                         target_dir=os.path.join(lazyllm.config['temp_dir'], 'output'))),
             dict(id="4", kind="VQA", name="m4", args=dict(source='qwen', base_model='qwen-vl-plus', type='online'))
         ]
         engine = LightEngine()

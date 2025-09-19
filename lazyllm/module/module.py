@@ -5,6 +5,7 @@ from lazyllm import ThreadPoolExecutor
 
 import lazyllm
 from lazyllm import FlatList, Option, kwargs, globals, colored_text, redis_client
+from ..components.formatter.formatterbase import FileContentHash, transform_path
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
@@ -198,18 +199,37 @@ class ModuleCache(object):
         return strategies[strategy]()
 
     def _hash(self, args, kw):
-        content = str(args) + str(sorted(kw.items()) if kw else '')
-        return hashlib.md5(content.encode()).hexdigest()
+        def process_value(value, hash_obj):
+            if isinstance(value, str):
+                value = FileContentHash(value)
+            if isinstance(value, FileContentHash):
+                hash_obj.update(str(value.__hash__()).encode())
+            elif isinstance(value, (list, tuple)):
+                for item in value:
+                    process_value(item, hash_obj)
+            elif isinstance(value, dict):
+                for k, v in sorted(value.items()):
+                    hash_obj.update(str(k).encode())
+                    process_value(v, hash_obj)
+            else:
+                hash_obj.update(str(value).encode())
+        hash_obj = hashlib.md5()
+        process_value(args, hash_obj)
+        if kw:
+            process_value(kw, hash_obj)
+        return hash_obj.hexdigest()
 
     def get(self, key, args, kw):
         if 'R' not in lazyllm.config['cache_mode']:
             raise CacheNotFoundError('Cannot read cache due to `LAZYLLM_CACHE_MODE = WO`')
         hash_key = self._hash(args, kw)
-        return self._strategy.get(key, hash_key)
+        value = self._strategy.get(key, hash_key)
+        return transform_path(value, mode='r2a')
 
     def set(self, key, args, kw, value):
         if 'W' not in lazyllm.config['cache_mode']: return
         hash_key = self._hash(args, kw)
+        value = transform_path(value, mode='a2r')
         self._strategy.set(key, hash_key, value)
 
     def close(self):
