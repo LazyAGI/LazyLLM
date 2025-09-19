@@ -221,6 +221,11 @@ class DocNode:
             self.embedding = self.embedding or {}
             self.embedding = {**self.embedding, **generate_embed}
 
+    def set_embedding(self, embed_key, embed_value) -> None:
+        with self._lock:
+            self.embedding = self.embedding or {}
+            self.embedding[embed_key] = embed_value
+
     def check_embedding_state(self, embed_key: str) -> None:
         while True:
             with self._lock:
