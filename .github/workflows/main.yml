@@ -166,9 +166,8 @@ jobs:
       - name: Create Output and Cache Directories
         run: |
           cd ${{ env.CI_PATH }}
-          mkdir -p github_cache
-          mkdir -p github_cache/output
-          mkdir -p github_cache/paid_llm_cache
+          git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Cache.git github_cache
+          ls -alh github_cache
           echo "LAZYLLM_TEMP_DIR=github_cache/output" >> $GITHUB_ENV
           echo "LAZYLLM_CACHE_DIR=github_cache/paid_llm_cache" >> $GITHUB_ENV
 
@@ -196,40 +195,6 @@ jobs:
           echo "LAZYLLM_CACHE_STRATEGY: $LAZYLLM_CACHE_STRATEGY"
           echo "LAZYLLM_CACHE_ONLINE_MODULE: $LAZYLLM_CACHE_ONLINE_MODULE"
 
-      - name: Get SHAs
-        run: |
-          cd ${{ env.CI_PATH }}
-          CURRENT_SHA=$(git rev-parse HEAD)
-          if git rev-parse HEAD^ >/dev/null 2>&1; then
-            PREVIOUS_SHA=$(git rev-parse HEAD^)
-          else
-            PREVIOUS_SHA=$CURRENT_SHA
-          fi
-          echo "CURRENT_SHA=$CURRENT_SHA" >> $GITHUB_ENV
-          echo "PREVIOUS_SHA=$PREVIOUS_SHA" >> $GITHUB_ENV
-          if [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
-            BASE_SHA="${{ github.event.pull_request.base.sha }}"
-            echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
-          fi
-
-      - name: Restore Cache (Push)
-        if: ${{ github.event_name == 'push' }}
-        uses: lwj-st/cache/restore@v4.2.4
-        with:
-          path: github_cache/
-          key: python-result-cache-${{ env.PREVIOUS_SHA }}
-          enableCrossOsArchive: true
-          ci_path: ${{ env.CI_PATH }}
-
-      - name: Restore Cache (Pull Request)
-        if: ${{ github.event_name == 'pull_request' }}
-        uses: lwj-st/cache/restore@v4.2.4
-        with:
-          path: github_cache/
-          key: python-result-cache-${{ env.BASE_SHA }}
-          enableCrossOsArchive: true
-          ci_path: ${{ env.CI_PATH }}
-
       - name: RunTests
         id: exe_ci
         run: |
@@ -249,12 +214,21 @@ jobs:
 
       - name: Success On Main Branch
         if: ${{ success() && steps.exe_ci.conclusion == 'success' && github.event_name == 'push' }}
-        uses: lwj-st/cache/save@v4.2.4
-        with:
-          path: github_cache/
-          key: python-result-cache-${{ env.CURRENT_SHA }}
-          enableCrossOsArchive: true
-          ci_path: ${{ env.CI_PATH }}
+        run: |
+          cd ${{ env.CI_PATH }}
+          cd github_cache
+          ls -alh .
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Detected file changes, committing to main branch..."
+            git config user.name "GitHub Actions Bot"
+            git config user.email "actions@github.com"
+            git add .
+            git commit -m "ci: auto-commit workflow changes [skip ci]"
+            git push origin main
+            echo "Changes successfully committed to main branch"
+          else
+            echo "No file changes detected, no commit needed"
+          fi
 
   Coverage_linux:
     if: contains(github.event.head_commit.message, 'temp_close')
