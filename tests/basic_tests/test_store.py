@@ -526,11 +526,11 @@ class TestSegementStore(object):
     SEGMENTSTORE_CLASS_MAP = {
         'elasticsearch': [{
             'segment_store_type': 'elasticsearch',
-            'init_kwargs': {'uris': os.getenv('ELASTICSEARCH_HOST', 'localhost:9200')},
+            'init_kwargs': {'uris': os.getenv('ELASTICSEARCH_HOST', 'localhost:9201')},
             'is_skip': False, 'skip_reason': 'To test elasticsearch store, please set up a elasticsearch server'}],
         'opensearch': [{
             'segment_store_type': 'opensearch',
-            'init_kwargs': {'uris': os.getenv('OPENSEARCH_HOST', 'localhost:9201'),
+            'init_kwargs': {'uris': os.getenv('OPENSEARCH_HOST', 'localhost:9200'),
                             'client_kwargs': {
                                 "user": os.getenv('OPENSEARCH_USER', 'admin'),
                                 "password": os.getenv('OPENSEARCH_INITIAL_ADMIN_PASSWORD'),
