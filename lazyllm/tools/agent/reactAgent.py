@@ -48,7 +48,7 @@ class ReactAgent(ModuleBase):
 
         if not prompt:
             prompt = INSTRUCTION.replace('{TOKENIZED_PROMPT}', WITHOUT_TOKEN_PROMPT if isinstance(llm, OnlineChatModule)
-                                         else WITH_TOKEN_PROMPT)
+                                         or llm._url.endswith('/v1/') else WITH_TOKEN_PROMPT)
             prompt = prompt.replace('{tool_names}', json.dumps([t.__name__ if callable(t) else t for t in tools],
                                                                ensure_ascii=False))
         self._agent = loop(FunctionCall(llm, tools, _prompt=prompt, return_trace=return_trace, stream=stream),

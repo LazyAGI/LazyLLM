@@ -83,7 +83,7 @@ class SenseVoiceDeploy(LazyLLMDeployBase):
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, launcher: Optional[LazyLLMLaunchersBase] = None,
-                 log_path: Optional[str] = None, trust_remote_code: bool = True, port: Optional[int] = None):
+                 log_path: Optional[str] = None, trust_remote_code: bool = True, port: Optional[int] = None, **kw):
         super().__init__(launcher=launcher)
         self._log_path = log_path
         self._trust_remote_code = trust_remote_code

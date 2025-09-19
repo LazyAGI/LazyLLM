@@ -26,6 +26,7 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
         self._batch_size = batch_size
         self._num_worker = num_worker
         self._timeout = timeout
+        if hasattr(self, '_set_embed_url'): self._set_embed_url()
 
     @property
     def series(self):

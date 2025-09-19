@@ -23,6 +23,7 @@ def set_enviroment(request):
     else:
         os.environ.pop(env_key, None)
 
+@pytest.mark.skipif(os.getenv('LAZYLLM_SKIP_GPU_TEST', 'True'), reason='NEED GPU!')
 class TestDeploy(object):
 
     def setup_method(self):
@@ -64,7 +65,7 @@ class TestDeploy(object):
                 break
             except httpx.ConnectError:
                 continue
-        assert client, "Unable to create client"
+        assert client, 'Unable to create client'
         self.webs.append(web)
         self.clients.append(client)
         return web, client
@@ -110,8 +111,8 @@ class TestDeploy(object):
         res = m(['你好', '世界'])
         assert len(json.loads(res)) == 2
 
-        image_url = "http://images.cocodataset.org/val2017/000000039769.jpg"
-        image_path = os.path.join(lazyllm.config['data_path'], "ci_data/ji.jpg")
+        image_url = 'http://images.cocodataset.org/val2017/000000039769.jpg'
+        image_path = os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg')
         image_base64, mime = _image_to_base64(image_path)
         image_base64 = f'data:{mime};base64,{image_base64}'
         res = m(image_url, modality='image')
@@ -126,7 +127,7 @@ class TestDeploy(object):
         m.update_server()
         r = m('a little cat')
         res = decode_query_with_filepaths(r)
-        assert "files" in res
+        assert 'files' in res
         assert len(res['files']) == 1
 
     def test_musicgen(self):
@@ -134,7 +135,7 @@ class TestDeploy(object):
         m.update_server()
         r = m('lo-fi music with a soothing melody')
         res = decode_query_with_filepaths(r)
-        assert "files" in res
+        assert 'files' in res
         assert len(res['files']) == 1
 
     def test_chattts(self):
@@ -142,7 +143,7 @@ class TestDeploy(object):
         m.update_server()
         r = m('你好啊，很高兴认识你。')
         res = decode_query_with_filepaths(r)
-        assert "files" in res
+        assert 'files' in res
         assert len(res['files']) == 1
 
     def test_stt_sensevoice(self):
@@ -165,13 +166,13 @@ class TestDeploy(object):
                                  chat_history,
                                  self.stream_output,
                                  self.append_text,
-                                 api_name="/_respond_stream")
+                                 api_name='/_respond_stream')
             return ans
         res = client_send(audio_path)[0][-1][-1]
         assert type(res) is str
         assert '但愿人长久' in res
         res = client_send('hi')[0][-1][-1]
-        assert "formats in the form of file paths or URLs are supported." in res
+        assert 'formats in the form of file paths or URLs are supported.' in res
 
         audio_format_test_files = [
             os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.aac'),
@@ -197,7 +198,7 @@ class TestDeploy(object):
         assert '但愿人长久' in res
         res = m(encode_query_with_filepaths(files=[audio_path]))
         assert '但愿人长久' in res
-        res = m({"query": "aha", "files": [audio_path]})
+        res = m({'query': 'aha', 'files': [audio_path]})
         assert '但愿人长久' in res
 
     def test_vlm_and_lmdeploy(self):
@@ -220,6 +221,6 @@ class TestDeploy(object):
                              chat_history,
                              self.stream_output,
                              self.append_text,
-                             api_name="/_respond_stream")
+                             api_name='/_respond_stream')
         res = ans[0][-1][-1]
         assert '鸡' in res

@@ -172,7 +172,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, launcher: LazyLLMLaunchersBase = None, model_type: str = 'embed', log_path: Optional[str] = None,
-                 embed_type: Optional[str] = 'dense', trust_remote_code: bool = True, port: Optional[int] = None):
+                 embed_type: Optional[str] = 'dense', trust_remote_code: bool = True, port: Optional[int] = None, **kw):
         super().__init__(launcher=launcher)
         self._launcher = launcher
         self._port = port

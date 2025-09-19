@@ -5,7 +5,7 @@ import random
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
-from .utils import make_log_dir, get_log_path
+from .utils import make_log_dir, get_log_path, parse_options_keys
 from typing import Optional
 
 
@@ -34,7 +34,7 @@ class Lightllm(LazyLLMDeployBase):
     stream_url_suffix = '_stream'
     stream_parse_parameters = {'delimiter': b'\n\n'}
 
-    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None,  # noqa B008
+    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None, # noqa B008
                  openai_api: Optional[bool] = None, **kw):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
@@ -51,7 +51,9 @@ class Lightllm(LazyLLMDeployBase):
             'max_req_input_len': 4096,
             'long_truncation_mode': 'head',
         })
-        self.trust_remote_code = trust_remote_code
+        self.options_keys = kw.pop('options_keys', [])
+        if trust_remote_code and 'trust_remote_code' not in self.options_keys:
+            self.options_keys.append('trust_remote_code')
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] else True
         self.random_nccl_port = False if 'nccl_port' in kw and kw['nccl_port'] else True
@@ -73,8 +75,7 @@ class Lightllm(LazyLLMDeployBase):
                 self.kw['nccl_port'] = random.randint(20000, 30000)
             cmd = f'python -m lightllm.server.api_server --model_dir {finetuned_model} '
             cmd += self.kw.parse_kwargs()
-            if self.trust_remote_code:
-                cmd += ' --trust_remote_code '
+            cmd += ' ' + parse_options_keys(self.options_keys)
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 

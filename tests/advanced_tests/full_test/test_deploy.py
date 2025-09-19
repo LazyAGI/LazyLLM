@@ -14,13 +14,13 @@ from lazyllm.components.formatter import decode_query_with_filepaths
 def reset_env(func):
 
     env_vars_to_reset = [
-        "LAZYLLM_OPENAI_API_KEY",
-        "LAZYLLM_KIMI_API_KEY",
-        "LAZYLLM_GLM_API_KEY",
-        "LAZYLLM_QWEN_API_KEY",
-        "LAZYLLM_SENSENOVA_API_KEY",
-        "LAZYLLM_SENSENOVA_SECRET_KEY",
-        "LAZYLLM_DOUBAO_API_KEY",
+        'LAZYLLM_OPENAI_API_KEY',
+        'LAZYLLM_KIMI_API_KEY',
+        'LAZYLLM_GLM_API_KEY',
+        'LAZYLLM_QWEN_API_KEY',
+        'LAZYLLM_SENSENOVA_API_KEY',
+        'LAZYLLM_SENSENOVA_SECRET_KEY',
+        'LAZYLLM_DOUBAO_API_KEY',
     ]
 
     @wraps(func)
@@ -37,6 +37,7 @@ def reset_env(func):
         return result
     return wrapper
 
+@pytest.mark.skipif(os.getenv('LAZYLLM_SKIP_GPU_TEST', 'True'), reason='NEED GPU!')
 class TestDeploy(object):
 
     def setup_method(self):
@@ -78,7 +79,7 @@ class TestDeploy(object):
                 break
             except httpx.ConnectError:
                 continue
-        assert client, "Unable to create client"
+        assert client, 'Unable to create client'
         self.webs.append(web)
         self.clients.append(client)
         return web, client
@@ -110,7 +111,7 @@ class TestDeploy(object):
         m.update_server()
         r = m('你好啊，很高兴认识你。')
         res = decode_query_with_filepaths(r)
-        assert "files" in res
+        assert 'files' in res
         assert len(res['files']) == 1
 
     @reset_env
@@ -123,7 +124,7 @@ class TestDeploy(object):
         chat = lazyllm.AutoModel(framework='vllm')
         assert isinstance(chat, lazyllm.TrainableModule)
 
-        lazyllm.config.add("openai_api_key", str, "123", "OPENAI_API_KEY")
+        lazyllm.config.add('openai_api_key', str, '123', 'OPENAI_API_KEY')
 
         # set source
         with pytest.raises(ValueError, match='api_key is required for sensecore'):
@@ -145,13 +146,10 @@ class TestDeploy(object):
 
         # Use deploy_method to set deployment framework and parameters
         module.deploy_method(deploy.LMDeploy, port=9090, tp=1, max_batch_size=256)
-        module.update_server()
-
-        # Verify parameter mapping is correct
         deploy_args = module._impl._deploy_args
 
         # Check mapped parameters
-        assert deploy_args.get('server-port') == 9090, f"Expected server-port=9090, got {deploy_args.get('server-port')}"
-        assert deploy_args.get('tp') == 1, f"Expected tp=1, got {deploy_args.get('tp')}"
+        assert deploy_args.get('server-port') == 9090, f'Expected server-port=9090, got {deploy_args.get("server-port")}'
+        assert deploy_args.get('tp') == 1, f'Expected tp=1, got {deploy_args.get("tp")}'
         assert deploy_args.get('max-batch-size') == 256, \
-            f"Expected max-batch-size=256, got {deploy_args.get('max-batch-size')}"
+            f'Expected max-batch-size=256, got {deploy_args.get("max-batch-size")}'

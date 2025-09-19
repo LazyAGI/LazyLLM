@@ -33,6 +33,7 @@ openpyxl
 python-pptx
 tenacity
 beautifulsoup4
+deepdiff>=8.6.1
 appdirs
 loralib
 flake8>=7.0.0
