@@ -17,10 +17,6 @@ class DoubaoModule(OnlineChatModuleBase):
                          model_name=model or lazyllm.config['doubao_model_name'] or DoubaoModule.MODEL_NAME,
                          stream=stream, return_trace=return_trace, **kwargs)
 
-    @property
-    def type(self):
-        return 'VLM' if any([self._model_name.startswith(prefix) for prefix in self.VLM_MODEL_PREFIX]) else 'LLM'
-
     def _get_system_prompt(self):
         return ('You are Doubao, an AI assistant. Your task is to provide appropriate responses '
                 'and support to user\'s questions and requests.')
