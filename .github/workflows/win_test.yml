@@ -196,7 +196,12 @@ jobs:
       - name: Create Output and Cache Directories
         shell: bash
         run: |
-          git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Cache.git github_cache
+          if [ ! -d "github_cache" ]; then
+            git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Cache.git github_cache
+            echo "Repository cloned successfully"
+          else
+            echo "github_cache folder already exists, skipping clone"
+          fi
           ls -alh github_cache
           echo "LAZYLLM_TEMP_DIR=github_cache/output" >> $GITHUB_ENV
           echo "LAZYLLM_CACHE_DIR=github_cache/paid_llm_cache" >> $GITHUB_ENV
