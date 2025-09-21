@@ -175,10 +175,6 @@ jobs:
           ls -alh github_cache
           echo "LAZYLLM_TEMP_DIR=github_cache/output" >> $GITHUB_ENV
           echo "LAZYLLM_CACHE_DIR=github_cache/paid_llm_cache" >> $GITHUB_ENV
-          cd github_cache
-          git config user.name "GitHub Actions Bot"
-          git config user.email "actions@github.com"
-          git remote set-url origin https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Cache.git
 
       - name: Set Cache Mode Based on Run Context
         run: |
@@ -227,6 +223,7 @@ jobs:
           cd ${{ env.CI_PATH }}
           cd github_cache
           ls -alh .
+          git remote set-url origin https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Cache.git
           if [ -n "$(git status --porcelain)" ]; then
             echo "Detected file changes, committing to main branch..."
             git add .
