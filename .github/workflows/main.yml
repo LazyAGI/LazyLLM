@@ -225,8 +225,6 @@ jobs:
           ls -alh .
           if [ -n "$(git status --porcelain)" ]; then
             echo "Detected file changes, committing to main branch..."
-            git config user.name "GitHub Actions Bot"
-            git config user.email "actions@github.com"
             git add .
             git commit -m "ci: auto-commit workflow changes [skip ci]"
             git push origin main

@@ -202,7 +202,9 @@ jobs:
           else
             echo "github_cache folder already exists, skipping clone"
           fi
+          realpath github_cache
           ls -alh github_cache
+          ls -alh .
           echo "LAZYLLM_TEMP_DIR=github_cache/output" >> $GITHUB_ENV
           echo "LAZYLLM_CACHE_DIR=github_cache/paid_llm_cache" >> $GITHUB_ENV
       
