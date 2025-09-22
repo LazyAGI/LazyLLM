@@ -90,7 +90,7 @@ jobs:
       - name: Move code to custom directory
         run: |
           set -ex
-          cp -r $GITHUB_WORKSPACE/. ${{ env.CI_PATH }}/
+          mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
   BasicTests:
     if: contains(github.event.head_commit.message, 'temp_close')
