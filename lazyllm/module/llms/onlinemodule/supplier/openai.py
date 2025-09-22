@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import requests
-from typing import Tuple, List
+from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
 import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
@@ -218,8 +218,45 @@ class OpenAIEmbedding(OnlineEmbeddingModuleBase):
     NO_PROXY = True
 
     def __init__(self,
-                 embed_url: str = 'https://api.openai.com/v1/embeddings',
+                 embed_url: str = 'https://api.openai.com/v1/',
                  embed_model_name: str = 'text-embedding-ada-002',
+                 api_key: str = None, batch_size: int = 16, **kw):
+        super().__init__('OPENAI', embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name,
+                         batch_size=batch_size, **kw)
+
+    def _set_embed_url(self):
+        self._embed_url = urljoin(self._embed_url, 'embeddings')
+
+
+class OpenAIReranking(OnlineEmbeddingModuleBase):
+    NO_PROXY = True
+
+    def __init__(self,
+                 embed_url: str = 'https://api.openai.com/v1/',
+                 embed_model_name: str = '',
                  api_key: str = None,
-                 *kw):
-        super().__init__('OPENAI', embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name, **kw)
+                 **kw):
+        super().__init__('OPENAI', embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name)
+
+    def _set_embed_url(self):
+        self._embed_url = urljoin(self._embed_url, 'rerank')
+
+    @property
+    def type(self):
+        return 'RERANK'
+
+    def _encapsulated_data(self, query: str, documents: List[str], top_n: int, **kwargs) -> Dict[str, str]:
+        json_data = {
+            'query': query,
+            'documents': documents,
+            'top_n': top_n,
+            'model': self._embed_model_name
+        }
+        if len(kwargs) > 0:
+            json_data.update(kwargs)
+
+        return json_data
+
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Tuple]:
+        results = response['results']
+        return [(result['index'], result['relevance_score']) for result in results]

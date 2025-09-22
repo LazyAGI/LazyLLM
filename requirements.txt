@@ -33,3 +33,4 @@ openpyxl
 python-pptx
 tenacity
 beautifulsoup4
+deepdiff>=8.6.1

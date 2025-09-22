@@ -1,11 +1,11 @@
 import time
 from typing import Callable
+import random
+
 from ..core import ComponentBase
 import lazyllm
 from lazyllm import launchers, flows, LOG
 from ...components.utils.file_operate import _image_to_base64, _audio_to_base64, ocr_to_base64
-import random
-
 
 lazyllm.config.add('openai_api', bool, False, 'OPENAI_API')
 

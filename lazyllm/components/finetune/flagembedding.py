@@ -66,7 +66,7 @@ class FlagembeddingFinetune(LazyLLMFinetuneBase):
         **kw
     ):
         model_type = ModelManager.get_model_type(base_model.split('/')[-1])
-        if model_type not in ('embed', 'reranker'):
+        if model_type not in ('embed', 'rerank'):
             raise RuntimeError(f'Not supported {model_type} type to finetune.')
         if not os.path.exists(base_model):
             defatult_path = os.path.join(lazyllm.config['model_path'], base_model)

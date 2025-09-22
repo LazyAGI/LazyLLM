@@ -20,6 +20,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
            be accessed through the Dashscope SDK.
     '''
     TRAINABLE_MODEL_LIST = ['qwen-turbo', 'qwen-7b-chat', 'qwen-72b-chat']
+    VLM_MODEL_PREFIX = ['qwen-vl-plus', 'qwen-vl-max', 'qvq-max', 'qvq-plus']
     MODEL_NAME = 'qwen-plus'
 
     def __init__(self, base_url: str = 'https://dashscope.aliyuncs.com/', model: str = None,
@@ -305,8 +306,10 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
                                    'embeddings/text-embedding/text-embedding'),
                  embed_model_name: str = 'text-embedding-v1',
                  api_key: str = None,
+                 batch_size: int = 16,
                  **kw):
-        super().__init__('QWEN', embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name, **kw)
+        super().__init__('QWEN', embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name,
+                         batch_size=batch_size, **kw)
 
     def _encapsulated_data(self, text: Union[List, str], **kwargs):
         if isinstance(text, str):
@@ -351,7 +354,7 @@ class QwenReranking(OnlineEmbeddingModuleBase):
 
     @property
     def type(self):
-        return 'ONLINE_RERANK'
+        return 'RERANK'
 
     def _encapsulated_data(self, query: str, documents: List[str], top_n: int, **kwargs) -> Dict[str, str]:
         json_data = {
