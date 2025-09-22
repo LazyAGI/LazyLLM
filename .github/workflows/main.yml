@@ -167,7 +167,7 @@ jobs:
         run: |
           cd ${{ env.CI_PATH }}
           if [ ! -d "github_cache" ]; then
-            git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Cache.git github_cache
+            git clone https://github.com/LazyAGI/LazyLLM-Cache.git github_cache
             echo "Repository cloned successfully"
           else
             echo "github_cache folder already exists, skipping clone"
@@ -223,7 +223,6 @@ jobs:
           cd ${{ env.CI_PATH }}
           cd github_cache
           ls -alh .
-          git remote set-url origin https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Cache.git
           if [ -n "$(git status --porcelain)" ]; then
             echo "Detected file changes, committing to main branch..."
             git add .
