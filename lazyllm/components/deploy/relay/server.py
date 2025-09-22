@@ -82,7 +82,9 @@ async def generate(request: Request): # noqa C901
         origin = input
 
         # TODO(wangzhihong): `update` should come after the `await`, otherwise it may cause strange errors.
-        #                    The root cause has not yet been identified.
+        #                    The reason is that when multiple coroutines use the same Session-ID, the function
+        #                    clears the globals at the end, which causes some coroutines to mistakenly remove
+        #                    data from globals after finishing execution.
         globals._init_sid(decode_request(request.headers.get('Session-ID')))
         globals._update(decode_request(request.headers.get('Global-Parameters')))
 
