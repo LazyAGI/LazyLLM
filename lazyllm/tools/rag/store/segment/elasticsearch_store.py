@@ -51,7 +51,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
 
     def __init__(
         self,
-        uris: List[str] = "",
+        uris: List[str] = '',
         client_kwargs: Optional[Dict] = None,
         index_kwargs: Optional[Union[Dict, List]] = None,
         **kwargs,
@@ -62,7 +62,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
         self._uris = uris
         self._client_kwargs = client_kwargs or {}
         self._index_kwargs = index_kwargs or DEFAULT_MAPPING_BODY
-        self._primary_key = "uid"
+        self._primary_key = 'uid'
 
     @property
     def dir(self):
@@ -79,7 +79,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
 
                 self._client = elasticsearch.Elasticsearch(cloud_id=cloud_id, api_key=api_key)
                 if not self._client.ping():
-                    raise ConnectionError(f"Failed to ping ES {self._uris}")
+                    raise ConnectionError(f'Failed to ping ES {self._uris}')
             # local or remote url Elasticsearch
             else:
                 self._client = elasticsearch.Elasticsearch(hosts=self._uris, **self._client_kwargs)
@@ -110,7 +110,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             if getattr(e, 'error', '') != 'resource_already_exists_exception':
                 raise e
         except Exception as e:
-            LOG.error(f"[ElasticSearch - _ensure_index] Error creating index {index}: {e}")
+            LOG.error(f'[ElasticSearch - _ensure_index] Error creating index {index}: {e}')
             raise e
 
     @override
@@ -136,14 +136,14 @@ class ElasticSearchStore(LazyLLMStoreBase):
             return True
 
         except Exception as e:
-            LOG.error(f"[ElasticSearchStore - upsert] Error upserting documents to {collection_name}: {e}")
+            LOG.error(f'[ElasticSearchStore - upsert] Error upserting documents to {collection_name}: {e}')
             raise e
 
     @override
     def delete(self, collection_name: str = None, criteria: Optional[Dict] = None, **kwargs) -> bool:
         try:
             if not self._client.indices.exists(index=collection_name):
-                LOG.warning(f"[ElasticSearchStore - delete] Index {collection_name} does not exist")
+                LOG.warning(f'[ElasticSearchStore - delete] Index {collection_name} does not exist')
                 return True
             if not criteria:
                 with self._ddl_lock:
@@ -155,7 +155,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                     index=collection_name,
                     body=self._construct_criteria(criteria),
                     refresh=True,
-                    conflicts="proceed",
+                    conflicts='proceed',
                 )
 
                 if resp.get('version_conflicts', 0) > 0:
@@ -167,14 +167,14 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 return True
 
         except Exception as e:
-            LOG.error(f"[ElasticSearchStore - delete] Error deleting from {collection_name}: {e}")
+            LOG.error(f'[ElasticSearchStore - delete] Error deleting from {collection_name}: {e}')
             raise e
 
     @override
-    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
+    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:  # noqa: C901
         try:
             if not self._client.indices.exists(index=collection_name):
-                LOG.warning(f"[ElasticsearchStore - get] Index {collection_name} does not exist")
+                LOG.warning(f'[ElasticsearchStore - get] Index {collection_name} does not exist')
                 return []
 
             results: List[dict] = []
@@ -203,7 +203,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                             results.append(seg)
 
             else:
-                spec = importlib.util.find_spec("elasticsearch.helpers")
+                spec = importlib.util.find_spec('elasticsearch.helpers')
                 helpers = importlib.util.module_from_spec(spec)
                 spec.loader.exec_module(helpers)
                 query = self._construct_criteria(criteria)
@@ -222,7 +222,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             return results
 
         except Exception as e:
-            LOG.error(f"[ElasticsearchStore - get] Error getting data from Elasticsearch: {e}")
+            LOG.error(f'[ElasticsearchStore - get] Error getting data from Elasticsearch: {e}')
             return []
 
     @override
@@ -266,7 +266,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             return {'query': {'bool': {'must': must_clauses}}}
 
     def _transform_segment(self, record: dict) -> dict:
-        """Convert ES into normalized Python dict with uid. Return None if invalid (not found)."""
+        '''Convert ES into normalized Python dict with uid. Return None if invalid (not found).'''
         src = record['_source']
         src['uid'] = record['_id']
         return self._deserialize_node(src)
