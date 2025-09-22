@@ -225,6 +225,7 @@ jobs:
           ls -alh .
           if [ -n "$(git status --porcelain)" ]; then
             echo "Detected file changes, committing to main branch..."
+            git pull --rebase origin main
             git add .
             git commit -m "ci: auto-commit workflow changes [skip ci]"
             git push origin main
