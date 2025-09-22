@@ -187,6 +187,17 @@ jobs:
             echo "Repository cloned successfully"
           else
             echo "github_cache folder already exists, skipping clone"
+            cd github_cache
+            if [ -z "$(git status --porcelain)" ]; then
+                echo "Repository is clean, pulling latest changes..."
+                git pull origin main
+                echo "Repository updated successfully"
+            else
+                echo "Repository has uncommitted changes, skipping update"
+                echo "Current status:"
+                git status --short
+            fi
+            cd ..
           fi
           ls -alh github_cache
           echo "LAZYLLM_TEMP_DIR=github_cache/output" >> $GITHUB_ENV
