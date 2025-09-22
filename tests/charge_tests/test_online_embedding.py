@@ -16,6 +16,6 @@ class TestOnlineEmbedding(object):
 
     def test_embed_adjust_batch(self):
         embed_model = lazyllm.OnlineEmbeddingModule(source='qwen', embed_model_name='text-embedding-v3',
-                                                    num_worker=4, max_batch_size=20)
+                                                    num_worker=4, batch_size=20)
         vec2 = embed_model(['床前明月光' for i in range(0, 20)])
         assert len(vec2) == 20
