@@ -329,3 +329,7 @@ jobs:
         with:
           path: tests/charge_tests/.pytest-cache
           key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
+      
+      - name: Start tmate session
+        if: always()
+        uses: mxschmitt/action-tmate@v3
