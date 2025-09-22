@@ -2,8 +2,8 @@ from typing import Dict, List, Any
 from pydantic import ConfigDict, Field, model_validator
 import re
 
-from lazyllm.prompts.base import BasePromptTemplate
-from lazyllm.prompts.prompt_template import PromptTemplate
+from lazyllm.prompt_templates.base import BasePromptTemplate
+from lazyllm.prompt_templates.prompt_template import PromptTemplate
 
 
 class FewShotPromptTemplate(BasePromptTemplate):
