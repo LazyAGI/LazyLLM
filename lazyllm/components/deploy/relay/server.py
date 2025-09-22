@@ -13,7 +13,6 @@ import pickle
 import codecs
 import asyncio
 from functools import partial
-import threading
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response, StreamingResponse
@@ -82,7 +81,7 @@ async def generate(request: Request): # noqa C901
         except Exception: pass
         origin = input
 
-        # TODO(wangzhihong): `update`` should come after the `await`, otherwise it may cause strange errors.
+        # TODO(wangzhihong): `update` should come after the `await`, otherwise it may cause strange errors.
         #                    The root cause has not yet been identified.
         globals._init_sid(decode_request(request.headers.get('Session-ID')))
         globals._update(decode_request(request.headers.get('Global-Parameters')))
