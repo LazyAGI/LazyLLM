@@ -154,7 +154,9 @@ class Globals(metaclass=SingletonMeta):
     def _get_data(self, rois: Optional[List[str]] = None) -> dict:
         if rois:
             assert isinstance(rois, (tuple, list))
-            return {k: v for k, v in self.__data[self._sid].items() if k in rois}
+            r = {k: v for k, v in self.__data[self._sid].items() if k in rois}
+            r['dataid'] = id(self.__data)
+            return r
         return self.__data[self._sid]
 
     @property

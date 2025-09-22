@@ -13,6 +13,7 @@ import pickle
 import codecs
 import asyncio
 from functools import partial
+import threading
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response, StreamingResponse
@@ -75,19 +76,16 @@ async def lazyllm_call(request: Request):
 @app.post('/generate')
 async def generate(request: Request): # noqa C901
     try:
-        globals._init_sid(decode_request(request.headers.get('Session-ID')))
-        from datetime import datetime
-        import logging
-        logging.warning(f'here in decode and update global, sid is {globals._sid} '
-                        f'global is {decode_request(request.headers.get("Global-Parameters"))} '
-                        f'id of globals is {id(lazyllm.globals)} '
-                        f'time is {datetime.now().strftime("%H:%M:%S.%f")[:-3]}')
-        globals._update(decode_request(request.headers.get('Global-Parameters')))
         input, kw = (await request.json()), {}
         try:
             input, kw = decode_request(input)
         except Exception: pass
         origin = input
+
+        # TODO(wangzhihong): `update`` should come after the `await`, otherwise it may cause strange errors.
+        #                    The root cause has not yet been identified.
+        globals._init_sid(decode_request(request.headers.get('Session-ID')))
+        globals._update(decode_request(request.headers.get('Global-Parameters')))
 
         if args.before_function:
             assert (callable(before_func)), 'before_func must be callable'
@@ -97,7 +95,7 @@ async def generate(request: Request): # noqa C901
                 assert len(kw) == 0, 'Cannot provide kwargs-input and kwargs at the same time'
                 input = before_func(**input)
             else:
-                input = func(*input, **kw) if isinstance(input, package) else before_func(input, **kw)
+                input = before_func(*input, **kw) if isinstance(input, package) else before_func(input, **kw)
                 kw = {}
         if isinstance(input, kwargs):
             kw.update(input)
