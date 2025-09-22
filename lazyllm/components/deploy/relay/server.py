@@ -18,7 +18,6 @@ from fastapi import FastAPI, Request
 from fastapi.responses import Response, StreamingResponse
 import requests
 
-
 # TODO(sunxiaoye): delete in the future
 lazyllm_module_dir = os.path.abspath(__file__)
 for _ in range(5):
@@ -34,6 +33,7 @@ parser.add_argument('--function', required=True)
 parser.add_argument('--before_function')
 parser.add_argument('--after_function')
 parser.add_argument('--pythonpath')
+parser.add_argument('--num_replicas', type=int, default=1, help='num of ray replicas')
 args = parser.parse_args()
 
 if args.pythonpath:
@@ -44,6 +44,7 @@ if args.before_function:
     before_func = load_obj(args.before_function)
 if args.after_function:
     after_func = load_obj(args.after_function)
+
 
 app = FastAPI()
 FastapiApp.update()
@@ -75,6 +76,12 @@ async def lazyllm_call(request: Request):
 async def generate(request: Request): # noqa C901
     try:
         globals._init_sid(decode_request(request.headers.get('Session-ID')))
+        from datetime import datetime
+        import logging
+        logging.warning(f'here in decode and update global, sid is {globals._sid} '
+                        f'global is {decode_request(request.headers.get("Global-Parameters"))} '
+                        f'id of globals is {id(lazyllm.globals)} '
+                        f'time is {datetime.now().strftime("%H:%M:%S")}')
         globals._update(decode_request(request.headers.get('Global-Parameters')))
         input, kw = (await request.json()), {}
         try:
@@ -145,7 +152,7 @@ if __name__ == '__main__':
         import ray
         from ray import serve
         ray.init()
-        _Dummy = serve.deployment(serve.ingress(app)(_Dummy))
+        _Dummy = serve.deployment(serve.ingress(app)(_Dummy), num_replicas=args.num_replicas)
         serve.start(http_options={'host': args.open_ip, 'port': args.open_port})
         serve.run(_Dummy.bind())
 
