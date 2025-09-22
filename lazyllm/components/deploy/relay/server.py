@@ -81,7 +81,7 @@ async def generate(request: Request): # noqa C901
         logging.warning(f'here in decode and update global, sid is {globals._sid} '
                         f'global is {decode_request(request.headers.get("Global-Parameters"))} '
                         f'id of globals is {id(lazyllm.globals)} '
-                        f'time is {datetime.now().strftime("%H:%M:%S")}')
+                        f'time is {datetime.now().strftime("%H:%M:%S.%f")[:-3]}')
         globals._update(decode_request(request.headers.get('Global-Parameters')))
         input, kw = (await request.json()), {}
         try:
