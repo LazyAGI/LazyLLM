@@ -220,9 +220,9 @@ class OpenAIEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = 'https://api.openai.com/v1/',
                  embed_model_name: str = 'text-embedding-ada-002',
-                 api_key: str = None,
-                 **kw):
-        super().__init__('OPENAI', embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name, **kw)
+                 api_key: str = None, batch_size: int = 16, **kw):
+        super().__init__('OPENAI', embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name,
+                         batch_size=batch_size, **kw)
 
     def _set_embed_url(self):
         self._embed_url = urljoin(self._embed_url, 'embeddings')

@@ -14,7 +14,7 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
                  api_key: str,
                  embed_model_name: str,
                  return_trace: bool = False,
-                 batch_size: int = 10,
+                 batch_size: int = 1,
                  num_worker: int = 1,
                  timeout: int = 10):
         super().__init__(return_trace=return_trace)
@@ -36,6 +36,14 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
     def type(self):
         return 'EMBED'
 
+    @property
+    def batch_size(self):
+        return self._batch_size
+
+    @batch_size.setter
+    def batch_size(self, value: int):
+        self._batch_size = value
+
     def _set_headers(self) -> Dict[str, str]:
         self._headers = {
             'Content-Type': 'application/json',
@@ -51,7 +59,7 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
             with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies,
                                timeout=self._timeout) as r:
                 if r.status_code == 200:
-                    return self._parse_response(r.json(), input)
+                    return self._parse_response(r.json(), input=input)
                 else:
                     raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
@@ -91,7 +99,7 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
                         r = session.post(self._embed_url, json=data[i], headers=self._headers,
                                          proxies=proxies, timeout=self._timeout)
                         if r.status_code == 200:
-                            vec = self._parse_response(r.json(), input)
+                            vec = self._parse_response(r.json(), input=input)
                             start = i * self._batch_size
                             ret[start: start + len(vec)] = vec
                             if i == len(data) - 1:
@@ -117,7 +125,7 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
                         r = fut.result()
                         i = fut_to_index.pop(fut)
                         if r.status_code == 200:
-                            vec = self._parse_response(r.json(), input)
+                            vec = self._parse_response(r.json(), input=input)
                             start = i * self._batch_size
                             ret[start: start + len(vec)] = vec
                             if len(fut_to_index) == 0:
