@@ -8,7 +8,7 @@
     members:
     exclude-members:
 
-::: lazyllm.tools.rag.store.ChromadbStore
+::: lazyllm.tools.rag.store.ChromaStore
     members:
     exclude-members:
 

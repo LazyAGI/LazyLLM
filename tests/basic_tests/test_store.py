@@ -3,7 +3,7 @@ import shutil
 import pytest
 import tempfile
 import unittest
-from lazyllm.tools.rag.store import (MapStore, ChromadbStore, MilvusStore, OpenSearchStore,
+from lazyllm.tools.rag.store import (MapStore, ChromaStore, MilvusStore, OpenSearchStore,
                                      SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
@@ -169,7 +169,7 @@ class TestMapStore(unittest.TestCase):
 
 @pytest.mark.skip_on_win
 @pytest.mark.skip_on_mac
-class TestChromadbStore(unittest.TestCase):
+class TestChromaStore(unittest.TestCase):
     def setUp(self):
         self.data = [
             {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
@@ -196,7 +196,7 @@ class TestChromadbStore(unittest.TestCase):
         self.embed_datatypes = {"vec_dense": DataType.FLOAT_VECTOR}
         self.global_metadata_desc = BUILDIN_GLOBAL_META_DESC
         self.store_dir = tempfile.mkdtemp()
-        self.store = ChromadbStore(uri=self.store_dir)
+        self.store = ChromaStore(uri=self.store_dir)
         self.store.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
                            global_metadata_desc=self.global_metadata_desc)
 
