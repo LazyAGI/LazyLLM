@@ -66,15 +66,15 @@ def deploy(commands):
                             choices=['ON', 'on', '1', 'true', 'True', 'OFF', 'off', '0', 'False', 'false'])
 
         args, unknown = parser.parse_known_args(commands)
-        kwargs = {}
+        kwargs = {'options_keys': []}
         for arg in unknown:
-            try:
-                assert arg.startswith('--') and '=' in arg
-                key, value = arg[2:].split('=', 1)
+            assert arg.startswith('--'), f'Argument {arg} must start with --'
+            key = arg[2:]
+            if '=' in key:
+                key, value = key.split('=', 1)
                 kwargs[key] = value
-            except Exception as e:
-                lazyllm.LOG.warning(f'Format error: `{arg}` should be --key=value. {str(e)}')
-                continue
+            else:
+                kwargs['options_keys'].append(key)
 
         lazyllm.LOG.debug(f'Use arguments: {kwargs}')
         t = lazyllm.TrainableModule(args.model).deploy_method(getattr(lazyllm.deploy, args.framework), **kwargs)

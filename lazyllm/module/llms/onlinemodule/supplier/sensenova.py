@@ -40,8 +40,8 @@ class _SenseNovaBase(object):
 
 class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     TRAINABLE_MODEL_LIST = ['nova-ptc-s-v2']
-    VLM_MODEL_LIST = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
-                      'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']
+    VLM_MODEL_PREFIX = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
+                        'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']
 
     def __init__(self, base_url: str = 'https://api.sensenova.cn/compatible-mode/v1/', model: str = 'SenseChat-5',
                  api_key: str = None, secret_key: str = None, stream: bool = True,
@@ -237,9 +237,11 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
                  embed_model_name: str = 'nova-embedding-stable',
                  api_key: str = None,
                  secret_key: str = None,
+                 batch_size: int = 16,
                  **kw):
         api_key = self._get_api_key(api_key, secret_key)
-        super().__init__('SENSENOVA', embed_url, api_key, embed_model_name, **kw)
+        super().__init__('SENSENOVA', embed_url, api_key, embed_model_name,
+                         batch_size=batch_size, **kw)
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
         embeddings = response.get('embeddings', [])
