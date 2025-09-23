@@ -521,7 +521,8 @@ class TestMilvusStore(unittest.TestCase):
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
 
-
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestSegementStore(object):
     SEGMENTSTORE_CLASS_MAP = {
         'elasticsearch': [{
