@@ -64,8 +64,6 @@ jobs:
           
       - name: Checkout code
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
 
       - name: Build doc
         run: |
@@ -93,7 +91,6 @@ jobs:
           mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
   BasicTests:
-    if: contains(github.event.head_commit.message, 'temp_close')
     runs-on: tps_sco_nv
     needs: [Clone]
     steps:
@@ -114,7 +111,6 @@ jobs:
           python -m pytest --lf --last-failed-no-failures=all -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/basic_tests/
 
   AdvancedStandardTests:
-    if: contains(github.event.head_commit.message, 'temp_close')
     runs-on: tps_sco_nv
     needs: [Clone]
     steps:
@@ -138,7 +134,6 @@ jobs:
           fi
 
   AdvancedFullTests:
-    if: contains(github.event.head_commit.message, 'temp_close')
     runs-on: tps_sco_nv
     needs: [Clone]
     steps:
@@ -163,7 +158,7 @@ jobs:
     runs-on: tps_sco_nv
     needs: [ Clone ]
     steps:
-      - name: Create Output and Cache Directories
+      - name: Clone LazyLLM-Cache for Output and Cache
         run: |
           cd ${{ env.CI_PATH }}
           if [ ! -d "github_cache" ]; then
@@ -245,7 +240,6 @@ jobs:
           fi
 
   Coverage_linux:
-    if: contains(github.event.head_commit.message, 'temp_close')
     runs-on: ubuntu-latest
     needs: [ BasicTests, AdvancedStandardTests, AdvancedFullTests, ChargeTests ]
     steps:
@@ -258,7 +252,6 @@ jobs:
           echo "[http://10.210.0.49:8088/${GITHUB_RUN_NUMBER}/htmlcov](http://10.210.0.49:8088/${GITHUB_RUN_NUMBER}/htmlcov)" >> $GITHUB_STEP_SUMMARY
 
   DocCheck:
-    if: contains(github.event.head_commit.message, 'temp_close')
     runs-on: tps_sco_nv
     needs: [ Clone ]
     steps:
