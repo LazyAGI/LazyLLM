@@ -29,7 +29,7 @@ class TTSBase(LazyLLMDeployBase):
     func = None
 
     def __init__(self, launcher: LazyLLMLaunchersBase = None,
-                 log_path: Optional[str] = None, port: Optional[int] = None):
+                 log_path: Optional[str] = None, port: Optional[int] = None, **kw):
         super().__init__(launcher=launcher)
         self._log_path = log_path
         self._port = port
@@ -40,8 +40,8 @@ class TTSBase(LazyLLMDeployBase):
         elif not os.path.exists(finetuned_model) or \
             not any(file.endswith(('.bin', '.safetensors'))
                     for _, _, filenames in os.walk(finetuned_model) for file in filenames):
-            LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                        f"base_model({base_model}) will be used")
+            LOG.warning(f'Note! That finetuned_model({finetuned_model}) is an invalid path, '
+                        f'base_model({base_model}) will be used')
             finetuned_model = base_model
         return lazyllm.deploy.RelayServer(port=self._port, func=self.__class__.func(finetuned_model),
                                           launcher=self._launcher, log_path=self._log_path, cls='tts')()

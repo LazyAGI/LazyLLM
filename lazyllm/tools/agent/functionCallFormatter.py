@@ -4,11 +4,11 @@ from lazyllm import globals
 
 class FunctionCallFormatter(JsonFormatter):
     def _load(self, msg: str):
-        if "{" not in msg:
+        if '{' not in msg:
             return msg
         if globals['tool_delimiter'] in msg:
             content, msg = msg.split(globals['tool_delimiter'])
-            assert msg.count("{") == msg.count("}"), f"{msg} is not a valid json string."
+            assert msg.count('{') == msg.count('}'), f'{msg} is not a valid json string.'
             try:
                 json_strs = json.loads(msg)
                 res = []

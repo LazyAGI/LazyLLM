@@ -73,17 +73,17 @@ class _DocumentStore(object):
             store_type = cfg['type']
             cls = getattr(lazyllm.store, store_type, None)
             if not cls:
-                raise NotImplementedError(f"Not implemented store type: {store_type}")
-            cap = getattr(cls, "capability", None)
+                raise NotImplementedError(f'Not implemented store type: {store_type}')
+            cap = getattr(cls, 'capability', None)
             if cap is None:
-                raise AttributeError(f"{cls.__name__} must define class attribute 'capability'")
+                raise AttributeError(f'{cls.__name__} must define class attribute "capability"')
 
             if cap in (StoreCapability.ALL, StoreCapability.SEGMENT):
                 return cfg, {}
             elif cap == StoreCapability.VECTOR:
                 return {}, cfg
             else:
-                raise ValueError(f"Unsupported capability {cap} for {cls.__name__}")
+                raise ValueError(f'Unsupported capability {cap} for {cls.__name__}')
         return cfg.get('segment_store', {}) or {}, cfg.get('vector_store', {}) or {}
 
     def _create_store_from_config(self, cfg: Optional[Dict[str, Any]] = None) -> LazyLLMStoreBase:
@@ -93,7 +93,7 @@ class _DocumentStore(object):
         vec_store = self._make_store(vec_cfg)
 
         if not seg_store and not vec_store:
-            raise ValueError("Provide either 'type' or 'segment_store'/'vector_store' in config.")
+            raise ValueError('Provide either "type" or "segment_store"/"vector_store" in config.')
 
         if seg_store:
             assert seg_store.capability in (StoreCapability.ALL, StoreCapability.SEGMENT), \
@@ -109,17 +109,17 @@ class _DocumentStore(object):
             return seg_store
         if vec_store and not seg_store:
             if vec_store.capability == StoreCapability.VECTOR:
-                db_path = getattr(vec_store, "dir", None)
+                db_path = getattr(vec_store, 'dir', None)
                 if db_path:
                     p = Path(db_path)
-                    segment_uri = str(p.with_name(f"lazyllm_{p.stem}_segments.db"))
+                    segment_uri = str(p.with_name(f'lazyllm_{p.stem}_segments.db'))
                 else:
                     segment_uri = None
                 segment_store = MapStore(uri=segment_uri)
                 return HybridStore(segment_store=segment_store, vector_store=vec_store)
             return vec_store
         # should not reach here
-        raise RuntimeError("Unexpected store creation state")
+        raise RuntimeError('Unexpected store creation state')
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self):
@@ -267,7 +267,7 @@ class _DocumentStore(object):
               similarity_cut_off: Union[float, Dict[str, float]] = float('-inf'),
               topk: Optional[int] = 10, embed_keys: Optional[List[str]] = None,
               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
-        self._validate_query_params(group_name, similarity_name, embed_keys)
+        embed_keys = self._validate_query_params(group_name, similarity_name, embed_keys)
         segments = []
         if embed_keys:
             if self.impl.capability == StoreCapability.SEGMENT:
@@ -293,7 +293,7 @@ class _DocumentStore(object):
         return [self._deserialize_node(segment, segment.get('score', 0)) for segment in segments]
 
     def _validate_query_params(self, group_name: str, similarity: str,
-                               embed_keys: Optional[List[str]] = None, **kwargs) -> bool:
+                               embed_keys: Optional[List[str]] = None, **kwargs):
         assert self.is_group_active(group_name), f'[_DocumentStore - {self._algo_name}] Group {group_name} is not active'
         if similarity:
             if similarity in registered_similarities:
@@ -304,6 +304,8 @@ class _DocumentStore(object):
                 elif mode == 'text' and self.impl.capability == StoreCapability.VECTOR:
                     raise ValueError(f'[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported, '
                                      'text similarity is supported for segment or hybrid store')
+                if mode == 'embedding' and embed_keys is None:
+                    embed_keys = list(self._embed.keys())
             else:
                 raise ValueError(f'[_DocumentStore - {self._algo_name}] Similarity {similarity} is not supported')
 
@@ -312,7 +314,7 @@ class _DocumentStore(object):
                 f'[_DocumentStore - {self._algo_name}] Embed {embed_keys} not supported when no vector store provided'
             assert all(key in self._embed for key in embed_keys), \
                 f'[_DocumentStore - {self._algo_name}] Embed {embed_keys} not supported'
-        return True
+        return embed_keys
 
     def clear_cache(self, groups: Optional[List[str]] = None) -> None:
         if not groups:

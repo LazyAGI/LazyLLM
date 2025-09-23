@@ -10,6 +10,7 @@ from lazyllm.thirdparty import datasets
 from ...components.utils.file_operate import _delete_old_files
 from lazyllm.common.utils import check_path
 
+
 @dataclass
 class TrainConfig:
     finetune_model_name: str = 'llm'
@@ -32,11 +33,11 @@ def update_config(input_dict: dict, default_data: type) -> dict:
     config = TrainConfig()
     config_dict = asdict(config)
     assert all([key in config_dict for key in input_dict.keys()]), \
-        f"The {input_dict.keys()} must be the subset of {config_dict.keys()}."
+        f'The {input_dict.keys()} must be the subset of {config_dict.keys()}.'
     config_dict.update(input_dict)
     return config_dict
 
-INPUT_SPLIT = " ### input "
+INPUT_SPLIT = ' ### input '
 
 def uniform_sft_dataset(dataset_path: str, target: str = 'alpaca') -> str:
     '''
@@ -51,7 +52,7 @@ def uniform_sft_dataset(dataset_path: str, target: str = 'alpaca') -> str:
     8. alpaca.jsonl  -> openai: Conversion: alpaca2openai: jsonl
     Note: target-suffix does match:{'openai': 'jsonl'; 'alpaca': 'json'}
     '''
-    assert os.path.exists(dataset_path), f"Path: {dataset_path} does not exist!"
+    assert os.path.exists(dataset_path), f'Path: {dataset_path} does not exist!'
 
     data = datasets.load_dataset('json', data_files=dataset_path)
     file_name = os.path.basename(dataset_path)
@@ -62,7 +63,7 @@ def uniform_sft_dataset(dataset_path: str, target: str = 'alpaca') -> str:
 
     # Get the format('alpaca' or 'openai') of the original dataset
     origin_format = 'alpaca'
-    if "messages" in data["train"][0]:
+    if 'messages' in data['train'][0]:
         origin_format = 'openai'
 
     # Verify that the dataset format is consistent with the target format
@@ -86,7 +87,7 @@ def uniform_sft_dataset(dataset_path: str, target: str = 'alpaca') -> str:
             save_data = alpaca2openai(data)
             save_suffix = 'jsonl'
         else:
-            raise ValueError(f"Not supported type: {target}")
+            raise ValueError(f'Not supported type: {target}')
 
     return save_dataset(save_data, save_suffix, base_name + f'_{suffix}')
 
@@ -114,7 +115,7 @@ def save_dataset(save_data: list, save_suffix='json', base_name='train_data') ->
 
 def alpaca_filter_null(data) -> list:
     res = []
-    for item in data["train"]:
+    for item in data['train']:
         alpaca_item = dict()
         for key in item.keys():
             if item[key]:
@@ -124,21 +125,21 @@ def alpaca_filter_null(data) -> list:
 
 def alpaca2openai(data) -> list:
     res = []
-    for item in data["train"]:
-        openai_item = {"messages": []}
-        inp = item.get("input", "")
-        system = item.get("system", "")  # Maybe get None
-        historys = item.get("history", [])
+    for item in data['train']:
+        openai_item = {'messages': []}
+        inp = item.get('input', '')
+        system = item.get('system', '')  # Maybe get None
+        historys = item.get('history', [])
         if system:
-            openai_item["messages"].append({"role": "system", "content": system})
-        openai_item["messages"].extend([
-            {"role": "user", "content": item["instruction"] + (INPUT_SPLIT + inp if inp else "")},
-            {"role": "assistant", "content": item["output"]}
+            openai_item['messages'].append({'role': 'system', 'content': system})
+        openai_item['messages'].extend([
+            {'role': 'user', 'content': item['instruction'] + (INPUT_SPLIT + inp if inp else '')},
+            {'role': 'assistant', 'content': item['output']}
         ])
         if historys:
             for history in historys:
-                openai_item["messages"].append({"role": "user", "content": history[0]})
-                openai_item["messages"].append({"role": "assistant", "content": history[1]})
+                openai_item['messages'].append({'role': 'user', 'content': history[0]})
+                openai_item['messages'].append({'role': 'assistant', 'content': history[1]})
 
         res.append(openai_item)
 
@@ -146,18 +147,18 @@ def alpaca2openai(data) -> list:
 
 def openai2alpaca(data) -> list:
     res = []
-    for line in data["train"]:
-        chat = line["messages"]
+    for line in data['train']:
+        chat = line['messages']
         system = ''
         instructions = []
         outputs = []
         for item in chat:
-            if item["role"] == "system" and not system:
-                system = item["content"]
-            if item["role"] == "user":
-                instructions.append(item["content"])
-            if item["role"] == "assistant":
-                outputs.append(item["content"])
+            if item['role'] == 'system' and not system:
+                system = item['content']
+            if item['role'] == 'user':
+                instructions.append(item['content'])
+            if item['role'] == 'assistant':
+                outputs.append(item['content'])
         assert len(instructions) == len(outputs)
         history = [[x, y] for x, y in zip(instructions[1:], outputs[1:])]
         instruction_input = instructions[0].split(INPUT_SPLIT)
@@ -168,18 +169,18 @@ def openai2alpaca(data) -> list:
         output = outputs[0]
         alpaca_item = dict()
         if system:
-            alpaca_item["system"] = system
-        alpaca_item["instruction"] = instruction
+            alpaca_item['system'] = system
+        alpaca_item['instruction'] = instruction
         # fixed llama-factory-bug: must have input
-        alpaca_item["input"] = inp
-        alpaca_item["output"] = output
+        alpaca_item['input'] = inp
+        alpaca_item['output'] = output
         if history:
-            alpaca_item["history"] = history
+            alpaca_item['history'] = history
         res.append(alpaca_item)
     return res
 
 def encode_files(files, encode_func: Optional[Callable] = None):
-    """
+    '''
     Generic file encoding method
 
     Args:
@@ -188,7 +189,7 @@ def encode_files(files, encode_func: Optional[Callable] = None):
 
     Returns:
         encoded_files: List of encoded files
-    """
+    '''
     if not encode_func: return files
     if not isinstance(files, list): files = [files]
 
@@ -197,9 +198,9 @@ def encode_files(files, encode_func: Optional[Callable] = None):
         try:
             file_path = check_path(file, exist=True, file=True)
             base64_str, mime = encode_func(file_path)
-            encoded_files.append(f"data:{mime};base64," + base64_str)
+            encoded_files.append(f'data:{mime};base64,' + base64_str)
         except Exception as e:
-            LOG.error(f"Error processing file {file}: {e}")
+            LOG.error(f'Error processing file {file}: {e}')
             encoded_files.append(file)
             continue
     return encoded_files
@@ -215,7 +216,7 @@ def map_kw_for_framework(
             if isinstance(kw_item, tuple) and len(kw_item) == 2:
                 new_key, transform_func = kw_item
                 assert isinstance(new_key, str) and callable(transform_func), \
-                    f"Invalid kw_map item: {kw_item}"
+                    f'Invalid kw_map item: {kw_item}'
                 result[new_key] = transform_func(v)
             elif isinstance(kw_item, str):
                 result[kw_item] = v
@@ -224,8 +225,23 @@ def map_kw_for_framework(
             elif kw_item is None:
                 result[k] = v
             else:
-                raise ValueError(f"Invalid kw_map item: {kw_item}")
+                raise ValueError(f'Invalid kw_map item: {kw_item}')
         except (TypeError, ValueError) as e:
-            LOG.warning(f"Type conversion error for key '{k}': {e}, using original value")
+            LOG.warning(f'Type conversion error for key "{k}": {e}, using original value')
             result[k] = v
     return result
+
+def check_config_map_format(config_map: dict):
+    assert isinstance(config_map, dict), 'config_map should be a dict'
+    for k, v in config_map.items():
+        if not isinstance(v, list):
+            raise ValueError(f'config for model {k} should be a list')
+        for item in v:
+            if not isinstance(item, dict):
+                raise ValueError(f'config item for model {k} should be a dict')
+            if not isinstance(item.get('url'), str):
+                raise ValueError(f'url for model {k} should be a string')
+            if not isinstance(item.get('framework'), str):
+                raise ValueError(f'framework for model {k} should be a string')
+            if not isinstance(item.get('deploy_config', {}), dict):
+                raise ValueError(f'deploy_config for model {k} should be a dict')

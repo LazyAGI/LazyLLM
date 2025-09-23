@@ -15,14 +15,14 @@ class AutoModel:
         if source:
             return OnlineChatModule(model=model, source=source)
         elif framework:
-            model = model or "internlm2-chat-7b"
+            model = model or 'internlm2-chat-7b'
             return TrainableModule(model).deploy_method(getattr(lazyllm.deploy, framework))
         elif not model:
             try:
                 return OnlineChatModule()
             except KeyError as e:
-                LOG.warning("`OnlineChatModule` creation failed, and will try to "
-                            f"load model internlm2-chat-7b with local `TrainableModule`. Since the error: {e}")
-                return TrainableModule("internlm2-chat-7b")
+                LOG.warning('`OnlineChatModule` creation failed, and will try to '
+                            f'load model internlm2-chat-7b with local `TrainableModule`. Since the error: {e}')
+                return TrainableModule('internlm2-chat-7b')
         else:
             return TrainableModule(model)

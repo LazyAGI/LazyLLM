@@ -2,7 +2,7 @@ from typing import Any, Dict
 
 import lazyllm
 from .base import OnlineEmbeddingModuleBase
-from .supplier.openai import OpenAIEmbedding
+from .supplier.openai import OpenAIEmbedding, OpenAIReranking
 from .supplier.glm import GLMEmbedding, GLMReranking
 from .supplier.sensenova import SenseNovaEmbedding
 from .supplier.qwen import QwenEmbedding, QwenReranking
@@ -23,7 +23,8 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                     'qwen': QwenEmbedding,
                     'doubao': DoubaoEmbedding}
     RERANK_MODELS = {'qwen': QwenReranking,
-                     'glm': GLMReranking}
+                     'glm': GLMReranking,
+                     'openai': OpenAIReranking}
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,
@@ -31,9 +32,9 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                                 **kwargs) -> Dict[str, Any]:
         params = {}
         if embed_url is not None:
-            params["embed_url"] = embed_url
+            params['embed_url'] = embed_url
         if embed_model_name is not None:
-            params["embed_model_name"] = embed_model_name
+            params['embed_model_name'] = embed_model_name
         params.update(kwargs)
         return params
 
@@ -42,9 +43,9 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         for source in available_models.keys():
             if lazyllm.config[f'{source}_api_key']: break
         else:
-            raise KeyError(f"No api_key is configured for any of the models {available_models.keys()}.")
+            raise KeyError(f'No api_key is configured for any of the models {available_models.keys()}.')
 
-        assert source in available_models.keys(), f"Unsupported source: {source}"
+        assert source in available_models.keys(), f'Unsupported source: {source}'
         return source
 
     def __new__(self,
@@ -54,23 +55,23 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                 **kwargs):
         params = OnlineEmbeddingModule._encapsulate_parameters(embed_url, embed_model_name, **kwargs)
 
-        if source is None and "api_key" in kwargs and kwargs["api_key"]:
-            raise ValueError("No source is given but an api_key is provided.")
+        if source is None and 'api_key' in kwargs and kwargs['api_key']:
+            raise ValueError('No source is given but an api_key is provided.')
 
-        if "type" in params:
-            params.pop("type")
-        if kwargs.get("type", "embed") == "embed":
+        if 'type' in params:
+            params.pop('type')
+        if kwargs.get('type', 'embed') == 'embed':
             if source is None:
                 source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.EMBED_MODELS)
-            if source == "doubao":
-                if embed_model_name.startswith("doubao-embedding-vision"):
+            if source == 'doubao':
+                if embed_model_name.startswith('doubao-embedding-vision'):
                     return DoubaoMultimodalEmbedding(**params)
                 else:
                     return DoubaoEmbedding(**params)
             return OnlineEmbeddingModule.EMBED_MODELS[source](**params)
-        elif kwargs.get("type") == "rerank":
+        elif kwargs.get('type') == 'rerank':
             if source is None:
                 source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.RERANK_MODELS)
             return OnlineEmbeddingModule.RERANK_MODELS[source](**params)
         else:
-            raise ValueError("Unknown type of online embedding module.")
+            raise ValueError('Unknown type of online embedding module.')
