@@ -28,13 +28,13 @@ class StaticParams(TypedDict, total=False):
 
 class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
     TRAINABLE_MODEL_LIST = []
-    VLM_MODEL_LIST = []
+    VLM_MODEL_PREFIX = []
     NO_PROXY = True
 
     def __init__(self, model_series: str, api_key: str, base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
                  static_params: Optional[StaticParams] = None, type: Optional[str] = None, **kwargs):
-        if model_name in self.VLM_MODEL_LIST:
+        if any([model_name.startswith(prefix) for prefix in self.VLM_MODEL_PREFIX]):
             if type is None: type = 'VLM'
             else: assert type == 'VLM', f'model_name {model_name} is a VLM model, but type is {type}'
         OnlineModuleBase.__init__(self, return_trace=return_trace)
@@ -130,7 +130,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         if 'reasoning_content' in outputs and outputs['reasoning_content'] and 'content' in outputs:
             outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
 
-        result, tool_calls = outputs.get('content', ''), outputs.get('tool_calls')
+        result, tool_calls = outputs.get('content') or '', outputs.get('tool_calls')
         if tool_calls:
             try:
                 if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
@@ -164,6 +164,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
                 tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):
         '''LLM inference interface'''
+        # TODO(dengyuang): if current forward set stream_output = False but self._stream = True, will use stream = True
         stream_output = stream_output or self._stream
         __input, files = self._get_files(__input, lazyllm_files)
         params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
@@ -174,7 +175,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         if len(kw) > 0: data.update(kw)
         if len(self._model_optional_params) > 0: data.update(self._model_optional_params)
 
-        if files or (self._vlm_force_format_input_with_files and self.type == 'VLM'):
+        if self.type == 'VLM' and (files or self._vlm_force_format_input_with_files):
             data['messages'][-1]['content'] = self._format_input_with_files(data['messages'][-1]['content'], files)
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
@@ -322,7 +323,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         return [{'type': 'text', 'text': query}]
 
     def _format_vl_chat_image_url(self, image_url: str, mime: str) -> List[Dict[str, str]]:
-        return [{'type': 'image_url', 'image_url': {'url': image_url}}]
+        return [{'type': 'image_url', 'image_url': {'url': f'data:{mime};base64,{image_url}'}}]
 
     # for online vlm
     def _format_input_with_files(self, query: str, query_files: list[str]) -> List[Dict[str, str]]:

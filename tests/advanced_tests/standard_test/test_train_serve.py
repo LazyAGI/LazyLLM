@@ -1,19 +1,21 @@
 import os
 import time
-
+import pytest
 import requests
+
 import lazyllm
 from lazyllm.tools.train_service.serve import TrainServer
 from urllib.parse import urlparse
 
+@pytest.mark.skipif(os.getenv('LAZYLLM_SKIP_GPU_TEST', 'True'), reason='NEED GPU!')
 class TestTrainServe:
     def test_train_serve(self):
         train_server = lazyllm.ServerModule(TrainServer(), launcher=lazyllm.launcher.EmptyLauncher(sync=False))
         train_server.start()()
         parsed_url = urlparse(train_server._url)
-        train_server_url = f"{parsed_url.scheme}://{parsed_url.netloc}"
+        train_server_url = f'{parsed_url.scheme}://{parsed_url.netloc}'
         token = 'test_sft'
-        headers = {"token": token}
+        headers = {'token': token}
 
         train_config = {
             'name': 'my_sft_model',
@@ -44,7 +46,7 @@ class TestTrainServe:
         }
 
         # Launch train
-        response = requests.post(f"{train_server_url}/v1/finetuneTasks", json=train_config, headers=headers)
+        response = requests.post(f'{train_server_url}/v1/finetuneTasks', json=train_config, headers=headers)
         job_id = response.json()['finetune_task_id']
         assert len(job_id) > 0
         status = response.json()['status']
@@ -52,7 +54,7 @@ class TestTrainServe:
         n = 0
         while status != 'Running':
             time.sleep(1)
-            response = requests.get(f"{train_server_url}/v1/finetuneTasks/{job_id}", headers=headers)
+            response = requests.get(f'{train_server_url}/v1/finetuneTasks/{job_id}', headers=headers)
             status = response.json()['status']
             n += 1
             assert n < 300, 'Launch training timeout.'
@@ -60,19 +62,19 @@ class TestTrainServe:
         # After Launch, training 20s
         time.sleep(20)
 
-        response = requests.delete(f"{train_server_url}/v1/finetuneTasks/{job_id}", headers=headers)
+        response = requests.delete(f'{train_server_url}/v1/finetuneTasks/{job_id}', headers=headers)
         assert response.status_code == 200
 
-        response = requests.get(f"{train_server_url}/v1/finetuneTasks/{job_id}", headers=headers)
+        response = requests.get(f'{train_server_url}/v1/finetuneTasks/{job_id}', headers=headers)
         status = response.json()['status']
         cost = response.json()['cost']
         assert status == 'Cancelled'
         assert cost > 15
 
-        response = requests.get(f"{train_server_url}/v1/finetuneTasks/{job_id}/log", headers=headers)
+        response = requests.get(f'{train_server_url}/v1/finetuneTasks/{job_id}/log', headers=headers)
         assert response.status_code == 200
 
-        response = requests.get(f"{train_server_url}/v1/finetuneTasks/jobs", headers=headers)
+        response = requests.get(f'{train_server_url}/v1/finetuneTasks/jobs', headers=headers)
         assert response.status_code == 200
         assert job_id in response.json().keys()
 

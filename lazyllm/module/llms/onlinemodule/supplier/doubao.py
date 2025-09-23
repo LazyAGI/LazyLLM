@@ -9,6 +9,7 @@ from lazyllm.thirdparty import volcenginesdkarkruntime
 
 class DoubaoModule(OnlineChatModuleBase):
     MODEL_NAME = 'doubao-1-5-pro-32k-250115'
+    VLM_MODEL_PREFIX = ['doubao-seed-1-6-vision', 'doubao-1-5-ui-tars']
 
     def __init__(self, model: str = None, base_url: str = 'https://ark.cn-beijing.volces.com/api/v3/',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
@@ -29,8 +30,10 @@ class DoubaoEmbedding(OnlineEmbeddingModuleBase):
                  embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings',
                  embed_model_name: str = 'doubao-embedding-text-240715',
                  api_key: str = None,
+                 batch_size: int = 16,
                  **kw):
-        super().__init__('DOUBAO', embed_url, api_key or lazyllm.config['doubao_api_key'], embed_model_name, **kw)
+        super().__init__('DOUBAO', embed_url, api_key or lazyllm.config['doubao_api_key'], embed_model_name,
+                         batch_size=batch_size, **kw)
 
 
 class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
