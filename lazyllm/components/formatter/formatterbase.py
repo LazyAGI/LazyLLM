@@ -234,42 +234,40 @@ class FileFormatter(LazyLLMFormatterBase):
                 return py_data
 
 
-class FileContentHash(str):
+def file_content_hash(value):
+    res = decode_query_with_filepaths(value)
+    if isinstance(res, str):
+        return hashlib.md5(value.encode()).hexdigest()
+    query = res['query']
+    file_path_list = res['files']
 
-    def __hash__(self):
-        res = decode_query_with_filepaths(self)
-        if isinstance(res, str):
-            return hashlib.md5(self.encode()).hexdigest()
-        query = res['query']
-        file_path_list = res['files']
+    hash_obj = hashlib.md5()
+    hash_obj.update(query.encode('utf-8'))
 
-        hash_obj = hashlib.md5()
-        hash_obj.update(query.encode('utf-8'))
-
-        search_paths = [
-            '',
-            lazyllm.config['temp_dir'],
-        ]
-        for file_path in file_path_list:
-            if os.path.isabs(file_path):
+    search_paths = [
+        '',
+        lazyllm.config['temp_dir'],
+    ]
+    for file_path in file_path_list:
+        if os.path.isabs(file_path):
+            full_path = file_path
+        else:
+            full_path = None
+            for base_path in search_paths:
+                candidate_path = os.path.join(base_path, file_path) if base_path else file_path
+                if os.path.exists(candidate_path) and os.path.isfile(candidate_path):
+                    full_path = candidate_path
+                    break
+            if full_path is None:
                 full_path = file_path
-            else:
-                full_path = None
-                for base_path in search_paths:
-                    candidate_path = os.path.join(base_path, file_path) if base_path else file_path
-                    if os.path.exists(candidate_path) and os.path.isfile(candidate_path):
-                        full_path = candidate_path
-                        break
-                if full_path is None:
-                    full_path = file_path
-            try:
-                with open(full_path, 'rb') as f:
-                    while chunk := f.read(8192):
-                        hash_obj.update(chunk)
-            except (FileNotFoundError, IOError):
-                lazyllm.LOG.debug(f'Error: File not found or cannot be read: {full_path}')
-                hash_obj.update(full_path.encode('utf-8'))
-        return int(hash_obj.hexdigest(), 16)
+        try:
+            with open(full_path, 'rb') as f:
+                while chunk := f.read(8192):
+                    hash_obj.update(chunk)
+        except (FileNotFoundError, IOError):
+            lazyllm.LOG.debug(f'Error: File not found or cannot be read: {full_path}')
+            hash_obj.update(full_path.encode('utf-8'))
+    return int(hash_obj.hexdigest(), 16)
 
 
 def proccess_path_recursively(value, process_func):

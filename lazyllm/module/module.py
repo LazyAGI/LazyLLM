@@ -5,7 +5,7 @@ from lazyllm import ThreadPoolExecutor
 
 import lazyllm
 from lazyllm import FlatList, Option, kwargs, globals, colored_text, redis_client
-from ..components.formatter.formatterbase import FileContentHash, transform_path
+from ..components.formatter.formatterbase import file_content_hash, transform_path
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
@@ -201,13 +201,16 @@ class ModuleCache(object):
     def _hash(self, args, kw):
         def process_value(value, hash_obj):
             if isinstance(value, str):
-                value = FileContentHash(value)
-            if isinstance(value, FileContentHash):
-                hash_obj.update(str(value.__hash__()).encode())
+                hash_obj.update(str(file_content_hash(value)).encode())
             elif isinstance(value, (list, tuple)):
+                if isinstance(value, list):
+                    hash_obj.update(b'list:')
+                else:
+                    hash_obj.update(b'tuple:')
                 for item in value:
                     process_value(item, hash_obj)
             elif isinstance(value, dict):
+                hash_obj.update(b'dict:')
                 for k, v in sorted(value.items()):
                     hash_obj.update(str(k).encode())
                     process_value(v, hash_obj)
