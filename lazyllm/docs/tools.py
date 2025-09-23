@@ -1032,44 +1032,44 @@ Args:
 ''')
 
 
-add_english_doc('rag.store.ChromadbStore', '''
-ChromadbStore is a vector-capable implementation of LazyLLMStoreBase, leveraging ChromaDB for persistence and vector search.
+add_english_doc('rag.store.ChromaStore', '''
+ChromaStore is a vector-capable implementation of LazyLLMStoreBase, leveraging Chroma for persistence and vector search.
 
 Args:
-    dir (Optional[str]): Filesystem path for on-disk ChromaDB storage. If provided, a PersistentClient will be used.
-    host (Optional[str]): Hostname for ChromaDB HTTP server. Used if `dir` is not set.
-    port (Optional[int]): Port number for ChromaDB HTTP server. Used if `dir` is not set.
-    index_kwargs (Optional[Union[Dict, List]]): Configuration parameters for ChromaDB collections, e.g., index type and metrics.
-    client_kwargs (Optional[Dict]): Additional keyword arguments passed to the ChromaDB client constructor.
+    dir (Optional[str]): Filesystem path for on-disk Chroma storage. If provided, a PersistentClient will be used.
+    host (Optional[str]): Hostname for Chroma HTTP server. Used if `dir` is not set.
+    port (Optional[int]): Port number for Chroma HTTP server. Used if `dir` is not set.
+    index_kwargs (Optional[Union[Dict, List]]): Configuration parameters for Chroma collections, e.g., index type and metrics.
+    client_kwargs (Optional[Dict]): Additional keyword arguments passed to the Chroma client constructor.
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore', '''
-ChromadbStore 是基于 ChromaDB 的向量存储实现，继承自 LazyLLMStoreBase，支持向量写入、检索与持久化。
+add_chinese_doc('rag.store.ChromaStore', '''
+ChromaStore 是基于 Chroma 的向量存储实现，继承自 LazyLLMStoreBase，支持向量写入、检索与持久化。
 
 Args:
     dir (Optional[str]): 本地持久化存储目录，优先使用 PersistentClient 模式。
-    host (Optional[str]): HTTP 访问模式下的 ChromaDB 服务主机名。
-    port (Optional[int]): HTTP 模式下的 ChromaDB 服务端口。
+    host (Optional[str]): HTTP 访问模式下的 Chroma 服务主机名。
+    port (Optional[int]): HTTP 模式下的 Chroma 服务端口。
     index_kwargs (Optional[Union[Dict, List]]): Collection 配置参数，如索引类型、度量方式等。
-    client_kwargs (Optional[Dict]): 传递给 ChromaDB 客户端的额外参数。
+    client_kwargs (Optional[Dict]): 传递给 Chroma 客户端的额外参数。
 ''')
 
-add_english_doc('rag.store.ChromadbStore.dir', '''
+add_english_doc('rag.store.ChromaStore.dir', '''
 Directory property of the store.
 
 Returns:
     Optional[str]: Normalized directory path ending with a slash, or None if not set.
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore.dir', '''
+add_chinese_doc('rag.store.ChromaStore.dir', '''
 存储目录属性。
 
 Returns:
     Optional[str]: 以斜杠结尾的目录路径，若未配置则返回 None。
 ''')
 
-add_english_doc('rag.store.ChromadbStore.connect', '''
-Initialize the ChromaDB client and configure embedding and metadata settings.
+add_english_doc('rag.store.ChromaStore.connect', '''
+Initialize the Chroma client and configure embedding and metadata settings.
 
 Args:
     embed_dims (Dict[str, int]): Dimensions for each embedding key.
@@ -1077,8 +1077,8 @@ Args:
     global_metadata_desc (Dict[str, GlobalMetadataDesc]): Descriptions of global metadata fields.
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore.connect', '''
-初始化 ChromaDB 客户端并配置向量化及元数据相关设定。
+add_chinese_doc('rag.store.ChromaStore.connect', '''
+初始化 Chroma 客户端并配置向量化及元数据相关设定。
 
 Args:
     embed_dims (Dict[str, int]): 每个嵌入键对应的向量维度。
@@ -1086,8 +1086,8 @@ Args:
     global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据字段的描述。
 ''')
 
-add_english_doc('rag.store.ChromadbStore.upsert', '''
-Insert or update a batch of records(segment's uid and vectors) into ChromaDB.
+add_english_doc('rag.store.ChromaStore.upsert', '''
+Insert or update a batch of records(segment's uid and vectors) into Chroma.
 
 Args:
     collection_name (str): Logical name for the collection.
@@ -1097,8 +1097,8 @@ Returns:
     bool: True if operation succeeds, False otherwise.
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore.upsert', '''
-批量写入或更新记录（切片的id及向量数据）到 ChromaDB。
+add_chinese_doc('rag.store.ChromaStore.upsert', '''
+批量写入或更新记录（切片的id及向量数据）到 Chroma。
 
 Args:
     collection_name (str): 集合名称。
@@ -1108,7 +1108,7 @@ Returns:
     bool: 操作成功返回 True，否则 False。
 ''')
 
-add_english_doc('rag.store.ChromadbStore.delete', '''
+add_english_doc('rag.store.ChromaStore.delete', '''
 Delete an entire collection or specific records.
 
 Args:
@@ -1119,7 +1119,7 @@ Returns:
     bool: True if deletion succeeds, False otherwise.
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore.delete', '''
+add_chinese_doc('rag.store.ChromaStore.delete', '''
 删除整个集合或指定记录。
 
 Args:
@@ -1130,7 +1130,7 @@ Returns:
     bool: 删除成功返回 True，否则 False。
 ''')
 
-add_english_doc('rag.store.ChromadbStore.get', '''
+add_english_doc('rag.store.ChromaStore.get', '''
 Retrieve records matching criteria.
 
 Args:
@@ -1141,7 +1141,7 @@ Returns:
     List[dict]: Each dict contains 'uid' and 'embedding'.
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore.get', '''
+add_chinese_doc('rag.store.ChromaStore.get', '''
 根据条件检索记录。
 
 Args:
@@ -1152,7 +1152,7 @@ Returns:
     List[dict]: 每项包含 'uid' 和 'embedding'。
 ''')
 
-add_english_doc('rag.store.ChromadbStore.search', '''
+add_english_doc('rag.store.ChromaStore.search', '''
 Perform a vector similarity search.
 
 Args:
@@ -1166,7 +1166,7 @@ Returns:
     List[dict]: Each dict has 'uid' and 'score' (similarity).
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore.search', '''
+add_chinese_doc('rag.store.ChromaStore.search', '''
 执行向量相似度检索。
 
 Args:
