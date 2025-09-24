@@ -200,22 +200,31 @@ class ModuleCache(object):
 
     def _hash(self, args, kw):
         def process_value(value, hash_obj):
+            meta = ''
+            if isinstance(value, (list, tuple, dict, set)):
+                meta = str(type(value)) + str(len(value))
             if isinstance(value, str):
                 hash_obj.update(str(file_content_hash(value)).encode())
-            elif isinstance(value, (list, tuple)):
-                if isinstance(value, list):
-                    hash_obj.update(b'list:')
-                else:
-                    hash_obj.update(b'tuple:')
+            elif isinstance(value, set):
+                hash_obj.update((meta + '>').encode())
+                for item in sorted(value):
+                    process_value(item, hash_obj)
+                hash_obj.update(('<' + meta).encode())
+            elif isinstance(value, (list, tuple, set)):
+                hash_obj.update((meta + '>').encode())
                 for item in value:
                     process_value(item, hash_obj)
+                hash_obj.update(('<' + meta).encode())
             elif isinstance(value, dict):
-                hash_obj.update(b'dict:')
+                hash_obj.update((meta + '>').encode())
                 for k, v in sorted(value.items()):
-                    hash_obj.update(str(k).encode())
+                    key_meta = 'key:' + str(type(k)) + str(k)
+                    hash_obj.update(key_meta.encode())
                     process_value(v, hash_obj)
+                hash_obj.update(('<' + meta).encode())
             else:
-                hash_obj.update(str(value).encode())
+                value_meta = str(type(value)) + str(value)
+                hash_obj.update(value_meta.encode())
         hash_obj = hashlib.md5()
         process_value(args, hash_obj)
         if kw:
