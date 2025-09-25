@@ -696,8 +696,9 @@ class TestSegementStore(object):
     }
 
     @pytest.fixture(scope='class')
+    @pytest.fixture(scope='class')
     def setUP(self, request):
-        collections = ['col_g1', 'col_g2', 'col_g3', 'col_g4']
+        collections = ['col_g1', 'col_g2']
         data = [
             {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
              'global_meta': {RAG_DOC_ID: 'doc1', RAG_KB_ID: 'kb1'},
@@ -754,32 +755,33 @@ class TestSegementStore(object):
         res = self.store.get(collection_name=self.collections[0])
         assert len(res) == 1, f'upsert {self.segment_store_type} failed'
         assert res[0].get('uid') == self.data[0].get('uid'), f'upsert {self.segment_store_type} failed'
-        self.store.upsert(self.collections[1], [self.data[1]])
-        self.store.upsert(self.collections[2], [self.data[2]])
-        self.store.upsert(self.collections[3], [self.data[3]])
+        self.store.upsert(self.collections[0], [self.data[1]])
+        res = self.store.get(collection_name=self.collections[0])
+        assert len(res) == 2, f'upsert {self.segment_store_type} failed'
+        self.store.upsert(self.collections[1], [self.data[2]])
+        self.store.upsert(self.collections[1], [self.data[3]])
         return True
 
     @pytest.fixture()
     def get_segments_by_collection(self):
         res = self.store.get(collection_name=self.collections[0])
+        assert len(res) == 2, f'get segments by collection {self.segment_store_type} failed'
         res = self.store.get(collection_name=self.collections[1])
-        assert len(res) == 1, f'get segments by collection {self.segment_store_type} failed'
-        res = self.store.get(collection_name=self.collections[1])
-        assert len(res) == 1, f'get segments by collection {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[1].get('uid'), f'get by collection {self.segment_store_type} failed'
+        assert len(res) == 2, f'get segments by collection {self.segment_store_type} failed'
         return True
 
     @pytest.fixture()
     def get_segments_by_kb_id(self):
         res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb1'})
         assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
-        assert res[0].get('uid'), self.data[0].get('uid')
-        res = self.store.get(collection_name=self.collections[3], criteria={RAG_KB_ID: 'kb4'})
+        assert res[0].get('uid') == self.data[0].get('uid'), f"get segments by kb_id {self.segment_store_type} failed"
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb2'})
         assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
         assert res[0].get('uid') == self.data[3].get('uid'), f'get segments by kb_id {self.segment_store_type} failed'
         res = self.store.get(collection_name=self.collections[2], criteria={RAG_KB_ID: 'kb3'})
         assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
-        res = self.store.get(collection_name=self.collections[1], criteria={RAG_KB_ID: 'kb2'})
+        assert res[0].get('uid') == self.data[2].get('uid'), f"get segments by kb_id {self.segment_store_type} failed"
+        res = self.store.get(collection_name=self.collections[1], criteria={RAG_KB_ID: 'kb4'})
         assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
         assert res[0].get('uid') == self.data[1].get('uid'), f'get segments by kb_id {self.segment_store_type} failed'
         return True
@@ -788,13 +790,13 @@ class TestSegementStore(object):
     def get_segments_by_uid(self):
         res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid1']})
         assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[0].get('uid'), f'get segments by uid {self.segment_store_type} failed'
-        res = self.store.get(collection_name=self.collections[2], criteria={'uid': ['uid3']})
+        assert res[0].get('uid') == self.data[0].get('uid'), f"get segments by uid {self.segment_store_type} failed"
+        res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid3']})
+        assert len(res) == 0, f'get segments by uid {self.segment_store_type} failed'
+        res = self.store.get(collection_name=self.collections[1], criteria={'uid': ['uid3']})
         assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[2].get('uid'), f'get segments by uid {self.segment_store_type} failed'
-        res = self.store.get(collection_name=self.collections[1], criteria={'uid': ['uid2']})
-        assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
-        res = self.store.get(collection_name=self.collections[3], criteria={'uid': ['uid4']})
+        assert res[0].get('uid') == self.data[2].get('uid'), f"get segments by uid {self.segment_store_type} failed"
+        res = self.store.get(collection_name=self.collections[1], criteria={'uid': ['uid4']})
         assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
         assert res[0].get('uid') == self.data[3].get('uid'), f'get segments by uid {self.segment_store_type} failed'
         return True
@@ -804,10 +806,35 @@ class TestSegementStore(object):
         res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         assert len(res) == 1, f'get segments by doc_id {self.segment_store_type} failed'
         assert res[0].get('uid') == self.data[0].get('uid'), f'get segments by doc_id {self.segment_store_type} failed'
-        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc4']})
         assert len(res) == 0, f'get segments by doc_id {self.segment_store_type} failed'
-        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
+        res = self.store.get(collection_name=self.collections[1], criteria={RAG_DOC_ID: ['doc3']})
         assert len(res) == 1, f'get segments by doc_id {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[2].get('uid'), f'get segments by doc_id {self.segment_store_type} failed'
+        res = self.store.get(collection_name=self.collections[1], criteria={RAG_DOC_ID: ['doc2']})
+        assert len(res) == 0, f'get segments by doc_id {self.segment_store_type} failed'
+        return True
+
+    @pytest.fixture()
+    def search(self):
+        res = self.store.search(collection_name=self.collections[0], query='test')
+        assert len(res) == 2, f'search {self.segment_store_type} failed'
+        res = self.store.search(collection_name=self.collections[1])
+        assert len(res) == 2, f'search {self.segment_store_type} failed'
+        res = self.store.search(collection_name=self.collections[1], query='test3', topk=1)
+        assert len(res) == 1, f'search {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[2].get('uid'), f'search {self.segment_store_type} failed'
+        return True
+
+    @pytest.fixture()
+    def search_with_filters(self):
+        res = self.store.search(collection_name=self.collections[0], query='test2', topk=1, criteria={'group': 'g3'})
+        assert len(res) == 0, f'search {self.segment_store_type} failed'
+        res = self.store.search(collection_name=self.collections[1], query='test3', topk=1, criteria={'group': 'g3'})
+        assert len(res) == 1, f'search {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[2].get('uid'), f'search {self.segment_store_type} failed'
+        res = self.store.search(collection_name=self.collections[1], query='test', criteria={'group': ['g3', 'g4']})
+        assert len(res) == 2, f'search {self.segment_store_type} failed'
         return True
 
     @pytest.fixture()
@@ -819,23 +846,26 @@ class TestSegementStore(object):
 
     @pytest.fixture()
     def delete_segments_by_kb_id(self):
-        self.store.delete(self.collections[1], criteria={RAG_KB_ID: 'kb2'})
+        self.store.delete(self.collections[1], criteria={RAG_KB_ID: 'kb3'})
         res = self.store.get(collection_name=self.collections[1])
-        assert len(res) == 0, f'delete segments by kb_id {self.segment_store_type} failed'
+        assert len(res) == 1, f'delete segments by kb_id {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[3].get('uid'), f'delete segments by kb_id {self.segment_store_type} failed'
         return True
 
     @pytest.fixture()
     def delete_segments_by_uid(self):
-        self.store.delete(self.collections[2], criteria={'uid': ['uid3']})
-        res = self.store.get(collection_name=self.collections[2])
+        self.store.delete(self.collections[1], criteria={'uid': ['uid4']})
+        res = self.store.get(collection_name=self.collections[1])
         assert len(res) == 0, f'delete segments by uid {self.segment_store_type} failed'
         return True
 
     @pytest.fixture()
     def delete_segments_by_doc_id(self):
-        self.store.delete(self.collections[3], criteria={RAG_DOC_ID: ['doc4']})
-        res = self.store.get(collection_name=self.collections[3])
-        assert len(res) == 0, f'delete segments by doc_id {self.segment_store_type} failed'
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
+        res = self.store.get(collection_name=self.collections[0])
+        assert len(res) == 1, f'delete segments by doc_id {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[0].get('uid'), f'delete segments by doc_id \
+            {self.segment_store_type} failed'
         return True
 
     @pytest.fixture()
@@ -892,26 +922,36 @@ class TestSegementStore(object):
         assert get_segments_by_doc_id
 
     @round_order('elasticsearch', 6)
-    @pytest.mark.parametrize('delete_segments_by_collection', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
-    def test_es_delete_segments_by_collection(self, delete_segments_by_collection):
-        assert delete_segments_by_collection
+    @pytest.mark.parametrize('search', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_search(self, search):
+        assert search
 
     @round_order('elasticsearch', 7)
+    @pytest.mark.parametrize('search_with_filters', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_search_with_filters(self, search_with_filters):
+        assert search_with_filters
+
+    @round_order('elasticsearch', 8)
     @pytest.mark.parametrize('delete_segments_by_kb_id', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
     def test_es_delete_segments_by_kb_id(self, delete_segments_by_kb_id):
         assert delete_segments_by_kb_id
 
-    @round_order('elasticsearch', 8)
+    @round_order('elasticsearch', 9)
     @pytest.mark.parametrize('delete_segments_by_uid', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
     def test_es_delete_segments_by_uid(self, delete_segments_by_uid):
         assert delete_segments_by_uid
 
-    @round_order('elasticsearch', 9)
+    @round_order('elasticsearch', 10)
     @pytest.mark.parametrize('delete_segments_by_doc_id', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
     def test_es_delete_segments_by_doc_id(self, delete_segments_by_doc_id):
         assert delete_segments_by_doc_id
 
-    @round_order('elasticsearch', 10)
+    @round_order('elasticsearch', 11)
+    @pytest.mark.parametrize('delete_segments_by_collection', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_delete_segments_by_collection(self, delete_segments_by_collection):
+        assert delete_segments_by_collection
+
+    @round_order('elasticsearch', 12)
     @pytest.mark.parametrize('tearDown', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
     def test_es_tearDown(self, tearDown):
         assert tearDown
@@ -947,26 +987,36 @@ class TestSegementStore(object):
         assert get_segments_by_doc_id
 
     @round_order('opensearch', 6)
-    @pytest.mark.parametrize('delete_segments_by_collection', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
-    def test_os_delete_segments_by_collection(self, delete_segments_by_collection):
-        assert delete_segments_by_collection
+    @pytest.mark.parametrize('search', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_search(self, search):
+        assert search
 
     @round_order('opensearch', 7)
+    @pytest.mark.parametrize('search_with_filters', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_search_with_filters(self, search_with_filters):
+        assert search_with_filters
+
+    @round_order('opensearch', 8)
     @pytest.mark.parametrize('delete_segments_by_kb_id', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
     def test_os_delete_segments_by_kb_id(self, delete_segments_by_kb_id):
         assert delete_segments_by_kb_id
 
-    @round_order('opensearch', 8)
+    @round_order('opensearch', 9)
     @pytest.mark.parametrize('delete_segments_by_uid', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
     def test_os_delete_segments_by_uid(self, delete_segments_by_uid):
         assert delete_segments_by_uid
 
-    @round_order('opensearch', 9)
+    @round_order('opensearch', 10)
     @pytest.mark.parametrize('delete_segments_by_doc_id', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
     def test_os_delete_segments_by_doc_id(self, delete_segments_by_doc_id):
         assert delete_segments_by_doc_id
 
-    @round_order('opensearch', 10)
+    @round_order('opensearch', 11)
+    @pytest.mark.parametrize('delete_segments_by_collection', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_delete_segments_by_collection(self, delete_segments_by_collection):
+        assert delete_segments_by_collection
+
+    @round_order('opensearch', 12)
     @pytest.mark.parametrize('tearDown', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
     def test_os_tearDown(self, tearDown):
         assert tearDown
