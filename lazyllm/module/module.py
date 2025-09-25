@@ -210,7 +210,7 @@ class ModuleCache(object):
                 for item in sorted(value):
                     process_value(item, hash_obj)
                 hash_obj.update(('<' + meta).encode())
-            elif isinstance(value, (list, tuple, set)):
+            elif isinstance(value, (list, tuple)):
                 hash_obj.update((meta + '>').encode())
                 for item in value:
                     process_value(item, hash_obj)
