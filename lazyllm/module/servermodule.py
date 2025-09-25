@@ -1,5 +1,7 @@
 import re
 import time
+import json
+import hashlib
 import requests
 import pickle
 import codecs
@@ -85,6 +87,20 @@ class LLMBase(object):
             return NotImplemented
         return self.share(format=(other if isinstance(self._formatter, EmptyFormatter) else (self._formatter | other)))
 
+    @property
+    def appendix_hash_key(self):
+        try:
+            prompts = self._prompt.generate_prompt('x')
+        except Exception:
+            prompts = self._prompt._instruction_template
+        if not isinstance(prompts, str):
+            try:
+                content = json.dumps(prompts, sort_keys=True)
+            except Exception:
+                content = str(prompts)
+        else:
+            content = prompts
+        return hashlib.md5(content.encode()).hexdigest()
 
 class _UrlHelper(object):
     @dataclass
