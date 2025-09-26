@@ -507,6 +507,45 @@ class TestMilvusStore(unittest.TestCase):
                                 embed_key='vec_dense', topk=1, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 0)
 
+    def test_get_in_new_version(self):
+        from lazyllm.tools.rag.store.vector.milvus_store import MILVUS_PAGINATION_OFFSET
+
+        original_offset = MILVUS_PAGINATION_OFFSET
+        try:
+            import lazyllm.tools.rag.store.vector.milvus_store as milvus_module
+
+            milvus_module.MILVUS_PAGINATION_OFFSET = 2
+
+            self.store.upsert(self.collections[0], data)
+
+            # test client.query_iterator in get api
+            res = self.store.get(collection_name=self.collections[0])
+            self.assertEqual(len(res), 3)
+
+            # test client.get in get api
+            res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid1', 'uid2', 'uid3']})
+            self.assertEqual(len(res), 3)
+        finally:
+            # Restore the original pagination offset
+            milvus_module.MILVUS_PAGINATION_OFFSET = original_offset
+
+    def test_batch_query_legacy(self):
+        from lazyllm.tools.rag.store.vector.milvus_store import MILVUS_PAGINATION_OFFSET
+
+        original_offset = MILVUS_PAGINATION_OFFSET
+        with self.store._client_context() as client:
+            try:
+                import lazyllm.tools.rag.store.vector.milvus_store as milvus_module
+
+                milvus_module.MILVUS_PAGINATION_OFFSET = 2
+
+                self.store.upsert(self.collections[0], data)
+                res = self.store._batch_query_legacy(client, self.collections[0], field_names=['uid'], filters={})
+                self.assertEqual(len(res), len(data))
+            finally:
+                # Restore the original pagination offset
+                milvus_module.MILVUS_PAGINATION_OFFSET = original_offset
+
     @pytest.mark.skip(reason=("local test for milvus standalone, please set up a milvus standalone server"
                               " and set the uri to the server"))
     def test_milvus_standalone(self):
