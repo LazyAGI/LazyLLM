@@ -828,12 +828,12 @@ class TestSegementStore(object):
 
     @pytest.fixture()
     def search_with_filters(self):
-        res = self.store.search(collection_name=self.collections[0], query='test2', topk=1, criteria={'group': 'g3'})
+        res = self.store.search(collection_name=self.collections[0], query='test2', topk=1, filters={'group': 'g3'})
         assert len(res) == 0, f'search {self.segment_store_type} failed'
-        res = self.store.search(collection_name=self.collections[1], query='test3', topk=1, criteria={'group': 'g3'})
+        res = self.store.search(collection_name=self.collections[1], query='test3', topk=1, filters={'group': 'g3'})
         assert len(res) == 1, f'search {self.segment_store_type} failed'
         assert res[0].get('uid') == self.data[2].get('uid'), f'search {self.segment_store_type} failed'
-        res = self.store.search(collection_name=self.collections[1], query='test', criteria={'group': ['g3', 'g4']})
+        res = self.store.search(collection_name=self.collections[1], query='test', filters={'group': ['g3', 'g4']})
         assert len(res) == 2, f'search {self.segment_store_type} failed'
         return True
 
