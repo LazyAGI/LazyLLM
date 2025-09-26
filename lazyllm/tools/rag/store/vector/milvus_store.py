@@ -35,6 +35,21 @@ MILVUS_INDEX_TYPE_DEFAULTS = {
     'SPARSE_INVERTED_INDEX': {'metric_type': 'IP', 'params': {'inverted_index_algo': 'DAAT_MAXSCORE'}},
     'AUTOINDEX': {'metric_type': 'COSINE', 'params': {'nlist': 128}},
 }
+MILVUS_INDEX_TYPE_DEFAULTS = {
+    'HNSW': {'metric_type': 'COSINE', 'params': {'M': 16, 'efConstruction': 200}},
+    'IVF_FLAT': {'metric_type': 'L2', 'params': {'nlist': 1024}},
+    'IVF_SQ8': {'metric_type': 'L2', 'params': {'nlist': 1024}},
+    'IVF_PQ': {'metric_type': 'L2', 'params': {'nlist': 1024, 'm': 8, 'nbits': 8}},
+    'FLAT': {'metric_type': 'L2', 'params': {}},
+    'GPU_IVF_FLAT': {'metric_type': 'L2', 'params': {'nlist': 1024}},
+    'GPU_IVF_SQ8': {'metric_type': 'L2', 'params': {'nlist': 1024}},
+    'GPU_IVF_PQ': {'metric_type': 'L2', 'params': {'nlist': 1024, 'm': 8, 'nbits': 8}},
+    'DISKANN': {'metric_type': 'L2', 'params': {'nlist': 1024}},
+    'BIN_FLAT': {'metric_type': 'HAMMING', 'params': {}},
+    'BIN_IVF_FLAT': {'metric_type': 'HAMMING', 'params': {'nlist': 1024}},
+    'SPARSE_INVERTED_INDEX': {'metric_type': 'IP', 'params': {'inverted_index_algo': 'DAAT_MAXSCORE'}},
+    'AUTOINDEX': {'metric_type': 'COSINE', 'params': {'nlist': 128}},
+}
 
 class _ClientPool:
     def __init__(self, maker, max_size: int = 8):
