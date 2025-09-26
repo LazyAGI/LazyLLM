@@ -9,6 +9,23 @@ from .hybrid import HybridStore, MapStore, SenseCoreStore
 from .segment import OpenSearchStore, ElasticSearchStore
 from .vector import ChromaStore, MilvusStore
 
+_STORE_REGISTRY = {
+    "chroma": ChromaStore,
+    "chromadb": ChromaStore,
+    "milvus": MilvusStore,
+    "opensearch": OpenSearchStore,
+    "hybrid": HybridStore,
+    "map": MapStore,
+    "sensecore": SenseCoreStore,
+    "elasticsearch": ElasticSearchStore,
+}
+
+def get_store_class(name: str):
+    cls = _STORE_REGISTRY.get(name.lower())
+    if not cls:
+        return None
+    return cls
+
 __all__ = [
     'LazyLLMStoreBase',
     'HybridStore',
