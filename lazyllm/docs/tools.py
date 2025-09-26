@@ -1466,10 +1466,10 @@ add_english_doc('rag.store.ChromaStore', '''
 ChromaStore is a vector-capable implementation of LazyLLMStoreBase, leveraging Chroma for persistence and vector search.
 
 Args:
-    uri (Optional[str]): URI string for ChromaDB connection. Required if `dir` is not provided.
+    uri (Optional[str]): URI string for Chroma connection. Required if `dir` is not provided.
     dir (Optional[str]): Filesystem path for local persistent storage. If provided, PersistentClient mode is used.
-    index_kwargs (Optional[Union[Dict, List]]): Configuration for ChromaDB collections, e.g., index type and distance metrics.
-    client_kwargs (Optional[Dict]): Additional arguments passed to the ChromaDB client constructor.
+    index_kwargs (Optional[Union[Dict, List]]): Configuration for Chroma collections, e.g., index type and distance metrics.
+    client_kwargs (Optional[Dict]): Additional arguments passed to the Chroma client constructor.
     **kwargs: Reserved for future extension.
 ''')
 
@@ -1477,10 +1477,10 @@ add_chinese_doc('rag.store.ChromaStore', '''
 ChromaStore 是基于 Chroma 的向量存储实现，继承自 LazyLLMStoreBase，支持向量写入、检索与持久化。
 
 Args:
-    uri (Optional[str]): ChromaDB 连接 URI，当未指定 `dir` 时必填。
+    uri (Optional[str]): Chroma 连接 URI，当未指定 `dir` 时必填。
     dir (Optional[str]): 本地持久化存储路径，提供时使用 PersistentClient 模式。
     index_kwargs (Optional[Union[Dict, List]]): Collection 配置参数，如索引类型、距离度量方式等。
-    client_kwargs (Optional[Dict]): 传递给 ChromaDB 客户端的额外参数。
+    client_kwargs (Optional[Dict]): 传递给 Chroma 客户端的额外参数。
     **kwargs: 预留扩展参数。
 ''')
 
@@ -7771,12 +7771,12 @@ Args:
 ''')
 
 add_chinese_doc('rag.LazyLLMStoreBase', '''\
-向量存储基类，定义了存储层的通用接口规范，所有具体的存储实现（如 ChromaDB、Milvus 等）需继承并实现该类。
+向量存储基类，定义了存储层的通用接口规范，所有具体的存储实现（如 Chroma、Milvus 等）需继承并实现该类。
 ''')
 
 add_english_doc('rag.LazyLLMStoreBase', '''\
 Base class for vector storage, defining the common interface specification. 
-All concrete storage implementations (e.g., ChromaDB, Milvus) must inherit and implement this class.
+All concrete storage implementations (e.g., Chroma, Milvus) must inherit and implement this class.
 ''')
 
 add_chinese_doc('rag.LazyLLMStoreBase.connect', '''\
