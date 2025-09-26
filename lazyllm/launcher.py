@@ -1268,7 +1268,7 @@ class EmptyLauncher(LazyLLMLaunchersBase):
             if self.ps:
                 self.ps.wait()
 
-    def __init__(self, subprocess=False, ngpus=None, sync=True):
+    def __init__(self, subprocess=False, ngpus=None, sync=True, **kwargs):
         super().__init__()
         self.subprocess = subprocess
         self.sync = sync
