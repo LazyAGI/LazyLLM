@@ -3,6 +3,7 @@ import shutil
 import pytest
 import tempfile
 import unittest
+import copy
 from lazyllm.tools.rag.store import (MapStore, ChromadbStore, MilvusStore, OpenSearchStore,
                                      SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
 from lazyllm.tools.rag.data_type import DataType
@@ -508,43 +509,43 @@ class TestMilvusStore(unittest.TestCase):
         self.assertEqual(len(res), 0)
 
     def test_get_in_new_version(self):
-        from lazyllm.tools.rag.store.vector.milvus_store import MILVUS_PAGINATION_OFFSET
+        new_data_list = []
+        criteria_list = []
+        for i in range(10000):
+            one_data = copy.deepcopy(data[0])
+            one_data['uid'] = f'uid_{i}'
+            one_data['doc_id'] = 'doc_common'
+            criteria_list.append(f'uid_{i}')
+            new_data_list.append(one_data)
 
-        original_offset = MILVUS_PAGINATION_OFFSET
-        try:
-            import lazyllm.tools.rag.store.vector.milvus_store as milvus_module
+        self.store.upsert(self.collections[0], new_data_list)
 
-            milvus_module.MILVUS_PAGINATION_OFFSET = 2
+        # test client.query_iterator in get api
+        res = self.store.get(collection_name=self.collections[0])
+        self.assertEqual(len(res), 10000)
 
-            self.store.upsert(self.collections[0], data)
-
-            # test client.query_iterator in get api
-            res = self.store.get(collection_name=self.collections[0])
-            self.assertEqual(len(res), 3)
-
-            # test client.get in get api
-            res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid1', 'uid2', 'uid3']})
-            self.assertEqual(len(res), 3)
-        finally:
-            # Restore the original pagination offset
-            milvus_module.MILVUS_PAGINATION_OFFSET = original_offset
+        res = self.store.get(collection_name=self.collections[0], criteria={'uid': criteria_list[0:9999]})
+        self.assertEqual(len(res), 9999)
 
     def test_batch_query_legacy(self):
-        from lazyllm.tools.rag.store.vector.milvus_store import MILVUS_PAGINATION_OFFSET
 
-        original_offset = MILVUS_PAGINATION_OFFSET
         with self.store._client_context() as client:
-            try:
-                import lazyllm.tools.rag.store.vector.milvus_store as milvus_module
+            new_data_list = []
+            criteria_list = []
+            for i in range(10000):
+                one_data = copy.deepcopy(data[0])
+                one_data['uid'] = f'uid_{i}'
+                one_data['doc_id'] = 'doc_common'
+                criteria_list.append(f'uid_{i}')
+                new_data_list.append(one_data)
 
-                milvus_module.MILVUS_PAGINATION_OFFSET = 2
+            self.store.upsert(self.collections[0], new_data_list)
+            res = self.store._batch_query_legacy(client, self.collections[0], field_names=['uid'], kwargs={})
+            self.assertEqual(len(res), len(new_data_list))
 
-                self.store.upsert(self.collections[0], data)
-                res = self.store._batch_query_legacy(client, self.collections[0], field_names=['uid'], filters={})
-                self.assertEqual(len(res), len(data))
-            finally:
-                # Restore the original pagination offset
-                milvus_module.MILVUS_PAGINATION_OFFSET = original_offset
+            filters = self.store._construct_criteria({"doc_id": "doc_common"})
+            res = self.store._batch_query_legacy(client, self.collections[0], field_names=['uid'], kwargs=filters)
+            self.assertEqual(len(res), len(new_data_list))
 
     @pytest.mark.skip(reason=("local test for milvus standalone, please set up a milvus standalone server"
                               " and set the uri to the server"))
