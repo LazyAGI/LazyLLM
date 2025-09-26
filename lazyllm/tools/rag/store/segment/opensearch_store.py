@@ -208,7 +208,7 @@ class OpenSearchStore(LazyLLMStoreBase):
             collection_name: str,
             query: Optional[str] = None,
             topk: Optional[int] = 10,
-            criteria: Optional[dict] = None,
+            filters: Optional[dict] = None,
             **kwargs) -> List[dict]:  # noqa: C901
         try:
             self._ensure_index(collection_name)
@@ -223,7 +223,7 @@ class OpenSearchStore(LazyLLMStoreBase):
                 }
                 must_clauses.append(text_query)
 
-            filter_query = self._construct_criteria(criteria) if criteria else {}
+            filter_query = self._construct_criteria(filters) if filters else {}
 
             if must_clauses and filter_query:
                 # combine filter_query and must_clauses

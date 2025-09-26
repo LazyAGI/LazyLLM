@@ -73,13 +73,13 @@ DEFAULT_MAPPING_BODY = {
 
 
 class ElasticSearchStore(LazyLLMStoreBase):
-    capability: StoreCapability.SEGMENT
-    need_embedding: False
-    supports_index_registration: False
+    capability = StoreCapability.SEGMENT
+    need_embedding = False
+    supports_index_registration = False
 
     def __init__(
         self,
-        uris: List[str] = '',
+        uris: List[str],
         client_kwargs: Optional[Dict] = None,
         index_kwargs: Optional[Union[Dict, List]] = None,
         **kwargs,
@@ -256,7 +256,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             collection_name: str,
             query: Optional[str] = None,
             topk: Optional[int] = 10,
-            criteria: Optional[dict] = None,
+            filters: Optional[dict] = None,
             **kwargs) -> List[Dict]:  # noqa: C901
         try:
             self._ensure_index(collection_name)
@@ -271,7 +271,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 }
                 must_clauses.append(text_query)
 
-            filter_query = self._construct_criteria(criteria) if criteria else {}
+            filter_query = self._construct_criteria(filters) if filters else {}
 
             if must_clauses and filter_query:
                 # combine filter_query and must_clauses
