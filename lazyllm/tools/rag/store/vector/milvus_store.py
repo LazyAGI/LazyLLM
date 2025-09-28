@@ -192,7 +192,7 @@ class MilvusStore(LazyLLMStoreBase):
                         ids = criteria[self._primary_key]
                         if isinstance(ids, str):
                             ids = [ids]
-                        query_kwargs = {'filter': f'uid in {ids}'}
+                        query_kwargs = {'filter': f'{self._primary_key} in {ids}'}
                         # return all fields
                         field_names = None
                     else:
