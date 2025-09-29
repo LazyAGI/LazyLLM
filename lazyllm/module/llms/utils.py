@@ -10,6 +10,7 @@ from lazyllm.thirdparty import datasets
 from ...components.utils.file_operate import _delete_old_files
 from lazyllm.common.utils import check_path
 
+
 @dataclass
 class TrainConfig:
     finetune_model_name: str = 'llm'
@@ -229,3 +230,18 @@ def map_kw_for_framework(
             LOG.warning(f'Type conversion error for key "{k}": {e}, using original value')
             result[k] = v
     return result
+
+def check_config_map_format(config_map: dict):
+    assert isinstance(config_map, dict), 'config_map should be a dict'
+    for k, v in config_map.items():
+        if not isinstance(v, list):
+            raise ValueError(f'config for model {k} should be a list')
+        for item in v:
+            if not isinstance(item, dict):
+                raise ValueError(f'config item for model {k} should be a dict')
+            if not isinstance(item.get('url'), str):
+                raise ValueError(f'url for model {k} should be a string')
+            if not isinstance(item.get('framework'), str):
+                raise ValueError(f'framework for model {k} should be a string')
+            if not isinstance(item.get('deploy_config', {}), dict):
+                raise ValueError(f'deploy_config for model {k} should be a dict')

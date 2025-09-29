@@ -33,6 +33,7 @@ openpyxl
 python-pptx
 tenacity
 beautifulsoup4
+deepdiff>=8.6.1
 appdirs
 loralib
 flake8>=7.0.0
@@ -93,3 +94,4 @@ volcengine-python-sdk[ark]>=4.0.6
 dashscope>=1.23.6
 zhipuai>=2.1.5.20250708
 opensearch-py>=3.0.0
+elasticsearch<7.17.12
