@@ -1,14 +1,16 @@
-from typing import Optional, Callable, Literal, List, Dict
+from typing import Optional, Callable, Literal, List
 from .component.bm25 import BM25
 from lazyllm.thirdparty import numpy as np
 from .doc_node import DocNode
 import functools
 import hashlib
 import threading
+from collections import OrderedDict
 
 registered_similarities = dict()
-_bm25_cache: Dict[str, BM25] = {}
+_bm25_cache: OrderedDict[str, BM25] = OrderedDict()
 _bm25_cache_lock = threading.RLock()
+_MAX_CACHE_SIZE = 128
 
 def register_similarity(
     func: Optional[Callable] = None,
@@ -55,11 +57,17 @@ def _hash_nodes(nodes: List[DocNode], language: str) -> str:
 def _get_bm25_from_cache(nodes: List[DocNode], language: str = 'en', **kwargs) -> BM25:
     key = _hash_nodes(nodes, language)
     with _bm25_cache_lock:
-        bm = _bm25_cache.get(key)
-        if bm is None:
-            bm = BM25(nodes, language=language, **kwargs)
+        if key in _bm25_cache:
+            bm = _bm25_cache.pop(key)
             _bm25_cache[key] = bm
-    return bm
+            return bm
+
+        bm = BM25(nodes, language=language, **kwargs)
+
+        if len(_bm25_cache) >= _MAX_CACHE_SIZE:
+            _bm25_cache.popitem(last=False)
+        _bm25_cache[key] = bm
+        return bm
 
 def clear_bm25_cache() -> None:
     with _bm25_cache_lock:
