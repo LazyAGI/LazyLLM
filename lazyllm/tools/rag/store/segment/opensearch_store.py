@@ -103,7 +103,8 @@ class OpenSearchStore(LazyLLMStoreBase):
             if self._check_ik_plugin():
                 LOG.info('IK plugin is installed')
             else:
-                LOG.info('IK plugin is not installed, OpenSearch will use ngram analyzer which is English Only Analyzer')
+                LOG.warning('IK plugin is not installed, OpenSearch will \
+                    use ngram analyzer which is English Only Analyzer')
                 self._index_kwargs = self._adapt_mapping_for_no_ik(self._index_kwargs)
 
     def _ensure_index(self, name: str):
@@ -216,9 +217,9 @@ class OpenSearchStore(LazyLLMStoreBase):
             os_query = {}
             if query:
                 text_query = {
-                    "multi_match": {
-                        "query": query,
-                        "fields": ["content", "answer"],
+                    'multi_match': {
+                        'query': query,
+                        'fields': ['content', 'answer'],
                     }
                 }
                 must_clauses.append(text_query)
@@ -227,23 +228,23 @@ class OpenSearchStore(LazyLLMStoreBase):
 
             if must_clauses and filter_query:
                 # combine filter_query and must_clauses
-                filter_must = filter_query["query"]["bool"]["must"]
-                os_query = {"query": {"bool": {"must": must_clauses + filter_must}}}
+                filter_must = filter_query['query']['bool']['must']
+                os_query = {'query': {'bool': {'must': must_clauses + filter_must}}}
             elif must_clauses:
-                os_query = {"query": {"bool": {"must": must_clauses}}}
+                os_query = {'query': {'bool': {'must': must_clauses}}}
             elif filter_query:
                 os_query = filter_query
             else:
-                os_query = {"query": {"match_all": {}}}
+                os_query = {'query': {'match_all': {}}}
 
-            os_query["size"] = topk
+            os_query['size'] = topk
 
             resp = self._client.search(index=collection_name, body=os_query)
             res = []
-            for hit in resp["hits"]["hits"]:
+            for hit in resp['hits']['hits']:
                 seg = self._transform_segment(hit)
                 if seg:
-                    seg["score"] = hit.get("_score", 0.0)
+                    seg['score'] = hit.get('_score', 0.0)
                     res.append(seg)
             return res
 
@@ -305,15 +306,15 @@ class OpenSearchStore(LazyLLMStoreBase):
         ''' IK plugin is installed, return True, otherwise return False'''
         try:
             # method 1: check plugin list
-            plugins = self._client.cat.plugins(format="json")
-            if any("analysis-ik" in p.get("component", "") for p in plugins):
+            plugins = self._client.cat.plugins(format='json')
+            if any('analysis-ik' in p.get('component', '') for p in plugins):
                 return True
             # method 2: try to call ik analyzer
             try:
                 self._client.indices.analyze(
                     body={
-                        "analyzer": "ik_max_word",
-                        "text": "machine learning"
+                        'analyzer': 'ik_max_word',
+                        'text': 'machine learning'
                     }
                 )
                 return True
@@ -321,15 +322,15 @@ class OpenSearchStore(LazyLLMStoreBase):
                 LOG.warning(f'IK plugin is not installed: {str(e)}')
                 return False
         except Exception as e:
-            LOG.warning(f"check IK plugin failed: {e}")
+            LOG.warning(f'check IK plugin failed: {e}')
             return False
 
     def _adapt_mapping_for_no_ik(self, mapping_body: dict) -> dict:
         mapping = copy.deepcopy(mapping_body)
 
-        for field_name, field_def in mapping["mappings"]["properties"].items():
-            if field_def.get("analyzer"):
-                field_def["analyzer"] = "ngram_analyzer"   # 或 'standard'
-            if field_def.get("search_analyzer"):
-                field_def["search_analyzer"] = "standard"
+        for field_name, field_def in mapping['mappings']['properties'].items():
+            if field_def.get('analyzer'):
+                field_def['analyzer'] = 'ngram_analyzer'   # 或 'standard'
+            if field_def.get('search_analyzer'):
+                field_def['search_analyzer'] = 'standard'
         return mapping
