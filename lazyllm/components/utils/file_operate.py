@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
-from lazyllm import LOG
+from lazyllm import LOG, config
 
 try:
     import magic
@@ -157,7 +157,8 @@ def _base64_to_file(base64_str: Union[str, list[str]], target_dir: Optional[str]
     else:
         raise ValueError(f'Unsupported MIME type: {mime_type}')
 
-    target_dir = target_dir if target_dir and os.path.isdir(target_dir) else None
+    target_dir = target_dir if target_dir and os.path.isdir(target_dir) else config['temp_dir']
+    os.makedirs(target_dir, exist_ok=True)
 
     file_path = tempfile.NamedTemporaryFile(prefix='base64_to_file_', suffix=suffix, dir=target_dir, delete=False).name
 
@@ -194,7 +195,8 @@ def bytes_to_file(bytes_str: Union[bytes, list[bytes]], target_dir: Optional[str
     if isinstance(bytes_str, list):
         return [bytes_to_file(item, target_dir) for item in bytes_str]
     elif isinstance(bytes_str, bytes):
-        output_dir = target_dir if target_dir and os.path.isdir(target_dir) else None
+        output_dir = target_dir if target_dir and os.path.isdir(target_dir) else config['temp_dir']
+        os.makedirs(output_dir, exist_ok=True)
         file_extension = infer_file_extension(bytes_str)
         temp_file = tempfile.NamedTemporaryFile(mode='wb', suffix=file_extension, delete=False, dir=output_dir)
         temp_file.write(bytes_str)

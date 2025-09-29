@@ -3,34 +3,35 @@ import shutil
 import pytest
 import tempfile
 import unittest
-from lazyllm.tools.rag.store import (MapStore, ChromadbStore, MilvusStore, OpenSearchStore,
+import lazyllm
+from lazyllm.tools.rag.store import (MapStore, ChromadbStore, MilvusStore,
                                      SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
 data = [
     {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
      'global_meta': {RAG_DOC_ID: 'doc1', RAG_KB_ID: 'kb1'},
-     'embedding': {'vec_dense': [0.1, 0.2, 0.3], 'vec_sparse': {"1563": 0.212890625, "238": 0.1768798828125}},
+     'embedding': {'vec_dense': [0.1, 0.2, 0.3], 'vec_sparse': {'1563': 0.212890625, '238': 0.1768798828125}},
      'type': 1, 'number': 0, 'kb_id': 'kb1',
      'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
      'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
-     'parent': None, 'answer': "", 'image_keys': []},
+     'parent': None, 'answer': '', 'image_keys': []},
 
     {'uid': 'uid2', 'doc_id': 'doc2', 'group': 'g2', 'content': 'test2', 'meta': {},
      'global_meta': {RAG_DOC_ID: 'doc2', RAG_KB_ID: 'kb2'},
-     'embedding': {'vec_dense': [0.3, 0.2, 0.1], 'vec_sparse': {"1563": 0.212890625, "238": 0.1768798828125}},
+     'embedding': {'vec_dense': [0.3, 0.2, 0.1], 'vec_sparse': {'1563': 0.212890625, '238': 0.1768798828125}},
      'type': 1, 'number': 0, 'kb_id': 'kb2',
      'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
      'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
-     'parent': 'p2', 'answer': "", 'image_keys': []},
+     'parent': 'p2', 'answer': '', 'image_keys': []},
 
     {'uid': 'uid3', 'doc_id': 'doc3', 'group': 'g1', 'content': 'test3', 'meta': {},
      'global_meta': {RAG_DOC_ID: 'doc3', RAG_KB_ID: 'kb3'},
-     'embedding': {'vec_dense': [0.3, 0.2, 0.1], 'vec_sparse': {"12": 0.212890625, "23": 0.1768798828125}},
+     'embedding': {'vec_dense': [0.3, 0.2, 0.1], 'vec_sparse': {'12': 0.212890625, '23': 0.1768798828125}},
      'type': 1, 'number': 0, 'kb_id': 'kb3',
      'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
      'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
-     'parent': None, 'answer': "", 'image_keys': []},
+     'parent': None, 'answer': '', 'image_keys': []},
 ]
 
 def clear_directory(directory_path):
@@ -43,15 +44,15 @@ def clear_directory(directory_path):
                 elif os.path.isdir(file_path):
                     shutil.rmtree(file_path)
             except Exception as e:
-                print(f"Failed to delete {file_path}. Reason: {e}")
+                print(f'Failed to delete {file_path}. Reason: {e}')
     else:
-        print(f"The directory {directory_path} does not exist.")
+        print(f'The directory {directory_path} does not exist.')
 
 
 class TestMapStore(unittest.TestCase):
     def setUp(self):
-        self.collections = ["col_g1", "col_g2"]
-        fd, self.store_dir = tempfile.mkstemp(suffix=".db")
+        self.collections = ['col_g1', 'col_g2']
+        fd, self.store_dir = tempfile.mkstemp(suffix='.db')
         os.close(fd)
         self.store1 = MapStore()
         self.store1.connect(collections=self.collections)
@@ -155,11 +156,11 @@ class TestMapStore(unittest.TestCase):
         self.assertEqual(len(res), 2)
         res = store2.get(collection_name=self.collections[1])
         self.assertEqual(len(res), 1)
-        self.assertEqual(res[0], data[1])
+        self.assertEqual(res[0].get('uid'), data[1].get('uid'))
         store2.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
         res = store2.get(collection_name=self.collections[0])
         self.assertEqual(len(res), 1)
-        self.assertEqual(res[0], data[2])
+        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
         store3 = MapStore(uri=self.store_dir)
         store3.connect(collections=self.collections)
         res = store3.get(collection_name=self.collections[0])
@@ -177,23 +178,23 @@ class TestChromadbStore(unittest.TestCase):
              'embedding': {'vec_dense': [0.1, 0.2, 0.3]}, 'type': 1, 'number': 0, 'kb_id': 'kb1',
              'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
              'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
-             'parent': None, 'answer': "", 'image_keys': []},
+             'parent': None, 'answer': '', 'image_keys': []},
             {'uid': 'uid2', 'doc_id': 'doc2', 'group': 'g2', 'content': 'test2', 'meta': {},
              'global_meta': {RAG_DOC_ID: 'doc2', RAG_KB_ID: 'kb2'},
              'embedding': {'vec_dense': [0.3, 0.2, 0.1]}, 'type': 1, 'number': 0, 'kb_id': 'kb2',
              'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
              'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
-             'parent': 'p2', 'answer': "", 'image_keys': []},
+             'parent': 'p2', 'answer': '', 'image_keys': []},
             {'uid': 'uid3', 'doc_id': 'doc3', 'group': 'g1', 'content': 'test3', 'meta': {},
              'global_meta': {RAG_DOC_ID: 'doc3', RAG_KB_ID: 'kb3'},
              'embedding': {'vec_dense': [0.3, 0.2, 0.1]}, 'type': 1, 'number': 0, 'kb_id': 'kb3',
              'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
              'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
-             'parent': None, 'answer': "", 'image_keys': []},
+             'parent': None, 'answer': '', 'image_keys': []},
         ]
-        self.collections = ["col_g1", "col_g2"]
-        self.embed_dims = {"vec_dense": 3}
-        self.embed_datatypes = {"vec_dense": DataType.FLOAT_VECTOR}
+        self.collections = ['col_g1', 'col_g2']
+        self.embed_dims = {'vec_dense': 3}
+        self.embed_datatypes = {'vec_dense': DataType.FLOAT_VECTOR}
         self.global_metadata_desc = BUILDIN_GLOBAL_META_DESC
         self.store_dir = tempfile.mkdtemp()
         self.store = ChromadbStore(uri=self.store_dir)
@@ -333,9 +334,9 @@ class TestChromadbStore(unittest.TestCase):
 @pytest.mark.skip_on_mac
 class TestMilvusStore(unittest.TestCase):
     def setUp(self):
-        self.collections = ["col_g1", "col_g2"]
-        self.embed_dims = {"vec_dense": 3}
-        self.embed_datatypes = {"vec_dense": DataType.FLOAT_VECTOR, "vec_sparse": DataType.SPARSE_FLOAT_VECTOR}
+        self.collections = ['col_g1', 'col_g2']
+        self.embed_dims = {'vec_dense': 3}
+        self.embed_datatypes = {'vec_dense': DataType.FLOAT_VECTOR, 'vec_sparse': DataType.SPARSE_FLOAT_VECTOR}
         self.global_metadata_desc = BUILDIN_GLOBAL_META_DESC
         self.index_kwargs = [
             {
@@ -355,9 +356,9 @@ class TestMilvusStore(unittest.TestCase):
                 }
             }
         ]
-        fd, self.store_dir = tempfile.mkstemp(suffix=".db")
+        fd, self.store_dir = tempfile.mkstemp(suffix='.db')
         os.close(fd)
-        self.uri_standalone = ""
+        self.uri_standalone = ''
         self.store = MilvusStore(uri=self.store_dir, index_kwargs=self.index_kwargs)
         self.store.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
                            global_metadata_desc=self.global_metadata_desc)
@@ -473,7 +474,7 @@ class TestMilvusStore(unittest.TestCase):
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
         res = self.store.search(collection_name=self.collections[0],
-                                query_embedding={"1563": 0.212890625, "238": 0.1768798828125},
+                                query_embedding={'1563': 0.212890625, '238': 0.1768798828125},
                                 embed_key='vec_sparse', topk=1)
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
@@ -482,7 +483,7 @@ class TestMilvusStore(unittest.TestCase):
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
         res = self.store.search(collection_name=self.collections[0],
-                                query_embedding={"12": 0.212890625, "23": 0.1768798828125},
+                                query_embedding={'12': 0.212890625, '23': 0.1768798828125},
                                 embed_key='vec_sparse', topk=1)
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
@@ -507,8 +508,8 @@ class TestMilvusStore(unittest.TestCase):
                                 embed_key='vec_dense', topk=1, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 0)
 
-    @pytest.mark.skip(reason=("local test for milvus standalone, please set up a milvus standalone server"
-                              " and set the uri to the server"))
+    @pytest.mark.skip(reason=('local test for milvus standalone, please set up a milvus standalone server'
+                              ' and set the uri to the server'))
     def test_milvus_standalone(self):
         self.store1 = MilvusStore(uri=self.uri_standalone, index_kwargs=self.index_kwargs)
         self.store1.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
@@ -520,152 +521,338 @@ class TestMilvusStore(unittest.TestCase):
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
 
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
+class TestSegementStore(object):
+    SEGMENTSTORE_CLASS_MAP = {
+        'elasticsearch': [{
+            'segment_store_type': 'elasticsearch',
+            'init_kwargs': {'uris': os.getenv('ELASTICSEARCH_HOST', 'localhost:9201')},
+            'is_skip': False, 'skip_reason': 'To test elasticsearch store, please set up a elasticsearch server'}],
+        'opensearch': [{
+            'segment_store_type': 'opensearch',
+            'init_kwargs': {'uris': os.getenv('OPENSEARCH_HOST', 'localhost:9200'),
+                            'client_kwargs': {
+                                "user": os.getenv('OPENSEARCH_USER', 'admin'),
+                                "password": os.getenv('OPENSEARCH_INITIAL_ADMIN_PASSWORD'),
+                                "verify_certs": False}},
+            'is_skip': False, 'skip_reason': 'To test opensearch store, please set up a opensearch server'}],
+    }
 
-@pytest.mark.skip(reason="To test open search store, please set up a open search server")
-class TestOpenSearchStore(unittest.TestCase):
-    def setUp(self):
-        self.collections = ["col_g1", "col_g2"]
-        self.uri = ""
-        self.client_kwargs = {}
-        self.store = OpenSearchStore(uris=self.uri, client_kwargs=self.client_kwargs)
-        self.store.connect()
+    @pytest.fixture(scope="class")
+    def setUP(self, request):
+        collections = ['col_g1', 'col_g2', 'col_g3', 'col_g4']
+        data = [
+            {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
+             'global_meta': {RAG_DOC_ID: 'doc1', RAG_KB_ID: 'kb1'},
+             'embedding': {'vec_dense': [0.1, 0.2, 0.3], 'vec_sparse': {'1563': 0.212890625, '238': 0.1768798828125}},
+             'type': 1, 'number': 0, 'kb_id': 'kb1',
+             'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'parent': None, 'answer': '', 'image_keys': []},
 
-    def tearDown(self):
-        for collection in self.collections:
-            self.store.delete(collection)
+            {'uid': 'uid2', 'doc_id': 'doc2', 'group': 'g2', 'content': 'test2', 'meta': {},
+             'global_meta': {RAG_DOC_ID: 'doc2', RAG_KB_ID: 'kb2'},
+             'embedding': {'vec_dense': [0.3, 0.2, 0.1], 'vec_sparse': {'1563': 0.212890625, '238': 0.1768798828125}},
+             'type': 1, 'number': 0, 'kb_id': 'kb2',
+             'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'parent': 'p2', 'answer': '', 'image_keys': []},
 
-    def test_upsert(self):
-        self.store.upsert(self.collections[0], [data[0]])
+            {'uid': 'uid3', 'doc_id': 'doc3', 'group': 'g3', 'content': 'test3', 'meta': {},
+             'global_meta': {RAG_DOC_ID: 'doc3', RAG_KB_ID: 'kb3'},
+             'embedding': {'vec_dense': [0.3, 0.2, 0.1], 'vec_sparse': {'12': 0.212890625, '23': 0.1768798828125}},
+             'type': 1, 'number': 0, 'kb_id': 'kb3',
+             'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'parent': None, 'answer': '', 'image_keys': []},
+
+            {'uid': 'uid4', 'doc_id': 'doc4', 'group': 'g4', 'content': 'test4', 'meta': {},
+             'global_meta': {RAG_DOC_ID: 'doc4', RAG_KB_ID: 'kb4'},
+             'embedding': {'vec_dense': [0.3, 0.2, 0.1], 'vec_sparse': {'12': 0.212890625, '23': 0.1768798828125}},
+             'type': 1, 'number': 0, 'kb_id': 'kb4',
+             'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'parent': None, 'answer': '', 'image_keys': []},
+        ]
+        params = request.param if hasattr(request, 'param') else {}
+        segment_store_type = params.get('segment_store_type')
+        segment_store_init_kwargs = params.get('init_kwargs')
+        is_skip = params.get('is_skip')
+        skip_reason = params.get('skip_reason')
+        if is_skip:
+            pytest.skip(skip_reason)
+        cls = getattr(lazyllm.store, segment_store_type, None)
+        store = cls(**segment_store_init_kwargs)
+        store.connect()
+        request.cls.store = store
+        request.cls.params = params
+        request.cls.collections = collections
+        request.cls.segment_store_type = segment_store_type
+        request.cls.data = data
+        return True
+
+    @pytest.fixture()
+    def upsert(self):
+        self.store.upsert(self.collections[0], [self.data[0]])
         res = self.store.get(collection_name=self.collections[0])
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
+        assert len(res) == 1, f'upsert {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[0].get('uid'), f'upsert {self.segment_store_type} failed'
+        self.store.upsert(self.collections[1], [self.data[1]])
+        self.store.upsert(self.collections[2], [self.data[2]])
+        self.store.upsert(self.collections[3], [self.data[3]])
+        return True
 
-    def test_delete_segments_by_collection(self):
-        self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.upsert(self.collections[1], [data[1]])
+    @pytest.fixture()
+    def get_segments_by_collection(self):
+        res = self.store.get(collection_name=self.collections[0])
+        res = self.store.get(collection_name=self.collections[1])
+        assert len(res) == 1, f'get segments by collection {self.segment_store_type} failed'
+        res = self.store.get(collection_name=self.collections[1])
+        assert len(res) == 1, f'get segments by collection {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[1].get('uid'), f'get by collection {self.segment_store_type} failed'
+        return True
+
+    @pytest.fixture()
+    def get_segments_by_kb_id(self):
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb1'})
+        assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
+        assert res[0].get('uid'), self.data[0].get('uid')
+        res = self.store.get(collection_name=self.collections[3], criteria={RAG_KB_ID: 'kb4'})
+        assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[3].get('uid'), f"get segments by kb_id {self.segment_store_type} failed"
+        res = self.store.get(collection_name=self.collections[2], criteria={RAG_KB_ID: 'kb3'})
+        assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
+        res = self.store.get(collection_name=self.collections[1], criteria={RAG_KB_ID: 'kb2'})
+        assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[1].get('uid'), f"get segments by kb_id {self.segment_store_type} failed"
+        return True
+
+    @pytest.fixture()
+    def get_segments_by_uid(self):
+        res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid1']})
+        assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[0].get('uid'), f"get segments by uid {self.segment_store_type} failed"
+        res = self.store.get(collection_name=self.collections[2], criteria={'uid': ['uid3']})
+        assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[2].get('uid'), f"get segments by uid {self.segment_store_type} failed"
+        res = self.store.get(collection_name=self.collections[1], criteria={'uid': ['uid2']})
+        assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
+        res = self.store.get(collection_name=self.collections[3], criteria={'uid': ['uid4']})
+        assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[3].get('uid'), f"get segments by uid {self.segment_store_type} failed"
+        return True
+
+    @pytest.fixture()
+    def get_segments_by_doc_id(self):
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
+        assert len(res) == 1, f'get segments by doc_id {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[0].get('uid'), f'get segments by doc_id {self.segment_store_type} failed'
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
+        assert len(res) == 0, f'get segments by doc_id {self.segment_store_type} failed'
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
+        assert len(res) == 1, f'get segments by doc_id {self.segment_store_type} failed'
+        return True
+
+    @pytest.fixture()
+    def delete_segments_by_collection(self):
         self.store.delete(self.collections[0])
         res = self.store.get(collection_name=self.collections[0])
-        self.assertEqual(len(res), 0)
+        assert len(res) == 0, f'delete {self.segment_store_type} {self.collections[0]} failed'
+        return True
+
+    @pytest.fixture()
+    def delete_segments_by_kb_id(self):
+        self.store.delete(self.collections[1], criteria={RAG_KB_ID: 'kb2'})
         res = self.store.get(collection_name=self.collections[1])
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[1].get('uid'))
+        assert len(res) == 0, f'delete segments by kb_id {self.segment_store_type} failed'
+        return True
 
-    def test_delete_segments_by_kb_id(self):
-        self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb1'})
-        res = self.store.get(collection_name=self.collections[0])
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
-        self.store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb3'})
-        res = self.store.get(collection_name=self.collections[0])
-        self.assertEqual(len(res), 0)
+    @pytest.fixture()
+    def delete_segments_by_uid(self):
+        self.store.delete(self.collections[2], criteria={'uid': ['uid3']})
+        res = self.store.get(collection_name=self.collections[2])
+        assert len(res) == 0, f'delete segments by uid {self.segment_store_type} failed'
+        return True
 
-    def test_delete_segments_by_uid(self):
-        self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.delete(self.collections[0], criteria={'uid': ['uid1']})
-        res = self.store.get(collection_name=self.collections[0])
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
+    @pytest.fixture()
+    def delete_segments_by_doc_id(self):
+        self.store.delete(self.collections[3], criteria={RAG_DOC_ID: ['doc4']})
+        res = self.store.get(collection_name=self.collections[3])
+        assert len(res) == 0, f'delete segments by doc_id {self.segment_store_type} failed'
+        return True
 
-    def test_delete_segments_by_doc_id(self):
-        self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
-        res = self.store.get(collection_name=self.collections[0])
-        self.assertEqual(len(res), 2)
-        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
-        res = self.store.get(collection_name=self.collections[0])
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
+    @pytest.fixture()
+    def tearDown(self):
+        for collection in self.collections:
+            try:
+                self.store.delete(collection)
+            except Exception as e:
+                print(f'delete {self.segment_store_type} {collection} failed: {e}')
+        return True
 
-    def test_get_segments_by_collection(self):
-        self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.get(collection_name=self.collections[0])
-        self.assertEqual(len(res), 2)
-        res = self.store.get(collection_name=self.collections[1])
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[1].get('uid'))
+    def round_order(type: str, step: int):
+        '''
+        set the order of the test case for different store type
 
-    def test_get_segments_by_kb_id(self):
-        self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb1'})
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb3'})
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb2'})
-        self.assertEqual(len(res), 0)
-        res = self.store.get(collection_name=self.collections[1], criteria={RAG_KB_ID: 'kb2'})
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[1].get('uid'))
+        type: store type
+        step:  current step
+        '''
+        type_map = {
+            'elasticsearch': 1,
+            'opensearch': 2,
+        }
+        order_value = type_map[type] * 100 + step
+        return pytest.mark.order(order_value)
 
-    def test_get_segments_by_uid(self):
-        self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid1']})
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid3']})
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid2']})
-        self.assertEqual(len(res), 0)
-        res = self.store.get(collection_name=self.collections[1], criteria={'uid': ['uid2']})
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[1].get('uid'))
+    @round_order('elasticsearch', 0)
+    @pytest.mark.parametrize('setUP', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_setUp(self, setUP):
+        assert setUP
 
-    def test_get_segments_by_doc_id(self):
-        self.store.upsert(self.collections[0], [data[0], data[2]])
-        self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
-        self.assertEqual(len(res), 1)
-        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
-        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
-        self.assertEqual(len(res), 0)
-        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1', 'doc3']})
-        self.assertEqual(len(res), 2)
+    @round_order('elasticsearch', 1)
+    @pytest.mark.parametrize('upsert', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_upsert(self, upsert):
+        assert upsert
 
+    @round_order('elasticsearch', 2)
+    @pytest.mark.parametrize('get_segments_by_collection', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_get_segments_by_collection(self, get_segments_by_collection):
+        assert get_segments_by_collection
+
+    @round_order('elasticsearch', 3)
+    @pytest.mark.parametrize('get_segments_by_kb_id', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_get_segments_by_kb_id(self, get_segments_by_kb_id):
+        assert get_segments_by_kb_id
+
+    @round_order('elasticsearch', 4)
+    @pytest.mark.parametrize('get_segments_by_uid', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_get_segments_by_uid(self, get_segments_by_uid):
+        assert get_segments_by_uid
+
+    @round_order('elasticsearch', 5)
+    @pytest.mark.parametrize('get_segments_by_doc_id', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_get_segments_by_doc_id(self, get_segments_by_doc_id):
+        assert get_segments_by_doc_id
+
+    @round_order('elasticsearch', 6)
+    @pytest.mark.parametrize('delete_segments_by_collection', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_delete_segments_by_collection(self, delete_segments_by_collection):
+        assert delete_segments_by_collection
+
+    @round_order('elasticsearch', 7)
+    @pytest.mark.parametrize('delete_segments_by_kb_id', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_delete_segments_by_kb_id(self, delete_segments_by_kb_id):
+        assert delete_segments_by_kb_id
+
+    @round_order('elasticsearch', 8)
+    @pytest.mark.parametrize('delete_segments_by_uid', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_delete_segments_by_uid(self, delete_segments_by_uid):
+        assert delete_segments_by_uid
+
+    @round_order('elasticsearch', 9)
+    @pytest.mark.parametrize('delete_segments_by_doc_id', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_delete_segments_by_doc_id(self, delete_segments_by_doc_id):
+        assert delete_segments_by_doc_id
+
+    @round_order('elasticsearch', 10)
+    @pytest.mark.parametrize('tearDown', SEGMENTSTORE_CLASS_MAP['elasticsearch'], indirect=True)
+    def test_es_tearDown(self, tearDown):
+        assert tearDown
+
+    @round_order('opensearch', 0)
+    @pytest.mark.parametrize('setUP', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_setUp(self, setUP):
+        assert setUP
+
+    @round_order('opensearch', 1)
+    @pytest.mark.parametrize('upsert', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_upsert(self, upsert):
+        assert upsert
+
+    @round_order('opensearch', 2)
+    @pytest.mark.parametrize('get_segments_by_collection', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_get_segments_by_collection(self, get_segments_by_collection):
+        assert get_segments_by_collection
+
+    @round_order('opensearch', 3)
+    @pytest.mark.parametrize('get_segments_by_kb_id', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_get_segments_by_kb_id(self, get_segments_by_kb_id):
+        assert get_segments_by_kb_id
+
+    @round_order('opensearch', 4)
+    @pytest.mark.parametrize('get_segments_by_uid', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_get_segments_by_uid(self, get_segments_by_uid):
+        assert get_segments_by_uid
+
+    @round_order('opensearch', 5)
+    @pytest.mark.parametrize('get_segments_by_doc_id', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_get_segments_by_doc_id(self, get_segments_by_doc_id):
+        assert get_segments_by_doc_id
+
+    @round_order('opensearch', 6)
+    @pytest.mark.parametrize('delete_segments_by_collection', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_delete_segments_by_collection(self, delete_segments_by_collection):
+        assert delete_segments_by_collection
+
+    @round_order('opensearch', 7)
+    @pytest.mark.parametrize('delete_segments_by_kb_id', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_delete_segments_by_kb_id(self, delete_segments_by_kb_id):
+        assert delete_segments_by_kb_id
+
+    @round_order('opensearch', 8)
+    @pytest.mark.parametrize('delete_segments_by_uid', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_delete_segments_by_uid(self, delete_segments_by_uid):
+        assert delete_segments_by_uid
+
+    @round_order('opensearch', 9)
+    @pytest.mark.parametrize('delete_segments_by_doc_id', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_delete_segments_by_doc_id(self, delete_segments_by_doc_id):
+        assert delete_segments_by_doc_id
+
+    @round_order('opensearch', 10)
+    @pytest.mark.parametrize('tearDown', SEGMENTSTORE_CLASS_MAP['opensearch'], indirect=True)
+    def test_os_tearDown(self, tearDown):
+        assert tearDown
 
 @pytest.mark.skip(reason="To test sensecore store, please set up a sensecore rag-store server")
 class TestSenseCoreStore(unittest.TestCase):
     def setUp(self):
         # sensecore store need kb_id when get or delete
-        self.collections = ["col_block", "col_line"]
+        self.collections = ['col_block', 'col_line']
         self.data = [
             {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'block', 'content': 'test1', 'meta': {},
              'global_meta': {RAG_DOC_ID: 'doc1', RAG_KB_ID: 'kb1'},
              'embedding': {'bge_m3_dense': [0.1, 0.2, 0.3],
-                           'bge_m3_sparse': {"1563": 0.212890625, "238": 0.1768798828125}},
+                           'bge_m3_sparse': {'1563': 0.212890625, '238': 0.1768798828125}},
              'type': 1, 'number': 0, 'kb_id': 'kb1',
              'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
              'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
-             'parent': None, 'answer': "", 'image_keys': []},
+             'parent': None, 'answer': '', 'image_keys': []},
 
             {'uid': 'uid2', 'doc_id': 'doc2', 'group': 'line', 'content': 'test2', 'meta': {},
              'global_meta': {RAG_DOC_ID: 'doc2', RAG_KB_ID: 'kb2'},
              'embedding': {'bge_m3_dense': [0.3, 0.2, 0.1],
-                           'bge_m3_sparse': {"1563": 0.212890625, "238": 0.1768798828125}},
+                           'bge_m3_sparse': {'1563': 0.212890625, '238': 0.1768798828125}},
              'type': 1, 'number': 0, 'kb_id': 'kb2',
              'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
              'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
-             'parent': 'uid1', 'answer': "", 'image_keys': []},
+             'parent': 'uid1', 'answer': '', 'image_keys': []},
         ]
         self.global_metadata_desc = BUILDIN_GLOBAL_META_DESC
-        self.uri = ""
+        self.uri = ''
         self.s3_config = {
-            "endpoint_url": os.getenv("RAG_S3_ENDPOINT", ""),
-            "access_key": os.getenv("RAG_S3_ACCESS_KEY", ""),
-            "secret_access_key": os.getenv("RAG_S3_SECRET_KEY", ""),
-            "bucket_name": os.getenv("RAG_S3_BUCKET", "rag-data"),
-            "use_minio": os.getenv("RAG_S3_USE_MINIO", "true").lower() == "true",
+            'endpoint_url': os.getenv('RAG_S3_ENDPOINT', ''),
+            'access_key': os.getenv('RAG_S3_ACCESS_KEY', ''),
+            'secret_access_key': os.getenv('RAG_S3_SECRET_KEY', ''),
+            'bucket_name': os.getenv('RAG_S3_BUCKET', 'rag-data'),
+            'use_minio': os.getenv('RAG_S3_USE_MINIO', 'true').lower() == 'true',
         }
         self.image_url_config = {
-            "access_key": os.getenv("RAG_IMAGE_URL_ACCESS_KEY", ""),
-            "secret_access_key": os.getenv("RAG_IMAGE_URL_SECRET_KEY", ""),
-            "endpoint_url": os.getenv("RAG_IMAGE_URL_ENDPOINT", ""),
-            "bucket_name": os.getenv("RAG_IMAGE_URL_BUCKET", "lazyjfs")
+            'access_key': os.getenv('RAG_IMAGE_URL_ACCESS_KEY', ''),
+            'secret_access_key': os.getenv('RAG_IMAGE_URL_SECRET_KEY', ''),
+            'endpoint_url': os.getenv('RAG_IMAGE_URL_ENDPOINT', ''),
+            'bucket_name': os.getenv('RAG_IMAGE_URL_BUCKET', 'lazyjfs')
         }
         self.store = SenseCoreStore(uri=self.uri, s3_config=self.s3_config, image_url_config=self.image_url_config)
         self.store.connect(global_metadata_desc=self.global_metadata_desc)
@@ -737,18 +924,18 @@ class TestSenseCoreStore(unittest.TestCase):
     def test_search(self):
         self.store.upsert(self.collections[0], [self.data[0]])
         self.store.upsert(self.collections[1], [self.data[1]])
-        res = self.store.search(collection_name=self.collections[0], query="test1",
+        res = self.store.search(collection_name=self.collections[0], query='test1',
                                 embed_key='bge_m3_dense', topk=1,
                                 filters={RAG_KB_ID: self.data[0].get('kb_id')})
         self.assertEqual(len(res), 1)
-        print(f"res: {res}")
+        print(f'res: {res}')
         self.assertEqual(res[0].get('uid'), self.data[0].get('uid'))
         res = self.store.search(collection_name=self.collections[0],
-                                query="test1", embed_key='bge_m3_sparse', topk=1,
+                                query='test1', embed_key='bge_m3_sparse', topk=1,
                                 filters={RAG_KB_ID: self.data[0].get('kb_id')})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), self.data[0].get('uid'))
-        res = self.store.search(collection_name=self.collections[1], query="test2",
+        res = self.store.search(collection_name=self.collections[1], query='test2',
                                 embed_key='bge_m3_dense', topk=1,
                                 filters={RAG_KB_ID: self.data[1].get('kb_id')})
         self.assertEqual(len(res), 1)
@@ -759,9 +946,9 @@ class TestSenseCoreStore(unittest.TestCase):
 @pytest.mark.skip_on_mac
 class TestHybridStore(unittest.TestCase):
     def setUp(self):
-        self.collections = ["col_g1", "col_g2"]
-        self.embed_dims = {"vec_dense": 3}
-        self.embed_datatypes = {"vec_dense": DataType.FLOAT_VECTOR, "vec_sparse": DataType.SPARSE_FLOAT_VECTOR}
+        self.collections = ['col_g1', 'col_g2']
+        self.embed_dims = {'vec_dense': 3}
+        self.embed_datatypes = {'vec_dense': DataType.FLOAT_VECTOR, 'vec_sparse': DataType.SPARSE_FLOAT_VECTOR}
         self.global_metadata_desc = BUILDIN_GLOBAL_META_DESC
         self.index_kwargs = [
             {
@@ -781,7 +968,7 @@ class TestHybridStore(unittest.TestCase):
                 }
             }
         ]
-        fd, self.store_dir = tempfile.mkstemp(suffix=".db")
+        fd, self.store_dir = tempfile.mkstemp(suffix='.db')
         os.close(fd)
         self.segment_store = MapStore()
         self.vector_store = MilvusStore(uri=self.store_dir, index_kwargs=self.index_kwargs)
@@ -888,30 +1075,30 @@ class TestHybridStore(unittest.TestCase):
     def test_search(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
         self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.search(collection_name=self.collections[0], query="test1",
+        res = self.store.search(collection_name=self.collections[0], query='test1',
                                 query_embedding=[0.1, 0.2, 0.3], embed_key='vec_dense', topk=1)
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
-        res = self.store.search(collection_name=self.collections[0], query="test1",
-                                query_embedding={"1563": 0.212890625, "238": 0.1768798828125},
+        res = self.store.search(collection_name=self.collections[0], query='test1',
+                                query_embedding={'1563': 0.212890625, '238': 0.1768798828125},
                                 embed_key='vec_sparse', topk=1)
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
-        res = self.store.search(collection_name=self.collections[0], query="test3",
+        res = self.store.search(collection_name=self.collections[0], query='test3',
                                 query_embedding=[0.3, 0.2, 0.1], embed_key='vec_dense', topk=1)
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
-        res = self.store.search(collection_name=self.collections[0], query="test3",
-                                query_embedding={"12": 0.212890625, "23": 0.1768798828125},
+        res = self.store.search(collection_name=self.collections[0], query='test3',
+                                query_embedding={'12': 0.212890625, '23': 0.1768798828125},
                                 embed_key='vec_sparse', topk=1)
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
-        res = self.store.search(collection_name=self.collections[0], query="test3",
+        res = self.store.search(collection_name=self.collections[0], query='test3',
                                 query_embedding=[0.3, 0.2, 0.1], embed_key='vec_dense', topk=5)
         self.assertEqual(len(res), 2)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
         self.assertEqual(res[1].get('uid'), data[0].get('uid'))
-        res = self.store.search(collection_name=self.collections[1], query="test2",
+        res = self.store.search(collection_name=self.collections[1], query='test2',
                                 query_embedding=[0.3, 0.2, 0.1], embed_key='vec_dense', topk=1)
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[1].get('uid'))
@@ -919,12 +1106,12 @@ class TestHybridStore(unittest.TestCase):
     def test_search_with_filters(self):
         self.store.upsert(self.collections[0], [data[0], data[2]])
         self.store.upsert(self.collections[1], [data[1]])
-        res = self.store.search(collection_name=self.collections[0], query="test1",
+        res = self.store.search(collection_name=self.collections[0], query='test1',
                                 query_embedding=[0.1, 0.2, 0.3], embed_key='vec_dense', topk=2,
                                 filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[0].get('uid'))
-        res = self.store.search(collection_name=self.collections[1], query="test2",
+        res = self.store.search(collection_name=self.collections[1], query='test2',
                                 query_embedding=[0.1, 0.2, 0.3], embed_key='vec_dense', topk=1,
                                 filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 0)

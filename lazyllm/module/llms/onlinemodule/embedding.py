@@ -2,7 +2,7 @@ from typing import Any, Dict
 
 import lazyllm
 from .base import OnlineEmbeddingModuleBase
-from .supplier.openai import OpenAIEmbedding
+from .supplier.openai import OpenAIEmbedding, OpenAIReranking
 from .supplier.glm import GLMEmbedding, GLMReranking
 from .supplier.sensenova import SenseNovaEmbedding
 from .supplier.qwen import QwenEmbedding, QwenReranking
@@ -23,7 +23,8 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                     'qwen': QwenEmbedding,
                     'doubao': DoubaoEmbedding}
     RERANK_MODELS = {'qwen': QwenReranking,
-                     'glm': GLMReranking}
+                     'glm': GLMReranking,
+                     'openai': OpenAIReranking}
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,

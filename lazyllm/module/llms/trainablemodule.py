@@ -7,6 +7,8 @@ import copy
 import uuid
 import re
 import requests
+import yaml
+from deepdiff import DeepDiff
 
 import lazyllm
 from lazyllm import globals, LOG, launchers, Option, package, LazyLLMDeployBase, LazyLLMFinetuneBase, config
@@ -15,11 +17,23 @@ from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from ...components.utils import ModelManager, LLMType
 from ...components.utils.file_operate import _base64_to_file, _is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
-from .utils import map_kw_for_framework, encode_files
+from .utils import map_kw_for_framework, encode_files, check_config_map_format
 from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
 
+lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH')
+ignore_config_keys = ['log_path', 'launcher']
+
+@functools.lru_cache(maxsize=1)
+def get_trainable_module_config_map(path):
+    try:
+        cfg = yaml.safe_load(open(path, 'r')) if os.path.exists(path) else {}
+        check_config_map_format(cfg)
+    except Exception:
+        LOG.warning(f'Failed to load trainable module config map from {path}')
+        cfg = {}
+    return cfg
 
 class _UrlTemplateStruct(object):
     def __init__(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
@@ -184,6 +198,23 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
 
         if hasattr(self._deploy, 'auto_map') and self._deploy.auto_map:
             self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
+
+        trainable_module_config_map = get_trainable_module_config_map(lazyllm.config['trainable_module_config_map_path'])
+
+        base_model_name = os.path.basename(self._base_model)
+        if base_model_name in trainable_module_config_map:
+            deploy_args_for_check = {k: v for k, v in self._deploy_args.items() if k not in ignore_config_keys}
+            for module_config in trainable_module_config_map[base_model_name]:
+                if (self._deploy.__name__.lower() == module_config.get('framework').lower()
+                    and ((not deploy_args_for_check and not module_config.get('strict'))
+                         or not DeepDiff(module_config.get('deploy_config', {}), deploy_args_for_check))):
+                    try:
+                        url = module_config.get('url')
+                        requests.get(url, timeout=3)
+                        self._deploy_args = {'url': url}
+                        break
+                    except Exception:
+                        continue
 
         stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
 
@@ -484,8 +515,18 @@ class TrainableModule(UrlModule):
     def forward_openai(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
                        *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
         if not getattr(self, '_openai_module', None):
-            self._openai_module = lazyllm.OnlineChatModule(
-                source='openai', model='lazyllm', base_url=self._url, skip_auth=True)
+            model_type = self.type.lower()
+            if model_type in ['llm', 'vlm']:
+                self._openai_module = lazyllm.OnlineChatModule(
+                    source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=model_type,
+                    stream=self._stream).share(prompt=self._prompt, format=self._formatter)
+                self._openai_module._prompt._set_model_configs(system='You are LazyLLM, \
+                    a large language model developed by SenseTime.')
+            elif model_type in ['embed', 'rerank']:
+                self._openai_module = lazyllm.OnlineEmbeddingModule(
+                    source='openai', embed_model_name='lazyllm', embed_url=self._url, type=model_type)
+            else:
+                raise ValueError(f'Unsupported type: {model_type} for openai compatible module')
             self._openai_module.used_by(self._module_id)
         return self._openai_module.forward(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
                                            tools=tools, stream_output=stream_output, **kw)
@@ -574,3 +615,12 @@ class TrainableModule(UrlModule):
     def _cache_miss_handler(self):
         if not self._url or self._url == fake_url:
             raise RuntimeError('Cache miss, please use `start()` to deploy the module first')
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['base_model'] = self._impl._base_model
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._impl._base_model = state['base_model']

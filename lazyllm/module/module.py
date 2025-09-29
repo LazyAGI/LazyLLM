@@ -5,6 +5,7 @@ from lazyllm import ThreadPoolExecutor
 
 import lazyllm
 from lazyllm import FlatList, Option, kwargs, globals, colored_text, redis_client
+from ..components.formatter.formatterbase import file_content_hash, transform_path
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
@@ -198,18 +199,49 @@ class ModuleCache(object):
         return strategies[strategy]()
 
     def _hash(self, args, kw):
-        content = str(args) + str(sorted(kw.items()) if kw else '')
-        return hashlib.md5(content.encode()).hexdigest()
+        def process_value(value, hash_obj):
+            meta = ''
+            if isinstance(value, (list, tuple, dict, set)):
+                meta = str(type(value)) + str(len(value))
+            if isinstance(value, str):
+                hash_obj.update(str(file_content_hash(value)).encode())
+            elif isinstance(value, set):
+                hash_obj.update((meta + '>').encode())
+                for item in sorted(value):
+                    process_value(item, hash_obj)
+                hash_obj.update(('<' + meta).encode())
+            elif isinstance(value, (list, tuple)):
+                hash_obj.update((meta + '>').encode())
+                for item in value:
+                    process_value(item, hash_obj)
+                hash_obj.update(('<' + meta).encode())
+            elif isinstance(value, dict):
+                hash_obj.update((meta + '>').encode())
+                for k, v in sorted(value.items()):
+                    key_meta = 'key:' + str(type(k)) + str(k)
+                    hash_obj.update(key_meta.encode())
+                    process_value(v, hash_obj)
+                hash_obj.update(('<' + meta).encode())
+            else:
+                value_meta = str(type(value)) + str(value)
+                hash_obj.update(value_meta.encode())
+        hash_obj = hashlib.md5()
+        process_value(args, hash_obj)
+        if kw:
+            process_value(kw, hash_obj)
+        return hash_obj.hexdigest()
 
     def get(self, key, args, kw):
         if 'R' not in lazyllm.config['cache_mode']:
             raise CacheNotFoundError('Cannot read cache due to `LAZYLLM_CACHE_MODE = WO`')
         hash_key = self._hash(args, kw)
-        return self._strategy.get(key, hash_key)
+        value = self._strategy.get(key, hash_key)
+        return transform_path(value, mode='r2a')
 
     def set(self, key, args, kw, value):
         if 'W' not in lazyllm.config['cache_mode']: return
         hash_key = self._hash(args, kw)
+        value = transform_path(value, mode='a2r')
         self._strategy.set(key, hash_key, value)
 
     def close(self):
@@ -472,6 +504,7 @@ class ModuleBase(metaclass=_MetaBind):
     def __cache_hash__(self):
         cache_hash = self.__class__.__name__
         if isinstance(self._use_cache, str): cache_hash += f'@{self._use_cache}'
+        if hasattr(self, 'appendix_hash_key'): cache_hash += f'@{self.appendix_hash_key}'
         return cache_hash
 
     def use_cache(self, flag: Union[bool, str] = True):

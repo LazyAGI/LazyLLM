@@ -1782,6 +1782,128 @@ Args:
 - List[dict]: 每项包含 'uid' 及相似度 'score'。
 ''')
 
+add_english_doc('rag.store.ElasticSearchStore', '''
+Vector store implementation based on Elasticsearch, inheriting from StoreBase. Supports vector insertion, deletion, flexible querying (including scalar filtering).
+Args:
+    uris (List[str]): Elasticsearch connection URIs (e.g., ["http://localhost:9200"]).
+    client_kwargs (Optional[Dict]): Additional keyword arguments for Elasticsearch client.
+    index_kwargs (Optional[Union[Dict, List]]): Index creation parameters (e.g., {"index_type": "IVF_FLAT", "metric_type": "COSINE"} or a list of per-embed-key configs).
+    **kwargs: Additional keyword arguments.
+''')
+
+add_chinese_doc('rag.store.ElasticSearchStore', '''
+基于 Elasticsearch 的向量存储实现，继承自 StoreBase。支持向量写入、删除、相似度检索，兼容标量过滤。
+Args:
+    uris (List[str]): Elasticsearch 连接 URI（如 ["http://localhost:9200"]）。
+    client_kwargs (Optional[Dict]): 传递给 Elasticsearch 客户端的额外参数。
+    index_kwargs (Optional[Union[Dict, List]]): 索引创建参数（例如 {"index_type": "IVF_FLAT", "metric_type": "CONSINE"} ，支持按向量模型的key配置列表）。
+    **kwargs: 预留扩展参数。
+''')
+
+add_example('rag.store.ElasticSearchStore', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.rag.store import ElasticSearchStore
+>>> store = ElasticSearchStore(uris=["localhost:9200"], client_kwargs={}, index_kwargs={})
+>>> store.connect(embed_dims={"vec_dense": 128, "vec_sparse": 128}, embed_datatypes={"vec_dense": DataType.FLOAT32, "vec_sparse": DataType.FLOAT32}, global_metadata_desc={})
+>>> store.upsert(collection_name="test", data=[{"uid": "1", "embedding": {"vec_dense": [0.1, 0.2, 0.3], "vec_sparse": {"1": 0.1, "2": 0.2, "3": 0.3}}, "metadata": {"key1": "value1", "key2": "value2"}}])
+>>> store.get(collection_name="test", criteria={"uid": "1"})
+>>> store.delete(collection_name="test", criteria={"uid": "1"})
+''')
+
+add_english_doc('rag.store.ElasticSearchStore.dir', '''
+Returns None when using remote Elasticsearch.
+**Returns:**\n
+    Optional[str]: None if remote.
+''')
+
+add_chinese_doc('rag.store.ElasticSearchStore.dir', '''
+远程模式返回 None。
+**Returns:**\n
+    Optional[str]: None。
+''')
+
+add_english_doc('rag.store.ElasticSearchStore.connect', '''
+Initialize Elasticsearch client, pass in embedding model parameters and global metadata descriptions.
+Args:
+    embed_dims (Dict[str, int]): Embedding dimensions per embed key.
+    embed_datatypes (Dict[str, DataType]): Data types for each embed key.
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Descriptions for metadata fields.
+**Returns:**\n
+    bool: True if successful, False otherwise.
+''')
+
+add_chinese_doc('rag.store.ElasticSearchStore.connect', '''
+初始化 Elasticsearch 客户端，传入向量化模型参数和全局元数据描述。
+Args:
+    embed_dims (Dict[str, int]): 每个嵌入键对应的向量维度。
+    embed_datatypes (Dict[str, DataType]): 每个嵌入键的数据类型。
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据字段的描述。
+**Returns:**\n
+    bool: 操作成功返回 True，否则 False。
+''')
+
+add_english_doc('rag.store.ElasticSearchStore.upsert', '''
+Insert or update a batch of segment data into the Elasticsearch collection.
+Args:
+    collection_name (str): Collection name (per embed key grouping).
+    data (List[dict]): List of segment data.
+**Returns:**\n
+    bool: True if successful, False otherwise.
+''')
+
+add_chinese_doc('rag.store.ElasticSearchStore.upsert', '''
+批量写入或更新切片数据到 Elasticsearch 集合。
+Args:
+    collection_name (str): 集合名称，通常为 "group_embedKey" 格式。
+    data (List[dict]): 切片数据列表。
+**Returns:**\n
+    bool: 操作成功返回 True，否则 False。
+''')
+
+add_english_doc('rag.store.ElasticSearchStore.delete', '''
+Delete entire collection or subset of records by criteria.
+Args:
+    collection_name (str): Target collection.
+    criteria (Optional[dict]): If None, drop the entire collection; otherwise a dict of filters (uid list or metadata conditions).
+**Returns:**\n
+    bool: True if deletion succeeds, False otherwise.
+''')
+
+add_chinese_doc('rag.store.ElasticSearchStore.delete', '''
+删除整个集合或按条件删除指定记录。
+Args:
+    collection_name (str): 目标集合名称。
+    criteria (Optional[dict]): 若为 None 则删除整个集合；否则按 uid 列表或元数据条件过滤。
+**Returns:**\n
+    bool: 删除成功返回 True，否则 False。
+''')
+
+add_english_doc('rag.store.ElasticSearchStore.get', '''
+Retrieve records matching primary-key or metadata filters.
+Args:
+    collection_name (str): Collection to query.
+    criteria (Optional[dict]): Dict containing 'uid' list or metadata field filters.
+**Returns:**\n 
+    List[dict]: List of segments with 'uid' and 'embedding'.
+''')
+
+add_chinese_doc('rag.store.ElasticSearchStore.get', '''
+检索匹配主键或元数据过滤条件的记录。
+Args:
+    collection_name (str): 待查询集合。
+    criteria (Optional[dict]): 包含 'uid' 列表或元数据字段过滤条件。
+**Returns:**\n
+    List[dict]: 每项包含 'uid' 及 'embedding' 映射。
+''')
+
+add_english_doc('rag.store.ElasticSearchStore.search', '''
+Not implemented yet.
+''')
+
+add_chinese_doc('rag.store.ElasticSearchStore.search', '''
+待实现
+''')
+
 add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore', '''\
 混合存储类，结合了分段存储和向量存储的功能。
 
