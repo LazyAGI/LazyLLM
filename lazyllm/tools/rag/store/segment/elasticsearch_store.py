@@ -116,7 +116,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 if self._check_ik_plugin():
                     LOG.info('IK plugin is installed')
                 else:
-                    LOG.info('IK plugin is not installed, ElasticSearch will \
+                    LOG.warning('IK plugin is not installed, ElasticSearch will \
                         use ngram analyzer which is English Only Analyzer')
                     self._index_kwargs = self._adapt_mapping_for_no_ik(self._index_kwargs)
 
@@ -167,7 +167,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 response = self._client.bulk(index=collection_name, body=bulk_data, refresh='wait_for')
                 if response.get('errors'):
                     raise ValueError(
-                        f"Error upserting data to Elasticsearch: {response.get('errors')}"
+                        f'Error upserting data to Elasticsearch: {response.get("errors")}'
                     )
             return True
 
@@ -195,10 +195,10 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 )
 
                 if resp.get('version_conflicts', 0) > 0:
-                    LOG.warning(f"[ElasticsearchStore - delete] Version conflicts: {resp.get('version_conflicts')}")
+                    LOG.warning(f'[ElasticsearchStore - delete] Version conflicts: {resp.get("version_conflicts")}')
                 if resp.get('failures'):
                     raise ValueError(
-                        f"Error deleting data from Elasticsearch: {resp['failures']}"
+                        f'Error deleting data from Elasticsearch: {resp["failures"]}'
                     )
                 return True
 
@@ -284,7 +284,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             else:
                 es_query = {'query': {'match_all': {}}}
 
-            es_query["size"] = topk
+            es_query['size'] = topk
 
             resp = self._client.search(index=collection_name, body=es_query)
             res = []
@@ -354,15 +354,15 @@ class ElasticSearchStore(LazyLLMStoreBase):
         ''' IK plugin is installed, return True, otherwise return False'''
         try:
             # method 1: check plugin list
-            plugins = self._client.cat.plugins(format="json")
-            if any("analysis-ik" in p.get("component", "") for p in plugins):
+            plugins = self._client.cat.plugins(format='json')
+            if any('analysis-ik' in p.get('component', '') for p in plugins):
                 return True
             # method 2: try to call ik analyzer
             try:
                 self._client.indices.analyze(
                     body={
-                        "analyzer": "ik_max_word",
-                        "text": "machine learning"
+                        'analyzer': 'ik_max_word',
+                        'text': 'machine learning'
                     }
                 )
                 return True
@@ -370,15 +370,15 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 LOG.warning(f'IK plugin is not installed: {str(e)}')
                 return False
         except Exception as e:
-            LOG.warning(f"check IK plugin failed: {e}")
+            LOG.warning(f'check IK plugin failed: {e}')
             return False
 
     def _adapt_mapping_for_no_ik(self, mapping_body: dict) -> dict:
         mapping = copy.deepcopy(mapping_body)
 
-        for field_name, field_def in mapping["mappings"]["properties"].items():
-            if field_def.get("analyzer"):
-                field_def["analyzer"] = "ngram_analyzer"
-            if field_def.get("search_analyzer"):
-                field_def["search_analyzer"] = "standard"
+        for field_name, field_def in mapping['mappings']['properties'].items():
+            if field_def.get('analyzer'):
+                field_def['analyzer'] = 'ngram_analyzer'
+            if field_def.get('search_analyzer'):
+                field_def['search_analyzer'] = 'standard'
         return mapping
