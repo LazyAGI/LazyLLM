@@ -2,6 +2,7 @@
 exclude = tests/legacy,venv
 per-file-ignores =
     ./docs/add_docstrings.py: E402
+    tests/*.py: Q000, Q001, Q002
 max-line-length = 121
 # E701: multiple statements on one line (colon)
 # E702: multiple statements on one line (semicolon)
