@@ -86,18 +86,18 @@ class ChromaStore(LazyLLMStoreBase):
         self._embed_datatypes = embed_datatypes or {}
         for k, v in self._global_metadata_desc.items():
             if v.data_type not in [DataType.VARCHAR, DataType.INT32, DataType.FLOAT, DataType.BOOLEAN]:
-                raise ValueError(f"[Chroma Store] Unsupported data type {v.data_type} for global metadata {k}"
-                                 " (only string, int, float, bool are supported)")
+                raise ValueError(f'[Chroma Store] Unsupported data type {v.data_type} for global metadata {k}'
+                                 ' (only string, int, float, bool are supported)')
         for k, v in self._embed_datatypes.items():
             if v not in [DataType.FLOAT_VECTOR, DataType.SPARSE_FLOAT_VECTOR]:
-                raise ValueError(f"[Chroma Store] Unsupported data type {v} for embed key {k}"
-                                 " (only float vector and sparse float vector are supported)")
+                raise ValueError(f'[Chroma Store] Unsupported data type {v} for embed key {k}'
+                                 ' (only float vector and sparse float vector are supported)')
         if self._dir:
             self._client = chromadb.PersistentClient(path=self._dir, **self._client_kwargs)
-            LOG.success(f"Initialzed chroma in path: {self._dir}")
+            LOG.success(f'Initialzed chroma in path: {self._dir}')
         else:
             self._client = chromadb.HttpClient(host=self._host, port=self._port, **self._client_kwargs)
-            LOG.success(f"Initialzed chroma in host: {self._host}, port: {self._port}")
+            LOG.success(f'Initialzed chroma in host: {self._host}, port: {self._port}')
 
     @override
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
@@ -116,7 +116,7 @@ class ChromaStore(LazyLLMStoreBase):
                     collection.upsert(**self._serialize_data(data[i: i + INSERT_BATCH_SIZE], embed_key))
             return True
         except Exception as e:
-            LOG.error(f"[Chroma Store - upsert] Failed to create collection {collection_name}: {e}")
+            LOG.error(f'[Chroma Store - upsert] Failed to create collection {collection_name}: {e}')
             LOG.error(traceback.format_exc())
             return False
 
@@ -146,7 +146,7 @@ class ChromaStore(LazyLLMStoreBase):
                     collection.delete(**filters)
                 return True
         except Exception as e:
-            LOG.error(f"[Chroma Store - delete] Failed to delete collection {collection_name}: {e}")
+            LOG.error(f'[Chroma Store - delete] Failed to delete collection {collection_name}: {e}')
             LOG.error(traceback.format_exc())
             return False
 
@@ -183,7 +183,7 @@ class ChromaStore(LazyLLMStoreBase):
                     entry['embedding'][embed_key] = list(emb)
             return list(res.values())
         except Exception as e:
-            LOG.error(f"[ChromaStore - get] task fail: {e}")
+            LOG.error(f'[ChromaStore - get] task fail: {e}')
             LOG.error(traceback.format_exc())
 
     @override
@@ -202,7 +202,7 @@ class ChromaStore(LazyLLMStoreBase):
                     res.append({'uid': uid, 'score': 1 - dis})
             return res
         except Exception as e:
-            LOG.error(f"[ChromaStore - search] task fail: {e}")
+            LOG.error(f'[ChromaStore - search] task fail: {e}')
             LOG.error(traceback.format_exc())
 
     def _construct_criteria(self, criteria: dict) -> dict:

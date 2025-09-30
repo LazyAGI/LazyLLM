@@ -533,13 +533,13 @@ class TestSegementStore(object):
             'segment_store_type': 'opensearch',
             'init_kwargs': {'uris': os.getenv('OPENSEARCH_HOST', 'localhost:9200'),
                             'client_kwargs': {
-                                "user": os.getenv('OPENSEARCH_USER', 'admin'),
-                                "password": os.getenv('OPENSEARCH_INITIAL_ADMIN_PASSWORD'),
-                                "verify_certs": False}},
+                                'user': os.getenv('OPENSEARCH_USER', 'admin'),
+                                'password': os.getenv('OPENSEARCH_INITIAL_ADMIN_PASSWORD'),
+                                'verify_certs': False}},
             'is_skip': False, 'skip_reason': 'To test opensearch store, please set up a opensearch server'}],
     }
 
-    @pytest.fixture(scope="class")
+    @pytest.fixture(scope='class')
     def setUP(self, request):
         collections = ['col_g1', 'col_g2', 'col_g3', 'col_g4']
         data = [
@@ -620,27 +620,27 @@ class TestSegementStore(object):
         assert res[0].get('uid'), self.data[0].get('uid')
         res = self.store.get(collection_name=self.collections[3], criteria={RAG_KB_ID: 'kb4'})
         assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[3].get('uid'), f"get segments by kb_id {self.segment_store_type} failed"
+        assert res[0].get('uid') == self.data[3].get('uid'), f'get segments by kb_id {self.segment_store_type} failed'
         res = self.store.get(collection_name=self.collections[2], criteria={RAG_KB_ID: 'kb3'})
         assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
         res = self.store.get(collection_name=self.collections[1], criteria={RAG_KB_ID: 'kb2'})
         assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[1].get('uid'), f"get segments by kb_id {self.segment_store_type} failed"
+        assert res[0].get('uid') == self.data[1].get('uid'), f'get segments by kb_id {self.segment_store_type} failed'
         return True
 
     @pytest.fixture()
     def get_segments_by_uid(self):
         res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid1']})
         assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[0].get('uid'), f"get segments by uid {self.segment_store_type} failed"
+        assert res[0].get('uid') == self.data[0].get('uid'), f'get segments by uid {self.segment_store_type} failed'
         res = self.store.get(collection_name=self.collections[2], criteria={'uid': ['uid3']})
         assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[2].get('uid'), f"get segments by uid {self.segment_store_type} failed"
+        assert res[0].get('uid') == self.data[2].get('uid'), f'get segments by uid {self.segment_store_type} failed'
         res = self.store.get(collection_name=self.collections[1], criteria={'uid': ['uid2']})
         assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
         res = self.store.get(collection_name=self.collections[3], criteria={'uid': ['uid4']})
         assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[3].get('uid'), f"get segments by uid {self.segment_store_type} failed"
+        assert res[0].get('uid') == self.data[3].get('uid'), f'get segments by uid {self.segment_store_type} failed'
         return True
 
     @pytest.fixture()
@@ -815,7 +815,7 @@ class TestSegementStore(object):
     def test_os_tearDown(self, tearDown):
         assert tearDown
 
-@pytest.mark.skip(reason="To test sensecore store, please set up a sensecore rag-store server")
+@pytest.mark.skip(reason='To test sensecore store, please set up a sensecore rag-store server')
 class TestSenseCoreStore(unittest.TestCase):
     def setUp(self):
         # sensecore store need kb_id when get or delete
