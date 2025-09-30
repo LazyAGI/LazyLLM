@@ -1,6 +1,6 @@
 import os
 import traceback
-
+import lazyllm
 from collections import defaultdict
 from typing import Optional, List, Union, Set, Dict, Callable, Any, Tuple
 from pathlib import Path
@@ -17,7 +17,6 @@ from ..index_base import IndexBase
 from ..data_type import DataType
 from ..global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 from ..similarity import registered_similarities
-from . import get_store_class
 
 
 class _DocumentStore(object):
@@ -50,7 +49,7 @@ class _DocumentStore(object):
     def _make_store(self, cfg: Dict[str, Any]) -> LazyLLMStoreBase:
         if not cfg: return None
         stype = cfg.get('type')
-        cls = get_store_class(stype)
+        cls = getattr(lazyllm.store, stype, None)
         if not cls:
             raise NotImplementedError(f'Not implemented store type: {stype}')
         return cls(**cfg.get('kwargs', {}))
@@ -71,7 +70,7 @@ class _DocumentStore(object):
     def _normalize_store_config(self, cfg: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         if 'type' in cfg:
             store_type = cfg['type']
-            cls = get_store_class(store_type)
+            cls = getattr(lazyllm.store, store_type, None)
             if not cls:
                 raise NotImplementedError(f'Not implemented store type: {store_type}')
             cap = getattr(cls, 'capability', None)
