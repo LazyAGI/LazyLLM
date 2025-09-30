@@ -4,10 +4,9 @@ from pydantic import BaseModel
 
 
 class BasePromptTemplate(BaseModel, ABC):
-    """String prompt that exposes the format method, returning a prompt."""
 
-    @classmethod
-    def get_template_variables(cls, template: str) -> list[str]:
+    @staticmethod
+    def get_template_variables(template: str) -> list[str]:
         try:
             input_variables = {
                 v for _, v, _, _ in Formatter().parse(template) if v is not None

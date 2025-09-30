@@ -8,17 +8,17 @@ from lazyllm.prompt_templates.prompt_template import PromptTemplate
 
 class FewShotPromptTemplate(BasePromptTemplate):
     model_config = ConfigDict(frozen=True)
-    prefix: str = Field(..., description="The prefix text that comes before examples, it may include variables")
-    suffix: str = Field(..., description="The suffix text that comes after examples, it may include variables")
-    examples: List[Dict[str, Any]] = Field(default_factory=list, description="List of example dictionaries")
-    egs_prompt_template: PromptTemplate = Field(..., description="Template for formatting each example")
+    prefix: str = Field(..., description='The prefix text that comes before examples, it may include variables')
+    suffix: str = Field(..., description='The suffix text that comes after examples, it may include variables')
+    examples: List[Dict[str, Any]] = Field(default_factory=list, description='List of example dictionaries')
+    egs_prompt_template: PromptTemplate = Field(..., description='Template for formatting each example')
     required_vars: List[str] = Field(
-        default_factory=list, description="List of required variable names for the final prompt"
+        default_factory=list, description='List of required variable names for the final prompt'
     )
     partial_vars: Dict[str, Any] = Field(
-        default_factory=dict, description="Dictionary of partial variable functions or values"
+        default_factory=dict, description='Dictionary of partial variable functions or values'
     )
-    separator_for_egs: str = Field(default="\n", description="The separator between examples")
+    separator_for_egs: str = Field(default='\n', description='The separator between examples')
 
     @model_validator(mode='after')
     def validate_variables(self):
@@ -36,13 +36,13 @@ class FewShotPromptTemplate(BasePromptTemplate):
         partial_vars_keys = set(self.partial_vars.keys())
         invalid_partial_vars = partial_vars_keys - all_vars
         if invalid_partial_vars:
-            raise ValueError(f"partial_vars contains variables not found in template: {invalid_partial_vars}")
+            raise ValueError(f'partial_vars contains variables not found in template: {invalid_partial_vars}')
 
         required_vars_set = set(self.required_vars)
         # Check if required_vars and partial_vars have overlap
         overlap_vars = required_vars_set & partial_vars_keys
         if overlap_vars:
-            raise ValueError(f"required_vars and partial_vars have overlap: {overlap_vars}")
+            raise ValueError(f'required_vars and partial_vars have overlap: {overlap_vars}')
 
         # Check if required_vars + partial_vars keys exactly equal all template variables
         combined_vars = required_vars_set | partial_vars_keys
@@ -51,10 +51,10 @@ class FewShotPromptTemplate(BasePromptTemplate):
             extra_vars = combined_vars - all_vars
             error_msg = []
             if missing_vars:
-                error_msg.append(f"Missing variables in required_vars or partial_vars: {missing_vars}")
+                error_msg.append(f'Missing variables in required_vars or partial_vars: {missing_vars}')
             if extra_vars:
-                error_msg.append(f"Extra variables not found in template: {extra_vars}")
-            raise ValueError("; ".join(error_msg))
+                error_msg.append(f'Extra variables not found in template: {extra_vars}')
+            raise ValueError('; '.join(error_msg))
 
         # Check each example is compatible with egs_prompt_template
         if self.examples:
@@ -63,14 +63,14 @@ class FewShotPromptTemplate(BasePromptTemplate):
                 example_keys = set(example.keys())
                 missing_egs_vars = egs_required_vars - example_keys
                 if missing_egs_vars:
-                    raise ValueError(f"Example {i} missing required variables : {missing_egs_vars}")
+                    raise ValueError(f'Example {i} missing required variables : {missing_egs_vars}')
         return self
 
     def format(self, **kwargs) -> str:
         # Check if all required variables are provided
         missing_vars = set(self.required_vars) - set(kwargs.keys())
         if missing_vars:
-            raise KeyError(f"Missing required variables: {missing_vars}")
+            raise KeyError(f'Missing required variables: {missing_vars}')
 
         # 1. Apply partial variables. Note: Overrides the values in kwargs if var_name exists in partial_vars
         format_kwargs = {**kwargs}
@@ -83,7 +83,7 @@ class FewShotPromptTemplate(BasePromptTemplate):
                 else:
                     format_kwargs[var_name] = val
             except Exception as e:
-                raise TypeError(f"Error applying partial function for variable '{var_name}': {e}")
+                raise TypeError(f'Error applying partial function for variable "{var_name}": {e}')
 
         # 2. Format examples
         formatted_examples = []
@@ -93,29 +93,29 @@ class FewShotPromptTemplate(BasePromptTemplate):
                 formatted_example = self.egs_prompt_template.format(**example)
                 formatted_examples.append(formatted_example)
             except Exception as e:
-                raise ValueError(f"Error formatting example {example}: {e}")
+                raise ValueError(f'Error formatting example {example}: {e}')
 
         # 3. Combine prefix, examples(already formatted), and suffix
         examples_text = sep.join(formatted_examples)
 
         # 4. Format the final prompt
         try:
-            final_template = f"{self.prefix}\n{examples_text}\n{self.suffix}"
+            final_template = f'{self.prefix}\n{examples_text}\n{self.suffix}'
             return final_template.format(**format_kwargs)
         except KeyError as e:
-            raise KeyError(f"Template variable not found: {e}")
+            raise KeyError(f'Template variable not found: {e}')
         except Exception as e:
-            raise ValueError(f"Error formatting template: {e}")
+            raise ValueError(f'Error formatting template: {e}')
 
-    def partial(self, **kwargs) -> 'FewShotPromptTemplate':
+    def partial(self, **kwargs) -> "FewShotPromptTemplate":
         # Check if all partial variables exist in the template
-        prefix_vars = set(re.findall(r'\{(\w+)\}', self.prefix))
-        suffix_vars = set(re.findall(r'\{(\w+)\}', self.suffix))
+        prefix_vars = set(re.findall(r"\{(\w+)\}", self.prefix))
+        suffix_vars = set(re.findall(r"\{(\w+)\}", self.suffix))
         all_vars = prefix_vars | suffix_vars
 
         invalid_vars = set(kwargs.keys()) - all_vars
         if invalid_vars:
-            raise KeyError(f"Variables not found in template: {invalid_vars}")
+            raise KeyError(f'Variables not found in template: {invalid_vars}')
 
         # Create new partial_vars dict with additional partial functions
         new_partial_vars = self.partial_vars.copy()

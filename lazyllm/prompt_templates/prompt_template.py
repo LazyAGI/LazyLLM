@@ -1,15 +1,15 @@
 from typing import Dict, List, Any
 from pydantic import ConfigDict, Field, model_validator
 
-from lazyllm.prompts.base import BasePromptTemplate
+from lazyllm.prompt_templates.base import BasePromptTemplate
 
 
 class PromptTemplate(BasePromptTemplate):
     model_config = ConfigDict(frozen=True)
-    template: str = Field(..., description="The prompt template string with {variable} placeholders")
-    required_vars: List[str] = Field(default_factory=list, description="List of required variable names")
+    template: str = Field(..., description='The prompt template string with {variable} placeholders')
+    required_vars: List[str] = Field(default_factory=list, description='List of required variable names')
     partial_vars: Dict[str, Any] = Field(
-        default_factory=dict, description="Dictionary of partial variable functions or values"
+        default_factory=dict, description='Dictionary of partial variable functions or values'
     )
 
     @model_validator(mode='after')
@@ -17,19 +17,19 @@ class PromptTemplate(BasePromptTemplate):
         # 1. All keys in partial_vars must exist in template variables
         # 2. required_vars + partial_vars keys must exactly equal all template variables
         # Extract all variables from template
-        all_vars = set(self.get_template_variables(self.template))
+        all_vars = set(BasePromptTemplate.get_template_variables(self.template))
 
         # Check if partial_vars.keys() exist in template variables
         partial_vars_keys = set(self.partial_vars.keys())
         invalid_partial_vars = partial_vars_keys - all_vars
         if invalid_partial_vars:
-            raise ValueError(f"partial_vars contains variables not found in template: {invalid_partial_vars}")
+            raise ValueError(f'partial_vars contains variables not found in template: {invalid_partial_vars}')
 
         required_vars_set = set(self.required_vars)
         # Check if required_vars and partial_vars have overlap
         overlap_vars = required_vars_set & partial_vars_keys
         if overlap_vars:
-            raise ValueError(f"required_vars and partial_vars have overlap: {overlap_vars}")
+            raise ValueError(f'required_vars and partial_vars have overlap: {overlap_vars}')
 
         # Check if required_vars + partial_vars keys exactly equal all template variables
         combined_vars = required_vars_set | partial_vars_keys
@@ -38,10 +38,10 @@ class PromptTemplate(BasePromptTemplate):
             extra_vars = combined_vars - all_vars
             error_msg = []
             if missing_vars:
-                error_msg.append(f"Missing variables in required_vars or partial_vars: {missing_vars}")
+                error_msg.append(f'Missing variables in required_vars or partial_vars: {missing_vars}')
             if extra_vars:
-                error_msg.append(f"Extra variables not found in template: {extra_vars}")
-            raise ValueError("; ".join(error_msg))
+                error_msg.append(f'Extra variables not found in template: {extra_vars}')
+            raise ValueError('; '.join(error_msg))
 
         return self
 
@@ -49,7 +49,7 @@ class PromptTemplate(BasePromptTemplate):
         # Check if all required variables are provided
         missing_vars = set(self.required_vars) - set(kwargs.keys())
         if missing_vars:
-            raise KeyError(f"Missing required variables: {missing_vars}")
+            raise KeyError(f'Missing required variables: {missing_vars}')
 
         # 1. Apply partial variables. Note: Overrides the values in kwargs if var_name exists in partial_vars
         format_kwargs = {**kwargs}
@@ -62,23 +62,23 @@ class PromptTemplate(BasePromptTemplate):
                 else:
                     format_kwargs[var_name] = val
             except Exception as e:
-                raise TypeError(f"Error applying partial function for variable '{var_name}': {e}")
+                raise TypeError(f'Error applying partial function for variable "{var_name}": {e}')
         # 2. Format the template
         try:
-            print(f"format_kwargs: {format_kwargs}")
-            print(f"self.template: {self.template}")
+            print(f'format_kwargs: {format_kwargs}')
+            print(f'self.template: {self.template}')
             return self.template.format(**format_kwargs)
         except KeyError as e:
-            raise KeyError(f"Template variable not found: {e}")
+            raise KeyError(f'Template variable not found: {e}')
         except Exception as e:
-            raise ValueError(f"Error formatting template: {e}")
+            raise ValueError(f'Error formatting template: {e}')
 
-    def partial(self, **partial_kwargs) -> 'PromptTemplate':
+    def partial(self, **partial_kwargs) -> "PromptTemplate":
         # Check if all partial variables exist in the template
-        template_vars = set(self.get_template_variables(self.template))
+        template_vars = set(BasePromptTemplate.get_template_variables(self.template))
         invalid_vars = set(partial_kwargs.keys()) - template_vars
         if invalid_vars:
-            raise KeyError(f"Variables not found in template: {invalid_vars}")
+            raise KeyError(f'Variables not found in template: {invalid_vars}')
 
         # Create new partial_vars dict with additional partial functions
         new_partial_vars = self.partial_vars.copy()
@@ -97,7 +97,7 @@ class PromptTemplate(BasePromptTemplate):
     @classmethod
     def from_template(cls, template: str) -> 'PromptTemplate':
         # Extract all variables from template
-        all_vars = cls.get_template_variables(template)
+        all_vars = BasePromptTemplate.get_template_variables(template)
         return cls(
             template=template,
             required_vars=all_vars,

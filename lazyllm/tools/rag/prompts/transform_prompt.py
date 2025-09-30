@@ -3,7 +3,7 @@
 from pydantic import BaseModel, Field
 from typing import List, Dict, Any
 
-from lazyllm.prompts import PromptTemplate, FewShotPromptTemplate, BasePromptTemplate
+from lazyllm.prompt_templates import PromptTemplate, FewShotPromptTemplate, BasePromptTemplate
 
 # Below is the default QA transform prompt
 DEFAULT_QA_EGS_TEMPLATE = PromptTemplate.from_template("""
@@ -35,22 +35,22 @@ A: 商汤科技。
 Q: 名为LazyLLM的AI机器人的使命是什么？
 A: 以最小成本协助构建最强大的大规模模型应用程序。""",}]
 
-DEFAULT_QA_PREFIX = """## Role: Q&A Generation Assistant.  
-You are a Q&A generation assistant. Your task is to generate {num_pairs_min}-{num_pairs_max} question-answer pairs based on the context.  
+DEFAULT_QA_PREFIX = """## Role: Q&A Generation Assistant.
+You are a Q&A generation assistant. Your task is to generate {num_pairs_min}-{num_pairs_max} question-answer pairs based on the context.
 ## Constraints:
-- Each question must be answerable directly and specifically from the text.  
-- The answers should be concise and accurate.  
-- Do not include information not supported by the context.  
-- Prefer factual, detail-rich questions over vague ones.  
-- Questions must be self-contained: avoid ambiguous references such as "this text", "this passage", "here", or "the above". Each question should stand alone without requiring external context. 
+- Each question must be answerable directly and specifically from the text.
+- The answers should be concise and accurate.
+- Do not include information not supported by the context.
+- Prefer factual, detail-rich questions over vague ones.
+- Questions must be self-contained: avoid ambiguous references such as "this text", "this passage", "here", or "the above". Each question should stand alone without requiring external context.
 ## Text Format:
 The input is a string contains the user's raw input text
-## Output Format 
+## Output Format
 Format your output as:
-Q: <question>  
-A: <answer>  
-Q: <question>  
-A: <answer> 
+Q: <question>
+A: <answer>
+Q: <question>
+A: <answer>
 ## Example:"""
 
 DEFAULT_QA_SUFFIX = """You should not have any unnecessary output. Lets begin:"""
