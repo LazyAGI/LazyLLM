@@ -71,7 +71,7 @@ class PromptTemplate(BasePromptTemplate):
         except Exception as e:
             raise ValueError(f'Error formatting template: {e}')
 
-    def partial(self, **partial_kwargs) -> "PromptTemplate":
+    def partial(self, **partial_kwargs) -> 'PromptTemplate':
         # Check if all partial variables exist in the template
         template_vars = set(BasePromptTemplate.get_template_variables(self.template))
         invalid_vars = set(partial_kwargs.keys()) - template_vars

@@ -107,10 +107,10 @@ class FewShotPromptTemplate(BasePromptTemplate):
         except Exception as e:
             raise ValueError(f'Error formatting template: {e}')
 
-    def partial(self, **kwargs) -> "FewShotPromptTemplate":
+    def partial(self, **kwargs) -> 'FewShotPromptTemplate':
         # Check if all partial variables exist in the template
-        prefix_vars = set(re.findall(r"\{(\w+)\}", self.prefix))
-        suffix_vars = set(re.findall(r"\{(\w+)\}", self.suffix))
+        prefix_vars = set(re.findall(r'\{(\w+)\}', self.prefix))
+        suffix_vars = set(re.findall(r'\{(\w+)\}', self.suffix))
         all_vars = prefix_vars | suffix_vars
 
         invalid_vars = set(kwargs.keys()) - all_vars

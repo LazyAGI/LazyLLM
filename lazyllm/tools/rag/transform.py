@@ -359,7 +359,7 @@ class LLMParser(NodeTransform):
         assert task_type in ['summary', 'keywords', 'qa', 'qa_img'], f'Not supported task_type {task_type}'
         self._task_type = task_type
         self._prompts = prompts or LLMTransformParserPrompts()
-        task_prompt = getattr(self._prompts, f"{self._task_type}")
+        task_prompt = getattr(self._prompts, self._task_type)
         if self._task_type == 'qa_img':
             prompt = dict(system=task_prompt, user='{input}')
         else:

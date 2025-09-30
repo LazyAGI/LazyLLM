@@ -6,7 +6,7 @@ import textwrap
 class TestFewShotPromptTemplate:
 
     def test_basic_creation(self):
-        """Test basic FewShotPromptTemplate creation"""
+        '''Test basic FewShotPromptTemplate creation'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='You are a helpful assistant. Here are some examples:',
@@ -22,7 +22,7 @@ class TestFewShotPromptTemplate:
         assert few_shot_template.required_vars == ['question']
 
     def test_format_basic(self):
-        """Test basic formatting"""
+        '''Test basic formatting'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='Examples:',
@@ -37,18 +37,18 @@ class TestFewShotPromptTemplate:
         )
 
         result = few_shot_template.format(question='What is 4+4?')
-        expected = textwrap.dedent("""
+        expected = textwrap.dedent('''
             Examples:
             Input: What is 2+2?
             Output: 4
             Input: What is 3+3?
             Output: 6
             Question: What is 4+4?
-            """).strip()
+            ''').strip()
         assert result == expected
 
     def test_format_with_prefix_and_suffix_variables(self):
-        """Test formatting with variables in both prefix and suffix"""
+        '''Test formatting with variables in both prefix and suffix'''
         egs_template = PromptTemplate.from_template('Q: {question}\nA: {answer}')
         few_shot_template = FewShotPromptTemplate(
             prefix='{role} Here are examples:',
@@ -63,18 +63,18 @@ class TestFewShotPromptTemplate:
         )
 
         result = few_shot_template.format(role='You are a calculator.', action='answer', question='What is 4+4?')
-        expected = textwrap.dedent("""
+        expected = textwrap.dedent('''
             You are a calculator. Here are examples:
             Q: What is 2+2?
             A: 4
             Q: What is 3+3?
             A: 6
             Now answer: What is 4+4?
-            """).strip()
+            ''').strip()
         assert result == expected
 
     def test_format_missing_required_variable(self):
-        """Test format with missing required variable"""
+        '''Test format with missing required variable'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='Examples:',
@@ -88,7 +88,7 @@ class TestFewShotPromptTemplate:
             few_shot_template.format()
 
     def test_partial_variables_with_values(self):
-        """Test partial variables with fixed values"""
+        '''Test partial variables with fixed values'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='You are a {role}. Examples:',
@@ -100,15 +100,15 @@ class TestFewShotPromptTemplate:
         )
 
         result = few_shot_template.format(question='What is 4+4?')
-        expected = textwrap.dedent("""
+        expected = textwrap.dedent('''
             You are a assistant. Examples:
             Input: What is 2+2?
             Output: 4
-            Answer: What is 4+4?""").strip()
+            Answer: What is 4+4?''').strip()
         assert result == expected
 
     def test_partial_variables_with_functions(self):
-        """Test partial variables with callable functions"""
+        '''Test partial variables with callable functions'''
         def get_role():
             return 'teacher'
 
@@ -123,15 +123,15 @@ class TestFewShotPromptTemplate:
         )
 
         result = few_shot_template.format(question='What is 4+4?')
-        expected = textwrap.dedent("""
+        expected = textwrap.dedent('''
             You are a teacher. Examples:
             Input: What is 2+2?
             Output: 4
-            Answer: What is 4+4?""").strip()
+            Answer: What is 4+4?''').strip()
         assert result == expected
 
     def test_partial_variables_override_kwargs(self):
-        """Test that partial variables override kwargs values"""
+        '''Test that partial variables override kwargs values'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='You are a {role}. Examples:',
@@ -144,15 +144,15 @@ class TestFewShotPromptTemplate:
 
         # Even if we pass role in kwargs, partial_vars should override
         result = few_shot_template.format(question='What is 4+4?', role='student')
-        expected = textwrap.dedent("""
+        expected = textwrap.dedent('''
             You are a assistant. Examples:
             Input: What is 2+2?
             Output: 4
-            Answer: What is 4+4?""").strip()
+            Answer: What is 4+4?''').strip()
         assert result == expected
 
     def test_partial_method(self):
-        """Test partial method to create new template"""
+        '''Test partial method to create new template'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='You are a {role}. Examples:',
@@ -170,15 +170,15 @@ class TestFewShotPromptTemplate:
         assert partial_template.partial_vars == {'role': 'assistant'}
 
         result = partial_template.format(question='What is 4+4?')
-        expected = textwrap.dedent("""
+        expected = textwrap.dedent('''
             You are a assistant. Examples:
             Input: What is 2+2?
             Output: 4
-            Answer: What is 4+4?""").strip()
+            Answer: What is 4+4?''').strip()
         assert result == expected
 
     def test_partial_method_with_multiple_variables(self):
-        """Test partial method with multiple variables"""
+        '''Test partial method with multiple variables'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='You are a {role}. {instruction} Examples:',
@@ -193,15 +193,15 @@ class TestFewShotPromptTemplate:
         assert partial_template.partial_vars == {'role': 'assistant', 'instruction': 'Please follow these'}
 
         result = partial_template.format(question='What is 4+4?')
-        expected = textwrap.dedent("""
+        expected = textwrap.dedent('''
             You are a assistant. Please follow these Examples:
             Input: What is 2+2?
             Output: 4
-            Answer: What is 4+4?""").strip()
+            Answer: What is 4+4?''').strip()
         assert result == expected
 
     def test_partial_method_invalid_variable(self):
-        """Test partial method with invalid variable"""
+        '''Test partial method with invalid variable'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='Examples:',
@@ -215,7 +215,7 @@ class TestFewShotPromptTemplate:
             few_shot_template.partial(invalid_var='value')
 
     def test_get_all_variables(self):
-        """Test get_all_variables method"""
+        '''Test get_all_variables method'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='You are a {role}. Examples:',
@@ -229,7 +229,7 @@ class TestFewShotPromptTemplate:
         assert set(variables) == {'role', 'question'}
 
     def test_get_all_variables_no_variables(self):
-        """Test get_all_variables with no variables"""
+        '''Test get_all_variables with no variables'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='Examples:',
@@ -243,7 +243,7 @@ class TestFewShotPromptTemplate:
         assert variables == []
 
     def test_validation_partial_vars_not_in_template(self):
-        """Test validation when partial_vars contains variables not in template"""
+        '''Test validation when partial_vars contains variables not in template'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
 
         with pytest.raises(ValueError, match='partial_vars contains variables not found in template'):
@@ -257,7 +257,7 @@ class TestFewShotPromptTemplate:
             )
 
     def test_validation_required_vars_and_partial_vars_overlap(self):
-        """Test validation when required_vars and partial_vars have overlap"""
+        '''Test validation when required_vars and partial_vars have overlap'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
 
         with pytest.raises(ValueError, match='required_vars and partial_vars have overlap'):
@@ -271,7 +271,7 @@ class TestFewShotPromptTemplate:
             )
 
     def test_validation_missing_variables(self):
-        """Test validation when variables are missing from required_vars or partial_vars"""
+        '''Test validation when variables are missing from required_vars or partial_vars'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
 
         with pytest.raises(ValueError, match='Missing variables in required_vars or partial_vars'):
@@ -285,7 +285,7 @@ class TestFewShotPromptTemplate:
             )
 
     def test_validation_extra_variables(self):
-        """Test validation when extra variables are provided"""
+        '''Test validation when extra variables are provided'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
 
         with pytest.raises(ValueError, match='Extra variables not found in template'):
@@ -299,7 +299,7 @@ class TestFewShotPromptTemplate:
             )
 
     def test_validation_example_compatibility(self):
-        """Test validation when examples are not compatible with egs_prompt_template"""
+        '''Test validation when examples are not compatible with egs_prompt_template'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
 
         with pytest.raises(ValueError):
@@ -313,7 +313,7 @@ class TestFewShotPromptTemplate:
             )
 
     def test_validation_multiple_examples_compatibility(self):
-        """Test validation when multiple examples have compatibility issues"""
+        '''Test validation when multiple examples have compatibility issues'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
 
         with pytest.raises(ValueError):
@@ -330,7 +330,7 @@ class TestFewShotPromptTemplate:
             )
 
     def test_partial_function_error_handling(self):
-        """Test error handling when partial function raises exception"""
+        '''Test error handling when partial function raises exception'''
         def error_function():
             raise RuntimeError('Test error')
 
@@ -348,7 +348,7 @@ class TestFewShotPromptTemplate:
             few_shot_template.format(question='What is 4+4?')
 
     def test_example_formatting_error(self):
-        """Test error handling when example formatting fails"""
+        '''Test error handling when example formatting fails'''
         with pytest.raises(ValueError, match='Example 0 missing required variables'):
             egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}\nExtra: {missing_var}')
             few_shot_template = FewShotPromptTemplate(
@@ -362,7 +362,7 @@ class TestFewShotPromptTemplate:
             few_shot_template.format(question='What is 4+4?')
 
     def test_empty_examples(self):
-        """Test template with empty examples list"""
+        '''Test template with empty examples list'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='You are a helpful assistant.',
@@ -374,15 +374,15 @@ class TestFewShotPromptTemplate:
         )
 
         result = few_shot_template.format(question='What is 4+4?')
-        expected = textwrap.dedent("""
+        expected = textwrap.dedent('''
             You are a helpful assistant.
 
             Please answer: What is 4+4?
-            """).strip()
+            ''').strip()
         assert result == expected
 
     def test_complex_template(self):
-        """Test complex template with multiple variables and partial functions"""
+        '''Test complex template with multiple variables and partial functions'''
         def get_timestamp():
             return '2024-01-01'
 
@@ -403,7 +403,7 @@ class TestFewShotPromptTemplate:
         )
 
         result = few_shot_template.format(system='Assistant', user='Hello', question='What is 4+4?')
-        expected = textwrap.dedent("""
+        expected = textwrap.dedent('''
             System: Assistant
             Timestamp: 2024-01-01
             Version: 1.0.0
@@ -413,11 +413,11 @@ class TestFewShotPromptTemplate:
             Q: What is 3+3?
             A: 6
             User: Hello
-            Please answer: What is 4+4?""").strip()
+            Please answer: What is 4+4?''').strip()
         assert result == expected
 
     def test_nested_partial_templates(self):
-        """Test creating nested partial templates"""
+        '''Test creating nested partial templates'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='You are a {role}. {instruction} Examples:',
@@ -439,15 +439,15 @@ class TestFewShotPromptTemplate:
         assert partial2.partial_vars == {'role': 'assistant', 'instruction': 'Please follow these'}
 
         result = partial2.format(question='What is 4+4?')
-        expected = textwrap.dedent("""
+        expected = textwrap.dedent('''
             You are a assistant. Please follow these Examples:
             Input: What is 2+2?
             Output: 4
-            Answer: What is 4+4?""").strip()
+            Answer: What is 4+4?''').strip()
         assert result == expected
 
     def test_template_with_special_characters(self):
-        """Test template with special characters in variable names"""
+        '''Test template with special characters in variable names'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='You are a {user_role}. Examples:',
@@ -459,15 +459,15 @@ class TestFewShotPromptTemplate:
         )
 
         result = few_shot_template.format(user_role='assistant', user_question='What is 4+4?')
-        expected = textwrap.dedent("""
+        expected = textwrap.dedent('''
             You are a assistant. Examples:
             Input: What is 2+2?
             Output: 4
-            Answer: What is 4+4?""").strip()
+            Answer: What is 4+4?''').strip()
         assert result == expected
 
     def test_lambda_functions_in_partial_vars(self):
-        """Test lambda functions in partial variables"""
+        '''Test lambda functions in partial variables'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         few_shot_template = FewShotPromptTemplate(
             prefix='You are a {role}. Count: {count} Examples:',
@@ -479,15 +479,15 @@ class TestFewShotPromptTemplate:
         )
 
         result = few_shot_template.format(question='What is 4+4?')
-        expected = textwrap.dedent("""
+        expected = textwrap.dedent('''
             You are a assistant. Count: 42 Examples:
             Input: What is 2+2?
             Output: 4
-            Answer: What is 4+4?""").strip()
+            Answer: What is 4+4?''').strip()
         assert result == expected
 
     def test_examples_copy_in_partial(self):
-        """Test that examples are properly copied in partial method"""
+        '''Test that examples are properly copied in partial method'''
         egs_template = PromptTemplate.from_template('Input: {input}\nOutput: {output}')
         original_examples = [{'input': 'What is 2+2?', 'output': '4'}]
 

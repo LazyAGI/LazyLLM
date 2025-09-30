@@ -13,4 +13,4 @@ class BasePromptTemplate(BaseModel, ABC):
             }
             return sorted(input_variables)
         except Exception as e:
-            raise ValueError(f"Error getting template variables: {e}")
+            raise ValueError(f'Error getting template variables: {e}')
