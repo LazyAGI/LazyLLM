@@ -23,7 +23,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Fetch main
-        uses: git fetch origin main
+        run: git fetch origin main
 
       - name: Set up Python
         uses: actions/setup-python@v5
