@@ -65,8 +65,6 @@ class PromptTemplate(BasePromptTemplate):
                 raise TypeError(f'Error applying partial function for variable "{var_name}": {e}')
         # 2. Format the template
         try:
-            print(f'format_kwargs: {format_kwargs}')
-            print(f'self.template: {self.template}')
             return self.template.format(**format_kwargs)
         except KeyError as e:
             raise KeyError(f'Template variable not found: {e}')
