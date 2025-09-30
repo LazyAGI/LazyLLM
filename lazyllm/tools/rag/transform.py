@@ -352,14 +352,17 @@ class FuncNodeTransform(NodeTransform):
 
 
 class LLMParser(NodeTransform):
+    supported_languages = {'en': 'English', 'zh': 'Chinese'}
+
     def __init__(self, llm: TrainableModule, language: str, task_type: str,
                  prompts: Optional[LLMTransformParserPrompts] = None, num_workers: int = 30):
         super(__class__, self).__init__(num_workers=num_workers)
-        assert language in ['en', 'zh'], f'Not supported language {language}'
+        assert language in self.supported_languages, f'Not supported language {language}'
         assert task_type in ['summary', 'keywords', 'qa', 'qa_img'], f'Not supported task_type {task_type}'
         self._task_type = task_type
         self._prompts = prompts or LLMTransformParserPrompts()
-        task_prompt = getattr(self._prompts, self._task_type)
+        task_prompt_tempalte = getattr(self._prompts, self._task_type)
+        task_prompt = task_prompt_tempalte.format(language=self.supported_languages[language])
         if self._task_type == 'qa_img':
             prompt = dict(system=task_prompt, user='{input}')
         else:
