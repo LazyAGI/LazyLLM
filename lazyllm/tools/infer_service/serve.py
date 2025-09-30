@@ -4,7 +4,7 @@ import asyncio
 import threading
 from datetime import datetime
 from pydantic import BaseModel, Field
-from fastapi import HTTPException, Header
+from fastapi import HTTPException, Header  # noqa NID002
 from async_timeout import timeout
 
 import lazyllm

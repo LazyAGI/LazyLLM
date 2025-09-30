@@ -1,9 +1,15 @@
 import ast
 import os
-from lazyllm.thirdparty.modules import modules
+import importlib.util
+from pathlib import Path
 
+module_path = Path('lazyllm/thirdparty/modules.py').resolve()
 
-modules = [m if isinstance(m, str) else m[0] for m in modules if (m != 'os' and m[0] != 'os')]
+spec = importlib.util.spec_from_file_location('modules', module_path)
+modules = importlib.util.module_from_spec(spec)
+spec.loader.exec_module(modules)
+
+modules = [m if isinstance(m, str) else m[0] for m in modules.modules if (m != 'os' and m[0] != 'os')]
 
 
 EXCLUDE_PATHS = [
@@ -51,4 +57,3 @@ class NoDirectImportChecker:
                             f'Use `from thirdparty import {node.module}` and use `{node.module}.xxx` instead.',
                             type(self),
                         )
-
