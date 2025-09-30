@@ -65,6 +65,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Fetch main
+        uses: git fetch origin main
+
       - name: Build doc
         run: |
           set -e

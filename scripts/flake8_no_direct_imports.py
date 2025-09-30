@@ -35,7 +35,7 @@ class NoDirectImportChecker:
             if normalized.startswith(excl) or f'/{excl}' in normalized:
                 return
 
-        for node in self.tree.body:  # 🚨 只看顶层
+        for node in self.tree.body:
             if isinstance(node, ast.Import):
                 for alias in node.names:
                     if alias.name.split('.')[0] in modules:
