@@ -1,3 +1,4 @@
+import lazyllm
 from .store_base import (
     LazyLLMStoreBase,
     LAZY_IMAGE_GROUP,
@@ -22,9 +23,13 @@ _STORE_REGISTRY = {
 
 def get_store_class(name: str):
     cls = _STORE_REGISTRY.get(name.lower())
-    if not cls:
-        return None
-    return cls
+    if cls:
+        return cls
+
+    if hasattr(lazyllm, 'store') and hasattr(lazyllm.store, name):
+        return getattr(lazyllm.store, name)
+
+    return None
 
 __all__ = [
     'LazyLLMStoreBase',
