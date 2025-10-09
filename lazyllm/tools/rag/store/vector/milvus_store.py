@@ -349,8 +349,6 @@ class MilvusStore(LazyLLMStoreBase):
                 _replace_index_type(index_item)
         elif isinstance(index_params, dict):
             _replace_index_type(index_params)
-        else:
-            LOG.error(f'Expected index params type: list or dict, but got {type(index_params)}')
 
     def _ensure_params_defaults(self, index_item: dict):
         '''
