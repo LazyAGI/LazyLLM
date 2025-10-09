@@ -263,15 +263,15 @@ class MilvusStore(LazyLLMStoreBase):
 
         # Pre-process index_kwargs to create a lookup dictionary for O(1) access
         index_kwargs_lookup = {}
-        if isinstance(original_index_kwargs, list):
-            for item in original_index_kwargs:
-                self._ensure_params_defaults(item)
-                embed_key = item.get('embed_key', None)
-                if not embed_key:
-                    raise ValueError(f'cannot find `embed_key` in `index_kwargs` of `{item}`')
-                index_kwargs_lookup[embed_key] = item.copy()
-                index_kwargs_lookup[embed_key].pop('embed_key', None)
-
+        if isinstance(original_index_kwargs, dict):
+            original_index_kwargs = [original_index_kwargs]
+        for item in original_index_kwargs:
+            self._ensure_params_defaults(item)
+            embed_key = item.get('embed_key', None)
+            if not embed_key:
+                raise ValueError(f'cannot find `embed_key` in `index_kwargs` of `{item}`')
+            index_kwargs_lookup[embed_key] = item.copy()
+            index_kwargs_lookup[embed_key].pop('embed_key', None)
         for k, kws in embed_kwargs.items():
             embed_field_name = self._gen_embed_key(k)
             field_list.append(pymilvus.FieldSchema(name=embed_field_name, **kws))
@@ -368,7 +368,7 @@ class MilvusStore(LazyLLMStoreBase):
             itype_up = str(itype).upper()
             index_item['index_type'] = itype_up
         else:
-            LOG.error(f'cannot find `index_type` in `index_kwargs` of `{index_item}`')
+            raise ValueError(f'cannot find `index_type` in `index_kwargs` of `{index_item}`')
 
         defaults = MILVUS_INDEX_TYPE_DEFAULTS.get(index_item['index_type'], {})
 
