@@ -73,12 +73,12 @@ class LLMContextRecall(BaseEvaluator):
 
     def _process_one_data_impl(self, data):
         res = copy.deepcopy(data)
-        context = "\n".join(data['context_retrieved'])
+        context = '\n'.join(data['context_retrieved'])
 
         query = f'question: {data["question"]}\ncontext: {context}\nstatement: {data["answer"]}'
         eval_result = self._execute_with_retries(
             query, self._llm, self._validate_eval_result, self._post_processor)
-        scores = [result["score"] for result in eval_result]
+        scores = [result['score'] for result in eval_result]
 
         res['final_score'] = round(sum(scores) / len(scores), 4) if scores else 0.0
         return res
@@ -94,7 +94,7 @@ class NonLLMContextRecall(BaseEvaluator):
         return 1 - rapidfuzz.distance.Levenshtein.normalized_distance(reference, context)
 
     def _calc_context_recall(self, data):
-        contexts, reference = data["context"], data["reference"]
+        contexts, reference = data['context'], data['reference']
         scores = []
         for context in contexts:
             score = self._calc_levenshtein_distance(reference, context)
@@ -122,13 +122,13 @@ class NonLLMContextRecall(BaseEvaluator):
         return res
 
 class ContextRelevance(BaseEvaluator):
-    def __init__(self, splitter="。", retry=3, concurrency=1):
+    def __init__(self, splitter='。', retry=3, concurrency=1):
         super().__init__(concurrency, retry)
         self._splitter = splitter
         self._necessary_keys = ['context_retrieved', 'context_reference']
 
     def _calc_context_relevance(self, data):
-        sentences_retrieved, sentences_reference = data["context"], data["reference"]
+        sentences_retrieved, sentences_reference = data['context'], data['reference']
         scores = [0] * len(sentences_retrieved)
         for i, sentence in enumerate(sentences_retrieved):
             if sentence in sentences_reference:
@@ -144,8 +144,8 @@ class ContextRelevance(BaseEvaluator):
 
     def _process_one_data_impl(self, data):
         res = copy.deepcopy(data)
-        retrieved = self._paragraphs_to_sentences(data["context_retrieved"])
-        reference = self._paragraphs_to_sentences(data["context_reference"])
+        retrieved = self._paragraphs_to_sentences(data['context_retrieved'])
+        reference = self._paragraphs_to_sentences(data['context_reference'])
 
         input_data = {'context': retrieved, 'reference': reference}
         eval_result = self._execute_with_retries(input_data, self._calc_context_relevance)
