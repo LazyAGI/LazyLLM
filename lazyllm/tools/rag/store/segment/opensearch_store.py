@@ -54,13 +54,7 @@ DEFAULT_INDEX_BODY = {
                 'analyzer': 'ik_max_word',
                 'search_analyzer': 'ik_smart',
             },
-            'answer': {
-                'type': 'text',
-                'index': True,
-                'store': True,
-                'analyzer': 'ik_max_word',
-                'search_analyzer': 'ik_smart',
-            },
+            'answer': {'type': 'text', 'index': True, 'store': True},
             'meta': {'type': 'text', 'index': False, 'store': True},
             'global_meta': {'type': 'text', 'index': False, 'store': True},
             'type': {'type': 'keyword', 'store': True},
@@ -276,23 +270,23 @@ class OpenSearchStore(LazyLLMStoreBase):
                 vals = [vals]
             return {'query': {'ids': {'values': vals}}}
 
+        def _add_clause(key, val):
+            if isinstance(val, list):
+                must_clauses.append({'terms': {key: val}})
+            else:
+                must_clauses.append({'term': {key: val}})
         must_clauses = []
         if RAG_DOC_ID in criteria:
             val = criteria.pop(RAG_DOC_ID)
-            if isinstance(val, list):
-                must_clauses.append({'terms': {'doc_id': val}})
-            else:
-                must_clauses.append({'term': {'doc_id': val}})
+            _add_clause('doc_id', val)
         if RAG_KB_ID in criteria:
-            must_clauses.append({'term': {'kb_id': criteria.pop(RAG_KB_ID)}})
+            val = criteria.pop(RAG_KB_ID)
+            _add_clause('kb_id', val)
         if 'parent' in criteria:
             must_clauses.append({'term': {'parent': criteria.pop('parent')}})
 
         for k, v in criteria.items():
-            if isinstance(v, list):
-                must_clauses.append({'terms': {k: v}})
-            else:
-                must_clauses.append({'term': {k: v}})
+            _add_clause(k, v)
 
         return {'query': {'bool': {'must': must_clauses}}} if must_clauses else {}
 
@@ -328,7 +322,7 @@ class OpenSearchStore(LazyLLMStoreBase):
     def _adapt_mapping_for_no_ik(self, mapping_body: dict) -> dict:
         mapping = copy.deepcopy(mapping_body)
 
-        for field_name, field_def in mapping['mappings']['properties'].items():
+        for _, field_def in mapping['mappings']['properties'].items():
             if field_def.get('analyzer'):
                 field_def['analyzer'] = 'ngram_analyzer'   # 或 'standard'
             if field_def.get('search_analyzer'):
