@@ -1,6 +1,5 @@
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Set
 from pydantic import ConfigDict, Field, model_validator
-import re
 
 from lazyllm.prompt_templates.base import BasePromptTemplate
 from lazyllm.prompt_templates.prompt_template import PromptTemplate
@@ -25,12 +24,10 @@ class FewShotPromptTemplate(BasePromptTemplate):
         # 1. All keys in partial_vars must exist in the combined prefix+suffix variables
         # 2. required_vars + partial_vars keys must exactly equal all template variables
         # 3. Examples must be compatible with egs_prompt_template
-        prefix_vars = set(re.findall(r'\{(\w+)\}', self.prefix))
-        suffix_vars = set(re.findall(r'\{(\w+)\}', self.suffix))
 
         # all variables: variables in prefix + suffix.
         # Note: egs_prompt_template variables are not included here.
-        all_vars = prefix_vars | suffix_vars
+        all_vars = self._get_all_variables()
 
         # Check if partial_vars.keys() exist in template variables
         partial_vars_keys = set(self.partial_vars.keys())
@@ -109,9 +106,7 @@ class FewShotPromptTemplate(BasePromptTemplate):
 
     def partial(self, **kwargs) -> 'FewShotPromptTemplate':
         # Check if all partial variables exist in the template
-        prefix_vars = set(re.findall(r'\{(\w+)\}', self.prefix))
-        suffix_vars = set(re.findall(r'\{(\w+)\}', self.suffix))
-        all_vars = prefix_vars | suffix_vars
+        all_vars = self._get_all_variables()
 
         invalid_vars = set(kwargs.keys()) - all_vars
         if invalid_vars:
@@ -133,7 +128,7 @@ class FewShotPromptTemplate(BasePromptTemplate):
             partial_vars=new_partial_vars
         )
 
-    def get_all_variables(self) -> List[str]:
-        prefix_vars = set(re.findall(r'\{(\w+)\}', self.prefix))
-        suffix_vars = set(re.findall(r'\{(\w+)\}', self.suffix))
-        return list(prefix_vars | suffix_vars)
+    def _get_all_variables(self) -> Set[str]:
+        prefix_vars = set(BasePromptTemplate.get_template_variables(self.prefix))
+        suffix_vars = set(BasePromptTemplate.get_template_variables(self.suffix))
+        return prefix_vars | suffix_vars
