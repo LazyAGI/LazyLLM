@@ -49,9 +49,8 @@ def _hash_nodes(nodes: List[DocNode], language: str) -> str:
     for node in nodes:
         uid = node.uid
         m.update(uid.encode('utf-8'))
-        # to detect content changes, add the short hash of the content
-        text_hash = hashlib.sha256(node.text.encode('utf-8')).digest()
-        m.update(text_hash)
+        # to detect content changes, use cached content_hash from node
+        m.update(node.content_hash.encode('utf-8'))
     return m.hexdigest()
 
 def _get_bm25_from_cache(nodes: List[DocNode], language: str = 'en', **kwargs) -> BM25:
@@ -62,8 +61,13 @@ def _get_bm25_from_cache(nodes: List[DocNode], language: str = 'en', **kwargs) -
             _bm25_cache[key] = bm
             return bm
 
-        bm = BM25(nodes, language=language, **kwargs)
+    bm = BM25(nodes, language=language, **kwargs)
 
+    with _bm25_cache_lock:
+        if key in _bm25_cache:
+            bm = _bm25_cache.pop(key)
+            _bm25_cache[key] = bm
+            return bm
         if len(_bm25_cache) >= _MAX_CACHE_SIZE:
             _bm25_cache.popitem(last=False)
         _bm25_cache[key] = bm
