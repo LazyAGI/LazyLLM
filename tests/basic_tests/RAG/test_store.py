@@ -837,6 +837,12 @@ class TestSegementStore(object):
         res = self.store.search(collection_name=self.collections[1], query='test3', topk=1, filters={'group': 'g3'})
         assert len(res) == 1, f'search {self.segment_store_type} failed'
         assert res[0].get('uid') == self.data[2].get('uid'), f'search {self.segment_store_type} failed'
+        res = self.store.search(collection_name=self.collections[1], query='test3', filters={RAG_DOC_ID: ['doc3']})
+        assert len(res) == 1, f'search {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[2].get('uid'), f'search {self.segment_store_type} failed'
+        res = self.store.search(collection_name=self.collections[1], query='test4', filters={RAG_KB_ID: ['kb4']})
+        assert len(res) == 1, f'search {self.segment_store_type} failed'
+        assert res[0].get('uid') == self.data[3].get('uid'), f'search {self.segment_store_type} failed'
         res = self.store.search(collection_name=self.collections[1], query='test', filters={'group': ['g3', 'g4']})
         assert len(res) == 2, f'search {self.segment_store_type} failed'
         return True
