@@ -7,7 +7,7 @@ from lazyllm.prompt_templates import PromptTemplate, FewShotPromptTemplate, Base
 
 # Below is the default QA transform prompt
 DEFAULT_QA_EGS_TEMPLATE = PromptTemplate.from_template('''
-egample {index}:
+example {index}:
 input:
 {input}
 output:
