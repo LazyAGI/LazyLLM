@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+__version__ = '6.0.1dev'
+
 from .configs import config
 from .configs import * # noqa F401 of Config
 from .common import *  # noqa F403
@@ -22,6 +24,7 @@ from .patch import patch_os_env
 
 config.done()
 patch_os_env(lambda key, value: config.refresh(key), config.refresh)
+
 
 
 del LazyLLMRegisterMetaClass  # noqa F821
