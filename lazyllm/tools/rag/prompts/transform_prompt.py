@@ -55,7 +55,7 @@ A: <answer>
 
 DEFAULT_QA_SUFFIX = '''You should not have any unnecessary output. Lets begin:'''
 
-# 使用 FewShotPromptTemplate 重构 TRANSFORM_QA_PROMPT
+# Use DEFAULT_QA_PROMPT to extract QA pairs from text
 DEFAULT_QA_PROMPT = FewShotPromptTemplate(
     prefix=DEFAULT_QA_PREFIX,
     suffix=DEFAULT_QA_SUFFIX,
@@ -100,7 +100,7 @@ The input is a string contains the user"s raw input text
 
 DEFAULT_SUMMARIZATION_SUFFIX = '''You should not have any unnecessary output. Lets begin:'''
 
-# 使用 FewShotPromptTemplate 重构文本摘要提示
+# Use DEFAULT_SUMMARIZATION_PROMPT to extract text summary from text
 DEFAULT_SUMMARIZATION_PROMPT = FewShotPromptTemplate(
     prefix=DEFAULT_SUMMARIZATION_PREFIX,
     suffix=DEFAULT_SUMMARIZATION_SUFFIX,
@@ -145,7 +145,7 @@ The input is a string contains the user"s raw input text
 
 DEFAULT_KEYWORD_EXTRACTION_SUFFIX = '''You should not have any unnecessary output. Lets begin:'''
 
-# 使用 FewShotPromptTemplate 重构关键词提取提示
+# Use DEFAULT_KEYWORD_EXTRACTION_PROMPT to extract keywords from text
 DEFAULT_KEYWORD_EXTRACTION_PROMPT = FewShotPromptTemplate(
     prefix=DEFAULT_KEYWORD_EXTRACTION_PREFIX,
     suffix=DEFAULT_KEYWORD_EXTRACTION_SUFFIX,
@@ -185,7 +185,7 @@ You are a Q&A pair extraction engine, responsible for analyzing and extracting Q
 
 DEFAULT_VLM_QA_SUFFIX = '''You should not output any extra characters. Let"s start now.'''
 
-# 使用 FewShotPromptTemplate 重构Q&A对提取提示
+# Use DEFAULT_VLM_QA_PROMPT to extract Q&A pairs from images
 DEFAULT_VLM_QA_PROMPT = FewShotPromptTemplate(
     prefix=DEFAULT_VLM_QA_PREFIX,
     suffix=DEFAULT_VLM_QA_SUFFIX,
