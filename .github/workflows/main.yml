@@ -132,7 +132,7 @@ jobs:
 
   AdvancedStandardTests:
     runs-on: tps_sco_nv
-    needs: [Clone]
+    needs: [Clone, check_changes]
     steps:
       - name: Get changed env
         run: |
@@ -160,7 +160,7 @@ jobs:
 
   AdvancedFullTests:
     runs-on: tps_sco_nv
-    needs: [Clone]
+    needs: [Clone, check_changes]
     steps:
       - name: Get changed env
         run: |
