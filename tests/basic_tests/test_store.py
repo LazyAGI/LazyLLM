@@ -509,10 +509,11 @@ class TestMilvusStore(unittest.TestCase):
                                 embed_key='vec_dense', topk=1, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 0)
 
-    def test_get_in_new_version(self):
+    def test_get_massive_data(self):
         new_data_list = []
         criteria_list = []
-        for i in range(10000):
+        MASSIVE_DATA_SIZE = 20000
+        for i in range(MASSIVE_DATA_SIZE):
             one_data = copy.deepcopy(data[0])
             one_data['uid'] = f'uid_{i}'
             one_data['doc_id'] = 'doc_common'
@@ -523,10 +524,11 @@ class TestMilvusStore(unittest.TestCase):
 
         # test client.query_iterator in get api
         res = self.store.get(collection_name=self.collections[0])
-        self.assertEqual(len(res), 10000)
+        self.assertEqual(len(res), MASSIVE_DATA_SIZE)
 
-        res = self.store.get(collection_name=self.collections[0], criteria={'uid': criteria_list[0:9999]})
-        self.assertEqual(len(res), 9999)
+        SEARCH_DATA_SIZE = 9999
+        res = self.store.get(collection_name=self.collections[0], criteria={'uid': criteria_list[0:SEARCH_DATA_SIZE]})
+        self.assertEqual(len(res), SEARCH_DATA_SIZE)
 
     def test_batch_query_legacy(self):
 
