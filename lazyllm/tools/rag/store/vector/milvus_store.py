@@ -266,6 +266,7 @@ class MilvusStore(LazyLLMStoreBase):
         if isinstance(original_index_kwargs, dict):
             original_index_kwargs = [original_index_kwargs]
         for item in original_index_kwargs:
+            # add default values to the params of each index item with no overrides
             self._ensure_params_defaults(item)
             embed_key = item.get('embed_key', None)
             if not embed_key:
@@ -276,16 +277,15 @@ class MilvusStore(LazyLLMStoreBase):
             embed_field_name = self._gen_embed_key(k)
             field_list.append(pymilvus.FieldSchema(name=embed_field_name, **kws))
 
-            if isinstance(original_index_kwargs, list):
-                if k in index_kwargs_lookup:
-                    index_params.add_index(field_name=embed_field_name, **index_kwargs_lookup[k])
-            elif isinstance(original_index_kwargs, dict):
-                index_params.add_index(field_name=embed_field_name, **original_index_kwargs)
+            if k in index_kwargs_lookup:
+                index_params.add_index(field_name=embed_field_name, **index_kwargs_lookup[k])
+
         schema = pymilvus.CollectionSchema(fields=field_list, auto_id=False, enable_dynamic_field=False)
         try:
             client.create_collection(collection_name=collection_name, schema=schema, index_params=index_params)
         except pymilvus.MilvusException as e:
             msg = getattr(e, 'message', str(e))
+            print(msg)
             if 'invalid index type' in msg.lower():
                 if retry >= MILVUS_INDEX_MAX_RETRY:
                     LOG.error(f'[Milvus Store] index fallback exceeded max retries ({MILVUS_INDEX_MAX_RETRY}),'
@@ -307,42 +307,35 @@ class MilvusStore(LazyLLMStoreBase):
 
     def _ensure_valid_index(self, index_params: Union[list, dict]):
         embed_index_map = {
-            DataType.FLOAT_VECTOR: {
-                'AUTOINDEX': ['L2', 'IP', 'COSINE'], 'HNSW': ['L2', 'COSINE', 'IP'],
-                'IVF_FLAT': ['L2', 'IP', 'COSINE'], 'IVF_SQ8': ['L2', 'IP'], 'IVF_PQ': ['L2', 'IP'],
-                'FLAT': ['IP', 'COSINE'], 'DISKANN': ['L2']
-            },
-            DataType.SPARSE_FLOAT_VECTOR: {'SPARSE_INVERTED_INDEX': ['IP'], 'SPARSE_WAND': ['IP']},
-            DataType.VARCHAR: {'INVERTED_INDEX': [None]},
-            DataType.STRING: {'INVERTED_INDEX': [None]},
-            DataType.ARRAY: {'INVERTED_INDEX': [None]},
-            DataType.INT32: {'INVERTED_INDEX': [None]},
-            DataType.INT64: {'INVERTED_INDEX': [None]},
-            DataType.FLOAT: {'INVERTED_INDEX': [None]},
-            DataType.BOOLEAN: {'INVERTED_INDEX': [None]},
+            DataType.FLOAT_VECTOR: ['FLAT', 'HNSW', 'IVF_FLAT', 'IVF_SQ8', 'IVF_PQ', 'AUTOINDEX', 'DISKANN'],
+            DataType.SPARSE_FLOAT_VECTOR: ['SPARSE_INVERTED_INDEX', 'SPARSE_WAND'],
+            DataType.VARCHAR: ['INVERTED_INDEX'],
+            DataType.STRING: ['INVERTED_INDEX'],
+            DataType.ARRAY: ['INVERTED_INDEX'],
+            DataType.INT32: ['INVERTED_INDEX'],
+            DataType.INT64: ['INVERTED_INDEX'],
+            DataType.FLOAT: ['INVERTED_INDEX'],
+            DataType.BOOLEAN: ['INVERTED_INDEX'],
         }
 
         def _replace_index_type(index_item: dict):
+            '''
+            Raise ValueError if the DataType is not supported by Milvus.
+            Raise ValueError if the IndexType is not compatible with the DataType.
+            Fallback to the default index type if the IndexType is compatible with the DataType
+            but not supported by Milvus.
+            '''
             embed_key = index_item.get('embed_key')
             dtype = self._embed_datatypes.get(embed_key)
             index_type = index_item.get('index_type').upper()
-            metric_type = index_item.get('metric_type').upper()
             if dtype not in embed_index_map:
-                LOG.warning(f'[Milvus Store] {embed_key}: Unsupported data type: {dtype}.'
-                            f'Fallback to {list(embed_index_map.keys())[0]}.')
-                dtype = list(embed_index_map.keys())[0]
-                self._embed_datatypes[embed_key] = dtype
+                raise ValueError(f'[Milvus Store]: Unsupported data type: {DataType(dtype).name}.')
             if index_type not in embed_index_map.get(dtype):
-                LOG.warning(f'[Milvus Store] {DataType(dtype).name}: Unsupported index type: {index_type}.'
-                            f'Fallback to {list(embed_index_map.get(dtype).keys())[0]}.')
+                raise ValueError(f'[Milvus Store] {DataType(dtype).name}: Unsupported index type: {index_type}.')
+            else:
                 index_type = list(embed_index_map.get(dtype).keys())[0]
                 index_item['index_type'] = index_type
-            if metric_type not in embed_index_map[dtype][index_type]:
-                LOG.warning(f'[Milvus Store] {index_type}: Unsupported metric type: {metric_type}.'
-                            f'Fallback to {embed_index_map[dtype][index_type][0]}.')
-                metric_type = embed_index_map[dtype][index_type][0]
-                index_item['metric_type'] = metric_type
-            self._ensure_params_defaults(index_item)
+                self._ensure_params_defaults(index_item)
 
         if isinstance(index_params, list):
             for index_item in index_params:
