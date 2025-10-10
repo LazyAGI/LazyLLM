@@ -174,7 +174,7 @@ class MilvusStore(LazyLLMStoreBase):
             return False
 
     @override
-    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:
+    def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:  # noqa: C901
         try:
             with self._client_context() as client:
                 if not client.has_collection(collection_name):
@@ -183,28 +183,61 @@ class MilvusStore(LazyLLMStoreBase):
                 col_desc = client.describe_collection(collection_name=collection_name)
                 field_names = [field.get('name') for field in col_desc.get('fields', [])
                                if field.get('name').startswith(EMBED_PREFIX)]
-                if criteria and self._primary_key in criteria:
-                    res = client.get(collection_name=collection_name, ids=criteria[self._primary_key])
+                query_kwargs = self._construct_criteria(criteria) if criteria else {}
+                if version.parse(pymilvus.__version__) < version.parse('2.4.11'):
+                    # For older versions, batch query manually
+                    res = self._batch_query_legacy(client, collection_name, field_names, query_kwargs)
                 else:
-                    filters = self._construct_criteria(criteria) if criteria else {}
-                    if version.parse(pymilvus.__version__) >= version.parse('2.4.11'):
-                        iterator = client.query_iterator(collection_name=collection_name,
-                                                         batch_size=MILVUS_PAGINATION_OFFSET,
-                                                         output_fields=field_names, **filters)
-                        res = []
-                        while True:
-                            result = iterator.next()
-                            if not result:
-                                iterator.close()
-                                break
-                            res += result
+                    if criteria and self._primary_key in criteria:
+                        ids = criteria[self._primary_key]
+                        if isinstance(ids, str):
+                            ids = [ids]
+                        query_kwargs = {'filter': f'{self._primary_key} in {ids}'}
+                        # return all fields
+                        field_names = None
                     else:
-                        res = client.query(collection_name=collection_name, output_fields=field_names, **filters)
+                        query_kwargs.update(**kwargs)
+
+                    iterator = client.query_iterator(collection_name=collection_name,
+                                                     batch_size=MILVUS_PAGINATION_OFFSET,
+                                                     output_fields=field_names, **query_kwargs)
+                    res = []
+                    while True:
+                        result = iterator.next()
+                        if not result:
+                            iterator.close()
+                            break
+                        res += result
             return [self._deserialize_data(r) for r in res]
         except Exception as e:
             LOG.error(f'[Milvus Store - get] error: {e}')
             LOG.error(traceback.format_exc())
             return []
+
+    def _batch_query_legacy(self, client, collection_name: str, field_names: List[str], kwargs: dict) -> List[dict]:
+        res = []
+        offset = 0
+        batch_size = MILVUS_PAGINATION_OFFSET
+
+        while True:
+            try:
+                # Add offset and limit to filters for pagination
+                batch_kwargs = dict(kwargs)
+                batch_kwargs['offset'] = offset
+                batch_kwargs['limit'] = batch_size
+
+                batch_res = client.query(collection_name=collection_name, output_fields=field_names, **batch_kwargs)
+                if not batch_res:
+                    break
+
+                res.extend(batch_res)
+                if len(batch_res) < batch_size:
+                    break
+                offset += batch_size
+            except Exception as e:
+                LOG.error(f'[Milvus Store - _batch_query_legacy] error: {e}')
+                raise
+        return res
 
     def _set_constants(self):
         self._type2milvus = {
