@@ -48,12 +48,11 @@ class _Processor:
                 metadata.setdefault(RAG_DOC_ID, doc_id)
                 metadata.setdefault(RAG_DOC_PATH, path)
                 metadata.setdefault(RAG_KB_ID, DEFAULT_KB_ID)
-            root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
-            self._store.update_nodes(self._set_nodes_number(root_nodes))
-            self._create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)
-            if image_nodes:
-                self._store.update_nodes(self._set_nodes_number(image_nodes))
-                self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
+            root_nodes = self._reader.load_data(input_files, metadatas, split_nodes_by_type=True)
+            for k, v in root_nodes.items():
+                if not v: continue
+                self._store.update_nodes(self._set_nodes_number(v))
+                self._create_nodes_recursive(v, k)
             LOG.info('Add documents done!')
         except Exception as e:
             LOG.error(f'Add documents failed: {e}, {traceback.format_exc()}')
