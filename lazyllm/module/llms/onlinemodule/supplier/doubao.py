@@ -1,4 +1,5 @@
 import lazyllm
+import json
 from typing import Dict, List, Union
 from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
@@ -24,6 +25,24 @@ class DoubaoModule(OnlineChatModuleBase):
     def _set_chat_url(self):
         self._url = urljoin(self._base_url, 'chat/completions')
 
+    def _validate_api_key(self):
+        """验证 API Key 通过发送最小化请求"""
+        try:
+            # 豆包（火山引擎）使用最小化的聊天请求来验证 API key
+            chat_url = urljoin(self._base_url, 'chat/completions')
+            headers = {
+                'Authorization': f'Bearer {self._api_key}',
+                'Content-Type': 'application/json'
+            }
+            data = {
+                "model": self._model_name,
+                "messages": [{"role": "user", "content": "hi"}],
+                "max_tokens": 1  # 只生成1个 token 来验证
+            }
+            response = requests.post(chat_url, headers=headers, json=data, timeout=10)
+            return response.status_code == 200
+        except Exception:
+            return False
 
 class DoubaoEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self,
