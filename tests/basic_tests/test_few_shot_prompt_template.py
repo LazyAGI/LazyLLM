@@ -225,7 +225,7 @@ class TestFewShotPromptTemplate:
             required_vars=['role', 'question'],
             partial_vars={}
         )
-        variables = few_shot_template.get_all_variables()
+        variables = few_shot_template._get_all_variables()
         assert set(variables) == {'role', 'question'}
 
     def test_get_all_variables_no_variables(self):
@@ -239,7 +239,7 @@ class TestFewShotPromptTemplate:
             required_vars=[],
             partial_vars={}
         )
-        variables = few_shot_template.get_all_variables()
+        variables = few_shot_template._get_all_variables()
         assert variables == []
 
     def test_validation_partial_vars_not_in_template(self):
