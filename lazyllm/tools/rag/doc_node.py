@@ -8,6 +8,7 @@ from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 import uuid
 import threading
 import time
+import hashlib
 import copy
 
 _pickle_blacklist = {'_store', '_node_groups'}
@@ -85,7 +86,6 @@ class DocNode:
     @property
     def content_hash(self) -> str:
         if self._content_hash is None:
-            import hashlib
             self._content_hash = hashlib.sha256(self.text.encode('utf-8')).hexdigest()
         return self._content_hash
 
