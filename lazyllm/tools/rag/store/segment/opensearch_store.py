@@ -203,6 +203,7 @@ class OpenSearchStore(LazyLLMStoreBase):
             collection_name: str,
             query: Optional[str] = None,
             topk: Optional[int] = 10,
+            query_fields: Optional[List[str]] = ['content', 'answer'],
             filters: Optional[dict] = None,
             **kwargs) -> List[dict]:  # noqa: C901
         try:
@@ -213,7 +214,7 @@ class OpenSearchStore(LazyLLMStoreBase):
                 text_query = {
                     'multi_match': {
                         'query': query,
-                        'fields': ['content', 'answer'],
+                        'fields': query_fields,
                     }
                 }
                 must_clauses.append(text_query)
