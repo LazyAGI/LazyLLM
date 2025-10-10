@@ -13,8 +13,9 @@ from itertools import repeat
 from typing import Dict, Optional, List, Callable, Type
 from pathlib import Path, PurePosixPath, PurePath
 from lazyllm.thirdparty import fsspec
-from lazyllm import ModuleBase, LOG, config
+from lazyllm import ModuleBase, LOG, config, once_wrapper
 from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list
+from lazyllm.tools.rag.readers.readerBase import TxtReader, DefaultReader
 from .doc_node import DocNode
 from .readers import (ReaderBase, PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader,
                       EpubReader, MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
@@ -79,6 +80,8 @@ class SimpleDirectoryReader(ModuleBase):
         '*.xlsx': PandasExcelReader,
         '*.mp3': VideoAudioReader,
         '*.mp4': VideoAudioReader,
+        '*.txt': TxtReader,
+        '*.xml': TxtReader,
     }
 
     def __init__(self, input_dir: Optional[str] = None, input_files: Optional[List] = None,
@@ -122,6 +125,13 @@ class SimpleDirectoryReader(ModuleBase):
 
         self._metadata_genf = metadata_genf or _DefaultFileMetadataFunc(self._fs)
         if filename_as_id: LOG.warning('Argument `filename_as_id` for DataReader is no longer used')
+
+    @once_wrapper(reset_on_pickle=True)
+    def _lazy_init(self):
+        file_readers = self._file_extractor.copy()
+        for key, func in self.default_file_readers.items():
+            if key not in file_readers: file_readers[key] = func
+        self._file_extractor = file_readers
 
     def _add_files(self, input_dir: Path) -> List[Path]:  # noqa: C901
         all_files = set()
@@ -195,15 +205,10 @@ class SimpleDirectoryReader(ModuleBase):
         return documents
 
     @staticmethod
-    def load_file(input_file: Path, metadata_genf: Callable[[str], Dict], file_extractor: Dict[str, Callable],
-                  encoding: str = 'utf-8', pathm: PurePath = Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
-                  metadata: Optional[Dict] = None) -> List[DocNode]:
-        # metadata priority: user > reader > metadata_genf
-        user_metadata: Dict = metadata or {}
-        metadata_generated: Dict = metadata_genf(str(input_file)) if metadata_genf else {}
-        documents: List[DocNode] = []
-
+    def find_extractor_by_file(input_file: Path, file_extractor: Dict[str, Callable], pathm: PurePath = Path):
         filename_lower = str(input_file).lower()
+        file_suffix = filename_lower.split('.')[-1]
+        if extractor := file_extractor.get(f'*.{file_suffix}'): return extractor
 
         for pattern, extractor in file_extractor.items():
             pt_lower = str(pathm(pattern)).lower()
@@ -213,37 +218,38 @@ class SimpleDirectoryReader(ModuleBase):
             else:
                 base = str(pathm.cwd()).lower()
                 match_pattern = os.path.join(base, pt_lower)
-
             if fnmatch.fnmatch(filename_lower, match_pattern):
-                reader = extractor() if isinstance(extractor, type) else extractor
-                kwargs = {'fs': fs} if fs and not is_default_fs(fs) else {}
-                docs = reader(input_file, **kwargs)
-                if isinstance(docs, DocNode): docs = [docs]
-                for doc in docs:
-                    metadata = metadata_generated.copy()
-                    metadata.update(doc._global_metadata or {})
-                    metadata.update(user_metadata)
-                    doc._global_metadata = metadata
+                return extractor
+        return DefaultReader
 
-                if config['rag_filename_as_id']:
-                    for i, doc in enumerate(docs):
-                        doc._uid = f'{input_file!s}_index_{i}'
-                documents.extend(docs)
-                break
-        else:
-            if not config['use_fallback_reader']:
-                LOG.warning(f'no pattern found for {input_file}! '
-                            'If you want fallback to default Reader, set `LAZYLLM_USE_FALLBACK_READER=True`.')
-                return documents
-            fs = fs or get_default_fs()
-            with fs.open(input_file, encoding=encoding) as f:
-                try:
-                    data = f.read().decode(encoding)
-                    doc = DocNode(text=data, global_metadata=user_metadata)
-                    documents.append(doc)
-                except Exception:
-                    LOG.error(f'no pattern found for {input_file} and it is not utf-8, skip it!')
-        return documents
+    @staticmethod
+    def load_file(input_file: Path, metadata_genf: Callable[[str], Dict], file_extractor: Dict[str, Callable],
+                  encoding: str = 'utf-8', pathm: PurePath = Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
+                  metadata: Optional[Dict] = None) -> List[DocNode]:
+        # metadata priority: user > reader > metadata_genf
+        user_metadata: Dict = metadata or {}
+        metadata_generated: Dict = metadata_genf(str(input_file)) if metadata_genf else {}
+        rd = SimpleDirectoryReader.find_extractor_by_file(input_file, file_extractor, pathm)
+        reader = rd(encoding=encoding) if isinstance(rd, TxtReader) else rd() if isinstance(rd, type) else rd
+        kwargs = {'fs': fs} if fs and not is_default_fs(fs) else {}
+
+        try:
+            docs = reader(input_file, **kwargs)
+        except Exception:
+            LOG.error(f'Error loading file {input_file}, skip it!')
+            return []
+        docs = [docs] if isinstance(docs, DocNode) else [] if docs is None else docs
+
+        for doc in docs:
+            metadata = metadata_generated.copy()
+            metadata.update(doc._global_metadata or {})
+            metadata.update(user_metadata)
+            doc._global_metadata = metadata
+
+        if config['rag_filename_as_id']:
+            for i, doc in enumerate(docs):
+                doc._uid = f'{input_file!s}_index_{i}'
+        return docs
 
     def _load_data(self, show_progress: bool = False, num_workers: Optional[int] = None,
                    fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
@@ -251,9 +257,6 @@ class SimpleDirectoryReader(ModuleBase):
 
         fs = fs or self._fs
         process_file = self._input_files
-        file_readers = self._file_extractor.copy()
-        for key, func in self.default_file_readers.items():
-            if key not in file_readers: file_readers[key] = func
 
         if num_workers and num_workers >= 1:
             if num_workers > multiprocessing.cpu_count():
@@ -261,7 +264,7 @@ class SimpleDirectoryReader(ModuleBase):
                             'Setting `num_workers` down to the maximum CPU count.')
             with multiprocessing.get_context('spawn').Pool(num_workers) as p:
                 results = p.starmap(SimpleDirectoryReader.load_file,
-                                    zip(process_file, repeat(self._metadata_genf), repeat(file_readers),
+                                    zip(process_file, repeat(self._metadata_genf), repeat(self._file_extractor),
                                         repeat(self._encoding), repeat(self._Path),
                                         repeat(self._fs), self._metadatas or repeat(None)))
                 documents = reduce(lambda x, y: x + y, results)
@@ -271,13 +274,22 @@ class SimpleDirectoryReader(ModuleBase):
             for input_file, metadata in zip(process_file, self._metadatas or repeat(None)):
                 documents.extend(
                     SimpleDirectoryReader.load_file(
-                        input_file=input_file, metadata_genf=self._metadata_genf, file_extractor=file_readers,
+                        input_file=input_file, metadata_genf=self._metadata_genf, file_extractor=self._file_extractor,
                         encoding=self._encoding, pathm=self._Path, fs=self._fs, metadata=metadata))
 
         return self._exclude_metadata(documents)
 
     def forward(self, *args, **kwargs) -> List[DocNode]:
         return self._load_data(*args, **kwargs)
+
+    @staticmethod
+    def get_default_reader(file_ext: str) -> Callable[[Path, Dict], List[DocNode]]:
+        if not file_ext.startswith('*.'): file_ext = '*.' + file_ext
+        return SimpleDirectoryReader.default_file_readers.get(file_ext)
+
+    @staticmethod
+    def add_post_action_for_default_reader(file_ext: str, reader: Callable[[Path, Dict], List[DocNode]]):
+        SimpleDirectoryReader.default_file_readers[file_ext] = reader
 
 
 config.add('rag_filename_as_id', bool, False, 'RAG_FILENAME_AS_ID')
