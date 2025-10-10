@@ -253,10 +253,8 @@ class SimpleDirectoryReader(ModuleBase):
 
     def _load_data(self, show_progress: bool = False, num_workers: Optional[int] = None,
                    fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
-        documents = []
-
-        fs = fs or self._fs
-        process_file = self._input_files
+        documents, fs, process_file = [], fs or self._fs, self._input_files
+        self._lazy_init()
 
         if num_workers and num_workers >= 1:
             if num_workers > multiprocessing.cpu_count():
