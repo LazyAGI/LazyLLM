@@ -39,7 +39,7 @@ class HybridStore(LazyLLMStoreBase):
         res_segments = self.segment_store.get(collection_name=collection_name, criteria=criteria, **kwargs)
         if not res_segments: return []
         uids = [item.get('uid') for item in res_segments]
-        res_vectors = self.vector_store.get(collection_name=collection_name, criteria={'uid': uids})
+        res_vectors = self.vector_store.get(collection_name=collection_name, criteria={'uid': uids}, **kwargs)
 
         data = {}
         for item in res_segments:

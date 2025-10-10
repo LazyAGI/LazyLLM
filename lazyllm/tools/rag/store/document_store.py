@@ -147,7 +147,7 @@ class _DocumentStore(object):
         return group in self._activated_groups
 
     def is_group_empty(self, group: str) -> bool:
-        return not self.impl.get(self._gen_collection_name(group), {})
+        return not self.impl.get(self._gen_collection_name(group), {}, limit=10)
 
     def update_nodes(self, nodes: List[DocNode]):   # noqa: C901
         if not nodes:
