@@ -10055,7 +10055,7 @@ Args:
     collection_name (str): Collection to search.
     query (Optional[str]): Query string.
     topk (Optional[int]): Number of nearest neighbors.
-    criteria (Optional[dict]): Metadata filter map.
+    filters (Optional[dict]): Metadata filter map.
     kwargs: Other search parameters
 
 **Returns:**\n
@@ -10068,7 +10068,7 @@ Args:
     collection_name (str): 待搜索集合。
     query (Optional[str]): 查询字符串。
     topk (Optional[int]): 返回邻近数量。
-    criteria (Optional[dict]): 元数据过滤映射。
+    filters (Optional[dict]): 元数据过滤映射。
     kwargs: 其他搜索参数
 
 **Returns:**\n
