@@ -334,6 +334,7 @@ class MilvusStore(LazyLLMStoreBase):
             client.create_collection(collection_name=collection_name, schema=schema, index_params=index_params)
         except pymilvus.MilvusException as e:
             msg = getattr(e, 'message', str(e))
+            print(msg)
             if 'invalid index type' in msg.lower():
                 if retry >= MILVUS_INDEX_MAX_RETRY:
                     LOG.error(f'[Milvus Store] index fallback exceeded max retries ({MILVUS_INDEX_MAX_RETRY}),'
