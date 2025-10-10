@@ -240,7 +240,7 @@ class TestFewShotPromptTemplate:
             partial_vars={}
         )
         variables = few_shot_template._get_all_variables()
-        assert variables == []
+        assert not variables
 
     def test_validation_partial_vars_not_in_template(self):
         '''Test validation when partial_vars contains variables not in template'''
