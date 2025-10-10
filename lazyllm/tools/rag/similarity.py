@@ -42,7 +42,7 @@ def register_similarity(
 
     return decorator(func) if func else decorator
 
-def _hash_nodes(nodes: List[DocNode], language: str, topk: int = 2, **kwargs) -> str:
+def _hash_nodes(nodes: List[DocNode], language: str, topk: Optional[int] = None, **kwargs) -> str:
     m = hashlib.sha256()
     m.update(language.encode('utf-8'))
     m.update(str(topk).encode('utf-8'))
