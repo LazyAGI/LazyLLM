@@ -42,11 +42,13 @@ def register_similarity(
 
     return decorator(func) if func else decorator
 
-def _hash_nodes(nodes: List[DocNode], language: str) -> str:
+def _hash_nodes(nodes: List[DocNode], language: str, topk: int = 2, **kwargs) -> str:
     m = hashlib.sha256()
     m.update(language.encode('utf-8'))
-    # keep the order of nodes
-    for node in nodes:
+    m.update(str(topk).encode('utf-8'))
+    # Sort nodes to ensure consistent hash
+    sorted_nodes = sorted(nodes, key=lambda node: node.uid)
+    for node in sorted_nodes:
         uid = node.uid
         m.update(uid.encode('utf-8'))
         # to detect content changes, use cached content_hash from node
@@ -54,7 +56,7 @@ def _hash_nodes(nodes: List[DocNode], language: str) -> str:
     return m.hexdigest()
 
 def _get_bm25_from_cache(nodes: List[DocNode], language: str = 'en', **kwargs) -> BM25:
-    key = _hash_nodes(nodes, language)
+    key = _hash_nodes(nodes, language, **kwargs)
     with _bm25_cache_lock:
         if key in _bm25_cache:
             bm = _bm25_cache.pop(key)
