@@ -2,6 +2,7 @@ import json
 import urllib3
 import threading
 import importlib.util
+import copy
 
 from typing import Dict, Union, List, Optional
 
@@ -20,6 +21,21 @@ DEFAULT_MAPPING_BODY = {
             'number_of_shards': 4,
             'number_of_replicas': 1,
             'refresh_interval': '1s',
+        },
+        'analysis': {
+            'tokenizer': {
+                'ngram_tokenizer': {
+                    'type': 'ngram',
+                    'min_gram': 2,
+                    'max_gram': 3,
+                }
+            },
+            'analyzer': {
+                'ngram_analyzer': {
+                    'type': 'custom',
+                    'tokenizer': 'ngram_tokenizer',
+                }
+            }
         }
     },
     'mappings': {
@@ -29,8 +45,14 @@ DEFAULT_MAPPING_BODY = {
             'doc_id': {'type': 'keyword'},
             'group': {'type': 'keyword'},
             'kb_id': {'type': 'keyword'},
-            'content': {'type': 'text', 'index': False, 'store': True},
-            'answer': {'type': 'text', 'index': False, 'store': True},
+            'content': {
+                'type': 'text',
+                'index': True,
+                'store': True,
+                'analyzer': 'ik_max_word',
+                'search_analyzer': 'ik_smart',
+            },
+            'answer': {'type': 'text', 'index': True, 'store': True},
             'meta': {'type': 'text', 'index': False, 'store': True},
             'global_meta': {'type': 'text', 'index': False, 'store': True},
             'type': {'type': 'keyword', 'store': True},
@@ -45,13 +67,13 @@ DEFAULT_MAPPING_BODY = {
 
 
 class ElasticSearchStore(LazyLLMStoreBase):
-    capability: StoreCapability.SEGMENT
-    need_embedding: False
-    supports_index_registration: False
+    capability = StoreCapability.SEGMENT
+    need_embedding = False
+    supports_index_registration = False
 
     def __init__(
         self,
-        uris: List[str] = '',
+        uris: List[str],
         client_kwargs: Optional[Dict] = None,
         index_kwargs: Optional[Union[Dict, List]] = None,
         **kwargs,
@@ -83,6 +105,14 @@ class ElasticSearchStore(LazyLLMStoreBase):
             # local or remote url Elasticsearch
             else:
                 self._client = elasticsearch.Elasticsearch(hosts=self._uris, **self._client_kwargs)
+
+            if self._index_kwargs == DEFAULT_MAPPING_BODY:
+                if self._check_ik_plugin():
+                    LOG.info('IK plugin is installed')
+                else:
+                    LOG.warning('IK plugin is not installed, ElasticSearch will \
+                        use ngram analyzer which is English Only Analyzer')
+                    self._index_kwargs = self._adapt_mapping_for_no_ik(self._index_kwargs)
 
             return True
         # connection failed exception handling
@@ -131,7 +161,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 response = self._client.bulk(index=collection_name, body=bulk_data, refresh='wait_for')
                 if response.get('errors'):
                     raise ValueError(
-                        f"Error upserting data to Elasticsearch: {response.get('errors')}"
+                        f'Error upserting data to Elasticsearch: {response.get("errors")}'
                     )
             return True
 
@@ -159,10 +189,10 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 )
 
                 if resp.get('version_conflicts', 0) > 0:
-                    LOG.warning(f"[ElasticsearchStore - delete] Version conflicts: {resp.get('version_conflicts')}")
+                    LOG.warning(f'[ElasticsearchStore - delete] Version conflicts: {resp.get("version_conflicts")}')
                 if resp.get('failures'):
                     raise ValueError(
-                        f"Error deleting data from Elasticsearch: {resp['failures']}"
+                        f'Error deleting data from Elasticsearch: {resp["failures"]}'
                     )
                 return True
 
@@ -179,17 +209,8 @@ class ElasticSearchStore(LazyLLMStoreBase):
 
             results: List[dict] = []
             criteria = dict(criteria) if criteria else {}
-
-            # Since criteria is empty, return all data
-            if not criteria:
-                resp = self._client.search(index=collection_name, body={'query': {'match_all': {}}})
-                for hit in resp['hits']['hits']:
-                    seg = self._transform_segment(hit)
-                    if seg:
-                        results.append(seg)
-
             # Query by primary key(mget)
-            elif criteria and self._primary_key in criteria:
+            if criteria and self._primary_key in criteria:
                 vals = criteria.pop(self._primary_key)
                 if not isinstance(vals, list):
                     vals = [vals]
@@ -218,16 +239,62 @@ class ElasticSearchStore(LazyLLMStoreBase):
                     seg = self._transform_segment(hit)
                     if seg:
                         results.append(seg)
-
             return results
-
         except Exception as e:
             LOG.error(f'[ElasticsearchStore - get] Error getting data from Elasticsearch: {e}')
             return []
 
     @override
-    def search(self, collection_name: str = None, query: str = None, topk: int = 10, **kwargs) -> List[Dict]:
-        raise NotImplementedError('[ElasticSearchStore - search] Not implemented yet')
+    def search(
+            self,
+            collection_name: str,
+            query: Optional[str] = None,
+            topk: Optional[int] = 10,
+            query_fields: Optional[List[str]] = None,
+            filters: Optional[dict] = None,
+            **kwargs) -> List[Dict]:  # noqa: C901
+        if not query_fields:
+            query_fields = ['content', 'answer']
+        try:
+            self._ensure_index(collection_name)
+            must_clauses = []
+            es_query = {}
+            if query:
+                text_query = {
+                    'multi_match': {
+                        'query': query,
+                        'fields': query_fields,
+                    }
+                }
+                must_clauses.append(text_query)
+
+            filter_query = self._construct_criteria(filters) if filters else {}
+
+            if must_clauses and filter_query:
+                # combine filter_query and must_clauses
+                filter_must = filter_query['query']['bool']['must']
+                es_query = {'query': {'bool': {'must': must_clauses + filter_must}}}
+            elif must_clauses:
+                es_query = {'query': {'bool': {'must': must_clauses}}}
+            elif filter_query:
+                es_query = filter_query
+            else:
+                es_query = {'query': {'match_all': {}}}
+
+            es_query['size'] = topk
+
+            resp = self._client.search(index=collection_name, body=es_query)
+            res = []
+            for hit in resp['hits']['hits']:
+                seg = self._transform_segment(hit)
+                if seg:
+                    seg['score'] = hit.get('_score', 0.0)
+                    res.append(seg)
+            return res
+
+        except Exception as e:
+            LOG.error(f'[ElasticSearchStore - search] Error searching {collection_name}: {e}')
+            return []
 
     def _serialize_node(self, segment: Dict) -> Dict:
         seg = dict(segment)
@@ -253,20 +320,61 @@ class ElasticSearchStore(LazyLLMStoreBase):
             if not isinstance(vals, list):
                 vals = [vals]
             return {'query': {'ids': {'values': vals}}}
-        else:
-            must_clauses = []
-            if RAG_DOC_ID in criteria:
-                if isinstance(criteria.get(RAG_DOC_ID), list):
-                    must_clauses.append({'terms': {'doc_id': criteria.get(RAG_DOC_ID)}})
-            if RAG_KB_ID in criteria:
-                must_clauses.append({'term': {'kb_id': criteria.get(RAG_KB_ID)}})
-            if 'parent' in criteria:
-                must_clauses.append({'term': {'parent': criteria.pop('parent')}})
 
-            return {'query': {'bool': {'must': must_clauses}}}
+        def _add_clause(key, val):
+            if isinstance(val, list):
+                must_clauses.append({'terms': {key: val}})
+            else:
+                must_clauses.append({'term': {key: val}})
+        must_clauses = []
+        if RAG_DOC_ID in criteria:
+            val = criteria.pop(RAG_DOC_ID)
+            _add_clause('doc_id', val)
+        if RAG_KB_ID in criteria:
+            _add_clause('kb_id', criteria.pop(RAG_KB_ID))
+        if 'parent' in criteria:
+            must_clauses.append({'term': {'parent': criteria.pop('parent')}})
+
+        for k, v in criteria.items():
+            _add_clause(k, v)
+
+        return {'query': {'bool': {'must': must_clauses}}} if must_clauses else {}
 
     def _transform_segment(self, record: dict) -> dict:
         '''Convert ES into normalized Python dict with uid. Return None if invalid (not found).'''
         src = record['_source']
         src['uid'] = record['_id']
         return self._deserialize_node(src)
+
+    def _check_ik_plugin(self):
+        ''' IK plugin is installed, return True, otherwise return False'''
+        try:
+            # method 1: check plugin list
+            plugins = self._client.cat.plugins(format='json')
+            if any('analysis-ik' in p.get('component', '') for p in plugins):
+                return True
+            # method 2: try to call ik analyzer
+            try:
+                self._client.indices.analyze(
+                    body={
+                        'analyzer': 'ik_max_word',
+                        'text': 'machine learning'
+                    }
+                )
+                return True
+            except Exception as e:
+                LOG.warning(f'IK plugin is not installed: {str(e)}')
+                return False
+        except Exception as e:
+            LOG.warning(f'check IK plugin failed: {e}')
+            return False
+
+    def _adapt_mapping_for_no_ik(self, mapping_body: dict) -> dict:
+        mapping = copy.deepcopy(mapping_body)
+
+        for _, field_def in mapping['mappings']['properties'].items():
+            if field_def.get('analyzer'):
+                field_def['analyzer'] = 'ngram_analyzer'
+            if field_def.get('search_analyzer'):
+                field_def['search_analyzer'] = 'standard'
+        return mapping
