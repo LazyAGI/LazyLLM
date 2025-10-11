@@ -1,5 +1,6 @@
 import lazyllm
 from urllib.parse import urljoin
+import requests
 from ..base import OnlineChatModuleBase
 
 class KimiModule(OnlineChatModuleBase):
@@ -28,3 +29,15 @@ class KimiModule(OnlineChatModuleBase):
 
     def _format_vl_chat_query(self, query: str):
         return query
+
+    def _validate_api_key(self):
+        try:
+            models_url = urljoin(self._base_url, 'v1/models')
+            headers = {
+                'Authorization': f'Bearer {self._api_key}',
+                'Content-Type': 'application/json'
+            }
+            response = requests.get(models_url, headers=headers, timeout=10)
+            return response.status_code == 200
+        except Exception:
+            return False
