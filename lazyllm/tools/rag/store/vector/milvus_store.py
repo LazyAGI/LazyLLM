@@ -266,11 +266,11 @@ class MilvusStore(LazyLLMStoreBase):
         if isinstance(original_index_kwargs, dict):
             original_index_kwargs = [original_index_kwargs]
         for item in original_index_kwargs:
-            # add default values to the params of each index item with no overrides
-            self._ensure_params_defaults(item)
             embed_key = item.get('embed_key', None)
             if not embed_key:
                 raise ValueError(f'cannot find `embed_key` in `index_kwargs` of `{item}`')
+            # add default values to the params of each index item with no overrides
+            self._ensure_params_defaults(item)
             index_kwargs_lookup[embed_key] = item.copy()
             index_kwargs_lookup[embed_key].pop('embed_key', None)
         for k, kws in embed_kwargs.items():
@@ -332,7 +332,7 @@ class MilvusStore(LazyLLMStoreBase):
             if index_type not in embed_index_map.get(dtype):
                 raise ValueError(f'[Milvus Store] {DataType(dtype).name}: Unsupported index type: {index_type}.')
             else:
-                index_type = list(embed_index_map.get(dtype).keys())[0]
+                index_type = list(embed_index_map.get(dtype))[0]
                 index_item['index_type'] = index_type
                 self._ensure_params_defaults(index_item)
 
