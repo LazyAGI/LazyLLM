@@ -197,13 +197,13 @@ def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_s
         para_content['lines'] = table_lines_metas
     elif para_type == BlockType.CODE:
         code_lines_metas = []
-        para_content = {'type': BlockType.CODE, 'sub_type': para_block["sub_type"], BlockType.CODE_CAPTION: []}
+        para_content = {'type': BlockType.CODE, 'sub_type': para_block['sub_type'], BlockType.CODE_CAPTION: []}
         for block in para_block['blocks']:
             code_lines_metas.extend(_parse_line_spans(block, page_idx))
             if block['type'] == BlockType.CODE_BODY:
                 para_content[BlockType.CODE_BODY] = vlm_merge_para_with_text(block)
-                if para_block["sub_type"] == BlockType.CODE:
-                    para_content["guess_lang"] = para_block["guess_lang"]
+                if para_block['sub_type'] == BlockType.CODE:
+                    para_content['guess_lang'] = para_block['guess_lang']
             if block['type'] == BlockType.CODE_CAPTION:
                 para_content[BlockType.CODE_CAPTION].append(vlm_merge_para_with_text(block))
         para_content['lines'] = code_lines_metas
