@@ -10,7 +10,7 @@ from tqdm import tqdm
 from datetime import datetime
 from functools import reduce
 from itertools import repeat
-from typing import Dict, Optional, List, Callable, Type
+from typing import Dict, Optional, List, Callable, Type, Union
 from pathlib import Path, PurePosixPath, PurePath
 from lazyllm.thirdparty import fsspec
 from lazyllm import ModuleBase, LOG, config, once_wrapper
@@ -286,8 +286,14 @@ class SimpleDirectoryReader(ModuleBase):
         return SimpleDirectoryReader.default_file_readers.get(file_ext)
 
     @staticmethod
-    def add_post_action_for_default_reader(file_ext: str, reader: Callable[[Path, Dict], List[DocNode]]):
-        SimpleDirectoryReader.default_file_readers[file_ext] = reader
+    def add_post_action_for_default_reader(file_ext: str, f: Callable[[DocNode], Union[DocNode, List[DocNode]]]):
+        if not file_ext.startswith('*.'): file_ext = '*.' + file_ext
+        if file_ext not in SimpleDirectoryReader.default_file_readers:
+            raise KeyError(f'{file_ext} has no default reader, use Document.add_reader instead')
+
+        reader = SimpleDirectoryReader.default_file_readers[file_ext]
+        assert isinstance(reader, type) and issubclass(reader, ReaderBase)
+        reader.post_action = f
 
 
 config.add('rag_filename_as_id', bool, False, 'RAG_FILENAME_AS_ID')

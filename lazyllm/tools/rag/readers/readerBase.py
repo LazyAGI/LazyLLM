@@ -10,6 +10,8 @@ from lazyllm.module import ModuleBase
 from pathlib import Path
 
 class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
+    post_action = None
+
     def __init__(self, *args, return_trace: bool = True, **kwargs):
         super().__init__(return_trace=return_trace)
 
@@ -20,7 +22,9 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return list(self._lazy_load_data(*args, **load_kwargs))
 
     def forward(self, *args, **kwargs) -> List[DocNode]:
-        return self._load_data(*args, **kwargs)
+        r = self._load_data(*args, **kwargs)
+        r = [r] if isinstance(r, DocNode) else [] if r is None else r
+        return self.post_action(r) if self.post_action else r
 
 
 def get_default_fs():

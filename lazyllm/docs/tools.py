@@ -2622,7 +2622,7 @@ add_chinese_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
 Args:
     name (str): 算法名称，作为唯一标识符。
     store (StoreBase): 存储实例，用于管理文档数据。
-    reader (ReaderBase): 读取器实例，用于解析文档内容。
+    reader (DirectoryReader): 读取器实例，用于解析文档内容。
     node_groups (Dict[str, Dict]): 节点组配置信息。
     display_name (Optional[str]): 算法的显示名称，默认为None。
     description (Optional[str]): 算法的描述信息，默认为None。
@@ -2640,7 +2640,7 @@ Register an algorithm to the document processor.
 Args:
     name (str): Algorithm name as unique identifier.
     store (StoreBase): Storage instance for managing document data.
-    reader (ReaderBase): Reader instance for parsing document content.
+    reader (DirectoryReader): Reader instance for parsing document content.
     node_groups (Dict[str, Dict]): Node group configuration information.
     display_name (Optional[str]): Display name for the algorithm, defaults to None.
     description (Optional[str]): Description of the algorithm, defaults to None.

@@ -1,3 +1,4 @@
+from lazyllm.tools.rag.data_loaders import DirectoryReader
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 from sqlalchemy import create_engine, Column, JSON, String, TIMESTAMP, Table, MetaData, inspect, delete, text
@@ -236,7 +237,7 @@ class DocumentProcessor(ModuleBase):
             self._inited = True
             LOG.info(f'[DocumentProcessor] init done. feedback {self._feedback_url}, prefix {self._path_prefix}')
 
-        def register_algorithm(self, name: str, store: _DocumentStore, reader: ReaderBase,
+        def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader,
                                node_groups: Dict[str, Dict], display_name: Optional[str] = None,
                                description: Optional[str] = None, force_refresh: bool = False):
             self._init_components(server=self._server)
@@ -603,7 +604,7 @@ class DocumentProcessor(ModuleBase):
         else:
             getattr(impl, method)(*args, **kwargs)
 
-    def register_algorithm(self, name: str, store: _DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
+    def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader, node_groups: Dict[str, Dict],
                            display_name: Optional[str] = None, description: Optional[str] = None,
                            force_refresh: bool = False, **kwargs):
         self._dispatch('register_algorithm', name, store, reader, node_groups,
