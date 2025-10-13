@@ -24,7 +24,9 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def forward(self, *args, **kwargs) -> List[DocNode]:
         r = self._load_data(*args, **kwargs)
         r = [r] if isinstance(r, DocNode) else [] if r is None else r
-        return self.post_action(r) if self.post_action else r
+        if r and self.post_action:
+            r = [x for sub in [self.post_action(n) for n in r] for x in (sub if isinstance(sub, list) else [sub])]
+        return r
 
 
 def get_default_fs():

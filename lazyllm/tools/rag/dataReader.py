@@ -20,6 +20,7 @@ from .doc_node import DocNode
 from .readers import (ReaderBase, PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader,
                       EpubReader, MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
                       get_default_fs, is_default_fs)
+from .transform import NodeTransform, FuncNodeTransform
 from .global_metadata import (RAG_DOC_PATH, RAG_DOC_FILE_NAME, RAG_DOC_FILE_TYPE, RAG_DOC_FILE_SIZE,
                               RAG_DOC_CREATION_DATE, RAG_DOC_LAST_MODIFIED_DATE, RAG_DOC_LAST_ACCESSED_DATE)
 
@@ -293,6 +294,12 @@ class SimpleDirectoryReader(ModuleBase):
 
         reader = SimpleDirectoryReader.default_file_readers[file_ext]
         assert isinstance(reader, type) and issubclass(reader, ReaderBase)
+
+        if isinstance(f, type): f = f()
+        if not isinstance(f, NodeTransform):
+            try: f('test')
+            except Exception: pass
+            else: f = FuncNodeTransform(f, trans_node=False)
         reader.post_action = f
 
 
