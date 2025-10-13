@@ -360,7 +360,9 @@ class MilvusStore(LazyLLMStoreBase):
         else:
             raise ValueError(f'cannot find `index_type` in `index_kwargs` of `{index_item}`')
 
-        defaults = MILVUS_INDEX_TYPE_DEFAULTS.get(index_item['index_type'], {})
+        defaults = MILVUS_INDEX_TYPE_DEFAULTS.get(index_item['index_type'], None)
+        if defaults is None:
+            raise ValueError(f'[Milvus Store] Unsupported index type: {index_item["index_type"]}')
 
         # metric_type default fill (do not override user)
         if 'metric_type' not in index_item and 'metric_type' in defaults:
