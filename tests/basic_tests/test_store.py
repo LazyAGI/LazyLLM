@@ -3,8 +3,9 @@ import shutil
 import pytest
 import tempfile
 import unittest
+import copy
 import lazyllm
-from lazyllm.tools.rag.store import (MapStore, ChromadbStore, MilvusStore,
+from lazyllm.tools.rag.store import (MapStore, ChromaStore, MilvusStore,
                                      SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
@@ -170,7 +171,7 @@ class TestMapStore(unittest.TestCase):
 
 @pytest.mark.skip_on_win
 @pytest.mark.skip_on_mac
-class TestChromadbStore(unittest.TestCase):
+class TestChromaStore(unittest.TestCase):
     def setUp(self):
         self.data = [
             {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
@@ -197,7 +198,7 @@ class TestChromadbStore(unittest.TestCase):
         self.embed_datatypes = {'vec_dense': DataType.FLOAT_VECTOR}
         self.global_metadata_desc = BUILDIN_GLOBAL_META_DESC
         self.store_dir = tempfile.mkdtemp()
-        self.store = ChromadbStore(uri=self.store_dir)
+        self.store = ChromaStore(uri=self.store_dir)
         self.store.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
                            global_metadata_desc=self.global_metadata_desc)
 
@@ -508,6 +509,47 @@ class TestMilvusStore(unittest.TestCase):
                                 embed_key='vec_dense', topk=1, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 0)
 
+    def test_get_massive_data(self):
+        new_data_list = []
+        criteria_list = []
+        MASSIVE_DATA_SIZE = 20000
+        for i in range(MASSIVE_DATA_SIZE):
+            one_data = copy.deepcopy(data[0])
+            one_data['uid'] = f'uid_{i}'
+            one_data['doc_id'] = 'doc_common'
+            criteria_list.append(f'uid_{i}')
+            new_data_list.append(one_data)
+
+        self.store.upsert(self.collections[0], new_data_list)
+
+        # test client.query_iterator in get api
+        res = self.store.get(collection_name=self.collections[0])
+        self.assertEqual(len(res), MASSIVE_DATA_SIZE)
+
+        SEARCH_DATA_SIZE = 9999
+        res = self.store.get(collection_name=self.collections[0], criteria={'uid': criteria_list[0:SEARCH_DATA_SIZE]})
+        self.assertEqual(len(res), SEARCH_DATA_SIZE)
+
+    def test_batch_query_legacy(self):
+
+        with self.store._client_context() as client:
+            new_data_list = []
+            criteria_list = []
+            for i in range(10000):
+                one_data = copy.deepcopy(data[0])
+                one_data['uid'] = f'uid_{i}'
+                one_data['doc_id'] = 'doc_common'
+                criteria_list.append(f'uid_{i}')
+                new_data_list.append(one_data)
+
+            self.store.upsert(self.collections[0], new_data_list)
+            res = self.store._batch_query_legacy(client, self.collections[0], field_names=['uid'], kwargs={})
+            self.assertEqual(len(res), len(new_data_list))
+
+            filters = self.store._construct_criteria({"doc_id": "doc_common"})
+            res = self.store._batch_query_legacy(client, self.collections[0], field_names=['uid'], kwargs=filters)
+            self.assertEqual(len(res), len(new_data_list))
+
     @pytest.mark.skip(reason=('local test for milvus standalone, please set up a milvus standalone server'
                               ' and set the uri to the server'))
     def test_milvus_standalone(self):
@@ -533,13 +575,13 @@ class TestSegementStore(object):
             'segment_store_type': 'opensearch',
             'init_kwargs': {'uris': os.getenv('OPENSEARCH_HOST', 'localhost:9200'),
                             'client_kwargs': {
-                                "user": os.getenv('OPENSEARCH_USER', 'admin'),
-                                "password": os.getenv('OPENSEARCH_INITIAL_ADMIN_PASSWORD'),
-                                "verify_certs": False}},
+                                'user': os.getenv('OPENSEARCH_USER', 'admin'),
+                                'password': os.getenv('OPENSEARCH_INITIAL_ADMIN_PASSWORD'),
+                                'verify_certs': False}},
             'is_skip': False, 'skip_reason': 'To test opensearch store, please set up a opensearch server'}],
     }
 
-    @pytest.fixture(scope="class")
+    @pytest.fixture(scope='class')
     def setUP(self, request):
         collections = ['col_g1', 'col_g2', 'col_g3', 'col_g4']
         data = [
@@ -620,27 +662,27 @@ class TestSegementStore(object):
         assert res[0].get('uid'), self.data[0].get('uid')
         res = self.store.get(collection_name=self.collections[3], criteria={RAG_KB_ID: 'kb4'})
         assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[3].get('uid'), f"get segments by kb_id {self.segment_store_type} failed"
+        assert res[0].get('uid') == self.data[3].get('uid'), f'get segments by kb_id {self.segment_store_type} failed'
         res = self.store.get(collection_name=self.collections[2], criteria={RAG_KB_ID: 'kb3'})
         assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
         res = self.store.get(collection_name=self.collections[1], criteria={RAG_KB_ID: 'kb2'})
         assert len(res) == 1, f'get segments by kb_id {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[1].get('uid'), f"get segments by kb_id {self.segment_store_type} failed"
+        assert res[0].get('uid') == self.data[1].get('uid'), f'get segments by kb_id {self.segment_store_type} failed'
         return True
 
     @pytest.fixture()
     def get_segments_by_uid(self):
         res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid1']})
         assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[0].get('uid'), f"get segments by uid {self.segment_store_type} failed"
+        assert res[0].get('uid') == self.data[0].get('uid'), f'get segments by uid {self.segment_store_type} failed'
         res = self.store.get(collection_name=self.collections[2], criteria={'uid': ['uid3']})
         assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[2].get('uid'), f"get segments by uid {self.segment_store_type} failed"
+        assert res[0].get('uid') == self.data[2].get('uid'), f'get segments by uid {self.segment_store_type} failed'
         res = self.store.get(collection_name=self.collections[1], criteria={'uid': ['uid2']})
         assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
         res = self.store.get(collection_name=self.collections[3], criteria={'uid': ['uid4']})
         assert len(res) == 1, f'get segments by uid {self.segment_store_type} failed'
-        assert res[0].get('uid') == self.data[3].get('uid'), f"get segments by uid {self.segment_store_type} failed"
+        assert res[0].get('uid') == self.data[3].get('uid'), f'get segments by uid {self.segment_store_type} failed'
         return True
 
     @pytest.fixture()
@@ -815,7 +857,7 @@ class TestSegementStore(object):
     def test_os_tearDown(self, tearDown):
         assert tearDown
 
-@pytest.mark.skip(reason="To test sensecore store, please set up a sensecore rag-store server")
+@pytest.mark.skip(reason='To test sensecore store, please set up a sensecore rag-store server')
 class TestSenseCoreStore(unittest.TestCase):
     def setUp(self):
         # sensecore store need kb_id when get or delete
