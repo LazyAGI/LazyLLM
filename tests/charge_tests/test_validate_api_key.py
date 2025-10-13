@@ -1,6 +1,5 @@
 import pytest
 import os
-import lazyllm
 from lazyllm.module.llms.onlinemodule.supplier.deepseek import DeepSeekModule
 from lazyllm.module.llms.onlinemodule.supplier.doubao import DoubaoModule
 from lazyllm.module.llms.onlinemodule.supplier.kimi import KimiModule
@@ -147,4 +146,3 @@ class TestValidateApiKey:
         )
         result = module._validate_api_key()
         assert result is False, 'SenseNova invalid API Key should fail validation'
-

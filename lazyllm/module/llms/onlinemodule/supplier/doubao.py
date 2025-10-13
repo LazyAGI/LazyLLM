@@ -1,5 +1,4 @@
 import lazyllm
-import json
 from typing import Dict, List, Union
 from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
@@ -26,18 +25,18 @@ class DoubaoModule(OnlineChatModuleBase):
         self._url = urljoin(self._base_url, 'chat/completions')
 
     def _validate_api_key(self):
-        """验证 API Key 通过发送最小化请求"""
+        '''Validate API Key by sending a minimal request'''
         try:
-            # 豆包（火山引擎）使用最小化的聊天请求来验证 API key
+            # Doubao (Volcano Engine) validates API key using a minimal chat request
             chat_url = urljoin(self._base_url, 'chat/completions')
             headers = {
                 'Authorization': f'Bearer {self._api_key}',
                 'Content-Type': 'application/json'
             }
             data = {
-                "model": self._model_name,
-                "messages": [{"role": "user", "content": "hi"}],
-                "max_tokens": 1  # 只生成1个 token 来验证
+                'model': self._model_name,
+                'messages': [{'role': 'user', 'content': 'hi'}],
+                'max_tokens': 1  # Only generate 1 token for validation
             }
             response = requests.post(chat_url, headers=headers, json=data, timeout=10)
             return response.status_code == 200
@@ -66,7 +65,7 @@ class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
         if isinstance(input, str):
             input = [{'text': input}]
         elif isinstance(input, list):
-            # 验证输入格式，最多为1段文本+1张图片
+            # Validate input format, at most 1 text segment + 1 image
             if len(input) == 0:
                 raise ValueError('Input list cannot be empty')
             if len(input) > 2:
@@ -84,7 +83,7 @@ class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
         return json_data
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> List[float]:
-        # 豆包多模态Embedding返回融合的单个embedding
+        # Doubao multimodal embedding returns a single fused embedding
         return response['data']['embedding']
 
 
