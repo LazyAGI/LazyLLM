@@ -35,6 +35,7 @@ engine = pyttsx3.init()
 > See the [LazyLLM official documentation (Supported Platforms section)](https://docs.lazyllm.ai/en/stable/#supported-platforms) for details.
 
 **Function Description：**
+
 - `chat`: Uses LazyLLM's online chat module (default sensenova API)
     - Supports switching different LLM backends
     - Automatically manages conversation context

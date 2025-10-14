@@ -34,6 +34,7 @@ engine = pyttsx3.init()
 > 使用在线模型时需要配置 `API_KEY`，参考 [LazyLLM 官方文档（平台支持部分）](https://docs.lazyllm.ai/en/stable/#supported-platforms)
 
 **功能说明：**
+
 - `chat`: 使用 LazyLLM 提供的在线聊天模块（默认调用 sensenova 接口）
     - 支持更换不同的大模型后端
     - 自动处理对话上下文管理
@@ -89,7 +90,7 @@ You said: What is the capital of France?
 The capital of France is Paris.
 ```
 
-**系统语音播报：**
+**系统语音播报：**  
 "The capital of France is Paris."
 
 ### 注意事项
