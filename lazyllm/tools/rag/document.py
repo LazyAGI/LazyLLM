@@ -1,6 +1,7 @@
 import os
 
 from typing import Callable, Optional, Dict, Union, List
+from functools import cached_property
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
@@ -13,7 +14,7 @@ from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .index_base import IndexBase
-from .utils import DocListManager
+from .utils import DocListManager, ensure_call_endpoint
 from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
 import copy
@@ -37,7 +38,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                      manager: Union[bool, str] = False, server: Union[bool, int] = False, name: Optional[str] = None,
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
-                     doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None):
+                     doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
+                     display_name: Optional[str] = "", description: Optional[str] = "algorithm description"):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
@@ -52,12 +54,15 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._dataset_path = dataset_path
             self._embed = self._get_embeds(embed)
             self._processor = processor
+            name = name or DocListManager.DEFAULT_GROUP_NAME
+            if not display_name: display_name = name
 
             self._dlm = None if (self._cloud or self._doc_files is not None) else DocListManager(
                 dataset_path, name, enable_path_monitoring=False if manager else True)
-            self._kbs = CallableDict({DocListManager.DEFAULT_GROUP_NAME: DocImpl(
+            self._kbs = CallableDict({name: DocImpl(
                 embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
-                store_conf=store_conf, processor=processor, algo_name=name)})
+                store=store_conf, processor=processor, algo_name=name, display_name=display_name,
+                description=description)})
 
             if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
@@ -92,10 +97,10 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             embed = self._get_embeds(embed) if embed else self._embed
             if isinstance(self._kbs, ServerModule):
                 self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=embed, kb_group_name=name,
-                                                   global_metadata_desc=doc_fields, store_conf=store_conf)
+                                                   global_metadata_desc=doc_fields, store=store_conf)
             else:
                 self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
-                                          global_metadata_desc=doc_fields, store_conf=store_conf)
+                                          global_metadata_desc=doc_fields, store=store_conf)
             self._dlm.add_kb_group(name=name)
 
         def get_doc_by_kb_group(self, name):
@@ -112,7 +117,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def __new__(cls, *args, **kw):
         if url := kw.pop('url', None):
             name = kw.pop('name', None)
-            assert name, 'Document name must be provided with `url`'
             assert not args and not kw, 'Only `name` is supported with `url`'
             return UrlDocument(url, name)
         else:
@@ -122,7 +126,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                  create_ui: bool = False, manager: Union[bool, str, "Document._Manager", DocumentProcessor] = False,
                  server: Union[bool, int] = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
-                 store_conf: Optional[Dict] = None):
+                 store_conf: Optional[Dict] = None, display_name: Optional[str] = "",
+                 description: Optional[str] = "algorithm description"):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
@@ -135,6 +140,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 'Manager and dataset_path are not supported for Document with temp-files')
             assert store_conf is None or store_conf['type'] == 'map', (
                 'Only map store is supported for Document with temp-files')
+
+        name = name or DocListManager.DEFAULT_GROUP_NAME
 
         if isinstance(manager, Document._Manager):
             assert not server, 'Server infomation is already set to by manager'
@@ -153,13 +160,14 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 processor._impl.start()
                 manager = False
                 assert name, '`Name` of Document is necessary when using cloud service'
-                assert store_conf['type'] != 'map', 'Cloud manager is not supported when using map store'
+                assert store_conf.get('type') != 'map', 'Cloud manager is not supported when using map store'
                 assert not dataset_path, 'Cloud manager is not supported with local dataset path'
             else:
                 cloud, processor = False, None
             self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher, store_conf,
-                                              doc_fields, cloud=cloud, doc_files=doc_files, processor=processor)
-            self._curr_group = DocListManager.DEFAULT_GROUP_NAME
+                                              doc_fields, cloud=cloud, doc_files=doc_files, processor=processor,
+                                              display_name=display_name, description=description)
+            self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
 
     def _list_all_files_in_dataset(self) -> List[str]:
@@ -168,6 +176,11 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             files = [os.path.join(root, file_path) for file_path in files]
             files_list.extend(files)
         return files_list
+
+    @property
+    def url(self):
+        assert isinstance(self._manager._kbs, ServerModule), 'Document is not a service, please set `manager` to `True`'
+        return self._manager._kbs._url
 
     def connect_sql_manager(
         self,
@@ -218,7 +231,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def get_sql_manager(self):
         if self._doc_to_db_processor is None:
-            raise None
+            raise ValueError("Please call connect_sql_manager to init handler first")
         return self._doc_to_db_processor.sql_manager
 
     def extract_db_schema(
@@ -254,15 +267,17 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     @property
     def manager(self): return self._manager._processor or self._manager
 
-    def activate_group(self, group_name: str, embed_keys: Optional[Union[str, List[str]]] = None):
+    def activate_group(self, group_name: str, embed_keys: Optional[Union[str, List[str]]] = None,
+                       enable_embed: bool = True):
+        if embed_keys and not enable_embed:
+            raise ValueError('`enable_embed` must be set to True when `embed_keys` is provided')
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
-        elif embed_keys is None: embed_keys = []
-        self._impl.activate_group(group_name, embed_keys)
+        self._impl.activate_group(group_name, embed_keys, enable_embed)
 
-    def activate_groups(self, groups: Union[str, List[str]]):
+    def activate_groups(self, groups: Union[str, List[str]], **kwargs):
         if isinstance(groups, str): groups = [groups]
         for group in groups:
-            self.activate_group(group)
+            self.activate_group(group, **kwargs)
 
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
@@ -312,7 +327,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def forward(self, *args, **kw) -> List[DocNode]:
         return self._forward('retrieve', *args, **kw)
 
-    def clear_cache(self, group_names: Optional[List[str]]) -> None:
+    def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
         return self._forward('clear_cache', group_names)
 
     def _get_post_process_tasks(self):
@@ -323,16 +338,15 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                                  server=isinstance(self._manager._kbs, ServerModule))
 
 class UrlDocument(ModuleBase):
-    def __init__(self, url: str, name: str):
+    def __init__(self, url: str, name: str = None):
         super().__init__()
         self._missing_keys = set(dir(Document)) - set(dir(UrlDocument))
-        self._manager = lazyllm.UrlModule(url=url)
-        self._curr_group = name
+        self._manager = lazyllm.UrlModule(url=ensure_call_endpoint(url))
+        self._curr_group = name or DocListManager.DEFAULT_GROUP_NAME
 
     def _forward(self, func_name: str, *args, **kwargs):
         args = (self._curr_group, func_name, *args)
-        args, kwargs = lazyllm.dump_obj(args), lazyllm.dump_obj(kwargs)
-        return self._manager("__call__", args, kwargs)
+        return self._manager._call("__call__", *args, **kwargs)
 
     def find(self, target) -> Callable:
         return functools.partial(self._forward, 'find', group=target)
@@ -340,7 +354,7 @@ class UrlDocument(ModuleBase):
     def forward(self, *args, **kw):
         return self._forward('retrieve', *args, **kw)
 
-    @functools.lru_cache
+    @cached_property
     def active_node_groups(self):
         return self._forward('active_node_groups')
 

@@ -7,7 +7,7 @@ from .finetune import LazyLLMFinetuneBase
 from .deploy import LazyLLMDeployBase, FastapiApp
 from .validate import LazyLLMValidateBase
 from .auto import AutoDeploy, AutoFinetune
-from .utils import ModelManager
+from .utils import ModelManager, LLMType
 from .formatter import FormatterBase, EmptyFormatter, JsonFormatter, FileFormatter
 from .deploy import (StableDiffusionDeploy, TTSDeploy, BarkDeploy, ChatTTSDeploy,
                      MusicGenDeploy, SenseVoiceDeploy, OCRDeploy)
@@ -26,6 +26,7 @@ __all__ = [
     "AutoDeploy",
     "AutoFinetune",
     "ModelManager",
+    "LLMType",
     "FormatterBase",
     "EmptyFormatter",
     "JsonFormatter",

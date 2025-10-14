@@ -35,7 +35,7 @@ class CollieFinetune(LazyLLMFinetuneBase):
                  merge_path=None,
                  model_name='LLM',
                  cp_files='tokeniz*',
-                 launcher=launchers.remote(ngpus=1),
+                 launcher=launchers.remote(ngpus=1),  # noqa B008
                  **kw
                  ):
         if not merge_path:
@@ -80,7 +80,7 @@ class CollieFinetune(LazyLLMFinetuneBase):
                    f'--base={self.base_model} '
                    f'--adapter={self.target_path} '
                    f'--save_path={self.merge_path} ',
-                   f' cp {os.path.join(self.base_model,self.cp_files)} {self.merge_path} '
+                   f' cp {os.path.join(self.base_model, self.cp_files)} {self.merge_path} '
                 ]
 
         return cmd

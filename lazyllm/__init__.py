@@ -8,24 +8,26 @@ from .flow import *  # noqa F403
 from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                          LazyLLMValidateBase, register as component_register, Prompter,
                          AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter, FileFormatter)
+from .redis_client import redis_client
 
 from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
-                     OnlineChatModule, OnlineEmbeddingModule, AutoModel)
-from .client import redis_client
+                     OnlineChatModule, OnlineEmbeddingModule, AutoModel, OnlineMultiModalModule)
 from .hook import LazyLLMHook
 from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
                     FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
                     LLMParser)
 from .docs import add_doc
-from . import patch
+from .patch import patch_os_env
 
 config.done()
+patch_os_env(lambda key, value: config.refresh(key), config.refresh)
 
 
 del LazyLLMRegisterMetaClass  # noqa F821
+del LazyLLMRegisterMetaABCClass  # noqa F821
 del _get_base_cls_from_registry  # noqa F821
-del patch
+del patch_os_env
 
 
 __all__ = [
@@ -60,6 +62,7 @@ __all__ = [
     'module_register',
     'OnlineChatModule',
     'OnlineEmbeddingModule',
+    'OnlineMultiModalModule',
     'AutoModel',
 
     # client

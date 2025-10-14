@@ -348,3 +348,61 @@ Flow in LazyLLM defines the data stream, describing how data is passed from one 
 1. You can easily combine, add, and replace various modules and components; the design of Flow makes adding new features simple and facilitates collaboration between different modules and even projects.
 2. Through a standardized interface and data flow mechanism, Flow reduces the repetitive work developers face when handling data transfer and transformation. Developers can focus more on core business logic, thus improving overall development efficiency.
 3. Some Flows support asynchronous processing and parallel execution, significantly enhancing response speed and system performance when dealing with large-scale data or complex tasks.
+
+## Future Plans
+
+### Timeline
+V0.6 Expected to start from September 1st, lasting 3 months, with continuous small version releases in between, such as v0.6.1, v0.6.2
+V0.7 Expected to start from December 1st, lasting 3 months, with continuous small version releases in between, such as v0.7.1, v0.7.2
+
+### Feature Modules
+RAG
+  - Engineering
+    - Integrate LazyRAG capabilities into LazyLLM (V0.6)
+    - Extend RAG's macro Q&A capabilities to multiple knowledge bases (V0.6)
+    - RAG modules fully support horizontal scaling, supporting multi-machine deployment of RAG algorithm collaboration (V0.6)
+    - Integrate at least 1 open-source knowledge graph framework (V0.6)
+    - Support common data splitting strategies, no less than 20 types, covering various document types (V0.6)
+  - Data Capabilities
+    - Table parsing (V0.6 - 0.7)
+    - CAD image parsing (V0.7 -)
+  - Algorithm Capabilities
+    - Support processing of relatively structured texts like CSV (V0.6)
+    - Multi-hop retrieval (links in documents, references, etc.) (V0.6)
+    - Information conflict handling (V0.7)
+    - AgenticRL & code-writing problem-solving capabilities (V0.7)
+
+Functional Modules
+  - Support memory capabilities (V0.6)
+  - Support for distributed Launcher (V0.7)
+  - Database-based Globals support (V0.6)
+  - ServerModule can be published as MCP service (v0.7)
+  - Integration of online sandbox services (v0.7)
+
+Model Training and Inference
+  - Support OpenAI interface deployment and inference (V0.6)
+  - Unify fine-tuning and inference prompts (V0.7)
+  - Provide fine-tuning examples in Examples (V0.7)
+  - Integrate 2-3 prompt repositories, allowing direct selection of prompts from prompt repositories (V0.6)
+  - Support more intelligent model type judgment and inference framework selection, refactor and simplify auto-finetune framework selection logic (V0.6)
+  - Full-chain GRPO support (V0.7)
+
+Documentation
+  - Complete API documentation, ensure every public interface has API documentation, with consistent documentation parameters and function parameters, and executable sample code (V0.6)
+  - Complete CookBook documentation, increase cases to 50, with comparisons to LangChain/LlamaIndex (code volume, speed, extensibility) (V0.6)
+  - Complete Environment documentation, supplement installation methods on win/linux/macos, supplement package splitting strategies (V0.6)
+  - Complete Learn documentation, first teach how to use large models; then teach how to build agents; then teach how to use workflows; finally teach how to build RAG (V0.6)
+
+Quality
+  - Reduce CI time to within 10 minutes by mocking most modules (V0.6)
+  - Add daily builds, put high-time-consuming/token tasks in daily builds (V0.6)
+
+Development, Deployment and Release
+  - Debug optimization (v0.7)
+  - Process monitoring [output + performance] (v0.7)
+  - Environment isolation and automatic environment setup for dependent training and inference frameworks (V0.6)
+
+Ecosystem
+  - Promote LazyCraft open source (V0.6)
+  - Promote LazyRAG open source (V0.7)
+  - Upload code to 2 code hosting websites other than Github and strive for community collaboration (V0.6)

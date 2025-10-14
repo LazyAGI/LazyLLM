@@ -16,7 +16,7 @@ Based on the above description, we abstract the RAG process as follows:
 
 From the principle introduction, it can be seen that the document collection contains various document formats: it can be structured records stored in a database, rich text formats such as DOCX, PDF, PPT, or plain text like Markdown, or even content obtained from an API (such as information retrieved through a search engine), etc. Due to the diverse document formats within the collection, we need specific parsers to extract useful content such as text, images, tables, audio, and video from these different formats. In `LazyLLM`, these parsers used to extract specific content are abstracted as `DataLoader`. Currently, the `DataLoader` built into `LazyLLM` can support the extraction of common rich text content such as DOCX, PDF, PPT, and EXCEL. The document content extracted using `DataLoader` is stored in a `Document`.
 
-Currently, `Document` only supports extracting document content from a local directory, and users can build a document collection docs from a local directory using the following statement:
+`Document`  not only supports extracting document content from a local directory, but also supports API. Users can build a document collection `docs` from a local directory using the following statement:
 
 ```python
 docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), manager=False)
@@ -28,42 +28,57 @@ The Document constructor has the following parameters:
 * `embed`: Uses the specified model to perform text embedding. If you need to generate multiple embeddings for the text, you need to specify them in a dictionary, where the key identifies the name of the embedding and the value is the corresponding embedding model.
 * `manager`: Whether to use the UI interface, which will affect the internal processing logic of Document; the default is True.
 * `launcher`: The method of launching the service, which is used in cluster applications; it can be ignored for single-machine applications.
-* `store_conf`: Configure which storage backend and index backend to use.
-* `doc_fields`: Configure the fields and corresponding types that need to be stored and retrieved (currently only used by the Milvus backend).
+* `store_conf`: Configure which storage backend to use.
+* `doc_fields`: Configure the fields and corresponding types that need to be stored and retrieved (currently only used by the ChromaDB and Milvus backend).
 
 #### Node and NodeGroup
 
 A `Document` instance may be further subdivided into several sets of nodes with different granularities, known as `Node` sets (the `Node Group`), according to specified rules (referred to as `Transformer` in `LazyLLM`). These `Node`s not only contain the document content but also record which `Node` they were split from and which finer-grained `Node`s they themselves were split into. Users can create their own `Node Group` by using the `Document.create_node_group()` method.
+
+`create_node_group` method has the following parameters:
+
+* `name`: Specifies the name of the `Node Group`.
+* `transform`: Specifies the transformation rule of the `Node Group`, which can be a subclass of [NodeTransformer][lazyllm.tools.rag.NodeTransformer], or a function that takes content as input.
+* `parent`: Specifies the parent `Node Group`, if not specified, it defaults to the entire document, which is the root `Node` named `lazyllm-root`.
+
+!!! Note
+
+    `LazyLLM` provides three built-in `Node Group`s:
+    * `FineChunk`: A `Node Group` with a length of 128 tokens and an overlap of 12.
+    * `MediumChunk`: A `Node Group` with a length of 256 tokens and an overlap of 25.
+    * `CoarseChunk`: A `Node Group` with a length of 1024 tokens and an overlap of 100.
+
+    For these three `Node Group`s, users do not need to manually create them, and they can be used directly in subsequent retrieval.
 
 Below, we will introduce `Node` and `Node Group` through an example:
 
 ```python
 docs = Document()
 
-# (1)
+# (1) Split the document into individual paragraph blocks using line breaks as delimiters, with each block being a single `Node`.
 docs.create_node_group(name='block',
                        transform=lambda d: d.split('\n'))
 
-# (2)
+# (2) Use a llm capable of extracting summaries to treat each document's summary as a `Node Group` named `doc-summary`. This `Node Group` contains only one `Node`, which is the summary of the entire document.
 docs.create_node_group(name='doc-summary',
                        transform=lambda d: summary_llm(d))
 
-# (3)
+# (3) Further transform the `Node Group` named `block` by using Chinese periods as delimiters to obtain individual sentences, with each sentence being a `Node`. Together, they form the `Node Group` named `sentence`.
 docs.create_node_group(name='sentence',
                        transform=lambda b: b.split('。'),
                        parent='block')
 
-# (4)
+# (4) Based on the `Node Group` named `block`, use a large model that can extract summaries to process each `Node`, resulting in a `Node Group` named `block-summary` that consists of paragraph summaries.
 docs.create_node_group(name='block-summary',
                        transform=lambda b: summary_llm(b),
                        parent='block')
 
-# (5)
+# (5) Based on the `Node Group` named `block`, with the help of a llm that can extract keywords, extracts keywords for each paragraph. The keywords of each paragraph are individual `Node`s, which together form the `Node Group` named `keyword`.
 docs.create_node_group(name='keyword',
                        transform=lambda b: keyword_llm(b),
                        parent='block')
 
-# (6)
+# (6) Based on the `Node Group` named `sentence`, count the length of each sentence, resulting in a `Node Group` named `sentence-len` that contains the length of each sentence.
 docs.create_node_group(name='sentence-len',
                        transform=lambda s: len(s),
                        parent='sentence')
@@ -89,46 +104,68 @@ The relationship of these `Node Group`s is shown in the diagram below:
 
 ![relationship of node groups](../assets/rag-relationship-of-node-groups.svg)
 
-!!! Note
-
-    The `Document.create_node_group()` method has a parameter named `parent` which is used to specify which `Node Group` the transformation is based on. If not specified, it defaults to the entire document, which is the root `Node` named `lazyllm-root`. Additionally, the `Document` constructor has an `embed` parameter, which is a function used to convert the content of a `Node` into a vector.
 
 These `Node Group`s have different granularities and rules, reflecting various characteristics of the document. In subsequent processing, we use these characteristics in different contexts to better judge the relevance between the document and the user's query content.
 
 #### Store and Index
 
-`LazyLLM` offers the functionality of configurable storage and index backends, which can meet various storage and retrieval needs.
+`LazyLLM` offers the functionality of configurable storage backends, which can meet various storage and retrieval needs.
 
-The configuration parameter `store_conf` is a `dict` type that includes the following fields:
+The configuration parameter `store_conf` is a `dict` type that includes both `segment_store` and `vector_store` with the following fields:
+```python
+store_conf = {"segment_store": {}, "vector_store": {}}
+```
+
+In each of the `segment_store` and `vector_store`, the `type` field specifies the type of storage backend, and the `kwargs` field specifies the configuration parameters for the storage backend.
 
 * `type`: This is the type of storage backend. Currently supported storage backends include:
-    - `map`: In-memory key/value storage.
-    - `chroma`: Uses Chroma for data storage.
-        - `dir`(required): Directory where data is stored.
-    - `milvus`: Uses Milvus for data storage.
-        - `uri`(required): The Milvus storage address, which can be a file path or a URL in the format of `ip:port`.
-        - `index_kwargs` (optional): Milvus index configuration, which can be a dictionary or a list. If it is a dictionary, it means that all embedding indexes use the same configuration; if it is a list, the elements in the list are dictionaries, representing the configuration used by the embeddings specified by `embed_key`. Currently, only `floating point embedding` and `sparse embedding` are supported for the two types of embeddings, with the following supported parameters respectively:
+    - `segment_store`:
+        - `map`: In-memory key/value storage, which can be given a `uri` parameter to specify the directory where data is stored (using sqlite3 as the underlying storage engine).
+        - `opensearch`: Use the OpenSearch backend for data storage.
+    - `vector_store`:
+        - `chromadb`: Uses ChromaDB for data storage.
+        - `milvus`: Uses Milvus for data storage.
+* `kwargs`: This is a dictionary that contains the configuration parameters for the storage backend, different storage backends have different configuration parameters:
+    - `map`:
+        - `uri` (optional): The directory where data is stored (using sqlite3 as the underlying storage engine).
+    - `opensearch`:
+        - `uris` (required): The OpenSearch storage address (support multiple addresses), which can be a list of URL in the format of `ip:port`.
+        - `client_kwargs` (required): The configuration parameters for the OpenSearch client, e.g. `user`, `password`, etc, can be found in [OpenSearch official documentation](https://opensearch-project.github.io/opensearch-py/api-ref/clients/opensearch_client.html).
+        - `index_kwargs` (optional): The configuration parameters for the OpenSearch index and slice storage.
+    - `chromadb`:
+        - `uri` (optional): The ChromaDB storage address, which can be a URL in the format of `ip:port`.
+        - `dir` (optional): The directory where data is stored, which is used when `uri` is not specified.
+        - `index_kwargs` (optional): The configuration parameters for the ChromaDB index, setting the index type and similarity calculation method, can be found in [ChromaDB official documentation](https://docs.trychroma.com/docs/collections/configure).
+        - `client_kwargs` (optional): The configuration parameters for the ChromaDB client.
+    - `milvus`:
+        - `uri` (required): The Milvus storage address, which can be a db file path or a URL in the format of `ip:port`.
+        - `db_name` (optional): The name of the Milvus database, which is used to isolate the database layer.
+        - `client_kwargs` (optional): The configuration parameters for the Milvus client.
+        - `index_kwargs` (optional): The configuration parameters for the Milvus index, which can be a dictionary or a list. If it is a dictionary, it means that all embedding indexes use the same configuration; if it is a list, the elements in the list are dictionaries, representing the configuration used by the embeddings specified by `embed_key`. Currently, only `floating point embedding` and `sparse embedding` are supported for the two types of embeddings, with the following supported parameters respectively:
             - `floating point embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
             - `sparse embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
-* `indices`: This is a dictionary where the key is the name of the index type, and the value is the parameters required for that index type. The currently supported index types are:
-    - `smart_embedding_index`: Provides embedding retrieval functionality. The supported backends include:
-        - `milvus`: Use Milvus as the backend for embedding search. The available parameters `kwargs` are the same as when used as a storage backend.
+
 
 Here is an example configuration using Chroma as the storage backend and Milvus as the retrieval backend:
 
 ```python
 store_conf = {
-    'type': 'chroma',
-    'indices': {
-        'smart_embedding_index': {
-            'backend': 'milvus',
-            'kwargs': {
-                'uri': store_file,
-                'index_kwargs': {
-                    'index_type': 'HNSW',
-                    'metric_type': 'COSINE',
+    'segment_store': {
+        'type': 'map',
+        'kwargs': {
+            'uri': '/path/to/segment/dir/sqlite3.db',
+        },
+    },
+    'vector_store': {
+        'type': 'chromadb',
+        'kwargs': {
+            'dir': '/path/to/vector/dir',
+            'index_kwargs': {
+                'hnsw': {
+                    'space': 'cosine',
+                    'ef_construction': 200,
                 }
-            },
+            }
         },
     },
 }
@@ -152,7 +189,7 @@ Also you can configure multi index type for Milvus backend as follow, where the 
 }
 ```
 
-Note: If Milvus is used as a storage backend or indexing backend, you also need to provide a description of special fields that may be used as search conditions, passed in through the `doc_fields` parameter. `doc_fields` is a dictionary where the key is the name of the field that needs to be stored or retrieved, and the value is a `DocField` type structure containing information such as the field type.
+Note: If ChromaDB or Milvus is used as a vector storage, if you want to perform scalar filtering on a specific field as a search condition, you also need to provide a description of special fields that may be used as search conditions, passed in through the `doc_fields` parameter. `doc_fields` is a dictionary where the key is the name of the field that needs to be stored or retrieved, and the value is a `DocField` type structure containing information such as the field type.
 
 For example, if you need to store the author information and publication year of documents, you can configure it as follows:
 
@@ -179,7 +216,7 @@ The constructor of the `Retriever` has the following parameters:
 
 * `doc`: Specifies which `Document` to retrieve documents from. Or which `Document` list to retrieve documents from.
 * `group_name`: Specifies which `Node Group` of the document to use for retrieval. Use `LAZY_ROOT_NAME` to indicate that the retrieval should be performed on the original document content.
-* `similarity`: Specifies the name of the function to calculate the similarity between a `Node` and the user's query content. The similarity calculation functions built into `LazyLLM` include `bm25`, `bm25_chinese`, and `cosine`. Users can also define their own calculation functions.
+* `similarity`: Specifies the name of the function to calculate the similarity between a `Node` and the user's query content. The similarity calculation functions built into `LazyLLM` include `bm25`, `bm25_chinese`, and `cosine`. Users can also define their own calculation functions. If not specified, the vector retrieval will be used by default.
 * `similarity_cut_off`: Discards results with a similarity less than the specified value. The default is `-inf`, which means no results are discarded. In a multi-embedding scenario, if you need to specify different values for different embeddings, this parameter needs to be specified in a dictionary format, where the key indicates which embedding is specified and the value indicates the corresponding threshold. If all embeddings use the same threshold, this parameter only needs to pass a single value.
 * `index`: On which index to search, currently only `default` and `smart_embedding_index` are supported.
 * `topk`: Specifies the number of most relevant documents to return. The default value is 6.
@@ -192,6 +229,10 @@ Users can register their own similarity calculation functions by using the `regi
 * `mode`: The calculation mode, which supports two types: `text` and `embedding`. This will affect the parameters passed to `func`.
 * `descend`: Whether to sort in descending order. The default is `True`.
 * `batch`: Whether to process in multiple batches. This will affect the parameters passed to func and the return value.
+
+!!! Note
+
+    External storage engines generally do not support custom similarity calculation functions, only when not using external storage engines, the registered `similarity` parameter is effective.
 
 When the `mode` parameter is set to `text`, it indicates that the content of the `Node` should be used for calculation. The type of the `query` parameter for the calculation function is `str`, which is the text content to be compared with the `Node`. The content of the `Node` can be obtained using `node.get_text()`. If `mode` is set to `embedding`, it indicates that the vectors obtained by converting with the `embed` function specified during the initialization of the `Document` should be used for calculation. In this case, the type of query is `List[float]`, and the vector of the `Node` can be accessed through `node.embedding`. The `float` in the return value represents the score of the document.
 
@@ -238,7 +279,7 @@ After filtering out documents from the initial document collection that are rela
 For example, you can create a `Reranker` to perform another sorting on all documents returned by the `Retriever` using:
 
 ```python
-reranker = Reranker('ModuleReranker', model='bg-reranker-large', topk=1)
+reranker = Reranker('ModuleReranker', model='bge-reranker-large', topk=1)
 ```
 
 The constructor of the `Reranker` has the following parameters:

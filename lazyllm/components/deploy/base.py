@@ -2,7 +2,11 @@ import time
 from ..core import ComponentBase
 import lazyllm
 from lazyllm import launchers, flows, LOG
+from ...components.utils.file_operate import _image_to_base64, _audio_to_base64, ocr_to_base64
 import random
+
+
+lazyllm.config.add('openai_api', bool, False, 'OPENAI_API')
 
 
 class LazyLLMDeployBase(ComponentBase):
@@ -12,11 +16,13 @@ class LazyLLMDeployBase(ComponentBase):
     stream_url_suffix = ''
     stream_parse_parameters = {}
 
+    encoder_map = dict(image=_image_to_base64, audio=_audio_to_base64, ocr_files=ocr_to_base64)
+
     @staticmethod
     def extract_result(output, inputs):
         return output
 
-    def __init__(self, *, launcher=launchers.remote()):
+    def __init__(self, *, launcher=launchers.remote()):  # noqa B008
         super().__init__(launcher=launcher)
 
 
@@ -30,7 +36,7 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
         }
     }
 
-    def __init__(self, launcher=launchers.remote(sync=False), *, stream=False, **kw):
+    def __init__(self, launcher=launchers.remote(sync=False), *, stream=False, **kw):  # noqa B008
         super().__init__(launcher=launcher)
 
         def func():

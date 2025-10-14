@@ -3,11 +3,13 @@ import lazyllm
 from lazyllm import graph, switch, pipeline, package
 from lazyllm.tools import IntentClassifier, SqlManager
 from lazyllm.tools.http_request.http_request import HttpRequest
+from lazyllm.tools.mcp.client import MCPClient
 from lazyllm.common import compile_func
 from lazyllm.components.formatter.formatterbase import (
     LAZYLLM_QUERY_PREFIX,
     _lazyllm_get_file_list,
     decode_query_with_filepaths,
+    encode_query_with_filepaths
 )
 from .node import Node
 from .node_meta_hook import NodeMetaHook
@@ -16,7 +18,7 @@ import inspect
 import functools
 from itertools import repeat
 import copy
-from abc import ABC, abstractclassmethod
+from abc import ABC, abstractmethod
 from enum import Enum
 from datetime import datetime, timedelta
 import requests
@@ -78,7 +80,7 @@ class Engine(ABC):
         ...
 
     @overload
-    def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],
+    def start(self, nodes: List[Dict] = [], edges: List[Dict] = [], resources: List[Dict] = [],  # noqa B006
               gid: Optional[str] = None, name: Optional[str] = None, _history_ids: Optional[List[str]] = None) -> str:
         ...
 
@@ -87,11 +89,14 @@ class Engine(ABC):
         ...
 
     @overload
-    def update(self, gid: str, nodes: List[Dict], edges: List[Dict] = [],
-               resources: List[Dict] = []) -> str:
+    def update(self, gid: str, nodes: List[Dict], edges: List[Dict] = [],  # noqa B006
+               resources: List[Dict] = []) -> str:  # noqa B006
         ...
 
+    @abstractmethod
     def release_node(self, nodeid: str): pass
+
+    @abstractmethod
     def stop(self, node_id: Optional[str] = None, task_name: Optional[str] = None): pass
 
     def build_node(self, node) -> Node:
@@ -126,19 +131,12 @@ class Engine(ABC):
 
     def subnodes(self, nodeid: str, recursive: bool = False):
         def _impl(nid, recursive):
+            if nid not in self._nodes:
+                return
             for id in self._nodes[nid].subitems:
                 yield id
                 if recursive: yield from self.subnodes(id, True)
         return list(_impl(nodeid, recursive))
-
-    @abstractclassmethod
-    def launch_localllm_train_service(self): pass
-
-    @abstractclassmethod
-    def launch_localllm_infer_service(self): pass
-
-    @abstractclassmethod
-    def get_infra_handle(self, token, mid) -> lazyllm.TrainableModule: pass
 
 
 class NodeConstructor(object):
@@ -247,8 +245,10 @@ def make_server_resource(kind: str, graph: ServerGraph, args: Dict[str, Any]):
 
 
 @NodeConstructor.register('Graph', 'SubGraph', subitems=['nodes', 'resources'])
-def make_graph(nodes: List[dict], edges: List[Union[List[str], dict]] = [],
-               resources: List[dict] = [], enable_server: bool = True, _history_ids: Optional[List[str]] = None):
+def make_graph(nodes: List[dict], edges: Optional[List[Union[List[str], dict]]] = None,
+               resources: Optional[List[dict]] = None, enable_server: bool = True,
+               _history_ids: Optional[List[str]] = None):
+    edges, resources = edges or [], resources or []
     engine = Engine()
     server_resources = dict(server=None, web=None)
     for resource in resources:
@@ -290,8 +290,8 @@ def make_graph(nodes: List[dict], edges: List[Union[List[str], dict]] = [],
 
 
 @NodeConstructor.register('App')
-def make_subapp(nodes: List[dict], edges: List[dict], resources: List[dict] = []):
-    return make_graph(nodes, edges, resources)
+def make_subapp(nodes: List[dict], edges: List[dict], resources: Optional[List[dict]] = None):
+    return make_graph(nodes, edges, resources or [])
 
 
 # Note: It will be very dangerous if provided to C-end users as a SAAS service
@@ -311,17 +311,18 @@ def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
 
 
 def _build_pipeline(nodes):
-    if isinstance(nodes, list) and len(nodes) > 1:
-        return pipeline([Engine().build_node(node).func for node in nodes])
-    elif isinstance(nodes, list) and len(nodes) == 0:
-        return lazyllm.Identity()
+    if not isinstance(nodes, list): nodes = [nodes]
+    if isinstance(nodes, list) and len(nodes) > 0:
+        return make_graph(nodes, enable_server=False)
     else:
-        return Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
-
+        return lazyllm.Identity()
 
 @NodeConstructor.register('Switch', subitems=['nodes:dict'])
-def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]]):
-    with switch(judge_on_full_input=judge_on_full_input) as sw:
+def make_switch(judge_on_full_input: bool, nodes: Dict[str, List[dict]], conversion: Optional[str] = None):
+    if conversion is not None:
+        conversion = make_code(conversion)
+
+    with switch(judge_on_full_input=judge_on_full_input, conversion=conversion) as sw:
         for cond, cond_nodes in nodes.items():
             sw.case[cond::_build_pipeline(cond_nodes)]
     return sw
@@ -333,9 +334,9 @@ def make_diverter(nodes: List[dict]):
 
 
 @NodeConstructor.register('Warp', subitems=['nodes', 'resources'])
-def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] = [],
+def make_warp(nodes: List[dict], edges: Optional[List[dict]] = None, resources: Optional[List[dict]] = None,
               batch_flags: Optional[List[int]] = None):
-    wp = lazyllm.warp(make_graph(nodes, edges, resources, enable_server=False))
+    wp = lazyllm.warp(make_graph(nodes, edges or [], resources or [], enable_server=False))
     if batch_flags and len(batch_flags) > 1:
         def transform(*args):
             args = [a if b else repeat(a) for a, b in zip(args, batch_flags)]
@@ -346,12 +347,12 @@ def make_warp(nodes: List[dict], edges: List[dict] = [], resources: List[dict] =
 
 
 @NodeConstructor.register('Loop', subitems=['nodes', 'resources'])
-def make_loop(nodes: List[dict], edges: List[dict] = [], resources: List[dict] = [],
+def make_loop(nodes: List[dict], edges: Optional[List[dict]] = None, resources: Optional[List[dict]] = None,
               stop_condition: Optional[str] = None, judge_on_full_input: bool = True, count=sys.maxsize):
     assert stop_condition is not None or count > 1, 'stop_condition or count is required'
     if stop_condition is not None:
         stop_condition = make_code(stop_condition)
-    return lazyllm.loop(make_graph(nodes, edges, resources, enable_server=False),
+    return lazyllm.loop(make_graph(nodes, edges or [], resources or [], enable_server=False),
                         stop_condition=stop_condition, judge_on_full_input=judge_on_full_input, count=count)
 
 
@@ -378,18 +379,15 @@ def make_intention(base_model: str, nodes: Dict[str, List[dict]],
                    prompt: str = '', constrain: str = '', attention: str = ''):
     with IntentClassifier(Engine().build_node(base_model).func,
                           prompt=prompt, constrain=constrain, attention=attention) as ic:
-        for cond, nodes in nodes.items():
-            if isinstance(nodes, list) and len(nodes) > 1:
-                f = pipeline([Engine().build_node(node).func for node in nodes])
-            else:
-                f = Engine().build_node(nodes[0] if isinstance(nodes, list) else nodes).func
-            ic.case[cond::f]
+        for cond, sub_nodes in nodes.items():
+            if not isinstance(sub_nodes, list): sub_nodes = [sub_nodes]
+            ic.case[cond::make_graph(sub_nodes, enable_server=False)]
     return ic
 
 
 @NodeConstructor.register('Document', need_id=True)
 def make_document(dataset_path: str, _node_id: str, embed: Node = None, create_ui: bool = False, server: bool = False,
-                  node_group: List[Dict] = [], activated_groups: List[Tuple[str, Optional[List[Node]]]] = []):
+                  node_group: List[Dict] = [], activated_groups: List[Tuple[str, Optional[List[Node]]]] = []):  # noqa B006
     groups = [[g, None] if isinstance(g, str) else g for g in activated_groups]
     groups += [[g['name'], g.pop('embed', None)] for g in node_group]
     groups = [[g, e] if (not e or isinstance(e, list)) else [g, [e]] for g, e in groups]
@@ -420,7 +418,8 @@ def make_retriever(doc: str, group_name: str, similarity: str = 'cosine', simila
 
 @NodeConstructor.register('Reranker')
 def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
-                  output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Dict = {}):
+                  output_format: Optional[str] = None, join: Union[bool, str] = False, arguments: Optional[Dict] = None):
+    arguments = arguments or {}
     if type == 'ModuleReranker' and not isinstance(arguments['model'], lazyllm.TrainableModule):
         if node := Engine().build_node(arguments['model']):
             arguments['model'] = node.func
@@ -429,6 +428,7 @@ def make_reranker(type: str = 'ModuleReranker', target: Optional[str] = None,
             setup_deploy_method(model, arguments.get('deploy_method', 'RerankDeploy'), arguments.get('url'))
             arguments['model'] = model
     return lazyllm.tools.Reranker(type, target=target, output_format=output_format, join=join, **arguments)
+
 
 class JoinFormatter(lazyllm.components.FormatterBase):
     def __init__(self, type, *, names=None, symbol=None):
@@ -486,12 +486,22 @@ def _get_tools(tools):
 def make_tools_for_llm(tools: List[str]):
     return lazyllm.tools.ToolManager(_get_tools(tools))
 
+@NodeConstructor.register('MCPTool', subitems=['tools'])
+def make_mcp_tool(command_or_url: str, tool_name: str, args: Optional[List[str]] = None, env: Dict[str, str] = None,
+                  headers: Dict[str, str] = None, timeout: float = 5):
+    client = MCPClient(command_or_url, args or [], env, headers, timeout)
+    tools = client.get_tools([tool_name])
+    assert len(tools) == 1, f"Current MCP client does not support tool '{tool_name}'. \
+        Please check if the tool name is correct."
+    return tools[0]
+
 @NodeConstructor.register('FunctionCall', subitems=['tools'])
 def make_fc(base_model: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
         lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
-    return f(Engine().build_node(base_model).func, _get_tools(tools))
+    return f(Engine().build_node(base_model).func.func, _get_tools(tools))
+
 
 class AuthenticationFailedError(Exception):
     def __init__(self, message="Authentication failed for the given user and tool."):
@@ -677,8 +687,8 @@ def make_http_tool(method: Optional[str] = None,
 
 
 class VQA(lazyllm.Module):
-    def __init__(self, base_model: lazyllm.TrainableModule, file_resource_id: Optional[str],
-                 prompt: Optional[str] = None):
+    def __init__(self, base_model: Union[lazyllm.TrainableModule, lazyllm.OnlineChatModule],
+                 file_resource_id: Optional[str], prompt: Optional[str] = None):
         super().__init__()
         if isinstance(base_model, VQA): base_model = base_model._vqa
         self.vqa = self._vqa = base_model.share()
@@ -692,8 +702,9 @@ class VQA(lazyllm.Module):
     def status(self, task_name: Optional[str] = None):
         return self._vqa.status(task_name)
 
-    def share(self, prompt: str, history: Optional[List[List[str]]] = None):
-        shared_vqa = self._vqa.share(prompt=prompt, history=history)
+    def share(self, prompt: str, format: callable = None, stream: bool = False,
+              history: Optional[List[List[str]]] = None):
+        shared_vqa = self._vqa.share(prompt=prompt, format=format, stream=stream, history=history)
         return VQA(shared_vqa, self._file_resource_id)
 
     def forward(self, *args, **kw):
@@ -714,9 +725,9 @@ class VQA(lazyllm.Module):
 @NodeConstructor.register('VQA')
 def make_vqa(kw: dict):
     type: str = kw.pop('type')
-    assert type in ('local', 'online'), f'Invalid type {type} given'
     if type == 'local': return make_local_vqa(**kw)
-    else: raise ValueError(f'Not supported type {type} for VQA')
+    elif type == 'online': return make_online_vqa(**kw)
+    else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalVQA')
 def make_local_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None,
@@ -725,37 +736,27 @@ def make_local_vqa(base_model: str, file_resource_id: Optional[str] = None, prom
     setup_deploy_method(model, deploy_method, url)
     return VQA(model, file_resource_id, prompt)
 
-
-@NodeConstructor.register('SharedLLM')
-def make_shared_llm(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
-                    stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
+@NodeConstructor.register('OnlineVQA')
+def make_online_vqa(source: str = None, base_model: Optional[str] = None, prompt: Optional[str] = None,
+                    api_key: Optional[str] = None, secret_key: Optional[str] = None,
+                    stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
                     history: Optional[List[List[str]]] = None):
-    if local:
-        llm = Engine().build_node(llm).func
-        if file_resource_id: assert isinstance(llm, VQA), 'file_resource_id is only supported in VQA'
-        r = (VQA(llm._vqa.share(prompt=prompt, history=history), file_resource_id)
-             if file_resource_id else llm.share(prompt=prompt, history=history))
-    else:
-        assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
-        r = Engine().get_infra_handle(token, llm)
-        if prompt: r.prompt(prompt, history=history)
-    if stream is not None: r.stream = stream
-    return r
+    if source: source = source.lower()
+    return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
+                                    api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
+
 
 @NodeConstructor.register('SharedModel')
-def make_shared_model(llm: str, local: bool = True, prompt: Optional[str] = None, token: str = None,
+def make_shared_model(llm: str, prompt: Optional[str] = None,
                       stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
                       history: Optional[List[List[str]]] = None, cls: str = "llm"):
     if file_resource_id: assert cls == 'vqa', 'file_resource_id is only supported in VQA'
-    if local:
-        model = Engine().build_node(llm).func
-    else:
-        assert Engine().launch_localllm_infer_service.flag, 'Infer service should start first!'
-        model = Engine().get_infra_handle(token, llm)
+    model = Engine().build_node(llm).func
     if stream is not None: model.stream = stream
     if cls == "vqa": return VQA(model, file_resource_id).share(prompt=prompt, history=history)
     elif cls == "tts": return TTS(model)
     elif cls == "stt": return STT(model)
+    elif cls == "sd": return SD(model)
     else: return model.share(prompt=prompt, history=history)
 
 
@@ -763,20 +764,10 @@ def make_shared_model(llm: str, local: bool = True, prompt: Optional[str] = None
 def make_online_llm(source: str = None, base_model: Optional[str] = None, prompt: Optional[str] = None,
                     api_key: Optional[str] = None, secret_key: Optional[str] = None,
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
-                    history: Optional[List[List[str]]] = None):
+                    history: Optional[List[List[str]]] = None, static_params: Optional[Dict[str, Any]] = None):
     if source: source = source.lower()
-    if source == 'lazyllm':
-        return make_shared_llm(base_model, False, prompt, token, stream, history=history)
-    else:
-        return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
-                                        api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
-
-@NodeConstructor.register('OnlineEmbedding')
-def make_online_embedding(source: str = None, embed_type: Optional[str] = 'embed', base_model: Optional[str] = None,
-                          base_url: Optional[str] = None, api_key: Optional[str] = None):
-    if source: source = source.lower()
-    return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
-                                         embed_url=base_url, api_key=api_key)
+    return lazyllm.OnlineChatModule(base_model, source, base_url, stream, api_key=api_key, secret_key=secret_key,
+                                    static_params=static_params or {}).prompt(prompt, history=history)
 
 
 class LLM(lazyllm.ModuleBase):
@@ -794,8 +785,9 @@ class LLM(lazyllm.ModuleBase):
             assert len(args) == 1
         return self._m(*args, **kw)
 
-    def share(self, prompt: str, format: callable = None, history: Optional[List[List[str]]] = None):
-        return LLM(self._m.share(prompt=prompt, format=format, history=history), self._keys)
+    def share(self, prompt: str, format: callable = None, stream: bool = False,
+              history: Optional[List[List[str]]] = None):
+        return LLM(self._m.share(prompt=prompt, format=format, stream=stream, history=history), self._keys)
 
     @property
     def func(self):
@@ -806,13 +798,13 @@ class LLM(lazyllm.ModuleBase):
 def make_llm(kw: dict):
     type: str = kw.pop('type')
     keys: Optional[List[str]] = kw.pop('keys', None)
-    assert type in ('local', 'online'), f'Invalid type {type} given'
     if type == 'local': return LLM(make_local_llm(**kw), keys)
     elif type == 'online': return LLM(make_online_llm(**kw), keys)
+    else: raise ValueError(f'Invalid type {type} given')
 
 
 class STT(lazyllm.Module):
-    def __init__(self, model: lazyllm.TrainableModule):
+    def __init__(self, model: Union[lazyllm.TrainableModule, lazyllm.OnlineMultiModalModule]):
         super().__init__()
         self._m = model if not isinstance(model, STT) else model._m
 
@@ -845,9 +837,9 @@ class STT(lazyllm.Module):
 @NodeConstructor.register('STT')
 def make_stt(kw: dict):
     type: str = kw.pop('type')
-    assert type in ('local', 'online'), f'Invalid type {type} given'
     if type == 'local': return make_local_stt(**kw)
-    else: raise ValueError(f'Not supported type {type} for STT')
+    elif type == 'online': return make_online_stt(**kw)
+    else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalSTT')
 def make_local_stt(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
@@ -855,21 +847,34 @@ def make_local_stt(base_model: str, deploy_method: str = "auto", url: Optional[s
     setup_deploy_method(model, deploy_method, url)
     return STT(model)
 
+NodeConstructor.register('OnlineSTT')
+def make_online_stt(source: str = None, base_model: Optional[str] = None, base_url: Optional[str] = None,
+                    api_key: Optional[str] = None):
+    if source: source = source.lower()
+    model = lazyllm.OnlineMultiModalModule(source=source, function='stt', model=base_model,
+                                           base_url=base_url, api_key=api_key)
+    return STT(model)
+
+
 class TTS(lazyllm.Module):
-    def __init__(self, model: lazyllm.TrainableModule, target_dir: Optional[str] = None):
+    def __init__(self, model: Union[lazyllm.TrainableModule, lazyllm.OnlineMultiModalModule],
+                 target_dir: Optional[str] = None):
         super().__init__()
         self._m = model if not isinstance(model, TTS) else model._m
         self._target_dir = target_dir
 
     def forward(self, query: str):
-        r = self._m(query)
-        sound_list = []
-        if isinstance(r, str) and r.startswith(LAZYLLM_QUERY_PREFIX):
-            result = decode_query_with_filepaths(r)
-            sound_list = result["files"]
+        result = self._m(query)
+        if isinstance(result, str) and result.startswith(LAZYLLM_QUERY_PREFIX):
+            decoded_result = decode_query_with_filepaths(result)
+            sound_list = decoded_result["files"]
             if self._target_dir and sound_list:
                 sound_list = move_files_to_target_dir(sound_list, self._target_dir)
-        return sound_list[0] if len(sound_list) > 0 else query
+            result = encode_query_with_filepaths(query=decoded_result["query"], files=sound_list)
+        return result
+
+    def share(self):
+        return TTS(self._m)
 
     @property
     def func(self):
@@ -878,28 +883,44 @@ class TTS(lazyllm.Module):
 @NodeConstructor.register('TTS')
 def make_tts(kw: dict):
     type: str = kw.pop('type')
-    assert type in ('local', 'online'), f'Invalid type {type} given'
-    if type == 'local': return make_local_tts(**kw)
-    else: raise ValueError(f'Not supported type {type} for TTS')
+    target_dir: str = kw.pop('target_dir', None)
+    if type == 'local': return TTS(make_local_tts(**kw), target_dir)
+    elif type == 'online': return TTS(make_online_tts(**kw), target_dir)
+    else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalTTS')
-def make_local_tts(base_model: str, deploy_method: str = "auto", url: Optional[str] = None,
-                   target_dir: str = None):
+def make_local_tts(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
     model = lazyllm.TrainableModule(base_model)
     setup_deploy_method(model, deploy_method, url)
-    return TTS(model, target_dir)
+    return model
+
+
+@NodeConstructor.register('OnlineTTS')
+def make_online_tts(source: str = None, base_model: Optional[str] = None, base_url: Optional[str] = None,
+                    api_key: Optional[str] = None):
+    if source: source = source.lower()
+    model = lazyllm.OnlineMultiModalModule(source=source, function='tts', model=base_model,
+                                           base_url=base_url, api_key=api_key)
+    return model
 
 @NodeConstructor.register('Embedding')
 def make_embedding(kw: dict):
     type: str = kw.pop('type')
-    assert type in ('local', 'online'), f'Invalid type {type} given'
     if type == 'local': return make_local_embedding(**kw)
-    else: return make_online_embedding(**kw)
+    elif type == 'online': return make_online_embedding(**kw)
+    else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalEmbedding')
 def make_local_embedding(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
     m = lazyllm.TrainableModule(base_model)
     return setup_deploy_method(m, deploy_method, url)
+
+@NodeConstructor.register('OnlineEmbedding')
+def make_online_embedding(source: str = None, embed_type: Optional[str] = 'embed', base_model: Optional[str] = None,
+                          base_url: Optional[str] = None, api_key: Optional[str] = None):
+    if source: source = source.lower()
+    return lazyllm.OnlineEmbeddingModule(source=source, type=embed_type, embed_model_name=base_model,
+                                         embed_url=base_url, api_key=api_key)
 
 @NodeConstructor.register('Constant')
 def make_constant(value: Any):
@@ -921,20 +942,52 @@ def make_sql_manager(db_type: str = None, user: str = None, password: str = None
                                     db_name=db_name, options_str=options_str, tables_info_dict=tables_info_dict)
 
 @NodeConstructor.register('HTTP')
-def make_http(method: str, url: str, api_key: str = '', headers: dict = {}, params: dict = {}, body: str = ''):
-    return HttpRequest(method=method, url=url, api_key=api_key, headers=headers, params=params, body=body)
+def make_http(method: str, url: str, api_key: str = '', headers: dict = None, params: dict = None, body: str = ''):
+    return HttpRequest(method=method, url=url, api_key=api_key, headers=headers or {}, params=params or {}, body=body)
+
+
+class SD(lazyllm.Module):
+    def __init__(self, model: Union[lazyllm.TrainableModule, lazyllm.OnlineMultiModalModule],
+                 target_dir: Optional[str] = None):
+        super().__init__()
+        self._m = model if not isinstance(model, SD) else model._m
+        self._target_dir = target_dir
+
+    def forward(self, prompt: str):
+        result = self._m(prompt)
+        if isinstance(result, str) and result.startswith(LAZYLLM_QUERY_PREFIX):
+            decoded_result = decode_query_with_filepaths(result)
+            image_list = decoded_result["files"]
+            if self._target_dir and image_list:
+                image_list = move_files_to_target_dir(image_list, self._target_dir)
+            result = encode_query_with_filepaths(query=decoded_result["query"], files=image_list)
+        return result
+
+    def share(self):
+        return SD(self._m)
 
 @NodeConstructor.register('SD')
 def make_sd(kw: dict):
     type: str = kw.pop('type')
-    assert type in ('local', 'online'), f'Invalid type {type} given'
-    if type == 'local': return make_local_sd(**kw)
-    else: raise ValueError(f'Not supported type {type} for SD')
+    target_dir: str = kw.pop('target_dir', None)
+    if type == 'local': return SD(make_local_sd(**kw), target_dir)
+    elif type == 'online': return SD(make_online_sd(**kw), target_dir)
+    else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalSD')
 def make_local_sd(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
-    m = lazyllm.TrainableModule(base_model)
-    return setup_deploy_method(m, deploy_method, url)
+    model = lazyllm.TrainableModule(base_model)
+    setup_deploy_method(model, deploy_method, url)
+    return model
+
+@NodeConstructor.register('OnlineSD')
+def make_online_sd(source: str = None, base_model: Optional[str] = None, base_url: Optional[str] = None,
+                   api_key: Optional[str] = None):
+    if source: source = source.lower()
+    model = lazyllm.OnlineMultiModalModule(source=source, function='text2image', model=base_model,
+                                           base_url=base_url, api_key=api_key)
+    return model
+
 
 class FileResource(object):
     def __init__(self, id) -> None:
@@ -971,11 +1024,13 @@ def make_simple_reader(file_resource_id: Optional[str] = None):
 
 
 @NodeConstructor.register("OCR")
-def make_ocr(model: Optional[str] = "PP-OCRv5_mobile"):
-    if model is None:
-        model = "PP-OCRv5_mobile"
-    assert model in ["PP-OCRv5_server", "PP-OCRv5_mobile", "PP-OCRv4_server", "PP-OCRv4_mobile"]
-    return lazyllm.TrainableModule(base_model=model).start()
+def make_ocr(base_model: Optional[str] = "PP-OCRv5_mobile", deploy_method: str = "auto", url: Optional[str] = None):
+    if base_model is None:
+        base_model = "PP-OCRv5_mobile"
+    assert base_model in ["PP-OCRv5_server", "PP-OCRv5_mobile", "PP-OCRv4_server", "PP-OCRv4_mobile"]
+    model = lazyllm.TrainableModule(base_model)
+    setup_deploy_method(model, deploy_method, url)
+    return model
 
 
 @NodeConstructor.register("ParameterExtractor")

@@ -3,6 +3,7 @@ import httpx
 from urllib.parse import urlparse
 import ipaddress
 import os
+from typing import Callable
 
 def _is_ip_address_url(url: str) -> bool:
     try:
@@ -54,7 +55,7 @@ def new_httpx_func(method, url, **kwargs):
         except Exception: pass
     return _old_httpx_func(method, url, **kwargs)
 
-setattr(httpx, 'request', new_httpx_func)
+httpx.request = new_httpx_func
 
 
 def patch_httpx_func(fname):
@@ -71,3 +72,23 @@ def patch_httpx_func(fname):
 
 for fname in ['get', 'options', 'post', 'delete', 'put', 'patch', 'head']:
     patch_httpx_func(fname)
+
+
+def patch_os_env(set_action: Callable[[str, str], None], unset_action: Callable[[str], None]):
+
+    old_setitem = os._Environ.__setitem__
+
+    def new_setitem(self, key, value):
+        old_setitem(self, key, value)
+        if isinstance(key, bytes): key = key.decode('utf-8')
+        if key.lower().startswith('lazyllm_'): set_action(key, value)
+
+    old_delitem = os._Environ.__delitem__
+
+    def new_delitem(self, key):
+        old_delitem(self, key)
+        if isinstance(key, bytes): key = key.decode('utf-8')
+        if key.lower().startswith('lazyllm_'): unset_action(key)
+
+    os._Environ.__setitem__ = new_setitem
+    os._Environ.__delitem__ = new_delitem

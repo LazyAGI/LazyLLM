@@ -60,7 +60,7 @@ def train( # noqa C901
     # model/data params
     base_model: str = "",  # the only required argument
     data_path: str = "",
-    output_dir: str = os.path.abspath("./output_dir"),
+    output_dir: str = os.path.abspath("./output_dir"),  # noqa B008
     # training hyperparams
     batch_size: int = 128,
     micro_batch_size: int = 4,
@@ -73,7 +73,7 @@ def train( # noqa C901
     lora_r: int = 8,
     lora_alpha: int = 16,
     lora_dropout: float = 0.05,
-    lora_target_modules: List[str] = [
+    lora_target_modules: List[str] = [  # noqa B006
         "q_proj",
         "v_proj",
     ],
@@ -220,7 +220,7 @@ def train( # noqa C901
         else:
             datas.append(load_dataset(data_path))
     elif os.path.isdir(data_path):
-        for root, dirs, files in os.walk(data_path):
+        for root, _, files in os.walk(data_path):
             for file in files:
                 if file.endswith(".json") or file.endswith(".jsonl"):
                     file_path = os.path.join(root, file)

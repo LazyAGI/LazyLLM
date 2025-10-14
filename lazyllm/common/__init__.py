@@ -1,8 +1,8 @@
-from .registry import LazyLLMRegisterMetaClass, _get_base_cls_from_registry, Register
+from .registry import LazyLLMRegisterMetaClass, LazyLLMRegisterMetaABCClass, _get_base_cls_from_registry, Register
 from .common import package, kwargs, arguments, LazyLLMCMD, timeout, final, ReadOnlyWrapper, DynamicDescriptor, override
 from .common import FlatList, Identity, ResultCollector, ArgsDict, CaseInsensitiveDict
 from .common import ReprRule, make_repr, modify_repr, is_valid_url, is_valid_path
-from .common import once_flag, call_once, once_wrapper, singleton, reset_on_pickle
+from .common import once_flag, call_once, once_wrapper, singleton, reset_on_pickle, Finalizer
 from .text import Color, colored_text
 from .option import Option, OptionIter
 from .threading import Thread, ThreadPoolExecutor
@@ -17,6 +17,7 @@ from .utils import compile_func, obj2str, str2obj, str2bool, dump_obj, load_obj
 __all__ = [
     # registry
     'LazyLLMRegisterMetaClass',
+    'LazyLLMRegisterMetaABCClass',
     '_get_base_cls_from_registry',
     'Register',
 
@@ -43,6 +44,7 @@ __all__ = [
     'load_obj',
     'is_valid_url',
     'is_valid_path',
+    'Finalizer',
 
     # arg praser
     'LazyLLMCMD',
@@ -94,5 +96,5 @@ __all__ = [
     'LOG',
 
     # file-system queue
-    'FileSystemQueue',
+    'FileSystemQueue'
 ]

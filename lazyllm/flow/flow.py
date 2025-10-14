@@ -1,8 +1,9 @@
 import lazyllm
 import builtins
-from lazyllm import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root, config
-from lazyllm import ReadOnlyWrapper, LOG, globals
-from ..common.bind import _MetaBind
+from lazyllm import config
+from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root
+from lazyllm.common import ReadOnlyWrapper, LOG, globals
+from lazyllm.common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
 from enum import Enum
@@ -17,6 +18,7 @@ import concurrent.futures
 from collections import deque
 import uuid
 from ..hook import LazyLLMHook
+from itertools import repeat
 
 
 class _FuncWrap(object):
@@ -42,14 +44,14 @@ def new_ins(obj, cls):
         return True if (cls is _FuncWrap or (_oldins(cls, (tuple, list)) and _FuncWrap in cls)) else _oldins(obj._f, cls)
     return _oldins(obj, cls)
 
-setattr(builtins, 'isinstance', new_ins)
+builtins.isinstance = new_ins
 
 def _is_function(f):
     return isinstance(f, (types.BuiltinFunctionType, types.FunctionType,
                           types.BuiltinMethodType, types.MethodType, types.LambdaType))
 
 class FlowBase(metaclass=_MetaBind):
-    def __init__(self, *items, item_names=[], auto_capture=False) -> None:
+    def __init__(self, *items, item_names=None, auto_capture=False) -> None:
         self._father = None
         self._items, self._item_names, self._item_ids = [], [], []
         self._auto_capture = auto_capture
@@ -57,7 +59,7 @@ class FlowBase(metaclass=_MetaBind):
         self._curr_frame = None
         self._flow_id = str(uuid.uuid4().hex)
 
-        for k, v in zip(item_names if item_names else [None] * len(items), items):
+        for k, v in zip(item_names if item_names else repeat(None), items):
             self._add(k, v)
 
         self._capture = False
@@ -145,8 +147,8 @@ def _bind_enter(self):
 def _bind_exit(self, exc_type, exc_val, exc_tb):
     return self._f.__exit__(exc_type, exc_val, exc_tb)
 
-setattr(bind, '__enter__', _bind_enter)
-setattr(bind, '__exit__', _bind_exit)
+bind.__enter__ = _bind_enter
+bind.__exit__ = _bind_exit
 
 
 # TODO(wangzhihong): support workflow launcher.
@@ -508,7 +510,9 @@ class Switch(LazyLLMFlowsBase):
             assert isinstance(__input, tuple) and len(__input) >= 2
             exp = __input[0]
             __input = __input[1] if len(__input) == 2 else __input[1:]
-        if self._conversion: exp = self._conversion(exp)
+
+        if self._conversion:
+            exp = self._conversion(*exp) if isinstance(exp, package) else self._conversion(exp)
 
         for idx, cond in enumerate(self.conds):
             if (callable(cond) and self.invoke(cond, exp) is True) or (exp == cond) or (
@@ -636,31 +640,32 @@ class Graph(LazyLLMFlowsBase):
 
         return [n for n in sorted_nodes if (self._in_degree[n] > 0 or self._out_degree[n] > 0)]
 
+    def _get_input(self, name, node, intermediate_results, futures):
+        if name.startswith('_lazyllm_constant_'):
+            return self._constants[int(name.removeprefix('_lazyllm_constant_'))]
+        if name not in intermediate_results['values']:
+            r = futures[name].result()
+            with intermediate_results['lock']:
+                if name not in intermediate_results['values']:
+                    intermediate_results['values'][name] = r
+        r = intermediate_results['values'][name]
+        if isinstance(r, Exception): raise r
+        if node.inputs[name]:
+            if isinstance(r, arguments) and not ((len(r.args) == 0) ^ (len(r.kw) == 0)):
+                raise RuntimeError('Only one of args and kwargs can be given with formatter.')
+            r = node.inputs[name]((r.args or r.kw) if isinstance(r, arguments) else r)
+        return r
+
     def compute_node(self, sid, node, intermediate_results, futures):
         globals._init_sid(sid)
 
-        def get_input(name):
-            if name.startswith('_lazyllm_constant_'):
-                return self._constants[int(name.strip('_lazyllm_constant_'))]
-            if name not in intermediate_results['values']:
-                r = futures[name].result()
-                with intermediate_results['lock']:
-                    if name not in intermediate_results['values']:
-                        intermediate_results['values'][name] = r
-            r = intermediate_results['values'][name]
-            if isinstance(r, Exception): raise r
-            if node.inputs[name]:
-                if isinstance(r, arguments) and not ((len(r.args) == 0) ^ (len(r.kw) == 0)):
-                    raise RuntimeError('Only one of args and kwargs can be given with formatter.')
-                r = node.inputs[name]((r.args or r.kw) if isinstance(r, arguments) else r)
-            return r
-
         kw = {}
         if len(node.inputs) == 1:
-            input = get_input(list(node.inputs.keys())[0])
+            input = self._get_input(list(node.inputs.keys())[0], node, intermediate_results, futures)
         else:
             # TODO(wangzhihong): add complex rules: mixture of package / support kwargs / ...
-            inputs = package(get_input(input) for input in node.inputs.keys())
+            inputs = package(self._get_input(input, node, intermediate_results, futures)
+                             for input in node.inputs.keys())
             input = arguments()
             for inp in inputs:
                 input.append(inp)
@@ -670,6 +675,7 @@ class Graph(LazyLLMFlowsBase):
             input = input.args
 
         if node.arg_names:
+            if not isinstance(input, (list, tuple, package)): input = [input]
             kw.update({name: value for name, value in zip(node.arg_names, input)})
             input = package()
 

@@ -10,20 +10,30 @@ def load_toml():
     full = {}
     for package_name in all_dependencies:
         if isinstance(all_dependencies[package_name], dict):
-            full[package_name] = all_dependencies[package_name].get('version', '')
+            dep_config = all_dependencies[package_name]
+            version = dep_config.get('version', '')
+            if dep_config.get('optional', False):
+                full[package_name] = version
+            else:
+                full[package_name] = version
+                light[package_name] = version
         elif isinstance(all_dependencies[package_name], str):
             version = all_dependencies[package_name]
             full[package_name] = version
             light[package_name] = version
-    del full['python']
-    del light['python']
+
+    if 'python' in full:
+        del full['python']
+    if 'python' in light:
+        del light['python']
     return full, light
 
 def parse_requirement(line):
-    match = re.match(r'^([a-zA-Z0-9_-]+)([><=~!^*]+.*)?$', line.strip())
+    # 支持带有 extras 的包名格式，如 package[extra] 或 package[extra1,extra2]
+    match = re.match(r'^([a-zA-Z0-9_-]+)(\[[^\]]+\])?([><=~!^*]+.*)?$', line.strip())
     if match:
         package_name = match.group(1)
-        version = match.group(2) if match.group(2) else '*'
+        version = match.group(3) if match.group(3) else '*'
         return package_name, version
     return None, None
 

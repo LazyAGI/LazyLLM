@@ -1,6 +1,6 @@
 import importlib.util
 
-from typing import Any
+from typing import Any, Optional
 from urllib.parse import urlparse
 from contextlib import asynccontextmanager
 from lazyllm.thirdparty import mcp
@@ -14,13 +14,13 @@ class MCPClient(object):
     def __init__(
         self,
         command_or_url: str,
-        args: list[str] = [],
+        args: Optional[list[str]] = None,
         env: dict[str, str] = None,
         headers: dict[str, Any] = None,
         timeout: float = 5,
     ):
         self._command_or_url = command_or_url
-        self._args = args
+        self._args = args or []
         self._env = env
         self._headers = headers
         self._timeout = timeout

@@ -2,7 +2,7 @@ import re
 import os
 import builtins
 import typing
-from typing import Any, Callable
+from typing import Any, Callable, Optional, List, Dict
 from contextlib import contextmanager
 import copy
 import threading
@@ -110,7 +110,7 @@ class arguments(object):
         return self
 
 
-setattr(builtins, 'package', package)
+builtins.package = package
 
 
 class LazyLLMCMD(object):
@@ -248,7 +248,9 @@ class ReprRule(object):
 def rreplace(s, old, new, count):
     return (s[::-1].replace(old[::-1], new[::-1], count))[::-1]
 
-def make_repr(category, type, *, name=None, subs=[], attrs=dict(), **kw):
+def make_repr(category: str, type: str, *, name: Optional[str] = None,
+              subs: Optional[List[str]] = None, attrs: Optional[Dict[str, Any]] = None, **kw):
+    subs, attrs = subs or [], attrs or {}
     if len(kw) > 0:
         assert len(attrs) == 0, 'Cannot provide attrs and kwargs at the same time'
         attrs = kw
@@ -448,3 +450,22 @@ def is_valid_url(url):
 
 def is_valid_path(path):
     return os.path.isfile(path)
+
+class Finalizer(object):
+    def __init__(self, func1: Callable, func2: Optional[Callable] = None, *, condition: Callable = lambda: True):
+        if func2:
+            func1()
+            func1 = func2
+        self._func = func1
+        self._condition = condition
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.__del__()
+
+    def __del__(self):
+        if self._func:
+            if self._condition(): self._func()
+            self._func = None

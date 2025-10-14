@@ -1,0 +1,56 @@
+from typing import Dict, Any, List, Union
+import requests
+from .utils import OnlineModuleBase
+
+
+class OnlineEmbeddingModuleBase(OnlineModuleBase):
+    NO_PROXY = True
+
+    def __init__(self,
+                 model_series: str,
+                 embed_url: str,
+                 api_key: str,
+                 embed_model_name: str,
+                 return_trace: bool = False):
+        super().__init__(return_trace=return_trace)
+        self._model_series = model_series
+        self._embed_url = embed_url
+        self._api_key = api_key
+        self._embed_model_name = embed_model_name
+        self._set_headers()
+
+    @property
+    def series(self):
+        return self._model_series
+
+    @property
+    def type(self):
+        return 'EMBED'
+
+    def _set_headers(self) -> Dict[str, str]:
+        self._headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {self._api_key}'
+        }
+
+    def forward(self, input: Union[List, str], **kwargs) -> List[float]:
+        data = self._encapsulated_data(input, **kwargs)
+        proxies = {'http': None, 'https': None} if self.NO_PROXY else None
+        with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies) as r:
+            if r.status_code == 200:
+                return self._parse_response(r.json())
+            else:
+                raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+
+    def _encapsulated_data(self, input: Union[List, str], **kwargs) -> Dict[str, str]:
+        json_data = {
+            'input': input,
+            'model': self._embed_model_name
+        }
+        if len(kwargs) > 0:
+            json_data.update(kwargs)
+
+        return json_data
+
+    def _parse_response(self, response: Dict[str, Any]) -> List[float]:
+        return response['data'][0]['embedding']

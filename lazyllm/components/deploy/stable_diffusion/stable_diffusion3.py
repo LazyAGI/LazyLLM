@@ -11,11 +11,11 @@ from lazyllm import LOG, LazyLLMLaunchersBase
 from ..base import LazyLLMDeployBase
 from lazyllm.components.formatter import encode_query_with_filepaths
 from ...utils.downloader import ModelManager
-from ...utils.file_operate import delete_old_files
+from ...utils.file_operate import _delete_old_files
 from typing import Optional
 
 
-class StableDiffusion3(object):
+class _StableDiffusion3(object):
 
     _load_registry = {}
     _call_registry = {}
@@ -75,7 +75,7 @@ class StableDiffusion3(object):
 
     @staticmethod
     def images_to_base64(images):
-        return [StableDiffusion3.image_to_base64(img) for img in images]
+        return [_StableDiffusion3.image_to_base64(img) for img in images]
 
     @staticmethod
     def image_to_file(image, file_path):
@@ -91,12 +91,12 @@ class StableDiffusion3(object):
     def images_to_files(images, directory):
         if not os.path.exists(directory):
             os.makedirs(directory)
-        delete_old_files(directory)
+        _delete_old_files(directory)
         unique_id = uuid.uuid4()
         path_list = []
         for i, img in enumerate(images):
             file_path = os.path.join(directory, f'image_{unique_id}_{i}.png')
-            StableDiffusion3.image_to_file(img, file_path)
+            _StableDiffusion3.image_to_file(img, file_path)
             path_list.append(file_path)
         return path_list
 
@@ -123,16 +123,16 @@ class StableDiffusion3(object):
 
     def __reduce__(self):
         init = bool(os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON' or self.init_flag)
-        return StableDiffusion3.rebuild, (self.base_sd, self.embed_batch_size, init, self.save_path)
+        return _StableDiffusion3.rebuild, (self.base_sd, self.embed_batch_size, init, self.save_path)
 
-@StableDiffusion3.register_loader('flux')
+@_StableDiffusion3.register_loader('flux')
 def load_flux(model):
     import torch
     from diffusers import FluxPipeline
     model.paintor = FluxPipeline.from_pretrained(
         model.base_sd, torch_dtype=torch.bfloat16).to("cuda")
 
-@StableDiffusion3.register_caller('flux')
+@_StableDiffusion3.register_caller('flux')
 def call_flux(model, prompt):
     imgs = model.paintor(
         prompt,
@@ -145,14 +145,14 @@ def call_flux(model, prompt):
     img_path_list = model.images_to_files(imgs, model.save_path)
     return encode_query_with_filepaths(files=img_path_list)
 
-@StableDiffusion3.register_loader('cogview')
+@_StableDiffusion3.register_loader('cogview')
 def load_cogview(model):
     import torch
     from diffusers import CogView4Pipeline
     model.paintor = CogView4Pipeline.from_pretrained(
         model.base_sd, torch_dtype=torch.bfloat16).to("cuda")
 
-@StableDiffusion3.register_caller('cogview')
+@_StableDiffusion3.register_caller('cogview')
 def call_cogview(model, prompt):
     imgs = model.paintor(
         prompt,
@@ -165,7 +165,7 @@ def call_cogview(model, prompt):
     img_path_list = model.images_to_files(imgs, model.save_path)
     return encode_query_with_filepaths(files=img_path_list)
 
-@StableDiffusion3.register_loader('wan')
+@_StableDiffusion3.register_loader('wan')
 def load_wan(model):
     import torch
     from diffusers import AutoencoderKLWan, WanPipeline
@@ -183,7 +183,7 @@ def load_wan(model):
     model.paintor.scheduler = scheduler
     model.paintor.to("cuda")
 
-@StableDiffusion3.register_caller('wan')
+@_StableDiffusion3.register_caller('wan')
 def call_wan(model, prompt):
     from diffusers.utils import export_to_video
     videos = model.paintor(
@@ -231,5 +231,5 @@ class StableDiffusionDeploy(LazyLLMDeployBase):
             LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
                         f"base_model({base_model}) will be used")
             finetuned_model = base_model
-        return lazyllm.deploy.RelayServer(port=self._port, func=StableDiffusion3(finetuned_model),
+        return lazyllm.deploy.RelayServer(port=self._port, func=_StableDiffusion3(finetuned_model),
                                           launcher=self._launcher, log_path=self._log_path, cls='stable_diffusion')()
