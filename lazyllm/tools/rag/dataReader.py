@@ -94,12 +94,8 @@ class SimpleDirectoryReader(ModuleBase):
                  return_trace: bool = False, metadatas: Optional[Dict] = None) -> None:
         super().__init__(return_trace=return_trace)
 
-        if (not input_dir and not input_files) or (input_dir and input_files):
-            raise ValueError('Must provide either `input_dir` or `input_files`.')
-
         self._fs = fs or get_default_fs()
         self._encoding = encoding
-
         self._exclude = exclude
         self._recursive = recursive
         self._exclude_hidden = exclude_hidden
@@ -107,26 +103,22 @@ class SimpleDirectoryReader(ModuleBase):
         self._num_files_limit = num_files_limit
         self._Path = Path if is_default_fs(self._fs) else PurePosixPath
         self._metadatas = metadatas
+        self._input_files = self._get_input_files(input_dir, input_files)
+        self._file_extractor = file_extractor or {}
+        self._metadata_genf = metadata_genf or _DefaultFileMetadataFunc(self._fs)
+        if filename_as_id: LOG.warning('Argument `filename_as_id` for DataReader is no longer used')
 
+    def _get_input_files(self, input_dir, input_files):
         if input_files:
-            self._input_files = []
-            for path in input_files:
-                if not self._fs.isfile(path):
-                    path = os.path.join(config['data_path'], path)
-                    if not self._fs.isfile(path):
-                        raise ValueError(f'File {path} does not exist.')
-                input_file = self._Path(path)
-                self._input_files.append(input_file)
+            assert not input_dir, 'Cannot provide files and dir at the same time'
+            input_files = [os.path.join(config['data_path'], p) if not self._fs.isfile(p) else p for p in input_files]
+            input_files = [self._Path(p) if p else (_ for _ in ()).throw(ValueError, f'File {p} does not exist.')
+                           for p in input_files]
         elif input_dir:
             if not self._fs.isdir(input_dir):
                 raise ValueError(f'Directory {input_dir} does not exist.')
-            self._input_dir = self._Path(input_dir)
-            self._input_files = self._add_files(self._input_dir)
-
-        self._file_extractor = file_extractor or {}
-
-        self._metadata_genf = metadata_genf or _DefaultFileMetadataFunc(self._fs)
-        if filename_as_id: LOG.warning('Argument `filename_as_id` for DataReader is no longer used')
+            input_files = self._add_files(self._Path(input_dir))
+        return input_files
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self):
@@ -255,8 +247,10 @@ class SimpleDirectoryReader(ModuleBase):
         return docs
 
     def _load_data(self, show_progress: bool = False, num_workers: Optional[int] = None,
-                   fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
-        documents, fs, process_file = [], fs or self._fs, self._input_files
+                   fs: Optional['fsspec.AbstractFileSystem'] = None, metadatas: Optional[Dict] = None,
+                   input_dir: Optional[str] = None, input_files: Optional[List] = None) -> List[DocNode]:
+        documents, fs, metadatas = [], fs or self._fs, metadatas or self._metadatas
+        process_file = self._get_input_files(input_dir, input_files) if input_dir or input_files else self._input_files
         self._lazy_init()
 
         if num_workers and num_workers >= 1:
@@ -267,12 +261,12 @@ class SimpleDirectoryReader(ModuleBase):
                 results = p.starmap(SimpleDirectoryReader.load_file,
                                     zip(process_file, repeat(self._metadata_genf), repeat(self._file_extractor),
                                         repeat(self._encoding), repeat(self._Path),
-                                        repeat(self._fs), self._metadatas or repeat(None)))
+                                        repeat(self._fs), metadatas or repeat(None)))
                 documents = reduce(lambda x, y: x + y, results)
         else:
             if show_progress:
                 process_file = tqdm(self._input_files, desc='Loading files', unit='file')
-            for input_file, metadata in zip(process_file, self._metadatas or repeat(None)):
+            for input_file, metadata in zip(process_file, metadatas or repeat(None)):
                 documents.extend(
                     SimpleDirectoryReader.load_file(
                         input_file=input_file, metadata_genf=self._metadata_genf, file_extractor=self._file_extractor,

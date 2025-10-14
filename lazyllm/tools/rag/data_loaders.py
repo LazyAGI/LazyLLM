@@ -15,18 +15,16 @@ class DirectoryReader:
     def __init__(self, input_files: Optional[List[str]], local_readers: Optional[Dict] = None,
                  global_readers: Optional[Dict] = None) -> None:
         self._input_files = input_files
-        self._local_readers = local_readers
-        self._global_readers = global_readers
+        file_readers = local_readers.copy()
+        for key, func in global_readers.items():
+            if key not in file_readers: file_readers[key] = func
+        self._reader = SimpleDirectoryReader(file_extractor=file_readers)
 
     def load_data(self, input_files: Optional[List[str]] = None, metadatas: Optional[Dict] = None,
                   *, split_nodes_by_type: bool = False) -> List[DocNode]:
         input_files = input_files or self._input_files
-        file_readers = self._local_readers.copy()
-        for key, func in self._global_readers.items():
-            if key not in file_readers: file_readers[key] = func
-        reader = SimpleDirectoryReader(input_files=input_files, file_extractor=file_readers, metadatas=metadatas)
         nodes: Union[List[DocNode], Dict[str, List[DocNode]]] = defaultdict(list) if split_nodes_by_type else []
-        for doc in reader():
+        for doc in self._reader(input_files=input_files, metadatas=metadatas):
             doc._group = type_mapping.get(type(doc), LAZY_ROOT_NAME)
             nodes[doc._group].append(doc) if split_nodes_by_type else nodes.append(doc)
         if not nodes:
