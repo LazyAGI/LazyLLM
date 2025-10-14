@@ -6,6 +6,7 @@ import os
 import mimetypes
 import multiprocessing
 import fnmatch
+import traceback
 from tqdm import tqdm
 from datetime import datetime
 from functools import reduce
@@ -236,8 +237,9 @@ class SimpleDirectoryReader(ModuleBase):
 
         try:
             docs = reader(input_file, **kwargs)
-        except Exception:
+        except Exception as e:
             LOG.error(f'Error loading file {input_file}, skip it!')
+            LOG.error(f'message: {e}\n Traceback: {traceback.format_tb(e.__traceback__)}')
             return []
         docs = [docs] if isinstance(docs, DocNode) else [] if docs is None else docs
 

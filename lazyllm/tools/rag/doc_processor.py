@@ -11,7 +11,6 @@ from .store.store_base import DEFAULT_KB_ID
 from .store.document_store import _DocumentStore
 from .store.utils import fibonacci_backoff, create_file_path
 from .transform import (AdaptiveTransform, make_transform,)
-from .readers import ReaderBase
 from .doc_node import DocNode
 from .utils import gen_docid, ensure_call_endpoint, BaseResponse
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
@@ -29,7 +28,7 @@ ENABLE_DB = os.getenv('RAG_ENABLE_DB', 'false').lower() == 'true'
 
 
 class _Processor:
-    def __init__(self, store: _DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
+    def __init__(self, store: _DocumentStore, reader: DirectoryReader, node_groups: Dict[str, Dict],
                  display_name: Optional[str] = None, description: Optional[str] = None,
                  server: bool = False):
         self._store = store
@@ -607,6 +606,7 @@ class DocumentProcessor(ModuleBase):
     def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader, node_groups: Dict[str, Dict],
                            display_name: Optional[str] = None, description: Optional[str] = None,
                            force_refresh: bool = False, **kwargs):
+        assert isinstance(reader, DirectoryReader), 'Only DirectoryReader can be registered to processor'
         self._dispatch('register_algorithm', name, store, reader, node_groups,
                        display_name, description, force_refresh, **kwargs)
 

@@ -24,7 +24,6 @@ class DirectoryReader:
         file_readers = self._local_readers.copy()
         for key, func in self._global_readers.items():
             if key not in file_readers: file_readers[key] = func
-        LOG.info(f'DirectoryReader loads data, input files: {input_files}')
         reader = SimpleDirectoryReader(input_files=input_files, file_extractor=file_readers, metadatas=metadatas)
         nodes: Union[List[DocNode], Dict[str, List[DocNode]]] = defaultdict(list) if split_nodes_by_type else []
         for doc in reader():

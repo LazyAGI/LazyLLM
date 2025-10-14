@@ -2652,11 +2652,11 @@ Args:
 
 add_example('rag.doc_processor.DocumentProcessor.register_algorithm', """
 ```python
-from lazyllm.rag import DocumentProcessor, FileStore, PDFReader
+from lazyllm.rag import DocumentProcessor, FileStore, DirectoryReader
 
 # Create storage and reader instances
 store = FileStore(path="./data")
-reader = PDFReader()
+reader = DirectoryReader()
 
 # Define node group configuration
 node_groups = {
