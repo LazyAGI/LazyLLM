@@ -1,43 +1,47 @@
-# 语音对话agent
+# 语音对话 Agent
 
-## 本项目展示了如何使用[LazyLLM](https://github.com/LazyAGI/LazyLLM)，实现一个支持语音输入与语音播报的语音助手系统，可通过麦克风接收用户语音指令、识别语音文本、调用大模型生成回答，并通过语音播报返回。
+本项目展示了如何使用[LazyLLM](https://github.com/LazyAGI/LazyLLM)，实现一个支持语音输入与语音播报的语音助手系统，可通过麦克风接收用户语音指令、识别语音文本、调用大模型生成回答，并通过语音播报返回。
 
-## !!! abstract "通过本节您将学习到以下内容"
-## - 如何使用 `speech_recognition` 接收并识别麦克风语音。
-## - 如何使用 `LazyLLM.OnlineChatModule` 调用大模型进行自然语言回答。
-## - 如何使用 `pyttsx3` 将文本转为语音实现播报。
+!!! abstract "通过本节您将学习到以下内容"
 
+    - 如何使用 `speech_recognition` 接收并识别麦克风语音。
+    - 如何使用 `LazyLLM.OnlineChatModule` 调用大模型进行自然语言回答。
+    - 如何使用 `pyttsx3` 将文本转为语音实现播报。
 
-# 项目依赖
+## 项目依赖
 
-## 确保安装以下依赖：
+确保安装以下依赖：
 
 ```bash
-pip install lazyllm pyttsx3 speechrecognition
+pip install lazyllm pyttsx3 speechrecognition soundfile
 ```
-```
+
+```python
 import speech_recognition as sr
 import pyttsx3
 import lazyllm
 ```
-# 步骤详解
 
-## Step 1: 初始化大模型与语音播报引擎
+## 步骤详解
+
+### Step 1: 初始化大模型与语音播报引擎
 
 ```python
 chat = lazyllm.OnlineChatModule()
 engine = pyttsx3.init()
 ```
 
+> 使用在线模型时需要配置 `API_KEY`，参考 [LazyLLM 官方文档（平台支持部分）](https://docs.lazyllm.ai/en/stable/#supported-platforms)
+
 **功能说明：**
 - `chat`: 使用 LazyLLM 提供的在线聊天模块（默认调用 sensenova 接口）
-  - 支持更换不同的大模型后端
-  - 自动处理对话上下文管理
+    - 支持更换不同的大模型后端
+    - 自动处理对话上下文管理
 - `engine`: 初始化本地语音合成引擎 (pyttsx3)
-  - 跨平台文本转语音输出
-  - 支持调整语速、音量等参数
+    - 跨平台文本转语音输出
+    - 支持调整语速、音量等参数
 
-## Step 2: 构建语音助手主逻辑
+### Step 2: 构建语音助手主逻辑
 
 ```python
 def listen(chat):
@@ -69,15 +73,14 @@ def listen(chat):
             engine.runAndWait()
 ```
 
-## 示例运行结果
+### 示例运行结果
 
-#### 示例场景：
-
-**你说：** 
+**你说：**  
 "What is the capital of France?"
 
-**程序控制台输出：** 
-```
+**程序控制台输出：**
+
+```bash
 Calibrating...
 Okay, go!
 listening now...
@@ -88,3 +91,15 @@ The capital of France is Paris.
 
 **系统语音播报：**
 "The capital of France is Paris."
+
+### 注意事项
+
+本脚本需要在 **具备麦克风设备** 的机器上运行。
+
+如果在 **远程服务器** 或 **虚拟机** 中执行，请确保：
+
+1. 服务器或宿主机有可用麦克风；  
+2. 运行环境已开启麦克风访问权限。
+
+> 否则程序可能在调用 `sr.Microphone()` 时出现设备初始化错误。
+> 当检测到 **无声音输入** 时，`whisper` 模型可能会误识别为常见短语（如 “Thank you” 等）。
