@@ -1,5 +1,7 @@
 import os
 import lazyllm
+import tiktoken
+from lazyllm.tools.rag.transform import SentenceSplitter
 import pytest
 from lazyllm.tools.rag.readers import ReaderBase
 from lazyllm.tools.rag import SimpleDirectoryReader, DocNode, Document
@@ -88,3 +90,29 @@ class TestRagReader(object):
         docs1 = self.doc1._impl._reader.load_data(input_files=files)
         docs2 = self.doc2._impl._reader.load_data(input_files=files)
         assert docs1[0].text == "Call the class YmlReader." and docs2[0].text == "Call the function processYml."
+
+    def test_register_post_action_for_default_reader(self):
+        def action(x):
+            x += 'here in action'
+            return DocNode(text=x)
+
+        lazyllm.tools.rag.add_post_action_for_default_reader('*.md', action)
+        files = [os.path.join(self.datasets, 'README.md')]
+        r = self.doc1._impl._reader.load_data(input_files=files)
+        assert len(r) > 0 and 'here in action' in r[0].text
+
+    def test_register_post_action_for_default_reader_docnode(self):
+        def action(x):
+            return DocNode(text=(x.text + 'here in action'))
+
+        lazyllm.tools.rag.add_post_action_for_default_reader('*.md', action)
+        files = [os.path.join(self.datasets, 'README.md')]
+        r = self.doc1._impl._reader.load_data(input_files=files)
+        assert len(r) > 0 and 'here in action' in r[0].text
+
+    def test_register_post_action_for_default_reader_transform(self):
+        lazyllm.tools.rag.add_post_action_for_default_reader('*.md', SentenceSplitter(128, 16))
+        files = [os.path.join(self.datasets, 'README.md')]
+        r = self.doc1._impl._reader.load_data(input_files=files)
+        tiktoken_tokenizer = tiktoken.encoding_for_model('gpt-3.5-turbo')
+        assert len(r) > 1 and len(tiktoken_tokenizer.encode(r[0].text, allowed_special='all')) < 128

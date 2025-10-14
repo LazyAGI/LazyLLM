@@ -302,7 +302,7 @@ class SimpleDirectoryReader(ModuleBase):
             try: f('test')
             except Exception: pass
             else: f = FuncNodeTransform(f, trans_node=False)
-        reader.post_action = f
+        reader.post_action = staticmethod(f)
 
 
 config.add('rag_filename_as_id', bool, False, 'RAG_FILENAME_AS_ID')
