@@ -14,7 +14,7 @@ from itertools import repeat
 from typing import Dict, Optional, List, Callable, Type, Union
 from pathlib import Path, PurePosixPath, PurePath
 from lazyllm.thirdparty import fsspec
-from lazyllm import ModuleBase, LOG, config, once_wrapper
+from lazyllm import ModuleBase, LOG, config
 from lazyllm.components.formatter.formatterbase import _lazyllm_get_file_list
 from lazyllm.tools.rag.readers.readerBase import TxtReader, DefaultReader
 from .doc_node import DocNode
@@ -104,7 +104,7 @@ class SimpleDirectoryReader(ModuleBase):
         self._Path = Path if is_default_fs(self._fs) else PurePosixPath
         self._metadatas = metadatas
         self._input_files = self._get_input_files(input_dir, input_files)
-        self._file_extractor = file_extractor or {}
+        self._file_extractor = {**self.default_file_readers, **(file_extractor or {})}
         self._metadata_genf = metadata_genf or _DefaultFileMetadataFunc(self._fs)
         if filename_as_id: LOG.warning('Argument `filename_as_id` for DataReader is no longer used')
 
@@ -119,13 +119,6 @@ class SimpleDirectoryReader(ModuleBase):
                 raise ValueError(f'Directory {input_dir} does not exist.')
             input_files = self._add_files(self._Path(input_dir))
         return input_files
-
-    @once_wrapper(reset_on_pickle=True)
-    def _lazy_init(self):
-        file_readers = self._file_extractor.copy()
-        for key, func in self.default_file_readers.items():
-            if key not in file_readers: file_readers[key] = func
-        self._file_extractor = file_readers
 
     def _add_files(self, input_dir: Path) -> List[Path]:  # noqa: C901
         all_files = set()
@@ -251,7 +244,6 @@ class SimpleDirectoryReader(ModuleBase):
                    input_dir: Optional[str] = None, input_files: Optional[List] = None) -> List[DocNode]:
         documents, fs, metadatas = [], fs or self._fs, metadatas or self._metadatas
         process_file = self._get_input_files(input_dir, input_files) if input_dir or input_files else self._input_files
-        self._lazy_init()
 
         if num_workers and num_workers >= 1:
             if num_workers > multiprocessing.cpu_count():
