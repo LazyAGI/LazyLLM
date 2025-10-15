@@ -10,6 +10,7 @@
   - 写作大师: Cookbook/great_writer.md
   - 检索增强: Cookbook/rag.md
   - 流式输出: Cookbook/streaming.md
+  - 搜索代理: Cookbook/function_call.md
 - 最佳实践:
   - 工作流: Best Practice/flow.md
   - 流程应用: Best Practice/flowapp.md

@@ -1,15 +1,15 @@
-# Build an Agent with LazyLLM
+# Build an Intelligent Search Agent with LazyLLM
 
 LazyLLM supports the creation of agents that use language models as reasoning engines to determine which actions to take and how to interact with external tools. These agents can analyze user queries, decide when to use specific tools, and process the results to provide comprehensive responses. This tool-calling capability is fundamental to building intelligent agents that can interact with the real world.
 
-In this tutorial, we will build an agent that can interact with a search engine through tool-calling. You will learn how to:
+!!! abstract "Through this section, you will learn the following key points of LazyLLM"
 
-1. Create and register custom tools that your agent can use
-2. Set up a language model as the agent's reasoning engine
-3. Configure the agent to make intelligent decisions about tool usage
-4. Enable the agent to maintain conversation history and context
-5. Deploy the agent with a web interface for easy interaction
-6. Implement streaming responses for real-time feedback
+    - Create and register custom tools that your agent can use
+    - Set up a language model as the agent's reasoning engine
+    - Configure the agent to make intelligent decisions about tool usage
+    - Enable the agent to maintain conversation history and context
+    - Deploy the agent with a web interface for easy interaction
+    - Implement streaming responses for real-time feedback
 
 Let's get started!
 
@@ -40,6 +40,9 @@ Before using this tutorial, you need to apply for the corresponding API keys:
 2. Register and log in to your account
 3. Create a new API key in the "API KEY Management" page
 4. Copy the generated API key and set it in your environment variables
+
+> ❗ Note: To obtain the **free API quota** for Bocha API, please refer to the [Developer Documentation](https://bocha-ai.feishu.cn/wiki/RWdvw557Li3IJekGeLkcDFa3n1f).  
+> On the [Bocha API homepage](https://open.bochaai.com/overview), go to **Resource Package Management** and subscribe to the **Free Trial**.
 
 **DeepSeek API Key Application:**
 1. Visit the [DeepSeek Platform](https://platform.deepseek.com/)
@@ -393,6 +396,4 @@ LazyLLM provides a powerful and easy-to-use framework for building intelligent a
 - Deploy web interfaces
 - Handle streaming and memory
 
-This framework makes it accessible to build production-ready AI agents that can interact with external APIs and provide intelligent responses to user queries.
-
-For more information about LazyLLM, check out the official documentation and examples.
+This framework makes it accessible to build production-ready AI agents that can interact with external APIs and provide intelligent responses to user queries.For more information about LazyLLM, check out the [official documentation](docs.lazyllm.ai/) and examples.
