@@ -1,8 +1,9 @@
 from .registry import LazyLLMRegisterMetaClass, LazyLLMRegisterMetaABCClass, _get_base_cls_from_registry, Register
 from .common import package, kwargs, arguments, LazyLLMCMD, timeout, final, ReadOnlyWrapper, DynamicDescriptor, override
 from .common import FlatList, Identity, ResultCollector, ArgsDict, CaseInsensitiveDict
-from .common import ReprRule, make_repr, modify_repr, is_valid_url, is_valid_path, SingletonMeta
+from .common import ReprRule, make_repr, modify_repr, is_valid_url, is_valid_path, SingletonMeta, SingletonABCMeta
 from .common import once_flag, call_once, once_wrapper, singleton, reset_on_pickle, Finalizer
+from .redis_client import redis_client
 from .text import Color, colored_text
 from .option import Option, OptionIter
 from .threading import Thread, ThreadPoolExecutor
@@ -45,7 +46,9 @@ __all__ = [
     'is_valid_url',
     'is_valid_path',
     'SingletonMeta',
+    'SingletonABCMeta',
     'Finalizer',
+    'redis_client',
 
     # arg praser
     'LazyLLMCMD',
