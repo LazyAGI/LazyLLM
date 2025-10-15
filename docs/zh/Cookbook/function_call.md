@@ -187,7 +187,7 @@ print(result)
 
 LazyLLM 让部署带有 Web 界面的代理变得简单：
 
-![Web 界面演示](../../assets/agent-tooluse.png)
+![Web 界面演示](../assets/agent-tooluse.png)
 
 ```python
 def start_web_interface():
@@ -226,7 +226,7 @@ def start_web_interface():
 
 要启用流式响应，请修改代理配置：
 
-![流式响应演示](../../assets/agent-tooluse-stream.png)
+![流式响应演示](../assets/agent-tooluse-stream.png)
 
 ```python
 agent = lazyllm.tools.agent.ReactAgent(

@@ -190,7 +190,7 @@ The agent will:
 
 LazyLLM makes it easy to deploy your agent with a web interface:
 
-![Web Interface Demo](../../assets/agent-tooluse.png)
+![Web Interface Demo](../assets/agent-tooluse.png)
 
 ```python
 def start_web_interface():
@@ -229,7 +229,7 @@ def start_web_interface():
 
 To enable streaming responses, modify the agent configuration:
 
-![Streaming Response Demo](../../assets/agent-tooluse-stream.png)
+![Streaming Response Demo](../assets/agent-tooluse-stream.png)
 
 ```python
 agent = lazyllm.tools.agent.ReactAgent(
