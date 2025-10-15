@@ -6,13 +6,34 @@ import requests
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 import os, tempfile
+from ..fileHandler import FileHandlerBase
+import json
+import base64
+import mimetypes
 
+class SiliconFlowModule(OnlineChatModuleBase,FileHandlerBase):
+    VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct']
 
-class SiliconFlowModule(OnlineChatModuleBase):
-    def __init__(self, base_url: str = 'https://api.siliconflow.cn/v1', model: str = 'Qwen/QwQ-32B',
-                 api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        super().__init__(model_series='SILICONFLOW', api_key=api_key or lazyllm.config['siliconflow_api_key'],
-                         base_url=base_url, model_name=model, stream=stream, return_trace=return_trace, **kwargs)
+    def __init__(self,
+                 base_url: str = 'https://api.siliconflow.cn/v1',
+                 model: str = 'Qwen/QwQ-32B',
+                 api_key: str = None,
+                 stream: bool = True,
+                 return_trace: bool = False,
+                 **kwargs):
+        OnlineChatModuleBase.__init__(
+            self,
+            model_series='SILICONFLOW',
+            api_key=api_key or lazyllm.config['siliconflow_api_key'],
+            base_url=base_url,
+            model_name=model,
+            stream=stream,
+            return_trace=return_trace,
+            **kwargs
+        )
+        FileHandlerBase.__init__(self)
+        if stream:
+            self._model_optional_params['stream'] = True
 
     def _get_system_prompt(self):
         return 'You are an intelligent assistant provided by SiliconFlow. You are a helpful assistant.'
@@ -124,7 +145,7 @@ class SiliconFlowMultiModalChat(SiliconFlowBase):
 
 
 class SiliconFlowTextToImageModule(SiliconFlowBase):
-    MODEL_NAME = 'Qwen/Qwen-Image-Edit-2509'
+    MODEL_NAME = 'Qwen/Qwen-Image'
 
     def __init__(self, api_key: str = None, model_name: str = None, 
                  base_url: str = 'https://api.siliconflow.cn/v1/',
@@ -168,7 +189,7 @@ class SiliconFlowTextToImageModule(SiliconFlowBase):
 
 class SiliconFlowTTS:
     def __init__(self, api_key: str=None, model: str="fnlp/MOSS-TTSD-v0.5",
-                 base_url: str="https://api.siliconflow.cn/v1/"):
+                 base_url: str="https://api.siliconflow.cn/v1/",return_trace: bool = False):
         self.api_key = api_key or lazyllm.config['siliconflow_api_key']
         self.url = base_url.rstrip('/') + '/audio/speech'
         self.model = model
