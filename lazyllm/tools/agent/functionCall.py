@@ -5,6 +5,18 @@ from lazyllm import pipeline, ifs, loop, globals, bind, LOG, Color, package, Fil
 import json5 as json
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable
+from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
+
+FC_PROMPT = f'''# Tools
+
+## You have access to the following tools:
+## When you need to call a tool, please insert the following command in your reply, \
+which can be called zero or multiple times according to your needs.
+{FC_PROMPT_PLACEHOLDER}
+
+Don\'t make assumptions about what values to plug into functions.
+Ask for clarification if a user request is ambiguous.\n
+'''
 
 
 def function_call_hook(input: Dict[str, Any], history: List[Dict[str, Any]], tools: List[Dict[str, Any]], label: Any):
@@ -19,19 +31,6 @@ def function_call_hook(input: Dict[str, Any], history: List[Dict[str, Any]], too
                 history.extend(data)
         input = {'input': input[-1]} if isinstance(input[-1], (dict, list)) and 'input' not in input[-1] else input[-1]
     return input, history, tools, label
-
-FC_PROMPT_LOCAL = '''# Tools
-
-## You have access to the following tools:
-## When you need to call a tool, please insert the following command in your reply, \
-which can be called zero or multiple times according to your needs:
-
-{tool_start_token}The tool to use, should be one of tools list.
-{tool_args_token}The input of the tool. The output format is: {'input1': param1, 'input2': param2}. Can only return json.
-{tool_end_token}End of tool.'''
-
-FC_PROMPT_ONLINE = ('Don\'t make assumptions about what values to plug into functions.'
-                    'Ask for clarification if a user request is ambiguous.\n')
 
 class StreamResponse():
     def __init__(self, prefix: str, prefix_color: str = None, color: str = None, stream: bool = False):
@@ -52,18 +51,16 @@ class StreamResponse():
 class FunctionCall(ModuleBase):
 
     def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False,
-                 stream: bool = False, _prompt: str = None):
+                 stream: bool = False, _prompt: str = None, return_tool_call_results: bool = False):
         super().__init__(return_trace=return_trace)
         if isinstance(llm, OnlineChatModule) and llm.series == 'QWEN' and llm._stream is True:
             raise ValueError('The qwen platform does not currently support stream function calls.')
-        if _prompt is None:
-            _prompt = FC_PROMPT_ONLINE if isinstance(llm, OnlineChatModule)\
-                or llm._url.endswith('/v1/') else FC_PROMPT_LOCAL
 
         self._tools_manager = ToolManager(tools, return_trace=return_trace)
-        self._prompter = ChatPrompter(instruction=_prompt, tools=self._tools_manager.tools_description)\
+        self._prompter = ChatPrompter(instruction=_prompt or FC_PROMPT, tools=self._tools_manager.tools_description)\
             .pre_hook(function_call_hook)
         self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
+        self._return_tool_call_results = return_tool_call_results
         with pipeline() as self._impl:
             self._impl.ins = StreamResponse('Received instruction:', prefix_color=Color.yellow,
                                             color=Color.green, stream=stream)
@@ -110,7 +107,8 @@ class FunctionCall(ModuleBase):
             llm_output = [item for item in llm_output if not isinstance(item, str)]
             ret.append({'role': 'assistant', 'content': content, 'tool_calls': llm_output})
             ret.append([{'role': 'tool', 'content': out, 'tool_call_id': llm_output[idx]['id'],
-                         'name': llm_output[idx]['function']['name']}
+                         'name': llm_output[idx]['function']['name'],
+                         'arguments': llm_output[idx]['function']['arguments']}
                         for idx, out in enumerate(output)])
             LOG.debug(f'functionCall result: {ret}')
             return ret
