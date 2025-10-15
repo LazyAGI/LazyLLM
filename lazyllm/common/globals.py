@@ -154,10 +154,6 @@ class Globals(metaclass=SingletonABCMeta):
     @property
     def _data(self): return self._get_data()
 
-    @property
-    def _pickle_data(self):
-        return {}
-
     def get(self, __key: str, default: Any = None):
         try:
             return self[__key]
@@ -202,7 +198,7 @@ class MemoryGlobals(Globals):
 
     @property
     def _sid(self) -> str:
-        if (sid := super(self, __class__)._sid) not in self.__data:
+        if (sid := super(__class__, self)._sid) not in self.__data:
             self.__data[sid] = copy.deepcopy(__class__.__global_attrs__)
         return sid
 
@@ -211,11 +207,6 @@ class MemoryGlobals(Globals):
             assert isinstance(rois, (tuple, list))
             return {k: v for k, v in self.__data[self._sid].items() if k in rois}
         return self.__data[self._sid]
-
-    @property
-    def _pickle_data(self):
-        exclude_keys = ['bind_args',]
-        return {k: v for k, v in self._data.items() if k not in exclude_keys}
 
     def _update(self, d: Optional[Dict]) -> None:
         if d:
@@ -243,12 +234,13 @@ class MemoryGlobals(Globals):
         return self._data.pop(*args, **kw)
 
 
-class RedisGlobals(MemoryGlobals):
-    pass
+class Locals(MemoryGlobals): pass
+
+class RedisGlobals(MemoryGlobals): pass
 
 
 globals = Globals()
-
+locals = Locals()
 
 @deprecated
 class LazyLlmRequest(object):

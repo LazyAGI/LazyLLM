@@ -260,7 +260,7 @@ class ServerModule(UrlModule):
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), **kw):  # noqa B008
         headers = {
             'Content-Type': 'application/json',
-            'Global-Parameters': encode_request(globals._pickle_data),
+            'Global-Parameters': encode_request(globals._data),
             'Session-ID': encode_request(globals._sid)
         }
         data = encode_request((__input, kw))
