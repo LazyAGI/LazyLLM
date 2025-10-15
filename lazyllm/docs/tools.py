@@ -1462,46 +1462,44 @@ Args:
 ''')
 
 
-add_english_doc('rag.store.ChromadbStore', '''
-ChromadbStore is a vector-capable store implementation based on ChromaDB, inheriting from LazyLLMStoreBase. 
-It supports vector insertion, retrieval, and persistence.
+add_english_doc('rag.store.ChromaStore', '''
+ChromaStore is a vector-capable implementation of LazyLLMStoreBase, leveraging Chroma for persistence and vector search.
 
 Args:
-    uri (Optional[str]): URI string for ChromaDB connection. Required if `dir` is not provided.
+    uri (Optional[str]): URI string for Chroma connection. Required if `dir` is not provided.
     dir (Optional[str]): Filesystem path for local persistent storage. If provided, PersistentClient mode is used.
-    index_kwargs (Optional[Union[Dict, List]]): Configuration for ChromaDB collections, e.g., index type and distance metrics.
-    client_kwargs (Optional[Dict]): Additional arguments passed to the ChromaDB client constructor.
+    index_kwargs (Optional[Union[Dict, List]]): Configuration for Chroma collections, e.g., index type and distance metrics.
+    client_kwargs (Optional[Dict]): Additional arguments passed to the Chroma client constructor.
     **kwargs: Reserved for future extension.
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore', '''
-ChromadbStore 是基于 ChromaDB 的向量存储实现，继承自 LazyLLMStoreBase，支持向量写入、检索与持久化。
+add_chinese_doc('rag.store.ChromaStore', '''
+ChromaStore 是基于 Chroma 的向量存储实现，继承自 LazyLLMStoreBase，支持向量写入、检索与持久化。
 
 Args:
-    uri (Optional[str]): ChromaDB 连接 URI，当未指定 `dir` 时必填。
+    uri (Optional[str]): Chroma 连接 URI，当未指定 `dir` 时必填。
     dir (Optional[str]): 本地持久化存储路径，提供时使用 PersistentClient 模式。
     index_kwargs (Optional[Union[Dict, List]]): Collection 配置参数，如索引类型、距离度量方式等。
-    client_kwargs (Optional[Dict]): 传递给 ChromaDB 客户端的额外参数。
+    client_kwargs (Optional[Dict]): 传递给 Chroma 客户端的额外参数。
     **kwargs: 预留扩展参数。
 ''')
 
-
-add_english_doc('rag.store.ChromadbStore.dir', '''
+add_english_doc('rag.store.ChromaStore.dir', '''
 Directory property of the store.
 
 **Returns:**\n
 - Optional[str]: Normalized directory path ending with a slash, or None if not set.
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore.dir', '''
+add_chinese_doc('rag.store.ChromaStore.dir', '''
 存储目录属性。
 
 **Returns:**\n
 - Optional[str]: 以斜杠结尾的目录路径，若未配置则返回 None。
 ''')
 
-add_english_doc('rag.store.ChromadbStore.connect', '''
-Initialize the ChromaDB client and configure embedding and global metadata settings.
+add_english_doc('rag.store.ChromaStore.connect', '''
+Initialize the Chroma client and configure embedding and global metadata settings.
 
 Args:
     embed_dims (Optional[Dict[str, int]]): Dimensions for each embedding key. Defaults to empty dict if not provided.
@@ -1510,8 +1508,8 @@ Args:
     **kwargs: Reserved for future extension.
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore.connect', '''
-初始化 ChromaDB 客户端并配置向量化及全局元数据设定。
+add_chinese_doc('rag.store.ChromaStore.connect', '''
+初始化 Chroma 客户端并配置向量化及元数据相关设定。
 
 Args:
     embed_dims (Optional[Dict[str, int]]): 每个嵌入键对应的向量维度，未提供时默认为空字典。
@@ -1520,8 +1518,8 @@ Args:
     **kwargs: 预留扩展参数。
 ''')
 
-add_english_doc('rag.store.ChromadbStore.upsert', '''
-Insert or update a batch of records(segment's uid and vectors) into ChromaDB.
+add_english_doc('rag.store.ChromaStore.upsert', '''
+Insert or update a batch of records(segment's uid and vectors) into Chroma.
 
 Args:
     collection_name (str): Logical name for the collection.
@@ -1531,8 +1529,8 @@ Args:
 - bool: True if operation succeeds, False otherwise.
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore.upsert', '''
-批量写入或更新记录（切片的id及向量数据）到 ChromaDB。
+add_chinese_doc('rag.store.ChromaStore.upsert', '''
+批量写入或更新记录（切片的id及向量数据）到 Chroma。
 
 Args:
     collection_name (str): 集合名称。
@@ -1542,8 +1540,8 @@ Args:
 - bool: 操作成功返回 True，否则 False。
 ''')
 
-add_english_doc('rag.store.ChromadbStore.delete', '''
-Delete an entire collection or specific records from ChromaDB.
+add_english_doc('rag.store.ChromaStore.delete', '''
+Delete an entire collection or specific records.
 
 Args:
     collection_name (str): Name of the collection to delete from.
@@ -1554,8 +1552,8 @@ Args:
 - bool: True if deletion succeeds, False otherwise.
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore.delete', '''
-从 ChromaDB 中删除整个集合或指定记录。
+add_chinese_doc('rag.store.ChromaStore.delete', '''
+删除整个集合或指定记录。
 
 Args:
     collection_name (str): 要删除的集合名称。
@@ -1566,8 +1564,8 @@ Args:
 - bool: 删除成功返回 True，否则返回 False。
 ''')
 
-add_english_doc('rag.store.ChromadbStore.get', '''
-Retrieve records from ChromaDB matching the given criteria.
+add_english_doc('rag.store.ChromaStore.get', '''
+Retrieve records matching criteria.
 
 Args:
     collection_name (str): Name of the collection to query.
@@ -1580,8 +1578,8 @@ Args:
     - 'embedding': A dictionary mapping embedding keys to their corresponding vectors.
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore.get', '''
-从 ChromaDB 中根据条件检索记录。
+add_chinese_doc('rag.store.ChromaStore.get', '''
+根据条件检索记录。
 
 Args:
     collection_name (str): 要查询的集合名称。
@@ -1594,8 +1592,8 @@ Args:
     - 'embedding': 嵌入键到对应向量的映射。
 ''')
 
-add_english_doc('rag.store.ChromadbStore.search', '''
-Perform a vector similarity search within a specific collection.
+add_english_doc('rag.store.ChromaStore.search', '''
+Perform a vector similarity search.
 
 Args:
     collection_name (str): Name of the collection to query.
@@ -1610,8 +1608,8 @@ Args:
     - 'score': The similarity score (1 - distance).
 ''')
 
-add_chinese_doc('rag.store.ChromadbStore.search', '''
-在指定集合中执行向量相似度检索。
+add_chinese_doc('rag.store.ChromaStore.search', '''
+执行向量相似度检索。
 
 Args:
     collection_name (str): 要查询的集合名称。
@@ -2622,7 +2620,7 @@ add_chinese_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
 Args:
     name (str): 算法名称，作为唯一标识符。
     store (StoreBase): 存储实例，用于管理文档数据。
-    reader (ReaderBase): 读取器实例，用于解析文档内容。
+    reader (DirectoryReader): 读取器实例，用于解析文档内容。
     node_groups (Dict[str, Dict]): 节点组配置信息。
     display_name (Optional[str]): 算法的显示名称，默认为None。
     description (Optional[str]): 算法的描述信息，默认为None。
@@ -2640,7 +2638,7 @@ Register an algorithm to the document processor.
 Args:
     name (str): Algorithm name as unique identifier.
     store (StoreBase): Storage instance for managing document data.
-    reader (ReaderBase): Reader instance for parsing document content.
+    reader (DirectoryReader): Reader instance for parsing document content.
     node_groups (Dict[str, Dict]): Node group configuration information.
     display_name (Optional[str]): Display name for the algorithm, defaults to None.
     description (Optional[str]): Description of the algorithm, defaults to None.
@@ -2654,11 +2652,11 @@ Args:
 
 add_example('rag.doc_processor.DocumentProcessor.register_algorithm', """
 ```python
-from lazyllm.rag import DocumentProcessor, FileStore, PDFReader
+from lazyllm.rag import DocumentProcessor, FileStore, DirectoryReader
 
 # Create storage and reader instances
 store = FileStore(path="./data")
-reader = PDFReader()
+reader = DirectoryReader()
 
 # Define node group configuration
 node_groups = {
@@ -3565,10 +3563,10 @@ This method reads documents from the input files using the configured file reade
 Args:
     input_files (Optional[List[str]]): A list of file paths to read. If None, uses the files specified during initialization.
     metadatas (Optional[Dict]): Additional metadata to associate with the loaded documents.
-    split_image_nodes (bool): Whether to separate image nodes from text nodes. If True, returns a tuple of (text_nodes, image_nodes). If False, returns all nodes together.
+    split_nodes_by_type (bool): Whether to separate image and other nodes from text nodes. If True, returns a tuple of (text_nodes, image_nodes). If False, returns all nodes together.
 
 **Returns:**\n
-- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: If split_image_nodes is False, returns a list of all document nodes. If True, returns a tuple containing text nodes and image nodes separately.
+- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: If split_nodes_by_type is False, returns a list of all document nodes. If True, returns a tuple containing text nodes and image nodes separately.
 ''')
 
 add_chinese_doc('rag.data_loaders.DirectoryReader.load_data', '''\
@@ -3579,10 +3577,10 @@ add_chinese_doc('rag.data_loaders.DirectoryReader.load_data', '''\
 Args:
     input_files (Optional[List[str]]): 要读取的文件路径列表。如果为None，使用初始化时指定的文件。
     metadatas (Optional[Dict]): 与加载文档关联的额外元数据。
-    split_image_nodes (bool): 是否将图像节点与文本节点分离。如果为True，返回(text_nodes, image_nodes)的元组。如果为False，一起返回所有节点。
+    split_nodes_by_type (bool): 是否将图像等其他节点与文本节点分离。如果为True，返回(text_nodes, image_nodes)的元组。如果为False，一起返回所有节点。
 
 **Returns:**\n
-- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: 如果split_image_nodes为False，返回所有文档节点的列表。如果为True，返回包含文本节点和图像节点的元组。
+- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: 如果split_nodes_by_type为False，返回所有文档节点的列表。如果为True，返回包含文本节点和图像节点的元组。
 ''')
 
 # ---------------------------------------------------------------------------- #
@@ -7773,12 +7771,12 @@ Args:
 ''')
 
 add_chinese_doc('rag.LazyLLMStoreBase', '''\
-向量存储基类，定义了存储层的通用接口规范，所有具体的存储实现（如 ChromaDB、Milvus 等）需继承并实现该类。
+向量存储基类，定义了存储层的通用接口规范，所有具体的存储实现（如 Chroma、Milvus 等）需继承并实现该类。
 ''')
 
 add_english_doc('rag.LazyLLMStoreBase', '''\
 Base class for vector storage, defining the common interface specification. 
-All concrete storage implementations (e.g., ChromaDB, Milvus) must inherit and implement this class.
+All concrete storage implementations (e.g., Chroma, Milvus) must inherit and implement this class.
 ''')
 
 add_chinese_doc('rag.LazyLLMStoreBase.connect', '''\
