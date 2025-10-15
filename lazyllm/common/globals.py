@@ -3,10 +3,12 @@ import contextvars
 import copy
 from typing import Any, Tuple, Optional, List, Dict
 from pydantic import BaseModel as struct
-from .common import package, kwargs, SingletonMeta
+from .common import package, kwargs, SingletonABCMeta
+from .redis_client import redis_client
 from .deprecated import deprecated
 import asyncio
 from .utils import obj2str, str2obj
+from abc import abstractmethod
 
 
 class ReadWriteLock(object):
@@ -119,13 +121,16 @@ class ThreadSafeDict(dict):
             return (self.__class__, (dict(self),))
 
 
-class Globals(metaclass=SingletonMeta):
+class Globals(metaclass=SingletonABCMeta):
     __global_attrs__ = ThreadSafeDict(
         chat_history={}, global_parameters={}, bind_args={}, tool_delimiter='<|tool_calls|>', lazyllm_files={}, usage={}
     )
 
+    def __new__(cls, *args, **kw):
+        if cls is not Globals: return super().__new__(cls)
+        return RedisGlobals() if redis_client else MemoryGlobals()
+
     def __init__(self):
-        self.__data = ThreadSafeDict()
         self.__sid = contextvars.ContextVar('local_var')
         self._init_sid()
 
@@ -144,36 +149,10 @@ class Globals(metaclass=SingletonMeta):
             sid = self.__sid.get()
         except Exception:
             sid = self._init_sid()
-        if sid not in self.__data:
-            self.__data[sid] = copy.deepcopy(__class__.__global_attrs__)
         return sid
 
     @property
     def _data(self): return self._get_data()
-
-    def _get_data(self, rois: Optional[List[str]] = None) -> dict:
-        if rois:
-            assert isinstance(rois, (tuple, list))
-            return {k: v for k, v in self.__data[self._sid].items() if k in rois}
-        return self.__data[self._sid]
-
-    @property
-    def _pickle_data(self):
-        exclude_keys = ['bind_args',]
-        return {k: v for k, v in self._data.items() if k not in exclude_keys}
-
-    def _update(self, d: Optional[Dict]) -> None:
-        if d:
-            self._data.update(d)
-
-    def __setitem__(self, __key: str, __value: Any):
-        self._data[__key] = __value
-
-    def __getitem__(self, __key: str):
-        try:
-            return self._data[__key]
-        except KeyError:
-            raise KeyError(f'Cannot find key {__key}, current session-id is {self._sid}')
 
     def get(self, __key: str, default: Any = None):
         try:
@@ -192,6 +171,56 @@ class Globals(metaclass=SingletonMeta):
             return self[__name]
         raise AttributeError(f'Attr {__name} not found in globals')
 
+    @abstractmethod
+    def _get_data(self, rois: Optional[List[str]] = None) -> dict: ...
+    @abstractmethod
+    def _update(self, d: Optional[Dict]) -> None: ...
+    @abstractmethod
+    def __setitem__(self, __key: str, __value: Any): ...
+    @abstractmethod
+    def __getitem__(self, __key: str): ...
+    @abstractmethod
+    def clear(self): ...
+    @abstractmethod
+    def _clear_all(self): ...
+    @abstractmethod
+    def __contains__(self, item): ...
+    @abstractmethod
+    def pop(self, *args, **kw): ...
+
+    def __reduce__(self):
+        return __class__, ()
+
+class MemoryGlobals(Globals):
+    def __init__(self):
+        self.__data = ThreadSafeDict()
+        super(__class__, self).__init__()
+
+    @property
+    def _sid(self) -> str:
+        if (sid := super(__class__, self)._sid) not in self.__data:
+            self.__data[sid] = copy.deepcopy(__class__.__global_attrs__)
+        return sid
+
+    def _get_data(self, rois: Optional[List[str]] = None) -> dict:
+        if rois:
+            assert isinstance(rois, (tuple, list))
+            return {k: v for k, v in self.__data[self._sid].items() if k in rois}
+        return self.__data[self._sid]
+
+    def _update(self, d: Optional[Dict]) -> None:
+        if d:
+            self._data.update(d)
+
+    def __setitem__(self, __key: str, __value: Any):
+        self._data[__key] = __value
+
+    def __getitem__(self, __key: str):
+        try:
+            return self._data[__key]
+        except KeyError:
+            raise KeyError(f'Cannot find key {__key}, current session-id is {self._sid}')
+
     def clear(self):
         self.__data.pop(self._sid, None)
 
@@ -204,11 +233,14 @@ class Globals(metaclass=SingletonMeta):
     def pop(self, *args, **kw):
         return self._data.pop(*args, **kw)
 
-    def __reduce__(self):
-        return __class__, ()
+
+class Locals(MemoryGlobals): pass
+
+class RedisGlobals(MemoryGlobals): pass
+
 
 globals = Globals()
-
+locals = Locals()
 
 @deprecated
 class LazyLlmRequest(object):
