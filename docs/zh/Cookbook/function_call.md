@@ -4,12 +4,10 @@ LazyLLM 支持创建使用语言模型作为推理引擎的智能代理，这些
 
 !!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
 
-    - 创建和注册代理可以使用的自定义工具
-    - 设置语言模型作为代理的推理引擎
-    - 配置代理以智能地决定工具使用
-    - 启用代理维护对话历史和上下文
-    - 部署带有 Web 界面的代理以便于交互
-    - 实现流式响应以获得实时反馈
+    - 如何通过 @fc_register 创建和注册代理可用的自定义工具。
+    - 如何使用 [OnlineChatModule][lazyllm.module.OnlineChatModule] 设置语言模型作为代理的推理引擎。
+    - 如何配置 [ReactAgent][lazyllm.tools.agent.ReactAgent] 以智能决定何时调用工具。
+    - 如何使用 [WebModule][lazyllm.tools.webpages.WebModule] 部署带有 Web 界面的代理以便交互。
 
 让我们开始吧！
 
@@ -33,6 +31,7 @@ export LAZYLLM_DEEPSEEK_API_KEY=your_deepseek_api_key
 ```
 
 **Bocha API 密钥申请：**
+
 1. 访问 [Bocha Open 平台](https://open.bochaai.com/overview)
 2. 注册并登录您的账户
 3. 在"API KEY管理"页面创建新的 API 密钥
@@ -42,6 +41,7 @@ export LAZYLLM_DEEPSEEK_API_KEY=your_deepseek_api_key
 > 在 [博查 API 主页](https://open.bochaai.com/overview) 的 **资源包管理** 中，订阅 **免费试用** 即可。
 
 **DeepSeek API 密钥申请：**
+
 1. 访问 [DeepSeek 平台](https://platform.deepseek.com/)
 2. 注册并登录您的账户
 3. 在"API Keys"页面创建新的 API 密钥
@@ -158,6 +158,7 @@ def create_agent():
 ```
 
 `ReactAgent` 遵循 ReAct（推理和行动）范式，它允许代理：
+
 - **思考**需要做什么
 - **行动**通过在需要时调用工具
 - **观察**结果并继续推理
@@ -176,6 +177,7 @@ print(result)
 ```
 
 代理将：
+
 1. 分析查询
 2. 决定使用 `bocha_search` 工具
 3. 使用适当的搜索词调用工具
@@ -185,7 +187,7 @@ print(result)
 
 LazyLLM 让部署带有 Web 界面的代理变得简单：
 
-![Web 界面演示](../assets/agent-tooluse.png)
+![Web 界面演示](../../assets/agent-tooluse.png)
 
 ```python
 def start_web_interface():
@@ -224,7 +226,7 @@ def start_web_interface():
 
 要启用流式响应，请修改代理配置：
 
-![流式响应演示](../assets/agent-tooluse-stream.png)
+![流式响应演示](../../assets/agent-tooluse-stream.png)
 
 ```python
 agent = lazyllm.tools.agent.ReactAgent(
@@ -241,6 +243,7 @@ agent = lazyllm.tools.agent.ReactAgent(
 LazyLLM 代理可以通过 Web 界面自动维护对话历史，或者您可以实现自定义记忆功能来增强代理在对话中维护上下文的能力。
 
 记忆功能使代理能够：
+
 - 记住之前的对话和用户偏好
 - 在多次交互中维护上下文
 - 基于对话历史提供更个性化的响应

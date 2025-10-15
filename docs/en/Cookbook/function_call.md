@@ -2,14 +2,12 @@
 
 LazyLLM supports the creation of agents that use language models as reasoning engines to determine which actions to take and how to interact with external tools. These agents can analyze user queries, decide when to use specific tools, and process the results to provide comprehensive responses. This tool-calling capability is fundamental to building intelligent agents that can interact with the real world.
 
-!!! abstract "Through this section, you will learn the following key points of LazyLLM"
+!!! abstract "In this section, you will learn the following key points of LazyLLM"
 
-    - Create and register custom tools that your agent can use
-    - Set up a language model as the agent's reasoning engine
-    - Configure the agent to make intelligent decisions about tool usage
-    - Enable the agent to maintain conversation history and context
-    - Deploy the agent with a web interface for easy interaction
-    - Implement streaming responses for real-time feedback
+    - How to create and register custom tools for agents using @fc_register.
+    - How to set up a language model as the reasoning engine for agents using [OnlineChatModule][lazyllm.module.OnlineChatModule].
+    - How to configure [ReactAgent][lazyllm.tools.agent.ReactAgent] to intelligently decide when to call tools.
+    - How to deploy agents with a web interface for interaction using [WebModule][lazyllm.tools.webpages.WebModule].
 
 Let's get started!
 
@@ -36,6 +34,7 @@ export LAZYLLM_DEEPSEEK_API_KEY=your_deepseek_api_key
 Before using this tutorial, you need to apply for the corresponding API keys:
 
 **Bocha API Key Application:**
+
 1. Visit the [Bocha Open Platform](https://open.bochaai.com/overview)
 2. Register and log in to your account
 3. Create a new API key in the "API KEY Management" page
@@ -45,6 +44,7 @@ Before using this tutorial, you need to apply for the corresponding API keys:
 > On the [Bocha API homepage](https://open.bochaai.com/overview), go to **Resource Package Management** and subscribe to the **Free Trial**.
 
 **DeepSeek API Key Application:**
+
 1. Visit the [DeepSeek Platform](https://platform.deepseek.com/)
 2. Register and log in to your account
 3. Create a new API key in the "API Keys" page
@@ -161,6 +161,7 @@ def create_agent():
 ```
 
 The `ReactAgent` follows the ReAct (Reasoning and Acting) paradigm, which allows the agent to:
+
 - **Think** about what it needs to do
 - **Act** by calling tools when needed
 - **Observe** the results and continue reasoning
@@ -179,6 +180,7 @@ print(result)
 ```
 
 The agent will:
+
 1. Analyze the query
 2. Decide to use the `bocha_search` tool
 3. Call the tool with the appropriate search terms
@@ -188,7 +190,7 @@ The agent will:
 
 LazyLLM makes it easy to deploy your agent with a web interface:
 
-![Web Interface Demo](../assets/agent-tooluse.png)
+![Web Interface Demo](../../assets/agent-tooluse.png)
 
 ```python
 def start_web_interface():
@@ -227,7 +229,7 @@ def start_web_interface():
 
 To enable streaming responses, modify the agent configuration:
 
-![Streaming Response Demo](../assets/agent-tooluse-stream.png)
+![Streaming Response Demo](../../assets/agent-tooluse-stream.png)
 
 ```python
 agent = lazyllm.tools.agent.ReactAgent(
@@ -244,6 +246,7 @@ agent = lazyllm.tools.agent.ReactAgent(
 LazyLLM agents can maintain conversation history through the web interface automatically, or you can implement custom memory functionality to enhance the agent's ability to maintain context across conversations.
 
 Memory features enable agents to:
+
 - Remember previous conversations and user preferences
 - Maintain context across multiple interactions
 - Provide more personalized responses based on conversation history
