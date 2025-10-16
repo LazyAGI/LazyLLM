@@ -16,16 +16,16 @@ def check_path(
     file: bool = True,
     parents: bool = True,
 ) -> str:
-    """
+    '''
     Check path and return corrected path.
-    """
+    '''
     # normalize and expand a path
     path = normpath(expandvars(expanduser(path)))
     if exist and file and not isfile(path):
         raise FileNotFoundError(path)
     else:
         if file:
-            dir_path = normpath(join(path, ".."))
+            dir_path = normpath(join(path, '..'))
         else:
             dir_path = path
         if parents:
@@ -33,59 +33,59 @@ def check_path(
     return path
 
 class SecurityVisitor(ast.NodeVisitor):
-    """
+    '''
     AST-based security analyzer to detect unsafe operations in Python code.
 
     IMPORTANT: Method names within this class (e.g., `visit_Call`, `visit_Import`) **should not**
     be renamed to lowercase. These method names are part of the `NodeVisitor` pattern from the `ast`
     module and must remain consistant with this naming convention to function correctly.
-    """
+    '''
 
     # **Dangerous built-in functions**
-    DANGEROUS_BUILTINS = {"exec", "eval", "open", "compile", "getattr", "setattr"}
+    DANGEROUS_BUILTINS = {'exec', 'eval', 'open', 'compile', 'getattr', 'setattr'}
 
     # **Dangerous os operations**
-    DANGEROUS_OS_CALLS = {"system", "popen", "remove", "rmdir", "unlink", "rename"}
+    DANGEROUS_OS_CALLS = {'system', 'popen', 'remove', 'rmdir', 'unlink', 'rename'}
 
     # **Dangerous sys operations**
-    DANGEROUS_SYS_CALLS = {"exit", "modules"}
+    DANGEROUS_SYS_CALLS = {'exit', 'modules'}
 
     # **Dangerous modules**
-    DANGEROUS_MODULES = {"pickle", "subprocess", "socket", "shutil", "requests", "inspect", "tempfile"}
+    DANGEROUS_MODULES = {'pickle', 'subprocess', 'socket', 'shutil', 'requests', 'inspect', 'tempfile'}
 
     def visit_Call(self, node):
-        """Check function calls"""
+        '''Check function calls'''
         # Direct calls to dangerous built-in functions
         if isinstance(node.func, ast.Name) and node.func.id in self.DANGEROUS_BUILTINS:
-            raise ValueError(f"⚠️ Detected dangerous function call: {node.func.id}")
+            raise ValueError(f'⚠️ Detected dangerous function call: {node.func.id}')
 
         # os / sys related calls
         if isinstance(node.func, ast.Attribute) and isinstance(node.func.value, ast.Name):
-            if node.func.value.id == "os" and node.func.attr in self.DANGEROUS_OS_CALLS:
-                raise ValueError(f"⚠️ Detected dangerous os call: os.{node.func.attr}")
-            if node.func.value.id == "sys" and node.func.attr in self.DANGEROUS_SYS_CALLS:
-                raise ValueError(f"⚠️ Detected dangerous sys call: sys.{node.func.attr}")
+            if node.func.value.id == 'os' and node.func.attr in self.DANGEROUS_OS_CALLS:
+                raise ValueError(f'⚠️ Detected dangerous os call: os.{node.func.attr}')
+            if node.func.value.id == 'sys' and node.func.attr in self.DANGEROUS_SYS_CALLS:
+                raise ValueError(f'⚠️ Detected dangerous sys call: sys.{node.func.attr}')
 
         self.generic_visit(node)
 
     def visit_Import(self, node):
-        """Check import statements"""
+        '''Check import statements'''
         for alias in node.names:
             if alias.name in self.DANGEROUS_MODULES:
-                raise ValueError(f"⚠️ Detected dangerous module import: {alias.name}")
+                raise ValueError(f'⚠️ Detected dangerous module import: {alias.name}')
 
     def visit_ImportFrom(self, node):
-        """Check from ... import statements"""
+        '''Check from ... import statements'''
         if node.module in self.DANGEROUS_MODULES:
-            raise ValueError(f"⚠️ Detected dangerous module import: {node.module}")
+            raise ValueError(f'⚠️ Detected dangerous module import: {node.module}')
 
     def visit_Attribute(self, node):
-        """Check os.environ and tempfile usage"""
+        '''Check os.environ and tempfile usage'''
         if isinstance(node.value, ast.Name):
-            if node.value.id == "os" and node.attr == "environ":
-                raise ValueError("⚠️ Detected dangerous access: os.environ")
-            if node.value.id == "tempfile":
-                raise ValueError(f"⚠️ Detected dangerous usage of tempfile: tempfile.{node.attr}")
+            if node.value.id == 'os' and node.attr == 'environ':
+                raise ValueError('⚠️ Detected dangerous access: os.environ')
+            if node.value.id == 'tempfile':
+                raise ValueError(f'⚠️ Detected dangerous usage of tempfile: tempfile.{node.attr}')
 
         self.generic_visit(node)
 
@@ -93,7 +93,7 @@ def compile_func(func_code: str, global_env: Optional[Dict[str, Any]] = None) ->
     fname = re.search(r'def\s+(\w+)\s*\(', func_code).group(1)
     module = ast.parse(func_code)
     SecurityVisitor().visit(module)
-    func = compile(module, filename="<ast>", mode="exec")
+    func = compile(module, filename='<ast>', mode='exec')
     local_dict = {}
     exec(func, global_env if global_env is not None else local_dict, local_dict)
     return local_dict.pop(fname)
@@ -105,7 +105,7 @@ def str2obj(data: str) -> Any:
     return None if data is None else pickle.loads(base64.b64decode(data.encode('utf-8')))
 
 def str2bool(v: str) -> bool:
-    """ Boolean type converter """
+    ''' Boolean type converter '''
     if isinstance(v, bool):
         return v
     if v.lower() in ('yes', 'true', 't', 'y', '1', 'on'):

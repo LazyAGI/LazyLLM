@@ -58,27 +58,27 @@ def check_requirements(level, requirements_file):
         if package_name in req_dict:
             if not compare_versions(version_spec, req_dict[package_name]):
                 mismatched.append(
-                    f"{package_name}: toml version {version_spec} does not match "
-                    f"requirements {req_dict[package_name]}"
+                    f'{package_name}: toml version {version_spec} does not match '
+                    f'requirements {req_dict[package_name]}'
                 )
         else:
-            missing.append(f"{package_name} is missing from requirements")
+            missing.append(f'{package_name} is missing from requirements')
 
     if missing or mismatched:
         if missing:
-            print("Missing packages:")
+            print('Missing packages:')
             for msg in missing:
                 print(msg)
         if mismatched:
-            print("Mismatched packages:")
+            print('Mismatched packages:')
             for msg in mismatched:
                 print(msg)
-        raise ValueError("There are missing or mismatched packages.")
+        raise ValueError('There are missing or mismatched packages.')
     else:
-        print("All packages matched successfully.")
+        print('All packages matched successfully.')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     script_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(script_dir)
     full, light = load_toml()

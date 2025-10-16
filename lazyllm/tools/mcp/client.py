@@ -27,12 +27,12 @@ class MCPClient(object):
 
     @asynccontextmanager
     async def _run_session(self):
-        if urlparse(self._command_or_url).scheme in ("http", "https"):
-            spec = importlib.util.find_spec("mcp.client.sse")
+        if urlparse(self._command_or_url).scheme in ('http', 'https'):
+            spec = importlib.util.find_spec('mcp.client.sse')
             if spec is None:
                 raise ImportError(
-                    "Please install mcp to use mcp module. "
-                    "You can install it with `pip install mcp`"
+                    'Please install mcp to use mcp module. '
+                    'You can install it with `pip install mcp`'
                 )
             sse_module = importlib.util.module_from_spec(spec)
             spec.loader.exec_module(sse_module)
@@ -65,7 +65,7 @@ class MCPClient(object):
 
     async def aget_tools(self, allowed_tools: list[str] = None):
         res = await self.list_tools()
-        mcp_tools = getattr(res, "tools", [])
+        mcp_tools = getattr(res, 'tools', [])
         if allowed_tools:
             mcp_tools = [tool for tool in mcp_tools if tool.name in allowed_tools]
 

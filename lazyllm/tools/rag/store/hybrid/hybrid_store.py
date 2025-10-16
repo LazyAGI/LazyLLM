@@ -39,7 +39,7 @@ class HybridStore(LazyLLMStoreBase):
         res_segments = self.segment_store.get(collection_name=collection_name, criteria=criteria, **kwargs)
         if not res_segments: return []
         uids = [item.get('uid') for item in res_segments]
-        res_vectors = self.vector_store.get(collection_name=collection_name, criteria={'uid': uids})
+        res_vectors = self.vector_store.get(collection_name=collection_name, criteria={'uid': uids}, **kwargs)
 
         data = {}
         for item in res_segments:
@@ -48,8 +48,8 @@ class HybridStore(LazyLLMStoreBase):
             if item.get('uid') in data:
                 data[item.get('uid')]['embedding'] = item.get('embedding')
             else:
-                raise ValueError(f"[HybridStore - get] uid {item['uid']} in vector store"
-                                 " but not found in segment store")
+                raise ValueError(f'[HybridStore - get] uid {item["uid"]} in vector store'
+                                 ' but not found in segment store')
         return list(data.values())
 
     @override

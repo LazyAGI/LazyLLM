@@ -3,7 +3,7 @@ import contextvars
 import copy
 from typing import Any, Tuple, Optional, List, Dict
 from pydantic import BaseModel as struct
-from .common import package, kwargs
+from .common import package, kwargs, SingletonMeta
 from .deprecated import deprecated
 import asyncio
 from .utils import obj2str, str2obj
@@ -119,9 +119,9 @@ class ThreadSafeDict(dict):
             return (self.__class__, (dict(self),))
 
 
-class Globals(object):
+class Globals(metaclass=SingletonMeta):
     __global_attrs__ = ThreadSafeDict(
-        chat_history={}, global_parameters={}, bind_args={}, tool_delimiter="<|tool_calls|>", lazyllm_files={}, usage={}
+        chat_history={}, global_parameters={}, bind_args={}, tool_delimiter='<|tool_calls|>', lazyllm_files={}, usage={}
     )
 
     def __init__(self):
@@ -203,6 +203,9 @@ class Globals(object):
 
     def pop(self, *args, **kw):
         return self._data.pop(*args, **kw)
+
+    def __reduce__(self):
+        return __class__, ()
 
 globals = Globals()
 

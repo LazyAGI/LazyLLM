@@ -54,8 +54,8 @@ class Config(object):
         update_params = (type, default, env)
         if name not in self._config_params or self._config_params[name] != update_params:
             if name in self._config_params:
-                logging.warning(f"The default configuration parameter {name}({self._config_params[name]}) "
-                                f"has been added, but a new {name}({update_params}) has been added repeatedly.")
+                logging.warning(f'The default configuration parameter {name}({self._config_params[name]}) '
+                                f'has been added, but a new {name}({update_params}) has been added repeatedly.')
             self._config_params.update({name: update_params})
             if isinstance(env, str):
                 self._env_map_name[('lazyllm_' + env).upper()] = name

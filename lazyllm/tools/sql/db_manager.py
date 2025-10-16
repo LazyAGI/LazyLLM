@@ -13,7 +13,7 @@ class DBStatus(Enum):
 
 class DBResult(BaseModel):
     status: DBStatus = DBStatus.SUCCESS
-    detail: str = "Success"
+    detail: str = 'Success'
     result: Union[List, None] = None
 
 class CommonMeta(type(ABC), type(ModuleBase)):

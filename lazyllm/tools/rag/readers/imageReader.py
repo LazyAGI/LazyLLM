@@ -3,7 +3,7 @@ import re
 from io import BytesIO
 from pathlib import Path
 from typing import Dict, List, Optional, cast
-from fsspec import AbstractFileSystem
+from lazyllm.thirdparty import fsspec
 
 from lazyllm import thirdparty
 from lazyllm.thirdparty import PIL
@@ -12,7 +12,7 @@ from lazyllm.thirdparty import transformers as tf
 from .readerBase import LazyLLMReaderBase, infer_torch_device
 from ..doc_node import ImageDocNode
 
-def img_2_b64(image: 'PIL.Image', format: str = "JPEG") -> str:
+def img_2_b64(image: 'PIL.Image', format: str = 'JPEG') -> str:
     buff = BytesIO()
     image.save(buff, format=format)
     return cast(str, base64.b64encode(buff.getvalue()))
@@ -23,25 +23,25 @@ def b64_2_img(data: str) -> 'PIL.Image':
 
 class ImageReader(LazyLLMReaderBase):
     def __init__(self, parser_config: Optional[Dict] = None, keep_image: bool = False, parse_text: bool = False,
-                 text_type: str = "text", pytesseract_model_kwargs: Optional[Dict] = None,
+                 text_type: str = 'text', pytesseract_model_kwargs: Optional[Dict] = None,
                  return_trace: bool = True) -> None:
         super().__init__(return_trace=return_trace)
         self._text_type = text_type
         if parser_config is None and parse_text:
-            if text_type == "plain_text":
+            if text_type == 'plain_text':
                 try:
                     import pytesseract
                 except ImportError:
-                    raise ImportError("Please install extra dependencies that are required for the ImageReader "
-                                      "when text_type is 'plain_text': `pip install pytesseract`")
+                    raise ImportError('Please install extra dependencies that are required for the ImageReader '
+                                      'when text_type is "plain_text": `pip install pytesseract`')
 
                 processor = None
                 model = pytesseract
             else:
-                thirdparty.check_packages(["sentencepiece", "torch", "transformers"])
+                thirdparty.check_packages(['sentencepiece', 'torch', 'transformers'])
 
-                processor = tf.DonutProcessor.from_pretrained("naver-clova-ix/donut-base-finetuned-cord-v2")
-                model = tf.VisionEncoderDecoderModel.from_pretrained("naver-clova-ix/donut-base-finetuned-cord-v2")
+                processor = tf.DonutProcessor.from_pretrained('naver-clova-ix/donut-base-finetuned-cord-v2')
+                model = tf.VisionEncoderDecoderModel.from_pretrained('naver-clova-ix/donut-base-finetuned-cord-v2')
             parser_config = {'processor': processor, 'model': model}
 
         self._parser_config = parser_config
@@ -49,7 +49,7 @@ class ImageReader(LazyLLMReaderBase):
         self._parse_text = parse_text
         self._pytesseract_model_kwargs = pytesseract_model_kwargs or {}
 
-    def _load_data(self, file: Path, fs: Optional[AbstractFileSystem] = None) -> List[ImageDocNode]:
+    def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[ImageDocNode]:
         if not isinstance(file, Path): file = Path(file)
 
         if fs:
@@ -58,22 +58,22 @@ class ImageReader(LazyLLMReaderBase):
         else:
             image = PIL.Image.open(file)
 
-        if image.mode != "RGB": image = image.convert("RGB")
+        if image.mode != 'RGB': image = image.convert('RGB')
 
         image_str: Optional[str] = None  # noqa
         if self._keep_image: image_str = img_2_b64(image)  # noqa
 
-        text_str: str = ""
+        text_str: str = ''
         if self._parse_text:
             assert self._parser_config is not None
-            model = self._parser_config["model"]
-            processor = self._parser_config["processor"]
+            model = self._parser_config['model']
+            processor = self._parser_config['processor']
 
             if processor:
                 device = infer_torch_device()
                 model.to(device)
 
-                task_prompt = "<s_cord-v2>"
+                task_prompt = '<s_cord-v2>'
                 decoder_input_ids = processor.tokenizer(task_prompt, add_special_tokens=False,
                                                         return_tensors='pt').input_ids
                 pixel_values = processor(image, return_tensors='pt').pixel_values
@@ -86,8 +86,8 @@ class ImageReader(LazyLLMReaderBase):
                                         return_dict_in_generate=True)
 
                 sequence = processor.batch_decode(output.sequences)[0]
-                sequence = sequence.replace(processor.tokenizer.eos_token, "").replace(processor.tokenizer.pad_token, "")
-                text_str = re.sub(r"<.*?>", "", sequence, count=1).strip()
+                sequence = sequence.replace(processor.tokenizer.eos_token, '').replace(processor.tokenizer.pad_token, '')
+                text_str = re.sub(r'<.*?>', '', sequence, count=1).strip()
             else:
                 import pytesseract
 

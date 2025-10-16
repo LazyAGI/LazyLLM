@@ -21,6 +21,11 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch main
+        run: git fetch origin main
 
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -32,11 +37,13 @@ jobs:
           python -m venv venv
           source venv/bin/activate
           pip install flake8
+          pip install flake8-bugbear
+          pip install flake8-quotes
 
       - name: Run flake8
         run: |
           source venv/bin/activate
-          make lint
+          make lint-only-diff
 
   build:
     runs-on: ubuntu-latest

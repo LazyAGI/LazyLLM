@@ -7,7 +7,7 @@ from .supplier.glm import GLMSTTModule, GLMTextToImageModule
 
 
 class _OnlineMultiModalMeta(type):
-    """Metaclass for OnlineMultiModalModule to support isinstance checks"""
+    '''Metaclass for OnlineMultiModalModule to support isinstance checks'''
     def __instancecheck__(self, __instance: Any) -> bool:
         if isinstance(__instance, OnlineMultiModalBase):
             return True
@@ -15,7 +15,7 @@ class _OnlineMultiModalMeta(type):
 
 
 class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
-    """
+    '''
     Factory class for creating online multimodal models.
 
     Supports various multimodal functions including:
@@ -32,7 +32,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
 
         # Create an online text-to-image
         img_gen = OnlineMultiModalModule(source='qwen', function='text2image')
-    """
+    '''
     STT_MODELS = {
         'qwen': QwenSTTModule,
         'glm': GLMSTTModule
@@ -51,8 +51,8 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                                 model: str,
                                 return_trace: bool,
                                 **kwargs) -> Dict[str, Any]:
-        """Encapsulate parameters for module initialization"""
-        params = {"return_trace": return_trace}
+        '''Encapsulate parameters for module initialization'''
+        params = {'return_trace': return_trace}
         if base_url is not None:
             params['base_url'] = base_url
         if model is not None:
@@ -65,9 +65,9 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                 source: str = None,
                 base_url: str = None,
                 return_trace: bool = False,
-                function: str = "stt",
+                function: str = 'stt',
                 **kwargs):
-        """
+        '''
         Create a new OnlineMultiModalModule instance.
 
         Args:
@@ -84,16 +84,16 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         Raises:
             ValueError: If function is not supported
             KeyError: If no API key is configured
-        """
+        '''
         # Define function to model mapping
         FUNCTION_MODEL_MAP = {
-            "stt": OnlineMultiModalModule.STT_MODELS,
-            "tts": OnlineMultiModalModule.TTS_MODELS,
-            "text2image": OnlineMultiModalModule.TEXT2IMAGE_MODELS,
+            'stt': OnlineMultiModalModule.STT_MODELS,
+            'tts': OnlineMultiModalModule.TTS_MODELS,
+            'text2image': OnlineMultiModalModule.TEXT2IMAGE_MODELS,
         }
 
         if function not in FUNCTION_MODEL_MAP:
-            raise ValueError(f"Invalid function: {function}")
+            raise ValueError(f'Invalid function: {function}')
 
         available_model = FUNCTION_MODEL_MAP[function]
 
@@ -102,19 +102,19 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
 
         params = OnlineMultiModalModule._encapsulate_parameters(base_url, model, return_trace, **kwargs)
 
-        if kwargs.get("skip_auth", False):
-            source = source or "openai"
+        if kwargs.get('skip_auth', False):
+            source = source or 'openai'
             if not base_url:
-                raise KeyError("base_url must be set for local serving.")
+                raise KeyError('base_url must be set for local serving.')
 
         if source is None:
-            if "api_key" in kwargs and kwargs["api_key"]:
-                raise ValueError("No source is given but an api_key is provided.")
+            if 'api_key' in kwargs and kwargs['api_key']:
+                raise ValueError('No source is given but an api_key is provided.')
             for source in available_model:
                 if lazyllm.config[f'{source}_api_key']:
                     break
             else:
-                raise KeyError(f"No api_key is configured for any of the models {available_model}.")
+                raise KeyError(f'No api_key is configured for any of the models {available_model}.')
 
-        assert source in available_model, f"Unsupported source: {source}"
+        assert source in available_model, f'Unsupported source: {source}'
         return available_model[source](**params)

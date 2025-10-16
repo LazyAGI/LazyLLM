@@ -4,7 +4,7 @@ import asyncio
 import threading
 from datetime import datetime
 from pydantic import BaseModel, Field
-from fastapi import HTTPException, Header
+from fastapi import HTTPException, Header  # noqa NID002
 from async_timeout import timeout
 
 import lazyllm
@@ -14,7 +14,7 @@ from ..services import ServerBase
 
 DEFAULT_TOKEN = 'default_token'
 
-class JobDescription(BaseModel):
+class _JobDescription(BaseModel):
     service_name: str
     model_name: str = Field(default='qwen1.5-0.5b-chat')
     framework: str = Field(default='auto')
@@ -55,7 +55,7 @@ class InferServer(ServerBase):
             first_seen = info.get('first_cancelled_time')
             if not first_seen:
                 update['first_cancelled_time'] = datetime.now().strftime(self._time_format)
-                update['status'] = "Pending"
+                update['status'] = 'Pending'
             else:
                 first_seen_time = datetime.strptime(first_seen, self._time_format)
                 if (datetime.now() - first_seen_time).total_seconds() > 60:  # Observe for 60 seconds
@@ -70,7 +70,7 @@ class InferServer(ServerBase):
                     return
                 else:
                     # Still in the obsesrvation period, not cleaned up
-                    update['status'] = "Pending"
+                    update['status'] = 'Pending'
         else:
             # The status is restored, clear first_cancelled_time
             if 'first_cancelled_time' in info:
@@ -130,7 +130,7 @@ class InferServer(ServerBase):
         return newest_file
 
     @app.post('/v1/inference_services')
-    async def create_job(self, job: JobDescription, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
+    async def create_job(self, job: _JobDescription, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
         if self._in_active_jobs(token, job.service_name):
@@ -146,7 +146,7 @@ class InferServer(ServerBase):
         os.makedirs(save_root, exist_ok=True)
         # wait 5 minutes for launch cmd
         hypram = dict(launcher=lazyllm.launchers.remote(sync=False, ngpus=job.num_gpus, retry=30), log_path=save_root)
-        m = lazyllm.TrainableModule(job.model_name).deploy_method((lazyllm.deploy.auto, hypram))
+        m = lazyllm.TrainableModule(job.model_name).deploy_method((getattr(lazyllm.deploy, job.framework), hypram))
 
         # Launch Deploy:
         thread = threading.Thread(target=m.start)
@@ -177,7 +177,7 @@ class InferServer(ServerBase):
         self._update_user_job_info(token, job_id, {
             'lwsName': job_id,
             'status': status,
-            'endpoint': "unknown",
+            'endpoint': 'unknown',
             'service_name': job.service_name,
             'model_name': job.model_name,
             'created_at': create_time,

@@ -73,17 +73,17 @@ class _DocumentStore(object):
             store_type = cfg['type']
             cls = getattr(lazyllm.store, store_type, None)
             if not cls:
-                raise NotImplementedError(f"Not implemented store type: {store_type}")
-            cap = getattr(cls, "capability", None)
+                raise NotImplementedError(f'Not implemented store type: {store_type}')
+            cap = getattr(cls, 'capability', None)
             if cap is None:
-                raise AttributeError(f"{cls.__name__} must define class attribute 'capability'")
+                raise AttributeError(f'{cls.__name__} must define class attribute "capability"')
 
             if cap in (StoreCapability.ALL, StoreCapability.SEGMENT):
                 return cfg, {}
             elif cap == StoreCapability.VECTOR:
                 return {}, cfg
             else:
-                raise ValueError(f"Unsupported capability {cap} for {cls.__name__}")
+                raise ValueError(f'Unsupported capability {cap} for {cls.__name__}')
         return cfg.get('segment_store', {}) or {}, cfg.get('vector_store', {}) or {}
 
     def _create_store_from_config(self, cfg: Optional[Dict[str, Any]] = None) -> LazyLLMStoreBase:
@@ -93,7 +93,7 @@ class _DocumentStore(object):
         vec_store = self._make_store(vec_cfg)
 
         if not seg_store and not vec_store:
-            raise ValueError("Provide either 'type' or 'segment_store'/'vector_store' in config.")
+            raise ValueError('Provide either "type" or "segment_store"/"vector_store" in config.')
 
         if seg_store:
             assert seg_store.capability in (StoreCapability.ALL, StoreCapability.SEGMENT), \
@@ -109,17 +109,17 @@ class _DocumentStore(object):
             return seg_store
         if vec_store and not seg_store:
             if vec_store.capability == StoreCapability.VECTOR:
-                db_path = getattr(vec_store, "dir", None)
+                db_path = getattr(vec_store, 'dir', None)
                 if db_path:
                     p = Path(db_path)
-                    segment_uri = str(p.with_name(f"lazyllm_{p.stem}_segments.db"))
+                    segment_uri = str(p.with_name(f'lazyllm_{p.stem}_segments.db'))
                 else:
                     segment_uri = None
                 segment_store = MapStore(uri=segment_uri)
                 return HybridStore(segment_store=segment_store, vector_store=vec_store)
             return vec_store
         # should not reach here
-        raise RuntimeError("Unexpected store creation state")
+        raise RuntimeError('Unexpected store creation state')
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self):
@@ -147,7 +147,7 @@ class _DocumentStore(object):
         return group in self._activated_groups
 
     def is_group_empty(self, group: str) -> bool:
-        return not self.impl.get(self._gen_collection_name(group), {})
+        return not self.impl.get(self._gen_collection_name(group), {}, limit=10)
 
     def update_nodes(self, nodes: List[DocNode]):   # noqa: C901
         if not nodes:

@@ -1,6 +1,7 @@
 import os
 import lazyllm
 import pytest
+from lazyllm import config
 from lazyllm.components.formatter import decode_query_with_filepaths
 
 
@@ -21,6 +22,7 @@ class TestMultiModal(object):
         result = tts(self.test_text)
         self._check_file_result(result, format='audio')
 
+        if config['cache_online_module']: return
         with pytest.raises(RuntimeError, match='cosyvoice-v1 does not support multi user, don\'t set api_key'):
             tts = lazyllm.OnlineMultiModalModule(source='qwen', function='tts', model='cosyvoice-v1', api_key=api_key)
             result = tts(self.test_text)

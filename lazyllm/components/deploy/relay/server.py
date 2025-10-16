@@ -5,8 +5,10 @@ import sys
 import inspect
 import traceback
 from types import GeneratorType
+import lazyllm
 from lazyllm import kwargs, package, load_obj
 from lazyllm import FastapiApp, globals, decode_request
+import time
 import pickle
 import codecs
 import asyncio
@@ -23,14 +25,15 @@ for _ in range(5):
 sys.path.append(lazyllm_module_dir)
 
 parser = argparse.ArgumentParser()
-parser.add_argument("--open_ip", type=str, default="0.0.0.0",
-                    help="IP: Receive for Client")
-parser.add_argument("--open_port", type=int, default=17782,
-                    help="Port: Receive for Client")
-parser.add_argument("--function", required=True)
-parser.add_argument("--before_function")
-parser.add_argument("--after_function")
-parser.add_argument("--pythonpath")
+parser.add_argument('--open_ip', type=str, default='0.0.0.0',
+                    help='IP: Receive for Client')
+parser.add_argument('--open_port', type=int, default=17782,
+                    help='Port: Receive for Client')
+parser.add_argument('--function', required=True)
+parser.add_argument('--before_function')
+parser.add_argument('--after_function')
+parser.add_argument('--pythonpath')
+parser.add_argument('--num_replicas', type=int, default=1, help='num of ray replicas')
 args = parser.parse_args()
 
 if args.pythonpath:
@@ -57,7 +60,7 @@ async def async_wrapper(func, *args, **kwargs):
     result = await loop.run_in_executor(None, partial(impl, func, globals._sid, globals._data, *args, **kwargs))
     return result
 
-@app.post("/_call")
+@app.post('/_call')
 async def lazyllm_call(request: Request):
     try:
         fname, args, kwargs = await request.json()
@@ -69,16 +72,21 @@ async def lazyllm_call(request: Request):
     except Exception as e:
         return Response(content=f'{e}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
 
-@app.post("/generate")
+@app.post('/generate')
 async def generate(request: Request): # noqa C901
     try:
-        globals._init_sid(decode_request(request.headers.get('Session-ID')))
-        globals._update(decode_request(request.headers.get('Global-Parameters')))
         input, kw = (await request.json()), {}
         try:
             input, kw = decode_request(input)
         except Exception: pass
         origin = input
+
+        # TODO(wangzhihong): `update` should come after the `await`, otherwise it may cause strange errors.
+        #                    The reason is that when multiple coroutines use the same Session-ID, the function
+        #                    clears the globals at the end, which causes some coroutines to mistakenly remove
+        #                    data from globals after finishing execution.
+        globals._init_sid(decode_request(request.headers.get('Session-ID')))
+        globals._update(decode_request(request.headers.get('Global-Parameters')))
 
         if args.before_function:
             assert (callable(before_func)), 'before_func must be callable'
@@ -88,7 +96,7 @@ async def generate(request: Request): # noqa C901
                 assert len(kw) == 0, 'Cannot provide kwargs-input and kwargs at the same time'
                 input = before_func(**input)
             else:
-                input = func(*input, **kw) if isinstance(input, package) else before_func(input, **kw)
+                input = before_func(*input, **kw) if isinstance(input, package) else before_func(input, **kw)
                 kw = {}
         if isinstance(input, kwargs):
             kw.update(input)
@@ -136,5 +144,25 @@ def find_services(cls):
 
 find_services(func.__class__)
 
-if __name__ == "__main__":
-    uvicorn.run(app, host=args.open_ip, port=args.open_port)
+class _Dummy: pass
+
+if __name__ == '__main__':
+    if lazyllm.config['use_ray']:
+        import ray
+        from ray import serve
+        ray.init()
+        _Dummy = serve.deployment(serve.ingress(app)(_Dummy), num_replicas=args.num_replicas)
+        serve.start(http_options={'host': args.open_ip, 'port': args.open_port})
+        serve.run(_Dummy.bind())
+
+        printed = False
+        while True:
+            if not printed:
+                status = serve.status()
+                app_status = status.applications.get('default')
+                if app_status and app_status.status == 'RUNNING':
+                    lazyllm.LOG.success(f'Deployment is ready on {args.open_ip}:{args.open_port}!')
+                    printed = True
+            time.sleep(2)
+    else:
+        uvicorn.run(app, host=args.open_ip, port=args.open_port)
