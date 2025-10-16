@@ -25,7 +25,11 @@
 ![API Agent Demo](../assets/api_agent_demo.png)
 
 ---
-
+## 准备工作
+获取API—KEY,具体过程详见：https://docs.lazyllm.ai/zh-cn/stable/Tutorial/2/#2-api-key
+```python
+pip install lazyllm
+```
 ## 封装 API 工具类
 
 我们先来看怎么构建一个可以自动识别问题并调用 API 的模块。以该API为例：https://restcountries.com/

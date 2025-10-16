@@ -9,7 +9,12 @@ Want a large language model to automatically call real-world APIs based on your 
 - How to use [ReactAgent][lazyllm.tools.agent.ReactAgent] with [WebModule][lazyllm.tools.WebModule] to enable API calling via Q&A.
 
 ---
+## Preparation
+Obtain an API-KEY. For the detailed process, please refer to: https://docs.lazyllm.ai/zh-cn/stable/Tutorial/2/#2-api-key
 
+```python
+pip install lazyllm
+```
 ## Build an API Agent in Three Steps
 
 Q: How many steps does it take to build an API-calling Agent using LazyLLM?
