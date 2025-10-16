@@ -46,7 +46,7 @@ def _pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
             return None
         para_content = {
             'type': ContentType.EQUATION,
-            'img_path': f"{img_buket_path}/{para_block['lines'][0]['spans'][0].get('image_path', '')}",
+            'img_path': f'{img_buket_path}/{para_block["lines"][0]["spans"][0].get("image_path", "")}',
             'lines': _parse_line_spans(para_block, page_idx)
         }
         if para_block['lines'][0]['spans'][0].get('content', ''):
@@ -67,7 +67,7 @@ def _pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
                     for span in line['spans']:
                         if span['type'] == ContentType.IMAGE:
                             if span.get('image_path', ''):
-                                para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
+                                para_content['img_path'] = f'{img_buket_path}/{span["image_path"]}'
             if block['type'] == BlockType.IMAGE_CAPTION:
                 para_content[BlockType.IMAGE_CAPTION].append(
                     pipeline_merge_para_with_text(block))
@@ -90,10 +90,10 @@ def _pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
                     for span in line['spans']:
                         if span['type'] == ContentType.TABLE:
                             if span.get('html', ''):
-                                para_content[BlockType.TABLE_BODY] = f"{span['html']}"
+                                para_content[BlockType.TABLE_BODY] = f'{span["html"]}'
 
                             if span.get('image_path', ''):
-                                para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
+                                para_content['img_path'] = f'{img_buket_path}/{span["image_path"]}'
 
             if block['type'] == BlockType.TABLE_CAPTION:
                 para_content[BlockType.TABLE_CAPTION].append(
@@ -153,7 +153,7 @@ def _vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # n
                     for span in line['spans']:
                         if span['type'] == ContentType.IMAGE:
                             if span.get('image_path', ''):
-                                para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
+                                para_content['img_path'] = f'{img_buket_path}/{span["image_path"]}'
             if block['type'] == BlockType.IMAGE_CAPTION:
                 para_content[BlockType.IMAGE_CAPTION].append(
                     vlm_merge_para_with_text(block))
@@ -176,10 +176,10 @@ def _vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # n
                     for span in line['spans']:
                         if span['type'] == ContentType.TABLE:
                             if span.get('html', ''):
-                                para_content[BlockType.TABLE_BODY] = f"{span['html']}"
+                                para_content[BlockType.TABLE_BODY] = f'{span["html"]}'
 
                             if span.get('image_path', ''):
-                                para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
+                                para_content['img_path'] = f'{img_buket_path}/{span["image_path"]}'
 
             if block['type'] == BlockType.TABLE_CAPTION:
                 para_content[BlockType.TABLE_CAPTION].append(

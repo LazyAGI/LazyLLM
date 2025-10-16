@@ -1,4 +1,4 @@
 from .milvus_store import MilvusStore
-from .chroma_store import ChromadbStore
+from .chroma_store import ChromaStore
 
-__all__ = ["MilvusStore", "ChromadbStore"]
+__all__ = ['MilvusStore', 'ChromaStore']

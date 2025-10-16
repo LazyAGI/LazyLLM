@@ -1,7 +1,7 @@
 from .base import LazyLLMDeployBase
 from .relay import RelayServer, FastapiApp
-from .lightllm import Lightllm
-from .vllm import Vllm
+from .lightllm import Lightllm  # noqa NID002
+from .vllm import Vllm  # noqa NID002
 from .lmdeploy import LMDeploy
 from .infinity import Infinity
 from .ray import Distributed

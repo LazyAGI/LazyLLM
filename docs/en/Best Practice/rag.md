@@ -29,7 +29,7 @@ The Document constructor has the following parameters:
 * `manager`: Whether to use the UI interface, which will affect the internal processing logic of Document; the default is True.
 * `launcher`: The method of launching the service, which is used in cluster applications; it can be ignored for single-machine applications.
 * `store_conf`: Configure which storage backend to use.
-* `doc_fields`: Configure the fields and corresponding types that need to be stored and retrieved (currently only used by the ChromaDB and Milvus backend).
+* `doc_fields`: Configure the fields and corresponding types that need to be stored and retrieved (currently only used by the Chroma and Milvus backend).
 
 #### Node and NodeGroup
 
@@ -123,7 +123,7 @@ In each of the `segment_store` and `vector_store`, the `type` field specifies th
         - `map`: In-memory key/value storage, which can be given a `uri` parameter to specify the directory where data is stored (using sqlite3 as the underlying storage engine).
         - `opensearch`: Use the OpenSearch backend for data storage.
     - `vector_store`:
-        - `chromadb`: Uses ChromaDB for data storage.
+        - `chroma`: Uses Chroma for data storage.
         - `milvus`: Uses Milvus for data storage.
 * `kwargs`: This is a dictionary that contains the configuration parameters for the storage backend, different storage backends have different configuration parameters:
     - `map`:
@@ -132,11 +132,11 @@ In each of the `segment_store` and `vector_store`, the `type` field specifies th
         - `uris` (required): The OpenSearch storage address (support multiple addresses), which can be a list of URL in the format of `ip:port`.
         - `client_kwargs` (required): The configuration parameters for the OpenSearch client, e.g. `user`, `password`, etc, can be found in [OpenSearch official documentation](https://opensearch-project.github.io/opensearch-py/api-ref/clients/opensearch_client.html).
         - `index_kwargs` (optional): The configuration parameters for the OpenSearch index and slice storage.
-    - `chromadb`:
-        - `uri` (optional): The ChromaDB storage address, which can be a URL in the format of `ip:port`.
+    - `chroma`:
+        - `uri` (optional): The Chroma storage address, which can be a URL in the format of `ip:port`.
         - `dir` (optional): The directory where data is stored, which is used when `uri` is not specified.
-        - `index_kwargs` (optional): The configuration parameters for the ChromaDB index, setting the index type and similarity calculation method, can be found in [ChromaDB official documentation](https://docs.trychroma.com/docs/collections/configure).
-        - `client_kwargs` (optional): The configuration parameters for the ChromaDB client.
+        - `index_kwargs` (optional): The configuration parameters for the Chroma index, setting the index type and similarity calculation method, can be found in [Chroma official documentation](https://docs.trychroma.com/docs/collections/configure).
+        - `client_kwargs` (optional): The configuration parameters for the Chroma client.
     - `milvus`:
         - `uri` (required): The Milvus storage address, which can be a db file path or a URL in the format of `ip:port`.
         - `db_name` (optional): The name of the Milvus database, which is used to isolate the database layer.
@@ -157,7 +157,7 @@ store_conf = {
         },
     },
     'vector_store': {
-        'type': 'chromadb',
+        'type': 'chroma',
         'kwargs': {
             'dir': '/path/to/vector/dir',
             'index_kwargs': {
@@ -189,7 +189,7 @@ Also you can configure multi index type for Milvus backend as follow, where the 
 }
 ```
 
-Note: If ChromaDB or Milvus is used as a vector storage, if you want to perform scalar filtering on a specific field as a search condition, you also need to provide a description of special fields that may be used as search conditions, passed in through the `doc_fields` parameter. `doc_fields` is a dictionary where the key is the name of the field that needs to be stored or retrieved, and the value is a `DocField` type structure containing information such as the field type.
+Note: If Chroma or Milvus is used as a vector storage, if you want to perform scalar filtering on a specific field as a search condition, you also need to provide a description of special fields that may be used as search conditions, passed in through the `doc_fields` parameter. `doc_fields` is a dictionary where the key is the name of the field that needs to be stored or retrieved, and the value is a `DocField` type structure containing information such as the field type.
 
 For example, if you need to store the author information and publication year of documents, you can configure it as follows:
 

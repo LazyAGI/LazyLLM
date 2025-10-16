@@ -9,7 +9,7 @@ from .db_manager import DBManager, DBResult, DBStatus
 
 
 class CollectionDesc(pydantic.BaseModel):
-    summary: str = ""
+    summary: str = ''
     schema_type: dict
     schema_desc: dict
 
@@ -18,7 +18,7 @@ class MongoDBManager(DBManager):
     MAX_TIMEOUT_MS = 5000
 
     def __init__(self, user: str, password: str, host: str, port: int, db_name: str, collection_name: str, **kwargs):
-        super().__init__(db_type="mongodb")
+        super().__init__(db_type='mongodb')
         self._user = user
         self._password = password
         self._host = host
@@ -26,9 +26,9 @@ class MongoDBManager(DBManager):
         self._db_name = db_name
         self._collection_name = collection_name
         self._collection = None
-        self._options_str = kwargs.get("options_str")
+        self._options_str = kwargs.get('options_str')
         self._conn_url = self._gen_conn_url()
-        self._collection_desc_dict = kwargs.get("collection_desc_dict")
+        self._collection_desc_dict = kwargs.get('collection_desc_dict')
 
     @property
     def db_name(self):
@@ -40,8 +40,8 @@ class MongoDBManager(DBManager):
 
     def _gen_conn_url(self) -> str:
         password = quote_plus(self._password)
-        conn_url = (f"{self._db_type}://{self._user}:{password}@{self._host}:{self._port}/"
-                    f"{('?' + self._options_str) if self._options_str else ''}")
+        conn_url = (f'{self._db_type}://{self._user}:{password}@{self._host}:{self._port}/'
+                    f'{("?" + self._options_str) if self._options_str else ""}')
         return conn_url
 
     @contextmanager
@@ -64,23 +64,23 @@ class MongoDBManager(DBManager):
             with self.get_client() as client:
                 egs_one = client[self._db_name][self._collection_name].find_one()
                 if egs_one is not None:
-                    self._desc = "Collection Example:\n"
+                    self._desc = 'Collection Example:\n'
                     self._desc += json.dumps(egs_one, ensure_ascii=False, indent=4)
         else:
-            self._desc = ""
+            self._desc = ''
             try:
                 collection_desc = CollectionDesc.model_validate(schema_desc_dict)
             except pydantic.ValidationError as e:
-                raise ValueError(f"Validate input schema_desc_dict failed: {str(e)}")
+                raise ValueError(f'Validate input schema_desc_dict failed: {str(e)}')
             if not self._is_dict_all_str(collection_desc.schema_type):
-                raise ValueError("schema_type shouble be str or nested str dict")
+                raise ValueError('schema_type shouble be str or nested str dict')
             if not self._is_dict_all_str(collection_desc.schema_desc):
-                raise ValueError("schema_desc shouble be str or nested str dict")
+                raise ValueError('schema_desc shouble be str or nested str dict')
             if collection_desc.summary:
-                self._desc += f"Collection summary: {collection_desc.summary}\n"
-            self._desc += "Collection schema:\n"
+                self._desc += f'Collection summary: {collection_desc.summary}\n'
+            self._desc += 'Collection schema:\n'
             self._desc += json.dumps(collection_desc.schema_type, ensure_ascii=False, indent=4)
-            self._desc += "Collection schema description:\n"
+            self._desc += 'Collection schema description:\n'
             self._desc += json.dumps(collection_desc.schema_type, ensure_ascii=False, indent=4)
 
     def check_connection(self) -> DBResult:
@@ -92,7 +92,7 @@ class MongoDBManager(DBManager):
             return DBResult(status=DBStatus.FAIL, detail=str(e))
 
     def execute_query(self, statement) -> str:
-        str_result = ""
+        str_result = ''
         try:
             pipeline_list = json.loads(statement)
             with self.get_client() as client:
@@ -100,5 +100,5 @@ class MongoDBManager(DBManager):
                 result = list(collection.aggregate(pipeline_list))
                 str_result = json.dumps(result, ensure_ascii=False, default=self._serialize_uncommon_type)
         except Exception as e:
-            str_result = f"MongoDB ERROR: {str(e)}"
+            str_result = f'MongoDB ERROR: {str(e)}'
         return str_result

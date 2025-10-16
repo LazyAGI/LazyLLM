@@ -46,7 +46,7 @@ class _StableDiffusion3(object):
             lazyllm.call_once(self.init_flag, self.load_sd)
 
     def load_sd(self):
-        if importlib.util.find_spec("torch_npu") is not None:
+        if importlib.util.find_spec('torch_npu') is not None:
             import torch_npu  # noqa F401
             from torch_npu.contrib import transfer_to_npu  # noqa F401
 
@@ -56,22 +56,22 @@ class _StableDiffusion3(object):
                 return
 
         self.paintor = diffusers.StableDiffusion3Pipeline.from_pretrained(
-            self.base_sd, torch_dtype=torch.float16).to("cuda")
+            self.base_sd, torch_dtype=torch.float16).to('cuda')
 
     @staticmethod
     def image_to_base64(image):
         if isinstance(image, PIL.Image.Image):
             buffered = BytesIO()
-            image.save(buffered, format="PNG")
-            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            image.save(buffered, format='PNG')
+            img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
         elif isinstance(image, np.ndarray):
             image = PIL.Image.fromarray(image)
             buffered = BytesIO()
-            image.save(buffered, format="PNG")
-            img_str = base64.b64encode(buffered.getvalue()).decode("utf-8")
+            image.save(buffered, format='PNG')
+            img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
         else:
-            raise ValueError("Unsupported image type")
-        return img_str
+            raise ValueError('Unsupported image type')
+        return f'data:image/png;base64,{img_str}'
 
     @staticmethod
     def images_to_base64(images):
@@ -80,12 +80,12 @@ class _StableDiffusion3(object):
     @staticmethod
     def image_to_file(image, file_path):
         if isinstance(image, PIL.Image.Image):
-            image.save(file_path, format="PNG")
+            image.save(file_path, format='PNG')
         elif isinstance(image, np.ndarray):
             image = PIL.Image.fromarray(image)
-            image.save(file_path, format="PNG")
+            image.save(file_path, format='PNG')
         else:
-            raise ValueError("Unsupported image type")
+            raise ValueError('Unsupported image type')
 
     @staticmethod
     def images_to_files(images, directory):
@@ -109,12 +109,12 @@ class _StableDiffusion3(object):
 
         imgs = self.paintor(
             string,
-            negative_prompt="",
+            negative_prompt='',
             num_inference_steps=28,
             guidance_scale=7.0,
             max_sequence_length=512,
         ).images
-        img_path_list = self.images_to_files(imgs, self.save_path)
+        img_path_list = self.images_to_base64(imgs)
         return encode_query_with_filepaths(files=img_path_list)
 
     @classmethod
@@ -130,7 +130,7 @@ def load_flux(model):
     import torch
     from diffusers import FluxPipeline
     model.paintor = FluxPipeline.from_pretrained(
-        model.base_sd, torch_dtype=torch.bfloat16).to("cuda")
+        model.base_sd, torch_dtype=torch.bfloat16).to('cuda')
 
 @_StableDiffusion3.register_caller('flux')
 def call_flux(model, prompt):
@@ -150,7 +150,7 @@ def load_cogview(model):
     import torch
     from diffusers import CogView4Pipeline
     model.paintor = CogView4Pipeline.from_pretrained(
-        model.base_sd, torch_dtype=torch.bfloat16).to("cuda")
+        model.base_sd, torch_dtype=torch.bfloat16).to('cuda')
 
 @_StableDiffusion3.register_caller('cogview')
 def call_cogview(model, prompt):
@@ -171,7 +171,7 @@ def load_wan(model):
     from diffusers import AutoencoderKLWan, WanPipeline
     from diffusers.schedulers.scheduling_unipc_multistep import UniPCMultistepScheduler
     vae = AutoencoderKLWan.from_pretrained(
-        model.base_sd, subfolder="vae", torch_dtype=torch.float32)
+        model.base_sd, subfolder='vae', torch_dtype=torch.float32)
     scheduler = UniPCMultistepScheduler(
         prediction_type='flow_prediction',
         use_flow_sigmas=True,
@@ -181,7 +181,7 @@ def load_wan(model):
     model.paintor = WanPipeline.from_pretrained(
         model.base_sd, vae=vae, torch_dtype=torch.bfloat16)
     model.paintor.scheduler = scheduler
-    model.paintor.to("cuda")
+    model.paintor.to('cuda')
 
 @_StableDiffusion3.register_caller('wan')
 def call_wan(model, prompt):
@@ -189,11 +189,11 @@ def call_wan(model, prompt):
     videos = model.paintor(
         prompt,
         negative_prompt=(
-            "Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, "
-            "static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, "
-            "extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, "
-            "fused fingers, still picture, messy background, three legs, "
-            "many people in the background, walking backwards"),
+            'Bright tones, overexposed, static, blurred details, subtitles, style, works, paintings, images, '
+            'static, overall gray, worst quality, low quality, JPEG compression residue, ugly, incomplete, '
+            'extra fingers, poorly drawn hands, poorly drawn faces, deformed, disfigured, misshapen limbs, '
+            'fused fingers, still picture, messy background, three legs, '
+            'many people in the background, walking backwards'),
         height=480,
         width=832,
         num_frames=81,
@@ -216,7 +216,7 @@ class StableDiffusionDeploy(LazyLLMDeployBase):
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, launcher: Optional[LazyLLMLaunchersBase] = None,
-                 log_path: Optional[str] = None, trust_remote_code: bool = True, port: Optional[int] = None):
+                 log_path: Optional[str] = None, trust_remote_code: bool = True, port: Optional[int] = None, **kw):
         super().__init__(launcher=launcher)
         self._log_path = log_path
         self._trust_remote_code = trust_remote_code
@@ -228,8 +228,8 @@ class StableDiffusionDeploy(LazyLLMDeployBase):
         elif not os.path.exists(finetuned_model) or \
             not any(file.endswith(('.bin', '.safetensors'))
                     for _, _, filenames in os.walk(finetuned_model) for file in filenames):
-            LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                        f"base_model({base_model}) will be used")
+            LOG.warning(f'Note! That finetuned_model({finetuned_model}) is an invalid path, '
+                        f'base_model({base_model}) will be used')
             finetuned_model = base_model
         return lazyllm.deploy.RelayServer(port=self._port, func=_StableDiffusion3(finetuned_model),
                                           launcher=self._launcher, log_path=self._log_path, cls='stable_diffusion')()

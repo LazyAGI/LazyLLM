@@ -28,11 +28,11 @@ def upload_data_to_s3(
     )
     client_kwargs = {}
     if use_minio:
-        spec = importlib.util.find_spec("botocore.client")
+        spec = importlib.util.find_spec('botocore.client')
         if spec is None:
             raise ImportError(
-                "Please install boto3 to use botocore module. "
-                "You can install it with `pip install boto3`"
+                'Please install boto3 to use botocore module. '
+                'You can install it with `pip install boto3`'
             )
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
@@ -57,7 +57,7 @@ def upload_data_to_s3(
             Key=object_key,
         )
     except Exception as e:
-        LOG.error(f"Upload Failed: {e}")
+        LOG.error(f'Upload Failed: {e}')
         raise
     finally:
         try:
@@ -85,11 +85,11 @@ def download_data_from_s3(
     )
     client_kwargs = {}
     if use_minio:
-        spec = importlib.util.find_spec("botocore.client")
+        spec = importlib.util.find_spec('botocore.client')
         if spec is None:
             raise ImportError(
-                "Please install boto3 to use botocore module. "
-                "You can install it with `pip install boto3`"
+                'Please install boto3 to use botocore module. '
+                'You can install it with `pip install boto3`'
             )
         m = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(m)
@@ -120,7 +120,7 @@ def fibonacci_backoff(max_retries: int = INSERT_MAX_RETRIES):
         yield a
         a, b = b, a + b
 
-def create_file_path(path: str, prefix: str = "") -> str:
+def create_file_path(path: str, prefix: str = '') -> str:
     if prefix and not os.path.isabs(path):
         return os.path.join(prefix, path)
     return path

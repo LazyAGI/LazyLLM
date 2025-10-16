@@ -6,12 +6,12 @@ class ChatPrompter(LazyLLMPrompterBase):
                  show: bool = False, tools: Optional[List] = None, history: Optional[List[List[str]]] = None):
         super(__class__, self).__init__(show, tools=tools, history=history)
         if isinstance(instruction, dict):
-            splice_instruction = instruction.get("system", "") + \
-                ChatPrompter.ISA + instruction.get("user", "") + ChatPrompter.ISE
+            splice_instruction = instruction.get('system', '') + \
+                ChatPrompter.ISA + instruction.get('user', '') + ChatPrompter.ISE
             instruction = splice_instruction
         instruction_template = f'{instruction}\n{{extra_keys}}\n'.replace(
-            '{extra_keys}', LazyLLMPrompterBase._get_extro_key_template(extra_keys)) if instruction else ""
-        self._init_prompt("{sos}{system}{instruction}{tools}{eos}\n\n{history}\n{soh}\n{user}{input}\n{eoh}{soa}\n",
+            '{extra_keys}', LazyLLMPrompterBase._get_extro_key_template(extra_keys)) if instruction else ''
+        self._init_prompt('{sos}{system}{instruction}{tools}{eos}\n\n{history}\n{soh}\n{user}{input}\n{eoh}{soa}\n',
                           instruction_template)
 
     @property

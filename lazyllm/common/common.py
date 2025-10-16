@@ -7,13 +7,14 @@ from contextlib import contextmanager
 import copy
 import threading
 import types
+import json
 from ..configs import config
 from urllib.parse import urlparse
 
 try:
     from typing import final
 except ImportError:
-    _F = typing.TypeVar("_F", bound=Callable[..., Any])
+    _F = typing.TypeVar('_F', bound=Callable[..., Any])
     def final(f: _F) -> _F: return f
 
 try:
@@ -40,7 +41,12 @@ class ArgsDict(dict):
         self.update(kw)
 
     def parse_kwargs(self):
-        string = ' '.join(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"' for k, v in self.items())
+        string = []
+        for k, v in self.items():
+            if type(v) is dict:
+                v = json.dumps(v).replace('\"', '\\\"')
+            string.append(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"')
+        string = ' '.join(string)
         return string
 
 class CaseInsensitiveDict(dict):
@@ -132,7 +138,7 @@ class LazyLLMCMD(object):
         if self.no_displays:
             for item in self.no_displays:
                 pattern = r'(-{1,2}' + re.escape(item) + r')(\s|=|)(\S+|)'
-                cmd = re.sub(pattern, "", cmd)
+                cmd = re.sub(pattern, '', cmd)
             return cmd
         else:
             return cmd
@@ -469,3 +475,14 @@ class Finalizer(object):
         if self._func:
             if self._condition(): self._func()
             self._func = None
+
+class SingletonMeta(type):
+    _instances = {}
+    _lock = threading.Lock()
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            with cls._lock:
+                if cls not in cls._instances:
+                    cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
