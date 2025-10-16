@@ -109,10 +109,13 @@ class NodeTransform(ABC):
             self._name = name
         return self
 
-    def __call__(self, node: DocNode, **kwargs: Any) -> List[DocNode]:
+    def __call__(self, node: Union[DocNode, List[DocNode]], **kwargs: Any) -> List[DocNode]:
         # Parent and child should not be set here.
-        results = self.transform(node, **kwargs)
-        if isinstance(results, (DocNode, str)): results = [results]
+        def impl(n):
+            results = self.transform(n, **kwargs)
+            return [results] if isinstance(results, (DocNode, str)) else results
+
+        results = impl(node) if isinstance(node, DocNode) else [i for n in node for i in impl(n)]
         return [DocNode(text=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
 
 

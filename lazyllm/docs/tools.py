@@ -2620,7 +2620,7 @@ add_chinese_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
 Args:
     name (str): 算法名称，作为唯一标识符。
     store (StoreBase): 存储实例，用于管理文档数据。
-    reader (ReaderBase): 读取器实例，用于解析文档内容。
+    reader (DirectoryReader): 读取器实例，用于解析文档内容。
     node_groups (Dict[str, Dict]): 节点组配置信息。
     display_name (Optional[str]): 算法的显示名称，默认为None。
     description (Optional[str]): 算法的描述信息，默认为None。
@@ -2638,7 +2638,7 @@ Register an algorithm to the document processor.
 Args:
     name (str): Algorithm name as unique identifier.
     store (StoreBase): Storage instance for managing document data.
-    reader (ReaderBase): Reader instance for parsing document content.
+    reader (DirectoryReader): Reader instance for parsing document content.
     node_groups (Dict[str, Dict]): Node group configuration information.
     display_name (Optional[str]): Display name for the algorithm, defaults to None.
     description (Optional[str]): Description of the algorithm, defaults to None.
@@ -2652,11 +2652,11 @@ Args:
 
 add_example('rag.doc_processor.DocumentProcessor.register_algorithm', """
 ```python
-from lazyllm.rag import DocumentProcessor, FileStore, PDFReader
+from lazyllm.rag import DocumentProcessor, FileStore, DirectoryReader
 
 # Create storage and reader instances
 store = FileStore(path="./data")
-reader = PDFReader()
+reader = DirectoryReader()
 
 # Define node group configuration
 node_groups = {
@@ -3563,10 +3563,10 @@ This method reads documents from the input files using the configured file reade
 Args:
     input_files (Optional[List[str]]): A list of file paths to read. If None, uses the files specified during initialization.
     metadatas (Optional[Dict]): Additional metadata to associate with the loaded documents.
-    split_image_nodes (bool): Whether to separate image nodes from text nodes. If True, returns a tuple of (text_nodes, image_nodes). If False, returns all nodes together.
+    split_nodes_by_type (bool): Whether to separate image and other nodes from text nodes. If True, returns a tuple of (text_nodes, image_nodes). If False, returns all nodes together.
 
 **Returns:**\n
-- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: If split_image_nodes is False, returns a list of all document nodes. If True, returns a tuple containing text nodes and image nodes separately.
+- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: If split_nodes_by_type is False, returns a list of all document nodes. If True, returns a tuple containing text nodes and image nodes separately.
 ''')
 
 add_chinese_doc('rag.data_loaders.DirectoryReader.load_data', '''\
@@ -3577,10 +3577,10 @@ add_chinese_doc('rag.data_loaders.DirectoryReader.load_data', '''\
 Args:
     input_files (Optional[List[str]]): 要读取的文件路径列表。如果为None，使用初始化时指定的文件。
     metadatas (Optional[Dict]): 与加载文档关联的额外元数据。
-    split_image_nodes (bool): 是否将图像节点与文本节点分离。如果为True，返回(text_nodes, image_nodes)的元组。如果为False，一起返回所有节点。
+    split_nodes_by_type (bool): 是否将图像等其他节点与文本节点分离。如果为True，返回(text_nodes, image_nodes)的元组。如果为False，一起返回所有节点。
 
 **Returns:**\n
-- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: 如果split_image_nodes为False，返回所有文档节点的列表。如果为True，返回包含文本节点和图像节点的元组。
+- Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: 如果split_nodes_by_type为False，返回所有文档节点的列表。如果为True，返回包含文本节点和图像节点的元组。
 ''')
 
 # ---------------------------------------------------------------------------- #

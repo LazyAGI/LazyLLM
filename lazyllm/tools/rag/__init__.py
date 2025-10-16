@@ -13,7 +13,11 @@ from .data_type import DataType
 from .index_base import IndexBase
 from .store import LazyLLMStoreBase
 
+
+add_post_action_for_default_reader = SimpleDirectoryReader.add_post_action_for_default_reader
+
 __all__ = [
+    'add_post_action_for_default_reader',
     'Document',
     'Reranker',
     'Retriever',
