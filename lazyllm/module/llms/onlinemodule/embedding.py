@@ -7,7 +7,7 @@ from .supplier.glm import GLMEmbedding, GLMReranking
 from .supplier.sensenova import SenseNovaEmbedding
 from .supplier.qwen import QwenEmbedding, QwenReranking
 from .supplier.doubao import DoubaoEmbedding, DoubaoMultimodalEmbedding
-from .supplier.sliconflow import SiliconFlowEmbedding, SiliconFlowRerankModule
+from .supplier.sliconflow import SiliconFlowEmbedding, SiliconFlowReranking
 
 class __EmbedModuleMeta(type):
 
@@ -28,7 +28,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
     RERANK_MODELS = {'qwen': QwenReranking,
                      'glm': GLMReranking,
                      'openai': OpenAIReranking,
-                     'siliconflow':SiliconFlowRerankModule}
+                     'siliconflow':SiliconFlowReranking}
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,
