@@ -245,10 +245,9 @@ class ElasticSearchStore(LazyLLMStoreBase):
             return []
 
     @override
-    def search(
-            self, collection_name: str, query: Optional[str] = None,
-            topk: Optional[int] = 10, query_fields: Optional[List[str]] = None,
-            filters: Optional[dict] = None, **kwargs) -> List[Dict]:  # noqa: C901
+    def search(self, collection_name: str, query: Optional[str] = None,
+               topk: Optional[int] = 10, query_fields: Optional[List[str]] = None,
+               filters: Optional[dict] = None, **kwargs) -> List[Dict]:  # noqa: C901
         if not query_fields:
             query_fields = ['content', 'answer']
         try:
