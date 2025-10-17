@@ -12,12 +12,12 @@ class SiliconFlowModule(OnlineChatModuleBase,FileHandlerBase):
     VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'deepseek-ai/deepseek-vl2', 
                         'Qwen/Qwen3-VL-30B-A3B-Thinking','THUDM/GLM-4.1V-9B-Thinking']
 
-    def __init__(self,
-                 base_url: str = 'https://api.siliconflow.cn/v1/', model: str = 'Qwen/QwQ-32B',
+    def __init__(self, base_url: str = 'https://api.siliconflow.cn/v1/', model: str = 'Qwen/QwQ-32B',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        OnlineChatModuleBase.__init__(self,
-            model_series='SILICONFLOW', api_key=api_key or lazyllm.config['siliconflow_api_key'],
-            base_url=base_url, model_name=model, stream=stream, return_trace=return_trace, **kwargs)
+        OnlineChatModuleBase.__init__(self, model_series='SILICONFLOW',
+                                      api_key=api_key or lazyllm.config['siliconflow_api_key'],
+                                      base_url=base_url, model_name=model, stream=stream,
+                                      return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         if stream:
             self._model_optional_params['stream'] = True
@@ -29,17 +29,16 @@ class SiliconFlowModule(OnlineChatModuleBase,FileHandlerBase):
         self._url = urljoin(self._base_url, 'chat/completions')
 
 class SiliconFlowEmbedding(OnlineEmbeddingModuleBase):
-    def __init__(self,
-                 embed_url: str = 'https://api.siliconflow.cn/v1/embeddings', embed_model_name: str = 'BAAI/bge-large-zh-v1.5',
-                 api_key: str = None, batch_size: int = 16, **kw):
+    def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/embeddings',
+                 embed_model_name: str = 'BAAI/bge-large-zh-v1.5', api_key: str = None,
+                 batch_size: int = 16, **kw):
         super().__init__('SILICONFLOW', embed_url, api_key or lazyllm.config['siliconflow_api_key'], 
                          embed_model_name, batch_size=batch_size, **kw)
 
 
 class SiliconFlowReranking(OnlineEmbeddingModuleBase):
-    def __init__(self,
-                 rerank_url: str = 'https://api.siliconflow.cn/v1/rerank', rerank_model_name: str = 'BAAI/bge-reranker-v2-m3',
-                 api_key: str = None, **kw):
+    def __init__(self, rerank_url: str = 'https://api.siliconflow.cn/v1/rerank',
+                 rerank_model_name: str = 'BAAI/bge-reranker-v2-m3', api_key: str = None, **kw):
         super().__init__('SILICONFLOW', rerank_url, api_key or lazyllm.config['siliconflow_api_key'], 
                          rerank_model_name, **kw)
         self._rerank_model_name = rerank_model_name
@@ -74,8 +73,8 @@ class SiliconFlowMultiModal(OnlineMultiModalBase):
     
     def __init__(self, model_series='SILICONFLOW', model_name=None, 
                  base_url='https://api.siliconflow.cn/v1/', return_trace=False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series=model_series, 
-                                     model_name=model_name, return_trace=return_trace, **kwargs)
+        OnlineMultiModalBase.__init__(self, model_series=model_series, model_name=model_name,
+                                      return_trace=return_trace, **kwargs)
         self._base_url = base_url
         self._api_key = kwargs.get('api_key') or lazyllm.config['siliconflow_api_key']
         self._headers = {
@@ -106,10 +105,8 @@ class SiliconFlowTextToImageModule(SiliconFlowMultiModal):
     def __init__(self, api_key: str = None, model_name: str = None, 
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
-        SiliconFlowMultiModal.__init__(self, 
-                                model_name=model_name or SiliconFlowTextToImageModule.MODEL_NAME,
-                                base_url=base_url, return_trace=return_trace, 
-                                api_key=api_key, **kwargs)
+        SiliconFlowMultiModal.__init__(self, model_name=model_name or SiliconFlowTextToImageModule.MODEL_NAME,
+                                       base_url=base_url, return_trace=return_trace, api_key=api_key, **kwargs)
         self._endpoint = 'images/generations'
 
     def _forward(self, input: str = None, size: str = '1024x1024', **kwargs):    
@@ -150,10 +147,9 @@ class SiliconFlowTTS(SiliconFlowMultiModal):
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
-        SiliconFlowMultiModal.__init__(self,
-                                model_name=model_name or SiliconFlowTTS.MODEL_NAME,
-                                base_url=base_url, return_trace=return_trace,
-                                api_key=api_key, **kwargs)
+        SiliconFlowMultiModal.__init__(self, model_name=model_name or SiliconFlowTTS.MODEL_NAME,
+                                       base_url=base_url, return_trace=return_trace, api_key=api_key,
+                                       **kwargs)
         self._endpoint = 'audio/speech'
 
     def _forward(self, input: str = None, response_format: str = 'mp3', 
@@ -195,9 +191,8 @@ class SiliconFlowTTS(SiliconFlowMultiModal):
                  sample_rate: int = 44100, speed: float = 1.0,
                  voice: str = None, references=None, out_path: str = None) -> str:
         
-        result = self._forward(input=text, response_format=response_format,
-                             sample_rate=sample_rate, speed=speed,
-                             voice=voice, references=references)
+        result = self._forward(input=text, response_format=response_format, sample_rate=sample_rate,
+                               speed=speed, voice=voice, references=references)
         
         if out_path and isinstance(result, list) and len(result) > 0:
             with open(result[0], 'rb') as src, open(out_path, 'wb') as dst:
