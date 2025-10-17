@@ -4,6 +4,7 @@ from .base import OnlineMultiModalBase
 from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
 from .supplier.doubao import DoubaoTextToImageModule
 from .supplier.glm import GLMSTTModule, GLMTextToImageModule
+from .supplier.sliconflow import SiliconFlowTextToImageModule, SiliconFlowTTS
 
 
 class _OnlineMultiModalMeta(type):
@@ -39,11 +40,13 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
     }
     TTS_MODELS = {
         'qwen': QwenTTSModule,
+        'siliconflow': SiliconFlowTTS
     }
     TEXT2IMAGE_MODELS = {
         'qwen': QwenTextToImageModule,
         'doubao': DoubaoTextToImageModule,
-        'glm': GLMTextToImageModule
+        'glm': GLMTextToImageModule,
+        'siliconflow': SiliconFlowTextToImageModule
     }
 
     @staticmethod

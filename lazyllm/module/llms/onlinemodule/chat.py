@@ -8,6 +8,7 @@ from .supplier.sensenova import SenseNovaModule
 from .supplier.qwen import QwenModule
 from .supplier.doubao import DoubaoModule
 from .supplier.deepseek import DeepSeekModule
+from .supplier.sliconflow import SiliconFlowModule
 
 class _ChatModuleMeta(type):
 
@@ -24,7 +25,8 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
               'kimi': KimiModule,
               'qwen': QwenModule,
               'doubao': DoubaoModule,
-              'deepseek': DeepSeekModule}
+              'deepseek': DeepSeekModule,
+              'siliconflow':SiliconFlowModule}
 
     @staticmethod
     def _encapsulate_parameters(base_url: str, model: str, stream: bool, return_trace: bool, **kwargs) -> Dict[str, Any]:
