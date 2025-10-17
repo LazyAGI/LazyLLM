@@ -157,6 +157,9 @@ The API endpoint /v3.1/currency/{currency} Used to find information about a regi
 '''
 
 class LazyAPIChain(ModuleBase):
+    """
+    根据用户自然语言问题，自动识别意图、提取实体，并调用对应 API 端点。
+    """
     def __init__(self, api_docs: str, verbose=False):
         super().__init__()
         self.verbose = verbose
@@ -164,35 +167,94 @@ class LazyAPIChain(ModuleBase):
         self.endpoints = self._parse_endpoints(api_docs)
 
     def _extract_base_url(self, doc: str):
+        """
+        从 API 文档中提取 BASE URL。
+
+        Args:
+            doc (str): API 文档字符串。
+
+        Returns:
+            str: 提取出的基础 URL，末尾不带斜杠。
+        """
         match = re.search(r'BASE URL:\s*(\S+)', doc)
         return match.group(1).rstrip("/") if match else ""
 
     def _parse_endpoints(self, doc: str):
+        """
+        从 API 文档中提取所有端点路径（带占位符的格式）。
+
+        Args:
+            doc (str): API 文档字符串。
+
+        Returns:
+            List[str]: 匹配到的端点路径列表，例如 ['/v3.1/currency/{currency}']。
+        """
         pattern = r"The API endpoint\s+(/v[\d.]+/[^\s]+/\{[^}]+\})"
         return re.findall(pattern, doc)
 
     def _find_endpoint_for_question(self, question: str):
+        """
+        根据用户问题判断应调用哪个 API 端点，并提取所需参数。
+
+        Args:
+            question (str): 用户的自然语言问题。
+
+        Returns:
+            tuple: (endpoint_template, variables_dict)
+                - endpoint_template: 带占位符的端点路径，如 "/v3.1/currency/{{currency}}"
+                - variables_dict: 参数字典，如 {"currency": "USD"}
+
+        Raises:
+            ValueError: 无法识别问题意图时抛出。
+        """
         q_lower = question.lower()
+        # 如果问题涉及货币（包含 "currency" 或三个大写字母的货币代码）
         if "currency" in q_lower or re.search(r'\b[A-Z]{3}\b', question):
             code = self._extract_entity(question)
             return "/v3.1/currency/{{currency}}", {"currency": code}
+        # 如果问题涉及国家信息（如国家名、首都、人口等）
         elif any(k in q_lower for k in ["country", "about", "information", "capital", "population"]):
             name = self._extract_entity(question)
             return "/v3.1/name/{{name}}", {"name": name}
         else:
             raise ValueError("无法识别问题所对应的 API endpoint")
 
-    def _extract_entity(self, question: str):
+def _extract_entity(self, question: str):
+        """
+        从问题中提取关键实体（国家名或货币代码）。
+
+        优先提取首字母大写的单词（如 "France"），否则取最后一个单词。
+
+        Args:
+            question (str): 用户问题。
+
+        Returns:
+            str: 提取出的实体，默认为 "france"。
+        """
+        # 尝试匹配首字母大写的单词（如国家名）
         tokens = re.findall(r'\b[A-Z][a-z]+\b', question)
         if tokens:
-            return tokens[-1]
+            return tokens[-1]  # 取最后一个匹配项（避免误匹配如 "What"）
+        # 否则从全小写单词中取最后一个（作为兜底）
         tokens = re.findall(r'\b[a-z]+\b', question.lower())
         return tokens[-1] if tokens else "france"
 
     def query(self, question: str):
+        """
+        主查询接口：接收自然语言问题，调用对应 API 并返回结果。
+
+        Args:
+            question (str): 用户的问题。
+
+        Returns:
+            str: API 返回的响应内容（JSON 字符串）。
+        """
+        # 根据问题确定端点和参数
         endpoint, variables = self._find_endpoint_for_question(question)
+        # 拼接完整 URL（注意：此时 endpoint 中仍含 {{}} 占位符）
         url = self.base_url + endpoint
 
+        # 创建 HTTP 请求对象（初始状态，占位符未替换）
         request = HttpRequest(
             method="GET",
             url=url,
@@ -204,56 +266,98 @@ class LazyAPIChain(ModuleBase):
             proxies=None
         )
 
+        # 定义一个安全的 forward 方法，用于动态替换 URL/参数中的占位符
         def safe_forward(self, *args, **kwargs):
+            """
+            动态替换请求中的占位符（如 {{currency}}）为实际值。
+            支持 URL、headers、params、body 中的变量替换。
+            """
             def _map_input(target_str):
+                """
+                替换字符串中的 {{key}} 为 kwargs 或 args[0] 中对应的值。
+                """
                 if not isinstance(target_str, str):
                     return target_str
+                # 合并 args 和 kwargs 中的变量
                 replacements = {**kwargs, **(args[0] if args and isinstance(args[0], dict) else {})}
                 if not replacements:
                     return target_str
+                # 查找所有 {{xxx}} 形式的占位符
                 pattern = r"\{\{([^}]+)\}\}"
                 matches = re.findall(pattern, target_str)
                 for match in matches:
                     replacement = replacements.get(match)
                     if replacement is not None:
+                        # 如果整个字符串就是占位符，直接返回值
                         if "{{" + match + "}}" == target_str:
                             return replacement
+                        # 否则进行字符串替换（注意转义特殊字符）
                         target_str = re.sub(r"\{\{" + re.escape(match) + r"\}\}", replacement, target_str)
                 return target_str
 
+            # 替换 URL 中的占位符
             url = _map_input(self._url)
+            # 替换 params 和 headers 中的占位符（如果存在）
             params = {key: _map_input(value) for key, value in self._params.items()} if self._params else None
             headers = {key: _map_input(value) for key, value in self._headers.items()} if self._headers else None
+            # 处理 API Key（此处为 None，可能用于其他 API）
             headers, params = self._process_api_key(headers, params)
 
+            # 判断是否为 JSON 请求
             if isinstance(headers, dict) and headers.get("Content-Type") == "application/json":
                 try:
+                    # 解析并替换 body 中的占位符
                     body = json.loads(self._body) if isinstance(self._body, str) else self._body
                     body = {k: _map_input(v) for k, v in body.items()}
-                    http_response = httpx.request(method=self._method, url=url, headers=headers,
-                                                      params=params, json=body, timeout=self._timeout)
+                    http_response = httpx.request(
+                        method=self._method, url=url, headers=headers,
+                        params=params, json=body, timeout=self._timeout
+                    )
                 except json.JSONDecodeError:
                     raise ValueError(f"Invalid JSON format: {self._body}")
             else:
-                body = (json.dumps({k: _map_input(v) for k, v in self._body.items()})
-                        if isinstance(self._body, dict) else _map_input(self._body))
-                http_response = httpx.request(method=self._method, url=url, headers=headers,
-                                                params=params, data=body, timeout=self._timeout)
+                # 非 JSON 请求：处理 body 为字符串或字典
+                if isinstance(self._body, dict):
+                    body = json.dumps({k: _map_input(v) for k, v in self._body.items()})
+                else:
+                    body = _map_input(self._body)
+                http_response = httpx.request(
+                    method=self._method, url=url, headers=headers,
+                    params=params, data=body, timeout=self._timeout
+                )
 
+            # 封装响应
             response = HttpExecutorResponse(http_response)
             _, file_binary = response.extract_file()
+            # 如果响应包含文件二进制数据则返回 None，否则返回文本内容
             return response.content if len(file_binary) == 0 else None
 
+        # 将 safe_forward 绑定到 request 实例上，作为其 forward 方法
         request.forward = safe_forward.__get__(request)
+        # 调用 forward 并传入变量字典（如 {"currency": "USD"}）
         return request.forward(variables)
 
+
+# 注册为函数调用工具，供 LLM Agent 使用
 @fc_register
 def query_restcountry(question: str) -> str:
+    """
+    对外暴露的工具函数：供 LLM 调用，查询 REST Countries API。
+
+    Args:
+        question (str): 用户关于国家或货币的自然语言问题。
+
+    Returns:
+        str: API 返回的 JSON 字符串结果。
+    """
     return LazyAPIChain(api_docs=api_docs).query(question)
 
+
 if __name__ == "__main__":
+    # 初始化大语言模型（使用 Qwen 在线模型）
     llm = OnlineChatModule(source="qwen", stream=False)
     agent = ReactAgent(llm, tools=["query_restcountry"])
+    # 启动 Web 服务，监听 23480-23489 端口中的一个可用端口
     lazyllm.WebModule(agent, port=range(23480, 23490)).start().wait()
 ```
 

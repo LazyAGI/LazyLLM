@@ -160,42 +160,119 @@ The API endpoint /v3.1/currency/{currency} Used to find information about a regi
 '''
 
 class LazyAPIChain(ModuleBase):
+    """
+    It interprets natural language questions, identifies intent,
+    extracts entities, and invokes the appropriate API endpoint.
+    """
+
     def __init__(self, api_docs: str, verbose=False):
+        """
+        Initialize the LazyAPIChain.
+
+        Args:
+            api_docs (str): API documentation string containing BASE URL and endpoints.
+            verbose (bool): Whether to enable verbose logging (currently unused, extensible).
+        """
         super().__init__()
         self.verbose = verbose
+        # Extract the base URL from the documentation
         self.base_url = self._extract_base_url(api_docs)
+        # Parse all supported endpoint paths from the documentation
         self.endpoints = self._parse_endpoints(api_docs)
 
     def _extract_base_url(self, doc: str):
+        """
+        Extract the BASE URL from the API documentation.
+
+        Args:
+            doc (str): The API documentation string.
+
+        Returns:
+            str: The extracted base URL, with trailing slash removed.
+        """
         match = re.search(r'BASE URL:\s*(\S+)', doc)
         return match.group(1).rstrip("/") if match else ""
 
     def _parse_endpoints(self, doc: str):
+        """
+        Extract all endpoint paths (with placeholders) from the documentation.
+
+        Args:
+            doc (str): The API documentation string.
+
+        Returns:
+            List[str]: A list of matched endpoint paths, e.g., ['/v3.1/currency/{currency}'].
+        """
+        # Match paths like /v3.1/xxx/{xxx}
         pattern = r"The API endpoint\s+(/v[\d.]+/[^\s]+/\{[^}]+\})"
         return re.findall(pattern, doc)
 
     def _find_endpoint_for_question(self, question: str):
+        """
+        Determine the appropriate API endpoint and parameters based on the user's question.
+
+        Args:
+            question (str): The user's natural language question.
+
+        Returns:
+            tuple: (endpoint_template, variables_dict)
+                - endpoint_template: Endpoint path with double-brace placeholders, e.g., "/v3.1/currency/{{currency}}"
+                - variables_dict: Parameter dictionary, e.g., {"currency": "USD"}
+
+        Raises:
+            ValueError: If the question intent cannot be recognized.
+        """
         q_lower = question.lower()
+        # Handle currency-related queries (contain "currency" or 3-letter uppercase codes like USD)
         if "currency" in q_lower or re.search(r'\b[A-Z]{3}\b', question):
             code = self._extract_entity(question)
             return "/v3.1/currency/{{currency}}", {"currency": code}
+        # Handle country-related queries (e.g., about name, capital, population)
         elif any(k in q_lower for k in ["country", "about", "information", "capital", "population"]):
             name = self._extract_entity(question)
             return "/v3.1/name/{{name}}", {"name": name}
         else:
-            raise ValueError("无法识别问题所对应的 API endpoint")
+            raise ValueError("Unable to identify the corresponding API endpoint for the question.")
 
     def _extract_entity(self, question: str):
+        """
+        Extract the key entity (country name or currency code) from the question.
+
+        Priority:
+          1. Words starting with a capital letter (e.g., "France")
+          2. Last lowercase word as fallback
+
+        Args:
+            question (str): The user's question.
+
+        Returns:
+            str: Extracted entity; defaults to "france" if none found.
+        """
+        # Try to match capitalized words (likely proper nouns like country names)
         tokens = re.findall(r'\b[A-Z][a-z]+\b', question)
         if tokens:
-            return tokens[-1]
+            return tokens[-1]  # Use the last match to avoid words like "What"
+        # Fallback: use the last lowercase word
         tokens = re.findall(r'\b[a-z]+\b', question.lower())
         return tokens[-1] if tokens else "france"
 
     def query(self, question: str):
+        """
+        Main query interface: accepts a natural language question,
+        calls the appropriate API, and returns the response.
+
+        Args:
+            question (str): User's natural language question.
+
+        Returns:
+            str: API response content (typically a JSON string).
+        """
+        # Determine endpoint template and parameters based on the question
         endpoint, variables = self._find_endpoint_for_question(question)
+        # Construct full URL (still contains {{}} placeholders at this stage)
         url = self.base_url + endpoint
 
+        # Create an HTTP request object (placeholders not yet substituted)
         request = HttpRequest(
             method="GET",
             url=url,
@@ -207,56 +284,100 @@ class LazyAPIChain(ModuleBase):
             proxies=None
         )
 
+        # Define a safe `forward` method to dynamically substitute placeholders
         def safe_forward(self, *args, **kwargs):
+            """
+            Dynamically replace placeholders (e.g., {{currency}}) in URL, headers,
+            params, and body with actual values from `kwargs` or `args[0]`.
+            """
             def _map_input(target_str):
+                """
+                Replace {{key}} in a string with values from the provided variables.
+                """
                 if not isinstance(target_str, str):
                     return target_str
+                # Merge variables from args (if dict) and kwargs
                 replacements = {**kwargs, **(args[0] if args and isinstance(args[0], dict) else {})}
                 if not replacements:
                     return target_str
+                # Find all {{xxx}} placeholders
                 pattern = r"\{\{([^}]+)\}\}"
                 matches = re.findall(pattern, target_str)
                 for match in matches:
                     replacement = replacements.get(match)
                     if replacement is not None:
+                        # If the entire string is a placeholder, return the value directly
                         if "{{" + match + "}}" == target_str:
                             return replacement
+                        # Otherwise, perform safe string substitution (escape regex special chars)
                         target_str = re.sub(r"\{\{" + re.escape(match) + r"\}\}", replacement, target_str)
                 return target_str
 
+            # Substitute placeholders in the URL
             url = _map_input(self._url)
+            # Substitute placeholders in params and headers (if they exist)
             params = {key: _map_input(value) for key, value in self._params.items()} if self._params else None
             headers = {key: _map_input(value) for key, value in self._headers.items()} if self._headers else None
+            # Process API key (currently None; placeholder for future extensibility)
             headers, params = self._process_api_key(headers, params)
 
+            # Handle JSON requests
             if isinstance(headers, dict) and headers.get("Content-Type") == "application/json":
                 try:
+                    # Parse and substitute placeholders in JSON body
                     body = json.loads(self._body) if isinstance(self._body, str) else self._body
                     body = {k: _map_input(v) for k, v in body.items()}
-                    http_response = httpx.request(method=self._method, url=url, headers=headers,
-                                                      params=params, json=body, timeout=self._timeout)
+                    http_response = httpx.request(
+                        method=self._method, url=url, headers=headers,
+                        params=params, json=body, timeout=self._timeout
+                    )
                 except json.JSONDecodeError:
                     raise ValueError(f"Invalid JSON format: {self._body}")
             else:
-                body = (json.dumps({k: _map_input(v) for k, v in self._body.items()})
-                        if isinstance(self._body, dict) else _map_input(self._body))
-                http_response = httpx.request(method=self._method, url=url, headers=headers,
-                                                params=params, data=body, timeout=self._timeout)
+                # Handle non-JSON requests (form data or raw body)
+                if isinstance(self._body, dict):
+                    body = json.dumps({k: _map_input(v) for k, v in self._body.items()})
+                else:
+                    body = _map_input(self._body)
+                http_response = httpx.request(
+                    method=self._method, url=url, headers=headers,
+                    params=params, data=body, timeout=self._timeout
+                )
 
+            # Wrap the HTTP response
             response = HttpExecutorResponse(http_response)
             _, file_binary = response.extract_file()
+            # Return content only if no binary file is detected
             return response.content if len(file_binary) == 0 else None
 
+        # Bind the safe_forward method to the request instance
         request.forward = safe_forward.__get__(request)
+        # Invoke the request with the extracted variables (e.g., {"currency": "USD"})
         return request.forward(variables)
 
+
+# Register as a function-call tool for LLM agents
 @fc_register
 def query_restcountry(question: str) -> str:
+    """
+    Public tool function for LLMs to query country or currency information
+    via the REST Countries API.
+
+    Args:
+        question (str): Natural language question about a country or currency.
+
+    Returns:
+        str: JSON-formatted API response string.
+    """
     return LazyAPIChain(api_docs=api_docs).query(question)
 
+
+# Main entry point: launch a web service for conversational country info queries
 if __name__ == "__main__":
+    # Initialize the LLM (using Qwen online model)
     llm = OnlineChatModule(source="qwen", stream=False)
     agent = ReactAgent(llm, tools=["query_restcountry"])
+    # Start a web server on an available port in the range 23480–23489
     lazyllm.WebModule(agent, port=range(23480, 23490)).start().wait()
 ```
 
