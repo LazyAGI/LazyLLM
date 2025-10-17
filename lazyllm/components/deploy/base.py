@@ -70,6 +70,8 @@ def verify_func_factory(error_message: str, running_message: str,
         return judge(symbols, msg) if isinstance(symbols, str) else any([judge(s, msg) for s in symbols])
 
     def verify_func(job):
+        check_status = False
+        begin_time = step_time = time.time()
         while True:
             line = job.queue.get()
             if _hit(error_message, line, err_judge):
@@ -78,8 +80,19 @@ def verify_func_factory(error_message: str, running_message: str,
             elif _hit(running_message, line, run_judge):
                 LOG.info(f'Capture startup message: {line}')
                 break
-            if job.status == lazyllm.launchers.status.Failed:
-                LOG.error('Service Startup Failed.')
+            if job.queue.qsize() == 0:
+                time.sleep(3)
+                check_status = True
+            if time.time() - step_time >= 10:
+                check_status = True
+                step_time = time.time()
+            if check_status:  # Avoid high frequency check
+                if job.status == lazyllm.launchers.status.Failed:
+                    LOG.error('Service Startup Failed.')
+                    return False
+                check_status = False
+            if time.time() - begin_time > 360:
+                LOG.error('Service Startup Timeout.')
                 return False
         return True
     return verify_func
