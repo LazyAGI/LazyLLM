@@ -8,9 +8,9 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
 
-class SiliconFlowModule(OnlineChatModuleBase,FileHandlerBase):
+class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'deepseek-ai/deepseek-vl2', 
-                        'Qwen/Qwen3-VL-30B-A3B-Thinking','THUDM/GLM-4.1V-9B-Thinking']
+                        'Qwen/Qwen3-VL-30B-A3B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking']
 
     def __init__(self,
                  base_url: str = 'https://api.siliconflow.cn/v1/', model: str = 'Qwen/QwQ-32B',
@@ -70,47 +70,36 @@ class SiliconFlowReranking(OnlineEmbeddingModuleBase):
     def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Dict]:
         return response.get('results', [])
 
-class SiliconFlowMultiModal(OnlineMultiModalBase):
-    
-    def __init__(self, model_series='SILICONFLOW', model_name=None, 
-                 base_url='https://api.siliconflow.cn/v1/', return_trace=False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series=model_series, 
-                                     model_name=model_name, return_trace=return_trace, **kwargs)
-        self._base_url = base_url
-        self._api_key = kwargs.get('api_key') or lazyllm.config['siliconflow_api_key']
-        self._headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
-
-    def _make_request(self, endpoint, payload, timeout=60):
-        url = urljoin(self._base_url, endpoint)
-        response = requests.post(url, headers=self._headers, json=payload, timeout=timeout)
-        if response.status_code != 200:
-            raise Exception(f'API request failed: {response.text}')
-        return response.json()
-
-    def _make_binary_request(self, endpoint, payload, timeout=60):
-        url = urljoin(self._base_url, endpoint)
-        headers = self._headers.copy()
-        headers['Accept'] = 'application/octet-stream'
-        response = requests.post(url, headers=headers, json=payload, timeout=timeout)
-        if response.status_code != 200:
-            raise Exception(f'API request failed: {response.text}')
-        return response.content
-
-
-class SiliconFlowTextToImageModule(SiliconFlowMultiModal):
+class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     MODEL_NAME = 'Qwen/Qwen-Image'
 
     def __init__(self, api_key: str = None, model_name: str = None, 
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
-        SiliconFlowMultiModal.__init__(self, 
+        OnlineMultiModalBase.__init__(self, 
+                                model_series='SiliconFlow',
                                 model_name=model_name or SiliconFlowTextToImageModule.MODEL_NAME,
-                                base_url=base_url, return_trace=return_trace, 
-                                api_key=api_key, **kwargs)
+                                return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
+        self._base_url = base_url
+        self._api_key = api_key or lazyllm.config['siliconflow_api_key']
+
+    def _make_request(self, endpoint, payload, timeout=60):
+        
+        headers = {
+            'Authorization': f'Bearer {self._api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        url = f'{self._base_url}{endpoint}'
+        
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            lazyllm.LOG.error(f'API request failed: {str(e)}')
+            raise
 
     def _forward(self, input: str = None, size: str = '1024x1024', **kwargs):    
         payload = {
@@ -143,22 +132,40 @@ class SiliconFlowTextToImageModule(SiliconFlowMultiModal):
             }
         return encode_query_with_filepaths(None, file_paths)
 
-
-class SiliconFlowTTS(SiliconFlowMultiModal):
+class SiliconFlowTTS(OnlineMultiModalBase):
     MODEL_NAME = 'fnlp/MOSS-TTSD-v0.5'
 
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
-        SiliconFlowMultiModal.__init__(self,
+        OnlineMultiModalBase.__init__(self,
+                                model_series='SiliconFlow',
                                 model_name=model_name or SiliconFlowTTS.MODEL_NAME,
-                                base_url=base_url, return_trace=return_trace,
-                                api_key=api_key, **kwargs)
+                                return_trace=return_trace, **kwargs)
         self._endpoint = 'audio/speech'
+        self._base_url = base_url
+        self._api_key = api_key or lazyllm.config['siliconflow_api_key']
+
+    def _make_binary_request(self, endpoint, payload, timeout=180):
+        
+        headers = {
+            'Authorization': f'Bearer {self._api_key}',
+            'Content-Type': 'application/json'
+        }
+        
+        url = f'{self._base_url}{endpoint}'
+        
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            response.raise_for_status()
+            return response.content
+        except Exception as e:
+            lazyllm.LOG.error(f'API request failed: {str(e)}')
+            raise
 
     def _forward(self, input: str = None, response_format: str = 'mp3', 
                  sample_rate: int = 44100, speed: float = 1.0,
-                 voice: str = None, references=None, **kwargs):
+                 voice: str = None, references=None, out_path: str = None, **kwargs):
         
         payload = {
             'model': self._model_name,
@@ -181,27 +188,19 @@ class SiliconFlowTTS(SiliconFlowMultiModal):
         
         file_path = bytes_to_file([audio_content])[0]
         
+        if out_path:
+            with open(file_path, 'rb') as src, open(out_path, 'wb') as dst:
+                dst.write(src.read())
+            file_path = out_path
+        
+        result = encode_query_with_filepaths(None, [file_path])
+        
         if self._return_trace:
             return {
-                'response': encode_query_with_filepaths(None, [file_path]),
+                'response': result,
                 'trace_info': {
                     'model': self._model_name,
                     'full_response': f'Audio generated successfully, length: {len(audio_content)} bytes'
                 }
             }
-        return encode_query_with_filepaths(None, [file_path])
-
-    def __call__(self, text: str, response_format: str = 'mp3', 
-                 sample_rate: int = 44100, speed: float = 1.0,
-                 voice: str = None, references=None, out_path: str = None) -> str:
-        
-        result = self._forward(input=text, response_format=response_format,
-                             sample_rate=sample_rate, speed=speed,
-                             voice=voice, references=references)
-        
-        if out_path and isinstance(result, list) and len(result) > 0:
-            with open(result[0], 'rb') as src, open(out_path, 'wb') as dst:
-                dst.write(src.read())
-            return out_path
-        
-        return result[0] if isinstance(result, list) else result
+        return result

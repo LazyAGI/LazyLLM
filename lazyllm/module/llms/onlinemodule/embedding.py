@@ -28,7 +28,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
     RERANK_MODELS = {'qwen': QwenReranking,
                      'glm': GLMReranking,
                      'openai': OpenAIReranking,
-                     'siliconflow':SiliconFlowReranking}
+                     'siliconflow': SiliconFlowReranking}
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,

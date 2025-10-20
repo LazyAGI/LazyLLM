@@ -26,7 +26,7 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
               'qwen': QwenModule,
               'doubao': DoubaoModule,
               'deepseek': DeepSeekModule,
-              'siliconflow':SiliconFlowModule}
+              'siliconflow': SiliconFlowModule}
 
     @staticmethod
     def _encapsulate_parameters(base_url: str, model: str, stream: bool, return_trace: bool, **kwargs) -> Dict[str, Any]:
