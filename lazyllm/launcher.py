@@ -1586,6 +1586,7 @@ class ScoLauncher(LazyLLMLaunchersBase):
                 except Exception as e:
                     LOG.error('Try to scancel, but meet: ', e)
                 retries += 1
+                time.sleep(0.5)
             if retries == max_retries:
                 LOG.error(f'Command failed after {max_retries} attempts.')
 
