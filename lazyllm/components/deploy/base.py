@@ -63,7 +63,7 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
     def __repr__(self):
         return flows.Pipeline.__repr__(self)
 
-def verify_func_factory(error_message: str, running_message: str,
+def verify_func_factory(error_message: str, running_message: str,  # noqa: C901
                         err_judge: Callable = lambda syb, msg: msg.lstrip().startswith(syb),
                         run_judge: Callable = lambda syb, msg: syb in msg):
     def _hit(symbols, msg, judge):
@@ -73,26 +73,32 @@ def verify_func_factory(error_message: str, running_message: str,
         check_status = False
         begin_time = step_time = time.time()
         while True:
-            line = job.queue.get()
+            try:
+                line = job.queue.get(block=False)
+            except Exception:
+                line = ''
             if _hit(error_message, line, err_judge):
-                LOG.error(f'Capture error message: {line} \n\n')
+                LOG.error(f'[Verify] Capture error message: {line} \n\n')
                 return False
             elif _hit(running_message, line, run_judge):
-                LOG.info(f'Capture startup message: {line}')
+                LOG.info(f'[Verify] Capture startup message: {line}')
                 break
             if job.queue.qsize() == 0:
                 time.sleep(3)
                 check_status = True
             if time.time() - step_time >= 10:
+                LOG.info('[Verify] Continuing to wait for startup message...')
                 check_status = True
                 step_time = time.time()
             if check_status:  # Avoid high frequency check
-                if job.status == lazyllm.launchers.status.Failed:
-                    LOG.error('Service Startup Failed.')
+                status = job.status
+                if status == lazyllm.launchers.status.Failed:
+                    LOG.error('[Verify] Service Startup Failed.')
                     return False
                 check_status = False
+                LOG.info(f'[Verify] Current service status: {status}.')
             if time.time() - begin_time > 360:
-                LOG.error('Service Startup Timeout.')
+                LOG.error('[Verify] Service Startup Timeout.')
                 return False
         return True
     return verify_func

@@ -161,7 +161,8 @@ class Job(object):
         self._start(fixed=fixed)
         if not (lazyllm.config['mode'] == lazyllm.Mode.Display or self._fixed_cmd.checkf(self)):
             if restart > 0:
-                for _ in range(restart):
+                for ii in range(restart):
+                    LOG.warning(f'Job failed, restarting... ({ii + 1}/{restart})')
                     self.restart(fixed=fixed)
                     if self._fixed_cmd.checkf(self): break
                 else:
