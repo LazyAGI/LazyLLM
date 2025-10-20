@@ -222,7 +222,7 @@ class ServerModule(UrlModule):
                  post: Optional[Callable] = None, stream: Union[bool, Dict] = False,
                  return_trace: bool = False, port: Optional[int] = None, pythonpath: Optional[str] = None,
                  launcher: Optional[LazyLLMLaunchersBase] = None, url: Optional[str] = None,
-                 num_replicas: int = 1):
+                 num_replicas: int = 1, security_key: Optional[str] = None):
         assert stream is False or return_trace is False, 'Module with stream output has no trace'
         assert (post is None) or (stream is False), 'Stream cannot be true when post-action exists'
         if isinstance(m, str):
@@ -232,7 +232,7 @@ class ServerModule(UrlModule):
             assert is_valid_url(url), f'Invalid url: {url}'
             assert m is None, 'm should be None when url is provided'
         super().__init__(url=url, stream=stream, return_trace=return_trace)
-        self._security_key = f'sk-{str(uuid.uuid4().hex)}'
+        self._security_key = security_key or f'sk-{str(uuid.uuid4().hex)}'
         self._impl = _ServerModuleImpl(m, pre, post, launcher, port, pythonpath, self._url_wrapper,
                                        num_replicas=num_replicas, security_key=self._security_key)
         if url: self._impl._get_deploy_tasks.flag.set()
@@ -264,7 +264,7 @@ class ServerModule(UrlModule):
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), **kw):  # noqa B008
         headers = {
             'Content-Type': 'application/json',
-            'Global-Parameters': encode_request(globals._data),
+            'Global-Parameters': encode_request(globals._pickled_data),
             'Session-ID': encode_request(globals._sid),
             'Security-Key': self._security_key,
         }

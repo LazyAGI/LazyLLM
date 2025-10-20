@@ -83,6 +83,7 @@ async def lazyllm_call(request: Request):
         return Response(content=f'{e}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
 
 @app.post('/generate')
+@security_check
 async def generate(request: Request): # noqa C901
     try:
         input, kw = (await request.json()), {}
@@ -96,7 +97,7 @@ async def generate(request: Request): # noqa C901
         #                    clears the globals at the end, which causes some coroutines to mistakenly remove
         #                    data from globals after finishing execution.
         globals._init_sid(decode_request(request.headers.get('Session-ID')))
-        globals._update(decode_request(request.headers.get('Global-Parameters')))
+        globals.unpickle_and_update_data(decode_request(request.headers.get('Global-Parameters')))
 
         if args.before_function:
             assert (callable(before_func)), 'before_func must be callable'

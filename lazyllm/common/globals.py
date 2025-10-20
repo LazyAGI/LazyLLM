@@ -188,6 +188,13 @@ class Globals(metaclass=SingletonABCMeta):
     @abstractmethod
     def pop(self, *args, **kw): ...
 
+    @property
+    def pickled_data(self):
+        return obj2str(self._data)
+
+    def unpickle_and_update_data(self, data: Optional[str]) -> dict:
+        self._data.update(str2obj(data))
+
     def __reduce__(self):
         return __class__, ()
 
@@ -236,8 +243,21 @@ class MemoryGlobals(Globals):
 
 class Locals(MemoryGlobals): pass
 
-class RedisGlobals(MemoryGlobals): pass
+class RedisGlobals(MemoryGlobals):
+    def __init__(self):
+        super().__init__()
+        self._redis_client = redis_client['globals']
 
+    def _pickled_data(self):
+        self._redis_client.set(self._sid, obj2str(self._data))
+        return ''
+
+    def unpickle_and_update_data(self, data: Optional[str]) -> dict:
+        if data:
+            super(__class__, self).unpickle_and_update_data(data)
+        else:
+            self._data.update(str2obj(self._redis_client.get(self._sid)))
+            self._redis_client.delete(self._sid)
 
 globals = Globals()
 locals = Locals()
