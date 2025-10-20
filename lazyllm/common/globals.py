@@ -2,6 +2,7 @@ import threading
 import contextvars
 import copy
 from typing import Any, Tuple, Optional, List, Dict
+import uuid
 from pydantic import BaseModel as struct
 from .common import package, kwargs, SingletonABCMeta
 from .redis_client import redis_client
@@ -249,15 +250,13 @@ class RedisGlobals(MemoryGlobals):
         self._redis_client = redis_client['globals']
 
     def _pickled_data(self):
-        self._redis_client.set(self._sid, obj2str(self._data))
-        return ''
+        key = str(uuid.uuid4().hex)
+        self._redis_client.set(f'{self._sid}@{key}', obj2str(self._data))
+        return key
 
     def unpickle_and_update_data(self, data: Optional[str]) -> dict:
-        if data:
-            super(__class__, self).unpickle_and_update_data(data)
-        else:
-            self._data.update(str2obj(self._redis_client.get(self._sid)))
-            self._redis_client.delete(self._sid)
+        self._data.update(str2obj(self._redis_client.get(f'{self._sid}@{data}')))
+        self._redis_client.delete(f'{self._sid}@{data}')
 
 globals = Globals()
 locals = Locals()
