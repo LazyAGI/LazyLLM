@@ -207,6 +207,8 @@ def install(commands):  # noqa C901
             else:
                 if tc_ver == '2.5.1':
                     extra_pkgs.add('flash-attn==2.7.0.post2')
+                if tc_ver == '2.7.1':
+                    extra_pkgs.add('flash-attn==2.8.3')
                 else:
                     extra_pkgs.add(p)
 
