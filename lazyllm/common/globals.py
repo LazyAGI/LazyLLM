@@ -249,14 +249,17 @@ class RedisGlobals(MemoryGlobals):
         super().__init__()
         self._redis_client = redis_client['globals']
 
+    def _get_redis_key(self, key: str):
+        return f'globals:{self._sid}@{key}'
+
     def _pickled_data(self):
         key = str(uuid.uuid4().hex)
-        self._redis_client.set(f'{self._sid}@{key}', obj2str(self._data))
+        self._redis_client.set(self._get_redis_key(key), obj2str(self._data))
         return key
 
-    def unpickle_and_update_data(self, data: Optional[str]) -> dict:
-        self._data.update(str2obj(self._redis_client.get(f'{self._sid}@{data}')))
-        self._redis_client.delete(f'{self._sid}@{data}')
+    def unpickle_and_update_data(self, data: str) -> dict:
+        self._data.update(str2obj(self._redis_client.get(self._get_redis_key(data))))
+        self._redis_client.delete(self._get_redis_key(data))
 
 globals = Globals()
 locals = Locals()
@@ -278,10 +281,12 @@ class LazyLlmResponse(struct):
     def __str__(self): return str(self.messages)
 
 
+@deprecated('obj2str')
 def encode_request(input):
     return obj2str(input)
 
 
+@deprecated('obj2str')
 def decode_request(input, default=None):
     if input is None: return default
     return str2obj(input)

@@ -1,3 +1,4 @@
+from lazyllm.common.utils import str2obj
 import uvicorn
 import argparse
 import os
@@ -7,7 +8,7 @@ import traceback
 from types import GeneratorType
 import lazyllm
 from lazyllm import kwargs, package, load_obj
-from lazyllm import FastapiApp, globals, decode_request
+from lazyllm import FastapiApp, globals
 import time
 import pickle
 import codecs
@@ -88,7 +89,7 @@ async def generate(request: Request): # noqa C901
     try:
         input, kw = (await request.json()), {}
         try:
-            input, kw = decode_request(input)
+            input, kw = str2obj(input)
         except Exception: pass
         origin = input
 
@@ -96,8 +97,8 @@ async def generate(request: Request): # noqa C901
         #                    The reason is that when multiple coroutines use the same Session-ID, the function
         #                    clears the globals at the end, which causes some coroutines to mistakenly remove
         #                    data from globals after finishing execution.
-        globals._init_sid(decode_request(request.headers.get('Session-ID')))
-        globals.unpickle_and_update_data(decode_request(request.headers.get('Global-Parameters')))
+        globals._init_sid(request.headers.get('Session-ID'))
+        globals.unpickle_and_update_data(request.headers.get('Global-Parameters'))
 
         if args.before_function:
             assert (callable(before_func)), 'before_func must be callable'

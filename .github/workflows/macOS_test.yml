@@ -29,10 +29,32 @@ env:
   PYTHON_VERSION: "3.10.9"
   
 jobs:
+  check_online_changes:
+    runs-on: macos-13
+    outputs:
+      changed: ${{ steps.filter.outputs.any_changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Filter changed files
+        id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            any_changed:
+              - 'lazyllm/module/llms/onlinemodule/**/*.py'
+              - 'lazyllm/module/llms/onlinemodule/__init__.py'
+              - 'lazyllm/module/llms/onlinemodule/automodel.py'
+
   macos-basic_tests:
+    needs: [check_online_changes]
     if: |
       !contains(github.event.head_commit.message, '[skip ci]')
       && !contains(github.event.pull_request.title, '[skip ci]')
+      && ${{ needs.check_online_changes.outputs.changed }} == 'true'
     runs-on: macos-13
 
     steps:

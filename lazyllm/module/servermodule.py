@@ -11,7 +11,7 @@ import copy
 from dataclasses import dataclass
 
 import lazyllm
-from lazyllm import launchers, LOG, package, encode_request, globals, is_valid_url, LazyLLMLaunchersBase, redis_client
+from lazyllm import launchers, LOG, package, obj2str, globals, is_valid_url, LazyLLMLaunchersBase, redis_client
 from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
@@ -264,11 +264,11 @@ class ServerModule(UrlModule):
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), **kw):  # noqa B008
         headers = {
             'Content-Type': 'application/json',
-            'Global-Parameters': encode_request(globals._pickled_data),
-            'Session-ID': encode_request(globals._sid),
+            'Global-Parameters': globals._pickled_data,
+            'Session-ID': globals._sid,
             'Security-Key': self._security_key,
         }
-        data = encode_request((__input, kw))
+        data = obj2str((__input, kw))
 
         # context bug with httpx, so we use requests
         with requests.post(self._url, json=data, stream=True, headers=headers,
