@@ -51,7 +51,7 @@ def run(query):
                 lambda nodes, query: dict(context_str=nodes, query=query)
             ) | bind(query=ppl.input)
 
-            ppl.llm = lazyllm.TrainableModule('Qwen3-32B').deploy_method(lazyllm.deploy.vllm).prompt(
+            ppl.llm = lazyllm.TrainableModule('Qwen2.5-32B-Instruct').deploy_method(lazyllm.deploy.vllm).prompt(
                 lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
         rag = lazyllm.ActionModule(ppl)

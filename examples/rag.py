@@ -30,7 +30,7 @@ with pipeline() as ppl:
         prl.retriever2 = Retriever(documents, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
     ppl.reranker = Reranker("ModuleReranker", model=rerank_model, topk=1, output_format='content', join=True) | bind(query=ppl.input)
     ppl.formatter = (lambda nodes, query: dict(context_str=nodes, query=query)) | bind(query=ppl.input)
-    ppl.llm = lazyllm.TrainableModule("Qwen3-32B").deploy_method(lazyllm.deploy.vllm).prompt(lazyllm.ChatPrompter(prompt, extra_keys=["context_str"]))
+    ppl.llm = lazyllm.TrainableModule("Qwen2.5-32B-Instruct").deploy_method(lazyllm.deploy.vllm).prompt(lazyllm.ChatPrompter(prompt, extra_keys=["context_str"]))
 
 
 if __name__ == "__main__":

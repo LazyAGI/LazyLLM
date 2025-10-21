@@ -6,7 +6,7 @@ from lazyllm.launcher import cleanup
 class TestIntentClassifier(object):
     @classmethod
     def setup_class(cls):
-        cls._llm = lazyllm.TrainableModule('Qwen3-32B').deploy_method(lazyllm.deploy.vllm)
+        cls._llm = lazyllm.TrainableModule('Qwen2.5-32B-Instruct').deploy_method(lazyllm.deploy.vllm)
 
     @classmethod
     def teardown_class(cls):
