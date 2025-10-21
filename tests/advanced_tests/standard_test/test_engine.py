@@ -3,6 +3,7 @@ import pytest
 
 import lazyllm
 from lazyllm.engine import LightEngine
+from lazyllm.launcher import cleanup
 
 
 class TestEngine(object):
@@ -21,6 +22,7 @@ class TestEngine(object):
         LightEngine().reset()
         lazyllm.FileSystemQueue().dequeue()
         lazyllm.FileSystemQueue(klass='lazy_trace').dequeue()
+        cleanup()
 
     def test_http(self):
         nodes = [
