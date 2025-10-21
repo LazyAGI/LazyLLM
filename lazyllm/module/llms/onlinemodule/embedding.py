@@ -23,7 +23,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                     'glm': GLMEmbedding,
                     'qwen': QwenEmbedding,
                     'doubao': DoubaoEmbedding,
-                    'siliconflow':SiliconFlowEmbedding
+                    'siliconflow': SiliconFlowEmbedding
                     }
     RERANK_MODELS = {'qwen': QwenReranking,
                      'glm': GLMReranking,
