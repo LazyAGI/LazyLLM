@@ -12,12 +12,12 @@ class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'deepseek-ai/deepseek-vl2', 
                         'Qwen/Qwen3-VL-30B-A3B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking']
 
-    def __init__(self,
-                 base_url: str = 'https://api.siliconflow.cn/v1/', model: str = 'Qwen/QwQ-32B',
+    def __init__(self, base_url: str = 'https://api.siliconflow.cn/v1/', model: str = 'Qwen/QwQ-32B',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        OnlineChatModuleBase.__init__(self,
-            model_series='SILICONFLOW', api_key=api_key or lazyllm.config['siliconflow_api_key'],
-            base_url=base_url, model_name=model, stream=stream, return_trace=return_trace, **kwargs)
+        OnlineChatModuleBase.__init__(self, model_series='SILICONFLOW',
+                                      api_key=api_key or lazyllm.config['siliconflow_api_key'],
+                                      base_url=base_url, model_name=model, stream=stream,
+                                      return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         if stream:
             self._model_optional_params['stream'] = True
@@ -29,17 +29,16 @@ class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
         self._url = urljoin(self._base_url, 'chat/completions')
 
 class SiliconFlowEmbedding(OnlineEmbeddingModuleBase):
-    def __init__(self,
-                 embed_url: str = 'https://api.siliconflow.cn/v1/embeddings', embed_model_name: str = 'BAAI/bge-large-zh-v1.5',
-                 api_key: str = None, batch_size: int = 16, **kw):
+    def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/embeddings',
+                 embed_model_name: str = 'BAAI/bge-large-zh-v1.5', api_key: str = None,
+                 batch_size: int = 16, **kw):
         super().__init__('SILICONFLOW', embed_url, api_key or lazyllm.config['siliconflow_api_key'], 
                          embed_model_name, batch_size=batch_size, **kw)
 
 
 class SiliconFlowReranking(OnlineEmbeddingModuleBase):
-    def __init__(self,
-                 rerank_url: str = 'https://api.siliconflow.cn/v1/rerank', rerank_model_name: str = 'BAAI/bge-reranker-v2-m3',
-                 api_key: str = None, **kw):
+    def __init__(self, rerank_url: str = 'https://api.siliconflow.cn/v1/rerank',
+                 rerank_model_name: str = 'BAAI/bge-reranker-v2-m3', api_key: str = None, **kw):
         super().__init__('SILICONFLOW', rerank_url, api_key or lazyllm.config['siliconflow_api_key'], 
                          rerank_model_name, **kw)
         self._rerank_model_name = rerank_model_name
