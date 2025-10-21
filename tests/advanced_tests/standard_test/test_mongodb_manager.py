@@ -5,6 +5,8 @@ import datetime
 import re
 import os
 import uuid
+from lazyllm.launcher import cleanup
+
 
 UUID_HEX = str(uuid.uuid4().hex)
 CURRENT_DAY = datetime.datetime.now().strftime('%Y%m%d')
@@ -140,6 +142,7 @@ class TestMongoDBManager(unittest.TestCase):
         with cls.mongodb_manager.get_client() as client:
             collection = client[cls.mongodb_manager.db_name][cls.mongodb_manager.collection_name]
             collection.drop()
+        cleanup()
 
     def test_manager_status(self):
         db_result = self.mongodb_manager.check_connection()

@@ -2,6 +2,7 @@ import unittest
 import os
 
 from lazyllm import deploy, TrainableModule
+from lazyllm.launcher import cleanup
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.rerank import Reranker, register_reranker
 
@@ -16,6 +17,9 @@ class TestReranker(unittest.TestCase):
         self.doc3 = DocNode(text='This document contains the keyword cherry.')
         self.nodes = [self.doc1, self.doc2, self.doc3]
         self.query = 'test query'
+
+    def tearDown(self):
+        cleanup()
 
     def test_keyword_filter_with_required_keys(self):
         required_keys = ['apple']

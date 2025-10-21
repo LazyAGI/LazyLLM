@@ -161,6 +161,11 @@ class TestRagFilter(object):
         url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
         self.doc_server_addr = re.findall(url_pattern, documents.manager.url)[0]
 
+    @pytest.fixture(autouse=True)
+    def run_around_tests(self):
+        yield
+        cleanup()
+
     def test_upload_and_filter(self):
         files = [('files', ('test1.txt', io.BytesIO(b"John's house is in Beijing"), 'text/palin')),
                  ('files', ('test2.txt', io.BytesIO(b"John's house is in Shanghai"), 'text/plain'))]
