@@ -10,7 +10,7 @@ Want a large language model to automatically call real-world APIs based on your 
 
 ---
 ## Preparation
-Obtain an API-KEY. For the detailed process, please refer to: https://docs.lazyllm.ai/zh-cn/stable/Tutorial/2/#2-api-key
+Obtain an API-KEY. For the detailed process, please refer to: https://docs.lazyllm.ai/zh-cn/stable/Tutorial/2/#2-api-key， REST Countries is an open-source API project that provides country information, allowing users to retrieve detailed data about countries—such as names, capitals, currencies, and languages—through RESTful interfaces.
 
 ```python
 pip install lazyllm

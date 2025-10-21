@@ -32,7 +32,7 @@ pip install lazyllm
 ```
 ## 封装 API 工具类
 
-我们先来看怎么构建一个可以自动识别问题并调用 API 的模块。以该API为例：https://restcountries.com/
+我们先来看怎么构建一个可以自动识别问题并调用 API 的模块。以该API为例：https://restcountries.com/,REST Countries 是一个提供国家信息的开源API项目，用户可以通过RESTful接口获取关于国家的详细信息，如名称、首都、货币、语言等。
 
 ```python
 class LazyAPIChain(ModuleBase):
