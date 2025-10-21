@@ -64,7 +64,3 @@ class TestMultiModal(object):
         sd = lazyllm.OnlineMultiModalModule(source='siliconflow', function='text2image', api_key=api_key)
         result = sd(self.test_image_prompt)
         self._check_file_result(result, format='image')
-
-
-
-
