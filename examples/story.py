@@ -55,7 +55,7 @@ writer_prompt = {'system': completion_prompt, 'user': '{"title": {title}, "descr
 
 with pipeline() as ppl:
     # TODO: Each model can be configured with its own inference framework priority.
-    ppl.outline_writer = lazyllm.TrainableModule('Qwen3-30B-A3B-Instruct-2507').deploy_method(
+    ppl.outline_writer = lazyllm.TrainableModule('Qwen3-32B').deploy_method(
         lazyllm.deploy.vllm).formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
     ppl.synthesizer = (lambda *storys, outlines: '\n'.join([f'{o["title"]}\n{s}' for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))  # noqa: E501

@@ -1,7 +1,7 @@
 import unittest
 import os
 
-from lazyllm import deploy, TrainableModule
+from lazyllm import TrainableModule
 from lazyllm.launcher import cleanup
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.rerank import Reranker, register_reranker
@@ -48,7 +48,7 @@ class TestReranker(unittest.TestCase):
         for value in test_cases:
             with self.subTest(value=value):
                 os.environ[env_key] = value
-                model = TrainableModule('bge-reranker-v2-m3').deploy_method(deploy.vllm)
+                model = TrainableModule('bge-reranker-large')
                 reranker = Reranker(name='ModuleReranker', model=model, topk=2)
                 reranker.start()
                 results = reranker.forward(self.nodes, query='cherry')

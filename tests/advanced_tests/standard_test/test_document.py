@@ -5,8 +5,8 @@ from lazyllm.launcher import cleanup
 
 class TestDocument:
     def test_multi_embedding_with_document(self):
-        self.embed_model1 = lazyllm.TrainableModule('Qwen3-Embedding-8B').deploy_method(lazyllm.deploy.vllm).start()
-        self.embed_model2 = lazyllm.TrainableModule('Qwen3-Embedding-8B').deploy_method(lazyllm.deploy.vllm).start()
+        self.embed_model1 = lazyllm.TrainableModule('bge-m3').start()
+        self.embed_model2 = lazyllm.TrainableModule('bge-m3').start()
 
         Document(dataset_path='rag_master')._impl._dlm.release()
         document1 = Document(dataset_path='rag_master', embed=self.embed_model1)
