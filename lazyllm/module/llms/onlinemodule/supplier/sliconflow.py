@@ -75,8 +75,7 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None, 
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, 
-                                model_series='SiliconFlow',
+        OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
                                 model_name=model_name or SiliconFlowTextToImageModule.MODEL_NAME,
                                 return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
@@ -137,8 +136,7 @@ class SiliconFlowTTS(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self,
-                                model_series='SiliconFlow',
+        OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
                                 model_name=model_name or SiliconFlowTTS.MODEL_NAME,
                                 return_trace=return_trace, **kwargs)
         self._endpoint = 'audio/speech'
