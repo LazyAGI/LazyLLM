@@ -11,7 +11,7 @@ class TestEngine(object):
     def _test_vqa(self):
         resource = [dict(id='0', kind='web', name='web', args=dict(port=None, title='多模态聊天机器人', history=[], audio=True))]
         node = [dict(id='1', kind='VQA', name='vqa',
-                     args=dict(base_model=' Mini-InternVL-Chat-2B-V1-5', type='local'))]
+                     args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local'))]
         edge = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
         engine = LightEngine()
         engine.start(node, edge, resource)
@@ -55,7 +55,7 @@ class TestEngine(object):
                           args=dict(base_model='Qwen2.5-32B-Instruct', type='local')),
                      dict(id='file-resource', kind='File', name='file', args=dict(id='file-resource')),
                      dict(id='vqa', kind='VQA', name='vqa',
-                          args=dict(base_model=' Mini-InternVL-Chat-2B-V1-5', type='local')),
+                          args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local')),
                      dict(id='web', kind='web', name='web', args=dict(port=None, title='多模态聊天机器人', audio=True))]
 
         nodes1 = [
