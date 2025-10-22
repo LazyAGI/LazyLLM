@@ -4,7 +4,7 @@
   - 环境配置: Home/environment.md
   - 支持模型: Home/model_list.md
 - 使用示例:
-  - 聊天机器人: Cookbook/robot.md
+  - 聊天机器人: Cookbook/chatbot.md
   - 绘画大师: Cookbook/painting_master.md
   - 多模态聊天: Cookbook/multimodal_robot.md
   - 写作大师: Cookbook/great_writer.md
