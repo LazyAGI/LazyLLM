@@ -8,7 +8,7 @@ from lazyllm.tools.rag import DocNode
 class TestLLMParser(unittest.TestCase):
     @classmethod
     def setup_class(cls):
-        cls.llm = TrainableModule('Qwen3-30B-A3B-Instruct-2507').deploy_method(deploy.vllm).start()
+        cls.llm = TrainableModule('internlm2-chat-7b').deploy_method(deploy.vllm).start()
         cls.mock_node = MagicMock()
         cls.mock_node.get_text.return_value = (
             'Hello, I am an AI robot developed by SenseTime, named LazyLLM. '
