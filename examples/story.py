@@ -14,7 +14,7 @@ from lazyllm.components.formatter import JsonFormatter
 #           `path/to/modelazoo/internlm2-chat-7b`
 
 toc_prompt = '''
-You are now an intelligent assistant. Your task is to understand the user's input and convert the outline into a list of nested dictionaries. Each dictionary contains a `title` and a `describe`, where the `title` should clearly indicate the level using Markdown format, and the `describe` is a description and writing guide for that section.
+You are a writing assistant. Generate a structured outline based on the user’s given topic. Your task is to understand the user's input, generate outline and convert the outline into a list of nested dictionaries. Each dictionary contains a `title` and a `describe`, where the `title` should clearly indicate the level using Markdown format, and the `describe` is a description and writing guide for that section.
 
 Please generate the corresponding list of nested dictionaries based on the following user input:
 
