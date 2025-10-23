@@ -252,7 +252,7 @@ class RedisGlobals(MemoryGlobals):
     def _get_redis_key(self, key: str):
         return f'globals:{self._sid}@{key}'
 
-    def _pickled_data(self):
+    def pickled_data(self):
         key = str(uuid.uuid4().hex)
         self._redis_client.set(self._get_redis_key(key), obj2str(self._data))
         return key

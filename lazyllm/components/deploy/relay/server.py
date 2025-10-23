@@ -13,6 +13,7 @@ import time
 import pickle
 import codecs
 import asyncio
+import functools
 from functools import partial
 from typing import Callable
 
@@ -36,8 +37,8 @@ parser.add_argument('--before_function')
 parser.add_argument('--after_function')
 parser.add_argument('--pythonpath')
 parser.add_argument('--num_replicas', type=int, default=1, help='num of ray replicas')
-args = parser.parse_args()
 parser.add_argument('--security_key', type=str, default=None, help='security key')
+args = parser.parse_args()
 
 if args.pythonpath:
     sys.path.append(args.pythonpath)
@@ -64,10 +65,11 @@ async def async_wrapper(func, *args, **kwargs):
     return result
 
 def security_check(f: Callable):
+    @functools.wraps(f)
     async def wrapper(request: Request):
         if args.security_key and args.security_key != request.headers.get('Security-Key'):
             return Response(content='Authentication failed', status_code=401)
-        return f(request)
+        return (await f(request)) if inspect.iscoroutinefunction(f) else f(request)
     return wrapper
 
 @app.post('/_call')

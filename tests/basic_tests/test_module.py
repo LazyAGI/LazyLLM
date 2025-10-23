@@ -30,7 +30,7 @@ class TestModule:
         m1 = lazyllm.ServerModule(func)
         m1.update()
 
-        m2 = lazyllm.UrlModule(url=m1._url)
+        m2 = lazyllm.UrlModule(url=m1._url, security_key=m1._security_key)
         assert m2._url == m1._url
         m2.evalset([1, 'hi'])
         m2.update()
