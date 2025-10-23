@@ -11,6 +11,7 @@
   - RAG: Cookbook/rag.md
   - Streaming: Cookbook/streaming.md
   - Bocha Search Agent: Cookbook/bocha_search.md
+  - Voice Agent: Cookbook/voice_agent.md
 - Best Practice:
   - Flow: Best Practice/flow.md
   - Flowapp: Best Practice/flowapp.md
