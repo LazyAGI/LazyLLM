@@ -367,6 +367,54 @@ class TestMilvusStore(unittest.TestCase):
     def tearDown(self):
         os.remove(self.store_dir)
 
+    def test_invalid_index_kwargs(self):
+        invalid_index_kwargs = [
+            {
+                'embed_key': 'vec_dense',
+                'index_type': 'SPARSE_INVERTED_INDEX',
+                'metric_type': 'COSINE',
+                'params': {
+                    'nlist': 128,
+                }
+            },
+            {
+                'embed_key': 'vec_sparse',
+                'index_type': 'SPARSE_INVERTED_INDEX',
+                'metric_type': 'L2',
+                'params': {
+                    'nlist': 128,
+                }
+            }]
+        test_data = [
+            {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
+             'global_meta': {RAG_DOC_ID: 'doc1', RAG_KB_ID: 'kb1'},
+             'embedding': {'vec_dense': [0.1, 0.2, 0.3]},
+             'type': 1, 'number': 0, 'kb_id': 'kb1',
+             'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'parent': None, 'answer': '', 'image_keys': []},
+
+            {'uid': 'uid2', 'doc_id': 'doc2', 'group': 'g2', 'content': 'test2', 'meta': {},
+             'global_meta': {RAG_DOC_ID: 'doc2', RAG_KB_ID: 'kb2'},
+             'embedding': {'vec_sparse': {'1563': 0.212890625, '238': 0.1768798828125}},
+             'type': 1, 'number': 0, 'kb_id': 'kb2',
+             'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'parent': 'p2', 'answer': '', 'image_keys': []},
+        ]
+
+        def invalid_index_kwargs_test(invalid_index_kwargs, collections, data):
+            fd, dir = tempfile.mkstemp(suffix='.db')
+            os.close(fd)
+            store = MilvusStore(uri=dir, index_kwargs=invalid_index_kwargs)
+            store.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
+                          global_metadata_desc=self.global_metadata_desc)
+            assert not store.upsert(collections, [data])
+            os.remove(dir)
+
+        invalid_index_kwargs_test(invalid_index_kwargs[0], self.collections[0], test_data[0])
+        invalid_index_kwargs_test(invalid_index_kwargs[1], self.collections[1], test_data[1])
+
     def test_upsert(self):
         self.store.upsert(self.collections[0], [data[0]])
         res = self.store.get(collection_name=self.collections[0])
