@@ -1,8 +1,15 @@
 import os
+import pytest
 
 from lazyllm import finetune, launchers
+from lazyllm.launcher import cleanup
 
 class TestFinetune(object):
+
+    @pytest.fixture(autouse=True)
+    def run_around_tests(self):
+        yield
+        cleanup()
 
     def test_finetune_alpacalora(self):
         # test instantiation

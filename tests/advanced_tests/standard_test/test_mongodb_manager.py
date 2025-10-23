@@ -5,6 +5,8 @@ import datetime
 import re
 import os
 import uuid
+from lazyllm.launcher import cleanup
+
 
 UUID_HEX = str(uuid.uuid4().hex)
 CURRENT_DAY = datetime.datetime.now().strftime('%Y%m%d')
@@ -140,6 +142,7 @@ class TestMongoDBManager(unittest.TestCase):
         with cls.mongodb_manager.get_client() as client:
             collection = client[cls.mongodb_manager.db_name][cls.mongodb_manager.collection_name]
             collection.drop()
+        cleanup()
 
     def test_manager_status(self):
         db_result = self.mongodb_manager.check_connection()
@@ -184,7 +187,7 @@ class TestMongoDBManager(unittest.TestCase):
         print(f'str_results:\n{str_results}')
 
     def test_llm_query_local(self):
-        local_llm = lazyllm.TrainableModule('Qwen3-30B-A3B-Instruct-2507').deploy_method(lazyllm.deploy.vllm).start()
+        local_llm = lazyllm.TrainableModule('Qwen2.5-32B-Instruct').deploy_method(lazyllm.deploy.vllm).start()
         sql_call = SqlCall(local_llm, self.mongodb_manager, use_llm_for_sql_result=True, return_trace=True)
         str_results = sql_call('总人口超过了300万的州有哪些?')
         self.assertIn('TX', str_results)
