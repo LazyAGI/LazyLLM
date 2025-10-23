@@ -3,8 +3,9 @@ import shutil
 import pytest
 import tempfile
 import unittest
+import copy
 import lazyllm
-from lazyllm.tools.rag.store import (MapStore, ChromadbStore, MilvusStore,
+from lazyllm.tools.rag.store import (MapStore, ChromaStore, MilvusStore,
                                      SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
@@ -170,7 +171,7 @@ class TestMapStore(unittest.TestCase):
 
 @pytest.mark.skip_on_win
 @pytest.mark.skip_on_mac
-class TestChromadbStore(unittest.TestCase):
+class TestChromaStore(unittest.TestCase):
     def setUp(self):
         self.data = [
             {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
@@ -197,7 +198,7 @@ class TestChromadbStore(unittest.TestCase):
         self.embed_datatypes = {'vec_dense': DataType.FLOAT_VECTOR}
         self.global_metadata_desc = BUILDIN_GLOBAL_META_DESC
         self.store_dir = tempfile.mkdtemp()
-        self.store = ChromadbStore(uri=self.store_dir)
+        self.store = ChromaStore(uri=self.store_dir)
         self.store.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
                            global_metadata_desc=self.global_metadata_desc)
 
@@ -555,6 +556,47 @@ class TestMilvusStore(unittest.TestCase):
         res = self.store.search(collection_name=self.collections[1], query_embedding=[0.1, 0.2, 0.3],
                                 embed_key='vec_dense', topk=1, filters={RAG_KB_ID: ['kb1']})
         self.assertEqual(len(res), 0)
+
+    def test_get_massive_data(self):
+        new_data_list = []
+        criteria_list = []
+        MASSIVE_DATA_SIZE = 20000
+        for i in range(MASSIVE_DATA_SIZE):
+            one_data = copy.deepcopy(data[0])
+            one_data['uid'] = f'uid_{i}'
+            one_data['doc_id'] = 'doc_common'
+            criteria_list.append(f'uid_{i}')
+            new_data_list.append(one_data)
+
+        self.store.upsert(self.collections[0], new_data_list)
+
+        # test client.query_iterator in get api
+        res = self.store.get(collection_name=self.collections[0])
+        self.assertEqual(len(res), MASSIVE_DATA_SIZE)
+
+        SEARCH_DATA_SIZE = 9999
+        res = self.store.get(collection_name=self.collections[0], criteria={'uid': criteria_list[0:SEARCH_DATA_SIZE]})
+        self.assertEqual(len(res), SEARCH_DATA_SIZE)
+
+    def test_batch_query_legacy(self):
+
+        with self.store._client_context() as client:
+            new_data_list = []
+            criteria_list = []
+            for i in range(10000):
+                one_data = copy.deepcopy(data[0])
+                one_data['uid'] = f'uid_{i}'
+                one_data['doc_id'] = 'doc_common'
+                criteria_list.append(f'uid_{i}')
+                new_data_list.append(one_data)
+
+            self.store.upsert(self.collections[0], new_data_list)
+            res = self.store._batch_query_legacy(client, self.collections[0], field_names=['uid'], kwargs={})
+            self.assertEqual(len(res), len(new_data_list))
+
+            filters = self.store._construct_criteria({"doc_id": "doc_common"})
+            res = self.store._batch_query_legacy(client, self.collections[0], field_names=['uid'], kwargs=filters)
+            self.assertEqual(len(res), len(new_data_list))
 
     @pytest.mark.skip(reason=('local test for milvus standalone, please set up a milvus standalone server'
                               ' and set the uri to the server'))

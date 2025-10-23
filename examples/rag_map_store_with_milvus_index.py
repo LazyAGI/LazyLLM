@@ -36,7 +36,7 @@ def run(query):
         prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\
             ' In this task, you need to provide your answer based on the given context and question.'
 
-        rerank_model = lazyllm.TrainableModule('bge-reranker-v2-m3').deploy_method(lazyllm.deploy.vllm)
+        rerank_model = lazyllm.TrainableModule('bge-reranker-large')
 
         with lazyllm.pipeline() as ppl:
             ppl.retriever = lazyllm.Retriever(doc=documents, group_name='sentences', topk=3)
@@ -51,7 +51,7 @@ def run(query):
                 lambda nodes, query: dict(context_str=nodes, query=query)
             ) | bind(query=ppl.input)
 
-            ppl.llm = lazyllm.TrainableModule('Qwen3-30B-A3B-Instruct-2507').deploy_method(lazyllm.deploy.vllm).prompt(
+            ppl.llm = lazyllm.TrainableModule('Qwen2.5-32B-Instruct').deploy_method(lazyllm.deploy.vllm).prompt(
                 lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
         rag = lazyllm.ActionModule(ppl)

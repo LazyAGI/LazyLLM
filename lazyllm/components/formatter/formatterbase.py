@@ -264,7 +264,7 @@ def file_content_hash(value):
             with open(full_path, 'rb') as f:
                 while chunk := f.read(8192):
                     hash_obj.update(chunk)
-        except (FileNotFoundError, IOError):
+        except OSError:
             lazyllm.LOG.debug(f'Error: File not found or cannot be read: {full_path}')
             hash_obj.update(full_path.encode('utf-8'))
     return int(hash_obj.hexdigest(), 16)

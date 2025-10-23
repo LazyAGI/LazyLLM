@@ -73,6 +73,7 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
             'host': '0.0.0.0',
+            'max_model_len': 10240,
         })
         if openai_api is None: openai_api = lazyllm.config['openai_api']
         self._vllm_cmd = 'vllm.entrypoints.openai.api_server' if openai_api else 'vllm.entrypoints.api_server'
