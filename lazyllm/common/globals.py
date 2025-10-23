@@ -194,7 +194,7 @@ class Globals(metaclass=SingletonABCMeta):
         return obj2str(self._data)
 
     def unpickle_and_update_data(self, data: Optional[str]) -> dict:
-        self._data.update(str2obj(data))
+        if data: self._data.update(str2obj(data))
 
     def __reduce__(self):
         return __class__, ()
