@@ -1795,7 +1795,7 @@ Args:
     return_trace (bool, optional): 是否返回追踪信息，默认为False。
 ''')
 
-add_english_doc('OnlineEmbeddingModuleBase', '''
+add_english_doc('OnlineEmbeddingModuleBase', '''\
 OnlineEmbeddingModuleBase is the base class for managing embedding model interfaces on open platforms, used for requesting text to obtain embedding vectors. It is not recommended to directly instantiate this class. Specific platform classes should inherit from this class for instantiation.\n
 
 If you need to support the capabilities of embedding models on a new open platform, please extend your custom class from OnlineEmbeddingModuleBase:
@@ -1835,6 +1835,7 @@ add_example('OnlineEmbeddingModuleBase', '''\
 ...         pass
 ...         return embedding
 ''')
+
 add_chinese_doc('OnlineEmbeddingModuleBase.run_embed_batch', """\
 执行批量嵌入处理的内部方法。
 
@@ -1849,7 +1850,6 @@ Args:
 
 **Returns:**\n
 - 嵌入向量列表的列表，每个子列表对应一个输入文本的嵌入向量
-
 """)
 
 add_english_doc('OnlineEmbeddingModuleBase.run_embed_batch', """\
@@ -1865,11 +1865,10 @@ Args:
     proxies: Proxy settings, set to None if NO_PROXY is True
     **kwargs: Additional keyword arguments
 
-
 **Returns:**\n
 - A list of embedding vector lists, each sublist corresponds to an input text's embedding vector
-
 """)
+
 add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoEmbedding', '''\
 豆包嵌入类，继承自 OnlineEmbeddingModuleBase，封装了调用豆包在线文本嵌入服务的功能。  
 通过指定服务接口 URL、模型名称及 API Key，支持远程获取文本向量表示。
@@ -2407,6 +2406,36 @@ Args:
     stream (bool, optional): Whether to use streaming response, defaults to True.
     return_trace (bool, optional): Whether to return trace information, defaults to False.
     **kwargs: Additional arguments passed to OnlineChatModuleBase.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIReranking', '''
+OpenAIReranking 类用于调用 OpenAI 的 Reranking 接口，对文本列表进行重排序（Re-ranking）。
+
+该类继承自 `OnlineEmbeddingModuleBase`，主要功能包括：
+- 设置嵌入（Embedding）模型的 URL 和名称；
+- 封装请求数据并调用 OpenAI Rerank API；
+- 解析返回的排序结果。
+
+Args:
+    embed_url (str): OpenAI API 的基础 URL，默认值为 'https://api.openai.com/v1/'。
+    embed_model_name (str): 嵌入模型名称，用于指定 Rerank 模型。
+    api_key (str): OpenAI API Key，可选，如果未提供，则使用 lazyllm 配置中的默认值。
+    **kw: 其他可选关键字参数，传递给父类构造函数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.openai.OpenAIReranking', '''
+The OpenAIReranking class provides functionality to call OpenAI's Reranking API for re-ordering a list of text documents.
+
+This class inherits from `OnlineEmbeddingModuleBase` and mainly provides:
+- Setting the embedding model URL and name;
+- Encapsulating request data and calling the OpenAI Rerank API;
+- Parsing the returned ranking results.
+
+Args:
+    embed_url (str): Base URL of the OpenAI API, default is 'https://api.openai.com/v1/'.
+    embed_model_name (str): Name of the embedding model used for Rerank.
+    api_key (str): OpenAI API Key, optional. If not provided, the default from lazyllm config is used.
+    **kw: Additional keyword arguments passed to the parent constructor.
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding', '''\

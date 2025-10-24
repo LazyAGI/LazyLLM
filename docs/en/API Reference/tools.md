@@ -71,6 +71,10 @@
     members:
 	exclude-members:
 
+::: lazyllm.tools.rag.readers.readerBase.TxtReader
+    members:
+	exclude-members:
+
 ::: lazyllm.tools.rag.component.bm25.BM25
     members: retrieve
     exclude-members:
@@ -235,7 +239,7 @@
     exclude-members:
 
 ::: lazyllm.tools.rag.dataReader.SimpleDirectoryReader
-    members: [load_file]
+    members: [load_file, find_extractor_by_file, get_default_reader, add_post_action_for_default_reader]
     exclude-members:
 
 ::: lazyllm.tools.rag.dataReader.FileReader
