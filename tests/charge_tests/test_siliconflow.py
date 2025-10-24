@@ -1,7 +1,6 @@
 import os
 import pytest
 import lazyllm
-from lazyllm import config
 from lazyllm.components.formatter import decode_query_with_filepaths
 
 @pytest.fixture
