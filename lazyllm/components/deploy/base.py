@@ -81,7 +81,7 @@ def verify_func_factory(error_message: str, running_message: str,  # noqa: C901
                 if status == lazyllm.launchers.status.Failed:
                     LOG.error('[Verify] Service Startup Failed.')
                     return False
-                LOG.warning(f'[Verify] Timeout when getting log line and current service status: {status}.')
+                LOG.debug(f'[Verify] Timeout when getting log line and current service status: {status}.')
             if _hit(error_message, line, err_judge):
                 LOG.error(f'[Verify] Capture error message: {line} \n\n')
                 return False

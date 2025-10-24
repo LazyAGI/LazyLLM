@@ -29,6 +29,26 @@ env:
   PYTHON_VERSION: "3.10.9"
 
 jobs:
+  check_online_changes:
+    runs-on: windows-latest
+    outputs:
+      changed: ${{ steps.filter.outputs.any_changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Filter changed files
+        id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            any_changed:
+              - 'lazyllm/module/llms/onlinemodule/**/*.py'
+              - 'lazyllm/module/llms/onlinemodule/__init__.py'
+              - 'lazyllm/module/llms/onlinemodule/automodel.py'
+
   win-basic_tests:
     if: |
       !contains(github.event.head_commit.message, '[skip ci]')
@@ -159,10 +179,12 @@ jobs:
           key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
   win-charge_tests:
+    needs: [check_online_changes]
+    runs-on: windows-latest
     if: |
       !contains(github.event.head_commit.message, '[skip ci]')
       && !contains(github.event.pull_request.title, '[skip ci]')
-    runs-on: windows-latest
+      && ${{ needs.check_online_changes.outputs.changed }} == 'true'
 
     steps:
       - name: Check for required label
