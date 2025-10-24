@@ -1,14 +1,13 @@
 # Multi-Source Data Loading and Intelligent SQL Query Processing
 
-## This project demonstrates how to implement multi-format file loading (CSV/Excel) and natural language–driven SQL queries in Python, with support for automatic data preview and multi-format parsing.
+This project demonstrates how to implement multi-format file loading (CSV/Excel) and natural language–driven SQL queries in Python, with support for automatic data preview and multi-format parsing.
 
-## !!! abstract "Core Features"
-- **Multi-format file reading**：Automatically parses CSV and XLSX files
-- **Flexible encoding detection**：Uses chardet to automatically detect file encoding
-- **Intelligent SQL queries**：Generates SQL from natural language and queries an SQLite database
-- **Data visualization preview**：Displays raw data in the console
+!!! abstract "Through this section, you will learn about the following key points of LazyLLM"
 
----
+    - Multi-format file reading：Automatically parses CSV and XLSX files
+    - Flexible encoding detection：Uses chardet to automatically detect file encoding
+    - Intelligent SQL queries：Generates SQL from natural language and queries an SQLite database
+    - Data visualization preview：Displays raw data in the console
 
 ## Environment Setup
 
@@ -16,8 +15,6 @@
 ```bash
 pip install lazyllm chardet pandas sqlite3
 ```
-
----
 
 ## Environment Setup
 
@@ -30,11 +27,9 @@ with open(csv_path, 'rb') as f:
     print(chardet.detect(f.read()))
 ```
 
----
-
 ### 2. Multi-Format File Loading
 
-#### **Method 1:**：Use SimpleDirectoryReader directly to read multiple file formats
+**Method 1:**：Use SimpleDirectoryReader directly to read multiple file formats
 
 ```python
 loader1 = SimpleDirectoryReader(
@@ -46,12 +41,11 @@ documents = loader1.forward()
 for doc in documents:
     print(doc.text)
 ```
-- **Features**：Automatically parses multiple file formats and supports batch reading.
-- **Use Case**：Quickly obtain raw data content for subsequent processing.
 
- 
+- Features：Automatically parses multiple file formats and supports batch reading.
+- Use Case：Quickly obtain raw data content for subsequent processing.
 
-#### **Method 2**：Custom File Parsing and Loading
+**Method 2**：Custom File Parsing and Loading
 
 ```python
 loader2 = SimpleDirectoryReader(
@@ -69,16 +63,16 @@ loader2 = SimpleDirectoryReader(
         )
     }
 )
+
 documents2 = loader2.forward()
 for docs in documents2:
     print(docs.text)
 ```
-- **Features**：
-  - Use the corresponding file format Reader to customize column and row concatenation methods
-  - Supports data without headers (header=None)）
-- **Use Case**：Provides more flexibility in handling data formats
 
----
+- Features：
+    - Use the corresponding file format Reader to customize column and row concatenation methods
+    - Supports data without headers (header=None)）
+- Use Case：Provides more flexibility in handling data formats
 
 ### 3. SQLite Database Management
 
@@ -97,7 +91,6 @@ sql_manager = SqlManager(
 print(sql_manager.desc)  
 result_json = sql_manager.execute_query("SELECT * FROM employees;")
 ```
----
 
 ### 4. Natural Language to SQL Query
 
@@ -119,6 +112,7 @@ print("=== Schema Description ===")
 print(sql_manager.desc)
 print("=== Current employees table data ===")
 result_json = sql_manager.execute_query("SELECT * FROM employees;")
+
 try:
     result = json.loads(result_json)
     for row in result:
@@ -141,16 +135,17 @@ answer = sql_call.forward(question)
 
 print("Question:", question)
 print("Answer:", answer)
-
 ```
-- **Process**：
-  1. The user inputs a natural language question
-  2. The model converts it into an SQL statement
-  3. Execute the query and return the results
 
----
+**Process**：
+
+1. The user inputs a natural language question
+2. The model converts it into an SQL statement
+3. Execute the query and return the results
+
 ### 5. Result Output
-````
+
+<pre><code>
 === Data ===
 1, 张三, 28.0, 75000.5, 销售部, 2020-03-15, 沟通,谈判, True, 优秀员工
 2, 李四, 32.0, 92500.0, 技术部, 2018-07-22, Python;Java, True, 项目负责人
@@ -190,7 +185,6 @@ Table employees
  Title TEXT
 );
 ```
-
 === Current employees table data ===
 {'EmployeeId': 1, 'FirstName': 'John', 'LastName': 'Doe', 'Title': 'Software Engineer'}
 {'EmployeeId': 2, 'FirstName': 'Jane', 'LastName': 'Smith', 'Title': 'Data Analyst'}
@@ -198,4 +192,4 @@ Table employees
 {'EmployeeId': 4, 'FirstName': 'Bob', 'LastName': 'Lee', 'Title': 'QA Engineer'}
 Question: How many employees are there in the company?
 Answer: Based on the execution results, there are 4 employees in the company.
-```
+</code></pre>

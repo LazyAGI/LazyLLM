@@ -1,14 +1,13 @@
 # 多源数据加载与智能 SQL 查询处理
 
-## 本项目展示了如何通过 Python 实现多格式文件加载（CSV/Excel）与自然语言驱动的 SQL 查询，支持数据自动预览和多格式解析。
+本项目展示了如何通过 Python 实现多格式文件加载（CSV/Excel）与自然语言驱动的 SQL 查询，支持数据自动预览和多格式解析。
 
-## !!! abstract "核心功能"
-- **多格式文件读取**：支持 CSV、XLSX 文件自动解析
-- **灵活编码检测**：通过 `chardet` 自动识别文件编码
-- **智能 SQL 查询**：基于自然语言自动生成 SQL 并查询 SQLite 数据库
-- **数据可视化预览**：在控制台输出原始数据
+!!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
 
----
+    - 多格式文件读取：支持 CSV、XLSX 文件自动解析
+    - 灵活编码检测：通过 `chardet` 自动识别文件编码
+    - 智能 SQL 查询：基于自然语言自动生成 SQL 并查询 SQLite 数据库
+    - 数据可视化预览：在控制台输出原始数据
 
 ## 环境准备
 
@@ -18,9 +17,8 @@
 pip install lazyllm chardet pandas sqlite3
 ```
 
----
-
 ## 结构解析
+
 ### 1. 文件编码检测
 
 在加载 CSV 文件前，通过 `chardet` 检测其编码，避免读取时出现乱码问题：
@@ -30,11 +28,9 @@ with open(csv_path, 'rb') as f:
     print(chardet.detect(f.read()))
 ```
 
----
-
 ### 2. 多格式文件加载
 
-#### **第一种方式**：直接使用 `SimpleDirectoryReader` 读取多种文件格式
+**第一种方式**：直接使用 `SimpleDirectoryReader` 读取多种文件格式
 
 ```python
 loader1 = SimpleDirectoryReader(
@@ -42,14 +38,16 @@ loader1 = SimpleDirectoryReader(
     exclude_hidden=True,
     recursive=False
 )
+
 documents = loader1.forward()
 for doc in documents:
     print(doc.text)
 ```
-- **特点**：自动解析多种文件格式，支持批量读取。
-- **用途**：快速获取原始数据内容，便于后续处理。
 
-#### **第二种方式**：自定义文件解析和加载
+- 特点：自动解析多种文件格式，支持批量读取。
+- 用途：快速获取原始数据内容，便于后续处理。
+
+**第二种方式**：自定义文件解析和加载
 
 ```python
 loader2 = SimpleDirectoryReader(
@@ -71,12 +69,11 @@ documents2 = loader2.forward()
 for docs in documents2:
     print(docs.text)
 ```
-- **特点**：
-  - 使用 对用文件格式`Reader` 自定义列、行连接方式
-  - 支持无表头数据（`header=None`）
-- **用途**：更灵活地处理数据格式
 
----
+- 特点：
+    - 使用 对用文件格式`Reader` 自定义列、行连接方式
+    - 支持无表头数据（`header=None`）
+- 用途：更灵活地处理数据格式
 
 ### 3. SQLite 数据库管理
 
@@ -95,86 +92,6 @@ sql_manager = SqlManager(
 print(sql_manager.desc)  # 数据库模式描述
 result_json = sql_manager.execute_query("SELECT * FROM employees;")
 ```
-
----
-### 1. File Encoding Detection
-
-Before loading a CSV file, use chardet to detect its encoding to avoid garbled text issues during reading.：
-
-```python
-with open(csv_path, 'rb') as f:
-    print(chardet.detect(f.read()))
-```
-
----
-
-### 2. Multi-Format File Loading
-
-#### **Method 1:**：Use SimpleDirectoryReader directly to read multiple file formats
-
-```python
-loader1 = SimpleDirectoryReader(
-    input_files=[csv_path, xlsx_path],
-    exclude_hidden=True,
-    recursive=False
-)
-documents = loader1.forward()
-for doc in documents:
-    print(doc.text)
-```
-- **Features**：Automatically parses multiple file formats and supports batch reading.
-- **Use Case**：Quickly obtain raw data content for subsequent processing.
-
- 
-
-#### **Method 2**：Custom File Parsing and Loading
-
-```python
-loader2 = SimpleDirectoryReader(
-    input_files=[csv_path],
-    recursive=True,
-    exclude_hidden=True,
-    num_files_limit=10,
-    required_exts=[".csv"],
-    file_extractor={
-        "*.csv": PandasCSVReader(
-            concat_rows=False,
-            col_joiner=" | ",
-            row_joiner="\n\n",
-            pandas_config={"sep": None, "engine": "python", "header": None},
-        )
-    }
-)
-documents2 = loader2.forward()
-for docs in documents2:
-    print(docs.text)
-```
-- **Features**：
-  - Use the corresponding file format Reader to customize column and row concatenation methods
-  - Supports data without headers (header=None)）
-- **Use Case**：Provides more flexibility in handling data formats
-
----
-
-### 3. SQLite Database Management
-
-Use SqlManager to connect to an SQLite database, view table structures, and inspect data.
-
-```python
-sql_manager = SqlManager(
-    db_type="sqlite",
-    user="",
-    password="",
-    host="",
-    port=0,
-    db_name=sql_path
-)
-
-print(sql_manager.desc)  
-result_json = sql_manager.execute_query("SELECT * FROM employees;")
-```
-
----
 
 ### 4. 自然语言转 SQL 查询
 
@@ -196,6 +113,7 @@ print("=== Schema Description ===")
 print(sql_manager.desc)
 print("=== Current employees table data ===")
 result_json = sql_manager.execute_query("SELECT * FROM employees;")
+
 try:
     result = json.loads(result_json)
     for row in result:
@@ -218,16 +136,17 @@ answer = sql_call.forward(question)
 
 print("Question:", question)
 print("Answer:", answer)
-
 ```
-- **流程**：
-  1. 用户输入自然语言问题
-  2. 模型将其转换为 SQL 语句
-  3. 执行查询并返回结果
 
----
+**流程**：
+
+1. 用户输入自然语言问题
+2. 模型将其转换为 SQL 语句
+3. 执行查询并返回结果
+
 ### 5. 结果输出
-````
+
+<pre><code>
 === Data ===
 1, 张三, 28.0, 75000.5, 销售部, 2020-03-15, 沟通,谈判, True, 优秀员工
 2, 李四, 32.0, 92500.0, 技术部, 2018-07-22, Python;Java, True, 项目负责人
@@ -267,7 +186,6 @@ Table employees
  Title TEXT
 );
 ```
-
 === Current employees table data ===
 {'EmployeeId': 1, 'FirstName': 'John', 'LastName': 'Doe', 'Title': 'Software Engineer'}
 {'EmployeeId': 2, 'FirstName': 'Jane', 'LastName': 'Smith', 'Title': 'Data Analyst'}
@@ -275,4 +193,4 @@ Table employees
 {'EmployeeId': 4, 'FirstName': 'Bob', 'LastName': 'Lee', 'Title': 'QA Engineer'}
 Question: How many employees are there in the company?
 Answer: Based on the execution results, there are 4 employees in the company.
-```
+</code></pre>
