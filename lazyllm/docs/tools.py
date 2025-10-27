@@ -2919,6 +2919,7 @@ add_chinese_doc('rag.dataReader.SimpleDirectoryReader.add_post_action_for_defaul
 若指定的扩展名没有默认读取器，会抛出 `KeyError` 异常。
 
 后处理函数可以是以下类型之一：
+
 1. 继承自 `NodeTransform` 的类；
 2. 普通函数，接收一个 `DocNode` 并返回修改后的 `DocNode` 或列表；
 3. 可实例化的类型，会自动创建实例。
@@ -2940,6 +2941,7 @@ initial loading (e.g., text cleaning, node splitting, or structural adjustments)
 If the given file extension has no default reader, a `KeyError` is raised.
 
 The post-processing function `f` can be:
+
 1. A subclass of `NodeTransform`;
 2. A callable that takes a `DocNode` and returns a modified `DocNode` or a list;
 3. A class type, which will be instantiated automatically.
@@ -3017,6 +3019,7 @@ add_chinese_doc('rag.readers.readerBase.TxtReader', '''\
 TxtReader 类用于从文本文件中加载内容，并将其封装为 `DocNode` 对象列表。
 
 该类继承自 `LazyLLMReaderBase`，主要功能包括：
+
 - 支持指定文本编码读取文件；
 - 可选返回加载过程的跟踪信息；
 
@@ -3029,6 +3032,7 @@ add_english_doc('rag.readers.readerBase.TxtReader', '''\
 The TxtReader class loads content from text files and wraps it into a list of `DocNode` objects.
 
 This class inherits from `LazyLLMReaderBase` and mainly provides:
+
 - Support for reading files with a specified text encoding;
 - Optional tracing information of the loading process;
 

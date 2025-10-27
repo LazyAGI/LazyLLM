@@ -1783,9 +1783,9 @@ OnlineEmbeddingModuleBase是管理开放平台的嵌入模型接口的基类，�
 
 如果你需要支持新的开放平台的嵌入模型的能力，请让你自定义的类继承自OnlineEmbeddingModuleBase：
 
-    1、如果新平台的嵌入模型的请求和返回数据格式都和openai一样，可以不用做任何处理，只传url和模型即可
-    2、如果新平台的嵌入模型的请求或者返回的数据格式和openai不一样，需要重写_encapsulated_data或_parse_response方法。
-    3、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
+1、如果新平台的嵌入模型的请求和返回数据格式都和openai一样，可以不用做任何处理，只传url和模型即可
+2、如果新平台的嵌入模型的请求或者返回的数据格式和openai不一样，需要重写_encapsulated_data或_parse_response方法。
+3、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
 
 Args:
     model_series (str): 模型系列名称标识。
@@ -1800,9 +1800,9 @@ OnlineEmbeddingModuleBase is the base class for managing embedding model interfa
 
 If you need to support the capabilities of embedding models on a new open platform, please extend your custom class from OnlineEmbeddingModuleBase:
 
-    1. If the request and response data formats of the new platform's embedding model are the same as OpenAI's, no additional processing is needed; simply pass the URL and model.
-    2. If the request or response data formats of the new platform's embedding model differ from OpenAI's, you need to override the _encapsulated_data or _parse_response methods.
-    3. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
+1. If the request and response data formats of the new platform's embedding model are the same as OpenAI's, no additional processing is needed; simply pass the URL and model.
+2. If the request or response data formats of the new platform's embedding model differ from OpenAI's, you need to override the _encapsulated_data or _parse_response methods.
+3. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
 
 Args:
     model_series (str): Model series name identifier.
@@ -2412,6 +2412,7 @@ add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIReranking', '''
 OpenAIReranking 类用于调用 OpenAI 的 Reranking 接口，对文本列表进行重排序（Re-ranking）。
 
 该类继承自 `OnlineEmbeddingModuleBase`，主要功能包括：
+
 - 设置嵌入（Embedding）模型的 URL 和名称；
 - 封装请求数据并调用 OpenAI Rerank API；
 - 解析返回的排序结果。
@@ -2427,6 +2428,7 @@ add_english_doc('llms.onlinemodule.supplier.openai.OpenAIReranking', '''
 The OpenAIReranking class provides functionality to call OpenAI's Reranking API for re-ordering a list of text documents.
 
 This class inherits from `OnlineEmbeddingModuleBase` and mainly provides:
+
 - Setting the embedding model URL and name;
 - Encapsulating request data and calling the OpenAI Rerank API;
 - Parsing the returned ranking results.
