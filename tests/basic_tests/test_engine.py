@@ -541,7 +541,7 @@ class TestEngine(unittest.TestCase):
 
         server = engine.build_node('graph-1').func._g
         assert isinstance(server, lazyllm.ServerModule)
-        m = lazyllm.UrlModule(url=server._url)
+        m = lazyllm.UrlModule(url=server._url, security_key=server._security_key)
         assert m(2) == 4
 
         web = engine.build_node('graph-1').func._web
