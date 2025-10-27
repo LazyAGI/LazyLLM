@@ -372,7 +372,56 @@ add_example('ModuleBase._get_train_tasks', '''\
 >>> MyModule().update()
 1
 ''')
+add_chinese_doc('ModuleBase.use_cache', """\
+启用或配置模块的缓存功能。
 
+当启用缓存后，模块的输入-输出结果将根据当前配置和输入参数进行哈希，并在后续相同请求中直接返回缓存结果，从而避免重复计算，提升性能。
+
+Args:
+    flag (Union[bool, str], optional): 
+        - 若为 True：启用默认缓存（使用模块类名作为缓存键的一部分）。
+        - 若为 False：禁用缓存。
+        - 若为字符串：启用缓存，并将该字符串作为附加标识符加入缓存键（例如用于区分不同版本或配置）。
+        默认为 True。
+
+Returns:
+    self: 支持链式调用。
+""")
+
+add_english_doc('ModuleBase.use_cache', """\
+Enable or configure caching for the module.
+
+When caching is enabled, the module's input-output results are hashed based on its configuration and input arguments, 
+and subsequent identical requests will return the cached result to avoid redundant computation and improve performance.
+
+Args:
+    flag (Union[bool, str], optional): 
+        - If True: enable default caching (using the module class name as part of the cache key).
+        - If False: disable caching.
+        - If a string: enable caching and append the string as an additional identifier to the cache key 
+          (e.g., to distinguish between different versions or configurations).
+        Defaults to True.
+
+Returns:
+    self: for method chaining.
+""")
+add_example('ModuleBase.use_cache', '''\
+>>> import lazyllm
+>>> class MyModule(lazyllm.ModuleBase):
+...     def forward(self, x):
+...         print(f"Computing for {x}")
+...         return x * 2
+... 
+>>> m = MyModule().use_cache(True)
+>>> m(5)  # First call: computes and caches
+Computing for 5
+10
+>>> m(5)  # Second call: returns cached result (no print)
+10
+>>> m.use_cache('v2')(5)  # Different cache key due to 'v2'
+Computing for 5
+10
+''')
 add_chinese_doc('ModuleBase._get_deploy_tasks', '''\
 定义部署任务，该函数返回训练的pipeline，重写了此函数的子类可以在update/start阶段被部署。
 ''')
@@ -2505,7 +2554,7 @@ Args:
 """)
 
 add_chinese_doc('llms.onlinemodule.supplier.glm.GLMSTTModule', """\
-GLM语音识别模块，继承自GLMMultiModal。
+GLM语音识别模块，继承自GLMMultiModal。  
 
 提供基于智谱AI的语音转文本(STT)功能，支持音频文件的语音识别。
 
@@ -2526,4 +2575,138 @@ Args:
     api_key (str, optional): API key, defaults to configured key
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Other model parameters
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowModule', """\
+SiliconFlow 模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
+
+提供基于 SiliconFlow 平台的大语言模型对话能力，支持多种模型（包括视觉语言模型），并具备文件处理功能。
+
+Args:
+    base_url (str, optional): API 基础地址，默认为 "https://api.siliconflow.cn/v1/"
+    model (str, optional): 使用的模型名称，默认为 "Qwen/QwQ-32B"
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['siliconflow_api_key'] 中读取
+    stream (bool, optional): 是否启用流式输出，默认为 True
+    return_trace (bool, optional): 是否返回追踪信息，默认为 False
+    **kwargs: 其他模型参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowModule', """\
+SiliconFlow module, inherits from OnlineChatModuleBase and FileHandlerBase.
+
+Provides large language model chat capabilities via the SiliconFlow platform, supports multiple models (including vision-language models), and includes file handling functionality.
+
+Args:
+    base_url (str, optional): Base API URL, defaults to "https://api.siliconflow.cn/v1/"
+    model (str, optional): Model name to use, defaults to "Qwen/QwQ-32B"
+    api_key (str, optional): API key, defaults to lazyllm.config['siliconflow_api_key']
+    stream (bool, optional): Whether to enable streaming output, defaults to True
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    **kwargs: Other model parameters
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowEmbedding', """\
+SiliconFlow 向量嵌入模块，继承自 OnlineEmbeddingModuleBase。
+
+提供基于 SiliconFlow 平台的文本嵌入（Embedding）功能，支持将文本转换为向量表示。
+
+Args:
+    embed_url (str, optional): 嵌入 API 的 URL，默认为 "https://api.siliconflow.cn/v1/embeddings"
+    embed_model_name (str, optional): 使用的嵌入模型名称，默认为 "BAAI/bge-large-zh-v1.5"
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['siliconflow_api_key'] 中读取
+    batch_size (int, optional): 批处理大小，默认为 16
+    **kw: 其他嵌入模块参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowEmbedding', """\
+SiliconFlow embedding module, inherits from OnlineEmbeddingModuleBase.
+
+Provides text embedding functionality via the SiliconFlow platform, converting text into vector representations.
+
+Args:
+    embed_url (str, optional): Embedding API URL, defaults to "https://api.siliconflow.cn/v1/embeddings"
+    embed_model_name (str, optional): Name of the embedding model to use, defaults to "BAAI/bge-large-zh-v1.5"
+    api_key (str, optional): API key, defaults to lazyllm.config['siliconflow_api_key']
+    batch_size (int, optional): Batch size for processing, defaults to 16
+    **kw: Additional embedding module parameters
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking', """\
+SiliconFlow 重排序模块，继承自 OnlineEmbeddingModuleBase。
+
+提供基于 SiliconFlow 平台的文本重排序（Reranking）功能，用于对文档列表根据查询相关性进行重新排序。
+
+Args:
+    rerank_url (str, optional): 重排序 API 的 URL，默认为 "https://api.siliconflow.cn/v1/rerank"
+    rerank_model_name (str, optional): 使用的重排序模型名称，默认为 "BAAI/bge-reranker-v2-m3"
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['siliconflow_api_key'] 中读取
+    **kw: 其他重排序模块参数
+
+Input format:
+    支持两种输入格式：
+    - 列表形式：[query: str, documents: List[str]]
+    - 字典形式：{'query': str, 'documents': List[str]}
+
+Returns:
+    List[Dict]: 包含排序结果的列表，每个元素为包含 'index'、'relevance_score' 和 'document' 等字段的字典。
+""")
+
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking', """\
+SiliconFlow reranking module, inherits from OnlineEmbeddingModuleBase.
+
+Provides text reranking functionality via the SiliconFlow platform, reordering a list of documents based on their relevance to a given query.
+
+Args:
+    rerank_url (str, optional): Reranking API URL, defaults to "https://api.siliconflow.cn/v1/rerank"
+    rerank_model_name (str, optional): Name of the reranking model to use, defaults to "BAAI/bge-reranker-v2-m3"
+    api_key (str, optional): API key, defaults to lazyllm.config['siliconflow_api_key']
+    **kw: Additional reranking module parameters
+
+Input format:
+    Supports two input formats:
+    - List: [query: str, documents: List[str]]
+    - Dict: {'query': str, 'documents': List[str]}
+
+Returns:
+    List[Dict]: A list of reranking results, each containing fields such as 'index', 'relevance_score', and 'document'.
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking', """\
+SiliconFlow 重排序模块，继承自 OnlineEmbeddingModuleBase。
+
+提供基于 SiliconFlow 平台的文本重排序（Reranking）功能，用于对文档列表根据查询相关性进行重新排序。
+
+Args:
+    rerank_url (str, optional): 重排序 API 的 URL，默认为 "https://api.siliconflow.cn/v1/rerank"
+    rerank_model_name (str, optional): 使用的重排序模型名称，默认为 "BAAI/bge-reranker-v2-m3"
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['siliconflow_api_key'] 中读取
+    **kw: 其他重排序模块参数
+
+Input format:
+    支持两种输入格式：
+    - 列表形式：[query: str, documents: List[str]]
+    - 字典形式：{'query': str, 'documents': List[str]}
+
+Returns:
+    List[Dict]: 包含排序结果的列表，每个元素为包含 'index'、'relevance_score' 和 'document' 等字段的字典。
+""")
+
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking', """\
+SiliconFlow reranking module, inherits from OnlineEmbeddingModuleBase.
+
+Provides text reranking functionality via the SiliconFlow platform, reordering a list of documents based on their relevance to a given query.
+
+Args:
+    rerank_url (str, optional): Reranking API URL, defaults to "https://api.siliconflow.cn/v1/rerank"
+    rerank_model_name (str, optional): Name of the reranking model to use, defaults to "BAAI/bge-reranker-v2-m3"
+    api_key (str, optional): API key, defaults to lazyllm.config['siliconflow_api_key']
+    **kw: Additional reranking module parameters
+
+Input format:
+    Supports two input formats:
+    - List: [query: str, documents: List[str]]
+    - Dict: {'query': str, 'documents': List[str]}
+
+Returns:
+    List[Dict]: A list of reranking results, each containing fields such as 'index', 'relevance_score', and 'document'.
 """)
