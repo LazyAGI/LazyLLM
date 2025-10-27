@@ -14,6 +14,7 @@ from .utils import get_log_path, make_log_dir, parse_options_keys
 from .ray import reallocate_launcher, Distributed, sleep_moment
 
 
+lazyllm.config.add('vllm_skip_check_kw', bool, False, 'VLLM_SKIP_CHECK_KW')
 verify_vllm_openai_func = verify_func_factory('ERROR:', 'Application startup complete.')
 
 class _VllmStreamParseParametersMeta(LazyLLMRegisterMetaClass):
@@ -82,7 +83,7 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
         if trust_remote_code and 'trust_remote_code' not in self.options_keys:
             self.options_keys.append('trust_remote_code')
         self.kw.update(**{key: kw[key] for key in self.optional_keys if key in kw})
-        self.kw.check_and_update(kw)
+        self.kw.check_and_update(kw, skip_check=lazyllm.config['vllm_skip_check_kw'])
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
         self.temp_folder = make_log_dir(log_path, 'vllm') if log_path else None
         if self.launcher_list:
