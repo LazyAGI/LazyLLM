@@ -15,7 +15,7 @@ from .classifier import IntentClassifier
 from .sql import SqlManager, MongoDBManager, DBResult, DBStatus, DBManager
 from .sql_call import SqlCall
 from .tools.http_tool import HttpTool
-from .mcp.client import MCPClient
+from .mcp.client import MCPClient  # noqa NID002
 from .actors import ParameterExtractor, QustionRewrite, CodeGenerator
 from .common import StreamCallHelper
 from .eval import (BaseEvaluator, ResponseRelevancy, Faithfulness, LLMContextRecall,

@@ -58,7 +58,7 @@ class FunctionCall(ModuleBase):
             raise ValueError('The qwen platform does not currently support stream function calls.')
         if _prompt is None:
             _prompt = FC_PROMPT_ONLINE if isinstance(llm, OnlineChatModule)\
-                or llm._url.endswith('/v1/') else FC_PROMPT_LOCAL
+                or (llm._url and llm._url.endswith('/v1/')) else FC_PROMPT_LOCAL
 
         self._tools_manager = ToolManager(tools, return_trace=return_trace)
         self._prompter = ChatPrompter(instruction=_prompt, tools=self._tools_manager.tools_description)\

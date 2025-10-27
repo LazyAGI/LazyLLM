@@ -251,6 +251,7 @@ class DocImpl:
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
+        self._reader._lazy_init.flag.reset()
 
     def _add_doc_to_store_with_status(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]],
                                       cond_status_list: Optional[List[str]] = None):

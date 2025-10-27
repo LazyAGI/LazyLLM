@@ -1,5 +1,6 @@
 import lazyllm
 from lazyllm.tools.rag.doc_impl import DocImpl
+from lazyllm.tools.rag.store.store_base import LAZY_IMAGE_GROUP
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
@@ -31,7 +32,7 @@ class TestDocImpl(unittest.TestCase):
         self.tmp_file_b = tempfile.NamedTemporaryFile()
         mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
         mock_node._global_metadata = {RAG_DOC_ID: gen_docid(self.tmp_file_a.name), RAG_DOC_PATH: self.tmp_file_a.name}
-        self.mock_directory_reader.load_data.return_value = ([mock_node], [])
+        self.mock_directory_reader.load_data.return_value = {LAZY_ROOT_NAME: [mock_node], LAZY_IMAGE_GROUP: []}
 
         self.doc_impl = DocImpl(embed=self.mock_embed, doc_files=[self.tmp_file_a.name])
         self.doc_impl._reader = self.mock_directory_reader
@@ -83,7 +84,7 @@ class TestDocImpl(unittest.TestCase):
         assert len(self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
         new_doc._global_metadata = {RAG_DOC_ID: gen_docid(self.tmp_file_b.name), RAG_DOC_PATH: self.tmp_file_b.name}
-        self.mock_directory_reader.load_data.return_value = ([new_doc], [])
+        self.mock_directory_reader.load_data.return_value = {LAZY_ROOT_NAME: [new_doc], LAZY_IMAGE_GROUP: []}
         self.doc_impl._add_doc_to_store([self.tmp_file_b.name])
         assert len(self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)) == 2
 

@@ -1,11 +1,12 @@
 import lazyllm
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag import Document, Retriever
+from lazyllm.launcher import cleanup
 
 class TestDocument:
     def test_multi_embedding_with_document(self):
-        self.embed_model1 = lazyllm.TrainableModule('Qwen3-Embedding-8B').deploy_method(lazyllm.deploy.vllm).start()
-        self.embed_model2 = lazyllm.TrainableModule('Qwen3-Embedding-8B').deploy_method(lazyllm.deploy.vllm).start()
+        self.embed_model1 = lazyllm.TrainableModule('bge-m3').start()
+        self.embed_model2 = lazyllm.TrainableModule('bge-m3').start()
 
         Document(dataset_path='rag_master')._impl._dlm.release()
         document1 = Document(dataset_path='rag_master', embed=self.embed_model1)
@@ -26,3 +27,7 @@ class TestDocument:
                                similarity_cut_off={'m1': 0.5, 'm2': 0.55}, topk=3, output_format='content', join=True)
         nodes3_text = retriever3('何为天道?')
         assert '观天之道' in nodes3_text or '天命之谓性' in nodes3_text
+
+    @classmethod
+    def teardown_class(cls):
+        cleanup()

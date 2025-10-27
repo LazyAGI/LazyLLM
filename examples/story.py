@@ -14,7 +14,7 @@ from lazyllm.components.formatter import JsonFormatter
 #           `path/to/modelazoo/internlm2-chat-7b`
 
 toc_prompt = '''
-You are now an intelligent assistant. Your task is to understand the user's input and convert the outline into a list of nested dictionaries. Each dictionary contains a `title` and a `describe`, where the `title` should clearly indicate the level using Markdown format, and the `describe` is a description and writing guide for that section.
+You are a writing assistant. Generate a structured outline based on the user’s given topic. Your task is to understand the user's input, generate outline and convert the outline into a list of nested dictionaries. Each dictionary contains a `title` and a `describe`, where the `title` should clearly indicate the level using Markdown format, and the `describe` is a description and writing guide for that section.
 
 Please generate the corresponding list of nested dictionaries based on the following user input:
 
@@ -55,7 +55,7 @@ writer_prompt = {'system': completion_prompt, 'user': '{"title": {title}, "descr
 
 with pipeline() as ppl:
     # TODO: Each model can be configured with its own inference framework priority.
-    ppl.outline_writer = lazyllm.TrainableModule('Qwen3-30B-A3B-Instruct-2507').deploy_method(
+    ppl.outline_writer = lazyllm.TrainableModule('Qwen2.5-32B-Instruct').deploy_method(
         lazyllm.deploy.vllm).formatter(JsonFormatter()).prompt(toc_prompt)
     ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
     ppl.synthesizer = (lambda *storys, outlines: '\n'.join([f'{o["title"]}\n{s}' for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))  # noqa: E501

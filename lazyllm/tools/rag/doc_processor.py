@@ -1,3 +1,4 @@
+from lazyllm.tools.rag.data_loaders import DirectoryReader
 from pydantic import BaseModel
 from typing import Dict, List, Optional, Any
 from sqlalchemy import create_engine, Column, JSON, String, TIMESTAMP, Table, MetaData, inspect, delete, text
@@ -10,7 +11,6 @@ from .store.store_base import DEFAULT_KB_ID
 from .store.document_store import _DocumentStore
 from .store.utils import fibonacci_backoff, create_file_path
 from .transform import (AdaptiveTransform, make_transform,)
-from .readers import ReaderBase
 from .doc_node import DocNode
 from .utils import gen_docid, ensure_call_endpoint, BaseResponse
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
@@ -28,7 +28,7 @@ ENABLE_DB = os.getenv('RAG_ENABLE_DB', 'false').lower() == 'true'
 
 
 class _Processor:
-    def __init__(self, store: _DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
+    def __init__(self, store: _DocumentStore, reader: DirectoryReader, node_groups: Dict[str, Dict],
                  display_name: Optional[str] = None, description: Optional[str] = None,
                  server: bool = False):
         self._store = store
@@ -48,12 +48,11 @@ class _Processor:
                 metadata.setdefault(RAG_DOC_ID, doc_id)
                 metadata.setdefault(RAG_DOC_PATH, path)
                 metadata.setdefault(RAG_KB_ID, DEFAULT_KB_ID)
-            root_nodes, image_nodes = self._reader.load_data(input_files, metadatas, split_image_nodes=True)
-            self._store.update_nodes(self._set_nodes_number(root_nodes))
-            self._create_nodes_recursive(root_nodes, LAZY_ROOT_NAME)
-            if image_nodes:
-                self._store.update_nodes(self._set_nodes_number(image_nodes))
-                self._create_nodes_recursive(image_nodes, LAZY_IMAGE_GROUP)
+            root_nodes = self._reader.load_data(input_files, metadatas, split_nodes_by_type=True)
+            for k, v in root_nodes.items():
+                if not v: continue
+                self._store.update_nodes(self._set_nodes_number(v))
+                self._create_nodes_recursive(v, k)
             LOG.info('Add documents done!')
         except Exception as e:
             LOG.error(f'Add documents failed: {e}, {traceback.format_exc()}')
@@ -237,7 +236,7 @@ class DocumentProcessor(ModuleBase):
             self._inited = True
             LOG.info(f'[DocumentProcessor] init done. feedback {self._feedback_url}, prefix {self._path_prefix}')
 
-        def register_algorithm(self, name: str, store: _DocumentStore, reader: ReaderBase,
+        def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader,
                                node_groups: Dict[str, Dict], display_name: Optional[str] = None,
                                description: Optional[str] = None, force_refresh: bool = False):
             self._init_components(server=self._server)
@@ -604,9 +603,10 @@ class DocumentProcessor(ModuleBase):
         else:
             getattr(impl, method)(*args, **kwargs)
 
-    def register_algorithm(self, name: str, store: _DocumentStore, reader: ReaderBase, node_groups: Dict[str, Dict],
+    def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader, node_groups: Dict[str, Dict],
                            display_name: Optional[str] = None, description: Optional[str] = None,
                            force_refresh: bool = False, **kwargs):
+        assert isinstance(reader, DirectoryReader), 'Only DirectoryReader can be registered to processor'
         self._dispatch('register_algorithm', name, store, reader, node_groups,
                        display_name, description, force_refresh, **kwargs)
 

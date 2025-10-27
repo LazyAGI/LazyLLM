@@ -3,6 +3,7 @@ import pytest
 
 import lazyllm
 from lazyllm.engine import LightEngine
+from lazyllm.launcher import cleanup
 
 
 class TestEngine(object):
@@ -10,7 +11,7 @@ class TestEngine(object):
     def _test_vqa(self):
         resource = [dict(id='0', kind='web', name='web', args=dict(port=None, title='多模态聊天机器人', history=[], audio=True))]
         node = [dict(id='1', kind='VQA', name='vqa',
-                     args=dict(base_model='Qwen2.5-VL-32B-Instruct', type='local', deploy_method='vllm'))]
+                     args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local'))]
         edge = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
         engine = LightEngine()
         engine.start(node, edge, resource)
@@ -21,6 +22,7 @@ class TestEngine(object):
         LightEngine().reset()
         lazyllm.FileSystemQueue().dequeue()
         lazyllm.FileSystemQueue(klass='lazy_trace').dequeue()
+        cleanup()
 
     def test_http(self):
         nodes = [
@@ -50,10 +52,10 @@ class TestEngine(object):
         translator_prompt = 'Now you are a master of translation prompts, capable of converting any Chinese content entered by the user into English translation prompts. In this task, you need to convert any input content into English translation prompts, and you can enrich and expand the prompt content.'  # noqa E501
 
         resources = [dict(id='llm', kind='LLM', name='base',
-                          args=dict(base_model='Qwen3-30B-A3B-Instruct-2507', type='local')),
+                          args=dict(base_model='internlm2-chat-7b', type='local')),
                      dict(id='file-resource', kind='File', name='file', args=dict(id='file-resource')),
                      dict(id='vqa', kind='VQA', name='vqa',
-                          args=dict(base_model='Qwen2.5-VL-32B-Instruct', type='local', deploy_method='vllm')),
+                          args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local')),
                      dict(id='web', kind='web', name='web', args=dict(port=None, title='多模态聊天机器人', audio=True))]
 
         nodes1 = [
@@ -107,7 +109,7 @@ class TestEngine(object):
         assert '.wav' in r
 
     def test_stream_and_hostory(self):
-        resources = [dict(id='0', kind='LocalLLM', name='base', args=dict(base_model='Qwen3-30B-A3B-Instruct-2507'))]
+        resources = [dict(id='0', kind='LocalLLM', name='base', args=dict(base_model='internlm2-chat-7b'))]
         builtin_history = [['水的沸点是多少？', '您好，我的答案是：水的沸点在标准大气压下是100摄氏度。'],
                            ['世界上最大的动物是什么？', '您好，我的答案是：蓝鲸是世界上最大的动物。'],
                            ['人一天需要喝多少水？', '您好，我的答案是：一般建议每天喝8杯水，大约2升。']]
@@ -146,7 +148,7 @@ class TestEngine(object):
     def test_engine_shared_vqa(self):
         engine = LightEngine()
         resources = [dict(id='vqa', kind='VQA', name='vqa',
-                          args=dict(base_model='Qwen2.5-VL-32B-Instruct', type='local', deploy_method='vllm'))]
+                          args=dict(base_model='Mini-InternVL-Chat-2B-V1-5', type='local'))]
 
         nodes = [dict(id='0', kind='SharedModel', name='vqa',
                       args=dict(llm='vqa', cls='vqa'))]
@@ -182,7 +184,7 @@ class TestEngine(object):
 
     def test_mcptool(self):
         resource = [dict(id='0', kind='LLM', name='base',
-                         args=dict(base_model='Qwen3-30B-A3B-Instruct-2507', type='local')),
+                         args=dict(base_model='internlm2-chat-7b', type='local')),
                     dict(id='1', kind='MCPTool', name='list_allowed_directories',
                          args=dict(command_or_url='npx', tool_name='list_allowed_directories',
                                    args=['-y', '@modelcontextprotocol/server-filesystem', './']))]

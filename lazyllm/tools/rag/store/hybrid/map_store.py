@@ -180,7 +180,7 @@ class MapStore(LazyLLMStoreBase):
                 cur = conn.cursor()
                 self._ensure_table(cur, collection_name)
                 where, args = self._build_where(collection_name, criteria)
-                cur.execute(f'''SELECT uid, doc_id, 'group', content, meta, global_meta, type, number, kb_id,
+                cur.execute(f'''SELECT uid, doc_id, "group", content, meta, global_meta, type, number, kb_id,
                                 excluded_embed_metadata_keys, excluded_llm_metadata_keys, parent, answer, image_keys
                                 FROM {collection_name}{where}''', args)
                 rows = cur.fetchall()

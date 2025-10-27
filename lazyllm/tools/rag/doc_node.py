@@ -8,6 +8,7 @@ from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 import uuid
 import threading
 import time
+import hashlib
 import copy
 
 _pickle_blacklist = {'_store', '_node_groups'}
@@ -52,6 +53,7 @@ class DocNode:
         self._embedding_state = set()
         self.relevance_score = None
         self.similarity_score = None
+        self._content_hash: Optional[str] = None
 
     @property
     def uid(self) -> str:
@@ -60,6 +62,15 @@ class DocNode:
     @property
     def group(self) -> str:
         return self._group
+
+    @property
+    def content(self) -> Union[str, List[Any]]:
+        return self._content
+
+    @content.setter
+    def content(self, value: Union[str, List[Any]]) -> None:
+        self._content = value
+        self._content_hash = None
 
     @property
     def text(self) -> str:
@@ -71,6 +82,12 @@ class DocNode:
             return '\n'.join(self._content)
         else:
             raise TypeError(f'content type "{type(self._content)}" is neither a str nor a list')
+
+    @property
+    def content_hash(self) -> str:
+        if self._content_hash is None:
+            self._content_hash = hashlib.sha256(self.text.encode('utf-8')).hexdigest()
+        return self._content_hash
 
     @property
     def embedding(self):

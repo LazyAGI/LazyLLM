@@ -187,9 +187,8 @@ rewooquery2 = '3是奇数还是偶数？'
 class TestTrainableFunctionCall(object):
     @classmethod
     def setup_class(cls):
-        cls.llm = lazyllm.TrainableModule('Qwen3-30B-A3B-Instruct-2507').deploy_method(
-            deploy.vllm,
-            options_keys=['enable_auto_tool_choice', 'tool_call_parser']).start()
+        cls.llm = lazyllm.TrainableModule('internlm2-chat-7b').deploy_method(
+            deploy.vllm).start()
 
     @classmethod
     def teardown_class(cls):

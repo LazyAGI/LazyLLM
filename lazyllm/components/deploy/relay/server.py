@@ -1,3 +1,4 @@
+from lazyllm.common.utils import str2obj
 import uvicorn
 import argparse
 import os
@@ -7,12 +8,14 @@ import traceback
 from types import GeneratorType
 import lazyllm
 from lazyllm import kwargs, package, load_obj
-from lazyllm import FastapiApp, globals, decode_request
+from lazyllm import FastapiApp, globals
 import time
 import pickle
 import codecs
 import asyncio
+import functools
 from functools import partial
+from typing import Callable
 
 from fastapi import FastAPI, Request
 from fastapi.responses import Response, StreamingResponse
@@ -34,6 +37,7 @@ parser.add_argument('--before_function')
 parser.add_argument('--after_function')
 parser.add_argument('--pythonpath')
 parser.add_argument('--num_replicas', type=int, default=1, help='num of ray replicas')
+parser.add_argument('--security_key', type=str, default=None, help='security key')
 args = parser.parse_args()
 
 if args.pythonpath:
@@ -60,7 +64,16 @@ async def async_wrapper(func, *args, **kwargs):
     result = await loop.run_in_executor(None, partial(impl, func, globals._sid, globals._data, *args, **kwargs))
     return result
 
+def security_check(f: Callable):
+    @functools.wraps(f)
+    async def wrapper(request: Request):
+        if args.security_key and args.security_key != request.headers.get('Security-Key'):
+            return Response(content='Authentication failed', status_code=401)
+        return (await f(request)) if inspect.iscoroutinefunction(f) else f(request)
+    return wrapper
+
 @app.post('/_call')
+@security_check
 async def lazyllm_call(request: Request):
     try:
         fname, args, kwargs = await request.json()
@@ -73,11 +86,12 @@ async def lazyllm_call(request: Request):
         return Response(content=f'{e}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
 
 @app.post('/generate')
+@security_check
 async def generate(request: Request): # noqa C901
     try:
         input, kw = (await request.json()), {}
         try:
-            input, kw = decode_request(input)
+            input, kw = str2obj(input)
         except Exception: pass
         origin = input
 
@@ -85,8 +99,8 @@ async def generate(request: Request): # noqa C901
         #                    The reason is that when multiple coroutines use the same Session-ID, the function
         #                    clears the globals at the end, which causes some coroutines to mistakenly remove
         #                    data from globals after finishing execution.
-        globals._init_sid(decode_request(request.headers.get('Session-ID')))
-        globals._update(decode_request(request.headers.get('Global-Parameters')))
+        globals._init_sid(request.headers.get('Session-ID'))
+        globals.unpickle_and_update_data(request.headers.get('Global-Parameters'))
 
         if args.before_function:
             assert (callable(before_func)), 'before_func must be callable'
