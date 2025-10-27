@@ -13,6 +13,7 @@
   - API交互: Cookbook/API_Interaction_Agent_demo.md
   - 自适应工具调用: Cookbook/flex_agent.md
   - 历史聊天: Cookbook/rag_nloop.md
+  - 多模态输出: Cookbook/multi_modal_output_agent.md
 - 最佳实践:
   - 工作流: Best Practice/flow.md
   - 流程应用: Best Practice/flowapp.md
