@@ -37,6 +37,7 @@ loader1 = SimpleDirectoryReader(
     exclude_hidden=True,
     recursive=False
 )
+
 documents = loader1.forward()
 for doc in documents:
     print(doc.text)

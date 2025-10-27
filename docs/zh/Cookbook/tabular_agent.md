@@ -65,6 +65,7 @@ loader2 = SimpleDirectoryReader(
         )
     }
 )
+
 documents2 = loader2.forward()
 for docs in documents2:
     print(docs.text)
