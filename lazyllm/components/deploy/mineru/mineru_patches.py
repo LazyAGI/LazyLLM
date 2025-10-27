@@ -1,12 +1,12 @@
 import copy
 from mineru.backend.pipeline import pipeline_middle_json_mkcontent
 from mineru.backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text as pipeline_merge_para_with_text
+from mineru.backend.pipeline.pipeline_middle_json_mkcontent import get_title_level
 from mineru.backend.vlm import vlm_middle_json_mkcontent
 from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text as vlm_merge_para_with_text
 from mineru.utils.enum_class import BlockType, ContentType
 
 # patches to mineru (to output bbox)
-
 def _parse_line_spans(para_block, page_idx):
     lines_metas = []
     if 'lines' in para_block:
@@ -23,7 +23,7 @@ def _parse_line_spans(para_block, page_idx):
 
 # patches to pipeline
 
-def _pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # noqa: C901
+def pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size):  # noqa: C901
     para_type = para_block['type']
     para_content = {}
     if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX]:
@@ -38,7 +38,7 @@ def _pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
             'text': pipeline_merge_para_with_text(para_block),
             'lines': _parse_line_spans(para_block, page_idx)
         }
-        title_level = pipeline_middle_json_mkcontent.get_title_level(para_block)
+        title_level = get_title_level(para_block)
         if title_level != 0:
             para_content['text_level'] = title_level
     elif para_type == BlockType.INTERLINE_EQUATION:
@@ -46,7 +46,7 @@ def _pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
             return None
         para_content = {
             'type': ContentType.EQUATION,
-            'img_path': f'{img_buket_path}/{para_block["lines"][0]["spans"][0].get("image_path", "")}',
+            'img_path': f"{img_buket_path}/{para_block['lines'][0]['spans'][0].get('image_path', '')}",
             'lines': _parse_line_spans(para_block, page_idx)
         }
         if para_block['lines'][0]['spans'][0].get('content', ''):
@@ -54,12 +54,8 @@ def _pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
             para_content['text_format'] = 'latex'
     elif para_type == BlockType.IMAGE:
         image_lines_metas = []
-        para_content = {
-            'type': ContentType.IMAGE,
-            'img_path': '',
-            BlockType.IMAGE_CAPTION: [],
-            BlockType.IMAGE_FOOTNOTE: []
-        }
+        para_content = {'type': ContentType.IMAGE, 'img_path': '',
+                        BlockType.IMAGE_CAPTION: [], BlockType.IMAGE_FOOTNOTE: []}
         for block in para_block['blocks']:
             image_lines_metas.extend(_parse_line_spans(block, page_idx))
             if block['type'] == BlockType.IMAGE_BODY:
@@ -67,22 +63,16 @@ def _pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
                     for span in line['spans']:
                         if span['type'] == ContentType.IMAGE:
                             if span.get('image_path', ''):
-                                para_content['img_path'] = f'{img_buket_path}/{span["image_path"]}'
+                                para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
             if block['type'] == BlockType.IMAGE_CAPTION:
-                para_content[BlockType.IMAGE_CAPTION].append(
-                    pipeline_merge_para_with_text(block))
+                para_content[BlockType.IMAGE_CAPTION].append(pipeline_merge_para_with_text(block))
             if block['type'] == BlockType.IMAGE_FOOTNOTE:
-                para_content[BlockType.IMAGE_FOOTNOTE].append(
-                    pipeline_merge_para_with_text(block))
+                para_content[BlockType.IMAGE_FOOTNOTE].append(pipeline_merge_para_with_text(block))
         para_content['lines'] = image_lines_metas
     elif para_type == BlockType.TABLE:
-        para_content = {
-            'type': ContentType.TABLE,
-            'img_path': '',
-            BlockType.TABLE_CAPTION: [],
-            BlockType.TABLE_FOOTNOTE: []
-        }
         table_lines_metas = []
+        para_content = {'type': ContentType.TABLE, 'img_path': '',
+                        BlockType.TABLE_CAPTION: [], BlockType.TABLE_FOOTNOTE: []}
         for block in para_block['blocks']:
             table_lines_metas.extend(_parse_line_spans(block, page_idx))
             if block['type'] == BlockType.TABLE_BODY:
@@ -90,40 +80,68 @@ def _pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx):
                     for span in line['spans']:
                         if span['type'] == ContentType.TABLE:
                             if span.get('html', ''):
-                                para_content[BlockType.TABLE_BODY] = f'{span["html"]}'
+                                para_content[BlockType.TABLE_BODY] = f"{span['html']}"
 
                             if span.get('image_path', ''):
-                                para_content['img_path'] = f'{img_buket_path}/{span["image_path"]}'
+                                para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
 
             if block['type'] == BlockType.TABLE_CAPTION:
-                para_content[BlockType.TABLE_CAPTION].append(
-                    pipeline_merge_para_with_text(block))
+                para_content[BlockType.TABLE_CAPTION].append(pipeline_merge_para_with_text(block))
             if block['type'] == BlockType.TABLE_FOOTNOTE:
-                para_content[BlockType.TABLE_FOOTNOTE].append(
-                    pipeline_merge_para_with_text(block))
+                para_content[BlockType.TABLE_FOOTNOTE].append(pipeline_merge_para_with_text(block))
         para_content['lines'] = table_lines_metas
 
+    page_width, page_height = page_size
+    para_bbox = para_block.get('bbox')
+    if para_bbox:
+        x0, y0, x1, y1 = para_bbox
+        para_content['bbox'] = [
+            int(x0 * 1000 / page_width),
+            int(y0 * 1000 / page_height),
+            int(x1 * 1000 / page_width),
+            int(y1 * 1000 / page_height),
+        ]
+
     para_content['page_idx'] = page_idx
-    para_content['bbox'] = para_block['bbox']
+
     return para_content
 
 
-pipeline_middle_json_mkcontent.make_blocks_to_content_list = _pipeline_make_blocks_to_content_list
+pipeline_middle_json_mkcontent.make_blocks_to_content_list = pipeline_make_blocks_to_content_list
 
 
-# patches to vlm
+# # patches to vlm
 
-def _vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # noqa: C901
+def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size):  # noqa: C901
     para_type = para_block['type']
     para_content = {}
-    if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX]:
+    if para_type in [
+        BlockType.TEXT,
+        BlockType.REF_TEXT,
+        BlockType.PHONETIC,
+        BlockType.HEADER,
+        BlockType.FOOTER,
+        BlockType.PAGE_NUMBER,
+        BlockType.ASIDE_TEXT,
+        BlockType.PAGE_FOOTNOTE,
+    ]:
         para_content = {
-            'type': ContentType.TEXT,
+            'type': para_type,
             'text': vlm_merge_para_with_text(para_block),
             'lines': _parse_line_spans(para_block, page_idx)
         }
+    elif para_type == BlockType.LIST:
+        para_content = {
+            'type': para_type,
+            'sub_type': para_block.get('sub_type', ''),
+            'list_items': [],
+        }
+        for block in para_block['blocks']:
+            item_text = vlm_merge_para_with_text(block)
+            if item_text.strip():
+                para_content['list_items'].append(item_text)
     elif para_type == BlockType.TITLE:
-        title_level = vlm_middle_json_mkcontent.get_title_level(para_block)
+        title_level = get_title_level(para_block)
         para_content = {
             'type': ContentType.TEXT,
             'text': vlm_merge_para_with_text(para_block),
@@ -140,12 +158,8 @@ def _vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # n
         }
     elif para_type == BlockType.IMAGE:
         image_lines_metas = []
-        para_content = {
-            'type': ContentType.IMAGE,
-            'img_path': '',
-            BlockType.IMAGE_CAPTION: [],
-            BlockType.IMAGE_FOOTNOTE: []
-        }
+        para_content = {'type': ContentType.IMAGE, 'img_path': '',
+                        BlockType.IMAGE_CAPTION: [], BlockType.IMAGE_FOOTNOTE: []}
         for block in para_block['blocks']:
             image_lines_metas.extend(_parse_line_spans(block, page_idx))
             if block['type'] == BlockType.IMAGE_BODY:
@@ -153,44 +167,58 @@ def _vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx):  # n
                     for span in line['spans']:
                         if span['type'] == ContentType.IMAGE:
                             if span.get('image_path', ''):
-                                para_content['img_path'] = f'{img_buket_path}/{span["image_path"]}'
+                                para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
             if block['type'] == BlockType.IMAGE_CAPTION:
-                para_content[BlockType.IMAGE_CAPTION].append(
-                    vlm_merge_para_with_text(block))
+                para_content[BlockType.IMAGE_CAPTION].append(vlm_merge_para_with_text(block))
             if block['type'] == BlockType.IMAGE_FOOTNOTE:
-                para_content[BlockType.IMAGE_FOOTNOTE].append(
-                    vlm_merge_para_with_text(block))
+                para_content[BlockType.IMAGE_FOOTNOTE].append(vlm_merge_para_with_text(block))
         para_content['lines'] = image_lines_metas
     elif para_type == BlockType.TABLE:
         table_lines_metas = []
-        para_content = {
-            'type': ContentType.TABLE,
-            'img_path': '',
-            BlockType.TABLE_CAPTION: [],
-            BlockType.TABLE_FOOTNOTE: []
-        }
+        para_content = {'type': ContentType.TABLE, 'img_path': '',
+                        BlockType.TABLE_CAPTION: [], BlockType.TABLE_FOOTNOTE: []}
         for block in para_block['blocks']:
             table_lines_metas.extend(_parse_line_spans(block, page_idx))
             if block['type'] == BlockType.TABLE_BODY:
                 for line in block['lines']:
                     for span in line['spans']:
                         if span['type'] == ContentType.TABLE:
+
                             if span.get('html', ''):
-                                para_content[BlockType.TABLE_BODY] = f'{span["html"]}'
+                                para_content[BlockType.TABLE_BODY] = f"{span['html']}"
 
                             if span.get('image_path', ''):
-                                para_content['img_path'] = f'{img_buket_path}/{span["image_path"]}'
+                                para_content['img_path'] = f"{img_buket_path}/{span['image_path']}"
 
             if block['type'] == BlockType.TABLE_CAPTION:
-                para_content[BlockType.TABLE_CAPTION].append(
-                    vlm_merge_para_with_text(block))
+                para_content[BlockType.TABLE_CAPTION].append(vlm_merge_para_with_text(block))
             if block['type'] == BlockType.TABLE_FOOTNOTE:
-                para_content[BlockType.TABLE_FOOTNOTE].append(
-                    vlm_merge_para_with_text(block))
+                para_content[BlockType.TABLE_FOOTNOTE].append(vlm_merge_para_with_text(block))
         para_content['lines'] = table_lines_metas
+    elif para_type == BlockType.CODE:
+        code_lines_metas = []
+        para_content = {'type': BlockType.CODE, 'sub_type': para_block['sub_type'], BlockType.CODE_CAPTION: []}
+        for block in para_block['blocks']:
+            code_lines_metas.extend(_parse_line_spans(block, page_idx))
+            if block['type'] == BlockType.CODE_BODY:
+                para_content[BlockType.CODE_BODY] = vlm_merge_para_with_text(block)
+                if para_block['sub_type'] == BlockType.CODE:
+                    para_content['guess_lang'] = para_block['guess_lang']
+            if block['type'] == BlockType.CODE_CAPTION:
+                para_content[BlockType.CODE_CAPTION].append(vlm_merge_para_with_text(block))
+        para_content['lines'] = code_lines_metas
+    page_width, page_height = page_size
+    para_bbox = para_block.get('bbox')
+    if para_bbox:
+        x0, y0, x1, y1 = para_bbox
+        para_content['bbox'] = [
+            int(x0 * 1000 / page_width),
+            int(y0 * 1000 / page_height),
+            int(x1 * 1000 / page_width),
+            int(y1 * 1000 / page_height),
+        ]
 
     para_content['page_idx'] = page_idx
-    para_content['bbox'] = para_block['bbox']
     return para_content
 
-vlm_middle_json_mkcontent.make_blocks_to_content_list = _vlm_make_blocks_to_content_list
+vlm_middle_json_mkcontent.make_blocks_to_content_list = vlm_make_blocks_to_content_list

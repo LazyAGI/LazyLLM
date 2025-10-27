@@ -67,10 +67,10 @@ class MineruServerBase:
                  default_backend: str = 'pipeline', default_lang: str = 'ch_server',
                  default_parse_method: str = 'auto', default_formula_enable: bool = True,
                  default_table_enable: bool = True, default_return_md: bool = False,
-                 default_return_content_list: bool = True, mem_fraction_static: float = 0.8):
-        if default_backend not in ['pipeline', 'vlm-sglang-engine', 'vlm-transformers']:
+                 default_return_content_list: bool = True):
+        if default_backend not in ['pipeline', 'vlm-vllm-async-engine', 'vlm-transformers']:
             raise ValueError(f'Invalid backend: {default_backend}, \
-                             only support pipeline, vlm-sglang-engine, vlm-transformers')
+                             only support pipeline, vlm-vllm-async-engine, vlm-transformers')
         if default_lang not in ['ch', 'ch_server', 'ch_lite', 'en']:
             raise ValueError(f'Invalid language: {default_lang}, \
                              only support ch, ch_server, ch_lite, en')
@@ -86,9 +86,10 @@ class MineruServerBase:
         self._default_table_enable = default_table_enable
         self._default_return_md = default_return_md
         self._default_return_content_list = default_return_content_list
-        self._mem_fraction_static = mem_fraction_static
+
         self._supported_office_types = ['.pptx', '.ppt', '.docx', '.doc'] if _check_libreoffice() else []
         LOG.info(f'[MINERU SERVER] Supported office types: {self._supported_office_types}')
+
         self._middle_file_dir = tempfile.mkdtemp()
         atexit.register(lambda: shutil.rmtree(self._middle_file_dir, ignore_errors=True))
         try:
@@ -105,7 +106,7 @@ class MineruServerBase:
                         use_cache: bool = Form(False, description='if True, chache_dir should be set'),  # noqa B008
                         lang: str = Form('ch_server',  # noqa B008
                                          description='only use for pipeline,ch|ch_server|ch_lite|en'),
-                        backend: str = Form(None, description='Parsing mode, vlm-sglang-engine|pipeline'),  # noqa B008
+                        backend: str = Form(None, description='Parsing mode, pipeline|vlm-transformers|vlm-vllm-async-engine'),  # noqa B008
                         parse_method: str = Form('auto'),  # noqa B008
                         formula_enable: bool = Form(None, description='Whether to enable formula parsing'),  # noqa B008
                         table_enable: bool = Form(None, description='Whether to enable table parsing'),  # noqa B008
@@ -121,9 +122,9 @@ class MineruServerBase:
             raise HTTPException(status_code=400, detail=f'Invalid language: {lang}, \
                                 only support ch, ch_server, ch_lite, en')
 
-        if backend and backend not in ['pipeline', 'vlm-sglang-engine', 'vlm-transformers']:
+        if backend and backend not in ['pipeline', 'vlm-vllm-async-engine', 'vlm-transformers']:
             raise HTTPException(status_code=400, detail=f'Invalid backend: {backend}, \
-                                only support pipeline, vlm-sglang-engine, vlm-transformers')
+                                only support pipeline, vlm-vllm-async-engine, vlm-transformers')
 
         unique_id = str(uuid.uuid4())
         unique_dir = os.path.join(self._middle_file_dir, unique_id)
@@ -198,8 +199,6 @@ class MineruServerBase:
                       table_enable=table_enable, f_draw_layout_bbox=False, f_draw_span_bbox=False,
                       f_dump_md=True, f_dump_middle_json=False, f_dump_model_output=False,
                       f_dump_orig_pdf=False, f_dump_content_list=True)
-        if backend == 'vlm-sglang-engine':
-            params['mem_fraction_static'] = self._mem_fraction_static
 
         await mineru.cli.common.aio_do_parse(**params)
 
@@ -360,19 +359,29 @@ class MineruServerBase:
             LOG.error(f'Failed to cache data for {hash_id}: {e}')
 
     def _load_files(self, file_path: str, unique_dir: str):
-        suffix = file_path.suffix.lower()
-        if suffix in mineru.cli.common.pdf_suffixes + mineru.cli.common.image_suffixes + self._supported_office_types:
-            if suffix in self._supported_office_types:
-                self._convert_file_to_pdf(file_path, unique_dir)
-                output_path = os.path.join(unique_dir, file_path.name.replace(suffix, '.pdf'))
-                file_path = Path(output_path)
-            try:
-                pdf_bytes = mineru.cli.common.read_fn(file_path)
-                return (file_path.stem, pdf_bytes)
-            except Exception as e:
-                raise HTTPException(status_code=400, detail=f'File Not Found: {file_path}: {e}')
-        else:
-            raise HTTPException(status_code=400, detail=f'Unsupported file type: {file_path.suffix}')
+        from mineru.utils.guess_suffix_or_lang import guess_suffix_by_path
+        from mineru.cli.common import pdf_suffixes, image_suffixes
+
+        file_path_obj = Path(file_path)
+        suffix = file_path_obj.suffix.lower()
+        supported_suffixes = pdf_suffixes + image_suffixes
+
+        is_office_file = suffix in self._supported_office_types
+        is_supported_file = is_office_file or guess_suffix_by_path(file_path_obj) in supported_suffixes
+
+        if not is_supported_file:
+            raise HTTPException(status_code=400, detail=f'Unsupported file type: {suffix}')
+
+        if is_office_file:
+            self._convert_file_to_pdf(file_path, unique_dir)
+            output_path = os.path.join(unique_dir, file_path_obj.name.replace(suffix, '.pdf'))
+            file_path_obj = Path(output_path)
+
+        try:
+            pdf_bytes = mineru.cli.common.read_fn(file_path_obj)
+            return (file_path_obj.stem, pdf_bytes)
+        except Exception as e:
+            raise HTTPException(status_code=400, detail=f'File Not Found: {file_path_obj}: {e}')
 
     def _convert_file_to_pdf(self, input_path, output_dir):
         if not os.path.isfile(input_path):

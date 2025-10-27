@@ -90,7 +90,7 @@ jobs:
           set -ex
           mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
-  check_changes:
+  check_deploy_changes:
     runs-on: ubuntu-latest
     outputs:
       changed: ${{ steps.filter.outputs.any_changed }}
@@ -109,6 +109,26 @@ jobs:
               - 'lazyllm/launcher.py'
               - 'lazyllm/components/deploy/**/*.py'
               - 'lazyllm/module/llms/trainablemodule.py'
+
+  check_online_changes:
+    runs-on: tps_sco_nv
+    outputs:
+      changed: ${{ steps.filter.outputs.any_changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Filter changed files
+        id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            any_changed:
+              - 'lazyllm/module/llms/onlinemodule/**/*.py'
+              - 'lazyllm/module/llms/onlinemodule/__init__.py'
+              - 'lazyllm/module/llms/onlinemodule/automodel.py'
 
   BasicTests:
     runs-on: tps_sco_nv
@@ -132,11 +152,11 @@ jobs:
 
   AdvancedStandardTests:
     runs-on: tps_sco_nv
-    needs: [Clone, check_changes]
+    needs: [Clone, check_deploy_changes]
     steps:
       - name: Get changed env
         run: |
-          echo "IF_CHANGED=${{ needs.check_changes.outputs.changed }}" >> $GITHUB_ENV
+          echo "IF_CHANGED=${{ needs.check_deploy_changes.outputs.changed }}" >> $GITHUB_ENV
 
       - name: RunTests
         run: |
@@ -151,7 +171,7 @@ jobs:
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
-          if [ "$IF_CHANGED" = "true" ]; then unset LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH ;fi
+          if [ "$IF_CHANGED" = "true" ]; then set LAZYLLM_SKIP_GPU_TEST=False ;fi
           if [ -f tests/advanced_tests/standard_test/.pytest-cache/v/cache/lastfailed ]; then
             python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/standard_test/
           else
@@ -160,11 +180,11 @@ jobs:
 
   AdvancedFullTests:
     runs-on: tps_sco_nv
-    needs: [Clone, check_changes]
+    needs: [Clone, check_deploy_changes]
     steps:
       - name: Get changed env
         run: |
-          echo "IF_CHANGED=${{ needs.check_changes.outputs.changed }}" >> $GITHUB_ENV
+          echo "IF_CHANGED=${{ needs.check_deploy_changes.outputs.changed }}" >> $GITHUB_ENV
 
       - name: RunTests
         run: |
@@ -178,7 +198,7 @@ jobs:
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
-          if [ "$IF_CHANGED" = "true" ]; then unset LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH ;fi
+          if [ "$IF_CHANGED" = "true" ]; then set LAZYLLM_SKIP_GPU_TEST=False ;fi
           if [ -f tests/advanced_tests/full_test/.pytest-cache/v/cache/lastfailed ]; then
             python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/full_test/
           else
@@ -187,7 +207,8 @@ jobs:
 
   ChargeTests:
     runs-on: tps_sco_nv
-    needs: [ Clone ]
+    needs: [ Clone, check_online_changes ]
+    if: ${{ needs.check_online_changes.outputs.changed }} == 'true'
     steps:
       - name: Clone LazyLLM-Cache for Output and Cache
         run: |

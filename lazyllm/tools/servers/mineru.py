@@ -1,5 +1,9 @@
+import os
 from lazyllm.module import ServerModule
 from lazyllm.components.deploy.mineru.mineru_server_module import MineruServerBase
+
+os.environ['TORCHDYNAMO_DISABLE'] = '1'
+
 
 class MineruServer(ServerModule):
     def __init__(self,

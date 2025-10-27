@@ -1,6 +1,7 @@
 import time
-from typing import Callable
 import random
+from queue import Empty
+from typing import Callable
 
 from ..core import ComponentBase
 import lazyllm
@@ -63,23 +64,32 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
     def __repr__(self):
         return flows.Pipeline.__repr__(self)
 
-def verify_func_factory(error_message: str, running_message: str,
+def verify_func_factory(error_message: str, running_message: str,  # noqa: C901
                         err_judge: Callable = lambda syb, msg: msg.lstrip().startswith(syb),
                         run_judge: Callable = lambda syb, msg: syb in msg):
     def _hit(symbols, msg, judge):
         return judge(symbols, msg) if isinstance(symbols, str) else any([judge(s, msg) for s in symbols])
 
     def verify_func(job):
+        begin_time = time.time()
         while True:
-            line = job.queue.get()
+            try:
+                line = job.queue.get(timeout=3)
+            except Empty:
+                line = ''
+                status = job.status
+                if status == lazyllm.launchers.status.Failed:
+                    LOG.error('[Verify] Service Startup Failed.')
+                    return False
+                LOG.debug(f'[Verify] Timeout when getting log line and current service status: {status}.')
             if _hit(error_message, line, err_judge):
-                LOG.error(f'Capture error message: {line} \n\n')
+                LOG.error(f'[Verify] Capture error message: {line} \n\n')
                 return False
             elif _hit(running_message, line, run_judge):
-                LOG.info(f'Capture startup message: {line}')
+                LOG.info(f'[Verify] Capture startup message: {line}')
                 break
-            if job.status == lazyllm.launchers.status.Failed:
-                LOG.error('Service Startup Failed.')
+            if time.time() - begin_time > 600:
+                LOG.error('[Verify] Service Startup Timeout.')
                 return False
         return True
     return verify_func
