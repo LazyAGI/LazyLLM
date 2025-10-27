@@ -7,7 +7,7 @@ from .store_base import (
 )
 from .hybrid import HybridStore, MapStore, SenseCoreStore
 from .segment import OpenSearchStore, ElasticSearchStore
-from .vector import ChromadbStore, MilvusStore
+from .vector import ChromaStore, MilvusStore
 
 __all__ = [
     'LazyLLMStoreBase',
@@ -15,7 +15,7 @@ __all__ = [
     'MapStore',
     'OpenSearchStore',
     'ElasticSearchStore',
-    'ChromadbStore',
+    'ChromaStore',
     'MilvusStore',
     'SenseCoreStore',
     'LAZY_IMAGE_GROUP',

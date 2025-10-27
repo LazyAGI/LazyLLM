@@ -1,4 +1,5 @@
 from urllib.parse import urljoin
+import requests
 import lazyllm
 from ..base import OnlineChatModuleBase
 
@@ -14,3 +15,15 @@ class DeepSeekModule(OnlineChatModuleBase):
 
     def _set_chat_url(self):
         self._url = urljoin(self._base_url, 'chat/completions')
+
+    def _validate_api_key(self):
+        try:
+            models_url = urljoin(self._base_url, 'models')
+            headers = {
+                'Authorization': f'Bearer {self._api_key}',
+                'Content-Type': 'application/json'
+            }
+            response = requests.get(models_url, headers=headers, timeout=10)
+            return response.status_code == 200
+        except Exception:
+            return False
