@@ -29,7 +29,7 @@ class TTSBase(LazyLLMDeployBase):
     func = None
 
     def __init__(self, launcher: LazyLLMLaunchersBase = None,
-                 log_path: Optional[str] = None, port: Optional[int] = None):
+                 log_path: Optional[str] = None, port: Optional[int] = None, **kw):
         super().__init__(launcher=launcher)
         self._log_path = log_path
         self._port = port

@@ -6,7 +6,7 @@ from lazyllm import bind
 import tempfile
 
 def run(query):
-    fd, store_file = tempfile.mkstemp(suffix=".db")
+    fd, store_file = tempfile.mkstemp(suffix='.db')
     os.close(fd)
     try:
         milvus_store_conf = {
@@ -25,22 +25,24 @@ def run(query):
             },
         }
 
-        documents = lazyllm.Document(dataset_path="rag_master",
-                                     embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
+        documents = lazyllm.Document(dataset_path='rag_master',
+                                     embed=lazyllm.TrainableModule('bge-m3'),
                                      manager=False,
                                      store_conf=milvus_store_conf)
 
-        documents.create_node_group(name="sentences",
+        documents.create_node_group(name='sentences',
                                     transform=lambda s: [x for x in s.split('。') if x.strip()])
 
         prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\
             ' In this task, you need to provide your answer based on the given context and question.'
 
+        rerank_model = lazyllm.TrainableModule('bge-reranker-large')
+
         with lazyllm.pipeline() as ppl:
-            ppl.retriever = lazyllm.Retriever(doc=documents, group_name="sentences", topk=3)
+            ppl.retriever = lazyllm.Retriever(doc=documents, group_name='sentences', topk=3)
 
             ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
-                                            model="bge-reranker-large",
+                                            model=rerank_model,
                                             topk=1,
                                             output_format='content',
                                             join=True) | bind(query=ppl.input)
@@ -49,7 +51,7 @@ def run(query):
                 lambda nodes, query: dict(context_str=nodes, query=query)
             ) | bind(query=ppl.input)
 
-            ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
+            ppl.llm = lazyllm.TrainableModule('Qwen2.5-32B-Instruct').deploy_method(lazyllm.deploy.vllm).prompt(
                 lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 
         rag = lazyllm.ActionModule(ppl)

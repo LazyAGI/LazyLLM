@@ -8,7 +8,7 @@
     members: [connect_sql_manager, get_sql_manager, extract_db_schema, update_database, create_kb_group, activate_group, activate_groups, get_store, get_embed, register_index, find, clear_cache, create_node_group, find_parent, find_children, register_global_reader, add_reader]
     exclude-members:
 
-::: lazyllm.tools.rag.store.ChromadbStore
+::: lazyllm.tools.rag.store.ChromaStore
     members: [dir, connect, upsert, delete, get, search]
     exclude-members:
 
@@ -20,6 +20,11 @@
     members: connect, upsert, delete, get, search
     exclude-members:
 
+
+::: lazyllm.tools.rag.store.ElasticSearchStore
+    members:
+    exclude-members:
+    
 ::: lazyllm.tools.rag.readers.ReaderBase
     members:
     exclude-members:
@@ -224,6 +229,7 @@
 
 ::: lazyllm.tools.rag.doc_processor.DocumentProcessor
     members: register_algorithm, drop_algorithm
+
 ::: lazyllm.tools.rag.doc_node.QADocNode
     members: get_text
     exclude-members:

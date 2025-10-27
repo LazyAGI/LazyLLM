@@ -6,15 +6,16 @@ from .store_base import (
     BUILDIN_GLOBAL_META_DESC
 )
 from .hybrid import HybridStore, MapStore, SenseCoreStore
-from .segment import OpenSearchStore
-from .vector import ChromadbStore, MilvusStore
+from .segment import OpenSearchStore, ElasticSearchStore
+from .vector import ChromaStore, MilvusStore
 
 __all__ = [
     'LazyLLMStoreBase',
     'HybridStore',
     'MapStore',
     'OpenSearchStore',
-    'ChromadbStore',
+    'ElasticSearchStore',
+    'ChromaStore',
     'MilvusStore',
     'SenseCoreStore',
     'LAZY_IMAGE_GROUP',

@@ -71,7 +71,7 @@ class _StableDiffusion3(object):
             img_str = base64.b64encode(buffered.getvalue()).decode('utf-8')
         else:
             raise ValueError('Unsupported image type')
-        return img_str
+        return f'data:image/png;base64,{img_str}'
 
     @staticmethod
     def images_to_base64(images):
@@ -114,7 +114,7 @@ class _StableDiffusion3(object):
             guidance_scale=7.0,
             max_sequence_length=512,
         ).images
-        img_path_list = self.images_to_files(imgs, self.save_path)
+        img_path_list = self.images_to_base64(imgs)
         return encode_query_with_filepaths(files=img_path_list)
 
     @classmethod
@@ -216,7 +216,7 @@ class StableDiffusionDeploy(LazyLLMDeployBase):
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, launcher: Optional[LazyLLMLaunchersBase] = None,
-                 log_path: Optional[str] = None, trust_remote_code: bool = True, port: Optional[int] = None):
+                 log_path: Optional[str] = None, trust_remote_code: bool = True, port: Optional[int] = None, **kw):
         super().__init__(launcher=launcher)
         self._log_path = log_path
         self._trust_remote_code = trust_remote_code

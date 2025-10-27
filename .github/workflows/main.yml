@@ -18,7 +18,7 @@ on:
       - "docs/assets/**"
       - "docs/**"
 env:
-  CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
+  CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${{ github.run_number }}'
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -90,6 +90,46 @@ jobs:
           set -ex
           mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
+  check_deploy_changes:
+    runs-on: ubuntu-latest
+    outputs:
+      changed: ${{ steps.filter.outputs.any_changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Filter changed files
+        id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            any_changed:
+              - 'lazyllm/launcher.py'
+              - 'lazyllm/components/deploy/**/*.py'
+              - 'lazyllm/module/llms/trainablemodule.py'
+
+  check_online_changes:
+    runs-on: tps_sco_nv
+    outputs:
+      changed: ${{ steps.filter.outputs.any_changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Filter changed files
+        id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            any_changed:
+              - 'lazyllm/module/llms/onlinemodule/**/*.py'
+              - 'lazyllm/module/llms/onlinemodule/__init__.py'
+              - 'lazyllm/module/llms/onlinemodule/automodel.py'
+
   BasicTests:
     runs-on: tps_sco_nv
     needs: [Clone]
@@ -112,8 +152,12 @@ jobs:
 
   AdvancedStandardTests:
     runs-on: tps_sco_nv
-    needs: [Clone]
+    needs: [Clone, check_deploy_changes]
     steps:
+      - name: Get changed env
+        run: |
+          echo "IF_CHANGED=${{ needs.check_deploy_changes.outputs.changed }}" >> $GITHUB_ENV
+
       - name: RunTests
         run: |
           cd ${{ env.CI_PATH }}
@@ -127,6 +171,7 @@ jobs:
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
+          if [ "$IF_CHANGED" = "true" ]; then set LAZYLLM_SKIP_GPU_TEST=False ;fi
           if [ -f tests/advanced_tests/standard_test/.pytest-cache/v/cache/lastfailed ]; then
             python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/standard_test/
           else
@@ -135,8 +180,12 @@ jobs:
 
   AdvancedFullTests:
     runs-on: tps_sco_nv
-    needs: [Clone]
+    needs: [Clone, check_deploy_changes]
     steps:
+      - name: Get changed env
+        run: |
+          echo "IF_CHANGED=${{ needs.check_deploy_changes.outputs.changed }}" >> $GITHUB_ENV
+
       - name: RunTests
         run: |
           cd ${{ env.CI_PATH }}
@@ -148,6 +197,8 @@ jobs:
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
+          source ~/ENV/env.sh
+          if [ "$IF_CHANGED" = "true" ]; then set LAZYLLM_SKIP_GPU_TEST=False ;fi
           if [ -f tests/advanced_tests/full_test/.pytest-cache/v/cache/lastfailed ]; then
             python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/full_test/
           else
@@ -156,9 +207,59 @@ jobs:
 
   ChargeTests:
     runs-on: tps_sco_nv
-    needs: [ Clone ]
+    needs: [ Clone, check_online_changes ]
+    if: ${{ needs.check_online_changes.outputs.changed }} == 'true'
     steps:
+      - name: Clone LazyLLM-Cache for Output and Cache
+        run: |
+          cd ${{ env.CI_PATH }}
+          if [ ! -d "github_cache" ]; then
+            git clone https://github.com/LazyAGI/LazyLLM-Cache.git github_cache
+            echo "Repository cloned successfully"
+          else
+            echo "github_cache folder already exists, skipping clone"
+            cd github_cache
+            if [ -z "$(git status --porcelain)" ]; then
+                echo "Repository is clean, pulling latest changes..."
+                git pull origin main
+                echo "Repository updated successfully"
+            else
+                echo "Repository has uncommitted changes, skipping update"
+                echo "Current status:"
+                git status --short
+            fi
+            cd ..
+          fi
+          ls -alh github_cache
+          echo "LAZYLLM_TEMP_DIR=github_cache/output" >> $GITHUB_ENV
+          echo "LAZYLLM_CACHE_DIR=github_cache/paid_llm_cache" >> $GITHUB_ENV
+
+      - name: Set Cache Mode Based on Run Context
+        run: |
+          echo "GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT"
+          echo "LAZYLLM_CACHE_ONLINE_MODULE=True" >> $GITHUB_ENV
+          echo "LAZYLLM_CACHE_STRATEGY=sqlite" >> $GITHUB_ENV
+          if [ "$GITHUB_RUN_ATTEMPT" = "1" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "This is the first run, and push to main branch."
+            echo "LAZYLLM_CACHE_MODE=RW" >> $GITHUB_ENV
+          elif [ "$GITHUB_RUN_ATTEMPT" != "1" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "This is a re-run! (GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT), and push to main branch."
+            echo "LAZYLLM_CACHE_MODE=WO" >> $GITHUB_ENV
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "This is a pull request from other branch to main."
+            echo "LAZYLLM_CACHE_MODE=RO" >> $GITHUB_ENV
+          fi
+
+      - name: Show ENV
+        run: |
+          echo "LAZYLLM_TEMP_DIR: $LAZYLLM_TEMP_DIR"
+          echo "LAZYLLM_CACHE_DIR: $LAZYLLM_CACHE_DIR"
+          echo "LAZYLLM_CACHE_MODE: $LAZYLLM_CACHE_MODE"
+          echo "LAZYLLM_CACHE_STRATEGY: $LAZYLLM_CACHE_STRATEGY"
+          echo "LAZYLLM_CACHE_ONLINE_MODULE: $LAZYLLM_CACHE_ONLINE_MODULE"
+
       - name: RunTests
+        id: exe_ci
         run: |
           cd ${{ env.CI_PATH }}
           pip install -r tests/requirements.txt
@@ -172,6 +273,22 @@ jobs:
             python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
           else
             python -m pytest -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
+          fi
+
+      - name: Success On Main Branch
+        if: ${{ success() && steps.exe_ci.conclusion == 'success' && github.event_name == 'push' }}
+        run: |
+          cd ${{ env.CI_PATH }}
+          cd github_cache
+          ls -alh .
+          if [ -n "$(git status --porcelain)" ]; then
+            echo "Detected file changes, committing to main branch..."
+            git add .
+            git commit -m "ci: auto-commit workflow changes [skip ci]"
+            git push origin main
+            echo "Changes successfully committed to main branch"
+          else
+            echo "No file changes detected, no commit needed"
           fi
 
   Coverage_linux:

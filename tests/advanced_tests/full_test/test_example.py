@@ -54,7 +54,7 @@ class TestExamples(object):
                 break
             except httpx.ConnectError:
                 continue
-        assert client, "Unable to create client"
+        assert client, 'Unable to create client'
         self.webs.append(web)
         self.clients.append(client)
         return web, client
@@ -62,7 +62,7 @@ class TestExamples(object):
     def test_chat(self):
         from examples.chatbot import chat
         chat.start()
-        query = "请原样英文输出：Hello world."
+        query = '请原样英文输出：Hello world.'
         res = chat(query)
         assert res == 'Hello world.'
 
@@ -73,14 +73,14 @@ class TestExamples(object):
                              chat_history,
                              self.stream_output,
                              self.append_text,
-                             api_name="/_respond_stream")
+                             api_name='/_respond_stream')
         assert ans[0][-1][-1] == 'Hello world.'
 
     def test_story(self):
         from examples.story import ppl
         story = lazyllm.ActionModule(ppl)
         story.start()
-        query = "我的妈妈"
+        query = '我的妈妈'
         res = story(query)
         assert type(res) is str
         assert len(res) >= 1024
@@ -92,7 +92,7 @@ class TestExamples(object):
                              chat_history,
                              self.stream_output,
                              self.append_text,
-                             api_name="/_respond_stream")
+                             api_name='/_respond_stream')
         res = ans[0][-1][-1]
         assert type(res) is str
         assert len(res) >= 1024
@@ -101,10 +101,10 @@ class TestExamples(object):
         from examples.rag import ppl
         rag = lazyllm.ActionModule(ppl)
         rag.start()
-        query = "何为天道？"
+        query = '何为天道？'
         res = rag(query)
         assert type(res) is str
-        assert "天道" in res
+        assert '天道' in res
         assert len(res) >= 16
 
         # test rag warpped in web
@@ -114,21 +114,21 @@ class TestExamples(object):
                              chat_history,
                              self.stream_output,
                              self.append_text,
-                             api_name="/_respond_stream")
+                             api_name='/_respond_stream')
         res = ans[0][-1][-1]
         assert type(res) is str
-        assert "天道" in res
+        assert '天道' in res
         assert len(res) >= 16
 
     def test_painting(self):
         from examples.painting import ppl
         painting = lazyllm.ActionModule(ppl)
         painting.start()
-        query = "画只可爱的小猪"
+        query = '画只可爱的小猪'
         r = painting(query)
         res = decode_query_with_filepaths(r)
         assert type(res) is dict
-        assert "files" in res
+        assert 'files' in res
         assert len(res['files']) == 1
         image = PIL.Image.open(res['files'][0])
         assert image.size == (1024, 1024)
@@ -140,7 +140,7 @@ class TestExamples(object):
                              chat_history,
                              self.stream_output,
                              self.append_text,
-                             api_name="/_respond_stream")
+                             api_name='/_respond_stream')
         image_path = ans[0][0][-1]['value']
         assert os.path.isfile(image_path)
 
@@ -148,7 +148,7 @@ class TestExamples(object):
         from examples.rag_map_store_with_milvus_index import run as rag_run
         res = rag_run('何为天道？')
         assert type(res) is str
-        assert "天道" in res
+        assert '天道' in res
         assert len(res) >= 16
 
 class TestRagFilter(object):
@@ -161,10 +161,15 @@ class TestRagFilter(object):
         url_pattern = r'(http://\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}:\d+)'
         self.doc_server_addr = re.findall(url_pattern, documents.manager.url)[0]
 
+    @pytest.fixture(autouse=True)
+    def run_around_tests(self):
+        yield
+        cleanup()
+
     def test_upload_and_filter(self):
         files = [('files', ('test1.txt', io.BytesIO(b"John's house is in Beijing"), 'text/palin')),
                  ('files', ('test2.txt', io.BytesIO(b"John's house is in Shanghai"), 'text/plain'))]
-        metadatas = [{"comment": "comment1"}, {"signature": "signature2"}]
+        metadatas = [{'comment': 'comment1'}, {'signature': 'signature2'}]
 
         params = dict(override='true', metadatas=json.dumps(metadatas))
 

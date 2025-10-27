@@ -4,7 +4,7 @@ import asyncio
 import threading
 from datetime import datetime
 from pydantic import BaseModel, Field
-from fastapi import HTTPException, Header
+from fastapi import HTTPException, Header  # noqa NID002
 from async_timeout import timeout
 
 import lazyllm
@@ -146,7 +146,7 @@ class InferServer(ServerBase):
         os.makedirs(save_root, exist_ok=True)
         # wait 5 minutes for launch cmd
         hypram = dict(launcher=lazyllm.launchers.remote(sync=False, ngpus=job.num_gpus, retry=30), log_path=save_root)
-        m = lazyllm.TrainableModule(job.model_name).deploy_method((lazyllm.deploy.auto, hypram))
+        m = lazyllm.TrainableModule(job.model_name).deploy_method((getattr(lazyllm.deploy, job.framework), hypram))
 
         # Launch Deploy:
         thread = threading.Thread(target=m.start)

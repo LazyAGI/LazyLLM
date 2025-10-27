@@ -6,14 +6,14 @@ from lazyllm.launcher import cleanup
 class TestIntentClassifier(object):
     @classmethod
     def setup_class(cls):
-        cls._llm = lazyllm.TrainableModule('internlm2-chat-7b')
+        cls._llm = lazyllm.TrainableModule('internlm2-chat-7b').deploy_method(lazyllm.deploy.vllm)
 
     @classmethod
     def teardown_class(cls):
         cleanup()
 
     def test_intent_classifier(self):
-        intent_list = ["Chat", "Financial Knowledge Q&A", "Employee Information Query", "Weather Query"]
+        intent_list = ['Chat', 'Financial Knowledge Q&A', 'Employee Information Query', 'Weather Query']
         ic = IntentClassifier(self._llm, intent_list)
         ic.start()
         assert ic('What is the weather today') == 'Weather Query'
@@ -22,7 +22,7 @@ class TestIntentClassifier(object):
         assert ic('Check the work location of Macro in the Technology Department') == 'Employee Information Query'
 
     def test_intent_classifier_example(self):
-        intent_list = ["Chat", "Financial Knowledge Q&A", "Employee Information Query", "Weather Query"]
+        intent_list = ['Chat', 'Financial Knowledge Q&A', 'Employee Information Query', 'Weather Query']
         ic = IntentClassifier(self._llm, intent_list, examples=[
             ['Who are you', 'Chat'], ['What is the weather today', 'Weather Query']])
         ic.start()
@@ -32,7 +32,7 @@ class TestIntentClassifier(object):
         assert ic('Check the work location of Macro in the Technology Department') == 'Employee Information Query'
 
     def test_intent_classifier_prompt_and_constrain(self):
-        intent_list = ["Chat", "Image Question and Answer", "Music", "Weather Query"]
+        intent_list = ['Chat', 'Image Question and Answer', 'Music', 'Weather Query']
         prompt = ('If the input contains attachments, the intent is determined with the highest priority based on the '
                   'suffix type of the attachments: If it is an image suffix such as .jpg, .png, etc., then the output '
                   'is: Image Question and Answer. If the audio suffix is .mp3, .wav, etc., the output is: Music')

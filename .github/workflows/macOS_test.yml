@@ -29,10 +29,32 @@ env:
   PYTHON_VERSION: "3.10.9"
   
 jobs:
+  check_online_changes:
+    runs-on: macos-13
+    outputs:
+      changed: ${{ steps.filter.outputs.any_changed }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Filter changed files
+        id: filter
+        uses: dorny/paths-filter@v2
+        with:
+          filters: |
+            any_changed:
+              - 'lazyllm/module/llms/onlinemodule/**/*.py'
+              - 'lazyllm/module/llms/onlinemodule/__init__.py'
+              - 'lazyllm/module/llms/onlinemodule/automodel.py'
+
   macos-basic_tests:
+    needs: [check_online_changes]
     if: |
       !contains(github.event.head_commit.message, '[skip ci]')
       && !contains(github.event.pull_request.title, '[skip ci]')
+      && ${{ needs.check_online_changes.outputs.changed }} == 'true'
     runs-on: macos-13
 
     steps:
@@ -180,6 +202,44 @@ jobs:
           git submodule init LazyLLM-Env
           git submodule update LazyLLM-Env
 
+      - name: Create Output and Cache Directories
+        run: |
+          if [ ! -d "github_cache" ]; then
+            git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Cache.git github_cache
+            echo "Repository cloned successfully"
+          else
+            echo "github_cache folder already exists, skipping clone"
+            cd github_cache
+            if [ -z "$(git status --porcelain)" ]; then
+                echo "Repository is clean, pulling latest changes..."
+                git pull origin main
+                echo "Repository updated successfully"
+            else
+                echo "Repository has uncommitted changes, skipping update"
+                echo "Current status:"
+                git status --short
+            fi
+            cd ..
+          fi
+          ls -alh github_cache
+          echo "LAZYLLM_TEMP_DIR=github_cache/output" >> $GITHUB_ENV
+          echo "LAZYLLM_CACHE_DIR=github_cache/paid_llm_cache" >> $GITHUB_ENV
+      
+      - name: Set Cache Mode Based on Run Context
+        run: |
+          echo "GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT"
+          echo "LAZYLLM_CACHE_ONLINE_MODULE=True" >> $GITHUB_ENV
+          echo "LAZYLLM_CACHE_STRATEGY=sqlite" >> $GITHUB_ENV
+          echo "LAZYLLM_CACHE_MODE=RO" >> $GITHUB_ENV
+      
+      - name: Show ENV
+        run: |
+          echo "LAZYLLM_TEMP_DIR: $LAZYLLM_TEMP_DIR"
+          echo "LAZYLLM_CACHE_DIR: $LAZYLLM_CACHE_DIR"
+          echo "LAZYLLM_CACHE_MODE: $LAZYLLM_CACHE_MODE"
+          echo "LAZYLLM_CACHE_STRATEGY: $LAZYLLM_CACHE_STRATEGY"
+          echo "LAZYLLM_CACHE_ONLINE_MODULE: $LAZYLLM_CACHE_ONLINE_MODULE"
+
       - name: Merge PR branch into main
         if: github.event_name == 'pull_request_target'
         run: |
@@ -250,10 +310,13 @@ jobs:
          LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
          LAZYLLM_QWEN_API_KEY: ${{ secrets.LAZYLLM_QWEN_API_KEY }}
          LAZYLLM_QWEN_MODEL_NAME: ${{ secrets.LAZYLLM_QWEN_MODEL_NAME }}
+         LAZYLLM_QWEN_TEXT2IMAGE_MODEL_NAME: ${{ secrets.LAZYLLM_QWEN_TEXT2IMAGE_MODEL_NAME }}
          LAZYLLM_SENSENOVA_API_KEY: ${{ secrets.LAZYLLM_SENSENOVA_API_KEY }}
          LAZYLLM_SENSENOVA_SECRET_KEY: ${{ secrets.LAZYLLM_SENSENOVA_SECRET_KEY }}
          LAZYLLM_DOUBAO_API_KEY: ${{ secrets.LAZYLLM_DOUBAO_API_KEY }}
          LAZYLLM_DOUBAO_MODEL_NAME: ${{ secrets.LAZYLLM_DOUBAO_MODEL_NAME }}
+         LAZYLLM_SILICONFLOW_API_KEY: ${{ secrets.LAZYLLM_SILICONFLOW_API_KEY }}
+         LAZYLLM_SILICONFLOW_MODEL_NAME: ${{ secrets.LAZYLLM_SILICONFLOW_MODEL_NAME }}
          LAZYLLM_PostgreSQL_URL: ${{ secrets.LAZYLLM_PostgreSQL_URL }}
          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         timeout-minutes: 25

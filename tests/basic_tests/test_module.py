@@ -48,6 +48,24 @@ class TestModule:
         m4.update()
         assert m4.eval_result == ['1 after', 'hi after']
 
+    def test_UrlModule_with_security_key(self):
+        def func(x):
+            return str(x) + ' after'
+        # Generate accessible URL service:
+        m1 = lazyllm.ServerModule(func, security_key=True)
+        m1.update()
+
+        m2 = lazyllm.UrlModule(url=m1._url, security_key=m1._security_key)
+        assert m2._url == m1._url
+        m2.evalset([1, 'hi'])
+        m2.update()
+        assert m2.eval_result == ['1 after', 'hi after']
+
+        m3 = lazyllm.UrlModule(url=m1._url)
+        assert m3._url == m1._url
+        with pytest.raises(RuntimeError, match='Authentication failed'):
+            m3(1)
+
     def test_ServerModule(self):
         server_module = lazyllm.ServerModule(lambda x: x.upper())
         server_module.start()

@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 
+__version__ = '6.0.1dev'
+
 from .configs import config
 from .configs import * # noqa F401 of Config
 from .common import *  # noqa F403
@@ -8,7 +10,6 @@ from .flow import *  # noqa F403
 from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,
                          LazyLLMValidateBase, register as component_register, Prompter,
                          AlpacaPrompter, ChatPrompter, FastapiApp, JsonFormatter, FileFormatter)
-from .redis_client import redis_client
 
 from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
@@ -22,6 +23,7 @@ from .patch import patch_os_env
 
 config.done()
 patch_os_env(lambda key, value: config.refresh(key), config.refresh)
+
 
 
 del LazyLLMRegisterMetaClass  # noqa F821
@@ -64,9 +66,6 @@ __all__ = [
     'OnlineEmbeddingModule',
     'OnlineMultiModalModule',
     'AutoModel',
-
-    # client
-    'redis_client',
 
     # hook
     'LazyLLMHook',

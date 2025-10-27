@@ -16,7 +16,9 @@ prompt = ('You are a drawing prompt word master who can convert any Chinese cont
           'prompt word content.')
 
 with pipeline() as ppl:
-    ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt))
+    ppl.llm = (lazyllm.TrainableModule('Qwen2.5-32B-Instruct')
+               .deploy_method(lazyllm.deploy.vllm)
+               .prompt(lazyllm.ChatPrompter(prompt)))
     ppl.sd3 = lazyllm.TrainableModule('stable-diffusion-3-medium')
 
 if __name__ == '__main__':
