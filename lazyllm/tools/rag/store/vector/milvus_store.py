@@ -521,8 +521,11 @@ class MilvusStore(LazyLLMStoreBase):
         store_embed_keys = seen
         missing_keys = set(embed_keys) - store_embed_keys
 
-        if len(missing_keys) == 0:
-            pass
+        if len(missing_keys) > 1:
+            raise ValueError(
+                f'[Milvus Store] store_conf is missing the following embed_key: {missing_keys} '
+                f'(only supports auto filling one missing item)'
+            )
         elif len(missing_keys) == 1:
             missing_key = next(iter(missing_keys))
 
@@ -534,22 +537,19 @@ class MilvusStore(LazyLLMStoreBase):
                     normalized_index_kwargs.append({
                         'embed_key': missing_key,
                         'index_type': 'FLAT',
-                        'metric_type': 'IP'
+                        'metric_type': 'COSINE'
                     })
                 else:
                     normalized_index_kwargs.append({
                         'embed_key': missing_key,
-                        'index_type': 'INVERTED_INDEX',
+                        'index_type': 'SPARSE_INVERTED_INDEX',
                         'metric_type': 'L2'
                     })
             else:
                 raise ValueError(
-                    f'found multiple entries without embed_key, cannot determine which embed_key to fill: {missing_keys}'
+                    f'[Milvus Store] Found multiple entries without embed_key, cannot determine '
+                    f'which one to fill. Missing embed_keys: {missing_keys}'
                 )
         else:
-            raise ValueError(
-                f'store_conf is missing the following embed_key: {missing_keys} '
-                f'(only supports auto filling one missing item)'
-            )
-
+            pass
         return normalized_index_kwargs
