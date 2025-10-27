@@ -483,7 +483,7 @@ class MilvusStore(LazyLLMStoreBase):
             return ret_str[:-5]  # truncate the last ' and '
         return ret_str
 
-    def validate_milvus_embed_keys(self, index_kwargs: Optional[Union[List, Dict]]):
+    def validate_milvus_embed_keys(self, index_kwargs: Optional[Union[List, Dict]]):  # noqa: C901
         '''
         Validate and preprocess the index_kwargs of milvus store_conf:
         1. Auto fill the only one missing embed_key into the configuration without embed_key;
@@ -530,11 +530,18 @@ class MilvusStore(LazyLLMStoreBase):
                 idx = no_embedkey_entries[0][1]
                 idx['embed_key'] = missing_key
             elif len(no_embedkey_entries) == 0:
-                normalized_index_kwargs.append({
-                    'embed_key': missing_key,
-                    'index_type': 'FLAT',
-                    'metric_type': 'IP'
-                })
+                if self._embed_datatypes.get(missing_key) == DataType.FLOAT_VECTOR:
+                    normalized_index_kwargs.append({
+                        'embed_key': missing_key,
+                        'index_type': 'FLAT',
+                        'metric_type': 'IP'
+                    })
+                else:
+                    normalized_index_kwargs.append({
+                        'embed_key': missing_key,
+                        'index_type': 'INVERTED_INDEX',
+                        'metric_type': 'L2'
+                    })
             else:
                 raise ValueError(
                     f'found multiple entries without embed_key, cannot determine which embed_key to fill: {missing_keys}'
