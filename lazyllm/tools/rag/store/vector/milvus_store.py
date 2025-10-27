@@ -583,6 +583,5 @@ class MilvusStore(LazyLLMStoreBase):
                     f'[Milvus Store] Found multiple entries without embed_key, cannot determine '
                     f'which one to fill. Missing embed_keys: {missing_keys}'
                 )
-        else:
-            pass
+
         return normalized_index_kwargs
