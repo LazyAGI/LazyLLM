@@ -97,7 +97,7 @@ class TestDeploy(object):
 
     def test_deploy_kw_check(self):
         vllm = lazyllm.deploy.vllm(test_key='test')
-        assert "test_key" in vllm.kw
+        assert 'test_key' in vllm.kw
 
     def test_deploy_auto(self):
         m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.AutoDeploy)
