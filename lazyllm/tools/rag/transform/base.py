@@ -13,7 +13,10 @@ import threading
 import tiktoken
 from lazyllm import config
 from lazyllm.thirdparty import nltk
+<<<<<<< HEAD
 from lazyllm.thirdparty import transformers
+=======
+>>>>>>> 872cc6a (expose fns change function)
 
 class MetadataMode(str, Enum):
     ALL = 'ALL'
@@ -127,6 +130,7 @@ class _TextSplitterBase(NodeTransform):
         self.kwargs = {}
         self.from_tiktoken_encoder()
 
+<<<<<<< HEAD
     @classmethod
     def _get_class_lock(cls):
         if '_default_params_lock' not in cls.__dict__:
@@ -172,6 +176,8 @@ class _TextSplitterBase(NodeTransform):
 
         LOG.info(f'{cls.__name__} default parameters reset')
 
+=======
+>>>>>>> 872cc6a (expose fns change function)
     def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
                               allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
                               disallowed_special: Union[Literal['all'], Collection[str]] = 'all',

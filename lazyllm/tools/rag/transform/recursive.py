@@ -1,4 +1,4 @@
-from typing import List
+from typing import List, Tuple
 from functools import partial
 from .character import CharacterSplitter
 from .base import _UNSET
