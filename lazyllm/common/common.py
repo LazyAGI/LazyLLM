@@ -37,8 +37,8 @@ class ArgsDict(dict):
     def __init__(self, *args, **kwargs):
         super(ArgsDict, self).__init__(*args, **kwargs)
 
-    def check_and_update(self, kw, skip_check: bool = False):
-        if not skip_check:
+    def check_and_update(self, kw):
+        if not kw.pop('skip_check', config['deploy_skip_check_kw']):
             assert set(kw.keys()).issubset(set(self)), f'unexpected keys: {set(kw.keys()) - set(self)}'
         self.update(kw)
 
