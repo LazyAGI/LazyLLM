@@ -385,10 +385,36 @@ class TestMilvusStore(unittest.TestCase):
                     'nlist': 128,
                 }
             }]
+        index_kwargs_with_no_embed_key = {
+            'index_type': 'HNSW',
+            'metric_type': 'COSINE',
+        }
+        index_kwargs_with_one_embed_key = [
+            {
+                'embed_key': 'vec_dense',
+                'index_type': 'HNSW',
+                'metric_type': 'COSINE',
+            },
+            {
+                'index_type': 'SPARSE_INVERTED_INDEX',
+                'metric_type': 'IP'
+            },
+        ]
+        index_kwargs_with_multiple_embed_keys = [
+            {
+                'index_type': 'HNSW',
+                'metric_type': 'COSINE',
+            },
+            {
+                'index_type': 'HNSW',
+                'metric_type': 'COSINE',
+            },
+        ]
+
         test_data = [
             {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
              'global_meta': {RAG_DOC_ID: 'doc1', RAG_KB_ID: 'kb1'},
-             'embedding': {'vec_dense': [0.1, 0.2, 0.3]},
+             'embedding': {'vec_dense': [0.1, 0.2, 0.3], 'vec_sparse': {'1563': 0.212890625, '238': 0.1768798828125}},
              'type': 1, 'number': 0, 'kb_id': 'kb1',
              'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
              'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
@@ -396,24 +422,64 @@ class TestMilvusStore(unittest.TestCase):
 
             {'uid': 'uid2', 'doc_id': 'doc2', 'group': 'g2', 'content': 'test2', 'meta': {},
              'global_meta': {RAG_DOC_ID: 'doc2', RAG_KB_ID: 'kb2'},
-             'embedding': {'vec_sparse': {'1563': 0.212890625, '238': 0.1768798828125}},
+             'embedding': {'vec_dense': [0.1, 0.2, 0.3], 'vec_sparse': {'1563': 0.212890625, '238': 0.1768798828125}},
              'type': 1, 'number': 0, 'kb_id': 'kb2',
              'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
              'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
-             'parent': 'p2', 'answer': '', 'image_keys': []},
+             'parent': 'p2', 'answer': '', 'image_keys': []}
+        ]
+        test_data_one_embedding = [
+            {'uid': 'uid3', 'doc_id': 'doc3', 'group': 'g3', 'content': 'test3', 'meta': {},
+             'global_meta': {RAG_DOC_ID: 'doc3', RAG_KB_ID: 'kb3'},
+             'embedding': {'vec_dense': [0.1, 0.2, 0.3]},
+             'type': 1, 'number': 0, 'kb_id': 'kb3',
+             'excluded_embed_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'excluded_llm_metadata_keys': ['file_size', 'file_name', 'file_type'],
+             'parent': None, 'answer': '', 'image_keys': []}
         ]
 
-        def invalid_index_kwargs_test(invalid_index_kwargs, collections, data):
+        def invalid_index_kwargs_test(invalid_index_kwargs, collections, data,
+                                      embed_dims=None, embed_datatypes=None,
+                                      global_metadata_desc=None):
             fd, dir = tempfile.mkstemp(suffix='.db')
             os.close(fd)
-            store = MilvusStore(uri=dir, index_kwargs=invalid_index_kwargs)
-            store.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
-                          global_metadata_desc=self.global_metadata_desc)
-            assert not store.upsert(collections, [data])
-            os.remove(dir)
+            store = None
+            try:
+                embed_dims = self.embed_dims if embed_dims is None else embed_dims
+                embed_datatypes = self.embed_datatypes if embed_datatypes is None else embed_datatypes
+                store = MilvusStore(uri=dir, index_kwargs=invalid_index_kwargs)
+                store.connect(embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                              global_metadata_desc=global_metadata_desc)
+                if isinstance(data, dict):
+                    flag = store.upsert(collections, [data])
+                else:
+                    flag = store.upsert(collections, data)
+                return flag
+            except Exception as e:
+                raise e
+            finally:
+                if store and hasattr(store, '_client_context'):
+                    try:
+                        with store._client_context() as client:
+                            col_list = collections if isinstance(collections, list) else [collections]
+                            for col in col_list:
+                                try:
+                                    if client.has_collection(col):
+                                        client.drop_collection(col)
+                                except Exception:
+                                    pass
+                    except Exception:
+                        pass
+                pass
 
-        invalid_index_kwargs_test(invalid_index_kwargs[0], self.collections[0], test_data[0])
-        invalid_index_kwargs_test(invalid_index_kwargs[1], self.collections[1], test_data[1])
+        assert not invalid_index_kwargs_test(invalid_index_kwargs[0], self.collections[0], test_data[0])
+        assert not invalid_index_kwargs_test(invalid_index_kwargs[1], self.collections[1], test_data[1])
+        assert invalid_index_kwargs_test(index_kwargs_with_no_embed_key, self.collections[0],
+                                         test_data_one_embedding, embed_datatypes={'vec_dense': DataType.FLOAT_VECTOR})
+        assert invalid_index_kwargs_test(index_kwargs_with_one_embed_key, self.collections[0], test_data)
+        assert invalid_index_kwargs_test(index_kwargs_with_one_embed_key, self.collections[1], test_data[1])
+        with self.assertRaises(ValueError):
+            invalid_index_kwargs_test(index_kwargs_with_multiple_embed_keys, self.collections[0], test_data)
 
     def test_upsert(self):
         self.store.upsert(self.collections[0], [data[0]])
