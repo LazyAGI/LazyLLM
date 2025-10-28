@@ -5,16 +5,8 @@ from typing import List, Union, Tuple
 from .base import _TextSplitterBase
 
 class CharacterSplitter(_TextSplitterBase):
-    def __init__(
-        self,
-        chunk_size: int = 1024,
-        overlap: int = 200,
-        num_workers: int = 0,
-        separator: str = ' ',
-        is_separator_regex: bool = False,
-        keep_separator: bool = False,
-        **kwargs
-    ):
+    def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0,
+                 separator: str = ' ', is_separator_regex: bool = False, keep_separator: bool = False, **kwargs):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers)
         self._separator = separator
         self._is_separator_regex = is_separator_regex

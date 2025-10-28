@@ -110,7 +110,7 @@ class _TextSplitterBase(NodeTransform):
         if 'TIKTOKEN_CACHE_DIR' not in os.environ and 'DATA_GYM_CACHE_DIR' not in os.environ:
             path = os.path.join(config['model_path'], 'tiktoken')
             os.makedirs(path, exist_ok=True)
-            os.environ['TIKTOKEN_CACHE_DIR'] = '/home/mnt/chenhao7/LazyLLM/lazyllm/tools/rag/transform/tiktoken'
+            os.environ['TIKTOKEN_CACHE_DIR'] = path
         if model_name is not None:
             enc = tiktoken.encoding_for_model(model_name)
         else:

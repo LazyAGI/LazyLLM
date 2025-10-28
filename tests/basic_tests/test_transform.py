@@ -368,7 +368,7 @@ class TestTokenTextSplitter:
 class TestDocumentSplit:
     def setup_method(self):
         document = Document(
-            dataset_path='/home/mnt/chenhao7/LazyWork/data/context',
+            dataset_path='rag_master',
             manager=False
         )
         document.create_node_group(
@@ -445,7 +445,7 @@ class TestDocumentSplit:
 class TestDocumentChainSplit:
     def setup_method(self):
         document = Document(
-            dataset_path='/home/mnt/chenhao7/LazyWork/data/context',
+            dataset_path='rag_master',
             manager=False
         )
         document.create_node_group(
@@ -503,6 +503,48 @@ class TestDocumentChainSplit:
             'context_str': ''.join([node.get_content() for node in doc_node_list]),
         })
         assert res is not None
+
+    def test_character_split(self):
+        document = self.document
+        document.activate_groups('character_test')
+        document.start()
+        retriever = Retriever(document, group_name='character_test', similarity='bm25', topk=3)
+        doc_node_list = retriever(query=self.query)
+        assert len(doc_node_list) == 3
+        res = self.llm({
+            'query': self.query,
+            'context_str': ''.join([node.get_content() for node in doc_node_list]),
+        })
+        assert res is not None
+
+
+class TestDIYDocumentSplit:
+    def setup_method(self):
+        document = Document(
+            dataset_path='rag_master',
+            manager=False
+        )
+        document.create_node_group(
+            name='sentence_test',
+            transform=SentenceSplitter,
+            chunk_size=128,
+            chunk_overlap=10
+        )
+        splitter = CharacterSplitter(chunk_size=128, overlap=10, separator=' ')
+        splitter.character_split_fn = [lambda x: x.split(' ')]
+        document.create_node_group(
+            name='character_test',
+            transform=splitter,
+            parent='sentence_test')
+
+        llm = lazyllm.OnlineChatModule(source='qwen')
+        prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
+        llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
+        query = '何为天道？'
+
+        self.document = document
+        self.llm = llm
+        self.query = query
 
     def test_character_split(self):
         document = self.document
