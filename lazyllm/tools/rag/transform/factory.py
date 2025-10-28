@@ -6,6 +6,7 @@ from typing import Any, Dict, List, Union, Optional, Callable
 from lazyllm.tools.rag.doc_node import DocNode, QADocNode
 from lazyllm import LOG
 from .base import NodeTransform
+
 from lazyllm.components import AlpacaPrompter
 from dataclasses import dataclass, field
 
@@ -34,8 +35,6 @@ class TransformArgs():
         if key in self.__dict__: return getattr(self, key)
         return None
 
-<<<<<<< HEAD:lazyllm/tools/rag/transform.py
-
 def build_nodes_from_splits(
     text_splits: List[str], doc: DocNode, node_group: str
 ) -> List[DocNode]:
@@ -53,70 +52,6 @@ def build_nodes_from_splits(
     doc.children[node_group] = nodes
     return nodes
 
-
-@dataclass
-class _Split:
-    text: str
-    is_sentence: bool
-    token_size: int
-
-
-def split_text_keep_separator(text: str, separator: str) -> List[str]:
-    '''Split text and keep the separator.'''
-    parts = text.split(separator)
-    result = [separator + s if i > 0 else s for i, s in enumerate(parts)]
-    return result[1:] if len(result) > 0 and not result[0] else result
-
-
-class NodeTransform(ABC):
-    def __init__(self, num_workers: int = 0):
-        self._number_workers = num_workers
-        self._name = None
-
-    def batch_forward(
-        self, documents: Union[DocNode, List[DocNode]], node_group: str, **kwargs
-    ) -> List[DocNode]:
-        documents: List[DocNode] = documents if isinstance(documents, (tuple, list)) else [documents]
-
-        def impl(node: DocNode):
-            with node._lock:
-                if node_group in node.children: return []
-                splits = self(node, **kwargs)
-                for s in splits:
-                    s.parent = node
-                    s._group = node_group
-                node.children[node_group] = splits
-                return splits
-
-        if getattr(self, '_number_workers', 0) > 0:
-            pool = ThreadPoolExecutor(max_workers=self._number_workers)
-            fs = [pool.submit(impl, node) for node in documents]
-            return sum([f.result() for f in fs], [])
-        else:
-            return sum([impl(node) for node in documents], [])
-
-    @abstractmethod
-    def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
-        raise NotImplementedError('Not implemented')
-
-    def with_name(self, name: Optional[str], *, copy: bool = True) -> 'NodeTransform':
-        if name is not None:
-            if copy: return lite_copy(self).with_name(name, copy=False)
-            self._name = name
-        return self
-
-    def __call__(self, node: Union[DocNode, List[DocNode]], **kwargs: Any) -> List[DocNode]:
-        # Parent and child should not be set here.
-        def impl(n):
-            results = self.transform(n, **kwargs)
-            return [results] if isinstance(results, (DocNode, str)) else results
-
-        results = impl(node) if isinstance(node, DocNode) else [i for n in node for i in impl(n)]
-        return [DocNode(text=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
-
-
-=======
->>>>>>> 0b7658a (reconstruction of transform v1):lazyllm/tools/rag/transform/factory.py
 def make_transform(t: Union[TransformArgs, Dict[str, Any]], group_name: Optional[str] = None) -> NodeTransform:
     if isinstance(t, dict): t = TransformArgs.from_dict(t)
     transform, trans_node, num_workers = t['f'], t['trans_node'], t['num_workers']
