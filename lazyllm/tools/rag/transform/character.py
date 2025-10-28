@@ -1,8 +1,8 @@
 from functools import partial
 import re
 
-from typing import List, Union, Tuple
-from .base import _TextSplitterBase
+from typing import List, Union, Tuple, Callable, Optional
+from .base import _TextSplitterBase, _TokenTextSplitter, _Split
 
 class CharacterSplitter(_TextSplitterBase):
     def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0,
@@ -11,15 +11,54 @@ class CharacterSplitter(_TextSplitterBase):
         self._separator = separator
         self._is_separator_regex = is_separator_regex
         self._keep_separator = keep_separator
+        self._character_split_fns = []
+        self.token_splitter = _TokenTextSplitter(chunk_size=chunk_size, overlap=overlap)
 
     def split_text(self, text: str, metadata_size: int) -> List[str]:
         return super().split_text(text, metadata_size)
 
+    def _split(self, text: str, chunk_size: int) -> List[_Split]:
+        token_size = self._token_size(text)
+        if token_size <= chunk_size:
+            return [_Split(text, is_sentence=True, token_size=token_size)]
+
+        text_splits, is_sentence = self._get_splits_by_fns(text)
+
+        if len(text_splits) == 1 and self._token_size(text_splits[0]) > chunk_size:
+            token_sub_texts = self.token_splitter.split_text(text_splits[0], metadata_size=0)
+            return [
+                _Split(s, is_sentence=is_sentence, token_size=self._token_size(s))
+                for s in token_sub_texts
+            ]
+
+        results = []
+        for segment in text_splits:
+            token_size = self._token_size(segment)
+            if token_size <= chunk_size:
+                results.append(_Split(segment, is_sentence=is_sentence, token_size=token_size))
+            else:
+                sub_results = self._split(segment, chunk_size=chunk_size)
+                results.extend(sub_results)
+
+        return results
+
+    def set_split_fns(self, split_fns: List[Callable[[str], List[str]]]):
+        self._character_split_fns = split_fns
+
+    def add_split_fn(self, split_fn: Callable[[str], List[str]], index: Optional[int] = None):
+        if index is None:
+            self._character_split_fns.append(split_fn)
+        else:
+            self._character_split_fns.insert(index, split_fn)
+
+    def clear_split_fns(self):
+        self._character_split_fns = []
+
     def _get_splits_by_fns(self, text: str) -> Tuple[List[str], bool]:
         sep_pattern = self._get_separator_pattern(self._separator)
 
-        character_split_fns = getattr(self, 'character_split_fns', None)
-        if character_split_fns is None:
+        character_split_fns = self._character_split_fns
+        if character_split_fns == []:
             character_split_fns = [
                 partial(self.default_split, sep_pattern),
                 lambda t: t.split(' '),

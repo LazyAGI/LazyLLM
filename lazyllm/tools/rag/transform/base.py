@@ -2,7 +2,7 @@ from abc import ABC, abstractmethod
 from copy import copy as lite_copy
 from enum import Enum, auto
 from dataclasses import dataclass
-from typing import Any, List, Union, Optional, Tuple, AbstractSet, Collection, Literal
+from typing import Any, List, Union, Optional, Tuple, AbstractSet, Collection, Literal, Callable
 from lazyllm import LOG
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm import ThreadPoolExecutor
@@ -11,7 +11,7 @@ from functools import partial
 import os
 import tiktoken
 from lazyllm import config
-import nltk
+from lazyllm.thirdparty import nltk
 
 class MetadataMode(str, Enum):
     ALL = auto()
@@ -93,18 +93,12 @@ class _TextSplitterBase(NodeTransform):
         self.token_encoder = None
         self.token_decoder = None
         self.kwargs = {}
-        self.sentence_split_fns = None
-        self.sub_sentence_split_fns = None
         self.from_tiktoken_encoder()
 
-    def from_tiktoken_encoder(
-        self,
-        encoding_name: str = 'gpt2',
-        model_name: Optional[str] = None,
-        allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
-        disallowed_special: Union[Literal['all'], Collection[str]] = 'all',
-        **kwargs: Any
-    ) -> '_TextSplitterBase':
+    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
+                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
+                              disallowed_special: Union[Literal['all'], Collection[str]] = 'all',
+                              **kwargs: Any) -> '_TextSplitterBase':
         if allowed_special is None:
             allowed_special = set()
         if 'TIKTOKEN_CACHE_DIR' not in os.environ and 'DATA_GYM_CACHE_DIR' not in os.environ:
@@ -249,27 +243,31 @@ class _TextSplitterBase(NodeTransform):
             metadata_size=self._get_metadata_size(node),
         )
 
-    def _get_splits_by_fns(self, text: str) -> Tuple[List[str], bool]:
-        # Define optional split functions (can be external or registered in __init__)
-        sentence_split_fns = getattr(self, 'sentence_split_fns', None)
+    def set_split_fns(self, split_fns: List[Callable[[str], List[str]]],
+                      sub_split_fns: Optional[List[Callable[[str], List[str]]]] = None) -> '_TextSplitterBase':
+        pass
 
-        if sentence_split_fns is None:
-            sentence_split_fns = [
-                partial(split_text_keep_separator, separator='\n\n\n'),  # paragraph
-                nltk.tokenize.PunktSentenceTokenizer().tokenize,
-            ]
+    def add_split_fn(self, split_fn: Callable[[str], List[str]], index: Optional[int] = None):
+        pass
+
+    def clear_split_fns(self):
+        pass
+
+    def _get_splits_by_fns(self, text: str) -> Tuple[List[str], bool]:
+        sentence_split_fns = [
+            partial(split_text_keep_separator, separator='\n\n\n'),  # paragraph
+            nltk.tokenize.PunktSentenceTokenizer().tokenize,
+        ]
         for split_fn in sentence_split_fns:
             splits = split_fn(text)
             if len(splits) > 1:
                 return splits, True
 
-        sub_sentence_split_fns = getattr(self, 'sub_sentence_split_fns', None)
-        if sub_sentence_split_fns is None:
-            sub_sentence_split_fns = [
-                lambda t: re.findall(r'[^,.;。？！]+[,.;。？！]?', t),
-                partial(split_text_keep_separator, separator=' '),
-                list,
-            ]
+        sub_sentence_split_fns = [
+            lambda t: re.findall(r'[^,.;。？！]+[,.;。？！]?', t),
+            partial(split_text_keep_separator, separator=' '),
+            list,
+        ]
         for split_fn in sub_sentence_split_fns:
             splits = split_fn(text)
             if len(splits) > 1:
