@@ -178,6 +178,17 @@ class _TextSplitterBase(NodeTransform):
                               **kwargs: Any) -> '_TextSplitterBase':
         if allowed_special is None:
             allowed_special = set()
+<<<<<<< HEAD
+=======
+        if 'TIKTOKEN_CACHE_DIR' not in os.environ and 'DATA_GYM_CACHE_DIR' not in os.environ:
+            path = os.path.join(config['model_path'], 'tiktoken')
+            os.makedirs(path, exist_ok=True)
+            os.environ['TIKTOKEN_CACHE_DIR'] = path
+        if model_name is not None:
+            enc = tiktoken.encoding_for_model(model_name)
+        else:
+            enc = tiktoken.get_encoding(encoding_name)
+>>>>>>> 05e74ca (minor change)
 
         with _tiktoken_env_lock:
             tiktoken_cache_dir_set = False
