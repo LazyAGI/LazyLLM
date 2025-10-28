@@ -660,7 +660,7 @@ class TestMilvusStore(unittest.TestCase):
             res = self.store._batch_query_legacy(client, self.collections[0], field_names=['uid'], kwargs={})
             self.assertEqual(len(res), len(new_data_list))
 
-            filters = self.store._construct_criteria({"doc_id": "doc_common"})
+            filters = self.store._construct_criteria({'doc_id': 'doc_common'})
             res = self.store._batch_query_legacy(client, self.collections[0], field_names=['uid'], kwargs=filters)
             self.assertEqual(len(res), len(new_data_list))
 
