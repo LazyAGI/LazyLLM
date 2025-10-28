@@ -202,3 +202,7 @@
 ::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding
     options:
       members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowTTS
+    options:
+      members:

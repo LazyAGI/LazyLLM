@@ -2589,6 +2589,32 @@ Args:
     **kwargs: Other model parameters
 """)
 
+add_chinese_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowTTS', """\
+SiliconFlow文本转语音模块，继承自OnlineMultiModalBase。
+
+提供基于SiliconFlow的文本转语音(TTS)功能，支持将文本转换为音频文件。
+
+Args:
+    api_key (str, optional): API密钥，默认为配置中的siliconflow_api_key
+    model_name (str, optional): 模型名称，默认为"fnlp/MOSS-TTSD-v0.5"
+    base_url (str, optional): API基础URL，默认为"https://api.siliconflow.cn/v1/"
+    return_trace (bool, optional): 是否返回追踪信息，默认为False
+    **kwargs: 其他模型参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowTTS', """\
+SiliconFlow Text-to-Speech module, inherits from OnlineMultiModalBase.
+
+Provides text-to-speech (TTS) functionality based on SiliconFlow, supports converting text to audio files.
+
+Args:
+    api_key (str, optional): API key, defaults to configured siliconflow_api_key
+    model_name (str, optional): Model name, defaults to "fnlp/MOSS-TTSD-v0.5"
+    base_url (str, optional): Base API URL, defaults to "https://api.siliconflow.cn/v1/"
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    **kwargs: Other model parameters
+""")
+
 add_chinese_doc('llms.onlinemodule.base.utils.OnlineModuleBase', '''\
 在线模块基类，继承自 ModuleBase，为所有在线服务模块提供统一的基础功能。  
 该类封装了在线模块的通用行为，包括缓存机制和调试追踪功能，是构建各种在线API服务模块的基础类。

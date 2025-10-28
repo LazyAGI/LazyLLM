@@ -2615,6 +2615,32 @@ Args:
     score: 相似度得分
 ''')
 
+add_chinese_doc('rag.doc_node.DocNode.set_embedding', """\
+设置文档节点的嵌入向量。
+
+为文档节点设置指定键的嵌入向量值，用于后续的检索和相似度计算。
+
+Args:
+    embed_key (str): 嵌入向量的键名
+    embed_value: 嵌入向量的值
+
+Returns:
+    None
+""")
+
+add_english_doc('rag.doc_node.DocNode.set_embedding', """\
+Set embedding vector for document node.
+
+Set the embedding vector value for specified key in document node, used for subsequent retrieval and similarity calculation.
+
+Args:
+    embed_key (str): Key name of the embedding vector
+    embed_value: Value of the embedding vector
+
+Returns:
+    None
+""")
+
 add_chinese_doc('rag.doc_processor.DocumentProcessor', """
 文档处理器类，用于管理文档的添加、删除和更新操作。
 
