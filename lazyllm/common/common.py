@@ -308,16 +308,19 @@ class once_flag(object):
         self._exc = None
         self._reset_on_pickle = reset_on_pickle
         self._lock = threading.RLock()
+        self._ignore_reset = False
 
-    def set(self, flag=True):
+    def set(self, flag=True, ignore_reset=False):
         with self._lock:
             self._flag = flag
+            self._ignore_reset = ignore_reset
 
     def set_exception(self, exc):
         self._exc = exc
 
     def reset(self):
-        self.set(False)
+        if not self._ignore_reset:
+            self.set(False)
 
     def __bool__(self):
         return self._flag
