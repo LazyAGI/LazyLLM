@@ -57,7 +57,7 @@ class ModelTypeClassifier:
                     if result not in self.SUPPORTED_TYPES:
                         LOG.warning(f'Rule {rule["name"]} returned unsupported model type: {result}.')
                         continue
-                    # LOG.info(f'Rule {rule["name"]} matched for model: {model_name}, classified as type: {result}.')
+                    LOG.info(f'Rule {rule["name"]} matched for model: {model_name}, classified as type: {result}.')
                     return result
             except Exception as e:
                 LOG.warning(f'Rule {rule["name"]} execution error: {e}')
@@ -190,7 +190,6 @@ def regular_rule(model_name: str) -> Optional[str]:
                 LOG.debug(f'Regular rule matched: {pattern} for '
                           f'model type: {model_type} on model: {model_name}')
                 return model_type
-
     return None
 
 infer_model_type = ModelTypeClassifier()

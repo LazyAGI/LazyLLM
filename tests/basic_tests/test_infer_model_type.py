@@ -134,7 +134,7 @@ test_models = {
 
 class TestModelTypeInference:
 
-    def test_all_models_original_names(self):
+    def infer_model_type(self, rename_func=None):
         errors = []
         total_tests = 0
 
@@ -142,6 +142,8 @@ class TestModelTypeInference:
             for model_name in model_list:
                 total_tests += 1
                 try:
+                    if rename_func:
+                        model_name = rename_func(model_name)
                     inferred_type = infer_model_type(model_name)
                     if inferred_type != expected_type:
                         errors.append(f"❌ {model_name} misclassified as {inferred_type}, expected {expected_type}")
@@ -152,3 +154,12 @@ class TestModelTypeInference:
             error_summary = f"\nTest models: {len(errors)}/{total_tests} failed.\n"
             error_summary += "\n".join(errors)
             pytest.fail(error_summary)
+
+    def test_all_models_original_names(self):
+        self.infer_model_type()
+
+    def test_all_models_short_names(self):
+        def shorten_name(name):
+            return name.split('/')[-1]
+
+        self.infer_model_type(rename_func=shorten_name)

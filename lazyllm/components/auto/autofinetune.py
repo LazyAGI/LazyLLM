@@ -38,7 +38,7 @@ class AutoFinetune(LazyLLMFinetuneBase):
         if not model_type:
             model_type = ModelManager.get_model_type(model_name)
             LOG.info(f'[AutoFinetune] Infer type of model {model_name} is {model_type}')
-        if model_type in ['tts', 'stt', 'sd', 'cross_modal_embed']:
+        if model_type in ['tts', 'stt', 'sd', 'ocr', 'cross_modal_embed']:
             raise RuntimeError(f'Fine-tuning of the {model_type} model is not currently supported.')
 
         if model_type in ['embed', 'rerank']:
