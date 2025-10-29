@@ -226,7 +226,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if url := self._deploy_args.get('url'):
             assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
             self._set_url(re.sub(r'v1(?:/chat/completions)?/?$', 'v1/', url))
-            self._get_deploy_tasks.flag.set()
+            self._get_deploy_tasks.flag.set(ignore_reset=True)
         self._deploy_args.pop('url', None)
 
     def __del__(self):
