@@ -98,7 +98,7 @@ special_models = {
     'cross_modal_embed': {'vlm2vec-full', 'siglip-base-patch16-224'},
 }
 
-@ModelTypeClassifier._register(name="Special Model Matching")
+@ModelTypeClassifier._register(name='Special Model Matching')
 def special_model_rule(model_name: str) -> Optional[str]:
     model_name = model_name.split('/')[-1].lower()
     for model_type, model_set in special_models.items():
@@ -127,7 +127,7 @@ keywords = {
     'cross_modal_embed': [],
 }
 
-@ModelTypeClassifier._register(name="Feature Keyword Matching")
+@ModelTypeClassifier._register(name='Feature Keyword Matching')
 def feature_keyword_rule(model_name: str) -> Optional[str]:
     model_name = model_name.split('/')[-1].lower()
     for model_type, keys in keywords.items():
@@ -180,7 +180,7 @@ pattern_dict = OrderedDict([
     ]),
 ])
 
-@ModelTypeClassifier._register(name="Regular Expression Matching")
+@ModelTypeClassifier._register(name='Regular Expression Matching')
 def regular_rule(model_name: str) -> Optional[str]:
     model_name_lower = model_name.lower()
 

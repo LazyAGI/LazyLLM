@@ -39,7 +39,7 @@ test_models = {
     'stt': [
         'openai/whisper-small', 'openai/whisper-large-v3-turbo', 'mistralai/Voxtral-Mini-3B-2507',
         'mistralai/Voxtral-Small-24B-2507', 'FunAudioLLM/SenseVoiceSmall'],
-    "cross_modal_embed": [
+    'cross_modal_embed': [
         'openai/clip-vit-base-patch32', 'openai/clip-vit-large-patch14', 'royokong/e5-v', 'TIGER-Lab/VLM2Vec-Full',
         'google/siglip-base-patch16-224'],
     'rerank': [
@@ -146,13 +146,13 @@ class TestModelTypeInference:
                         model_name = rename_func(model_name)
                     inferred_type = infer_model_type(model_name)
                     if inferred_type != expected_type:
-                        errors.append(f"❌ {model_name} misclassified as {inferred_type}, expected {expected_type}")
+                        errors.append(f'❌ {model_name} misclassified as {inferred_type}, expected {expected_type}')
                 except Exception as e:
-                    errors.append(f"❌❌ {model_name} -> {e}")
+                    errors.append(f'❌❌ {model_name} -> {e}')
 
         if errors:
-            error_summary = f"\nTest models: {len(errors)}/{total_tests} failed.\n"
-            error_summary += "\n".join(errors)
+            error_summary = f'\nTest models: {len(errors)}/{total_tests} failed.\n'
+            error_summary += '\n'.join(errors)
             pytest.fail(error_summary)
 
     def test_all_models_original_names(self):
