@@ -95,7 +95,7 @@ result_json = sql_manager.execute_query("SELECT * FROM employees;")
 
 ### 4. Natural Language to SQL Query
 
-Use the SqlCall module from lazyllm to automatically convert and execute natural language queries in SQL.
+Use the `SqlCall` module from lazyllm to automatically convert and execute natural language queries in SQL.
 
 ```python
 llm = lazyllm.OnlineChatModule()
