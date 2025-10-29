@@ -311,7 +311,7 @@ class DocumentProcessor(ModuleBase):
         def _generate_idempotency_key(self, algo_id: str, task_type: str, file_infos: List[FileInfo]) -> str:
             key_parts = [algo_id, task_type]
             for fi in sorted(file_infos, key=lambda x: (x.file_path or '', x.doc_id or '')):
-                key_parts.append(f"{fi.file_path}:{fi.doc_id}:{fi.reparse_group or ''}")
+                key_parts.append(f'{fi.file_path}:{fi.doc_id}:{fi.reparse_group or ""}')
             key_str = '|'.join(key_parts)
             return hashlib.md5(key_str.encode('utf-8')).hexdigest()
 
@@ -324,13 +324,13 @@ class DocumentProcessor(ModuleBase):
 
         @app.get('/prestop')
         async def get_prestop(self) -> None:
-            """
+            '''
             PreStop lifecycle hook endpoint.
             Called before the container is terminated to allow graceful shutdown.
             This endpoint returns immediately after setting shutdown flag.
             Actual cleanup is handled by the worker thread in background.
             K8s will wait terminationGracePeriodSeconds before sending SIGTERM.
-            """
+            '''
             LOG.info('[DocumentProcessor] PreStop hook called, initiating graceful shutdown...')
             try:
                 if not self._shutdown:
@@ -656,7 +656,7 @@ class DocumentProcessor(ModuleBase):
                 raise fastapi.HTTPException(status_code=500, detail=f'Failed to cancel task: {str(e)}')
 
         def _callback(self, task_id: str, task_status: TaskStatus, error_code: str = '', error_msg: str = ''):
-            """callback to service"""
+            '''callback to service'''
             if self._callback_url:
                 try:
                     payload = {'task_id': task_id, 'status': 1 if task_status == TaskStatus.FINISHED else 0,
@@ -682,7 +682,7 @@ class DocumentProcessor(ModuleBase):
                     LOG.error(f'Task-{task_id}: Failed to send callback to {self._callback_url}: {e}')
 
         def _attach_done(self, task_id: str, future: Future):
-            """attach done callback to future"""
+            '''attach done callback to future'''
             def _on_done(fut):
                 ok = False
                 err = None
@@ -692,8 +692,8 @@ class DocumentProcessor(ModuleBase):
                     ex = fut.exception()
                     if ex:
                         if isinstance(ex, TaskCancelled):
-                            err = "canceled"
-                            err_code = "Canceled"
+                            err = 'canceled'
+                            err_code = 'Canceled'
                             task_status = TaskStatus.CANCELED
                         else:
                             err = str(ex)
@@ -707,10 +707,10 @@ class DocumentProcessor(ModuleBase):
                 try:
                     if ok:
                         self._update_task_status(task_id, task_status, '200', 'success')
-                        LOG.info(f"[Worker] Task {task_id} finished successfully, status: {task_status}")
+                        LOG.info(f'[Worker] Task {task_id} finished successfully, status: {task_status}')
                     else:
                         self._update_task_status(task_id, task_status, err_code, err)
-                        LOG.error(f"[Worker] Task {task_id} failed: {err}, status: {task_status}")
+                        LOG.error(f'[Worker] Task {task_id} failed: {err}, status: {task_status}')
                 except Exception as e:
                     LOG.error(f'[DoneCB] update task status failed for {task_id}: {e}')
                 self._callback(task_id, task_status, err_code, err)
@@ -840,7 +840,7 @@ class DocumentProcessor(ModuleBase):
                 return None
 
         def _update_task_status(self, task_id: str, status: TaskStatus, error_code: str = None, error_msg: str = None):
-            """update task status"""
+            '''update task status'''
             try:
                 with self._db_manager.get_session() as session:
                     TaskInfo = self._db_manager.get_table_orm_class('lazyllm_doc_task_detail')
@@ -871,7 +871,7 @@ class DocumentProcessor(ModuleBase):
 
         def _run_task_wrapper(self, executor: ThreadPoolExecutor, algo_id: str,
                               task_id: str, payload: dict, func: Callable):
-            """run task wrapper"""
+            '''run task wrapper'''
             cancel_token = threading.Event()
             with self._tasks_lock:
                 self._cancel_tokens[task_id] = cancel_token
@@ -880,7 +880,7 @@ class DocumentProcessor(ModuleBase):
             return future
 
         def _check_cancellations(self):
-            """check cancellations for tasks owned by this worker"""
+            '''check cancellations for tasks owned by this worker'''
             try:
                 with self._db_manager.get_session() as session:
                     TaskInfo = self._db_manager.get_table_orm_class('lazyllm_doc_task_detail')
@@ -898,7 +898,7 @@ class DocumentProcessor(ModuleBase):
                 LOG.error(f'[Worker] Failed to check cancellations: {e}, {traceback.format_exc()}')
 
         def _shutdown_executors(self):
-            """Gracefully shutdown all thread pool executors"""
+            '''Gracefully shutdown all thread pool executors'''
             if self._executor_dict:
                 LOG.info('[DocumentProcessor] Shutting down executors...')
 
@@ -906,7 +906,7 @@ class DocumentProcessor(ModuleBase):
                 LOG.info('[DocumentProcessor] Signaling all running tasks to cancel...')
                 with self._tasks_lock:
                     cancel_count = 0
-                    for task_id, cancel_token in self._cancel_tokens.items():
+                    for _, cancel_token in self._cancel_tokens.items():
                         if not cancel_token.is_set():
                             cancel_token.set()
                             cancel_count += 1
@@ -996,7 +996,7 @@ class DocumentProcessor(ModuleBase):
                                 task_id = task_data['task_id']
                                 algo_id = task_data['algo_id']
                                 payload = task_data['payload']
-                                LOG.info(f"[DocumentProcessor] Worker fetched task {task_id} ({task_type})")
+                                LOG.info(f'[DocumentProcessor] Worker fetched task {task_id} ({task_type})')
 
                                 # submit task execution and attach done callback
                                 future = self._run_task_wrapper(executor, algo_id, task_id, payload, func)
@@ -1009,7 +1009,7 @@ class DocumentProcessor(ModuleBase):
                         time.sleep(WORKER_POLL_INTERVAL)
 
                     except Exception as e:
-                        LOG.error(f"[Worker] Worker loop error: {e}\n{traceback.format_exc()}")
+                        LOG.error(f'[Worker] Worker loop error: {e}\n{traceback.format_exc()}')
                         time.sleep(WORKER_ERROR_RETRY_INTERVAL)
             finally:
                 # Cleanup on exit
