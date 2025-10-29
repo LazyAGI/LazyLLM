@@ -256,117 +256,110 @@ LazyLLM 代理可以通过 Web 界面自动维护对话历史，或者您可以�
 这是完整的工作示例：
 
 ```python
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-使用 LazyLLM 框架的搜索工具代理
-支持博查搜索 API 的 Web 界面
-"""
-
 import os
 import httpx
 import lazyllm
 from lazyllm.tools import fc_register
 
 
-@fc_register("tool")
+@fc_register('tool')
 def bocha_search(query: str) -> str:
-    """
+    '''
     使用 Bocha 搜索 API 查询信息
-    
+
     Args:
         query (str): 搜索查询，例如："LazyLLM 框架"、"最新 AI 发展"
-    
+
     Returns:
         str: 搜索结果摘要
-    """
+    '''
     try:
         # 从环境变量获取 API 密钥
         api_key = os.getenv('BOCHA_API_KEY')
         if not api_key:
-            return "错误：未设置 BOCHA_API_KEY 环境变量"
-        
+            return '错误：未设置 BOCHA_API_KEY 环境变量'
+
         # 向 Bocha API 发送请求
-        url = "https://api.bochaai.com/v1/web-search"
+        url = 'https://api.bochaai.com/v1/web-search'
         headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
         }
         data = {
-            "query": query,
-            "summary": True,
-            "freshness": "noLimit",
-            "count": 10
+            'query': query,
+            'summary': True,
+            'freshness': 'noLimit',
+            'count': 10
         }
-        
+
         with httpx.Client(timeout=30) as client:
             response = client.post(url, headers=headers, json=data)
             if response.status_code == 200:
                 return response.text
-            return f"搜索失败：{response.status_code}"
-            
+            return f'搜索失败：{response.status_code}'
+
     except Exception as e:
-        return f"搜索错误：{str(e)}"
+        return f'搜索错误：{str(e)}'
 
 
 def create_agent():
-    """创建配置好的搜索代理"""
+    '''创建配置好的搜索代理'''
     # 创建 LLM
     llm = lazyllm.OnlineChatModule(
-        source="deepseek",
+        # source='deepseek',
         timeout=30)
-    
+
     # 创建 ReactAgent
     agent = lazyllm.tools.agent.ReactAgent(
         llm=llm,
-        tools=["bocha_search"],
+        tools=['bocha_search'],
         max_retries=2,
         return_trace=False,
         stream=False
     )
-    
+
     return agent
 
 
 def start_web_interface():
-    """启动 Web 界面"""
-    print("启动博查搜索工具 Web 界面...")
-    
+    '''启动 Web 界面'''
+    print('启动博查搜索工具 Web 界面...')
+
     try:
         # 检查 API 密钥
         if not os.getenv('BOCHA_API_KEY'):
-            print("警告：未设置 BOCHA_API_KEY 环境变量")
-            print("请设置：export BOCHA_API_KEY=your_api_key")
+            print('警告：未设置 BOCHA_API_KEY 环境变量')
+            print('请设置：export BOCHA_API_KEY=your_api_key')
             return
-            
+
         # 创建代理
         agent = create_agent()
-        
+
         # 启动 Web 界面
         web_module = lazyllm.WebModule(
             agent,
             port=8848,
-            title="博查搜索代理"
+            title='博查搜索代理'
         )
-        
-        print(f"Web 界面已启动：http://localhost:8848")
-        print("按 Ctrl+C 停止服务")
-        
+
+        print('Web 界面已启动：http://localhost:8848')
+        print('按 Ctrl+C 停止服务')
+
         web_module.start().wait()
-        
+
     except KeyboardInterrupt:
-        print("\n停止服务...")
+        print('停止服务...')
     except Exception as e:
-        print(f"启动失败：{e}")
+        print(f'启动失败：{e}')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     start_web_interface()
 ```
 
 ## 使用示例
 
-### 命令行使用
+### 单独使用
 
 ```python
 # 创建和使用代理

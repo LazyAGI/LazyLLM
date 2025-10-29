@@ -259,117 +259,110 @@ Memory features enable agents to:
 Here's the complete working example:
 
 ```python
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-"""
-Search Tool Agent using LazyLLM Framework
-Web interface supported with Bocha Search API
-"""
-
 import os
 import httpx
 import lazyllm
 from lazyllm.tools import fc_register
 
 
-@fc_register("tool")
+@fc_register('tool')
 def bocha_search(query: str) -> str:
-    """
-    Query information using Bocha Search API
-    
+    '''
+    使用 Bocha 搜索 API 查询信息
+
     Args:
-        query (str): Search query, e.g.: "LazyLLM framework", "Latest AI developments"
-    
+        query (str): 搜索查询，例如："LazyLLM 框架"、"最新 AI 发展"
+
     Returns:
-        str: Search result summary
-    """
+        str: 搜索结果摘要
+    '''
     try:
-        # Get API key from environment variables
+        # 从环境变量获取 API 密钥
         api_key = os.getenv('BOCHA_API_KEY')
         if not api_key:
-            return "Error: BOCHA_API_KEY environment variable not set"
-        
-        # Send request to Bocha API
-        url = "https://api.bochaai.com/v1/web-search"
+            return '错误：未设置 BOCHA_API_KEY 环境变量'
+
+        # 向 Bocha API 发送请求
+        url = 'https://api.bochaai.com/v1/web-search'
         headers = {
-            "Authorization": f"Bearer {api_key}",
-            "Content-Type": "application/json"
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json'
         }
         data = {
-            "query": query,
-            "summary": True,
-            "freshness": "noLimit",
-            "count": 10
+            'query': query,
+            'summary': True,
+            'freshness': 'noLimit',
+            'count': 10
         }
-        
+
         with httpx.Client(timeout=30) as client:
             response = client.post(url, headers=headers, json=data)
             if response.status_code == 200:
                 return response.text
-            return f"Search failed: {response.status_code}"
-            
+            return f'搜索失败：{response.status_code}'
+
     except Exception as e:
-        return f"Search error: {str(e)}"
+        return f'搜索错误：{str(e)}'
 
 
 def create_agent():
-    """Create a configured search agent"""
-    # Create LLM
+    '''创建配置好的搜索代理'''
+    # 创建 LLM
     llm = lazyllm.OnlineChatModule(
-        source="deepseek",
+        # source='deepseek',
         timeout=30)
-    
-    # Create ReactAgent
+
+    # 创建 ReactAgent
     agent = lazyllm.tools.agent.ReactAgent(
         llm=llm,
-        tools=["bocha_search"],
+        tools=['bocha_search'],
         max_retries=2,
         return_trace=False,
         stream=False
     )
-    
+
     return agent
 
 
 def start_web_interface():
-    """Start web interface"""
-    print("Starting Bocha Search Tool Web Interface...")
-    
+    '''启动 Web 界面'''
+    print('启动博查搜索工具 Web 界面...')
+
     try:
-        # Check API key
+        # 检查 API 密钥
         if not os.getenv('BOCHA_API_KEY'):
-            print("Warning: BOCHA_API_KEY environment variable not set")
-            print("Please set: export BOCHA_API_KEY=your_api_key")
+            print('警告：未设置 BOCHA_API_KEY 环境变量')
+            print('请设置：export BOCHA_API_KEY=your_api_key')
             return
-            
-        # Create agent
+
+        # 创建代理
         agent = create_agent()
-        
-        # Start web interface
+
+        # 启动 Web 界面
         web_module = lazyllm.WebModule(
             agent,
             port=8848,
-            title="Bocha Search Agent"
+            title='博查搜索代理'
         )
-        
-        print(f"Web interface started: http://localhost:8848")
-        print("Press Ctrl+C to stop the service")
-        
+
+        print('Web 界面已启动：http://localhost:8848')
+        print('按 Ctrl+C 停止服务')
+
         web_module.start().wait()
-        
+
     except KeyboardInterrupt:
-        print("\nStopping service...")
+        print('停止服务...')
     except Exception as e:
-        print(f"Start failed: {e}")
+        print(f'启动失败：{e}')
 
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     start_web_interface()
 ```
 
 ## Usage Examples
 
-### Command Line Usage
+### Standalone Use
 
 ```python
 # Create and use agent
