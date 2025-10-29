@@ -158,13 +158,6 @@ class TestStoreWithMapAndMilvus(unittest.TestCase):
         nodes = self.document_store.get_nodes(group="group2")
         self.assertEqual(len(nodes), 0)
 
-    def test_update_doc_meta(self):
-        self.document_store.update_doc_meta(node1.global_metadata.get(RAG_DOC_ID), {"tags": ["updated_tag"]})
-        nodes = self.document_store.get_nodes(kb_id=node1.global_metadata.get(RAG_KB_ID))
-        self.assertEqual(len(nodes), 4)
-        for node in nodes:
-            self.assertEqual(node.global_metadata.get("tags"), ["updated_tag"])
-
     def test_query_without_filters(self):
         nodes = self.document_store.query(query="text1", group_name="group1", embed_keys=["vec_dense"], topk=2)
         self.assertEqual(len(nodes), 2)

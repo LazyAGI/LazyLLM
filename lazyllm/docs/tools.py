@@ -2571,7 +2571,7 @@ Args:
     score: 相似度得分
 ''')
 
-add_chinese_doc('rag.doc_processor.DocumentProcessor', """
+add_chinese_doc('rag.parsing_service.doc_processor.DocumentProcessor', """
 文档处理器类，用于管理文档的添加、删除和更新操作。
 
 Args:
@@ -2586,7 +2586,7 @@ Args:
 - 可配置数据库存储
 """)
 
-add_english_doc('rag.doc_processor.DocumentProcessor', """
+add_english_doc('rag.parsing_service.doc_processor.DocumentProcessor', """
 Document processor class for managing document addition, deletion and update operations.
 
 Args:
@@ -2601,7 +2601,7 @@ Args:
 - Configurable database storage
 """)
 
-add_example('rag.doc_processor.DocumentProcessor', """
+add_example('rag.parsing_service.doc_processor.DocumentProcessor', """
 ```python
 # Create local document processor
 processor = DocumentProcessor(server=False)
@@ -2614,7 +2614,7 @@ processor = DocumentProcessor(url="http://remote-server:8080")
 ```
 """)
 
-add_chinese_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
+add_chinese_doc('rag.parsing_service.doc_processor.DocumentProcessor.register_algorithm', """
 注册算法到文档处理器。
 
 Args:
@@ -2632,7 +2632,7 @@ Args:
 - 注册成功后可以使用该算法处理文档
 """)
 
-add_english_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
+add_english_doc('rag.parsing_service.doc_processor.DocumentProcessor.register_algorithm', """
 Register an algorithm to the document processor.
 
 Args:
@@ -2650,7 +2650,7 @@ Args:
 - After successful registration, the algorithm can be used to process documents
 """)
 
-add_example('rag.doc_processor.DocumentProcessor.register_algorithm', """
+add_example('rag.parsing_service.doc_processor.DocumentProcessor.register_algorithm', """
 ```python
 from lazyllm.rag import DocumentProcessor, FileStore, DirectoryReader
 
@@ -2675,7 +2675,7 @@ processor.register_algorithm(
 ```
 """)
 
-add_chinese_doc('rag.doc_processor.DocumentProcessor.drop_algorithm', """
+add_chinese_doc('rag.parsing_service.doc_processor.DocumentProcessor.drop_algorithm', """
 从文档处理器中移除指定算法。
 
 Args:
@@ -2687,7 +2687,7 @@ Args:
 - 移除后该算法将无法继续使用
 """)
 
-add_english_doc('rag.doc_processor.DocumentProcessor.drop_algorithm', """
+add_english_doc('rag.parsing_service.doc_processor.DocumentProcessor.drop_algorithm', """
 Remove specified algorithm from document processor.
 
 Args:
@@ -2699,7 +2699,7 @@ Args:
 - After removal, the algorithm will no longer be available
 """)
 
-add_example('rag.doc_processor.DocumentProcessor.drop_algorithm', """
+add_example('rag.parsing_service.doc_processor.DocumentProcessor.drop_algorithm', """
 ```python
 # Remove algorithm
 processor.drop_algorithm("pdf_processor")
