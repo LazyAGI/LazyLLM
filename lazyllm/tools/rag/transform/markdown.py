@@ -1,12 +1,11 @@
-from .base import _TextSplitterBase, _UNSET
-from typing import List, Optional, Union, AbstractSet, Collection, Literal, Any
+from .base import _TextSplitterBase
+from typing import List, Optional, Union
 from dataclasses import dataclass
 from lazyllm import LOG
 import re
-from ..doc_node import DocNode
 
 @dataclass
-class _MdSplit:
+class _MD_Split:
     path: List[str]
     level: int
     header: Optional[str]
@@ -16,24 +15,13 @@ class _MdSplit:
 
 
 class MarkdownSplitter(_TextSplitterBase):
-    def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
-                 keep_trace: bool = _UNSET, keep_headers: bool = _UNSET, keep_lists: bool = _UNSET,
-                 keep_code_blocks: bool = _UNSET, keep_tables: bool = _UNSET, keep_images: bool = _UNSET,
-                 keep_links: bool = _UNSET, **kwargs):
+    def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0, keep_sematics: bool = False,
+                 keep_headers: bool = False, keep_lists: bool = False, keep_code_blocks: bool = False,
+                 keep_tables: bool = False, keep_images: bool = False, keep_links: bool = False, **kwargs):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers)
-
-        chunk_size = self._chunk_size
-        keep_trace = self._get_param_value('keep_trace', keep_trace, False)
-        keep_headers = self._get_param_value('keep_headers', keep_headers, False)
-        keep_lists = self._get_param_value('keep_lists', keep_lists, False)
-        keep_code_blocks = self._get_param_value('keep_code_blocks', keep_code_blocks, False)
-        keep_tables = self._get_param_value('keep_tables', keep_tables, False)
-        keep_images = self._get_param_value('keep_images', keep_images, False)
-        keep_links = self._get_param_value('keep_links', keep_links, False)
-
         if chunk_size <= 200:
             LOG.warning(f'Chunk size {chunk_size} is too small, may cause unexpected splits')
-        self.keep_trace = keep_trace
+        self.keep_sematics = keep_sematics
         self.keep_headers = keep_headers
         self.keep_lists = keep_lists
         self.keep_code_blocks = keep_code_blocks
@@ -41,16 +29,7 @@ class MarkdownSplitter(_TextSplitterBase):
         self.keep_images = keep_images
         self.keep_links = keep_links
 
-    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
-                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
-                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
-                              **kwargs) -> 'MarkdownSplitter':
-        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
-
-    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'MarkdownSplitter':
-        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
-
-    def _split(self, text: str, chunk_size: int) -> List[_MdSplit]:
+    def _split(self, text: str, chunk_size: int) -> List[_MD_Split]:
         splits = self.split_markdown_by_semantics(text)
         if self.keep_code_blocks:
             splits = self._keep_code_blocks(splits)
@@ -63,65 +42,46 @@ class MarkdownSplitter(_TextSplitterBase):
             results.extend(self._sub_split(split, chunk_size))
         return results
 
-    def _split_code_block_by_lines(self, text: str) -> List[str]:
-        lines = text.split('\n')
-        return [line for line in lines if line.strip()]
-
-    def _sub_split(self, split: _MdSplit, chunk_size: int) -> List[_MdSplit]:
+    def _sub_split(self, split: _MD_Split, chunk_size: int) -> List[_MD_Split]:
         token_size = split.token_size
         if token_size <= chunk_size:
             return [split]
 
-        is_code_or_table = (split.type != 'content' and split.type not in ['image', 'link'])
-
-        if is_code_or_table:
-            lines = split.content.split('\n')
-            text_splits = []
-            current_chunk = []
-            current_size = 0
-
-            for line in lines:
-                line_size = self._token_size(line + '\n')
-                if line_size > chunk_size:
-                    if current_chunk:
-                        text_splits.append('\n'.join(current_chunk))
-                        current_chunk = []
-                        current_size = 0
-                    text_splits.append(line)
-                elif current_size + line_size > chunk_size:
-                    if current_chunk:
-                        text_splits.append('\n'.join(current_chunk))
-                    current_chunk = [line]
-                    current_size = line_size
-                else:
-                    current_chunk.append(line)
-                    current_size += line_size
-
-            if current_chunk:
-                text_splits.append('\n'.join(current_chunk))
-        else:
-            text_splits, _ = self._get_splits_by_fns(split.content)
+        text_splits, _ = self._get_splits_by_fns(split.content)
 
         results = []
         for segment in text_splits:
             token_size = self._token_size(segment)
             if token_size <= chunk_size:
-                results.append(_MdSplit(
+                results.append(_MD_Split(
                     path=split.path, level=split.level,
                     header=split.header, content=segment,
                     token_size=token_size, type=split.type,
                 ))
             else:
-                new_split = _MdSplit(
+                split = _MD_Split(
                     path=split.path, level=split.level,
                     header=split.header, content=segment,
                     token_size=token_size, type=split.type
                 )
-                results.extend(self._sub_split(new_split, chunk_size=chunk_size))
+                results.extend(self._sub_split(split, chunk_size=chunk_size))
 
         return results
 
-    def _keep_tables(self, splits: List[_MdSplit]) -> List[_MdSplit]:
+    def _keep_headers(self, split: _MD_Split) -> _MD_Split:
+        if self.keep_sematics:
+            split.content = '<!--KEEP_HEADER-->' + split.content
+        else:
+            split.content = self._gen_meta(split.path[-1], 'HEADER') + split.content
+        split.token_size = self._token_size(split.content)
+        return split
+
+    def _keep_sematics(self, split: _MD_Split) -> _MD_Split:
+        split.content = self._gen_meta(split.path, 'PATH') + split.content
+        split.token_size = self._token_size(split.content)
+        return split
+
+    def _keep_tables(self, splits: List[_MD_Split]) -> List[_MD_Split]:
         pattern = re.compile(
             r'(?P<table>(?:^\s*\|.*\|\s*$\n?){2,})',
             re.MULTILINE
@@ -130,7 +90,7 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return results
 
-    def _keep_code_blocks(self, splits: List[_MdSplit]) -> List[_MdSplit]:
+    def _keep_code_blocks(self, splits: List[_MD_Split]) -> List[_MD_Split]:
         pattern = re.compile(
             r'```([\w+-]*)\s*(.*?)```',
             re.DOTALL
@@ -167,6 +127,12 @@ class MarkdownSplitter(_TextSplitterBase):
         return results
 
     def _get_heading_level(self, line: str) -> int:
+        '''
+        Check the heading level of the line.
+        Return:
+            - 1~6: the heading level
+            - 0: not a heading
+        '''
         line = line.split('\n')[0].strip()
         match = re.match(r'^(#{1,6})\s+(.*)$', line)
         if not match:
@@ -182,85 +148,29 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return level
 
-    def _get_code_block_ranges(self, text: str) -> List[tuple]:
-        code_block_pattern = re.compile(r'```[\w+-]*\s*.*?```', re.DOTALL)
-        ranges = []
-        for match in code_block_pattern.finditer(text):
-            ranges.append((match.start(), match.end()))
-        return ranges
-
-    def _is_in_code_block(self, pos: int, code_ranges: List[tuple]) -> bool:
-        for start, end in code_ranges:
-            if start <= pos < end:
-                return True
-        return False
-
-    def split_markdown_by_semantics(self, md_text: str) -> List[_MdSplit]:
-        code_ranges = self._get_code_block_ranges(md_text)
-
-        heading_pattern = re.compile(r'^(#{1,6})\s+(.+)$', re.MULTILINE)
-        heading_positions = []
-
-        for match in heading_pattern.finditer(md_text):
-            if not self._is_in_code_block(match.start(), code_ranges):
-                heading_positions.append(match.start())
-
+    def split_markdown_by_semantics(self, md_text: str) -> List[_MD_Split]:
+        pattern = re.compile(
+            r'(\n*#{1,6}\s+[^\n]+(?:\n+[^#\n][\s\S]*?)*)(?=\n*#{1,6}\s|\Z)',
+            re.MULTILINE
+        )
+        blocks = [m.strip('\n') for m in pattern.findall(md_text)]
         results = []
         path_stack = []
-        level_stack = []
 
-        if heading_positions:
-            first_heading_pos = heading_positions[0]
-            if first_heading_pos > 0:
-                content_before = md_text[:first_heading_pos].strip()
-                if content_before:
-                    results.append(_MdSplit(
-                        path=[],
-                        level=0,
-                        header=None,
-                        content=content_before,
-                        token_size=self._token_size(content_before),
-                        type='content'
-                    ))
-        else:
-            content = md_text.strip()
-            if content:
-                results.append(_MdSplit(
-                    path=[],
-                    level=0,
-                    header=None,
-                    content=content,
-                    token_size=self._token_size(content),
-                    type='content'
-                ))
-            return results
-
-        for i, heading_pos in enumerate(heading_positions):
-            if i + 1 < len(heading_positions):
-                end_pos = heading_positions[i + 1]
-            else:
-                end_pos = len(md_text)
-
-            block = md_text[heading_pos:end_pos].rstrip('\n')
-            lines = block.split('\n')
-
-            heading_line = lines[0]
-            level = self._get_heading_level(heading_line)
+        for line in blocks:
+            level = self._get_heading_level(line)
 
             if level == 0:
                 header = None
-                content = block.strip()
+                content = line.strip()
             else:
-                header = heading_line.strip('#').strip()
-                content = '\n'.join(lines[1:]).strip()
-
-                while level_stack and level_stack[-1] >= level:
+                header = line.split('\n')[0].strip('#').strip()
+                content = '\n'.join(line.split('\n')[1:]).strip()
+                while len(path_stack) >= level:
                     path_stack.pop()
-                    level_stack.pop()
                 path_stack.append(header)
-                level_stack.append(level)
 
-            results.append(_MdSplit(
+            results.append(_MD_Split(
                 path=path_stack.copy(),
                 level=level,
                 header=header,
@@ -268,7 +178,6 @@ class MarkdownSplitter(_TextSplitterBase):
                 token_size=self._token_size(content),
                 type='content'
             ))
-
         return results
 
     def _keep_elements(self, splits: List[_MdSplit], pattern: re.Pattern, type: str) -> List[_MdSplit]:
@@ -296,7 +205,7 @@ class MarkdownSplitter(_TextSplitterBase):
                 if start > last_end:
                     text_part = content[last_end:start].strip()
                     if text_part:
-                        results.append(_MdSplit(
+                        results.append(_MD_Split(
                             path=split.path,
                             level=split.level,
                             header=split.header,
@@ -306,7 +215,7 @@ class MarkdownSplitter(_TextSplitterBase):
                         ))
 
                 element_part = element_part.strip()
-                results.append(_MdSplit(
+                results.append(_MD_Split(
                     path=split.path,
                     level=split.level,
                     header=split.header,
@@ -320,7 +229,7 @@ class MarkdownSplitter(_TextSplitterBase):
             if last_end < len(content):
                 tail = content[last_end:].strip()
                 if tail:
-                    results.append(_MdSplit(
+                    results.append(_MD_Split(
                         path=split.path,
                         level=split.level,
                         header=split.header,
@@ -331,7 +240,11 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return results
 
-    def _merge(self, splits: List[_MdSplit], chunk_size: int) -> List[DocNode]:
+    def _gen_meta(self, meta: Union[str, List[str]], type: str) -> str:
+        type = type.upper()
+        return f'<!--{type} {meta} {type}-->'
+
+    def _merge(self, splits: List[_MD_Split], chunk_size: int) -> List[str]:
         if not splits:
             return []
 
@@ -342,17 +255,17 @@ class MarkdownSplitter(_TextSplitterBase):
         if end_split.token_size == chunk_size and self._overlap > 0:
             splits.pop()
 
-            def cut_split(split: _MdSplit) -> List[_MdSplit]:
-                text = split.content
+            def cut_split(split: _MD_Split) -> List[_MD_Split]:
+                text = split.text
                 text_tokens = self.token_encoder(text)
                 p_text = self.token_decoder(text_tokens[:len(text_tokens) // 2])
                 n_text = self.token_decoder(text_tokens[len(text_tokens) // 2:])
                 return [
-                    _MdSplit(
+                    _MD_Split(
                         path=split.path, level=split.level, header=split.header,
                         content=p_text, token_size=self._token_size(p_text), type=split.type
                     ),
-                    _MdSplit(
+                    _MD_Split(
                         path=split.path, level=split.level, header=split.header,
                         content=n_text, token_size=self._token_size(n_text), type=split.type
                     ),
@@ -370,7 +283,7 @@ class MarkdownSplitter(_TextSplitterBase):
                     type = end_split.type
                     token_size = start_split.token_size + end_split.token_size
                     content = start_split.content + end_split.content
-                    end_split = _MdSplit(
+                    end_split = _MD_Split(
                         path=start_split.path, level=start_split.level,
                         header=start_split.header, content=content,
                         token_size=token_size, type=type
@@ -392,7 +305,7 @@ class MarkdownSplitter(_TextSplitterBase):
                             type = start_split.type
                             token_size = end_split.token_size + overlap_len
                             content = overlap_text + end_split.content
-                            end_split = _MdSplit(
+                            end_split = _MD_Split(
                                 path=start_split.path, level=start_split.level,
                                 header=start_split.header, content=content,
                                 token_size=token_size, type=type
