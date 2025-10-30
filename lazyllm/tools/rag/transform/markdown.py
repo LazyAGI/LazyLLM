@@ -121,7 +121,20 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return results
 
-    def _keep_tables(self, splits: List[_MdSplit]) -> List[_MdSplit]:
+    def _keep_headers(self, split: _MD_Split) -> _MD_Split:
+        if self.keep_sematics:
+            split.content = '<!--KEEP_HEADER-->' + split.content
+        else:
+            split.content = self._gen_meta(split.path[-1], 'HEADER') + split.content
+        split.token_size = self._token_size(split.content)
+        return split
+
+    def _keep_sematics(self, split: _MD_Split) -> _MD_Split:
+        split.content = self._gen_meta(split.path, 'PATH') + split.content
+        split.token_size = self._token_size(split.content)
+        return split
+
+    def _keep_tables(self, splits: List[_MD_Split]) -> List[_MD_Split]:
         pattern = re.compile(
             r'(?P<table>(?:^\s*\|.*\|\s*$\n?){2,})',
             re.MULTILINE
@@ -406,16 +419,9 @@ class MarkdownSplitter(_TextSplitterBase):
         result.insert(0, self._to_docnode(end_split))
         return result
 
-    def _to_docnode(self, split: _MdSplit) -> DocNode:
-        metadata = {
-            'path': split.path if self.keep_trace else None,
-            'level': split.level,
-            'header': split.header if self.keep_headers else None,
-            'token_size': split.token_size,
-            'type': split.type,
-        }
-
-        return DocNode(
-            metadata=metadata,
-            content=split.content,
-        )
+    def add_meta(self, split: _MD_Split) -> str:
+        if self.keep_headers:
+            split = self._keep_headers(split)
+        if self.keep_sematics:
+            split = self._keep_sematics(split)
+        return split.content
