@@ -1,7 +1,7 @@
 import lazyllm
 from lazyllm.tools.rag.transform import (
     SentenceSplitter, CharacterSplitter, RecursiveSplitter,
-    MarkdownSplitter
+    MarkdownSplitter, CodeSplitter
 )
 from lazyllm.tools.rag.transform.markdown import _MdSplit
 from lazyllm.tools.rag.transform.base import _TextSplitterBase, _Split, _TokenTextSplitter
@@ -441,6 +441,115 @@ class TestMarkdownSplitter:
             '* [LinuxBoot on Ampere Platforms: A new (old) approach to firmware](https://amperecomputing.com/blogs/linuxboot-on-ampere-platforms--a-new-old-approach-to-firmware)']  # noqa: E501
         for i in range(len(merged)):
             assert merged[i].content == expected_merged[i]
+
+class TestCodeSplitter:
+    def test_split_xml(self):
+        splitter = CodeSplitter(chunk_size=40, overlap=0, filetype='xml', keep_trace=True, keep_tags=True)
+        text = '''
+        <libraries>
+            <library name="My Library">
+                <book id="1">
+                    <title>1984</title>
+                    <author>Orwell</author>
+                </book>
+                <book id="2">
+                    <title>Animal Farm</title>
+                    <author>Orwell</author>
+                </book>
+            </library>
+            <library name="My Library 2">
+                <book id="1">
+                    <title>1984</title>
+                    <author>Orwell</author>
+                </book>
+                <book id="2">
+                    <title>Animal Farm</title>
+                    <author>Orwell</author>
+                </book>
+            </library>
+        </libraries>
+        '''
+        splits = splitter._split_xml(text, chunk_size=40)
+        assert len(splits) == 8
+
+    def test_split_code(self):
+        splitter = CodeSplitter(chunk_size=40, overlap=0, filetype='python', keep_trace=True, keep_tags=True)
+        text = """
+            class CodeSplitter(_TextSplitterBase):
+                def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0,
+                            keep_trace: bool = False, keep_tags: bool = False, **kwargs):
+                    super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers)
+                    self.token_splitter = _TokenTextSplitter(chunk_size=chunk_size, overlap=overlap)
+                    self._keep_trace = keep_trace
+                    self._keep_tags = keep_tags
+                    self._dispatch_list = {
+                        'xml': self._split_xml,
+                        'json': self._split_json,
+                        'yaml': self._split_yaml,
+                        'html': self._split_html,
+                        'python': self._split_code,
+                        'c': self._split_code,
+                        'c++': self._split_code,
+                    }
+                    self._filetype = filetype
+
+                def transform(self, node: DocNode, **kwargs) -> List[DocNode]:
+                    return self.split_text(
+                        node.get_text(),
+                        metadata_size=self._get_metadata_size(node)
+                    )
+
+                def split_text(self, text: str, metadata_size: int) -> List[DocNode]:
+                    if text == '':
+                        return [DocNode(text='')]
+                    effective_chunk_size = self._chunk_size - metadata_size
+                    if not self._filetype:
+                        LOG.warning("Filetype not specified, cannot determine split method")
+                        return [DocNode(text=text, metadata={'tag': 'unknown_type'})]
+
+                    filetype = self._filetype.lower()
+                    if filetype not in self._dispatch_list:
+                        LOG.warning(f"Unsupported file type: {filetype}, fallback to default code splitter")
+                        _split = self._split_code
+                    else:
+                        _split = self._dispatch_list[filetype]
+                    splits = _split(text, effective_chunk_size)
+
+                    if filetype == 'xml':
+                        return splits
+
+                    chunks = self._merge(splits, effective_chunk_size)
+                    return chunks
+
+                def _split_xml(self, text: str, chunk_size: int) -> List[DocNode]:
+                    try:
+                        root = ET.fromstring(text)
+                    except ET.ParseError as e:
+                        LOG.warning(f"Failed to parse XML: {e}. Returning original text as a single DocNode.")
+                        return [DocNode(text=text, metadata={'tag': 'xml_error', 'error': str(e), 'trace': []})]
+
+                    def _format_tag_with_attrs(tag_name: str, attributes: dict) -> str:
+                        if not attributes:
+                            return tag_name
+
+                        attr_strs = []
+                        for attr_name, attr_value in attributes.items():
+                            attr_strs.append(f'{attr_name}="{attr_value}"')
+
+                        return f'{tag_name} {" ".join(attr_strs)}'
+        """
+        splits = splitter._split_code(text, chunk_size=40)
+        assert len(splits) == 74
+
+    def test_batch_forward(self):
+        splitter = CodeSplitter(chunk_size=40, overlap=0, filetype='python')
+        text = """
+        def main():
+            print("Hello, world!")
+        """
+        doc_node = DocNode(text=text)
+        nodes = splitter.batch_forward([doc_node], node_group='test')
+        assert len(nodes) == 2
 
 
 class TestTextSplitterBase:
