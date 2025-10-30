@@ -1,8 +1,9 @@
 from .base import _TextSplitterBase
-from typing import List, Optional, Union
+from typing import List, Optional
 from dataclasses import dataclass
 from lazyllm import LOG
 import re
+from lazyllm.tools.rag.doc_node import DocNode
 
 @dataclass
 class _MD_Split:
@@ -67,19 +68,6 @@ class MarkdownSplitter(_TextSplitterBase):
                 results.extend(self._sub_split(split, chunk_size=chunk_size))
 
         return results
-
-    def _keep_headers(self, split: _MD_Split) -> _MD_Split:
-        if self.keep_trace:
-            split.content = '<!--KEEP_HEADER-->' + split.content
-        else:
-            split.content = self._gen_meta(split.path[-1], 'HEADER') + split.content
-        split.token_size = self._token_size(split.content)
-        return split
-
-    def _keep_trace(self, split: _MD_Split) -> _MD_Split:
-        split.content = self._gen_meta(split.path, 'PATH') + split.content
-        split.token_size = self._token_size(split.content)
-        return split
 
     def _keep_tables(self, splits: List[_MD_Split]) -> List[_MD_Split]:
         pattern = re.compile(
@@ -240,11 +228,7 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return results
 
-    def _gen_meta(self, meta: Union[str, List[str]], type: str) -> str:
-        type = type.upper()
-        return f'<!--{type} {meta} {type}-->'
-
-    def _merge(self, splits: List[_MD_Split], chunk_size: int) -> List[str]:
+    def _merge(self, splits: List[_MD_Split], chunk_size: int) -> List[DocNode]:
         if not splits:
             return []
 
@@ -256,7 +240,7 @@ class MarkdownSplitter(_TextSplitterBase):
             splits.pop()
 
             def cut_split(split: _MD_Split) -> List[_MD_Split]:
-                text = split.text
+                text = split.content
                 text_tokens = self.token_encoder(text)
                 p_text = self.token_decoder(text_tokens[:len(text_tokens) // 2])
                 n_text = self.token_decoder(text_tokens[len(text_tokens) // 2:])
