@@ -1,8 +1,9 @@
 from .base import _TextSplitterBase
-from typing import List, Optional, Union
+from typing import List, Optional
 from dataclasses import dataclass
 from lazyllm import LOG
 import re
+from lazyllm.tools.rag.doc_node import DocNode
 
 @dataclass
 class _MD_Split:
@@ -67,19 +68,6 @@ class MarkdownSplitter(_TextSplitterBase):
                 results.extend(self._sub_split(split, chunk_size=chunk_size))
 
         return results
-
-    def _keep_headers(self, split: _MD_Split) -> _MD_Split:
-        if self.keep_trace:
-            split.content = '<!--KEEP_HEADER-->' + split.content
-        else:
-            split.content = self._gen_meta(split.path[-1], 'HEADER') + split.content
-        split.token_size = self._token_size(split.content)
-        return split
-
-    def _keep_trace(self, split: _MD_Split) -> _MD_Split:
-        split.content = self._gen_meta(split.path, 'PATH') + split.content
-        split.token_size = self._token_size(split.content)
-        return split
 
     def _keep_tables(self, splits: List[_MD_Split]) -> List[_MD_Split]:
         pattern = re.compile(
@@ -222,23 +210,19 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return results
 
-    def _gen_meta(self, meta: Union[str, List[str]], type: str) -> str:
-        type = type.upper()
-        return f'<!--{type} {meta} {type}-->'
-
-    def _merge(self, splits: List[_MD_Split], chunk_size: int) -> List[str]:
+    def _merge(self, splits: List[_MD_Split], chunk_size: int) -> List[DocNode]:
         if not splits:
             return []
 
         if len(splits) == 1:
-            return [splits[0].text]
+            return [self.to_docnode(splits[0])]
 
         end_split = splits[-1]
         if end_split.token_size == chunk_size and self._overlap > 0:
             splits.pop()
 
             def cut_split(split: _MD_Split) -> List[_MD_Split]:
-                text = split.text
+                text = split.content
                 text_tokens = self.token_encoder(text)
                 p_text = self.token_decoder(text_tokens[:len(text_tokens) // 2])
                 n_text = self.token_decoder(text_tokens[len(text_tokens) // 2:])
@@ -293,17 +277,24 @@ class MarkdownSplitter(_TextSplitterBase):
                                 token_size=token_size, type=type
                             )
 
-                        result.insert(0, self.add_meta(end_split))
+                        result.insert(0, self.to_docnode(end_split))
                         end_split = start_split
             else:
-                result.insert(0, self.add_meta(end_split))
+                result.insert(0, self.to_docnode(end_split))
                 end_split = start_split
-        result.insert(0, self.add_meta(end_split))
+        result.insert(0, self.to_docnode(end_split))
         return result
 
-    def add_meta(self, split: _MD_Split) -> str:
-        if self.keep_headers:
-            split = self._keep_headers(split)
-        if self.keep_trace:
-            split = self._keep_trace(split)
-        return split.content
+    def to_docnode(self, split: _MD_Split) -> DocNode:
+        metadata = {
+            'path': split.path if self.keep_trace else None,
+            'level': split.level,
+            'header': split.header if self.keep_headers else None,
+            'token_size': split.token_size,
+            'type': split.type,
+        }
+
+        return DocNode(
+            metadata=metadata,
+            content=split.content,
+        )
