@@ -791,6 +791,60 @@ Args:
     return_trace (bool): Whether to return the processing trace. Default is True.
 ''')
 
+add_chinese_doc('rag.readers.MineruPDFReader', '''\
+基于Mineru服务的PDF解析器，通过调用Mineru服务的API来解析PDF文件，支持丰富的文档结构识别。
+
+Args:
+    url (str): Mineru服务的完整API端点URL。
+    backend (str, optional): 解析引擎类型。可选值：
+        - 'pipeline': 标准处理流水线
+        - 'vlm-transformers': 基于Transformers的视觉语言模型
+        - 'vlm-vllm-async-engine': 基于异步VLLM的视觉语言模型
+        默认为 'pipeline'。
+    upload_mode (bool, optional): 文件传输模式。
+        - True: 使用multipart/form-data上传文件内容
+        - False: 通过文件路径传递（需确保服务端可访问该路径）
+        默认为 False。
+    extract_table (bool, optional): 是否提取表格内容并转换为Markdown格式。默认为 True。
+    extract_formula (bool, optional): 是否提取公式文本。
+        - True: 提取为LaTeX等文本格式
+        - False: 将公式保留为图片
+        默认为 True。
+    split_doc (bool, optional): 是否将文档分割为多个DocNode节点。默认为 True。
+    clean_content (bool, optional): 是否清理冗余内容（页眉、页脚、页码等）。默认为 True。
+    post_func (Optional[Callable[[List[DocNode]], Any]], optional): 后处理函数，
+        接收DocNode列表作为参数，用于自定义结果处理。默认为 None。
+''')
+
+add_english_doc('rag.readers.MineruPDFReader', '''\
+Reader for PDF files by calling the Mineru service's API.
+
+Args:
+    url (str): The complete API endpoint URL for the Mineru service.
+    backend (str, optional): Type of parsing engine. Available options:
+        - 'pipeline': Standard processing pipeline
+        - 'vlm-transformers': Vision-language model based on Transformers
+        - 'vlm-vllm-async-engine': Vision-language model based on async VLLM engine
+        Defaults to 'pipeline'.
+    upload_mode (bool, optional): File transfer mode.
+        - True: Upload file content using multipart/form-data
+        - False: Pass by file path (ensure the server can access the path)
+        Defaults to False.
+    extract_table (bool, optional): Whether to extract table content and convert 
+        to Markdown format. Defaults to True.
+    extract_formula (bool, optional): Whether to extract formula text.
+        - True: Extract as text format (e.g., LaTeX)
+        - False: Keep formulas as images
+        Defaults to True.
+    split_doc (bool, optional): Whether to split the document into multiple 
+        DocNode nodes. Defaults to True.
+    clean_content (bool, optional): Whether to clean redundant content 
+        (headers, footers, page numbers, etc.). Defaults to True.
+    post_func (Optional[Callable[[List[DocNode]], Any]], optional): Post-processing 
+        function that takes a list of DocNodes as input for custom result handling. 
+        Defaults to None.
+''')
+
 add_chinese_doc('rag.component.bm25.BM25', '''\
 基于 BM25 算法实现的检索器，用于从节点集合中根据查询词检索最相关的文本节点。
 
