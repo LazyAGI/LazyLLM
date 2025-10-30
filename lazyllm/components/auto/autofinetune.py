@@ -45,10 +45,7 @@ class AutoFinetune(LazyLLMFinetuneBase):
             LOG.info(f'[AutoFinetune] Finetune {model_name} with FlagEmbedding.')
             return finetune.flagembedding(base_model, target_path, **kw)
 
-        params = {
-            'gradient_step': 1,
-            'micro_batch_size': 32,
-        }
+        params = {'gradient_step': 1, 'micro_batch_size': 32}
         if not launcher:
             match = re.search(r'(\d+)[bB]', model_name)
             model_size = int(match.group(1)) if match else 0
@@ -60,9 +57,8 @@ class AutoFinetune(LazyLLMFinetuneBase):
             launcher = launchers.remote(ngpus=ngpus, sync=True)
 
         candidates = ['llamafactory', 'alpacalora']
-        for finetune_cls_name in candidates:
-            if finetune_cls_name == 'alpacalora' and model_type == 'vlm':
-                raise RuntimeError(f'{finetune_cls_name} not support {model_type} type model.')
+        candidates = dict(llm=['llamafactory', 'alpacalora'], vlm=['llamafactory'])
+        for finetune_cls_name in candidates[model_type]:
             if check_requirements(requirements[finetune_cls_name]):
                 finetune_cls = getattr(finetune, finetune_cls_name)
                 for key, value in finetune_cls.auto_map.items():
@@ -73,4 +69,5 @@ class AutoFinetune(LazyLLMFinetuneBase):
                     return finetune_cls(base_model, target_path, lora_r=lora_r, launcher=launcher, **kw)
                 return finetune_cls(base_model, target_path, merge_path, cp_files='tokeniz*',
                                     batch_size=batch_size, lora_r=lora_r, launcher=launcher, **kw)
-        raise RuntimeError(f'No valid framework found, candidates are {[c.framework.lower() for c in candidates]}')
+        raise RuntimeError('No valid framework found, candidates are '
+                           f'{[c.framework.lower() for c in candidates[model_type]]}.')

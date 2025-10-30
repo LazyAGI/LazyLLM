@@ -1,85 +1,9 @@
 import re
-from functools import wraps
 from collections import OrderedDict
-from typing import Callable, Dict, List, Optional
+from typing import Optional
 
 from lazyllm import LOG
 
-
-class ModelTypeClassifier:
-
-    SUPPORTED_TYPES = {
-        'stt', 'tts', 'sd', 'ocr', 'vlm', 'llm',
-        'cross_modal_embed', 'embed', 'rerank'
-    }
-    _rules: List[Dict] = []
-
-    @classmethod
-    def _register(cls, priority: Optional[int] = None, name: Optional[str] = None):
-
-        def decorator(func: Callable[[str], Optional[str]]) -> Callable[[str], Optional[str]]:
-            rule = {
-                'func': func,
-                'name': name or func.__name__,
-                'priority': priority if priority is not None else len(cls._rules)
-            }
-
-            if priority is not None:
-                insert_index = 0
-                for i, existing_rule in enumerate(cls._rules):
-                    if existing_rule['priority'] <= priority:
-                        insert_index = i + 1
-                    else:
-                        break
-                cls._rules.insert(insert_index, rule)
-            else:
-                cls._rules.append(rule)
-
-            @wraps(func)
-            def wrapper(model_name: str) -> Optional[str]:
-                return func(model_name)
-
-            return wrapper
-        return decorator
-
-    def __call__(self, model_name: str) -> str:
-        return self._infer(model_name)
-
-    def _infer(self, model_name: str) -> str:
-
-        if not model_name or not isinstance(model_name, str):
-            raise ValueError('Parameter model_name must be a non-empty string.')
-
-        for rule in self._rules:
-            try:
-                result = rule['func'](model_name)
-                if result is not None:
-                    if result not in self.SUPPORTED_TYPES:
-                        LOG.warning(f'Rule {rule["name"]} returned unsupported model type: {result}.')
-                        continue
-                    LOG.info(f'Rule {rule["name"]} matched for model: {model_name}, classified as type: {result}.')
-                    return result
-            except Exception as e:
-                LOG.warning(f'Rule {rule["name"]} execution error: {e}')
-                continue
-
-        LOG.warning(f'Cannot classify model type for: {model_name}. Defaulting to "llm" instead.')
-        return 'llm'
-
-    def _get_rules_info(self) -> List[Dict]:
-        return [
-            {
-                'name': rule['name'],
-                'priority': rule['priority'],
-                'func_name': rule['func'].__name__
-            }
-            for rule in self._rules
-        ]
-
-    def __str__(self):
-        rules_info = self._get_rules_info()
-        return '\n'.join([f"{i+1}. {info['name']} (Priority: {info['priority']})"
-                          for i, info in enumerate(rules_info)])
 
 # Special Model Matching
 
@@ -98,7 +22,6 @@ special_models = {
     'cross_modal_embed': {'vlm2vec-full', 'siglip-base-patch16-224'},
 }
 
-@ModelTypeClassifier._register(name='Special Model Matching')
 def special_model_rule(model_name: str) -> Optional[str]:
     model_name = model_name.split('/')[-1].lower()
     for model_type, model_set in special_models.items():
@@ -127,10 +50,10 @@ keywords = {
     'cross_modal_embed': [],
 }
 
-@ModelTypeClassifier._register(name='Feature Keyword Matching')
 def feature_keyword_rule(model_name: str) -> Optional[str]:
     model_name = model_name.split('/')[-1].lower()
     for model_type, keys in keywords.items():
+        keys.sort(key=len, reverse=True)
         for key in keys:
             if key in model_name:
                 LOG.debug(f'Feature keyword matched: {key} for '
@@ -151,8 +74,7 @@ pattern_dict = OrderedDict([
         r'.*vits.*', r'.*tacotron.*'
     ]),
     ('sd', [
-        r'.*stable.*diffusion.*', r'.*sd.*[0-9].*',
-        r'.*dalle.*', r'.*midjourney.*'
+        r'.*stable.*diffusion.*', r'.*dalle.*'
     ]),
     ('ocr', [
         r'.*ocr.*', r'.*optical.*character.*',
@@ -180,7 +102,6 @@ pattern_dict = OrderedDict([
     ]),
 ])
 
-@ModelTypeClassifier._register(name='Regular Expression Matching')
 def regular_rule(model_name: str) -> Optional[str]:
     model_name_lower = model_name.lower()
 
@@ -192,4 +113,15 @@ def regular_rule(model_name: str) -> Optional[str]:
                 return model_type
     return None
 
-infer_model_type = ModelTypeClassifier()
+def infer_model_type(model_name: str) -> str:
+    for rule in [special_model_rule, feature_keyword_rule, regular_rule]:
+        try:
+            result = rule(model_name)
+            if result is not None:
+                LOG.info(f'Model: {model_name} classified as type: {result} by rule: {rule.__name__}')
+                return result
+        except Exception as e:
+            LOG.warning(f'Rule {rule.__name__} execution error: {e}')
+            continue
+    LOG.warning(f'Cannot classify model type for: {model_name}. Defaulting to "llm" instead.')
+    return 'llm'
