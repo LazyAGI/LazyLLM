@@ -15,13 +15,13 @@ class _MD_Split:
 
 
 class MarkdownSplitter(_TextSplitterBase):
-    def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0, keep_sematics: bool = False,
+    def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0, keep_trace: bool = False,
                  keep_headers: bool = False, keep_lists: bool = False, keep_code_blocks: bool = False,
                  keep_tables: bool = False, keep_images: bool = False, keep_links: bool = False, **kwargs):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers)
         if chunk_size <= 200:
             LOG.warning(f'Chunk size {chunk_size} is too small, may cause unexpected splits')
-        self.keep_sematics = keep_sematics
+        self.keep_trace = keep_trace
         self.keep_headers = keep_headers
         self.keep_lists = keep_lists
         self.keep_code_blocks = keep_code_blocks
@@ -69,14 +69,14 @@ class MarkdownSplitter(_TextSplitterBase):
         return results
 
     def _keep_headers(self, split: _MD_Split) -> _MD_Split:
-        if self.keep_sematics:
+        if self.keep_trace:
             split.content = '<!--KEEP_HEADER-->' + split.content
         else:
             split.content = self._gen_meta(split.path[-1], 'HEADER') + split.content
         split.token_size = self._token_size(split.content)
         return split
 
-    def _keep_sematics(self, split: _MD_Split) -> _MD_Split:
+    def _keep_trace(self, split: _MD_Split) -> _MD_Split:
         split.content = self._gen_meta(split.path, 'PATH') + split.content
         split.token_size = self._token_size(split.content)
         return split
