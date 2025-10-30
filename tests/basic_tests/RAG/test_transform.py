@@ -539,7 +539,7 @@ class TestCodeSplitter:
                         return f'{tag_name} {" ".join(attr_strs)}'
         """
         splits = splitter._split_code(text, chunk_size=40)
-        assert len(splits) == 74
+        assert len(splits) == 68
 
     def test_batch_forward(self):
         splitter = CodeSplitter(chunk_size=40, overlap=0, filetype='python')

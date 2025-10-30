@@ -1,5 +1,5 @@
 from .base import _TextSplitterBase, _TokenTextSplitter
-import xml.etree.ElementTree as ET
+from lazyllm.thirdparty import xml
 from typing import List, Optional
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm import LOG
@@ -64,8 +64,8 @@ class CodeSplitter(_TextSplitterBase):
         No parent-child relationships are established between DocNodes.
         '''
         try:
-            root = ET.fromstring(text)
-        except ET.ParseError as e:
+            root = xml.etree.ElementTree.fromstring(text)
+        except xml.etree.ElementTree.ParseError as e:
             LOG.warning(f'Failed to parse XML: {e}. Returning original text as a single DocNode.')
             return [DocNode(text=text, metadata={'tag': 'xml_error', 'error': str(e), 'trace': []})]
 
@@ -79,7 +79,7 @@ class CodeSplitter(_TextSplitterBase):
 
             return f'{tag_name} {" ".join(attr_strs)}'
 
-        def _parse_element(element: ET.Element, trace: List[str] = None) -> List[DocNode]:
+        def _parse_element(element: xml.etree.ElementTree.Element, trace: List[str] = None) -> List[DocNode]:
             if trace is None:
                 trace = []
             tag_name = element.tag
