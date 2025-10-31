@@ -450,15 +450,6 @@ class TrainableModule(UrlModule):
                  for file_content in decontent['files']]
         return encode_query_with_filepaths(query=decontent['query'], files=files)
 
-    def _build_response(self, content: str, tool_calls: List[Dict[str, str]]) -> str:
-        tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
-        if content and tc:
-            return globals['tool_delimiter'].join([content, json.dumps(tc, ensure_ascii=False)])
-        elif not content and tc:
-            return globals['tool_delimiter'] + json.dumps(tc, ensure_ascii=False)
-        else:
-            return content
-
     def _extract_and_format(self, output: str) -> str:
         '''
         1.extract tool calls information;
@@ -471,7 +462,8 @@ class TrainableModule(UrlModule):
         content, tool_calls = self._extract_tool_calls(output)
         if isinstance(content, str) and content.startswith(LAZYLLM_QUERY_PREFIX):
             content = self._decode_base64_to_file(content)
-        return self._build_response(content, tool_calls)
+        tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
+        return dict(role='assistant', content=content, tool_calls=tc)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Trainable', mode=self._impl._mode, basemodel=self.base_model,
@@ -565,6 +557,7 @@ class TrainableModule(UrlModule):
         parse_parameters = self.stream_parse_parameters if stream_output else {'delimiter': b'<|lazyllm_delimiter|>'}
 
         # context bug with httpx, so we use requests
+        data['stop'].append(self._tool_end_token)
         with requests.post(url, json=data, stream=True, headers=headers, proxies={'http': None, 'https': None}) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
@@ -590,8 +583,8 @@ class TrainableModule(UrlModule):
                     cache += chunk
                     if not self._maybe_has_fc(token, cache): cache = self._stream_output(cache, color)
 
+            if text_input: self._record_usage(text_input, messages)
             temp_output = self._extract_and_format(messages)
-            if text_input: self._record_usage(text_input, temp_output)
             return self._formatter(temp_output)
 
     def _modify_parameters(self, paras: dict, kw: dict, *, optional_keys: Union[List[str], str] = None):
