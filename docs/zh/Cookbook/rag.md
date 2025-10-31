@@ -231,26 +231,25 @@ lazyllm 内置了一套默认的文档解析算法。如果需要更高定制化
 ```bash
 lazyllm install mineru
 ```
-> **提示**：为确保解析结果稳定，当前固定 MinerU 版本为2.5.4。服务运行所需资源请参考 MinerU 官方文档。
+> **提示**：为确保解析结果稳定，当前固定 MinerU 版本为2.5.4。服务运行所需资源请参考 [MinerU](https://github.com/opendatalab/MinerU)  官方文档。
 
-环境准备完毕后，可通过 `MineruServer` 组件一键部署服务：
+环境准备完毕后，通过以下命令一键部署服务：
 
-```python
-import os
-from lazyllm.tools.servers.mineru import MineruServer
-
-# 设置模型来源，可选 "modelscope" 或 "huggingface"
-os.environ["MINERU_MODEL_SOURCE"] = "modelscope"
-
-server = MineruServer(
-    cache_dir="/path/to/cache",        # 缓存路径，设置后相同文件无需二次解析
-    image_save_dir="/path/to/images",  # 图片保存路径
-    port=5555,                         # 设置服务监听端口
-)
-server.start()
-server.wait()
-
+```bash
+lazyllm deploy mineru [--port <port>] [--cache_dir <cache_dir>] [--image_save_dir <image_save_dir>] [--model_source <model_source>]
 ```
+
+** 参数说明 **
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--port` | 服务端口号 | **随机分配** |
+| `--cache_dir` | 文档解析缓存目录（设置后相同文档无需重复解析） | **None** |
+| `--image_save_dir` | 图片输出目录（设置后保存文档内提取的图片） | **None** |
+| `--model_source` | 模型来源（可选：`huggingface` 或 `modelscope`） | **huggingface** |
+
+
+> **提示**：所有参数均为可缺省，执行 lazyllm deploy mineru 即可启动默认服务。若希望持久化缓存解析结果和图片，请自行指定目录路径。
 
 ### 通过 reader 无缝接入 MinerU 服务
 
@@ -259,8 +258,8 @@ server.wait()
 ```python
 from lazyllm.tools.rag.readers import MineruPDFReader
 
-# 注册 PDF 解析器，url 为已启动的 MinerU 服务地址
-documents.add_reader("*.pdf", MineruPDFReader(url="http://127.0.0.1:5555"))
+# 注册 PDF 解析器，url 替换为已启动的 MinerU 服务地址
+documents.add_reader("*.pdf", MineruPDFReader(url="http://127.0.0.1:8888"))
 
 ```
 
