@@ -213,7 +213,7 @@
     members: get_text
     exclude-members:
 
-::: lazyllm.tools.rag.doc_processor.DocumentProcessor
+::: lazyllm.tools.rag.parsing_service.doc_processor.DocumentProcessor
     members: register_algorithm, drop_algorithm
     exclude-members:
 

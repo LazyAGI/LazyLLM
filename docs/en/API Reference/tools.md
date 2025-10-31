@@ -227,7 +227,7 @@
     members: get_children_str, get_parent_id, get_content, to_dict
     exclude-members:
 
-::: lazyllm.tools.rag.doc_processor.DocumentProcessor
+::: lazyllm.tools.rag.parsing_service.doc_processor.DocumentProcessor
     members: register_algorithm, drop_algorithm
 
 ::: lazyllm.tools.rag.doc_node.QADocNode

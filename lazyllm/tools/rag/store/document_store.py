@@ -247,21 +247,6 @@ class _DocumentStore(object):
             LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to get segments: {e}')
             raise
 
-    def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
-        kb_id = metadata.get(RAG_KB_ID, None)
-        segments = self.get_segments(doc_ids=[doc_id], kb_id=kb_id)
-        if not segments:
-            LOG.warning(f'[_DocumentStore] No segments found for doc_id: {doc_id} in dataset: {kb_id}')
-            return
-        group_segments = defaultdict(list)
-        for segment in segments:
-            segment['global_meta'].update(metadata)
-            group_segments[segment.get('group')].append(segment)
-        for group, segments in group_segments.items():
-            self.impl.upsert(self._gen_collection_name(group), segments)
-        LOG.info(f'[_DocumentStore] Updated metadata for doc_id: {doc_id} in dataset: {kb_id}')
-        return
-
     def query(self, query: str, group_name: str, similarity_name: Optional[str] = None,
               similarity_cut_off: Union[float, Dict[str, float]] = float('-inf'),
               topk: Optional[int] = 10, embed_keys: Optional[List[str]] = None,

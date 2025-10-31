@@ -14,7 +14,7 @@ from .data_loaders import DirectoryReader
 from .utils import DocListManager, is_sparse
 from .global_metadata import GlobalMetadataDesc, RAG_KB_ID
 from .data_type import DataType
-from .doc_processor import _Processor, DocumentProcessor
+from .parsing_service.doc_processor import _Processor, DocumentProcessor
 from .embed_wrapper import _EmbedWrapper
 from dataclasses import dataclass
 from itertools import repeat

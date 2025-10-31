@@ -103,7 +103,9 @@ class ChromaStore(LazyLLMStoreBase):
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         try:
             # NOTE chroma only support single embedding for each collection
-            if not data: return
+            if not data:
+                LOG.warning(f'[Chroma Store - upsert] No data to upsert for collection {collection_name}')
+                return
             data_embeddings = data[0].get('embedding', {})
             if not data_embeddings: return
             embed_keys = list(data_embeddings.keys())
@@ -118,7 +120,7 @@ class ChromaStore(LazyLLMStoreBase):
         except Exception as e:
             LOG.error(f'[Chroma Store - upsert] Failed to create collection {collection_name}: {e}')
             LOG.error(traceback.format_exc())
-            return False
+            raise e
 
     def _serialize_data(self, data: List[dict], embed_key: str) -> List[dict]:
         res = {'ids': [], 'embeddings': [], 'metadatas': []}
@@ -142,8 +144,16 @@ class ChromaStore(LazyLLMStoreBase):
             else:
                 filters = self._construct_criteria(criteria)
                 for embed_key in self._embed_datatypes.keys():
-                    collection = self._client.get_collection(name=self._gen_collection_name(collection_name, embed_key))
-                    collection.delete(**filters)
+                    try:
+                        collection_name = self._gen_collection_name(collection_name, embed_key)
+                        collection = self._client.get_collection(name=collection_name)
+                        collection.delete(**filters)
+                    except chromadb.errors.NotFoundError:
+                        continue
+                    except Exception as e:
+                        LOG.error(f'[Chroma Store - delete] Failed to delete collection {collection_name}: {e}')
+                        LOG.error(traceback.format_exc())
+                        raise e
                 return True
         except Exception as e:
             LOG.error(f'[Chroma Store - delete] Failed to delete collection {collection_name}: {e}')
@@ -162,8 +172,13 @@ class ChromaStore(LazyLLMStoreBase):
                     )
                     data = coll.get(include=['metadatas', 'embeddings'], **filters)
                     all_data.append((key, data))
-                except Exception:
+                except chromadb.errors.NotFoundError:
+                    LOG.error(f'[ChromaStore - get] Collection {collection_name} not found')
                     continue
+                except Exception as e:
+                    LOG.error(f'[ChromaStore - get] Failed to get collection {collection_name}: {e}')
+                    LOG.error(traceback.format_exc())
+                    raise e
 
             res: Dict[str, Dict[str, Any]] = defaultdict(lambda: {
                 'uid': None, 'global_meta': {}, 'embedding': {}})
@@ -201,6 +216,9 @@ class ChromaStore(LazyLLMStoreBase):
                     dis = query_results['distances'][i][j]
                     res.append({'uid': uid, 'score': 1 - dis})
             return res
+        except chromadb.errors.NotFoundError:
+            LOG.error(f'[ChromaStore - search] Collection {collection_name} not found')
+            return []
         except Exception as e:
             LOG.error(f'[ChromaStore - search] task fail: {e}')
             LOG.error(traceback.format_exc())
@@ -210,21 +228,27 @@ class ChromaStore(LazyLLMStoreBase):
         if self._primary_key in criteria:
             res['ids'] = criteria[self._primary_key]
         else:
-            res['where'] = {}
+            where_conditions = []
             for key, vaule in criteria.items():
                 if key not in self._global_metadata_desc:
                     continue
                 field_key = self._gen_global_meta_key(key)
                 if isinstance(vaule, list):
-                    res['where'][field_key] = {'$in': vaule}
+                    where_conditions.append({field_key: {'$in': vaule}})
                 elif isinstance(vaule, str):
-                    res['where'][field_key] = {'$eq': vaule}
+                    where_conditions.append({field_key: {'$eq': vaule}})
                 else:
                     raise ValueError(f'invalid criteria type: {type(vaule)}')
+
+            if where_conditions:
+                if len(where_conditions) == 1:
+                    res['where'] = where_conditions[0]
+                else:
+                    res['where'] = {'$and': where_conditions}
         return res
 
     def _construct_filter_expr(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
-        ret = {}
+        where_conditions = []
         for name, candidates in filters.items():
             desc = self._global_metadata_desc.get(name)
             if not desc:
@@ -234,8 +258,14 @@ class ChromaStore(LazyLLMStoreBase):
                 candidates = [candidates]
             elif (not isinstance(candidates, List)) and (not isinstance(candidates, Set)):
                 candidates = list(candidates)
-            ret[key] = {'$in': candidates}
-        return {'where': ret}
+            where_conditions.append({key: {'$in': candidates}})
+
+        if not where_conditions:
+            return {}
+        elif len(where_conditions) == 1:
+            return {'where': where_conditions[0]}
+        else:
+            return {'where': {'$and': where_conditions}}
 
     def _gen_global_meta_key(self, k: str) -> str:
         return GLOBAL_META_KEY_PREFIX + k
