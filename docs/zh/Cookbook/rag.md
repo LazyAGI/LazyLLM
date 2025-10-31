@@ -218,7 +218,55 @@ print(f"answer: {res}")
 
 </details>
 
-## 版本-3：使用 flow
+## 版本-3：自定义文档解析工具，以MinerU为例
+
+lazyllm 内置了一套默认的文档解析算法。如果需要更高定制化的文档解析，可以使用自定义的文档解析器。
+[MinerU](https://github.com/opendatalab/MinerU) 是业界领先的 PDF 文档解析工具。我们为 MinerU 提供了专门的接入组件，无需额外定制，即可顺畅集成。
+
+目前提供一键启动的 MinerU 服务端（server）以及配套的 PDF 客户端。使用流程如下：先在本地启动 MinerU 解析服务，再通过接入 `MineruPDFReader` 获取解析后的文档内容。
+
+### 启动 MinerU 服务
+在开始之前，请先安装 MinerU 依赖：
+
+```bash
+lazyllm install mineru
+```
+> **提示**：为确保解析结果稳定，当前固定 MinerU 版本为2.5.4。服务运行所需资源请参考 [MinerU](https://github.com/opendatalab/MinerU)  官方文档。
+
+环境准备完毕后，通过以下命令一键部署服务：
+
+```bash
+lazyllm deploy mineru [--port <port>] [--cache_dir <cache_dir>] [--image_save_dir <image_save_dir>] [--model_source <model_source>]
+```
+
+** 参数说明 **
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--port` | 服务端口号 | **随机分配** |
+| `--cache_dir` | 文档解析缓存目录（设置后相同文档无需重复解析） | **None** |
+| `--image_save_dir` | 图片输出目录（设置后保存文档内提取的图片） | **None** |
+| `--model_source` | 模型来源（可选：`huggingface` 或 `modelscope`） | **huggingface** |
+
+
+> **提示**：所有参数均为可缺省，执行 lazyllm deploy mineru 即可启动默认服务。若希望持久化缓存解析结果和图片，请自行指定目录路径。
+
+### 通过 reader 无缝接入 MinerU 服务
+
+在RAG流程中，我们在 Part1 为 `documents` 对象注册用于PDF文件解析的解析器：
+
+```python
+from lazyllm.tools.rag.readers import MineruPDFReader
+
+# 注册 PDF 解析器，url 替换为已启动的 MinerU 服务地址
+documents.add_reader("*.pdf", MineruPDFReader(url="http://127.0.0.1:8888"))
+
+```
+
+其余流程保持不变，即可将 MinerU 服务集成到 RAG 流程中，实现 PDF 文档解析。
+
+
+## 版本-4：使用 flow
 
 从 版本-2 的流程图可以看到整个流程已经比较复杂了。我们注意到两个（或多个）`Retriever` 的检索过程互不影响，它们可以并行执行。同时整个流程上下游之间也有着明确的依赖关系，需要保证上游执行完成之后才可以进行下一步。
 
@@ -286,7 +334,7 @@ print(f"answer: {res}")
 
 `pipeline` 和 `parallel` 只是方便流程搭建以及可能的一些性能优化，并不会改成程序的逻辑。另外用户查询作为重要的提示内容，基本是中间每个模块都会用到，我们在这里还用了 `LazyLLM` 提供的 [bind()](../Best%20Practice/flow.md#use-bind) 函数将用户查询 `query` 作为参数传给 `ppl.reranker` 和 `ppl.formatter`。
 
-## 版本-4：自定义检索和排序策略
+## 版本-5：自定义检索和排序策略
 
 上面的例子使用的都是 `LazyLLM` 内置的组件。现实中总有我们覆盖不到的用户需求，为了满足这些需求，`Retriever` 和 `Reranker` 提供了插件机制，用户可以自定义检索和排序策略，通过 `LazyLLM` 提供的注册接口添加到框架中。
 
@@ -325,7 +373,7 @@ my_reranker = Reranker(name="MyReranker")
 
 这里只是简单介绍了怎么使用 `LazyLLM` 注册扩展的机制。可以参考 [Retriever](../Best%20Practice/rag.md#Retriever) 和 [Reranker](../Best%20Practice/rag.md#Reranker) 的文档，在遇到不能满足需求的时候通过编写自己的相似度计算和排序策略来实现自己的应用。
 
-## 版本-5：自定义存储后端
+## 版本-6：自定义存储后端
 
 在定义好 Node Group 的转换规则之后，`LazyLLM` 会把检索过程中用到的转换得到的 Node Group 内容保存起来，这样后续使用的时候可以避免重复执行转换操作。为了方便用户存取不同种类的数据，`LazyLLM` 支持用户自定义存储后端。
 
@@ -466,7 +514,7 @@ if __name__ == '__main__':
 
 </details>
 
-## 版本-6：离在线分离，接入远程部署的 `Document`
+## 版本-7：离在线分离，接入远程部署的 `Document`
 
 RAG系统往往包含文档解析与在线问答两阶段，其中文档解析阶段耗时较长，但可以离线执行，而问答阶段则需要快速响应。为了满足这一需求，`LazyLLM` 提供了 `Document` 的远程部署与接入功能，支持用户将 `Document` 部署在远程服务器上，并使用 url 的方式接入。
 
