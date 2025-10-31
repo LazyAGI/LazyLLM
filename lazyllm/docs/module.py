@@ -284,7 +284,34 @@ INFO: (lazyllm.launcher) PID: dummy finetune!, and init-args is {}
 >>> print(m.eval_result)
 ["reply for 1, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 2, and parameters is {'do_sample': False, 'temperature': 0.1}", "reply for 3, and parameters is {'do_sample': False, 'temperature': 0.1}"]
 ''')
+add_chinese_doc('ModuleBase.use_cache', """\
+启用或禁用模块的缓存功能。
 
+此方法用于控制模块是否使用缓存来存储和检索执行结果，以提高性能并避免重复计算。
+
+Args:
+    flag (bool or str, optional): 缓存控制标志。如果为True，启用缓存；如果为False，禁用缓存；
+                                 如果为字符串，使用特定的缓存标识符。默认为True。
+
+**Returns:**\n
+- 返回模块实例本身，支持方法链式调用。
+
+""")
+
+add_english_doc('ModuleBase.use_cache', """\
+Enable or disable the caching functionality for the module.
+
+This method controls whether the module uses caching to store and retrieve execution results, 
+improving performance and avoiding redundant computations.
+
+Args:
+    flag (bool or str, optional): Cache control flag. If True, enables caching; if False, disables caching;
+                                 if a string, uses a specific cache identifier. Defaults to True.
+
+**Returns:**\n
+- Returns the module instance itself, supporting method chaining.
+
+""")
 add_chinese_doc('ModuleBase.update_server', '''\
 更新模块及其子模块的部署（server）部分。当模块或子模块实现了部署功能时，会进行相应的服务启动。  
 
@@ -1808,7 +1835,41 @@ add_example('OnlineEmbeddingModuleBase', '''\
 ...         pass
 ...         return embedding
 ''')
+add_chinese_doc('OnlineEmbeddingModuleBase.run_embed_batch', """\
+执行批量嵌入处理的内部方法。
 
+此方法负责处理批量文本嵌入请求，支持单线程和多线程两种处理模式。
+当遇到请求失败时，会自动调整批处理大小并重试，提供健壮的错误处理机制。
+
+Args:
+    input (List): 原始的输入文本列表
+    data (List): 封装好的批量请求数据列表
+    proxies: 代理设置，如果NO_PROXY为True则设置为None
+    **kwargs: 其他关键字参数
+
+**Returns:**\n
+- 嵌入向量列表的列表，每个子列表对应一个输入文本的嵌入向量
+
+""")
+
+add_english_doc('OnlineEmbeddingModuleBase.run_embed_batch', """\
+Internal method for executing batch embedding processing.
+
+This method handles batch text embedding requests, supporting both single-threaded 
+and multi-threaded processing modes. It automatically adjusts batch size and retries 
+on request failures, providing robust error handling mechanisms.
+
+Args:
+    input (List): Original input text list
+    data (List): Encapsulated batch request data list
+    proxies: Proxy settings, set to None if NO_PROXY is True
+    **kwargs: Additional keyword arguments
+
+
+**Returns:**\n
+- A list of embedding vector lists, each sublist corresponds to an input text's embedding vector
+
+""")
 add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoEmbedding', '''\
 豆包嵌入类，继承自 OnlineEmbeddingModuleBase，封装了调用豆包在线文本嵌入服务的功能。  
 通过指定服务接口 URL、模型名称及 API Key，支持远程获取文本向量表示。
@@ -2527,3 +2588,197 @@ Args:
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Other model parameters
 """)
+
+add_chinese_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowTTS', """\
+SiliconFlow文本转语音模块，继承自OnlineMultiModalBase。
+
+提供基于SiliconFlow的文本转语音(TTS)功能，支持将文本转换为音频文件。
+
+Args:
+    api_key (str, optional): API密钥，默认为配置中的siliconflow_api_key
+    model_name (str, optional): 模型名称，默认为"fnlp/MOSS-TTSD-v0.5"
+    base_url (str, optional): API基础URL，默认为"https://api.siliconflow.cn/v1/"
+    return_trace (bool, optional): 是否返回追踪信息，默认为False
+    **kwargs: 其他模型参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowTTS', """\
+SiliconFlow Text-to-Speech module, inherits from OnlineMultiModalBase.
+
+Provides text-to-speech (TTS) functionality based on SiliconFlow, supports converting text to audio files.
+
+Args:
+    api_key (str, optional): API key, defaults to configured siliconflow_api_key
+    model_name (str, optional): Model name, defaults to "fnlp/MOSS-TTSD-v0.5"
+    base_url (str, optional): Base API URL, defaults to "https://api.siliconflow.cn/v1/"
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    **kwargs: Other model parameters
+""")
+
+add_chinese_doc('llms.onlinemodule.base.utils.OnlineModuleBase', '''\
+在线模块基类，继承自 ModuleBase，为所有在线服务模块提供统一的基础功能。  
+该类封装了在线模块的通用行为，包括缓存机制和调试追踪功能，是构建各种在线API服务模块的基础类。
+
+功能特性:
+    - 继承 ModuleBase 的所有基础功能，包括子模块管理、钩子注册等。
+    - 支持在线模块缓存机制，可通过配置控制是否启用缓存。
+    - 提供调试追踪功能，便于问题排查和性能分析。
+    - 作为所有在线服务模块（如聊天、嵌入、多模态等）的公共基类。
+
+Args:
+    return_trace (bool): 是否将推理结果写入 trace 队列，用于调试和追踪。默认为 ``False``。
+
+使用场景:
+    1. 作为在线聊天模块（OnlineChatModuleBase）的基类。
+    2. 作为在线嵌入模块（OnlineEmbeddingModuleBase）的基类。
+    3. 作为在线多模态模块（OnlineMultiModalBase）的基类。
+    4. 为自定义在线服务模块提供统一的基础功能。
+''')
+
+add_english_doc('llms.onlinemodule.base.utils.OnlineModuleBase', '''\
+Base class for online modules, inheriting from ModuleBase, providing unified basic functionality for all online service modules.  
+This class encapsulates common behaviors of online modules, including caching mechanisms and debug tracing functionality, serving as the foundation for building various online API service modules.
+
+Key Features:
+    - Inherits all basic functionality from ModuleBase, including submodule management, hook registration, etc.
+    - Supports online module caching mechanism, controllable through configuration.
+    - Provides debug tracing functionality for troubleshooting and performance analysis.
+    - Serves as a common base class for all online service modules (chat, embedding, multimodal, etc.).
+
+Args:
+    return_trace (bool): Whether to write inference results into the trace queue for debugging and tracking. Default is ``False``.
+
+Use Cases:
+    1. As a base class for online chat modules (OnlineChatModuleBase).
+    2. As a base class for online embedding modules (OnlineEmbeddingModuleBase).
+    3. As a base class for online multimodal modules (OnlineMultiModalBase).
+    4. Providing unified basic functionality for custom online service modules.
+''')
+
+add_chinese_doc('module.ModuleCache', '''\
+模块缓存管理器，提供统一的缓存存储和检索功能。  
+该类封装了多种缓存策略（内存、文件、SQLite、Redis），支持根据配置自动选择缓存存储方式，为模块执行结果提供高效的缓存机制。
+
+功能特性:
+    - 支持多种缓存策略：内存缓存、文件缓存、SQLite数据库缓存、Redis缓存。
+    - 自动根据配置选择缓存策略，默认为内存缓存。
+    - 支持缓存模式控制（读写、只读、只写、禁用）。
+    - 提供统一的缓存接口，隐藏底层存储实现细节。
+    - 支持参数哈希化，确保缓存键的唯一性。
+
+Args:
+    strategy (Optional[str]): 缓存策略，可选值为 'memory'、'file'、'sqlite'、'redis'。默认为 None，将使用配置中的策略。
+
+使用场景:
+    1. 为模块执行结果提供缓存，避免重复计算。
+    2. 在分布式环境中使用 Redis 缓存实现共享。
+    3. 使用文件或数据库缓存实现持久化存储。
+    4. 根据性能需求选择不同的缓存策略。
+''')
+
+add_english_doc('module.ModuleCache', '''\
+Module cache manager providing unified cache storage and retrieval functionality.  
+This class encapsulates multiple cache strategies (memory, file, SQLite, Redis), automatically selecting cache storage methods based on configuration, providing efficient caching mechanisms for module execution results.
+
+Key Features:
+    - Supports multiple cache strategies: memory cache, file cache, SQLite database cache, Redis cache.
+    - Automatically selects cache strategy based on configuration, defaults to memory cache.
+    - Supports cache mode control (read-write, read-only, write-only, disabled).
+    - Provides unified cache interface, hiding underlying storage implementation details.
+    - Supports parameter hashing to ensure uniqueness of cache keys.
+
+Args:
+    strategy (Optional[str]): Cache strategy, options include 'memory', 'file', 'sqlite', 'redis'. Defaults to None, will use strategy from configuration.
+
+Use Cases:
+    1. Provide caching for module execution results to avoid redundant computation.
+    2. Use Redis cache in distributed environments for sharing.
+    3. Use file or database cache for persistent storage.
+    4. Select different cache strategies based on performance requirements.
+''')
+
+add_chinese_doc('module.ModuleCache.get', '''\
+从缓存中获取数据。
+
+根据提供的键和参数从缓存中检索数据。如果缓存模式不允许读取或数据不存在，将抛出异常。
+
+Args:
+    key: 缓存键，用于标识缓存数据。
+    args: 位置参数，用于生成缓存哈希键。
+    kw: 关键字参数，用于生成缓存哈希键。
+
+**Returns:**\n
+- 任意类型：缓存中存储的数据。
+
+**异常:** \n
+- CacheNotFoundError: 当缓存中不存在指定数据时抛出。
+- RuntimeError: 当缓存模式设置为只写（WO）时抛出。
+''')
+
+add_english_doc('module.ModuleCache.get', '''\
+Retrieve data from cache.
+
+Retrieves data from cache based on the provided key and parameters. Throws an exception if cache mode doesn't allow reading or data doesn't exist.
+
+Args:
+    key: Cache key used to identify cached data.
+    args: Positional arguments used to generate cache hash key.
+    kw: Keyword arguments used to generate cache hash key.
+
+**Returns:**\n
+- Any: Data stored in cache.
+
+**Exceptions:** \n
+- CacheNotFoundError: Raised when specified data doesn't exist in cache.
+- RuntimeError: Raised when cache mode is set to write-only (WO).
+''')
+
+add_chinese_doc('module.ModuleCache.set', '''\
+将数据存储到缓存中。
+
+根据提供的键和参数将数据存储到缓存中。如果缓存模式不允许写入，则直接返回不执行存储操作。
+
+Args:
+    key: 缓存键，用于标识缓存数据。
+    args: 位置参数，用于生成缓存哈希键。
+    kw: 关键字参数，用于生成缓存哈希键。
+    value: 要存储的数据。
+
+**注意:** \n
+- 如果缓存模式设置为只读（RO）或禁用（NONE），此方法将直接返回而不执行存储操作。
+''')
+
+add_english_doc('module.ModuleCache.set', '''\
+Store data in cache.
+
+Stores data in cache based on the provided key and parameters. If cache mode doesn't allow writing, returns directly without executing storage operation.
+
+Args:
+    key: Cache key used to identify cached data.
+    args: Positional arguments used to generate cache hash key.
+    kw: Keyword arguments used to generate cache hash key.
+    value: Data to be stored.
+
+**Note:** \n
+- If cache mode is set to read-only (RO) or disabled (NONE), this method will return directly without executing storage operation.
+''')
+
+add_chinese_doc('module.ModuleCache.close', '''\
+关闭缓存存储策略。
+
+释放缓存存储策略占用的资源，如关闭数据库连接、清理内存缓存等。调用此方法后，缓存将不再可用。
+
+**注意:** \n
+- 调用此方法后，缓存实例将无法继续使用。
+- 不同的缓存策略可能有不同的资源清理行为。
+''')
+
+add_english_doc('module.ModuleCache.close', '''\
+Close cache storage strategy.
+
+Releases resources occupied by the cache storage strategy, such as closing database connections, clearing memory cache, etc. After calling this method, the cache will no longer be available.
+
+**Note:** \n
+- After calling this method, the cache instance will no longer be usable.
+- Different cache strategies may have different resource cleanup behaviors.
+''')

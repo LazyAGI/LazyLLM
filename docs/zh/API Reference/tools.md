@@ -206,7 +206,7 @@
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_node.DocNode
-    members: get_children_str, get_parent_id, get_content, to_dict
+    members: get_children_str, get_parent_id, get_content, to_dict, set_embedding
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_node.QADocNode
@@ -409,4 +409,8 @@
 
 ::: lazyllm.tools.infer_service.serve.InferServer
     members: create_job, cancel_job, list_jobs, get_job_info, get_job_log
+    exclude-members:
+
+::: lazyllm.tools.rag.store.hybrid.sensecore_store.SenseCoreStore
+    members:
     exclude-members:

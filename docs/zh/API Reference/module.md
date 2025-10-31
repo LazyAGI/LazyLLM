@@ -162,6 +162,14 @@
       members:
         - get_finetune_data 
 
+::: lazyllm.module.llms.onlinemodule.base.utils.OnlineModuleBase
+    members:
+    exclude-members:
+
+::: lazyllm.module.module.ModuleCache
+    members: get, set, close
+    exclude-members:
+
 ::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenModule
     options:
       members:
@@ -192,5 +200,9 @@
       members:
 
 ::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowTTS
     options:
       members:
