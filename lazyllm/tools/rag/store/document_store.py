@@ -122,9 +122,14 @@ class _DocumentStore(object):
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self):
-        self._impl.connect(embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
-                           global_metadata_desc=self._global_metadata_desc,
-                           collections=[self._gen_collection_name(group) for group in self.activated_groups()])
+        if self._impl.capability == StoreCapability.VECTOR or self._impl.capability == StoreCapability.ALL:
+            self._impl.connect(
+                embed_dims=self._embed_dims, embed_datatypes=self._embed_datatypes,
+                global_metadata_desc=self._global_metadata_desc,
+                collections=[self._gen_collection_name(group) for group in self.activated_groups()]
+            )
+        elif self._impl.capability == StoreCapability.SEGMENT:
+            self._impl.connect()
 
     @property
     def impl(self):

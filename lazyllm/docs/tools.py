@@ -1926,11 +1926,31 @@ Args:
 ''')
 
 add_english_doc('rag.store.ElasticSearchStore.search', '''
-Not implemented yet.
+Perform vector similarity search with optional metadata filtering.
+Args:
+    collection_name (str): Collection to search.
+    query (Optional[str]): Query string.
+    topk (Optional[int]): Number of nearest neighbors.
+    query_fields (Optional[List[str]]): Fields to search. Defaults to ['content', 'answer'].
+    filters (Optional[dict]): Metadata filter map.
+    kwargs: Other search parameters
+
+**Returns:**\n
+- List[dict]: Return matching results list and similarity 'score'.
 ''')
 
 add_chinese_doc('rag.store.ElasticSearchStore.search', '''
-待实现
+执行向量相似度检索，并可按元数据过滤。
+Args:
+    collection_name (str): 待搜索集合。
+    query (Optional[str]): 查询字符串。
+    topk (Optional[int]): 返回邻近数量。
+    query_fields (Optional[List[str]]): 查询字段。默认值为 ['content', 'answer']。
+    filters (Optional[dict]): 元数据过滤映射。
+    kwargs: 其他搜索参数
+
+**Returns:**\n
+- List[dict]: 返回匹配结果列表及相似度 'score'。
 ''')
 
 add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore', '''\
@@ -8732,6 +8752,34 @@ Args:
 
 Returns:
     List[dict]: Query result data list
+""")
+
+add_english_doc('rag.store.segment.OpenSearchStore.search', """\
+Perform vector similarity search with optional metadata filtering.
+Args:
+    collection_name (str): Collection to search.
+    query (Optional[str]): Query string.
+    topk (Optional[int]): Number of nearest neighbors.
+    query_fields (Optional[List[str]]): Fields to search. Defaults to None.
+    filters (Optional[dict]): Metadata filter map.
+    kwargs: Other search parameters
+
+**Returns:**\n
+- List[dict]: Return matching results list and similarity 'score'.
+""")
+
+add_chinese_doc('rag.store.segment.OpenSearchStore.search', """\
+执行向量相似度检索，并可按元数据过滤。
+Args:
+    collection_name (str): 待搜索集合。
+    query (Optional[str]): 查询字符串。
+    topk (Optional[int]): 返回邻近数量。
+    query_fields (Optional[List[str]]): 查询字段。默认值为 None。
+    filters (Optional[dict]): 元数据过滤映射。
+    kwargs: 其他搜索参数
+
+**Returns:**\n
+- List[dict]: 返回匹配结果列表及相似度 'score'。
 """)
 
 add_chinese_doc('services.ServerBase', """\
