@@ -236,7 +236,7 @@ class OpenAIReranking(OnlineEmbeddingModuleBase):
                  embed_model_name: str = '',
                  api_key: str = None,
                  **kw):
-        super().__init__('OPENAI', embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name)
+        super().__init__('OPENAI', embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name, **kw)
 
     def _set_embed_url(self):
         self._embed_url = urljoin(self._embed_url, 'rerank')
