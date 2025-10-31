@@ -15,6 +15,7 @@
       - update_server
       - wait
       - stop
+      - use_cache
       - for_each
 
 ::: lazyllm.module.servermodule.LLMBase
@@ -192,5 +193,17 @@
       members:
 
 ::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding
+    options:
+      members:
+      
+::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowModule
+    options:
+      members:
+      
+::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowReranking
+    options:
+      members:
+      
+::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowTextToImageModule
     options:
       members:
