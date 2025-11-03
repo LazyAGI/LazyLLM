@@ -5,11 +5,11 @@
 This project demonstrates an intelligent code assistant powered by a large language model.  
 It can identify user intent and perform tasks such as code generation, code explanation, and idea summarization.
 
-## !!! abstract "In this section, you will learn the following:"
+!!! abstract "In this section, you will learn the following:"
 
-- How to build a multi-functional code assistant agent  
-- How to implement intent recognition and task dispatching  
-- How to create interactive features for code generation and explanation  
+    - How to build a multi-functional code assistant agent  
+    - How to implement intent recognition and task dispatching  
+    - How to create interactive features for code generation and explanation  
 
 ## Project Dependencies
 
