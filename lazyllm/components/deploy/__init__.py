@@ -4,6 +4,7 @@ from .lightllm import Lightllm  # noqa NID002
 from .vllm import Vllm  # noqa NID002
 from .lmdeploy import LMDeploy
 from .infinity import Infinity
+from .graphrag import GraphRAG
 from .ray import Distributed
 from .mindie import Mindie
 from .embed import EmbeddingDeploy
@@ -21,6 +22,7 @@ __all__ = [
     'Vllm',
     'LMDeploy',
     'Mindie',
+    'GraphRAG',
     'Infinity',
     'Distributed',
     'EmbeddingDeploy',
