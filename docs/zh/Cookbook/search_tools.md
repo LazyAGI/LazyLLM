@@ -1,10 +1,10 @@
-# 本项目展示了如何使用Google Custom Search JSON API实现一个智能搜索代理
-# 可通过API查询获取最新的网络搜索结果并格式化输出
+本项目展示了如何使用Google Custom Search JSON API实现一个智能搜索代理
+可通过API查询获取最新的网络搜索结果并格式化输出
 
-## !!! abstract "通过本节您将学习到以下内容"
-## - 如何使用Google Custom Search JSON API进行网络搜索
-## - 如何封装搜索功能为可复用的Agent类
-## - 如何格式化输出搜索结果
+!!! abstract "通过本节您将学习到以下内容"
+    - 如何使用Google Custom Search JSON API进行网络搜索
+    - 如何封装搜索功能为可复用的Agent类
+    - 如何格式化输出搜索结果
 
 ## 项目依赖
 

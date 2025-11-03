@@ -20,6 +20,7 @@ Answer: Three steps!
 3. Start the client.
 
 Here's the effect:
+
 ![First Chat bot](../assets/1_first_chat_bot_demo.png)
 
 Yes, it's that simple! Below are the three lines of code to build the chatbot:

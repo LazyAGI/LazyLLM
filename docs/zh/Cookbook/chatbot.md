@@ -20,6 +20,7 @@
 3. 启动客户端。
 
 效果如下：
+
 ![First Chat bot](../assets/1_first_chat_bot_demo.png)
 
 是的，就这么简单！下面就是构建聊天机器人的三行代码：
