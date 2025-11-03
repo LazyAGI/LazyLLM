@@ -349,8 +349,8 @@ class QwenReranking(OnlineEmbeddingModuleBase):
                  embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
                                    'rerank/text-rerank/text-rerank'),
                  embed_model_name: str = 'gte-rerank-v2',
-                 api_key: str = None, **kwargs):
-        super().__init__('QWEN', embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name)
+                 api_key: str = None, **kw):
+        super().__init__('QWEN', embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name, **kw)
 
     @property
     def type(self):

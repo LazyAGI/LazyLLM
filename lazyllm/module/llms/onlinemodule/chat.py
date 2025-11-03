@@ -42,7 +42,8 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
                 return_trace: bool = False, skip_auth: bool = False, type: Optional[str] = None, **kwargs):
         if model in OnlineChatModule.MODELS.keys() and source is None: source, model = model, source
         params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace,
-                                                          skip_auth=skip_auth, type=type, **kwargs)
+                                                          skip_auth=skip_auth, type=type.upper() if type else None,
+                                                          **kwargs)
 
         if skip_auth:
             source = source or 'openai'
