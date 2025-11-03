@@ -32,6 +32,8 @@
   - 配置: API Reference/configs.md
   - 启动器: API Reference/launcher.md
   - 钩子: API Reference/hook.md
+  - 补丁: API Reference/patch.md
+  - 提示词: API Reference/prompt_templates.md
 - 教程:
   - 概述: Tutorial/index.md
   - 1. RAG原理解读: Tutorial/1.md
