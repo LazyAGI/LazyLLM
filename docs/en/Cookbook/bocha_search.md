@@ -9,7 +9,17 @@ LazyLLM supports the creation of agents that use language models as reasoning en
     - How to configure [ReactAgent][lazyllm.tools.agent.ReactAgent] to intelligently decide when to call tools.
     - How to deploy agents with a web interface for interaction using [WebModule][lazyllm.tools.webpages.WebModule].
 
-Let's get started!
+## Design Concept
+
+First, to implement intelligent search, we need a language model capable of understanding questions and reasoning. Here, we use LazyLLM’s OnlineChatModule as the core inference engine.
+
+Next, since the model itself cannot directly access the internet, we equip it with an external search tool — the Bocha Search API, which provides real-time access to the latest information.
+
+Finally, we combine the language model and the search tool through a ReactAgent, enabling the “think–act–summarize” process. We also add a web interface so users can directly input queries and view the results.
+
+So, the overall design looks like this:
+
+![Bocha Search](../assets/bocha_search.png)
 
 ## Setup
 
@@ -58,7 +68,11 @@ Make sure you have the required dependencies:
 pip install httpx
 ```
 
-## Define Tools
+## Code Implementation
+
+Let's implement the above design ideas based on LazyLLM.
+
+### Define Tools
 
 First, let's define a search tool that the agent can use. In LazyLLM, we use the `@fc_register("tool")` decorator to register functions as tools:
 
@@ -110,7 +124,7 @@ def bocha_search(query: str) -> str:
 
 The `@fc_register("tool")` decorator automatically makes this function available to LazyLLM agents. The function docstring is important as it helps the agent understand when and how to use the tool.
 
-## Using Language Models
+### Using Language Models
 
 LazyLLM provides easy access to various online language models through `OnlineChatModule`:
 
@@ -135,7 +149,7 @@ llm = lazyllm.OnlineChatModule(source="kimi")
 llm = lazyllm.OnlineChatModule(source="qwen")
 ```
 
-## Create the Agent
+### Create the Agent
 
 Now let's create a ReactAgent that can use our search tool:
 
@@ -166,7 +180,7 @@ The `ReactAgent` follows the ReAct (Reasoning and Acting) paradigm, which allows
 - **Act** by calling tools when needed
 - **Observe** the results and continue reasoning
 
-## Run the Agent
+### Run the Agent
 
 Let's test our agent with a simple query:
 
@@ -186,7 +200,7 @@ The agent will:
 3. Call the tool with the appropriate search terms
 4. Process the results and provide a comprehensive answer
 
-## Web Interface
+### Web Interface
 
 LazyLLM makes it easy to deploy your agent with a web interface:
 
@@ -225,7 +239,7 @@ def start_web_interface():
         print(f"Start failed: {e}")
 ```
 
-## Streaming Responses
+### Streaming Responses
 
 To enable streaming responses, modify the agent configuration:
 
@@ -241,7 +255,7 @@ agent = lazyllm.tools.agent.ReactAgent(
 )
 ```
 
-## Adding Memory
+### Adding Memory
 
 LazyLLM agents can maintain conversation history through the web interface automatically, or you can implement custom memory functionality to enhance the agent's ability to maintain context across conversations.
 
@@ -254,7 +268,7 @@ Memory features enable agents to:
 
 *Custom memory implementation will be added in future updates.*
 
-## Complete Example
+### Complete Example
 
 Here's the complete working example:
 
@@ -360,9 +374,9 @@ if __name__ == '__main__':
     start_web_interface()
 ```
 
-## Usage Examples
+### Usage Examples
 
-### Standalone Use
+#### Standalone Use
 
 ```python
 # Create and use agent
@@ -377,7 +391,7 @@ result = agent("Find latest breakthroughs in AI field")
 print(result)
 ```
 
-### Web Interface Usage
+#### Web Interface Usage
 
 1. Run the script: `python tool_agent.py`
 2. Open your browser to `http://localhost:8848`

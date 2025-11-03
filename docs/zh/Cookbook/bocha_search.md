@@ -9,7 +9,17 @@ LazyLLM 支持创建使用语言模型作为推理引擎的智能代理，这些
     - 如何配置 [ReactAgent][lazyllm.tools.agent.ReactAgent] 以智能决定何时调用工具。
     - 如何使用 [WebModule][lazyllm.tools.webpages.WebModule] 部署带有 Web 界面的代理以便交互。
 
-让我们开始吧！
+## 设计思路
+
+首先要实现智能搜索，我们需要一个能理解问题、会思考的语言模型，这里选择用 LazyLLM 的 OnlineChatModule 作为核心推理引擎；
+
+然后因为模型本身并不能直接访问网络，我们为它配备一个外部搜索工具——Bocha 搜索 API，用来实时获取最新信息；
+
+最后，将语言模型和搜索工具组合在一起，通过 ReactAgent 实现“思考—行动—总结”的过程，并加上一个 Web 界面，让用户可以直接输入问题并查看结果。
+
+所以设计是这样子的：
+
+![Bocha Search](../assets/bocha_search.png)
 
 ## 环境准备
 
@@ -55,7 +65,11 @@ export LAZYLLM_DEEPSEEK_API_KEY=your_deepseek_api_key
 pip install httpx
 ```
 
-## 定义工具
+## 代码实现
+
+让我们基于 LazyLLM 来实现上述设计思路吧。
+
+### 定义工具
 
 首先，让我们定义一个代理可以使用的搜索工具。在 LazyLLM 中，我们使用 `@fc_register("tool")` 装饰器来注册函数作为工具：
 
@@ -107,7 +121,7 @@ def bocha_search(query: str) -> str:
 
 `@fc_register("tool")` 装饰器会自动使此函数对 LazyLLM 代理可用。函数的文档字符串很重要，因为它帮助代理理解何时以及如何使用该工具。
 
-## 使用语言模型
+### 使用语言模型
 
 LazyLLM 通过 `OnlineChatModule` 提供对各种在线语言模型的便捷访问：
 
@@ -132,7 +146,7 @@ llm = lazyllm.OnlineChatModule(source="kimi")
 llm = lazyllm.OnlineChatModule(source="qwen")
 ```
 
-## 创建代理
+### 创建代理
 
 现在让我们创建一个可以使用搜索工具的 ReactAgent：
 
@@ -163,7 +177,7 @@ def create_agent():
 - **行动**通过在需要时调用工具
 - **观察**结果并继续推理
 
-## 运行代理
+### 运行代理
 
 让我们用一个简单的查询来测试我们的代理：
 
@@ -183,7 +197,7 @@ print(result)
 3. 使用适当的搜索词调用工具
 4. 处理结果并提供全面的答案
 
-## Web 界面
+### Web 界面
 
 LazyLLM 让部署带有 Web 界面的代理变得简单：
 
@@ -222,7 +236,7 @@ def start_web_interface():
         print(f"启动失败：{e}")
 ```
 
-## 流式响应
+### 流式响应
 
 要启用流式响应，请修改代理配置：
 
@@ -238,7 +252,7 @@ agent = lazyllm.tools.agent.ReactAgent(
 )
 ```
 
-## 添加记忆功能
+### 添加记忆功能
 
 LazyLLM 代理可以通过 Web 界面自动维护对话历史，或者您可以实现自定义记忆功能来增强代理在对话中维护上下文的能力。
 
@@ -251,7 +265,7 @@ LazyLLM 代理可以通过 Web 界面自动维护对话历史，或者您可以�
 
 *自定义记忆实现将在未来更新中添加。*
 
-## 完整示例
+### 完整示例
 
 这是完整的工作示例：
 
@@ -357,9 +371,9 @@ if __name__ == '__main__':
     start_web_interface()
 ```
 
-## 使用示例
+### 使用示例
 
-### 单独使用
+#### 单独使用
 
 ```python
 # 创建和使用代理
@@ -374,7 +388,7 @@ result = agent("查找 AI 领域的最新突破")
 print(result)
 ```
 
-### Web 界面使用
+#### Web 界面使用
 
 1. 运行脚本：`python tool_agent.py`
 2. 在浏览器中打开 `http://localhost:8848`
