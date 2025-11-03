@@ -13,10 +13,6 @@ import threading
 import tiktoken
 from lazyllm import config
 from lazyllm.thirdparty import nltk
-<<<<<<< HEAD
-from lazyllm.thirdparty import transformers
-=======
->>>>>>> 872cc6a (expose fns change function)
 
 class MetadataMode(str, Enum):
     ALL = 'ALL'
@@ -31,31 +27,10 @@ class _Split:
     token_size: int
 
 def split_text_keep_separator(text: str, separator: str) -> List[str]:
-    if not separator:
-        return [text] if text else []
-
-    if separator not in text:
-        return [text]
-
-    result = []
-    start = 0
-    sep_len = len(separator)
-
-    while start < len(text):
-        idx = text.find(separator, start)
-
-        if idx == -1:
-            result.append(text[start:])
-            break
-
-        if idx == 0:
-            start = sep_len
-            continue
-
-        result.append(text[start:idx + sep_len])
-        start = idx + sep_len
-
-    return result
+    '''Split text and keep the separator.'''
+    parts = text.split(separator)
+    result = [separator + s if i > 0 else s for i, s in enumerate(parts)]
+    return result[1:] if len(result) > 0 and not result[0] else result
 
 
 class NodeTransform(ABC):
@@ -100,10 +75,6 @@ class NodeTransform(ABC):
         return [DocNode(text=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
 
 
-_tiktoken_env_lock = threading.Lock()
-
-_UNSET = object()
-
 class _TextSplitterBase(NodeTransform):
     _default_params = {}
     _default_params_lock = threading.RLock()
@@ -130,7 +101,6 @@ class _TextSplitterBase(NodeTransform):
         self.kwargs = {}
         self.from_tiktoken_encoder()
 
-<<<<<<< HEAD
     @classmethod
     def _get_class_lock(cls):
         if '_default_params_lock' not in cls.__dict__:
@@ -176,16 +146,12 @@ class _TextSplitterBase(NodeTransform):
 
         LOG.info(f'{cls.__name__} default parameters reset')
 
-=======
->>>>>>> 872cc6a (expose fns change function)
     def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
                               allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
                               disallowed_special: Union[Literal['all'], Collection[str]] = 'all',
                               **kwargs: Any) -> '_TextSplitterBase':
         if allowed_special is None:
             allowed_special = set()
-<<<<<<< HEAD
-=======
         if 'TIKTOKEN_CACHE_DIR' not in os.environ and 'DATA_GYM_CACHE_DIR' not in os.environ:
             path = os.path.join(config['model_path'], 'tiktoken')
             os.makedirs(path, exist_ok=True)
@@ -194,34 +160,8 @@ class _TextSplitterBase(NodeTransform):
             enc = tiktoken.encoding_for_model(model_name)
         else:
             enc = tiktoken.get_encoding(encoding_name)
->>>>>>> 05e74ca (minor change)
 
-        with _tiktoken_env_lock:
-            tiktoken_cache_dir_set = False
-            original_value = os.environ.get('TIKTOKEN_CACHE_DIR')
-
-            if 'TIKTOKEN_CACHE_DIR' not in os.environ and 'DATA_GYM_CACHE_DIR' not in os.environ:
-                try:
-                    model_path = config['model_path']
-                except (RuntimeError, KeyError):
-                    model_path = os.path.join(os.path.expanduser('~'), '.lazyllm')
-
-                path = os.path.join(model_path, 'tiktoken')
-                os.makedirs(path, exist_ok=True)
-                os.environ['TIKTOKEN_CACHE_DIR'] = path
-                tiktoken_cache_dir_set = True
-
-        try:
-            if model_name is not None:
-                enc = tiktoken.encoding_for_model(model_name)
-            else:
-                enc = tiktoken.get_encoding(encoding_name)
-        finally:
-            with _tiktoken_env_lock:
-                if tiktoken_cache_dir_set:
-                    os.environ.pop('TIKTOKEN_CACHE_DIR', None)
-                    if original_value is not None:
-                        os.environ['TIKTOKEN_CACHE_DIR'] = original_value
+        os.environ.pop('TIKTOKEN_CACHE_DIR')
 
         def _tiktoken_encoder(text: str):
             return enc.encode(

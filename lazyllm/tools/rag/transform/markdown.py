@@ -6,7 +6,7 @@ import re
 from lazyllm.tools.rag.doc_node import DocNode
 
 @dataclass
-class _MD_Split:
+class _MdSplit:
     path: List[str]
     level: int
     header: Optional[str]
@@ -30,7 +30,7 @@ class MarkdownSplitter(_TextSplitterBase):
         self.keep_images = keep_images
         self.keep_links = keep_links
 
-    def _split(self, text: str, chunk_size: int) -> List[_MD_Split]:
+    def _split(self, text: str, chunk_size: int) -> List[_MdSplit]:
         splits = self.split_markdown_by_semantics(text)
         if self.keep_code_blocks:
             splits = self._keep_code_blocks(splits)
@@ -43,7 +43,7 @@ class MarkdownSplitter(_TextSplitterBase):
             results.extend(self._sub_split(split, chunk_size))
         return results
 
-    def _sub_split(self, split: _MD_Split, chunk_size: int) -> List[_MD_Split]:
+    def _sub_split(self, split: _MdSplit, chunk_size: int) -> List[_MdSplit]:
         token_size = split.token_size
         if token_size <= chunk_size:
             return [split]
@@ -54,13 +54,13 @@ class MarkdownSplitter(_TextSplitterBase):
         for segment in text_splits:
             token_size = self._token_size(segment)
             if token_size <= chunk_size:
-                results.append(_MD_Split(
+                results.append(_MdSplit(
                     path=split.path, level=split.level,
                     header=split.header, content=segment,
                     token_size=token_size, type=split.type,
                 ))
             else:
-                split = _MD_Split(
+                split = _MdSplit(
                     path=split.path, level=split.level,
                     header=split.header, content=segment,
                     token_size=token_size, type=split.type
@@ -69,7 +69,7 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return results
 
-    def _keep_tables(self, splits: List[_MD_Split]) -> List[_MD_Split]:
+    def _keep_tables(self, splits: List[_MdSplit]) -> List[_MdSplit]:
         pattern = re.compile(
             r'(?P<table>(?:^\s*\|.*\|\s*$\n?){2,})',
             re.MULTILINE
@@ -78,7 +78,7 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return results
 
-    def _keep_code_blocks(self, splits: List[_MD_Split]) -> List[_MD_Split]:
+    def _keep_code_blocks(self, splits: List[_MdSplit]) -> List[_MdSplit]:
         pattern = re.compile(
             r'```([\w+-]*)\s*(.*?)```',
             re.DOTALL
@@ -88,6 +88,7 @@ class MarkdownSplitter(_TextSplitterBase):
         return results
 
     def _keep_images(self, splits: List[_MdSplit]) -> List[_MdSplit]:
+<<<<<<< HEAD
         pattern = re.compile(
             r'!\[([^\]]*)\]\(([^\)]+)\)',
             re.MULTILINE
@@ -113,6 +114,15 @@ class MarkdownSplitter(_TextSplitterBase):
         results = self._keep_elements(splits, pattern, 'list')
 
         return results
+=======
+        pass
+
+    def _keep_links(self, splits: List[_MdSplit]) -> List[_MdSplit]:
+        pass
+
+    def _keep_lists(self, splits: List[_MdSplit]) -> List[_MdSplit]:
+        pass
+>>>>>>> 55c88e9 (modification as comment)
 
     def _get_heading_level(self, line: str) -> int:
         '''
@@ -136,7 +146,7 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return level
 
-    def split_markdown_by_semantics(self, md_text: str) -> List[_MD_Split]:
+    def split_markdown_by_semantics(self, md_text: str) -> List[_MdSplit]:
         pattern = re.compile(
             r'(\n*#{1,6}\s+[^\n]+(?:\n+[^#\n][\s\S]*?)*)(?=\n*#{1,6}\s|\Z)',
             re.MULTILINE
@@ -158,7 +168,7 @@ class MarkdownSplitter(_TextSplitterBase):
                     path_stack.pop()
                 path_stack.append(header)
 
-            results.append(_MD_Split(
+            results.append(_MdSplit(
                 path=path_stack.copy(),
                 level=level,
                 header=header,
@@ -168,7 +178,11 @@ class MarkdownSplitter(_TextSplitterBase):
             ))
         return results
 
+<<<<<<< HEAD
     def _keep_elements(self, splits: List[_MdSplit], pattern: re.Pattern, type: str) -> List[_MdSplit]:
+=======
+    def keep_elements(self, splits: List[_MdSplit], pattern: re.Pattern, type: str) -> List[_MdSplit]:
+>>>>>>> 55c88e9 (modification as comment)
         results = []
 
         for split in splits:
@@ -193,7 +207,7 @@ class MarkdownSplitter(_TextSplitterBase):
                 if start > last_end:
                     text_part = content[last_end:start].strip()
                     if text_part:
-                        results.append(_MD_Split(
+                        results.append(_MdSplit(
                             path=split.path,
                             level=split.level,
                             header=split.header,
@@ -203,7 +217,7 @@ class MarkdownSplitter(_TextSplitterBase):
                         ))
 
                 element_part = element_part.strip()
-                results.append(_MD_Split(
+                results.append(_MdSplit(
                     path=split.path,
                     level=split.level,
                     header=split.header,
@@ -217,7 +231,7 @@ class MarkdownSplitter(_TextSplitterBase):
             if last_end < len(content):
                 tail = content[last_end:].strip()
                 if tail:
-                    results.append(_MD_Split(
+                    results.append(_MdSplit(
                         path=split.path,
                         level=split.level,
                         header=split.header,
@@ -228,7 +242,7 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return results
 
-    def _merge(self, splits: List[_MD_Split], chunk_size: int) -> List[DocNode]:
+    def _merge(self, splits: List[_MdSplit], chunk_size: int) -> List[DocNode]:
         if not splits:
             return []
 
@@ -239,17 +253,17 @@ class MarkdownSplitter(_TextSplitterBase):
         if end_split.token_size == chunk_size and self._overlap > 0:
             splits.pop()
 
-            def cut_split(split: _MD_Split) -> List[_MD_Split]:
+            def cut_split(split: _MdSplit) -> List[_MdSplit]:
                 text = split.content
                 text_tokens = self.token_encoder(text)
                 p_text = self.token_decoder(text_tokens[:len(text_tokens) // 2])
                 n_text = self.token_decoder(text_tokens[len(text_tokens) // 2:])
                 return [
-                    _MD_Split(
+                    _MdSplit(
                         path=split.path, level=split.level, header=split.header,
                         content=p_text, token_size=self._token_size(p_text), type=split.type
                     ),
-                    _MD_Split(
+                    _MdSplit(
                         path=split.path, level=split.level, header=split.header,
                         content=n_text, token_size=self._token_size(n_text), type=split.type
                     ),
@@ -267,7 +281,7 @@ class MarkdownSplitter(_TextSplitterBase):
                     type = end_split.type
                     token_size = start_split.token_size + end_split.token_size
                     content = start_split.content + end_split.content
-                    end_split = _MD_Split(
+                    end_split = _MdSplit(
                         path=start_split.path, level=start_split.level,
                         header=start_split.header, content=content,
                         token_size=token_size, type=type
@@ -289,7 +303,7 @@ class MarkdownSplitter(_TextSplitterBase):
                             type = start_split.type
                             token_size = end_split.token_size + overlap_len
                             content = overlap_text + end_split.content
-                            end_split = _MD_Split(
+                            end_split = _MdSplit(
                                 path=start_split.path, level=start_split.level,
                                 header=start_split.header, content=content,
                                 token_size=token_size, type=type
@@ -303,7 +317,11 @@ class MarkdownSplitter(_TextSplitterBase):
         result.insert(0, self._to_docnode(end_split))
         return result
 
+<<<<<<< HEAD
     def _to_docnode(self, split: _MdSplit) -> DocNode:
+=======
+    def to_docnode(self, split: _MdSplit) -> DocNode:
+>>>>>>> 55c88e9 (modification as comment)
         metadata = {
             'path': split.path if self.keep_trace else None,
             'level': split.level,
