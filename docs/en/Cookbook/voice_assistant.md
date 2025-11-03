@@ -10,6 +10,23 @@ This example demonstrates how to use LazyLLM to quickly build an intelligent voi
     - How to use [WebModule][lazyllm.tools.webpages.WebModule] to deploy the voice assistant with one click, enabling a “voice Q&A” interactive experience.  
     - How to set the parameter `audio=True` for real-time voice input.
 
+## Design Concept
+
+First, to build an intelligent assistant with both speech input and output capabilities, we need a core reasoning model that can understand natural language. Here, we use LazyLLM’s OnlineChatModule as the central engine for language understanding and response generation.
+
+Next, since the voice assistant not only needs to “think,” but also to “listen” and “speak,” we introduce two local speech models:
+
+- `sensevoicesmall`: responsible for converting speech to text (Speech-to-Text);
+- `ChatTTS-new`: responsible for converting the generated text back to speech (Text-to-Speech).
+
+Then, we use a Pipeline to sequentially connect these three modules (speech recognition → language model → speech synthesis), allowing data to flow automatically between them and form a complete speech interaction chain.
+
+Finally, we deploy a web interface through WebModule, enabling the `audio=True` option so users can record questions and listen to responses directly on the webpage—achieving a true “speech-to-speech” intelligent interaction experience.
+
+So, the overall design is as follows:
+
+![voice_assistant](../assets/voice_assistant.png)
+
 ## Setup
 
 ### Install Dependencies
@@ -56,7 +73,7 @@ This example uses two local models:
 
 > 💡 You can change the model names or specify custom model paths as needed.
 
-## Core Code
+## Code Implementation
 
 The following is the complete runnable example:
 
@@ -87,7 +104,7 @@ Open this address in your browser to interact with the assistant using **voice i
 
 Example interface:
 
-![alt text](../assets/voice_assistant_demo.png)
+![voice_assistant_demo](../assets/voice_assistant_demo.png)
 
 - Click the microphone icon to record your voice.
 - The program automatically performs: voice recognition → LLM response generation → voice playback.
