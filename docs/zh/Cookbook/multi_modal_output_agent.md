@@ -6,6 +6,13 @@
 
     - 如何结合 [TrainableModule][lazyllm.module.TrainableModule] 调用不同模态模型。
     - 如何使用 [ReactAgent][lazyllm.tools.agent.ReactAgent] 自动选择和调用工具来完成复杂任务。
+## 设计思路
+为了能实现高质量图像生成，我们打算使用“提示词优化 + 图像生成”双工具链协同机制。第一个工具负责将用户自然语言输入翻译并重写为符合 Stable Diffusion 3 Medium 要求的英文描述；第二个工具接收优化后的提示词并调用 SD3 模型生成图像。最后由 ReactAgent 自主规划执行流程。
+
+综合以上想法，我们进行如下设计：  
+接收用户请求 → 发送给LLM工具生成标准英文提示词 → 将提示词传给sd3工具生成图像 → ReactAgent 自动调度两步流程 → 最终返回图像路径或结果给客户端。
+
+![alt text](../assets/multi_model.png)
 
 ## 代码实现
 

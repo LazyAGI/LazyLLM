@@ -9,6 +9,13 @@
     - 如何结合 [TrainableModule][lazyllm.module.TrainableModule] 实现向量表示与余弦相似度计算。
     - 如何使用 [ReactAgent][lazyllm.tools.agent.ReactAgent] 自动选择和调用工具来完成复杂任务。
 
+## 设计思路
+为了能实现智能工具调用与多步推理，我们打算使用语义筛选 + ReactAgent 协同机制。第一个阶段通过嵌入模型计算用户问题与工具描述的相似度，动态选择相关工具；第二个阶段由 ReactAgent 驱动 LLM 调用所选工具完成分步计算或任务拆解。最后将执行结果返回给用户。
+
+综合以上想法， 我们进行如下设计：
+LLM接收用户请求 → 交由嵌入模型（bge-m3）匹配高相关性工具 → 依据文本相似度确定需求工具，启动 ReactAgent（LLM + 工具链）执行推理 → 最终输出整合结果返回客户端。
+![alt text](../assets/flex.png)
+
 ## 代码实现
 
 ### 项目依赖

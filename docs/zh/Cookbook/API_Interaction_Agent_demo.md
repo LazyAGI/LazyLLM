@@ -25,6 +25,14 @@
 ![API Agent Demo](../assets/api_agent_demo.png)
 
 ---
+
+## 设计思路
+首先考虑用UI-Web 接收来自用户的自然语言请求（例如“告诉我关于法国的信息”或“哪些国家使用美元？”），并将其发送给核心查询模块。该模块首先分析用户意图，识别出是查询“国家信息”还是“货币相关国家”，并自动提取关键实体（如国家名或货币代码）。
+
+接着，系统根据识别出的意图和实体，动态构造对应的 REST API 请求 URL（例如 /v3.1/name/france 或 /v3.1/currency/USD），并调用外部 REST Countries API 获取结构化数据。
+
+最后，系统将获取到的原始 JSON 数据返回给LLM Agent进行进一步处理与总结。
+![alt text](../assets/api.png)
 ## 准备工作
 获取API—KEY,具体过程详见：https://docs.lazyllm.ai/zh-cn/stable/Tutorial/2/#2-api-key
 ```python

@@ -4,6 +4,9 @@
 
 我们将使用 LazyLLM 框架构建一个能够有效处理多轮对话的会话式 RAG 系统。
 
+## 设计思路
+多轮对话式RAG系统，核心思路是通过上下文感知的问题重写，将依赖历史的问题转化为独立可检索的查询。我们首先利用最近几轮对话历史，调用LLM重写当前问题；然后采用向量检索与BM25混合策略并行召回相关文档片段；接着用重排序模型筛选最相关的内容；最后将重写后的问题、检索上下文和对话历史一并输入LLM生成答案。整个流程基于LazyLLM的pipeline构建，对话历史被显式维护并限制长度，避免信息过载。并且使用fc_register将函数封装为工具函数，支持被ReactAgent调用。最终通过Web界面提供交互入口，实现端到端的多轮问答体验。
+![alt text](../assets/rag.png)
 ## 环境配置
 
 ### 组件
@@ -28,7 +31,7 @@ from lazyllm import pipeline, parallel, bind, fc_register
 from lazyllm import Document, Retriever, Reranker, SentenceSplitter, OnlineEmbeddingModule
 ```
 
-## 链式处理
+## 上下文依赖挑战
 
 会话式 RAG 的一个关键挑战在于，用户消息和 LLM 的响应并不是唯一的上下文形式。用户消息可能会引用之前对话的部分内容，这使得单独理解它们变得具有挑战性。
 
@@ -44,7 +47,8 @@ Human: 这种方法有哪些常见的扩展？
 
 ### 聊天历史的状态管理
 
-为了处理这种情况，我们需要基于聊天历史来理解问题上下文。让我们构建我们的会话式 RAG 系统：
+为了处理这种情况，我们需要基于聊天历史来理解问题上下文。让我们构建我们的会话式 RAG 系统 （ConversationalRAGPipeline）：
+初始化时自动创建对话历史存储和RAG 流水线, 其中docs_path用于指定知识库文档目录
 
 ```python
 class ConversationalRAGPipeline:
@@ -55,52 +59,6 @@ class ConversationalRAGPipeline:
         self.docs_path = docs_path or self._create_sample_docs()
         self.pipeline = None
         self.init_pipeline()
-```
-如果没有本地文档，可以简单创建一个用于效果检验
-```python
- def _create_sample_docs(self) -> str:
-        """Create sample documents directory"""
-        temp_dir = tempfile.mkdtemp(prefix="rag_docs_")
-
-        # Create sample documents
-        sample_docs = {
-            "task_decomposition.txt": """ 
-Task decomposition is a technique for breaking down complex tasks into smaller, more manageable subtasks.
-Chain of Thought (CoT) prompting has become a standard technique for enhancing model performance on complex tasks.
-The model is instructed to "think step by step" to utilize more test-time computation to decompose hard tasks into smaller and simpler steps.
-CoT transforms big tasks into multiple manageable tasks and sheds light into an interpretation of the model's thinking process.
-            """,
-            "tree_of_thoughts.txt": """
-Tree of Thoughts (ToT) extends CoT by exploring multiple reasoning possibilities at each step.
-It first decomposes the problem into multiple thought steps and generates multiple thoughts per step, creating a tree structure.
-The search process can be BFS (breadth-first search) or DFS (depth-first search) with each state evaluated by a classifier or majority vote.
-            """,
-            "decomposition_methods.txt": """
-Common task decomposition methods include:
-1) Using simple prompting with LLM like "Steps for XYZ" or "What are the subgoals for achieving XYZ?"
-2) Using task-specific instructions like "Write a story outline" for writing a novel
-3) Incorporating human inputs to guide the decomposition process
-            """,
-            "conversational_rag.txt": """
-Conversational RAG systems need to handle chat history and context.
-Key challenges include reformulating questions based on conversational context,
-maintaining relevant chat history, and generating contextually relevant responses.
-The system needs to understand pronoun references and contextual dependencies.
-            """,
-            "agent_rag.txt": """
-Agent-based RAG systems can iterate over multiple retrieval steps.
-Unlike chains that generate at most one query per input, agents can execute multiple retrieval steps to serve a query,
-or iterate on a single search to gather more comprehensive information.
-Agents leverage reasoning capabilities to make decisions during execution.
-            """
-        }
-
-        for filename, content in sample_docs.items():
-            with open(os.path.join(temp_dir, filename), 'w', encoding='utf-8') as f:
-                f.write(content.strip())
-
-        print(f"Created sample documents directory: {temp_dir}")
-        return temp_dir
 ```
 
 首先，我们设置文档和嵌入：
@@ -126,46 +84,8 @@ def init_pipeline(self):
     )
 ```
 
-接下来，我们创建一个上下文化提示，用于基于聊天历史重新表述问题。同时我们为RAG创建一个提示，使其能正确理解指令并生成符合要求的回答：
+接下来，我们创建一个上下文化提示contextualize_prompt，用于基于聊天历史重新表述问题。同时我们为RAG创建一个提示rag_prompt，使其能正确理解指令并生成符合要求的回答：
 
-```python
-contextualize_prompt = """你是一个帮助重写问题的助手。你的任务是：
-1. 分析用户的聊天历史
-2. 理解最新的问题
-3. 如果问题依赖于历史上下文，将其重写为独立可理解的形式
-4. 如果问题已经是独立的，返回原始问题
-5. 只返回重写后的问题，不要添加任何解释
-
-示例：
-历史记录："用户：告诉我关于小明的信息\n助手：小明是一名工程师..."
-问题："他的工作是什么？"
-重写为："小明的工作是什么？"
-
-历史记录：{chat_history}
-问题：{question}
-
-重写后的问题："""
-
-
-rag_prompt = """角色：你是一个专业、有帮助的AI助手。
-
-任务要求：
-1. 严格基于提供的上下文信息来回答问题
-2. 如果上下文信息不足以回答问题，请明确说明"根据现有信息，我无法回答这个问题"
-3. 绝对不要编造或虚构任何信息
-4. 保持回答的专业性和准确性
-
-可用信息：
-- 对话历史：{chat_history}
-- 相关上下文：{context_str}
-- 用户当前问题：{query}
-
-请根据以上信息提供准确、有用的回答："""
-self.contextualizer = lazyllm.OnlineChatModule(
-    source="deepseek",
-    timeout=30
-).prompt(lazyllm.ChatPrompter(contextualize_prompt))
-```
 
 然后我们构建具有并行检索和重排序的主要 RAG 管道，其中包括对问题的双路并行检索（基于余弦相似度和基于BM25）以及结果重排序：
 
@@ -212,28 +132,7 @@ def contextualize_question(self, question: str) -> str:
         """Reformulate question based on chat history"""
         if not self.chat_history:
             return question
-
-        # Build historical conversation text
-        history_text = ""
-        for msg in self.chat_history[-6:]:  # Last 3 turns of conversation
-            if msg["role"] == "user":
-                history_text += f"User: {msg['content']}\n"
-            elif msg["role"] == "assistant":
-                history_text += f"Assistant: {msg['content']}\n"
-
-        try:
-            # Pass parameters in dictionary format
-            response = self.contextualizer({
-                "messages": [
-                    {"role": "system",
-                     "content": "You are an assistant that helps rewrite questions. Please rewrite the user's question based on chat history to make it standalone and understandable."},
-                    {"role": "user",
-                     "content": f"Based on the following chat history, rewrite the question:\n\nChat history:\n{history_text}\n\nQuestion: {question}"}
-                ]
-            })
-            return response.strip()
-        except Exception as e:
-            print(f"Question rewriting failed: {e}")
+                ...
             return question
 ```
 同时将重构后的问题转换为格式化的对话文本，便于后续处理或显示。
@@ -252,45 +151,16 @@ def contextualize_question(self, question: str) -> str:
 ```
 
 
-聊天方法处理对话流程：
+聊天方法处理对话流程,首先ontextualize_question重构我们的问题， _format_chat_history构建历史对话文本，并使用pipeline构建rag管道，随后更新聊天历史：
 
 ```python
 def chat(self, question: str) -> str:
     """处理单轮对话"""
-    # 1. 重构问题
-    contextualized_question = self.contextualize_question(question)
-    
-    # 2. 构建历史对话文本
-    history_text = self._format_chat_history(self.chat_history, max_turns=4)
-    
-    # 3. 通过 RAG 管道生成答案
-    response = self.pipeline(
-        contextualized_question,
-        chat_history=history_text
-    )
-    
-    # 4. 更新聊天历史
-    self.chat_history.append({"role": "user", "content": question})
-    self.chat_history.append({"role": "assistant", "content": response})
+    ...
     
     return response
 ```
 
-让我们测试我们的会话式 RAG：
-
-```python
-rag = ConversationalRAGPipeline()
-
-# 第一个问题
-response1 = rag.chat("任务分解的标准方法是什么？")
-print(f"回复 1: {response1}")
-
-# 依赖上下文的后续问题
-response2 = rag.chat("这种方法有哪些常见的扩展？")
-print(f"回复 2: {response2}")
-```
-
-注意，模型在第二个问题中生成的问题包含了对话上下文，将"这种方法"转换为"思维链提示的扩展"。
 
 ## 智能体
 
@@ -658,6 +528,25 @@ if __name__ == "__main__":
     # Start web interface
     start_web_interface()
 ```
+### 示例运行结果
+<think>好的，用户问的是任务分解的标准方法是什么，然后在得到答案后需要查找该方法的常见扩展。首先，我需要确定任务分解的标准方法有哪些。常见的任务分解方法包括工作分解结构（WBS）、目标树、任务列表等。其中，WBS应该是项目管理中最常用的标准方法之一，它通过将项目逐层分解为更小的任务来组织工作。
+
+接下来，用户可能需要具体的步骤或如何应用这些方法。不过根据问题，用户首先想知道标准方法是什么，所以应该先回答这个部分。然后，当用户确认答案后，再进一步查找该方法的常见扩展。例如，WBS的扩展可能包括基于生命周期的分解、按交付成果分解、或者结合敏捷方法的用户故事分解等。
+
+现在需要检查是否有必要使用工具来获取信息。由于我的知识截止到2023年10月，关于任务分解的标准方法和其扩展可能已经足够，但为了确保准确性，可能需要调用内部的知识库或数据库来验证当前常用的扩展方法。不过根据已有的知识，我可以直接回答标准方法，然后建议下一步操作是否需要工具辅助查找扩展内容。
+
+根据用户的指示，每次回答前必须有一个Thought，并且可能需要调用工具。但在这个情况下，标准方法我已经知道，所以可以先给出答案，然后询问是否需要进一步的信息。或者，如果用户的问题需要更详细的扩展，可能需要使用工具来搜索相关资料。但考虑到问题分为两部分，先回答第一部分，再处理第二部分可能更合适。
+</think>
+
+Thought: 用户询问任务分解的标准方法及其次要步骤的扩展。我需要先明确标准方法的具体内容，再提供扩展方向。  
+Answer: 任务分解的标准方法通常包括以下步骤：  
+1. **定义目标**：明确最终交付成果或目标；  
+2. **层级划分**：将任务按逻辑关系分解为子任务（如工作分解结构WBS）；  
+3. **资源分配**：为每个子任务分配人力、时间等资源；  
+4. **优先级排序**：确定任务执行顺序；  
+5. **监控与反馈**：跟踪进度并调整计划。  
+
+若需进一步了解该方法的常见扩展（如敏捷分解、目标树分析等），可指定具体领域或应用场景，我将补充详细信息。
 
 ## 下一步
 
