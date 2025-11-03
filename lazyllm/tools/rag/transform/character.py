@@ -12,7 +12,6 @@ class CharacterSplitter(_TextSplitterBase):
         self._is_separator_regex = is_separator_regex
         self._keep_separator = keep_separator
         self._character_split_fns = []
-        self.token_splitter = _TokenTextSplitter(chunk_size=chunk_size, overlap=overlap)
 
     def split_text(self, text: str, metadata_size: int) -> List[str]:
         return super().split_text(text, metadata_size)
@@ -25,7 +24,8 @@ class CharacterSplitter(_TextSplitterBase):
         text_splits, is_sentence = self._get_splits_by_fns(text)
 
         if len(text_splits) == 1 and self._token_size(text_splits[0]) > chunk_size:
-            token_sub_texts = self.token_splitter.split_text(text_splits[0], metadata_size=0)
+            token_splitter = _TokenTextSplitter(chunk_size=chunk_size, overlap=self._overlap)
+            token_sub_texts = token_splitter.split_text(text_splits[0], metadata_size=0)
             return [
                 _Split(s, is_sentence=is_sentence, token_size=self._token_size(s))
                 for s in token_sub_texts

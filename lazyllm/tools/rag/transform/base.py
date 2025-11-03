@@ -1,23 +1,25 @@
 from abc import ABC, abstractmethod
-from copy import copy as lite_copy
-from enum import Enum, auto
+from copy import copy as copy_obj
+from enum import Enum
 from dataclasses import dataclass
 from typing import Any, List, Union, Optional, Tuple, AbstractSet, Collection, Literal, Callable
 from lazyllm import LOG
-from lazyllm.tools.rag.doc_node import DocNode
+from ..doc_node import DocNode
 from lazyllm import ThreadPoolExecutor
 import re
 from functools import partial
 import os
+import threading
 import tiktoken
 from lazyllm import config
 from lazyllm.thirdparty import nltk
+from lazyllm.thirdparty import transformers
 
 class MetadataMode(str, Enum):
-    ALL = auto()
-    EMBED = auto()
-    LLM = auto()
-    NONE = auto()
+    ALL = 'ALL'
+    EMBED = 'EMBED'
+    LLM = 'LLM'
+    NONE = 'NONE'
 
 @dataclass
 class _Split:
@@ -26,7 +28,6 @@ class _Split:
     token_size: int
 
 def split_text_keep_separator(text: str, separator: str) -> List[str]:
-    '''Split text and keep the separator.'''
     parts = text.split(separator)
     result = [separator + s if i > 0 else s for i, s in enumerate(parts)]
     return result[1:] if len(result) > 0 and not result[0] else result
@@ -53,8 +54,8 @@ class NodeTransform(ABC):
                 return splits
 
         if getattr(self, '_number_workers', 0) > 0:
-            pool = ThreadPoolExecutor(max_workers=self._number_workers)
-            fs = [pool.submit(impl, node) for node in documents]
+            with ThreadPoolExecutor(max_workers=self._number_workers) as pool:
+                fs = [pool.submit(impl, node) for node in documents]
             return sum([f.result() for f in fs], [])
         else:
             return sum([impl(node) for node in documents], [])
@@ -65,16 +66,16 @@ class NodeTransform(ABC):
 
     def with_name(self, name: Optional[str], *, copy: bool = True) -> 'NodeTransform':
         if name is not None:
-            if copy: return lite_copy(self).with_name(name, copy=False)
+            if copy: return copy_obj(self).with_name(name, copy=False)
             self._name = name
         return self
 
     def __call__(self, node: DocNode, **kwargs: Any) -> List[DocNode]:
-        # Parent and child should not be set here.
         results = self.transform(node, **kwargs)
-        if isinstance(results, (DocNode, str)): results = [results]
         return [DocNode(text=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
 
+
+_tiktoken_env_lock = threading.Lock()
 
 class _TextSplitterBase(NodeTransform):
     def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0):
@@ -101,16 +102,33 @@ class _TextSplitterBase(NodeTransform):
                               **kwargs: Any) -> '_TextSplitterBase':
         if allowed_special is None:
             allowed_special = set()
-        if 'TIKTOKEN_CACHE_DIR' not in os.environ and 'DATA_GYM_CACHE_DIR' not in os.environ:
-            path = os.path.join(config['model_path'], 'tiktoken')
-            os.makedirs(path, exist_ok=True)
-            os.environ['TIKTOKEN_CACHE_DIR'] = path
-        if model_name is not None:
-            enc = tiktoken.encoding_for_model(model_name)
-        else:
-            enc = tiktoken.get_encoding(encoding_name)
 
-        os.environ.pop('TIKTOKEN_CACHE_DIR')
+        with _tiktoken_env_lock:
+            tiktoken_cache_dir_set = False
+            original_value = os.environ.get('TIKTOKEN_CACHE_DIR')
+
+            if 'TIKTOKEN_CACHE_DIR' not in os.environ and 'DATA_GYM_CACHE_DIR' not in os.environ:
+                try:
+                    model_path = config['model_path']
+                except (RuntimeError, KeyError):
+                    model_path = os.path.join(os.path.expanduser('~'), '.lazyllm')
+
+                path = os.path.join(model_path, 'tiktoken')
+                os.makedirs(path, exist_ok=True)
+                os.environ['TIKTOKEN_CACHE_DIR'] = path
+                tiktoken_cache_dir_set = True
+
+        try:
+            if model_name is not None:
+                enc = tiktoken.encoding_for_model(model_name)
+            else:
+                enc = tiktoken.get_encoding(encoding_name)
+        finally:
+            with _tiktoken_env_lock:
+                if tiktoken_cache_dir_set:
+                    os.environ.pop('TIKTOKEN_CACHE_DIR', None)
+                    if original_value is not None:
+                        os.environ['TIKTOKEN_CACHE_DIR'] = original_value
 
         def _tiktoken_encoder(text: str):
             return enc.encode(
@@ -121,6 +139,7 @@ class _TextSplitterBase(NodeTransform):
 
         def _tiktoken_decoder(text: str):
             return enc.decode(text)
+
         self.token_encoder = _tiktoken_encoder
         self.token_decoder = _tiktoken_decoder
         self.kwargs.update(kwargs)
@@ -135,9 +154,24 @@ class _TextSplitterBase(NodeTransform):
 
         return self
 
-    @classmethod
-    def from_huggingface_tokenizer(self, text: str) -> '_TextSplitterBase':
-        pass
+    def from_huggingface_tokenizer(self, tokenizer: Any):
+        try:
+            if not isinstance(tokenizer, transformers.tokenization_utils_base.PreTrainedTokenizerBase):
+                raise ValueError('Tokenizer received was not an instance of PreTrainedTokenizerBase')
+
+            def _huggingface_encoder(text: str):
+                return tokenizer.encode(text, add_special_tokens=False)
+
+            def _huggingface_decoder(token_ids):
+                if isinstance(token_ids, list) and len(token_ids) == 0:
+                    return ''
+                return tokenizer.decode(token_ids, skip_special_tokens=True)
+
+            self.token_encoder = _huggingface_encoder
+            self.token_decoder = _huggingface_decoder
+
+        except Exception as e:
+            raise ValueError(f'Failed to initialize HuggingFace tokenizer: {e}')
 
     def split_text(self, text: str, metadata_size: int) -> List[str]:
         if text == '':
