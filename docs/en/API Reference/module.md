@@ -206,3 +206,15 @@
 ::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowTTS
     options:
       members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowReranking
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowTextToImageModule
+    options:
+      members:
