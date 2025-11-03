@@ -102,6 +102,7 @@
 ::: lazyllm.module.OnlineEmbeddingModuleBase
     members:
         - forward
+        - run_embed_batch
 
 ::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoEmbedding
     options:
@@ -167,7 +168,7 @@
     exclude-members:
 
 ::: lazyllm.module.module.ModuleCache
-    members: get, set, close
+    members: [get, set, close]
     exclude-members:
 
 ::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenModule
@@ -196,6 +197,10 @@
       members:
 
 ::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIReranking
     options:
       members:
 

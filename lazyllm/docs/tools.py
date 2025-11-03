@@ -2873,6 +2873,113 @@ Args:
 - List[DocNode]: List of parsed documents extracted from the file.
 ''')
 
+add_chinese_doc('rag.dataReader.SimpleDirectoryReader.find_extractor_by_file', '''
+根据文件名或后缀从文件读取器映射中选择合适的提取器（extractor）。
+
+该函数首先尝试使用文件后缀进行直接匹配（如 `*.txt`），
+若未命中，则会遍历 `file_extractor` 的模式键（如 `*.json`, `**/docs/*.md`），
+使用 `fnmatch` 进行模糊匹配，找到最符合的读取器。
+如果没有匹配项，将返回默认读取器 `DefaultReader`。
+
+Args:
+    input_file (Path): 输入文件路径。
+    file_extractor (Dict[str, Callable]): 文件模式到提取器的映射表。
+    pathm (PurePath): 路径处理模块，用于生成匹配模式，默认使用 `Path`。
+
+**Returns:**\n
+- Callable: 与文件匹配的提取器函数，若无匹配则返回 `DefaultReader`。
+''')
+
+add_english_doc('rag.dataReader.SimpleDirectoryReader.find_extractor_by_file', '''
+Select the appropriate file extractor based on filename or suffix.
+
+This function first attempts to match by file extension (e.g., `*.txt`),
+and if no match is found, it iterates through the `file_extractor` mapping,
+using `fnmatch` for wildcard-based pattern matching (e.g., `*.json`, `**/docs/*.md`).
+If no extractor matches, it falls back to the `DefaultReader`.
+
+Args:
+    input_file (Path): Path to the input file.
+    file_extractor (Dict[str, Callable]): Mapping of filename patterns to extractor functions.
+    pathm (PurePath): Path handling module used to construct pattern paths. Defaults to `Path`.
+
+**Returns:**\n
+- Callable: The extractor function matching the file, or `DefaultReader` if none found.
+''')
+
+add_chinese_doc('rag.dataReader.SimpleDirectoryReader.get_default_reader', '''
+根据文件扩展名获取默认的文件读取器（Reader）。
+
+该函数通过文件扩展名（如 `.txt`、`.json`）在默认读取器映射表中查找对应的 Reader，
+若未以 `"*."` 开头，会自动补全后缀格式（例如 `"txt"` → `"*.txt"`）。
+常见的默认 Reader 包括纯文本读取器、JSON 读取器、Markdown 读取器等。
+
+Args:
+    file_ext (str): 文件扩展名或匹配模式（例如 `"txt"` 或 `"*.json"`）。
+
+**Returns:**\n
+- Callable[[Path, Dict], List[DocNode]]: 与该扩展名对应的读取器函数，若未匹配则返回 `None`。
+''')
+
+add_english_doc('rag.dataReader.SimpleDirectoryReader.get_default_reader', '''
+Retrieve the default file reader (Reader) based on file extension.
+
+This function looks up the default reader mapping using the file extension
+(e.g., `.txt`, `.json`).  
+If the extension does not start with `"*."`, it automatically prepends it
+(e.g., `"txt"` → `"*.txt"`).  
+Common readers include plain text, JSON, and Markdown readers.
+
+Args:
+    file_ext (str): File extension or matching pattern (e.g., `"txt"` or `"*.json"`).
+
+**Returns:**\n
+- Callable[[Path, Dict], List[DocNode]]: The reader function associated with the extension, or `None` if not found.
+''')
+
+add_chinese_doc('rag.dataReader.SimpleDirectoryReader.add_post_action_for_default_reader', '''
+为默认 Reader 添加后处理函数（Post Action）。
+
+该方法允许在默认文件读取器（Reader）完成文档解析后，对生成的 `DocNode` 
+进行自定义后处理（如文本清洗、节点拆分、结构调整等）。  
+若指定的扩展名没有默认读取器，会抛出 `KeyError` 异常。
+
+后处理函数可以是以下类型之一：
+
+1. 继承自 `NodeTransform` 的类；
+2. 普通函数，接收一个 `DocNode` 并返回修改后的 `DocNode` 或列表；
+3. 可实例化的类型，会自动创建实例。
+
+Args:
+    file_ext (str): 文件扩展名或匹配模式（例如 `"*.txt"`）。
+    f (Callable[[DocNode], Union[DocNode, List[DocNode]]]): 后处理函数或节点转换类。
+
+**Raises:**\n
+- KeyError: 当指定文件扩展名没有默认 Reader 时抛出。
+''')
+
+add_english_doc('rag.dataReader.SimpleDirectoryReader.add_post_action_for_default_reader', '''
+Add a post-processing action (Post Action) for a default Reader.
+
+This method allows attaching a custom post-processing function to the default
+file reader (Reader), enabling transformation of parsed `DocNode` objects after
+initial loading (e.g., text cleaning, node splitting, or structural adjustments).  
+If the given file extension has no default reader, a `KeyError` is raised.
+
+The post-processing function `f` can be:
+
+1. A subclass of `NodeTransform`;
+2. A callable that takes a `DocNode` and returns a modified `DocNode` or a list;
+3. A class type, which will be instantiated automatically.
+
+Args:
+    file_ext (str): File extension or matching pattern (e.g., `"*.txt"`).
+    f (Callable[[DocNode], Union[DocNode, List[DocNode]]]): Post-processing function or node transform class.
+
+**Raises:**\n
+- KeyError: If the specified file extension has no default reader.
+''')
+
 add_english_doc('rag.dataReader.FileReader', '''
 File content reader whose main function is to convert various input file formats into concatenated plain text content.
 
@@ -2934,6 +3041,31 @@ reader = CustomReader(return_trace=True)
 documents = reader.forward(file_paths=["doc1.txt", "doc2.txt"])
 ''')
 
+add_chinese_doc('rag.readers.readerBase.TxtReader', '''\
+TxtReader 类用于从文本文件中加载内容，并将其封装为 `DocNode` 对象列表。
+
+该类继承自 `LazyLLMReaderBase`，主要功能包括：
+
+- 支持指定文本编码读取文件；
+- 可选返回加载过程的跟踪信息；
+
+Args:
+    encoding (str): 文件读取的文本编码，默认值为 'utf-8'。
+    return_trace (bool): 是否返回加载过程的跟踪信息，默认值为 True。
+''')
+
+add_english_doc('rag.readers.readerBase.TxtReader', '''\
+The TxtReader class loads content from text files and wraps it into a list of `DocNode` objects.
+
+This class inherits from `LazyLLMReaderBase` and mainly provides:
+
+- Support for reading files with a specified text encoding;
+- Optional tracing information of the loading process;
+
+Args:
+    encoding (str): Text encoding for reading files, default is 'utf-8'.
+    return_trace (bool): Whether to return trace information of the loading process, default is True.
+''')
 
 add_chinese_doc('rag.doc_node.QADocNode', '''\
 问答文档节点类，用于存储问答对数据。
