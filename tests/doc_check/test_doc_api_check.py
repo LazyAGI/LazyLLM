@@ -3,6 +3,11 @@ import inspect
 import os
 import sys
 import re
+import lazyllm
+import dataclasses
+import enum
+from typing import Callable
+
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 lazyllm_root = os.path.dirname(os.path.dirname(current_dir))
@@ -17,71 +22,61 @@ if DOCS_SCRIPTS_PATH not in sys.path:
 if 'lazyllm' in sys.modules:
     del sys.modules['lazyllm']
 
-import lazyllm
-from typing import Callable
-import dataclasses
-import enum
-
 try:
     from lazynote.manager import SimpleManager
 except ImportError:
     SimpleManager = None
 
 def generate_docs_for_module():
-    """Generate documentation using SimpleManager"""
     if SimpleManager is None:
         return False
-    
+
     try:
         os.environ['LAZYLLM_LANGUAGE'] = 'CHINESE'
-        
+
         skip_list = [
             'lazyllm.components.deploy.relay.server',
             'lazyllm.components.deploy.relay.base',
             'lazyllm.components.finetune.easyllm',
             'lazyllm.tools.rag.component.bm25_retriever',
         ]
-        
+
         manager = SimpleManager(pattern='clear', skip_on_error=True)
         manager.traverse(lazyllm, skip_modules=skip_list)
-        
+
         manager = SimpleManager(pattern='fill', skip_on_error=True)
         manager.traverse(lazyllm, skip_modules=skip_list)
-        
+
         return True
-        
+
     except Exception:
         return False
 
 def class_should_check(cls, module):
-    """Check if a class should be included in documentation verification."""
     if dataclasses.is_dataclass(cls) or issubclass(cls, enum.Enum):
         return False
-        
+
     if not cls.__name__[0].isupper() or cls.__module__ != module.__name__:
         return False
-        
+
     all_methods = []
     for name, obj in inspect.getmembers(cls):
-        if (inspect.isfunction(obj) or 
-            isinstance(obj, classmethod) or 
-            isinstance(obj, staticmethod)):
+        if (inspect.isfunction(obj) or isinstance(obj, classmethod) or isinstance(obj, staticmethod)):
             all_methods.append((name, obj))
-    
-    custom_methods = [name for name, obj in all_methods 
-                     if not name.startswith('_') or name == '__init__']
+
+    custom_methods = [name for name, obj in all_methods
+                      if not name.startswith('_') or name == '__init__']
     return len(custom_methods) > 0
 
 def get_sub_classes(module):
-    """Get all valid subclasses from a module recursively."""
     try:
         clsmembers = inspect.getmembers(module, inspect.isclass)
     except Exception:
         return set()
-    
+
     classes = set([ele[1] for ele in clsmembers if class_should_check(ele[1], module)])
-    
-    for name, sub_module in inspect.getmembers(module, inspect.ismodule):
+
+    for sub_module in inspect.getmembers(module, inspect.ismodule):
         if sub_module.__name__.startswith(module.__name__):
             if 'thirdparty' in sub_module.__name__ or 'ChatTTS' in sub_module.__name__:
                 continue
@@ -92,7 +87,6 @@ def get_sub_classes(module):
     return classes
 
 def is_method_overridden(cls, method: Callable):
-    """Check if a method is overridden from its parent class."""
     method_name = method.__name__
     for base in cls.__bases__:
         if hasattr(base, method_name):
@@ -103,7 +97,6 @@ def is_method_overridden(cls, method: Callable):
     return False
 
 def find_highest_ancestor_with_method(cls, method_name: str):
-    """Find the highest ancestor class that has the given method."""
     highest = None
     for base in cls.__bases__:
         if base is object:
@@ -116,14 +109,9 @@ def find_highest_ancestor_with_method(cls, method_name: str):
     return highest
 
 def check_method_has_doc(cls, func: Callable) -> tuple[bool, bool]:
-    """Check if method has documentation (Chinese and English)
-    
-    Returns:
-        tuple[bool, bool]: (has_chinese_doc, has_english_doc)
-    """
     has_chinese_doc = False
     has_english_doc = False
-    
+
     try:
         with lazyllm.config.temp('language', 'CHINESE'):
             if func.__name__ == '__init__':
@@ -133,7 +121,7 @@ def check_method_has_doc(cls, func: Callable) -> tuple[bool, bool]:
             has_chinese_doc = bool(doc and doc.strip())
     except Exception:
         pass
-    
+
     try:
         with lazyllm.config.temp('language', 'ENGLISH'):
             if func.__name__ == '__init__':
@@ -143,12 +131,10 @@ def check_method_has_doc(cls, func: Callable) -> tuple[bool, bool]:
             has_english_doc = bool(doc and doc.strip())
     except Exception:
         pass
-    
+
     return has_chinese_doc, has_english_doc
 
 def do_check_method(cls, func: Callable):
-    """Check if method has documentation after generating docs."""
-    
     try:
         if func.__name__ != '__init__':
             if is_method_overridden(cls, func):
@@ -157,25 +143,20 @@ def do_check_method(cls, func: Callable):
                     ancestor_has_chinese, ancestor_has_english = check_method_has_doc(
                         highest_ancestor, getattr(highest_ancestor, func.__name__)
                     )
-                    
+
                     if ancestor_has_chinese or ancestor_has_english:
                         return
-        
+
         has_chinese_doc, has_english_doc = check_method_has_doc(cls, func)
-        
+
         if not has_chinese_doc and not has_english_doc:
-            error_msg = f"No documentation found for {cls.__name__}.{func.__name__} after doc generation"
+            error_msg = f'No documentation found for {cls.__name__}.{func.__name__} after doc generation'
             raise ValueError(error_msg)
-            
+
     except Exception:
         raise
 
 def get_defined_methods(cls):
-    """Get methods that are actually defined in the class.
-    
-    This function only returns methods that are defined in the class's source code,
-    excluding methods that are dynamically added or inherited from parent classes.
-    """
     try:
         source = inspect.getsource(cls)
         method_pattern = r'(?:@\w+\s+)*def\s+([a-zA-Z_][a-zA-Z0-9_]*)\s*\('
@@ -185,32 +166,28 @@ def get_defined_methods(cls):
 
 _docs_generated = False
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope='session', autouse=True)
 def generate_docs():
-    """Generate documentation before running tests (session scope)"""
     global _docs_generated
     if not _docs_generated:
-        success = generate_docs_for_module()
         _docs_generated = True
     return _docs_generated
 
 def create_test_function(cls, func):
-    """Create a test function for checking method documentation."""
-    dynamic_func_name = f"test_{cls.__name__}_{func.__name__}"
-    
+    dynamic_func_name = f'test_{cls.__name__}_{func.__name__}'
+
     while dynamic_func_name in global_func_names:
-        dynamic_func_name = dynamic_func_name + "_"
+        dynamic_func_name = dynamic_func_name + '_'
     global_func_names.add(dynamic_func_name)
-    cls_path = f"{cls.__module__}.{cls.__qualname__}"
-    func_path = f"{cls_path}.{func.__name__}"
-    
-    code = f"""def {dynamic_func_name}():
+    cls_path = f'{cls.__module__}.{cls.__qualname__}'
+    func_path = f'{cls_path}.{func.__name__}'
+
+    code = f'''def {dynamic_func_name}():
     do_check_method({cls_path}, {func_path})
-"""
+'''
     exec(code, globals())
 
 def gen_check_cls_and_funtions():
-    """Generate test functions for all classes and their methods."""
     all_classes = get_sub_classes(lazyllm)
     for cls in all_classes:
         defined_methods = get_defined_methods(cls)
@@ -219,14 +196,14 @@ def gen_check_cls_and_funtions():
         for name, obj in cls.__dict__.items():
             if name not in defined_methods:
                 continue
-            
+
             if inspect.isfunction(obj):
                 try:
                     if obj.__module__ != cls.__module__:
                         continue
                 except (AttributeError, TypeError):
                     continue
-            
+
             if isinstance(obj, classmethod):
                 all_methods.append((name, obj.__func__))
             elif isinstance(obj, staticmethod):
@@ -246,17 +223,13 @@ global_func_names = set()
 gen_check_cls_and_funtions()
 
 def run_all_tests():
-    """Run all tests"""
-    doc_generation_success = generate_docs_for_module()
-    
     test_functions = [name for name in globals() if name.startswith('test_') and callable(globals()[name])]
-    
-    
+
     for test_name in test_functions:
         try:
             globals()[test_name]()
         except Exception:
             pass
 
-if __name__ == "__main__":
+if __name__ == '__main__':
     run_all_tests()
