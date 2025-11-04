@@ -2892,27 +2892,27 @@ Returns:
     List[Dict]: A list of reranking results, each containing fields such as 'index', 'relevance_score', and 'document'.
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowTTS', """\
-SiliconFlow文本转语音模块，继承自OnlineMultiModalBase。
+add_chinese_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowTextToImageModule', """\
+SiliconFlow文生图模块，继承自OnlineMultiModalBase。
 
-提供基于SiliconFlow的文本转语音(TTS)功能，支持将文本转换为音频文件。
+提供基于SiliconFlow的文本生成图像功能，支持根据文本描述生成图像。
 
 Args:
     api_key (str, optional): API密钥，默认为配置中的siliconflow_api_key
-    model_name (str, optional): 模型名称，默认为"fnlp/MOSS-TTSD-v0.5"
+    model_name (str, optional): 模型名称，默认为"Qwen/Qwen-Image"
     base_url (str, optional): API基础URL，默认为"https://api.siliconflow.cn/v1/"
     return_trace (bool, optional): 是否返回追踪信息，默认为False
     **kwargs: 其他模型参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowTTS', """\
-SiliconFlow Text-to-Speech module, inherits from OnlineMultiModalBase.
+add_english_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowTextToImageModule', """\
+SiliconFlow Text-to-Image module, inherits from OnlineMultiModalBase.
 
-Provides text-to-speech (TTS) functionality based on SiliconFlow, supports converting text to audio files.
+Provides text-to-image generation functionality based on SiliconFlow, supports generating images from text descriptions.
 
 Args:
     api_key (str, optional): API key, defaults to configured siliconflow_api_key
-    model_name (str, optional): Model name, defaults to "fnlp/MOSS-TTSD-v0.5"
+    model_name (str, optional): Model name, defaults to "Qwen/Qwen-Image"
     base_url (str, optional): Base API URL, defaults to "https://api.siliconflow.cn/v1/"
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Other model parameters
