@@ -7,6 +7,14 @@ This project demonstrates how to use [LazyLLM](https://github.com/LazyAGI/LazyLL
 - How to combine [TrainableModule][lazyllm.module.TrainableModule] to invoke models of different modalities.
 - How to use [ReactAgent][lazyllm.tools.agent.ReactAgent] to automatically select and invoke tools to accomplish complex tasks.
 
+## Design Approach
+To achieve high-quality image generation, we propose a dual-toolchain collaborative mechanism combining prompt optimization and image generation.
+
+The first tool translates and rewrites the user’s natural language input into a well-structured, SD3-compliant English prompt tailored for Stable Diffusion 3 Medium. The second tool takes this optimized prompt and invokes the SD3 model to generate the corresponding image. The entire workflow is orchestrated autonomously by a ReAct Agent, which plans and executes the multi-step process.
+
+Integrating these components, our system is designed as follows:
+User request → sent to an LLM-based prompt refinement tool to generate a standardized English prompt → optimized prompt passed to the SD3 image generation tool → ReAct Agent automatically schedules and coordinates the two-step pipeline → final image (or its path) is returned to the client.
+![alt text](../assets/multi_model.png)
 ## Code Implementation
 
 ### Project Dependencies

@@ -4,6 +4,15 @@ A key challenge in Q&A systems is handling conversational context. This tutorial
 
 We'll use the LazyLLM framework to build a conversational RAG system that can handle multi-turn conversations effectively.
 
+## Design Approach
+Our multi-turn conversational RAG system is built on the core idea of context-aware query rewriting, which transforms history-dependent user questions into standalone, retrievable queries.
+
+The process begins by leveraging the most recent dialogue turns to prompt an LLM to rewrite the current user question into a self-contained form. This rewritten query is then used to perform hybrid retrieval, combining dense vector search (via embeddings) and sparse lexical matching (BM25) in parallel to recall relevant document chunks. A cross-encoder-based re-ranker subsequently refines the retrieved results to surface the most pertinent passages.
+
+Finally, the rewritten query, top-ranked context, and trimmed dialogue history are jointly fed into an LLM to generate a coherent and grounded response.
+
+The entire pipeline is implemented using LazyLLM, with explicit management of dialogue history (length-constrained to prevent context overload). Tool functions—such as query rewriting, hybrid retrieval, and re-ranking—are encapsulated via fc_register to enable seamless integration into a ReAct Agent for dynamic tool orchestration. A web interface serves as the user-facing entry point, delivering an end-to-end multi-turn conversational QA experience.
+![alt text](../assets/rag.png)
 ## Setup
 
 ### Components

@@ -9,6 +9,16 @@ This project demonstrates how to use [LazyLLM](https://github.com/LazyAGI/LazyLL
     - How to leverage [TrainableModule][lazyllm.module.TrainableModule] for vector embeddings and cosine similarity computation.
     - How to utilize [ReactAgent][lazyllm.tools.agent.ReactAgent] to automatically choose and invoke tools to solve complex tasks.
 
+
+## Design Approach
+To enable intelligent tool invocation and multi-step reasoning, we propose a collaborative mechanism combining semantic filtering with a ReAct Agent.
+
+In the first stage, an embedding model computes the semantic similarity between the user's query and available tool descriptions, dynamically selecting the most relevant tools. In the second stage, a ReAct Agent orchestrates the LLM to invoke the selected tools, performing step-by-step computation or decomposing complex tasks as needed. The final execution results are then returned to the user.
+
+Integrating these ideas, our system is designed as follows:
+User request → received by LLM → passed to embedding model (e.g., BGE-M3) to match high-relevance tools → relevant tools identified via text similarity → ReAct Agent (LLM + toolchain) activated to execute multi-step reasoning → consolidated results returned to the client.
+![alt text](../assets/flex.png)
+
 ## Implementation
 
 ### Dependencies

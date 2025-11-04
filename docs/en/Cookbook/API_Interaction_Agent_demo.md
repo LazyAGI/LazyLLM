@@ -9,6 +9,13 @@ Want a large language model to automatically call real-world APIs based on your 
 - How to use [ReactAgent][lazyllm.tools.agent.ReactAgent] with [WebModule][lazyllm.tools.WebModule] to enable API calling via Q&A.
 
 ---
+## Design Approach
+First, a UI-Web interface receives natural language requests from users (e.g., "Tell me about France" or "Which countries use the US dollar?") and forwards them to the core query module. This module analyzes the user's intent to determine whether the request pertains to "country information" or "countries using a specific currency," and automatically extracts key entities (such as country names or currency codes).
+
+Next, based on the identified intent and extracted entities, the system dynamically constructs the appropriate REST API request URL (e.g., /v3.1/name/france or /v3.1/currency/USD) and calls the external REST Countries API to retrieve structured data.
+
+Finally, the system returns the raw JSON response to an LLM Agent for further processing and summarization.
+![alt text](../assets/api.png)
 ## Preparation
 Obtain an API-KEY. For the detailed process, please refer to: https://docs.lazyllm.ai/zh-cn/stable/Tutorial/2/#2-api-key， REST Countries is an open-source API project that provides country information, allowing users to retrieve detailed data about countries—such as names, capitals, currencies, and languages—through RESTful interfaces.
 
