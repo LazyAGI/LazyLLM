@@ -3,11 +3,9 @@ import inspect
 import os
 import sys
 import re
-import lazyllm
 import dataclasses
 import enum
 from typing import Callable
-
 
 current_dir = os.path.dirname(os.path.abspath(__file__))
 lazyllm_root = os.path.dirname(os.path.dirname(current_dir))
@@ -23,6 +21,7 @@ if 'lazyllm' in sys.modules:
     del sys.modules['lazyllm']
 
 try:
+    import lazyllm
     from lazynote.manager import SimpleManager
 except ImportError:
     SimpleManager = None
@@ -76,7 +75,7 @@ def get_sub_classes(module):
 
     classes = set([ele[1] for ele in clsmembers if class_should_check(ele[1], module)])
 
-    for sub_module in inspect.getmembers(module, inspect.ismodule):
+    for _, sub_module in inspect.getmembers(module, inspect.ismodule):
         if sub_module.__name__.startswith(module.__name__):
             if 'thirdparty' in sub_module.__name__ or 'ChatTTS' in sub_module.__name__:
                 continue
@@ -170,6 +169,7 @@ _docs_generated = False
 def generate_docs():
     global _docs_generated
     if not _docs_generated:
+        generate_docs_for_module()
         _docs_generated = True
     return _docs_generated
 
@@ -223,6 +223,7 @@ global_func_names = set()
 gen_check_cls_and_funtions()
 
 def run_all_tests():
+    generate_docs_for_module()
     test_functions = [name for name in globals() if name.startswith('test_') and callable(globals()[name])]
 
     for test_name in test_functions:
