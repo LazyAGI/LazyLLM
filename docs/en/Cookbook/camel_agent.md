@@ -10,6 +10,19 @@ This tutorial will guide you on how to build a multi-turn dialogue system using 
     - How to use the [ReactAgent][lazyllm.tools.agent.ReactAgent] to build agents with role directives and problem-solving capabilities.
     - How to build a multi-turn dialogue system with task completion detection.
 
+## Design Rationale
+We have designed a dual-agent system based on the CAMEL collaborative paradigm to accomplish complex tasks (e.g., developing a stock trading bot). The design rationale is as follows:
+
+Two distinct roles are introduced:
+Stock Trader (user role): responsible for issuing step-by-step instructions;
+Python Programmer (assistant role): responsible for implementing concrete solutions.
+A high-temperature LLM is used to creatively refine the original vague task into a specific, actionable subtask.
+Two ReactAgents, powered by a low-temperature LLM, engage in structured interaction under strict system prompts, ensuring role consistency and stable, deterministic outputs.
+A tool registration mechanism (get_history) enables agents to retrieve conversation history, providing context awareness during multi-turn interactions.
+Session-based history management and a maximum turn limit prevent infinite loops while supporting iterative, collaborative task progression.
+The overall workflow follows a cycle: the Trader issues an instruction, the Programmer responds, and this loop continues until the task is complete—signaled by the Trader outputting <CAMEL_TASK_DONE>.
+This design is well-suited for complex task automation scenarios that require role-based collaboration, stepwise decomposition, and tool-augmented reasoning.
+![camel agent](../assets/camel.png)
 ## Project Dependencies
 
 Install `lazyllm`:
@@ -23,9 +36,8 @@ Import the relevant packages:
 ```python
 from lazyllm import OnlineChatModule
 from lazyllm.tools import fc_register, ReactAgent
-from typing import List, Dict
-
 from lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase import StaticParams
+from typing import List, Dict
 ```
 
 ## Feature Overview
@@ -45,9 +57,9 @@ We first define a simple dialogue history cache and a tool function `get_history
 ```python
 CHAT_HISTORY: Dict[str, List[str]] = {}
 
+
 def add_to_history(session_id: str, message: str) -> str:
-    '''
-    Add a message to the conversation history for a specific session.
+    '''Add a message to the conversation history for a specific session.
 
     Args:
         session_id (str): Unique identifier for the session.
@@ -59,12 +71,11 @@ def add_to_history(session_id: str, message: str) -> str:
     if session_id not in CHAT_HISTORY:
         CHAT_HISTORY[session_id] = []
     CHAT_HISTORY[session_id].append(message)
-    return f"Message added to session '{session_id}'."
+    return f'Message added to session \'{session_id}\'.'
 
-@fc_register("tool")
+@fc_register('tool')
 def get_history(session_id: str, limit: int = 5) -> str:
-    '''
-    Retrieve the most recent messages from the conversation history.
+    '''Retrieve the most recent messages from the conversation history.
 
     Args:
         session_id (str): Unique identifier for the session.
@@ -75,8 +86,11 @@ def get_history(session_id: str, limit: int = 5) -> str:
     '''
     history = CHAT_HISTORY.get(session_id, [])
     if not history:
-        return "No history found for this session."
-    return "\n".join(history[-limit:])
+        return 'No history found for this session.'
+    return '\n'.join(history[-limit:])
+
+
+tools = ['get_history']
 ```
 
 > 💡 Tool functions are registered using the `@fc_register("tool")` decorator, allowing agents to invoke them during conversations.
@@ -97,18 +111,18 @@ llm_temp_low = OnlineChatModule(static_params=temp_low)
 We start with an initial task and use the high-temperature model to rewrite it into a more specific, actionable subtask.
 
 ```python
-task = "Develop a trading bot for the stock market"
+task = 'Develop a trading bot for the stock market'
 word_limit = 50
 
-rewrite_prompt = f"""
-You can make a task more specific.
-Here is a task that Python Programmer will help Stock Trader to complete: {task}.
-Please make it more specific. Be creative and imaginative.
-Please reply with the specified task in {word_limit} words or less. Do not add anything else.
-"""
+rewrite_prompt = (
+    'You can make a task more specific.\n'
+    f'Here is a task that Python Programmer will help Stock Trader to complete: {task}.\n'
+    'Please make it more specific. Be creative and imaginative.\n'
+    f'Please reply with the specified task in {word_limit} words or less. Do not add anything else.'
+)
 
 specified_task = llm_temp_high(rewrite_prompt)
-print("🎯 Specified Task:\n", specified_task)
+print('🎯 Specified Task:\n', specified_task)
 ```
 
 ### Step 4: Define Role Prompts (System Prompts)
@@ -116,8 +130,8 @@ print("🎯 Specified Task:\n", specified_task)
 We define two system prompts to constrain the user and assistant behaviors. Prompts include task information, interaction formats, and behavioral rules.
 
 ```python
-assistant_role = "Python Programmer"
-user_role = "Stock Trader"
+assistant_role = 'Python Programmer'
+user_role = 'Stock Trader'
 ```
 
 #### User System Prompt
@@ -125,33 +139,7 @@ user_role = "Stock Trader"
 The user gives clear instructions to the assistant using the following format:
 
 ```python
-user_sys_prompt = f"""
-Never forget you are a {user_role} and I am a {assistant_role}. Never flip roles! You will always instruct me.
-We share a common interest in collaborating to successfully complete a task.
-I must help you to complete the task.
-Here is the task: {specified_task}. Never forget our task!
-You must instruct me based on my expertise and your needs to complete the task ONLY in the following two ways:
-
-1. Instruct with a necessary input:
-Instruction: <YOUR_INSTRUCTION>
-Input: <YOUR_INPUT>
-
-2. Instruct without any input:
-Instruction: <YOUR_INSTRUCTION>
-Input: None
-
-The "Instruction" describes a task or question. The paired "Input" provides further context or information for the requested "Instruction".
-
-You must give me one instruction at a time.
-I must write a response that appropriately completes the requested instruction.
-I must decline your instruction honestly if I cannot perform the instruction due to physical, moral, legal reasons or my capability and explain the reasons.
-You should instruct me, not ask me questions.
-Now you must start to instruct me using the two ways described above.
-Do not add anything else other than your instruction and the optional corresponding input!
-Keep giving me instructions and necessary inputs until you think the task is completed.
-When the task is completed, you must only reply with a single word <CAMEL_TASK_DONE>.
-Never say <CAMEL_TASK_DONE> unless my responses have solved your task.
-"""
+user_sys_prompt = ...
 ```
 
 #### Assistant System Prompt
@@ -159,30 +147,7 @@ Never say <CAMEL_TASK_DONE> unless my responses have solved your task.
 The assistant responds to user instructions with complete solutions, always beginning the response like this:
 
 ```python
-assistant_sys_prompt = f"""
-Never forget you are a {assistant_role} and I am a {user_role}. Never flip roles! Never instruct me!
-We share a common interest in collaborating to successfully complete a task.
-You must help me to complete the task.
-Here is the task: {specified_task}. Never forget our task!
-I must instruct you based on your expertise and my needs to complete the task.
-
-I must give you one instruction at a time.
-You must write a specific solution that appropriately completes the requested instruction.
-You must decline my instruction honestly if you cannot perform the instruction due to physical, moral, legal reasons or your capability and explain the reasons.
-Do not add anything else other than your solution to my instruction.
-You are never supposed to ask me any questions; you only answer questions.
-You are never supposed to reply with a flake solution. Explain your solutions.
-Your solution must be declarative sentences and simple present tense.
-Unless I say the task is completed, you should always start with:
-
-Solution: <YOUR_SOLUTION>
-
-<YOUR_SOLUTION> should be specific and provide preferable implementations and examples for task-solving.
-Always end <YOUR_SOLUTION> with: Next request.
-
-You can use the tool `get_history` to retrieve recent conversation history if needed.
-To use it, call: get_history(session_id="session_1").
-"""
+assistant_sys_prompt = ...
 ```
 
 > 📌 The prompt also explains how to use tools like `get_history(session_id="session_1")`.
@@ -205,17 +170,17 @@ assistant_agent = ReactAgent(llm=llm_temp_low, tools=tools, return_trace=True, p
 The assistant starts the dialogue by prompting the user, who responds with the first instruction. Both sides’ messages are saved to history.
 
 ```python
-assistant_msg = f"{user_sys_prompt} Now start to give me instructions one by one. Only reply with Instruction and Input."
-user_msg = f"{assistant_sys_prompt}"
+assistant_msg = f'{user_sys_prompt} Now start to give me instructions one by one. Only reply with Instruction and Input.'
+user_msg = f'{assistant_sys_prompt}'
 
 instruction = user_agent(assistant_msg)
-print(f"\n👤 {user_role}:\n\n{instruction}\n")
+print(f'\n👤 {user_role}:\n\n{instruction}\n')
 solution = assistant_agent(instruction)
-print(f"\n🤖 {assistant_role}:\n\n{solution}\n")
+print(f'\n🤖 {assistant_role}:\n\n{solution}\n')
 
-session_id = "session_1"
-add_to_history(session_id, f"{user_role}: {instruction}")
-add_to_history(session_id, f"{assistant_role}: {solution}")")
+session_id = 'session_1'
+add_to_history(session_id, f'{user_role}: {instruction}')
+add_to_history(session_id, f'{assistant_role}: {solution}')
 ```
 
 ### Step 7: Start Multi-turn Dialogue Loop
@@ -225,26 +190,177 @@ The agents continue interacting until the task is marked complete.
 ```python
 max_turns = 5
 n = 0
-
 while n < max_turns:
     n += 1
 
-    # user_agent generates instruction
     instruction = user_agent(assistant_msg)
-    print(f"\n👤 {user_role}:\n\n{instruction}\n")
-    add_to_history(session_id, f"{user_role}: {instruction}")
+    print(f'\n👤 {user_role}:\n\n{instruction}\n')
+    add_to_history(session_id, f'{user_role}: {instruction}')
 
-    if "<CAMEL_TASK_DONE>" in instruction:
+    if '<CAMEL_TASK_DONE>' in instruction:
         break
 
-    # assistant_agent generates solution
     solution = assistant_agent(instruction)
-    print(f"\n🤖 {assistant_role}:\n\n{solution}\n")
-    add_to_history(session_id, f"{assistant_role}: {solution}")
+    print(f'\n🤖 {assistant_role}:\n\n{solution}\n')
+    add_to_history(session_id, f'{assistant_role}: {solution}')
+
+    assistant_msg = solution
+
+```
+## View Full Code
+```python
+from lazyllm import OnlineChatModule
+from lazyllm.tools import fc_register, ReactAgent
+from lazyllm.module.llms.onlinemodule.base.onlineChatModuleBase import StaticParams
+from typing import List, Dict
+
+CHAT_HISTORY: Dict[str, List[str]] = {}
+
+
+def add_to_history(session_id: str, message: str) -> str:
+    '''Add a message to the conversation history for a specific session.
+
+    Args:
+        session_id (str): Unique identifier for the session.
+        message (str): The message content to add.
+
+    Returns:
+        str: Confirmation message indicating success.
+    '''
+    if session_id not in CHAT_HISTORY:
+        CHAT_HISTORY[session_id] = []
+    CHAT_HISTORY[session_id].append(message)
+    return f'Message added to session \'{session_id}\'.'
+
+
+@fc_register('tool')
+def get_history(session_id: str, limit: int = 5) -> str:
+    '''Retrieve the most recent messages from the conversation history.
+
+    Args:
+        session_id (str): Unique identifier for the session.
+        limit (int, optional): Number of recent messages to retrieve. Defaults to 5.
+
+    Returns:
+        str: Concatenated string of recent messages, or notice if empty.
+    '''
+    history = CHAT_HISTORY.get(session_id, [])
+    if not history:
+        return 'No history found for this session.'
+    return '\n'.join(history[-limit:])
+
+
+# Initialize LLMs with different temperatures
+temp_high = StaticParams(temperature=1.0)
+temp_low = StaticParams(temperature=0.2)
+llm_temp_high = OnlineChatModule(static_params=temp_high)
+llm_temp_low = OnlineChatModule(static_params=temp_low)
+
+# Task specification
+task = 'Develop a trading bot for the stock market'
+word_limit = 50
+
+rewrite_prompt = (
+    'You can make a task more specific.\n'
+    f'Here is a task that Python Programmer will help Stock Trader to complete: {task}.\n'
+    'Please make it more specific. Be creative and imaginative.\n'
+    f'Please reply with the specified task in {word_limit} words or less. Do not add anything else.'
+)
+
+specified_task = llm_temp_high(rewrite_prompt)
+print('🎯 Specified Task:\n', specified_task)
+
+# Roles
+assistant_role = 'Python Programmer'
+user_role = 'Stock Trader'
+
+# System prompts
+user_sys_prompt = (
+    f'Never forget you are a {user_role} and I am a {assistant_role}. Never flip roles! '
+    'You will always instruct me.\n'
+    'We share a common interest in collaborating to successfully complete a task.\n'
+    'I must help you to complete the task.\n'
+    f'Here is the task: {specified_task}. Never forget our task!\n'
+    'You must instruct me based on my expertise and your needs to complete the task ONLY in the following two ways:\n\n'
+    '1. Instruct with a necessary input:\n'
+    'Instruction: <YOUR_INSTRUCTION>\n'
+    'Input: <YOUR_INPUT>\n\n'
+    '2. Instruct without any input:\n'
+    'Instruction: <YOUR_INSTRUCTION>\n'
+    'Input: None\n\n'
+    'The "Instruction" describes a task or question. The paired "Input" provides further context or information '
+    'for the requested "Instruction".\n\n'
+    'You must give me one instruction at a time.\n'
+    'I must write a response that appropriately completes the requested instruction.\n'
+    'I must decline your instruction honestly if I cannot perform the instruction due to physical, moral, legal '
+    'reasons or my capability and explain the reasons.\n'
+    'You should instruct me, not ask me questions.\n'
+    'Now you must start to instruct me using the two ways described above.\n'
+    'Do not add anything else other than your instruction and the optional corresponding input!\n'
+    'Keep giving me instructions and necessary inputs until you think the task is completed.\n'
+    'When the task is completed, you must only reply with a single word <CAMEL_TASK_DONE>.\n'
+    'Never say <CAMEL_TASK_DONE> unless my responses have solved your task.'
+)
+
+assistant_sys_prompt = (
+    f'Never forget you are a {assistant_role} and I am a {user_role}. Never flip roles! Never instruct me!\n'
+    'We share a common interest in collaborating to successfully complete a task.\n'
+    'You must help me to complete the task.\n'
+    f'Here is the task: {specified_task}. Never forget our task!\n'
+    'I must instruct you based on your expertise and my needs to complete the task.\n\n'
+    'I must give you one instruction at a time.\n'
+    'You must write a specific solution that appropriately completes the requested instruction.\n'
+    'You must decline my instruction honestly if you cannot perform the instruction due to physical, moral, legal '
+    'reasons or your capability and explain the reasons.\n'
+    'Do not add anything else other than your solution to my instruction.\n'
+    'You are never supposed to ask me any questions; you only answer questions.\n'
+    'You are never supposed to reply with a flake solution. Explain your solutions.\n'
+    'Your solution must be declarative sentences and simple present tense.\n'
+    'Unless I say the task is completed, you should always start with:\n\n'
+    'Solution: <YOUR_SOLUTION>\n\n'
+    '<YOUR_SOLUTION> should be specific and provide preferable implementations and examples for task-solving.\n'
+    'Always end <YOUR_SOLUTION> with: Next request.\n\n'
+    'You can use the tool `get_history` to retrieve recent conversation history if needed.\n'
+    'To use it, call: get_history(session_id="session_1").'
+)
+
+# Initialize agents
+tools = ['get_history']
+user_agent = ReactAgent(llm=llm_temp_low, tools=tools, return_trace=True, prompt=user_sys_prompt)
+assistant_agent = ReactAgent(llm=llm_temp_low, tools=tools, return_trace=True, prompt=assistant_sys_prompt)
+
+# Initial interaction
+assistant_msg = f'{user_sys_prompt} Now start to give me instructions one by one. Only reply with Instruction and Input.'
+user_msg = f'{assistant_sys_prompt}'
+
+instruction = user_agent(assistant_msg)
+print(f'\n👤 {user_role}:\n\n{instruction}\n')
+solution = assistant_agent(instruction)
+print(f'\n🤖 {assistant_role}:\n\n{solution}\n')
+
+session_id = 'session_1'
+add_to_history(session_id, f'{user_role}: {instruction}')
+add_to_history(session_id, f'{assistant_role}: {solution}')
+
+# Multi-turn loop
+max_turns = 5
+n = 0
+while n < max_turns:
+    n += 1
+
+    instruction = user_agent(assistant_msg)
+    print(f'\n👤 {user_role}:\n\n{instruction}\n')
+    add_to_history(session_id, f'{user_role}: {instruction}')
+
+    if '<CAMEL_TASK_DONE>' in instruction:
+        break
+
+    solution = assistant_agent(instruction)
+    print(f'\n🤖 {assistant_role}:\n\n{solution}\n')
+    add_to_history(session_id, f'{assistant_role}: {solution}')
 
     assistant_msg = solution
 ```
-
 ## Example Output
 
 <pre><code>
