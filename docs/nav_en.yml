@@ -10,6 +10,8 @@
   - Great Writer: Cookbook/great_writer.md
   - RAG: Cookbook/rag.md
   - Streaming: Cookbook/streaming.md
+  - Wiki Agent: Cookbook/WikiAgent.md
+  - Multi-turn dialogue: Cookbook/camel_agent.md
 - Best Practice:
   - Flow: Best Practice/flow.md
   - Flowapp: Best Practice/flowapp.md
