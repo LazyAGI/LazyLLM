@@ -27,6 +27,21 @@ class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
     def _set_chat_url(self):
         self._url = urljoin(self._base_url, 'chat/completions')
 
+    def _validate_api_key(self):
+        '''Validate API Key by sending a minimal request'''
+        try:
+            # SiliconFlow validates API key using a minimal chat request
+            models_url = urljoin(self._base_url, 'models')
+            headers = {
+                'Authorization': f'Bearer {self._api_key}',
+                'Content-Type': 'application/json'
+            }
+            response = requests.get(models_url, headers=headers, timeout=10)
+            return response.status_code == 200
+        except Exception:
+            return False
+
+
 class SiliconFlowEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/embeddings',
                  embed_model_name: str = 'BAAI/bge-large-zh-v1.5', api_key: str = None,

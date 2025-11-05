@@ -8,7 +8,7 @@ from .supplier.sensenova import SenseNovaModule
 from .supplier.qwen import QwenModule
 from .supplier.doubao import DoubaoModule
 from .supplier.deepseek import DeepSeekModule
-from .supplier.sliconflow import SiliconFlowModule
+from .supplier.siliconflow import SiliconFlowModule
 
 class _ChatModuleMeta(type):
 
