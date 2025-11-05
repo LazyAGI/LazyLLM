@@ -15,7 +15,16 @@
 ```bash
 pip install lazyllm
 ```
+
+导入相关包：
+
+```python
+from lazyllm.tools import CodeGenerator, IntentClassifier
+from lazyllm import OnlineChatModule
+```
+
 ## 代码实现
+
 ``` python
 from typing import List, Dict, Any
 import lazyllm
