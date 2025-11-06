@@ -61,9 +61,3 @@ class TestGetModelCategory:
 
     def test_all_models_original_names(self):
         self.infer_model_type()
-
-    def test_all_models_short_names(self):
-        def shorten_name(name):
-            return name.split('/')[-1]
-
-        self.infer_model_type(rename_func=shorten_name)

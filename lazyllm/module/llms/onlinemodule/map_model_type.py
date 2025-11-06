@@ -1,6 +1,5 @@
 from lazyllm import LOG
 
-# 修正 MODEL_MAPPING 中的值为全小写，以保持一致性
 MODEL_MAPPING = {
     # ===== OpenAI (LLM) =====
     'gpt-5': 'vlm',
@@ -439,12 +438,12 @@ MODEL_MAPPING = {
 
 
 def special_model_rule(model_name: str):
-    '''精确匹配'''
+    '''Keyword-based matching'''
     return MODEL_MAPPING.get(model_name)
 
 
 def feature_keyword_rule(model_name: str):
-    '''基于关键词'''
+    '''Exact match'''
     lower_name = model_name.lower()
     if 'embedding' in lower_name:
         return 'embed'
@@ -464,17 +463,9 @@ def feature_keyword_rule(model_name: str):
         return 'sd'
     return None
 
-
-def regular_rule(model_name: str):
-    return 'llm'
-
 def get_model_type(model_name) -> str:
-    '''
-    判断模型类别
-    '''
-
-
-    for rule in [special_model_rule, feature_keyword_rule, regular_rule]:
+    '''Determine the model category'''
+    for rule in [special_model_rule, feature_keyword_rule]:
         try:
             result = rule(model_name)
             if result is not None:
