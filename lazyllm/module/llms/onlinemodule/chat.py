@@ -8,6 +8,7 @@ from .supplier.sensenova import SenseNovaModule
 from .supplier.qwen import QwenModule
 from .supplier.doubao import DoubaoModule
 from .supplier.deepseek import DeepSeekModule
+from .supplier.siliconflow import SiliconFlowModule
 
 class _ChatModuleMeta(type):
 
@@ -24,7 +25,8 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
               'kimi': KimiModule,
               'qwen': QwenModule,
               'doubao': DoubaoModule,
-              'deepseek': DeepSeekModule}
+              'deepseek': DeepSeekModule,
+              'siliconflow': SiliconFlowModule}
 
     @staticmethod
     def _encapsulate_parameters(base_url: str, model: str, stream: bool, return_trace: bool, **kwargs) -> Dict[str, Any]:
@@ -40,7 +42,8 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
                 return_trace: bool = False, skip_auth: bool = False, type: Optional[str] = None, **kwargs):
         if model in OnlineChatModule.MODELS.keys() and source is None: source, model = model, source
         params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace,
-                                                          skip_auth=skip_auth, type=type, **kwargs)
+                                                          skip_auth=skip_auth, type=type.upper() if type else None,
+                                                          **kwargs)
 
         if skip_auth:
             source = source or 'openai'

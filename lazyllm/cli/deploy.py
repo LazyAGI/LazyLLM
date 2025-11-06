@@ -57,6 +57,30 @@ def deploy(commands):
                 )
             )
         )
+    elif commands and commands[0] == 'mineru':
+        commands = commands[1:]
+        parser = argparse.ArgumentParser(description='lazyllm deploy command for deploying a mineru server.')
+        parser.add_argument('--port', help='Port for the mineru server.', default=None)
+        parser.add_argument('--cache_dir', help='Cache directory for the mineru server.', default=None)
+        parser.add_argument('--image_save_dir', help='Image save directory for the mineru server.', default=None)
+        parser.add_argument('--default_backend', help='Default backend for the mineru server.\
+            (pipeline|vlm-vllm-async-engine|vlm-transformers)', default='pipeline')
+        parser.add_argument('--model_source', help='Model source for the mineru server.(huggingface|modelscope)',
+                            default='huggingface')
+        args = parser.parse_args(commands)
+        os.environ['MINERU_MODEL_SOURCE'] = args.model_source
+
+        lazyllm.LOG.info('Starting mineru server')
+        lazyllm.LOG.info(f'Current model source: {args.model_source}')
+        from lazyllm.tools.servers.mineru import MineruServer
+        server = MineruServer(
+            cache_dir=args.cache_dir,
+            image_save_dir=args.image_save_dir,
+            default_backend=args.default_backend,
+            port=args.port,
+        )
+        server.start()
+        server.wait()
     else:
         parser = argparse.ArgumentParser(description='lazyllm deploy command for deploying a model.')
         parser.add_argument('model', help='model name')

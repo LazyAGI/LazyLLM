@@ -48,6 +48,10 @@ class TestDeploy(object):
         self.append_text = False
         self.webs = []
         self.clients = []
+        os.environ['LAZYLLM_DEPLOY_SKIP_CHECK_KW'] = 'True'
+
+    def teardown_method(self):
+        os.environ.pop('LAZYLLM_DEPLOY_SKIP_CHECK_KW', None)
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
@@ -90,6 +94,10 @@ class TestDeploy(object):
         m.update_server()
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
+
+    def test_deploy_kw_check(self):
+        vllm = lazyllm.deploy.vllm(test_key='test')
+        assert 'test_key' in vllm.kw
 
     def test_deploy_auto(self):
         m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.AutoDeploy)
