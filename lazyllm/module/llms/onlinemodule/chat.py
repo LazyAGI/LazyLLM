@@ -44,7 +44,7 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
         if model in OnlineChatModule.MODELS.keys() and source is None: source, model = model, source
         if type is None:
             type = get_model_type(model)
-            if type == ['embed', 'rerank', 'cross_modal_embed']:
+            if type in ['embed', 'rerank', 'cross_modal_embed']:
                 raise AssertionError(f"'{model}' should use OnlineEmbeddingModule")
             elif type in ['sst', 'tts', 'sd']:
                 raise AssertionError(f"'{model}' should use OnlineMultiModalModule")
