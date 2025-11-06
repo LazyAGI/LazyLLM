@@ -208,18 +208,18 @@
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowTTS
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowModule
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowModule
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowReranking
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.sliconflow.SiliconFlowTextToImageModule
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule
     options:
       members:

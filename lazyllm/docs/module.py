@@ -2620,7 +2620,7 @@ Args:
     **kwargs: Other model parameters
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowTTS', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS', """\
 SiliconFlow文本转语音模块，继承自OnlineMultiModalBase。
 
 提供基于SiliconFlow的文本转语音(TTS)功能，支持将文本转换为音频文件。
@@ -2633,7 +2633,7 @@ Args:
     **kwargs: 其他模型参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowTTS', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS', """\
 SiliconFlow Text-to-Speech module, inherits from OnlineMultiModalBase.
 
 Provides text-to-speech (TTS) functionality based on SiliconFlow, supports converting text to audio files.
@@ -2814,7 +2814,7 @@ Releases resources occupied by the cache storage strategy, such as closing datab
 - Different cache strategies may have different resource cleanup behaviors.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowModule', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowModule', """\
 SiliconFlow 模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
 提供基于 SiliconFlow 平台的大语言模型对话能力，支持多种模型（包括视觉语言模型），并具备文件处理功能。
 Args:
@@ -2826,7 +2826,7 @@ Args:
     **kwargs: 其他模型参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowModule', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowModule', """\
 SiliconFlow module, inherits from OnlineChatModuleBase and FileHandlerBase.
 Provides large language model chat capabilities via the SiliconFlow platform, supports multiple models (including vision-language models), and includes file handling functionality.
 Args:
@@ -2838,7 +2838,7 @@ Args:
     **kwargs: Other model parameters
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowEmbedding', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowEmbedding', """\
 SiliconFlow 向量嵌入模块，继承自 OnlineEmbeddingModuleBase。
 提供基于 SiliconFlow 平台的文本嵌入（Embedding）功能，支持将文本转换为向量表示。
 Args:
@@ -2849,7 +2849,7 @@ Args:
     **kw: 其他嵌入模块参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowEmbedding', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowEmbedding', """\
 SiliconFlow embedding module, inherits from OnlineEmbeddingModuleBase.
 Provides text embedding functionality via the SiliconFlow platform, converting text into vector representations.
 Args:
@@ -2860,7 +2860,7 @@ Args:
     **kw: Additional embedding module parameters
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowReranking', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking', """\
 SiliconFlow 重排序模块，继承自 OnlineEmbeddingModuleBase。
 提供基于 SiliconFlow 平台的文本重排序（Reranking）功能，用于对文档列表根据查询相关性进行重新排序。
 Args:
@@ -2876,7 +2876,7 @@ Returns:
     List[Dict]: 包含排序结果的列表，每个元素为包含 'index'、'relevance_score' 和 'document' 等字段的字典。
 """)
 
-add_english_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowReranking', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking', """\
 SiliconFlow reranking module, inherits from OnlineEmbeddingModuleBase.
 Provides text reranking functionality via the SiliconFlow platform, reordering a list of documents based on their relevance to a given query.
 Args:
@@ -2892,7 +2892,7 @@ Returns:
     List[Dict]: A list of reranking results, each containing fields such as 'index', 'relevance_score', and 'document'.
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowTextToImageModule', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule', """\
 SiliconFlow文生图模块，继承自OnlineMultiModalBase。
 
 提供基于SiliconFlow的文本生成图像功能，支持根据文本描述生成图像。
@@ -2905,7 +2905,7 @@ Args:
     **kwargs: 其他模型参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.sliconflow.SiliconFlowTextToImageModule', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule', """\
 SiliconFlow Text-to-Image module, inherits from OnlineMultiModalBase.
 
 Provides text-to-image generation functionality based on SiliconFlow, supports generating images from text descriptions.
