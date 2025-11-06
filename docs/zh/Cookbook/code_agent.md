@@ -1,258 +1,160 @@
-# 代码助手代理(CodeAssistantAgent)
+# 代码智能代理
 
-本项目展示了一个基于大语言模型的智能代码助手，可识别用户意图并执行代码生成、代码解释和思路总结等功能。
+在本节中，我们将实现一个能够自动生成并执行 Python 代码的智能代理。用户只需通过自然语言描述任务，例如“绘制北京近一个月的气温变化折线图”，系统就能自动生成符合要求的 Python 函数代码，并执行生成结果（如图像路径或计算值）。
 
-!!! abstract "通过本节您将学习到以下内容:"
+!!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
 
-    - 如何构建多功能的代码助手代理
-    - 如何实现意图识别与任务分发
-    - 如何实现交互式的代码生成与解释功能
+    - 如何编写可注册的函数工具（Function Tool）；
+    - 如何使用 [CodeGenerator][lazyllm.tools.CodeGenerator] 自动生成代码；
+    - 如何使用 [compile_func][lazyllm.common.utils.compile_func] 编译执行代码；
+    - 如何通过 [FunctionCallAgent][lazyllm.tools.FunctionCallAgent] 调用工具；
+    - 如何结合 [WebModule][lazyllm.WebModule] 部署交互式网页。
 
-## 项目依赖
+## 设计思路
 
-确保安装以下依赖：
+我们的目标是构建一个能够理解自然语言需求并生成执行结果的智能代码代理（Code Agent）。
+
+用户输入自然语言指令（例如“帮我写一个函数，计算两数的公因数”），系统需要：
+
+1. 理解任务意图 —— 判断任务属于绘图、计算或数据处理；
+2. 生成代码 —— 使用 LLM 根据提示词生成仅包含单个函数的 Python 代码；
+3. 安全执行 —— 动态编译并执行函数，禁止使用危险模块；
+4. 返回结果 —— 若为绘图任务则返回图片路径，否则返回计算值。
+
+为实现上述目标，我们采用以下架构设计：
+
+![code_agent](../assets/code_agent.png)
+
+## 环境准备
+
+### 安装依赖
+
+在使用前，请先执行以下命令安装所需库：
 
 ```bash
 pip install lazyllm
 ```
 
-导入相关包：
+### 导入依赖包
 
 ```python
-from lazyllm.tools import CodeGenerator, IntentClassifier
-from lazyllm import OnlineChatModule
+from lazyllm.common.utils import compile_func
+from lazyllm import OnlineChatModule, WebModule
+from lazyllm.tools import CodeGenerator, FunctionCallAgent, fc_register
 ```
+
+### 环境变量
+
+在流程中会使用到在线大模型，您需要设置 API 密钥（以 Qwen 为例）：
+
+```bash
+export LAZYLLM_QWEN_API_KEY = "sk-******"
+```
+
+> ❗ 注意：平台的 API_KEY 申请方式参考[官方文档](docs.lazyllm.ai/)。
+
 
 ## 代码实现
 
-``` python
-from typing import List, Dict, Any
-import lazyllm
-## Step 1: 初始化代理
+### 注册代码生成工具
 
-**功能说明：**
-- 配置大语言模型和意图分类器
-- 设置默认意图列表和示例
+我们首先注册一个工具函数 `generate_code_from_query`，该函数负责根据自然语言请求生成、编译并执行 Python 代码。
 
-**参数说明**
-- llm (str): 大语言模型实例
-- intent_list (List[str]): 支持的意图列表，默认为['生成代码', '解释', '总结']
-- prompt (str): 基础提示词
-- intent_constrain (str): 意图分类约束条件
-- intent_attention (str): 意图分类注意事项
-- intent_examples (List[List[str]]): 意图分类示例
-- return_trace (bool): 是否返回执行轨迹，默认为False
-class CodeAssistantAgent:
-    def __init__(self, llm: str,
-                 intent_list: List[str] = None,
-                 prompt: str = '',
-                 intent_constrain: str = '',
-                 intent_attention: str = '',
-                 intent_examples: List[List[str]] = None,
-                 return_trace: bool = False):
-        self.generator = CodeGenerator(base_model=llm, prompt=prompt)
-        self.intent_classifier = IntentClassifier(
-            llm=llm,
-            intent_list=intent_list or ['生成代码', '解释', '总结'],
-            prompt=prompt,
-            constrain=intent_constrain,
-            attention=intent_attention,
-            examples=intent_examples or [],
-            return_trace=return_trace
-        )
-## Step 2: 代码生成
-**功能说明：**
-- 根据指令生成Python代码
-    def generate_code(self, instruction: str, context: str = "") -> str:
-        prompt = f"{context}\n\n请根据以下要求编写Python代码:\n{instruction}" if context else f"请根据以下要求编写Python代码:\n{instruction}"
-        return self.generator(prompt)
-## Step 3: 代码解释
-**功能说明：**
-- 解释代码逻辑和功能
-    def explain_code(self, code: str) -> str:
-        prompt = f"请为以下Python代码添加详细注释并解释其逻辑：\n{code}"
-        return self.generator(prompt)
-## Step 4: 对话总结
-**功能说明：**
-- 生成结构化摘要
-    def summarize_thoughts(self, history: List[Dict[str, Any]]) -> str:
-        convo = "\n".join([f"用户: {m['user']}\n助手: {m['assistant']}" for m in history])
-        prompt = f"请基于以下对话内容，总结出核心思路和流程：\n{convo}"
-        return self.generator(prompt)
-## Step 5: 交互控制
-**功能说明：**
-- 管理对话循环, 维护对话历史
-    def interactive_mode(self, context: str = "", history: List[Dict[str, Any]] = None):
-        if history is None:
-            history = []
-        print("进入交互模式，输入'exit'退出...")
-        while True:
-            user_input = input("\n您: ")
-            if user_input.lower() == 'exit':
-                break
-                
-            intent = self.intent_classifier.forward(user_input, llm_chat_history=history)
-            try:
-                if intent == '生成代码':
-                    result = self.generate_code(user_input, context)
-                    print("\n[代码生成] 生成的代码如下：\n")
-                    print(result)
-                    history.append({'user': user_input, 'assistant': result})
-
-                elif intent == '解释':
-                    last_code = history[-1]['assistant'] if history else ''
-                    result = self.explain_code(last_code)
-                    print("\n[代码解释] 解释结果：\n")
-                    print(result)
-                    history.append({'user': user_input, 'assistant': result})
-
-                elif intent == '总结':
-                    result = self.summarize_thoughts(history)
-                    print("\n[思路总结] 总结如下：\n")
-                    print(result)
-                    history.append({'user': user_input, 'assistant': result})
-
-                else:
-                    print("无法识别您的需求，默认进行代码生成。")
-                    result = self.generate_code(user_input, context)
-                    print(result)
-                    history.append({'user': user_input, 'assistant': result})
-
-            except Exception as e:
-                print(f"执行时出错: {e}")
-
-
-
-```
-
-## 示例运行结果
-
-#### 示例场景：
 ```python
-if __name__ == '__main__':
-    chat = lazyllm.OnlineChatModule()
-    assistant = CodeAssistantAgent(
-        llm=chat,
-        intent_list=['生成代码', '解释', '总结'],
-        intent_examples=[
-            ['请实现排序函数', '生成代码'],
-            ['写一个代码来实现agent流程', '生成代码'],
-            ['解释代码意义功能', '解释'],
-            ['这段代码什么意思？', '解释'],
-            ['现在能给出思路总结吗', '总结']
-        ]
-    )
-    assistant.interactive_mode()
-```
+@fc_register('tool')
+def generate_code_from_query(query: str) -> str:
+    '''
+    Generate and execute Python code to fulfill a user's natural language request.
 
-**输入**
-"生成一段二分类算法的代码"
-
-**程序控制台输出：**
-```python
-[代码生成] 生成的代码如下：
-
-
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
-
-def binary_classification(data: np.ndarray, labels: np.ndarray) -> float:
-    """
-    Perform binary classification using Logistic Regression.
+    This tool uses LLM to generate a single-function Python script according to the user's query.
+    The generated function will then be safely compiled and executed, and the result (e.g., image path)
+    will be returned directly.
 
     Args:
-        data (np.ndarray): The input features, a 2D numpy array where each row represents a sample.
-        labels (np.ndarray): The labels for each sample, a 1D numpy array containing binary labels (0 or 1).
+        query (str): The natural language instruction from the user,
+                     for example: "Draw a temperature change chart of Beijing in the past month".
 
     Returns:
-        float: The accuracy of the model on the test set.
-    """
-    # Split the data into training and testing sets
-    X_train, X_test, y_train, y_test = train_test_split(data, labels, test_size=0.2, random_state=42)
+        str: The execution result of the generated function (e.g., image path or computed value).
+    '''
+    prompt = '''
+    请生成一个仅包含单个函数定义的 Python 代码，用于完成用户的需求。
 
-    # Initialize the Logistic Regression model
-    model = LogisticRegression()
+    编写要求如下：
+    1. 不允许导入或使用以下模块：requests、os、sys、subprocess、socket、http、urllib、pickle 等。
+    2. 仅可使用 matplotlib、datetime、random、math 等安全标准库。
+    3. 如果任务涉及网络请求或外部 API，请使用随机数或固定数据进行模拟。
+    4. 函数必须有明确的返回值，并返回最终结果（如图片路径或计算结果）。
+    5. 如果是绘图任务，绘图时禁止使用中文字符（标题、坐标轴、标签均使用英文），
+    请将图片保存到路径 `/home/mnt/chenzhe1/WorkDir/images` 中，
+    返回值必须是图片的完整保存路径。
+    6. 代码中不得包含函数调用示例或打印语句。
+    '''
+    gen = CodeGenerator(llm, prompt)
+    code = gen(query)
 
-    # Train the model
-    model.fit(X_train, y_train)
+    compiled_func = compile_func(code)
 
-    # Predict the labels for the test set
-    predictions = model.predict(X_test)
+    try:
+        result = compiled_func()
+    except Exception as e:
+        result = f'执行生成代码时出错: {e}'
 
-    # Calculate the accuracy of the model
-    accuracy = accuracy_score(y_test, predictions)
-
-    return accuracy
-
-# Example usage:
-if __name__ == "__main__":
-    # Example data: 4 samples with 2 features each
-    data = np.array([[0.5, 1.2], [1.3, 3.4], [3.5, 2.1], [2.2, 4.3]])
-    labels = np.array([0, 0, 1, 1])
-
-    # Perform binary classification and print the accuracy
-    acc = binary_classification(data, labels)
-    print(f"Model Accuracy: {acc:.2f}")
+    return result
 ```
-**输入**
-"解释这代码"
 
-**程序控制台输出：**
+### 组装智能代理
+
+编写完工具函数后，我们使用 `FunctionCallAgent` 进行封装，并通过 `WebModule` 提供交互界面。
+
 ```python
-[代码解释] 解释结果：
-
-
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
-
-def binary_classification(data: np.ndarray, labels: np.ndarray) -> float:
-    """
-    Perform binary classification using Logistic Regression.
-
-    Args:
-        data (np.ndarray): The input features, a 2D numpy array where each row represents a sample.
-        labels (np.ndarray): The labels for each sample, a 1D numpy array containing binary labels (0 or 1).
-
-    Returns:
-        float: The accuracy of the model on the test set.
-    """
-    # Split the data into training and testing sets
-    # This function divides the data into training and testing subsets.
-    # 'test_size=0.2' indicates that 20% of the data is used for testing, and the rest for training.
-    # 'random_state=42' ensures that the split is reproducible.
-    X_train, X_test, y_train, y_test = train_test_split(data, labels, test_size=0.2, random_state=42)
-
-    # Initialize the Logistic Regression model
-    # LogisticRegression is a classifier that uses logistic functions to model the probability of a binary outcome.
-    model = LogisticRegression()
-
-    # Train the model
-    # The fit method trains the model using the training data and corresponding labels.
-    model.fit(X_train, y_train)
-
-    # Predict the labels for the test set
-    # The predict method outputs the predicted labels for the test set.
-    predictions = model.predict(X_test)
-
-    # Calculate the accuracy of the model
-    # accuracy_score computes the accuracy, a performance metric for classification models, as the number of correct predictions divided by the total number of predictions.
-    accuracy = accuracy_score(y_test, predictions)
-
-    return accuracy
-
-# Example usage:
-if __name__ == "__main__":
-    # Example data: 4 samples with 2 features each
-    # This is a small dataset with 4 samples, each having 2 features.
-    data = np.array([[0.5, 1.2], [1.3, 3.4], [3.5, 2.1], [2.2, 4.3]])
-    labels = np.array([0, 0, 1, 1])
-
-    # Perform binary classification and print the accuracy
-    # The binary_classification function is called with example data and labels, and the resulting accuracy is printed.
-    acc = binary_classification(data, labels)
-    print(f"Model Accuracy: {acc:.2f}")
+llm = OnlineChatModule()
+agent = FunctionCallAgent(llm, tools=['generate_code_from_query'])
+WebModule(agent, port=12345, title='Code Agent', static_paths='/home/mnt/chenzhe1/WorkDir/images').start().wait()
 ```
+
+**参数说明：**
+
+- `port`：指定网页访问端口（可通过浏览器访问 http://127.0.0.1:12345）。
+- `title`：网页顶部标题，方便展示项目主题。
+- `static_paths`：静态资源路径，网页前端可以直接访问。
+
+> 备注：更多参数使用详情见[官网 API 文档](https://docs.lazyllm.ai/en/stable/API%20Reference/tools/#lazyllm.tools.WebModule)。
+
+通过 `.start().wait()` 启动并保持服务运行后，终端会显示本地访问地址（如 `http://127.0.0.1:12345`）。打开浏览器即可在网页中输入自然语言请求，系统自动生成代码、执行并返回结果（例如生成的图片等）。
+
+## 运行效果
+
+示例输入：
+
+```text
+绘制近一个月北京市的温度变化曲线图
+```
+
+下面为示例效果图：
+
+![code_agent_demo1](../assets/code_agent_demo1.png)
+
+示例输入：
+
+```text
+帮我写一个函数，计算两数之和
+```
+
+下面为示例效果图：
+
+![code_agent_demo2](../assets/code_agent_demo2.png)
+
+## 总结
+
+本节我们完成了一个具备“自然语言 → 代码生成 → 结果执行”全流程的智能代理系统。
+
+其核心思路是：
+
+- 使用 CodeGenerator 自动编写安全的函数代码；
+- 通过 compile_func 实现动态加载与执行；
+- 借助 FunctionCallAgent 管理工具调用；
+- 最终用 WebModule 提供可交互的网页端展示。
+
+该方案展示了 LazyLLM 在 智能代码生成与安全执行场景下的灵活性。
+未来可以在此基础上扩展出更丰富的能力，如多工具协作、任务意图识别与结果可视化分析。

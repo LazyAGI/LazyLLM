@@ -1,256 +1,164 @@
-# Code Assistant Agent (CodeAssistantAgent)
+# Intelligent Code Agent
 
-## Project Overview
+In this section, we will implement an intelligent agent capable of automatically generating and executing Python code. Users only need to describe a task in natural language, for example:
 
-This project demonstrates an intelligent code assistant powered by a large language model.  
-It can identify user intent and perform tasks such as code generation, code explanation, and idea summarization.
+“Draw a line chart of Beijing’s temperature changes over the past month.”
 
-!!! abstract "In this section, you will learn the following:"
+The system will automatically generate a valid Python function, execute it, and return the result (such as an image path or a computed value).
 
-    - How to build a multi-functional code assistant agent  
-    - How to implement intent recognition and task dispatching  
-    - How to create interactive features for code generation and explanation  
+!!! abstract "Through this section, you will learn the following key points of LazyLLM"
 
-## Project Dependencies
+    - How to write a registerable function tool (Function Tool);
+    - How to use [CodeGenerator][lazyllm.tools.CodeGenerator] to automatically generate code;
+    - How to use [compile_func][lazyllm.common.utils.compile_func] to compile and execute code;
+    - How to call tools through [FunctionCallAgent][lazyllm.tools.FunctionCallAgent];
+    - How to deploy an interactive web interface with [WebModule][lazyllm.WebModule].
 
-Make sure the following dependency is installed:
+## Design Overview
+
+Our goal is to build an intelligent code agent that can understand natural language requests and produce executable results.
+
+When the user inputs a natural language instruction (e.g., “Write a function to compute the greatest common divisor of two numbers”), the system should:
+
+1. Understand the intent — Determine whether the task involves plotting, computation, or data processing.
+2. Generate code — Use the LLM to create Python code containing only a single function.
+3. Safely execute — Dynamically compile and execute the generated function while blocking unsafe modules.
+4. Return results — Return an image path for visualization tasks or numerical results for computational ones.
+
+To achieve this, we adopt the following architecture design:
+
+![code_agent](../assets/code_agent.png)
+
+## Environment Setup
+
+### Install dependencies
+
+Before using, please install the required library:
 
 ```bash
 pip install lazyllm
 ```
+
+### Import required modules
+
+```python
+from lazyllm.common.utils import compile_func
+from lazyllm import OnlineChatModule, WebModule
+from lazyllm.tools import CodeGenerator, FunctionCallAgent, fc_register
+```
+
+### Environment variables
+
+Since this workflow relies on an online LLM, you need to set your API key (for example, Qwen):
+
+```bash
+export LAZYLLM_QWEN_API_KEY="sk-******"
+```
+
+> ❗ Note: Please refer to the [official documentation](docs.lazyllm.ai/) for instructions on obtaining your platform API key.
+
 ## Code Implementation
-``` python
-from typing import List, Dict, Any
-import lazyllm
-## Step 1: Initialize the Agent
 
-**Function Description：**
-- Configure the large language model and intent classifier
-- Set default intent list and examples
+### Registering the code generation tool
 
-**Parameter Description:**
-- llm (str): The large language model instance
-- intent_list (List[str]): Supported intents, default is ['Code Generation', 'Explanation', 'Summarization']
-- prompt (str): Base prompt for the model
-- intent_constrain (str): Constraint conditions for intent classification
-- intent_attention (str): Notes or special considerations for intent classification
-- intent_examples (List[List[str]]): Example pairs for intent classification
-- return_trace (bool): Whether to return execution trace, default is False
-class CodeAssistantAgent:
-    def __init__(self, llm: str,
-                 intent_list: List[str] = None,
-                 prompt: str = '',
-                 intent_constrain: str = '',
-                 intent_attention: str = '',
-                 intent_examples: List[List[str]] = None,
-                 return_trace: bool = False):
-        self.generator = CodeGenerator(base_model=llm, prompt=prompt)
-        self.intent_classifier = IntentClassifier(
-            llm=llm,
-            intent_list = intent_list or ['code generation', 'explanation', 'summarization']
-            prompt=prompt,
-            constrain=intent_constrain,
-            attention=intent_attention,
-            examples=intent_examples or [],
-            return_trace=return_trace
-        )
-## Step 2: Code Generation  
-**Function Description:**  
-- Generate Python code based on the given instruction  
-    def generate_code(self, instruction: str, context: str = "") -> str:
-        prompt = f"{context}\n\nPlease write Python code according to the following instruction:\n{instruction}" if context else f"Please write Python code according to the following instruction:\n{instruction}"
-        return self.generator(prompt)
-## Step 3: Code Explanation
-**Function Description：**
-- Explain the logic and function of the given code
-    def explain_code(self, code: str) -> str:
-        prompt = f"Please add detailed comments and explain the logic of the following Python code:\n{code}"
-        return self.generator(prompt)
-
-## Step 4: Explain the logic and function of the given code
-**Function Description：**
-- Generate a structured summary of the conversation
-    def summarize_thoughts(self, history: List[Dict[str, Any]]) -> str:
-        convo = "\n".join([f"User: {m['user']}\nAssistant: {m['assistant']}" for m in history])
-        prompt = f"Based on the following conversation, summarize the core ideas and workflow:\n{convo}"
-        return self.generator(prompt)
-
-## Step 5: Interactive Control
-**Function Description：**
-- Manage the interactive loop and maintain conversation history
-    def interactive_mode(self, context: str = "", history: List[Dict[str, Any]] = None):
-        if history is None:
-            history = []
-        print("Entering interactive mode. Type 'exit' to quit...")
-
-        while True:
-            user_input = input("\nYou: ")
-            if user_input.lower() == 'exit':
-                break
-
-            intent = self.intent_classifier.forward(user_input, llm_chat_history=history)
-            try:
-                if intent == 'code generation':
-                    result = self.generate_code(user_input, context)
-                    print("\n[Code Generation] Generated code:\n")
-                    print(result)
-                    history.append({'user': user_input, 'assistant': result})
-
-                elif intent == 'explanation':
-                    last_code = history[-1]['assistant'] if history else ''
-                    result = self.explain_code(last_code)
-                    print("\n[Code Explanation] Explanation result:\n")
-                    print(result)
-                    history.append({'user': user_input, 'assistant': result})
-
-                elif intent == 'summarization':
-                    result = self.summarize_thoughts(history)
-                    print("\n[Thought Summarization] Summary:\n")
-                    print(result)
-                    history.append({'user': user_input, 'assistant': result})
-
-                else:
-                    print("Unable to recognize your intent, defaulting to code generation.")
-                    result = self.generate_code(user_input, context)
-                    print(result)
-                    history.append({'user': user_input, 'assistant': result})
-
-            except Exception as e:
-                print(f"Error during execution: {e}")
-
-```
-
-## Example Execution
-
-#### Example Scenario:
+First, we define and register a tool function `generate_code_from_query`,
+which takes a natural language request and automatically generates, compiles, and executes Python code.
 
 ```python
-if __name__ == '__main__':
-    chat = lazyllm.OnlineChatModule()
-    assistant = CodeAssistantAgent(
-        llm=chat,
-        intent_list=['code generation', 'explanation', 'summarization'],
-        intent_examples=[
-            ['Please implement a sorting function', 'code generation'],
-            ['Write code to implement an agent flow', 'code generation'],
-            ['Explain what this code does', 'explanation'],
-            ['What does this code mean?', 'explanation'],
-            ['Can you now provide a summary of the thought process?', 'summarization']
-        ]
-    )
-    assistant.interactive_mode()
+@fc_register('tool')
+def generate_code_from_query(query: str) -> str:
+    '''
+    Generate and execute Python code to fulfill a user's natural language request.
 
-
-**Input**  
-"Generate a binary classification algorithm"
-
-**Console Output:**
-```python
-[Code Generation] The generated code is as follows:
-
-
-
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
-
-def binary_classification(data: np.ndarray, labels: np.ndarray) -> float:
-    """
-    Perform binary classification using Logistic Regression.
+    This tool uses an LLM to generate a single-function Python script based on the user's query.
+    The generated function is safely compiled and executed, and the final result
+    (e.g., an image path or computed value) is returned.
 
     Args:
-        data (np.ndarray): The input features, a 2D numpy array where each row represents a sample.
-        labels (np.ndarray): The labels for each sample, a 1D numpy array containing binary labels (0 or 1).
+        query (str): The user's natural language instruction,
+                     for example: "Draw a temperature change chart of Beijing in the past month".
 
     Returns:
-        float: The accuracy of the model on the test set.
-    """
-    # Split the data into training and testing sets
-    X_train, X_test, y_train, y_test = train_test_split(data, labels, test_size=0.2, random_state=42)
+        str: The execution result of the generated function (e.g., image path or computed value).
+    '''
+    prompt = '''
+    Please generate Python code that defines a single function to fulfill the user's request.
 
-    # Initialize the Logistic Regression model
-    model = LogisticRegression()
+    Requirements:
+    1. The following modules are strictly forbidden: requests, os, sys, subprocess, socket, http, urllib, pickle, etc.
+    2. Only safe libraries such as matplotlib, datetime, random, and math may be used.
+    3. If the task involves web requests or APIs, use random or fixed simulated data instead.
+    4. The function must have a clear return value, returning the final result (such as an image path or a computed value).
+    5. For visualization tasks, do not use Chinese characters (titles, axes, and labels must be in English).
+       Save the image to the path `/home/mnt/chenzhe1/WorkDir/images`
+       and ensure the return value is the complete image file path.
+    6. No example function calls or print statements are allowed in the code.
+    '''
+    gen = CodeGenerator(llm, prompt)
+    code = gen(query)
 
-    # Train the model
-    model.fit(X_train, y_train)
+    compiled_func = compile_func(code)
 
-    # Predict the labels for the test set
-    predictions = model.predict(X_test)
+    try:
+        result = compiled_func()
+    except Exception as e:
+        result = f'Error during code execution: {e}'
 
-    # Calculate the accuracy of the model
-    accuracy = accuracy_score(y_test, predictions)
-
-    return accuracy
-
-# Example usage:
-if __name__ == "__main__":
-    # Example data: 4 samples with 2 features each
-    data = np.array([[0.5, 1.2], [1.3, 3.4], [3.5, 2.1], [2.2, 4.3]])
-    labels = np.array([0, 0, 1, 1])
-
-    # Perform binary classification and print the accuracy
-    acc = binary_classification(data, labels)
-    print(f"Model Accuracy: {acc:.2f}")
+    return result
 ```
-**Input**  
-"Explain this code"
 
-**Console Output:**
+### Assembling the intelligent agent
+
+After defining the tool, we use `FunctionCallAgent` to integrate it and deploy an interactive web interface via `WebModule`.
+
 ```python
-[Code Explanation] Explanation result:
-
-
-
-import numpy as np
-from sklearn.model_selection import train_test_split
-from sklearn.linear_model import LogisticRegression
-from sklearn.metrics import accuracy_score
-
-def binary_classification(data: np.ndarray, labels: np.ndarray) -> float:
-    """
-    Perform binary classification using Logistic Regression.
-
-    Args:
-        data (np.ndarray): The input features, a 2D numpy array where each row represents a sample.
-        labels (np.ndarray): The labels for each sample, a 1D numpy array containing binary labels (0 or 1).
-
-    Returns:
-        float: The accuracy of the model on the test set.
-    """
-    # Split the data into training and testing sets
-    # This function divides the data into training and testing subsets.
-    # 'test_size=0.2' indicates that 20% of the data is used for testing, and the rest for training.
-    # 'random_state=42' ensures that the split is reproducible.
-    X_train, X_test, y_train, y_test = train_test_split(data, labels, test_size=0.2, random_state=42)
-
-    # Initialize the Logistic Regression model
-    # LogisticRegression is a classifier that uses logistic functions to model the probability of a binary outcome.
-    model = LogisticRegression()
-
-    # Train the model
-    # The fit method trains the model using the training data and corresponding labels.
-    model.fit(X_train, y_train)
-
-    # Predict the labels for the test set
-    # The predict method outputs the predicted labels for the test set.
-    predictions = model.predict(X_test)
-
-    # Calculate the accuracy of the model
-    # accuracy_score computes the accuracy, a performance metric for classification models, as the number of correct predictions divided by the total number of predictions.
-    accuracy = accuracy_score(y_test, predictions)
-
-    return accuracy
-
-# Example usage:
-if __name__ == "__main__":
-    # Example data: 4 samples with 2 features each
-    # This is a small dataset with 4 samples, each having 2 features.
-    data = np.array([[0.5, 1.2], [1.3, 3.4], [3.5, 2.1], [2.2, 4.3]])
-    labels = np.array([0, 0, 1, 1])
-
-    # Perform binary classification and print the accuracy
-    # The binary_classification function is called with example data and labels, and the resulting accuracy is printed.
-    acc = binary_classification(data, labels)
-    print(f"Model Accuracy: {acc:.2f}")
+llm = OnlineChatModule()
+agent = FunctionCallAgent(llm, tools=['generate_code_from_query'])
+WebModule(agent, port=12345, title='Code Agent', static_paths='/home/mnt/chenzhe1/WorkDir/images').start().wait()
 ```
+
+**Parameter explanation:**
+
+* `port`: Specifies the web access port (accessible at `http://127.0.0.1:12345`).
+* `title`: Defines the title shown at the top of the web page.
+* `static_paths`: Directory containing static resources that can be directly accessed from the frontend.
+
+> Note: For more details on parameters, refer to the [official API documentation](https://docs.lazyllm.ai/en/stable/API%20Reference/tools/#lazyllm.tools.WebModule).
+
+After executing `.start().wait()`, the service will start and display a local access address (e.g., `http://127.0.0.1:12345`). Open this address in your browser to input natural language requests — the system will automatically generate, execute, and display the results (such as generated images).
+
+## Demonstration
+
+Example input:
+
+```text
+Draw a line chart of Beijing’s temperature changes in the past month
+```
+
+Result preview:
+
+![code_agent_demo1](../assets/code_agent_demo1.png)
+
+Example input:
+
+```text
+Write a function that calculates the sum of two numbers
+```
+
+Result preview:
+
+![code_agent_demo2](../assets/code_agent_demo2.png)
+
+## Summary
+
+In this section, we built an intelligent agent that supports the full workflow of
+“Natural Language → Code Generation → Execution → Result Display.”
+
+Key takeaways include:
+
+* Using `CodeGenerator` to automatically produce safe function code;
+* Dynamically compiling and executing the function via `compile_func`;
+* Managing tool invocation with `FunctionCallAgent`;
+* Providing a browser-accessible interface with `WebModule`.
+
+This design demonstrates LazyLLM’s flexibility in intelligent code generation and secure execution scenarios. It also lays the foundation for future extensions such as multi-tool collaboration, task intent recognition, and result visualization.
