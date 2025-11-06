@@ -148,12 +148,8 @@ web_module.start().wait()
 query = "画个猫"
 agent(query)
 ```
-<think>
-Okay, the user asked to draw a cat. I first used the optimize_prompt tool to translate and enhance the prompt into English. Then, I called generate_image with the optimized prompt. The system returned a base64 encoded image which I saved as a file. Now, I need to present the image to the user. Since the user's original query was in Chinese, I should respond in Chinese. I'll mention that the image has been generated and provide the file path. Let me check if there's any additional step needed, but since the task is complete, I'll just confirm the output.
-</think>
 
-Answer: 已根据您的要求生成了一张猫的插画，图片文件路径为：.../xxx.png()
-![Painting](/home/mnt/zhangkejun/LazyLLM/.temp/base64_to_file_q68njx29.png)
+![Painting](../assets/base64_to_file_q68njx29.png)
 
 ## Example Output
 This project demonstrates how to build a **multi-modal output agent** using LazyLLM. Feel free to extend your toolset and create even more powerful AI assistants!
