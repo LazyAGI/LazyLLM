@@ -145,7 +145,7 @@ WebModule(agent, port=12345, title='Code Agent', static_paths='/home/mnt/chenzhe
 
 ![code_agent_demo2](../assets/code_agent_demo2.png)
 
-## 总结
+## 小结
 
 本节我们完成了一个具备“自然语言 → 代码生成 → 结果执行”全流程的智能代理系统。
 
