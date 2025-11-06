@@ -48,8 +48,6 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
                 raise AssertionError(f"'{model}' should use OnlineEmbeddingModule")
             elif type in ['sst', 'tts', 'sd']:
                 raise AssertionError(f"'{model}' should use OnlineMultiModalModule")
-            else:
-                pass
         params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace,
                                                           skip_auth=skip_auth, type=type.upper() if type else None,
                                                           **kwargs)
