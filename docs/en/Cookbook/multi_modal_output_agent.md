@@ -149,7 +149,7 @@ query = "画个猫"
 agent(query)
 ```
 
-![Painting](../assets/base64_to_file_q68njx29.png)
+![Painting](../assets/cat.png)
 
 ## Example Output
 This project demonstrates how to build a **multi-modal output agent** using LazyLLM. Feel free to extend your toolset and create even more powerful AI assistants!

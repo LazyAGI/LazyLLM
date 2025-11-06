@@ -148,7 +148,7 @@ query = "画个猫"
 agent(query)
 ```
 
-![Painting](../assets/base64_to_file_q68njx29.png)
+![Painting](../assets/cat.png)
 ## 结语
 
 该项目展示了如何使用 LazyLLM 构建一个**多模态输出的 Agent**。欢迎继续扩展你的工具集，构建强大的 AI 助手。
