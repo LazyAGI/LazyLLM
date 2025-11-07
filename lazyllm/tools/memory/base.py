@@ -8,14 +8,14 @@ class LazyLLMMemoryBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
     def __init__(self, topk: int = 10):
         self._topk = topk
 
-    def add(self, query: str, output: str, history: Optional[Union[List[List[str]], List[Dict[str, Any]]]],
+    def add(self, query: str, output: str, history: Optional[Union[List[List[str]], List[Dict[str, Any]]]] = None,
             user_id: Optional[str] = None, agent_id: Optional[str] = None):
-        r = ChatPrompter(history=history, enable_system=False).generate_prompt(query, return_dict=True)
+        r = ChatPrompter(history=history, enable_system=False).generate_prompt(query, return_dict=True)['messages']
         r.append(output if isinstance(output, dict) else dict(role='assistant', content=output))
         self._add(r, user_id, agent_id)
 
     def get(self, query: Optional[str] = None, user_id: Optional[str] = None, agent_id: Optional[str] = None):
-        self._get(query, user_id, agent_id)
+        return self._get(query, user_id, agent_id)
 
     @abstractmethod
     def _add(self, message: List[Dict[str, Any]], user_id: Optional[str] = None, agent_id: Optional[str] = None): pass
@@ -23,5 +23,5 @@ class LazyLLMMemoryBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
     @abstractmethod
     def _get(self, query: Optional[str] = None, user_id: Optional[str] = None, agent_id: Optional[str] = None): pass
 
-    def __call__(self, query: str):
+    def __call__(self, query: Optional[str] = None):
         return self.get(query, globals.get('user_id'), globals.get('agent_id'))
