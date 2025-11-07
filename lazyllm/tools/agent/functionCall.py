@@ -100,6 +100,7 @@ class FunctionCallAgent(ModuleBase):
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
         ret = self._agent(query, llm_chat_history) if llm_chat_history is not None else self._agent(query)
-        return ret if isinstance(ret, str) else (_ for _ in ()).throw(
-            ValueError(f'After retrying {self._max_retries} times, the function call agent still '
-                       'failed to call successfully.'))
+        if len(ret.get('tool_calls', [])) == 0: return ret['content']
+        raise ValueError(
+            f'After retrying {self._max_retries} times, the function call agent still failed to call successfully.'
+        )
