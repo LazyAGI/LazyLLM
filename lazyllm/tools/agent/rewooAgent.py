@@ -36,11 +36,9 @@ class ReWOOAgent(ModuleBase):
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  return_trace: bool = False, stream: bool = False, return_tool_call_results: bool = False):
         super().__init__(return_trace=return_trace)
-        assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), (
-            'Either specify only llm '
-            'without specify plan and solve, or specify only plan and solve without specifying llm, or specify '
-            'both llm and solve. Other situations are not allowed.'
-        )
+        assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), 'Either specify only llm \
+               without specify plan and solve, or specify only plan and solve without specifying llm, or specify \
+               both llm and solve. Other situations are not allowed.'
         assert tools, 'tools cannot be empty.'
         self._planner = (plan_llm or llm).share(stream=dict(
             prefix='\nI will give a plan first:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
