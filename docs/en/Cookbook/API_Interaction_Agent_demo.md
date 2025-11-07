@@ -143,8 +143,8 @@ Isn’t it amazing? Our API Agent not only understands your question but also �
 ---
 
 ## View Full Code
-
-
+<details> 
+<summary>Click to expand full code</summary>
     
 ```python
 import re
@@ -387,6 +387,7 @@ if __name__ == "__main__":
     # Start a web server on an available port in the range 23480–23489
     lazyllm.WebModule(agent, port=range(23480, 23490)).start().wait()
 ```
+</details>
 
 ---
 

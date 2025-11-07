@@ -363,6 +363,9 @@ python agent_n_rag.py
 
 Then visit `http://localhost:8849` to interact with the conversational RAG system through a web interface.
 ## Full code
+<details> 
+<summary>Click to expand full code</summary>
+
 ```python
 import os
 import tempfile
@@ -662,6 +665,7 @@ if __name__ == "__main__":
     # Start web interface
     start_web_interface()
 ```
+</details>
 
 
 ## Next steps
