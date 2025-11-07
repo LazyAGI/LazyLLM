@@ -8,13 +8,13 @@ from typing import Optional, List, Dict, Any
 config.add('memu_api_key', str, '', 'MEMU_API_KEY')
 
 class MemUMemory():
-    def __new__(cls, api_key: Optional[str] = None) -> LazyLLMMemoryBase:
-        return OnlineMemUMemory(api_key)
-    
+    def __new__(cls, api_key: Optional[str] = None, topk: int = 10) -> LazyLLMMemoryBase:
+        return OnlineMemUMemory(api_key, topk=topk)
+
 class OnlineMemUMemory(LazyLLMMemoryBase):
     def __init__(self, api_key: Optional[str] = None, *, topk: int = 10):
         super().__init__(topk=topk)
-        self._client = memu.MemuClient(base_url="https://api.memu.so", api_key=api_key or config['memu_api_key'])
+        self._client = memu.MemuClient(base_url='https://api.memu.so', api_key=api_key or config['memu_api_key'])
 
     def _add(self, message: List[Dict[str, Any]], user_id: Optional[str] = None, agent_id: Optional[str] = None):
         agent_id = agent_id or 'default'
@@ -27,8 +27,8 @@ class OnlineMemUMemory(LazyLLMMemoryBase):
                 query=query, user_id=user_id, agent_id=agent_id, top_k=self._topk)
         else:
             retrieved_memories = self._client.retrieve_default_categories(user_id=user_id, agent_id=agent_id)
-        if retrieved_memories and (categories := getattr(retrieved_memories, 'categories')):
-            return '\n'.join([str(summary) for category in categories if (summary := getattr(category, 'summary'))])
+        if retrieved_memories and (categories := getattr(retrieved_memories, 'categories', None)):
+            return '\n'.join([str(summary) for category in categories if (summary := getattr(category, 'summary', ''))])
         return ''
 
 class LocalMemUMemory(LazyLLMMemoryBase):

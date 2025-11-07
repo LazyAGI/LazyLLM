@@ -23,8 +23,5 @@ class LazyLLMMemoryBase(ABC, metaclass=LazyLLMRegisterMetaABCClass):
     @abstractmethod
     def _get(self, query: Optional[str] = None, user_id: Optional[str] = None, agent_id: Optional[str] = None): pass
 
-
-def memory_hook(query, *inputs, **kw):
-    # m = MemoryBase()
-    output = yield
-    # m.add(query, output)
+    def __call__(self, query: str):
+        return self.get(query, globals.get('user_id'), globals.get('agent_id'))

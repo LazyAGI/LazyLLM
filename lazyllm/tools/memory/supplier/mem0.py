@@ -1,4 +1,3 @@
-import imp
 from ..base import LazyLLMMemoryBase
 from lazyllm import config
 from lazyllm.thirdparty import mem0
@@ -9,9 +8,9 @@ from typing import Optional, List, Dict, Any
 config.add('mem0_api_key', str, '', 'MEM0_API_KEY')
 
 class Mem0Memory():
-    def __new__(cls, api_key: Optional[str] = None) -> LazyLLMMemoryBase:
-        return OnlineMem0Memory(api_key)
-    
+    def __new__(cls, api_key: Optional[str] = None, topk: int = 10) -> LazyLLMMemoryBase:
+        return OnlineMem0Memory(api_key, topk=topk)
+
 class OnlineMem0Memory(LazyLLMMemoryBase):
     def __init__(self, api_key: Optional[str] = None, *, topk: int = 10):
         super().__init__(topk=topk)

@@ -225,8 +225,8 @@ class MemoryGlobals(Globals):
     def __getitem__(self, __key: str):
         try:
             return self._data[__key]
-        except KeyError: pass  # avoid `During handling of the above exception` for better bug-reporting experience
-        raise KeyError(f'Cannot find key {__key}, current session-id is {self._sid}')
+        except KeyError:
+            raise KeyError(f'Cannot find key {__key}, current session-id is {self._sid}') from None
 
     def clear(self):
         self.__data.pop(self._sid, None)
@@ -265,8 +265,7 @@ class Locals(MemoryGlobals):
     def __getitem__(self, __key: str):
         try:
             return super().__getitem__(__key)
-        except KeyError:
-            pass  # avoid `During handling of the above exception` for better bug-reporting experience
+        except KeyError: pass  # avoid `During handling of the above exception` for better bug-reporting experience
         return globals[__key]
 
 locals = Locals()

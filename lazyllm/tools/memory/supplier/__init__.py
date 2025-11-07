@@ -1,5 +1,5 @@
-from .memu import MemUMemory
-from .mem0 import Mem0Memory
+from .memu import MemUMemory  # noqa NID002
+from .mem0 import Mem0Memory  # noqa NID002
 
 __all__ = [
     'MemUMemory',
