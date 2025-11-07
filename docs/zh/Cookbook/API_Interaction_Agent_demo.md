@@ -4,9 +4,9 @@
 
 !!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
 
-- 如何继承 [ModuleBase][lazyllm.module.module.ModuleBase] 编写一个 API 工具模块；
-- 如何封装并注册一个函数为工具；
-- 如何使用 [ReactAgent][lazyllm.tools.agent.ReactAgent] 与 [WebModule][lazyllm.tools.WebModule] 联动，实现问答驱动的 API 调用。
+    - 如何继承 [ModuleBase][lazyllm.module.module.ModuleBase] 编写一个 API 工具模块；
+    - 如何封装并注册一个函数为工具；
+    - 如何使用 [ReactAgent][lazyllm.tools.agent.ReactAgent] 与 [WebModule][lazyllm.tools.WebModule] 联动，实现问答驱动的 API 调用。
 
 ---
 
@@ -143,7 +143,8 @@ Q: What countries use USD?
 ---
 
 ## 查看完整代码
-
+<details>
+<summary>点击展开/折叠 Python代码</summary>
 ```python
 import re
 import json
@@ -227,11 +228,11 @@ class LazyAPIChain(ModuleBase):
         else:
             raise ValueError("无法识别问题所对应的 API endpoint")
 
-def _extract_entity(self, question: str):
+    def _extract_entity(self, question: str):
         """
         从问题中提取关键实体（国家名或货币代码）。
 
-        优先提取首字母大写的单词（如 "France"），否则取最后一个单词。
+        优先提取首字母大写的单词（如国家名），否则取最后一个单词。
 
         Args:
             question (str): 用户问题。
@@ -367,6 +368,7 @@ if __name__ == "__main__":
     agent = ReactAgent(llm, tools=["query_restcountry"])
     # 启动 Web 服务，监听 23480-23489 端口中的一个可用端口
     lazyllm.WebModule(agent, port=range(23480, 23490)).start().wait()
+</details>
 ```
 
 ---

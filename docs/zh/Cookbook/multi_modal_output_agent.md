@@ -87,6 +87,8 @@ agent = lazyllm.ReactAgent(llm=llm, tools=tools)
 print(agent("画个猫"))
 ```
 ### 完整代码
+<details>
+<summary>点击展开完整代码</summary>
 ```python
 import lazyllm
 from lazyllm import fc_register
@@ -142,6 +144,7 @@ web_module = lazyllm.WebModule(
         )
 web_module.start().wait()
 ```
+</details>
 ### 示例运行结果
 ```python
 query = "画个猫"

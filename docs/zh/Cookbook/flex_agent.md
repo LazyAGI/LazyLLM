@@ -189,6 +189,8 @@ if __name__ == "__main__":
 
 > 注意：当没有满足条件的工具时，会默认调用大模型。
 ### 完整代码
+<details>
+<summary>点击展开完整代码</summary>
 ```python
 
 import json
@@ -278,6 +280,7 @@ if __name__ == "__main__":
         res = llm(query)
 
     print(res)
+</details>
 ```
 ### 示例运行结果
 
