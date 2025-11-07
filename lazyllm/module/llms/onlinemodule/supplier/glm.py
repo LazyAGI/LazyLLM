@@ -245,8 +245,8 @@ class GLMReranking(OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = 'https://open.bigmodel.cn/api/paas/v4/rerank',
                  embed_model_name: str = 'rerank',
-                 api_key: str = None):
-        super().__init__('GLM', embed_url, api_key or lazyllm.config['glm_api_key'], embed_model_name)
+                 api_key: str = None, **kw):
+        super().__init__('GLM', embed_url, api_key or lazyllm.config['glm_api_key'], embed_model_name, **kw)
 
     @property
     def type(self):

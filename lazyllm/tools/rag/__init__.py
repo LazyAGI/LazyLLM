@@ -5,7 +5,8 @@ from .transform import SentenceSplitter, LLMParser, NodeTransform, TransformArgs
 from .similarity import register_similarity
 from .doc_node import DocNode
 from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader, EpubReader,
-                      MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader)
+                      MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
+                      MineruPDFReader)
 from .dataReader import SimpleDirectoryReader, FileReader
 from .doc_manager import DocManager, DocListManager
 from .global_metadata import GlobalMetadataDesc as DocField
@@ -43,6 +44,7 @@ __all__ = [
     'PandasExcelReader',
     'VideoAudioReader',
     'SimpleDirectoryReader',
+    'MineruPDFReader',
     'DocManager',
     'DocListManager',
     'DocField',

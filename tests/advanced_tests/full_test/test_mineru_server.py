@@ -26,7 +26,7 @@ def setup_tmpdir_class(request, tmpdir_factory):
 @pytest.mark.skip_on_mac
 @pytest.mark.usefixtures('setup_tmpdir_class')
 class TestMineruServer(unittest.TestCase):
-    TEST_FILES_LOCAL = {
+    TEST_FILES = {
         'pdf1': os.path.join(lazyllm.config['data_path'], 'ci_data/test_mineru/test_mineru1.pdf'),
         'pdf2': os.path.join(lazyllm.config['data_path'], 'ci_data/test_mineru/test_mineru2.pdf'),
         'pdf3': os.path.join(lazyllm.config['data_path'], 'ci_data/test_mineru/test_mineru3.pdf'),
@@ -192,7 +192,7 @@ class TestMineruServer(unittest.TestCase):
     @pytest.mark.order(5)
     def test_different_backends(self):
         '''Test 6: Different backend testing'''
-        backends = ['vlm-sglang-engine', 'vlm-transformers']
+        backends = ['vlm-vllm-async-engine', 'vlm-transformers']
         test_file = str(self.test_files['pdf1'])
         for backend in backends:
             status, result = self.post_pdf_parse(
@@ -202,7 +202,6 @@ class TestMineruServer(unittest.TestCase):
                 return_content_list=True,
                 use_cache=False,
             )
-
             if status != 200:
                 LOG.warning(f'Skipping backend: {backend}, status: {status}, error: {result}')
                 continue
