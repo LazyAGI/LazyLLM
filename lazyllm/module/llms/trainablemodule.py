@@ -546,6 +546,10 @@ class TrainableModule(UrlModule):
             if stream_output: LOG.warning('stream_output is not supported when template_message is not set, ignore it')
             assert not kw, 'kw is not supported when template_message is not set'
 
+        if tools or self._tools:
+            stop_key = next((k for k in data if k.startswith('stop')), 'stop')
+            data[stop_key] = data.get(stop_key) or [] + [self._tool_end_token]
+
         with self.stream_output((stream_output := (stream_output or self._stream))):
             return self._forward_impl(data, stream_output=stream_output, url=url, text_input=text_input_for_token_usage)
 
