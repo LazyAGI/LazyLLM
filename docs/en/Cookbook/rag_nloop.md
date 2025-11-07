@@ -3,6 +3,11 @@
 A key challenge in Q&A systems is handling conversational context. This tutorial shows how to add memory to a RAG application so it can handle follow-up questions that depend on chat history.
 
 We'll use the LazyLLM framework to build a conversational RAG system that can handle multi-turn conversations effectively.
+!!! abstract "In this section, you will learn the following key points about LazyLLM:"
+    - How to load and manage documents with embeddings using [Document]
+    - How to use [Retriever] to retrieve relevant documents based on similarity
+    - How to use [Reranker] to re-rank retrieved documents for improved relevance
+    - How to combine [ReactAgent] to create an agent capable of multiple retrieval iterations
 
 ## Design Approach
 Our multi-turn conversational RAG system is built on the core idea of context-aware query rewriting, which transforms history-dependent user questions into standalone, retrievable queries.
@@ -14,17 +19,6 @@ Finally, the rewritten query, top-ranked context, and trimmed dialogue history a
 The entire pipeline is implemented using LazyLLM, with explicit management of dialogue history (length-constrained to prevent context overload). Tool functions—such as query rewriting, hybrid retrieval, and re-ranking—are encapsulated via fc_register to enable seamless integration into a ReAct Agent for dynamic tool orchestration. A web interface serves as the user-facing entry point, delivering an end-to-end multi-turn conversational QA experience.
 ![alt text](../assets/rag.png)
 ## Setup
-
-### Components
-
-We'll build our conversational RAG application using LazyLLM's built-in components:
-
-- **Document**: For loading and managing documents with embeddings
-- **Retriever**: For retrieving relevant documents based on similarity
-- **Reranker**: For reranking retrieved documents for better relevance
-- **OnlineChatModule**: For LLM-based question reformulation and answer generation
-- **ReactAgent**: For creating an agent that can iterate over multiple retrieval steps
-- **pipeline**：used to create a sequentially executed data flow
 
 ### Dependencies
 

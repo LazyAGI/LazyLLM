@@ -191,6 +191,9 @@ if __name__ == "__main__":
 
 > Note: If no matching tool is found, it falls back to the LLM for a direct answer.
 ### View Full Code
+<details> 
+<summary>Click to expand full code</summary>
+
 ```python
 
 import json
@@ -281,6 +284,8 @@ if __name__ == "__main__":
 
     print(res)
 ```
+</details>
+
 ### Example Output
 
 **Input:**

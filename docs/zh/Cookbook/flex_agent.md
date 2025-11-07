@@ -191,6 +191,7 @@ if __name__ == "__main__":
 ### 完整代码
 <details>
 <summary>点击展开完整代码</summary>
+
 ```python
 
 import json
@@ -280,8 +281,10 @@ if __name__ == "__main__":
         res = llm(query)
 
     print(res)
-</details>
+
 ```
+</details>
+
 ### 示例运行结果
 
 示例输入：

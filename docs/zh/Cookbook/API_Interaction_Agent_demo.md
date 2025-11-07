@@ -145,6 +145,7 @@ Q: What countries use USD?
 ## 查看完整代码
 <details>
 <summary>点击展开/折叠 Python代码</summary>
+
 ```python
 import re
 import json
@@ -368,8 +369,9 @@ if __name__ == "__main__":
     agent = ReactAgent(llm, tools=["query_restcountry"])
     # 启动 Web 服务，监听 23480-23489 端口中的一个可用端口
     lazyllm.WebModule(agent, port=range(23480, 23490)).start().wait()
-</details>
+
 ```
+</details>
 
 ---
 
