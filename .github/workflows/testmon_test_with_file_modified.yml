@@ -1,0 +1,86 @@
+name: testmon test - run with file modified
+on:
+  pull_request:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - ".git*"
+      - "docs/assets/**"
+      - "docs/**"
+env:
+  CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${{ github.run_number }}'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  Clone:
+    if: |
+      !contains(github.event.head_commit.message, '[skip ci]')
+      && !contains(github.event.pull_request.title, '[skip ci]')
+    runs-on: tps_sco_nv
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create custom directory
+        run: |
+          set -ex
+          echo ${{ env.CI_PATH }}
+          mkdir -p ${{ env.CI_PATH }}
+
+      - name: Clean custom directory
+        run: |
+          set -ex
+          if [ -d "${{ env.CI_PATH }}" ]; then
+            rm -rf ${{ env.CI_PATH }}/*
+          fi
+
+      - name: Move code to custom directory
+        run: |
+          set -ex
+          mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
+
+  OneTest:
+    runs-on: tps_sco_nv
+    needs: [Clone]
+    steps:
+      - name: Get base SHA
+        run: |
+          BASE_SHA=${{ github.event.pull_request.base.sha }}
+          echo "BASE_SHA=$BASE_SHA" >> $GITHUB_ENV
+        
+      - name: Download Testmon Baseline for Base SHA
+        uses: actions/download-artifact@v3
+        with:
+          name: testmon-baseline-${{ env.BASE_SHA }}
+          path: ./
+        id: download_base_with_sha
+        continue-on-error: true
+        
+      - name: Download Testmon Baseline latest as fallback
+        uses: actions/download-artifact@v3
+        with:
+          name: testmon-baseline-latest
+          path: ./
+        if: steps.download_base_with_sha.outcome == 'failure'
+
+      - name: Run Tests
+        run: |
+          set -ex
+          cd ${{ env.CI_PATH }}
+          pip install -r tests/requirements.txt
+          realpath .
+          env | grep '^SCC'
+          export LAZYLLM_SCO_ENV_NAME=lazyllm
+          export LAZYLLM_DEFAULT_LAUNCHER=sco
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
+          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
+          mkdir -p $LAZYLLM_HOME
+          pytest --testmon --durations=0 --reruns=2 -v \
+            tests/base_tests/test_common.py \
+            tests/base_tests/test_flow.py

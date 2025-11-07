@@ -15,3 +15,5 @@ docs/zh/assets
 infer_log/
 *.log
 log.txt
+
+.testmondata

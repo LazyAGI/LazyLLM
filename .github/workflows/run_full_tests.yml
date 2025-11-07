@@ -1,0 +1,227 @@
+name: Run full test and publish testmon baseline
+
+on:
+  push:
+    branches:
+      - main
+    paths-ignore:
+      - "**.md"
+      - ".git*"
+      - "docs/**"
+  workflow_dispatch:
+    inputs:
+      reason:
+        description: 'Reason for running full tests and publishing the baseline'
+        required: true
+        type: string
+
+env:
+  CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${{ github.run_number }}'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  Clone:
+    runs-on: tps_sco_nv
+    steps:          
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Create custom directory
+        run: |
+          set -ex
+          echo ${{ env.CI_PATH }}
+          mkdir -p ${{ env.CI_PATH }}
+
+      - name: Clean custom directory
+        run: |
+          set -ex
+          if [ -d "${{ env.CI_PATH }}" ]; then
+            rm -rf ${{ env.CI_PATH }}/*
+          fi
+
+      - name: Move code to custom directory
+        run: |
+          set -ex
+          mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
+
+  BasicTests:
+    runs-on: tps_sco_nv
+    needs: [Clone]
+    steps:
+      - name: Run basic tests
+        run: |
+          set -ex
+          cd ${{ env.CI_PATH }}
+          pip install -r tests/requirements.txt
+          realpath .
+          env | grep '^SCC'
+          export LAZYLLM_SCO_ENV_NAME=lazyllm
+          export LAZYLLM_DEFAULT_LAUNCHER=sco
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
+          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
+          mkdir -p $LAZYLLM_HOME
+          pytest --testmon \
+            -m "not skip_on_linux" \
+            --durations=0 \
+            --reruns=2 \
+            -v \
+            --cov=lazyllm \
+            --cov-append \
+            --cov-report=html \
+            tests/basic_tests/
+
+  AdvancedTests:
+    runs-on: tps_sco_nv
+    needs: [Clone]
+    steps:
+      - name: Run advanced tests
+        run: |
+          cd ${{ env.CI_PATH }}
+          pip install -r tests/requirements.txt
+          env | grep '^SCC'
+          export LAZYLLM_SCO_ENV_NAME=lazyllm
+          export LAZYLLM_DEFAULT_LAUNCHER=sco
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
+          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
+          mkdir -p $LAZYLLM_HOME
+          source ~/ENV/env.sh
+          set LAZYLLM_SKIP_GPU_TEST=False
+          pytest --testmon \
+            -m "not skip_on_linux" \
+            --durations=0 \
+            --reruns=2 \
+            -v \
+            --cov=lazyllm \
+            --cov-append \
+            --cov-report=html \
+            tests/advanced_tests/
+
+  ChargeTests:
+    runs-on: tps_sco_nv
+    needs: [ Clone ]
+    steps:
+      - name: Clone LazyLLM-Cache for Output and Cache
+        run: |
+          cd ${{ env.CI_PATH }}
+          if [ ! -d "github_cache" ]; then
+            git clone https://github.com/LazyAGI/LazyLLM-Cache.git github_cache
+            echo "Repository cloned successfully"
+          else
+            echo "github_cache folder already exists, skipping clone"
+            cd github_cache
+            if [ -z "$(git status --porcelain)" ]; then
+                echo "Repository is clean, pulling latest changes..."
+                git pull origin main
+                echo "Repository updated successfully"
+            else
+                echo "Repository has uncommitted changes, skipping update"
+                echo "Current status:"
+                git status --short
+            fi
+            cd ..
+          fi
+          ls -alh github_cache
+          echo "LAZYLLM_TEMP_DIR=github_cache/output" >> $GITHUB_ENV
+          echo "LAZYLLM_CACHE_DIR=github_cache/paid_llm_cache" >> $GITHUB_ENV
+
+      - name: Set Cache Mode Based on Run Context
+        run: |
+          echo "GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT"
+          echo "LAZYLLM_CACHE_ONLINE_MODULE=True" >> $GITHUB_ENV
+          echo "LAZYLLM_CACHE_STRATEGY=sqlite" >> $GITHUB_ENV
+          if [ "$GITHUB_RUN_ATTEMPT" = "1" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "This is the first run, and push to main branch."
+            echo "LAZYLLM_CACHE_MODE=RW" >> $GITHUB_ENV
+          elif [ "$GITHUB_RUN_ATTEMPT" != "1" ] && [ "$GITHUB_EVENT_NAME" = "push" ]; then
+            echo "This is a re-run! (GITHUB_RUN_ATTEMPT=$GITHUB_RUN_ATTEMPT), and push to main branch."
+            echo "LAZYLLM_CACHE_MODE=WO" >> $GITHUB_ENV
+          elif [ "$GITHUB_EVENT_NAME" = "pull_request" ]; then
+            echo "This is a pull request from other branch to main."
+            echo "LAZYLLM_CACHE_MODE=RO" >> $GITHUB_ENV
+          fi
+
+      - name: Show ENV
+        run: |
+          echo "LAZYLLM_TEMP_DIR: $LAZYLLM_TEMP_DIR"
+          echo "LAZYLLM_CACHE_DIR: $LAZYLLM_CACHE_DIR"
+          echo "LAZYLLM_CACHE_MODE: $LAZYLLM_CACHE_MODE"
+          echo "LAZYLLM_CACHE_STRATEGY: $LAZYLLM_CACHE_STRATEGY"
+          echo "LAZYLLM_CACHE_ONLINE_MODULE: $LAZYLLM_CACHE_ONLINE_MODULE"
+
+      - name: RunTests
+        run: |
+          cd ${{ env.CI_PATH }}
+          pip install -r tests/requirements.txt
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
+          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
+          mkdir -p $LAZYLLM_HOME
+          source ~/ENV/env.sh
+          pytest --testmon \
+            -m "not skip_on_linux" \
+            --durations=0 \
+            --reruns=2 \
+            -v \
+            --cov=lazyllm \
+            --cov-append \
+            --cov-report=html \
+            tests/charge_tests/
+
+  Coverage_linux:
+    runs-on: ubuntu-latest
+    needs: [ BasicTests, AdvancedTests, ChargeTests ]
+    steps:
+      - name: Add Coverage Report Link to Summary
+        run: |
+          echo "## 代码覆盖率报告" >> $GITHUB_STEP_SUMMARY
+          echo "分支： ${GITHUB_REF}" >> $GITHUB_STEP_SUMMARY
+          echo "提交 SHA： ${GITHUB_SHA}" >> $GITHUB_STEP_SUMMARY
+          echo "您可以通过以下链接查看详细报告：" >> $GITHUB_STEP_SUMMARY
+          echo "[http://10.210.0.49:8088/${GITHUB_RUN_NUMBER}/htmlcov](http://10.210.0.49:8088/${GITHUB_RUN_NUMBER}/htmlcov)" >> $GITHUB_STEP_SUMMARY
+
+  DocCheck:
+    runs-on: tps_sco_nv
+    needs: [ Clone ]
+    steps:
+      - name: RunTests
+        run: |
+          cd ${{ env.CI_PATH }}
+          pip install -r tests/requirements.txt
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
+          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
+          mkdir -p $LAZYLLM_HOME
+          source ~/ENV/env.sh
+          pytest --testmon --durations=0 --reruns=2 -v tests/doc_check
+
+  publish-baseline:
+    runs-on: tps_sco_nv
+    needs: [ BasicTests, AdvancedTests, ChargeTests, DocCheck ]
+    outputs:
+      baseline-sha: ${{ steps.set_output.outputs.commit_sha }}
+    steps:
+      - name: Get Current Commit SHA
+        id: set_output
+        run: |
+          echo "commit_sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
+      - name: Upload Testmon Baseline with SHA
+        uses: actions/upload-artifact@v3
+        with:
+          name: testmon-baseline-${{ steps.set_output.outputs.commit_sha }}
+          path: .testmondata
+      
+      - name: Upload Testmon Baseline
+        uses: actions/upload-artifact@v3
+        with:
+          name: testmon-baseline-latest
+          path: .testmondata
