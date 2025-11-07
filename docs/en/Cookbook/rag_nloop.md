@@ -661,7 +661,27 @@ if __name__ == "__main__":
 ```
 </details>
 
+## Example Output
+``` bash
+<think>Alright, the user is asking about the standard methods for task decomposition, and after getting that answer, they want to find common extensions of those methods. First, I need to identify what the standard task decomposition methods are. Common ones include the Work Breakdown Structure (WBS), goal trees, and task lists. Among these, WBS is probably the most widely used standard approach in project management, as it organizes work by breaking a project down hierarchically into smaller, more manageable tasks.
 
+Next, the user might want to know the steps or how to apply these methods in practice. However, based on the question, the user first wants to know what the standard method is, so I should start by answering that. Then, once the user confirms, I can go on to discuss the common extensions of that method. For example, extensions of WBS might include life-cycle-based decomposition, deliverable-oriented breakdowns, or agile user story decomposition.
+
+Now, I should check whether there’s a need to use any tools to retrieve information. Since my knowledge cutoff is October 2023, I likely already have sufficient information about standard task decomposition methods and their extensions. However, to ensure accuracy, I could use internal knowledge bases or databases to verify the most current extensions. But based on existing knowledge, I can provide the standard method first and then suggest using a tool if the user wants more detailed or updated information.
+
+Given the user’s instruction that each response must start with a Thought and may involve tool calls, in this case, since I already know the standard methods, I can provide the answer first and then ask whether further details are needed. Or, if the user’s question demands more in-depth extensions, I could use a tool to search for related materials. Considering that the question has two parts, it’s best to answer the first part (standard methods) first, then proceed to the second (extensions).</think>
+
+Thought: The user is asking about standard methods for task decomposition and how they can be extended. I should first clarify the standard methods, then provide directions for possible extensions.  
+Answer: Standard methods of task decomposition typically include the following steps:  
+1. **Define objectives** – Clearly identify the final deliverables or goals;  
+2. **Hierarchical breakdown** – Divide the work logically into smaller sub-tasks (e.g., Work Breakdown Structure, WBS);  
+3. **Resource allocation** – Assign personnel, time, and other resources to each sub-task;  
+4. **Prioritization** – Determine the order in which tasks should be executed;  
+5. **Monitoring and feedback** – Track progress and adjust plans as necessary.  
+
+If you’d like to explore common extensions of these methods (e.g., Agile decomposition, goal tree analysis, etc.), please specify the domain or application scenario, and I can provide detailed information.
+
+```
 ## Next steps
 
 We've covered the steps to build a basic conversational Q&A application:
