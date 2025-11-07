@@ -20,7 +20,7 @@ jobs:
     if: |
       !contains(github.event.head_commit.message, '[skip ci]')
       && !contains(github.event.pull_request.title, '[skip ci]')
-    runs-on: tps_sco_nv
+    runs-on: tps_sco_nv_yzh
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -44,7 +44,7 @@ jobs:
           mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
   OneTest:
-    runs-on: tps_sco_nv
+    runs-on: tps_sco_nv_yzh
     needs: [Clone]
     steps:
       - name: Get base SHA

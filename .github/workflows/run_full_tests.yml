@@ -24,7 +24,7 @@ concurrency:
 
 jobs:
   Clone:
-    runs-on: tps_sco_nv
+    runs-on: tps_sco_nv_yzh
     steps:          
       - name: Checkout code
         uses: actions/checkout@v4
@@ -48,7 +48,7 @@ jobs:
           mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
   BasicTests:
-    runs-on: tps_sco_nv
+    runs-on: tps_sco_nv_yzh
     needs: [Clone]
     steps:
       - name: Run basic tests
@@ -76,7 +76,7 @@ jobs:
             tests/basic_tests/
 
   AdvancedTests:
-    runs-on: tps_sco_nv
+    runs-on: tps_sco_nv_yzh
     needs: [Clone]
     steps:
       - name: Run advanced tests
@@ -104,7 +104,7 @@ jobs:
             tests/advanced_tests/
 
   ChargeTests:
-    runs-on: tps_sco_nv
+    runs-on: tps_sco_nv_yzh
     needs: [ Clone ]
     steps:
       - name: Clone LazyLLM-Cache for Output and Cache
@@ -188,7 +188,7 @@ jobs:
           echo "[http://10.210.0.49:8088/${GITHUB_RUN_NUMBER}/htmlcov](http://10.210.0.49:8088/${GITHUB_RUN_NUMBER}/htmlcov)" >> $GITHUB_STEP_SUMMARY
 
   DocCheck:
-    runs-on: tps_sco_nv
+    runs-on: tps_sco_nv_yzh
     needs: [ Clone ]
     steps:
       - name: RunTests
@@ -204,7 +204,7 @@ jobs:
           pytest --testmon --durations=0 --reruns=2 -v tests/doc_check
 
   publish-baseline:
-    runs-on: tps_sco_nv
+    runs-on: tps_sco_nv_yzh
     needs: [ BasicTests, AdvancedTests, ChargeTests, DocCheck ]
     outputs:
       baseline-sha: ${{ steps.set_output.outputs.commit_sha }}
