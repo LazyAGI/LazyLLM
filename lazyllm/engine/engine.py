@@ -496,12 +496,11 @@ def make_mcp_tool(command_or_url: str, tool_name: str, args: Optional[List[str]]
     return tools[0]
 
 @NodeConstructor.register('FunctionCall', subitems=['tools'])
-def make_fc(base_model: str, tools: List[str], algorithm: Optional[str] = None, return_tool_call_results: bool = False):
+def make_fc(base_model: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
-        lazyllm.tools.ReactAgent
-    return f(Engine().build_node(base_model).func.func, _get_tools(tools),
-             return_tool_call_results=return_tool_call_results)
+        lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
+    return f(Engine().build_node(base_model).func.func, _get_tools(tools))
 
 
 class AuthenticationFailedError(Exception):

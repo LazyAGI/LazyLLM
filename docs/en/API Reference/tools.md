@@ -278,10 +278,6 @@
     members: 
     exclude-members: forward
 
-::: lazyllm.tools.FunctionCallFormatter
-    members: 
-    exclude-members: forward
-
 ::: lazyllm.tools.FunctionCallAgent
     members: 
     exclude-members: forward

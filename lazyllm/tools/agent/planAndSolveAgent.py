@@ -3,7 +3,7 @@ from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
 from lazyllm import loop, pipeline, _0, package, bind, LOG, Color
 from .functionCall import FunctionCall
-from typing import List, Union, Dict, Any
+from typing import List, Union
 
 PLANNER_PROMPT = (
     'Let\'s first understand the problem and devise a plan to solve the problem.'
@@ -28,8 +28,7 @@ SOLVER_PROMPT = (
 class PlanAndSolveAgent(ModuleBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[str] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
-                 max_retries: int = 5, return_trace: bool = False, stream: bool = False,
-                 return_tool_call_results: bool = False):
+                 max_retries: int = 5, return_trace: bool = False, stream: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
         assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), (
@@ -43,71 +42,32 @@ class PlanAndSolveAgent(ModuleBase):
                                                   stream=s).used_by(self._module_id))
         self._solve_llm = (solve_llm or llm).share().used_by(self._module_id)
         self._tools = tools
-        self._return_tool_call_results = return_tool_call_results
-        self._fc = FunctionCall(
-            self._solve_llm,
-            tools=self._tools,
-            return_trace=return_trace,
-            stream=stream,
-            return_tool_call_results=return_tool_call_results,
-        )
+        self._fc = FunctionCall(self._solve_llm, tools=self._tools, return_trace=return_trace, stream=stream)
         with pipeline() as self._agent:
             self._agent.plan = self._plan_llm
             self._agent.parse = (lambda text, query: package([], '', [v for v in re.split('\n\\s*\\d+\\. ', text)[1:]],
-                                 query, [])) | bind(query=self._agent.input)
-            with loop(
-                stop_condition=lambda pre, res, steps, query, tool_call_results: len(steps) == 0
-            ) as self._agent.lp:
+                                 query)) | bind(query=self._agent.input)
+            with loop(stop_condition=lambda pre, res, steps, query: len(steps) == 0) as self._agent.lp:
                 self._agent.lp.pre_action = self._pre_action
-                with loop(
-                    stop_condition=lambda x, llm_chat_history, tool_call_results: isinstance(x, str),
-                    count=self._max_retries,
-                ) as self._agent.lp.solve:
-                    self._agent.lp.solve.pre_action = (
-                        lambda x, llm_chat_history, tool_call_results: package(x, llm_chat_history)
-                    )
-                    self._agent.lp.solve.act = self._fc
-                    self._agent.lp.solve.post_action = self._solve_post_action | bind(
-                        llm_chat_history=self._agent.lp.solve.input[0][1],
-                        tool_call_results=self._agent.lp.solve.input[0][2],
-                    )
-                self._agent.lp.post_action = self._post_action | bind(
-                    self._agent.lp.input[0][0],
-                    _0,
-                    self._agent.lp.input[0][2],
-                    self._agent.lp.input[0][3],
-                    self._agent.lp.input[0][4],
-                )
+                self._agent.lp.solve = loop(self._fc, stop_condition=lambda x: len(x.get('tool_calls', [])) == 0,
+                                            count=self._max_retries)
+                self._agent.lp.post_action = self._post_action | bind(self._agent.lp.input[0][0], _0,
+                                                                      self._agent.lp.input[0][2],
+                                                                      self._agent.lp.input[0][3])
 
-            self._agent.final_action = self._final_action
+            self._agent.final_action = lambda pre, res, steps, query: res
 
-    def _pre_action(self, pre_steps, response, steps, query, tool_call_results):
-        result = SOLVER_PROMPT.format(
+    def _pre_action(self, pre_steps, response, steps, query):
+        return package(SOLVER_PROMPT.format(
             previous_steps='\n'.join(pre_steps),
             current_step=steps[0],
             objective=query,
-        )
-        return package(result, [], tool_call_results)
+        ) + 'input: ' + steps[0], [])
 
-    def _post_action(self, pre_steps: List[str], response: str, steps: List[str], query: str, tool_call_results):
-        LOG.debug(f'current step: {steps[0]}, response: {response}')
-        pre_steps.append(steps.pop(0) + '\nresponse:' + response)
-        return package(pre_steps, response, steps, query, tool_call_results)
-
-    def _solve_post_action(self, response: str, llm_chat_history: List[Dict[str, Any]], tool_call_results: List[str]):
-        if self._return_tool_call_results and isinstance(response, list) and isinstance(response[-1], list):
-            for item in response[-1]:
-                if item.get('role', '') == 'tool':
-                    tool_call_results.append(f'tool_name: {item.get('name', '')}, '
-                                             f'arguments: {item.get('arguments', '')}, '
-                                             f'result: {item.get('content', '')}')
-        return package(response, llm_chat_history, tool_call_results)
-
-    def _final_action(self, pre_steps: List[str], response: str, steps: List[str], query: str,
-                      tool_call_results: List[str]):
-        if self._return_tool_call_results:
-            response = 'Tool call trace:\n' + '\n'.join(tool_call_results) + '\n\n' + response
-        return response
+    def _post_action(self, pre_steps: List[str], response: str, steps: List[str], query: str):
+        LOG.debug(f'current step: {steps[0]}, response: {response['content']}')
+        pre_steps.append(steps.pop(0) + 'response: ' + response['content'])
+        return package(pre_steps, response['content'], steps, query)
 
     def forward(self, query: str):
         return self._agent(query)

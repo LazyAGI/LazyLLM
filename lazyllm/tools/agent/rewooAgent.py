@@ -1,10 +1,8 @@
-import lazyllm
 from lazyllm.module import ModuleBase
-from lazyllm import pipeline, package, LOG, globals, bind, Color, ifs
+from lazyllm import pipeline, LOG, globals, bind, Color, locals
 from .toolsManager import ToolManager
 from typing import List, Dict, Union, Callable
 import re
-import json
 
 P_PROMPT_PREFIX = ('For the following tasks, make plans that can solve the problem step-by-step. '
                    'For each plan, indicate which external tool together with tool input to retrieve '
@@ -44,82 +42,54 @@ class ReWOOAgent(ModuleBase):
             'both llm and solve. Other situations are not allowed.'
         )
         assert tools, 'tools cannot be empty.'
-        self._return_tool_call_results = return_tool_call_results
         self._planner = (plan_llm or llm).share(stream=dict(
             prefix='\nI will give a plan first:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
         self._solver = (solve_llm or llm).share(stream=dict(
             prefix='\nI will solve the problem:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
-        self._name2tool = ToolManager(tools, return_trace=return_trace).tools_info
-        with lazyllm.save_pipeline_result():
-            with pipeline() as self._agent:
-                self._agent.planner_pre_action = self._build_planner_prompt
-                self._agent.planner = self._planner
-                self._agent.parse_plan = self._parse_plan
-                self._agent.woker = self._get_worker_evidences
-                with pipeline() as solver:
-                    solver.solver_pre_action = self._build_solver_prompt | bind(input=self._agent.input)
-                    solver.action = self._solver
-                self._agent.check = ifs(self._return_tool_call_results, lambda x: x, solver)
+        self._tools_manager = ToolManager(tools, return_trace=return_trace)
+        with pipeline() as self._agent:
+            self._agent.planner_pre_action = self._build_planner_prompt
+            self._agent.planner = self._planner
+            self._agent.worker_evidences = self._get_worker_evidences
+            self._agent.solver_pre_action = self._build_solver_prompt | bind(input=self._agent.input)
+            self._agent.solver = self._solver
 
     def _build_planner_prompt(self, input: str):
         prompt = P_PROMPT_PREFIX + 'Tools can be one of the following:\n'
-        for name, tool in self._name2tool.items():
+        for name, tool in self._tools_manager.tools_info.items():
             prompt += f'{name}[params_dict]: {tool.description}\n'
         prompt += P_FEWSHOT + '\n' + P_PROMPT_SUFFIX + input + '\n'
         globals['chat_history'][self._planner._module_id] = []
         return prompt
 
-    def _parse_plan(self, response: str):
+    def _parse_and_call_tool(self, tool_call: str, evidence: Dict[str, str]):
+        tool_name, tool_arguments = tool_call.split('[', 1)
+        tool_arguments = tool_arguments.split(']')[0]
+        for var in re.findall(r'#E\d+', tool_arguments):
+            if var in evidence:
+                tool_arguments = tool_arguments.replace(var, str(evidence[var]))
+        locals['tool_calls'] = [{'function': {'name': tool_name, 'arguments': tool_arguments}}]
+        result = self._tools_manager(locals['tool_calls'])
+        locals['tool_call_results'] = [{'role': 'tool', 'content': str(result[0]), 'name': tool_name}]
+        return result[0]
+
+    def _get_worker_evidences(self, response: str):
         LOG.debug(f'planner plans: {response}')
-        plans = []
         evidence = {}
+        worker_evidences = ''
         for line in response.splitlines():
             if line.startswith('Plan'):
-                plans.append(line)
-            elif line.startswith('#') and line[1] == 'E' and line[2].isdigit():
+                worker_evidences += line + '\n'
+            elif re.match(r'#E\d+\s*=', line.strip()):
                 e, tool_call = line.split('=', 1)
-                e, tool_call = e.strip(), tool_call.strip()
-                if len(e) == 3:
-                    evidence[e] = tool_call
-                else:
-                    evidence[e] = 'No evidence found'
-        return package(plans, evidence)
+                evidence[e.strip()] = self._parse_and_call_tool(tool_call.strip(), evidence)
+                worker_evidences += f'Evidence:\n{evidence[e.strip()]}\n'
 
-    def _get_worker_evidences(self, plans: List[str], evidence: Dict[str, str]):
-        worker_evidences = {}
-        for e, tool_call in evidence.items():
-            if '[' not in tool_call:
-                worker_evidences[e] = tool_call
-                continue
-            tool, tool_input = tool_call.split('[', 1)
-            tool_input = tool_input.split(']')[0]
-            # find variables in input and replace with previous evidences
-            for var in re.findall(r'#E\d+', tool_input):
-                if var in worker_evidences:
-                    tool_input = tool_input.replace(var, str(worker_evidences[var]['result']))
-            tool_instance = self._name2tool.get(tool)
-            try:
-                tool_input = json.loads(tool_input)
-            except Exception: pass
-            if tool_instance:
-                worker_evidences[e] = {'tool_call': tool_call, 'result': tool_instance(tool_input)}
-            else:
-                worker_evidences[e] = 'No evidence found'
+        LOG.debug(f'worker_evidences: {worker_evidences}')
+        return worker_evidences
 
-        worker_log = ''
-        for idx, plan in enumerate(plans):
-            e = f'#E{idx + 1}'
-            evidence = (
-                f"tool_call: {worker_evidences[e]['tool_call']}\nresult: {worker_evidences[e]['result']}"
-                if self._return_tool_call_results
-                else worker_evidences[e]['result']
-            )
-            worker_log += f'{plan}\nEvidence:\n{evidence}\n'
-        LOG.debug(f'worker_log: {worker_log}')
-        return worker_log
-
-    def _build_solver_prompt(self, worker_log, input):
-        prompt = S_PROMPT_PREFIX + input + '\n' + worker_log + S_PROMPT_SUFFIX + input + '\n'
+    def _build_solver_prompt(self, worker_evidences, input):
+        prompt = S_PROMPT_PREFIX + input + '\n' + worker_evidences + S_PROMPT_SUFFIX + input + '\n'
         globals['chat_history'][self._solver._module_id] = []
         return prompt
 

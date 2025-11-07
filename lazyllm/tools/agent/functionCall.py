@@ -1,8 +1,6 @@
-from lazyllm.module import ModuleBase, OnlineChatModule
-from lazyllm.components import ChatPrompter
-from .functionCallFormatter import FunctionCallFormatter
-from lazyllm import pipeline, ifs, loop, globals, bind, LOG, Color, package, FileSystemQueue, colored_text
-import json5 as json
+from lazyllm.module import ModuleBase
+from lazyllm.components import ChatPrompter, FunctionCallFormatter
+from lazyllm import pipeline, loop, globals, locals, Color, package, FileSystemQueue, colored_text
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
@@ -19,17 +17,32 @@ Ask for clarification if a user request is ambiguous.\n
 '''
 
 
-def function_call_hook(input: Dict[str, Any], history: List[Dict[str, Any]], tools: List[Dict[str, Any]], label: Any):
-    if isinstance(input, list):
-        for idx in range(len(input[:-1])):
-            data = input[idx]
-            if isinstance(data, str):
-                history.append({'role': 'user', 'content': data})
-            elif isinstance(data, dict):
-                history.append(data)
-            else:
-                history.extend(data)
-        input = {'input': input[-1]} if isinstance(input[-1], (dict, list)) and 'input' not in input[-1] else input[-1]
+def function_call_hook(input: Union[str, Dict[str, Any]], history: List[Dict[str, Any]], tools: List[Dict[str, Any]],
+                       label: Any):
+    if isinstance(input, dict):
+        if 'query' in locals:
+            history.append({'role': 'user', 'content': locals.pop('query')})
+        if 'tool_call_results' in locals:
+            history.extend(locals.pop('tool_call_results'))
+        history.append({'role': 'assistant', 'content': input['content'], 'tool_calls': input['tool_calls']})
+
+        tool_call_results = [
+            {
+                'role': 'tool',
+                'content': str(tool_result),
+                'tool_call_id': tool_call['id'],
+                'name': tool_call['function']['name'],
+            }
+            for tool_call, tool_result in zip(
+                input['tool_calls'],
+                input['tool_calls_results'],
+            )
+        ]
+        locals['tool_calls'] = input['tool_calls']
+        locals['tool_call_results'] = tool_call_results
+        input = {'input': tool_call_results}
+    else:
+        locals['query'] = input
     return input, history, tools, label
 
 class StreamResponse():
@@ -51,72 +64,25 @@ class StreamResponse():
 class FunctionCall(ModuleBase):
 
     def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False,
-                 stream: bool = False, _prompt: str = None, return_tool_call_results: bool = False):
+                 stream: bool = False, _prompt: str = None):
         super().__init__(return_trace=return_trace)
-        if isinstance(llm, OnlineChatModule) and llm.series == 'QWEN' and llm._stream is True:
-            raise ValueError('The qwen platform does not currently support stream function calls.')
 
         self._tools_manager = ToolManager(tools, return_trace=return_trace)
         self._prompter = ChatPrompter(instruction=_prompt or FC_PROMPT, tools=self._tools_manager.tools_description)\
             .pre_hook(function_call_hook)
         self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
-        self._return_tool_call_results = return_tool_call_results
         with pipeline() as self._impl:
             self._impl.ins = StreamResponse('Received instruction:', prefix_color=Color.yellow,
                                             color=Color.green, stream=stream)
-            self._impl.m1 = self._llm
-            self._impl.m2 = self._parser
+            self._impl.llm = self._llm
             self._impl.dis = StreamResponse('Decision-making or result in this round:',
                                             prefix_color=Color.yellow, color=Color.green, stream=stream)
-            self._impl.m3 = ifs(lambda x: isinstance(x, list),
-                                pipeline(self._tools_manager, StreamResponse('Tool-Call result:',
-                                         prefix_color=Color.yellow, color=Color.green, stream=stream)),
-                                lambda out: out)
-            self._impl.m4 = self._tool_post_action | bind(input=self._impl.input, llm_output=self._impl.m1)
+            self._impl.call_tool = self._call_tool
 
-    def _parser(self, llm_output: Union[str, List[Dict[str, Any]]]):
-        LOG.debug(f'llm_output: {llm_output}')
-        if isinstance(llm_output, list):
-            res = []
-            for item in llm_output:
-                if isinstance(item, str):
-                    continue
-                arguments = item.get('function', {}).get('arguments', '')
-                arguments = json.loads(arguments) if isinstance(arguments, str) else arguments
-                res.append({'name': item.get('function', {}).get('name', ''), 'arguments': arguments})
-            return res
-        elif isinstance(llm_output, str):
-            return llm_output
-        else:
-            raise TypeError(f'The {llm_output} type currently is only supports `list` and `str`,'
-                            f' and does not support {type(llm_output)}.')
-
-    def _tool_post_action(self, output: Union[str, List[str]], input: Union[str, List],
-                          llm_output: List[Dict[str, Any]]):
-        if isinstance(output, list):
-            ret = []
-            if isinstance(input, str):
-                ret.append(input)
-            elif isinstance(input, list):
-                ret.append(input[-1])
-            else:
-                raise TypeError(f'The input type currently only supports `str` and `list`, '
-                                f'and does not support {type(input)}.')
-
-            content = ''.join([item for item in llm_output if isinstance(item, str)])
-            llm_output = [item for item in llm_output if not isinstance(item, str)]
-            ret.append({'role': 'assistant', 'content': content, 'tool_calls': llm_output})
-            ret.append([{'role': 'tool', 'content': out, 'tool_call_id': llm_output[idx]['id'],
-                         'name': llm_output[idx]['function']['name'],
-                         'arguments': llm_output[idx]['function']['arguments']}
-                        for idx, out in enumerate(output)])
-            LOG.debug(f'functionCall result: {ret}')
-            return ret
-        elif isinstance(output, str):
-            return output
-        else:
-            raise TypeError(f'The {output} type currently is only supports `list` and `str`,'
-                            f' and does not support {type(output)}.')
+    def _call_tool(self, llm_output: Dict[str, Any]):
+        if llm_output.get('tool_calls'):
+            llm_output['tool_calls_results'] = self._tools_manager(llm_output['tool_calls'])
+        return llm_output
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         globals['chat_history'].setdefault(self._llm._module_id, [])
@@ -129,7 +95,7 @@ class FunctionCallAgent(ModuleBase):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
         self._fc = FunctionCall(llm, tools, return_trace=return_trace, stream=stream)
-        self._agent = loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        self._agent = loop(self._fc, stop_condition=lambda x: len(x.get('tool_calls', [])) == 0, count=self._max_retries)
         self._fc._llm.used_by(self._module_id)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):

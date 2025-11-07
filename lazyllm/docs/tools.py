@@ -5354,36 +5354,6 @@ add_example('FunctionCallAgent', """\
 'Hello! How can I assist you today?'
 """)
 
-# actors/function_call_formatter.py
-add_chinese_doc('FunctionCallFormatter', '''\
-用于解析函数调用结构消息的格式化器。
-
-该类继承自 `JsonFormatter`，用于从包含工具调用信息的消息字符串中提取 JSON 结构，并在需要时通过全局分隔符拆分内容。
-
-私有方法:
-    _load(msg)
-        解析输入的消息字符串，提取其中的 JSON 格式的工具调用结构（如果存在）。
-''')
-
-add_english_doc('FunctionCallFormatter', '''\
-Formatter for parsing structured function call messages.
-
-This class extends `JsonFormatter` and is responsible for extracting JSON-based tool call structures from a mixed message string, optionally separating them using a global delimiter.
-
-Private Method:
-    _load(msg)
-        Parses the input message string and extracts JSON-formatted tool calls, if present.
-''')
-
-add_example('FunctionCallFormatter', ['''\
->>> from lazyllm.components import FunctionCallFormatter
->>> formatter = FunctionCallFormatter()
->>> msg = "Please call this tool. <TOOL> [{\\"name\\": \\"search\\", \\"args\\": {\\"query\\": \\"weather\\"}}]"
->>> result = formatter._load(msg)
->>> print(result)
-... [{'name': 'search', 'args': {'query': 'weather'}}, 'Please call this tool. ']
-'''])
-
 add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
 

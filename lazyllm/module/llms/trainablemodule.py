@@ -450,15 +450,6 @@ class TrainableModule(UrlModule):
                  for file_content in decontent['files']]
         return encode_query_with_filepaths(query=decontent['query'], files=files)
 
-    def _build_response(self, content: str, tool_calls: List[Dict[str, str]]) -> str:
-        tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
-        if content and tc:
-            return globals['tool_delimiter'].join([content, json.dumps(tc, ensure_ascii=False)])
-        elif not content and tc:
-            return globals['tool_delimiter'] + json.dumps(tc, ensure_ascii=False)
-        else:
-            return content
-
     def _extract_and_format(self, output: str) -> str:
         '''
         1.extract tool calls information;
@@ -471,7 +462,8 @@ class TrainableModule(UrlModule):
         content, tool_calls = self._extract_tool_calls(output)
         if isinstance(content, str) and content.startswith(LAZYLLM_QUERY_PREFIX):
             content = self._decode_base64_to_file(content)
-        return self._build_response(content, tool_calls)
+        tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
+        return dict(role='assistant', content=content, tool_calls=tc)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Trainable', mode=self._impl._mode, basemodel=self.base_model,
@@ -519,7 +511,7 @@ class TrainableModule(UrlModule):
             if model_type in ['llm', 'vlm']:
                 self._openai_module = lazyllm.OnlineChatModule(
                     source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=model_type,
-                    stream=self._stream).share(prompt=self._prompt, format=self._formatter)
+                    stream=self._stream)
                 self._openai_module._prompt._set_model_configs(system='You are LazyLLM, \
                     a large language model developed by SenseTime.')
             elif model_type in ['embed', 'rerank']:
@@ -528,6 +520,7 @@ class TrainableModule(UrlModule):
             else:
                 raise ValueError(f'Unsupported type: {model_type} for openai compatible module')
             self._openai_module.used_by(self._module_id)
+        self._openai_module = self._openai_module.share(prompt=self._prompt, format=self._formatter)
         return self._openai_module.forward(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
                                            tools=tools, stream_output=stream_output, **kw)
 
@@ -590,8 +583,8 @@ class TrainableModule(UrlModule):
                     cache += chunk
                     if not self._maybe_has_fc(token, cache): cache = self._stream_output(cache, color)
 
+            if text_input: self._record_usage(text_input, messages)
             temp_output = self._extract_and_format(messages)
-            if text_input: self._record_usage(text_input, temp_output)
             return self._formatter(temp_output)
 
     def _modify_parameters(self, paras: dict, kw: dict, *, optional_keys: Union[List[str], str] = None):
