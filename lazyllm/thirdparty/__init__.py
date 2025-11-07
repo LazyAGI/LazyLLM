@@ -13,6 +13,7 @@ package_name_map = {
     'volcenginesdkarkruntime': 'volcengine-python-sdk[ark]',
     'opensearchpy': 'opensearch-py',
     'memu': 'memu-py',
+    'mem0': 'mem0ai',
 }
 
 requirements = {}

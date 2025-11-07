@@ -26,7 +26,7 @@ class OnlineMemUMemory(LazyLLMMemoryBase):
             retrieved_memories = self._client.retrieve_related_memory_items(
                 query=query, user_id=user_id, agent_id=agent_id, top_k=self._topk)
             if not retrieved_memories or not (mem := getattr(retrieved_memories, 'related_memories', None)): return ''
-            return '\n'.join([str(m) for m in mem if (m := getattr(getattr(m, 'memory', {}), 'content', None))])
+            return '\n'.join([str(me) for m in mem if (me := getattr(getattr(m, 'memory', {}), 'content', None))])
         else:
             retrieved_memories = self._client.retrieve_default_categories(user_id=user_id, agent_id=agent_id)
             if not retrieved_memories or not (categories := getattr(retrieved_memories, 'categories', None)): return ''

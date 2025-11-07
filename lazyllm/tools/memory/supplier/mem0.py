@@ -12,17 +12,24 @@ class Mem0Memory():
         return OnlineMem0Memory(api_key, topk=topk)
 
 class OnlineMem0Memory(LazyLLMMemoryBase):
-    def __init__(self, api_key: Optional[str] = None, *, topk: int = 10):
+    def __init__(self, api_key: Optional[str] = None, *, topk: int = 10, custom_instruction: Optional[str] = None):
         super().__init__(topk=topk)
-        self._client = mem0.Memory()
+        self._client = mem0.MemoryClient(api_key=api_key or config['mem0_api_key'])
+        self._custom_instruction = custom_instruction
 
     def _add(self, message: List[Dict[str, Any]], user_id: Optional[str] = None, agent_id: Optional[str] = None):
-        user_id = f'{user_id}@@{"default" if agent_id is None else agent_id}'
-        self._client.add(message, user_id=user_id)
+        user_id = f'{user_id}___{"default" if agent_id is None else agent_id}'
+        return self._client.add(message, user_id=user_id, version='v2', output_format='v1.1',
+                                custom_instructions=self._custom_instruction)
 
     def _get(self, query: Optional[str] = None, user_id: Optional[str] = None, agent_id: Optional[str] = None):
-        user_id = f'{user_id}@@{"default" if agent_id is None else agent_id}'
-        self._client.search(query=query, user_id=user_id, limit=self._topk)
+        user_id = f'{user_id}___{"default" if agent_id is None else agent_id}'
+        filters = {'OR': [{'user_id': user_id}]}
+        if query:
+            memories = self._client.search(query=query, filters=filters, version='v2', output_format='v1.1')
+        else:
+            memories = self._client.get_all(filters=filters)
+        return '\n'.join([str(m['memory']) for m in memories['results']])
 
 class LocalMem0Memory(LazyLLMMemoryBase):
     def __init__(self, data_path: str, llm: Optional[LLMBase] = None, embed: Optional[LLMBase] = None):
