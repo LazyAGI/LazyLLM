@@ -1,3 +1,4 @@
+from abc import ABCMeta
 import re
 import os
 import builtins
@@ -37,7 +38,8 @@ class ArgsDict(dict):
         super(ArgsDict, self).__init__(*args, **kwargs)
 
     def check_and_update(self, kw):
-        assert set(kw.keys()).issubset(set(self)), f'unexpected keys: {set(kw.keys()) - set(self)}'
+        if not kw.pop('skip_check', config['deploy_skip_check_kw']):
+            assert set(kw.keys()).issubset(set(self)), f'unexpected keys: {set(kw.keys()) - set(self)}'
         self.update(kw)
 
     def parse_kwargs(self):
@@ -306,16 +308,19 @@ class once_flag(object):
         self._exc = None
         self._reset_on_pickle = reset_on_pickle
         self._lock = threading.RLock()
+        self._ignore_reset = False
 
-    def set(self, flag=True):
+    def set(self, flag=True, ignore_reset=False):
         with self._lock:
             self._flag = flag
+            self._ignore_reset = ignore_reset
 
     def set_exception(self, exc):
         self._exc = exc
 
     def reset(self):
-        self.set(False)
+        if not self._ignore_reset:
+            self.set(False)
 
     def __bool__(self):
         return self._flag
@@ -478,7 +483,7 @@ class Finalizer(object):
 
 class SingletonMeta(type):
     _instances = {}
-    _lock = threading.Lock()
+    _lock = threading.RLock()
 
     def __call__(cls, *args, **kwargs):
         if cls not in cls._instances:
@@ -486,3 +491,6 @@ class SingletonMeta(type):
                 if cls not in cls._instances:
                     cls._instances[cls] = super().__call__(*args, **kwargs)
         return cls._instances[cls]
+
+
+class SingletonABCMeta(SingletonMeta, ABCMeta): pass

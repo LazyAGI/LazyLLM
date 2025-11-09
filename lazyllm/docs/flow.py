@@ -215,7 +215,37 @@ Unregister a previously registered hook.
 Args:
     hook_type (LazyLLMHook): The hook type or instance to remove.
 ''')
+add_chinese_doc('LazyLLMFlowsBase.start', """\
+启动流处理执行（已弃用）。
 
+此方法已弃用，建议直接将流实例作为函数调用。执行流处理并返回结果。
+
+Args:
+    *args: 传递给流处理的可变位置参数。
+    **kw: 传递给流处理的命名参数。
+
+**Returns:**\n
+- 流处理的结果。
+
+**Note:**\n
+- 此方法已标记为弃用，请使用流实例的直接调用方式代替。
+""")
+
+add_english_doc('LazyLLMFlowsBase.start', """\
+Start flow processing execution (deprecated).
+
+This method is deprecated, it is recommended to directly call the flow instance as a function. Executes the flow processing and returns the result.
+
+Args:
+    *args: Variable positional arguments passed to the flow processing.
+    **kw: Named arguments passed to the flow processing.
+
+**Returns:**\n
+- The result of flow processing.
+
+**Note:**\n
+- This method is marked as deprecated, please use direct invocation of the flow instance instead.
+""")
 add_chinese_doc('LazyLLMFlowsBase.clear_hooks', '''\
 清空所有已注册的 Hook。
 ''')
