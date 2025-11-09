@@ -10,13 +10,14 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
     ISA = '<!lazyllm-spliter!>'
     ISE = '</!lazyllm-spliter!>'
 
-    def __init__(self, show=False, tools=None, history=None):
+    def __init__(self, show=False, tools=None, history=None, *, enable_system: bool = True):
         self._set_model_configs(system='You are an AI-Agent developed by LazyLLM.', sos='',
                                 soh='', soa='', eos='', eoh='', eoa='')
         self._show = show
         self._tools = tools
         self._pre_hook = None
         self._history = history or []
+        self._enable_system = enable_system
 
     def _init_prompt(self, template: str, instruction_template: str, split: Union[None, str] = None):
         self._template = template
@@ -164,9 +165,9 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         if user:
             history[-1]['content'] = user + history[-1]['content']
 
-        history.insert(0, {'role': 'system',
-                           'content': self._system + '\n' + instruction if instruction else self._system})
-
+        if self._enable_system:
+            history.insert(0, {'role': 'system',
+                               'content': self._system + '\n' + instruction if instruction else self._system})
         return dict(messages=history, tools=tools) if tools else dict(messages=history)
 
     def pre_hook(self, func: Optional[Callable] = None):

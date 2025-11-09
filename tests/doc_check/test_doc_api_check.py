@@ -38,6 +38,9 @@ def generate_docs_for_module():
             'lazyllm.components.deploy.relay.base',
             'lazyllm.components.finetune.easyllm',
             'lazyllm.tools.rag.component.bm25_retriever',
+            'lazyllm.tools.memory',
+            'lazyllm.tools.infer_service',
+            'lazyllm.tools.train_service',
         ]
 
         manager = SimpleManager(pattern='clear', skip_on_error=True)

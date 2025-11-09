@@ -32,6 +32,21 @@ Args:
 **Note**: This class is an abstract base class and cannot be instantiated directly. You must inherit from this class and implement all abstract methods to use it.
 ''')
 
+add_chinese_doc('LazyLLMFuncHook', '''\
+函数作为钩子的辅助函数，如果函数中存在 yield 语句，则 yield 之前的语句作为 pre_hook，yield 之后的语句作为 post_hook。
+
+Args:
+    func: 作为钩子的函数。
+''')
+
+add_english_doc('LazyLLMFuncHook', '''\
+Helper class for hooking functions. if the function is a generator function, statements before yield
+will be executed as pre_hook, and statements after yield will be executed as post_hook.
+
+Args:
+    func: The function to hook.
+''')
+
 add_chinese_doc('LazyLLMHook.pre_hook', '''\
 前置钩子方法，在被监控函数执行前调用。
 
