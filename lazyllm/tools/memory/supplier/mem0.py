@@ -1,4 +1,5 @@
 from ..base import LazyLLMMemoryBase
+from functools import lru_cache
 from lazyllm import config
 from lazyllm.thirdparty import mem0
 from lazyllm.module import LLMBase
@@ -12,10 +13,14 @@ class Mem0Memory():
         return OnlineMem0Memory(api_key, topk=topk)
 
 class OnlineMem0Memory(LazyLLMMemoryBase):
+    @staticmethod
+    @lru_cache
+    def _get_client(api_key: Optional[str] = None):
+        return mem0.MemoryClient(api_key=api_key)
+
     def __init__(self, api_key: Optional[str] = None, *, topk: int = 10, custom_instruction: Optional[str] = None):
         super().__init__(topk=topk)
         self._client = mem0.MemoryClient(api_key=api_key or config['mem0_api_key'])
-        self._custom_instruction = custom_instruction
 
     def _add(self, message: List[Dict[str, Any]], user_id: Optional[str] = None, agent_id: Optional[str] = None):
         user_id = f'{user_id}___{"default" if agent_id is None else agent_id}'

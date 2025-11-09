@@ -1,4 +1,5 @@
 from ..base import LazyLLMMemoryBase
+from functools import lru_cache
 from lazyllm import config
 from lazyllm.thirdparty import memu
 from lazyllm.module import LLMBase
@@ -12,9 +13,14 @@ class MemUMemory():
         return OnlineMemUMemory(api_key, topk=topk)
 
 class OnlineMemUMemory(LazyLLMMemoryBase):
+    @staticmethod
+    @lru_cache
+    def _get_client(api_key: Optional[str] = None):
+        return memu.MemuClient(base_url='https://api.memu.so', api_key=api_key)
+
     def __init__(self, api_key: Optional[str] = None, *, topk: int = 10):
         super().__init__(topk=topk)
-        self._client = memu.MemuClient(base_url='https://api.memu.so', api_key=api_key or config['memu_api_key'])
+        self._client = self._get_client(api_key or config['memu_api_key'])
 
     def _add(self, message: List[Dict[str, Any]], user_id: Optional[str] = None, agent_id: Optional[str] = None):
         agent_id = agent_id or 'default'
