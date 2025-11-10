@@ -49,7 +49,7 @@ class PlanAndSolveAgent(ModuleBase):
                                  query)) | bind(query=self._agent.input)
             with loop(stop_condition=lambda pre, res, steps, query: len(steps) == 0) as self._agent.lp:
                 self._agent.lp.pre_action = self._pre_action
-                self._agent.lp.solve = loop(self._fc, stop_condition=lambda x: len(x.get('tool_calls', [])) == 0,
+                self._agent.lp.solve = loop(self._fc, stop_condition=lambda x: isinstance(x, str),
                                             count=self._max_retries)
                 self._agent.lp.post_action = self._post_action | bind(self._agent.lp.input[0][0], _0,
                                                                       self._agent.lp.input[0][2],
@@ -65,9 +65,9 @@ class PlanAndSolveAgent(ModuleBase):
         ) + 'input: ' + steps[0], [])
 
     def _post_action(self, pre_steps: List[str], response: str, steps: List[str], query: str):
-        LOG.debug(f'current step: {steps[0]}, response: {response['content']}')
-        pre_steps.append(steps.pop(0) + 'response: ' + response['content'])
-        return package(pre_steps, response['content'], steps, query)
+        LOG.debug(f'current step: {steps[0]}, response: {response}')
+        pre_steps.append(steps.pop(0) + 'response: ' + response)
+        return package(pre_steps, response, steps, query)
 
     def forward(self, query: str):
         return self._agent(query)

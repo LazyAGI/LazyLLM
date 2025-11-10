@@ -42,6 +42,7 @@ def function_call_hook(input: Union[str, Dict[str, Any]], history: List[Dict[str
         locals['tool_call_results'] = tool_call_results
         input = {'input': tool_call_results}
     else:
+        locals.clear()
         locals['query'] = input
     return input, history, tools, label
 
@@ -77,11 +78,13 @@ class FunctionCall(ModuleBase):
             self._impl.llm = self._llm
             self._impl.dis = StreamResponse('Decision-making or result in this round:',
                                             prefix_color=Color.yellow, color=Color.green, stream=stream)
-            self._impl.call_tool = self._call_tool
+            self._impl.post_action = self._post_action
 
-    def _call_tool(self, llm_output: Dict[str, Any]):
+    def _post_action(self, llm_output: Dict[str, Any]):
         if llm_output.get('tool_calls'):
             llm_output['tool_calls_results'] = self._tools_manager(llm_output['tool_calls'])
+        else:
+            llm_output = llm_output['content']
         return llm_output
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
@@ -95,12 +98,10 @@ class FunctionCallAgent(ModuleBase):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
         self._fc = FunctionCall(llm, tools, return_trace=return_trace, stream=stream)
-        self._agent = loop(self._fc, stop_condition=lambda x: len(x.get('tool_calls', [])) == 0, count=self._max_retries)
+        self._agent = loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
         self._fc._llm.used_by(self._module_id)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
         ret = self._agent(query, llm_chat_history) if llm_chat_history is not None else self._agent(query)
-        if len(ret.get('tool_calls', [])) == 0: return ret['content']
-        raise ValueError(
-            f'After retrying {self._max_retries} times, the function call agent still failed to call successfully.'
-        )
+        return ret if isinstance(ret, str) else (_ for _ in ()).throw(ValueError(f'After retrying \
+            {self._max_retries} times, the function call agent still fails to call successfully.'))

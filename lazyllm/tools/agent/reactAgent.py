@@ -43,11 +43,9 @@ class ReactAgent(ModuleBase):
         self._max_retries = max_retries
         assert llm and tools, 'llm and tools cannot be empty.'
         self._agent = loop(FunctionCall(llm, tools, _prompt=prompt, return_trace=return_trace, stream=stream),
-                           stop_condition=lambda x: len(x.get('tool_calls', [])) == 0, count=self._max_retries)
+                           stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
         ret = self._agent(query, llm_chat_history) if llm_chat_history is not None else self._agent(query)
-        if len(ret.get('tool_calls', [])) == 0: return ret['content']
-        raise ValueError(
-            f'After retrying {self._max_retries} times, the react agent still failed to call successfully.'
-        )
+        return ret if isinstance(ret, str) else (_ for _ in ()).throw(ValueError(f'After retrying \
+            {self._max_retries} times, the react agent still failes to call successfully.'))
