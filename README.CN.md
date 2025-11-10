@@ -152,6 +152,9 @@ https://github.com/LazyAGI/LazyLLM/assets/12124621/77267adc-6e40-47b8-96a8-895df
 * [绘画大师](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/painting_master/)
 * [多模态聊天机器人](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/multimodal_robot/)
 * [知识库](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/rag/)
+* [智能搜索代理](https://docs.lazyllm.ai/zh-cn/latest/Cookbook/bocha_search/)
+* [API交互代理](https://docs.lazyllm.ai/zh-cn/latest/Cookbook/API_Interaction_Agent_demo/)
+* [自适应工具调用智能体](https://docs.lazyllm.ai/zh-cn/latest/Cookbook/flex_agent/)
 
 ## 四、功能点
 
@@ -289,7 +292,7 @@ v0.9 预计从26年6月开始，历时3个月，重点会放提升整个系统�
     - AgenticRL & 写代码解问题能力（V0.7 ）
 
 9.2.2 功能模块
-  - 支持记忆的能力 （V0.6 ）
+  - ✅ 支持记忆的能力 （V0.6 ）
   - 分布式Launcher的支持 （V0.7）
   - ✅基于数据库的Globals支持 （V0.6 ）
   - ServerModule可以发布成mcp服务（v0.7）
