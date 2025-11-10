@@ -110,7 +110,7 @@ print(f"ret: {ret}")
 # {'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'xxx', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': '{"location":"Tokyo, Japan","unit":"celsius"}'}, 'code_block': None}, {'id': 'xxx', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': '{"location":"Paris, France","unit":"celsius"}'}, 'code_block': None}], 'tool_calls_results': ('{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', '{"location": "Paris", "temperature": "22", "unit": "celsius"}')}
 ```
 
-`FunctionCall` 会返回模型生成的助手消息。当触发工具调用时，该消息同时包含 `tool_calls`（模型发出的结构化调用）和 `tool_calls_results`（每次工具执行返回的输出）。这些数据也会同步写入 `lazyllm.locals['tool_calls']` 与 `lazyllm.locals['tool_call_results']`，方便下一轮使用。如果模型未选择任何工具，则直接返回字符串。若希望自动完成完整的推理闭环，可以使用 [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent]，示例如下：
+`FunctionCall` 会返回模型生成的助手消息。当触发工具调用时，该消息同时包含 `tool_calls`（模型发出的结构化调用）和 `tool_calls_results`（每次工具执行返回的输出）。这些数据也会同步写入 `lazyllm.locals['_lazyllm_agent']['workspace']['tool_calls']` 与 `lazyllm.locals['_lazyllm_agent']['workspace']['tool_call_results']`，方便下一轮使用。当`FunctionCall`判断不需要更多的工具调用时，会将整个执行过程中的工具调用存储到`lazyllm.locals['_lazyllm_agent']['completed']`，用于debug和后续任务。如果模型未选择任何工具，则直接返回字符串。若希望自动完成完整的推理闭环，可以使用 [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent]，示例如下：
 
 ```python
 import lazyllm
