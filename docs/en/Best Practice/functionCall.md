@@ -273,7 +273,7 @@ The design process of [FunctionCall][lazyllm.tools.agent.FunctionCall] is carrie
 ```text
 Hello World!
 ```
-> - function call output
+> - function call request
 ```text
 What's the weather like today in Tokyo.
 ```

@@ -34,7 +34,7 @@ S_PROMPT_SUFFIX = ('\nNow begin to solve the task or problem. Respond with '
 class ReWOOAgent(ModuleBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[Union[str, Callable]] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
-                 return_trace: bool = False, stream: bool = False, return_tool_call_results: bool = False):
+                 return_trace: bool = False, stream: bool = False):
         super().__init__(return_trace=return_trace)
         assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), 'Either specify only llm \
                without specify plan and solve, or specify only plan and solve without specifying llm, or specify \
