@@ -36,11 +36,6 @@
     options:
       heading_level: 3
 
-::: lazyllm.components.auto.configure.core.configuration.AutoConfig
-    options:
-      heading_level: 3
-      members: [query_finetune, query_deploy]
-
 ---
 
 ## Deploy

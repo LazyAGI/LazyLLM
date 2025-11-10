@@ -8,7 +8,7 @@ import uuid
 import re
 import requests
 import yaml
-from deepdiff import DeepDiff
+from lazyllm.thirdparty import deepdiff
 
 import lazyllm
 from lazyllm import globals, LOG, launchers, Option, package, LazyLLMDeployBase, LazyLLMFinetuneBase, config
@@ -206,7 +206,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
             deploy_args_for_check = {k: v for k, v in self._deploy_args.items() if k not in ignore_config_keys}
             for module_config in trainable_module_config_map[base_model_name]:
                 if (not deploy_args_for_check and not module_config.get('strict')) \
-                        or not DeepDiff(module_config.get('deploy_config', {}), deploy_args_for_check):
+                        or not deepdiff.DeepDiff(module_config.get('deploy_config', {}), deploy_args_for_check):
                     try:
                         url = module_config.get('url')
                         requests.get(url, timeout=3)
@@ -226,7 +226,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if url := self._deploy_args.get('url'):
             assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
             self._set_url(re.sub(r'v1(?:/chat/completions)?/?$', 'v1/', url))
-            self._get_deploy_tasks.flag.set()
+            self._get_deploy_tasks.flag.set(ignore_reset=True)
         self._deploy_args.pop('url', None)
 
     def __del__(self):

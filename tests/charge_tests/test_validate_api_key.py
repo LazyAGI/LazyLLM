@@ -7,6 +7,7 @@ from lazyllm.module.llms.onlinemodule.supplier.openai import OpenAIModule
 from lazyllm.module.llms.onlinemodule.supplier.glm import GLMModule
 from lazyllm.module.llms.onlinemodule.supplier.qwen import QwenModule
 from lazyllm.module.llms.onlinemodule.supplier.sensenova import SenseNovaModule
+from lazyllm.module.llms.onlinemodule.supplier.siliconflow import SiliconFlowModule
 
 
 class TestValidateApiKey:
@@ -22,6 +23,7 @@ class TestValidateApiKey:
             'glm': os.getenv('LAZYLLM_GLM_API_KEY'),
             'qwen': os.getenv('LAZYLLM_QWEN_API_KEY'),
             'sensenova': os.getenv('LAZYLLM_SENSENOVA_API_KEY'),
+            'siliconflow': os.getenv('LAZYLLM_SILICONFLOW_API_KEY'),
         }
         # Get sensenova secret key
         self.sensenova_secret_key = os.getenv('LAZYLLM_SENSENOVA_SECRET_KEY')
@@ -146,3 +148,18 @@ class TestValidateApiKey:
         )
         result = module._validate_api_key()
         assert result is False, 'SenseNova invalid API Key should fail validation'
+
+    def test_siliconflow_validate_valid_api_key(self):
+        '''Test SiliconFlow valid API Key validation'''
+        if not self.api_keys['siliconflow']:
+            pytest.skip('LAZYLLM_SILICONFLOW_API_KEY environment variable is not set')
+
+        module = SiliconFlowModule(api_key=self.api_keys['siliconflow'])
+        result = module._validate_api_key()
+        assert result is True, 'SiliconFlow valid API Key should pass validation'
+
+    def test_siliconflow_validate_invalid_api_key(self):
+        '''Test SiliconFlow invalid API Key validation'''
+        module = SiliconFlowModule(api_key='invalid_api_key_12345')
+        result = module._validate_api_key()
+        assert result is False, 'SiliconFlow invalid API Key should fail validation'

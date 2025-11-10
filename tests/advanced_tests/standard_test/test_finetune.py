@@ -40,6 +40,31 @@ class TestFinetune(object):
                 return True
         return False
 
+    def test_finetune_auto(self):
+        # Test Auto LLM
+        m = lazyllm.TrainableModule(self.llm_path, self.save_path)\
+            .mode('finetune').trainset(self.llm_data)
+        tasks = m._impl._get_train_tasks_impl()
+        assert isinstance(tasks[-1], lazyllm.finetune.llamafactory)
+
+        # Test Auto VLM
+        m = lazyllm.TrainableModule(self.vlm_path, self.save_path)\
+            .mode('finetune').trainset(self.vlm_data)
+        tasks = m._impl._get_train_tasks_impl()
+        assert isinstance(tasks[-1], lazyllm.finetune.llamafactory)
+
+        # Test Auto Embedding
+        m = lazyllm.TrainableModule(self.embed_path, self.save_path)\
+            .mode('finetune').trainset(self.embed_data)
+        tasks = m._impl._get_train_tasks_impl()
+        assert isinstance(tasks[-1], lazyllm.finetune.flagembedding)
+
+        # Test Auto Rerank
+        m = lazyllm.TrainableModule(self.rerank_path, self.save_path)\
+            .mode('finetune').trainset(self.rerank_data)
+        tasks = m._impl._get_train_tasks_impl()
+        assert isinstance(tasks[-1], lazyllm.finetune.flagembedding)
+
     def test_finetune_llamafactory(self):
         ppl = lazyllm.pipeline(
             lambda: self.llm_data,
