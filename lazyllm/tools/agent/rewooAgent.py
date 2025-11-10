@@ -66,9 +66,15 @@ class ReWOOAgent(ModuleBase):
         for var in re.findall(r'#E\d+', tool_arguments):
             if var in evidence:
                 tool_arguments = tool_arguments.replace(var, str(evidence[var]))
-        locals['tool_calls'] = [{'function': {'name': tool_name, 'arguments': tool_arguments}}]
-        result = self._tools_manager(locals['tool_calls'])
-        locals['tool_call_results'] = [{'role': 'tool', 'content': str(result[0]), 'name': tool_name}]
+        tool_calls = [{'function': {'name': tool_name, 'arguments': tool_arguments}}]
+        result = self._tools_manager(tool_calls)
+        tool_call_results = [{'role': 'tool', 'content': str(result[0]), 'name': tool_name}]
+        locals['_lazyllm_agent']['workspace']['tool_call_trace'].append(
+            {
+                'tool_calls': tool_calls,
+                'tool_call_results': tool_call_results,
+            }
+        )
         return result[0]
 
     def _get_worker_evidences(self, response: str):
@@ -92,4 +98,9 @@ class ReWOOAgent(ModuleBase):
         return prompt
 
     def forward(self, query: str):
-        return self._agent(query)
+        locals['_lazyllm_agent']['workspace'] = {'tool_call_trace': []}
+        result = self._agent(query)
+        locals['_lazyllm_agent']['completed'].append(
+            dict(input=query, result=result, tool_call_trace=locals['_lazyllm_agent']['workspace']['tool_call_trace'])
+        )
+        return result

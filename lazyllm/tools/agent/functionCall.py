@@ -20,10 +20,10 @@ Ask for clarification if a user request is ambiguous.\n
 def function_call_hook(input: Union[str, Dict[str, Any]], history: List[Dict[str, Any]], tools: List[Dict[str, Any]],
                        label: Any):
     if isinstance(input, dict):
-        if 'query' in locals:
-            history.append({'role': 'user', 'content': locals.pop('query')})
-        if 'tool_call_results' in locals:
-            history.extend(locals.pop('tool_call_results'))
+        if 'query' in locals['_lazyllm_agent']['workspace']:
+            history.append({'role': 'user', 'content': locals['_lazyllm_agent']['workspace'].pop('query')})
+        if 'tool_call_results' in locals['_lazyllm_agent']['workspace']:
+            history.extend(locals['_lazyllm_agent']['workspace'].pop('tool_call_results'))
         history.append({'role': 'assistant', 'content': input['content'], 'tool_calls': input['tool_calls']})
 
         tool_call_results = [
@@ -32,18 +32,15 @@ def function_call_hook(input: Union[str, Dict[str, Any]], history: List[Dict[str
                 'content': str(tool_result),
                 'tool_call_id': tool_call['id'],
                 'name': tool_call['function']['name'],
-            }
-            for tool_call, tool_result in zip(
-                input['tool_calls'],
-                input['tool_calls_results'],
+            } for tool_call, tool_result in zip(
+                input['tool_calls'], input['tool_calls_results']
             )
         ]
-        locals['tool_calls'] = input['tool_calls']
-        locals['tool_call_results'] = tool_call_results
+        locals['_lazyllm_agent']['workspace']['tool_calls'] = input['tool_calls']
+        locals['_lazyllm_agent']['workspace']['tool_call_results'] = tool_call_results
         input = {'input': tool_call_results}
     else:
-        locals.clear()
-        locals['query'] = input
+        locals['_lazyllm_agent']['workspace']['query'] = input
     return input, history, tools, label
 
 class StreamResponse():
@@ -83,15 +80,32 @@ class FunctionCall(ModuleBase):
     def _post_action(self, llm_output: Dict[str, Any]):
         if llm_output.get('tool_calls'):
             llm_output['tool_calls_results'] = self._tools_manager(llm_output['tool_calls'])
+            locals['_lazyllm_agent']['workspace']['tool_call_trace'].append(
+                {
+                    'tool_calls': llm_output['tool_calls'],
+                    'tool_call_results': llm_output['tool_calls_results'],
+                }
+            )
         else:
             llm_output = llm_output['content']
         return llm_output
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
+        if isinstance(input, str):
+            locals['_lazyllm_agent']['completed'].append(dict(input=input))
+            locals['_lazyllm_agent']['workspace'] = dict(tool_call_trace=[])
         globals['chat_history'].setdefault(self._llm._module_id, [])
         if llm_chat_history is not None:
             globals['chat_history'][self._llm._module_id] = llm_chat_history
-        return self._impl(input)
+        result = self._impl(input)
+        if isinstance(result, str):
+            locals['_lazyllm_agent']['completed'][-1].update(
+                {
+                    'result': result,
+                    'tool_call_trace': locals['_lazyllm_agent']['workspace']['tool_call_trace'],
+                }
+            )
+        return result
 
 class FunctionCallAgent(ModuleBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False):
