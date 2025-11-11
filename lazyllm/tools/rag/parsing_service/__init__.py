@@ -1,6 +1,7 @@
-from .doc_processor import DocumentProcessor, _Processor
+from .doc_processor import _Processor
+from .server import DocumentProcessor
 
 __all__ = [
-    'DocumentProcessor',
     '_Processor',
+    'DocumentProcessor',
 ]
