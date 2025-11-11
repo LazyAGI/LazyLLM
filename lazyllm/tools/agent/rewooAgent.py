@@ -1,5 +1,5 @@
 from lazyllm.module import ModuleBase
-from lazyllm import pipeline, LOG, globals, bind, Color, locals
+from lazyllm import pipeline, LOG, globals, bind, Color, locals, ifs
 from .toolsManager import ToolManager
 from typing import List, Dict, Union, Callable
 import re
@@ -34,8 +34,9 @@ S_PROMPT_SUFFIX = ('\nNow begin to solve the task or problem. Respond with '
 class ReWOOAgent(ModuleBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[Union[str, Callable]] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
-                 return_trace: bool = False, stream: bool = False):
+                 return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False):
         super().__init__(return_trace=return_trace)
+        self._return_last_tool_calls = return_last_tool_calls
         assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), 'Either specify only llm \
                without specify plan and solve, or specify only plan and solve without specifying llm, or specify \
                both llm and solve. Other situations are not allowed.'
@@ -50,7 +51,7 @@ class ReWOOAgent(ModuleBase):
             self._agent.planner = self._planner
             self._agent.worker_evidences = self._get_worker_evidences
             self._agent.solver_pre_action = self._build_solver_prompt | bind(input=self._agent.input)
-            self._agent.solver = self._solver
+            self._agent.solver = ifs(self._return_last_tool_calls, lambda x: 'ok', self._solver)
 
     def _build_planner_prompt(self, input: str):
         prompt = P_PROMPT_PREFIX + 'Tools can be one of the following:\n'
@@ -68,12 +69,8 @@ class ReWOOAgent(ModuleBase):
                 tool_arguments = tool_arguments.replace(var, str(evidence[var]))
         tool_calls = [{'function': {'name': tool_name, 'arguments': tool_arguments}}]
         result = self._tools_manager(tool_calls)
-        tool_call_results = [{'role': 'tool', 'content': str(result[0]), 'name': tool_name}]
         locals['_lazyllm_agent']['workspace']['tool_call_trace'].append(
-            {
-                'tool_calls': tool_calls,
-                'tool_call_results': tool_call_results,
-            }
+            {**tool_calls[0], 'tool_call_result': str(result[0])}
         )
         return result[0]
 
@@ -100,7 +97,6 @@ class ReWOOAgent(ModuleBase):
     def forward(self, query: str):
         locals['_lazyllm_agent']['workspace'] = {'tool_call_trace': []}
         result = self._agent(query)
-        locals['_lazyllm_agent']['completed'].append(
-            dict(input=query, result=result, tool_call_trace=locals['_lazyllm_agent']['workspace']['tool_call_trace'])
-        )
+        if self._return_last_tool_calls and locals['_lazyllm_agent']['workspace']['tool_call_trace']:
+            return locals['_lazyllm_agent'].pop('workspace').pop('tool_call_trace')
         return result

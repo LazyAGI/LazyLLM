@@ -42,12 +42,12 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             return prefix + ''.join([f'### {k}:\n{{{k}}}\n\n' for k in extra_keys])
         return ''
 
-    def _handle_tool_call_instruction(self):
+    def _handle_tool_call_instruction(self, tools):
         tool_dict = {}
         for key in ['tool_start_token', 'tool_args_token', 'tool_end_token']:
             if getattr(self, f'_{key}', None) and key in self._instruction_template:
                 tool_dict[key] = getattr(self, f'_{key}')
-        if 'tool_names' in self._instruction_template: tool_dict['tool_names'] = self._get_tools_name()
+        if 'tool_names' in self._instruction_template: tool_dict['tool_names'] = self._get_tools_name(tools)
         return reduce(lambda s, kv: s.replace(f'{{{kv[0]}}}', kv[1]), tool_dict.items(), self._instruction_template)
 
     def _set_model_configs(self, system: str = None, sos: Union[None, str] = None, soh: Union[None, str] = None,
@@ -64,12 +64,12 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                      'tool_end_token', 'tool_args_token']:
             if local[name] is not None: setattr(self, f'_{name}', local[name])
 
-    def _get_tools(self, *, return_dict):
-        return self._tools if return_dict else '### Function-call Tools. \n\n' +\
-            f'{json.dumps(self._tools, ensure_ascii=False)}\n\n' if self._tools else ''
+    def _get_tools(self, tools, *, return_dict):
+        return tools if return_dict else '### Function-call Tools. \n\n' +\
+            f'{json.dumps(tools, ensure_ascii=False)}\n\n' if tools else ''
 
-    def _get_tools_name(self):
-        return json.dumps([t['function']['name'] for t in self._tools], ensure_ascii=False) if self._tools else ''
+    def _get_tools_name(self, tools):
+        return json.dumps([t['function']['name'] for t in tools], ensure_ascii=False) if tools else ''
 
     def _get_histories(self, history, *, return_dict):  # noqa: C901
         if not self._history and not history: return ''
@@ -118,13 +118,13 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             else:
                 raise NotImplementedError('Cannot transform json history to {type(history[0])} now')
 
-    def _get_instruction_and_input(self, input, *, return_dict=False):
+    def _get_instruction_and_input(self, input, *, return_dict=False, tools=None):
         fc_prompt = '' if return_dict else FC_PROMPT
         if FC_PROMPT_PLACEHOLDER in self._instruction_template:
             self._instruction_template = self._instruction_template.replace(FC_PROMPT_PLACEHOLDER, fc_prompt)
         else:
             self._instruction_template = self._instruction_template + '\n\n' + fc_prompt
-        self._instruction_template = self._handle_tool_call_instruction()
+        self._instruction_template = self._handle_tool_call_instruction(tools)
         prompt_keys = list(set(re.findall(r'\{(\w+)\}', self._instruction_template)))
         if isinstance(input, (str, int)):
             if len(prompt_keys) == 1:
@@ -206,12 +206,12 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         input = copy.deepcopy(input)
         if self._pre_hook:
             input, history, tools, label = self._pre_hook(input, history, tools, label)
-        if tools:
-            assert self._tools is None
-            self._tools = tools
-        instruction, input = self._get_instruction_and_input(input, return_dict=return_dict)
+        if self._tools:
+            assert tools is None
+            tools = self._tools
+        instruction, input = self._get_instruction_and_input(input, return_dict=return_dict, tools=tools)
         history = self._get_histories(history, return_dict=return_dict)
-        tools = self._get_tools(return_dict=return_dict)
+        tools = self._get_tools(tools, return_dict=return_dict)
         self._check_values(instruction, input, history, tools)
         instruction, user_instruction = self._split_instruction(instruction)
         func = self._generate_prompt_dict_impl if return_dict else self._generate_prompt_impl

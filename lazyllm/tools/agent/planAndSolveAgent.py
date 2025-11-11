@@ -1,7 +1,7 @@
 import re
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
-from lazyllm import loop, pipeline, _0, package, bind, LOG, Color
+from lazyllm import loop, pipeline, _0, package, bind, LOG, Color, locals
 from .functionCall import FunctionCall
 from typing import List, Union
 
@@ -28,9 +28,11 @@ SOLVER_PROMPT = (
 class PlanAndSolveAgent(ModuleBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[str] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
-                 max_retries: int = 5, return_trace: bool = False, stream: bool = False):
+                 max_retries: int = 5, return_trace: bool = False, stream: bool = False,
+                 return_last_tool_calls: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
+        self._return_last_tool_calls = return_last_tool_calls
         assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), (
             'Either specify only llm '
             'without specify plan and solve, or specify only plan and solve without specifying llm, or specify '
@@ -58,16 +60,24 @@ class PlanAndSolveAgent(ModuleBase):
             self._agent.final_action = lambda pre, res, steps, query: res
 
     def _pre_action(self, pre_steps, response, steps, query):
-        return package(SOLVER_PROMPT.format(
+        solver_prompt = SOLVER_PROMPT.format(
             previous_steps='\n'.join(pre_steps),
             current_step=steps[0],
             objective=query,
-        ) + 'input: ' + steps[0], [])
+        ) + 'input: ' + steps[0]
+        if self._return_last_tool_calls:
+            solver_prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
+        return package(solver_prompt, [])
 
     def _post_action(self, pre_steps: List[str], response: str, steps: List[str], query: str):
+        assert isinstance(response, str), f'After retrying \
+            {self._max_retries} times, the solver still failes to call successfully.'
         LOG.debug(f'current step: {steps[0]}, response: {response}')
         pre_steps.append(steps.pop(0) + 'response: ' + response)
         return package(pre_steps, response, steps, query)
 
     def forward(self, query: str):
-        return self._agent(query)
+        result = self._agent(query)
+        if self._return_last_tool_calls and locals['_lazyllm_agent'].get('completed'):
+            return locals['_lazyllm_agent'].pop('completed')
+        return result

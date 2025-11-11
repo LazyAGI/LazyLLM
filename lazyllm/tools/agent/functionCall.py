@@ -81,10 +81,10 @@ class FunctionCall(ModuleBase):
         if llm_output.get('tool_calls'):
             llm_output['tool_calls_results'] = self._tools_manager(llm_output['tool_calls'])
             locals['_lazyllm_agent']['workspace']['tool_call_trace'].append(
-                {
-                    'tool_calls': llm_output['tool_calls'],
-                    'tool_call_results': llm_output['tool_calls_results'],
-                }
+                [
+                    {**tool_call, 'tool_call_result': tool_result}
+                    for tool_call, tool_result in zip(llm_output['tool_calls'], llm_output['tool_calls_results'])
+                ]
             )
         else:
             llm_output = llm_output['content']
@@ -92,19 +92,13 @@ class FunctionCall(ModuleBase):
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         if isinstance(input, str):
-            locals['_lazyllm_agent']['completed'].append(dict(input=input))
             locals['_lazyllm_agent']['workspace'] = dict(tool_call_trace=[])
         globals['chat_history'].setdefault(self._llm._module_id, [])
         if llm_chat_history is not None:
             globals['chat_history'][self._llm._module_id] = llm_chat_history
         result = self._impl(input)
-        if isinstance(result, str):
-            locals['_lazyllm_agent']['completed'][-1].update(
-                {
-                    'result': result,
-                    'tool_call_trace': locals['_lazyllm_agent']['workspace']['tool_call_trace'],
-                }
-            )
+        if isinstance(result, str) and locals['_lazyllm_agent']['workspace']['tool_call_trace']:
+            locals['_lazyllm_agent']['completed'] = locals['_lazyllm_agent'].pop('workspace').pop('tool_call_trace')[-1]
         return result
 
 class FunctionCallAgent(ModuleBase):
