@@ -3,19 +3,19 @@ import requests
 import shutil
 import uuid
 from lazyllm.module import ServerModule
-from lazyllm.components.deploy.graphrag.graphrag_wrapper import GraphRagWrapper
+from lazyllm.components.deploy.graphrag.graphrag_service_impl import GraphRAGServiceImpl
 from urllib.parse import urlparse
 from typing import List
 
 class GraphRagServerModule(ServerModule):
-    def __init__(self, kg_dir, *args, **kwargs):
-        kg_dir.mkdir(parents=True, exist_ok=True)
+    def __init__(self, kg_dir: str, *args, **kwargs):
+        Path(kg_dir).mkdir(parents=True, exist_ok=True)
         self._kg_dir = kg_dir
-        graphrag_wrapper = GraphRagWrapper(kg_dir=str(self._kg_dir))
-        super().__init__(m=graphrag_wrapper, *args, **kwargs)
+        self._graphrag_service_impl = GraphRAGServiceImpl(kg_dir=str(self._kg_dir))
+        super().__init__(m=self._graphrag_service_impl, *args, **kwargs)
 
     def get_graphrag_url(self):
-        return self._graphrag_server._url
+        return self._graphrag_service_impl._url
 
     def start(self):
         super().start()
@@ -27,17 +27,19 @@ class GraphRagServerModule(ServerModule):
             root_url = f'http://{parsed.hostname}'
         with open(Path(self._kg_dir) / 'url.txt', 'w') as f:
             f.write(root_url)
+        self._graphrag_service_impl._url = root_url
 
     def stop(self, clean=False):
-        is_root_server = self._url == self._graphrag_server._url
+        is_root_server = self._url and self._url == self.get_graphrag_url()
         if is_root_server and clean:
             shutil.rmtree(self._kg_dir)
         else:
-            with open(Path(self._kg_dir) / 'url.txt', 'w') as _: pass
+            url_file = Path(self._kg_dir) / 'url.txt'
+            url_file.unlink(missing_ok=True)
         super().stop()
 
     def prepare_files(self, files: List[str]):
-        """Copy files to self._kg_dir/input/ with renamed format: filename_{uuid}.ext"""
+        '''Copy files to self._kg_dir/input/ with renamed format: filename_{uuid}.ext'''
         input_dir = Path(self._kg_dir) / 'input'
         input_dir.mkdir(parents=True, exist_ok=True)
 
@@ -81,15 +83,15 @@ class GraphRagServerModule(ServerModule):
         response.raise_for_status()
         return response.json()
 
-    def query(
-        self,
+    @staticmethod
+    def query_by_url(
+        graphrag_server_url: str,
         query: str,
         search_method: str = 'local',
         community_level: int = 2,
         response_type: str = 'Multiple Paragraphs',
     ) -> dict:
-        graphrag_url = self.get_graphrag_url()
-        api_url = f'{graphrag_url}/graphrag/query'
+        api_url = f'{graphrag_server_url}/graphrag/query'
         payload = {
             'query': query,
             'search_method': search_method,
@@ -99,3 +101,17 @@ class GraphRagServerModule(ServerModule):
         response = requests.post(api_url, json=payload, headers={'Content-Type': 'application/json'}, timeout=300)
         response.raise_for_status()
         return response.json()
+
+    def query(
+        self,
+        query: str,
+        search_method: str = 'local',
+        community_level: int = 2,
+        response_type: str = 'Multiple Paragraphs',
+    ) -> dict:
+        graphrag_url = self.get_graphrag_url()
+        return self.query_by_url(graphrag_url, query, search_method, community_level, response_type)
+
+    def forward(self, query: str) -> str:
+        ans = self.query(query)
+        return ans['answer']

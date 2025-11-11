@@ -2,13 +2,11 @@ import os
 import json
 from typing import Callable, Optional, Dict, Union, List
 from functools import cached_property
-from pathlib import Path
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 from lazyllm.common.bind import _MetaBind
-from lazyllm.tools.servers.graphrag_server_module import GraphRagServerModule
 
 from .doc_manager import DocManager
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
@@ -21,6 +19,7 @@ from .global_metadata import GlobalMetadataDesc as DocField, RAG_KB_ID, RAG_DOC_
 from .web import DocWebModule
 import copy
 import functools
+import weakref
 
 
 class CallableDict(dict):
@@ -171,10 +170,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                                               display_name=display_name, description=description)
             self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
-        # kb_id -> graphrag_server
-        self._graphrag_servers: Dict[str, GraphRagServerModule] = {}
-        # kb_id -> index_task_id
-        self._graphrag_index_tasks: Dict[str, str] = {}
+        # kb_id -> GraphDocument (weak reference)
+        self._graph_documents: Dict[str, weakref.ref] = {}
 
     def _list_all_files_in_dataset(self, skip_hidden_path: bool = True) -> List[str]:
         files_list = []
@@ -361,46 +358,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
         return self._forward('clear_cache', group_names)
-
-    def start_graphrag_server_for_kb(self, kb_id: str):
-        kg_dir = Path(self._manager._dataset_path) / f'.{kb_id}'
-        # kg_dir.mkdir(parents=True, exist_ok=True)
-        m = GraphRagServerModule(kg_dir=kg_dir)
-        m.start()
-        self._graphrag_servers[kb_id] = m
-        return m
-
-    def stop_graphrag_server_for_kb(self, kb_id: str):
-        m = self._graphrag_servers.get(kb_id, None)
-        if m:
-            m.stop()
-            del self._graphrag_servers[kb_id]
-
-    def start_graphrag_index_for_kb(self, kb_id: str, override: bool = True) -> str:
-        m = self._graphrag_servers.get(kb_id, None)
-        if not m:
-            m = self._start_graphrag_server_for_kb(kb_id)
-        kb_files = self._list_all_files_in_kb(kb_id)
-        m.prepare_files(kb_files)
-        res = m.create_index(override=override)
-        if res['status'] != 'success':
-            return f'Failed to create index for kb {kb_id}: {res["message"]}'
-        self._graphrag_index_tasks[kb_id] = res['task_id']
-        return "Success"
-
-    def index_status_graphrag_index_for_kb(self, kb_id: str) -> str:
-        m = self._graphrag_servers.get(kb_id, None)
-        if not m:
-            return f'Graphrag server for kb {kb_id} not found'
-        res = m.index_status(self._graphrag_index_tasks[kb_id])
-        return res['status']
-
-    def query_graphrag_index_for_kb(self, kb_id: str, query: str) -> str:
-        m = self._graphrag_servers.get(kb_id, None)
-        if not m:
-            return f'Graphrag server for kb {kb_id} not found'
-        res = m.query(query)
-        return res['answer']
 
     def _get_post_process_tasks(self):
         return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))
