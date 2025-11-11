@@ -37,7 +37,6 @@ def reset_env(func):
         return result
     return wrapper
 
-@pytest.mark.skipif(os.getenv('LAZYLLM_SKIP_GPU_TEST', 'True'), reason='NEED GPU!')
 class TestDeploy(object):
 
     def setup_method(self):
@@ -88,6 +87,10 @@ class TestDeploy(object):
         self.clients.append(client)
         return web, client
 
+    
+    @pytest.mark.run_on_change(
+        "lazyllm/module/llms/lightllm.py",
+        "lazyllm/module/llms/trainablemodule.py")
     def test_deploy_lightllm(self):
         m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.lightllm)
         m.evalset(self.inputs)
