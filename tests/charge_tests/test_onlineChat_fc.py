@@ -1,7 +1,7 @@
 import pytest
 import lazyllm
 from lazyllm import ReactAgent, PlanAndSolveAgent, ReWOOAgent
-from lazyllm.tools import FunctionCall, FunctionCallAgent
+from lazyllm.tools import FunctionCall
 import random
 from . import tools as _  # noqa F401
 
@@ -70,7 +70,7 @@ def exe_onlinechat_parallel_function_call(request):
     else:
         llm = lazyllm.OnlineChatModule(source=source, stream=stream)
 
-    agent = FunctionCallAgent(llm, tools)
+    agent = ReactAgent(llm, tools)
     print(f"\nStarting test 【{source}】parallel function calling")
     ret = agent(query, [])
     yield ret

@@ -5,7 +5,7 @@ import wikipedia
 
 import lazyllm
 from lazyllm import fc_register, deploy
-from lazyllm.tools import FunctionCall, FunctionCallAgent, ReactAgent, PlanAndSolveAgent, ReWOOAgent
+from lazyllm.tools import FunctionCall, ReactAgent, PlanAndSolveAgent, ReWOOAgent
 from lazyllm.launcher import cleanup
 
 @fc_register('tool')
@@ -151,7 +151,7 @@ def exe_trainable_parallel_function_call(request):
     if not query or not tools:
         raise ValueError(f'query: {query} and tools: {tools} cannot be empty.')
 
-    agent = FunctionCallAgent(llm, tools)
+    agent = ReactAgent(llm, tools)
     print(f'\nStarting test 【{llm}】parallel function calling')
     ret = agent(query)
     yield ret

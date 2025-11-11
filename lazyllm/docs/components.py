@@ -2511,7 +2511,7 @@ add_chinese_doc('formatter.formatterbase.FunctionCallFormatter', '''\
 
 该格式化器专门用于处理函数调用场景下的模型输出，只提取字典中的 'role'、'content' 和 'tool_calls' 字段，过滤掉其他不需要的字段。
 
-主要用于 FunctionCall 和 FunctionCallAgent 等工具调用相关的功能模块。
+主要用于 FunctionCall 等工具调用相关的功能模块。
 
 Args:
     无参数，直接实例化使用。
@@ -2526,7 +2526,7 @@ Function call formatter for processing message dictionaries containing function 
 
 This formatter is specifically designed for handling model outputs in function calling scenarios. It extracts only the 'role', 'content', and 'tool_calls' fields from the input dictionary, filtering out other unnecessary fields.
 
-Primarily used in function calling-related modules such as FunctionCall and FunctionCallAgent.
+Primarily used in function calling-related modules such as FunctionCall.
 
 Args:
     No parameters, instantiate directly.

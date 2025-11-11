@@ -4,6 +4,7 @@ from lazyllm import pipeline, loop, globals, locals, Color, package, FileSystemQ
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
+from lazyllm.common.deprecated import deprecated
 
 FC_PROMPT = f'''# Tools
 
@@ -101,15 +102,20 @@ class FunctionCall(ModuleBase):
             locals['_lazyllm_agent']['completed'] = locals['_lazyllm_agent'].pop('workspace').pop('tool_call_trace')[-1]
         return result
 
+@deprecated('ReactAgent')
 class FunctionCallAgent(ModuleBase):
-    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False):
+    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False,
+                 return_last_tool_calls: bool = False):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
+        self._return_last_tool_calls = return_last_tool_calls
         self._fc = FunctionCall(llm, tools, return_trace=return_trace, stream=stream)
         self._agent = loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
         self._fc._llm.used_by(self._module_id)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
         ret = self._agent(query, llm_chat_history) if llm_chat_history is not None else self._agent(query)
+        if isinstance(ret, str) and self._return_last_tool_calls and locals['_lazyllm_agent'].get('completed'):
+            return locals['_lazyllm_agent'].pop('completed')
         return ret if isinstance(ret, str) else (_ for _ in ()).throw(ValueError(f'After retrying \
             {self._max_retries} times, the function call agent still fails to call successfully.'))
