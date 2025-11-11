@@ -7,7 +7,7 @@ from .supplier.glm import GLMEmbedding, GLMReranking
 from .supplier.sensenova import SenseNovaEmbedding
 from .supplier.qwen import QwenEmbedding, QwenReranking
 from .supplier.doubao import DoubaoEmbedding, DoubaoMultimodalEmbedding
-from .supplier.sliconflow import SiliconFlowEmbedding, SiliconFlowReranking
+from .supplier.siliconflow import SiliconFlowEmbedding, SiliconFlowReranking
 
 class __EmbedModuleMeta(type):
 

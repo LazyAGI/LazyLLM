@@ -71,6 +71,10 @@
     members:
 	exclude-members:
 
+::: lazyllm.tools.rag.readers.readerBase.TxtReader
+    members:
+	exclude-members:
+
 ::: lazyllm.tools.rag.component.bm25.BM25
     members: retrieve
     exclude-members:
@@ -224,7 +228,7 @@
     exclude-members:
 
 ::: lazyllm.tools.rag.doc_node.DocNode
-    members: get_children_str, get_parent_id, get_content, to_dict
+    members: get_children_str, get_parent_id, get_content, to_dict, set_embedding
     exclude-members:
 
 ::: lazyllm.tools.rag.parsing_service.doc_processor.DocumentProcessor
@@ -235,7 +239,7 @@
     exclude-members:
 
 ::: lazyllm.tools.rag.dataReader.SimpleDirectoryReader
-    members: [load_file]
+    members: [load_file, find_extractor_by_file, get_default_reader, add_post_action_for_default_reader]
     exclude-members:
 
 ::: lazyllm.tools.rag.dataReader.FileReader
@@ -431,4 +435,8 @@
 
 ::: lazyllm.tools.infer_service.serve.InferServer
     members: create_job, cancel_job, list_jobs, get_job_info, get_job_log
+    exclude-members:
+
+::: lazyllm.tools.rag.store.hybrid.sensecore_store.SenseCoreStore
+    members:
     exclude-members:
