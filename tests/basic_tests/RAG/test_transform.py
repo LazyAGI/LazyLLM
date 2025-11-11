@@ -738,7 +738,6 @@ class TestDocumentChainSplit:
             separator=' ',
             parent='recursive_test'
         )
-
         query = '何为天道？'
 
         self.document = document
