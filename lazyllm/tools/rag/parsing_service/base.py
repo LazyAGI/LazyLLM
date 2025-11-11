@@ -29,6 +29,7 @@ class AddDocRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     algo_id: Optional[str] = '__default__'
     file_infos: List[FileInfo]
+    priority: Optional[int] = 0
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
     db_info: Optional[DBInfo] = None
     feedback_url: Optional[str] = None
@@ -38,6 +39,7 @@ class UpdateMetaRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     algo_id: Optional[str] = '__default__'
     file_infos: List[FileInfo]
+    priority: Optional[int] = 0
     # NOTE: (db_info) is deprecated, will be removed in the future
     db_info: Optional[DBInfo] = None
 
@@ -47,6 +49,7 @@ class DeleteDocRequest(BaseModel):
     algo_id: Optional[str] = '__default__'
     kb_id: Optional[str] = DEFAULT_KB_ID
     doc_ids: List[str]
+    priority: Optional[int] = 0
     # NOTE: (db_info) is deprecated, will be removed in the future
     db_info: Optional[DBInfo] = None
 
@@ -71,6 +74,23 @@ class TaskType(str, Enum):
     DOC_REPARSE = 'DOC_REPARSE'
 
 
+def get_task_type_weight(task_type: str) -> int:
+    '''get task type weight'''
+    weight_map = {
+        TaskType.DOC_DELETE.value: 10,
+        TaskType.DOC_UPDATE_META.value: 30,
+        TaskType.DOC_ADD.value: 100,
+        TaskType.DOC_REPARSE.value: 100,
+    }
+    return weight_map.get(task_type, 100)
+
+
+def calculate_task_score(task_type: str, user_priority: int) -> int:
+    '''calculate task score'''
+    type_weight = get_task_type_weight(task_type)
+    return type_weight * 10 - user_priority * 15
+
+
 # Waiting task queue table
 WAITING_TASK_QUEUE_TABLE_INFO = {
     'name': 'lazyllm_waiting_task_queue',
@@ -82,6 +102,10 @@ WAITING_TASK_QUEUE_TABLE_INFO = {
          'comment': 'Task ID (uuid4)'},
         {'name': 'task_type', 'data_type': 'string', 'nullable': False,
          'comment': 'Task type: DOC_ADD, DOC_DELETE, DOC_UPDATE_META, DOC_REPARSE'},
+        {'name': 'user_priority', 'data_type': 'integer', 'nullable': False, 'default': 0,
+         'comment': 'User-specified priority (0-10, higher is more important)'},
+        {'name': 'task_score', 'data_type': 'integer', 'nullable': False, 'default': 1000,
+         'comment': 'Calculated task score (for sorting, lower score is higher priority)'},
         {'name': 'message', 'data_type': 'string', 'nullable': False,
          'comment': 'Task message (json string, serialized from request body)'},
         {'name': 'created_at', 'data_type': 'datetime', 'nullable': False,

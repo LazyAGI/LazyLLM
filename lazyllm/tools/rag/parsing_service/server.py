@@ -14,9 +14,9 @@ from lazyllm.thirdparty import fastapi
 
 from .base import (
     ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO, TaskStatus,
-    TaskType, UpdateMetaRequest, AddDocRequest, CancelDocRequest, DeleteDocRequest
+    TaskType, UpdateMetaRequest, AddDocRequest, CancelDocRequest, DeleteDocRequest, calculate_task_score
 )
-from .doc_processor import _Processor, _get_default_db_config
+from .impl import _Processor, _get_default_db_config
 from .worker import DocumentProcessorWorker as Worker
 from .queue import SQLBasedQueue as Queue
 
@@ -48,6 +48,8 @@ class DocumentProcessor(ModuleBase):
                 table_name=WAITING_TASK_QUEUE_TABLE_INFO['name'],
                 columns=WAITING_TASK_QUEUE_TABLE_INFO['columns'],
                 db_config=self._db_config,
+                order_by='task_score',  # sort by task score, lower is higher priority
+                order_desc=False,  # sort in ascending order, lower score is higher priority
             )
             self._finished_task_queue = Queue(
                 table_name=FINISHED_TASK_QUEUE_TABLE_INFO['name'],
@@ -58,7 +60,7 @@ class DocumentProcessor(ModuleBase):
             self._refresh_algo_thread = threading.Thread(target=self._refresh_algorithms, daemon=True)
             self._refresh_algo_thread.start()
             if num_workers > 0:
-                worker = Worker()
+                worker = Worker(db_config=self._db_config, num_workers=1, server_url=None)
                 self._workers = ServerModule(worker, num_replicas=num_workers)
             LOG.info('[DocumentProcessor] init done!')
 
@@ -274,12 +276,17 @@ class DocumentProcessor(ModuleBase):
             payload_json = json.dumps(payload, ensure_ascii=False)
 
             try:
+                user_priority = request.priority if request.priority is not None else 0
+                task_score = calculate_task_score(task_type, user_priority)
                 self._waiting_task_queue.enqueue(
                     task_id=task_id,
                     task_type=task_type,
+                    user_priority=user_priority,
+                    task_score=task_score,
                     message=payload_json,
                 )
-                LOG.info(f'[DocumentProcessor] Task {task_id} submitted to database queue successfully')
+                LOG.info(f'[DocumentProcessor] Task {task_id} (type={task_type}, user_priority={user_priority}, '
+                         f'score={task_score}) submitted to database queue successfully')
                 data = {
                     'task_id': task_id,
                     'task_type': task_type,
@@ -307,12 +314,18 @@ class DocumentProcessor(ModuleBase):
 
             payload_json = json.dumps(payload, ensure_ascii=False)
             try:
+                task_type = TaskType.DOC_UPDATE_META.value
+                user_priority = request.priority if request.priority is not None else 0
+                task_score = calculate_task_score(task_type, user_priority)
                 self._waiting_task_queue.enqueue(
                     task_id=task_id,
-                    task_type=TaskType.DOC_UPDATE_META.value,
+                    task_type=task_type,
+                    user_priority=user_priority,
+                    task_score=task_score,
                     message=payload_json,
                 )
-                LOG.info(f'[DocumentProcessor] Update meta task {task_id} submitted to database queue successfully')
+                LOG.info(f'[DocumentProcessor] Update meta task {task_id} (user_priority={user_priority}, '
+                         f'score={task_score}) submitted to database queue successfully')
                 data = {
                     'task_id': task_id,
                     'task_type': TaskType.DOC_UPDATE_META.value,
@@ -340,12 +353,18 @@ class DocumentProcessor(ModuleBase):
 
             payload_json = json.dumps(payload, ensure_ascii=False)
             try:
+                task_type = TaskType.DOC_DELETE.value
+                user_priority = request.priority if request.priority is not None else 0
+                task_score = calculate_task_score(task_type, user_priority)
                 self._waiting_task_queue.enqueue(
                     task_id=task_id,
-                    task_type=TaskType.DOC_DELETE.value,
+                    task_type=task_type,
+                    user_priority=user_priority,
+                    task_score=task_score,
                     message=payload_json,
                 )
-                LOG.info(f'[DocumentProcessor] Delete task {task_id} submitted to database queue successfully')
+                LOG.info(f'[DocumentProcessor] Delete task {task_id} (user_priority={user_priority}, '
+                         f'score={task_score}) submitted to database queue successfully')
                 data = {
                     'task_id': task_id,
                     'task_type': TaskType.DOC_DELETE.value,
