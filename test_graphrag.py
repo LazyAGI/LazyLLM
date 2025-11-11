@@ -13,11 +13,15 @@ mock_kb_files = [
 ]
 
 # 使用 patch 来 mock _list_all_files_in_kb 方法
-with patch.object(doc, '_list_all_files_in_kb', return_value=mock_kb_files):
-    graph_document = GraphDocument(doc, 'default')
+with patch.object(doc, '_list_all_files_in_dataset', return_value=mock_kb_files):
+    graph_document = GraphDocument(doc)
     graph_document.start()
-    user_input = input('Press Enter to start graphrag index: ')
+    user_input = input('Press Enter when files are ready')
 
+    graph_document.init_graphrag_kg()
+    # Now you need to edit $dataset_path/.graphrag_kg/settings.yaml
+
+    user_input = input('Press Enter when settings.yaml is ready')
     graph_document.start_graphrag_index(override=False)
 
     status_dict = graph_document.graphrag_index_status()

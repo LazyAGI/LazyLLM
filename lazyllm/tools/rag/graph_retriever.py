@@ -5,17 +5,14 @@ from typing import Union
 
 
 class GraphRetriever(ModuleBase):
-    def __init__(self, doc: Union[Document, GraphDocument], kb_id: str, **kwargs):
+    def __init__(self, doc: Union[Document, GraphDocument], **kwargs):
         super().__init__()
         assert isinstance(doc, (Document, GraphDocument)), 'doc must be a Document or GraphDocument instance'
-        self._kb_id = kb_id
         self._graph_document = None
         if isinstance(doc, GraphDocument):
             self._graph_document = doc
         elif isinstance(doc, Document):
-            if doc._graph_documents.get(kb_id, None) is None:
-                raise ValueError(f'GraphDocument for kb {kb_id} not found in Document')
-            self._graph_document = doc._graph_documents[kb_id]()
+            self._graph_document = doc._graph_document()
         else:
             raise ValueError('doc must be a Document or GraphDocument instance')
 

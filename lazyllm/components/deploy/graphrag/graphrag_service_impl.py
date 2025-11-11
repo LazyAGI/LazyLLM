@@ -19,6 +19,7 @@ from graphrag.api import global_search, local_search, drift_search
 from graphrag.config.load_config import load_config
 from graphrag.config.enums import IndexingMethod
 from graphrag.cli.index import index_cli
+from graphrag.cli.initialize import initialize_project_at
 
 from lazyllm import FastapiApp as app
 from lazyllm import LOG
@@ -84,6 +85,13 @@ class GraphRAGServiceImpl:
 
     def index_ready(self) -> bool:
         return self._index_state is not None
+
+    @staticmethod
+    def init_root_dir(kg_dir: str):
+        '''Initialize the root directory for a knowledge graph'''
+        if not Path(kg_dir).exists():
+            raise Exception(f'Root directory {kg_dir} does not exist. Please prepare it first.')
+        initialize_project_at(root_dir=kg_dir, force=True)
 
     @app.post('/graphrag/create_index', response_model=CreateIndexResponse)
     async def create_index(self, override: bool = True):

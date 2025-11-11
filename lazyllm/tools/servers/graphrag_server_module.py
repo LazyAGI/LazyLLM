@@ -88,6 +88,11 @@ class GraphRagServerModule(ServerModule):
 
             # Copy file to destination
             shutil.copy2(source_file, dest_file)
+        try:
+            GraphRAGServiceImpl.init_root_dir(self._kg_dir)
+        except Exception as e:
+            LOG.error(f'Error initializing root directory: {str(e)}')
+            raise e
 
     def create_index(self, override: bool = True) -> dict:
         api_url = f'{self.graphrag_shared_url}/graphrag/create_index'
