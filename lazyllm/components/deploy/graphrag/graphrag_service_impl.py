@@ -5,16 +5,12 @@ from enum import Enum
 import pandas as pd  # noqa: NID001, NID002
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
-
-from lazyllm import FastapiApp as app
-import lazyllm
 from fastapi import HTTPException  # noqa: NID001, NID002
 from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid
 import shutil
 import asyncio
-import requests
 
 # GraphRAG imports
 # thirdparty import not working
@@ -23,6 +19,9 @@ from graphrag.api import global_search, local_search, drift_search
 from graphrag.config.load_config import load_config
 from graphrag.config.enums import IndexingMethod
 from graphrag.cli.index import index_cli
+
+from lazyllm import FastapiApp as app
+from lazyllm import LOG
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -50,7 +49,7 @@ class CreateIndexResponse(BaseModel):
 
 @dataclass
 class IndexState:
-    """Index state containing all GraphRAG data"""
+    '''Index state containing all GraphRAG data'''
     config: Any
     communities: pd.DataFrame
     community_reports: pd.DataFrame
@@ -74,50 +73,24 @@ class QueryRequest(BaseModel):
 class QueryResponse(BaseModel):
     answer: str = Field(..., description='Answer to the query')
 
-class GraphRagWrapper:
+class GraphRAGServiceImpl:
     def __init__(self, kg_dir: str):
         self._kg_dir = kg_dir
-        self._url = self._get_shared_url()
         self._tasks: Dict[str, Any] = {}
         self._index_state: Optional[IndexState] = None
 
     def _clean_index_state(self):
-        with open(Path(self._kg_dir) / 'url.txt', 'w') as _: pass
-        self._url = None
         self._index_state = None
 
     def index_ready(self) -> bool:
         return self._index_state is not None
 
-    def _get_shared_url(self):
-        """Check if the URL is accessible"""
-        url = None
-        url_file = Path(self._kg_dir) / 'url.txt'
-        with open(url_file, 'r') as f:
-            url = f.read().strip()
-            if not url.startswith('http'):
-                lazyllm.LOG.warning(f'URL from url.txt is not a valid URL: {url}')
-                return None
-        if not url:
-            return None
-        # Check if the URL is accessible
-        try:
-            response = requests.get(f'{url}/docs', timeout=5)
-            if response.status_code == 200:
-                return url
-            else:
-                lazyllm.LOG.warning(f'URL from url.txt returned status code {response.status_code}: {url}')
-        except requests.exceptions.RequestException as e:
-            lazyllm.LOG.warning(f'URL from url.txt is not accessible: {url}, error: {str(e)}')
-        return None
-
     @app.post('/graphrag/create_index', response_model=CreateIndexResponse)
     async def create_index(self, override: bool = True):
-        """Index a new document into the knowledge graph"""
-        self._url = self._get_shared_url()
-        if self._url:
+        '''Index a new document into the knowledge graph'''
+        if self._index_state and not override:
             raise HTTPException(
-                status_code=400, detail=f'Server already exists. No need to create index again. URL: {self._url}')
+                status_code=400, detail='Index already exists. No need to create index again.')
         task_id = str(uuid.uuid4())
         self._clean_index_state()
         # Initialize task status
@@ -135,65 +108,101 @@ class GraphRagWrapper:
         logs_dir = Path(self._kg_dir) / 'logs'
         folders_to_delete = [output_dir, cache_dir, logs_dir]
         for folder in folders_to_delete:
-            if folder.exists():
-                if override:
-                    shutil.rmtree(folder)
-                else:
-                    self._tasks[task_id].status = IndexStatus.FAILED
-                    self._tasks[task_id].error_message = f'Directory exists: {folder}'
-                    return CreateIndexResponse(
-                        task_id=task_id, message=f'Task {task_id} failed: Directory exists: {folder}')
+            if folder.exists() and override:
+                shutil.rmtree(folder)
 
-        asyncio.create_task(self._run_index_cli(task_id,))
+        def handle_task_exception(task: asyncio.Task):
+            """Handle exceptions from the background task"""
+            try:
+                # 获取任务结果，如果有异常会在这里抛出
+                task.result()
+            except Exception as e:
+                # 如果任务失败，更新任务状态
+                if task_id in self._tasks:
+                    LOG.error(f'Error in index task {task_id}: {str(e)}')
+                    task_info = self._tasks[task_id]
+                    # 使用 model_copy 创建新实例来更新状态
+                    self._tasks[task_id] = task_info.model_copy(update={
+                        'status': IndexStatus.FAILED,
+                        'error_message': f'Task execution failed: {str(e)}',
+                        'updated_at': datetime.now()
+                    })
+
+        try:
+            # 创建任务并添加异常处理回调
+            background_task = asyncio.create_task(self._run_index_cli(task_id))
+            background_task.add_done_callback(handle_task_exception)
+        except Exception as e:
+            # 处理任务创建时的异常（这种情况很少见，但需要处理）
+            LOG.error(f'Error creating index task: {str(e)}')
+            task_info = self._tasks[task_id]
+            self._tasks[task_id] = task_info.model_copy(update={
+                'status': IndexStatus.FAILED,
+                'error_message': f'Failed to create task: {str(e)}',
+                'updated_at': datetime.now()
+            })
+            return CreateIndexResponse(task_id=task_id, message=f'Task {task_id} failed: {str(e)}')
+
         return CreateIndexResponse(task_id=task_id, message=f'Task {task_id} created.')
 
     async def _run_index_cli(self, task_id: str):
-        """run graphrag index task"""
+        '''run graphrag index task'''
         task_info = self._tasks[task_id]
-        task_info['status'] = IndexStatus.PROCESSING
-        task_info['updated_at'] = datetime.now()
+        # 使用 model_copy 更新状态
+        self._tasks[task_id] = task_info.model_copy(update={
+            'status': IndexStatus.PROCESSING,
+            'updated_at': datetime.now()
+        })
         try:
-            index_cli(
-                root_dir=self._kg_dir,
-                verbose=False,
-                memprofile=False,
-                cache=True,
-                config_filepath=None,
-                dry_run=False,
-                skip_validation=False,
-                output_dir=None,
-                method=IndexingMethod.Standard.value,
-            )
             index_log_file = Path(self._kg_dir) / 'logs' / 'indexing-engine.log'
+            if not index_log_file.exists():
+                index_cli(
+                    root_dir=self._kg_dir,
+                    verbose=False,
+                    memprofile=False,
+                    cache=True,
+                    config_filepath=None,
+                    dry_run=False,
+                    skip_validation=False,
+                    output_dir=None,
+                    method=IndexingMethod.Standard.value,
+                )
 
             # Read the last two lines of the log file and check for success message
             if index_log_file.exists():
                 with open(index_log_file, 'r', encoding='utf-8') as f:
                     lines = f.readlines()
-                    # Get the last two lines
                     last_two_lines = ''.join(lines[-2:]) if len(lines) >= 2 else ''.join(lines)
                     if 'All workflows completed successfully' in last_two_lines:
-                        task_info['status'] = IndexStatus.COMPLETED
-                        lazyllm.LOG.info(f'Index task {task_id} completed successfully')
-                        # Load index state
+                        self._tasks[task_id] = task_info.model_copy(update={
+                            'status': IndexStatus.COMPLETED,
+                            'updated_at': datetime.now()
+                        })
+                        LOG.info(f'Index task {task_id} completed successfully')
                         self._index_state = self._load_index_state()
                     else:
-                        task_info['status'] = IndexStatus.FAILED
-                        task_info['error_message'] = f'Indexing Failed. Please check logs {index_log_file}'
+                        self._tasks[task_id] = task_info.model_copy(update={
+                            'status': IndexStatus.FAILED,
+                            'error_message': f'Indexing Failed. Please check logs {index_log_file}',
+                            'updated_at': datetime.now()
+                        })
             else:
-                lazyllm.LOG.warning(f'Log file not found: {index_log_file}')
-                task_info['status'] = IndexStatus.FAILED
-                task_info['error_message'] = f'Log file not found: {index_log_file}'
-
-            task_info['updated_at'] = datetime.now()
+                LOG.warning(f'Log file not found: {index_log_file}')
+                self._tasks[task_id] = task_info.model_copy(update={
+                    'status': IndexStatus.FAILED,
+                    'error_message': f'Log file not found: {index_log_file}',
+                    'updated_at': datetime.now()
+                })
         except Exception as e:
-            lazyllm.LOG.error(f'Error creating index task: {str(e)}')
-            task_info['status'] = IndexStatus.FAILED
-            task_info['error_message'] = str(e)
-            task_info['updated_at'] = datetime.now()
+            LOG.error(f'Error creating index task: {str(e)}')
+            self._tasks[task_id] = task_info.model_copy(update={
+                'status': IndexStatus.FAILED,
+                'error_message': str(e),
+                'updated_at': datetime.now()
+            })
 
     def _load_index_state(self) -> IndexState:
-        """Load index state from the knowledge graph directory"""
+        '''Load index state from the knowledge graph directory'''
         try:
             kg_dir = Path(self._kg_dir)
             config = load_config(root_dir=kg_dir)
@@ -208,7 +217,7 @@ class GraphRagWrapper:
             use_covariates = (graph_store_dir / 'covariates.parquet').exists()
             covariates = pd.read_parquet(graph_store_dir / 'covariates.parquet') if use_covariates else None
         except Exception as e:
-            lazyllm.LOG.error(f'Error loading index state: {str(e)}')
+            LOG.error(f'Error loading index state: {str(e)}')
             return None
 
         return IndexState(
@@ -223,7 +232,7 @@ class GraphRagWrapper:
 
     @app.post('/graphrag/index_status', response_model=IndexStatusResponse)
     async def index_status(self, task_id: str):
-        """Get the status of an index task"""
+        '''Get the status of an index task'''
         task_info = self._tasks.get(task_id, None)
         if not task_info:
             raise HTTPException(status_code=404, detail=f'Task not found: {task_id}')
@@ -231,7 +240,7 @@ class GraphRagWrapper:
 
     @app.post('/graphrag/query', response_model=QueryResponse)
     async def query(self, request: QueryRequest):
-        """Process a GraphRAG query using the specified search method"""
+        '''Process a GraphRAG query using the specified search method'''
         if not self.index_ready():
             raise HTTPException(status_code=400, detail='Index not created yet. Run index first.')
         try:
@@ -281,5 +290,5 @@ class GraphRagWrapper:
             return QueryResponse(answer=answer)
 
         except Exception as e:
-            lazyllm.LOG.error(f'Error processing query: {str(e)}')
+            LOG.error(f'Error processing query: {str(e)}')
             raise HTTPException(status_code=500, detail=f'Internal server error: {str(e)}')

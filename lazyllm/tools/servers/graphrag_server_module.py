@@ -2,6 +2,7 @@ from pathlib import Path
 import requests
 import shutil
 import uuid
+from lazyllm import LOG
 from lazyllm.module import ServerModule
 from lazyllm.components.deploy.graphrag.graphrag_service_impl import GraphRAGServiceImpl
 from urllib.parse import urlparse
@@ -12,10 +13,38 @@ class GraphRagServerModule(ServerModule):
         Path(kg_dir).mkdir(parents=True, exist_ok=True)
         self._kg_dir = kg_dir
         self._graphrag_service_impl = GraphRAGServiceImpl(kg_dir=str(self._kg_dir))
+        # this url can only be set by graphrag server module
+        self._graphrag_shared_url = self._get_shared_url_from_file()
         super().__init__(m=self._graphrag_service_impl, *args, **kwargs)
 
-    def get_graphrag_url(self):
-        return self._graphrag_service_impl._url
+    @property
+    def graphrag_shared_url(self) -> str:
+        return self._graphrag_shared_url
+
+    def _get_shared_url_from_file(self):
+        '''Get the GraphRAGServiceImpl URL from the file'''
+        url = None
+        url_file = Path(self._kg_dir) / 'url.txt'
+        if not url_file.exists():
+            return None
+
+        with open(url_file, 'r') as f:
+            url = f.read().strip()
+            if not url.startswith('http'):
+                LOG.warning(f'URL from url.txt is not a valid URL: {url}')
+                return None
+
+        # Check if the URL is accessible
+        try:
+            response = requests.get(f'{url}/docs', timeout=10)
+            if response.status_code == 200:
+                return url
+            else:
+                LOG.warning(f'URL from url.txt returned status code {response.status_code}: {url}')
+        except requests.exceptions.RequestException as e:
+            LOG.warning(f'URL from url.txt is not accessible: {url}, error: {str(e)}')
+        url_file.unlink(missing_ok=True)
+        return None
 
     def start(self):
         super().start()
@@ -25,18 +54,21 @@ class GraphRagServerModule(ServerModule):
             root_url = f'http://{parsed.hostname}:{parsed.port}'
         else:
             root_url = f'http://{parsed.hostname}'
-        with open(Path(self._kg_dir) / 'url.txt', 'w') as f:
-            f.write(root_url)
-        self._graphrag_service_impl._url = root_url
+
+        # refresh the shared url
+        shared_url = self._get_shared_url_from_file()
+        if shared_url:
+            self._graphrag_shared_url = shared_url
+        else:
+            with open(Path(self._kg_dir) / 'url.txt', 'w') as f:
+                f.write(root_url)
+            self._graphrag_shared_url = root_url
 
     def stop(self, clean=False):
-        is_root_server = self._url and self._url == self.get_graphrag_url()
+        super().stop()
+        is_root_server = self._url and self._url == self._graphrag_shared_url
         if is_root_server and clean:
             shutil.rmtree(self._kg_dir)
-        else:
-            url_file = Path(self._kg_dir) / 'url.txt'
-            url_file.unlink(missing_ok=True)
-        super().stop()
 
     def prepare_files(self, files: List[str]):
         '''Copy files to self._kg_dir/input/ with renamed format: filename_{uuid}.ext'''
@@ -58,8 +90,7 @@ class GraphRagServerModule(ServerModule):
             shutil.copy2(source_file, dest_file)
 
     def create_index(self, override: bool = True) -> dict:
-        graphrag_url = self.get_graphrag_url()
-        api_url = f'{graphrag_url}/graphrag/create_index'
+        api_url = f'{self.graphrag_shared_url}/graphrag/create_index'
 
         # Send POST request to create_index endpoint
         response = requests.post(
@@ -68,18 +99,19 @@ class GraphRagServerModule(ServerModule):
             headers={'Content-Type': 'application/json'},
             timeout=30
         )
+        LOG.info(f'create_index response: {response.json()}')
         response.raise_for_status()
         return response.json()
 
     def index_status(self, task_id: str) -> dict:
-        graphrag_url = self.get_graphrag_url()
-        api_url = f'{graphrag_url}/graphrag/index_status'
+        api_url = f'{self.graphrag_shared_url}/graphrag/index_status'
         response = requests.post(
             api_url,
             params={'task_id': task_id},
             headers={'Content-Type': 'application/json'},
             timeout=30
         )
+        LOG.info(f'index status response: {response.json()}')
         response.raise_for_status()
         return response.json()
 
@@ -109,8 +141,7 @@ class GraphRagServerModule(ServerModule):
         community_level: int = 2,
         response_type: str = 'Multiple Paragraphs',
     ) -> dict:
-        graphrag_url = self.get_graphrag_url()
-        return self.query_by_url(graphrag_url, query, search_method, community_level, response_type)
+        return self.query_by_url(self.graphrag_shared_url, query, search_method, community_level, response_type)
 
     def forward(self, query: str) -> str:
         ans = self.query(query)

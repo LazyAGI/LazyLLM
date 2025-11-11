@@ -1,5 +1,4 @@
 import lazyllm
-import time
 from unittest.mock import patch
 from lazyllm.tools.rag.document import Document
 from lazyllm.tools.rag.graph_document import GraphDocument
@@ -21,8 +20,11 @@ with patch.object(doc, '_list_all_files_in_kb', return_value=mock_kb_files):
 
     graph_document.start_graphrag_index(override=False)
 
+    status_dict = graph_document.graphrag_index_status()
+    lazyllm.LOG.info(f'graphrag index status: {status_dict}')
+
     lazyllm.LOG.info('start_graphrag_index done')
-    time.sleep(600)
+    user_input = input('Press Enter to start graphrag retriever: ')
 
     graph_retriever = GraphRetriever(graph_document, 'default')
 

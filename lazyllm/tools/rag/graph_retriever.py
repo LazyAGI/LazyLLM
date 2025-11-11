@@ -1,5 +1,4 @@
 from lazyllm import ModuleBase
-from lazyllm.tools.rag.global_metadata import RAG_KB_ID
 from .document import Document
 from .graph_document import GraphDocument
 from typing import Union
@@ -8,7 +7,7 @@ from typing import Union
 class GraphRetriever(ModuleBase):
     def __init__(self, doc: Union[Document, GraphDocument], kb_id: str, **kwargs):
         super().__init__()
-        assert isinstance(doc, Document), 'doc must be a Document instance'
+        assert isinstance(doc, (Document, GraphDocument)), 'doc must be a Document or GraphDocument instance'
         self._kb_id = kb_id
         self._graph_document = None
         if isinstance(doc, GraphDocument):
@@ -20,8 +19,8 @@ class GraphRetriever(ModuleBase):
         else:
             raise ValueError('doc must be a Document or GraphDocument instance')
 
-    def forward(self, query: str, kb_id: RAG_KB_ID) -> str:
-        return self._graph_document.query_graphrag_index_for_kb(query)
+    def forward(self, query: str) -> str:
+        return self._graph_document.query(query)
 
     def __repr__(self):
         return f'GraphRetriever(graph_document={self._graph_document})'
