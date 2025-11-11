@@ -3,7 +3,7 @@ from typing import List, Optional
 from dataclasses import dataclass
 from lazyllm import LOG
 import re
-from lazyllm.tools.rag.doc_node import DocNode
+from ..doc_node import DocNode
 
 @dataclass
 class _MdSplit:

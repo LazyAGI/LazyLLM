@@ -17,7 +17,7 @@ class RecursiveSplitter(CharacterSplitter):
                 partial(self.default_split, self._get_separator_pattern(separator))
                 for separator in self._separators
             ] + [list]
-
+        splits = []
         for split_fn in character_split_fns:
             splits = split_fn(text)
             if len(splits) > 1:

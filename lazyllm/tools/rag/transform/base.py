@@ -322,10 +322,7 @@ class _TextSplitterBase(NodeTransform):
 class _TokenTextSplitter(_TextSplitterBase):
     def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers)
-        self.token_encoder = None
-        self.token_decoder = None
         self.kwargs = {}
-        self.from_tiktoken_encoder()
 
     def _split(self, text: str, chunk_size: int) -> List[_Split]:
         token_size = self._token_size(text)

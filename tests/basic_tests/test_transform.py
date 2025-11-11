@@ -669,7 +669,7 @@ class TestDocumentSplit:
             overlap=0,
             separators=['\n\n', '\n', '.', ' ']
         )
-        llm = lazyllm.OnlineChatModule(source='qwen')
+        llm = lazyllm.OnlineChatModule(source='sensenova')
 
         prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
         llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
@@ -746,7 +746,7 @@ class TestDocumentChainSplit:
             separator=' ',
             parent='recursive_test'
         )
-        llm = lazyllm.OnlineChatModule(source='qwen')
+        llm = lazyllm.OnlineChatModule(source='sensenova')
         prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
         llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
         query = '何为天道？'
@@ -814,7 +814,7 @@ class TestDIYDocumentSplit:
             transform=splitter,
             parent='sentence_test')
 
-        llm = lazyllm.OnlineChatModule(source='qwen')
+        llm = lazyllm.OnlineChatModule(source='sensenova')
         prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
         llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
         query = '何为天道？'
