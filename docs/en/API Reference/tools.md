@@ -282,10 +282,6 @@
     members: 
     exclude-members: forward
 
-::: lazyllm.tools.FunctionCallAgent
-    members: 
-    exclude-members: forward
-
 ::: lazyllm.tools.ReactAgent
     members: 
     exclude-members: forward
