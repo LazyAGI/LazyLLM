@@ -12,7 +12,7 @@ from lazyllm.thirdparty import deepdiff
 
 import lazyllm
 from lazyllm import globals, LOG, launchers, Option, package, LazyLLMDeployBase, LazyLLMFinetuneBase, config
-from ...components.formatter import decode_query_with_filepaths, encode_query_with_filepaths
+from ...components.formatter import decode_query_with_filepaths, encode_query_with_filepaths, FormatterBase
 from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from ...components.utils import ModelManager, LLMType
 from ...components.utils.file_operate import _base64_to_file, _is_base64_with_mime
@@ -341,7 +341,21 @@ class TrainableModule(UrlModule):
             prompter._set_model_configs(**keys)
             for key in ['tool_start_token', 'tool_args_token', 'tool_end_token']:
                 if key in keys: setattr(self, f'_{key}', keys[key])
+        if hasattr(self, '_openai_module'):
+            self._openai_module.prompt(prompt, history=history)
         return self
+
+    def formatter(self, format: Optional[FormatterBase] = None):
+        super(__class__, self).formatter(format)
+        if hasattr(self, '_openai_module'):
+            self._openai_module.formatter(format)
+        return self
+
+    def share(self, **kwargs):
+        new = super(__class__, self).share(**kwargs)
+        if hasattr(self, '_openai_module'):
+            new._openai_module = self._openai_module.share(**kwargs)
+        return new
 
     def _loads_str(self, text: str) -> Union[str, Dict]:
         try:
@@ -512,8 +526,9 @@ class TrainableModule(UrlModule):
                 self._openai_module = lazyllm.OnlineChatModule(
                     source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=model_type,
                     stream=self._stream).share(prompt=self._prompt, format=self._formatter)
-                self._openai_module._prompt._set_model_configs(system='You are LazyLLM, \
-                    a large language model developed by SenseTime.')
+                self._openai_module._prompt._set_model_configs(
+                    system='You are LazyLLM, a large language model developed by SenseTime.'
+                )
             elif model_type in ['embed', 'rerank']:
                 self._openai_module = lazyllm.OnlineEmbeddingModule(
                     source='openai', embed_model_name='lazyllm', embed_url=self._url, type=model_type)

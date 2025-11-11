@@ -21,8 +21,9 @@ Plan: Find out the number of hours Thomas worked.
 Plan: Calculate the number of hours Rebecca worked.
 #E3 = Calculator[(2 ∗ #E2 − 10) − 8]'''
 
-P_PROMPT_SUFFIX = ('Begin! Describe your plans with rich details. Each Plan should be followed by only one #E, '
-                   'and the params_dict is the input of the tool, should be a valid json string wrapped in [].\n\n')
+P_PROMPT_SUFFIX = '''Begin! Describe your plans with rich details. Each Plan should be followed by only one #E,
+and the params_dict is the input of the tool, should be a valid json string wrapped in [],
+(e.g. [{{'input': 'hello world', 'num_beams': 5}}]).\n\n'''
 
 S_PROMPT_PREFIX = ('Solve the following task or problem. To assist you, we provide some plans and '
                    'corresponding evidences that might be helpful. Notice that some of these information '

@@ -69,7 +69,6 @@ class LLMBase(object):
         if prompt is not None: new.prompt(prompt, history=history)
         if format is not None: new.formatter(format)
         if stream is not None: new.stream = stream
-        if hasattr(new, '_openai_module'): delattr(new, '_openai_module')
         return new
 
     @property

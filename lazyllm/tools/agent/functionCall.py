@@ -20,12 +20,26 @@ Ask for clarification if a user request is ambiguous.\n
 
 def function_call_hook(input: Union[str, Dict[str, Any]], history: List[Dict[str, Any]], tools: List[Dict[str, Any]],
                        label: Any):
+    '''
+    Normalize the agent interaction state across function-call turns.
+
+    When `input` is a string, it represents the agent's first FunctionCall request.
+    The raw query is cached in `locals['_lazyllm_agent']['workspace']['query']` so it can be
+    replayed if the model decides to call tools.
+
+    When `input` is a dict, it represents the follow-up FunctionCall triggered by the previous
+    tool invocation. The cached items in `locals['_lazyllm_agent']['workspace']` are used to
+    rebuild the conversation history (including the original query and any prior tool outputs),
+    and the current tool call payload plus its results are written back to the workspace for use
+    in subsequent turns.
+    '''
     if isinstance(input, dict):
         if 'query' in locals['_lazyllm_agent']['workspace']:
             history.append({'role': 'user', 'content': locals['_lazyllm_agent']['workspace'].pop('query')})
         if 'tool_call_results' in locals['_lazyllm_agent']['workspace']:
             history.extend(locals['_lazyllm_agent']['workspace'].pop('tool_call_results'))
-        history.append({'role': 'assistant', 'content': input['content'], 'tool_calls': input['tool_calls']})
+        history.append({'role': 'assistant', 'content': input.get('content', ''),
+                        'tool_calls': input.get('tool_calls', [])})
 
         tool_call_results = [
             {
@@ -34,10 +48,10 @@ def function_call_hook(input: Union[str, Dict[str, Any]], history: List[Dict[str
                 'tool_call_id': tool_call['id'],
                 'name': tool_call['function']['name'],
             } for tool_call, tool_result in zip(
-                input['tool_calls'], input['tool_calls_results']
+                input.get('tool_calls', []), input.get('tool_calls_results', [])
             )
         ]
-        locals['_lazyllm_agent']['workspace']['tool_calls'] = input['tool_calls']
+        locals['_lazyllm_agent']['workspace']['tool_calls'] = input.get('tool_calls', [])
         locals['_lazyllm_agent']['workspace']['tool_call_results'] = tool_call_results
         input = {'input': tool_call_results}
     else:
@@ -92,12 +106,15 @@ class FunctionCall(ModuleBase):
         return llm_output
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
-        if isinstance(input, str):
+        if 'workspace' not in locals['_lazyllm_agent']:
             locals['_lazyllm_agent']['workspace'] = dict(tool_call_trace=[])
         globals['chat_history'].setdefault(self._llm._module_id, [])
         if llm_chat_history is not None:
             globals['chat_history'][self._llm._module_id] = llm_chat_history
         result = self._impl(input)
+
+        # If the model decides not to call any tools, the result is a string. For debugging and subsequent tasks,
+        # the last non-empty tool call trace is stored in locals['_lazyllm_agent']['completed'].
         if isinstance(result, str) and locals['_lazyllm_agent']['workspace']['tool_call_trace']:
             locals['_lazyllm_agent']['completed'] = locals['_lazyllm_agent'].pop('workspace').pop('tool_call_trace')[-1]
         return result

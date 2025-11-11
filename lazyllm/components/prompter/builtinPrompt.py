@@ -6,10 +6,11 @@ from functools import reduce
 import copy
 import re
 
-FC_PROMPT = '''{tool_start_token}tool name (one of {tool_names}) if using a tool.
-{tool_args_token}the input to the tool, in a JSON format representing the kwargs (e.g. {{'input': 'hello world', \
-'num_beams': 5}}). Can only return json.
-{tool_end_token}end of tool.'''
+FC_PROMPT = '''{tool_start_token}tool name (one of {tool_names})
+{tool_args_token}the input to the tool, in a JSON format representing the kwargs. Can only return json.
+{tool_end_token}end of tool.
+(e.g. {tool_start_token}tool_name\n{tool_args_token}{{'input': 'hello world', 'num_beams': 5}}\n{tool_end_token}).
+'''
 
 FC_PROMPT_PLACEHOLDER = '<!lazyllm-fc-prompt!>'
 
@@ -42,13 +43,13 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
             return prefix + ''.join([f'### {k}:\n{{{k}}}\n\n' for k in extra_keys])
         return ''
 
-    def _handle_tool_call_instruction(self, tools):
+    def _handle_tool_call_instruction(self, instruction, tools):
         tool_dict = {}
         for key in ['tool_start_token', 'tool_args_token', 'tool_end_token']:
-            if getattr(self, f'_{key}', None) and key in self._instruction_template:
+            if getattr(self, f'_{key}', None) and key in instruction:
                 tool_dict[key] = getattr(self, f'_{key}')
-        if 'tool_names' in self._instruction_template: tool_dict['tool_names'] = self._get_tools_name(tools)
-        return reduce(lambda s, kv: s.replace(f'{{{kv[0]}}}', kv[1]), tool_dict.items(), self._instruction_template)
+        if 'tool_names' in instruction: tool_dict['tool_names'] = self._get_tools_name(tools)
+        return reduce(lambda s, kv: s.replace(f'{{{kv[0]}}}', kv[1]), tool_dict.items(), instruction)
 
     def _set_model_configs(self, system: str = None, sos: Union[None, str] = None, soh: Union[None, str] = None,
                            soa: Union[None, str] = None, eos: Union[None, str] = None,
@@ -119,26 +120,26 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                 raise NotImplementedError('Cannot transform json history to {type(history[0])} now')
 
     def _get_instruction_and_input(self, input, *, return_dict=False, tools=None):
-        fc_prompt = '' if return_dict else FC_PROMPT
+        fc_prompt = '' if return_dict or not tools else FC_PROMPT
         if FC_PROMPT_PLACEHOLDER in self._instruction_template:
-            self._instruction_template = self._instruction_template.replace(FC_PROMPT_PLACEHOLDER, fc_prompt)
+            instruction = self._instruction_template.replace(FC_PROMPT_PLACEHOLDER, fc_prompt)
         else:
-            self._instruction_template = self._instruction_template + '\n\n' + fc_prompt
-        self._instruction_template = self._handle_tool_call_instruction(tools)
-        prompt_keys = list(set(re.findall(r'\{(\w+)\}', self._instruction_template)))
+            instruction = self._instruction_template + '\n\n' + fc_prompt
+        instruction = self._handle_tool_call_instruction(instruction, tools)
+        prompt_keys = list(set(re.findall(r'\{(\w+)\}', instruction)))
         if isinstance(input, (str, int)):
             if len(prompt_keys) == 1:
-                return self._instruction_template.format(**{prompt_keys[0]: input}), ''
+                return instruction.format(**{prompt_keys[0]: input}), ''
             else:
                 assert len(prompt_keys) == 0
-                return self._instruction_template, input
+                return instruction, input
         assert isinstance(input, dict), f'expected types are str, int and dict, bug get {type(input)}(`{input})`'
         kwargs = {k: input.pop(k) for k in prompt_keys}
         assert len(input) <= 1, f'Unexpected keys found in input: {list(input.keys())}'
         return (reduce(lambda s, kv: s.replace(f'{{{kv[0]}}}', kv[1]),
                        kwargs.items(),
-                       self._instruction_template)
-                if len(kwargs) > 0 else self._instruction_template,
+                       instruction)
+                if len(kwargs) > 0 else instruction,
                 list(input.values())[0] if input else '')
 
     def _check_values(self, instruction, input, history, tools): pass
@@ -206,9 +207,7 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
         input = copy.deepcopy(input)
         if self._pre_hook:
             input, history, tools, label = self._pre_hook(input, history, tools, label)
-        if self._tools:
-            assert tools is None
-            tools = self._tools
+        tools = tools or self._tools
         instruction, input = self._get_instruction_and_input(input, return_dict=return_dict, tools=tools)
         history = self._get_histories(history, return_dict=return_dict)
         tools = self._get_tools(tools, return_dict=return_dict)
