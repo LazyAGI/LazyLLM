@@ -70,7 +70,7 @@ class ReWOOAgent(ModuleBase):
         tool_calls = [{'function': {'name': tool_name, 'arguments': tool_arguments}}]
         result = self._tools_manager(tool_calls)
         locals['_lazyllm_agent']['workspace']['tool_call_trace'].append(
-            {**tool_calls[0], 'tool_call_result': str(result[0])}
+            {**tool_calls[0], 'tool_call_result': result[0]}
         )
         return result[0]
 
