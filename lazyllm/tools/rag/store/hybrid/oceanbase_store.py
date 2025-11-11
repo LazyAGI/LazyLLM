@@ -1,9 +1,12 @@
 import copy
+import json
 import threading
 import traceback
 from contextlib import contextmanager
 from queue import Queue, Empty, Full
 from typing import Dict, List, Union, Optional
+from lazyllm.thirdparty import numpy as np
+import math
 
 from sqlalchemy import create_engine, text
 from sqlalchemy import Column, Integer, String
@@ -18,9 +21,10 @@ from lazyllm import LOG
 from lazyllm.common import override
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc
-from lazyllm.tools.rag.store.store_base import LazyLLMStoreBase, StoreCapability, GLOBAL_META_KEY_PREFIX, EMBED_PREFIX
+from lazyllm.tools.rag.store.store_base import (LazyLLMStoreBase, StoreCapability,
+                                                GLOBAL_META_KEY_PREFIX, EMBED_PREFIX, SegmentType)
 
-# Supported index types mapping
+
 OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES = {
     'HNSW': VecIndexType.HNSW,
     'HNSW_SQ': VecIndexType.HNSW_SQ,
@@ -42,7 +46,7 @@ OCEANBASE_INDEX_TYPE_DEFAULTS = {
 }
 
 
-OB_UPSERT_BATCH_SIZE = 500
+OB_UPSERT_BATCH_SIZE = 1000  # Increased from 500 to match vectorstores.py default
 
 DEFAULT_OCEANBASE_PAGINATION_OFFSET = 1000
 
@@ -84,7 +88,8 @@ class OceanBaseStore(LazyLLMStoreBase):
 
     def __init__(self, uri: str = '127.0.0.1:2881', user: str = 'root@test', password: str = '',
                  db_name: str = 'test', drop_old: bool = False, index_kwargs: Optional[Union[Dict, List]] = None,
-                 client_kwargs: Optional[Dict] = None, max_pool_size: int = 8):
+                 client_kwargs: Optional[Dict] = None, max_pool_size: int = 8, normalize: bool = False,
+                 enable_fulltext_index: bool = False):
         self._uri = uri
         self._user = self._parse_user(user)
         self._password = password
@@ -99,11 +104,19 @@ class OceanBaseStore(LazyLLMStoreBase):
         self._embed_datatypes: Union[Dict[str, DataType], Dict[str, Dict]] = {}
         self._global_metadata_desc: Dict[str, GlobalMetadataDesc] = {}
         self._primary_key = 'uid'
+        self._normalize = normalize
+        self._hnsw_ef_search = {}
+        self._enable_fulltext_index = enable_fulltext_index
 
     @contextmanager
     def _client_context(self) -> ObVecClient:
         c = self._client_pool.acquire()
         try:
+            # Ensure timeout is set for each operation
+            try:
+                c.perform_raw_text_sql("SET SESSION ob_query_timeout = 300000000")  # 300秒
+            except Exception as e:
+                LOG.warning(f'[OceanBaseStore] Failed to set query timeout in context: {e}')
             yield c
         finally:
             self._client_pool.release(c)
@@ -114,6 +127,15 @@ class OceanBaseStore(LazyLLMStoreBase):
             # ObVecClient support vector search only or fulltext search only
             # TODO: enable Hybrid search with HybridSearch()
             c = ObVecClient(uri=self._uri, user=self._user, password=self._password, db_name=self._db_name, **kwargs)
+
+            try:
+                c.perform_raw_text_sql("SET SESSION ob_query_timeout = 300000000")
+                result = c.perform_raw_text_sql("SHOW VARIABLES LIKE 'ob_query_timeout'")
+                if result:
+                    assert result.fetchone() is not None
+            except Exception as e:
+                LOG.warning(f'[OceanBaseStore] Failed to set/verify query timeout: {e}')
+
             LOG.info(f'[OceanBaseStore] Successfully connected to {self._uri}')
             return c
         except Exception as e:
@@ -138,7 +160,12 @@ class OceanBaseStore(LazyLLMStoreBase):
 
     def upsert(self, collection_name: str, data: List[dict], range_part: Optional[RangeListPartInfo] = None, **kwargs) -> bool:  # noqa: C901 E501
         try:
-            if not data: return True
+            if not data:
+                return True
+
+            if not collection_name or not isinstance(collection_name, str):
+                LOG.error('[OceanBaseStore - upsert] Invalid collection_name')
+                return False
 
             all_embed_keys = set()
             for item in data:
@@ -148,29 +175,65 @@ class OceanBaseStore(LazyLLMStoreBase):
             with self._client_context() as client:
                 with self._ddl_lock:
                     if self._drop_old and collection_name not in self._dropped_tables:
+                        LOG.info(f'[OceanBaseStore - upsert] Dropping old table {collection_name}')
                         self._dropped_tables.add(collection_name)
                         client.drop_table_if_exist(collection_name)
                     if not client.check_table_exists(collection_name):
                         embed_kwargs = {}
                         if all_embed_keys:
                             for embed_key in all_embed_keys:
-                                assert self._embed_datatypes.get(embed_key), \
-                                    f'cannot find embedding params for embed [{embed_key}]'
+                                if not self._embed_datatypes.get(embed_key):
+                                    LOG.error(f'[OceanBaseStore - upsert] Cannot find embedding for embed [{embed_key}]')
+                                    return False
+
                                 if embed_key not in embed_kwargs:
                                     embed_kwargs[embed_key] = {
                                         'dtype': self._type2oceanbase[self._embed_datatypes[embed_key]]
                                     }
                                 if self._embed_dims.get(embed_key):
                                     embed_kwargs[embed_key]['dim'] = self._embed_dims[embed_key]
+                                else:
+                                    for item in data:
+                                        if 'embedding' in item and embed_key in item['embedding']:
+                                            emb = item['embedding'][embed_key]
+                                            if isinstance(emb, list) and len(emb) > 0:
+                                                embed_kwargs[embed_key]['dim'] = len(emb)
+                                                break
 
                         self._create_table_and_index(client, collection_name, embed_kwargs, range_part)
 
-                for i in range(0, len(data), OB_UPSERT_BATCH_SIZE):
-                    client.upsert(table_name=collection_name,
-                                  data=[self._serialize_data(d) for d in data[i:i + OB_UPSERT_BATCH_SIZE]])
+                total_inserted = 0
+                failed_batches = []
+
+                serialized_data = [self._serialize_data(d) for d in data]
+
+                for i in range(0, len(serialized_data), OB_UPSERT_BATCH_SIZE):
+                    batch_num = i // OB_UPSERT_BATCH_SIZE + 1
+                    try:
+                        if i == 0 or batch_num % 10 == 0:
+                            try:
+                                client.perform_raw_text_sql("SET SESSION ob_query_timeout = 300000000")
+                            except Exception:
+                                pass
+
+                        batch_data = serialized_data[i:i + OB_UPSERT_BATCH_SIZE]
+                        client.upsert(table_name=collection_name, data=batch_data)
+                        total_inserted += len(batch_data)
+
+                    except Exception as batch_err:
+                        LOG.error(f'[OceanBaseStore - upsert] Failed to insert batch {batch_num}: {batch_err}')
+                        LOG.error(f'[OceanBaseStore - upsert] Error details: {traceback.format_exc()}')
+                        failed_batches.append(batch_num)
+                        continue
+
+                if failed_batches:
+                    LOG.warning(f'[OceanBaseStore - upsert] Failed batches: {failed_batches}')
+                    if total_inserted == 0:
+                        return False
             return True
         except Exception as e:
-            LOG.error(f'[OceanBaseStore - upsert] error: {e}')
+            LOG.error(f'[OceanBaseStore - upsert] Unexpected error: {e}')
+            LOG.error(traceback.format_exc())
             return False
 
     @override
@@ -225,7 +288,6 @@ class OceanBaseStore(LazyLLMStoreBase):
                     else:
                         where_clause = self._construct_where_clause(criteria)
 
-                # If no criteria, need to fetch all data with pagination
                 if ids is None and where_clause is None:
                     return self._get_all_with_pagination(client, collection_name)
 
@@ -290,26 +352,42 @@ class OceanBaseStore(LazyLLMStoreBase):
 
     def search(self, collection_name: str, query_embedding: Union[dict, List[float]], topk: int, filters: Optional[Dict[str, Union[List, set]]] = None, embed_key: Optional[str] = None, filter_str: Optional[str] = '', **kwargs) -> List[dict]:  # noqa: C901 E501
         try:
+            if not collection_name or not isinstance(collection_name, str):
+                LOG.error('[OceanBaseStore - search] Invalid collection_name')
+                return []
+
+            if topk <= 0:
+                LOG.warning(f'[OceanBaseStore - search] Invalid topk: {topk}, must be > 0')
+                return []
+
             with self._client_context() as client:
                 if not client.check_table_exists(collection_name):
+                    LOG.warning(f'[OceanBaseStore - search] Table {collection_name} does not exist')
                     return []
                 if embed_key and embed_key not in self._embed_datatypes:
-                    raise ValueError(f'[OceanBaseStore - search] `embed_key`: {embed_key} not exsits')
+                    LOG.error(f'[OceanBaseStore - search] embed_key: {embed_key} not exists')
+                    return []
 
                 if not embed_key:
                     if self._embed_datatypes:
                         embed_key = next(iter(self._embed_datatypes.keys()))
                         LOG.info(f'[OceanBaseStore - search] No embed_key provided, using default: {embed_key}')
                     else:
-                        raise ValueError('[OceanBaseStore - search] No embedding datatypes available')
+                        LOG.error('[OceanBaseStore - search] No embedding datatypes available')
+                        return []
 
                 where_clause = None
                 if filters or filter_str:
                     filter_parts = []
                     if filters:
-                        filter_expr = self._construct_filter_expr(filters)
-                        if filter_expr:
-                            filter_parts.append(filter_expr)
+                        try:
+                            filter_expr = self._construct_filter_expr(filters)
+                            if filter_expr:
+                                filter_parts.append(filter_expr)
+                        except Exception as filter_err:
+                            LOG.error(f'[OceanBaseStore - search] Failed to construct filter: {filter_err}')
+                            return []
+
                     if filter_str:
                         filter_parts.append(filter_str)
 
@@ -323,19 +401,38 @@ class OceanBaseStore(LazyLLMStoreBase):
                 ):
                     vec_data = query_embedding.get(embed_key)
                     if vec_data is None:
-                        raise ValueError(
-                            f'[OceanBaseStore - search] `embed_key`: {embed_key} not found in query_embedding'
-                        )
+                        LOG.error(f'[OceanBaseStore - search] embed_key: {embed_key} not found in query_embedding')
+                        return []
                 else:
                     vec_data = query_embedding
+
+                if vec_data is None:
+                    LOG.error('[OceanBaseStore - search] Vector data is None')
+                    return []
 
                 if self._embed_datatypes[embed_key] == DataType.SPARSE_FLOAT_VECTOR:
                     if isinstance(vec_data, dict):
                         vec_data = {int(k) if isinstance(k, str) else k: v for k, v in vec_data.items()}
                     distance_func = inner_product
                 else:
+                    if self._normalize and isinstance(vec_data, list):
+                        vec_data = self._normalize_vector(vec_data)
+
                     metric_type = self._get_metric_type_for_embed_key(embed_key)
                     distance_func = self._get_distance_function(metric_type)
+
+                search_params = kwargs.get('search_params', {})
+                index_type = self._get_index_type_for_embed_key(embed_key)
+
+                if index_type in ['HNSW', 'HNSW_SQ']:
+                    ef_search = search_params.get('efSearch', 64)  # Default efSearch
+                    if self._hnsw_ef_search.get(embed_key) != ef_search:
+                        try:
+                            client.set_ob_hnsw_ef_search(ef_search)
+                            self._hnsw_ef_search[embed_key] = ef_search
+                            LOG.info(f'[OceanBaseStore - search] Set efSearch={ef_search} for {embed_key}')
+                        except Exception as e:
+                            LOG.warning(f'[OceanBaseStore - search] Failed to set efSearch: {e}')
 
                 results = client.ann_search(
                     table_name=collection_name,
@@ -351,40 +448,43 @@ class OceanBaseStore(LazyLLMStoreBase):
 
                 res = []
                 if not results:
+                    LOG.info('[OceanBaseStore - search] No results found')
                     return []
 
                 for row in results:
-                    if hasattr(row, '_mapping'):
-                        row_dict = row._mapping
-                        uid = row_dict.get(self._primary_key, '')
-                        score = row_dict.get('distance', 0)
-                    elif isinstance(row, dict):
-                        uid = row.get('id', row.get(self._primary_key, ''))
-                        score = row.get('distance', 0)
-                    elif isinstance(row, (tuple, list)):
-                        if len(row) >= 2:
-                            uid = row[0]
-                            score = row[1]
-                        elif len(row) == 1:
-                            uid = row[0]
-                            score = 0
+                    try:
+                        if hasattr(row, '_mapping'):
+                            row_dict = dict(row._mapping)
+                            score = row_dict.pop('distance', 0)
+                        elif isinstance(row, dict):
+                            row_dict = dict(row)
+                            score = row_dict.pop('distance', 0)
                         else:
+                            LOG.warning(f'[OceanBaseStore - search] Unsupported row type: {type(row)}')
                             continue
-                    else:
+
+                        doc_data = self._deserialize_data(row_dict)
+
+                        if not doc_data.get(self._primary_key):
+                            LOG.warning('[OceanBaseStore - search] Row has no valid uid')
+                            continue
+
+                        doc_data['score'] = float(score)
+                        res.append(doc_data)
+
+                    except Exception as row_err:
+                        LOG.warning(f'[OceanBaseStore - search] Failed to process row: {row_err}')
+                        LOG.warning(traceback.format_exc())
                         continue
 
-                    if uid:
-                        res.append({'uid': uid, 'score': score})
-
+                LOG.info(f'[OceanBaseStore - search] Returning {len(res)} results')
                 return res
         except Exception as e:
-            LOG.error(f'[OceanBaseStore - search] error: {e}')
+            LOG.error(f'[OceanBaseStore - search] Unexpected error: {e}')
             LOG.error(traceback.format_exc())
             return []
 
-    def _create_table_and_index(self, client: ObVecClient, collection_name: str,
-                                embed_kwargs: Dict, partitions: Optional[RangeListPartInfo] = None
-                            ) -> bool:  # noqa: C901
+    def _create_table_and_index(self, client: ObVecClient, collection_name: str, embed_kwargs: Dict, partitions: Optional[RangeListPartInfo] = None) -> bool:  # noqa: C901 E501
         columns = copy.deepcopy(self._constant_columns)
 
         idx_params = client.prepare_index_params()
@@ -396,7 +496,12 @@ class OceanBaseStore(LazyLLMStoreBase):
 
         if isinstance(original_index_kwargs, dict):
             original_index_kwargs = [original_index_kwargs]
+
         for item in original_index_kwargs:
+            if not isinstance(item, dict):
+                LOG.warning(f'[OceanBaseStore - _create_table_and_index] Invalid index_kwargs item: {item}')
+                continue
+
             embed_key = item.get('embed_key', None)
             if not embed_key:
                 has_explicit_fts = True
@@ -416,23 +521,37 @@ class OceanBaseStore(LazyLLMStoreBase):
             self._ensure_params_defaults(item)
             index_kwargs_lookup[embed_key] = item.copy()
             index_kwargs_lookup[embed_key].pop('embed_key', None)
+
         for k, kws in embed_kwargs.items():
             embed_field_name = self._gen_embed_key(k)
             dim = kws.get('dim', None)
-            if not dim and kws.get('dtype') == VECTOR:
-                raise ValueError(f'embedding `{k}` lack of dim parameter')
-            columns.append(
-                Column(embed_field_name, kws['dtype'](dim))
-                if dim else Column(embed_field_name, kws['dtype'])
-            )
+            dtype = kws.get('dtype')
+
+            if not dtype:
+                LOG.error(f'[OceanBaseStore - _create_table_and_index] No dtype specified for embed_key: {k}')
+                raise ValueError(f'No dtype specified for embed_key: {k}')
+
+            if dtype == VECTOR and not dim:
+                raise ValueError(f'Embedding `{k}` lacks dim parameter (required for VECTOR type)')
+
+            if dim:
+                columns.append(Column(embed_field_name, dtype(dim)))
+            else:
+                columns.append(Column(embed_field_name, dtype))
 
             if k in index_kwargs_lookup:
                 index_item = index_kwargs_lookup[k]
-                if kws['dtype'] == VECTOR:
+                index_type_str = index_item.get('index_type', 'HNSW')
+
+                if index_type_str not in OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES:
+                    LOG.warning(f'[OceanBaseStore - _create_table_and_index] Unsupported index type: {index_type_str}')
+                    continue
+
+                if dtype == VECTOR:
                     idx_params.add_index(
                         field_name=embed_field_name,
-                        index_type=OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES[index_item['index_type']],
-                        metric_type=index_item['metric_type'],
+                        index_type=OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES[index_type_str],
+                        metric_type=index_item.get('metric_type', 'l2'),
                         index_name=f'vidx_{k}',
                         params=index_item.get('params', {})
                     )
@@ -443,15 +562,16 @@ class OceanBaseStore(LazyLLMStoreBase):
                         index_name=f'vidx_{k}',
                         metric_type='inner_product',
                     )
+                    LOG.info(f'[OceanBaseStore - _create_table_and_index] Added DAAT index for sparse vector {k}')
 
-        if not has_explicit_fts:
-            fts_idxs.append(
-                FtsIndexParam(
-                    index_name='fts_content',
-                    field_names=['content'],
-                    parser_type=FtsParser.IK,
+            if self._enable_fulltext_index and not has_explicit_fts:
+                fts_idxs.append(
+                    FtsIndexParam(
+                        index_name='fts_content',
+                        field_names=['content'],
+                        parser_type=FtsParser.IK,
+                    )
                 )
-            )
 
         try:
             client.create_table_with_index_params(
@@ -459,14 +579,17 @@ class OceanBaseStore(LazyLLMStoreBase):
                 columns=columns,
                 indexes=None,
                 vidxs=idx_params,
-                fts_idxs=fts_idxs,
+                fts_idxs=fts_idxs if fts_idxs else None,
                 partitions=partitions,
             )
+
+            LOG.info(f'[OceanBaseStore - _create_table_and_index] Table {collection_name} created successfully')
+            return True
+
         except Exception as e:
-            LOG.error(f'[OceanBaseStore - _create_table_and_index] error: {e}')
+            LOG.error(f'[OceanBaseStore - _create_table_and_index] Failed to create table {collection_name}: {e}')
             LOG.error(traceback.format_exc())
             raise e
-        return True
 
     def _get_metric_type_for_embed_key(self, embed_key: str) -> str:
 
@@ -491,41 +614,123 @@ class OceanBaseStore(LazyLLMStoreBase):
         else:
             raise ValueError(f'Unsupported metric type: {metric_type}')
 
+    def _get_index_type_for_embed_key(self, embed_key: str) -> str:
+        if isinstance(self._index_kwargs, dict):
+            index_kwargs_list = [self._index_kwargs]
+        else:
+            index_kwargs_list = self._index_kwargs or []
+
+        for index_kwarg in index_kwargs_list:
+            if index_kwarg.get('embed_key') == embed_key:
+                return index_kwarg.get('index_type', 'HNSW').upper()
+        return 'HNSW'
+
+    def _normalize_vector(self, vector: List[float]) -> List[float]:
+        try:
+            arr = np.array(vector)
+            norm = np.linalg.norm(arr)
+            if norm > 0:
+                arr = arr / norm
+            return arr.tolist()
+        except ImportError:
+            norm = math.sqrt(sum(x * x for x in vector))
+            if norm > 0:
+                return [x / norm for x in vector]
+            return vector
+
     def _serialize_data(self, d: dict) -> dict:
+        meta = d.get('meta', {})
+        meta_str = meta if isinstance(meta, str) else json.dumps(meta, ensure_ascii=False) if meta else '{}'
+
+        image_keys = d.get('image_keys', [])
+        image_keys_str = (
+            image_keys if isinstance(image_keys, str)
+            else json.dumps(image_keys, ensure_ascii=False) if image_keys
+            else '[]'
+        )
+
+        excluded_embed = d.get('excluded_embed_metadata_keys', [])
+        excluded_embed_str = (
+            excluded_embed if isinstance(excluded_embed, str)
+            else json.dumps(excluded_embed, ensure_ascii=False) if excluded_embed
+            else '[]'
+        )
+
+        excluded_llm = d.get('excluded_llm_metadata_keys', [])
+        excluded_llm_str = (
+            excluded_llm if isinstance(excluded_llm, str)
+            else json.dumps(excluded_llm, ensure_ascii=False) if excluded_llm
+            else '[]'
+        )
+
         res = {
-            self._primary_key: d.get(self._primary_key, '')
+            self._primary_key: d.get(self._primary_key, ''),
+            'doc_id': d.get('doc_id', ''),
+            'group': d.get('group', ''),
+            'content': d.get('content', ''),
+            'meta': meta_str,
+            'type': d.get('type', SegmentType.TEXT.value),
+            'number': d.get('number', 0),
+            'kb_id': d.get('kb_id', ''),
+            'parent': d.get('parent', ''),
+            'answer': d.get('answer', ''),
+            'image_keys': image_keys_str,
+            'excluded_embed_metadata_keys': excluded_embed_str,
+            'excluded_llm_metadata_keys': excluded_llm_str,
         }
-        # content is reserved for fulltext index
-        if 'content' in d:
-            res['content'] = d['content']
+
         for embed_key, value in d.get('embedding', {}).items():
-            # Convert sparse vector dict keys from str to int if needed
             if self._embed_datatypes.get(embed_key) == DataType.SPARSE_FLOAT_VECTOR:
                 if isinstance(value, dict):
-                    # Convert string keys to integers for sparse vectors
                     value = {int(k) if isinstance(k, str) else k: v for k, v in value.items()}
+            else:
+                if self._normalize and isinstance(value, list):
+                    value = self._normalize_vector(value)
+
             res[self._gen_embed_key(embed_key)] = value
         global_meta = d.get('global_meta', {})
         for name, desc in self._global_metadata_desc.items():
             value = global_meta.get(name, desc.default_value)
             if value is not None:
                 res[self._gen_global_meta_key(name)] = value
+
         return res
 
     def _deserialize_data(self, d: dict) -> dict:
         res = {
             self._primary_key: d.get(self._primary_key, ''),
+            'doc_id': d.get('doc_id', ''),
+            'group': d.get('group', ''),
+            'content': d.get('content', ''),
+            'meta': json.loads(d.get('meta', '{}')) if isinstance(d.get('meta'), str) else (d.get('meta') or {}),
+            'type': d.get('type', SegmentType.TEXT.value),
+            'number': d.get('number', 0),
+            'kb_id': d.get('kb_id', ''),
+            'parent': d.get('parent', ''),
+            'answer': d.get('answer', ''),
+            'image_keys': (
+                json.loads(d.get('image_keys', '[]')) if isinstance(d.get('image_keys'), str)
+                else (d.get('image_keys') or [])
+            ),
+            'excluded_embed_metadata_keys': (
+                json.loads(d.get('excluded_embed_metadata_keys', '[]')) if isinstance(d.get('excluded_embed_metadata_keys'), str)  # noqa: E501
+                else (d.get('excluded_embed_metadata_keys') or [])
+            ),
+            'excluded_llm_metadata_keys': (
+                json.loads(d.get('excluded_llm_metadata_keys', '[]')) if isinstance(d.get('excluded_llm_metadata_keys'), str)  # noqa: E501
+                else (d.get('excluded_llm_metadata_keys') or [])
+            ),
             'embedding': {},
             'global_meta': {}
         }
-        if 'content' in d:
-            res['content'] = d['content']
+
         for k, v in d.items():
             if k.startswith(EMBED_PREFIX):
                 res['embedding'][k[len(EMBED_PREFIX):]] = v
             elif k.startswith(GLOBAL_META_KEY_PREFIX):
                 meta_key = k[len(GLOBAL_META_KEY_PREFIX):]
                 res['global_meta'][meta_key] = v
+
         return res
 
     def _gen_global_meta_key(self, k: str) -> str:
@@ -588,7 +793,18 @@ class OceanBaseStore(LazyLLMStoreBase):
         }
         self._builtin_keys = {
             'uid': {'dtype': String(512), 'primary_key': True, 'autoincrement': False},
-            'content': {'dtype': LONGTEXT}
+            'doc_id': {'dtype': String(512)},
+            'group': {'dtype': String(512)},
+            'content': {'dtype': LONGTEXT},
+            'meta': {'dtype': LONGTEXT},  # JSON string
+            'type': {'dtype': Integer},
+            'number': {'dtype': Integer},
+            'kb_id': {'dtype': String(512)},
+            'parent': {'dtype': String(512)},
+            'answer': {'dtype': LONGTEXT},
+            'image_keys': {'dtype': LONGTEXT},  # JSON string list
+            'excluded_embed_metadata_keys': {'dtype': LONGTEXT},  # JSON string list
+            'excluded_llm_metadata_keys': {'dtype': LONGTEXT},  # JSON string list
         }
         self._constant_columns = self._get_constant_columns()
 
@@ -617,14 +833,17 @@ class OceanBaseStore(LazyLLMStoreBase):
             itype_up = str(itype).upper()
             index_item['index_type'] = itype_up
         else:
-            raise ValueError(f'cannot find `index_type` in `index_kwargs` of `{index_item}`')
+            LOG.error(f'[OceanBaseStore] Cannot find `index_type` in index_kwargs: {index_item}')
+            raise ValueError(f'Cannot find `index_type` in `index_kwargs` of `{index_item}`')
 
         defaults = OCEANBASE_INDEX_TYPE_DEFAULTS.get(index_item['index_type'], None)
         if defaults is None:
+            LOG.error(f'[OceanBaseStore] Unsupported index type: {index_item["index_type"]}')
             raise ValueError(f'[OceanBase Store] Unsupported index type: {index_item["index_type"]}')
 
         if 'metric_type' not in index_item and 'metric_type' in defaults:
             index_item['metric_type'] = defaults['metric_type']
+            LOG.info(f'[OceanBaseStore] Using default metric_type: {defaults["metric_type"]}')
 
         default_params = defaults.get('params', {})
         if 'params' not in index_item or index_item.get('params') is None:
@@ -671,32 +890,50 @@ class OceanBaseStore(LazyLLMStoreBase):
         combined_filter = ' and '.join(filter_parts)
         return [text(combined_filter)]
 
-    def _construct_filter_expr(self, filters: Dict[str, Union[List, set]]) -> str:
+    def _construct_filter_expr(self, filters: Dict[str, Union[List, set]]) -> str:  # noqa: C901
         if not filters:
             return ''
 
         filter_parts = []
         for key, value in filters.items():
-            if key not in self._global_metadata_desc.keys():
-                continue
-
-            field_name = self._gen_global_meta_key(key)
-
-            if isinstance(value, (list, set)):
-                value_list = list(value)
-                if not value_list:
+            try:
+                if key not in self._global_metadata_desc.keys():
+                    LOG.debug(f'[OceanBaseStore - _construct_filter_expr] Skipping unknown key: {key}')
                     continue
-                if isinstance(value_list[0], str):
-                    values_str = ', '.join(f'"{v}"' for v in value_list)
+
+                field_name = self._gen_global_meta_key(key)
+
+                if isinstance(value, (list, set)):
+                    value_list = list(value)
+                    if not value_list:
+                        continue
+
+                    if isinstance(value_list[0], str):
+                        escaped_values = [v.replace('"', '\\"') for v in value_list]
+                        values_str = ', '.join(f'"{v}"' for v in escaped_values)
+                    else:
+                        values_str = ', '.join(str(v) for v in value_list)
+
+                    filter_parts.append(f'{field_name} in ({values_str})')
+
+                elif isinstance(value, str):
+                    escaped_value = value.replace('"', '\\"')
+                    filter_parts.append(f'{field_name} = "{escaped_value}"')
+
+                elif isinstance(value, (int, float)):
+                    filter_parts.append(f'{field_name} = {value}')
+
+                elif isinstance(value, bool):
+                    filter_parts.append(f'{field_name} = {1 if value else 0}')
+
                 else:
-                    values_str = ', '.join(str(v) for v in value_list)
-                filter_parts.append(f'{field_name} in ({values_str})')
-            elif isinstance(value, str):
-                filter_parts.append(f'{field_name} = "{value}"')
-            elif isinstance(value, (int, float)):
-                filter_parts.append(f'{field_name} = {value}')
-            else:
-                LOG.warning(f'[OceanBaseStore] Unsupported filter value type: {type(value)} for key: {key}')
+                    continue
+
+            except Exception as e:
+                LOG.warning(f'[OceanBaseStore - _construct_filter_expr] Error processing filter {key}={value}: {e}')
                 continue
 
-        return ' and '.join(filter_parts)
+        result = ' and '.join(filter_parts)
+        if result:
+            LOG.debug(f'[OceanBaseStore - _construct_filter_expr] Filter expression: {result}')
+        return result
