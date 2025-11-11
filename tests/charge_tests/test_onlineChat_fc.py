@@ -15,7 +15,7 @@ def exe_onlinechat_chat(request):
     query = params.get('query', '')
     if not query:
         raise ValueError(f'query: {query} cannot be empty.')
-    sources = ['kimi', 'glm', 'qwen', 'sensenova']
+    sources = ['kimi', 'glm', 'qwen']
     if source is None or source not in sources:
         raise ValueError(f'The source {source} field must contain the value in the list {sources}')
     if model:
@@ -38,7 +38,7 @@ def exe_onlinechat_single_function_call(request):
     query = params.get('query', '')
     if not query or not tools:
         raise ValueError(f'query: {query} and tools cannot be empty.')
-    sources = ['kimi', 'glm', 'qwen', 'sensenova']
+    sources = ['kimi', 'glm', 'qwen']
     if source is None or source not in sources:
         raise ValueError(f'The source {source} field must contain the value in the list {sources}')
     if model:
@@ -62,7 +62,7 @@ def exe_onlinechat_parallel_function_call(request):
     query = params.get('query', '')
     if not query or not tools:
         raise ValueError(f'query: {query} and tools: {tools} cannot be empty.')
-    sources = ['kimi', 'glm', 'qwen', 'sensenova']
+    sources = ['kimi', 'glm', 'qwen']
     if source is None or source not in sources:
         raise ValueError(f'The source {source} field must contain the value in the list {sources}')
     if model:
@@ -89,7 +89,7 @@ def exe_onlinechat_advance_agent(request):
         raise ValueError(f'query: {query} and tools: {tools} cannot be empty.')
     if Agent is None:
         raise ValueError(f'Agent: {Agent} must be a valid value.')
-    sources = ['kimi', 'glm', 'qwen', 'sensenova']
+    sources = ['kimi', 'glm', 'qwen']
     if source is None or source not in sources:
         raise ValueError(f'The source {source} field must contain the value in the list {sources}')
     if model:
@@ -110,13 +110,13 @@ tools = ['get_current_weather', 'get_n_day_weather_forecast']
 squery = 'What\'s the weather like today in celsius in Tokyo.'
 mquery = 'What\'s the weather like today in celsius in Tokyo and Paris.'
 agentQuery = 'What is 20+(2*4)? Calculate step by step '
-models = ['kimi', 'glm', 'qwen', 'sensenova']
+models = ['kimi', 'glm', 'qwen']
 rewooquery = 'What is the name of the cognac house that makes the main ingredient in The Hennchata?'
 
 @pytest.mark.skip_on_linux
 class TestOnlineChatFunctionCall(object):
     @pytest.mark.parametrize('exe_onlinechat_chat',
-                             [{'source': 'sensenova', 'model': 'SenseChat-Turbo', 'query': squery}],
+                             [{'source': 'qwen', 'query': squery}],
                              indirect=True)
     def test_onlinechat_chat(self, exe_onlinechat_chat):
         ret = exe_onlinechat_chat
@@ -128,7 +128,7 @@ class TestOnlineChatFunctionCall(object):
                              indirect=True)
     def test_onlinechat_single_function_call(self, exe_onlinechat_single_function_call):
         ret = exe_onlinechat_single_function_call
-        assert isinstance(ret, list)
+        assert isinstance(ret, dict)
 
     @pytest.mark.parametrize('exe_onlinechat_parallel_function_call',
                              [{'source': 'kimi', 'tools': tools, 'query': mquery}],
