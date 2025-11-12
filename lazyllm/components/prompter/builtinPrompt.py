@@ -120,11 +120,11 @@ class LazyLLMPrompterBase(metaclass=LazyLLMRegisterMetaClass):
                 raise NotImplementedError('Cannot transform json history to {type(history[0])} now')
 
     def _get_instruction_and_input(self, input, *, return_dict=False, tools=None):
+        instruction = self._instruction_template
         fc_prompt = '' if return_dict or not tools else FC_PROMPT
-        if FC_PROMPT_PLACEHOLDER in self._instruction_template:
-            instruction = self._instruction_template.replace(FC_PROMPT_PLACEHOLDER, fc_prompt)
-        else:
-            instruction = self._instruction_template + '\n\n' + fc_prompt
+        if fc_prompt and FC_PROMPT_PLACEHOLDER not in instruction:
+            instruction = f'{instruction}\n\n{fc_prompt}'
+        instruction = instruction.replace(FC_PROMPT_PLACEHOLDER, fc_prompt)
         instruction = self._handle_tool_call_instruction(instruction, tools)
         prompt_keys = list(set(re.findall(r'\{(\w+)\}', instruction)))
         if isinstance(input, (str, int)):
