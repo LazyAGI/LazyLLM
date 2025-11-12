@@ -22,7 +22,7 @@ def post_func_sample(task_id: str, task_status: str, error_code: str = None, err
     })
     return True
 
-# @unittest.skip('For local test')
+@unittest.skip('For local test')
 class TestDocProcessor(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
