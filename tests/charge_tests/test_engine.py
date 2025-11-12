@@ -88,7 +88,7 @@ class TestEngine(unittest.TestCase):
 
     def test_fc(self):
         resources = [
-            dict(id='0', kind='LLM', name='llm', args=dict(source='glm', type='online')),
+            dict(id='0', kind='LLM', name='llm', args=dict(source='qwen', type='online')),
             dict(id='1001', kind='Code', name='get_current_weather',
                  args=(dict(code=get_current_weather_code,
                             vars_for_code=get_current_weather_vars))),

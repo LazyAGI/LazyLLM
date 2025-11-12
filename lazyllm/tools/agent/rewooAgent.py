@@ -10,16 +10,13 @@ P_PROMPT_PREFIX = ('For the following tasks, make plans that can solve the probl
                    'later tools. (Plan, #E1, Plan, #E2, Plan, #E3...) \n\n')
 
 P_FEWSHOT = '''For example,
-Task: Thomas, Toby, and Rebecca worked a total of 157 hours in one week. Thomas worked x
-hours. Toby worked 10 hours less than twice what Thomas worked, and Rebecca worked 8 hours
-less than Toby. How many hours did Rebecca work?
-Plan: Given Thomas worked x hours, translate the problem into algebraic expressions and solve
-with Wolfram Alpha.
-#E1 = WolframAlpha[Solve x + (2x − 10) + ((2x − 10) − 8) = 157]
-Plan: Find out the number of hours Thomas worked.
-#E2 = LLM[What is x, given #E1]
-Plan: Calculate the number of hours Rebecca worked.
-#E3 = Calculator[(2 ∗ #E2 − 10) − 8]'''
+Task: We are planning to visit the capital city of China this week. What clothing should we wear for the trip?
+Plan: First, search for the capital city of China.
+#E1 = search[{"query": "What\'s the capital city of China?"}]
+Plan: Next, obtain the weather forecast for this week in the capital city of China.
+#E2 = weather[{"location": "#E1", "days": 7}]
+Plan: Finally, use a language model to generate clothing recommendations based on the weekly weather.
+#E3 = llm[{"input": "Using the 7-day forecast in #E2, provide clothing suggestions for visiting #E1 this week."}]'''
 
 P_PROMPT_SUFFIX = '''Begin! Describe your plans with rich details. Each Plan should be followed by only one #E,
 and the params_dict is the input of the tool, should be a valid json string wrapped in [],
