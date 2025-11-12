@@ -88,7 +88,6 @@ class MarkdownSplitter(_TextSplitterBase):
         return results
 
     def _keep_images(self, splits: List[_MdSplit]) -> List[_MdSplit]:
-<<<<<<< HEAD
         pattern = re.compile(
             r'!\[([^\]]*)\]\(([^\)]+)\)',
             re.MULTILINE
@@ -114,15 +113,6 @@ class MarkdownSplitter(_TextSplitterBase):
         results = self._keep_elements(splits, pattern, 'list')
 
         return results
-=======
-        pass
-
-    def _keep_links(self, splits: List[_MdSplit]) -> List[_MdSplit]:
-        pass
-
-    def _keep_lists(self, splits: List[_MdSplit]) -> List[_MdSplit]:
-        pass
->>>>>>> 55c88e9 (modification as comment)
 
     def _get_heading_level(self, line: str) -> int:
         '''
@@ -178,11 +168,7 @@ class MarkdownSplitter(_TextSplitterBase):
             ))
         return results
 
-<<<<<<< HEAD
     def _keep_elements(self, splits: List[_MdSplit], pattern: re.Pattern, type: str) -> List[_MdSplit]:
-=======
-    def keep_elements(self, splits: List[_MdSplit], pattern: re.Pattern, type: str) -> List[_MdSplit]:
->>>>>>> 55c88e9 (modification as comment)
         results = []
 
         for split in splits:
@@ -317,11 +303,7 @@ class MarkdownSplitter(_TextSplitterBase):
         result.insert(0, self._to_docnode(end_split))
         return result
 
-<<<<<<< HEAD
     def _to_docnode(self, split: _MdSplit) -> DocNode:
-=======
-    def to_docnode(self, split: _MdSplit) -> DocNode:
->>>>>>> 55c88e9 (modification as comment)
         metadata = {
             'path': split.path if self.keep_trace else None,
             'level': split.level,

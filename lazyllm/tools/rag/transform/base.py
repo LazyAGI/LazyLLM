@@ -27,10 +27,31 @@ class _Split:
     token_size: int
 
 def split_text_keep_separator(text: str, separator: str) -> List[str]:
-    '''Split text and keep the separator.'''
-    parts = text.split(separator)
-    result = [separator + s if i > 0 else s for i, s in enumerate(parts)]
-    return result[1:] if len(result) > 0 and not result[0] else result
+    if not separator:
+        return [text] if text else []
+
+    if separator not in text:
+        return [text]
+
+    result = []
+    start = 0
+    sep_len = len(separator)
+
+    while start < len(text):
+        idx = text.find(separator, start)
+
+        if idx == -1:
+            result.append(text[start:])
+            break
+
+        if idx == 0:
+            start = sep_len
+            continue
+
+        result.append(text[start:idx + sep_len])
+        start = idx + sep_len
+
+    return result
 
 
 class NodeTransform(ABC):
