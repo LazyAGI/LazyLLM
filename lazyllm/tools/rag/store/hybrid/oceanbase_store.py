@@ -7,15 +7,9 @@ from queue import Queue, Empty, Full
 from typing import Dict, List, Union, Optional
 from lazyllm.thirdparty import numpy as np
 import math
+from lazyllm.thirdparty import sqlalchemy
 
-from sqlalchemy import create_engine, text
-from sqlalchemy import Column, Integer, String
-from sqlalchemy.dialects.mysql import TEXT, LONGTEXT
-
-from pyobvector import ObVecClient, ARRAY, VECTOR, SPARSE_VECTOR, RangeListPartInfo
-from pyobvector.client.index_param import VecIndexType
-from pyobvector.client.fts_index_param import FtsIndexParam, FtsParser
-from pyobvector import inner_product, l2_distance, cosine_distance
+from lazyllm.thirdparty import pyobvector
 
 from lazyllm import LOG
 from lazyllm.common import override
@@ -24,6 +18,25 @@ from ...global_metadata import GlobalMetadataDesc
 from ..store_base import (LazyLLMStoreBase, StoreCapability,
                           GLOBAL_META_KEY_PREFIX, EMBED_PREFIX, SegmentType)
 
+ObVecClient = pyobvector.ObVecClient
+ARRAY = pyobvector.ARRAY
+VECTOR = pyobvector.VECTOR
+SPARSE_VECTOR = pyobvector.SPARSE_VECTOR
+RangeListPartInfo = pyobvector.RangeListPartInfo
+VecIndexType = pyobvector.client.index_param.VecIndexType
+FtsIndexParam = pyobvector.client.fts_index_param.FtsIndexParam
+FtsParser = pyobvector.client.fts_index_param.FtsParser
+inner_product = pyobvector.inner_product
+l2_distance = pyobvector.l2_distance
+cosine_distance = pyobvector.cosine_distance
+
+create_engine = sqlalchemy.create_engine
+text = sqlalchemy.text
+Column = sqlalchemy.Column
+Integer = sqlalchemy.Integer
+String = sqlalchemy.String
+TEXT = sqlalchemy.dialects.mysql.TEXT
+LONGTEXT = sqlalchemy.dialects.mysql.LONGTEXT
 
 OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES = {
     'HNSW': VecIndexType.HNSW,
