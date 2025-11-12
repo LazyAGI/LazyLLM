@@ -10,6 +10,12 @@
   - Great Writer: Cookbook/great_writer.md
   - RAG: Cookbook/rag.md
   - Streaming: Cookbook/streaming.md
+  - Bocha Search Agent: Cookbook/bocha_search.md
+  - Voice Assistant: Cookbook/voice_assistant.md
+  - API Interaction: Cookbook/API_Interaction_Agent_demo.md
+  - Adaptive Tool-Calling: Cookbook/flex_agent.md
+  - Chat With History: Cookbook/rag_nloop.md
+  - Multi-modal Output Agent: Cookbook/multi_modal_output_agent.md
 - Best Practice:
   - Flow: Best Practice/flow.md
   - Flowapp: Best Practice/flowapp.md
@@ -32,6 +38,8 @@
   - Configs: API Reference/configs.md
   - Launcher: API Reference/launcher.md
   - Hook: API Reference/hook.md
+  - patch: API Reference/patch.md
+  - Prompt: API Reference/prompt_template.md
 - Tutorials:
   - Overview: Tutorial/index.md
   # - 1. RAG Fundamentals: Tutorial/1.md

@@ -80,7 +80,7 @@ class FlagembeddingFinetune(LazyLLMFinetuneBase):
             target_path,
             launcher=launcher,
         )
-        if model_type == 'reranker':
+        if model_type == 'rerank':
             self.kw = copy.deepcopy(self.defatult_rerank_kw)
             self.store_true_kw = copy.deepcopy(self.store_true_rerank_kw)
             self.module_run_path = 'FlagEmbedding.finetune.reranker.encoder_only.base'
