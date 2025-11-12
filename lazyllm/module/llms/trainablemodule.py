@@ -351,10 +351,10 @@ class TrainableModule(UrlModule):
             self._openai_module.formatter(format)
         return self
 
-    def share(self, **kwargs):
-        new = super(__class__, self).share(**kwargs)
+    def share(self, *args, **kwargs):
+        new = super(__class__, self).share(*args, **kwargs)
         if hasattr(self, '_openai_module'):
-            new._openai_module = self._openai_module.share(**kwargs)
+            new._openai_module = self._openai_module.share(*args, **kwargs)
         return new
 
     def _loads_str(self, text: str) -> Union[str, Dict]:
