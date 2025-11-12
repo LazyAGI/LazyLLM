@@ -27,6 +27,21 @@ class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
     def _set_chat_url(self):
         self._url = urljoin(self._base_url, 'chat/completions')
 
+    def _validate_api_key(self):
+        '''Validate API Key by sending a minimal request'''
+        try:
+            # SiliconFlow validates API key using a minimal chat request
+            models_url = urljoin(self._base_url, 'models')
+            headers = {
+                'Authorization': f'Bearer {self._api_key}',
+                'Content-Type': 'application/json'
+            }
+            response = requests.get(models_url, headers=headers, timeout=10)
+            return response.status_code == 200
+        except Exception:
+            return False
+
+
 class SiliconFlowEmbedding(OnlineEmbeddingModuleBase):
     def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/embeddings',
                  embed_model_name: str = 'BAAI/bge-large-zh-v1.5', api_key: str = None,
@@ -36,37 +51,26 @@ class SiliconFlowEmbedding(OnlineEmbeddingModuleBase):
 
 
 class SiliconFlowReranking(OnlineEmbeddingModuleBase):
-    def __init__(self, rerank_url: str = 'https://api.siliconflow.cn/v1/rerank',
-                 rerank_model_name: str = 'BAAI/bge-reranker-v2-m3', api_key: str = None, **kw):
-        super().__init__('SILICONFLOW', rerank_url, api_key or lazyllm.config['siliconflow_api_key'],
-                         rerank_model_name, **kw)
-        self._rerank_model_name = rerank_model_name
+    def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/rerank',
+                 embed_model_name: str = 'BAAI/bge-reranker-v2-m3', api_key: str = None, **kw):
+        super().__init__('SILICONFLOW', embed_url, api_key or lazyllm.config['siliconflow_api_key'],
+                         embed_model_name, **kw)
 
-    def _encapsulated_data(self, input: Union[List, str], **kwargs) -> Dict:
-        if isinstance(input, str):
-            raise ValueError('Rerank requires both query and documents')
-
-        if isinstance(input, list) and len(input) == 2:
-            query = input[0]
-            documents = input[1]
-        elif isinstance(input, dict):
-            query = input.get('query', '')
-            documents = input.get('documents', [])
-        else:
-            raise ValueError("Input must be a list [query, documents] or dict with 'query' and 'documents' keys")
-
+    def _encapsulated_data(self, query: str, documents: List[str], top_n: int, **kwargs) -> Dict:
         json_data = {
-            'model': self._rerank_model_name,
+            'model': self._embed_model_name,
             'query': query,
-            'documents': documents
+            'documents': documents,
+            'top_n': top_n
         }
         if len(kwargs) > 0:
             json_data.update(kwargs)
-
         return json_data
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Dict]:
-        return response.get('results', [])
+        results = response.get('results', [])
+        return [(result['index'], result['relevance_score']) for result in results]
+
 
 class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     MODEL_NAME = 'Qwen/Qwen-Image'

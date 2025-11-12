@@ -1362,28 +1362,59 @@ Args:
 ''')
 
 add_chinese_doc('rag.readers.MineruPDFReader', '''\
-用于通过 MinerU 服务解析 PDF 文件内容的模块。支持上传文件或通过 URL 方式调用解析接口，解析结果经过回调函数处理成文档节点列表。
+基于Mineru服务的PDF解析器，通过调用Mineru服务的API来解析PDF文件，支持丰富的文档结构识别。
 
 Args:
-    url (str): MineruPDFReader 服务的接口 URL。
-    upload_mode (bool): 是否采用文件上传模式调用接口，默认为 False，即通过 JSON 请求文件路径。
-    extract_table (bool): 是否提取表格，默认为 True。
-    extract_formula (bool): 是否提取公式，默认为 True。
-    split_doc (bool): 是否分割文档，默认为 True。
-    post_func (Optional[Callable]): 后处理函数。
+    url (str): Mineru服务的完整API端点URL。
+    backend (str, optional): 解析引擎类型。可选值：
+        - 'pipeline': 标准处理流水线
+        - 'vlm-transformers': 基于Transformers的视觉语言模型
+        - 'vlm-vllm-async-engine': 基于异步VLLM的视觉语言模型
+        默认为 'pipeline'。
+    upload_mode (bool, optional): 文件传输模式。
+        - True: 使用multipart/form-data上传文件内容
+        - False: 通过文件路径传递（需确保服务端可访问该路径）
+        默认为 False。
+    extract_table (bool, optional): 是否提取表格内容并转换为Markdown格式。默认为 True。
+    extract_formula (bool, optional): 是否提取公式文本。
+        - True: 提取为LaTeX等文本格式
+        - False: 将公式保留为图片
+        默认为 True。
+    split_doc (bool, optional): 是否将文档分割为多个DocNode节点。默认为 True。
+    clean_content (bool, optional): 是否清理冗余内容（页眉、页脚、页码等）。默认为 True。
+    post_func (Optional[Callable[[List[DocNode]], Any]], optional): 后处理函数，
+        接收DocNode列表作为参数，用于自定义结果处理。默认为 None。
 ''')
 
 add_english_doc('rag.readers.MineruPDFReader', '''\
-Module to parse PDF content via the MineruPDFReader service. Supports file upload or URL-based parsing, with a callback to process the parsed elements into document nodes.
+Reader for PDF files by calling the Mineru service's API.
 
 Args:
-    url (str): The MineruPDFReader service API URL.
-    upload_mode (bool): Whether to use file upload mode for the API call. Default is False, meaning JSON request with file path.
-    extract_table (bool): Whether to extract tables. Default is True.
-    extract_formula (bool): Whether to extract formulas. Default is True.
-    split_doc (bool): Whether to split the document. Default is True.
-    post_func (Optional[Callable]): Post-processing function.
+    url (str): The complete API endpoint URL for the Mineru service.
+    backend (str, optional): Type of parsing engine. Available options:
+        - 'pipeline': Standard processing pipeline
+        - 'vlm-transformers': Vision-language model based on Transformers
+        - 'vlm-vllm-async-engine': Vision-language model based on async VLLM engine
+        Defaults to 'pipeline'.
+    upload_mode (bool, optional): File transfer mode.
+        - True: Upload file content using multipart/form-data
+        - False: Pass by file path (ensure the server can access the path)
+        Defaults to False.
+    extract_table (bool, optional): Whether to extract table content and convert 
+        to Markdown format. Defaults to True.
+    extract_formula (bool, optional): Whether to extract formula text.
+        - True: Extract as text format (e.g., LaTeX)
+        - False: Keep formulas as images
+        Defaults to True.
+    split_doc (bool, optional): Whether to split the document into multiple 
+        DocNode nodes. Defaults to True.
+    clean_content (bool, optional): Whether to clean redundant content 
+        (headers, footers, page numbers, etc.). Defaults to True.
+    post_func (Optional[Callable[[List[DocNode]], Any]], optional): Post-processing 
+        function that takes a list of DocNodes as input for custom result handling. 
+        Defaults to None.
 ''')
+
 
 add_chinese_doc('rag.readers.MarkdownReader', '''\
 用于读取和解析 Markdown 文件的模块。支持去除超链接和图片，按标题和内容将 Markdown 划分成若干文本段落节点。
@@ -2198,6 +2229,48 @@ Args:
 
 **Returns:**\n
 - List[dict]: List of search results.
+add_chinese_doc('rag.store.hybrid.sensecore_store.SenseCoreStore', '''\
+SenseCore 混合存储实现，继承自 LazyLLMStoreBase，提供基于 SenseCore 平台的文档存储和检索功能。  
+该类支持文档的序列化存储、多模态内容处理、混合搜索等功能，通过 S3 存储和 SenseCore API 实现高效的文档管理。
+
+功能特性:
+    - 支持全功能存储能力（StoreCapability.ALL），包括插入、删除、查询、搜索等操作。
+    - 自动处理图像内容，将本地图像上传到 S3 存储并生成访问链接。
+    - 支持多模态搜索，包括文本和图像混合查询。
+    - 提供文档序列化和反序列化功能，支持复杂数据结构存储。
+    - 支持批量操作和异步任务处理，提高存储效率。
+    - 集成 S3 存储和 SenseCore API，实现云端文档管理。
+
+Args:
+    uri (str): SenseCore 服务的 API 地址，默认为空字符串。
+    **kwargs: 其他配置参数，包括 s3_config 和 image_url_config。
+
+配置参数:
+    s3_config (dict): S3 存储配置，包含 bucket_name、access_key、secret_access_key 等。
+    image_url_config (dict): 图像 URL 生成配置，用于多模态搜索。
+
+''')
+
+add_english_doc('rag.store.hybrid.sensecore_store.SenseCoreStore', '''\
+SenseCore hybrid storage implementation, inheriting from LazyLLMStoreBase, providing document storage and retrieval functionality based on the SenseCore platform.  
+This class supports document serialization storage, multimodal content processing, hybrid search, and other features, implementing efficient document management through S3 storage and SenseCore API.
+
+Key Features:
+    - Supports full storage capabilities (StoreCapability.ALL), including insert, delete, query, search operations.
+    - Automatically handles image content, uploading local images to S3 storage and generating access links.
+    - Supports multimodal search, including text and image hybrid queries.
+    - Provides document serialization and deserialization functionality, supporting complex data structure storage.
+    - Supports batch operations and asynchronous task processing for improved storage efficiency.
+    - Integrates S3 storage and SenseCore API for cloud-based document management.
+
+Args:
+    uri (str): SenseCore service API address, defaults to empty string.
+    **kwargs: Additional configuration parameters, including s3_config and image_url_config.
+
+Configuration Parameters:
+    s3_config (dict): S3 storage configuration, including bucket_name, access_key, secret_access_key, etc.
+    image_url_config (dict): Image URL generation configuration for multimodal search.
+
 ''')
 
 add_chinese_doc('rag.default_index.DefaultIndex', '''\ 
@@ -2729,6 +2802,32 @@ Args:
     score: 相似度得分
 ''')
 
+add_chinese_doc('rag.doc_node.DocNode.set_embedding', """\
+设置文档节点的嵌入向量。
+
+为文档节点设置指定键的嵌入向量值，用于后续的检索和相似度计算。
+
+Args:
+    embed_key (str): 嵌入向量的键名
+    embed_value: 嵌入向量的值
+
+Returns:
+    None
+""")
+
+add_english_doc('rag.doc_node.DocNode.set_embedding', """\
+Set embedding vector for document node.
+
+Set the embedding vector value for specified key in document node, used for subsequent retrieval and similarity calculation.
+
+Args:
+    embed_key (str): Key name of the embedding vector
+    embed_value: Value of the embedding vector
+
+Returns:
+    None
+""")
+
 add_chinese_doc('rag.doc_processor.DocumentProcessor', """
 文档处理器类，用于管理文档的添加、删除和更新操作。
 
@@ -2961,6 +3060,113 @@ Args:
 - List[DocNode]: List of parsed documents extracted from the file.
 ''')
 
+add_chinese_doc('rag.dataReader.SimpleDirectoryReader.find_extractor_by_file', '''
+根据文件名或后缀从文件读取器映射中选择合适的提取器（extractor）。
+
+该函数首先尝试使用文件后缀进行直接匹配（如 `*.txt`），
+若未命中，则会遍历 `file_extractor` 的模式键（如 `*.json`, `**/docs/*.md`），
+使用 `fnmatch` 进行模糊匹配，找到最符合的读取器。
+如果没有匹配项，将返回默认读取器 `DefaultReader`。
+
+Args:
+    input_file (Path): 输入文件路径。
+    file_extractor (Dict[str, Callable]): 文件模式到提取器的映射表。
+    pathm (PurePath): 路径处理模块，用于生成匹配模式，默认使用 `Path`。
+
+**Returns:**\n
+- Callable: 与文件匹配的提取器函数，若无匹配则返回 `DefaultReader`。
+''')
+
+add_english_doc('rag.dataReader.SimpleDirectoryReader.find_extractor_by_file', '''
+Select the appropriate file extractor based on filename or suffix.
+
+This function first attempts to match by file extension (e.g., `*.txt`),
+and if no match is found, it iterates through the `file_extractor` mapping,
+using `fnmatch` for wildcard-based pattern matching (e.g., `*.json`, `**/docs/*.md`).
+If no extractor matches, it falls back to the `DefaultReader`.
+
+Args:
+    input_file (Path): Path to the input file.
+    file_extractor (Dict[str, Callable]): Mapping of filename patterns to extractor functions.
+    pathm (PurePath): Path handling module used to construct pattern paths. Defaults to `Path`.
+
+**Returns:**\n
+- Callable: The extractor function matching the file, or `DefaultReader` if none found.
+''')
+
+add_chinese_doc('rag.dataReader.SimpleDirectoryReader.get_default_reader', '''
+根据文件扩展名获取默认的文件读取器（Reader）。
+
+该函数通过文件扩展名（如 `.txt`、`.json`）在默认读取器映射表中查找对应的 Reader，
+若未以 `"*."` 开头，会自动补全后缀格式（例如 `"txt"` → `"*.txt"`）。
+常见的默认 Reader 包括纯文本读取器、JSON 读取器、Markdown 读取器等。
+
+Args:
+    file_ext (str): 文件扩展名或匹配模式（例如 `"txt"` 或 `"*.json"`）。
+
+**Returns:**\n
+- Callable[[Path, Dict], List[DocNode]]: 与该扩展名对应的读取器函数，若未匹配则返回 `None`。
+''')
+
+add_english_doc('rag.dataReader.SimpleDirectoryReader.get_default_reader', '''
+Retrieve the default file reader (Reader) based on file extension.
+
+This function looks up the default reader mapping using the file extension
+(e.g., `.txt`, `.json`).  
+If the extension does not start with `"*."`, it automatically prepends it
+(e.g., `"txt"` → `"*.txt"`).  
+Common readers include plain text, JSON, and Markdown readers.
+
+Args:
+    file_ext (str): File extension or matching pattern (e.g., `"txt"` or `"*.json"`).
+
+**Returns:**\n
+- Callable[[Path, Dict], List[DocNode]]: The reader function associated with the extension, or `None` if not found.
+''')
+
+add_chinese_doc('rag.dataReader.SimpleDirectoryReader.add_post_action_for_default_reader', '''
+为默认 Reader 添加后处理函数（Post Action）。
+
+该方法允许在默认文件读取器（Reader）完成文档解析后，对生成的 `DocNode` 
+进行自定义后处理（如文本清洗、节点拆分、结构调整等）。  
+若指定的扩展名没有默认读取器，会抛出 `KeyError` 异常。
+
+后处理函数可以是以下类型之一：
+
+1. 继承自 `NodeTransform` 的类；
+2. 普通函数，接收一个 `DocNode` 并返回修改后的 `DocNode` 或列表；
+3. 可实例化的类型，会自动创建实例。
+
+Args:
+    file_ext (str): 文件扩展名或匹配模式（例如 `"*.txt"`）。
+    f (Callable[[DocNode], Union[DocNode, List[DocNode]]]): 后处理函数或节点转换类。
+
+**Raises:**\n
+- KeyError: 当指定文件扩展名没有默认 Reader 时抛出。
+''')
+
+add_english_doc('rag.dataReader.SimpleDirectoryReader.add_post_action_for_default_reader', '''
+Add a post-processing action (Post Action) for a default Reader.
+
+This method allows attaching a custom post-processing function to the default
+file reader (Reader), enabling transformation of parsed `DocNode` objects after
+initial loading (e.g., text cleaning, node splitting, or structural adjustments).  
+If the given file extension has no default reader, a `KeyError` is raised.
+
+The post-processing function `f` can be:
+
+1. A subclass of `NodeTransform`;
+2. A callable that takes a `DocNode` and returns a modified `DocNode` or a list;
+3. A class type, which will be instantiated automatically.
+
+Args:
+    file_ext (str): File extension or matching pattern (e.g., `"*.txt"`).
+    f (Callable[[DocNode], Union[DocNode, List[DocNode]]]): Post-processing function or node transform class.
+
+**Raises:**\n
+- KeyError: If the specified file extension has no default reader.
+''')
+
 add_english_doc('rag.dataReader.FileReader', '''
 File content reader whose main function is to convert various input file formats into concatenated plain text content.
 
@@ -3022,6 +3228,36 @@ reader = CustomReader(return_trace=True)
 documents = reader.forward(file_paths=["doc1.txt", "doc2.txt"])
 ''')
 
+add_example('rag.readers.MineruPDFReader', '''\
+from lazyllm.tools.rag.readers import MineruPDFReader
+reader = MineruPDFReader("http://0.0.0.0:8888")  # Mineru server address
+nodes = reader("path/to/pdf")
+''')
+add_chinese_doc('rag.readers.readerBase.TxtReader', '''\
+TxtReader 类用于从文本文件中加载内容，并将其封装为 `DocNode` 对象列表。
+
+该类继承自 `LazyLLMReaderBase`，主要功能包括：
+
+- 支持指定文本编码读取文件；
+- 可选返回加载过程的跟踪信息；
+
+Args:
+    encoding (str): 文件读取的文本编码，默认值为 'utf-8'。
+    return_trace (bool): 是否返回加载过程的跟踪信息，默认值为 True。
+''')
+
+add_english_doc('rag.readers.readerBase.TxtReader', '''\
+The TxtReader class loads content from text files and wraps it into a list of `DocNode` objects.
+
+This class inherits from `LazyLLMReaderBase` and mainly provides:
+
+- Support for reading files with a specified text encoding;
+- Optional tracing information of the loading process;
+
+Args:
+    encoding (str): Text encoding for reading files, default is 'utf-8'.
+    return_trace (bool): Whether to return trace information of the loading process, default is True.
+''')
 
 add_chinese_doc('rag.doc_node.QADocNode', '''\
 问答文档节点类，用于存储问答对数据。

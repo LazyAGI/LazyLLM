@@ -12,6 +12,8 @@ package_name_map = {
     'sklearn': 'scikit-learn',
     'volcenginesdkarkruntime': 'volcengine-python-sdk[ark]',
     'opensearchpy': 'opensearch-py',
+    'memu': 'memu-py',
+    'mem0': 'mem0ai',
 }
 
 requirements = {}
@@ -23,9 +25,9 @@ def get_pip_install_cmd(names):
     for name in names:
         if name in package_name_map:
             name = package_name_map[name]
-        install_parts.append('\'' + name + requirements.get(name, '') + '\'')
+        install_parts.append(name + requirements.get(name, ''))
     if len(install_parts) > 0:
-        return 'pip install ' + ' '.join(install_parts)
+        return 'pip install ' + ', '.join(install_parts)
     return None
 
 
@@ -73,10 +75,10 @@ class PackageWrapper(object):
             except ImportError:
                 pip_cmd = get_pip_install_cmd([self._Wrapper__key])
                 if pip_cmd:
-                    err_msg = f'Cannot import module {self._Wrapper__key}, please install it by {pip_cmd}'
+                    err_msg = f'Cannot import module `{self._Wrapper__key}`, please install it by `{pip_cmd}`'
                 else:
-                    err_msg = f'Cannot import module {self._Wrapper__key}'
-                raise ImportError(err_msg)
+                    err_msg = f'Cannot import module `{self._Wrapper__key}`'
+                raise ImportError(err_msg) from None
         return getattr(self._Wrapper__lib, __name)
 
     def __setattr__(self, __name, __value):
