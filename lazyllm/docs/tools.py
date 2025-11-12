@@ -2672,32 +2672,6 @@ Returns:
     None
 """)
 
-add_chinese_doc('rag.doc_node.DocNode.set_embedding', """\
-设置文档节点的嵌入向量。
-
-为文档节点设置指定键的嵌入向量值，用于后续的检索和相似度计算。
-
-Args:
-    embed_key (str): 嵌入向量的键名
-    embed_value: 嵌入向量的值
-
-Returns:
-    None
-""")
-
-add_english_doc('rag.doc_node.DocNode.set_embedding', """\
-Set embedding vector for document node.
-
-Set the embedding vector value for specified key in document node, used for subsequent retrieval and similarity calculation.
-
-Args:
-    embed_key (str): Key name of the embedding vector
-    embed_value: Value of the embedding vector
-
-Returns:
-    None
-""")
-
 add_chinese_doc('rag.parsing_service.parsing_service.DocumentProcessor', """
 文档处理器类，用于管理文档的添加、删除和更新操作。
 
@@ -2713,7 +2687,7 @@ Args:
 - 可配置数据库存储
 """)
 
-add_english_doc('rag.parsing_service.doc_processor.DocumentProcessor', """
+add_english_doc('rag.parsing_service.server.DocumentProcessor', """
 Document processor class for managing document addition, deletion and update operations.
 
 Args:
@@ -2728,7 +2702,7 @@ Args:
 - Configurable database storage
 """)
 
-add_example('rag.parsing_service.doc_processor.DocumentProcessor', """
+add_example('rag.parsing_service.server.DocumentProcessor', """
 ```python
 # Create local document processor
 processor = DocumentProcessor(server=False)
@@ -2741,7 +2715,7 @@ processor = DocumentProcessor(url="http://remote-server:8080")
 ```
 """)
 
-add_chinese_doc('rag.parsing_service.doc_processor.DocumentProcessor.register_algorithm', """
+add_chinese_doc('rag.parsing_service.server.DocumentProcessor.register_algorithm', """
 注册算法到文档处理器。
 
 Args:
@@ -2759,7 +2733,7 @@ Args:
 - 注册成功后可以使用该算法处理文档
 """)
 
-add_english_doc('rag.parsing_service.doc_processor.DocumentProcessor.register_algorithm', """
+add_english_doc('rag.parsing_service.server.DocumentProcessor.register_algorithm', """
 Register an algorithm to the document processor.
 
 Args:
@@ -2777,7 +2751,7 @@ Args:
 - After successful registration, the algorithm can be used to process documents
 """)
 
-add_example('rag.parsing_service.doc_processor.DocumentProcessor.register_algorithm', """
+add_example('rag.parsing_service.server.DocumentProcessor.register_algorithm', """
 ```python
 from lazyllm.rag import DocumentProcessor, FileStore, DirectoryReader
 
@@ -2802,7 +2776,7 @@ processor.register_algorithm(
 ```
 """)
 
-add_chinese_doc('rag.parsing_service.doc_processor.DocumentProcessor.drop_algorithm', """
+add_chinese_doc('rag.parsing_service.server.DocumentProcessor.drop_algorithm', """
 从文档处理器中移除指定算法。
 
 Args:
@@ -2814,7 +2788,7 @@ Args:
 - 移除后该算法将无法继续使用
 """)
 
-add_english_doc('rag.parsing_service.doc_processor.DocumentProcessor.drop_algorithm', """
+add_english_doc('rag.parsing_service.server.DocumentProcessor.drop_algorithm', """
 Remove specified algorithm from document processor.
 
 Args:
@@ -2826,7 +2800,7 @@ Args:
 - After removal, the algorithm will no longer be available
 """)
 
-add_example('rag.parsing_service.doc_processor.DocumentProcessor.drop_algorithm', """
+add_example('rag.parsing_service.server.DocumentProcessor.drop_algorithm', """
 ```python
 # Remove algorithm
 processor.drop_algorithm("pdf_processor")

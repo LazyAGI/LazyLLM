@@ -1,7 +1,7 @@
 import json
 import re
 from contextlib import contextmanager
-from typing import List, Type, Union, Dict
+from typing import List, Type, Union, Dict, Any
 from urllib.parse import quote_plus
 import pydantic
 import sqlalchemy
@@ -23,6 +23,7 @@ class ColumnInfo(pydantic.BaseModel):
     # At least one column should be True
     is_primary_key: bool = False
     nullable: bool = True
+    default: Any = None
 
 
 class TableInfo(pydantic.BaseModel):
@@ -104,9 +105,15 @@ class SqlManager(DBManager):
                 is_nullable = column_info.nullable
                 column_name = column_info.name
                 is_primary = column_info.is_primary_key
+                default_value = column_info.default
                 # Use text for unsupported column type
                 real_type = self.PYTYPE_TO_SQL_MAP.get(column_type, sqlalchemy.Text)
-                attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable, primary_key=is_primary)
+                # Handle default value
+                if default_value is not None:
+                    attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable,
+                                                           primary_key=is_primary, default=default_value)
+                else:
+                    attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable, primary_key=is_primary)
             # When create dynamic class with same name, old version will be replaced
             TableClass = type(table_info.name.capitalize(), (TableBase,), attrs)
             self.create_table(TableClass)

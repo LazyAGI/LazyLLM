@@ -1,3 +1,4 @@
+import base64
 import json
 import threading
 import time
@@ -35,34 +36,66 @@ class DocumentProcessor(ModuleBase):
             self._processors: Dict[str, _Processor] = dict()
             self._server = server
             self._db_config = db_config
-            self._db_manager = SqlManager(**self._db_config, tables_info_dict={'tables': [ALGORITHM_TABLE_INFO]})
             self._num_workers = num_workers
             self._post_func = post_func
             if not self._assert_post_func():
                 raise ValueError('Invalid post function!')
-            self._post_func_thread = threading.Thread(target=self.process_finished_task, daemon=True)
-            self._post_func_thread.start()
             self._shutdown = False
             self._path_prefix = path_prefix
+
+            self._db_manager = None
+            self._waiting_task_queue = None
+            self._finished_task_queue = None
+            self._post_func_thread = None
+            self._refresh_algo_thread = None
+            self._workers = None
+            self._initialized = False
+
+        def _ensure_initialized(self, server_url: str = None):
+            if self._initialized:
+                return
+
+            LOG.info('[DocumentProcessor] Starting lazy initialization...')
+
+            self._db_manager = SqlManager(**self._db_config, tables_info_dict={'tables': [ALGORITHM_TABLE_INFO]})
+
             self._waiting_task_queue = Queue(
                 table_name=WAITING_TASK_QUEUE_TABLE_INFO['name'],
                 columns=WAITING_TASK_QUEUE_TABLE_INFO['columns'],
                 db_config=self._db_config,
-                order_by='task_score',  # sort by task score, lower is higher priority
-                order_desc=False,  # sort in ascending order, lower score is higher priority
+                order_by='task_score',
+                order_desc=False,
             )
             self._finished_task_queue = Queue(
                 table_name=FINISHED_TASK_QUEUE_TABLE_INFO['name'],
                 columns=FINISHED_TASK_QUEUE_TABLE_INFO['columns'],
                 db_config=self._db_config,
             )
-            self._workers = None
+
+            self._post_func_thread = threading.Thread(target=self.process_finished_task, daemon=True)
+            self._post_func_thread.start()
             self._refresh_algo_thread = threading.Thread(target=self._refresh_algorithms, daemon=True)
             self._refresh_algo_thread.start()
-            if num_workers > 0:
-                worker = Worker(db_config=self._db_config, num_workers=1, server_url=None)
-                self._workers = ServerModule(worker, num_replicas=num_workers)
-            LOG.info('[DocumentProcessor] init done!')
+            self._initialized = True
+
+            if self._num_workers > 0:
+                self._workers = Worker(db_config=self._db_config, num_workers=self._num_workers, server_url=server_url)
+                self._workers.start()
+            LOG.info('[DocumentProcessor] Lazy initialization completed!')
+
+        def __getstate__(self):
+            state = self.__dict__.copy()
+            state['_db_manager'] = None
+            state['_waiting_task_queue'] = None
+            state['_finished_task_queue'] = None
+            state['_post_func_thread'] = None
+            state['_refresh_algo_thread'] = None
+            state['_workers'] = None
+            state['_initialized'] = False
+            return state
+
+        def __setstate__(self, state):
+            self.__dict__.update(state)
 
         def _refresh_algorithms(self) -> None:
             while True:
@@ -75,33 +108,49 @@ class DocumentProcessor(ModuleBase):
 
         def _refresh_algorithms_impl(self) -> None:
             try:
-                active_algorithms = []
+                active_algorithms_dict = {}
                 with self._db_manager.get_session() as session:
                     AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
-                    query_algos = session.query(AlgoInfo).filter(AlgoInfo.is_active is True).all()
-                    active_algorithms = [
-                        {
-                            'name': algo.name,
-                            'display_name': algo.display_name,
-                            'description': algo.description,
-                            'hash_key': algo.hash_key,
-                            'info_pickle': algo.info_pickle
-                        } for algo in query_algos
-                    ]
-                LOG.info(f'[DocumentProcessor._refresh_algorithms] Get {len(active_algorithms)} active algorithms')
-                for algo in active_algorithms:
-                    # check if the algorithm is already registered
-                    if not self._processors.get(algo['name']) \
-                            or self._processors.get(algo['name']).hash_key != algo['hash_key']:
-                        info_pickle = cloudpickle.loads(algo['info_pickle'])
-                        store = info_pickle['store']
-                        reader = info_pickle['reader']
-                        node_groups = info_pickle['node_groups']
-                        display_name = algo['display_name']
-                        description = algo['description']
-                        hash_key = algo['hash_key']
-                        processor = _Processor(store, reader, node_groups, display_name, description, hash_key)
-                        self._processors[algo['name']] = processor
+                    # Query algorithms where instance_keys is not empty (is_active is auto-calculated)
+                    query_algos = session.query(AlgoInfo).all()
+                    for algo in query_algos:
+                        # Check if algorithm is active by checking instance_keys
+                        instance_keys_str = algo.instance_keys or '[]'
+                        try:
+                            instance_keys_list = json.loads(instance_keys_str)
+                            is_active = len(instance_keys_list) > 0
+                        except (json.JSONDecodeError, TypeError):
+                            # Fallback to is_active field for backward compatibility
+                            is_active = algo.is_active if hasattr(algo, 'is_active') else True
+
+                        if is_active:
+                            active_algorithms_dict[algo.id] = {
+                                'display_name': algo.display_name,
+                                'description': algo.description,
+                                'info_pickle': algo.info_pickle,
+                                'version': algo.version,
+                                'instance_keys': instance_keys_list if isinstance(instance_keys_list, list) else []
+                            }
+
+                LOG.info(f'[DocumentProcessor._refresh_algorithms] Get {len(active_algorithms_dict)} active algorithms')
+                for algo_id, algo_detail in active_algorithms_dict.items():
+                    # check if the algorithm is already registered and content hasn't changed
+                    if not self._processors.get(algo_id):
+                        display_name = algo_detail['display_name']
+                        description = algo_detail['description']
+                        version = algo_detail['version']
+                        info_dict = cloudpickle.loads(algo_detail['info_pickle'])
+                        store = info_dict['store']
+                        reader = info_dict['reader']
+                        node_groups = info_dict['node_groups']
+                        processor = _Processor(store, reader, node_groups, display_name, description, version)
+                        self._processors[algo_id] = processor
+                        LOG.info(f'[DocumentProcessor._refresh_algorithms] Algorithm {algo_id} {version} registered!')
+                # drop inactive algorithms
+                for algo_id in self._processors.keys():
+                    if algo_id not in active_algorithms_dict:
+                        self._processors.pop(algo_id)
+                        LOG.info(f'[DocumentProcessor._refresh_algorithms] Algorithm {algo_id} dropped!')
             except Exception as e:
                 LOG.error(f'Failed to refresh algorithms: {e}, {traceback.format_exc()}')
                 raise e
@@ -126,45 +175,119 @@ class DocumentProcessor(ModuleBase):
 
         def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader,
                                node_groups: Dict[str, Dict], display_name: Optional[str] = None,
-                               description: Optional[str] = None, hash_key: Optional[str] = None):
+                               description: Optional[str] = None, version: Optional[str] = '1.0.0',
+                               instance_key: Optional[str] = None):
+            # NOTE: name is the algorithm id, display_name is the algorithm display name
             LOG.info((f'[DocumentProcessor] Get register algorithm request: name={name},'
-                      f'display_name={display_name}, description={description}, hash_key={hash_key}'))
+                      f'display_name={display_name}, description={description}, version={version},'
+                      f'instance_keys={instance_key}'))
             # write the processor to database
-            with self._db_manager.get_session() as session:
-                AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
-                existing_algorithm = session.query(AlgoInfo).filter(AlgoInfo.name == name).first()
-                info_pickle = cloudpickle.dumps({'store': store, 'reader': reader, 'node_groups': node_groups})
-                if not existing_algorithm:
-                    new_algo_info = AlgoInfo(id=name, name=display_name, description=description, hash_key=hash_key)
-                    session.add(new_algo_info)
-                else:
-                    if existing_algorithm.hash_key != hash_key:
-                        existing_algorithm.info_pickle = info_pickle
-                        existing_algorithm.updated_at = datetime.now()
+            try:
+                info_dict = {
+                    'store': store,
+                    'reader': reader,
+                    'node_groups': node_groups
+                }
+                info_pickle = cloudpickle.dumps(info_dict)
+                with self._db_manager.get_session() as session:
+                    AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
+                    existing_algorithm = session.query(AlgoInfo).filter(AlgoInfo.id == name).first()
+                    if not existing_algorithm:
+                        # new algorithm
+                        new_algo_info = AlgoInfo(
+                            id=name,
+                            display_name=display_name,
+                            description=description,
+                            version=version,
+                            instance_keys=json.dumps([instance_key]),
+                            info_pickle=info_pickle,
+                            created_at=datetime.now(),
+                            updated_at=datetime.now(),
+                            is_active=True,
+                        )
+                        session.add(new_algo_info)
                     else:
-                        LOG.warning(f'[DocumentProcessor] Algorithm {name} already registered with same hash key')
+                        # existing algorithm
+                        existing_instance_keys = json.loads(existing_algorithm.instance_keys)
+                        if existing_algorithm.version != version:
+                            if len(existing_instance_keys) > 0:
+                                # existing algorithm with different version and still serving
+                                msg = (f'[DocumentProcessor] Algorithm {name} already registered with'
+                                       f'different version and still serving(instance_keys={existing_instance_keys})')
+                                LOG.warning(msg)
+                                raise ValueError(msg)
+                            else:
+                                # existing algorithm with same version and no instance keys
+                                existing_algorithm.version = version
+                                existing_algorithm.instance_keys = json.dumps([instance_key])
+                                existing_algorithm.info_pickle = info_pickle
+                                existing_algorithm.display_name = display_name
+                                existing_algorithm.description = description
+                                existing_algorithm.updated_at = datetime.now()
+                                existing_algorithm.is_active = True
+                                self._processors.pop(name)
+                        else:
+                            # existing algorithm with same version and instance keys
+                            existing_instance_keys.append(instance_key)
+                            existing_algorithm.instance_keys = json.dumps(existing_instance_keys)
+                            existing_algorithm.is_active = True
+                            LOG.info(f'[DocumentProcessor] Algorithm {name} already registered with same version and'
+                                     f'instance keys(instance_keys={existing_instance_keys})')
+                if name not in self._processors:
+                    processor = _Processor(store, reader, node_groups, display_name, description, version)
+                    self._processors[name] = processor
+                LOG.info(f'[DocumentProcessor] Algorithm {name} {version} {instance_key} registered!')
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Failed to register algorithm: {e}, {traceback.format_exc()}')
+                raise e
 
-            if (not self._processors.get(name) or self._processors.get(name).get('hash_key') != hash_key):
-                processor = _Processor(store, reader, node_groups, display_name, description, hash_key)
-                self._processors[name] = processor
-            LOG.info(f'[DocumentProcessor] Algorithm {name} registered!')
+        def drop_algorithm(self, name: str, version: Optional[str] = None, instance_key: Optional[str] = None,
+                           force: bool = False) -> None:
+            try:
+                with self._db_manager.get_session() as session:
+                    AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
+                    existing_algorithm = session.query(AlgoInfo).filter(AlgoInfo.id == name).first()
+                    if existing_algorithm:
+                        if force:
+                            # force drop the algorithm
+                            self._processors.pop(name)
+                            existing_algorithm.is_active = False
+                            existing_algorithm.instance_keys = json.dumps([])
+                            existing_algorithm.updated_at = datetime.now()
+                            LOG.info(f'[DocumentProcessor] Algorithm {name} dropped (force={force})!')
+                            return
 
-        def drop_algorithm(self, name: str) -> None:
-            with self._db_manager.get_session() as session:
-                AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
-                existing_algorithm = session.query(AlgoInfo).filter(AlgoInfo.name == name).first()
-                if existing_algorithm:
-                    existing_algorithm.is_active = False
-                    existing_algorithm.updated_at = datetime.now()
-            if name in self._processors:
-                self._processors.pop(name)
-            LOG.info(f'[DocumentProcessor] Algorithm {name} dropped!')
+                        if existing_algorithm.version != version:
+                            raise ValueError(f'[DocumentProcessor] Algorithm {name} registered with different version')
+                        instance_keys = json.loads(existing_algorithm.instance_keys)
+                        if instance_key not in instance_keys:
+                            raise ValueError(f'[DocumentProcessor] Algorithm {name} registered '
+                                             f'with different instance keys)')
+                        else:
+                            instance_keys.remove(instance_key)
+                            existing_algorithm.instance_keys = json.dumps(instance_keys)
+                            existing_algorithm.updated_at = datetime.now()
+                            if len(instance_keys) == 0:
+                                existing_algorithm.is_active = False
+                                self._processors.pop(name)
+                                LOG.info(f'[DocumentProcessor] Algorithm {name} dropped! No instance keys left')
+                    else:
+                        LOG.warning(f'[DocumentProcessor] Algorithm {name} not found')
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Failed to drop algorithm: {e}, {traceback.format_exc()}')
+                raise e
 
         def _orm_to_dict(self, obj):
             return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
 
         @app.get('/health')
         def get_health(self) -> None:
+            self._ensure_initialized()
+            if self._post_func_thread is None or not self._post_func_thread.is_alive():
+                return BaseResponse(code=503, msg='Post function thread not alive')
+            if self._refresh_algo_thread is None or not self._refresh_algo_thread.is_alive():
+                return BaseResponse(code=503, msg='Refresh algorithm thread not alive')
+
             return BaseResponse(code=200, msg='success')
 
         @app.get('/prestop')
@@ -203,24 +326,30 @@ class DocumentProcessor(ModuleBase):
                 LOG.warning('[DocumentProcessor] No algorithm registered')
             return BaseResponse(code=200, msg='success', data=res)
 
+        @app.delete('/algo/{algo_id}')
+        def drop_algo(self, algo_id: str) -> None:
+            self.drop_algorithm(algo_id)
+            return BaseResponse(code=200, msg='success')
+
         @app.get('/algo/{algo_id}/info')
         def get_algo_info(self, algo_id: str) -> None:
             self._refresh_algorithms_impl()
             processor = self._processors.get(algo_id)
             if processor is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
+            # Serialize info_pickle to base64 for JSON transmission
+            info_pickle_bytes = cloudpickle.dumps({
+                'store': processor._store,
+                'reader': processor._reader,
+                'node_groups': processor._node_groups
+            })
+            info_pickle_b64 = base64.b64encode(info_pickle_bytes).decode('utf-8')
             data = {
-                'name': algo_id,
+                'algo_id': algo_id,
                 'display_name': processor._display_name,
                 'description': processor._description,
-                'hash_key': processor._hash_key,
-                'info_pickle': cloudpickle.dumps(
-                    {
-                        'store': processor._store,
-                        'reader': processor._reader,
-                        'node_groups': processor._node_groups
-                    }
-                )
+                'version': processor._version,
+                'info_pickle': info_pickle_b64,
             }
             return BaseResponse(code=200, msg='success', data=data)
 
@@ -284,6 +413,7 @@ class DocumentProcessor(ModuleBase):
                     user_priority=user_priority,
                     task_score=task_score,
                     message=payload_json,
+                    created_at=datetime.now(),
                 )
                 LOG.info(f'[DocumentProcessor] Task {task_id} (type={task_type}, user_priority={user_priority}, '
                          f'score={task_score}) submitted to database queue successfully')
@@ -323,6 +453,7 @@ class DocumentProcessor(ModuleBase):
                     user_priority=user_priority,
                     task_score=task_score,
                     message=payload_json,
+                    created_at=datetime.now(),
                 )
                 LOG.info(f'[DocumentProcessor] Update meta task {task_id} (user_priority={user_priority}, '
                          f'score={task_score}) submitted to database queue successfully')
@@ -362,6 +493,7 @@ class DocumentProcessor(ModuleBase):
                     user_priority=user_priority,
                     task_score=task_score,
                     message=payload_json,
+                    created_at=datetime.now(),
                 )
                 LOG.info(f'[DocumentProcessor] Delete task {task_id} (user_priority={user_priority}, '
                          f'score={task_score}) submitted to database queue successfully')
@@ -457,30 +589,58 @@ class DocumentProcessor(ModuleBase):
                  launcher: Optional[Launcher] = None, post_func: Optional[Callable] = None,
                  path_prefix: Optional[str] = None):
         super().__init__()
+        self._server_mode = server
+        self._raw_impl = None  # 保存原始 Impl 对象的引用
+        self._db_config = db_config  # 保存 db_config，即使是通过 URL 初始化也需要用于直接操作数据库
+
         if not url:
-            self._impl = DocumentProcessor.Impl(server=server, num_workers=num_workers, db_config=db_config,
-                                                post_func=post_func, path_prefix=path_prefix)
+            # 创建 Impl 对象（此时使用懒加载，不会创建线程）
+            self._raw_impl = DocumentProcessor.Impl(server=server, num_workers=num_workers, db_config=db_config,
+                                                    post_func=post_func, path_prefix=path_prefix)
             if server:
-                self._impl = ServerModule(self._impl, port=port, launcher=launcher)
+                # 用 ServerModule 包装
+                self._impl = ServerModule(self._raw_impl, port=port, launcher=launcher)
+            else:
+                self._impl = self._raw_impl
         else:
             self._impl = UrlModule(url=ensure_call_endpoint(url))
 
+    def start(self):
+        # start the server
+        result = super().start()
+
+        # ensure the initialization
+        if self._server_mode and self._raw_impl:
+            LOG.info('[DocumentProcessor] Server started, triggering post-start initialization...')
+            try:
+                self._dispatch('_ensure_initialized', server_url=self._impl._url)
+                LOG.info('[DocumentProcessor] Post-start initialization triggered successfully')
+            except Exception as e:
+                LOG.error(f'[DocumentProcessor] Post-start initialization failed: {e}, {traceback.format_exc()}')
+                raise
+        return result
+
     def _dispatch(self, method: str, *args, **kwargs):
-        impl = self._impl
-        if isinstance(impl, ServerModule):
-            return impl._call(method, *args, **kwargs)
-        else:
-            return getattr(impl, method)(*args, **kwargs)
+        try:
+            impl = self._impl
+            if isinstance(impl, ServerModule):
+                return impl._call(method, *args, **kwargs)
+            else:
+                return getattr(impl, method)(*args, **kwargs)
+        except Exception as e:
+            LOG.error(f'[DocumentProcessor] Failed to dispatch method {method}: {e}, {traceback.format_exc()}')
+            raise e
 
     def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader,
                            node_groups: Dict[str, Dict], display_name: Optional[str] = None,
-                           description: Optional[str] = None, force_refresh: bool = False, **kwargs):
+                           description: Optional[str] = None, version: Optional[str] = '1.0.0',
+                           instance_key: Optional[str] = None, **kwargs):
         assert isinstance(reader, DirectoryReader), 'Only DirectoryReader can be registered to processor'
         self._dispatch('register_algorithm', name, store, reader, node_groups,
-                       display_name, description, force_refresh, **kwargs)
+                       display_name, description, version, instance_key, **kwargs)
 
-    def drop_algorithm(self, name: str, clean_db: bool = False) -> None:
-        return self._dispatch('drop_algorithm', name, clean_db)
+    def drop_algorithm(self, name: str, version: Optional[str] = '1.0.0', instance_key: Optional[str] = None) -> None:
+        return self._dispatch('drop_algorithm', name, version, instance_key)
 
     def get_algo_info(self, algo_id: str) -> BaseResponse:
         return self._dispatch('get_algo_info', algo_id)

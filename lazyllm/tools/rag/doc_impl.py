@@ -1,6 +1,8 @@
 import json
 import threading
 import time
+import uuid
+import os
 from enum import Enum
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
 from lazyllm import LOG, once_wrapper
@@ -14,7 +16,7 @@ from .data_loaders import DirectoryReader
 from .utils import DocListManager, is_sparse
 from .global_metadata import GlobalMetadataDesc, RAG_KB_ID
 from .data_type import DataType
-from .parsing_service.doc_processor import _Processor, DocumentProcessor
+from .parsing_service import _Processor, DocumentProcessor
 from .embed_wrapper import _EmbedWrapper
 from dataclasses import dataclass
 from itertools import repeat
@@ -69,7 +71,8 @@ class DocImpl:
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  store: Optional[Union[Dict, LazyLLMStoreBase]] = None,
                  processor: Optional[DocumentProcessor] = None, algo_name: Optional[str] = None,
-                 display_name: Optional[str] = None, description: Optional[str] = None):
+                 display_name: Optional[str] = None, description: Optional[str] = None,
+                 version: Optional[str] = '1.0.0'):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
@@ -90,6 +93,7 @@ class DocImpl:
         self._algo_name = algo_name
         self._display_name = display_name
         self._description = description
+        self._version = version
 
     def _init_node_groups(self):
         node_groups = DocImpl._builtin_node_groups.copy()
@@ -132,12 +136,15 @@ class DocImpl:
 
         self._resolve_index_pending_registrations()
         if self._processor:
+            self._version = os.getenv('ALGO_VERSION', self._version)
+            self._instance_key = uuid.uuid4().hex
             assert cloud and isinstance(self._processor, DocumentProcessor)
             self._processor.register_algorithm(self._algo_name, self.store, self._reader, self.node_groups,
-                                               self._display_name, self._description)
+                                               self._display_name, self._description, self._version,
+                                               self._instance_key)
         else:
             self._processor = _Processor(self.store, self._reader, self.node_groups, self._display_name,
-                                         self._description)
+                                         self._description, self._version)
 
         # init files when `cloud` is False
         if not cloud and self.store.is_group_empty(LAZY_ROOT_NAME):
@@ -479,6 +486,9 @@ class DocImpl:
 
     def clear_cache(self, group_names: Optional[List[str]] = None):
         self.store.clear_cache(group_names)
+
+    def drop_algorithm(self):
+        self._processor.drop_algorithm(self._algo_name, self._version, self._instance_key)
 
     def __call__(self, func_name: str, *args, **kwargs):
         return getattr(self, func_name)(*args, **kwargs)

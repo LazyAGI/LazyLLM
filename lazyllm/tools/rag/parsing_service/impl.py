@@ -34,13 +34,13 @@ def _get_default_db_config():
 class _Processor:
     def __init__(self, store: _DocumentStore, reader: DirectoryReader, node_groups: Dict[str, Dict],
                  display_name: Optional[str] = None, description: Optional[str] = None,
-                 hash_key: Optional[str] = None):
+                 version: Optional[str] = '1.0.0'):
         self._store = store
         self._reader = reader
         self._node_groups = node_groups
         self._display_name = display_name
         self._description = description
-        self._hash_key = hash_key
+        self._version = version
 
     @property
     def store(self) -> _DocumentStore:
@@ -51,8 +51,8 @@ class _Processor:
         return self._reader
 
     @property
-    def hash_key(self) -> Optional[str]:
-        return self._hash_key
+    def version(self) -> str:
+        return self._version
 
     def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
                 metadatas: Optional[List[Dict[str, Any]]] = None):
@@ -123,6 +123,8 @@ class _Processor:
             self._get_or_create_nodes(group_name, uids)
 
     def _reparse_docs(self, group_name: str, doc_ids: List[str], doc_paths: List[str], metadatas: List[Dict]):
+        if not metadatas:
+            raise ValueError('metadatas is required for reparse')
         kb_id = metadatas[0].get(RAG_KB_ID, None)
         if group_name == 'all':
             self._store.remove_nodes(doc_ids=doc_ids, kb_id=kb_id)
