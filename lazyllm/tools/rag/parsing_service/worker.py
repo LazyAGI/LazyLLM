@@ -291,9 +291,12 @@ class DocumentProcessorWorker(ModuleBase):
 
     def start(self):
         result = super().start()
+        LOG.info('[DocumentProcessorWorker] Starting worker...')
         self._dispatch('start')
+        LOG.info('[DocumentProcessorWorker] Worker started')
         return result
 
     def stop(self):
+        LOG.info('[DocumentProcessorWorker] Stopping worker...')
         self._dispatch('shutdown')
         return super().stop()

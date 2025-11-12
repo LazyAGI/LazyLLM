@@ -56,6 +56,7 @@ class DocumentProcessor(ModuleBase):
                 return
 
             LOG.info('[DocumentProcessor] Starting lazy initialization...')
+            self._initialized = True
 
             self._db_manager = SqlManager(**self._db_config, tables_info_dict={'tables': [ALGORITHM_TABLE_INFO]})
 
@@ -76,7 +77,6 @@ class DocumentProcessor(ModuleBase):
             self._post_func_thread.start()
             self._refresh_algo_thread = threading.Thread(target=self._refresh_algorithms, daemon=True)
             self._refresh_algo_thread.start()
-            self._initialized = True
 
             if self._num_workers > 0:
                 self._workers = Worker(db_config=self._db_config, num_workers=self._num_workers, server_url=server_url)
@@ -107,6 +107,7 @@ class DocumentProcessor(ModuleBase):
                     time.sleep(10)
 
         def _refresh_algorithms_impl(self) -> None:
+            self._ensure_initialized()
             try:
                 active_algorithms_dict = {}
                 with self._db_manager.get_session() as session:
@@ -178,6 +179,7 @@ class DocumentProcessor(ModuleBase):
                                description: Optional[str] = None, version: Optional[str] = '1.0.0',
                                instance_key: Optional[str] = None):
             # NOTE: name is the algorithm id, display_name is the algorithm display name
+            self._ensure_initialized()
             LOG.info((f'[DocumentProcessor] Get register algorithm request: name={name},'
                       f'display_name={display_name}, description={description}, version={version},'
                       f'instance_keys={instance_key}'))
@@ -244,6 +246,7 @@ class DocumentProcessor(ModuleBase):
         def drop_algorithm(self, name: str, version: Optional[str] = None, instance_key: Optional[str] = None,
                            force: bool = False) -> None:
             try:
+                self._ensure_initialized()
                 with self._db_manager.get_session() as session:
                     AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
                     existing_algorithm = session.query(AlgoInfo).filter(AlgoInfo.id == name).first()
@@ -592,7 +595,6 @@ class DocumentProcessor(ModuleBase):
         self._server_mode = server
         self._raw_impl = None  # 保存原始 Impl 对象的引用
         self._db_config = db_config  # 保存 db_config，即使是通过 URL 初始化也需要用于直接操作数据库
-
         if not url:
             # 创建 Impl 对象（此时使用懒加载，不会创建线程）
             self._raw_impl = DocumentProcessor.Impl(server=server, num_workers=num_workers, db_config=db_config,

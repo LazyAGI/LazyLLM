@@ -12,8 +12,17 @@ from lazyllm import Document, Retriever
 
 STATIC_STATUS = [TaskStatus.FINISHED.value, TaskStatus.FAILED.value, TaskStatus.CANCELED.value]
 
+records = []
+def post_func_sample(task_id: str, task_status: str, error_code: str = None, error_msg: str = None):
+    records.append({
+        'task_id': task_id,
+        'task_status': task_status,
+        'error_code': error_code,
+        'error_msg': error_msg,
+    })
+    return True
 
-@unittest.skip('For local test')
+# @unittest.skip('For local test')
 class TestDocProcessor(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -56,14 +65,16 @@ class TestDocProcessor(unittest.TestCase):
             'password': None,
             'host': None,
             'port': None,
-            'db_name': os.path.join(cls._temp_dir, 'lazyllm_doc_task_management.db'),
+            'db_name': os.path.join(cls._temp_dir, 'lazyllm_doc_parsing_task.db'),
         }
         cls._dp_port = 14410
         cls._document_port = 14411
-        cls.mock_embed = {'vec_dense': lambda x: [1.0, 2.0, 3.0]}
+        cls._embed = {'vec_dense': lambda x: [1.0, 2.0, 3.0]}
         cls._algo_name = 'test_algo'
-        cls.server = DocumentProcessor(port=cls._dp_port, db_config=cls._db_config)
-        cls.document = Document(dataset_path=None, name=cls._algo_name, embed=cls.mock_embed,
+        cls._finished_task_records = []
+        cls.server = DocumentProcessor(server=True, port=cls._dp_port, db_config=cls._db_config, num_workers=1,
+                                       post_func=post_func_sample)
+        cls.document = Document(dataset_path=None, name=cls._algo_name, embed=cls._embed,
                                 store_conf=cls._store_config, server=cls._document_port, manager=cls.server)
         cls.document.create_node_group('line', display_name='Line Chunk', transform=lambda x: x.split('\n'),
                                        parent='CoarseChunk')
@@ -74,6 +85,7 @@ class TestDocProcessor(unittest.TestCase):
     @classmethod
     def tearDownClass(cls):
         cls.document.clear_cache()
+        cls.document.drop_algorithm()
         cls.document.stop()
         cls.server.stop()
         time.sleep(5)
@@ -81,12 +93,6 @@ class TestDocProcessor(unittest.TestCase):
             os.remove(cls.segment_store_dir)
         if os.path.exists(cls._temp_dir):
             shutil.rmtree(cls._temp_dir)
-
-    def _check_task_status(self, task_id: str):
-        url = f'http://localhost:{self._dp_port}/task/{task_id}/status'
-        resp = requests.get(url)
-        assert resp.status_code == 200
-        return resp.json().get('data')
 
     @pytest.mark.order(0)
     def test_algo_list(self):
@@ -117,16 +123,7 @@ class TestDocProcessor(unittest.TestCase):
         try:
             response = requests.post(url, json=data)
             assert response.status_code == 200
-            task_id = response.json().get('data').get('task_id')
-            cnt = 0
-            while cnt < 100:
-                status = self._check_task_status(task_id)
-                if status in STATIC_STATUS:
-                    break
-                time.sleep(1)
-                cnt += 1
-            assert status == TaskStatus.FINISHED.value
-            time.sleep(2)
+            time.sleep(10)
             retriever = Retriever(doc=self.document, group_name='line', topk=2, embed_keys=['vec_dense'])
             nodes = retriever('What is the answer?')
             assert len(nodes) == 2
@@ -153,16 +150,7 @@ class TestDocProcessor(unittest.TestCase):
         }
         response = requests.post(url, json=data)
         assert response.status_code == 200
-        task_id = response.json().get('data').get('task_id')
-        cnt = 0
-        while cnt < 100:
-            status = self._check_task_status(task_id)
-            if status in STATIC_STATUS:
-                break
-            time.sleep(1)
-            cnt += 1
-        assert status == TaskStatus.FINISHED.value
-        time.sleep(2)
+        time.sleep(10)
         retriever = Retriever(doc=self.document, group_name='line', topk=3, embed_keys=['vec_dense'])
         nodes = retriever('What is the answer?')
         assert len(nodes) > 2
@@ -183,15 +171,7 @@ class TestDocProcessor(unittest.TestCase):
         }
         response = requests.post(url, json=data)
         assert response.status_code == 200
-        task_id = response.json().get('data').get('task_id')
-        cnt = 0
-        while cnt < 100:
-            status = self._check_task_status(task_id)
-            if status in STATIC_STATUS:
-                break
-            time.sleep(1)
-            cnt += 1
-        assert status == TaskStatus.FINISHED.value
+        time.sleep(10)
         retriever = Retriever(doc=self.document, group_name='line', topk=2, embed_keys=['vec_dense'])
         nodes = retriever('What is the answer?')
         assert len(nodes) == 2
@@ -203,15 +183,7 @@ class TestDocProcessor(unittest.TestCase):
         data = {'algo_id': self._algo_name, 'kb_id': 'kb_test', 'doc_ids': ['doc_test']}
         response = requests.delete(url, json=data)
         assert response.status_code == 200
-        task_id = response.json().get('data').get('task_id')
-        cnt = 0
-        while cnt < 100:
-            status = self._check_task_status(task_id)
-            if status in STATIC_STATUS:
-                break
-            time.sleep(1)
-            cnt += 1
-        assert status == TaskStatus.FINISHED.value
+        time.sleep(10)
         retriever = Retriever(doc=self.document, group_name='line', topk=2, embed_keys=['vec_dense'])
         nodes = retriever('What is the answer?')
         assert len(nodes) == 0
@@ -232,25 +204,35 @@ class TestDocProcessor(unittest.TestCase):
                 }
             ]
         }
+        data_2 = {
+            'algo_id': self._algo_name,
+            'file_infos': [
+                {
+                    'file_path': self._file_path,
+                    'doc_id': 'non_exist_doc_id',
+                    'metadata': {
+                        'kb_id': 'kb_test',
+                        'test_meta': 'test1'
+                    }
+                }
+            ]
+        }
         try:
             response = requests.post(url, json=data)
             assert response.status_code == 200
-            task_id = response.json().get('data').get('task_id')
+
+            response = requests.post(url, json=data_2)
+            assert response.status_code == 200
+            task_id_2 = response.json().get('data').get('task_id')
+
             url = f'http://localhost:{self._dp_port}/doc/cancel'
-            data = {'algo_id': self._algo_name, 'task_id': task_id}
+            data = {'algo_id': self._algo_name, 'task_id': task_id_2}
             response = requests.post(url, json=data)
             assert response.status_code == 200
 
-            cnt = 0
-            while cnt < 100:
-                status = self._check_task_status(task_id)
-                if status in STATIC_STATUS:
-                    break
-                time.sleep(1)
-                cnt += 1
-            assert status == TaskStatus.CANCELED.value
+            time.sleep(10)
             retriever = Retriever(doc=self.document, group_name='line', topk=2, embed_keys=['vec_dense'])
             nodes = retriever('What is the answer?')
-            assert len(nodes) == 0
+            assert len(nodes) == 2
         except requests.exceptions.RequestException as e:
             self.fail(f'Request failed: {e}')

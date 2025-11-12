@@ -158,7 +158,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         else:
             if isinstance(manager, DocumentProcessor):
                 processor, cloud = manager, True
-                processor._impl.start()
+                processor.start()
                 manager = False
                 assert name, '`Name` of Document is necessary when using cloud service'
                 assert store_conf.get('type') != 'map', 'Cloud manager is not supported when using map store'
