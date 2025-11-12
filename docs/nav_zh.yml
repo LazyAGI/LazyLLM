@@ -17,6 +17,7 @@
   - 历史聊天: Cookbook/rag_nloop.md
   - 多模态输出: Cookbook/multi_modal_output_agent.md
   - AI 销售助手: Cookbook/sales_assistant.md
+  - 多源数据 SQL 查询: Cookbook/tabular.md
 - 最佳实践:
   - 工作流: Best Practice/flow.md
   - 流程应用: Best Practice/flowapp.md
