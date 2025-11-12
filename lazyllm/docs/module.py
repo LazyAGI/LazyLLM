@@ -2864,32 +2864,25 @@ add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking', "
 SiliconFlow 重排序模块，继承自 OnlineEmbeddingModuleBase。
 提供基于 SiliconFlow 平台的文本重排序（Reranking）功能，用于对文档列表根据查询相关性进行重新排序。
 Args:
-    rerank_url (str, optional): 重排序 API 的 URL，默认为 "https://api.siliconflow.cn/v1/rerank"
-    rerank_model_name (str, optional): 使用的重排序模型名称，默认为 "BAAI/bge-reranker-v2-m3"
+    embed_url (str, optional): 重排序 API 的 URL，默认为 "https://api.siliconflow.cn/v1/rerank"
+    embed_model_name (str, optional): 使用的重排序模型名称，默认为 "BAAI/bge-reranker-v2-m3"
     api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['siliconflow_api_key'] 中读取
     **kw: 其他重排序模块参数
-Input format:
-    支持两种输入格式：
-    - 列表形式：[query: str, documents: List[str]]
-    - 字典形式：{'query': str, 'documents': List[str]}
+
 Returns:
-    List[Dict]: 包含排序结果的列表，每个元素为包含 'index'、'relevance_score' 和 'document' 等字段的字典。
+    List[Tuple]: 包含排序结果的列表，每个元素为包含 'index'、'relevance_score' 的元组。
 """)
 
 add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking', """\
 SiliconFlow reranking module, inherits from OnlineEmbeddingModuleBase.
 Provides text reranking functionality via the SiliconFlow platform, reordering a list of documents based on their relevance to a given query.
 Args:
-    rerank_url (str, optional): Reranking API URL, defaults to "https://api.siliconflow.cn/v1/rerank"
-    rerank_model_name (str, optional): Name of the reranking model to use, defaults to "BAAI/bge-reranker-v2-m3"
+    embed_url (str, optional): Reranking API URL, defaults to "https://api.siliconflow.cn/v1/rerank"
+    embed_model_name (str, optional): Name of the reranking model to use, defaults to "BAAI/bge-reranker-v2-m3"
     api_key (str, optional): API key, defaults to lazyllm.config['siliconflow_api_key']
     **kw: Additional reranking module parameters
-Input format:
-    Supports two input formats:
-    - List: [query: str, documents: List[str]]
-    - Dict: {'query': str, 'documents': List[str]}
 Returns:
-    List[Dict]: A list of reranking results, each containing fields such as 'index', 'relevance_score', and 'document'.
+    List[Tuple]: A list of reranking results, each containing 'index' and 'relevance_score'.
 """)
 
 add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule', """\
