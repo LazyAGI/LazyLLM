@@ -1,7 +1,7 @@
 from functools import partial
 import re
 
-from typing import List, Union, Tuple, Callable, Optional
+from typing import List, Union, Tuple, Callable, Optional, AbstractSet, Collection, Literal, Any
 from .base import _TextSplitterBase, _TokenTextSplitter, _Split
 
 class CharacterSplitter(_TextSplitterBase):
@@ -14,6 +14,15 @@ class CharacterSplitter(_TextSplitterBase):
         self._character_split_fns = []
         self._cached_sep_pattern = self._get_separator_pattern(self._separator)
         self._cached_default_split_fns = None
+
+    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
+                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
+                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
+                              **kwargs) -> 'CharacterSplitter':
+        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
+
+    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'CharacterSplitter':
+        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
 
     def split_text(self, text: str, metadata_size: int) -> List[str]:
         return super().split_text(text, metadata_size)
