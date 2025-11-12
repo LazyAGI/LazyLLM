@@ -19,20 +19,20 @@ from pyobvector import inner_product, l2_distance, cosine_distance
 
 from lazyllm import LOG
 from lazyllm.common import override
-from lazyllm.tools.rag.data_type import DataType
-from lazyllm.tools.rag.global_metadata import GlobalMetadataDesc
-from lazyllm.tools.rag.store.store_base import (LazyLLMStoreBase, StoreCapability,
-                                                GLOBAL_META_KEY_PREFIX, EMBED_PREFIX, SegmentType)
+from ...data_type import DataType
+from ...global_metadata import GlobalMetadataDesc
+from ..store_base import (LazyLLMStoreBase, StoreCapability,
+                          GLOBAL_META_KEY_PREFIX, EMBED_PREFIX, SegmentType)
 
 
 OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES = {
     'HNSW': VecIndexType.HNSW,
     'HNSW_SQ': VecIndexType.HNSW_SQ,
-    'IVF': VecIndexType.IVFFLAT,  # Use IVFFLAT as default IVF implementation
+    'IVF': VecIndexType.IVFFLAT,
     'IVF_FLAT': VecIndexType.IVFFLAT,
     'IVF_SQ': VecIndexType.IVFSQ,
     'IVF_PQ': VecIndexType.IVFPQ,
-    'FLAT': VecIndexType.IVFFLAT,  # FLAT can be implemented as IVFFLAT with nlist=1
+    'FLAT': VecIndexType.IVFFLAT,
 }
 
 OCEANBASE_INDEX_TYPE_DEFAULTS = {
@@ -41,12 +41,12 @@ OCEANBASE_INDEX_TYPE_DEFAULTS = {
     'IVF': {'metric_type': 'l2', 'params': {'nlist': 128}},
     'IVF_FLAT': {'metric_type': 'l2', 'params': {'nlist': 128}},
     'IVF_SQ': {'metric_type': 'l2', 'params': {'nlist': 128}},
-    'IVF_PQ': {'metric_type': 'l2', 'params': {'nlist': 128, 'm': 8, 'nbits': 8}},  # params m is must needed for IVF_PQ
+    'IVF_PQ': {'metric_type': 'l2', 'params': {'nlist': 128, 'm': 8, 'nbits': 8}},
     'FLAT': {'metric_type': 'l2', 'params': {}},
 }
 
 
-OB_UPSERT_BATCH_SIZE = 1000  # Increased from 500 to match vectorstores.py default
+OB_UPSERT_BATCH_SIZE = 200
 
 DEFAULT_OCEANBASE_PAGINATION_OFFSET = 1000
 
@@ -66,7 +66,6 @@ class _ClientPool:
                 if self._current_size < self._max_size:
                     self._current_size += 1
                     return self._maker()
-            # Increase timeout for SSH tunnel connections
             return self._q.get(timeout=60)
 
     def release(self, c):
@@ -112,9 +111,8 @@ class OceanBaseStore(LazyLLMStoreBase):
     def _client_context(self) -> ObVecClient:
         c = self._client_pool.acquire()
         try:
-            # Ensure timeout is set for each operation
             try:
-                c.perform_raw_text_sql("SET SESSION ob_query_timeout = 300000000")  # 300秒
+                c.perform_raw_text_sql("SET SESSION ob_query_timeout = 300000000")
             except Exception as e:
                 LOG.warning(f'[OceanBaseStore] Failed to set query timeout in context: {e}')
             yield c
@@ -124,8 +122,6 @@ class OceanBaseStore(LazyLLMStoreBase):
     def _new_client(self):
         kwargs = dict(self._client_kwargs)
         try:
-            # ObVecClient support vector search only or fulltext search only
-            # TODO: enable Hybrid search with HybridSearch()
             c = ObVecClient(uri=self._uri, user=self._user, password=self._password, db_name=self._db_name, **kwargs)
 
             try:
@@ -317,7 +313,6 @@ class OceanBaseStore(LazyLLMStoreBase):
 
         while True:
             try:
-                # Use raw SQL to query with LIMIT and OFFSET
                 sql = f'SELECT * FROM {collection_name} LIMIT {batch_size} OFFSET {offset}'
                 batch_res = client.perform_raw_text_sql(sql)
 
@@ -796,15 +791,15 @@ class OceanBaseStore(LazyLLMStoreBase):
             'doc_id': {'dtype': String(512)},
             'group': {'dtype': String(512)},
             'content': {'dtype': LONGTEXT},
-            'meta': {'dtype': LONGTEXT},  # JSON string
+            'meta': {'dtype': LONGTEXT},
             'type': {'dtype': Integer},
             'number': {'dtype': Integer},
             'kb_id': {'dtype': String(512)},
             'parent': {'dtype': String(512)},
             'answer': {'dtype': LONGTEXT},
-            'image_keys': {'dtype': LONGTEXT},  # JSON string list
-            'excluded_embed_metadata_keys': {'dtype': LONGTEXT},  # JSON string list
-            'excluded_llm_metadata_keys': {'dtype': LONGTEXT},  # JSON string list
+            'image_keys': {'dtype': LONGTEXT},
+            'excluded_embed_metadata_keys': {'dtype': LONGTEXT},
+            'excluded_llm_metadata_keys': {'dtype': LONGTEXT},
         }
         self._constant_columns = self._get_constant_columns()
 
