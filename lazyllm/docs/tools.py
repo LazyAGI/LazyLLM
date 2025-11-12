@@ -5511,6 +5511,87 @@ add_example('FunctionCall', """\
 'Hello! How can I assist you today?'
 """)
 
+add_chinese_doc('FunctionCallAgent', '''\
+(FunctionCallAgent 已被废弃，将在未来版本中移除。请使用 ReactAgent 代替。) FunctionCallAgent是一个使用工具调用方式进行完整工具调用的代理，即回答用户问题时，LLM如果需要通过工具获取外部知识，就会调用工具，并将工具的返回结果反馈给LLM，最后由LLM进行汇总输出。
+
+Args:
+    llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。
+    tools (List[str]): LLM 使用的工具名称列表。
+    max_retries (int): 工具调用迭代的最大次数。默认值为5。
+    return_trace (bool): 是否返回执行追踪信息，默认为False。
+    stream (bool): 是否启用流式输出，默认为False。
+''')
+
+add_english_doc('FunctionCallAgent', '''\
+(FunctionCallAgent is deprecated and will be removed in a future version. Please use ReactAgent instead.) FunctionCallAgent is an agent that uses the tool calling method to perform complete tool calls. That is, when answering uesr questions, if LLM needs to obtain external knowledge through the tool, it will call the tool and feed back the return results of the tool to LLM, which will finally summarize and output them.
+
+Args:
+    llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
+    tools (List[str]): A list of tool names for LLM to use.
+    max_retries (int): The maximum number of tool call iterations. The default value is 5.
+    return_trace (bool): Whether to return execution trace information, defaults to False.
+    stream (bool): Whether to enable streaming output, defaults to False.
+''')
+
+add_example('FunctionCallAgent', """\
+>>> import lazyllm
+>>> from lazyllm.tools import fc_register, FunctionCallAgent
+>>> import json
+>>> from typing import Literal
+>>> @fc_register("tool")
+>>> def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]='fahrenheit'):
+...     '''
+...     Get the current weather in a given location
+...
+...     Args:
+...         location (str): The city and state, e.g. San Francisco, CA.
+...         unit (str): The temperature unit to use. Infer this from the users location.
+...     '''
+...     if 'tokyo' in location.lower():
+...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius'})
+...     elif 'san francisco' in location.lower():
+...         return json.dumps({'location': 'San Francisco', 'temperature': '72', 'unit': 'fahrenheit'})
+...     elif 'paris' in location.lower():
+...         return json.dumps({'location': 'Paris', 'temperature': '22', 'unit': 'celsius'})
+...     elif 'beijing' in location.lower():
+...         return json.dumps({'location': 'Beijing', 'temperature': '90', 'unit': 'Fahrenheit'})
+...     else:
+...         return json.dumps({'location': location, 'temperature': 'unknown'})
+...
+>>> @fc_register("tool")
+>>> def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"]='fahrenheit'):
+...     '''
+...     Get an N-day weather forecast
+...
+...     Args:
+...         location (str): The city and state, e.g. San Francisco, CA.
+...         num_days (int): The number of days to forecast.
+...         unit (Literal['celsius', 'fahrenheit']): The temperature unit to use. Infer this from the users location.
+...     '''
+...     if 'tokyo' in location.lower():
+...         return json.dumps({'location': 'Tokyo', 'temperature': '10', 'unit': 'celsius', "num_days": num_days})
+...     elif 'san francisco' in location.lower():
+...         return json.dumps({'location': 'San Francisco', 'temperature': '75', 'unit': 'fahrenheit', "num_days": num_days})
+...     elif 'paris' in location.lower():
+...         return json.dumps({'location': 'Paris', 'temperature': '25', 'unit': 'celsius', "num_days": num_days})
+...     elif 'beijing' in location.lower():
+...         return json.dumps({'location': 'Beijing', 'temperature': '85', 'unit': 'fahrenheit', "num_days": num_days})
+...     else:
+...         return json.dumps({'location': location, 'temperature': 'unknown'})
+...
+>>> tools = ['get_current_weather', 'get_n_day_weather_forecast']
+>>> llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule(source="sensenova")
+>>> agent = FunctionCallAgent(llm, tools)
+>>> query = "What's the weather like today in celsius in Tokyo and Paris."
+>>> res = agent(query)
+>>> print(res)
+'The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.'
+>>> query = "Hello"
+>>> res = agent(query)
+>>> print(res)
+'Hello! How can I assist you today?'
+""")
+
 add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
 
