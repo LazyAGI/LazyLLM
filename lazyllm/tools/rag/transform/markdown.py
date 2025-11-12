@@ -124,12 +124,6 @@ class MarkdownSplitter(_TextSplitterBase):
         return results
 
     def _get_heading_level(self, line: str) -> int:
-        '''
-        Check the heading level of the line.
-        Return:
-            - 1~6: the heading level
-            - 0: not a heading
-        '''
         line = line.split('\n')[0].strip()
         match = re.match(r'^(#{1,6})\s+(.*)$', line)
         if not match:
