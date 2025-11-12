@@ -1,22 +1,14 @@
 from typing import List, Tuple
-<<<<<<< HEAD
 from .base import _TextSplitterBase, _Split, _UNSET
 from typing import Optional, Union, AbstractSet, Collection, Literal, Any
 
 class SentenceSplitter(_TextSplitterBase):
     def __init__(self, chunk_size: int = _UNSET, chunk_overlap: int = _UNSET, num_workers: int = _UNSET):
-=======
-from .base import _TextSplitterBase, _Split
-
-class SentenceSplitter(_TextSplitterBase):
-    def __init__(self, chunk_size: int = 1024, chunk_overlap: int = 200, num_workers: int = 0):
->>>>>>> 55c88e9 (modification as comment)
         super().__init__(chunk_size=chunk_size, overlap=chunk_overlap, num_workers=num_workers)
 
     def split_text(self, text: str, metadata_size: int) -> List[str]:
         return super().split_text(text, metadata_size)
 
-<<<<<<< HEAD
     def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
                               allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
                               disallowed_special: Union[Literal['all'], Collection[str]] = None,
@@ -26,8 +18,6 @@ class SentenceSplitter(_TextSplitterBase):
     def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'SentenceSplitter':
         return super().from_huggingface_tokenizer(tokenizer, **kwargs)
 
-=======
->>>>>>> 55c88e9 (modification as comment)
     def _merge(self, splits: List[_Split], chunk_size: int) -> List[str]:
         chunks: List[str] = []
         cur_chunk: List[Tuple[str, int]] = []  # list of (text, length)
