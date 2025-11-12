@@ -19,7 +19,6 @@ class CharacterSplitter(_TextSplitterBase):
         self._character_split_fns = []
         self._cached_sep_pattern = self._get_separator_pattern(self._separator)
         self._cached_default_split_fns = None
-<<<<<<< HEAD
 
     def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
                               allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
@@ -29,8 +28,15 @@ class CharacterSplitter(_TextSplitterBase):
 
     def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'CharacterSplitter':
         return super().from_huggingface_tokenizer(tokenizer, **kwargs)
-=======
->>>>>>> d961fdf (standardize transform lint and upgrade markdown as comments)
+
+    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
+                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
+                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
+                              **kwargs) -> 'CharacterSplitter':
+        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
+
+    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'CharacterSplitter':
+        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
 
     def split_text(self, text: str, metadata_size: int) -> List[str]:
         return super().split_text(text, metadata_size)
@@ -106,11 +112,7 @@ class CharacterSplitter(_TextSplitterBase):
         if character_split_fns == []:
             if self._cached_default_split_fns is None:
                 self._cached_default_split_fns = [
-<<<<<<< HEAD
                     partial(self._default_split, self._cached_sep_pattern),
-=======
-                    partial(self.default_split, self._cached_sep_pattern),
->>>>>>> d961fdf (standardize transform lint and upgrade markdown as comments)
                     lambda t: t.split(' '),
                     list
                 ]
