@@ -80,19 +80,6 @@ class AdaptiveTransform(NodeTransform):
 
 
 class FuncNodeTransform(NodeTransform):
-    '''Used for user defined function.
-
-    Wrapped the transform to: List[Docnode] -> List[Docnode]
-
-    This wrapper supports when trans_node is False:
-        1. str -> list: transform=lambda t: t.split('\n')
-        2. str -> str: transform=lambda t: t[:3]
-
-    This wrapper supports when trans_node is True:
-        1. DocNode -> list: pipeline(lambda x:x, SentenceSplitter)
-        2. DocNode -> DocNode: pipeline(LLMParser)
-    '''
-
     def __init__(self, func: Union[Callable[[str], List[str]], Callable[[DocNode], List[DocNode]]],
                  trans_node: bool = None, num_workers: int = 0):
         super(__class__, self).__init__(num_workers=num_workers)

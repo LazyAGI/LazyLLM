@@ -1,9 +1,10 @@
 import lazyllm
 from lazyllm.tools.rag.transform import (
     SentenceSplitter, CharacterSplitter, RecursiveSplitter,
-    _TextSplitterBase, _Split, _TokenTextSplitter,
-    MarkdownSplitter, _MdSplit
+    MarkdownSplitter
 )
+from lazyllm.tools.rag.transform.markdown import _MdSplit
+from lazyllm.tools.rag.transform.base import _TextSplitterBase, _Split, _TokenTextSplitter
 from lazyllm.tools.rag.doc_node import DocNode
 import pytest
 from unittest.mock import MagicMock

@@ -12,6 +12,8 @@ class CharacterSplitter(_TextSplitterBase):
         self._is_separator_regex = is_separator_regex
         self._keep_separator = keep_separator
         self._character_split_fns = []
+        self._cached_sep_pattern = self._get_separator_pattern(self._separator)
+        self._cached_default_split_fns = None
 
     def split_text(self, text: str, metadata_size: int) -> List[str]:
         return super().split_text(text, metadata_size)
@@ -55,15 +57,15 @@ class CharacterSplitter(_TextSplitterBase):
         self._character_split_fns = []
 
     def _get_splits_by_fns(self, text: str) -> Tuple[List[str], bool]:
-        sep_pattern = self._get_separator_pattern(self._separator)
-
         character_split_fns = self._character_split_fns
         if character_split_fns == []:
-            character_split_fns = [
-                partial(self.default_split, sep_pattern),
-                lambda t: t.split(' '),
-                list
-            ]
+            if self._cached_default_split_fns is None:
+                self._cached_default_split_fns = [
+                    partial(self.default_split, self._cached_sep_pattern),
+                    lambda t: t.split(' '),
+                    list
+                ]
+            character_split_fns = self._cached_default_split_fns
 
         for split_fn in character_split_fns:
             splits = split_fn(text)
