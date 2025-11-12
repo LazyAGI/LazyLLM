@@ -3,7 +3,11 @@ import re
 import inspect
 
 from typing import List, Union, Tuple, Callable, Optional, AbstractSet, Collection, Literal, Any
+<<<<<<< HEAD
 from .base import _TextSplitterBase, _TokenTextSplitter, _Split, _UNSET
+=======
+from .base import _TextSplitterBase, _TokenTextSplitter, _Split
+>>>>>>> f1865f2 (doc modification)
 
 class CharacterSplitter(_TextSplitterBase):
     def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,

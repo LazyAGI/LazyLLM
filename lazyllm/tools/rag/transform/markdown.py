@@ -1,5 +1,5 @@
 from .base import _TextSplitterBase
-from typing import List, Optional
+from typing import List, Optional, Union, AbstractSet, Collection, Literal, Any
 from dataclasses import dataclass
 from lazyllm import LOG
 import re
@@ -29,6 +29,15 @@ class MarkdownSplitter(_TextSplitterBase):
         self.keep_tables = keep_tables
         self.keep_images = keep_images
         self.keep_links = keep_links
+
+    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
+                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
+                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
+                              **kwargs) -> 'MarkdownSplitter':
+        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
+
+    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'MarkdownSplitter':
+        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
 
     def _split(self, text: str, chunk_size: int) -> List[_MdSplit]:
         splits = self.split_markdown_by_semantics(text)
