@@ -16,6 +16,7 @@
   - Adaptive Tool-Calling: Cookbook/flex_agent.md
   - Chat With History: Cookbook/rag_nloop.md
   - Multi-modal Output Agent: Cookbook/multi_modal_output_agent.md
+  - SQL Agent: Cookbook/sql_agent.md
 - Best Practice:
   - Flow: Best Practice/flow.md
   - Flowapp: Best Practice/flowapp.md
