@@ -53,7 +53,7 @@ class FunctionCall(ModuleBase):
             self._impl.post_action = self._post_action
 
     def _build_history(self, input: Union[str, list]):
-        history_idx = len(locals['_lazyllm_agent']['workspace']['history'])
+        history_idx = len(locals['_lazyllm_agent']['workspace'].setdefault('history', []))
         if isinstance(input, str):
             locals['_lazyllm_agent']['workspace']['history'].append({'role': 'user', 'content': input})
         elif isinstance(input, dict):
