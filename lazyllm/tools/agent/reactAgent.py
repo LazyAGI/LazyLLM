@@ -50,7 +50,7 @@ class ReactAgent(ModuleBase):
                            stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
-        ret = self._agent(query, llm_chat_history) if llm_chat_history is not None else self._agent(query)
+        ret = self._agent(query, llm_chat_history or [])
         if isinstance(ret, str) and self._return_last_tool_calls and locals['_lazyllm_agent'].get('completed'):
             return locals['_lazyllm_agent'].pop('completed')
         return ret if isinstance(ret, str) else (_ for _ in ()).throw(ValueError(f'After retrying \

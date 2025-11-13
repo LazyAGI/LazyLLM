@@ -1,8 +1,9 @@
 from lazyllm.module import ModuleBase
-from lazyllm import pipeline, LOG, globals, bind, Color, locals, ifs
+from lazyllm import pipeline, LOG, bind, Color, locals, ifs
 from .toolsManager import ToolManager
 from typing import List, Dict, Union, Callable
 import re
+import json
 
 P_PROMPT_PREFIX = ('For the following tasks, make plans that can solve the problem step-by-step. '
                    'For each plan, indicate which external tool together with tool input to retrieve '
@@ -56,7 +57,7 @@ class ReWOOAgent(ModuleBase):
         for name, tool in self._tools_manager.tools_info.items():
             prompt += f'{name}[params_dict]: {tool.description}\n'
         prompt += P_FEWSHOT + '\n' + P_PROMPT_SUFFIX + input + '\n'
-        globals['chat_history'][self._planner._module_id] = []
+        locals['chat_history'][self._planner._module_id] = []
         return prompt
 
     def _parse_and_call_tool(self, tool_call: str, evidence: Dict[str, str]):
@@ -70,7 +71,7 @@ class ReWOOAgent(ModuleBase):
         locals['_lazyllm_agent']['workspace']['tool_call_trace'].append(
             {**tool_calls[0], 'tool_call_result': result[0]}
         )
-        return result[0]
+        return json.dumps(result[0]).strip('\"')
 
     def _get_worker_evidences(self, response: str):
         LOG.debug(f'planner plans: {response}')
@@ -89,7 +90,7 @@ class ReWOOAgent(ModuleBase):
 
     def _build_solver_prompt(self, worker_evidences, input):
         prompt = S_PROMPT_PREFIX + input + '\n' + worker_evidences + S_PROMPT_SUFFIX + input + '\n'
-        globals['chat_history'][self._solver._module_id] = []
+        locals['chat_history'][self._solver._module_id] = []
         return prompt
 
     def forward(self, query: str):

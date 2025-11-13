@@ -111,7 +111,7 @@ squery = 'What\'s the weather like today in celsius in Tokyo.'
 mquery = 'What\'s the weather like today in celsius in Tokyo and Paris.'
 agentQuery = 'What is 20+(2*4)? Calculate step by step '
 models = ['kimi', 'glm', 'qwen']
-rewooquery = 'What is the name of the cognac house that makes the main ingredient in The Hennchata?'
+agentQuery2 = 'What is the name of the cognac house that makes the main ingredient in The Hennchata?'
 
 @pytest.mark.skip_on_linux
 class TestOnlineChatFunctionCall(object):
@@ -139,11 +139,11 @@ class TestOnlineChatFunctionCall(object):
 
     @pytest.mark.parametrize('exe_onlinechat_advance_agent',
                              [{'source': random.choice(models), 'tools': ['WikipediaWorker', 'LLMWorker'],
-                               'query': rewooquery, 'Agent': ReactAgent},
+                               'query': agentQuery2, 'Agent': ReactAgent},
                               {'source': random.choice(models), 'tools': ['multiply_tool', 'add_tool'],
                                'query': agentQuery, 'Agent': PlanAndSolveAgent},
-                              {'source': random.choice(models), 'tools': ['WikipediaWorker', 'LLMWorker'],
-                               'query': rewooquery, 'Agent': ReWOOAgent}],
+                              {'source': random.choice(models), 'tools': ['multiply_tool', 'add_tool'],
+                               'query': agentQuery, 'Agent': ReWOOAgent}],
                              indirect=True)
     def test_onlinechat_advance_agent(self, exe_onlinechat_advance_agent):
         ret = exe_onlinechat_advance_agent

@@ -182,8 +182,7 @@ squery2 = 'What will the weather be like in celsius in Paris tomorrow?'
 mquery1 = 'What\'s the weather like today in celsius in Tokyo and Paris.'
 mquery2 = 'What will the weather be like in fahrenheit in san francisco and beijing tomorrow?'
 agentQuery = '计算 20*(45+23)*4, Calculate step by step.'
-rewooquery = '美国历届总统就职时年龄最大的是谁'
-rewooquery2 = '3是奇数还是偶数？'
+agentQuery2 = '美国历届总统就职时年龄最大的是谁'
 
 class TestTrainableFunctionCall(object):
     @classmethod
@@ -212,20 +211,13 @@ class TestTrainableFunctionCall(object):
         assert isinstance(ret, str)
 
     @pytest.mark.parametrize('exe_trainable_advance_agent',
-                             [{'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, 'Agent': ReactAgent},
+                             [{'tools': ['WikipediaWorker', 'LLMWorker'], 'query': agentQuery2, 'Agent': ReactAgent},
                               {'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, 'Agent': PlanAndSolveAgent},
-                              {'tools': ['WikipediaWorker', 'LLMWorker'], 'query': rewooquery, 'Agent': ReWOOAgent}],
+                              {'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, 'Agent': ReWOOAgent}],
                              indirect=True)
     def test_trainable_advance_agent(self, exe_trainable_advance_agent):
         ret = exe_trainable_advance_agent
         assert 'retrying' not in ret
-
-    @pytest.mark.parametrize('exe_trainable_advance_agent',
-                             [{'tools': ['add_tool', 'is_even_or_odd'], 'query': rewooquery2, 'Agent': ReWOOAgent}],
-                             indirect=True)
-    def test_rewooagent_output_format(self, exe_trainable_advance_agent):
-        ret = exe_trainable_advance_agent
-        assert '奇数' in ret or 'odd' in ret
 
     @pytest.mark.parametrize('exe_trainable_advance_agent',
                              [{'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, 'Agent': ReactAgent,

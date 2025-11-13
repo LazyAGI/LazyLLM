@@ -1,6 +1,6 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
-from lazyllm import pipeline, loop, globals, locals, Color, package, FileSystemQueue, colored_text
+from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text, LOG
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
@@ -33,6 +33,8 @@ def function_call_hook(input: Union[str, Dict[str, Any]], history: List[Dict[str
     and the current tool call payload plus its results are written back to the workspace for use
     in subsequent turns.
     '''
+    LOG.info(f'input: {input}\nhistory: {history}\ntools: {tools}\nlabel: {label}\
+    \nworkspace: {locals['_lazyllm_agent']['workspace']}')
     if isinstance(input, dict):
         if 'query' in locals['_lazyllm_agent']['workspace']:
             history.append({'role': 'user', 'content': locals['_lazyllm_agent']['workspace'].pop('query')})
@@ -95,28 +97,29 @@ class FunctionCall(ModuleBase):
     def _post_action(self, llm_output: Dict[str, Any]):
         if llm_output.get('tool_calls'):
             llm_output['tool_calls_results'] = self._tools_manager(llm_output['tool_calls'])
-            locals['_lazyllm_agent']['workspace']['tool_call_trace'].append(
-                [
-                    {**tool_call, 'tool_call_result': tool_result}
-                    for tool_call, tool_result in zip(llm_output['tool_calls'], llm_output['tool_calls_results'])
-                ]
-            )
+            locals['_lazyllm_agent']['workspace']['tool_call_trace'] = [
+                {**tool_call, 'tool_call_result': tool_result}
+                for tool_call, tool_result in zip(llm_output['tool_calls'], llm_output['tool_calls_results'])
+            ]
         else:
             llm_output = llm_output['content']
+        LOG.info(f'llm_output: {llm_output}\nworkspace: {locals['_lazyllm_agent']['workspace']}')
         return llm_output
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         if 'workspace' not in locals['_lazyllm_agent']:
-            locals['_lazyllm_agent']['workspace'] = dict(tool_call_trace=[])
-        globals['chat_history'].setdefault(self._llm._module_id, [])
+            locals['_lazyllm_agent']['workspace'] = dict()
+        locals['chat_history'].setdefault(self._llm._module_id, [])
         if llm_chat_history is not None:
-            globals['chat_history'][self._llm._module_id] = llm_chat_history
+            locals['chat_history'][self._llm._module_id] = llm_chat_history
         result = self._impl(input)
 
         # If the model decides not to call any tools, the result is a string. For debugging and subsequent tasks,
         # the last non-empty tool call trace is stored in locals['_lazyllm_agent']['completed'].
-        if isinstance(result, str) and locals['_lazyllm_agent']['workspace']['tool_call_trace']:
-            locals['_lazyllm_agent']['completed'] = locals['_lazyllm_agent'].pop('workspace').pop('tool_call_trace')[-1]
+        if isinstance(result, str):
+            locals['_lazyllm_agent']['completed'] = locals['_lazyllm_agent'].pop('workspace')\
+                .pop('tool_call_trace', locals['_lazyllm_agent'].get('completed', []))
+            locals['chat_history'][self._llm._module_id] = []
         return result
 
 @deprecated('ReactAgent')
