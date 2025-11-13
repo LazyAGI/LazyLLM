@@ -8,6 +8,7 @@ from enum import Enum, EnumMeta
 
 import lazyllm
 from .model_mapping import model_name_mapping, model_provider, model_groups
+from .model_directory import infer_model_type
 
 lazyllm.config.add('model_source', str, 'modelscope', 'MODEL_SOURCE')
 lazyllm.config.add('model_cache_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'model'),
@@ -93,7 +94,7 @@ class ModelManager():
 
             if model.split(os.sep)[-1].casefold() in model_name_set:
                 return info['type']
-        return 'llm'
+        return infer_model_type(model)
 
     @staticmethod
     @functools.lru_cache

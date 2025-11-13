@@ -2,7 +2,6 @@
 exclude = tests/legacy,venv
 per-file-ignores =
     ./docs/add_docstrings.py: E402
-    tests/*.py: Q000, Q001, Q002
     docs/scripts/lazynote/*: Q000, Q001, Q002
     examples/*: Q000, Q001, Q002, NID001, NID002
     lazyllm/components/deploy/mineru/mineru_patches.py: NID002

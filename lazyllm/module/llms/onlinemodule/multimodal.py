@@ -4,7 +4,7 @@ from .base import OnlineMultiModalBase
 from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
 from .supplier.doubao import DoubaoTextToImageModule
 from .supplier.glm import GLMSTTModule, GLMTextToImageModule
-from .supplier.sliconflow import SiliconFlowTextToImageModule, SiliconFlowTTS
+from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTS
 
 
 class _OnlineMultiModalMeta(type):

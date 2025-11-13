@@ -3,8 +3,9 @@ from .builtinPrompt import LazyLLMPrompterBase
 
 class ChatPrompter(LazyLLMPrompterBase):
     def __init__(self, instruction: Union[None, str, Dict[str, str]] = None, extra_keys: Union[None, List[str]] = None,
-                 show: bool = False, tools: Optional[List] = None, history: Optional[List[List[str]]] = None):
-        super(__class__, self).__init__(show, tools=tools, history=history)
+                 show: bool = False, tools: Optional[List] = None, history: Optional[List[List[str]]] = None,
+                 *, enable_system: bool = True):
+        super(__class__, self).__init__(show, tools=tools, history=history, enable_system=enable_system)
         if isinstance(instruction, dict):
             splice_instruction = instruction.get('system', '') + \
                 ChatPrompter.ISA + instruction.get('user', '') + ChatPrompter.ISE
