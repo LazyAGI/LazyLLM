@@ -48,14 +48,6 @@ jobs:
           fi
           echo "Generated image-build-requirements.txt successfully"
 
-      - name: Split requirements.txt
-        run: |
-          chmod +x scripts/split_requirements.sh
-          ./scripts/split_requirements.sh
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Extract version from tag
         id: version
         run: |
@@ -69,6 +61,22 @@ jobs:
             echo "Not a tag, skipping"
             exit 1
           fi
+
+      - name: Upload image-build-requirements.txt as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-build-requirements-${{ steps.version.outputs.version }}
+          path: image-build-requirements.txt
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Split requirements.txt
+        run: |
+          chmod +x scripts/split_requirements.sh
+          ./scripts/split_requirements.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Wait for PyPI package
         run: |
@@ -102,6 +110,10 @@ jobs:
       #     registry: registry.cn-hangzhou.aliyuncs.com
       #     username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
       #     password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+      - name: Pull base image
+        run: |
+          docker pull registry.cn-hangzhou.aliyuncs.com/lazyllm/cuda:12.1.0-cudnn8-devel-ubuntu22.04 
+          docker tag registry.cn-hangzhou.aliyuncs.com/lazyllm/cuda:12.1.0-cudnn8-devel-ubuntu22.04 nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
 
       - name: Build and push full image
         uses: docker/build-push-action@v5
