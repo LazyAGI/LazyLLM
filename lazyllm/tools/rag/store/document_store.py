@@ -129,7 +129,7 @@ class _DocumentStore(object):
                 collections=[self._gen_collection_name(group) for group in self.activated_groups()]
             )
         elif self._impl.capability == StoreCapability.SEGMENT:
-            self._impl.connect()
+            self._impl.connect(global_metadata_desc=self._global_metadata_desc)
 
     @property
     def impl(self):

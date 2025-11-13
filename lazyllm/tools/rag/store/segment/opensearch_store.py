@@ -11,11 +11,13 @@ from lazyllm.common import override
 from lazyllm.thirdparty import opensearchpy
 
 from ..store_base import LazyLLMStoreBase, StoreCapability, INSERT_BATCH_SIZE
-from ...global_metadata import RAG_DOC_ID, RAG_KB_ID
+from ...global_metadata import RAG_DOC_ID, RAG_KB_ID, GlobalMetadataDesc
+from ...data_type import DataType
+from ..store_base import BUILDIN_GLOBAL_META_DESC
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-DEFAULT_INDEX_BODY = {
+DEFAULT_MAPPING_BODY = {
     'settings': {
         'index': {
             'number_of_shards': 4,
@@ -29,14 +31,14 @@ DEFAULT_INDEX_BODY = {
                     'min_gram': 1,
                     'max_gram': 20,
                     'token_chars': ['letter', 'digit']
-                }
+                },
             },
             'analyzer': {
                 'edge_ngram_analyzer': {
                     'type': 'custom',
                     'tokenizer': 'edge_ngram_tokenizer',
                     'filter': ['lowercase']
-                }
+                },
             }
         }
     },
@@ -79,7 +81,7 @@ class OpenSearchStore(LazyLLMStoreBase):
             uris = [uris]
         self._uris = uris
         self._client_kwargs = client_kwargs or {}
-        self._index_kwargs = index_kwargs or DEFAULT_INDEX_BODY
+        self._index_kwargs = index_kwargs or DEFAULT_MAPPING_BODY
         self._primary_key = 'uid'
 
     @property
@@ -87,19 +89,13 @@ class OpenSearchStore(LazyLLMStoreBase):
         return None
 
     @override
-    def connect(self, *args, **kwargs) -> None:
+    def connect(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs) -> None:
         if self._client_kwargs.get('user') and self._client_kwargs.get('password'):
             self._client_kwargs['http_auth'] = (self._client_kwargs.pop('user'), self._client_kwargs.pop('password'))
         self._ddl_lock = threading.Lock()
         self._client = opensearchpy.OpenSearch(hosts=self._uris, **self._client_kwargs)
-
-        if self._index_kwargs == DEFAULT_INDEX_BODY:
-            if self._check_ik_plugin():
-                LOG.info('IK plugin is installed')
-            else:
-                LOG.warning('IK plugin is not installed, OpenSearch will \
-                    use ngram analyzer which is English Only Analyzer')
-                self._index_kwargs = self._adapt_mapping_for_no_ik(self._index_kwargs)
+        self._global_metadata_desc = global_metadata_desc or {}
+        self._index_kwargs = self._adapt_mapping_for_global_metadata()
 
     def _ensure_index(self, name: str):
         if self._client.indices.exists(index=name):
@@ -202,7 +198,16 @@ class OpenSearchStore(LazyLLMStoreBase):
                topk: Optional[int] = 10, query_fields: Optional[List[str]] = None,
                filters: Optional[dict] = None, **kwargs) -> List[dict]:  # noqa: C901
         if not query_fields:
-            query_fields = ['content', 'answer']
+            # For custom global_metadata_desc, search all text fields
+            if self._global_metadata_desc and self._global_metadata_desc != BUILDIN_GLOBAL_META_DESC:
+                query_fields = [
+                    field_name for field_name, desc in self._global_metadata_desc.items()
+                    if desc.data_type in (DataType.VARCHAR, DataType.STRING)
+                ]
+                if not query_fields:
+                    query_fields = ['content', 'answer']
+            else:
+                query_fields = ['content', 'answer']
         try:
             self._ensure_index(collection_name)
             must_clauses = []
@@ -247,16 +252,19 @@ class OpenSearchStore(LazyLLMStoreBase):
     def _serialize_node(self, segment: dict):
         seg = dict(segment)
         seg.pop('embedding', None)
-        seg['global_meta'] = json.dumps(seg.get('global_meta', {}), ensure_ascii=False)
-        seg['meta'] = json.dumps(seg.get('meta', {}), ensure_ascii=False)
-        seg['image_keys'] = json.dumps(seg.get('image_keys', []), ensure_ascii=False)
+        if self._global_metadata_desc and self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
+            seg['global_meta'] = json.dumps(seg.get('global_meta', {}), ensure_ascii=False)
+            seg['meta'] = json.dumps(seg.get('meta', {}), ensure_ascii=False)
+            seg['image_keys'] = json.dumps(seg.get('image_keys', []), ensure_ascii=False)
         return seg
 
     def _deserialize_node(self, segment: dict) -> dict:
-        segment['meta'] = json.loads(segment.get('meta', '{}'))
-        segment['global_meta'] = json.loads(segment.get('global_meta', '{}'))
-        segment['image_keys'] = json.loads(segment.get('image_keys', '[]'))
-        return segment
+        seg = dict(segment)
+        if self._global_metadata_desc and self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
+            seg['meta'] = json.loads(seg.get('meta', '{}'))
+            seg['global_meta'] = json.loads(seg.get('global_meta', '{}'))
+            seg['image_keys'] = json.loads(seg.get('image_keys', '[]'))
+        return seg
 
     def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:
         criteria = dict(criteria) if criteria else {}
@@ -284,24 +292,30 @@ class OpenSearchStore(LazyLLMStoreBase):
             must_clauses.append({'term': {'parent': criteria.pop('parent')}})
 
         for k, v in criteria.items():
-            _add_clause(k, v)
+            field_key = k
+            # For custom text fields, use .keyword subfield for exact matching
+            if (self._global_metadata_desc
+                and self._global_metadata_desc != BUILDIN_GLOBAL_META_DESC
+                and k in self._global_metadata_desc.keys()
+            ):
+                field_desc = self._global_metadata_desc[k]
+
+                if field_desc.data_type in (DataType.VARCHAR, DataType.STRING):
+                    field_key = f"{k}.keyword"
+            _add_clause(field_key, v)
 
         return {'query': {'bool': {'must': must_clauses}}} if must_clauses else {}
 
     def _transform_segment(self, record: dict) -> dict:
-        '''Convert OS into normalized Python dict with uid. Return None if invalid (not found).'''
         src = record['_source']
         src['uid'] = record['_id']
         return self._deserialize_node(src)
 
     def _check_ik_plugin(self):
-        ''' IK plugin is installed, return True, otherwise return False'''
         try:
-            # method 1: check plugin list
             plugins = self._client.cat.plugins(format='json')
             if any('analysis-ik' in p.get('component', '') for p in plugins):
                 return True
-            # method 2: try to call ik analyzer
             try:
                 self._client.indices.analyze(
                     body={
@@ -317,12 +331,50 @@ class OpenSearchStore(LazyLLMStoreBase):
             LOG.warning(f'check IK plugin failed: {e}')
             return False
 
-    def _adapt_mapping_for_no_ik(self, mapping_body: dict) -> dict:
-        mapping = copy.deepcopy(mapping_body)
+    def _adapt_mapping_for_global_metadata(self) -> dict:
+        if not self._global_metadata_desc or self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
+            return DEFAULT_MAPPING_BODY
+        mapping = copy.deepcopy(DEFAULT_MAPPING_BODY)
+        mapping['mappings']['dynamic'] = 'true'
+        props = {'uid': {'type': 'keyword'}}
+        self._type2os = {
+            DataType.VARCHAR: 'text',
+            DataType.ARRAY: 'array',
+            DataType.INT32: 'integer',
+            DataType.BOOLEAN: 'boolean',
+            DataType.FLOAT: 'float',
+            DataType.INT64: 'long',
+            DataType.STRING: 'text',
+        }
 
-        for _, field_def in mapping['mappings']['properties'].items():
-            if field_def.get('analyzer'):
-                field_def['analyzer'] = 'ngram_analyzer'   # 或 'standard'
-            if field_def.get('search_analyzer'):
-                field_def['search_analyzer'] = 'standard'
+        check_ik = self._check_ik_plugin()
+        if check_ik:
+            LOG.info('IK plugin is installed')
+        else:
+            LOG.warning('IK plugin is not installed, OpenSearch will \
+                use ngram analyzer which is English Only Analyzer')
+        for field_name, desc in self._global_metadata_desc.items():
+            field_type = self._type2os.get(desc.data_type, None)
+            if not field_type:
+                LOG.warning(f'Unsupported data type: {desc.data_type}')
+                continue
+            field_def = {'type': field_type, 'store': True, 'index': True}
+            if field_type == 'text':
+                # Add keyword subfield for exact matching
+                field_def['fields'] = {
+                    'keyword': {
+                        'type': 'keyword',
+                        'ignore_above': 256
+                    }
+                }
+                if check_ik:
+                    field_def['analyzer'] = 'ik_max_word'
+                    field_def['search_analyzer'] = 'ik_smart'
+                else:
+                    field_def['analyzer'] = 'edge_ngram_analyzer'
+                    field_def['search_analyzer'] = 'standard'
+                check_ik = False
+            props[field_name] = field_def
+        mapping['mappings']['properties'] = props
+
         return mapping
