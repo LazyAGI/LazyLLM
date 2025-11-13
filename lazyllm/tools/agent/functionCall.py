@@ -1,6 +1,6 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
-from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text, LOG
+from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
@@ -17,48 +17,6 @@ Don\'t make assumptions about what values to plug into functions.
 Ask for clarification if a user request is ambiguous.\n
 '''
 
-
-def function_call_hook(input: Union[str, Dict[str, Any]], history: List[Dict[str, Any]], tools: List[Dict[str, Any]],
-                       label: Any):
-    '''
-    Normalize the agent interaction state across function-call turns.
-
-    When `input` is a string, it represents the agent's first FunctionCall request.
-    The raw query is cached in `locals['_lazyllm_agent']['workspace']['query']` so it can be
-    replayed if the model decides to call tools.
-
-    When `input` is a dict, it represents the follow-up FunctionCall triggered by the previous
-    tool invocation. The cached items in `locals['_lazyllm_agent']['workspace']` are used to
-    rebuild the conversation history (including the original query and any prior tool outputs),
-    and the current tool call payload plus its results are written back to the workspace for use
-    in subsequent turns.
-    '''
-    LOG.info(f'input: {input}\nhistory: {history}\ntools: {tools}\nlabel: {label}\
-    \nworkspace: {locals['_lazyllm_agent']['workspace']}')
-    if isinstance(input, dict):
-        if 'query' in locals['_lazyllm_agent']['workspace']:
-            history.append({'role': 'user', 'content': locals['_lazyllm_agent']['workspace'].pop('query')})
-        if 'tool_call_results' in locals['_lazyllm_agent']['workspace']:
-            history.extend(locals['_lazyllm_agent']['workspace'].pop('tool_call_results'))
-        history.append({'role': 'assistant', 'content': input.get('content', ''),
-                        'tool_calls': input.get('tool_calls', [])})
-
-        tool_call_results = [
-            {
-                'role': 'tool',
-                'content': str(tool_result),
-                'tool_call_id': tool_call['id'],
-                'name': tool_call['function']['name'],
-            } for tool_call, tool_result in zip(
-                input.get('tool_calls', []), input.get('tool_calls_results', [])
-            )
-        ]
-        locals['_lazyllm_agent']['workspace']['tool_calls'] = input.get('tool_calls', [])
-        locals['_lazyllm_agent']['workspace']['tool_call_results'] = tool_call_results
-        input = {'input': tool_call_results}
-    else:
-        locals['_lazyllm_agent']['workspace']['query'] = input
-    return input, history, tools, label
 
 class StreamResponse():
     def __init__(self, prefix: str, prefix_color: str = None, color: str = None, stream: bool = False):
@@ -83,35 +41,53 @@ class FunctionCall(ModuleBase):
         super().__init__(return_trace=return_trace)
 
         self._tools_manager = ToolManager(tools, return_trace=return_trace)
-        self._prompter = ChatPrompter(instruction=_prompt or FC_PROMPT, tools=self._tools_manager.tools_description)\
-            .pre_hook(function_call_hook)
+        self._prompter = ChatPrompter(instruction=_prompt or FC_PROMPT, tools=self._tools_manager.tools_description)
         self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
         with pipeline() as self._impl:
             self._impl.ins = StreamResponse('Received instruction:', prefix_color=Color.yellow,
                                             color=Color.green, stream=stream)
+            self._impl.pre_action = self._build_history
             self._impl.llm = self._llm
             self._impl.dis = StreamResponse('Decision-making or result in this round:',
                                             prefix_color=Color.yellow, color=Color.green, stream=stream)
             self._impl.post_action = self._post_action
 
+    def _build_history(self, input: Union[str, list]):
+        history_idx = len(locals['_lazyllm_agent']['workspace']['history'])
+        if isinstance(input, str):
+            locals['_lazyllm_agent']['workspace']['history'].append({'role': 'user', 'content': input})
+        elif isinstance(input, dict):
+            tool_call_results = [
+                {
+                    'role': 'tool',
+                    'content': str(tool_call['tool_call_result']),
+                    'tool_call_id': tool_call['id'],
+                    'name': tool_call['function']['name'],
+                } for tool_call in locals['_lazyllm_agent']['workspace']['tool_call_trace']
+            ]
+            locals['_lazyllm_agent']['workspace']['history'].append(
+                {'role': 'assistant', 'content': input.get('content', ''), 'tool_calls': input.get('tool_calls', [])}
+            )
+            input = {'input': tool_call_results}
+            history_idx += 1
+            locals['_lazyllm_agent']['workspace']['history'].extend(tool_call_results)
+        locals['chat_history'][self._llm._module_id] = locals['_lazyllm_agent']['workspace']['history'][:history_idx]
+        return input
+
     def _post_action(self, llm_output: Dict[str, Any]):
-        if llm_output.get('tool_calls'):
-            llm_output['tool_calls_results'] = self._tools_manager(llm_output['tool_calls'])
+        if tool_calls := llm_output.get('tool_calls'):
+            tool_calls_results = self._tools_manager(tool_calls)
             locals['_lazyllm_agent']['workspace']['tool_call_trace'] = [
                 {**tool_call, 'tool_call_result': tool_result}
-                for tool_call, tool_result in zip(llm_output['tool_calls'], llm_output['tool_calls_results'])
+                for tool_call, tool_result in zip(tool_calls, tool_calls_results)
             ]
         else:
             llm_output = llm_output['content']
-        LOG.info(f'llm_output: {llm_output}\nworkspace: {locals['_lazyllm_agent']['workspace']}')
         return llm_output
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
         if 'workspace' not in locals['_lazyllm_agent']:
-            locals['_lazyllm_agent']['workspace'] = dict()
-        locals['chat_history'].setdefault(self._llm._module_id, [])
-        if llm_chat_history is not None:
-            locals['chat_history'][self._llm._module_id] = llm_chat_history
+            locals['_lazyllm_agent']['workspace'] = dict(history=llm_chat_history or [])
         result = self._impl(input)
 
         # If the model decides not to call any tools, the result is a string. For debugging and subsequent tasks,
