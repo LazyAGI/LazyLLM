@@ -11,7 +11,9 @@ from lazyllm.common import override
 from lazyllm.thirdparty import elasticsearch
 
 from ..store_base import (LazyLLMStoreBase, StoreCapability, INSERT_BATCH_SIZE)
-from ...global_metadata import RAG_DOC_ID, RAG_KB_ID
+from ...global_metadata import RAG_DOC_ID, RAG_KB_ID, GlobalMetadataDesc
+from ..store_base import BUILDIN_GLOBAL_META_DESC
+from ...data_type import DataType
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
@@ -91,7 +93,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
         return None
 
     @override
-    def connect(self, *args, **kwargs) -> bool:
+    def connect(self, global_metadata_desc: Optional[Dict[str, GlobalMetadataDesc]] = None, **kwargs) -> bool:
         try:
             self._ddl_lock = threading.Lock()
             # Elastic Cloud
@@ -106,13 +108,9 @@ class ElasticSearchStore(LazyLLMStoreBase):
             else:
                 self._client = elasticsearch.Elasticsearch(hosts=self._uris, **self._client_kwargs)
 
-            if self._index_kwargs == DEFAULT_MAPPING_BODY:
-                if self._check_ik_plugin():
-                    LOG.info('IK plugin is installed')
-                else:
-                    LOG.warning('IK plugin is not installed, ElasticSearch will \
-                        use ngram analyzer which is English Only Analyzer')
-                    self._index_kwargs = self._adapt_mapping_for_no_ik(self._index_kwargs)
+            self._global_metadata_desc = global_metadata_desc
+
+            self._index_kwargs = self._adapt_mapping_for_global_metadata()
 
             return True
         # connection failed exception handling
@@ -249,7 +247,16 @@ class ElasticSearchStore(LazyLLMStoreBase):
                topk: Optional[int] = 10, query_fields: Optional[List[str]] = None,
                filters: Optional[dict] = None, **kwargs) -> List[Dict]:  # noqa: C901
         if not query_fields:
-            query_fields = ['content', 'answer']
+            # For custom global_metadata_desc, search all text fields
+            if self._global_metadata_desc and self._global_metadata_desc != BUILDIN_GLOBAL_META_DESC:
+                query_fields = [
+                    field_name for field_name, desc in self._global_metadata_desc.items()
+                    if desc.data_type in (DataType.VARCHAR, DataType.STRING)
+                ]
+                if not query_fields:
+                    query_fields = ['content', 'answer']
+            else:
+                query_fields = ['content', 'answer']
         try:
             self._ensure_index(collection_name)
             must_clauses = []
@@ -279,6 +286,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             es_query['size'] = topk
 
             resp = self._client.search(index=collection_name, body=es_query)
+
             res = []
             for hit in resp['hits']['hits']:
                 seg = self._transform_segment(hit)
@@ -294,16 +302,18 @@ class ElasticSearchStore(LazyLLMStoreBase):
     def _serialize_node(self, segment: Dict) -> Dict:
         seg = dict(segment)
         seg.pop('embedding', None)
-        seg['global_meta'] = json.dumps(seg.get('global_meta', {}), ensure_ascii=False)
-        seg['meta'] = json.dumps(seg.get('meta', {}), ensure_ascii=False)
-        seg['image_keys'] = json.dumps(seg.get('image_keys', []), ensure_ascii=False)
+        if self._global_metadata_desc and self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
+            seg['global_meta'] = json.dumps(seg.get('global_meta', {}), ensure_ascii=False)
+            seg['meta'] = json.dumps(seg.get('meta', {}), ensure_ascii=False)
+            seg['image_keys'] = json.dumps(seg.get('image_keys', []), ensure_ascii=False)
         return seg
 
     def _deserialize_node(self, segment: Dict) -> Dict:
         seg = dict(segment)
-        seg['global_meta'] = json.loads(seg.pop('global_meta', '{}'))
-        seg['meta'] = json.loads(seg.pop('meta', '{}'))
-        seg['image_keys'] = json.loads(seg.pop('image_keys', '[]'))
+        if self._global_metadata_desc and self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
+            seg['meta'] = json.loads(seg.get('meta', '{}'))
+            seg['global_meta'] = json.loads(seg.get('global_meta', '{}'))
+            seg['image_keys'] = json.loads(seg.get('image_keys', '[]'))
         return seg
 
     def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:
@@ -331,7 +341,17 @@ class ElasticSearchStore(LazyLLMStoreBase):
             must_clauses.append({'term': {'parent': criteria.pop('parent')}})
 
         for k, v in criteria.items():
-            _add_clause(k, v)
+            field_key = k
+            # For custom text fields, use .keyword subfield for exact matching
+            if (self._global_metadata_desc
+                and self._global_metadata_desc != BUILDIN_GLOBAL_META_DESC
+                and k in self._global_metadata_desc.keys()
+            ):
+                field_desc = self._global_metadata_desc[k]
+
+                if field_desc.data_type in (DataType.VARCHAR, DataType.STRING):
+                    field_key = f"{k}.keyword"
+            _add_clause(field_key, v)
 
         return {'query': {'bool': {'must': must_clauses}}} if must_clauses else {}
 
@@ -342,13 +362,10 @@ class ElasticSearchStore(LazyLLMStoreBase):
         return self._deserialize_node(src)
 
     def _check_ik_plugin(self):
-        ''' IK plugin is installed, return True, otherwise return False'''
         try:
-            # method 1: check plugin list
             plugins = self._client.cat.plugins(format='json')
             if any('analysis-ik' in p.get('component', '') for p in plugins):
                 return True
-            # method 2: try to call ik analyzer
             try:
                 self._client.indices.analyze(
                     body={
@@ -364,12 +381,47 @@ class ElasticSearchStore(LazyLLMStoreBase):
             LOG.warning(f'check IK plugin failed: {e}')
             return False
 
-    def _adapt_mapping_for_no_ik(self, mapping_body: dict) -> dict:
-        mapping = copy.deepcopy(mapping_body)
+    def _adapt_mapping_for_global_metadata(self) -> dict:
+        if not self._global_metadata_desc or self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
+            return DEFAULT_MAPPING_BODY
+        mapping = copy.deepcopy(DEFAULT_MAPPING_BODY)
+        mapping['mappings']['dynamic'] = 'true'
+        props = {'uid': {'type': 'keyword'}}
+        self._type2es = {
+            DataType.VARCHAR: 'text',
+            DataType.ARRAY: 'array',
+            DataType.INT32: 'integer',
+            DataType.BOOLEAN: 'boolean',
+            DataType.FLOAT: 'float',
+            DataType.INT64: 'long',
+            DataType.STRING: 'text',
+        }
 
-        for _, field_def in mapping['mappings']['properties'].items():
-            if field_def.get('analyzer'):
-                field_def['analyzer'] = 'ngram_analyzer'
-            if field_def.get('search_analyzer'):
-                field_def['search_analyzer'] = 'standard'
+        check_ik = self._check_ik_plugin()
+        if check_ik:
+            LOG.info('IK plugin is installed')
+        else:
+            LOG.warning('IK plugin is not installed, ElasticSearch will \
+                use ngram analyzer which is English Only Analyzer')
+        for field_name, desc in self._global_metadata_desc.items():
+            field_type = self._type2es[desc.data_type]
+            field_def = {'type': field_type, 'store': True, 'index': True}
+            if field_type == 'text':
+                # Add keyword subfield for exact matching
+                field_def['fields'] = {
+                    'keyword': {
+                        'type': 'keyword',
+                        'ignore_above': 256
+                    }
+                }
+                if check_ik:
+                    field_def['analyzer'] = 'ik_max_word'
+                    field_def['search_analyzer'] = 'ik_smart'
+                else:
+                    field_def['analyzer'] = 'ngram_analyzer'
+                    field_def['search_analyzer'] = 'ngram_analyzer'
+                check_ik = False
+            props[field_name] = field_def
+        mapping['mappings']['properties'] = props
+
         return mapping
