@@ -205,13 +205,13 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if base_model_name in trainable_module_config_map:
             deploy_args_for_check = {k: v for k, v in self._deploy_args.items() if k not in ignore_config_keys}
             for module_config in trainable_module_config_map[base_model_name]:
-                if (self._deploy.__name__.lower() == module_config.get('framework').lower()
-                    and ((not deploy_args_for_check and not module_config.get('strict'))
-                         or not DeepDiff(module_config.get('deploy_config', {}), deploy_args_for_check))):
+                if (not deploy_args_for_check and not module_config.get('strict')) \
+                        or not DeepDiff(module_config.get('deploy_config', {}), deploy_args_for_check):
                     try:
                         url = module_config.get('url')
                         requests.get(url, timeout=3)
                         self._deploy_args = {'url': url}
+                        self._deploy = getattr(lazyllm.deploy, module_config.get('framework'))
                         break
                     except Exception:
                         continue

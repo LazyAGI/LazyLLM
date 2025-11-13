@@ -23,14 +23,14 @@ embed_model = lazyllm.TrainableModule("bge-m3")
 documents = Document(dataset_path="rag_master", embed=embed_model, manager=False)
 documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 
-rerank_model = lazyllm.TrainableModule("bge-reranker-v2-m3").deploy_method(lazyllm.deploy.vllm)
+rerank_model = lazyllm.TrainableModule("bge-reranker-large")
 with pipeline() as ppl:
     with parallel().sum as ppl.prl:
         prl.retriever1 = Retriever(documents, group_name="sentences", similarity="cosine", topk=3)
         prl.retriever2 = Retriever(documents, "CoarseChunk", "bm25_chinese", 0.003, topk=3)
     ppl.reranker = Reranker("ModuleReranker", model=rerank_model, topk=1, output_format='content', join=True) | bind(query=ppl.input)
     ppl.formatter = (lambda nodes, query: dict(context_str=nodes, query=query)) | bind(query=ppl.input)
-    ppl.llm = lazyllm.TrainableModule("Qwen3-30B-A3B-Instruct-2507").deploy_method(lazyllm.deploy.vllm).prompt(lazyllm.ChatPrompter(prompt, extra_keys=["context_str"]))
+    ppl.llm = lazyllm.TrainableModule("Qwen2.5-32B-Instruct").deploy_method(lazyllm.deploy.vllm).prompt(lazyllm.ChatPrompter(prompt, extra_keys=["context_str"]))
 
 
 if __name__ == "__main__":

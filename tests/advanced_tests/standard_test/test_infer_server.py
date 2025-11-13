@@ -4,6 +4,7 @@ import time
 import requests
 import lazyllm
 from lazyllm.engine import LightEngine
+from lazyllm.launcher import cleanup
 from lazyllm.tools.infer_service.serve import InferServer
 from urllib.parse import urlparse
 import pytest
@@ -21,6 +22,7 @@ class TestInferServer:
 
     def teardown_method(self):
         self.infer_server.stop()
+        cleanup()
 
     def deploy_inference_service(self, model_name, deploy_method='auto', num_gpus=1):
         service_name = 'test_engine_infer_' + uuid.uuid4().hex

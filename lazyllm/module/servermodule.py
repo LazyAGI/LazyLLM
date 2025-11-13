@@ -3,6 +3,7 @@ import time
 import json
 import hashlib
 import requests
+import uuid
 import pickle
 import codecs
 from typing import Callable, Dict, List, Union, Optional, Tuple
@@ -10,7 +11,7 @@ import copy
 from dataclasses import dataclass
 
 import lazyllm
-from lazyllm import launchers, LOG, package, encode_request, globals, is_valid_url, LazyLLMLaunchersBase, redis_client
+from lazyllm import launchers, LOG, package, obj2str, globals, is_valid_url, LazyLLMLaunchersBase, redis_client
 from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
@@ -187,7 +188,7 @@ class UrlModule(ModuleBase, LLMBase, _UrlHelper):
 @light_reduce
 class _ServerModuleImpl(ModuleBase, _UrlHelper):
     def __init__(self, m=None, pre=None, post=None, launcher=None, port=None, pythonpath=None, url_wrapper=None,
-                 num_replicas: int = 1):
+                 num_replicas: int = 1, *, security_key: Optional[str] = None):
         super().__init__()
         _UrlHelper.__init__(self, url=url_wrapper)
         self._m = ActionModule(m) if isinstance(m, FlowBase) else m
@@ -196,6 +197,7 @@ class _ServerModuleImpl(ModuleBase, _UrlHelper):
         self._port = port
         self._pythonpath = pythonpath
         self._num_replicas = num_replicas
+        self._security_key = security_key
 
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
@@ -203,7 +205,8 @@ class _ServerModuleImpl(ModuleBase, _UrlHelper):
         return Pipeline(
             lazyllm.deploy.RelayServer(func=self._m, pre_func=self._pre_func, port=self._port,
                                        pythonpath=self._pythonpath, post_func=self._post_func,
-                                       launcher=self._launcher, num_replicas=self._num_replicas),
+                                       launcher=self._launcher, num_replicas=self._num_replicas,
+                                       security_key=self._security_key),
             self._set_url)
 
     def stop(self):
@@ -219,7 +222,7 @@ class ServerModule(UrlModule):
                  post: Optional[Callable] = None, stream: Union[bool, Dict] = False,
                  return_trace: bool = False, port: Optional[int] = None, pythonpath: Optional[str] = None,
                  launcher: Optional[LazyLLMLaunchersBase] = None, url: Optional[str] = None,
-                 num_replicas: int = 1):
+                 num_replicas: int = 1, security_key: Optional[Union[str, bool]] = None):
         assert stream is False or return_trace is False, 'Module with stream output has no trace'
         assert (post is None) or (stream is False), 'Stream cannot be true when post-action exists'
         if isinstance(m, str):
@@ -229,8 +232,9 @@ class ServerModule(UrlModule):
             assert is_valid_url(url), f'Invalid url: {url}'
             assert m is None, 'm should be None when url is provided'
         super().__init__(url=url, stream=stream, return_trace=return_trace)
+        self._security_key = f'sk-{str(uuid.uuid4().hex)}' if security_key is True else security_key
         self._impl = _ServerModuleImpl(m, pre, post, launcher, port, pythonpath, self._url_wrapper,
-                                       num_replicas=num_replicas)
+                                       num_replicas=num_replicas, security_key=self._security_key)
         if url: self._impl._get_deploy_tasks.flag.set()
 
     _url_id = property(lambda self: self._impl._module_id)
@@ -260,10 +264,11 @@ class ServerModule(UrlModule):
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), **kw):  # noqa B008
         headers = {
             'Content-Type': 'application/json',
-            'Global-Parameters': encode_request(globals._pickle_data),
-            'Session-ID': encode_request(globals._sid)
+            'Global-Parameters': globals.pickled_data,
+            'Session-ID': globals._sid,
+            'Security-Key': self._security_key,
         }
-        data = encode_request((__input, kw))
+        data = obj2str((__input, kw))
 
         # context bug with httpx, so we use requests
         with requests.post(self._url, json=data, stream=True, headers=headers,

@@ -2,7 +2,7 @@ import lazyllm
 import builtins
 from lazyllm import config
 from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root
-from lazyllm.common import ReadOnlyWrapper, LOG, globals
+from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals
 from lazyllm.common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
@@ -294,7 +294,7 @@ class Pipeline(LazyLLMFlowsBase):
         bind_args_source = dict(source=self.id(), input=output, kwargs=kw.copy())
         if config['save_flow_result'] or __class__.g_save_flow_result or (
                 self.save_flow_result and __class__.g_save_flow_result is not False):
-            globals['bind_args'][self.id()] = bind_args_source
+            locals['bind_args'][self.id()] = bind_args_source
         for _ in range(self._loop_count):
             for it in self._items:
                 output = self.invoke(it, output, bind_args_source=bind_args_source, **kw)
@@ -306,7 +306,7 @@ class Pipeline(LazyLLMFlowsBase):
                 exp = output[0]
                 output = output[1:]
             if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
-        globals['bind_args'].pop(self.id(), None)
+        locals['bind_args'].pop(self.id(), None)
         return output
 
 
@@ -352,18 +352,15 @@ config.add('parallel_multiprocessing', bool, False, 'PARALLEL_MULTIPROCESSING')
 class Parallel(LazyLLMFlowsBase):
 
     @staticmethod
-    def _worker(func, barrier, global_data, *args, **kw):
-        # When multiple threads or processes use the same pipeline, all threads share the same pipeline ID,
-        # making it impossible to distinguish between them based on the pipeline ID when saving intermediate
-        # results. To address this, we assign a new session ID to each thread to store the intermediate
-        # results of each pipeline. Note that when running in parallel, the execution order of modules is not
-        # guaranteed, so TODO(wangzhihong) streaming output via FileSystemQueue is not possible.
-        lazyllm.globals._init_sid()
-        lazyllm.globals._update(global_data)
-        lazyllm.globals['bind_args'] = lazyllm.globals['bind_args'].copy()
+    def _worker(func, barrier, sid, local_data, *args, global_data=None, **kw):
+        lazyllm.globals._init_sid(sid)
+        if global_data: lazyllm.globals._update(global_data)
+        lazyllm.locals._init_sid()
+        lazyllm.locals._update(local_data)
+        lazyllm.locals['bind_args'] = lazyllm.locals['bind_args'].copy()
         _barr.impl = barrier
         r = func(*args, **kw)
-        lazyllm.globals.clear()
+        lazyllm.locals.clear()
         return r
 
     class PostProcessType(Enum):
@@ -417,11 +414,13 @@ class Parallel(LazyLLMFlowsBase):
         if self._concurrent:
             if self._multiprocessing:
                 barrier, executor = None, lazyllm.ProcessPoolExecutor
+                kw['global_data'] = lazyllm.globals._data
             else:
                 barrier, executor = threading.Barrier(len(items)), concurrent.futures.ThreadPoolExecutor
 
             with executor(max_workers=self._concurrent) as e:
-                futures = [e.submit(partial(self._worker, self.invoke, barrier, lazyllm.globals._data, it, inp, **kw))
+                futures = [e.submit(partial(self._worker, self.invoke, barrier, lazyllm.globals._sid,
+                                            lazyllm.locals._data, it, inp, **kw))
                            for it, inp in zip(items, inputs)]
                 if (not_done := concurrent.futures.wait(futures).not_done):
                     error_msgs = []

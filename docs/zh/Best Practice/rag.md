@@ -27,7 +27,7 @@ docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), mana
 * `manager`：是否使用 ui 界面会影响 `Document` 内部的处理逻辑，默认为 `False`；
 * `launcher`：启动服务的方式，集群应用会用到这个参数，单机应用可以忽略；
 * `store_conf`：配置使用哪种存储引擎保存文档解析结果；
-* `doc_fields`：配置需要存储和检索的字段及对应的类型（当前在使用内存存储、Chromadb以及Milvus向量数据库时支持该功能）
+* `doc_fields`：配置需要存储和检索的字段及对应的类型（当前在使用内存存储、Chroma以及Milvus向量数据库时支持该功能）
 * 更多参数说明请前往[Document API][lazyllm.Document]查看。
 
 #### 节点与节点组
@@ -122,7 +122,7 @@ store_conf = {"segment_store": {}, "vector_store": {}}
         - `map`：内存 key/value 存储，可配置本地路径，以使用基于`sqlite3`的本地切片存储；
         - `opensearch`：使用 OpenSearch 引擎存储数据；
     - 向量存储（`vector_store`）:
-        - `chromadb`：使用 ChromaDB 存储数据；
+        - `chroma`：使用 Chroma 存储数据；
         - `milvus`：使用 Milvus 存储数据。
 * `kwargs`：存储引擎所需客户端配置针对不同的存储引擎，`kwargs` 包含不同的参数，具体如下：
     - `map`：
@@ -131,11 +131,11 @@ store_conf = {"segment_store": {}, "vector_store": {}}
         - `uris`（必填）：OpenSearch 存储地址（分布式支持传入多个地址），如 `ip:port` 格式的 url；
         - `client_kwargs`（必填）：OpenSearch 客户端配置，用于配置 OpenSearch 的连接参数，如 `user`、`password` 等，详情见[OpenSearch 官方文档](https://opensearch-project.github.io/opensearch-py/api-ref/clients/opensearch_client.html)；
         - `index_kwargs`（可选）：OpenSearch 索引配置，用于配置 OpenSearch 的索引参数，规定了索引类型、切片保存字段等；
-    - `chromadb`：
-        - `uri`（可选）：ChromaDB 远端存储地址，如 `ip:port` 格式的 url；
+    - `chroma`：
+        - `uri`（可选）：Chroma 远端存储地址，如 `ip:port` 格式的 url；
         - `dir`（可选）：本地存储数据的目录，与 `uri` 二选一；
-        - `index_kwargs`（可选）：ChromaDB 索引配置，用于配置 ChromaDB 的索引参数，规定了向量索引类型，相似度计算方式等，详情见[ChromaDB 官方文档](https://docs.trychroma.com/docs/collections/configure)；
-        - `client_kwargs`（可选）：ChromaDB 客户端配置，用于配置 ChromaDB 的连接参数；
+        - `index_kwargs`（可选）：Chroma 索引配置，用于配置 Chroma 的索引参数，规定了向量索引类型，相似度计算方式等，详情见[Chroma 官方文档](https://docs.trychroma.com/docs/collections/configure)；
+        - `client_kwargs`（可选）：Chroma 客户端配置，用于配置 Chroma 的连接参数；
     - `milvus`：
         - `uri`（必填）：Milvus 存储地址，可以是一个db文件路径或者如 `ip:port` 格式的 url；
         - `db_name`（可选）：Milvus 数据库层级隔离的名称，默认为 `lazyllm`；
@@ -144,7 +144,7 @@ store_conf = {"segment_store": {}, "vector_store": {}}
             - `floating point embedding`：[https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
             - `sparse embedding`：[https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
 
-下面是一个使用 内存 key/value 存储作为切片存储，ChromaDB 作为向量存储的配置样例：
+下面是一个使用 内存 key/value 存储作为切片存储，Chroma 作为向量存储的配置样例：
 
 ```python
 store_conf = {
@@ -155,7 +155,7 @@ store_conf = {
         },
     },
     'vector_store': {
-        'type': 'chromadb',
+        'type': 'chroma',
         'kwargs': {
             'dir': '/path/to/vector/dir',
             'index_kwargs': {
@@ -187,7 +187,7 @@ store_conf = {
 }
 ```
 
-注意：使用 ChromaDB 或 Milvus 作为向量存储，如果期望进行某一字段的标量过滤作为检索条件，还需要提供可能作为搜索条件的特殊字段说明，通过 `doc_fields` 这个参数传入。`doc_fields` 是一个 dict，其中 key 为需要存储或检索的字段名称，value 是一个 `DocField` 类型的结构体，包含字段类型等信息。
+注意：使用 Chroma 或 Milvus 作为向量存储，如果期望进行某一字段的标量过滤作为检索条件，还需要提供可能作为搜索条件的特殊字段说明，通过 `doc_fields` 这个参数传入。`doc_fields` 是一个 dict，其中 key 为需要存储或检索的字段名称，value 是一个 `DocField` 类型的结构体，包含字段类型等信息。
 
 例如，如果需要存储文档的作者信息和发表年份可以这样配置：
 

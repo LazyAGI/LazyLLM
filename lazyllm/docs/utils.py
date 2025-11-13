@@ -42,7 +42,7 @@ def _guard_register_once(obj_name: str, module, append: str = '') -> None:
     with _doc_registry_lock:
         if key in _doc_registry:
             raise DuplicateDocError(
-                f"Doc for {key[1]}.{obj_name} [{key[0]} / {key[3]}] already added"
+                f'Doc for {key[1]}.{obj_name} [{key[0]} / {key[3]}] already added'
             )
         _doc_registry.add(key)
 
@@ -59,8 +59,8 @@ def get_all_examples():   # Examples are not always exported, so process them in
             if code_line.strip().startswith('>>>') or code_line.strip().startswith('...'):
                 example_lines.append(code_line.strip()[4:])
             else:
-                if len(code_line.strip()) != 0: example_lines.append("# " + code_line)
-        result.append("\n".join(example_lines))
+                if len(code_line.strip()) != 0: example_lines.append('# ' + code_line)
+        result.append('\n'.join(example_lines))
     return result
 
 lazyllm.config.add('language', str, 'ENGLISH', 'LANGUAGE')
@@ -113,14 +113,14 @@ def _extract_assert_triples(source_code):
             if isinstance(test, ast.Compare) and len(test.ops) == 1 and isinstance(test.ops[0], ast.Eq):
                 left_expr = ast.unparse(test.left).strip()
                 right_value = ast.unparse(test.comparators[0]).strip()
-                err_message = ast.unparse(node.msg).strip() if node.msg else ""
+                err_message = ast.unparse(node.msg).strip() if node.msg else ''
                 triples.append((left_expr, right_value, err_message))
     return triples
 
 
 def rewrite_lines(doc_lines: list[str]) -> list[str]:
-    CODE_STARTS = ">>> "
-    CODE_CHCHECK_MSG = "LAZYLLM_CHECK_FAILED"
+    CODE_STARTS = '>>> '
+    CODE_CHCHECK_MSG = 'LAZYLLM_CHECK_FAILED'
     new_doc_lines = []
     for doc_line in doc_lines:
 
@@ -128,7 +128,7 @@ def rewrite_lines(doc_lines: list[str]) -> list[str]:
             new_doc_lines.append(doc_line)
             continue
         str_remain = doc_line[len(CODE_STARTS):]
-        if not str_remain.strip().startswith("assert"):
+        if not str_remain.strip().startswith('assert'):
             new_doc_lines.append(doc_line)
             continue
         triples = _extract_assert_triples(str_remain)
@@ -137,7 +137,7 @@ def rewrite_lines(doc_lines: list[str]) -> list[str]:
             continue
         assert_expr, assert_val, err_msg = triples[0]
         if ast.literal_eval(err_msg) == CODE_CHCHECK_MSG:
-            new_doc_lines += [f"{CODE_STARTS}{assert_expr}", f"{assert_val}"]
+            new_doc_lines += [f'{CODE_STARTS}{assert_expr}', f'{assert_val}']
         else:
             new_doc_lines.append(doc_line)
     return new_doc_lines
@@ -145,10 +145,10 @@ def rewrite_lines(doc_lines: list[str]) -> list[str]:
 
 def add_example(obj_name, docstr, module=lazyllm):
     if isinstance(docstr, str):
-        docstr = "\n".join([f'    {d}' for d in rewrite_lines(docstr.split('\n'))])
+        docstr = '\n'.join([f'    {d}' for d in rewrite_lines(docstr.split('\n'))])
         all_examples.append(docstr)
     else:
-        docstr = ["\n".join([f'    {d}' for d in rewrite_lines(doc.split('\n'))]) for doc in docstr]
+        docstr = ['\n'.join([f'    {d}' for d in rewrite_lines(doc.split('\n'))]) for doc in docstr]
         all_examples.extend(docstr)
 
     if lazyllm.config['language'].upper() == 'CHINESE':

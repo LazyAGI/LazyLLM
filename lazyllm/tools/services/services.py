@@ -1,7 +1,7 @@
 import copy
 import time
 import threading
-from fastapi import HTTPException
+from fastapi import HTTPException  # noqa NID002
 
 class ServerBase(object):
     def __init__(self):

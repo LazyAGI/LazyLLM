@@ -6,6 +6,7 @@ import sys
 from lazyllm import launchers, LazyLLMCMD, dump_obj, config
 from ..base import LazyLLMDeployBase, verify_fastapi_func, verify_ray_func
 from ..utils import get_log_path, make_log_dir
+from typing import Optional
 
 config.add('use_ray', bool, False, 'USE_RAY')
 
@@ -16,7 +17,8 @@ class RelayServer(LazyLLMDeployBase):
     message_format = None
 
     def __init__(self, port=None, *, func=None, pre_func=None, post_func=None, pythonpath=None,
-                 log_path=None, cls=None, launcher=launchers.remote(sync=False), num_replicas: int = 1):  # noqa B008
+                 log_path=None, cls=None, launcher=launchers.remote(sync=False), num_replicas: int = 1,  # noqa B008
+                 security_key: Optional[str] = None):
         # func must dump in __call__ to wait for dependancies.
         self._func = func
         self._pre = dump_obj(pre_func)
@@ -24,6 +26,7 @@ class RelayServer(LazyLLMDeployBase):
         self._port, self._real_port = port, None
         self._pythonpath = pythonpath
         self._num_replicas = num_replicas
+        self._security_key = security_key
         super().__init__(launcher=launcher)
         self.temp_folder = make_log_dir(log_path, cls or 'relay') if log_path else None
 
@@ -44,12 +47,14 @@ class RelayServer(LazyLLMDeployBase):
                 cmd += f'--pythonpath="{self._pythonpath}" '
             if self._num_replicas > 1 and config['use_ray']:
                 cmd += f'--num_replicas={self._num_replicas}'
+            if self._security_key:
+                cmd += f'--security_key="{self._security_key}" '
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 
         return LazyLLMCMD(cmd=impl, return_value=self.geturl,
                           checkf=verify_ray_func if config['use_ray'] else verify_fastapi_func,
-                          no_displays=['function', 'before_function', 'after_function'])
+                          no_displays=['function', 'before_function', 'after_function', 'security_key'])
 
     def geturl(self, job=None):
         if job is None:
