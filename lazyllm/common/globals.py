@@ -123,9 +123,8 @@ class ThreadSafeDict(dict):
 
 
 class Globals(metaclass=SingletonABCMeta):
-    __global_attrs__ = ThreadSafeDict(
-        chat_history={}, global_parameters={}, bind_args={}, tool_delimiter='<|tool_calls|>', lazyllm_files={}, usage={}
-    )
+    __global_attrs__ = ThreadSafeDict(user_id=None, chat_history={}, global_parameters={}, bind_args={},
+                                      tool_delimiter='<|tool_calls|>', lazyllm_files={}, usage={})
 
     def __new__(cls, *args, **kw):
         if cls is not Globals: return super().__new__(cls)
@@ -227,7 +226,7 @@ class MemoryGlobals(Globals):
         try:
             return self._data[__key]
         except KeyError:
-            raise KeyError(f'Cannot find key {__key}, current session-id is {self._sid}')
+            raise KeyError(f'Cannot find key {__key}, current session-id is {self._sid}') from None
 
     def clear(self):
         self.__data.pop(self._sid, None)
@@ -241,8 +240,6 @@ class MemoryGlobals(Globals):
     def pop(self, *args, **kw):
         return self._data.pop(*args, **kw)
 
-
-class Locals(MemoryGlobals): pass
 
 class RedisGlobals(MemoryGlobals):
     def __init__(self):
@@ -262,7 +259,17 @@ class RedisGlobals(MemoryGlobals):
         self._redis_client.delete(self._get_redis_key(data))
 
 globals = Globals()
+
+
+class Locals(MemoryGlobals):
+    def __getitem__(self, __key: str):
+        try:
+            return super().__getitem__(__key)
+        except KeyError: pass  # avoid `During handling of the above exception` for better bug-reporting experience
+        return globals[__key]
+
 locals = Locals()
+
 
 @deprecated
 class LazyLlmRequest(object):

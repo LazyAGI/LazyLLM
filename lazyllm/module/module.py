@@ -9,10 +9,10 @@ from ..components.formatter.formatterbase import file_content_hash, transform_pa
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
-from ..hook import LazyLLMHook
+from ..hook import LazyLLMHook, LazyLLMFuncHook
 from lazyllm import FileSystemQueue
 from contextlib import contextmanager
-from typing import Optional, Union, Dict, List
+from typing import Optional, Union, Dict, List, Callable
 import copy
 from collections import defaultdict
 import sqlite3
@@ -322,7 +322,8 @@ class ModuleBase(metaclass=_MetaBind):
         for hook_type in self._hooks:
             if isinstance(hook_type, LazyLLMHook):
                 hook_objs.append(copy.deepcopy(hook_type))
-            else:
+            elif isinstance(hook_type, type):
+                assert issubclass(hook_type, LazyLLMHook), f'{hook_type} is not a subclass of LazyLLMHook'
                 hook_objs.append(hook_type(self))
             hook_objs[-1].pre_hook(*args, **kw)
         try:
@@ -379,7 +380,12 @@ class ModuleBase(metaclass=_MetaBind):
     # interfaces
     def forward(self, *args, **kw): raise NotImplementedError
 
-    def register_hook(self, hook_type: LazyLLMHook):
+    def register_hook(self, hook_type: Union[LazyLLMHook, Callable]):
+        if not isinstance(hook_type, type) and not isinstance(hook_type, LazyLLMHook) and callable(hook_type):
+            hook_type = LazyLLMFuncHook(hook_type)
+        if not isinstance(hook_type, LazyLLMHook):
+            raise TypeError(f'Invalid hook type: {type(hook_type)}, '
+                            'must be subclass or instance of LazyLLMHook, or callable function')
         self._hooks.add(hook_type)
 
     def unregister_hook(self, hook_type: LazyLLMHook):

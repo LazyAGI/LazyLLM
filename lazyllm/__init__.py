@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-__version__ = '6.0.1dev'
+__version__ = '0.6.4dev'
 
 from .configs import config
 from .configs import * # noqa F401 of Config
@@ -14,7 +14,7 @@ from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeploy
 from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
                      OnlineChatModule, OnlineEmbeddingModule, AutoModel, OnlineMultiModalModule)
-from .hook import LazyLLMHook
+from .hook import LazyLLMHook, LazyLLMFuncHook
 from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
                     FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
                     LLMParser)
@@ -69,6 +69,7 @@ __all__ = [
 
     # hook
     'LazyLLMHook',
+    'LazyLLMFuncHook',
 
     # tools
     'Document',
