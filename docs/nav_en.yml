@@ -17,6 +17,8 @@
   - Chat With History: Cookbook/rag_nloop.md
   - Multi-modal Output Agent: Cookbook/multi_modal_output_agent.md
   - SQL Agent: Cookbook/sql_agent.md
+  - Environment Interaction: Cookbook/gym_v1.md
+  - Multi-Agent Decentralized Speaker Selection: Cookbook/decentralized.md
 - Best Practice:
   - Flow: Best Practice/flow.md
   - Flowapp: Best Practice/flowapp.md
