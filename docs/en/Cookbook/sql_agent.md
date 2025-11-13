@@ -9,6 +9,13 @@ This project demonstrates how to use [LazyLLM](https://github.com/LazyAGI/LazyLL
     - How to use [SqlManager][lazyllm.tools.SqlManager] and [SqlCall][lazyllm.tools.SqlCall] to execute SQL queries.
     - How to combine [ReactAgent][lazyllm.tools.agent.ReactAgent] to build an interactive intelligent query agent.
 
+## Design Concept
+
+A natural language query-based e-commerce database Q&A system. The system automatically converts natural language questions into SQL queries and executes them to retrieve results.  
+First, initialize the SQLite database. Then, construct the SqlManager and SqlCall components, binding the LLM with the database structure information (TABLE_INFO) to enable the LLM to understand the schema and generate accurate SQL queries. Next, create a ReactAgent agent, register the query_db tool, which receives the user’s natural language query, invokes the LLM via SqlCall to generate SQL, executes the query, and returns the result.  
+![sql](../assets/sql.png)
+
+
 ## Implementation
 
 ### Project Dependencies
