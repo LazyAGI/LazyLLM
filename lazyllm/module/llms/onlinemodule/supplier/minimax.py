@@ -163,15 +163,11 @@ class MinimaxTTSModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.minimaxi.com/v1/',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(
-            self,
-            model_series='MINIMAX',
-            model_name=model_name or MinimaxTTSModule.MODEL_NAME,
-            return_trace=return_trace,
-            **kwargs
-        )
-        self._base_url = base_url
+        OnlineMultiModalBase.__init__(self, model_series='MINIMAX',
+                                      model_name=model_name or MinimaxTTSModule.MODEL_NAME,
+                                      return_trace=return_trace, **kwargs)
         self._endpoint = 't2a_v2'
+        self._base_url = base_url
         self._api_key = api_key or lazyllm.config['minimax_api_key']
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
@@ -180,90 +176,81 @@ class MinimaxTTSModule(OnlineMultiModalBase):
             'Content-Type': 'application/json'
         }
         url = urljoin(self._base_url, endpoint)
-        response = requests.post(url, headers=headers, json=payload, timeout=timeout)
-        response.raise_for_status()
-        result = response.json()
-        base_resp = result.get('base_resp') or {}
-        if base_resp.get('status_code') not in (None, 0):
-            raise Exception(f"Minimax API error {base_resp.get('status_code')}: {base_resp.get('status_msg')}")
-        return result
+        try:
+            response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            response.raise_for_status()
+            result = response.json()
+            base_resp = result.get('base_resp')
+            if base_resp and base_resp.get('status_code') not in (None, 0):
+                raise Exception(f"Minimax API error {base_resp.get('status_code')}: {base_resp.get('status_msg')}")
+            return result
+        except Exception as e:
+            lazyllm.LOG.error(f'API request failed: {str(e)}')
+            raise
 
-    def _forward(self, input: str = None, text: str = None,
-                 output_format: str = 'hex', stream: bool = False,
-                 voice_setting: Dict[str, Any] = None,
-                 audio_setting: Dict[str, Any] = None,
-                 pronunciation_dict: Dict[str, Any] = None,
-                 timber_weights: List[Dict[str, Any]] = None,
-                 language_boost: str = None,
-                 voice_modify: Dict[str, Any] = None,
-                 subtitle_enable: bool = False,
-                 out_path: str = None,
-                 **kwargs):
-        if stream:
-            raise ValueError('MinimaxTTSModule does not support streaming mode; please set stream to False')
-
-        tts_text = text or input
-        if not tts_text:
-            raise ValueError('Either text or input must be provided')
-
-        timeout = kwargs.pop('timeout', 180)
+    def _forward(self, input: str = None, stream: bool = False,
+                 output_format: str = 'hex', voice_setting: Dict[str, Any] = None,
+                 audio_setting: Dict[str, Any] = None, pronunciation_dict: Dict[str, Any] = None,
+                 timbre_weights: List[Dict[str, Any]] = None, language_boost: str = None,
+                 voice_modify: Dict[str, Any] = None, subtitle_enable: bool = False,
+                 aigc_watermark: bool = False, stream_options: Dict[str, Any] = None,
+                 out_path: str = None, **kwargs):
         payload: Dict[str, Any] = {
             'model': self._model_name,
-            'text': tts_text,
-            'stream': False,
-            'output_format': output_format or 'hex',
-            'subtitle_enable': subtitle_enable
+            'text': input,
+            'stream': stream,
+            'output_format': output_format,
         }
 
-        if voice_setting is not None:
-            payload['voice_setting'] = voice_setting
+        if voice_setting is None:
+            voice_setting = {
+                'voice_id': 'male-qn-qingse',  # default voice id
+            }
+        payload['voice_setting'] = voice_setting
         if audio_setting is not None:
             payload['audio_setting'] = audio_setting
         if pronunciation_dict is not None:
             payload['pronunciation_dict'] = pronunciation_dict
-        if timber_weights is not None:
-            payload['timber_weights'] = timber_weights
+        if timbre_weights is not None:
+            payload['timbre_weights'] = timbre_weights
         if language_boost is not None:
             payload['language_boost'] = language_boost
         if voice_modify is not None:
             payload['voice_modify'] = voice_modify
+        if subtitle_enable:
+            payload['subtitle_enable'] = subtitle_enable
+        if aigc_watermark:
+            payload['aigc_watermark'] = aigc_watermark
+        if stream_options is not None:
+            payload['stream_options'] = stream_options
 
         payload.update(kwargs)
 
-        result = self._make_request(self._endpoint, payload, timeout=timeout)
+        result = self._make_request(self._endpoint, payload, timeout=180)
         data = result.get('data') or {}
-        audio_field = data.get('audio')
-        if not audio_field:
-            raise Exception('Minimax API did not return audio data')
 
-        if payload['output_format'] == 'hex':
-            try:
-                audio_bytes = bytes.fromhex(audio_field)
-            except ValueError as exc:
-                raise ValueError('Invalid audio hex data in response') from exc
-        elif payload['output_format'] == 'url':
-            audio_response = requests.get(audio_field, timeout=timeout)
-            audio_response.raise_for_status()
-            audio_bytes = audio_response.content
-        else:
-            raise ValueError(f"Unsupported output_format: {payload['output_format']}")
+        audio_hex = data.get('audio')
+        if not audio_hex:
+            raise Exception('Minimax API did not return any audio data.')
 
-        file_path = bytes_to_file(audio_bytes)
+        audio_content = bytes.fromhex(audio_hex)
+
+        file_path = bytes_to_file([audio_content])[0]
+
         if out_path:
             with open(file_path, 'rb') as src, open(out_path, 'wb') as dst:
                 dst.write(src.read())
             file_path = out_path
 
-        response = encode_query_with_filepaths(None, [file_path])
+        result_encoded = encode_query_with_filepaths(None, [file_path])
 
         if self._return_trace:
-            trace_info = {
-                'model': self._model_name,
-                'trace_id': result.get('trace_id'),
-                'extra_info': result.get('extra_info'),
-                'subtitle_file': data.get('subtitle_file'),
-                'full_response': result
+            return {
+                'response': result_encoded,
+                'trace_info': {
+                    'model': self._model_name,
+                    'full_response': result,
+                    'extra_info': result.get('extra_info')
+                }
             }
-            return {'response': response, 'trace_info': trace_info}
-
-        return response
+        return result_encoded
