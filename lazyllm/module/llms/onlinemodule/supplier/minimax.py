@@ -133,7 +133,7 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
                 raise Exception('Minimax API did not return any base64 images.')
             for image_b64 in images_base64:
                 image_bytes.append(base64.b64decode(image_b64))
-        else:
+        elif payload['response_format'] == 'url':
             image_urls = data.get('image_urls') or []
             if not image_urls:
                 raise Exception('Minimax API did not return any image URLs.')
@@ -142,18 +142,12 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
                 if img_response.status_code != 200:
                     raise Exception(f'Failed to download image from {image_url}')
                 image_bytes.append(img_response.content)
+        else:
+            raise ValueError(f"Unsupported response format: {payload['response_format']}")
 
         file_paths = bytes_to_file(image_bytes)
         response = encode_query_with_filepaths(None, file_paths)
 
-        if self._return_trace:
-            return {
-                'response': response,
-                'trace_info': {
-                    'model': self._model_name,
-                    'full_response': result
-                }
-            }
         return response
 
 
@@ -163,6 +157,8 @@ class MinimaxTTSModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.minimaxi.com/v1/',
                  return_trace: bool = False, **kwargs):
+        if kwargs.pop('stream', False):
+            raise ValueError('MinimaxTTSModule does not support streaming output, please set stream to False')
         OnlineMultiModalBase.__init__(self, model_series='MINIMAX',
                                       model_name=model_name or MinimaxTTSModule.MODEL_NAME,
                                       return_trace=return_trace, **kwargs)
@@ -188,13 +184,14 @@ class MinimaxTTSModule(OnlineMultiModalBase):
             lazyllm.LOG.error(f'API request failed: {str(e)}')
             raise
 
-    def _forward(self, input: str = None, stream: bool = False,
-                 output_format: str = 'hex', voice_setting: Dict[str, Any] = None,
-                 audio_setting: Dict[str, Any] = None, pronunciation_dict: Dict[str, Any] = None,
-                 timbre_weights: List[Dict[str, Any]] = None, language_boost: str = None,
-                 voice_modify: Dict[str, Any] = None, subtitle_enable: bool = False,
-                 aigc_watermark: bool = False, stream_options: Dict[str, Any] = None,
-                 out_path: str = None, **kwargs):
+    def _forward(self, input: str = None, stream: bool = False, output_format: str = 'hex',
+                 voice_setting: Dict[str, Any] = None, audio_setting: Dict[str, Any] = None,
+                 pronunciation_dict: Dict[str, Any] = None, timbre_weights: List[Dict[str, Any]] = None,
+                 language_boost: str = None, voice_modify: Dict[str, Any] = None,
+                 subtitle_enable: bool = False, aigc_watermark: bool = False,
+                 stream_options: Dict[str, Any] = None, out_path: str = None, **kwargs):
+        if stream:
+            raise ValueError('MinimaxTTSModule does not support streaming output, please set stream to False')
         payload: Dict[str, Any] = {
             'model': self._model_name,
             'text': input,
@@ -203,9 +200,9 @@ class MinimaxTTSModule(OnlineMultiModalBase):
         }
 
         if voice_setting is None:
-            voice_setting = {
-                'voice_id': 'male-qn-qingse',  # default voice id
-            }
+            voice_setting = {}
+        if 'voice_id' not in voice_setting:
+            voice_setting['voice_id'] = 'male-qn-qingse'  # default voice id
         payload['voice_setting'] = voice_setting
         if audio_setting is not None:
             payload['audio_setting'] = audio_setting
@@ -244,13 +241,4 @@ class MinimaxTTSModule(OnlineMultiModalBase):
 
         result_encoded = encode_query_with_filepaths(None, [file_path])
 
-        if self._return_trace:
-            return {
-                'response': result_encoded,
-                'trace_info': {
-                    'model': self._model_name,
-                    'full_response': result,
-                    'extra_info': result.get('extra_info')
-                }
-            }
         return result_encoded
