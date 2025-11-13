@@ -38,7 +38,7 @@ RUN set -ex \
 ENV PATH="/opt/miniconda3/bin:/usr/local/redis-stack-server-7.2.0-v10/bin:${PATH}"
 
 # 复制 requirements.txt 文件到 Docker 容器（由 GitHub Actions 生成）
-COPY image-build-requirement* /tmp/
+COPY image-build-requirements* /tmp/
 
 # 初始化 conda
 RUN conda init bash \
@@ -48,10 +48,10 @@ RUN conda init bash \
 # 拆分多个requirements安装
 RUN bash -c "source activate lazyllm && \
     conda install -y mpi4py && \
-    pip install -r image-build-requirement0.txt --default-timeout=10000 --no-deps && \
-    pip install -r image-build-requirement1.txt --default-timeout=10000 --no-deps && \
-    pip install -r image-build-requirement2.txt --default-timeout=10000 --no-deps && \
-    pip install -r image-build-requirement3.txt --default-timeout=10000 --no-deps && \
+    pip install -r image-build-requirements0.txt --default-timeout=10000 --no-deps && \
+    pip install -r image-build-requirements1.txt --default-timeout=10000 --no-deps && \
+    pip install -r image-build-requirements2.txt --default-timeout=10000 --no-deps && \
+    pip install -r image-build-requirements3.txt --default-timeout=10000 --no-deps && \
     pip install flash-attn==2.7.0.post2 && \
     pip cache purge && rm -rf /tmp/*"
 
