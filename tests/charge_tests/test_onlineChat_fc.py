@@ -28,29 +28,22 @@ def exe_onlinechat_chat(request):
     yield ret
     print(f'\n【{source}】chat test done.')
 
-@pytest.fixture()
-def exe_onlinechat_single_function_call(request):
-    params = request.param if hasattr(request, 'param') else {}
-    source = params.get('source', None)
-    model = params.get('model', None)
-    stream = params.get('stream', False)
-    tools = params.get('tools', [])
-    query = params.get('query', '')
+def exe_onlinechat_single_function_call(source, model, tools, query):
     if not query or not tools:
         raise ValueError(f'query: {query} and tools cannot be empty.')
     sources = ['kimi', 'glm', 'qwen']
     if source is None or source not in sources:
         raise ValueError(f'The source {source} field must contain the value in the list {sources}')
     if model:
-        llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream)
+        llm = lazyllm.OnlineChatModule(source=source, model=model)
     else:
-        llm = lazyllm.OnlineChatModule(source=source, stream=stream)
+        llm = lazyllm.OnlineChatModule(source=source)
 
     print(f'\nStarting test 【{source}】 function calling')
     fc = FunctionCall(llm, tools)
     ret = fc(query, [])
-    yield ret
     print(f'\n【{source}】 function calling test done.')
+    return ret
 
 @pytest.fixture()
 def exe_onlinechat_parallel_function_call(request):
@@ -122,12 +115,14 @@ class TestOnlineChatFunctionCall(object):
         ret = exe_onlinechat_chat
         assert isinstance(ret, str, )
 
-    @pytest.mark.parametrize('exe_onlinechat_single_function_call',
-                             [{'source': 'glm', 'model': 'GLM-4-Flash', 'tools': tools, 'query': squery},
-                              {'source': 'qwen', 'model': 'qwen-turbo', 'tools': tools, 'query': squery}],
-                             indirect=True)
-    def test_onlinechat_single_function_call(self, exe_onlinechat_single_function_call):
-        ret = exe_onlinechat_single_function_call
+    @pytest.mark.ignore_cache_on_change('lazyllm/module/llms/onlinemodule/supplier/glm.py')
+    def test_onlinechat_single_function_call_glm(self):
+        ret = exe_onlinechat_single_function_call('glm', 'GLM-4-Flash', tools, squery)
+        assert isinstance(ret, dict)
+
+    @pytest.mark.ignore_cache_on_change('lazyllm/module/llms/onlinemodule/supplier/qwen.py')
+    def test_onlinechat_single_function_call_qwen(self):
+        ret = exe_onlinechat_single_function_call('qwen', 'qwen-turbo', tools, squery)
         assert isinstance(ret, dict)
 
     @pytest.mark.parametrize('exe_onlinechat_parallel_function_call',
