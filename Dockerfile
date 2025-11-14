@@ -1,5 +1,5 @@
 # 配置基础镜像
-FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
+FROM lazyllm/cuda:12.1.0-cudnn8-devel-ubuntu22.04
 
 # 设置工作目录
 WORKDIR /tmp

@@ -7,7 +7,7 @@ on:
 
 env:
   REGISTRY_DOCKERHUB: lazyllm/lazyllm
-  REGISTRY_ALIYUN: registry.cn-hangzhou.aliyuncs.com/lazyllm/lazyllm
+  REGISTRY_ALIYUN: registry.cn-hangzhou.aliyuncs.com/liwenjian123/lazyllm
 
 jobs:
   build-full:
@@ -48,6 +48,7 @@ jobs:
         run: |
           poetry export -f requirements.txt --without-hashes -o image-build-requirements.txt --extras "full"
           cat image-build-requirements.txt
+          sed -i '/^flash-attn==/d' image-build-requirements.txt
           if [ ! -f image-build-requirements.txt ]; then
             echo "Error: Failed to generate image-build-requirements.txt" && exit 1
           fi
@@ -109,34 +110,26 @@ jobs:
       #     username: ${{ secrets.DOCKERHUB_USERNAME }}
       #     password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # - name: Log in to Aliyun Container Registry
-      #   uses: docker/login-action@v3
-      #   with:
-      #     registry: registry.cn-hangzhou.aliyuncs.com
-      #     username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
-      #     password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
-      - name: Pull base image
-        run: |
-          docker pull registry.cn-hangzhou.aliyuncs.com/lazyllm/cuda:12.1.0-cudnn8-devel-ubuntu22.04 
-          docker tag registry.cn-hangzhou.aliyuncs.com/lazyllm/cuda:12.1.0-cudnn8-devel-ubuntu22.04 nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04
+      - name: Log in to Aliyun Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cn-hangzhou.aliyuncs.com
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
+ 
       - name: Build and push full image
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile
-          push: false
-          load: true
+          push: true
           build-args: |
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
           tags: |
-            ${{ env.REGISTRY_DOCKERHUB }}:${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY_DOCKERHUB }}:latest
             ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}
             ${{ env.REGISTRY_ALIYUN }}:latest
       
-      - name: Start tmate session
-        uses: mxschmitt/action-tmate@v3
 
 
   build-light-amd64:
@@ -190,12 +183,12 @@ jobs:
       #     username: ${{ secrets.DOCKERHUB_USERNAME }}
       #     password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # - name: Log in to Aliyun Container Registry
-      #   uses: docker/login-action@v3
-      #   with:
-      #     registry: registry.cn-hangzhou.aliyuncs.com
-      #     username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
-      #     password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+      - name: Log in to Aliyun Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cn-hangzhou.aliyuncs.com
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
       - name: Build and push light image (AMD64)
         uses: docker/build-push-action@v5
@@ -209,11 +202,8 @@ jobs:
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
             TARGETARCH=amd64
           tags: |
-            ${{ env.REGISTRY_DOCKERHUB }}:${{ steps.version.outputs.version }}-light-amd64
             ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}-light-amd64
 
-      - name: Start tmate session
-        uses: mxschmitt/action-tmate@v3
 
   build-light-arm64:
     name: Build Light Image (ARM64)
@@ -266,12 +256,12 @@ jobs:
       #     username: ${{ secrets.DOCKERHUB_USERNAME }}
       #     password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      # - name: Log in to Aliyun Container Registry
-      #   uses: docker/login-action@v3
-      #   with:
-      #     registry: registry.cn-hangzhou.aliyuncs.com
-      #     username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
-      #     password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+      - name: Log in to Aliyun Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cn-hangzhou.aliyuncs.com
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
       - name: Build and push light image (ARM64)
         uses: docker/build-push-action@v5
@@ -285,7 +275,6 @@ jobs:
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
             TARGETARCH=arm64
           tags: |
-            ${{ env.REGISTRY_DOCKERHUB }}:${{ steps.version.outputs.version }}-light-arm64
             ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}-light-arm64
 
       - name: Start tmate session
@@ -312,11 +301,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to Docker Hub
-        uses: docker/login-action@v3
-        with:
-          username: ${{ secrets.DOCKERHUB_USERNAME }}
-          password: ${{ secrets.DOCKERHUB_TOKEN }}
+      # - name: Log in to Docker Hub
+      #   uses: docker/login-action@v3
+      #   with:
+      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
+      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to Aliyun Container Registry
         uses: docker/login-action@v3
@@ -334,10 +323,10 @@ jobs:
           sleep 30
           
           # 创建 Docker Hub manifest
-          docker manifest create ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light \
-            --amend ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light-amd64 \
-            --amend ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light-arm64 || true
-          docker manifest push ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light
+          # docker manifest create ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light \
+          #   --amend ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light-amd64 \
+          #   --amend ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light-arm64 || true
+          # docker manifest push ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light
           
           # 创建阿里云 manifest
           docker manifest create ${{ env.REGISTRY_ALIYUN }}:$VERSION-light \
