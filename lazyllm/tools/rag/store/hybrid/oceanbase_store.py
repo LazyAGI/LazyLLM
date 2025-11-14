@@ -125,7 +125,7 @@ class OceanBaseStore(LazyLLMStoreBase):
         c = self._client_pool.acquire()
         try:
             try:
-                c.perform_raw_text_sql("SET SESSION ob_query_timeout = 300000000")
+                c.perform_raw_text_sql('SET SESSION ob_query_timeout = 300000000')
             except Exception as e:
                 LOG.warning(f'[OceanBaseStore] Failed to set query timeout in context: {e}')
             yield c
@@ -138,7 +138,7 @@ class OceanBaseStore(LazyLLMStoreBase):
             c = ObVecClient(uri=self._uri, user=self._user, password=self._password, db_name=self._db_name, **kwargs)
 
             try:
-                c.perform_raw_text_sql("SET SESSION ob_query_timeout = 300000000")
+                c.perform_raw_text_sql('SET SESSION ob_query_timeout = 300000000')
                 result = c.perform_raw_text_sql("SHOW VARIABLES LIKE 'ob_query_timeout'")
                 if result:
                     assert result.fetchone() is not None
@@ -221,7 +221,7 @@ class OceanBaseStore(LazyLLMStoreBase):
                     try:
                         if i == 0 or batch_num % 10 == 0:
                             try:
-                                client.perform_raw_text_sql("SET SESSION ob_query_timeout = 300000000")
+                                client.perform_raw_text_sql('SET SESSION ob_query_timeout = 300000000')
                             except Exception:
                                 pass
 
