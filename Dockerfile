@@ -15,7 +15,6 @@ RUN set -ex \
     && apt-get update && apt-get install -y openssh-server \
     git vim tzdata curl net-tools locales zip libtinfo5 cmake ffmpeg \
     exuberant-ctags libclang-dev tcl expect telnet rsync libibverbs1 libgl1 \
-    python3 python3-pip \
     && rm -rf /var/lib/apt/lists/* \
     && sed -i 's/#PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config \
     && service ssh start \
@@ -37,7 +36,7 @@ RUN set -ex \
 # 将 conda 的 bin 目录添加到 PATH 环境变量
 ENV PATH="/opt/miniconda3/bin:/usr/local/redis-stack-server-7.2.0-v10/bin:${PATH}"
 
-# 复制 requirements.txt 文件到 Docker 容器（由 GitHub Actions 生成）
+# 复制 requirements.txt
 COPY image-build-requirements* /tmp/
 
 # 初始化 conda
@@ -56,7 +55,7 @@ RUN bash -c "source activate lazyllm && \
     pip cache purge && rm -rf /tmp/*"
 
 # 修复vllm bug
-RUN perl -pi -e 's/parser.add_argument\("--port", type=int, default=8000, ge=1024, le=65535\)/parser.add_argument("--port", type=int, default=8000)/g' /opt/miniconda3/envs/lazyllm/lib/python3.10/site-packages/vllm/entrypoints/api_server.py || true
+RUN perl -pi -e 's/parser.add_argument\("--port", type=int, default=8000, ge=1024, le=65535\)/parser.add_argument("--port", type=int, default=8000)/g' /opt/miniconda3/envs/lazyllm/lib/python3.10/site-packages/vllm/entrypoints/api_server.py
 
 ARG LAZYLLM_VERSION=""
 ENV LAZYLLM_VERSION=$LAZYLLM_VERSION
@@ -65,4 +64,3 @@ RUN bash -c "source activate lazyllm && pip install lazyllm==${LAZYLLM_VERSION}"
 
 ENTRYPOINT ["/bin/bash"]
 WORKDIR /root
-
