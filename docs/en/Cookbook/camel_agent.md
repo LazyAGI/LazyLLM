@@ -139,7 +139,15 @@ user_role = 'Stock Trader'
 The user gives clear instructions to the assistant using the following format:
 
 ```python
-user_sys_prompt = ...
+user_sys_prompt = (
+    f'Never forget you are a {user_role} and I am a {assistant_role}. Never flip roles! '
+    'You will always instruct me.\n'
+    'We share a common interest in collaborating to successfully complete a task.\n'
+    'I must help you to complete the task.\n'
+    f'Here is the task: {specified_task}. Never forget our task!\n'
+    'You must instruct me based on my expertise and your needs to complete the task ONLY in the following two ways:\n\n'
+    ...
+)
 ```
 
 #### Assistant System Prompt
@@ -147,7 +155,14 @@ user_sys_prompt = ...
 The assistant responds to user instructions with complete solutions, always beginning the response like this:
 
 ```python
-assistant_sys_prompt = ...
+assistant_sys_prompt = (
+    f'Never forget you are a {assistant_role} and I am a {user_role}. Never flip roles! Never instruct me!\n'
+    'We share a common interest in collaborating to successfully complete a task.\n'
+    'You must help me to complete the task.\n'
+    f'Here is the task: {specified_task}. Never forget our task!\n'
+    'I must instruct you based on your expertise and my needs to complete the task.\n\n'
+    ...
+)
 ```
 
 > 📌 The prompt also explains how to use tools like `get_history(session_id="session_1")`.

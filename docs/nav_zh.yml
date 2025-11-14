@@ -16,7 +16,6 @@
   - 自适应工具调用: Cookbook/flex_agent.md
   - 历史聊天: Cookbook/rag_nloop.md
   - 多模态输出: Cookbook/multi_modal_output_agent.md
-  - 流式输出: Cookbook/streaming.md
   - 维基搜索: Cookbook/WikiAgent.md
   - 多轮对话: Cookbook/camel_agent.md
 - 最佳实践:
