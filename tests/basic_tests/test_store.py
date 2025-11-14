@@ -1099,6 +1099,7 @@ class TestSenseCoreStore(unittest.TestCase):
 
 @pytest.mark.skip_on_win
 @pytest.mark.skip_on_mac
+@pytest.mark.skip(reason='Oceanbase is not installed')
 class TestOceanBaseStore(unittest.TestCase):
     def setUp(self):
         self.collections = ['col_g1', 'col_g2']
