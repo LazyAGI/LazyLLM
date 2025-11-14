@@ -9,15 +9,16 @@
     - 如何执行 SPARQL 查询并返回结果；
     - 如何启动 ReactAgent 并提供网页服务。
 
----
 ## 设计思路
 为了让我们的 AI 不仅能聊天，还能具备实时知识检索与事实查询能力，这里我们将引入 Wikidata 作为全球知识图谱数据库，让模型具备“查证事实、查询实体关系与属性”的能力。
 我们将整合以下能力组件：
+
     - `item_lookup`：根据名称检索 Wikidata 实体并返回 Q-ID
     - `property_lookup`：根据属性名称检索 Wikidata 属性并返回 P-ID
     - `sparql_query_runner`：执行 SPARQL 查询以获取 Wikidata 中的结构化知识
     - `OnlineChatModule`：作为核心语言模型，理解问题并组织推理
     - `ReactAgent`：作为智能调度核心，让模型自动调用工具完成任务
+
 我们注意到 Wikidata 查询分为实体识别 → 属性识别 → 查询执行三步，因此我们需要一个能够根据用户问题动态选择工具的智能体。另外，Wikidata 结构化查询返回 JSON 数据，需要模型解析与整合，因此我们让 LLM 根据需求主动发起多轮工具调用，然后汇总答案。
 综合以上考虑，我们进行如下设计：
 ![Wikibase agent](../assets/wi.png)
@@ -35,12 +36,13 @@
 
 ![Wikibase Agent Demo](../assets/wikibase_agent_demo.png)
 
----
 
 ## 实现工具函数
 
-以下是你构建 Wikibase 工具的典型代码结构。示例使用了 [Wikidata API](https://www.wikidata.org/w/api.php) 和 [SPARQL endpoint](https://query.wikidata.org/)。
+以下是构建 Wikibase 工具的典型代码结构。示例使用了 [Wikidata API](https://www.wikidata.org/w/api.php) 和 [SPARQL endpoint](https://query.wikidata.org/)。
 
+### 常量定义
+定义了WIKIDATA的常量
 ```python
 from thirdparty import httpx
 from lazyllm import WebModule
@@ -56,7 +58,8 @@ HEADERS = {'User-Agent': '"lazyllm-agent/0.1 (test@example.com)"', 'Accept': 'ap
 ---
 
 ### 工具函数：安全地提取嵌套 JSON
-一个辅助函数，用于安全地从嵌套的字典（如 JSON 响应）中获取值。
+一个辅助函数，用于安全地从嵌套的字典中获取值。
+
 ```python
 def get_nested_value(o: dict, path: list) -> object:
     current = o
@@ -68,10 +71,9 @@ def get_nested_value(o: dict, path: list) -> object:
     return current
 ```
 
----
-
 ### 工具 1：实体查找（Q-ID 查询）
 在 Wikidata 中查找对应的实体，并返回其唯一的 Q-ID（例如 "Q937"）。
+
 ```python
 @fc_register("tool")
 def item_lookup(search: str) -> str:
@@ -103,8 +105,6 @@ def item_lookup(search: str) -> str:
         return f"I couldn't find any item for '{search}'"
 
 ```
-
----
 
 ### 工具 2：属性查找（P-ID 查询）
 与 item_lookup 类似，但专门用于查找 Wikidata 中的属性（Property）。
@@ -140,8 +140,6 @@ def property_lookup(search: str) -> str:
         return f"I couldn't find any property for '{search}'"
 ```
 
----
-
 ### 工具 3：SPARQL 查询执行器
 SPARQL 查询执行器，接收一个 SPARQL 查询语句，将其发送到 Wikidata 的 SPARQL 查询端点，并获取原始的 JSON 格式结果。
 ```python
@@ -167,8 +165,6 @@ def sparql_query_runner(query: str) -> str:
     return str(result) if result is not None else f"No 'results.bindings' found in SPARQL response for query: {query[:100]}..."
 
 ```
-
----
 
 ## 启动 Agent 和 Web 服务
 
