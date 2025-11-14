@@ -3,10 +3,9 @@ from lazyllm.module.llms.onlinemodule.map_model_type import get_model_type
 
 test_models = {
     'llm': [
-        'Qwen3-32B'
         'sensechat-128k',
         'glm-4-5-airx',
-        'qwen3-coder-plus',
+        'qwen3-coder-plus-2025-09-23',
         'deepseek-v3-1-terminus'
     ],
     'vlm': [
