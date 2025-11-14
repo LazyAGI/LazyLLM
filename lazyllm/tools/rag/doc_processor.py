@@ -454,6 +454,7 @@ class DocumentProcessor(ModuleBase):
         @app.post('/doc/cancel')
         async def cancel_task(self, request: CancelDocRequest):
             task_id = request.task_id
+            status = 0
             if task_id in self._pending_task_ids:
                 self._pending_task_ids.remove(task_id)
                 status = 1

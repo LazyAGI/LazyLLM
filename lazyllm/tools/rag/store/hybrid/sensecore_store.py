@@ -2,6 +2,7 @@ import os
 import json
 import uuid
 import time
+import random
 import requests
 
 from pydantic import BaseModel, Field
@@ -93,6 +94,8 @@ class SenseCoreStore(LazyLLMStoreBase):
                 LOG.error(f'Cannot find image path: {image_path} (local path {file_path}), skip...')
             except Exception as e:
                 LOG.error(f'Error when uploading `{image_path}` {e!r}')
+            finally:
+                time.sleep(0.1 + random.random() * 0.4)
         data['content'] = json.loads(content)
 
         if data.get('group') == LAZY_ROOT_NAME:
