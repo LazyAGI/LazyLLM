@@ -192,53 +192,39 @@ class MinimaxTTSModule(OnlineMultiModalBase):
                  stream_options: Dict[str, Any] = None, out_path: str = None, **kwargs):
         if stream:
             raise ValueError('MinimaxTTSModule does not support streaming output, please set stream to False')
+        voice_setting = voice_setting or {}
+        voice_setting.setdefault('voice_id', 'male-qn-qingse')
         payload: Dict[str, Any] = {
             'model': self._model_name,
             'text': input,
             'stream': stream,
             'output_format': output_format,
+            'voice_setting': voice_setting,
         }
-
-        if voice_setting is None:
-            voice_setting = {}
-        if 'voice_id' not in voice_setting:
-            voice_setting['voice_id'] = 'male-qn-qingse'  # default voice id
-        payload['voice_setting'] = voice_setting
-        if audio_setting is not None:
-            payload['audio_setting'] = audio_setting
-        if pronunciation_dict is not None:
-            payload['pronunciation_dict'] = pronunciation_dict
-        if timbre_weights is not None:
-            payload['timbre_weights'] = timbre_weights
-        if language_boost is not None:
-            payload['language_boost'] = language_boost
-        if voice_modify is not None:
-            payload['voice_modify'] = voice_modify
+        optional_params = {
+            'audio_setting': audio_setting,
+            'pronunciation_dict': pronunciation_dict,
+            'timbre_weights': timbre_weights,
+            'language_boost': language_boost,
+            'voice_modify': voice_modify,
+            'stream_options': stream_options,
+        }
+        payload.update({k: v for k, v in optional_params.items() if v is not None})
         if subtitle_enable:
             payload['subtitle_enable'] = subtitle_enable
         if aigc_watermark:
             payload['aigc_watermark'] = aigc_watermark
-        if stream_options is not None:
-            payload['stream_options'] = stream_options
-
         payload.update(kwargs)
-
         result = self._make_request(self._endpoint, payload, timeout=180)
         data = result.get('data') or {}
-
         audio_hex = data.get('audio')
         if not audio_hex:
             raise Exception('Minimax API did not return any audio data.')
-
         audio_content = bytes.fromhex(audio_hex)
-
         file_path = bytes_to_file([audio_content])[0]
-
         if out_path:
             with open(file_path, 'rb') as src, open(out_path, 'wb') as dst:
                 dst.write(src.read())
             file_path = out_path
-
         result_encoded = encode_query_with_filepaths(None, [file_path])
-
         return result_encoded
