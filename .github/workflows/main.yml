@@ -148,6 +148,7 @@ jobs:
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
+          source ~/ENV/env.sh
           python -m pytest --lf --last-failed-no-failures=all -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/basic_tests/
 
   AdvancedStandardTests:
