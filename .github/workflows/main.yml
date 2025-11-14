@@ -65,6 +65,11 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Fetch base branch for PR
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
+
       - name: Build doc
         run: |
           set -e
