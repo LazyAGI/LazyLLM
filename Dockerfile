@@ -1,11 +1,9 @@
-# 配置基础镜像
 FROM lazyllm/cuda:12.1.0-cudnn8-devel-ubuntu22.04
 
-# 设置工作目录
 WORKDIR /tmp
 
 USER root
-# 安装依赖
+
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 ENV TZ=Asia/Shanghai
@@ -22,7 +20,6 @@ RUN set -ex \
     && echo 'LC_ALL="en_US.UTF-8"' >> /etc/default/locale \
     && locale-gen en_US.UTF-8
 
-# 下载并安装 Miniconda
 RUN set -ex \
     && wget https://repo.anaconda.com/miniconda/Miniconda3-py310_23.1.0-1-Linux-x86_64.sh \
     && bash Miniconda3-py310_23.1.0-1-Linux-x86_64.sh -b -p /opt/miniconda3 \
@@ -33,18 +30,14 @@ RUN set -ex \
     && mv redis-stack-server-7.2.0-v10 /usr/local/ \
     && rm -rf redis-stack-server-7.2.0-v10.rhel7.x86_64.tar.gz
 
-# 将 conda 的 bin 目录添加到 PATH 环境变量
 ENV PATH="/opt/miniconda3/bin:/usr/local/redis-stack-server-7.2.0-v10/bin:${PATH}"
 
-# 复制 requirements.txt
 COPY image-build-requirements* /tmp/
 
-# 初始化 conda
 RUN conda init bash \
     && conda create -n lazyllm --clone base \
     && echo "source activate lazyllm" > ~/.bashrc
 
-# 拆分多个requirements安装
 RUN bash -c "source activate lazyllm && \
     conda install -y mpi4py && \
     pip install -r image-build-requirements0.txt --default-timeout=10000 --no-deps && \
@@ -54,7 +47,7 @@ RUN bash -c "source activate lazyllm && \
     pip install flash-attn==2.7.0.post2 && \
     pip cache purge && rm -rf /tmp/*"
 
-# 修复vllm bug
+# Fix vllm bug
 RUN perl -pi -e 's/parser.add_argument\("--port", type=int, default=8000, ge=1024, le=65535\)/parser.add_argument("--port", type=int, default=8000)/g' /opt/miniconda3/envs/lazyllm/lib/python3.10/site-packages/vllm/entrypoints/api_server.py
 
 ARG LAZYLLM_VERSION=""

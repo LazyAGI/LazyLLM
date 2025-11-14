@@ -1,11 +1,9 @@
-# 配置基础镜像
 FROM ubuntu:22.04
 
-# 设置工作目录
 WORKDIR /tmp
 
 USER root
-# 安装依赖
+
 ENV LANG=C.UTF-8
 ENV LC_ALL=C.UTF-8
 ENV TZ=Asia/Shanghai
@@ -22,8 +20,6 @@ RUN set -ex \
     && echo 'LC_ALL="en_US.UTF-8"' >> /etc/default/locale \
     && locale-gen en_US.UTF-8
 
-
-# 下载并安装 Miniconda
 RUN set -ex \
     && ARCH=$(uname -m) \
     && if [ "$ARCH" = "amd64" ] || [ "$ARCH" = "x86_64" ]; then \
@@ -42,15 +38,12 @@ RUN set -ex \
     && mv redis-stack-server-7.2.0-v10 /usr/local/ \
     && rm redis.tar.gz
 
-# 将 conda 的 bin 目录添加到 PATH 环境变量
 ENV PATH="/opt/miniconda3/bin:/usr/local/redis-stack-server-7.2.0-v10/bin:${PATH}"
 
-# 初始化 conda
 RUN conda init bash \
     && conda create -n lazyllm --clone base \
     && echo "source activate lazyllm" > ~/.bashrc
 
-# 安装lazyllm
 ARG LAZYLLM_VERSION=""
 ENV LAZYLLM_VERSION=$LAZYLLM_VERSION
 RUN bash -c "source activate lazyllm && \
