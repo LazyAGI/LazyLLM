@@ -107,31 +107,31 @@ fc = FunctionCall(llm, tools)
 query = "What's the weather like today in celsius in Tokyo and Paris."
 ret = fc(query)
 print(f"ret: {ret}")
-# ["What's the weather like today in celsius in Tokyo and Paris.", {'role': 'assistant', 'content': '', 'tool_calls': [{'id': '93d7e8e8721b4d22b1cb9aa14234ad70', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': {'location': 'Tokyo', 'unit': 'celsius'}}}]}, [{'role': 'tool', 'content': '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', 'tool_call_id': '93d7e8e8721b4d22b1cb9aa14234ad70', 'name': 'get_current_weather'}]]
+# {'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'xxx', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': '{"location":"Tokyo, Japan","unit":"celsius"}'}, 'code_block': None}, {'id': 'xxx', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': '{"location":"Paris, France","unit":"celsius"}'}, 'code_block': None}], 'tool_calls_results': ('{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', '{"location": "Paris", "temperature": "22", "unit": "celsius"}')}
 ```
 
-结果输出为一个列表，第一个元素是当前的输入，第二个元素是模型的输出，第三个元素是工具的输出。因为 [FunctionCall][lazyllm.tools.agent.FunctionCall] 是一个单轮的工具调用过程，所以返回的结果中不光有工具的返回结果，还有当前轮的输入和模型结果。如果没有触发工具调用，则直接返回字符串。如果想要执行一个完整的 function call，则需要使用 [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent]，示例如下：
+`FunctionCall` 会返回模型生成的助手消息。当触发工具调用时，该消息同时包含 `tool_calls`（模型发出的结构化调用）和 `tool_calls_results`（每次工具执行返回的输出）。这些数据也会同步写入 `lazyllm.locals['_lazyllm_agent']['workspace']['tool_calls']` 与 `lazyllm.locals['_lazyllm_agent']['workspace']['tool_call_results']`，方便下一轮使用。当`FunctionCall`判断不需要更多的工具调用时，会将整个执行过程中的工具调用存储到`lazyllm.locals['_lazyllm_agent']['completed']`，用于debug和后续任务。如果模型未选择任何工具，则直接返回字符串。若希望自动完成完整的推理闭环，可以使用 [ReactAgent][lazyllm.tools.agent.ReactAgent]，示例如下：
 
 ```python
 import lazyllm
-from lazyllm.tools import FunctionCallAgent
+from lazyllm.tools import ReactAgent
 llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule()
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
-agent = FunctionCallAgent(llm, tools)
+agent = ReactAgent(llm, tools)
 query = "What's the weather like today in celsius in Tokyo and Paris."
 ret = agent(query)
 print(f"ret: {ret}")
 # The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.
 ```
 
-在上面的例子中，如果输入的 query 触发了 function call，则 [FunctionCall][lazyllm.tools.agent.FunctionCall] 会返回一个列表对象，而 [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] 会迭代执行模型调用和工具调用，直到模型认为信息足够给出一个结论，或者超出了迭代次数，迭代次数通过 max_retries 设置，默认值为5。
+在上面的例子中，如果输入的 query 触发了 function call，[FunctionCall][lazyllm.tools.agent.FunctionCall] 会返回包含 `tool_calls` 与 `tool_calls_results` 的助手消息字典。[ReactAgent][lazyllm.tools.agent.ReactAgent] 则会反复调用模型和工具，直到模型认定信息足以得出结论，或达到由 `max_retries`（默认 5）控制的最大迭代次数。
 
 完整代码如下：
 ```python
 from typing import Literal
 import json
 import lazyllm
-from lazyllm.tools import fc_register, FunctionCall, FunctionCallAgent
+from lazyllm.tools import fc_register, FunctionCall, ReactAgent
 
 @fc_register("tool")
 def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"]="fahrenheit"):
@@ -180,12 +180,12 @@ fc = FunctionCall(llm, tools)
 query = "What's the weather like today in celsius in Tokyo and Paris."
 ret = fc(query)
 print(f"ret: {ret}")
-# ["What's the weather like today in celsius in Tokyo and Paris.", {'role': 'assistant', 'content': '', 'tool_calls': [{'id': '93d7e8e8721b4d22b1cb9aa14234ad70', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': {'location': 'Tokyo', 'unit': 'celsius'}}}]}, [{'role': 'tool', 'content': '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', 'tool_call_id': '93d7e8e8721b4d22b1cb9aa14234ad70', 'name': 'get_current_weather'}]]
+# ret: {'role': 'assistant', 'content': None, 'tool_calls': [{'type': 'function', 'id': 'call_486db4f85272407995677d', 'function': {'arguments': '{"location": "Tokyo", "unit": "celsius"}', 'name': 'get_current_weather'}, 'index': 0}, {'type': 'function', 'id': 'call_08e4eebe34a44fee8abdc3', 'function': {'arguments': '{"location": "Paris", "unit": "celsius"}', 'name': 'get_current_weather'}, 'index': 1}], 'tool_calls_results': ('{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', '{"location": "Paris", "temperature": "22", "unit": "celsius"}')}
 
-agent = FunctionCallAgent(llm, tools)
+agent = ReactAgent(llm, tools)
 ret = agent(query)
 print(f"ret: {ret}")
-# The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.
+# ret: Answer: The current weather in Tokyo is 10°C, and in Paris, it is 22°C.
 ```
 
 !!! Note "注意"
@@ -194,7 +194,7 @@ print(f"ret: {ret}")
     - 在使用模型时，不用区分 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule]，因为设计的 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 的输出类型是一致的。
 
 ## FunctionCall 的设计思路
-[FunctionCall][lazyllm.tools.agent.FunctionCall] 的设计流程采用自底向上的方式进行的，首先由于 [FunctionCall][lazyllm.tools.agent.FunctionCall] 是必需要调用 LLM 的，所以必须是模型的输出格式一致，因此，首先保证 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 的输出对齐，然后再实现单轮的 [FunctionCall][lazyllm.tools.agent.FunctionCall], 即调用 LLM 和 tools 一次，最后实现完整的 [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent]，即多次迭代 [FunctionCall][lazyllm.tools.agent.FunctionCall], 直到模型迭代完成或者超过最大迭代次数。
+[FunctionCall][lazyllm.tools.agent.FunctionCall] 的设计流程采用自底向上的方式进行的，首先由于 [FunctionCall][lazyllm.tools.agent.FunctionCall] 是必需要调用 LLM 的，所以必须是模型的输出格式一致，因此，首先保证 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 的输出对齐，然后再实现单轮的 [FunctionCall][lazyllm.tools.agent.FunctionCall], 即调用 LLM 和 tools 一次，最后实现完整的 [ReactAgent][lazyllm.tools.agent.ReactAgent]，即多次迭代 [FunctionCall][lazyllm.tools.agent.FunctionCall], 直到模型迭代完成或者超过最大迭代次数。
 
 ### TrainableModule 和 OnlineChatModule 输出对齐
 
@@ -205,23 +205,8 @@ print(f"ret: {ret}")
 '\nI need to use the "get_current_weather" function to get the current weather in Tokyo and Paris. I will call the function twice, once for Tokyo and once for Paris.<|action_start|><|plugin|>\n{"name": "get_current_weather", "parameters": {"location": "Tokyo"}}<|action_end|><|im_end|>'
 ```
 
-3、然后通过 extractor 对模型输出进行解析，获取 content 字段和 tool_calls 的 `name` 和 `arguments` 字段，然后对结果进行拼接输出，格式为:
-```text
-content<|tool_calls|>tool_calls
-```
-
-> - 其中 `content` 表示模型输出的内容信息，`<|tool_calls|>` 表示分隔符， `tool_calls` 表示工具调用的字符串表示，例如：
-```text
-'[{"id": "xxxx", "type": "function", "function": {"name": "func_name", "arguments": {"param1": "val1", "param2": "val2"}}}]'
-```
-> - 因为没有 `id` 字段，所以此处的 `id` 字段为生成的一个唯一的随机数标识，为了和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 对齐。
->
-> - 如果没有触发工具调用，即输出中没有 tool_calls 和分隔符，则只有 content 。如果触发了工具调用，但是没有 content ，则输出不包含 content ，只有 <|tool_calls|>tool_calls 。
-
-例如：
-```text
-'I need to use the "get_current_weather" function to get the current weather in Tokyo and Paris. I will call the function twice, once for Tokyo and once for Paris.<|tool_calls|>[{"id": "bd75399403224eb8972640eabedd0d46", "type": "function", "function":{"name": "get_current_weather", "arguments": "{\"location\": \"Tokyo\"}"}}]'
-```
+3、然后通过 extractor 对模型输出进行解析，获取 content 字段和 tool_calls 的 `name` 和 `arguments` 字段，并生成一个id，然后将结果组织为dict，例如：
+{role: "assistant", content: "I need to use the "get_current_weather" function to get the current weather in Tokyo and Paris. I will call the function twice, once for Tokyo and once for Paris.", tool_calls: [{id: "xxx", type: "function", "function": {name: "get_current_weather", arguments: {location: "Tokyo", unit: "celsius"}}}]}
 
 4、其次，对于 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 来说，由于线上模型是支持流式和非流式输出的，而 [FunctionCall][lazyllm.tools.agent.FunctionCall] 是否触发，只有等拿到全部信息之后才能知道，所以对于 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 的流式输出，需要先做一个流式转非流式，即如果模型是流式输出，则等接收完全部消息之后再做后续处理。例如：
 ```text
@@ -239,7 +224,7 @@ content<|tool_calls|>tool_calls
         "tool_calls": [
           {
             "index": 0,
-            "id": "get_current_weather:0",
+            "id": "xxx",
             "type": "function",
             "function": {
               "name": "get_current_weather",
@@ -259,26 +244,29 @@ content<|tool_calls|>tool_calls
 }
 ```
 
-5、接收完模型的输出之后，通过 extractor 对模型输出进行解析，获取 content 字段和 tool_calls 中的除了 `index` 之外的其余字段，这里还保留 `type` 和 `function` 是因为下一轮给模型输入的需要。提取完 content 和 tool_calls 字段之后，按照上面的输出格式进行拼接输出。例如：
+5、接收完模型的输出之后，通过 extractor 对模型输出进行解析，获取message。例如：
 ```text
-'<|tool_calls|>[{"id": "get_current_weather:0","type":"function","function":{"name":"get_current_weather","arguments":"{\n\"location\":\"Tokyo\",\n\"unit\":\"celsius\"\n}"}}]'
+{
+    "role": "assistant",
+    "content": "",
+    "tool_calls": [
+        {
+        "index": 0,
+        "id": "xxx",
+        "type": "function",
+        "function": {
+            "name": "get_current_weather",
+            "arguments": "{\n  \"location\": \"Tokyo\",\n  \"unit\": \"celsius\"\n}"
+            }
+        }
+    ]
+}
 ```
 
-6、这样就能保证 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 的使用是一致的体验了。而为了适配 [FunctionCall][lazyllm.tools.agent.FunctionCall] 的应用，针对模型的输出再通过一下 FunctionCallFormatter ，FunctionCallFormatter 的作用是对模型的输出进行解析，获取 content 和 tool_calls 信息。例如：
-```text
-[{"id": "bd75399403224eb8972640eabedd0d46", "type": "function", "function":{"name": "get_current_weather", "arguments": {"location": "Tokyo"}}}]或者
-[{"id": "get_current_weather:0","type":"function","function":{"name":"get_current_weather","arguments":{"location":"Tokyo","unit":"celsius"}}},{"id": "get_current_weather:1","type":"function","function":{"name":"get_current_weather","arguments":{"location":"Paris","unit":"celsius"}}}]
-```
-
-如果没有调用工具，则输出结果为 string 类型，即模型的输出。例如：
-```text
-今天的东京天气温度为10度 Celsius。
-今天东京的天气温度是10摄氏度，而巴黎的天气温度是22摄氏度。
-```
+6、这样就能保证 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 的使用是一致的体验了。而为了适配 [FunctionCall][lazyllm.tools.agent.FunctionCall] 的应用，针对模型的输出再通过一下 FunctionCallFormatter ，FunctionCallFormatter 的作用是对模型的输出进行解析，获取 role, content 和 tool_calls 信息，忽略其他字段，输出结果为dict。
 
 !!! Note "注意"
 
-    - 模型的输出结果格式为 `content<|tool_calls|>tool_calls`, 分隔符固定，通过分隔符来判断是否是工具调用。
     - 工具调用的信息里面，除了工具的 `name` 和 `arguments` 之外，还有 `id` 、`type` 和 `function` 字段。
 
 
@@ -301,76 +289,33 @@ Hello! How can I assist you today?
 ```
 > - function call 请求
 ```text
-[{"id": "bd75399403224eb8972640eabedd0d46","type":"function", "function":{"name": "get_current_weather", "arguments": "{"location": "Tokyo"}"}}]
+{'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'xxx', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': {'location': 'Tokyo, Japan', 'unit': 'celsius'}}}]}
 ```
 
-2、模型的输出经过解析器进行解析
-> - 非 function call 请求
-```text
-Hello! How can I assist you today?
-```
-> - function call 请求
-```text
-[{"name": "get_current_weather", "arguments": {"location": "Tokyo"}}]
-```
-
-3、判断解析后的输出是否是工具调用，如果是工具调用，测通过 [ToolManager][lazyllm.tools.agent.ToolManager] 工具管理类来调用相应工具。
+2、判断输出是否是工具调用，如果是工具调用，测通过 [ToolManager][lazyllm.tools.agent.ToolManager] 工具管理类来调用相应工具。
 > - function call 请求
 ```text
 '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}'
 ```
 
-4、如果不是工具调用，则直接进行输出，如果是工具调用，则把当前轮次输入、模型输出和工具返回结果封装一起，然后进行输出。
+3、如果不是工具调用，则直接进行输出，如果是工具调用，则把模型输出和工具返回结果封装一起，然后进行输出。
 > - 非 function call 请求
 ```text
 Hello! How can I assist you today?
 ```
 > - function call 请求
 ```text
-[{'tool_call_id': 'bd75399403224eb8972640eabedd0d46', 'name': 'get_current_weather', 'content': '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', 'role': 'tool'}]
-```
-
-### Function Call Agent 的输出流程
-
-[FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] 是处理完整工具调用的过程
-> - agent 输入
-```text
-What's the weather like today in Tokyo.
-```
-
-1、输入进来直接调用 [FunctionCall][lazyllm.tools.agent.FunctionCall] 模块
-> - function call 输出结果
-```text
-[{'tool_call_id': 'get_current_weather:0', 'name': 'get_current_weather', 'content': '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', 'role': 'tool'}]
-```
-> - 非 function call 输出结果
-```text
-今天的东京天气温度是10度 Celsius。
-```
-
-2、判断 [FunctionCall][lazyllm.tools.agent.FunctionCall] 的结果是否是工具调用，或者达到最大迭代次数。如果是工具调用，则返回步骤一。如果不是工具调用或者达到最大迭代次数，则继续往下走。
-
-3、如果达到最大迭代次数，则抛出异常，如果模型正常生成结果，则直接输出。
-> - 达到最大迭代次数后抛出异常
-```text
-ValueError: After retrying 5 times, the function call agent still failed to call successfully.
-```
-> - 正常结果输出
-```text
-今天的东京天气温度是10度 Celsius。
+{'role': 'assistant', 'content': '', 'tool_calls': [{'id': 'xxx', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': {'location': 'Tokyo, Japan', 'unit': 'celsius'}}}], 'tool_calls_results': ('{"location": "Tokyo", "temperature": "10", "unit": "celsius"}',)}
 ```
 
 ## 高级 Agent
-智能体/智能代理 (Agent) 视为能够使用传感器感知周围环境，自主做出决策，然后使用执行器执行相应行动的人工实体。它具有自主性(可以独立运行，不需要人为干预)、反应性(能感知环境变化，并做出反应)、社会性(多个Agent可以相互协调共同完成任务)和适应性(能够不断提升自身性能，更好地完成任务)。
-[FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] 是最基本的 Agent ，通过大模型生成工具调用参数，然后调用工具并把工具返回结果反馈给大模型，这么不断重复，直到模型生成最终答案或者超出最大迭代次数。这其中也会出现一些问题，比如大模型生成的过程是个黑盒，人们不知道具体的推理流程，或者面对复杂问题，大模型不能直接给出答案等等。针对这些问题，研究者们提出了各种解决方案，形成了各种高级 Agent 。下面我们介绍 LazyLLM 中的几种高级 Agent 的实现。
+智能体/智能代理 (Agent) 视为能够使用传感器感知周围环境，自主做出决策，然后使用执行器执行相应行动的人工实体。它具有自主性(可以独立运行，不需要人为干预)、反应性(能感知环境变化，并做出反应)、社会性(多个Agent可以相互协调共同完成任务)和适应性(能够不断提升自身性能，更好地完成任务)。下面我们介绍 LazyLLM 中的几种高级 Agent 的实现。
 
 ### React
 
 [论文](https://arxiv.org/abs/2210.03629)
 
-思路：[ReactAgent][lazyllm.tools.agent.ReactAgent] 按照 "Thought->Action->Observation->Thought...->Finish" 的流程进行问题处理。Thought 展示模型是如何一步一步进行问题解决的。Action 表示工具调用的信息。Observation 为工具返回的结果。Finish 为问题最后的答案。
-
-该 agent 执行流程和 [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] 的执行流程一样，唯一区别是 prompt 不同，并且 [ReactAgent][lazyllm.tools.agent.ReactAgent] 每一步都要有 Thought 输出，而普通 [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] 可能只有工具调用的信息输出，没有 content 内容。示例如下：
+思路：[ReactAgent][lazyllm.tools.agent.ReactAgent] 按照 "Thought->Action->Observation->Thought...->Finish" 的流程进行问题处理。Thought 展示模型是如何一步一步进行问题解决的。Action 表示工具调用的信息。Observation 为工具返回的结果。Finish 为问题最后的答案。示例如下：
 ```python
 import lazyllm
 from lazyllm.tools import fc_register, ReactAgent
@@ -417,7 +362,7 @@ Plan:\n1. Identify the given expression: 20 + (2 * 4)\n2. Perform the multiplica
 
 2、对生成的计划进行解析，以便后面 solver 模型能按照计划进行执行
 
-3、针对计划的每个步骤分别调用 [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] 进行处理，最后生成的结果作为最终答案进行返回
+3、针对计划的每个步骤分别调用 [FunctionCall][lazyllm.tools.agent.FunctionCall] 进行处理，直到不需要调用工具或达到预设的最大调用次数。最后生成的结果作为最终答案进行返回
 ```text
 The final answer is 28.
 ```
