@@ -22,7 +22,6 @@ local_search = graphrag.api.query.local_search
 drift_search = graphrag.api.query.drift_search
 load_config = graphrag.config.load_config.load_config
 IndexingMethod = graphrag.config.enums.IndexingMethod
-index_cli = graphrag.cli.index.index_cli
 initialize_project_at = graphrag.cli.initialize.initialize_project_at
 HTTPException = fastapi.HTTPException
 
@@ -81,7 +80,6 @@ class GraphRAGServiceImpl:
         self._kg_dir = kg_dir
         self._tasks: Dict[str, Any] = {}
         self._index_state: Optional[IndexState] = None
-        # 不在初始化时创建进程池，延迟到实际需要时创建
         self._process_executor: Optional[ProcessPoolExecutor] = None
 
     def _clean_index_state(self):
@@ -91,25 +89,22 @@ class GraphRAGServiceImpl:
         return self._index_state is not None
 
     def _get_process_executor(self) -> ProcessPoolExecutor:
-        '''懒加载进程池执行器，在需要时才创建'''
         if self._process_executor is None:
             self._process_executor = ProcessPoolExecutor(max_workers=1)
             LOG.info('ProcessPoolExecutor created')
         return self._process_executor
 
     def cleanup(self):
-        '''清理资源，关闭进程池执行器'''
         if hasattr(self, '_process_executor') and self._process_executor is not None:
             self._process_executor.shutdown(wait=True)
             self._process_executor = None
             LOG.info('ProcessPoolExecutor has been shut down')
 
     def __del__(self):
-        '''析构函数，确保资源被正确清理'''
         try:
             self.cleanup()
         except Exception:
-            pass  # 忽略析构时的异常
+            pass
 
     @staticmethod
     def init_root_dir(kg_dir: str, force: bool = True):
@@ -183,8 +178,6 @@ class GraphRAGServiceImpl:
         try:
             index_log_file = Path(self._kg_dir) / 'logs' / 'indexing-engine.log'
             if not index_log_file.exists():
-                # 使用进程池执行器在独立进程中执行 index_cli，避免信号处理问题
-                # 在需要时才获取进程池执行器
                 loop = asyncio.get_event_loop()
                 await loop.run_in_executor(
                     self._get_process_executor(),
@@ -229,7 +222,6 @@ class GraphRAGServiceImpl:
 
     @staticmethod
     def _run_index_cli_sync(kg_dir: str):
-        '''同步执行 index_cli 的辅助函数，在独立进程中运行'''
         from pathlib import Path
         from lazyllm.thirdparty import graphrag
         IndexingMethod = graphrag.config.enums.IndexingMethod

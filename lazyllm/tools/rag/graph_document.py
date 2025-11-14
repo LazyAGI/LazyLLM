@@ -12,7 +12,6 @@ class GraphDocument(ModuleBase):
         self._kg_dir = str(Path(document._manager._dataset_path) / '.graphrag_kg')
         self._graphrag_server_module = GraphRagServerModule(kg_dir=self._kg_dir)
         self._graphrag_index_task_id = None
-        # 设置 Document 对 GraphDocument 的弱引用
         self._document = document
         document._graph_document = weakref.ref(self)
 
