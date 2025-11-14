@@ -197,12 +197,19 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
+      - name: Setup buildx (single arch)
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
       - name: Build and push light image (AMD64)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile-light
           push: true
+          provenance: false
+          sbom: false
           build-args: |
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
           tags: |
@@ -267,12 +274,19 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
+      - name: Setup buildx (single arch)
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
       - name: Build and push light image (ARM64)
         uses: docker/build-push-action@v5
         with:
           context: .
           file: ./Dockerfile-light
           push: true
+          provenance: false
+          sbom: false
           build-args: |
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
           tags: |
