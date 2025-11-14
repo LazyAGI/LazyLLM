@@ -19,6 +19,11 @@ jobs:
         with:
           submodules: false
 
+      - name: Checkout LazyLLM-Env submodule only
+        run: |
+          git submodule init LazyLLM-Env
+          git submodule update LazyLLM-Env
+
       - name: Prepare poetry.lock
         run: |
           # 从 LazyLLM-Env 子模块复制 poetry.lock
@@ -121,6 +126,7 @@ jobs:
           context: .
           file: ./Dockerfile
           push: false
+          load: true
           build-args: |
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
           tags: |
@@ -198,6 +204,7 @@ jobs:
           file: ./Dockerfile-light
           platforms: linux/amd64
           push: false
+          load: true
           build-args: |
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
             TARGETARCH=amd64
@@ -210,7 +217,7 @@ jobs:
 
   build-light-arm64:
     name: Build Light Image (ARM64)
-    runs-on: ubuntu-arm
+    runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -273,6 +280,7 @@ jobs:
           file: ./Dockerfile-light
           platforms: linux/arm64
           push: false
+          load: true
           build-args: |
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
             TARGETARCH=arm64
