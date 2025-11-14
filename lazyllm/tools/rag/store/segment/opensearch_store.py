@@ -195,19 +195,8 @@ class OpenSearchStore(LazyLLMStoreBase):
 
     @override
     def search(self, collection_name: str, query: Optional[str] = None,
-               topk: Optional[int] = 10, query_fields: Optional[List[str]] = None,
-               filters: Optional[dict] = None, **kwargs) -> List[dict]:  # noqa: C901
-        if not query_fields:
-            # For custom global_metadata_desc, search all text fields
-            if self._global_metadata_desc and self._global_metadata_desc != BUILDIN_GLOBAL_META_DESC:
-                query_fields = [
-                    field_name for field_name, desc in self._global_metadata_desc.items()
-                    if desc.data_type in (DataType.VARCHAR, DataType.STRING)
-                ]
-                if not query_fields:
-                    query_fields = ['content', 'answer']
-            else:
-                query_fields = ['content', 'answer']
+               topk: Optional[int] = 10, filters: Optional[dict] = None, **kwargs) -> List[dict]:  # noqa: C901
+        query_fields = ['*']
         try:
             self._ensure_index(collection_name)
             must_clauses = []
