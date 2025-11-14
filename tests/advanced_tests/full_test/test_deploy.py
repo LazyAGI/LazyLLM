@@ -21,6 +21,8 @@ def reset_env(func):
         'LAZYLLM_SENSENOVA_API_KEY',
         'LAZYLLM_SENSENOVA_SECRET_KEY',
         'LAZYLLM_DOUBAO_API_KEY',
+        'LAZYLLM_SILICONFLOW_API_KEY',
+        'LAZYLLM_MINIMAX_API_KEY',
     ]
 
     @wraps(func)
