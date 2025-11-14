@@ -223,6 +223,9 @@ while n < max_turns:
 
 ```
 ## View Full Code
+<details> 
+<summary>Click to expand full code</summary>
+
 ```python
 from lazyllm import OnlineChatModule
 from lazyllm.tools import fc_register, ReactAgent
@@ -376,6 +379,8 @@ while n < max_turns:
 
     assistant_msg = solution
 ```
+</details>
+
 ## Example Output
 
 <pre><code>

@@ -12,7 +12,6 @@
 ## 设计思路
 为了让我们的 AI 不仅能聊天，还能具备实时知识检索与事实查询能力，这里我们将引入 Wikidata 作为全球知识图谱数据库，让模型具备“查证事实、查询实体关系与属性”的能力。
 我们将整合以下能力组件：
-
     - `item_lookup`：根据名称检索 Wikidata 实体并返回 Q-ID
     - `property_lookup`：根据属性名称检索 Wikidata 属性并返回 P-ID
     - `sparql_query_runner`：执行 SPARQL 查询以获取 Wikidata 中的结构化知识
@@ -298,12 +297,12 @@ if __name__ == "__main__":
 
 示例输入：
 
-```
+```text
 Q: Q: What is the Q-ID for "Marie Curie"?
 → Returns Q7186
 Q: What is the birth date of Albert Einstein?
 →  Albert Einstein was born on March 14.1879.
----
+```
 
 这就完成啦 —— 现在你的 Agent 已经可以获取 Wikidata 实体、属性，并运行你提供的任何 SPARQL 查询了！
 

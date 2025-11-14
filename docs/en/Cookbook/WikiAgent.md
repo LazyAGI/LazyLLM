@@ -189,8 +189,8 @@ if __name__ == '__main__':
 
 ## View Full Code
 
-<details>
-<summary>点击展开完整代码</summary>
+<details> 
+<summary>Click to expand full code</summary>
 
 ```python
 from thirdparty import httpx
@@ -311,13 +311,13 @@ if __name__ == "__main__":
 
 Example inputs:
 
-```
+```text
 Q: What is the Q-ID for "Marie Curie"?
 → Returns Q7186
 Q: What is the birth date of Albert Einstein?
 →  Albert Einstein was born on March 14.1879.
 ```
----
+
 
 That’s it — now your Agent can fetch Wikidata entities, properties, and run any SPARQL you throw at it!
 
