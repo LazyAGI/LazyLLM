@@ -123,14 +123,6 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
 
         file_paths = bytes_to_file(image_files)
 
-        if self._return_trace:
-            return {
-                'response': encode_query_with_filepaths(None, file_paths),
-                'trace_info': {
-                    'model': self._model_name,
-                    'full_response': result
-                }
-            }
         return encode_query_with_filepaths(None, file_paths)
 
 class SiliconFlowTTS(OnlineMultiModalBase):
@@ -191,12 +183,4 @@ class SiliconFlowTTS(OnlineMultiModalBase):
 
         result = encode_query_with_filepaths(None, [file_path])
 
-        if self._return_trace:
-            return {
-                'response': result,
-                'trace_info': {
-                    'model': self._model_name,
-                    'full_response': f'Audio generated successfully, length: {len(audio_content)} bytes'
-                }
-            }
         return result
