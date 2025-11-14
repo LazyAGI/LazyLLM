@@ -507,12 +507,12 @@ class DocumentProcessor(ModuleBase):
             return getattr(self, func_name)(*args, **kwargs)
 
     def __init__(self, port: int = None, url: str = None, num_workers: int = 1,
-                 db_config: Optional[Dict[str, Any]] = _get_default_db_config(),
+                 db_config: Optional[Dict[str, Any]] = None,
                  launcher: Optional[Launcher] = None, post_func: Optional[Callable] = None,
                  path_prefix: Optional[str] = None):
         super().__init__()
         self._raw_impl = None  # save the reference of the original Impl object
-        self._db_config = db_config
+        self._db_config = db_config if db_config else _get_default_db_config()
         if not url:
             # create the Impl object (lazy loading, no threads created)
             self._raw_impl = DocumentProcessor._Impl(num_workers=num_workers, db_config=db_config,
