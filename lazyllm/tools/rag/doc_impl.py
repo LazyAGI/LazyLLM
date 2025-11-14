@@ -137,7 +137,7 @@ class DocImpl:
                                                self._display_name, self._description)
         else:
             self._processor = _Processor(self.store, self._reader, self.node_groups, self._display_name,
-                                         self._description, self._version)
+                                         self._description)
 
         # init files when `cloud` is False
         if not cloud and self.store.is_group_empty(LAZY_ROOT_NAME):
