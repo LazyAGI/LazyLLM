@@ -11,13 +11,14 @@
 
 ## 设计思路
 为了让我们的 AI 不仅能聊天，还能具备实时知识检索与事实查询能力，这里我们将引入 Wikidata 作为全球知识图谱数据库，让模型具备“查证事实、查询实体关系与属性”的能力。
+
 我们将整合以下能力组件：
 
-    item_lookup：根据名称检索 Wikidata 实体并返回 Q-ID
-    property_lookup：根据属性名称检索 Wikidata 属性并返回 P-ID
-    sparql_query_runner：执行 SPARQL 查询以获取 Wikidata 中的结构化知识
-    OnlineChatModule：作为核心语言模型，理解问题并组织推理
-    ReactAgent：作为智能调度核心，让模型自动调用工具完成任务
+- `item_lookup`：根据名称检索 Wikidata 实体并返回 Q-ID
+- `property_lookup`：根据属性名称检索 Wikidata 属性并返回 P-ID
+- `sparql_query_runner`：执行 SPARQL 查询以获取 Wikidata 中的结构化知识
+- `OnlineChatModule`：作为核心语言模型，理解问题并组织推理
+- `ReactAgent`：作为智能调度核心，让模型自动调用工具完成任务
 
 我们注意到 Wikidata 查询分为实体识别 → 属性识别 → 查询执行三步，因此我们需要一个能够根据用户问题动态选择工具的智能体。另外，Wikidata 结构化查询返回 JSON 数据，需要模型解析与整合，因此我们让 LLM 根据需求主动发起多轮工具调用，然后汇总答案。
 综合以上考虑，我们进行如下设计：

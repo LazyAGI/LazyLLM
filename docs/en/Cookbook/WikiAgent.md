@@ -12,14 +12,15 @@ Do you want your Agent to search for Wikidata entities, properties, and even run
 ---
 ## Design Rationale
 To enable our AI not only to chat but also to perform real-time knowledge retrieval and factual verification, we integrate Wikidata—a global knowledge graph—as an external source of truth, empowering the model with the ability to verify facts and query relationships and attributes of entities.
+
 We integrate the following capability components:
 
-    item_lookup: Retrieves a Wikidata entity by name and returns its Q-ID.
-    property_lookup: Retrieves a Wikidata property by label and returns its P-ID.
-    sparql_query_runner: Executes SPARQL queries to fetch structured knowledge from Wikidata.
-    OnlineChatModule: Serves as the core language model that understands user questions and orchestrates multi-step reasoning.
-    ReactAgent: Acts as the intelligent dispatcher, enabling the model to autonomously invoke the appropriate tools to complete the task.
-    
+- `item_lookup`: Retrieves a Wikidata entity by name and returns its Q-ID.
+- `property_lookup`: Retrieves a Wikidata property by label and returns its P-ID.
+- `sparql_query_runner`: Executes SPARQL queries to fetch structured knowledge from Wikidata.
+- `OnlineChatModule`: Serves as the core language model that understands user questions and orchestrates multi-step reasoning.
+- `ReactAgent`: Acts as the intelligent dispatcher, enabling the model to autonomously invoke the appropriate tools to complete the task.
+
 We observe that querying Wikidata typically follows a three-step process:
 entity identification → property identification → query execution.
 Therefore, we require an agent capable of dynamically selecting and invoking tools based on the user’s question. Additionally, since Wikidata returns structured JSON data from SPARQL queries, the LLM must interpret, synthesize, and summarize the results. Thus, we design the system so that the LLM can initiate multiple rounds of tool calls as needed and then generate a coherent final answer.
