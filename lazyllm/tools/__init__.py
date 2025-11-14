@@ -1,4 +1,13 @@
-from .rag import Document, Reranker, Retriever, TempDocRetriever, SentenceSplitter, LLMParser
+from .rag import (
+    Document,
+    GraphDocument,
+    Reranker,
+    Retriever,
+    TempDocRetriever,
+    GraphRetriever,
+    SentenceSplitter,
+    LLMParser,
+)
 from .webpages import WebModule
 from .agent import (
     ToolManager,
@@ -24,9 +33,11 @@ from .http_request import HttpRequest, HttpExecutorResponse
 
 __all__ = [
     'Document',
+    'GraphDocument',
     'Reranker',
     'TempDocRetriever',
     'Retriever',
+    'GraphRetriever',
     'WebModule',
     'ToolManager',
     'ModuleTool',

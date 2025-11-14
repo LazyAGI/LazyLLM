@@ -230,8 +230,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             except Exception as e:
                 lazyllm.LOG.warning(f'Convert to json failed. Exception : {str(e)}')
                 continue
-            if meta_dict.get(RAG_KB_ID, "") == kb_id and meta_dict.get(RAG_DOC_PATH, "") in available_files:
-                kb_files.add(meta_dict.get(RAG_DOC_PATH, ""))
+            if meta_dict.get(RAG_KB_ID, '') == kb_id and meta_dict.get(RAG_DOC_PATH, '') in available_files:
+                kb_files.add(meta_dict.get(RAG_DOC_PATH, ''))
         return list(kb_files)
 
     @property
@@ -316,16 +316,14 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     @property
     @deprecated('Document._manager')
-    def _impls(self):
-        return self._manager
+    def _impls(self): return self._manager
 
     @property
     def _impl(self) -> DocImpl:
         return self._manager.get_doc_by_kb_group(self._curr_group)
 
     @property
-    def manager(self):
-        return self._manager._processor or self._manager
+    def manager(self): return self._manager._processor or self._manager
 
     def activate_group(self, group_name: str, embed_keys: Optional[Union[str, List[str]]] = None,
                        enable_embed: bool = True):
@@ -392,17 +390,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def _get_post_process_tasks(self):
         return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))
-
-    def __del__(self):
-        """Destructor: stop all started GraphRAG servers"""
-        if hasattr(self, '_graphrag_servers'):
-            for kb_id, server in self._graphrag_servers.items():
-                try:
-                    if server:
-                        server.stop()
-                except Exception:
-                    # Ignore exceptions during cleanup to avoid issues in destructor
-                    pass
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Document', manager=hasattr(self._manager, '_manager'),

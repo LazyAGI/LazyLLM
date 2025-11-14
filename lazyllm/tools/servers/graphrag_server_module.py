@@ -15,7 +15,7 @@ class GraphRagServerModule(ServerModule):
         self._graphrag_service_impl = GraphRAGServiceImpl(kg_dir=str(self._kg_dir))
         # this url can only be set by graphrag server module
         self._graphrag_shared_url = self._get_shared_url_from_file()
-        super().__init__(m=self._graphrag_service_impl, *args, **kwargs)
+        super().__init__(self._graphrag_service_impl, *args, **kwargs)
 
     @property
     def graphrag_shared_url(self) -> str:
@@ -70,9 +70,10 @@ class GraphRagServerModule(ServerModule):
         if is_root_server and clean:
             shutil.rmtree(self._kg_dir)
 
-    def prepare_files(self, files: List[str]):
+    def prepare_files(self, files: List[str], regenerate_config: bool = True):
         '''Copy files to self._kg_dir/input/ with renamed format: filename_{uuid}.ext'''
         input_dir = Path(self._kg_dir) / 'input'
+        shutil.rmtree(input_dir, ignore_errors=True)
         input_dir.mkdir(parents=True, exist_ok=True)
 
         for file_path in files:
@@ -83,13 +84,13 @@ class GraphRagServerModule(ServerModule):
             file_name = source_file.stem
             ext = source_file.suffix
             # Generate new filename: filename_{uuid}.ext
-            new_filename = f"{file_name}_{uuid.uuid4().hex}{ext}"
+            new_filename = f'{file_name}_{uuid.uuid4().hex}{ext}'
             dest_file = input_dir / new_filename
 
             # Copy file to destination
             shutil.copy2(source_file, dest_file)
         try:
-            GraphRAGServiceImpl.init_root_dir(self._kg_dir)
+            GraphRAGServiceImpl.init_root_dir(self._kg_dir, force=regenerate_config)
         except Exception as e:
             LOG.error(f'Error initializing root directory: {str(e)}')
             raise e

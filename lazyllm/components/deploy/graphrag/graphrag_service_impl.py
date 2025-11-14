@@ -2,27 +2,29 @@
 from pathlib import Path
 import logging
 from enum import Enum
-import pandas as pd  # noqa: NID001, NID002
+from lazyllm.thirdparty import pandas as pd
 from typing import Optional, Dict, Any
 from dataclasses import dataclass
-from fastapi import HTTPException  # noqa: NID001, NID002
+from lazyllm.thirdparty import fastapi
 from pydantic import BaseModel, Field
 from datetime import datetime
 import uuid
 import shutil
 import asyncio
-
-# GraphRAG imports
-# thirdparty import not working
-# from thirdparty import graphrag
-from graphrag.api import global_search, local_search, drift_search
-from graphrag.config.load_config import load_config
-from graphrag.config.enums import IndexingMethod
-from graphrag.cli.index import index_cli
-from graphrag.cli.initialize import initialize_project_at
+from concurrent.futures import ProcessPoolExecutor
+from lazyllm.thirdparty import graphrag
 
 from lazyllm import FastapiApp as app
 from lazyllm import LOG
+
+global_search = graphrag.api.query.drift_search
+local_search = graphrag.api.query.local_search
+drift_search = graphrag.api.query.drift_search
+load_config = graphrag.config.load_config.load_config
+IndexingMethod = graphrag.config.enums.IndexingMethod
+index_cli = graphrag.cli.index.index_cli
+initialize_project_at = graphrag.cli.initialize.initialize_project_at
+HTTPException = fastapi.HTTPException
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -79,6 +81,8 @@ class GraphRAGServiceImpl:
         self._kg_dir = kg_dir
         self._tasks: Dict[str, Any] = {}
         self._index_state: Optional[IndexState] = None
+        # 不在初始化时创建进程池，延迟到实际需要时创建
+        self._process_executor: Optional[ProcessPoolExecutor] = None
 
     def _clean_index_state(self):
         self._index_state = None
@@ -86,12 +90,33 @@ class GraphRAGServiceImpl:
     def index_ready(self) -> bool:
         return self._index_state is not None
 
+    def _get_process_executor(self) -> ProcessPoolExecutor:
+        '''懒加载进程池执行器，在需要时才创建'''
+        if self._process_executor is None:
+            self._process_executor = ProcessPoolExecutor(max_workers=1)
+            LOG.info('ProcessPoolExecutor created')
+        return self._process_executor
+
+    def cleanup(self):
+        '''清理资源，关闭进程池执行器'''
+        if hasattr(self, '_process_executor') and self._process_executor is not None:
+            self._process_executor.shutdown(wait=True)
+            self._process_executor = None
+            LOG.info('ProcessPoolExecutor has been shut down')
+
+    def __del__(self):
+        '''析构函数，确保资源被正确清理'''
+        try:
+            self.cleanup()
+        except Exception:
+            pass  # 忽略析构时的异常
+
     @staticmethod
-    def init_root_dir(kg_dir: str):
+    def init_root_dir(kg_dir: str, force: bool = True):
         '''Initialize the root directory for a knowledge graph'''
         if not Path(kg_dir).exists():
             raise Exception(f'Root directory {kg_dir} does not exist. Please prepare it first.')
-        initialize_project_at(root_dir=kg_dir, force=True)
+        initialize_project_at(path=kg_dir, force=True)
 
     @app.post('/graphrag/create_index', response_model=CreateIndexResponse)
     async def create_index(self, override: bool = True):
@@ -120,16 +145,13 @@ class GraphRAGServiceImpl:
                 shutil.rmtree(folder)
 
         def handle_task_exception(task: asyncio.Task):
-            """Handle exceptions from the background task"""
+            '''Handle exceptions from the background task'''
             try:
-                # 获取任务结果，如果有异常会在这里抛出
                 task.result()
             except Exception as e:
-                # 如果任务失败，更新任务状态
                 if task_id in self._tasks:
                     LOG.error(f'Error in index task {task_id}: {str(e)}')
                     task_info = self._tasks[task_id]
-                    # 使用 model_copy 创建新实例来更新状态
                     self._tasks[task_id] = task_info.model_copy(update={
                         'status': IndexStatus.FAILED,
                         'error_message': f'Task execution failed: {str(e)}',
@@ -137,11 +159,9 @@ class GraphRAGServiceImpl:
                     })
 
         try:
-            # 创建任务并添加异常处理回调
             background_task = asyncio.create_task(self._run_index_cli(task_id))
             background_task.add_done_callback(handle_task_exception)
         except Exception as e:
-            # 处理任务创建时的异常（这种情况很少见，但需要处理）
             LOG.error(f'Error creating index task: {str(e)}')
             task_info = self._tasks[task_id]
             self._tasks[task_id] = task_info.model_copy(update={
@@ -156,7 +176,6 @@ class GraphRAGServiceImpl:
     async def _run_index_cli(self, task_id: str):
         '''run graphrag index task'''
         task_info = self._tasks[task_id]
-        # 使用 model_copy 更新状态
         self._tasks[task_id] = task_info.model_copy(update={
             'status': IndexStatus.PROCESSING,
             'updated_at': datetime.now()
@@ -164,16 +183,13 @@ class GraphRAGServiceImpl:
         try:
             index_log_file = Path(self._kg_dir) / 'logs' / 'indexing-engine.log'
             if not index_log_file.exists():
-                index_cli(
-                    root_dir=self._kg_dir,
-                    verbose=False,
-                    memprofile=False,
-                    cache=True,
-                    config_filepath=None,
-                    dry_run=False,
-                    skip_validation=False,
-                    output_dir=None,
-                    method=IndexingMethod.Standard.value,
+                # 使用进程池执行器在独立进程中执行 index_cli，避免信号处理问题
+                # 在需要时才获取进程池执行器
+                loop = asyncio.get_event_loop()
+                await loop.run_in_executor(
+                    self._get_process_executor(),
+                    self._run_index_cli_sync,
+                    self._kg_dir
                 )
 
             # Read the last two lines of the log file and check for success message
@@ -208,6 +224,28 @@ class GraphRAGServiceImpl:
                 'error_message': str(e),
                 'updated_at': datetime.now()
             })
+        finally:
+            self.cleanup()
+
+    @staticmethod
+    def _run_index_cli_sync(kg_dir: str):
+        '''同步执行 index_cli 的辅助函数，在独立进程中运行'''
+        from pathlib import Path
+        from lazyllm.thirdparty import graphrag
+        IndexingMethod = graphrag.config.enums.IndexingMethod
+        index_cli = graphrag.cli.index.index_cli
+
+        index_cli(
+            root_dir=Path(kg_dir),
+            verbose=False,
+            memprofile=False,
+            cache=True,
+            config_filepath=None,
+            dry_run=False,
+            skip_validation=False,
+            output_dir=None,
+            method=IndexingMethod.Standard.value,
+        )
 
     def _load_index_state(self) -> IndexState:
         '''Load index state from the knowledge graph directory'''
