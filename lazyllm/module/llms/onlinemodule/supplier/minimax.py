@@ -26,7 +26,7 @@ class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _set_chat_url(self):
         self._url = urljoin(self._base_url, 'chat/completions')
-    
+
     def _convert_msg_format(self, msg: Dict[str, Any]):
         '''Convert the reasoning_details in output to reasoning_content field in message'''
         choices = msg.get('choices')

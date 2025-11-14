@@ -12,7 +12,7 @@ def api_key():
 class TestOnlineChat(object):
     def test_online_chat(self, api_key):
         llm = lazyllm.OnlineChatModule(source='minimax', api_key=api_key)
-        response = llm("你好，介绍自己")
+        response = llm('你好，介绍自己')
         assert response is not None
         assert isinstance(response, str)
         assert len(response) > 0
