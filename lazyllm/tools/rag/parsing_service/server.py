@@ -1,4 +1,3 @@
-import base64
 import json
 import threading
 import time
@@ -14,7 +13,7 @@ from lazyllm import (
 from lazyllm.thirdparty import fastapi
 
 from .base import (
-    ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO, TaskStatus,
+    ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
     TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest, _calculate_task_score
 )
 from .impl import _get_default_db_config
@@ -36,7 +35,7 @@ class DocumentProcessor(ModuleBase):
             self._db_config = db_config
             self._num_workers = num_workers
             self._post_func = post_func
-            if not self._assert_post_func():
+            if not self._check_post_func():
                 raise ValueError('Invalid post function!')
             self._shutdown = False
             self._path_prefix = path_prefix
@@ -232,28 +231,6 @@ class DocumentProcessor(ModuleBase):
                 LOG.warning('[DocumentProcessor] No algorithm registered')
             return BaseResponse(code=200, msg='success', data=data)
 
-        @app.get('/algo/{algo_id}/info')
-        def get_algo_info(self, algo_id: str) -> None:
-            self._lazy_init()
-            if self._shutdown:
-                raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
-            try:
-                algorithm = self._get_algo(algo_id)
-                if algorithm is None:
-                    raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
-                info_pickle_bytes = algorithm.get('info_pickle')
-                info_pickle_b64 = base64.b64encode(info_pickle_bytes).decode('utf-8')
-                data = {
-                    'algo_id': algo_id,
-                    'display_name': algorithm.get('display_name'),
-                    'description': algorithm.get('description'),
-                    'info_pickle': info_pickle_b64,
-                }
-                return BaseResponse(code=200, msg='success', data=data)
-            except Exception as e:
-                LOG.error(f'[DocumentProcessor] Failed to get algo info: {e}, {traceback.format_exc()}')
-                raise fastapi.HTTPException(status_code=500, detail=f'Failed to get algo info: {str(e)}')
-
         @app.get('/algo/{algo_id}/group/info')
         def get_algo_group_info(self, algo_id: str) -> None:
             self._lazy_init()
@@ -435,34 +412,20 @@ class DocumentProcessor(ModuleBase):
             try:
                 # NOTE: only the task in waiting state can be canceled
                 cancel_status = False
-                task_status = TaskStatus.WAITING.value
                 waiting_task = self._waiting_task_queue.dequeue(filter_by={'task_id': task_id})
                 message = ''
                 if waiting_task:
                     cancel_status = True
-                    task_status = TaskStatus.CANCELED.value
                     message = 'Canceled by user'
                 else:
-                    finished_task = self._finished_task_queue.dequeue(filter_by={'task_id': task_id})
-                    if finished_task:
-                        cancel_status = False
-                        task_status = finished_task['task_status']
-                        if task_status == TaskStatus.FAILED.value:
-                            message = (f'Finished with error: code={finished_task["error_code"]},'
-                                       f' msg={finished_task["error_msg"]}')
-                        else:
-                            message = 'Task already finished'
-                    else:
-                        task_status = TaskStatus.WORKING.value
-                        message = (f'Task {task_id} not found in waiting or finished queue,'
-                                   ' task may be running and cannot be canceled!')
+                    message = (f'Task {task_id} not found in waiting queue,'
+                               ' task may be running or already finished and cannot be canceled!')
                 return BaseResponse(
                     code=200,
                     msg='success' if cancel_status else 'failed',
                     data={
                         'task_id': task_id,
                         'cancel_status': cancel_status,
-                        'task_status': task_status,
                         'message': message,
                     }
                 )
@@ -470,7 +433,7 @@ class DocumentProcessor(ModuleBase):
                 LOG.error(f'[DocumentProcessor] Failed to cancel task {task_id}: {e}, {traceback.format_exc()}')
                 raise fastapi.HTTPException(status_code=500, detail=f'Failed to cancel task: {str(e)}')
 
-        def _assert_post_func(self) -> bool:
+        def _check_post_func(self) -> bool:
             '''assert post function is callable and params include task_id, task_status, error_code, error_msg'''
             if not self._post_func:
                 LOG.warning('[DocumentProcessor] No post function configured,'
@@ -515,7 +478,7 @@ class DocumentProcessor(ModuleBase):
         self._db_config = db_config if db_config else _get_default_db_config()
         if not url:
             # create the Impl object (lazy loading, no threads created)
-            self._raw_impl = DocumentProcessor._Impl(num_workers=num_workers, db_config=db_config,
+            self._raw_impl = DocumentProcessor._Impl(num_workers=num_workers, db_config=self._db_config,
                                                      post_func=post_func, path_prefix=path_prefix)
             self._impl = ServerModule(self._raw_impl, port=port, launcher=launcher)
         else:

@@ -661,6 +661,14 @@ Call the class YmlReader.
 Call the function processYml.
 ''')
 
+add_chinese_doc('Document.drop_algorithm', '''
+用于删除当前文档集合的在文档解析服务中注册的算法信息。
+''')
+
+add_english_doc('Document.drop_algorithm', '''
+Delete the algorithm information registered in the document parsing service for the current document collection.
+''')
+
 add_english_doc('rag.readers.ReaderBase', '''
 The base class of file readers, which inherits from the ModuleBase base class and has Callable capabilities. Subclasses that inherit from this class only need to implement the _load_data function, and its return parameter type is List[DocNode]. Generally, the input parameters of the _load_data function are file (Path) and fs (AbstractFileSystem).
 
@@ -8400,6 +8408,14 @@ Clear cache.
 
 Args:
     group_names (Optional[List[str]]): List of group names to clear cache for, defaults to None for clearing all cache.
+''')
+
+add_chinese_doc('rag.doc_impl.DocImpl.drop_algorithm', '''\
+删除当前文档集合的在文档解析服务中注册的算法信息。
+''')
+
+add_english_doc('rag.doc_impl.DocImpl.drop_algorithm', '''\
+Delete the algorithm information registered in the document parsing service for the current document collection.
 ''')
 
 add_services_chinese_doc('client.ClientBase', '''\

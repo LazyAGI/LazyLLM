@@ -481,7 +481,10 @@ class DocImpl:
         self.store.clear_cache(group_names)
 
     def drop_algorithm(self):
-        self._processor.drop_algorithm(self._algo_name)
+        if isinstance(self._processor, DocumentProcessor):
+            self._processor.drop_algorithm(self._algo_name)
+        else:
+            raise ValueError('This method is only available when the Document has a DocumentProcessor')
 
     def __call__(self, func_name: str, *args, **kwargs):
         return getattr(self, func_name)(*args, **kwargs)
