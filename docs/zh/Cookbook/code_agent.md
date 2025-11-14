@@ -86,7 +86,7 @@ def generate_code_from_query(query: str) -> str:
     3. 如果任务涉及网络请求或外部 API，请使用随机数或固定数据进行模拟。
     4. 函数必须有明确的返回值，并返回最终结果（如图片路径或计算结果）。
     5. 如果是绘图任务，绘图时禁止使用中文字符（标题、坐标轴、标签均使用英文），
-    请将图片保存到路径 `/home/mnt/chenzhe1/WorkDir/images` 中，
+    请将图片保存到路径 `/home/mnt/WorkDir/images` 中，
     返回值必须是图片的完整保存路径。
     6. 代码中不得包含函数调用示例或打印语句。
     '''
@@ -110,7 +110,7 @@ def generate_code_from_query(query: str) -> str:
 ```python
 llm = OnlineChatModule()
 agent = FunctionCallAgent(llm, tools=['generate_code_from_query'])
-WebModule(agent, port=12345, title='Code Agent', static_paths='/home/mnt/chenzhe1/WorkDir/images').start().wait()
+WebModule(agent, port=12345, title='Code Agent', static_paths='/home/mnt/WorkDir/images').start().wait()
 ```
 
 **参数说明：**
@@ -160,7 +160,7 @@ def generate_code_from_query(query: str) -> str:
     3. 如果任务涉及网络请求或外部 API，请使用随机数或固定数据进行模拟。
     4. 函数必须有明确的返回值，并返回最终结果（如图片路径或计算结果）。
     5. 如果是绘图任务，绘图时禁止使用中文字符（标题、坐标轴、标签均使用英文），
-    请将图片保存到路径 `/home/mnt/chenzhe1/WorkDir/images` 中，
+    请将图片保存到路径 `/home/mnt/WorkDir/images` 中，
     返回值必须是图片的完整保存路径。
     6. 代码中不得包含函数调用示例或打印语句。
     '''
@@ -178,7 +178,7 @@ def generate_code_from_query(query: str) -> str:
 
 llm = OnlineChatModule()
 agent = FunctionCallAgent(llm, tools=['generate_code_from_query'])
-WebModule(agent, port=12347, title='Code Agent', static_paths='/home/mnt/chenzhe1/WorkDir/images').start().wait()
+WebModule(agent, port=12347, title='Code Agent', static_paths='/home/mnt/WorkDir/images').start().wait()
 ```
 </details>
 

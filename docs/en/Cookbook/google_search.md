@@ -6,7 +6,7 @@ Final result: by inputting a query term (e.g., “Yuanmingyuan”), the system a
 !!! abstract "In this section, you will learn the following key points about LazyLLM:"
 
     - How to use [GoogleSearch][lazyllm.tools.tools.GoogleSearch] to call the Google Custom Search API;
-    - How to use [BeautifulSoup][bs4.BeautifulSoup] to extract webpage text;
+    - How to use `BeautifulSoup` to extract webpage text;
     - How to build an automated pipeline for web search and content extraction.
 
 ## Design Concept

@@ -90,7 +90,7 @@ def generate_code_from_query(query: str) -> str:
     3. If the task involves web requests or APIs, use random or fixed simulated data instead.
     4. The function must have a clear return value, returning the final result (such as an image path or a computed value).
     5. For visualization tasks, do not use Chinese characters (titles, axes, and labels must be in English).
-       Save the image to the path `/home/mnt/chenzhe1/WorkDir/images`
+       Save the image to the path `/home/mnt/WorkDir/images`
        and ensure the return value is the complete image file path.
     6. No example function calls or print statements are allowed in the code.
     '''
@@ -114,7 +114,7 @@ After defining the tool, we use `FunctionCallAgent` to integrate it and deploy a
 ```python
 llm = OnlineChatModule()
 agent = FunctionCallAgent(llm, tools=['generate_code_from_query'])
-WebModule(agent, port=12345, title='Code Agent', static_paths='/home/mnt/chenzhe1/WorkDir/images').start().wait()
+WebModule(agent, port=12345, title='Code Agent', static_paths='/home/mnt/WorkDir/images').start().wait()
 ```
 
 **Parameter explanation:**
@@ -164,7 +164,7 @@ def generate_code_from_query(query: str) -> str:
     3. If the task involves web requests or APIs, use random or fixed simulated data instead.
     4. The function must have a clear return value, returning the final result (such as an image path or a computed value).
     5. For visualization tasks, do not use Chinese characters (titles, axes, and labels must be in English).
-       Save the image to the path `/home/mnt/chenzhe1/WorkDir/images`
+       Save the image to the path `/home/mnt/WorkDir/images`
        and ensure the return value is the complete image file path.
     6. No example function calls or print statements are allowed in the code.
     '''
@@ -182,7 +182,7 @@ def generate_code_from_query(query: str) -> str:
 
 llm = OnlineChatModule()
 agent = FunctionCallAgent(llm, tools=['generate_code_from_query'])
-WebModule(agent, port=12347, title='Code Agent', static_paths='/home/mnt/chenzhe1/WorkDir/images').start().wait()
+WebModule(agent, port=12347, title='Code Agent', static_paths='/home/mnt/WorkDir/images').start().wait()
 ```
 </details>
 

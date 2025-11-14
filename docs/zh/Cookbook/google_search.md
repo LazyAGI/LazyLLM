@@ -5,7 +5,7 @@
 !!! abstract "通过本节您将学习到 LazyLLM 的以下要点："
 
     - 如何使用 [GoogleSearch][lazyllm.tools.tools.GoogleSearch] 调用 Google Custom Search API；
-    - 如何通过 [BeautifulSoup][bs4.BeautifulSoup] 抓取网页正文；
+    - 如何通过 `BeautifulSoup` 抓取网页正文；
     - 如何构建一个自动化网页搜索与内容抽取流程。
 
 ## 设计思路
