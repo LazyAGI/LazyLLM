@@ -127,6 +127,65 @@ WebModule(agent, port=12345, title='Code Agent', static_paths='/home/mnt/chenzhe
 
 After executing `.start().wait()`, the service will start and display a local access address (e.g., `http://127.0.0.1:12345`). Open this address in your browser to input natural language requests — the system will automatically generate, execute, and display the results (such as generated images).
 
+## Full Code
+
+The complete code is shown below:
+
+<details>
+<summary>Click to expand full code</summary>
+
+```python
+from lazyllm.common.utils import compile_func
+from lazyllm import OnlineChatModule, WebModule
+from lazyllm.tools import CodeGenerator, FunctionCallAgent, fc_register
+
+@fc_register('tool')
+def generate_code_from_query(query: str) -> str:
+    '''
+    Generate and execute Python code to fulfill a user's natural language request.
+
+    This tool uses an LLM to generate a single-function Python script based on the user's query.
+    The generated function is safely compiled and executed, and the final result
+    (e.g., an image path or computed value) is returned.
+
+    Args:
+        query (str): The user's natural language instruction,
+                     for example: "Draw a temperature change chart of Beijing in the past month".
+
+    Returns:
+        str: The execution result of the generated function (e.g., image path or computed value).
+    '''
+    prompt = '''
+    Please generate Python code that defines a single function to fulfill the user's request.
+
+    Requirements:
+    1. The following modules are strictly forbidden: requests, os, sys, subprocess, socket, http, urllib, pickle, etc.
+    2. Only safe libraries such as matplotlib, datetime, random, and math may be used.
+    3. If the task involves web requests or APIs, use random or fixed simulated data instead.
+    4. The function must have a clear return value, returning the final result (such as an image path or a computed value).
+    5. For visualization tasks, do not use Chinese characters (titles, axes, and labels must be in English).
+       Save the image to the path `/home/mnt/chenzhe1/WorkDir/images`
+       and ensure the return value is the complete image file path.
+    6. No example function calls or print statements are allowed in the code.
+    '''
+    gen = CodeGenerator(llm, prompt)
+    code = gen(query)
+
+    compiled_func = compile_func(code)
+
+    try:
+        result = compiled_func()
+    except Exception as e:
+        result = f'Error during code execution: {e}'
+
+    return result
+
+llm = OnlineChatModule()
+agent = FunctionCallAgent(llm, tools=['generate_code_from_query'])
+WebModule(agent, port=12347, title='Code Agent', static_paths='/home/mnt/chenzhe1/WorkDir/images').start().wait()
+```
+</details>
+
 ## Demonstration
 
 Example input:

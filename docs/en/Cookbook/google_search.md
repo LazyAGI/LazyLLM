@@ -132,6 +132,73 @@ if __name__ == '__main__':
 First, the built-in `GoogleSearch` tool calls the API to search for the keyword “Yuanmingyuan.”
 Then, `extract_search_results` extracts result links, and `fetch_web_content` retrieves and parses webpage text content.
 
+## Full Code
+
+The complete code is shown below:
+
+<details>
+<summary>Click to expand full code</summary>
+
+```python
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+from lazyllm.tools.tools import GoogleSearch
+
+api_key = 'AI******'
+engine_id = 'a3******'
+
+def extract_search_results(response_dict):
+    items = response_dict.get('items', [])
+    results = [
+        {'title': item.get('title', ''), 'url': item.get('link', '')}
+        for item in items
+    ]
+    return pd.DataFrame(results)
+
+def fetch_web_content(url: str) -> str:
+    '''
+    Fetch webpage content and extract main text body from a given URL.
+
+    Args:
+        url (str): The target webpage URL.
+
+    Returns:
+        str: Extracted text content (first 5000 characters) or an error message.
+    '''
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/******'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Remove unnecessary elements
+        for tag in soup(['script', 'style', 'noscript']):
+            tag.decompose()
+
+        # Extract main text
+        text = soup.get_text(separator='\n', strip=True)
+        lines = [line for line in text.splitlines() if line.strip()]
+        content = '\n'.join(lines)
+
+        return content
+
+    except Exception as e:
+        return f'[ERROR] {e}'
+
+if __name__ == '__main__':
+    search = GoogleSearch(custom_search_api_key=api_key, search_engine_id=engine_id)
+    result = search('Yuanmingyuan')
+
+    df = extract_search_results(result)
+    df['content'] = df['url'].apply(fetch_web_content)
+    print(df.head())
+```
+</details>
+
 ## Execution Result
 
 After running the script, the terminal displays the first five search results:

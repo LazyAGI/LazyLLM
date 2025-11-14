@@ -128,6 +128,73 @@ if __name__ == '__main__':
 
 首先，使用 LazyLLM 内置的 `GoogleSearch` 调用 API 搜索关键词 “圆明园”，然后通过 `extract_search_results` 提取结果链接，并利用 `fetch_web_content` 获取并解析网页正文内容。
 
+## 完整代码
+
+完整代码如下所示：
+
+<details>
+<summary>点击展开完整代码</summary>
+
+```python
+import pandas as pd
+import requests
+from bs4 import BeautifulSoup
+from lazyllm.tools.tools import GoogleSearch
+
+api_key = 'AI******'
+engine_id = 'a3******'
+
+def extract_search_results(response_dict):
+    items = response_dict.get('items', [])
+    results = [
+        {'title': item.get('title', ''), 'url': item.get('link', '')}
+        for item in items
+    ]
+    return pd.DataFrame(results)
+
+def fetch_web_content(url: str) -> str:
+    '''
+    Fetch webpage content and extract main text body from a given URL.
+
+    Args:
+        url (str): The target webpage URL.
+
+    Returns:
+        str: Extracted text content (first 5000 characters) or an error message.
+    '''
+    try:
+        headers = {
+            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36 Edg/142.0.0.0'
+        }
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.text, 'html.parser')
+
+        # Remove unnecessary elements
+        for tag in soup(['script', 'style', 'noscript']):
+            tag.decompose()
+
+        # Extract main text
+        text = soup.get_text(separator='\n', strip=True)
+        lines = [line for line in text.splitlines() if line.strip()]
+        content = '\n'.join(lines)
+
+        return content
+
+    except Exception as e:
+        return f'[ERROR] {e}'
+
+if __name__ == '__main__':
+    search = GoogleSearch(custom_search_api_key=api_key, search_engine_id=engine_id)
+    result = search('圆明园')
+
+    df = extract_search_results(result)
+    df['content'] = df['url'].apply(fetch_web_content)
+    print(df.head())
+```
+</details>
+
 ## 运行效果
 
 运行脚本后，终端将显示前 5 条搜索结果内容：
