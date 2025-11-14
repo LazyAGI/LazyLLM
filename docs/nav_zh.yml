@@ -4,18 +4,22 @@
   - 环境配置: Home/environment.md
   - 支持模型: Home/model_list.md
 - 使用示例:
-  - 聊天机器人: Cookbook/robot.md
+  - 聊天机器人: Cookbook/chatbot.md
   - 绘画大师: Cookbook/painting_master.md
   - 多模态聊天: Cookbook/multimodal_robot.md
   - 写作大师: Cookbook/great_writer.md
   - 检索增强: Cookbook/rag.md
   - 流式输出: Cookbook/streaming.md
+  - 代码代理: Cookbook/code_agent.md
+  - Google 搜索: Cookbook/google_search.md
   - Bocha 搜索代理: Cookbook/bocha_search.md
   - 语音助手: Cookbook/voice_assistant.md
   - API交互: Cookbook/API_Interaction_Agent_demo.md
   - 自适应工具调用: Cookbook/flex_agent.md
   - 历史聊天: Cookbook/rag_nloop.md
   - 多模态输出: Cookbook/multi_modal_output_agent.md
+  - 维基搜索: Cookbook/WikiAgent.md
+  - 多轮对话: Cookbook/camel_agent.md
 - 最佳实践:
   - 工作流: Best Practice/flow.md
   - 流程应用: Best Practice/flowapp.md

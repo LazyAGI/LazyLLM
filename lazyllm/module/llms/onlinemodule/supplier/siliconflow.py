@@ -51,37 +51,26 @@ class SiliconFlowEmbedding(OnlineEmbeddingModuleBase):
 
 
 class SiliconFlowReranking(OnlineEmbeddingModuleBase):
-    def __init__(self, rerank_url: str = 'https://api.siliconflow.cn/v1/rerank',
-                 rerank_model_name: str = 'BAAI/bge-reranker-v2-m3', api_key: str = None, **kw):
-        super().__init__('SILICONFLOW', rerank_url, api_key or lazyllm.config['siliconflow_api_key'],
-                         rerank_model_name, **kw)
-        self._rerank_model_name = rerank_model_name
+    def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/rerank',
+                 embed_model_name: str = 'BAAI/bge-reranker-v2-m3', api_key: str = None, **kw):
+        super().__init__('SILICONFLOW', embed_url, api_key or lazyllm.config['siliconflow_api_key'],
+                         embed_model_name, **kw)
 
-    def _encapsulated_data(self, input: Union[List, str], **kwargs) -> Dict:
-        if isinstance(input, str):
-            raise ValueError('Rerank requires both query and documents')
-
-        if isinstance(input, list) and len(input) == 2:
-            query = input[0]
-            documents = input[1]
-        elif isinstance(input, dict):
-            query = input.get('query', '')
-            documents = input.get('documents', [])
-        else:
-            raise ValueError("Input must be a list [query, documents] or dict with 'query' and 'documents' keys")
-
+    def _encapsulated_data(self, query: str, documents: List[str], top_n: int, **kwargs) -> Dict:
         json_data = {
-            'model': self._rerank_model_name,
+            'model': self._embed_model_name,
             'query': query,
-            'documents': documents
+            'documents': documents,
+            'top_n': top_n
         }
         if len(kwargs) > 0:
             json_data.update(kwargs)
-
         return json_data
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Dict]:
-        return response.get('results', [])
+        results = response.get('results', [])
+        return [(result['index'], result['relevance_score']) for result in results]
+
 
 class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     MODEL_NAME = 'Qwen/Qwen-Image'
@@ -134,14 +123,6 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
 
         file_paths = bytes_to_file(image_files)
 
-        if self._return_trace:
-            return {
-                'response': encode_query_with_filepaths(None, file_paths),
-                'trace_info': {
-                    'model': self._model_name,
-                    'full_response': result
-                }
-            }
         return encode_query_with_filepaths(None, file_paths)
 
 class SiliconFlowTTS(OnlineMultiModalBase):
@@ -202,12 +183,4 @@ class SiliconFlowTTS(OnlineMultiModalBase):
 
         result = encode_query_with_filepaths(None, [file_path])
 
-        if self._return_trace:
-            return {
-                'response': result,
-                'trace_info': {
-                    'model': self._model_name,
-                    'full_response': f'Audio generated successfully, length: {len(audio_content)} bytes'
-                }
-            }
         return result

@@ -15,7 +15,7 @@ import json
 app = FastAPI()
 
 
-@app.post("/mock_post")
+@app.post('/mock_post')
 async def receive_json(data: dict):
     return JSONResponse(content=data)
 
@@ -28,14 +28,14 @@ class TestEngine(unittest.TestCase):
         client = TestClient(app)
 
         def mock_report(self):
-            headers = {"Content-Type": "application/json; charset=utf-8"}
+            headers = {'Content-Type': 'application/json; charset=utf-8'}
             json_data = json.dumps(self._meta_info, ensure_ascii=False)
             try:
-                lazyllm.LOG.info(f"meta_info: {self._meta_info}")
+                lazyllm.LOG.info(f'meta_info: {self._meta_info}')
                 response = client.post(self.URL, data=json_data, headers=headers)
-                assert response.json() == self._meta_info, "mock response should be same as input"
+                assert response.json() == self._meta_info, 'mock response should be same as input'
             except Exception as e:
-                lazyllm.LOG.warning(f"Error sending collected data: {e}")
+                lazyllm.LOG.warning(f'Error sending collected data: {e}')
 
         NodeMetaHook.report = mock_report
 
@@ -44,7 +44,7 @@ class TestEngine(unittest.TestCase):
         yield
         LightEngine().reset()
         lazyllm.FileSystemQueue().dequeue()
-        lazyllm.FileSystemQueue(klass="lazy_trace").dequeue()
+        lazyllm.FileSystemQueue(klass='lazy_trace').dequeue()
 
     def test_intent_classifier(self):
         resources = [dict(id='0', kind='LLM', name='llm', args=dict(source=None, type='online'))]
@@ -57,77 +57,79 @@ class TestEngine(unittest.TestCase):
         nodes = [dict(id='4', kind='Intention', name='int1',
                       args=dict(base_model='0', prompt='', constrain='', attention='',
                                 nodes={'music': music, 'draw': draw, 'chat': chat}))]
-        edges = [dict(iid="__start__", oid="4"), dict(iid="4", oid="__end__")]
+        edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
-        assert engine.run(gid, "sing a song") == 'Music get sing a song'
-        assert engine.run(gid, "draw a hourse") == 'Draw get draw a hourse'
+        assert engine.run(gid, 'sing a song') == 'Music get sing a song'
+        assert engine.run(gid, 'draw a hourse') == 'Draw get draw a hourse'
 
     def test_toolsforllm(self):
         resources = [
-            dict(id="1001", kind="Code", name="get_current_weather",
+            dict(id='1001', kind='Code', name='get_current_weather',
                  args=(dict(code=get_current_weather_code,
                             vars_for_code=get_current_weather_vars))),
-            dict(id="1002", kind="Code", name="get_n_day_weather_forecast",
+            dict(id='1002', kind='Code', name='get_n_day_weather_forecast',
                  args=dict(code=get_n_day_weather_forecast_code,
                            vars_for_code=get_current_weather_vars)),
-            dict(id="1003", kind="Code", name="multiply_tool",
+            dict(id='1003', kind='Code', name='multiply_tool',
                  args=dict(code=multiply_tool_code)),
-            dict(id="1004", kind="Code", name="add_tool",
+            dict(id='1004', kind='Code', name='add_tool',
                  args=dict(code=add_tool_code)),
         ]
-        nodes = [dict(id="1", kind="ToolsForLLM", name="fc",
+        nodes = [dict(id='1', kind='ToolsForLLM', name='fc',
                       args=dict(tools=['1001', '1002', '1003', '1004']))]
-        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
         engine = LightEngine()
-        engine.set_report_url("mock_post")
+        engine.set_report_url('mock_post')
         gid = engine.start(nodes, edges, resources)
-        assert '22' in engine.run(gid, [dict(name='get_current_weather', arguments=dict(location='Paris'))])[0]
+        assert '22' in engine.run(gid, [
+            dict(function=dict(name='get_current_weather', arguments=dict(location='Paris')))
+        ])
 
     def test_fc(self):
         resources = [
-            dict(id="0", kind="LLM", name="llm", args=dict(source='glm', type='online')),
-            dict(id="1001", kind="Code", name="get_current_weather",
+            dict(id='0', kind='LLM', name='llm', args=dict(source='glm', type='online')),
+            dict(id='1001', kind='Code', name='get_current_weather',
                  args=(dict(code=get_current_weather_code,
                             vars_for_code=get_current_weather_vars))),
-            dict(id="1002", kind="Code", name="get_n_day_weather_forecast",
+            dict(id='1002', kind='Code', name='get_n_day_weather_forecast',
                  args=dict(code=get_n_day_weather_forecast_code,
                            vars_for_code=get_current_weather_vars)),
-            dict(id="1003", kind="Code", name="multiply_tool",
+            dict(id='1003', kind='Code', name='multiply_tool',
                  args=dict(code=multiply_tool_code)),
-            dict(id="1004", kind="Code", name="add_tool",
+            dict(id='1004', kind='Code', name='add_tool',
                  args=dict(code=add_tool_code)),
         ]
-        nodes = [dict(id="1", kind="FunctionCall", name="fc",
+        nodes = [dict(id='1', kind='FunctionCall', name='fc',
                       args=dict(base_model='0', tools=['1001', '1002', '1003', '1004']))]
-        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
-        assert '10' in engine.run(gid, "What's the weather like today in celsius in Tokyo.")
-        assert '22' in engine.run(gid, "What will the temperature be in degrees Celsius in Paris tomorrow?")
+        assert '10' in engine.run(gid, 'What\'s the weather like today in celsius in Tokyo.')
+        assert '22' in engine.run(gid, 'What will the temperature be in degrees Celsius in Paris tomorrow?')
 
-        nodes = [dict(id="2", kind="FunctionCall", name="re",
+        nodes = [dict(id='2', kind='FunctionCall', name='re',
                       args=dict(base_model='0', tools=['1003', '1004'], algorithm='React'))]
-        edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
+        edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
-        assert '5440' in engine.run(gid, "Calculate 20*(45+23)*4, step by step.")
+        assert '5440' in engine.run(gid, 'Calculate 20*(45+23)*4, step by step.')
 
-        nodes = [dict(id="3", kind="FunctionCall", name="re",
+        nodes = [dict(id='3', kind='FunctionCall', name='re',
                       args=dict(base_model='0', tools=['1003', '1004'], algorithm='PlanAndSolve'))]
-        edges = [dict(iid="__start__", oid="3"), dict(iid="3", oid="__end__")]
+        edges = [dict(iid='__start__', oid='3'), dict(iid='3', oid='__end__')]
         engine = LightEngine()
         gid = engine.start(nodes, edges, resources)
-        assert '5440' in engine.run(gid, "Calculate 20*(45+23)*(1+3), step by step.")
+        assert '5440' in engine.run(gid, 'Calculate 20*(45+23)*(1+3), step by step.')
 
     def test_rag(self):
-        prompt = ("作为国学大师，你将扮演一个人工智能国学问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的已知国学篇章以及"
-                  "问题，给出你的结论。请注意，你的回答应基于给定的国学篇章，而非你的先验知识，且注意你回答的前后逻辑不要出现"
-                  "重复，且不需要提到具体文件名称。\n任务示例如下：\n示例国学篇章：《礼记 大学》大学之道，在明明德，在亲民，在止于至善"
-                  "。\n问题：什么是大学？\n回答：“大学”在《礼记》中代表的是一种理想的教育和社会实践过程，旨在通过个人的"
-                  "道德修养和社会实践达到最高的善治状态。\n注意以上仅为示例，禁止在下面任务中提取或使用上述示例已知国学篇章。"
-                  "\n现在，请对比以下给定的国学篇章和给出的问题。如果已知国学篇章中有该问题相关的原文，请提取相关原文出来。\n"
-                  "已知国学篇章：{context_str}\n")
+        prompt = ('作为国学大师，你将扮演一个人工智能国学问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的已知国学篇章以及'
+                  '问题，给出你的结论。请注意，你的回答应基于给定的国学篇章，而非你的先验知识，且注意你回答的前后逻辑不要出现'
+                  '重复，且不需要提到具体文件名称。\n任务示例如下：\n示例国学篇章：《礼记 大学》大学之道，在明明德，在亲民，在止于至善'
+                  '。\n问题：什么是大学？\n回答：“大学”在《礼记》中代表的是一种理想的教育和社会实践过程，旨在通过个人的'
+                  '道德修养和社会实践达到最高的善治状态。\n注意以上仅为示例，禁止在下面任务中提取或使用上述示例已知国学篇章。'
+                  '\n现在，请对比以下给定的国学篇章和给出的问题。如果已知国学篇章中有该问题相关的原文，请提取相关原文出来。\n'
+                  '已知国学篇章：{context_str}\n')
         resources = [
             dict(id='00', kind='OnlineEmbedding', name='e0', args=dict(source='glm')),
             dict(id='01', kind='OnlineEmbedding', name='e1', args=dict(embed_type='rerank')),
@@ -140,7 +142,7 @@ class TestEngine(unittest.TestCase):
                  dict(id='3', kind='JoinFormatter', name='c', args=dict(type='sum')),
                  dict(id='4', kind='Reranker', name='rek1',
                       args=dict(type='ModuleReranker', output_format='content', join=True,
-                                arguments=dict(model="01", topk=3))),
+                                arguments=dict(model='01', topk=3))),
                  dict(id='5', kind='Code', name='c1',
                       args='def test(nodes, query): return dict(context_str=nodes, query=query)'),
                  dict(id='6', kind='LLM', name='m1',
@@ -155,23 +157,23 @@ class TestEngine(unittest.TestCase):
         assert '观天之道，执天之行' in r or '天命之谓性，率性之谓道' in r or '执古之道，以御今之有' in r
 
     def test_sql_call(self):
-        db_type = "PostgreSQL"
+        db_type = 'PostgreSQL'
         username, password, host, port, database = get_db_init_keywords(db_type)
 
         # 1.  Init: insert data to database
         tmp_sql_manager = SqlManager(db_type, username, password, host, port, database,
                                      tables_info_dict=SqlEgsData.TEST_TABLES_INFO)
         for table_name in SqlEgsData.TEST_TABLES:
-            tmp_sql_manager.execute_commit(f"DELETE FROM {table_name}")
+            tmp_sql_manager.execute_commit(f'DELETE FROM {table_name}')
         for insert_script in SqlEgsData.TEST_INSERT_SCRIPTS:
             tmp_sql_manager.execute_commit(insert_script)
 
         # 2. Engine: build and chat
         resources = [
             dict(
-                id="0",
-                kind="SqlManager",
-                name="sql_manager",
+                id='0',
+                kind='SqlManager',
+                name='sql_manager',
                 args=dict(
                     db_type=db_type,
                     user=username,
@@ -179,27 +181,27 @@ class TestEngine(unittest.TestCase):
                     host=host,
                     port=port,
                     db_name=database,
-                    options_str="",
+                    options_str='',
                     tables_info_dict=SqlEgsData.TEST_TABLES_INFO,
                 ),
             ),
-            dict(id="1", kind="LLM", name="llm", args=dict(source="sensenova", type='online')),
+            dict(id='1', kind='LLM', name='llm', args=dict(source='sensenova', type='online')),
         ]
         nodes = [
             dict(
-                id="2",
-                kind="SqlCall",
-                name="sql_call",
-                args=dict(sql_manager="0", base_model="1", sql_examples="", _lazyllm_enable_report=True),
+                id='2',
+                kind='SqlCall',
+                name='sql_call',
+                args=dict(sql_manager='0', base_model='1', sql_examples='', _lazyllm_enable_report=True),
             )
         ]
-        edges = [dict(iid="__start__", oid="2"), dict(iid="2", oid="__end__")]
+        edges = [dict(iid='__start__', oid='2'), dict(iid='2', oid='__end__')]
         engine = LightEngine()
         # Note: Set real http://ip:port/uri ...
-        engine.set_report_url("mock_post")
+        engine.set_report_url('mock_post')
         gid = engine.start(nodes, edges, resources)
-        str_answer = engine.run(gid, "员工编号是11的人来自哪个部门？")
-        assert "销售三部" in str_answer
+        str_answer = engine.run(gid, '员工编号是11的人来自哪个部门？')
+        assert '销售三部' in str_answer
 
         # 3. Release: delete data and table from database
         for table_name in SqlEgsData.TEST_TABLES:
@@ -208,25 +210,25 @@ class TestEngine(unittest.TestCase):
 
     def test_register_tools(self):
         resources = [
-            dict(id="0", kind="LLM", name="llm", args=dict(source='glm', type='online')),
-            dict(id="3", kind="HttpTool", name="weather_12345",
+            dict(id='0', kind='LLM', name='llm', args=dict(source='glm', type='online')),
+            dict(id='3', kind='HttpTool', name='weather_12345',
                  args=dict(code_str=get_current_weather_code,
                            vars_for_code=get_current_weather_vars,
                            doc=get_current_weather_doc)),
-            dict(id="2", kind="HttpTool", name="dummy_111",
+            dict(id='2', kind='HttpTool', name='dummy_111',
                  args=dict(code_str=dummy_code, doc='dummy')),
         ]
         # `tools` in `args` is a list of ids in `resources`
-        nodes = [dict(id="1", kind="FunctionCall", name="fc",
+        nodes = [dict(id='1', kind='FunctionCall', name='fc',
                       args=dict(base_model='0', tools=['3', '2']))]
-        edges = [dict(iid="__start__", oid="1"), dict(iid="1", oid="__end__")]
+        edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
         engine = LightEngine()
         # TODO handle duplicated node id
         gid = engine.start(nodes, edges, resources)
 
         city_name = 'Tokyo'
         unit = 'Celsius'
-        ret = engine.run(gid, f"What is the temperature in {city_name} today in {unit}?")
+        ret = engine.run(gid, f'What is the temperature in {city_name} today in {unit}?')
         assert city_name in ret and unit in ret and '10' in ret
 
     def test_stream_and_hostory(self):
@@ -267,47 +269,47 @@ class TestEngine(unittest.TestCase):
             assert ('蓝鲸' in result or '动物' in result) and '水' in result
 
     def test_tools_with_llm(self):
-        resources = [dict(id='0', kind='LLM', name='base', args=dict(source="qwen", type='online'))]
-        nodes = [dict(id="1", kind="QustionRewrite", name="m1", args=dict(base_model='0', formatter="str")),
-                 dict(id="2", kind="QustionRewrite", name="m2", args=dict(base_model='0', formatter="list")),
-                 dict(id="3", kind="ParameterExtractor", name="m3", args=dict(
-                      base_model='0', param=["year"], type=["int"], description=["年份"], require=[True])),
-                 dict(id="4", kind="ParameterExtractor", name="m4", args=dict(
-                      base_model='0', param=["year", "month"], type=["int", "int"], description=["年份", "月份"],
+        resources = [dict(id='0', kind='LLM', name='base', args=dict(source='qwen', type='online'))]
+        nodes = [dict(id='1', kind='QustionRewrite', name='m1', args=dict(base_model='0', formatter='str')),
+                 dict(id='2', kind='QustionRewrite', name='m2', args=dict(base_model='0', formatter='list')),
+                 dict(id='3', kind='ParameterExtractor', name='m3', args=dict(
+                      base_model='0', param=['year'], type=['int'], description=['年份'], require=[True])),
+                 dict(id='4', kind='ParameterExtractor', name='m4', args=dict(
+                      base_model='0', param=['year', 'month'], type=['int', 'int'], description=['年份', '月份'],
                       require=[True, True])),
-                 dict(id="5", kind="CodeGenerator", name="m5", args=dict(base_model='0'))]
+                 dict(id='5', kind='CodeGenerator', name='m5', args=dict(base_model='0'))]
 
         engine = LightEngine()
         gid = engine.start(nodes, [['__start__', '1'], ['1', '__end__']], resources)
-        res = engine.run(gid, "Model Context Protocol是啥")
+        res = engine.run(gid, 'Model Context Protocol是啥')
         assert isinstance(res, str)
 
         gid = engine.start(nodes, [['__start__', '2'], ['2', '__end__']], resources)
-        res = engine.run(gid, "RAG是什么？")
+        res = engine.run(gid, 'RAG是什么？')
         assert isinstance(res, list) and len(res) > 0
 
         gid = engine.start(nodes, [['__start__', '3'], ['3', '__end__']], resources)
-        res = engine.run(gid, "This year is 2023")
+        res = engine.run(gid, 'This year is 2023')
         assert res == 2023
 
         gid = engine.start(nodes, [['__start__', '4'], ['4', '__end__']], resources)
-        res = engine.run(gid, "Today is 2022/06/06")
+        res = engine.run(gid, 'Today is 2022/06/06')
         assert res[0] == 2022 and res[1] == 6
 
         gid = engine.start(nodes, [['__start__', '5'], ['5', '__end__']], resources)
-        res = engine.run(gid, "帮我写一个函数，计算两数之和")
+        res = engine.run(gid, '帮我写一个函数，计算两数之和')
         compiled = lazyllm.common.utils.compile_func(res)
         assert compiled(2, 3) == 5
 
     def test_online_multi_module(self):
         nodes = [
-            dict(id="1", kind="TTS", name="m1", args=dict(source='qwen', type='online')),
-            dict(id="2", kind="STT", name="m2", args=dict(source='glm', type='online')),
-            dict(id="3", kind="SD", name="m3", args=dict(source='qwen', type='online',
+            dict(id='1', kind='TTS', name='m1', args=dict(source='qwen', type='online')),
+            dict(id='2', kind='STT', name='m2', args=dict(source='glm', type='online')),
+            dict(id='3', kind='SD', name='m3', args=dict(source='qwen', type='online',
                                                          target_dir=lazyllm.config['temp_dir'])),
-            dict(id="4", kind="VQA", name="m4", args=dict(source='qwen', base_model='qwen-vl-plus', type='online'))
+            dict(id='4', kind='VQA', name='m4', args=dict(source='qwen', base_model='qwen-vl-plus', type='online'))
         ]
         engine = LightEngine()
         gid = engine.start(nodes, [['__start__', '1'], ['1', '2'], ['2', '3'], ['3', '4'], ['4', '__end__']])
-        res = engine.run(gid, "画一只动漫风格的懒懒猫")
+        res = engine.run(gid, '画一只动漫风格的懒懒猫')
         assert 'cat' in res or '猫' in res

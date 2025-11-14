@@ -19,6 +19,9 @@ def _is_number(s: str):
         else:
             raise ValueError('Invalid number: ' + s + '. You can enter an integer, None or an empyt string.')
 
+def _is_chat_message(msg):
+    return isinstance(msg, dict) and 'role' in msg and 'content' in msg
+
 class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
     def _load(self, msg: str):
         return msg
@@ -27,6 +30,7 @@ class LazyLLMFormatterBase(metaclass=LazyLLMRegisterMetaClass):
         raise NotImplementedError('This data parse function is not implemented.')
 
     def format(self, msg):
+        if _is_chat_message(msg): msg = msg['content']
         if isinstance(msg, str): msg = self._load(msg)
         return self._parse_py_data_by_formatter(msg)
 
@@ -143,6 +147,11 @@ class PythonFormatter(JsonLikeFormatter): pass
 class EmptyFormatter(LazyLLMFormatterBase):
     def _parse_py_data_by_formatter(self, msg: str):
         return msg
+
+class FunctionCallFormatter(LazyLLMFormatterBase):
+    def format(self, msg):
+        assert isinstance(msg, dict), 'FunctionCallFormatter only supports dict input.'
+        return {k: msg[k] for k in ('role', 'content', 'tool_calls') if k in msg}
 
 LAZYLLM_QUERY_PREFIX = '<lazyllm-query>'
 

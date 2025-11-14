@@ -129,16 +129,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         outputs = response['choices'][0].get('message') or response['choices'][0].get('delta', {})
         if 'reasoning_content' in outputs and outputs['reasoning_content'] and 'content' in outputs:
             outputs['content'] = r'<think>' + outputs.pop('reasoning_content') + r'</think>' + outputs['content']
-
-        result, tool_calls = outputs.get('content') or '', outputs.get('tool_calls')
-        if tool_calls:
-            try:
-                if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
-                tool_calls = tool_calls if isinstance(tool_calls, str) else json.dumps(tool_calls, ensure_ascii=False)
-                if tool_calls: result += '<|tool_calls|>' + tool_calls
-            except (KeyError, IndexError, TypeError):
-                pass
-        return result
+        return outputs
 
     def _merge_stream_result(self, src: List[Union[str, int, list, dict]], force_join: bool = False):
         src = [ele for ele in src if ele is not None]
