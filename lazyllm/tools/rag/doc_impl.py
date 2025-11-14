@@ -481,7 +481,7 @@ class DocImpl:
         self.store.clear_cache(group_names)
 
     def drop_algorithm(self):
-        self._processor.drop_algorithm(self._algo_name, self._version, self._instance_key)
+        self._processor.drop_algorithm(self._algo_name)
 
     def __call__(self, func_name: str, *args, **kwargs):
         return getattr(self, func_name)(*args, **kwargs)

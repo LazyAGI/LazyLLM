@@ -154,7 +154,7 @@ Args:
     doc_fields (Optional[Dict[str, DocField]]): Metadata field configuration for storing and retrieving document attributes.
     cloud (bool): Whether the dataset is stored in the cloud. Defaults to ``False``.
     doc_files (Optional[List[str]]): Temporary document files. When used, ``dataset_path`` must be ``None``. Only MapStore is supported in this mode.
-    processor (Optional[DocumentProcessor]): Document pre-processing module.
+    processor (Optional[DocumentProcessor]): Document processing service.
     display_name (Optional[str]): Human-readable display name for this document module. Defaults to the collection name.
     description (Optional[str]): Description of the document collection. Defaults to ``"algorithm description"``.
 ''')
@@ -175,7 +175,7 @@ Args:
     doc_fields (Optional[Dict[str, DocField]]): 元数据字段配置，用于存储和检索文档属性。
     cloud (bool): 是否为云端数据集。默认为 ``False``。
     doc_files (Optional[List[str]]): 临时文档文件列表。当使用此参数时，``dataset_path`` 必须为 ``None``，且仅支持 MapStore。
-    processor (Optional[DocumentProcessor]): 文档预处理模块。
+    processor (Optional[DocumentProcessor]): 文档处理服务。
     display_name (Optional[str]): 文档模块的可读显示名称。默认为集合名称。
     description (Optional[str]): 文档集合的描述。默认为 ``"algorithm description"``。
 ''')
@@ -2672,143 +2672,162 @@ Returns:
     None
 """)
 
-add_chinese_doc('rag.parsing_service.parsing_service.DocumentProcessor', """
-文档处理器类，用于管理文档的添加、删除和更新操作。
+add_chinese_doc('rag.parsing_service.parsing_service.server.DocumentProcessor', """
+文档处理服务类，启动后可对外提供文档处理服务，支持文档的添加、删除和更新等操作。
+服务内部采取生产者-消费者模式，通过队列管理文档处理任务，支持异步处理文档任务，支持任务状态回调通知。
 
 Args:
-    server (bool): 是否以服务器模式运行。默认为True。
-    port (Optional[int]): 服务器端口号。默认为None。
-    url (Optional[str]): 远程服务URL。默认为None。
-
-**说明:**
-- 支持异步处理文档任务
-- 提供文档元数据更新功能
-- 支持任务状态回调通知
-- 可配置数据库存储
+    port (Optional[int]): 服务端口号。默认为None，当为None时，将自动分配端口。
+    url (Optional[str]): 服务URL，提供服务URL时，模块可远程连接已经部署好的服务，无需再启动服务，默认为None。
+    num_workers (int): 工作线程数，默认为1，当为0时，不启动工作线程，仅启动服务。
+    db_config (Optional[Dict[str, Any]]): 用于配置SqlManager实现数据库连接，默认为None，当为None时，使用默认数据库配置。
+    launcher (Optional[Launcher]): 用于管理服务进程的Launcher实例，默认为None。
+    post_func (Optional[Callable]): 用于处理任务状态回调通知的函数，默认为None，当为None时，不进行任务状态回调通知,必须提供一个函数，函数签名如下：
+        def post_func(task_id: str, task_status: str = None, error_code: str = None, error_msg: str = None):
+            pass
+    path_prefix (Optional[str]): 用于配置上传文件存储路径前缀，默认为None。
 """)
 
 add_english_doc('rag.parsing_service.server.DocumentProcessor', """
-Document processor class for managing document addition, deletion and update operations.
+Document processing service class, after startup, it can provide document processing services, supporting document addition, deletion and update operations.
+The service internally adopts a producer-consumer model, manages document processing tasks through a queue, supports asynchronous processing of document tasks, and supports task status callback notifications.
 
 Args:
-    server (bool): Whether to run in server mode. Defaults to True.
-    port (Optional[int]): Server port number. Defaults to None.
-    url (Optional[str]): Remote service URL. Defaults to None.
-
-**Notes:**
-- Supports asynchronous document task processing
-- Provides document metadata update functionality
-- Supports task status callback notifications
-- Configurable database storage
+    port (Optional[int]): Service port number. Defaults to None, when it is None, a random port will be assigned.
+    url (Optional[str]): Service URL, when the service URL is provided, the module can remotely connect to the already deployed service, without starting the service again, defaults to None.
+    num_workers (int): Number of worker threads, defaults to 1, when it is 0, the worker threads are not started, only the service is started.
+    db_config (Optional[Dict[str, Any]]): Used to configure the database connection information for SqlManager, defaults to None, when it is None, the default database configuration is used.
+    launcher (Optional[Launcher]): Used to manage the Launcher instance of the service process, defaults to None.
+    post_func (Optional[Callable]): Used to process the task status callback notification function, defaults to None, when it is None, the task status callback notification is not performed, must provide a function, the function signature is as follows:
+        def post_func(task_id: str, task_status: str = None, error_code: str = None, error_msg: str = None):
+            pass
+    path_prefix (Optional[str]): Used to configure the prefix of the uploaded file storage path, defaults to None.
 """)
 
 add_example('rag.parsing_service.server.DocumentProcessor', """
 ```python
-# Create local document processor
-processor = DocumentProcessor(server=False)
+# set db_config
+db_config = {
+    'db_type': 'sqlite',
+    'user': None,
+    'password': None,
+    'host': None,
+    'port': None,
+    'db_name': '/xxx/xxx/test.db',
+}
+# Create server and start it
+server = DocumentProcessor(port=28888, db_config=db_config, num_workers=4, post_func=post_func_sample)
+server.start()
 
-# Create server mode document processor
-processor = DocumentProcessor(server=True, port=8080)
+# start the document with server
+server = DocumentProcessor(port=28888, db_config=db_config, num_workers=4, post_func=post_func_sample)
+document = Document(dataset_path=None, name="algo_1", display_name="Algo_1",
+                    description="Algo_1 for testing", manager=server)
+document.start()
 
 # Create remote document processor
-processor = DocumentProcessor(url="http://remote-server:8080")
+remote_server = DocumentProcessor(url="http://remote-server:8080")
+document = Document(dataset_path=None, name="algo_1", display_name="Algo_1",
+                    description="Algo_1 for testing", manager=remote_server)
+document.start()
 ```
 """)
 
 add_chinese_doc('rag.parsing_service.server.DocumentProcessor.register_algorithm', """
-注册算法到文档处理器。
+注册算法到文档处理服务，内部会自动将算法信息存储到数据库中，后续可使用该算法处理文档。
+该方法必须与 Document 模块配合使用，才能正常工作，一般无需自行调用。
 
 Args:
     name (str): 算法名称，作为唯一标识符。
-    store (StoreBase): 存储实例，用于管理文档数据。
+    store (_DocumentStore): _DocumentStore实例，用于管理文档数据。
     reader (DirectoryReader): 读取器实例，用于解析文档内容。
     node_groups (Dict[str, Dict]): 节点组配置信息。
     display_name (Optional[str]): 算法的显示名称，默认为None。
     description (Optional[str]): 算法的描述信息，默认为None。
-    force_refresh (bool): 是否强制刷新已存在的算法。默认为False。
-    **kwargs: 其他参数。
-
-**说明:**
-- 如果算法名称已存在且force_refresh为False，将跳过注册
-- 注册成功后可以使用该算法处理文档
 """)
 
 add_english_doc('rag.parsing_service.server.DocumentProcessor.register_algorithm', """
-Register an algorithm to the document processor.
+Register an algorithm to the document processing service.
+The algorithm information will be automatically stored in the database, and can be used to process documents later.
+This method must be used with the Document module to work properly, and generally does not need to be called manually.
 
 Args:
     name (str): Algorithm name as unique identifier.
-    store (StoreBase): Storage instance for managing document data.
+    store (_DocumentStore): _DocumentStore instance for managing document data.
     reader (DirectoryReader): Reader instance for parsing document content.
     node_groups (Dict[str, Dict]): Node group configuration information.
     display_name (Optional[str]): Display name for the algorithm, defaults to None.
     description (Optional[str]): Description of the algorithm, defaults to None.
-    force_refresh (bool): Whether to force refresh existing algorithm. Defaults to False.
-    **kwargs: Additional arguments.
-
-**Notes:**
-- If algorithm name exists and force_refresh is False, registration will be skipped
-- After successful registration, the algorithm can be used to process documents
-""")
-
-add_example('rag.parsing_service.server.DocumentProcessor.register_algorithm', """
-```python
-from lazyllm.rag import DocumentProcessor, FileStore, DirectoryReader
-
-# Create storage and reader instances
-store = FileStore(path="./data")
-reader = DirectoryReader()
-
-# Define node group configuration
-node_groups = {
-    "text": {"transform": "text", "parent": "root"},
-    "summary": {"transform": "summary", "parent": "text"}
-}
-
-# Register algorithm
-processor = DocumentProcessor()
-processor.register_algorithm(
-    name="pdf_processor",
-    store=store,
-    reader=reader,
-    node_groups=node_groups
-)
-```
 """)
 
 add_chinese_doc('rag.parsing_service.server.DocumentProcessor.drop_algorithm', """
-从文档处理器中移除指定算法。
+从文档处理服务中移除指定算法， 该方法会自动从数据库中删除算法信息，后续无法使用该算法处理文档。
 
 Args:
-    name (str): 要移除的算法名称。
-    clean_db (bool): 是否清理相关数据库数据。默认为False。
-
-**说明:**
-- 如果算法名称不存在，将输出警告信息
-- 移除后该算法将无法继续使用
+    name (str): 要移除的算法唯一标识。
 """)
 
 add_english_doc('rag.parsing_service.server.DocumentProcessor.drop_algorithm', """
-Remove specified algorithm from document processor.
+Remove specified algorithm from document processing service. This method will automatically delete the algorithm information from the database, and the algorithm will no longer be available for subsequent use.
 
 Args:
-    name (str): Name of the algorithm to remove.
-    clean_db (bool): Whether to clean related database data. Defaults to False.
-
-**Notes:**
-- If algorithm name does not exist, a warning message will be output
-- After removal, the algorithm will no longer be available
+    name (str): Unique identifier of the algorithm to remove.
 """)
 
-add_example('rag.parsing_service.server.DocumentProcessor.drop_algorithm', """
+add_chinese_doc('rag.parsing_service.server.DocumentProcessor.start', '''
+启动文档处理服务，该方法会启动服务端口，并启动工作线程，后续可使用该服务处理文档。若初始化时设置了工作线程数大于0，则会启动工作线程，否则仅启动服务。
+''')
+
+add_english_doc('rag.parsing_service.server.DocumentProcessor.start', '''
+Start the document processing service.
+This method will start the service port and start the worker threads, and subsequent documents can be processed using this service.
+If the worker thread number is set to greater than 0 in the service, the worker threads will be started, otherwise only the service will be started.
+''')
+
+add_chinese_doc('rag.parsing_service.worker.DocumentProcessorWorker', '''
+文档处理消费者线程类，启动后将负责处理文档处理服务中的任务，并将其结果返回给服务。
+模块支持独立部署，也可直接在 DocumentProcessor 中通过设置 num_workers 参数自动启动工作线程。
+
+Args:
+    db_config (Optional[Dict[str, Any]]): 用于配置SqlManager实现数据库连接，默认为None，当为None时，使用默认数据库配置。
+    num_workers (int): 工作线程数，默认为1， 当大于1时，内部基于ray集群启动多个工作线程，否则仅启动一个工作线程。
+    port (Optional[int]): 服务端口号。默认为None，当为None时，将自动分配端口。
+''')
+
+add_english_doc('rag.parsing_service.worker.DocumentProcessorWorker', '''
+Document processing consumer thread class, after startup, it will be responsible for processing tasks in the document processing service, and returning the results to the service.
+The module supports independent deployment, or can automatically start worker threads by setting the num_workers parameter in DocumentProcessor.
+
+Args:
+    db_config (Optional[Dict[str, Any]]): Used to configure the database connection information for SqlManager, defaults to None, when it is None, the default database configuration is used.
+    num_workers (int): Number of worker threads, defaults to 1, when it is greater than 1, multiple worker threads are started internally based on the ray cluster, otherwise only one worker thread is started.
+    port (Optional[int]): Service port number. Defaults to None, when it is None, a random port will be assigned.
+''')
+
+add_chinese_doc('rag.parsing_service.worker.DocumentProcessorWorker.start', '''
+启动文档处理消费者线程，该方法会启动工作线程，并启动服务端口，后续可使用该服务处理文档。若初始化时设置了工作线程数大于1，则会启动多个工作线程，否则仅启动一个工作线程。
+''')
+
+add_english_doc('rag.parsing_service.worker.DocumentProcessorWorker.start', '''
+Start the document processing consumer thread. This method will start the worker threads and start the service port, and subsequent documents can be processed using this service.
+If the worker thread number is set to greater than 1 in the initialization, multiple worker threads will be started, otherwise only one worker thread will be started.
+''')
+
+add_example('rag.parsing_service.worker.DocumentProcessorWorker', '''
 ```python
-# Remove algorithm
-processor.drop_algorithm("pdf_processor")
-
-# Remove algorithm and clean database
-processor.drop_algorithm("pdf_processor", clean_db=True)
+db_config = {
+    'db_type': 'sqlite',
+    'user': None,
+    'password': None,
+    'host': None,
+    'port': None,
+    'db_name': '/xxx/xxx/test.db',
+}
+# Create worker and start it
+worker = DocumentProcessorWorker(db_config=db_config, num_workers=2, port=28888)
+worker.start()
 ```
-""")
+''')
 
 add_english_doc('rag.dataReader.SimpleDirectoryReader', '''
 A modular document directory reader that inherits from ModuleBase, supporting reading various document formats from the file system and converting them into standardized DocNode objects.
@@ -8121,7 +8140,7 @@ Args:
     kb_group_name (Optional[str]): 知识库组名称，默认为默认组名。
     global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据描述。
     store (Optional[Union[Dict, LazyLLMStoreBase]]): 存储实例或配置。
-    processor (Optional[DocumentProcessor]): 文档处理器。
+    processor (Optional[DocumentProcessor]): 文档处理服务。
     algo_name (Optional[str]): 算法名称。
     display_name (Optional[str]): 显示名称。
     description (Optional[str]): 描述信息。
@@ -8137,7 +8156,7 @@ Args:
     kb_group_name (Optional[str]): Knowledge base group name, defaults to default group name.
     global_metadata_desc (Dict[str, GlobalMetadataDesc]): Global metadata description.
     store (Optional[Union[Dict, LazyLLMStoreBase]]): Storage instance or configuration.
-    processor (Optional[DocumentProcessor]): Document processor.
+    processor (Optional[DocumentProcessor]): Document processing service.
     algo_name (Optional[str]): Algorithm name.
     display_name (Optional[str]): Display name.
     description (Optional[str]): Description information.

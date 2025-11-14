@@ -222,11 +222,11 @@ class DocumentProcessor(ModuleBase):
                 for algorithm in algorithms:
                     res.append(self._orm_to_dict(algorithm))
             data = []
-            for algorithm in algorithms:
+            for algo_dict in res:
                 data.append({
-                    'algo_id': algorithm.get('id'),
-                    'display_name': algorithm.get('display_name'),
-                    'description': algorithm.get('description'),
+                    'algo_id': algo_dict.get('id'),
+                    'display_name': algo_dict.get('display_name'),
+                    'description': algo_dict.get('description'),
                 })
             if not data:
                 LOG.warning('[DocumentProcessor] No algorithm registered')

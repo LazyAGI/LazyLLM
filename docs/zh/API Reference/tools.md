@@ -218,7 +218,11 @@
     exclude-members:
 
 ::: lazyllm.tools.rag.parsing_service.server.DocumentProcessor
-    members: register_algorithm, drop_algorithm
+    members: [start, register_algorithm, drop_algorithm]
+    exclude-members:
+
+::: lazyllm.tools.rag.parsing_service.worker.DocumentProcessorWorker
+    members: [start, stop]
     exclude-members:
 
 ::: lazyllm.tools.rag.dataReader.SimpleDirectoryReader
