@@ -108,7 +108,7 @@ jobs:
           if [ "$GITHUB_EVENT_NAME" == "pull_request" ]; then
             FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.sha }})
           else
-            FILES=$(git diff --name-only HEAD~1 HEAD)
+            FILES=$(git diff --name-only ${{ github.event.before }}..${{ github.sha }})
           fi
           echo "Changed files:"
           echo $FILES
