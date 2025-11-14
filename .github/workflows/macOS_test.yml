@@ -146,7 +146,7 @@ jobs:
       - name: Restore pytest cache
         uses: actions/cache/restore@v4
         with:
-          path: tests/basic_tests/.pytest-cache
+          path: .pytest_cache
           key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: basic_tests
@@ -165,7 +165,7 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: tests/basic_tests/.pytest-cache
+          path: .pytest_cache
           key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
   macos-charge_tests:
@@ -291,7 +291,7 @@ jobs:
       - name: Restore pytest cache
         uses: actions/cache/restore@v4
         with:
-          path: tests/charge_tests/.pytest-cache
+          path: .pytest_cache
           key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: charge_tests
@@ -299,7 +299,7 @@ jobs:
          git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git /tmp/lazyllm/data
          pip install -r tests/requirements.txt
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
-         if [ -f tests/charge_tests/.pytest-cache/v/cache/lastfailed ]; then
+         if [ -f .pytest_cache/v/cache/lastfailed ]; then
            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_mac" -v --reruns=2 tests/charge_tests
          else
            python -m pytest -m "not skip_on_mac" -v --reruns=2 tests/charge_tests
@@ -327,5 +327,5 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: tests/charge_tests/.pytest-cache
+          path: .pytest_cache
           key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
