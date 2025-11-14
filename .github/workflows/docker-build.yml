@@ -117,18 +117,25 @@ jobs:
           username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
- 
       - name: Build and push full image
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          build-args: |
-            LAZYLLM_VERSION=${{ steps.version.outputs.version }}
-          tags: |
-            ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}
-            ${{ env.REGISTRY_ALIYUN }}:latest
+        run: |
+          pwd
+          ls
+          sudo docker build -t ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }} -f Dockerfile .
+          sudo docker push ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}
+          sudo docker tag ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }} ${{ env.REGISTRY_ALIYUN }}:latest
+          sudo docker push ${{ env.REGISTRY_ALIYUN }}:latest
+      # - name: Build and push full image
+      #   uses: docker/build-push-action@v5
+      #   with:
+      #     context: .
+      #     file: ./Dockerfile
+      #     push: true
+      #     build-args: |
+      #       LAZYLLM_VERSION=${{ steps.version.outputs.version }}
+      #     tags: |
+      #       ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}
+      #       ${{ env.REGISTRY_ALIYUN }}:latest
       
 
 
@@ -196,8 +203,7 @@ jobs:
           context: .
           file: ./Dockerfile-light
           platforms: linux/amd64
-          push: false
-          load: true
+          push: true
           build-args: |
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
             TARGETARCH=amd64
@@ -269,16 +275,12 @@ jobs:
           context: .
           file: ./Dockerfile-light
           platforms: linux/arm64
-          push: false
-          load: true
+          push: true
           build-args: |
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
             TARGETARCH=arm64
           tags: |
             ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}-light-arm64
-
-      - name: Start tmate session
-        uses: mxschmitt/action-tmate@v3
 
   create-manifest:
     name: Create Multi-arch Manifest
