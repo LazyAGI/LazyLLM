@@ -27,7 +27,6 @@ jobs:
 
       - name: Prepare poetry.lock
         run: |
-          # 从 LazyLLM-Env 子模块复制 poetry.lock
           if [ -f "LazyLLM-Env/poetry.lock" ]; then
             cp LazyLLM-Env/poetry.lock .
             echo "Copied poetry.lock from LazyLLM-Env submodule"
@@ -60,7 +59,6 @@ jobs:
         run: |
           if [[ "${{ github.ref }}" == refs/tags/* ]]; then
             VERSION=${GITHUB_REF#refs/tags/}
-            # 移除 v 前缀（如果存在）
             VERSION=${VERSION#v}
             echo "version=$VERSION" >> $GITHUB_OUTPUT
             echo "Version: $VERSION"
@@ -326,17 +324,16 @@ jobs:
         run: |
           VERSION="${{ steps.version.outputs.version }}"
           
-          # 等待镜像完全可用
           echo "Waiting for images to be available..."
           sleep 30
           
-          # 创建 Docker Hub manifest
+          # Create manifest
           docker manifest create ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light \
             --amend ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light-amd64 \
             --amend ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light-arm64 || true
           docker manifest push ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light
           
-          # 创建阿里云 manifest
+          #  Create manifest
           docker manifest create ${{ env.REGISTRY_ALIYUN }}:$VERSION-light \
             --amend ${{ env.REGISTRY_ALIYUN }}:$VERSION-light-amd64 \
             --amend ${{ env.REGISTRY_ALIYUN }}:$VERSION-light-arm64 || true
