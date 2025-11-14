@@ -202,11 +202,9 @@ jobs:
         with:
           context: .
           file: ./Dockerfile-light
-          platforms: linux/amd64
           push: true
           build-args: |
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
-            TARGETARCH=amd64
           tags: |
             ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}-light-amd64
 
@@ -274,11 +272,9 @@ jobs:
         with:
           context: .
           file: ./Dockerfile-light
-          platforms: linux/arm64
           push: true
           build-args: |
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
-            TARGETARCH=arm64
           tags: |
             ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}-light-arm64
 
