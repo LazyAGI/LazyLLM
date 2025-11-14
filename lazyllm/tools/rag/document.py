@@ -1,5 +1,5 @@
 import os
-
+import json
 from typing import Callable, Optional, Dict, Union, List
 from functools import cached_property
 import lazyllm
@@ -15,10 +15,11 @@ from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_f
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .index_base import IndexBase
 from .utils import DocListManager, ensure_call_endpoint
-from .global_metadata import GlobalMetadataDesc as DocField
+from .global_metadata import GlobalMetadataDesc as DocField, RAG_KB_ID, RAG_DOC_PATH
 from .web import DocWebModule
 import copy
 import functools
+import weakref
 
 
 class CallableDict(dict):
@@ -169,13 +170,69 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                                               display_name=display_name, description=description)
             self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
+        # kb_id -> GraphDocument (weak reference)
+        self._graph_document: weakref.ref = None
 
-    def _list_all_files_in_dataset(self) -> List[str]:
+    @staticmethod
+    def list_all_files_in_directory(
+        dataset_path: str, skip_hidden_path: bool = True, recursive: bool = True
+    ) -> List[str]:
         files_list = []
-        for root, _, files in os.walk(self._manager._dataset_path):
-            files = [os.path.join(root, file_path) for file_path in files]
-            files_list.extend(files)
+
+        if not os.path.exists(dataset_path):
+            return files_list
+
+        if not os.path.isdir(dataset_path):
+            return [dataset_path] if os.path.isfile(dataset_path) else files_list
+
+        if recursive:
+            for root, dirs, files in os.walk(dataset_path):
+                # Skip hidden directories
+                if skip_hidden_path:
+                    path_parts = root.split(os.sep)
+                    if any(part.startswith('.') for part in path_parts if part):
+                        continue
+                    # Filter out hidden directories
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+
+                # Skip hidden files
+                if skip_hidden_path:
+                    files = [file_path for file_path in files if not file_path.startswith('.')]
+
+                files = [os.path.join(root, file_path) for file_path in files]
+                files_list.extend(files)
+        else:
+            items = os.listdir(dataset_path)
+            for item in items:
+                item_path = os.path.join(dataset_path, item)
+                # Skip hidden files/directories
+                if skip_hidden_path and item.startswith('.'):
+                    continue
+                # Only add files, not directories
+                if os.path.isfile(item_path):
+                    files_list.append(item_path)
+
         return files_list
+
+    def _list_all_files_in_dataset(self, skip_hidden_path: bool = True) -> List[str]:
+        return self.list_all_files_in_directory(self._manager._dataset_path, skip_hidden_path)
+
+    def _list_all_files_in_kb(self, kb_id: Optional[str] = None) -> List[str]:
+        all_files = self._list_all_files_in_dataset()
+        if not kb_id:
+            return all_files
+        available_files = set(all_files)
+        kb_files = set()
+        segments = self._impl.store.get_segments(doc_ids=None, kb_id=kb_id)
+        for segment in segments:
+            try:
+                meta_dict = json.loads(segment['global_meta'])
+            except Exception as e:
+                lazyllm.LOG.warning(f'Convert to json failed. Exception : {str(e)}')
+                continue
+            if meta_dict.get(RAG_KB_ID, "") == kb_id and meta_dict.get(RAG_DOC_PATH, "") in available_files:
+                kb_files.add(meta_dict.get(RAG_DOC_PATH, ""))
+        return list(kb_files)
 
     @property
     def url(self):
@@ -259,13 +316,16 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     @property
     @deprecated('Document._manager')
-    def _impls(self): return self._manager
+    def _impls(self):
+        return self._manager
 
     @property
-    def _impl(self) -> DocImpl: return self._manager.get_doc_by_kb_group(self._curr_group)
+    def _impl(self) -> DocImpl:
+        return self._manager.get_doc_by_kb_group(self._curr_group)
 
     @property
-    def manager(self): return self._manager._processor or self._manager
+    def manager(self):
+        return self._manager._processor or self._manager
 
     def activate_group(self, group_name: str, embed_keys: Optional[Union[str, List[str]]] = None,
                        enable_embed: bool = True):
@@ -332,6 +392,17 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def _get_post_process_tasks(self):
         return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))
+
+    def __del__(self):
+        """Destructor: stop all started GraphRAG servers"""
+        if hasattr(self, '_graphrag_servers'):
+            for kb_id, server in self._graphrag_servers.items():
+                try:
+                    if server:
+                        server.stop()
+                except Exception:
+                    # Ignore exceptions during cleanup to avoid issues in destructor
+                    pass
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Document', manager=hasattr(self._manager, '_manager'),
