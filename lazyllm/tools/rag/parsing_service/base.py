@@ -54,7 +54,7 @@ class DeleteDocRequest(BaseModel):
     db_info: Optional[DBInfo] = None
 
 
-class CancelDocRequest(BaseModel):
+class CancelTaskRequest(BaseModel):
     task_id: str
 
 
@@ -74,7 +74,7 @@ class TaskType(str, Enum):
     DOC_REPARSE = 'DOC_REPARSE'
 
 
-def get_task_type_weight(task_type: str) -> int:
+def _get_task_type_weight(task_type: str) -> int:
     '''get task type weight'''
     weight_map = {
         TaskType.DOC_DELETE.value: 10,
@@ -85,9 +85,9 @@ def get_task_type_weight(task_type: str) -> int:
     return weight_map.get(task_type, 100)
 
 
-def calculate_task_score(task_type: str, user_priority: int) -> int:
+def _calculate_task_score(task_type: str, user_priority: int) -> int:
     '''calculate task score'''
-    type_weight = get_task_type_weight(task_type)
+    type_weight = _get_task_type_weight(task_type)
     return type_weight * 10 - user_priority * 15
 
 
@@ -146,17 +146,11 @@ ALGORITHM_TABLE_INFO = {
          'comment': 'Algorithm display name'},
         {'name': 'description', 'data_type': 'string', 'nullable': False,
          'comment': 'Algorithm description'},
-        {'name': 'version', 'data_type': 'string', 'nullable': False, 'default': '1.0.0',
-         'comment': 'Version of the algorithm, can only be updated when the algorithm is dropped and re-registered'},
-        {'name': 'instance_keys', 'data_type': 'string', 'nullable': True,
-         'comment': 'JSON array of active instance keys (one per pod). Empty means inactive.'},
         {'name': 'info_pickle', 'data_type': 'string', 'nullable': False,
          'comment': 'Algorithm info from pickle string'},
         {'name': 'created_at', 'data_type': 'datetime', 'nullable': False,
          'comment': 'Creation time (auto-generated)', 'default': datetime.now},
         {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False,
          'comment': 'Last update time (set when updating)', 'default': datetime.now},
-        {'name': 'is_active', 'data_type': 'boolean', 'nullable': False,
-         'comment': 'Whether the algorithm is active (auto-calculated from instance_keys)', 'default': True},
     ]
 }

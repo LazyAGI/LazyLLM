@@ -39,8 +39,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
                      doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
-                     display_name: Optional[str] = '', description: Optional[str] = 'algorithm description',
-                     version: Optional[str] = '1.0.0'):
+                     display_name: Optional[str] = '', description: Optional[str] = 'algorithm description'):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
@@ -63,7 +62,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._kbs = CallableDict({name: DocImpl(
                 embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
                 store=store_conf, processor=processor, algo_name=name, display_name=display_name,
-                description=description, version=version)})
+                description=description)})
 
             if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
@@ -128,7 +127,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                  server: Union[bool, int] = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
                  store_conf: Optional[Dict] = None, display_name: Optional[str] = '',
-                 description: Optional[str] = 'algorithm description', version: Optional[str] = '1.0.0'):
+                 description: Optional[str] = 'algorithm description'):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
@@ -167,7 +166,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 cloud, processor = False, None
             self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher, store_conf,
                                               doc_fields, cloud=cloud, doc_files=doc_files, processor=processor,
-                                              display_name=display_name, description=description, version=version)
+                                              display_name=display_name, description=description)
             self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
 

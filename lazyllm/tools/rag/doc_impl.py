@@ -1,8 +1,6 @@
 import json
 import threading
 import time
-import uuid
-import os
 from enum import Enum
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
 from lazyllm import LOG, once_wrapper
@@ -71,8 +69,7 @@ class DocImpl:
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  store: Optional[Union[Dict, LazyLLMStoreBase]] = None,
                  processor: Optional[DocumentProcessor] = None, algo_name: Optional[str] = None,
-                 display_name: Optional[str] = None, description: Optional[str] = None,
-                 version: Optional[str] = '1.0.0'):
+                 display_name: Optional[str] = None, description: Optional[str] = None):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
@@ -93,7 +90,6 @@ class DocImpl:
         self._algo_name = algo_name
         self._display_name = display_name
         self._description = description
-        self._version = version
 
     def _init_node_groups(self):
         node_groups = DocImpl._builtin_node_groups.copy()
@@ -136,12 +132,9 @@ class DocImpl:
 
         self._resolve_index_pending_registrations()
         if self._processor:
-            self._version = os.getenv('ALGO_VERSION', self._version)
-            self._instance_key = uuid.uuid4().hex
             assert cloud and isinstance(self._processor, DocumentProcessor)
             self._processor.register_algorithm(self._algo_name, self.store, self._reader, self.node_groups,
-                                               self._display_name, self._description, self._version,
-                                               self._instance_key)
+                                               self._display_name, self._description)
         else:
             self._processor = _Processor(self.store, self._reader, self.node_groups, self._display_name,
                                          self._description, self._version)

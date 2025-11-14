@@ -1,7 +1,6 @@
 import os
 import time
 import traceback
-from collections import defaultdict
 from typing import Any, Dict, List, Optional
 
 from lazyllm import LOG, config
@@ -33,14 +32,12 @@ def _get_default_db_config():
 
 class _Processor:
     def __init__(self, store: _DocumentStore, reader: DirectoryReader, node_groups: Dict[str, Dict],
-                 display_name: Optional[str] = None, description: Optional[str] = None,
-                 version: Optional[str] = '1.0.0'):
+                 display_name: Optional[str] = None, description: Optional[str] = None):
         self._store = store
         self._reader = reader
         self._node_groups = node_groups
         self._display_name = display_name
         self._description = description
-        self._version = version
 
     @property
     def store(self) -> _DocumentStore:
@@ -49,10 +46,6 @@ class _Processor:
     @property
     def reader(self) -> DirectoryReader:
         return self._reader
-
-    @property
-    def version(self) -> str:
-        return self._version
 
     def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,
                 metadatas: Optional[List[Dict[str, Any]]] = None):
@@ -174,19 +167,7 @@ class _Processor:
 
     def update_doc_meta(self, doc_id: str, metadata: dict):
         try:
-            kb_id = metadata.get(RAG_KB_ID, None)
-            segments = self._store.get_segments(doc_ids=[doc_id], kb_id=kb_id)
-            if not segments:
-                LOG.warning(f'No segments found for doc_id: {doc_id} in dataset: {kb_id}')
-                raise ValueError(f'No segments found for doc_id: {doc_id} in dataset: {kb_id}')
-            done_groups = set()
-            group_segments = defaultdict(list)
-            for segment in segments:
-                segment['global_meta'].update(metadata)
-                group_segments[segment.get('group')].append(segment)
-            for group, segments in group_segments.items():
-                self._store.impl.upsert(self._store._gen_collection_name(group), segments)
-                done_groups.add(group)
+            self._store.update_doc_meta(doc_id=doc_id, metadata=metadata)
         except Exception as e:
             LOG.error(f'Failed to update doc meta: {e}, {traceback.format_exc()}')
             raise e

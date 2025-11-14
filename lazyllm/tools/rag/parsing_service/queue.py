@@ -4,7 +4,7 @@ from lazyllm import LOG
 from ...sql import SqlManager
 
 
-class SQLBasedQueue:
+class _SQLBasedQueue:
     '''a generic queue implementation based on SQL, use table to store messages, support FIFO and priority'''
 
     def __init__(self, table_name: str, columns: List[Dict[str, Any]], db_config: Dict[str, Any],
