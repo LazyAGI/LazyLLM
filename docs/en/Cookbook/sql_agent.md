@@ -50,16 +50,63 @@ Define the database name, table structure, and sample data:
 ```python
 DB_NAME = 'ecommerce.db'
 
-TABLE_INFO = ...
+TABLE_INFO = {
+    'tables': [{
+        'name': 'orders',
+        'comment': 'Order data',
+        'columns': [
+            {'name': 'order_id', 'data_type': 'Integer', 'comment': 'Order ID', 'is_primary_key': True},
+            ...
+        ]
+    }]
+}
 
-SAMPLE_DATA = ...
+SAMPLE_DATA = {
+    'orders': [
+        [1, 101, 'Smartphone', 1000, 2, 600, '2025-01-01'],
+        ...
+    ]
+}
 ```
 
 Create a sample database initialization function `init_db`:
 
 ```python
 def init_db(db_name: str = DB_NAME, data: dict = SAMPLE_DATA) -> None:
-    ...
+        '''
+    Initialize the SQLite database.
+
+    This function creates a database with a single table 'orders',
+    and populates it with predefined sample data. If the database already exists,
+    no changes are made.
+    '''
+    if os.path.exists(db_name):
+        return
+
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS orders (
+        order_id INT PRIMARY KEY,
+        product_id INT,
+        product_category TEXT,
+        product_price DECIMAL(10, 2),
+        quantity INT,
+        cost_price DECIMAL(10, 2),
+        order_date DATE
+    )
+    ''')
+
+    sample_orders = data.get('orders', [])
+    if sample_orders:
+        cursor.executemany('''
+        INSERT INTO orders (order_id, product_id, product_category, product_price, quantity, cost_price, order_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', sample_orders)
+
+    conn.commit()
+    conn.close()
     
 ```
 
@@ -94,11 +141,12 @@ def query_db(user_query: str, db_name: str = DB_NAME, tables_info: dict = TABLE_
 
 * **Notes**:
 
-  * `SqlManager` manages database and table info. For remote databases like PostgreSQL/MySQL, you need to fill in `user`, `password`, `host`, and `port`. Here we use a local database, so `None` is sufficient.
-  * `SqlCall` executes the user query.
-  * `use_llm_for_sql_result=False` means the raw SQL execution result is returned without further LLM processing.
+    * `SqlManager` manages database and table info. For remote databases like PostgreSQL/MySQL, you need to fill in `user`, `password`, `host`, and `port`. Here we use a local database, so `None` is sufficient.
+    * `SqlCall` executes the user query.
+    * `use_llm_for_sql_result=False` means the raw SQL execution result is returned without further LLM processing.
 
 #### Step 3: Build ReactAgent and Loop Interaction
+Use ReactAgent to invoke the llm and tools we have defined.
 
 ```python
 llm = OnlineChatModule()
@@ -115,8 +163,8 @@ if __name__ == '__main__':
         break
 ```
 ### View full code
-<details>
-<summary>点击展开/折叠 Python代码</summary>
+<details> 
+<summary>Click to expand full code</summary>
 
 ```python
 import os

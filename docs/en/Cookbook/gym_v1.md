@@ -39,7 +39,7 @@ from lazyllm.tools import fc_register, ReactAgent
 ------
 
 ### Create the Blackjack Environment
-
+`Blackjack-v1` is an environment in OpenAI Gym that simulates Blackjack, a classic card game of twenty-one. The player's goal is to get the total value of their cards as close to 21 as possible without exceeding it, and to win by comparing their point total with the dealer's by choosing to "hit" or "stand".
 ```python
 # Create the Blackjack Environment
 env = gym.make('Blackjack-v1')
@@ -57,7 +57,7 @@ truncated = False
 ### Step-by-Step Explanation
 
 #### Step1: Reset the Environment
-
+The `env_reset` function resets Blackjack-v1 to its initial state. The `reset` method fetches the initial observation and info, updates global variables, and returns a dictionary containing the initial observation, reward, termination/truncation flags, and total return.
 ```python
 @fc_register('tool')
 def env_reset() -> Dict[str, Any]:
@@ -82,7 +82,7 @@ def env_reset() -> Dict[str, Any]:
 ```
 
 #### Step2: Take an action
-
+The `env_step` function executes an action. It first checks if the current round has ended; if so, it returns the current state and an error message. If the round is still active, it calls the underlying environment’s step method to perform the action.
 ```python
 @fc_register('tool')
 def env_step(action: int) -> Dict[str, Any]:
@@ -118,7 +118,7 @@ def env_step(action: int) -> Dict[str, Any]:
 ```
 
 ### Step3: Random action sampling
-
+The `sample_random_action` function samples a random action from the Blackjack-v1 environment.
 ```python
 @fc_register('tool')
 def sample_random_action() -> Dict[str, Any]:
@@ -134,7 +134,7 @@ def sample_random_action() -> Dict[str, Any]:
 ------
 
 #### Step4: Define the LLM and create the Agent
-
+Build the agent by instantiating ReactAgent with llm and tools.
 ```python
 llm = lazyllm.OnlineChatModule()
 

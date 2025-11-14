@@ -6,7 +6,7 @@
 
     - 如何初始化 SQLite 数据库并插入样例数据。
     - 如何通过 @fc_register 注册 SQL 查询工具。
-    - 如何使用 [SqlManager][lazyllm.tools.SqlManager] 和 [SqlCall][lazyllm.tools.SqlCall] 执行 SQL 查询。
+    - 如何使用 [SqlManager][lazyllm.tools.sql.SqlManager] 和 [SqlCall][lazyllm.tools.sql.SqlCall] 执行 SQL 查询。
     - 如何结合 [ReactAgent][lazyllm.tools.agent.ReactAgent] 构建智能交互式查询 Agent。
 
 ## 功能简介
@@ -49,16 +49,63 @@ from lazyllm.tools import fc_register, SqlManager, SqlCall, ReactAgent
 ```python
 DB_NAME = 'ecommerce.db'
 
-TABLE_INFO = ...
+TABLE_INFO = {
+    'tables': [{
+        'name': 'orders',
+        'comment': 'Order data',
+        'columns': [
+            {'name': 'order_id', 'data_type': 'Integer', 'comment': 'Order ID', 'is_primary_key': True},
+            ...
+        ]
+    }]
+}
 
-SAMPLE_DATA = ...
+SAMPLE_DATA = {
+    'orders': [
+        [1, 101, 'Smartphone', 1000, 2, 600, '2025-01-01'],
+        ...
+    ]
+}
 ```
 
 创建示例数据库初始化函数 `init_db`：
 
 ```python
 def init_db(db_name: str = DB_NAME, data: dict = SAMPLE_DATA) -> None:
-    ...
+        '''
+    Initialize the SQLite database.
+
+    This function creates a database with a single table 'orders',
+    and populates it with predefined sample data. If the database already exists,
+    no changes are made.
+    '''
+    if os.path.exists(db_name):
+        return
+
+    conn = sqlite3.connect(db_name)
+    cursor = conn.cursor()
+
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS orders (
+        order_id INT PRIMARY KEY,
+        product_id INT,
+        product_category TEXT,
+        product_price DECIMAL(10, 2),
+        quantity INT,
+        cost_price DECIMAL(10, 2),
+        order_date DATE
+    )
+    ''')
+
+    sample_orders = data.get('orders', [])
+    if sample_orders:
+        cursor.executemany('''
+        INSERT INTO orders (order_id, product_id, product_category, product_price, quantity, cost_price, order_date)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', sample_orders)
+
+    conn.commit()
+    conn.close()
 ```
 
 #### Step 2: 注册 SQL 查询工具
@@ -92,12 +139,12 @@ def query_db(user_query: str, db_name: str = DB_NAME, tables_info: dict = TABLE_
 
 * **说明**：
 
-  * `SqlManager` 管理数据库和表信息。对于远程数据库，如 PostgreSQL/MySQL，需要填写 user、password、host 和 port。此处示例为本地数据库，填 None 即可。
-  * `SqlCall` 执行用户查询。
-  * `use_llm_for_sql_result=False` 表示直接返回 SQL 执行结果，不用 LLM 二次加工。
+    * `SqlManager` 管理数据库和表信息。对于远程数据库，如 PostgreSQL/MySQL，需要填写 user、password、host 和 port。此处示例为本地数据库，填 None 即可。
+    * `SqlCall` 执行用户查询。
+    * `use_llm_for_sql_result=False` 表示直接返回 SQL 执行结果，不用 LLM 二次加工。
 
 #### Step 3: 构建 ReactAgent 并循环交互
-
+使用ReactAgent调用我们定义好的llm以及tools。
 ```python
 llm = OnlineChatModule()
 tools = ['query_db']
@@ -105,12 +152,10 @@ tools = ['query_db']
 if __name__ == '__main__':
     init_db(DB_NAME, SAMPLE_DATA)
 
-    while True:
-        user_input = 'Show the total profit for each product category, sorted from highest to lowest.'
-        agent = ReactAgent(llm, tools)
-        answer = agent(user_input)
-        print('Answer:\n', answer)
-        break
+    user_input = 'Show the total profit for each product category, sorted from highest to lowest.'
+    agent = ReactAgent(llm, tools)
+    answer = agent(user_input)
+    print('Answer:\n', answer)
 ```
 
 ### 完整代码
@@ -217,12 +262,11 @@ tools = ['query_db']
 if __name__ == '__main__':
     init_db(DB_NAME, SAMPLE_DATA)
 
-    while True:
-        user_input = 'Show the total profit for each product category, sorted from highest to lowest.'
-        agent = ReactAgent(llm, tools)
-        answer = agent(user_input)
-        print('Answer:\n', answer)
-        break
+    user_input = 'Show the total profit for each product category, sorted from highest to lowest.'
+    agent = ReactAgent(llm, tools)
+    answer = agent(user_input)
+    print('Answer:\n', answer)
+
 
 ```
 </details>

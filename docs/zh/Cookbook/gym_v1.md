@@ -14,7 +14,7 @@
 
 
 ## 设计思路
-首先，系统创建Blackjack-v1游戏环境并初始化全局状态变量.接着，系统构建一个基于LLM的ReactAgent，为其提供已注册的环境操作工具列表。然后，进入智能体与环境的交互循环：在每轮交互中，Agent根据当前状态和系统提示调用相应工具（如先采样随机动作，再执行步进），系统捕获Agent的响应并解析其输出的动作指令。
+首先，系统创建Blackjack-v1游戏环境并初始化全局状态变量。接着，系统构建一个基于LLM的ReactAgent，为其提供已注册的环境操作工具列表。然后，进入智能体与环境的交互循环：在每轮交互中，Agent根据当前状态和系统提示调用相应工具（如先采样随机动作，再执行步进），系统捕获Agent的响应并解析其输出的动作指令。
 ![gym](../assets/gym.png)
 
 
@@ -40,7 +40,7 @@ from lazyllm.tools import fc_register, ReactAgent
 ------
 
 ### 创建 Blackjack 环境
-
+`Blackjack-v1` 是 OpenAI Gym 的一个环境，模拟了 Blackjack（二十一点），这是一个经典的21点纸牌游戏环境。玩家的目标是让手牌点数尽可能接近21点但不超过，通过“要牌”或“停牌”与庄家比拼点数大小来决定输赢。
 ```python
 # 创建 Blackjack 环境
 env = gym.make('Blackjack-v1')
@@ -58,7 +58,7 @@ truncated = False
 ### 步骤详解
 
 #### Step1: 重置环境
-
+env_reset 函数用于重置Blackjack-v1到初始状态。reset 方法获取初始观测和信息，然后更新全局变量，并返回一个包含初始观测、奖励、终止/截断标志和总回报的字典。
 ```python
 @fc_register('tool')
 def env_reset() -> Dict[str, Any]:
@@ -83,7 +83,7 @@ def env_reset() -> Dict[str, Any]:
 ```
 
 #### Step2: 执行动作
-
+env_step 函数用于执行一个动作（action）。首先检查当前回合是否已经结束，如果已结束，则返回当前状态和一个错误信息。如果回合未结束，则调用底层环境的 step 方法来执行动作。
 ```python
 @fc_register('tool')
 def env_step(action: int) -> Dict[str, Any]:
@@ -118,8 +118,8 @@ def env_step(action: int) -> Dict[str, Any]:
 
 ```
 
-### Step3: 随机动作采样
-
+#### Step3: 随机动作采样
+sample_random_action 的函数，从Blackjack-v1环境中随机抽取一个动作。
 ```python
 @fc_register('tool')
 def sample_random_action() -> Dict[str, Any]:
@@ -135,7 +135,7 @@ def sample_random_action() -> Dict[str, Any]:
 ------
 
 #### Step4: 定义 LLM 并创建 Agent
-
+调用ReactAgent并传入llm和tools实现Agent的构建。
 ```python
 llm = lazyllm.OnlineChatModule()
 
