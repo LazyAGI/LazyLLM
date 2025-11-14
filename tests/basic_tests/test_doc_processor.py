@@ -72,7 +72,7 @@ class TestDocProcessor(unittest.TestCase):
         cls._embed = {'vec_dense': lambda x: [1.0, 2.0, 3.0]}
         cls._algo_name = 'test_algo'
         cls._finished_task_records = []
-        cls.server = DocumentProcessor(server=True, port=cls._dp_port, db_config=cls._db_config, num_workers=1,
+        cls.server = DocumentProcessor(port=cls._dp_port, db_config=cls._db_config, num_workers=1,
                                        post_func=post_func_sample)
         cls.document = Document(dataset_path=None, name=cls._algo_name, embed=cls._embed,
                                 store_conf=cls._store_config, server=cls._document_port, manager=cls.server)
