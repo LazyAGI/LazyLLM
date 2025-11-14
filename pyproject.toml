@@ -376,9 +376,9 @@ lazyllm = "lazyllm.cli.main:main"
 [tool.pytest.ini_options]
 markers = [
     "run_on_change: skip test unless related files changed",
-    "run_on_change_regex: skip test unless related files changed (using regex)",
+    "ignore_cache_on_change: use cache unless related files changed",
     "skip_on_win: mark tests to skip on Windows",
     "skip_on_mac: mark tests to skip on macOS",
     "skip_on_linux: mark tests to skip on Linux",
 ]
-cache_dir = ".pytest-cache"
+cache_dir = ".pytest_cache"

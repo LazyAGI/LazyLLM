@@ -18,7 +18,7 @@ on:
 
 jobs:
   test:
-    runs-on: tps_sco_nv_yzh
+    runs-on: tps_sco_nv
     env:
       CHANGED_FILES: ${{ inputs.changed_files }}
     steps:
@@ -37,6 +37,11 @@ jobs:
           export LAZYLLM_HOME="${{ inputs.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
-          pytest -m "${{ inputs.markers }}" --durations=0 --reruns=2 -v \
-            --cov=lazyllm --cov-append --cov-report=html \
-            ${{ inputs.tests_dir }}
+          if [ -f .pytest_cache/v/cache/lastfailed ]; then
+            pytest --lf --last-failed-no-failures=none \
+              -m "${{ inputs.markers }}" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html \
+              ${{ inputs.tests_dir }}
+          else
+            pytest -m "${{ inputs.markers }}" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html \
+              ${{ inputs.tests_dir }}
+          fi

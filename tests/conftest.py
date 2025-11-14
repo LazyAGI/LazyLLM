@@ -1,34 +1,22 @@
-import os, re
+import os
+import re
 import pytest
 
-_GLOBAL_CHANGED_FILES = None
+def pytest_configure(config):
+    env_str = os.getenv('CHANGED_FILES')  # Set outside pytest.
+    config.changed_files = env_str.split(',') if env_str is not None else []
+
+def matches_any_pattern(changed_file, patterns):
+    return any(re.fullmatch(pat, changed_file) for pat in patterns)
+
 def pytest_runtest_setup(item):
+    if (marker := item.get_closest_marker('run_on_change')) is not None:
+        files = marker.args
+        regex_mode = marker.kwargs.get('regex_mode', False)
 
-    def get_changed_files():
-        global _GLOBAL_CHANGED_FILES
-        if _GLOBAL_CHANGED_FILES is not None:
-            return _GLOBAL_CHANGED_FILES
-
-        env_str = os.getenv("CHANGED_FILES")
-        _GLOBAL_CHANGED_FILES = env_str.split(',') if env_str is not None else []
-        return _GLOBAL_CHANGED_FILES
-
-    for mark in item.iter_markers():
-        match mark.name:
-            case "run_on_change":
-                changed = get_changed_files()
-                if changed is None: continue
-                files = mark.args
-                if not any(f in files for f in changed):
-                    pytest.skip(f"Skipped: none of {files} were changed.")
-
-            case "run_on_change_regex":
-                changed = get_changed_files()
-                if changed is None: continue
-                file_patterns = mark.args
-
-                def matches_any_pattern(changed_file, patterns):
-                    return any(re.fullmatch(pat, changed_file) for pat in patterns)
-
-                if not any(matches_any_pattern(f, file_patterns) for f in changed):
-                    pytest.skip(f"Skipped: none of {file_patterns} were changed.")
+        if regex_mode:
+            if not any(matches_any_pattern(f, files) for f in item.config.changed_files):
+                pytest.skip(f'Skipped: none of "{files}" matched the changed files.')
+        else:
+            if not any(f in files for f in item.config.changed_files):
+                pytest.skip(f'Skipped: none of "{files}" were changed.')

@@ -23,22 +23,11 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  SetupCIPath:
-    runs-on: tps_sco_nv_yzh
-    outputs:
-      ci_path: ${{ steps.set-path.outputs.ci_path }}
-    steps:
-      - id: set-path
-        run: |
-          CI_PATH="/home/mnt/platform_ci/GitHub/${{ github.repository }}/${{ github.run_number }}"
-          echo "ci_path=$CI_PATH" >> "$GITHUB_OUTPUT"
   Clone:
     if: |
       !contains(github.event.head_commit.message, '[skip ci]')
       && !contains(github.event.pull_request.title, '[skip ci]')
-    runs-on: tps_sco_nv_yzh
-    outputs:
-      changed_files: ${{ steps.changed_files.outputs.changed_files }}
+    runs-on: tps_sco_nv
     steps:
       - name: Check for required label
         if: github.event_name == 'pull_request'
@@ -76,19 +65,6 @@ jobs:
         with:
           fetch-depth: 2
 
-      - name: Get changed files
-        id: changed_files
-        run: |
-          echo "$GITHUB_EVENT_NAME"
-          if [ "$GITHUB_EVENT_NAME" == "pull_request" ]; then
-            FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.sha }})
-          else
-            FILES=$(git diff --name-only HEAD~1 HEAD)
-          fi
-          echo "Changed files:"
-          echo $FILES
-          echo "changed_files=$(echo "$FILES" | paste -sd ',' -)" >> $GITHUB_OUTPUT
-
       - name: Build doc
         run: |
           set -e
@@ -114,6 +90,57 @@ jobs:
           set -ex
           mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
 
+  TestSetup:
+    needs: [Clone]
+    runs-on: tps_sco_nv
+    outputs:
+      ci_path: ${{ steps.set_path.outputs.ci_path }}
+      changed_files: ${{ steps.changed_files.outputs.changed_files }}
+    steps:
+      - name: Set CI_PATH
+        id: set_path
+        run: echo "ci_path=${{ env.CI_PATH }}" >> "$GITHUB_OUTPUT"
+
+      - name: Get changed files
+        id: changed_files
+        run: |
+          echo "$GITHUB_EVENT_NAME"
+          if [ "$GITHUB_EVENT_NAME" == "pull_request" ]; then
+            FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.sha }})
+          else
+            FILES=$(git diff --name-only HEAD~1 HEAD)
+          fi
+          echo "Changed files:"
+          echo $FILES
+          echo "changed_files=$(echo "$FILES" | paste -sd ',' -)" >> $GITHUB_OUTPUT
+
+  BasicTests:
+    needs: [Clone, TestSetup]
+    uses: ./.github/workflows/reusable_run_tests.yml
+    with:
+      CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
+      changed_files: ${{ needs.TestSetup.outputs.changed_files }}
+      markers: "not skip_on_linux"
+      tests_dir: "tests/basic_tests/"
+
+  AdvancedStandardTests:
+    needs: [Clone, TestSetup]
+    uses: ./.github/workflows/reusable_run_tests.yml
+    with:
+      CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
+      changed_files: ${{ needs.TestSetup.outputs.changed_files }}
+      markers: "not skip_on_linux"
+      tests_dir: "tests/advanced_tests/standard_test/"
+
+  AdvancedFullTests:
+    needs: [Clone, TestSetup]
+    uses: ./.github/workflows/reusable_run_tests.yml
+    with:
+      CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
+      changed_files: ${{ needs.TestSetup.outputs.changed_files }}
+      markers: "not skip_on_linux"
+      tests_dir: "tests/advanced_tests/full_test/"
+
   check_online_changes:
     runs-on: tps_sco_nv
     outputs:
@@ -134,37 +161,12 @@ jobs:
               - 'lazyllm/module/llms/onlinemodule/__init__.py'
               - 'lazyllm/module/llms/onlinemodule/automodel.py'
 
-  BasicTests:
-    needs: [Clone, SetupCIPath]
-    uses: ./.github/workflows/reusable_run_tests.yml
-    with:
-      CI_PATH: ${{ needs.SetupCIPath.outputs.ci_path }}
-      changed_files: ${{ needs.Clone.outputs.changed_files }}
-      markers: "not skip_on_linux"
-      tests_dir: "tests/basic_tests/"
-
-  AdvancedStandardTests:
-    needs: [Clone, SetupCIPath]
-    uses: ./.github/workflows/reusable_run_tests.yml
-    with:
-      CI_PATH: ${{ needs.SetupCIPath.outputs.ci_path }}
-      changed_files: ${{ needs.Clone.outputs.changed_files }}
-      markers: "not skip_on_linux"
-      tests_dir: "tests/advanced_tests/standard_test/"
-
-  AdvancedFullTests:
-    needs: [Clone, SetupCIPath]
-    uses: ./.github/workflows/reusable_run_tests.yml
-    with:
-      CI_PATH: ${{ needs.SetupCIPath.outputs.ci_path }}
-      changed_files: ${{ needs.Clone.outputs.changed_files }}
-      markers: "not skip_on_linux"
-      tests_dir: "tests/advanced_tests/full_test/"
-
   ChargeTests:
     runs-on: tps_sco_nv
-    needs: [ Clone, check_online_changes ]
+    needs: [ Clone, check_online_changes, TestSetup]
     if: ${{ needs.check_online_changes.outputs.changed }} == 'true'
+    env:
+      CHANGED_FILES: ${{ needs.TestSetup.outputs.changed_files }}
     steps:
       - name: Clone LazyLLM-Cache for Output and Cache
         run: |
@@ -225,7 +227,7 @@ jobs:
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
-          if [ -f tests/charge_tests/.pytest-cache/v/cache/lastfailed ]; then
+          if [ -f .pytest_cache/v/cache/lastfailed ]; then
             python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
           else
             python -m pytest -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
