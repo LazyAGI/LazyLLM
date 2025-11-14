@@ -6,7 +6,7 @@ This project demonstrates how to use [LazyLLM](https://github.com/LazyAGI/LazyLL
 
     - How to initialize a SQLite database and insert sample data.
     - How to register an SQL query tool using @fc_register.
-    - How to use [SqlManager][lazyllm.tools.SqlManager] and [SqlCall][lazyllm.tools.SqlCall] to execute SQL queries.
+    - How to use [SqlManager][lazyllm.tools.sql.SqlManager] and [SqlCall][lazyllm.tools.sql_call.SqlCall] to execute SQL queries.
     - How to combine [ReactAgent][lazyllm.tools.agent.ReactAgent] to build an interactive intelligent query agent.
 
 ## Design Concept
