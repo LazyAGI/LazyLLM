@@ -30,7 +30,7 @@ env:
   
 jobs:
   check_online_changes:
-    runs-on: macos-13
+    runs-on: macos-26
     outputs:
       changed: ${{ steps.filter.outputs.any_changed }}
     steps:
@@ -55,7 +55,7 @@ jobs:
       !contains(github.event.head_commit.message, '[skip ci]')
       && !contains(github.event.pull_request.title, '[skip ci]')
       && ${{ needs.check_online_changes.outputs.changed }} == 'true'
-    runs-on: macos-13
+    runs-on: macos-26
 
     steps:
       - name: Check for required label
@@ -172,7 +172,7 @@ jobs:
     if: |
       !contains(github.event.head_commit.message, '[skip ci]')
       && !contains(github.event.pull_request.title, '[skip ci]')
-    runs-on: macos-13
+    runs-on: macos-26
 
     steps:
       - name: Check for required label

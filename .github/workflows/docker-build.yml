@@ -7,11 +7,12 @@ on:
 
 env:
   REGISTRY_DOCKERHUB: lazyllm/lazyllm
-  REGISTRY_ALIYUN: registry.cn-hangzhou.aliyuncs.com/liwenjian123/lazyllm
+  REGISTRY_ALIYUN: registry.cn-hangzhou.aliyuncs.com/lazyllm/lazyllm
 
 jobs:
   build-full:
     name: Build Full Image
+    if: github.repository == 'LazyAGI/LazyLLM'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -104,11 +105,11 @@ jobs:
             exit 1
           fi
 
-      # - name: Log in to Docker Hub
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
-      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: lazyllm
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to Aliyun Container Registry
         uses: docker/login-action@v3
@@ -118,29 +119,22 @@ jobs:
           password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
 
       - name: Build and push full image
-        run: |
-          pwd
-          ls
-          sudo docker build -t ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }} -f Dockerfile .
-          sudo docker push ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}
-          sudo docker tag ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }} ${{ env.REGISTRY_ALIYUN }}:latest
-          sudo docker push ${{ env.REGISTRY_ALIYUN }}:latest
-      # - name: Build and push full image
-      #   uses: docker/build-push-action@v5
-      #   with:
-      #     context: .
-      #     file: ./Dockerfile
-      #     push: true
-      #     build-args: |
-      #       LAZYLLM_VERSION=${{ steps.version.outputs.version }}
-      #     tags: |
-      #       ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}
-      #       ${{ env.REGISTRY_ALIYUN }}:latest
-      
-
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          provenance: false
+          sbom: false
+          build-args: |
+            LAZYLLM_VERSION=${{ steps.version.outputs.version }}
+          tags: |
+            ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY_ALIYUN }}:latest
 
   build-light-amd64:
     name: Build Light Image (AMD64)
+    if: github.repository == 'LazyAGI/LazyLLM'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
@@ -184,11 +178,11 @@ jobs:
             exit 1
           fi
 
-      # - name: Log in to Docker Hub
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
-      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: lazyllm
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to Aliyun Container Registry
         uses: docker/login-action@v3
@@ -214,10 +208,11 @@ jobs:
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
           tags: |
             ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}-light-amd64
-
+            ${{ env.REGISTRY_DOCKERHUB }}:${{ steps.version.outputs.version }}-light-amd64
 
   build-light-arm64:
     name: Build Light Image (ARM64)
+    if: github.repository == 'LazyAGI/LazyLLM'
     runs-on: ubuntu-24.04-arm
     steps:
       - name: Checkout code
@@ -261,11 +256,11 @@ jobs:
             exit 1
           fi
 
-      # - name: Log in to Docker Hub
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
-      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: lazyllm
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to Aliyun Container Registry
         uses: docker/login-action@v3
@@ -291,6 +286,7 @@ jobs:
             LAZYLLM_VERSION=${{ steps.version.outputs.version }}
           tags: |
             ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}-light-arm64
+            ${{ env.REGISTRY_DOCKERHUB }}:${{ steps.version.outputs.version }}-light-arm64
 
   create-manifest:
     name: Create Multi-arch Manifest
@@ -313,11 +309,11 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      # - name: Log in to Docker Hub
-      #   uses: docker/login-action@v3
-      #   with:
-      #     username: ${{ secrets.DOCKERHUB_USERNAME }}
-      #     password: ${{ secrets.DOCKERHUB_TOKEN }}
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: lazyllm
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
 
       - name: Log in to Aliyun Container Registry
         uses: docker/login-action@v3
@@ -335,10 +331,10 @@ jobs:
           sleep 30
           
           # 创建 Docker Hub manifest
-          # docker manifest create ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light \
-          #   --amend ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light-amd64 \
-          #   --amend ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light-arm64 || true
-          # docker manifest push ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light
+          docker manifest create ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light \
+            --amend ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light-amd64 \
+            --amend ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light-arm64 || true
+          docker manifest push ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light
           
           # 创建阿里云 manifest
           docker manifest create ${{ env.REGISTRY_ALIYUN }}:$VERSION-light \
