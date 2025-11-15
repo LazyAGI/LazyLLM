@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from starlette.responses import RedirectResponse
 
 import lazyllm
-from lazyllm import FastapiApp as app
+from lazyllm import LOG, FastapiApp as app
 from lazyllm.thirdparty import fastapi
 from .utils import DocListManager, BaseResponse, gen_docid
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH
@@ -36,7 +36,7 @@ class DocManager(lazyllm.ModuleBase):
         try:
             return BaseResponse(data=self._manager.list_all_kb_group())
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     # returns an error message if invalid
     @staticmethod
@@ -69,18 +69,18 @@ class DocManager(lazyllm.ModuleBase):
             if metadatas:
                 metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
                 if len(files) != len(metadatas):
-                    return BaseResponse(code=400, msg='Length of files and metadatas should be the same',
-                                        data=None)
+                    raise fastapi.HTTPException(status_code=400,
+                                                detail='Length of files and metadatas should be the same')
                 for idx, mt in enumerate(metadatas):
                     err_msg = self._validate_metadata(mt)
                     if err_msg:
-                        return BaseResponse(code=400, msg=f'file [{files[idx].filename}]: {err_msg}', data=None)
+                        raise fastapi.HTTPException(status_code=400, detail=f'file [{files[idx].filename}]: {err_msg}')
             file_paths = [os.path.join(self._manager._path, user_path or '', file.filename) for file in files]
             paths_is_new = [True] * len(file_paths)
             if override is True:
                 is_success, msg, paths_is_new = self._manager.validate_paths(file_paths)
                 if not is_success:
-                    return BaseResponse(code=500, msg=msg, data=None)
+                    raise fastapi.HTTPException(status_code=500, detail=msg)
             directorys = set(os.path.dirname(path) for path in file_paths)
             [os.makedirs(directory, exist_ok=True) for directory in directorys if directory]
             ids, results = [], []
@@ -105,8 +105,8 @@ class DocManager(lazyllm.ModuleBase):
                 results.append(msg)
             return BaseResponse(data=[ids, results])
         except Exception as e:
-            lazyllm.LOG.error(f'upload_files exception: {e}')
-            return BaseResponse(code=500, msg=str(e), data=None)
+            LOG.error(f'upload_files exception: {e}')
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     class AddFilesRequest(BaseModel):
         files: List[str]
@@ -147,7 +147,8 @@ class DocManager(lazyllm.ModuleBase):
                 else:
                     id_mapping[file] = None
 
-            new_ids = self._manager.add_files(new_files, metadatas=new_metadatas, status=DocListManager.Status.success)
+            new_docs = self._manager.add_files(new_files, metadatas=new_metadatas, status=DocListManager.Status.success)
+            new_ids = [doc[0] for doc in new_docs]  # Extract doc_id from Row objects
             if group_name:
                 self._manager.add_files_to_kb_group(new_ids + exist_ids, group=group_name)
 
@@ -157,7 +158,8 @@ class DocManager(lazyllm.ModuleBase):
 
             return BaseResponse(data=return_ids)
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            LOG.error(f'add_files exception: {e}')
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     @app.get('/list_files')
     def list_files(self, limit: Optional[int] = None, details: bool = True, alive: Optional[bool] = None):
@@ -166,7 +168,7 @@ class DocManager(lazyllm.ModuleBase):
                       DocListManager.Status.failed] if alive else DocListManager.Status.all
             return BaseResponse(data=self._manager.list_files(limit=limit, details=details, status=status))
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     @app.get('/reparse_files')
     def reparse_files(self, file_ids: List[str], group_name: Optional[str] = None):
@@ -174,7 +176,7 @@ class DocManager(lazyllm.ModuleBase):
             self._manager.update_need_reparsing(file_ids, group_name)
             return BaseResponse()
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     @app.get('/list_files_in_group')
     def list_files_in_group(self, group_name: Optional[str] = None,
@@ -184,7 +186,7 @@ class DocManager(lazyllm.ModuleBase):
                       DocListManager.Status.failed] if alive else DocListManager.Status.all
             return BaseResponse(data=self._manager.list_kb_group_files(group_name, limit, details=True, status=status))
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e) + '\ntraceback:\n' + str(traceback.format_exc()), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e) + '\ntraceback:\n' + str(traceback.format_exc()))
 
     class FileGroupRequest(BaseModel):
         file_ids: List[str]
@@ -196,7 +198,7 @@ class DocManager(lazyllm.ModuleBase):
             self._manager.add_files_to_kb_group(request.file_ids, request.group_name)
             return BaseResponse()
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     @app.post('/add_files_to_group')
     def add_files_to_group(self, files: List['fastapi.UploadFile'], group_name: str, override: bool = False,
@@ -208,7 +210,7 @@ class DocManager(lazyllm.ModuleBase):
             self._manager.add_files_to_kb_group(ids, group_name)
             return BaseResponse(data=ids)
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     @app.post('/delete_files')
     def delete_files(self, request: FileGroupRequest):
@@ -224,7 +226,7 @@ class DocManager(lazyllm.ModuleBase):
                 results = ['Success' if ele.doc_id in deleted_ids else 'Failed' for ele in documents]
                 return BaseResponse(data=[request.file_ids, results])
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     @app.post('/delete_files_from_group')
     def delete_files_from_group(self, request: FileGroupRequest):
@@ -233,7 +235,7 @@ class DocManager(lazyllm.ModuleBase):
                                           new_status=DocListManager.Status.deleting)
             return BaseResponse()
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     class AddMetadataRequest(BaseModel):
         doc_ids: List[str]
@@ -246,7 +248,7 @@ class DocManager(lazyllm.ModuleBase):
         try:
             docs = self._manager.get_docs(doc_ids)
             if not docs:
-                return BaseResponse(code=400, msg='Failed, no doc found')
+                raise fastapi.HTTPException(status_code=400, detail='Failed, no doc found')
             doc_meta = {}
             for doc in docs:
                 meta_dict = json.loads(doc.meta) if doc.meta else {}
@@ -261,7 +263,7 @@ class DocManager(lazyllm.ModuleBase):
             self._manager.set_docs_new_meta(doc_meta)
             return BaseResponse(data=None)
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     class DeleteMetadataRequest(BaseModel):
         doc_ids: List[str]
@@ -303,7 +305,7 @@ class DocManager(lazyllm.ModuleBase):
             else:
                 docs = self._manager.get_docs(doc_ids)
                 if not docs:
-                    return BaseResponse(code=400, msg='Failed, no doc found')
+                    raise fastapi.HTTPException(status_code=400, detail='Failed, no doc found')
                 doc_meta = {}
                 for doc in docs:
                     meta_dict = json.loads(doc.meta) if doc.meta else {}
@@ -312,7 +314,7 @@ class DocManager(lazyllm.ModuleBase):
                 self._manager.set_docs_new_meta(doc_meta)
             return BaseResponse(data=None)
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     class UpdateMetadataRequest(BaseModel):
         doc_ids: List[str]
@@ -325,7 +327,7 @@ class DocManager(lazyllm.ModuleBase):
         try:
             docs = self._manager.get_docs(doc_ids)
             if not docs:
-                return BaseResponse(code=400, msg='Failed, no doc found')
+                raise fastapi.HTTPException(status_code=400, detail='Failed, no doc found')
             for doc in docs:
                 doc_meta = {}
                 meta_dict = json.loads(doc.meta) if doc.meta else {}
@@ -335,7 +337,7 @@ class DocManager(lazyllm.ModuleBase):
             self._manager.set_docs_new_meta(doc_meta)
             return BaseResponse(data=None)
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     class ResetMetadataRequest(BaseModel):
         doc_ids: List[str]
@@ -348,11 +350,11 @@ class DocManager(lazyllm.ModuleBase):
         try:
             docs = self._manager.get_docs(doc_ids)
             if not docs:
-                return BaseResponse(code=400, msg='Failed, no doc found')
+                raise fastapi.HTTPException(status_code=400, detail='Failed, no doc found')
             self._manager.set_docs_new_meta({doc.doc_id: new_meta for doc in docs})
             return BaseResponse(data=None)
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     class QueryMetadataRequest(BaseModel):
         doc_id: str
@@ -365,16 +367,16 @@ class DocManager(lazyllm.ModuleBase):
         try:
             docs = self._manager.get_docs(doc_id)
             if not docs:
-                return BaseResponse(data=None)
+                raise fastapi.HTTPException(status_code=400, detail='Failed, no doc found')
             doc = docs[0]
             meta_dict = json.loads(doc.meta) if doc.meta else {}
             if not key:
-                return BaseResponse(data=meta_dict)
+                raise fastapi.HTTPException(status_code=400, detail='Failed, no key found')
             if key not in meta_dict:
-                return BaseResponse(code=400, msg=f'Failed, key {key} does not exist')
+                raise fastapi.HTTPException(status_code=400, detail=f'Failed, key {key} does not exist')
             return BaseResponse(data=meta_dict[key])
         except Exception as e:
-            return BaseResponse(code=500, msg=str(e), data=None)
+            raise fastapi.HTTPException(status_code=500, detail=str(e))
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'DocManager')
