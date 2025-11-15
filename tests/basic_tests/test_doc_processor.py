@@ -3,7 +3,6 @@ import shutil
 import time
 import tempfile
 import requests
-import unittest
 import pytest
 
 from lazyllm.tools.rag.parsing_service import DocumentProcessor
@@ -22,8 +21,8 @@ def post_func_sample(task_id: str, task_status: str, error_code: str = None, err
     })
     return True
 
-@unittest.skip('For local test')
-class TestDocProcessor(unittest.TestCase):
+@pytest.mark.skip(reason='For local test')
+class TestDocProcessor(object):
     @classmethod
     def setUpClass(cls):
         fd, cls.segment_store_dir = tempfile.mkstemp(suffix='.db')
