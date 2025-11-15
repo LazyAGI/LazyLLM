@@ -5,7 +5,7 @@ import tempfile
 import unittest
 import copy
 import lazyllm
-from lazyllm.tools.rag.store import (MapStore, ChromaStore, MilvusStore,
+from lazyllm.tools.rag.store import (MapStore, ChromaStore, MilvusStore, OceanBaseStore,
                                      SenseCoreStore, BUILDIN_GLOBAL_META_DESC, HybridStore)
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
@@ -1097,6 +1097,167 @@ class TestSenseCoreStore(unittest.TestCase):
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), self.data[1].get('uid'))
 
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
+@pytest.mark.skip(reason='Oceanbase is not installed')
+class TestOceanBaseStore(unittest.TestCase):
+    def setUp(self):
+        self.collections = ['col_g1', 'col_g2']
+        self.embed_dims = {'vec_dense': 3}
+        self.embed_datatypes = {'vec_dense': DataType.FLOAT_VECTOR, 'vec_sparse': DataType.SPARSE_FLOAT_VECTOR}
+        self.global_metadata_desc = BUILDIN_GLOBAL_META_DESC
+        self.index_kwargs = [
+            {
+                'embed_key': 'vec_dense',
+                'index_type': 'FLAT',
+                'metric_type': 'COSINE',
+            },
+            {
+                'embed_key': 'vec_sparse',
+                'index_type': 'HNSW',
+                'metric_type': 'L2',
+            }
+        ]
+        self.store = OceanBaseStore(uri='127.0.0.1:2881', user='root@test', password='',
+                                    db_name='test', index_kwargs=self.index_kwargs)
+        self.store.connect(embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
+                           global_metadata_desc=self.global_metadata_desc)
+
+    def tearDown(self):
+        for collection in self.collections:
+            self.store.delete(collection)
+
+    def test_upsert(self):
+        self.store.upsert(self.collections[0], [data[0]])
+        res = self.store.get(collection_name=self.collections[0])
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
+
+    def test_delete_segments_by_collection(self):
+        self.store.upsert(self.collections[0], [data[0], data[2]])
+        self.store.upsert(self.collections[1], [data[1]])
+        self.store.delete(self.collections[0])
+        res = self.store.get(collection_name=self.collections[0])
+        self.assertEqual(len(res), 0)
+        res = self.store.get(collection_name=self.collections[1])
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[1].get('uid'))
+
+    def test_delete_segments_by_kb_id(self):
+        self.store.upsert(self.collections[0], [data[0], data[2]])
+        self.store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb1'})
+        res = self.store.get(collection_name=self.collections[0])
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
+        self.store.delete(self.collections[0], criteria={RAG_KB_ID: 'kb3'})
+        res = self.store.get(collection_name=self.collections[0])
+        self.assertEqual(len(res), 0)
+
+    def test_delete_segments_by_uid(self):
+        self.store.upsert(self.collections[0], [data[0], data[2]])
+        self.store.delete(self.collections[0], criteria={'uid': ['uid1']})
+        res = self.store.get(collection_name=self.collections[0])
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
+
+    def test_delete_segments_by_doc_id(self):
+        self.store.upsert(self.collections[0], [data[0], data[2]])
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
+        res = self.store.get(collection_name=self.collections[0])
+        self.assertEqual(len(res), 2)
+        self.store.delete(self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
+        res = self.store.get(collection_name=self.collections[0])
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
+
+    def test_get_segments_by_collection(self):
+        self.store.upsert(self.collections[0], [data[0], data[2]])
+        self.store.upsert(self.collections[1], [data[1]])
+        res = self.store.get(collection_name=self.collections[0])
+        self.assertEqual(len(res), 2)
+        res = self.store.get(collection_name=self.collections[1])
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[1].get('uid'))
+
+    def test_get_segments_by_kb_id(self):
+        self.store.upsert(self.collections[0], [data[0], data[2]])
+        self.store.upsert(self.collections[1], [data[1]])
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb1'})
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb3'})
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb2'})
+        self.assertEqual(len(res), 0)
+        res = self.store.get(collection_name=self.collections[1], criteria={RAG_KB_ID: 'kb2'})
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[1].get('uid'))
+
+    def test_get_segments_by_kb_and_doc(self):
+        self.store.upsert(self.collections[0], [data[0], data[2]])
+        self.store.upsert(self.collections[1], [data[1]])
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_KB_ID: 'kb1', RAG_DOC_ID: ['doc1']})
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
+
+    def test_get_segments_by_uid(self):
+        self.store.upsert(self.collections[0], [data[0], data[2]])
+        self.store.upsert(self.collections[1], [data[1]])
+        res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid1']})
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
+        res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid3']})
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
+        res = self.store.get(collection_name=self.collections[0], criteria={'uid': ['uid2']})
+        self.assertEqual(len(res), 0)
+        res = self.store.get(collection_name=self.collections[1], criteria={'uid': ['uid2']})
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[1].get('uid'))
+
+    def test_get_segments_by_doc_id(self):
+        self.store.upsert(self.collections[0], [data[0], data[2]])
+        self.store.upsert(self.collections[1], [data[1]])
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1']})
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc2']})
+        self.assertEqual(len(res), 0)
+        res = self.store.get(collection_name=self.collections[0], criteria={RAG_DOC_ID: ['doc1', 'doc3']})
+        self.assertEqual(len(res), 2)
+
+    def test_search(self):
+        self.store.upsert(self.collections[0], [data[0], data[2]])
+        self.store.upsert(self.collections[1], [data[1]])
+        res = self.store.search(collection_name=self.collections[0], query_embedding=[0.1, 0.2, 0.3],
+                                embed_key='vec_dense', topk=1)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
+        res = self.store.search(collection_name=self.collections[0], query_embedding=[0.3, 0.2, 0.1],
+                                embed_key='vec_dense', topk=1)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
+        res = self.store.search(collection_name=self.collections[0], query_embedding=[0.3, 0.2, 0.1],
+                                embed_key='vec_dense', topk=5)
+        self.assertEqual(len(res), 2)
+        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
+        self.assertEqual(res[1].get('uid'), data[0].get('uid'))
+        res = self.store.search(collection_name=self.collections[1], query_embedding=[0.3, 0.2, 0.1],
+                                embed_key='vec_dense', topk=1)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[1].get('uid'))
+
+    def test_search_with_filters(self):
+        self.store.upsert(self.collections[0], [data[0], data[2]])
+        self.store.upsert(self.collections[1], [data[1]])
+        res = self.store.search(collection_name=self.collections[0], query_embedding=[0.1, 0.2, 0.3],
+                                embed_key='vec_dense', topk=2, filters={RAG_KB_ID: ['kb1']})
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
+        res = self.store.search(collection_name=self.collections[1], query_embedding=[0.1, 0.2, 0.3],
+                                embed_key='vec_dense', topk=1, filters={RAG_KB_ID: ['kb1']})
+        self.assertEqual(len(res), 0)
 
 @pytest.mark.skip_on_win
 @pytest.mark.skip_on_mac
