@@ -18,36 +18,6 @@ from ...global_metadata import GlobalMetadataDesc
 from ..store_base import (LazyLLMStoreBase, StoreCapability,
                           GLOBAL_META_KEY_PREFIX, EMBED_PREFIX, SegmentType)
 
-ObVecClient = pyobvector.ObVecClient
-ARRAY = pyobvector.ARRAY
-VECTOR = pyobvector.VECTOR
-SPARSE_VECTOR = pyobvector.SPARSE_VECTOR
-RangeListPartInfo = pyobvector.RangeListPartInfo
-VecIndexType = pyobvector.client.index_param.VecIndexType
-FtsIndexParam = pyobvector.client.fts_index_param.FtsIndexParam
-FtsParser = pyobvector.client.fts_index_param.FtsParser
-inner_product = pyobvector.inner_product
-l2_distance = pyobvector.l2_distance
-cosine_distance = pyobvector.cosine_distance
-
-create_engine = sqlalchemy.create_engine
-text = sqlalchemy.text
-Column = sqlalchemy.Column
-Integer = sqlalchemy.Integer
-String = sqlalchemy.String
-TEXT = sqlalchemy.dialects.mysql.TEXT
-LONGTEXT = sqlalchemy.dialects.mysql.LONGTEXT
-
-OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES = {
-    'HNSW': VecIndexType.HNSW,
-    'HNSW_SQ': VecIndexType.HNSW_SQ,
-    'IVF': VecIndexType.IVFFLAT,
-    'IVF_FLAT': VecIndexType.IVFFLAT,
-    'IVF_SQ': VecIndexType.IVFSQ,
-    'IVF_PQ': VecIndexType.IVFPQ,
-    'FLAT': VecIndexType.IVFFLAT,
-}
-
 OCEANBASE_INDEX_TYPE_DEFAULTS = {
     'HNSW': {'metric_type': 'l2', 'params': {'M': 16, 'efConstruction': 200}},
     'HNSW_SQ': {'metric_type': 'l2', 'params': {'M': 16, 'efConstruction': 200}},
@@ -57,7 +27,6 @@ OCEANBASE_INDEX_TYPE_DEFAULTS = {
     'IVF_PQ': {'metric_type': 'l2', 'params': {'nlist': 128, 'm': 8, 'nbits': 8}},
     'FLAT': {'metric_type': 'l2', 'params': {}},
 }
-
 
 OB_UPSERT_BATCH_SIZE = 200
 
@@ -98,30 +67,20 @@ class OceanBaseStore(LazyLLMStoreBase):
     need_embedding = True
     supports_index_registration = True
 
-    def __init__(self, uri: str = '127.0.0.1:2881', user: str = 'root@test', password: str = '',
-                 db_name: str = 'test', drop_old: bool = False, index_kwargs: Optional[Union[Dict, List]] = None,
-                 client_kwargs: Optional[Dict] = None, max_pool_size: int = 8, normalize: bool = False,
-                 enable_fulltext_index: bool = False):
+    def __init__(self, uri: str = '127.0.0.1:2881', db_name: str = 'test',
+                 index_kwargs: Optional[Union[Dict, List]] = None, client_kwargs: Optional[Dict] = None):
         self._uri = uri
-        self._user = self._parse_user(user)
-        self._password = password
         self._db_name = db_name
         self._index_kwargs = index_kwargs or {}
         self._client_kwargs = client_kwargs or {}
         self._ddl_lock = threading.Lock()
-        self._db_ready = False
-        self._drop_old = drop_old
-        self._dropped_tables = set()
-        self._embed_dims: Dict[str, int] = {}
         self._embed_datatypes: Union[Dict[str, DataType], Dict[str, Dict]] = {}
         self._global_metadata_desc: Dict[str, GlobalMetadataDesc] = {}
         self._primary_key = 'uid'
-        self._normalize = normalize
         self._hnsw_ef_search = {}
-        self._enable_fulltext_index = enable_fulltext_index
 
     @contextmanager
-    def _client_context(self) -> ObVecClient:
+    def _client_context(self) -> pyobvector.ObVecClient:
         c = self._client_pool.acquire()
         try:
             try:
@@ -135,7 +94,10 @@ class OceanBaseStore(LazyLLMStoreBase):
     def _new_client(self):
         kwargs = dict(self._client_kwargs)
         try:
-            c = ObVecClient(uri=self._uri, user=self._user, password=self._password, db_name=self._db_name, **kwargs)
+            c = pyobvector.ObVecClient(
+                uri=self._uri, db_name=self._db_name,
+                user=self._user, password=self._password, **kwargs
+            )
 
             try:
                 c.perform_raw_text_sql('SET SESSION ob_query_timeout = 300000000')
@@ -160,14 +122,18 @@ class OceanBaseStore(LazyLLMStoreBase):
         self._global_metadata_desc = global_metadata_desc or {}
         self._set_constants()
 
-        self._db_ready = False
-        self._ensure_database()
+        # Extract connection parameters from client_kwargs
+        self._user = self._parse_user(self._client_kwargs.pop('user', 'root@test'))
+        self._password = self._client_kwargs.pop('password', '')
+        self._normalize = self._client_kwargs.pop('normalize', False)
+        self._enable_fulltext_index = self._client_kwargs.pop('enable_fulltext_index', False)
+        max_pool_size = int(self._client_kwargs.pop('max_pool_size', 8))
 
-        max_pool_size = int(self._client_kwargs.get('max_pool_size', 8))
+        self._ensure_database()
         self._client_pool = _ClientPool(self._new_client, max_size=max_pool_size)
         LOG.info('[OceanBaseStore] init success!')
 
-    def upsert(self, collection_name: str, data: List[dict], range_part: Optional[RangeListPartInfo] = None, **kwargs) -> bool:  # noqa: C901 E501
+    def upsert(self, collection_name: str, data: List[dict], range_part: Optional[pyobvector.RangeListPartInfo] = None, **kwargs) -> bool:  # noqa: C901 E501
         try:
             if not data:
                 return True
@@ -183,10 +149,6 @@ class OceanBaseStore(LazyLLMStoreBase):
 
             with self._client_context() as client:
                 with self._ddl_lock:
-                    if self._drop_old and collection_name not in self._dropped_tables:
-                        LOG.info(f'[OceanBaseStore - upsert] Dropping old table {collection_name}')
-                        self._dropped_tables.add(collection_name)
-                        client.drop_table_if_exist(collection_name)
                     if not client.check_table_exists(collection_name):
                         embed_kwargs = {}
                         if all_embed_keys:
@@ -222,8 +184,9 @@ class OceanBaseStore(LazyLLMStoreBase):
                         if i == 0 or batch_num % 10 == 0:
                             try:
                                 client.perform_raw_text_sql('SET SESSION ob_query_timeout = 300000000')
-                            except Exception:
-                                pass
+                            except Exception as timeout_err:
+                                LOG.warning(f'[OceanBaseStore - upsert] Failed to set '
+                                            f'query timeout for batch {batch_num}: {timeout_err}')
 
                         batch_data = serialized_data[i:i + OB_UPSERT_BATCH_SIZE]
                         client.upsert(table_name=collection_name, data=batch_data)
@@ -256,15 +219,7 @@ class OceanBaseStore(LazyLLMStoreBase):
                     with self._ddl_lock:
                         client.drop_table_if_exist(table_name=collection_name)
                 else:
-                    ids = None
-                    where_clause = None
-
-                    if self._primary_key in criteria:
-                        ids = criteria[self._primary_key]
-                        if isinstance(ids, str):
-                            ids = [ids]
-                    else:
-                        where_clause = self._construct_where_clause(criteria)
+                    ids, where_clause = self._get_ids_where_clause(criteria)
 
                     client.delete(
                         table_name=collection_name,
@@ -286,16 +241,7 @@ class OceanBaseStore(LazyLLMStoreBase):
                 if not client.check_table_exists(collection_name):
                     return []
 
-                ids, where_clause = None, None
-                if criteria:
-                    if self._primary_key in criteria:
-                        ids = (
-                            [criteria[self._primary_key]]
-                            if isinstance(criteria[self._primary_key], str)
-                            else criteria[self._primary_key]
-                        )
-                    else:
-                        where_clause = self._construct_where_clause(criteria)
+                ids, where_clause = self._get_ids_where_clause(criteria)
 
                 if ids is None and where_clause is None:
                     return self._get_all_with_pagination(client, collection_name)
@@ -358,14 +304,12 @@ class OceanBaseStore(LazyLLMStoreBase):
 
         return all_results
 
-    def search(self, collection_name: str, query_embedding: Union[dict, List[float]], topk: int, filters: Optional[Dict[str, Union[List, set]]] = None, embed_key: Optional[str] = None, filter_str: Optional[str] = '', **kwargs) -> List[dict]:  # noqa: C901 E501
+    def search(self, collection_name: str, query: str, query_embedding: Union[dict, List[float]], topk: int, filters: Optional[Dict[str, Union[List, set]]] = None, embed_key: Optional[str] = None, filter_str: Optional[str] = '', **kwargs) -> List[dict]:  # noqa: C901 E501
+        if query:
+            raise NotImplementedError('Query fulltext search is not supported for now')
         try:
             if not collection_name or not isinstance(collection_name, str):
                 LOG.error('[OceanBaseStore - search] Invalid collection_name')
-                return []
-
-            if topk <= 0:
-                LOG.warning(f'[OceanBaseStore - search] Invalid topk: {topk}, must be > 0')
                 return []
 
             with self._client_context() as client:
@@ -394,14 +338,15 @@ class OceanBaseStore(LazyLLMStoreBase):
                                 filter_parts.append(filter_expr)
                         except Exception as filter_err:
                             LOG.error(f'[OceanBaseStore - search] Failed to construct filter: {filter_err}')
-                            return []
+                            LOG.error(traceback.format_exc())
+                            raise RuntimeError(f'Failed to construct filter expression: {filter_err}') from filter_err
 
                     if filter_str:
                         filter_parts.append(filter_str)
 
                     if filter_parts:
                         combined_filter = ' and '.join(f'({part})' for part in filter_parts)
-                        where_clause = [text(combined_filter)]
+                        where_clause = [sqlalchemy.text(combined_filter)]
 
                 if (
                     isinstance(query_embedding, dict)
@@ -421,7 +366,7 @@ class OceanBaseStore(LazyLLMStoreBase):
                 if self._embed_datatypes[embed_key] == DataType.SPARSE_FLOAT_VECTOR:
                     if isinstance(vec_data, dict):
                         vec_data = {int(k) if isinstance(k, str) else k: v for k, v in vec_data.items()}
-                    distance_func = inner_product
+                    distance_func = pyobvector.inner_product
                 else:
                     if self._normalize and isinstance(vec_data, list):
                         vec_data = self._normalize_vector(vec_data)
@@ -438,9 +383,10 @@ class OceanBaseStore(LazyLLMStoreBase):
                         try:
                             client.set_ob_hnsw_ef_search(ef_search)
                             self._hnsw_ef_search[embed_key] = ef_search
-                            LOG.info(f'[OceanBaseStore - search] Set efSearch={ef_search} for {embed_key}')
                         except Exception as e:
-                            LOG.warning(f'[OceanBaseStore - search] Failed to set efSearch: {e}')
+                            LOG.error(f'[OceanBaseStore - search] Failed to set efSearch: {e}')
+                            LOG.error(traceback.format_exc())
+                            raise RuntimeError(f'Failed to set efSearch parameter for HNSW index: {e}') from e
 
                 results = client.ann_search(
                     table_name=collection_name,
@@ -492,7 +438,7 @@ class OceanBaseStore(LazyLLMStoreBase):
             LOG.error(traceback.format_exc())
             return []
 
-    def _create_table_and_index(self, client: ObVecClient, collection_name: str, embed_kwargs: Dict, partitions: Optional[RangeListPartInfo] = None) -> bool:  # noqa: C901 E501
+    def _create_table_and_index(self, client: pyobvector.ObVecClient, collection_name: str, embed_kwargs: Dict, partitions: Optional[pyobvector.RangeListPartInfo] = None) -> bool:  # noqa: C901 E501
         columns = copy.deepcopy(self._constant_columns)
 
         idx_params = client.prepare_index_params()
@@ -518,10 +464,10 @@ class OceanBaseStore(LazyLLMStoreBase):
                     field_names = [field_names]
                 index_name = item.get('index_name', f'fts_{field_names[0]}')
                 fts_idxs.append(
-                    FtsIndexParam(
+                    pyobvector.client.fts_index_param.FtsIndexParam(
                         index_name=index_name,
                         field_names=field_names,
-                        parser_type=item.get('parser_type', FtsParser.IK),
+                        parser_type=item.get('parser_type', pyobvector.client.fts_index_param.FtsParser.IK),
                     )
                 )
                 continue
@@ -539,26 +485,26 @@ class OceanBaseStore(LazyLLMStoreBase):
                 LOG.error(f'[OceanBaseStore - _create_table_and_index] No dtype specified for embed_key: {k}')
                 raise ValueError(f'No dtype specified for embed_key: {k}')
 
-            if dtype == VECTOR and not dim:
+            if dtype == pyobvector.VECTOR and not dim:
                 raise ValueError(f'Embedding `{k}` lacks dim parameter (required for VECTOR type)')
 
             if dim:
-                columns.append(Column(embed_field_name, dtype(dim)))
+                columns.append(sqlalchemy.Column(embed_field_name, dtype(dim)))
             else:
-                columns.append(Column(embed_field_name, dtype))
+                columns.append(sqlalchemy.Column(embed_field_name, dtype))
 
             if k in index_kwargs_lookup:
                 index_item = index_kwargs_lookup[k]
                 index_type_str = index_item.get('index_type', 'HNSW')
 
-                if index_type_str not in OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES:
+                if index_type_str not in self._oceanbase_supported_vector_index_types:
                     LOG.warning(f'[OceanBaseStore - _create_table_and_index] Unsupported index type: {index_type_str}')
                     continue
 
-                if dtype == VECTOR:
+                if dtype == pyobvector.VECTOR:
                     idx_params.add_index(
                         field_name=embed_field_name,
-                        index_type=OCEANBASE_SUPPORTED_VECTOR_INDEX_TYPES[index_type_str],
+                        index_type=self._oceanbase_supported_vector_index_types[index_type_str],
                         metric_type=index_item.get('metric_type', 'l2'),
                         index_name=f'vidx_{k}',
                         params=index_item.get('params', {})
@@ -574,10 +520,10 @@ class OceanBaseStore(LazyLLMStoreBase):
 
             if self._enable_fulltext_index and not has_explicit_fts:
                 fts_idxs.append(
-                    FtsIndexParam(
+                    pyobvector.client.fts_index_param.FtsIndexParam(
                         index_name='fts_content',
                         field_names=['content'],
-                        parser_type=FtsParser.IK,
+                        parser_type=pyobvector.client.fts_index_param.FtsParser.IK,
                     )
                 )
 
@@ -614,11 +560,11 @@ class OceanBaseStore(LazyLLMStoreBase):
     def _get_distance_function(self, metric_type: str):
         metric_type = metric_type.lower()
         if metric_type == 'inner_product':
-            return inner_product
+            return pyobvector.inner_product
         elif metric_type == 'l2':
-            return l2_distance
+            return pyobvector.l2_distance
         elif metric_type == 'cosine':
-            return cosine_distance
+            return pyobvector.cosine_distance
         else:
             raise ValueError(f'Unsupported metric type: {metric_type}')
 
@@ -758,18 +704,18 @@ class OceanBaseStore(LazyLLMStoreBase):
         DB_NAME = self._db_name
 
         try:
-            engine = create_engine(f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/', pool_pre_ping=True)
+            engine = sqlalchemy.create_engine(f'mysql+pymysql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/', pool_pre_ping=True)  # noqa: E501
 
             with engine.connect() as connection:
                 LOG.info('Successfully connected to OceanBase database server!')
 
-                result = connection.execute(text('SHOW DATABASES'))
+                result = connection.execute(sqlalchemy.text('SHOW DATABASES'))
                 databases = [row[0] for row in result]
 
                 if DB_NAME in databases:
                     LOG.info(f'Database {DB_NAME} already exists.')
                 else:
-                    connection.execute(text(f'CREATE DATABASE {DB_NAME}'))
+                    connection.execute(sqlalchemy.text(f'CREATE DATABASE {DB_NAME}'))
                     LOG.info(f'Database {DB_NAME} created successfully!')
 
         except Exception as e:
@@ -790,29 +736,38 @@ class OceanBaseStore(LazyLLMStoreBase):
             return user
 
     def _set_constants(self):
+        self._oceanbase_supported_vector_index_types = {
+            'HNSW': pyobvector.client.index_param.VecIndexType.HNSW,
+            'HNSW_SQ': pyobvector.client.index_param.VecIndexType.HNSW_SQ,
+            'IVF': pyobvector.client.index_param.VecIndexType.IVFFLAT,
+            'IVF_FLAT': pyobvector.client.index_param.VecIndexType.IVFFLAT,
+            'IVF_SQ': pyobvector.client.index_param.VecIndexType.IVFSQ,
+            'IVF_PQ': pyobvector.client.index_param.VecIndexType.IVFPQ,
+            'FLAT': pyobvector.client.index_param.VecIndexType.IVFFLAT,
+        }
         self._type2oceanbase = {
-            DataType.ARRAY: ARRAY,
-            DataType.FLOAT_VECTOR: VECTOR,
-            DataType.SPARSE_FLOAT_VECTOR: SPARSE_VECTOR,
-            DataType.STRING: TEXT,
-            DataType.VARCHAR: String,
-            DataType.INT32: Integer,
-            DataType.INT64: Integer,
+            DataType.ARRAY: pyobvector.ARRAY,
+            DataType.FLOAT_VECTOR: pyobvector.VECTOR,
+            DataType.SPARSE_FLOAT_VECTOR: pyobvector.SPARSE_VECTOR,
+            DataType.STRING: sqlalchemy.dialects.mysql.TEXT,
+            DataType.VARCHAR: sqlalchemy.String,
+            DataType.INT32: sqlalchemy.Integer,
+            DataType.INT64: sqlalchemy.Integer,
         }
         self._builtin_keys = {
-            'uid': {'dtype': String(512), 'primary_key': True, 'autoincrement': False},
-            'doc_id': {'dtype': String(512)},
-            'group': {'dtype': String(512)},
-            'content': {'dtype': LONGTEXT},
-            'meta': {'dtype': LONGTEXT},
-            'type': {'dtype': Integer},
-            'number': {'dtype': Integer},
-            'kb_id': {'dtype': String(512)},
-            'parent': {'dtype': String(512)},
-            'answer': {'dtype': LONGTEXT},
-            'image_keys': {'dtype': LONGTEXT},
-            'excluded_embed_metadata_keys': {'dtype': LONGTEXT},
-            'excluded_llm_metadata_keys': {'dtype': LONGTEXT},
+            'uid': {'dtype': sqlalchemy.String(512), 'primary_key': True, 'autoincrement': False},
+            'doc_id': {'dtype': sqlalchemy.String(512)},
+            'group': {'dtype': sqlalchemy.String(512)},
+            'content': {'dtype': sqlalchemy.dialects.mysql.LONGTEXT},
+            'meta': {'dtype': sqlalchemy.dialects.mysql.LONGTEXT},
+            'type': {'dtype': sqlalchemy.Integer},
+            'number': {'dtype': sqlalchemy.Integer},
+            'kb_id': {'dtype': sqlalchemy.String(512)},
+            'parent': {'dtype': sqlalchemy.String(512)},
+            'answer': {'dtype': sqlalchemy.dialects.mysql.LONGTEXT},
+            'image_keys': {'dtype': sqlalchemy.dialects.mysql.LONGTEXT},
+            'excluded_embed_metadata_keys': {'dtype': sqlalchemy.dialects.mysql.LONGTEXT},
+            'excluded_llm_metadata_keys': {'dtype': sqlalchemy.dialects.mysql.LONGTEXT},
         }
         self._constant_columns = self._get_constant_columns()
 
@@ -821,18 +776,18 @@ class OceanBaseStore(LazyLLMStoreBase):
         for k, kws in self._builtin_keys.items():
             kws_copy = dict(kws)
             dtype = kws_copy.pop('dtype')
-            column_list.append(Column(k, dtype, **kws_copy))
+            column_list.append(sqlalchemy.Column(k, dtype, **kws_copy))
         for k, desc in self._global_metadata_desc.items():
             field_name = self._gen_global_meta_key(k)
             if desc.data_type == DataType.ARRAY:
                 if desc.element_type is None:
                     raise ValueError(f'OceanBase field [{field_name}]: '
                                      '`element_type` is required when `data_type` is ARRAY.')
-                column_list.append(Column(field_name, ARRAY))
+                column_list.append(sqlalchemy.Column(field_name, pyobvector.ARRAY))
             elif desc.data_type == DataType.VARCHAR:
-                column_list.append(Column(field_name, String(desc.max_size)))
+                column_list.append(sqlalchemy.Column(field_name, sqlalchemy.String(desc.max_size)))
             else:
-                column_list.append(Column(field_name, self._type2oceanbase[desc.data_type]))
+                column_list.append(sqlalchemy.Column(field_name, self._type2oceanbase[desc.data_type]))
         return column_list
 
     def _ensure_params_defaults(self, index_item: dict):
@@ -896,7 +851,7 @@ class OceanBaseStore(LazyLLMStoreBase):
             return None
 
         combined_filter = ' and '.join(filter_parts)
-        return [text(combined_filter)]
+        return [sqlalchemy.text(combined_filter)]
 
     def _construct_filter_expr(self, filters: Dict[str, Union[List, set]]) -> str:  # noqa: C901
         if not filters:
@@ -945,3 +900,17 @@ class OceanBaseStore(LazyLLMStoreBase):
         if result:
             LOG.debug(f'[OceanBaseStore - _construct_filter_expr] Filter expression: {result}')
         return result
+
+    def _get_ids_where_clause(self, criteria: dict):
+        ids, where_clause = None, None
+        if criteria:
+            if self._primary_key in criteria:
+                ids = (
+                    [criteria[self._primary_key]]
+                    if isinstance(criteria[self._primary_key], str)
+                    else criteria[self._primary_key]
+                )
+            else:
+                where_clause = self._construct_where_clause(criteria)
+
+        return ids, where_clause
