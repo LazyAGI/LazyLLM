@@ -2620,7 +2620,7 @@ Args:
     **kwargs: Other model parameters
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTSModule', """\
 SiliconFlow文本转语音模块，继承自OnlineMultiModalBase。
 
 提供基于SiliconFlow的文本转语音(TTS)功能，支持将文本转换为音频文件。
@@ -2633,7 +2633,7 @@ Args:
     **kwargs: 其他模型参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTSModule', """\
 SiliconFlow Text-to-Speech module, inherits from OnlineMultiModalBase.
 
 Provides text-to-speech (TTS) functionality based on SiliconFlow, supports converting text to audio files.
