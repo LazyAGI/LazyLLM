@@ -7,7 +7,7 @@ In this example, the system introduces a *Director (Director Agent)* to control 
 !!! abstract "In this section, you will learn the following key points of LazyLLM:"
 
     - How to define multi-role dialogue agents (`DialogueAgent`) with memory and role settings.  
-    - How to use [ChatPrompter][lazyllm.prompter.ChatPrompter] to build reusable prompt templates.  
+    - How to use [ChatPrompter][lazyllm.components.prompter.ChatPrompter] to build reusable prompt templates.  
     - How to control conversation turns and speaker selection through `DirectorDialogueAgent`.  
     - How to use [OnlineChatModule][lazyllm.module.OnlineChatModule] to simulate realistic multi-agent conversations.  
 

@@ -7,7 +7,7 @@
 !!! abstract "通过本节您将学习到 LazyLLM 的以下要点："
 
     - 如何定义具有记忆与角色设定的多角色对话代理（`DialogueAgent`）。
-    - 如何使用 [ChatPrompter][lazyllm.prompter.ChatPrompter] 构建可复用的提示词模板。
+    - 如何使用 [ChatPrompter][lazyllm.components.prompter.ChatPrompter] 构建可复用的提示词模板。
     - 如何通过 `DirectorDialogueAgent` 控制对话轮次与发言者选择。
     - 如何利用 [OnlineChatModule][lazyllm.module.OnlineChatModule] 实现多智能体间的真实对话模拟。
 
