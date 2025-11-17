@@ -6488,7 +6488,7 @@ add_example('MongoDBManager', ['''\
 ... )
 >>> result = mgr.execute_query('[{"$match": {"author": "Tolstoy"}}]')
 >>> print(result)
-... '[{"title": "War aSqlCallnd Peace", "author": "Tolstoy"}]'
+... '[{"title": "War and Peace", "author": "Tolstoy"}]'
 '''])
 
 
