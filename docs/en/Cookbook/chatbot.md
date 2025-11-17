@@ -1,11 +1,11 @@
-
 # Build Your First Chatbot
 
 Let's begin our journey into LazyLLM with a classic chatbot.
 
 !!! abstract "Through this section, you will learn about the following key points of LazyLLM"
 
-    - The use of [TrainableModule][lazyllm.module.TrainableModule] and [WebModule][lazyllm.tools.WebModule] for model deployment and client publishing;
+    - Use [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.OnlineChatModule] to enable both offline and online model deployment.
+    - Utilize [WebModule][lazyllm.tools.WebModule] to launch a web-based client interface.
     - How to specify a model;
     - How to set up history.
 
@@ -20,6 +20,7 @@ Answer: Three steps!
 3. Start the client.
 
 Here's the effect:
+
 ![First Chat bot](../assets/1_first_chat_bot_demo.png)
 
 Yes, it's that simple! Below are the three lines of code to build the chatbot:
@@ -34,6 +35,8 @@ Let's delve into the details.
 
 ### Specifying the Model
 
+**1. Local Model**
+
 ```python
 chat = lazyllm.TrainableModule('internlm2-chat-7b')
 ```
@@ -43,6 +46,30 @@ chat = lazyllm.TrainableModule('internlm2-chat-7b')
     - Specify the exact model name (e.g., 'internlm2-chat-7b' here): LazyLLM will automatically download the model from the internet;
     - Specify the exact model name (e.g., 'internlm2-chat-7b') + set the environment variable `export LAZYLLM_MODEL_PATH="/path/to/modelzoo"`: LazyLLM will then find the model at `path/to/modelazoo/internlm2-chat-7b/`;
     - Use the absolute path of the model directly: `path/to/modelazoo/internlm2-chat-7b`.
+
+**2. Online Model**
+
+```python
+chat = lazyllm.OnlineChatModule(source='sensenova', model='SenseChat-5')
+```
+
+- `source`: Specifies the source platform of the model. Supported options include `openai`, `sensenova`, `glm`, `kimi`, `qwen`, and `doubao`, among others.
+- `model`: Specifies the model to be accessed.
+
+  > ⚠️ When using **Doubao**, you must provide the **model ID** or **endpoint ID**. Refer to the platform documentation on how to obtain the inference endpoint.
+  > Make sure the corresponding service is activated on the Doubao platform before using the model.
+
+Default model mappings by platform are as follows:
+
+- openai → `gpt-3.5-turbo`
+- sensenova → `SenseChat-5`
+- glm → `glm-4`
+- kimi → `moonshot-v1-8k`
+- qwen → `qwen-plus`
+- doubao → `mistral-7b-instruct-v0.2`
+
+> ❗ **Note:** When using online models, an **API_KEY** must be configured.
+> For details, please refer to the [LazyLLM Official Documentation (Supported Platforms)](https://docs.lazyllm.ai/en/stable/#supported-platforms).
 
 ### Starting the Model
 

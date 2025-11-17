@@ -10,7 +10,7 @@ def api_key():
 class TestOnlineChat(object):
     def test_online_chat(self, api_key):
         llm = lazyllm.OnlineChatModule(source='siliconflow', api_key=api_key)
-        response = llm("你好，介绍自己")
+        response = llm('你好，介绍自己')
         assert response is not None
         assert isinstance(response, str)
         assert len(response) > 0
@@ -37,8 +37,8 @@ class TestOnlineEmbedding(object):
 
 class TestMultiModal(object):
     def setup_method(self):
-        self.test_text = "你好，这是一个测试。"
-        self.test_image_prompt = "画一只动漫风格的懒懒猫"
+        self.test_text = '你好，这是一个测试。'
+        self.test_image_prompt = '画一只动漫风格的懒懒猫'
 
     def _check_file_result(self, result, format):
         assert result is not None

@@ -153,6 +153,9 @@ For more examples, please refer to our official documentation [Usage Examples](h
 * [Painting Master](https://docs.lazyllm.ai/en/stable/Cookbook/painting_master/)
 * [Multimodal Chatbot](https://docs.lazyllm.ai/en/stable/Cookbook/multimodal_robot/)
 * [Knowledge Base](https://docs.lazyllm.ai/en/stable/Cookbook/rag/)
+* [Search Agent](https://docs.lazyllm.ai/en/latest/Cookbook/bocha_search/)
+* [API Interaction Agent](https://docs.lazyllm.ai/en/latest/Cookbook/API_Interaction_Agent_demo/)
+* [Tool-Calling Intelligent Agent](https://docs.lazyllm.ai/en/latest/Cookbook/flex_agent/)
 
 ## What can LazyLLM do
 
@@ -292,7 +295,7 @@ v0.9 Expected to start from June 2026, lasting 3 months, focusing on improving t
     - AgenticRL & code-writing problem-solving capabilities (V0.7)
 
 9.2.2 Functional Modules
-  - Support memory capabilities (V0.6)
+  - ✅ Support memory capabilities (V0.6)
   - Support for distributed Launcher (V0.7)
   - ✅ Database-based Globals support (V0.6)
   - ServerModule can be published as MCP service (v0.7)

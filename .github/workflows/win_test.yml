@@ -154,7 +154,7 @@ jobs:
       - name: Restore pytest cache
         uses: actions/cache/restore@v4
         with:
-          path: tests/basic_tests/.pytest-cache
+          path: .pytest_cache
           key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: basic_tests
@@ -175,7 +175,7 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: tests/basic_tests/.pytest-cache
+          path: .pytest_cache
           key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
   win-charge_tests:
@@ -317,7 +317,7 @@ jobs:
       - name: Restore pytest cache
         uses: actions/cache/restore@v4
         with:
-          path: tests/charge_tests/.pytest-cache
+          path: .pytest_cache
           key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
 
       - name: charge_tests
@@ -326,7 +326,7 @@ jobs:
          git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git D:/a/LazyLLM/data
          pip install -r tests/requirements.txt
          export LAZYLLM_DATA_PATH=D:/a/LazyLLM/data
-         if [ -f tests/charge_tests/.pytest-cache/v/cache/lastfailed ]; then
+         if [ -f .pytest_cache/v/cache/lastfailed ]; then
            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_win" -v --reruns=2 tests/charge_tests
          else
            python -m pytest -m "not skip_on_win" -v --reruns=2 tests/charge_tests
@@ -344,6 +344,8 @@ jobs:
          LAZYLLM_DOUBAO_MODEL_NAME: ${{ secrets.LAZYLLM_DOUBAO_MODEL_NAME }}
          LAZYLLM_SILICONFLOW_API_KEY: ${{ secrets.LAZYLLM_SILICONFLOW_API_KEY }}
          LAZYLLM_SILICONFLOW_MODEL_NAME: ${{ secrets.LAZYLLM_SILICONFLOW_MODEL_NAME }}
+         LAZYLLM_MINIMAX_API_KEY: ${{ secrets.LAZYLLM_MINIMAX_API_KEY }}
+         LAZYLLM_MINIMAX_MODEL_NAME: ${{ secrets.LAZYLLM_MINIMAX_MODEL_NAME }}
          LAZYLLM_PostgreSQL_URL: ${{ secrets.LAZYLLM_PostgreSQL_URL }}
          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         timeout-minutes: 30
@@ -352,5 +354,5 @@ jobs:
         if: always()
         uses: actions/cache/save@v4
         with:
-          path: tests/charge_tests/.pytest-cache
+          path: .pytest_cache
           key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.sha }}
