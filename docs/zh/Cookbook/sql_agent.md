@@ -44,7 +44,9 @@ from lazyllm.tools import fc_register, SqlManager, SqlCall, ReactAgent
 
 #### Step 1: 初始化数据库
 
-定义数据库名称、表结构和示例数据：
+定义数据库名称、表结构和示例数据。
+TABLE_INFO：定义了名为 orders 的数据表结构，包含订单ID、产品ID、类别、价格、数量、成本价和订单日期等7个字段，其中订单ID为主键，数据类型明确。
+SAMPLE_DATA：提供了 orders 表的真实示例记录，覆盖了智能手机、笔记本和电视三类商品，展示了具体的数值与日期样本。
 
 ```python
 DB_NAME = 'ecommerce.db'
@@ -68,7 +70,7 @@ SAMPLE_DATA = {
 }
 ```
 
-创建示例数据库初始化函数 `init_db`：
+创建示例数据库初始化函数 `init_db`，初始化一个名为 orders 的 SQLite 数据库表，并插入预定义的示例订单数据。若数据库文件已存在，则跳过创建，避免重复操作，确保数据安全。
 
 ```python
 def init_db(db_name: str = DB_NAME, data: dict = SAMPLE_DATA) -> None:

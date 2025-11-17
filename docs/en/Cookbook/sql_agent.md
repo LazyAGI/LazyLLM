@@ -45,7 +45,9 @@ from lazyllm.tools import fc_register, SqlManager, SqlCall, ReactAgent
 
 #### Step 1: Initialize the Database
 
-Define the database name, table structure, and sample data:
+Define the database name, table structure, and sample data.
+TABLE_INFO: Defines the structure of the `orders` table, including seven fields—order ID, product ID, category, price, quantity, cost price, and order date—with order ID as the primary key and clearly specified data types.  
+SAMPLE_DATA: Provides real-world sample records for the `orders` table, covering three product categories—smartphones, laptops, and TVs—with concrete values and date examples.
 
 ```python
 DB_NAME = 'ecommerce.db'
@@ -69,7 +71,7 @@ SAMPLE_DATA = {
 }
 ```
 
-Create a sample database initialization function `init_db`:
+Create a sample database initialization function `init_db` that initializes an SQLite database table named `orders` and inserts predefined sample order data. If the database file already exists, skip the creation to avoid duplicate operations and ensure data safety.
 
 ```python
 def init_db(db_name: str = DB_NAME, data: dict = SAMPLE_DATA) -> None:
