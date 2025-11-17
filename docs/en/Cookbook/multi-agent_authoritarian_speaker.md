@@ -6,7 +6,7 @@ In this example, the system introduces a *Director (Director Agent)* to control 
 
 !!! abstract "In this section, you will learn the following key points of LazyLLM:"
 
-    - How to define multi-role dialogue agents (DialogueAgent) with memory and role settings.  
+    - How to define multi-role dialogue agents (`DialogueAgent`) with memory and role settings.  
     - How to use [ChatPrompter][lazyllm.prompter.ChatPrompter] to build reusable prompt templates.  
     - How to control conversation turns and speaker selection through `DirectorDialogueAgent`.  
     - How to use [OnlineChatModule][lazyllm.module.OnlineChatModule] to simulate realistic multi-agent conversations.  
@@ -351,6 +351,49 @@ Use helper functions to generate detailed descriptions, role headers, and system
 The system message will be used as the prompt during agent initialization, determining their language style and behavioral tendencies.
 
 ```python
+def generate_agent_description(agent_name, agent_role, agent_location):
+    instruction = f'{agent_descriptor_system_message}\n'
+    inputs = (
+        f'{conversation_description}\n'
+        f'Please reply with a creative description of {{agent_name}}, who is a {{agent_role}} in {{agent_location}}, '
+        f'that emphasizes their particular role and location.\n'
+        f'Speak directly to {{agent_name}} in {{word_limit}} words or less.\n'
+        'Do not add anything else.'
+    )
+    prompter = ChatPrompter({'system': instruction})
+    chat = OnlineChatModule().prompt(prompter)
+    agent_description = chat(inputs)
+    return agent_description
+
+
+def generate_agent_header(agent_name, agent_role, agent_location, agent_description):
+    return f'''{conversation_description}
+
+    Your name is {agent_name}, your role is {agent_role}, and you are located in {agent_location}.
+
+    Your description is as follows: {agent_description}
+
+    You are discussing the topic: {topic}.
+
+    Your goal is to provide the most informative, creative, and novel perspectives of the topic from the perspective of your role and your location.
+    '''
+
+
+def generate_agent_system_message(agent_name, agent_header):
+    return f'''{agent_header}
+    You will speak in the style of {agent_name}, and exaggerate your personality.
+    Do not say the same things over and over again.
+    Speak in the first person from the perspective of {agent_name}
+    For describing your own body movements, wrap your description in '*'.
+    Do not change roles!
+    Do not speak from the perspective of anyone else.
+    Speak only from the perspective of {agent_name}.
+    Stop speaking the moment you finish speaking from your perspective.
+    Never forget to keep your response to {word_limit} words!
+    Do not add anything else.
+    '''
+
+
 # Generate agent system information
 agent_descriptions = [
     generate_agent_description(name, role, location)
@@ -419,6 +462,16 @@ Finally, use `DialogueSimulator` to start the full multi-role dialogue simulatio
 The system first injects a question from the audience, then the director decides the next speaker and controls the turns until the termination condition is met.
 
 ```python
+def select_next_speaker(
+    step: int, agents: List[DialogueAgent], director: DirectorDialogueAgent
+) -> int:
+    if step % 2 == 1:
+        idx = 0
+    else:
+        idx = director.select_next_speaker() + 1
+    return idx
+
+
 # Run the simulator
 simulator = DialogueSimulator(
     agents=agents,
@@ -434,6 +487,382 @@ while True:
     if director.stop:
         break
 ```
+
+> The `select_next_speaker()` function determines who speaks next in a multi-turn dialogue: odd-numbered turns are assigned to a fixed agent, while even-numbered turns allow the director agent to dynamically choose the next speaker. This makes the conversation flow more like the rhythm and pacing of a real show.
+
+## Full Code
+
+The complete code is shown below:
+
+<details>
+<summary>Click to expand full code</summary>
+
+```python
+import re
+import random
+import functools
+import tenacity
+from collections import OrderedDict
+from typing import List, Callable
+
+from lazyllm import OnlineChatModule, ChatPrompter
+
+
+# ======================
+# Base class definition
+# ======================
+
+class DialogueAgent:
+    '''Regular dialogue role Agent'''
+    def __init__(
+        self,
+        name,
+        system_message,
+        model,
+    ):
+        self.name = name
+        self.model = model
+        self.prefix = f'{self.name}: '
+        self.system_message = system_message
+        self.reset()
+
+    def reset(self):
+        self.message_history = ['Host：Here is the conversation so far.']
+
+    def send(self) -> str:
+        structured_history = []
+        for i in range(1, len(self.message_history), 2):
+            if i + 1 < len(self.message_history):
+                parts = self.message_history[i].split(':', 1)
+                user_msg = parts[0]
+                ai_msg = parts[1]
+                structured_history.append([user_msg, ai_msg])
+
+        history = structured_history + [[self.prefix, '']]
+        message = self.model(self.system_message, llm_chat_history=history)
+        return message
+
+    def receive(self, name: str, message: str) -> None:
+        self.message_history.append(f'{name}: {message}')
+
+
+class DialogueSimulator:
+    '''Dialogue simulator for managing multi-role interactions'''
+    def __init__(
+        self,
+        agents: List[DialogueAgent],
+        selection_function: Callable[[int, List[DialogueAgent]], int],
+    ) -> None:
+        self.agents = agents
+        self._step = 0
+        self.select_next_speaker = selection_function
+
+    def reset(self):
+        for agent in self.agents:
+            agent.reset()
+
+    def inject(self, name: str, message: str):
+        for agent in self.agents:
+            agent.receive(name, message)
+        self._step += 1
+
+    def step(self) -> tuple[str, str]:
+        speaker_idx = self.select_next_speaker(self._step, self.agents)
+        speaker = self.agents[speaker_idx]
+        message = speaker.send()
+        for receiver in self.agents:
+            receiver.receive(speaker.name, message)
+        self._step += 1
+        return speaker.name, message
+
+
+class IntegerOutputParser:
+    '''Parser for extracting integers from text'''
+    def __init__(self, regex: str, output_keys: List[str], default_output_key: str):
+        self.pattern = re.compile(regex)
+        self.output_keys = output_keys
+        self.default_output_key = default_output_key
+
+    def parse(self, text: str):
+        match = self.pattern.search(text)
+        if not match:
+            raise ValueError(f'No match found for regex {self.pattern.pattern} in text: {text}')
+        groups = match.groups()
+        if len(groups) != len(self.output_keys):
+            raise ValueError(
+                f'Expected {len(self.output_keys)} groups, but found {len(groups)}'
+            )
+        result = {}
+        for key, value in zip(self.output_keys, groups):
+            try:
+                result[key] = int(value)
+            except ValueError:
+                raise ValueError(f"Matched value for key '{key}' is not a valid integer: {value}")
+        return result
+
+    def get_format_instructions(self) -> str:
+        return 'Your response should be an integer delimited by angled brackets, like this: <int>.'
+
+    def __call__(self, text: str):
+        parsed = self.parse(text)
+        return parsed.get(self.default_output_key)
+
+
+class DirectorDialogueAgent(DialogueAgent):
+    '''The role of the director, controlling the pace of the dialogue and the speaker'''
+    def __init__(
+        self,
+        name,
+        system_message,
+        model,
+        speakers: List[DialogueAgent],
+        stopping_probability: float,
+    ) -> None:
+        super().__init__(name, system_message, model)
+        self.speakers = speakers
+        self.system_message = system_message
+        self.next_speaker = ''
+        self.stop = False
+        self.stopping_probability = stopping_probability
+        self.termination_clause = 'Finish the conversation by stating a concluding message and thanking everyone.'
+        self.continuation_clause = 'Do not end the conversation. Keep the conversation going by adding your own ideas.'
+        self.response_prompt_template = ChatPrompter(
+            instruction=f'system:Follow up with an insightful comment.\n{self.prefix}',
+            extra_keys=['termination_clause'],
+            history=[['{message_history}']]
+        )
+        self.choice_parser = IntegerOutputParser(
+            regex=r'<(\d+)>', output_keys=['choice'], default_output_key='choice'
+        )
+        self.choose_next_speaker_prompt_template = ChatPrompter(
+            instruction=({
+                'user':
+                'Given the above conversation, select the next speaker by choosing index next to their name:\n'
+                '{speaker_names}\n\n'
+                f'{self.choice_parser.get_format_instructions()}\n\n'
+                'Respond ONLY with the number, no extra words.\n\n'
+                'Generated number is not allowed to surpass the total number of {speaker_names}'
+                'Do nothing else.'
+            }),
+            extra_keys=['speaker_names'],
+            history=[['{message_history}']]
+        )
+        self.prompt_next_speaker_prompt_template = ChatPrompter(
+            instruction=(
+                'user:'
+                'The next speaker is {next_speaker}.\n'
+                'Prompt the next speaker to speak with an insightful question.\n'
+                f'{self.prefix}'
+            ),
+            extra_keys=['next_speaker'],
+            history=[['{message_history}']]
+        )
+        self.prompt_end_template = ChatPrompter(
+            instruction=(
+                'user: '
+                "Provide a final witty summary that:\n"
+                "Recaps the key satirical points about '{topic}'\n"
+                'Ends with a memorable punchline\n'
+                'Avoids introducing new topics\n'
+                '*Use asterisks for physical gestures*\n'
+                f'{self.prefix}'
+            ),
+            history=[['{message_history}']]
+        )
+
+    def _generate_response(self):
+        sample = random.uniform(0, 1)
+        self.stop = sample < self.stopping_probability
+        print(f'\tStop? {self.stop}\n')
+        if self.stop:
+            response_model = self.model.share(prompt=self.prompt_end_template)
+        else:
+            response_model = self.model.share(prompt=self.prompt_next_speaker_prompt_template)
+        self.response = response_model(self.system_message)
+        return self.response
+
+    @tenacity.retry(
+        stop=tenacity.stop_after_attempt(2),
+        wait=tenacity.wait_none(),
+        retry=tenacity.retry_if_exception_type(ValueError),
+        before_sleep=lambda retry_state: print(
+            f'ValueError occurred: {retry_state.outcome.exception()}, retrying...'
+        ),
+        retry_error_callback=lambda retry_state: 0,
+    )
+    def _choose_next_speaker(self) -> str:
+        speaker_names = '\n'.join(
+            [f'{idx}: {name}' for idx, name in enumerate(self.speakers)]
+        )
+        choice_model = self.model.share(prompt=self.choose_next_speaker_prompt_template)
+        choice_string = choice_model(
+            self.system_message,
+            speaker_names=speaker_names,
+            message_history='\n'.join(
+                self.message_history + [self.prefix] + [self.response]
+            )
+        )
+        choice = int(self.choice_parser.parse(choice_string)['choice'])
+        return choice
+
+    def select_next_speaker(self):
+        return self.chosen_speaker_id
+
+    def send(self) -> str:
+        self.response = self._generate_response()
+        if self.stop:
+            message = self.response
+        else:
+            self.chosen_speaker_id = self._choose_next_speaker()
+            self.next_speaker = self.speakers[self.chosen_speaker_id]
+            print(f'\tNext speaker: {self.next_speaker}\n')
+            message_model = self.model.share(prompt=self.prompt_next_speaker_prompt_template)
+            message = message_model(
+                self.system_message, message_history=self.message_history
+            )
+            message = ' '.join([self.response, message])
+        return message
+
+
+# ======================
+# Definition of auxiliary function
+# ======================
+
+def generate_agent_description(agent_name, agent_role, agent_location):
+    instruction = f'{agent_descriptor_system_message}\n'
+    inputs = (
+        f'{conversation_description}\n'
+        f'Please reply with a creative description of {{agent_name}}, who is a {{agent_role}} in {{agent_location}}, '
+        f'that emphasizes their particular role and location.\n'
+        f'Speak directly to {{agent_name}} in {{word_limit}} words or less.\n'
+        'Do not add anything else.'
+    )
+    prompter = ChatPrompter({'system': instruction})
+    chat = OnlineChatModule().prompt(prompter)
+    agent_description = chat(inputs)
+    return agent_description
+
+
+def generate_agent_header(agent_name, agent_role, agent_location, agent_description):
+    return f'''{conversation_description}
+
+Your name is {agent_name}, your role is {agent_role}, and you are located in {agent_location}.
+
+Your description is as follows: {agent_description}
+
+You are discussing the topic: {topic}.
+
+Your goal is to provide the most informative, creative, and novel perspectives of the topic from the perspective of your role and your location.
+'''
+
+
+def generate_agent_system_message(agent_name, agent_header):
+    return f'''{agent_header}
+You will speak in the style of {agent_name}, and exaggerate your personality.
+Do not say the same things over and over again.
+Speak in the first person from the perspective of {agent_name}
+For describing your own body movements, wrap your description in '*'.
+Do not change roles!
+Do not speak from the perspective of anyone else.
+Speak only from the perspective of {agent_name}.
+Stop speaking the moment you finish speaking from your perspective.
+Never forget to keep your response to {word_limit} words!
+Do not add anything else.
+    '''
+
+
+def select_next_speaker(
+    step: int, agents: List[DialogueAgent], director: DirectorDialogueAgent
+) -> int:
+    if step % 2 == 1:
+        idx = 0
+    else:
+        idx = director.select_next_speaker() + 1
+    return idx
+
+
+# ======================
+# Main logic execution part
+# ======================
+
+# Set topic and role information
+topic = 'The New Workout Trend: Competitive Sitting - How Laziness Became the Next Fitness Craze'
+director_name = 'Jon Stewart'
+word_limit = 50
+
+agent_summaries = OrderedDict({
+    'Jon Stewart': ('Host of the Daily Show', 'New York'),
+    'Samantha Bee': ('Hollywood Correspondent', 'Los Angeles'),
+    'Aasif Mandvi': ('CIA Correspondent', 'Washington D.C.'),
+    'Ronny Chieng': ('Average American Correspondent', 'Cleveland, Ohio'),
+})
+
+agent_summary_string = '\n- '.join([''] + [f'{n}: {r}, located in {l}' for n, (r, l) in agent_summaries.items()])
+conversation_description = f'This is a Daily Show episode discussing: {topic}.\nIt features {agent_summary_string}.'
+agent_descriptor_system_message = 'You can add detail to the description of each person.'
+
+# Generate agent system information
+agent_descriptions = [
+    generate_agent_description(name, role, location)
+    for name, (role, location) in agent_summaries.items()
+]
+agent_headers = [
+    generate_agent_header(name, role, location, desc)
+    for (name, (role, location)), desc in zip(agent_summaries.items(), agent_descriptions)
+]
+agent_system_messages = [
+    generate_agent_system_message(name, header)
+    for name, header in zip(agent_summaries, agent_headers)
+]
+
+# Output agent information
+for name, desc, header, sys_msg in zip(agent_summaries, agent_descriptions, agent_headers, agent_system_messages):
+    print(f'\n{name} Description:\n{desc}\n\nHeader:\n{header}\n\nSystem Message:\n{sys_msg}')
+
+# Generate topic
+topic_specifier_prompt = ChatPrompter({'system:You can make a task more specific'})
+topic_content = f'''{conversation_description}
+
+        Please elaborate on the topic. 
+        Frame the topic as a single question to be answered.
+        Be creative and imaginative.
+        Please reply with the specified topic in {word_limit} words or less. 
+        Do not add anything else.'''
+chat_model = OnlineChatModule().prompt(topic_specifier_prompt)
+specified_topic = chat_model(topic_content)
+
+print(f'Original topic:\n{topic}\n')
+print(f'Detailed topic:\n{specified_topic}\n')
+
+# Initialize director and agents
+director = DirectorDialogueAgent(
+    name=director_name,
+    system_message=agent_system_messages[0],
+    model=OnlineChatModule(),
+    speakers=[name for name in agent_summaries if name != director_name],
+    stopping_probability=0.2,
+)
+agents = [director] + [
+    DialogueAgent(name, sys_msg, OnlineChatModule())
+    for name, sys_msg in zip(list(agent_summaries.keys())[1:], agent_system_messages[1:])
+]
+
+# Run the simulator
+simulator = DialogueSimulator(
+    agents=agents,
+    selection_function=functools.partial(select_next_speaker, director=director),
+)
+simulator.reset()
+simulator.inject('Audience member', specified_topic)
+print(f'(Audience member): {specified_topic}\n')
+
+while True:
+    name, message = simulator.step()
+    print(f'({name}): {message}\n')
+    if director.stop:
+        break
+```
+</details>
 
 ## Demonstration
 

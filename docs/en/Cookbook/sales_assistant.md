@@ -7,9 +7,9 @@ The assistant can automatically determine the current stage of a sales conversat
 !!! abstract "In this section, you will learn how to build a context-aware sales assistant, including the following key points:"
 
     - How to use [OnlineChatModule][lazyllm.module.OnlineChatModule] to build the core language understanding and generation module for sales dialogues.
-    - How to implement [SalesStageAnalyzer] to automatically identify conversation stages such as “Introduction,” “Needs Analysis,” and “Objection Handling.”
-    - How to implement [SalesConversationAgent] to generate natural sales dialogue based on stage and conversation history.
-    - How to use [SalesGPT] as the main controller to realize the complete cycle of “Stage Analysis → Response Generation → Dialogue Update.”
+    - How to implement `SalesStageAnalyzer` to automatically identify conversation stages such as “Introduction,” “Needs Analysis,” and “Objection Handling.”
+    - How to implement `SalesConversationAgent` to generate natural sales dialogue based on stage and conversation history.
+    - How to use Sale`sGPT as the main controller to realize the complete cycle of “Stage Analysis → Response Generation → Dialogue Update.”
     - How to launch an interactive demonstration with the main function `main()` for an end-to-end sales simulation experience.
 
 ## Design Concept
@@ -365,6 +365,252 @@ def main():
 if __name__ == '__main__':
     main()
 ```
+
+## Full Code
+
+The complete code is shown below:
+
+<details>
+<summary>Click to expand full code</summary>
+
+```python
+from lazyllm import OnlineChatModule
+from lazyllm.module import ModuleBase
+from lazyllm.components import ChatPrompter
+
+
+class SalesStageAnalyzer(ModuleBase):
+    '''Sales conversation stage analyzer that identifies the current stage.'''
+
+    def __init__(self, llm: ModuleBase, verbose: bool = True):
+        super().__init__()
+        self.verbose = verbose
+
+        # Define sales conversation stages
+        self.conversation_stages = {
+            '1': 'Introduction: Start the conversation, introduce yourself and your company. Be polite and professional.',
+            '2': 'Qualification: Confirm if the lead is a suitable prospect and has decision-making authority.',
+            '3': 'Value Proposition: Explain how the product/service benefits the prospect and highlight unique selling points.',
+            '4': 'Needs Analysis: Use open-ended questions to understand the client’s needs and pain points.',
+            '5': 'Solution Presentation: Present your product/service as a solution based on the client’s needs.',
+            '6': 'Objection Handling: Address any concerns and provide supporting evidence.',
+            '7': 'Closing: Propose next steps like a demo, trial, or meeting with decision-makers.'
+        }
+
+        # Stage analysis prompt
+        stage_analyzer_prompt = '''You are a sales assistant helping a salesperson determine which stage the conversation should move to next.
+
+        Conversation history:
+        ===
+        {conversation_history}
+        ===
+
+        Determine the next conversation stage from these options:
+        1. Introduction
+        2. Qualification
+        3. Value Proposition
+        4. Needs Analysis
+        5. Solution Presentation
+        6. Objection Handling
+        7. Closing
+
+        Reply with a single number (1–7) only.  
+        If there is no conversation history, output 1.  
+        Do not include any extra text.'''
+
+        self.prompter = ChatPrompter(instruction=stage_analyzer_prompt)
+        self.llm = llm.share(prompt=self.prompter).used_by(self._module_id)
+
+    def forward(self, conversation_history: str) -> str:
+        '''Analyze conversation and return the current stage.'''
+        response = self.llm({'conversation_history': conversation_history})
+        stage_id = ''.join(filter(str.isdigit, response.strip()))
+        if not stage_id or int(stage_id) not in range(1, 8):
+            stage_id = '1'
+
+        if self.verbose:
+            print(f'Stage analysis result: {stage_id} - {self.conversation_stages[stage_id]}')
+
+        return stage_id
+
+
+class SalesConversationAgent(ModuleBase):
+    '''Sales conversation agent that generates replies based on the current stage'''
+
+    def __init__(self, llm: ModuleBase, verbose: bool = True):
+        super().__init__()
+        self.verbose = verbose
+
+        # Sales conversation prompt template
+        sales_conversation_prompt = '''Your name is {salesperson_name}, and you are a {salesperson_role}.
+        You work at {company_name}. The company's business is: {company_business}
+        The company values are: {company_values}
+        The purpose of contacting the potential client is: {conversation_purpose}
+        The type of contact is: {conversation_type}
+
+        If asked where you got the user's contact information, say it was obtained from public records.
+        Keep responses short to maintain user attention. Do not generate lists—just answer directly.
+        You must respond based on the previous conversation history and the current conversation stage.
+        Generate only one reply at a time! End each reply with '<END_OF_TURN>' to allow the user to respond.
+
+        Current conversation stage: {conversation_stage}
+        Conversation history:
+        {conversation_history}
+        {salesperson_name}:'''
+
+        self.prompter = ChatPrompter(instruction=sales_conversation_prompt)
+        self.llm = llm.share(prompt=self.prompter).used_by(self._module_id)
+
+    def forward(self, salesperson_name: str, salesperson_role: str, company_name: str,
+                company_business: str, company_values: str, conversation_purpose: str,
+                conversation_type: str, conversation_stage: str, conversation_history: str) -> str:
+        
+        # Generate sales conversation reply
+        response = self.llm({
+            'salesperson_name': salesperson_name,
+            'salesperson_role': salesperson_role,
+            'company_name': company_name,
+            'company_business': company_business,
+            'company_values': company_values,
+            'conversation_purpose': conversation_purpose,
+            'conversation_type': conversation_type,
+            'conversation_stage': conversation_stage,
+            'conversation_history': conversation_history
+        })
+
+        display_response = response.replace('<END_OF_TURN>', '').strip()
+        if self.verbose:
+            print(f'{salesperson_name}: {display_response}')
+
+        return response
+
+
+class SalesGPT(ModuleBase):
+    '''Context-aware AI Sales Assistant main controller'''
+
+    def __init__(
+        self,
+        llm: ModuleBase,
+        salesperson_name: str = 'Zhang Sales',
+        salesperson_role: str = 'Business Development Representative',
+        company_name: str = 'Premium Sleep',
+        company_business: str = 'Premium Sleep is a high-end mattress company...',
+        company_values: str = 'The mission of Premium Sleep is to provide the best sleep solutions...',
+        conversation_purpose: str = 'To learn whether they wish to improve sleep quality by purchasing a premium mattress.',
+        conversation_type: str = 'phone',
+        verbose: bool = True
+    ):
+        super().__init__()
+
+        # Salesperson information
+        self.salesperson_name = salesperson_name
+        self.salesperson_role = salesperson_role
+        self.company_name = company_name
+        self.company_business = company_business
+        self.company_values = company_values
+        self.conversation_purpose = conversation_purpose
+        self.conversation_type = conversation_type
+        self.verbose = verbose
+
+        # Initialize state
+        self.conversation_history = []
+        self.current_conversation_stage = '1'
+
+        # Initialize components
+        self.stage_analyzer = SalesStageAnalyzer(llm, verbose=verbose)
+        self.sales_conversation_agent = SalesConversationAgent(llm, verbose=verbose)
+
+        # Conversation stage definitions
+        self.conversation_stages = {
+            '1': 'Introduction: Start the conversation, introduce yourself and the company. Maintain a polite and professional tone.',
+            '2': 'Qualification: Confirm whether the potential customer is the right contact and has decision-making authority.',
+            '3': 'Value Proposition: Briefly explain how the product/service benefits the potential customer and highlight unique selling points.',
+            '4': 'Needs Analysis: Use open-ended questions to understand the potential customer’s needs and pain points.',
+            '5': 'Solution Presentation: Present the product/service as a solution based on the customer’s needs.',
+            '6': 'Objection Handling: Address any objections about the product/service and provide supporting evidence.',
+            '7': 'Closing: Request a next step in the sales process, such as a demo, trial, or meeting with a decision-maker.'
+        }
+
+    def seed_agent(self):
+        '''Initialize the sales agent'''
+        if self.verbose:
+            print(f'{self.salesperson_name}: (Waiting for user input...)')
+
+    def determine_conversation_stage(self):
+        '''Determine which stage the current conversation should be in'''
+        conversation_text = '\n'.join(self.conversation_history)
+        self.current_conversation_stage = self.stage_analyzer(conversation_text)
+        if self.verbose:
+            print(f'Current conversation stage: {self.conversation_stages[self.current_conversation_stage]}')
+
+    def human_step(self, human_input: str):
+        '''Handle human input'''
+        human_input = human_input + '<END_OF_TURN>'
+        self.conversation_history.append(human_input)
+        if self.verbose:
+            print(f'User: {human_input.replace('<END_OF_TURN>', '')}')
+
+    def step(self):
+        '''Execute one step of the sales agent’s conversation'''
+        conversation_text = '\n'.join(self.conversation_history)
+
+        ai_message = self.sales_conversation_agent(
+            salesperson_name=self.salesperson_name,
+            salesperson_role=self.salesperson_role,
+            company_name=self.company_name,
+            company_business=self.company_business,
+            company_values=self.company_values,
+            conversation_purpose=self.conversation_purpose,
+            conversation_type=self.conversation_type,
+            conversation_stage=self.conversation_stages[self.current_conversation_stage],
+            conversation_history=conversation_text
+        )
+
+        self.conversation_history.append(ai_message)
+        return ai_message.replace('<END_OF_TURN>', '')
+
+
+def main():
+    '''Main function: Demonstration of SalesGPT usage'''
+    print('=== Context-Aware AI Sales Assistant Demo ===\n')
+
+    # Set up the LLM
+    llm = OnlineChatModule()
+
+    # Configure the sales agent
+    config = {
+        'salesperson_name': 'Li Sales',
+        'salesperson_role': 'Business Development Representative',
+        'company_name': 'Premium Sleep',
+        'company_business': 'Premium Sleep is a high-end mattress company that provides customers with the most comfortable and supportive sleep experience.',
+        'company_values': 'The mission of Premium Sleep is to help people achieve better rest by offering the best sleep solutions.',
+        'conversation_purpose': 'To learn whether they wish to improve sleep quality by purchasing a premium mattress.',
+        'conversation_type': 'phone'
+    }
+
+    # Create the sales agent
+    sales_agent = SalesGPT(llm, **config)
+
+    # Initialize the agent
+    print('Initializing sales agent...')
+    sales_agent.seed_agent()
+    sales_agent.determine_conversation_stage()
+
+    # Start the conversation loop
+    print('\nStarting sales conversation...')
+    while True:
+        sales_agent.step()
+        user_input = input("\nPlease enter your reply (type 'quit' to exit): ")
+        if user_input.lower() == 'quit':
+            print('Conversation ended. Thank you for using SalesGPT!')
+            break
+        sales_agent.human_step(user_input)
+        sales_agent.determine_conversation_stage()
+
+if __name__ == '__main__':
+    main()
+```
+</details>
 
 ## Demonstration
 

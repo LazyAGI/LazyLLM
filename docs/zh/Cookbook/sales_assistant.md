@@ -7,9 +7,9 @@
 !!! abstract "通过本节，您将学习如何构建一个上下文感知型销售助手，包括以下要点："
 
     - 如何使用 [OnlineChatModule][lazyllm.module.OnlineChatModule] 构建销售对话的核心语言理解与生成模块。
-    - 如何实现 [SalesStageAnalyzer] 自动识别销售对话阶段，如“介绍”“需求分析”“异议处理”等。
-    - 如何实现 [SalesConversationAgent] 根据阶段与历史上下文生成自然的销售话术。
-    - 如何使用 [SalesGPT] 作为主控制器，实现“阶段分析 → 回复生成 → 对话更新”的完整逻辑循环。
+    - 如何实现 `SalesStageAnalyzer` 自动识别销售对话阶段，如“介绍”“需求分析”“异议处理”等。
+    - 如何实现 `SalesConversationAgent` 根据阶段与历史上下文生成自然的销售话术。
+    - 如何使用 `SalesGPT` 作为主控制器，实现“阶段分析 → 回复生成 → 对话更新”的完整逻辑循环。
     - 如何通过主函数 `main()` 启动一个交互式销售对话演示，实现端到端的销售模拟体验。
 
 ## 设计思路
@@ -365,6 +365,251 @@ def main():
 if __name__ == '__main__':
     main()
 ```
+
+## 完整代码
+
+完整代码如下所示：
+
+<details>
+<summary>点击展开完整代码</summary>
+
+```python
+from lazyllm import OnlineChatModule
+from lazyllm.module import ModuleBase
+from lazyllm.components import ChatPrompter
+
+
+class SalesStageAnalyzer(ModuleBase):
+    '''销售对话阶段分析器，用于识别当前对话应该处于哪个销售阶段'''
+
+    def __init__(self, llm: ModuleBase, verbose: bool = True):
+        super().__init__()
+        self.verbose = verbose
+
+        # 销售对话阶段定义
+        self.conversation_stages = {
+            '1': '介绍阶段：开始对话，介绍自己和公司。保持礼貌和专业的语调。',
+            '2': '资格确认：确认潜在客户是否是合适的人选，确保他们有购买决策权。',
+            '3': '价值主张：简要解释产品/服务如何使潜在客户受益，突出独特卖点。',
+            '4': '需求分析：通过开放式问题了解潜在客户的需求和痛点。',
+            '5': '解决方案展示：基于潜在客户的需求，展示产品/服务作为解决方案。',
+            '6': '异议处理：处理潜在客户对产品/服务的任何异议，提供证据支持。',
+            '7': '成交：通过提议下一步行动来要求销售，如演示、试用或与决策者会面。'
+        }
+
+        # 阶段分析提示模板
+        stage_analyzer_prompt = '''你是一个销售助手，帮助销售代理确定销售对话应该进入哪个阶段。
+
+        以下是对话历史：
+        ===
+        {conversation_history}
+        ===
+
+        现在根据对话历史确定销售代理在销售对话中的下一个即时对话阶段，从以下选项中选择：
+        1. 介绍阶段：开始对话，介绍自己和公司。保持礼貌和专业的语调。
+        2. 资格确认：确认潜在客户是否是合适的人选，确保他们有购买决策权。
+        3. 价值主张：简要解释产品/服务如何使潜在客户受益，突出独特卖点。
+        4. 需求分析：通过开放式问题了解潜在客户的需求和痛点。
+        5. 解决方案展示：基于潜在客户的需求，展示产品/服务作为解决方案。
+        6. 异议处理：处理潜在客户对产品/服务的任何异议，提供证据支持。
+        7. 成交：通过提议下一步行动来要求销售，如演示、试用或与决策者会面。
+
+        只回答1到7之间的数字，表示对话应该继续的阶段。答案必须只是一个数字，不要添加任何其他内容。
+        如果没有对话历史，输出1。
+        不要回答其他任何内容。'''
+
+        self.prompter = ChatPrompter(instruction=stage_analyzer_prompt)
+        self.llm = llm.share(prompt=self.prompter).used_by(self._module_id)
+
+    def forward(self, conversation_history: str) -> str:
+        '''分析对话历史并返回当前应该处于的销售阶段'''
+        response = self.llm({'conversation_history': conversation_history})
+        stage_id = ''.join(filter(str.isdigit, response.strip()))
+        if not stage_id or int(stage_id) not in range(1, 8):
+            stage_id = '1'  # 默认返回介绍阶段
+
+        if self.verbose:
+            print(f'对话阶段分析结果: {stage_id} - {self.conversation_stages[stage_id]}')
+
+        return stage_id
+
+
+class SalesConversationAgent(ModuleBase):
+    '''销售对话代理，根据当前阶段生成相应的回复'''
+
+    def __init__(self, llm: ModuleBase, verbose: bool = True):
+        super().__init__()
+        self.verbose = verbose
+
+        # 销售对话提示模板
+        sales_conversation_prompt = '''你叫{salesperson_name}，是一名{salesperson_role}。
+        你在{salesperson_name}公司工作。{company_name}的业务是：{company_business}
+        公司价值观是：{company_values}
+        你联系潜在客户的目的是：{conversation_purpose}
+        你联系潜在客户的方式是：{conversation_type}
+
+        如果被问及从哪里获得用户的联系信息，请说从公开记录中获得。
+        保持回复简短以保持用户的注意力。不要产生列表，只回答问题。
+        你必须根据之前的对话历史和当前对话阶段来回应。
+        每次只生成一个回复！生成完成后，以'<END_OF_TURN>'结尾，给用户回应的机会。
+
+        当前对话阶段：{conversation_stage}
+        对话历史：
+        {conversation_history}
+        {salesperson_name}：'''
+
+        self.prompter = ChatPrompter(instruction=sales_conversation_prompt)
+        self.llm = llm.share(prompt=self.prompter).used_by(self._module_id)
+
+    def forward(self, salesperson_name: str, salesperson_role: str, company_name: str,
+                company_business: str, company_values: str, conversation_purpose: str,
+                conversation_type: str, conversation_stage: str, conversation_history: str) -> str:
+        '''生成销售对话回复'''
+        response = self.llm({
+            'salesperson_name': salesperson_name,
+            'salesperson_role': salesperson_role,
+            'company_name': company_name,
+            'company_business': company_business,
+            'company_values': company_values,
+            'conversation_purpose': conversation_purpose,
+            'conversation_type': conversation_type,
+            'conversation_stage': conversation_stage,
+            'conversation_history': conversation_history
+        })
+
+        display_response = response.replace('<END_OF_TURN>', '').strip()
+        if self.verbose:
+            print(f'{salesperson_name}: {display_response}')
+
+        return response
+
+
+class SalesGPT(ModuleBase):
+    '''上下文感知的AI销售助手主控制器'''
+
+    def __init__(
+        self,
+        llm: ModuleBase,
+        salesperson_name: str = '张销售',
+        salesperson_role: str = '业务发展代表',
+        company_name: str = '优质睡眠',
+        company_business: str = '优质睡眠是一家高端床垫公司...',
+        company_values: str = '优质睡眠的使命是通过提供最佳的睡眠解决方案...',
+        conversation_purpose: str = '了解他们是否希望通过购买高端床垫来改善睡眠质量。',
+        conversation_type: str = '电话',
+        verbose: bool = True
+    ):
+        super().__init__()
+
+        # 设置销售人员信息
+        self.salesperson_name = salesperson_name
+        self.salesperson_role = salesperson_role
+        self.company_name = company_name
+        self.company_business = company_business
+        self.company_values = company_values
+        self.conversation_purpose = conversation_purpose
+        self.conversation_type = conversation_type
+        self.verbose = verbose
+
+        # 初始化状态
+        self.conversation_history = []
+        self.current_conversation_stage = '1'
+
+        # 初始化组件
+        self.stage_analyzer = SalesStageAnalyzer(llm, verbose=verbose)
+        self.sales_conversation_agent = SalesConversationAgent(llm, verbose=verbose)
+
+        # 对话阶段定义
+        self.conversation_stages = {
+            '1': '介绍阶段：开始对话，介绍自己和公司。保持礼貌和专业的语调。',
+            '2': '资格确认：确认潜在客户是否是合适的人选，确保他们有购买决策权。',
+            '3': '价值主张：简要解释产品/服务如何使潜在客户受益，突出独特卖点。',
+            '4': '需求分析：通过开放式问题了解潜在客户的需求和痛点。',
+            '5': '解决方案展示：基于潜在客户的需求，展示产品/服务作为解决方案。',
+            '6': '异议处理：处理潜在客户对产品/服务的任何异议，提供证据支持。',
+            '7': '成交：通过提议下一步行动来要求销售，如演示、试用或与决策者会面。'
+        }
+
+    def seed_agent(self):
+        '''初始化销售代理'''
+        if self.verbose:
+            print(f'{self.salesperson_name}: (等待用户输入...)')
+
+    def determine_conversation_stage(self):
+        '''确定当前对话应该处于的阶段'''
+        conversation_text = '\n'.join(self.conversation_history)
+        self.current_conversation_stage = self.stage_analyzer(conversation_text)
+        if self.verbose:
+            print(f'当前对话阶段: {self.conversation_stages[self.current_conversation_stage]}')
+
+    def human_step(self, human_input: str):
+        '''处理人类输入'''
+        human_input = human_input + '<END_OF_TURN>'
+        self.conversation_history.append(human_input)
+        if self.verbose:
+            print(f'用户: {human_input.replace("<END_OF_TURN>", "")}')
+
+    def step(self):
+        '''执行销售代理的一步对话'''
+        conversation_text = '\n'.join(self.conversation_history)
+
+        ai_message = self.sales_conversation_agent(
+            salesperson_name=self.salesperson_name,
+            salesperson_role=self.salesperson_role,
+            company_name=self.company_name,
+            company_business=self.company_business,
+            company_values=self.company_values,
+            conversation_purpose=self.conversation_purpose,
+            conversation_type=self.conversation_type,
+            conversation_stage=self.conversation_stages[self.current_conversation_stage],
+            conversation_history=conversation_text
+        )
+
+        self.conversation_history.append(ai_message)
+        return ai_message.replace('<END_OF_TURN>', '')
+
+
+def main():
+    '''主函数：演示SalesGPT的使用'''
+    print('=== 上下文感知AI销售助手演示 ===\n')
+
+    # 设置LLM
+    llm = OnlineChatModule()
+
+    # 配置销售代理
+    config = {
+        'salesperson_name': '李销售',
+        'salesperson_role': '业务发展代表',
+        'company_name': '优质睡眠',
+        'company_business': '优质睡眠是一家高端床垫公司，为客户提供最舒适和支撑性的睡眠体验。',
+        'company_values': '优质睡眠的使命是通过提供最佳的睡眠解决方案来帮助人们获得更好的睡眠。',
+        'conversation_purpose': '了解他们是否希望通过购买高端床垫来改善睡眠质量。',
+        'conversation_type': '电话'
+    }
+
+    # 创建销售代理
+    sales_agent = SalesGPT(llm, **config)
+
+    # 初始化代理
+    print('初始化销售代理...')
+    sales_agent.seed_agent()
+    sales_agent.determine_conversation_stage()
+
+    # 开始对话循环
+    print('\n开始销售对话...')
+    while True:
+        sales_agent.step()
+        user_input = input('\n请输入您的回复 (输入 \'quit\' 退出): ')
+        if user_input.lower() == 'quit':
+            print('对话结束，感谢使用！')
+            break
+        sales_agent.human_step(user_input)
+        sales_agent.determine_conversation_stage()
+
+if __name__ == '__main__':
+    main()
+```
+</details>
 
 ## 效果展示
 

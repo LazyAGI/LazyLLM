@@ -398,6 +398,205 @@ Answer: The students who have a GPA greater than 3.8 are:
 2. Sophia Wang, Majoring in Economics, with a GPA of 3.92.
 ```
 
+## Full Code
+
+The complete code is shown below:
+
+<details>
+<summary>Click to expand full code</summary>
+
+```python
+import os
+import chardet
+import sqlite3
+from lazyllm import OnlineChatModule
+from lazyllm.tools import SqlManager, SqlCall
+from lazyllm.tools.rag.dataReader import SimpleDirectoryReader
+from lazyllm.tools.rag.readers import PandasCSVReader
+
+csv_path = 'data/students.csv'
+xlsx_path = 'data/employees.xlsx'
+db_path = 'data/example.db'
+
+
+def detect_file_encoding(file_path):
+    with open(file_path, 'rb') as f:
+        return chardet.detect(f.read())
+
+loader = SimpleDirectoryReader(
+    input_files=[csv_path, xlsx_path],
+    exclude_hidden=True,
+    recursive=False
+)
+
+for doc in loader():
+    print(doc.text)
+
+loader = SimpleDirectoryReader(
+    input_files=[csv_path],
+    recursive=True,
+    exclude_hidden=True,
+    num_files_limit=10,
+    required_exts=['.csv'],
+    file_extractor={
+        '*.csv': PandasCSVReader(
+            concat_rows=False,
+            col_joiner=' | ',
+            row_joiner='\n\n',
+            pandas_config={'sep': None, 'engine': 'python', 'header': None}
+        )
+    }
+)
+
+for doc in loader():
+    print(doc.text)
+
+def init_example_db(db_path=db_path, file_paths=[csv_path, xlsx_path]):
+    '''Read data from multiple file paths (supports CSV, Excel, etc.),
+    create database tables using predefined schemas, and insert the data.
+    '''
+    if file_paths is None:
+        raise ValueError('Please provide the file_paths parameter (a list of file paths).')
+
+    os.makedirs(os.path.dirname(db_path), exist_ok=True)
+    conn = sqlite3.connect(db_path)
+    cur = conn.cursor()
+
+    # === Create Tables ===
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS employees (
+            EmployeeId INTEGER PRIMARY KEY,
+            FirstName TEXT,
+            LastName TEXT,
+            Title TEXT
+        );
+    ''')
+
+    cur.execute('''
+        CREATE TABLE IF NOT EXISTS students (
+            StudentID INTEGER PRIMARY KEY,
+            Name TEXT,
+            Age INTEGER,
+            Gender TEXT,
+            Major TEXT,
+            EnrollmentDate TEXT,
+            GPA REAL,
+            Credits INTEGER,
+            Status TEXT
+        );
+    ''')
+
+    # === Iterate Over Files and Insert Data ===
+    for file_path in file_paths:
+        table_name = os.path.splitext(os.path.basename(file_path))[0].lower()
+        loader = SimpleDirectoryReader(
+            input_files=[file_path],
+            recursive=False,
+            exclude_hidden=True,
+            required_exts=['.csv', '.xlsx']
+        )
+        docs = loader()
+
+        all_rows = []
+        for doc in docs:
+            lines = [line.strip() for line in doc.text.strip().split('\n') if line.strip()]
+            if not lines:
+                continue
+
+            for row in lines:
+                # Support both comma-separated and space-separated data
+                if ',' in row:
+                    values = [v.strip() for v in row.split(',')]
+                else:
+                    values = [v.strip() for v in row.split()]
+                all_rows.append(values)
+
+        if not all_rows:
+            continue
+
+        # === Match Table Names and Insert Data ===
+        if table_name == 'students':
+            insert_sql = '''
+                INSERT OR REPLACE INTO students
+                (StudentID, Name, Age, Gender, Major, EnrollmentDate, GPA, Credits, Status)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?);
+            '''
+        elif table_name == 'employees':
+            insert_sql = '''
+                INSERT OR REPLACE INTO employees
+                (EmployeeId, FirstName, LastName, Title)
+                VALUES (?, ?, ?, ?);
+            '''
+        else:
+            print(f'⚠️ Unrecognized table name: {table_name}, skipping file {file_path}')
+            continue
+
+        cur.executemany(insert_sql, all_rows)
+        print(f'✅ Inserted into table {table_name}, total {len(all_rows)} rows.')
+
+    conn.commit()
+    conn.close()
+    print(f'🎉 Database initialization completed: {db_path}')
+
+def query_database(db_name):
+    tables_info = {
+        'tables': [
+            {
+                'name': 'employees',
+                'comment': 'Employee information',
+                'columns': [
+                    {'name': 'EmployeeId', 'data_type': 'Integer', 'is_primary_key': True},
+                    {'name': 'FirstName', 'data_type': 'String'},
+                    {'name': 'LastName', 'data_type': 'String'},
+                    {'name': 'Title', 'data_type': 'String'}
+                ]
+            },
+            {
+                'name': 'students',
+                'comment': 'Student records',
+                'columns': [
+                    {'name': 'StudentID', 'data_type': 'Integer', 'is_primary_key': True},
+                    {'name': 'Name', 'data_type': 'String'},
+                    {'name': 'Age', 'data_type': 'Integer'},
+                    {'name': 'Gender', 'data_type': 'String'},
+                    {'name': 'Major', 'data_type': 'String'},
+                    {'name': 'EnrollmentDate', 'data_type': 'String'},
+                    {'name': 'GPA', 'data_type': 'Float'},
+                    {'name': 'Credits', 'data_type': 'Integer'},
+                    {'name': 'Status', 'data_type': 'String'}
+                ]
+            }
+        ]
+    }
+
+    sql_manager = SqlManager(
+        'sqlite', None, None, None, None,
+        db_name=db_name, tables_info_dict=tables_info
+    )
+
+    print('=== Schema Description ===')
+    print(sql_manager.desc)
+    print('=== employees ===')
+    print(sql_manager.execute_query('SELECT * FROM employees;'))
+    print('=== students ===')
+    print(sql_manager.execute_query('SELECT * FROM students;'))
+    return sql_manager
+
+def ask_llm_question(sql_manager):
+    llm = OnlineChatModule()
+    sql_call = SqlCall(llm=llm, sql_manager=sql_manager, use_llm_for_sql_result=True)
+    question = 'List all students who have a GPA greater than 3.8.'
+    answer = sql_call(question)
+    print('Question:', question)
+    print('Answer:', answer)
+
+if __name__ == '__main__':
+    init_example_db()
+    sql_manager = query_database(db_path)
+    ask_llm_question(sql_manager)
+```
+</details>
+
 ## Summary
 
 Through this example, we demonstrated how to use LazyLLM to build a system capable of multi-source data loading and intelligent SQL querying.  
