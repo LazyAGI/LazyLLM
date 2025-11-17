@@ -111,7 +111,7 @@ jobs:
         run: |
           echo "$GITHUB_EVENT_NAME"
           if [ "$GITHUB_EVENT_NAME" == "pull_request" ]; then
-            FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.sha }})
+            FILES=$(git diff --name-only origin/main..HEAD)
           else
             FILES=$(git diff --name-only ${{ github.event.before }}..${{ github.sha }})
           fi
