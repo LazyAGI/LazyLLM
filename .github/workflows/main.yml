@@ -93,7 +93,7 @@ jobs:
       - name: Move code to custom directory
         run: |
           set -ex
-          mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
+          mv $GITHUB_WORKSPACE/* $GITHUB_WORKSPACE/.[!.]* ${{ env.CI_PATH }}/
 
   TestSetup:
     needs: [Clone]
