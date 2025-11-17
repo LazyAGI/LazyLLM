@@ -1,11 +1,11 @@
- 
 # 构建你的第一个聊天机器人
 
 让我们以一个经典的聊天机器人来开始对 LazyLLM 的探索之旅吧。
 
 !!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
 
-    - [TrainableModule][lazyllm.module.TrainableModule] 和 [WebModule][lazyllm.tools.WebModule] 的使用，以实现模型的部署、客户端的发布；
+    - [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.OnlineChatModule] 的使用，以实现线下线上模型的部署；
+    - 通过 [WebModule][lazyllm.tools.WebModule] 来实现网页客户端的发布；
     - 如何指定一个模型；
     - 如何设置 history。
 
@@ -20,6 +20,7 @@
 3. 启动客户端。
 
 效果如下：
+
 ![First Chat bot](../assets/1_first_chat_bot_demo.png)
 
 是的，就这么简单！下面就是构建聊天机器人的三行代码：
@@ -34,6 +35,8 @@ lazyllm.WebModule(chat, port=23466).start().wait()
 
 ### 指定模型
 
+**1. 本地模型**
+
 ```python
 chat = lazyllm.TrainableModule('internlm2-chat-7b')
 ```
@@ -44,6 +47,17 @@ chat = lazyllm.TrainableModule('internlm2-chat-7b')
     - 指定模型具体的名字（例如这里的：'internlm2-chat-7b'）：LazyLLM会从网络上自动下载该模型；
     - 指定模型具体的名字（例如这里的：'internlm2-chat-7b'）+ 设置环境变量 `export LAZYLLM_MODEL_PATH="/path/to/modelzoo"`: 此时LazyLLM会从 `path/to/modelazoo/internlm2-chat-7b/` 来找到模型；
     - 直接使用模型的绝对路径：`path/to/modelazoo/internlm2-chat-7b`。
+
+**2. 线上模型**
+
+```python
+chat = lazyllm.OnlineChatModule(source='sensenova', model='SenseChat-5')
+```
+
+- `source`: 指定要访问的模型来源。选项包括 openai / sensenova / glm / kimi / qwen / 豆包等。
+- `model`: 指定要访问的模型（注意，使用豆包时需要使用模型ID或端点ID。获取方法，请参见获取推理接入点。在使用模型之前，必须先在豆包平台上开通相应的服务），默认为 gpt-3.5-turbo(openai) / SenseChat-5(sensenova) / glm-4(glm) / moonshot-v1-8k(kimi) / qwen-plus(qwen) / mistral-7b-instruct-v0.2(doubao)。
+
+> ❗ 注意：在使用线上模型时需要配置 API_KEY，参考 [LazyLLM 官方文档（平台支持部分）](https://docs.lazyllm.ai/en/stable/#supported-platforms)。
 
 ### 启动模型
 

@@ -57,11 +57,11 @@ There is nothing much to introduce here. For more information, please refer to: 
 
 ```python
 import lazyllm
-from lazyllm.tools import FunctionCallAgent
+from lazyllm.tools import ReactAgent
 
 llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True).start()  # or llm = lazyllm.OnlineChatModule(stream=True)
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
-agent = FunctionCallAgent(llm, tools)
+agent = ReactAgent(llm, tools)
 ```
 
 The only difference between this and the normal [FunctionCall][lazyllm.tools.agent.FunctionCall] is that `stream` is set to `True` when defining the model. After setting, we need to request the agent and display the request result. The example is as follows:
@@ -76,32 +76,13 @@ with lazyllm.ThreadPoolExecutor(1) as executor:
 		elif future.done():
 			break
 	print(f"ret: {future.result()}")
-# output:
-# 
-# output:
-# The
-# output:  current
-# output:  weather
-# output:  in
-# output:  Tokyo
-# output:  is
-# output:
-# output: 10
-# output:  degrees
-# output:  Celsius
-# output: ,
-# output:  and
-# output:  in
-# output:  Paris
-# output: ,
-# output:  it
-# output:  is
-# output:
-# output: 22
-# output:  degrees
-# output:  Celsius
-# output: .
-# ret: The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.
+# output: Thought: The current language of the user is: English. I need to use
+# output:  a tool to help answer the question.
+
+
+# output: Answer: The current
+# output:  weather in Tokyo is 10°C, and in Paris, it is 22°C.
+# ret: Answer: The current weather in Tokyo is 10°C, and in Paris, it is 22°C.
 ```
 
 In the above example, if streaming output is configured, multiple threads need to be started to read from the file queue when receiving data to achieve streaming output.
@@ -128,11 +109,11 @@ At the same time, in [FunctionCall][lazyllm.tools.agent.FunctionCall] or [Flow](
 
 ```python
 import lazyllm
-from lazyllm.tools import FunctionCallAgent
+from lazyllm.tools import ReactAgent
 
 llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True, return_trace=True).start()  # or llm = lazyllm.OnlineChatModule(stream=True, return_trace=True)
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
-agent = FunctionCallAgent(llm, tools, return_trace=True)
+agent = ReactAgent(llm, tools, return_trace=True)
 
 query = "What's the weather like today in celsius in Tokyo and Paris."
 with lazyllm.ThreadPoolExecutor(1) as executor:
@@ -145,39 +126,15 @@ with lazyllm.ThreadPoolExecutor(1) as executor:
 		elif future.done():
 			break
 	print(f"ret: {future.result()}")
-# output:
-# 
-# trace: [{'id': '144455610eaa43dd93c6dfbc331069c4', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': {'location': 'Tokyo, Japan', 'unit': 'celsius'}}}, '\n']
-# trace: {"location": "Tokyo", "temperature": "10", "unit": "celsius"}
-# trace: ['{"location": "Tokyo", "temperature": "10", "unit": "celsius"}']["What's the weather like today in celsius in Tokyo and Paris.", {'role': 'assistant', 'content': '\n', 'tool_calls': [{'id': '144455610eaa43dd93c6dfbc331069c4', 'type': 'function', 'function': {'name': 'get_current_weather', 'arguments': {'location': 'Tokyo, Japan', 'unit': 'celsius'}}}]}, [{'role': 'tool', 'content': '{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', 'tool_call_id': '144455610eaa43dd93c6dfbc331069c4', 'name': 'get_current_weather'}]]
-# output:
-# 
-# output:
-# The
-# output:  current
-# output:  weather
-# output:  in
-# output:  Tokyo
-# output:  is
-# output:
-# output: 10
-# output:  degrees
-# output:  Celsius
-# output: ,
-# output:  and
-# output:  in
-# output:  Paris
-# output: ,
-# output:  it
-# output:  is
-# output:
-# output: 22
-# output:  degrees
-# output:  Celsius
-# output: .
-# trace: The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.
-# trace: The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.
-# ret: The current weather in Tokyo is 10 degrees Celsius, and in Paris, it is 22 degrees Celsius.
+# output: Thought: The current language of the user is: English. I need to use a tool to help answer the question.
+
+# trace: {'role': 'assistant', 'content': 'Thought: The current language of the user is: English. I need to use a tool to help answer the question.\n', 'tool_calls': [{'index': 0, 'type': 'function', 'id': 'call_d2415b4b478c412ab7363f', 'function': {'arguments': '{"location": "Tokyo", "unit": "celsius"}', 'name': 'get_current_weather'}}, {'index': 1, 'type': 'function', 'id': 'call_15035422418847629999d9', 'function': {'arguments': '{"location": "Paris", "unit": "celsius"}', 'name': 'get_current_weather'}}]}{"location": "Paris", "temperature": "22", "unit": "celsius"}
+# trace: {"location": "Tokyo", "temperature": "10", "unit": "celsius"}('{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', '{"location": "Paris", "temperature": "22", "unit": "celsius"}'){'role': 'assistant', 'content': 'Thought: The current language of the user is: English. I need to use a tool to help answer the question.\n', 'tool_calls': [{'index': 0, 'type': 'function', 'id': 'call_d2415b4b478c412ab7363f', 'function': {'arguments': '{"location": "Tokyo", "unit": "celsius"}', 'name': 'get_current_weather'}}, {'index': 1, 'type': 'function', 'id': 'call_15035422418847629999d9', 'function': {'arguments': '{"location": "Paris", "unit": "celsius"}', 'name': 'get_current_weather'}}], 'tool_calls_results': ('{"location": "Tokyo", "temperature": "10", "unit": "celsius"}', '{"location": "Paris", "temperature": "22", "unit": "celsius"}')}
+# output: Answer: The current
+# output:  weather in Tokyo is 1
+# trace: {'role': 'assistant', 'content': 'Answer: The current weather in Tokyo is 10°C, and in Paris, it is 22°C.'}Answer: The current weather in Tokyo is 10°C, and in Paris, it is 22°C.Answer: The current weather in Tokyo is 10°C, and in Paris, it is 22°C.
+# output: 0°C, and in Paris, it is 22°C.
+# ret: Answer: The current weather in Tokyo is 10°C, and in Paris, it is 22°C.
 ```
 
 From the above code, we can see that for the model and agent definitions, we only need to add `return_trace=True`. The following code only needs to add statements to get logs from the file queue and print logs. From the final result, we can see that LazyLLM can support both streaming output `output:` records and intermediate result log `trace:` records. The collection of `trace` logs is implemented in [ModuleBase][lazyllm.module.ModuleBase]. If you want to implement this capability on your own module, you only need to inherit the [ModuleBase][lazyllm.module.ModuleBase] class.
