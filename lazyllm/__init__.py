@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-__version__ = '6.0.1dev'
+__version__ = '0.6.4dev'
 
 from .configs import config
 from .configs import * # noqa F401 of Config

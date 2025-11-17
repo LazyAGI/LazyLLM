@@ -124,7 +124,7 @@ class ThreadSafeDict(dict):
 
 class Globals(metaclass=SingletonABCMeta):
     __global_attrs__ = ThreadSafeDict(user_id=None, chat_history={}, global_parameters={}, bind_args={},
-                                      tool_delimiter='<|tool_calls|>', lazyllm_files={}, usage={})
+                                      tool_delimiter='<|tool_calls|>', lazyllm_files={}, usage={}, _lazyllm_agent={})
 
     def __new__(cls, *args, **kw):
         if cls is not Globals: return super().__new__(cls)
@@ -161,13 +161,13 @@ class Globals(metaclass=SingletonABCMeta):
             return default
 
     def __setattr__(self, __name: str, __value: Any):
-        if __name in __class__.__global_attrs__:
+        if __name in type(self).__global_attrs__:
             self[__name] = __value
         else:
             super(__class__, self).__setattr__(__name, __value)
 
     def __getattr__(self, __name: str) -> Any:
-        if __name in __class__.__global_attrs__:
+        if __name in type(self).__global_attrs__:
             return self[__name]
         raise AttributeError(f'Attr {__name} not found in globals')
 
@@ -206,7 +206,7 @@ class MemoryGlobals(Globals):
     @property
     def _sid(self) -> str:
         if (sid := super(__class__, self)._sid) not in self.__data:
-            self.__data[sid] = copy.deepcopy(__class__.__global_attrs__)
+            self.__data[sid] = copy.deepcopy(type(self).__global_attrs__)
         return sid
 
     def _get_data(self, rois: Optional[List[str]] = None) -> dict:
@@ -262,6 +262,8 @@ globals = Globals()
 
 
 class Locals(MemoryGlobals):
+    __global_attrs__ = ThreadSafeDict(_lazyllm_agent={})
+
     def __getitem__(self, __key: str):
         try:
             return super().__getitem__(__key)
