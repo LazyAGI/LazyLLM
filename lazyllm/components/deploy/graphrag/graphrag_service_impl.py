@@ -17,14 +17,6 @@ from lazyllm.thirdparty import graphrag
 from lazyllm import FastapiApp as app
 from lazyllm import LOG
 
-global_search = graphrag.api.query.drift_search
-local_search = graphrag.api.query.local_search
-drift_search = graphrag.api.query.drift_search
-load_config = graphrag.config.load_config.load_config
-IndexingMethod = graphrag.config.enums.IndexingMethod
-initialize_project_at = graphrag.cli.initialize.initialize_project_at
-HTTPException = fastapi.HTTPException
-
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -111,14 +103,13 @@ class GraphRAGServiceImpl:
         '''Initialize the root directory for a knowledge graph'''
         if not Path(kg_dir).exists():
             raise Exception(f'Root directory {kg_dir} does not exist. Please prepare it first.')
-        initialize_project_at(path=kg_dir, force=True)
+        graphrag.cli.initialize.initialize_project_at(path=kg_dir, force=True)
 
     @app.post('/graphrag/create_index', response_model=CreateIndexResponse)
     async def create_index(self, override: bool = True):
         '''Index a new document into the knowledge graph'''
         if self._index_state and not override:
-            raise HTTPException(
-                status_code=400, detail='Index already exists. No need to create index again.')
+            raise fastapi.HTTPException(status_code=400, detail='Index already exists. No need to create index again.')
         task_id = str(uuid.uuid4())
         self._clean_index_state()
         # Initialize task status
@@ -222,12 +213,7 @@ class GraphRAGServiceImpl:
 
     @staticmethod
     def _run_index_cli_sync(kg_dir: str):
-        from pathlib import Path
-        from lazyllm.thirdparty import graphrag
-        IndexingMethod = graphrag.config.enums.IndexingMethod
-        index_cli = graphrag.cli.index.index_cli
-
-        index_cli(
+        graphrag.cli.index.index_cli(
             root_dir=Path(kg_dir),
             verbose=False,
             memprofile=False,
@@ -236,14 +222,14 @@ class GraphRAGServiceImpl:
             dry_run=False,
             skip_validation=False,
             output_dir=None,
-            method=IndexingMethod.Standard.value,
+            method=graphrag.config.enums.graphrag.config.enums.IndexingMethod.Standard.value,
         )
 
     def _load_index_state(self) -> IndexState:
         '''Load index state from the knowledge graph directory'''
         try:
             kg_dir = Path(self._kg_dir)
-            config = load_config(root_dir=kg_dir)
+            config = graphrag.config.load_config.load_config(root_dir=kg_dir)
             graph_store_dir = kg_dir / 'output'
 
             communities = pd.read_parquet(graph_store_dir / 'communities.parquet')
@@ -273,19 +259,19 @@ class GraphRAGServiceImpl:
         '''Get the status of an index task'''
         task_info = self._tasks.get(task_id, None)
         if not task_info:
-            raise HTTPException(status_code=404, detail=f'Task not found: {task_id}')
+            raise fastapi.HTTPException(status_code=404, detail=f'Task not found: {task_id}')
         return task_info
 
     @app.post('/graphrag/query', response_model=QueryResponse)
     async def query(self, request: QueryRequest):
         '''Process a GraphRAG query using the specified search method'''
         if not self.index_ready():
-            raise HTTPException(status_code=400, detail='Index not created yet. Run index first.')
+            raise fastapi.HTTPException(status_code=400, detail='Index not created yet. Run index first.')
         try:
             search_method = request.search_method.lower()
 
             if search_method == 'global':
-                answer, _ = await global_search(
+                answer, _ = await graphrag.api.query.graphrag.api.query.global_search(
                     config=self._index_state.config,
                     entities=self._index_state.entities,
                     communities=self._index_state.communities,
@@ -296,7 +282,7 @@ class GraphRAGServiceImpl:
                     query=request.query,
                 )
             elif search_method == 'local':
-                answer, _ = await local_search(
+                answer, _ = await graphrag.api.query.local_search(
                     config=self._index_state.config,
                     entities=self._index_state.entities,
                     communities=self._index_state.communities,
@@ -309,7 +295,7 @@ class GraphRAGServiceImpl:
                     query=request.query,
                 )
             elif search_method == 'drift':
-                answer, _ = await drift_search(
+                answer, _ = await graphrag.api.query.drift_search(
                     config=self._index_state.config,
                     entities=self._index_state.entities,
                     communities=self._index_state.communities,
@@ -321,7 +307,7 @@ class GraphRAGServiceImpl:
                     query=request.query,
                 )
             else:
-                raise HTTPException(
+                raise fastapi.HTTPException(
                     status_code=400,
                     detail=f'Invalid search method: {search_method}. Must be one of: global, local, drift',
                 )
@@ -329,4 +315,4 @@ class GraphRAGServiceImpl:
 
         except Exception as e:
             LOG.error(f'Error processing query: {str(e)}')
-            raise HTTPException(status_code=500, detail=f'Internal server error: {str(e)}')
+            raise fastapi.HTTPException(status_code=500, detail=f'Internal server error: {str(e)}')
