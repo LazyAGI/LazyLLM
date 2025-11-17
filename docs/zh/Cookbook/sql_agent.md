@@ -6,7 +6,7 @@
 
     - 如何初始化 SQLite 数据库并插入样例数据。
     - 如何通过 @fc_register 注册 SQL 查询工具。
-    - 如何使用 [SqlManager][lazyllm.tools.sql.SqlManager] 和 [SqlCall][lazyllm.tools.sql_call.SqlCall] 执行 SQL 查询。
+    - 如何使用 [SqlManager][lazyllm.tools.sql.SqlManager] 和 `SqlCall` 执行 SQL 查询。
     - 如何结合 [ReactAgent][lazyllm.tools.agent.ReactAgent] 构建智能交互式查询 Agent。
 
 ## 功能简介
