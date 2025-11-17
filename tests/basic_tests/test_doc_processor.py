@@ -22,6 +22,8 @@ def post_func_sample(task_id: str, task_status: str, error_code: str = None, err
     return True
 
 @pytest.mark.skip(reason='For local test')
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestDocProcessor(object):
     @classmethod
     def setUpClass(cls):
