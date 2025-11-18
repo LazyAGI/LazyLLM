@@ -5,6 +5,8 @@ from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
+import re
+import json
 
 FC_PROMPT = f'''# Tools
 
@@ -75,6 +77,12 @@ class FunctionCall(ModuleBase):
         return input
 
     def _post_action(self, llm_output: Dict[str, Any]):
+        if not llm_output.get('tool_calls'):
+            if (match := re.search(r'Action:\s*Call\s+(\w+)\s+with\s+parameters\s+(\{.*?\})', llm_output['content'])):
+                try:
+                    llm_output['tool_calls'] = [{'function': {'name': match.group(1),
+                                                              'arguments': json.loads(match.group(2))}}]
+                except Exception: pass
         if tool_calls := llm_output.get('tool_calls'):
             tool_calls_results = self._tools_manager(tool_calls)
             locals['_lazyllm_agent']['workspace']['tool_call_trace'] = [
