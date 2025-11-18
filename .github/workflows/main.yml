@@ -96,28 +96,31 @@ jobs:
           mv $GITHUB_WORKSPACE/* $GITHUB_WORKSPACE/.[!.]* ${{ env.CI_PATH }}/
 
   TestSetup:
-    needs: [Clone]
-    runs-on: tps_sco_nv
+    runs-on: ubuntu-latest
     outputs:
       ci_path: ${{ steps.set_path.outputs.ci_path }}
-      changed_files: ${{ steps.changed_files.outputs.changed_files }}
+      changed_files: ${{ steps.changed_files.outputs.all_changed_files }}
     steps:
       - name: Set CI_PATH
         id: set_path
         run: echo "ci_path=${{ env.CI_PATH }}" >> "$GITHUB_OUTPUT"
 
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
       - name: Get changed files
-        id: changed_files
+        id: changed-files
+        uses: tj-actions/changed-files@v47
+
+      - name: List all changed files
         run: |
-          echo "$GITHUB_EVENT_NAME"
-          if [ "$GITHUB_EVENT_NAME" == "pull_request" ]; then
-            FILES=$(git diff --name-only origin/main..HEAD)
-          else
-            FILES=$(git diff --name-only ${{ github.event.before }}..${{ github.sha }})
-          fi
-          echo "Changed files:"
-          echo $FILES
-          echo "changed_files=$(echo "$FILES" | paste -sd ',' -)" >> $GITHUB_OUTPUT
+          echo "ALL_CHANGED_FILES:"
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            echo "$file"
+          done
+          echo ""
 
   BasicTests:
     needs: [Clone, TestSetup]
@@ -126,7 +129,7 @@ jobs:
       CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
       changed_files: ${{ needs.TestSetup.outputs.changed_files }}
       markers: "not skip_on_linux"
-      tests_dir: "tests/basic_tests/"
+      tests_dir: "tests/basic_tests"
       launcher: "empty"
       nproc: 4
 
@@ -137,7 +140,7 @@ jobs:
       CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
       changed_files: ${{ needs.TestSetup.outputs.changed_files }}
       markers: "not skip_on_linux"
-      tests_dir: "tests/advanced_tests/standard_test/"
+      tests_dir: "tests/advanced_tests/standard_test"
       launcher: "sco"
       nproc: 1
 
@@ -148,7 +151,7 @@ jobs:
       CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
       changed_files: ${{ needs.TestSetup.outputs.changed_files }}
       markers: "not skip_on_linux"
-      tests_dir: "tests/advanced_tests/full_test/"
+      tests_dir: "tests/advanced_tests/full_test"
       launcher: "sco"
       nproc: 1
 
@@ -238,10 +241,13 @@ jobs:
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
-          if [ -f .pytest_cache/v/cache/lastfailed ]; then
-            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
+          if [ -f tests/charge_tests/.pytest_cache/v/cache/lastfailed ]; then
+            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --order-scope=class --durations=0 \
+              --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html --override-ini=cache_dir=tests/charge_tests/.pytest_cache \
+              tests/charge_tests
           else
-            python -m pytest -m "not skip_on_linux" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
+            python -m pytest -m "not skip_on_linux" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append \
+             --cov-report=html  --override-ini=cache_dir=tests/charge_tests/.pytest_cache tests/charge_tests
           fi
 
       - name: Success On Main Branch

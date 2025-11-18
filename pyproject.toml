@@ -381,5 +381,4 @@ markers = [
     "skip_on_mac: mark tests to skip on macOS",
     "skip_on_linux: mark tests to skip on Linux",
 ]
-cache_dir = ".pytest_cache"
 order_group_scope = "class"
