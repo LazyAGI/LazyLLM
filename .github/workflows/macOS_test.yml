@@ -300,9 +300,9 @@ jobs:
          pip install -r tests/requirements.txt
          export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
          if [ -f .pytest_cache/v/cache/lastfailed ]; then
-           python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_mac" -v --reruns=2 tests/charge_tests
+           python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_mac" --order-scope=class -v --reruns=2 tests/charge_tests
          else
-           python -m pytest -m "not skip_on_mac" -v --reruns=2 tests/charge_tests
+           python -m pytest -m "not skip_on_mac" --order-scope=class -v --reruns=2 tests/charge_tests
          fi
         env :
          LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}

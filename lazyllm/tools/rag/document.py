@@ -157,7 +157,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         else:
             if isinstance(manager, DocumentProcessor):
                 processor, cloud = manager, True
-                processor._impl.start()
+                processor.start()
                 manager = False
                 assert name, '`Name` of Document is necessary when using cloud service'
                 assert store_conf.get('type') != 'map', 'Cloud manager is not supported when using map store'
@@ -329,6 +329,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
         return self._forward('clear_cache', group_names)
+
+    def drop_algorithm(self):
+        return self._forward('drop_algorithm')
 
     def _get_post_process_tasks(self):
         return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))
