@@ -236,11 +236,11 @@ jobs:
           source ~/ENV/env.sh
           if [ -f tests/charge_tests/.pytest_cache/v/cache/lastfailed ]; then
             python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --order-scope=class --durations=0 \
-              --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html --cache-dir=tests/charge_tests/.pytest_cache \
+              --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html --override-ini=cache_dir=tests/charge_tests/.pytest_cache \
               tests/charge_tests
           else
             python -m pytest -m "not skip_on_linux" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append \
-             --cov-report=html  --cache-dir=tests/charge_tests/.pytest_cache tests/charge_tests
+             --cov-report=html  --override-ini=cache_dir=tests/charge_tests/.pytest_cache tests/charge_tests
           fi
 
       - name: Success On Main Branch
