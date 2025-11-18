@@ -80,7 +80,7 @@ class OceanBaseStore(LazyLLMStoreBase):
         self._hnsw_ef_search = {}
 
     @contextmanager
-    def _client_context(self) -> pyobvector.ObVecClient:
+    def _client_context(self) -> 'pyobvector.ObVecClient':
         c = self._client_pool.acquire()
         try:
             try:
@@ -133,7 +133,7 @@ class OceanBaseStore(LazyLLMStoreBase):
         self._client_pool = _ClientPool(self._new_client, max_size=max_pool_size)
         LOG.info('[OceanBaseStore] init success!')
 
-    def upsert(self, collection_name: str, data: List[dict], range_part: Optional[pyobvector.RangeListPartInfo] = None, **kwargs) -> bool:  # noqa: C901 E501
+    def upsert(self, collection_name: str, data: List[dict], range_part: Optional['pyobvector.RangeListPartInfo'] = None, **kwargs) -> bool:  # noqa: C901 E501
         try:
             if not data:
                 return True
