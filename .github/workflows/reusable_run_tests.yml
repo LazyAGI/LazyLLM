@@ -15,6 +15,14 @@ on:
       markers:
         required: true
         type: string
+      launcher:
+        required: false
+        default: "sco"
+        type: string
+      nproc:
+        required: false
+        default: 1
+        type: number
 
 jobs:
   test:
