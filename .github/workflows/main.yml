@@ -127,6 +127,8 @@ jobs:
       changed_files: ${{ needs.TestSetup.outputs.changed_files }}
       markers: "not skip_on_linux"
       tests_dir: "tests/basic_tests/"
+      launcher: "empty"
+      nproc: 4
 
   AdvancedStandardTests:
     needs: [Clone, TestSetup]
@@ -136,6 +138,8 @@ jobs:
       changed_files: ${{ needs.TestSetup.outputs.changed_files }}
       markers: "not skip_on_linux"
       tests_dir: "tests/advanced_tests/standard_test/"
+      launcher: "sco"
+      nproc: 1
 
   AdvancedFullTests:
     needs: [Clone, TestSetup]
@@ -145,6 +149,8 @@ jobs:
       changed_files: ${{ needs.TestSetup.outputs.changed_files }}
       markers: "not skip_on_linux"
       tests_dir: "tests/advanced_tests/full_test/"
+      launcher: "sco"
+      nproc: 1
 
   check_online_changes:
     runs-on: tps_sco_nv

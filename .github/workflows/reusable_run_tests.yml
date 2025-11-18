@@ -30,7 +30,7 @@ jobs:
           cd ${{ inputs.CI_PATH }}
           env | grep '^SCC'
           export LAZYLLM_SCO_ENV_NAME=lazyllm
-          export LAZYLLM_DEFAULT_LAUNCHER=sco
+          export LAZYLLM_DEFAULT_LAUNCHER=${{ inputs.launcher }}
           export PYTHONPATH=$PWD:$PYTHONPATH
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
@@ -38,10 +38,10 @@ jobs:
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
           if [ -f .pytest_cache/v/cache/lastfailed ]; then
-            pytest --lf --last-failed-no-failures=none \
+            pytest --lf --last-failed-no-failures=none -n ${{ inputs.nproc }} --dist=loadfile \
               -m "${{ inputs.markers }}" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html \
               ${{ inputs.tests_dir }}
           else
-            pytest -m "${{ inputs.markers }}" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html \
+            pytest -n ${{ inputs.nproc }} --dist=loadfile -m "${{ inputs.markers }}" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html \
               ${{ inputs.tests_dir }}
           fi
