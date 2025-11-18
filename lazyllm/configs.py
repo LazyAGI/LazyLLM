@@ -88,7 +88,7 @@ class Config(object):
         except KeyError:
             raise RuntimeError(f'Key `{name}` is not in lazyllm global config')
 
-    def get_description(self, name):
+    def _get_description(self, name):
         desc = self._description[name]
         if not desc: raise ValueError(f'Description for {name} is not found')
         doc = (f'  Description: {desc["description"]}\n  Type: {desc["type"]}\n  Default: {desc["default"]}\n')
@@ -106,7 +106,7 @@ class Config(object):
     def __getattribute__(self, name):
         if name == '__doc__':
             doc = '**LazyLLM Configurations:**\n\n'
-            return doc + '\n'.join([f'**{name}**:\n{self.get_description(name)}' for name in self._description.keys()])
+            return doc + '\n'.join([f'**{name}**:\n{self._get_description(name)}' for name in self._description.keys()])
         return object.__getattribute__(self, name)
 
     def __setattr__(self, name, value):
