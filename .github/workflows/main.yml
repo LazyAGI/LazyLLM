@@ -96,8 +96,7 @@ jobs:
           mv $GITHUB_WORKSPACE/* $GITHUB_WORKSPACE/.[!.]* ${{ env.CI_PATH }}/
 
   TestSetup:
-    needs: [Clone]
-    runs-on: tps_sco_nv
+    runs-on: ubuntu-latest
     outputs:
       ci_path: ${{ steps.set_path.outputs.ci_path }}
       changed_files: ${{ steps.changed_files.outputs.all_changed_files }}
@@ -105,6 +104,11 @@ jobs:
       - name: Set CI_PATH
         id: set_path
         run: echo "ci_path=${{ env.CI_PATH }}" >> "$GITHUB_OUTPUT"
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Get changed files
         id: changed-files
