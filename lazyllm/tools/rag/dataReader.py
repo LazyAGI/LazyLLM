@@ -291,8 +291,10 @@ class SimpleDirectoryReader(ModuleBase):
         reader.post_action = staticmethod(f)
 
 
-config.add('rag_filename_as_id', bool, False, 'RAG_FILENAME_AS_ID')
-config.add('use_fallback_reader', bool, True, 'USE_FALLBACK_READER')
+config.add('rag_filename_as_id', bool, False, 'RAG_FILENAME_AS_ID',
+           description='Whether to use filename as id for RAG.')
+config.add('use_fallback_reader', bool, True, 'USE_FALLBACK_READER',
+           description='Whether to use fallback reader for RAG.')
 
 
 class FileReader(object):

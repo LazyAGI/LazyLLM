@@ -18,6 +18,7 @@ class Config(object):
         self._env_map_name = dict()
         self.prefix = prefix
         self.impl, self.cfgs = dict(), dict()
+        self._description = dict()
         self.add('home', str, os.path.expanduser(home), 'HOME')
         os.makedirs(home, exist_ok=True)
         self.cgf_path = os.path.join(self['home'], 'config.json')
@@ -50,7 +51,7 @@ class Config(object):
         self.impl[name] = old_value
 
     def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
-            *, options: Optional[List] = None):
+            *, options: Optional[List] = None, description: Optional[str] = None):
         update_params = (type, default, env)
         if name not in self._config_params or self._config_params[name] != update_params:
             if name in self._config_params:
@@ -63,6 +64,8 @@ class Config(object):
                 for k in env.keys():
                     self._env_map_name[('lazyllm_' + k).upper()] = name
         self._update_impl(name, type, default, env)
+        self._description[name] = dict(type=type.__name__, default=default,
+                                       env=env, options=options, description=description)
         return self
 
     def _update_impl(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None,
@@ -84,6 +87,30 @@ class Config(object):
             return self.impl[name]
         except KeyError:
             raise RuntimeError(f'Key `{name}` is not in lazyllm global config')
+
+    def get_description(self, name):
+        desc = self._description[name]
+        if not desc: raise ValueError(f'Description for {name} is not found')
+        doc = (f'  Description: {desc["description"]}\n  Type: {desc["type"]}\n  Default: {desc["default"]}\n')
+        if (env := desc.get('env')):
+            if isinstance(env, str):
+                doc += f'  Environment Variable: {("LAZYLLM_" + env).upper()}\n'
+            elif isinstance(env, dict):
+                doc += '  Environment Variable:\n'
+                for k, v in env.items():
+                    doc += f'{("    LAZYLLM_" + k).upper()}: {v}\n'
+        if (options := desc.get('options')):
+            doc += f'  Options: {", ".join(options)}\n'
+        return doc
+
+    def __getattribute__(self, name):
+        if name == '__doc__':
+            doc = '**LazyLLM Configurations:**\n\n'
+            return doc + '\n'.join([f'**{name}**:\n{self.get_description(name)}' for name in self._description.keys()])
+        return object.__getattribute__(self, name)
+
+    def __setattr__(self, name, value):
+        object.__setattr__(self, '_doc' if name == '__doc__' else name, value)
 
     def __str__(self):
         return str(self.impl)
