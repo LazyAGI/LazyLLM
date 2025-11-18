@@ -43,6 +43,7 @@ jobs:
           export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
           export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
           export LAZYLLM_HOME="${{ inputs.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
+          pip install pytest-xdist
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
           if [ -f .pytest_cache/v/cache/lastfailed ]; then

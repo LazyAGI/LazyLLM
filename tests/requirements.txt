@@ -3,6 +3,7 @@ docx2txt
 olefile
 pytest-rerunfailures
 pytest-order
+pytest-xdist
 openpyxl
 nbconvert
 python-pptx
