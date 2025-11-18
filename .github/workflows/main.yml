@@ -100,26 +100,23 @@ jobs:
     runs-on: tps_sco_nv
     outputs:
       ci_path: ${{ steps.set_path.outputs.ci_path }}
-      changed_files: ${{ steps.changed_files.outputs.changed_files }}
+      changed_files: ${{ steps.changed_files.outputs.all_changed_files }}
     steps:
       - name: Set CI_PATH
         id: set_path
         run: echo "ci_path=${{ env.CI_PATH }}" >> "$GITHUB_OUTPUT"
 
       - name: Get changed files
-        id: changed_files
+        id: changed-files
+        uses: tj-actions/changed-files@v47
+
+      - name: List all changed files
         run: |
-          echo "EVENT NAME: ${{ github.event_name }}"
-          if [ "${{ github.event_name }}" == "pull_request" ]; then
-            echo "TARGET BRANCH: ${{ github.event.pull_request.base.ref }} ${{ github.event.pull_request.base.sha }}"
-            echo "SOURCE BRANCH: ${{ github.event.pull_request.head.ref }} ${{ github.event.pull_request.head.sha }}"
-            FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
-          else
-            FILES=$(git diff --name-only ${{ github.event.before }}..${{ github.sha }})
-          fi
-          echo "Changed files:"
-          echo "$FILES"
-          echo "changed_files=$(echo "$FILES" | paste -sd ',' -)" >> $GITHUB_OUTPUT
+          echo "ALL_CHANGED_FILES:"
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            echo "$file"
+          done
+          echo ""
 
   BasicTests:
     needs: [Clone, TestSetup]
