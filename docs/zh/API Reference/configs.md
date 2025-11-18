@@ -8,5 +8,3 @@
       - get_config
       - temp
       - refresh
-
-::: lazyllm.config
