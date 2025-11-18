@@ -659,9 +659,11 @@ add_chinese_doc('TrainableModule', '''\
 Args:
     base_model (str): 基础模型的名称或路径。
     target_path (str): 保存微调任务的路径。
-    source (str): 模型来源，如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
     stream (bool): 输出流式结果。     
     return_trace (bool): 在trace中记录结果。
+    trust_remote_code (bool): 是否信任远程代码。
+    type (str/LLMType): 模型类型。
+    source (str): 模型来源，如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
 
@@ -809,9 +811,11 @@ Trainable module, all models (including LLM, Embedding, etc.) are served through
 Args:
     base_model (str): Name or path of the base model. 
     target_path (str): Path to save the fine-tuning task. 
-    source (str): Model source. If not set, it will read the value from the environment variable LAZYLLM_MODEL_SOURCE.
     stream (bool): Whether to output stream. 
     return_trace (bool): Record the results in trace.
+    trust_remote_code (bool): Whether to trust remote code.
+    type (str/LLMType): Model type.
+    source (str): Model source. If not set, it will read the value from the environment variable LAZYLLM_MODEL_SOURCE.
 
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
