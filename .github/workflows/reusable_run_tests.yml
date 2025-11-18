@@ -37,11 +37,13 @@ jobs:
           export LAZYLLM_HOME="${{ inputs.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
-          if [ -f .pytest_cache/v/cache/lastfailed ]; then
+          if [ -f ${{ inputs.tests_dir }}/.pytest_cache/v/cache/lastfailed ]; then
             pytest --lf --last-failed-no-failures=none \
               -m "${{ inputs.markers }}" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html \
+              --cache-dir=${{ inputs.tests_dir }}/.pytest_cache \
               ${{ inputs.tests_dir }}
           else
             pytest -m "${{ inputs.markers }}" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html \
+              --cache-dir=${{ inputs.tests_dir }}/.pytest_cache \
               ${{ inputs.tests_dir }}
           fi

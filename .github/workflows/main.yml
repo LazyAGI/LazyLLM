@@ -126,7 +126,7 @@ jobs:
       CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
       changed_files: ${{ needs.TestSetup.outputs.changed_files }}
       markers: "not skip_on_linux"
-      tests_dir: "tests/basic_tests/"
+      tests_dir: "tests/basic_tests"
 
   AdvancedStandardTests:
     needs: [Clone, TestSetup]
@@ -135,7 +135,7 @@ jobs:
       CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
       changed_files: ${{ needs.TestSetup.outputs.changed_files }}
       markers: "not skip_on_linux"
-      tests_dir: "tests/advanced_tests/standard_test/"
+      tests_dir: "tests/advanced_tests/standard_test"
 
   AdvancedFullTests:
     needs: [Clone, TestSetup]
@@ -144,7 +144,7 @@ jobs:
       CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
       changed_files: ${{ needs.TestSetup.outputs.changed_files }}
       markers: "not skip_on_linux"
-      tests_dir: "tests/advanced_tests/full_test/"
+      tests_dir: "tests/advanced_tests/full_test"
 
   check_online_changes:
     runs-on: tps_sco_nv
@@ -232,10 +232,13 @@ jobs:
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
-          if [ -f .pytest_cache/v/cache/lastfailed ]; then
-            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
+          if [ -f tests/charge_tests/.pytest_cache/v/cache/lastfailed ]; then
+            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --order-scope=class --durations=0 \
+              --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html --cache-dir=tests/charge_tests/.pytest_cache \
+              tests/charge_tests
           else
-            python -m pytest -m "not skip_on_linux" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
+            python -m pytest -m "not skip_on_linux" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append \
+             --cov-report=html  --cache-dir=tests/charge_tests/.pytest_cache tests/charge_tests
           fi
 
       - name: Success On Main Branch
