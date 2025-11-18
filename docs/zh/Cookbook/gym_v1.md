@@ -1,6 +1,6 @@
 # 基于LazyLLM的模拟环境交互
 
-本教程将展示如何使用 **LazyLLM** 结合 **Gymnasium Blackjack-v1** 环境，实现一个由 LLM 控制的自动玩家系统。
+在许多LLM代理的应用中，Agent需要与真实世界交互，例如访问互联网、数据库或执行代码（REPL）。但为了便于开发和测试，我们也可以构建模拟环境——比如文字冒险游戏——让Agent在其中进行决策和互动。本教程将展示如何使用 [LazyLLM](https://github.com/LazyAGI/LazyLLM) 结合 **Gymnasium Blackjack-v1** 环境，搭建一个简单的文本交互环境，并实现Agent与环境之间的循环对话与响应机制。
 !!! abstract "通过本节您将学习到 LazyLLM 的以下要点"
     - 如何结合 [ReactAgent][lazyllm.tools.agent.ReactAgent]控制环境
     - 如何通过 @fc_register 注册环境操作工具
@@ -307,23 +307,25 @@ if __name__ == '__main__':
 ------
 
 ## 输出示例
-
+Gymnasium中Blackjack-v1（21点）游戏环境的交互记录如下
 ```text
-Observation: [14, 10, 0]
-Reward: 0.0
-Termination: false
-Truncation: false
-Return: 0.0
-Observation: (20, 7, False)
-Reward: 0.0
-Termination: False
-Truncation: False
-Return: 0.0
-Observation: (21, 7, False)
-Reward: 1.0
-Termination: True
-Truncation: False
-Return: 1.0
+Observation: [14, 10, 0] - 当前玩家手牌点数为14，庄家明牌是10，未使用A作为11点（0表示False）
+Reward: 0.0 - 当前无奖励（游戏未结束）
+Termination: false - 游戏未结束
+Truncation: false  - 未因步数限制而截断
+Return: 0.0 - 累计奖励为0
+
+Observation: (20, 7, False) - 玩家继续要牌后点数变为20，庄家明牌是7，仍无软牌
+Reward: 0.0 - 游戏仍在进行中
+Termination: False - 游戏未结束
+Truncation: False - 正常进行
+Return: 0.0 - 累计奖励为0
+
+Observation: (21, 7, False) - 玩家再要一张牌后达到21点，庄家明牌是7
+Reward: 1.0 - 获得+1奖励（21点获胜）
+Termination: True - 游戏结束（获胜）
+Truncation: False - 非截断结束
+Return: 1.0 - 最终累计奖励为1
 ```
 ## 结语
 本教程展示了如何使用 LazyLLM 构建一个**环境交互 Agent**，适用于游戏策略模拟、环境控制实验、自动化决策研究等场景。通过组合 `fc_register`、`OnlineChatModule` 与 `ReactAgent`，你可以快速搭建能理解自然语言指令、动态调用环境工具并进行多轮推理的智能代理系统，实现“语言即接口”的人机协同交互范式。

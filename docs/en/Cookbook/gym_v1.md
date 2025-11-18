@@ -1,6 +1,6 @@
 # Environment Interaction with LazyLLM
 
-This tutorial demonstrates how to use **LazyLLM** in conjunction with the **Gymnasium Blackjack-v1** environment to build an LLM-controlled automated player system.
+In many LLM agent applications, the agent needs to interact with real-world environments such as the internet, databases, or code execution (REPL). However, for easier development and testing, we can also create simulated environments—such as text-based adventure games—where the agent can make decisions and engage in interactions. This tutorial demonstrates how to use [LazyLLM](https://github.com/LazyAGI/LazyLLM) in conjunction with the **Gymnasium Blackjack-v1** environment to build a simple text-based interaction loop, enabling seamless dialogue and response cycles between the agent and the environment.
 !!! abstract "By the end of this section, you will learn the following key features of LazyLLM"
     - How to control an environment using [ReactAgent][lazyllm.tools.agent.ReactAgent]
     - How to register environment operation tools via @fc_register
@@ -306,23 +306,26 @@ if __name__ == '__main__':
 ------
 
 ## Sample Output
+The interaction logs from the Gymnasium Blackjack-v1 environment are as follows:
 
 ```text
-Observation: [14, 10, 0]
-Reward: 0.0
-Termination: false
-Truncation: false
-Return: 0.0
-Observation: (20, 7, False)
-Reward: 0.0
-Termination: False
-Truncation: False
-Return: 0.0
-Observation: (21, 7, False)
-Reward: 1.0
-Termination: True
-Truncation: False
-Return: 1.0
+Observation: [14, 10, 0] - The player's current hand total is 14, the dealer's visible card is 10, and no Ace is being used as 11 (0 indicates False).
+Reward: 0.0 - No reward yet (game is still ongoing).
+Termination: false - Game has not ended.
+Truncation: false - Not truncated due to step limits.
+Return: 0.0 - Cumulative reward is 0.
+
+Observation: (20, 7, False) - After hitting again, the player's hand total becomes 20, the dealer's visible card is 7, and no soft Ace is present.
+Reward: 0.0 - Game is still in progress.
+Termination: False - Game has not ended.
+Truncation: False - Game is proceeding normally.
+Return: 0.0 - Cumulative reward is still 0.
+
+Observation: (21, 7, False) - After one more hit, the player reaches exactly 21, while the dealer's visible card is 7.
+Reward: 1.0 - Reward of +1 awarded for winning with 21.
+Termination: True - Game ends (player wins).
+Truncation: False - Termination is due to game outcome, not step limits.
+Return: 1.0 - Final cumulative reward is 1.
 ```
 ## Conclusion
 This tutorial demonstrates how to build an **Environment Interaction Agent** using LazyLLM, suitable for game strategy simulation, environment control experiments, and automated decision-making research. By combining `fc_register`, `OnlineChatModule`, and `ReactAgent`, you can rapidly construct an intelligent agent that understands natural language commands, dynamically invokes environment tools, and performs multi-turn reasoning — enabling a "language-as-an-interface" paradigm for human-agent collaboration.
