@@ -22,7 +22,8 @@ from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
 
-lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH')
+lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH',
+                   description='The default path for trainable module config map.')
 ignore_config_keys = ['log_path', 'launcher']
 
 @functools.lru_cache(maxsize=1)
@@ -63,7 +64,8 @@ class _UrlTemplateStruct(object):
         self.stream_url_suffix = stream_url_suffix or ''
 
 
-lazyllm.config.add('trainable_magic_mock', bool, False, 'TRAINABLE_MAGIC_MOCK')  # used for unit test
+lazyllm.config.add('trainable_magic_mock', bool, False, 'TRAINABLE_MAGIC_MOCK',
+                   description='Whether to use magic mock for trainable module(used for unit test).')
 fake_url = 'dummy.url/generate'
 
 
@@ -254,7 +256,8 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         self._file_name = name
 
 
-config.add('cache_local_module', bool, False, 'CACHE_LOCAL_MODULE')
+config.add('cache_local_module', bool, False, 'CACHE_LOCAL_MODULE',
+           description='Whether to cache the local module result. Use for unit test.')
 
 
 class TrainableModule(UrlModule):

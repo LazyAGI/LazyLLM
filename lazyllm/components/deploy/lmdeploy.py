@@ -10,7 +10,8 @@ from ..utils import ModelManager
 from .utils import get_log_path, make_log_dir, parse_options_keys
 
 
-config.add('lmdeploy_eager_mode', bool, False, 'LMDEPLOY_EAGER_MODE')
+config.add('lmdeploy_eager_mode', bool, False, 'LMDEPLOY_EAGER_MODE',
+           description='Whether to use eager mode for lmdeploy.')
 
 class LMDeploy(LazyLLMDeployBase):
     keys_name_handle = {
