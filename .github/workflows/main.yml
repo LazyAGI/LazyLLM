@@ -109,14 +109,16 @@ jobs:
       - name: Get changed files
         id: changed_files
         run: |
-          echo "$GITHUB_EVENT_NAME"
-          if [ "$GITHUB_EVENT_NAME" == "pull_request" ]; then
-            FILES=$(git diff --name-only origin/main..HEAD)
+          echo "EVENT NAME: ${{ github.event_name }}"
+          if [ "${{ github.event_name }}" == "pull_request" ]; then
+            echo "TARGET BRANCH: ${{ github.event.pull_request.base.ref }} ${{ github.event.pull_request.base.sha }}"
+            echo "SOURCE BRANCH: ${{ github.event.pull_request.head.ref }} ${{ github.event.pull_request.head.sha }}"
+            FILES=$(git diff --name-only ${{ github.event.pull_request.base.sha }}..${{ github.event.pull_request.head.sha }})
           else
             FILES=$(git diff --name-only ${{ github.event.before }}..${{ github.sha }})
           fi
           echo "Changed files:"
-          echo $FILES
+          echo "$FILES"
           echo "changed_files=$(echo "$FILES" | paste -sd ',' -)" >> $GITHUB_OUTPUT
 
   BasicTests:
