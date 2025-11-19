@@ -49,7 +49,7 @@ class TestInferServer:
         raise TimeoutError('inference service deploy timeout')
 
     @pytest.mark.run_on_change(
-        'lazyllm/module/llms/trainablemodule.py',
+        'lazyllm/tools/services/services.py',
         'lazyllm/engine/lightengine.py')
     def test_engine_infer_server(self):
         model_name = 'internlm2-chat-7b'
@@ -68,7 +68,7 @@ class TestInferServer:
         assert '2' in r
 
     @pytest.mark.run_on_change(
-        'lazyllm/module/llms/trainablemodule.py',
+        'lazyllm/tools/services/services.py',
         'lazyllm/engine/lightengine.py')
     def test_engine_infer_server_vqa(self):
         model_name = 'Mini-InternVL-Chat-2B-V1-5'
@@ -87,7 +87,7 @@ class TestInferServer:
         assert '鸡' in r or 'chicken' in r
 
     @pytest.mark.run_on_change(
-        'lazyllm/module/llms/trainablemodule.py',
+        'lazyllm/tools/services/services.py',
         'lazyllm/engine/lightengine.py')
     def test_engine_infer_server_tts(self):
         model_name = 'ChatTTS-new'
