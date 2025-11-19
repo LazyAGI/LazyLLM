@@ -49,6 +49,7 @@ class TestInferServer:
         raise TimeoutError('inference service deploy timeout')
 
     @pytest.mark.run_on_change(
+        'lazyllm/tools/infer_service/serve.py',
         'lazyllm/tools/services/services.py',
         'lazyllm/engine/lightengine.py')
     def test_engine_infer_server(self):
@@ -68,6 +69,7 @@ class TestInferServer:
         assert '2' in r
 
     @pytest.mark.run_on_change(
+        'lazyllm/tools/infer_service/serve.py',
         'lazyllm/tools/services/services.py',
         'lazyllm/engine/lightengine.py')
     def test_engine_infer_server_vqa(self):
@@ -87,6 +89,7 @@ class TestInferServer:
         assert '鸡' in r or 'chicken' in r
 
     @pytest.mark.run_on_change(
+        'lazyllm/tools/infer_service/serve.py',
         'lazyllm/tools/services/services.py',
         'lazyllm/engine/lightengine.py')
     def test_engine_infer_server_tts(self):
