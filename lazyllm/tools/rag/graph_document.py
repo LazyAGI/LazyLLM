@@ -1,7 +1,7 @@
 import weakref
 from pathlib import Path
 from lazyllm import ModuleBase
-from lazyllm.tools.servers.graphrag_server_module import GraphRagServerModule
+from lazyllm.tools.servers.graphrag.graphrag_server_module import GraphRagServerModule
 
 from .document import Document
 

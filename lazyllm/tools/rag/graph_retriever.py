@@ -1,7 +1,7 @@
 from lazyllm import ModuleBase
 from .document import Document
 from .graph_document import GraphDocument, UrlGraphDocument
-from ..servers.graphrag_server_module import GraphRagServerModule
+from ..servers.graphrag.graphrag_server_module import GraphRagServerModule
 
 from typing import Union
 

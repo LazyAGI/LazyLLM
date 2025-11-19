@@ -4,7 +4,7 @@ import shutil
 import uuid
 from lazyllm import LOG
 from lazyllm.module import ServerModule
-from lazyllm.components.deploy.graphrag.graphrag_service_impl import GraphRAGServiceImpl
+from .graphrag_service_impl import GraphRAGServiceImpl
 from urllib.parse import urlparse
 from typing import List
 

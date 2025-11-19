@@ -64,7 +64,7 @@ class QueryRequest(BaseModel):
     )
 
 
-class QueryResponse(BaseModel):
+class _QueryResponse(BaseModel):
     answer: str = Field(..., description='Answer to the query')
 
 class GraphRAGServiceImpl:
@@ -73,6 +73,8 @@ class GraphRAGServiceImpl:
         self._tasks: Dict[str, Any] = {}
         self._index_state: Optional[IndexState] = None
         self._process_executor: Optional[ProcessPoolExecutor] = None
+        self._background_tasks: Dict[str, asyncio.Task] = {}  # Store background tasks to prevent garbage collection
+        self._running_tasks: set[asyncio.Task] = set()
 
     def _clean_index_state(self):
         self._index_state = None
@@ -87,6 +89,9 @@ class GraphRAGServiceImpl:
         return self._process_executor
 
     def cleanup(self):
+        for task in self._running_tasks:
+            task.cancel()
+        self._running_tasks.clear()
         if hasattr(self, '_process_executor') and self._process_executor is not None:
             self._process_executor.shutdown(wait=True)
             self._process_executor = None
@@ -130,23 +135,15 @@ class GraphRAGServiceImpl:
             if folder.exists() and override:
                 shutil.rmtree(folder)
 
-        def handle_task_exception(task: asyncio.Task):
-            '''Handle exceptions from the background task'''
-            try:
-                task.result()
-            except Exception as e:
-                if task_id in self._tasks:
-                    LOG.error(f'Error in index task {task_id}: {str(e)}')
-                    task_info = self._tasks[task_id]
-                    self._tasks[task_id] = task_info.model_copy(update={
-                        'status': IndexStatus.FAILED,
-                        'error_message': f'Task execution failed: {str(e)}',
-                        'updated_at': datetime.now()
-                    })
-
         try:
             background_task = asyncio.create_task(self._run_index_cli(task_id))
-            background_task.add_done_callback(handle_task_exception)
+            self._running_tasks.add(background_task)
+            # Store the task to prevent garbage collection
+            background_task.add_done_callback(
+                lambda t: (
+                    self._running_tasks.remove(background_task) if background_task in self._running_tasks else None
+                )
+            )
         except Exception as e:
             LOG.error(f'Error creating index task: {str(e)}')
             task_info = self._tasks[task_id]
@@ -166,16 +163,30 @@ class GraphRAGServiceImpl:
             'status': IndexStatus.PROCESSING,
             'updated_at': datetime.now()
         })
-        try:
-            index_log_file = Path(self._kg_dir) / 'logs' / 'indexing-engine.log'
-            if not index_log_file.exists():
-                loop = asyncio.get_event_loop()
+        index_log_file = Path(self._kg_dir) / 'logs' / 'indexing-engine.log'
+        if not index_log_file.exists():
+            loop = asyncio.get_event_loop()
+            try:
                 await loop.run_in_executor(
                     self._get_process_executor(),
                     self._run_index_cli_sync,
                     self._kg_dir
                 )
-
+            except SystemExit as e:
+                # SystemExit: 0 graphrag index cli returns 0 for successful completion
+                if e.code == 0:
+                    LOG.info('Index CLI completed with SystemExit: 0 (normal exit)')
+                else:
+                    # Non-zero exit code indicates failure
+                    LOG.error(f'Index CLI exited with code {e.code}')
+                    self._tasks[task_id] = task_info.model_copy(update={
+                        'status': IndexStatus.FAILED,
+                        'error_message': f'Index CLI exited with code {e.code}',
+                        'updated_at': datetime.now()
+                    })
+                    return
+        try:
+            # Check log file for success message.
             # Read the last two lines of the log file and check for success message
             if index_log_file.exists():
                 with open(index_log_file, 'r', encoding='utf-8') as f:
@@ -208,8 +219,6 @@ class GraphRAGServiceImpl:
                 'error_message': str(e),
                 'updated_at': datetime.now()
             })
-        finally:
-            self.cleanup()
 
     @staticmethod
     def _run_index_cli_sync(kg_dir: str):
@@ -222,7 +231,7 @@ class GraphRAGServiceImpl:
             dry_run=False,
             skip_validation=False,
             output_dir=None,
-            method=graphrag.config.enums.graphrag.config.enums.IndexingMethod.Standard.value,
+            method=graphrag.config.enums.IndexingMethod.Standard.value,
         )
 
     def _load_index_state(self) -> IndexState:
@@ -262,7 +271,7 @@ class GraphRAGServiceImpl:
             raise fastapi.HTTPException(status_code=404, detail=f'Task not found: {task_id}')
         return task_info
 
-    @app.post('/graphrag/query', response_model=QueryResponse)
+    @app.post('/graphrag/query', response_model=_QueryResponse)
     async def query(self, request: QueryRequest):
         '''Process a GraphRAG query using the specified search method'''
         if not self.index_ready():
@@ -311,7 +320,7 @@ class GraphRAGServiceImpl:
                     status_code=400,
                     detail=f'Invalid search method: {search_method}. Must be one of: global, local, drift',
                 )
-            return QueryResponse(answer=answer)
+            return _QueryResponse(answer=answer)
 
         except Exception as e:
             LOG.error(f'Error processing query: {str(e)}')
