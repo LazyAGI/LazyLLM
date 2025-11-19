@@ -144,6 +144,17 @@ jobs:
       launcher: "sco"
       nproc: 1
 
+  EngineTests:
+    needs: [Clone, TestSetup]
+    uses: ./.github/workflows/reusable_run_tests.yml
+    with:
+      CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
+      changed_files: ${{ needs.TestSetup.outputs.changed_files }}
+      markers: "not skip_on_linux"
+      tests_dir: "tests/engine_tests"
+      launcher: "sco"
+      nproc: 1
+
   check_online_changes:
     runs-on: tps_sco_nv
     outputs:
@@ -257,7 +268,7 @@ jobs:
 
   Coverage_linux:
     runs-on: ubuntu-latest
-    needs: [ BasicTests, AdvancedTests, ChargeTests ]
+    needs: [ BasicTests, AdvancedTests, EngineTests, ChargeTests ]
     steps:
       - name: Add Coverage Report Link to Summary
         run: |
