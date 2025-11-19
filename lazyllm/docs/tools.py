@@ -2229,6 +2229,8 @@ Args:
 
 **Returns:**\n
 - List[dict]: List of search results.
+''')
+
 add_chinese_doc('rag.store.hybrid.sensecore_store.SenseCoreStore', '''\
 SenseCore 混合存储实现，继承自 LazyLLMStoreBase，提供基于 SenseCore 平台的文档存储和检索功能。  
 该类支持文档的序列化存储、多模态内容处理、混合搜索等功能，通过 S3 存储和 SenseCore API 实现高效的文档管理。
