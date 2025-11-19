@@ -76,6 +76,7 @@ class CharacterSplitter(_TextSplitterBase):
                 ]
             character_split_fns = self._cached_default_split_fns
 
+        splits = []
         for split_fn in character_split_fns:
             splits = split_fn(text)
             if len(splits) > 1:
