@@ -23,7 +23,7 @@ def set_enviroment(request):
     else:
         os.environ.pop(env_key, None)
 
-@pytest.mark.skipif(os.getenv('LAZYLLM_SKIP_GPU_TEST', 'True'), reason='NEED GPU!')
+@pytest.mark.run_on_change('lazyllm/module/llms/trainablemodule.py')
 class TestDeploy(object):
 
     def setup_method(self):
