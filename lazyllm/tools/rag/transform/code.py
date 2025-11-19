@@ -5,6 +5,7 @@ from lazyllm.thirdparty import bs4
 from typing import List, Optional, Dict, Type
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm import LOG
+import copy
 
 
 class _LanguageSplitterBase(_TextSplitterBase):
@@ -280,7 +281,6 @@ class JSONSplitter(_LanguageSplitterBase):
 # ========== YAMLSplitter ==========
 class YAMLSplitter(_LanguageSplitterBase):
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:
-        LOG.warning('YAMLSplitter not fully implemented yet, returning as single node')
         return [DocNode(text=text, metadata={'filetype': 'yaml'})]
 
 
@@ -424,7 +424,7 @@ class HTMLSplitter(_LanguageSplitterBase):
             block_soup = bs4.BeautifulSoup('', 'html.parser')
             for elem in content_elements:
                 if isinstance(elem, bs4.Tag):
-                    block_soup.append(elem.copy())
+                    block_soup.append(copy.copy(elem))
 
             blocks.append({
                 'element': block_soup,
