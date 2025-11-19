@@ -2,12 +2,16 @@ from functools import partial
 import re
 
 from typing import List, Union, Tuple, Callable, Optional, AbstractSet, Collection, Literal, Any
-from .base import _TextSplitterBase, _TokenTextSplitter, _Split
+from .base import _TextSplitterBase, _TokenTextSplitter, _Split, _UNSET
 
 class CharacterSplitter(_TextSplitterBase):
-    def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0,
-                 separator: str = ' ', is_separator_regex: bool = False, keep_separator: bool = False, **kwargs):
+    def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
+                 separator: str = _UNSET, is_separator_regex: bool = _UNSET, keep_separator: bool = _UNSET, **kwargs):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers)
+        separator = self._get_param_value('separator', separator, ' ')
+        is_separator_regex = self._get_param_value('is_separator_regex', is_separator_regex, False)
+        keep_separator = self._get_param_value('keep_separator', keep_separator, False)
+
         self._separator = separator
         self._is_separator_regex = is_separator_regex
         self._keep_separator = keep_separator

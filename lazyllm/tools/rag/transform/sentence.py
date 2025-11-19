@@ -1,9 +1,9 @@
 from typing import List, Tuple
-from .base import _TextSplitterBase, _Split
+from .base import _TextSplitterBase, _Split, _UNSET
 from typing import Optional, Union, AbstractSet, Collection, Literal, Any
 
 class SentenceSplitter(_TextSplitterBase):
-    def __init__(self, chunk_size: int = 1024, chunk_overlap: int = 200, num_workers: int = 0):
+    def __init__(self, chunk_size: int = _UNSET, chunk_overlap: int = _UNSET, num_workers: int = _UNSET):
         super().__init__(chunk_size=chunk_size, overlap=chunk_overlap, num_workers=num_workers)
 
     def split_text(self, text: str, metadata_size: int) -> List[str]:

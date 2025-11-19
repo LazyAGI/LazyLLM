@@ -99,8 +99,17 @@ class NodeTransform(ABC):
 
 _tiktoken_env_lock = threading.Lock()
 
+_UNSET = object()
+
 class _TextSplitterBase(NodeTransform):
-    def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0):
+    _default_params = {}
+    _default_params_lock = threading.RLock()
+
+    def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET):
+        chunk_size = self._get_param_value('chunk_size', chunk_size, 1024)
+        overlap = self._get_param_value('overlap', overlap, 200)
+        num_workers = self._get_param_value('num_workers', num_workers, 0)
+
         super().__init__(num_workers=num_workers)
         if overlap > chunk_size:
             raise ValueError(
@@ -117,6 +126,51 @@ class _TextSplitterBase(NodeTransform):
         self.token_decoder = None
         self.kwargs = {}
         self.from_tiktoken_encoder()
+
+    @classmethod
+    def _get_class_lock(cls):
+        if '_default_params_lock' not in cls.__dict__:
+            cls._default_params_lock = threading.RLock()
+        return cls._default_params_lock
+
+    @classmethod
+    def _get_param_value(cls, param_name: str, value, default):
+        if value is not _UNSET:
+            return value
+
+        lock = cls._get_class_lock()
+        with lock:
+            if hasattr(cls, '_default_params') and param_name in cls._default_params:
+                return cls._default_params[param_name]
+        return default
+
+    @classmethod
+    def set_default(cls, **kwargs):
+        lock = cls._get_class_lock()
+        with lock:
+            if '_default_params' not in cls.__dict__:
+                cls._default_params = {}
+            cls._default_params.update(kwargs)
+
+        LOG.info(f"{cls.__name__} default parameters updated: {kwargs}")
+
+    @classmethod
+    def get_default(cls, param_name: Optional[str] = None):
+        lock = cls._get_class_lock()
+        with lock:
+            defaults = getattr(cls, '_default_params', {})
+            if param_name is None:
+                return defaults.copy()
+            return defaults.get(param_name)
+
+    @classmethod
+    def reset_default(cls):
+        lock = cls._get_class_lock()
+        with lock:
+            if '_default_params' in cls.__dict__:
+                cls._default_params.clear()
+
+        LOG.info(f"{cls.__name__} default parameters reset")
 
     def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
                               allowed_special: Union[Literal['all'], AbstractSet[str]] = None,

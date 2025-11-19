@@ -1,4 +1,4 @@
-from .base import _TextSplitterBase
+from .base import _TextSplitterBase, _UNSET
 from typing import List, Optional, Union, AbstractSet, Collection, Literal, Any
 from dataclasses import dataclass
 from lazyllm import LOG
@@ -16,10 +16,21 @@ class _MdSplit:
 
 
 class MarkdownSplitter(_TextSplitterBase):
-    def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0, keep_trace: bool = False,
-                 keep_headers: bool = False, keep_lists: bool = False, keep_code_blocks: bool = False,
-                 keep_tables: bool = False, keep_images: bool = False, keep_links: bool = False, **kwargs):
+    def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
+                 keep_trace: bool = _UNSET, keep_headers: bool = _UNSET, keep_lists: bool = _UNSET,
+                 keep_code_blocks: bool = _UNSET, keep_tables: bool = _UNSET, keep_images: bool = _UNSET,
+                 keep_links: bool = _UNSET, **kwargs):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers)
+
+        chunk_size = self._chunk_size
+        keep_trace = self._get_param_value('keep_trace', keep_trace, False)
+        keep_headers = self._get_param_value('keep_headers', keep_headers, False)
+        keep_lists = self._get_param_value('keep_lists', keep_lists, False)
+        keep_code_blocks = self._get_param_value('keep_code_blocks', keep_code_blocks, False)
+        keep_tables = self._get_param_value('keep_tables', keep_tables, False)
+        keep_images = self._get_param_value('keep_images', keep_images, False)
+        keep_links = self._get_param_value('keep_links', keep_links, False)
+
         if chunk_size <= 200:
             LOG.warning(f'Chunk size {chunk_size} is too small, may cause unexpected splits')
         self.keep_trace = keep_trace
