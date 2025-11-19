@@ -22,27 +22,27 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 
-class IndexStatus(str, Enum):
+class _IndexStatus(str, Enum):
     PROCESSING = 'processing'
     PENDING = 'pending'
     COMPLETED = 'completed'
     FAILED = 'failed'
 
-class IndexStatusResponse(BaseModel):
+class _IndexStatusResponse(BaseModel):
     task_id: str
     root_dir: str
-    status: IndexStatus
+    status: _IndexStatus
     created_at: datetime
     updated_at: datetime
     error_message: str = Field(default='', description='Error message if the task failed')
 
-class CreateIndexResponse(BaseModel):
+class _CreateIndexResponse(BaseModel):
     task_id: str
     message: str = Field(default='', description='Message to the user')
 
 
 @dataclass
-class IndexState:
+class _IndexState:
     '''Index state containing all GraphRAG data'''
     config: Any
     communities: pd.DataFrame
@@ -52,7 +52,7 @@ class IndexState:
     text_units: pd.DataFrame
     covariates: Optional[pd.DataFrame] = None
 
-class QueryRequest(BaseModel):
+class _QueryRequest(BaseModel):
     query: str = Field(..., description='Search query string')
     search_method: str = Field(
         default='local', description='Search method to use(global, local, drift)', pattern='^(global|local|drift)$'
@@ -71,7 +71,7 @@ class GraphRAGServiceImpl:
     def __init__(self, kg_dir: str):
         self._kg_dir = kg_dir
         self._tasks: Dict[str, Any] = {}
-        self._index_state: Optional[IndexState] = None
+        self._index_state: Optional[_IndexState] = None
         self._process_executor: Optional[ProcessPoolExecutor] = None
         self._background_tasks: Dict[str, asyncio.Task] = {}  # Store background tasks to prevent garbage collection
         self._running_tasks: set[asyncio.Task] = set()
@@ -110,7 +110,7 @@ class GraphRAGServiceImpl:
             raise Exception(f'Root directory {kg_dir} does not exist. Please prepare it first.')
         graphrag.cli.initialize.initialize_project_at(path=kg_dir, force=True)
 
-    @app.post('/graphrag/create_index', response_model=CreateIndexResponse)
+    @app.post('/graphrag/create_index', response_model=_CreateIndexResponse)
     async def create_index(self, override: bool = True):
         '''Index a new document into the knowledge graph'''
         if self._index_state and not override:
@@ -118,10 +118,10 @@ class GraphRAGServiceImpl:
         task_id = str(uuid.uuid4())
         self._clean_index_state()
         # Initialize task status
-        self._tasks[task_id] = IndexStatusResponse(
+        self._tasks[task_id] = _IndexStatusResponse(
             task_id=task_id,
             root_dir=self._kg_dir,
-            status=IndexStatus.PENDING,
+            status=_IndexStatus.PENDING,
             error_message='',
             created_at=datetime.now(),
             updated_at=datetime.now(),
@@ -148,19 +148,19 @@ class GraphRAGServiceImpl:
             LOG.error(f'Error creating index task: {str(e)}')
             task_info = self._tasks[task_id]
             self._tasks[task_id] = task_info.model_copy(update={
-                'status': IndexStatus.FAILED,
+                'status': _IndexStatus.FAILED,
                 'error_message': f'Failed to create task: {str(e)}',
                 'updated_at': datetime.now()
             })
-            return CreateIndexResponse(task_id=task_id, message=f'Task {task_id} failed: {str(e)}')
+            return _CreateIndexResponse(task_id=task_id, message=f'Task {task_id} failed: {str(e)}')
 
-        return CreateIndexResponse(task_id=task_id, message=f'Task {task_id} created.')
+        return _CreateIndexResponse(task_id=task_id, message=f'Task {task_id} created.')
 
     async def _run_index_cli(self, task_id: str):
         '''run graphrag index task'''
         task_info = self._tasks[task_id]
         self._tasks[task_id] = task_info.model_copy(update={
-            'status': IndexStatus.PROCESSING,
+            'status': _IndexStatus.PROCESSING,
             'updated_at': datetime.now()
         })
         index_log_file = Path(self._kg_dir) / 'logs' / 'indexing-engine.log'
@@ -180,7 +180,7 @@ class GraphRAGServiceImpl:
                     # Non-zero exit code indicates failure
                     LOG.error(f'Index CLI exited with code {e.code}')
                     self._tasks[task_id] = task_info.model_copy(update={
-                        'status': IndexStatus.FAILED,
+                        'status': _IndexStatus.FAILED,
                         'error_message': f'Index CLI exited with code {e.code}',
                         'updated_at': datetime.now()
                     })
@@ -194,28 +194,28 @@ class GraphRAGServiceImpl:
                     last_two_lines = ''.join(lines[-2:]) if len(lines) >= 2 else ''.join(lines)
                     if 'All workflows completed successfully' in last_two_lines:
                         self._tasks[task_id] = task_info.model_copy(update={
-                            'status': IndexStatus.COMPLETED,
+                            'status': _IndexStatus.COMPLETED,
                             'updated_at': datetime.now()
                         })
                         LOG.info(f'Index task {task_id} completed successfully')
                         self._index_state = self._load_index_state()
                     else:
                         self._tasks[task_id] = task_info.model_copy(update={
-                            'status': IndexStatus.FAILED,
+                            'status': _IndexStatus.FAILED,
                             'error_message': f'Indexing Failed. Please check logs {index_log_file}',
                             'updated_at': datetime.now()
                         })
             else:
                 LOG.warning(f'Log file not found: {index_log_file}')
                 self._tasks[task_id] = task_info.model_copy(update={
-                    'status': IndexStatus.FAILED,
+                    'status': _IndexStatus.FAILED,
                     'error_message': f'Log file not found: {index_log_file}',
                     'updated_at': datetime.now()
                 })
         except Exception as e:
             LOG.error(f'Error creating index task: {str(e)}')
             self._tasks[task_id] = task_info.model_copy(update={
-                'status': IndexStatus.FAILED,
+                'status': _IndexStatus.FAILED,
                 'error_message': str(e),
                 'updated_at': datetime.now()
             })
@@ -234,7 +234,7 @@ class GraphRAGServiceImpl:
             method=graphrag.config.enums.IndexingMethod.Standard.value,
         )
 
-    def _load_index_state(self) -> IndexState:
+    def _load_index_state(self) -> _IndexState:
         '''Load index state from the knowledge graph directory'''
         try:
             kg_dir = Path(self._kg_dir)
@@ -253,7 +253,7 @@ class GraphRAGServiceImpl:
             LOG.error(f'Error loading index state: {str(e)}')
             return None
 
-        return IndexState(
+        return _IndexState(
             config=config,
             communities=communities,
             community_reports=community_reports,
@@ -263,7 +263,7 @@ class GraphRAGServiceImpl:
             covariates=covariates
         )
 
-    @app.post('/graphrag/index_status', response_model=IndexStatusResponse)
+    @app.post('/graphrag/index_status', response_model=_IndexStatusResponse)
     async def index_status(self, task_id: str):
         '''Get the status of an index task'''
         task_info = self._tasks.get(task_id, None)
@@ -272,7 +272,7 @@ class GraphRAGServiceImpl:
         return task_info
 
     @app.post('/graphrag/query', response_model=_QueryResponse)
-    async def query(self, request: QueryRequest):
+    async def query(self, request: _QueryRequest):
         '''Process a GraphRAG query using the specified search method'''
         if not self.index_ready():
             raise fastapi.HTTPException(status_code=400, detail='Index not created yet. Run index first.')
