@@ -438,7 +438,7 @@ class OceanBaseStore(LazyLLMStoreBase):
             LOG.error(traceback.format_exc())
             return []
 
-    def _create_table_and_index(self, client: pyobvector.ObVecClient, collection_name: str, embed_kwargs: Dict, partitions: Optional[pyobvector.RangeListPartInfo] = None) -> bool:  # noqa: C901 E501
+    def _create_table_and_index(self, client: 'pyobvector.ObVecClient', collection_name: str, embed_kwargs: Dict, partitions: Optional['pyobvector.RangeListPartInfo'] = None) -> bool:  # noqa: C901 E501
         columns = copy.deepcopy(self._constant_columns)
 
         idx_params = client.prepare_index_params()
