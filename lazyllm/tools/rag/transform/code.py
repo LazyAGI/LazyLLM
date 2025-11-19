@@ -1,4 +1,4 @@
-from .base import _TextSplitterBase
+from .base import _TextSplitterBase, _UNSET
 from .recursive import RecursiveSplitter
 from lazyllm.thirdparty import xml
 from lazyllm.thirdparty import bs4
@@ -6,13 +6,17 @@ from typing import List, Optional, Dict, Type
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm import LOG
 import copy
+import json
+import yaml
 
 
 class _LanguageSplitterBase(_TextSplitterBase):
-    def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0,
-                 filetype: Optional[str] = None, **kwargs):
+    def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
+                 filetype: Optional[str] = _UNSET, **kwargs):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers)
-        self._recursive_splitter = RecursiveSplitter(chunk_size=chunk_size, overlap=overlap)
+        filetype = self._get_param_value('filetype', filetype, None)
+
+        self._recursive_splitter = RecursiveSplitter(chunk_size=self._chunk_size, overlap=self._overlap)
         self._filetype = filetype
         self._extra_params = kwargs
 
@@ -24,7 +28,7 @@ class _LanguageSplitterBase(_TextSplitterBase):
 
     def split_text(self, text: str, metadata_size: int) -> List[DocNode]:
         if text == '':
-            return [DocNode(text='')]
+            return [DocNode(text='', metadata={'code_type': 'empty'})]
         effective_chunk_size = self._chunk_size - metadata_size
         if effective_chunk_size <= 0:
             raise ValueError(
@@ -43,7 +47,7 @@ class _LanguageSplitterBase(_TextSplitterBase):
         return self._do_split(text, effective_chunk_size)
 
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:
-        raise NotImplementedError("Subclasses must implement _do_split method")
+        raise NotImplementedError('Subclasses must implement _do_split method')
 
     def _sub_split(self, nodes: List[DocNode], chunk_size: int) -> List[DocNode]:
         result = []
@@ -62,10 +66,13 @@ class _LanguageSplitterBase(_TextSplitterBase):
 
 # ========== XMLSplitter ==========
 class XMLSplitter(_LanguageSplitterBase):
-    def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0,
-                 filetype: Optional[str] = None, keep_trace: bool = False, keep_tags: bool = False, **kwargs):
+    def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
+                 filetype: Optional[str] = 'xml', keep_trace: bool = _UNSET, keep_tags: bool = _UNSET, **kwargs):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers,
                          filetype=filetype, **kwargs)
+        keep_trace = self._get_param_value('keep_trace', keep_trace, False)
+        keep_tags = self._get_param_value('keep_tags', keep_tags, False)
+
         self._keep_trace = keep_trace
         self._keep_tags = keep_tags
 
@@ -273,23 +280,229 @@ class ProgrammingSplitter(_LanguageSplitterBase):
 
 # ========== JSONSplitter ==========
 class JSONSplitter(_LanguageSplitterBase):
+    def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
+                 filetype: Optional[str] = _UNSET, compact_output: bool = _UNSET, **kwargs):
+        super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers,
+                         filetype=filetype, **kwargs)
+        compact_output = self._get_param_value('compact_output', compact_output, True)
+
+        self._compact_output = compact_output
+        self._max_depth = 20
+
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:
-        LOG.warning('JSONSplitter not fully implemented yet, returning as single node')
-        return [DocNode(text=text, metadata={'filetype': 'json'})]
+        try:
+            data = json.loads(text)
+        except json.JSONDecodeError as e:
+            LOG.warning(f'Failed to parse JSON: {e}. Returning original text as a single DocNode.')
+            return [self._make_node(
+                text=text,
+                filetype='json',
+                error=str(e),
+            )]
+
+        return self._split_json_data(data, chunk_size, 'json', path=[], depth=0)
+
+    def _make_node(self, text, filetype, **meta):
+        md = {
+            'filetype': filetype,
+        }
+        md.update(meta)
+        return DocNode(text=text, metadata=md)
+
+    def _to_json_str(self, data):
+        if self._compact_output:
+            return json.dumps(data, ensure_ascii=False)
+        else:
+            return json.dumps(data, ensure_ascii=False, indent=2)
+
+    def _split_json_data(self, data, chunk_size, filetype, path=None, depth=0):
+        if path is None:
+            path = []
+
+        if depth > self._max_depth:
+            LOG.warning(f"Max depth {self._max_depth} reached at path {'/'.join(path)}")
+            raw = self._to_json_str(data)
+            return [self._make_node(
+                text=raw,
+                filetype=filetype,
+                type=type(data).__name__,
+                path='/'.join(path) if path else 'root',
+                depth=depth,
+                warning='max_depth_exceeded'
+            )]
+
+        raw = self._to_json_str(data)
+        if self._token_size(raw) <= chunk_size:
+            return [self._make_node(
+                text=raw,
+                filetype=filetype,
+                type=type(data).__name__,
+                path='/'.join(path) if path else 'root',
+                depth=depth,
+                is_complete=True
+            )]
+
+        if isinstance(data, dict):
+            return self._split_dict(data, chunk_size, filetype, path, depth)
+
+        if isinstance(data, list):
+            return self._split_list(data, chunk_size, filetype, path, depth)
+
+        if isinstance(data, str):
+            return self._split_string(data, chunk_size, filetype, path, depth)
+
+        return [self._make_node(
+            text=raw,
+            filetype=filetype,
+            type=type(data).__name__,
+            path='/'.join(path) if path else 'root',
+            depth=depth,
+            is_complete=True
+        )]
+
+    def _split_dict(self, data: Dict, chunk_size, filetype, path, depth):
+        nodes = []
+        current = {}
+
+        for key, val in data.items():
+            test_dict = {**current, key: val}
+            test_str = self._to_json_str(test_dict)
+            test_size = self._token_size(test_str)
+
+            if len(current) == 0 and test_size > chunk_size:
+                child_nodes = self._split_json_data(
+                    val, chunk_size, filetype,
+                    path=path + [key],
+                    depth=depth + 1
+                )
+
+                for i, node in enumerate(child_nodes):
+                    node.metadata['parent_field'] = key
+                    if len(child_nodes) > 1:
+                        node.metadata['part'] = f'{i+1}/{len(child_nodes)}'
+
+                nodes.extend(child_nodes)
+                continue
+
+            if test_size > chunk_size:
+                if current:
+                    nodes.append(self._make_node(
+                        text=self._to_json_str(current),
+                        filetype=filetype,
+                        type='dict',
+                        path='/'.join(path) if path else 'root',
+                        depth=depth,
+                        keys=list(current.keys()),
+                        is_complete=False
+                    ))
+                current = {key: val}
+            else:
+                current[key] = val
+
+        if current:
+            nodes.append(self._make_node(
+                text=self._to_json_str(current),
+                filetype=filetype,
+                type='dict',
+                path='/'.join(path) if path else 'root',
+                depth=depth,
+                keys=list(current.keys()),
+                is_complete=(len(nodes) == 0)
+            ))
+
+        return nodes
+
+    def _split_list(self, data: List, chunk_size, filetype, path, depth):
+        nodes = []
+        current = []
+
+        for idx, item in enumerate(data):
+            test_list = current + [item]
+            test_str = self._to_json_str(test_list)
+            test_size = self._token_size(test_str)
+
+            if len(current) == 0 and test_size > chunk_size:
+                child_nodes = self._split_json_data(
+                    item, chunk_size, filetype,
+                    path=path + [f'[{idx}]'],
+                    depth=depth + 1
+                )
+
+                for i, node in enumerate(child_nodes):
+                    node.metadata['list_index'] = idx
+                    if len(child_nodes) > 1:
+                        node.metadata['part'] = f'{i+1}/{len(child_nodes)}'
+
+                nodes.extend(child_nodes)
+                continue
+
+            if test_size > chunk_size:
+                if current:
+                    nodes.append(self._make_node(
+                        text=self._to_json_str(current),
+                        filetype=filetype,
+                        type='list',
+                        path='/'.join(path) if path else 'root',
+                        depth=depth,
+                        length=len(current),
+                        is_complete=False
+                    ))
+                current = [item]
+            else:
+                current.append(item)
+
+        if current:
+            nodes.append(self._make_node(
+                text=self._to_json_str(current),
+                filetype=filetype,
+                type='list',
+                path='/'.join(path) if path else 'root',
+                depth=depth,
+                length=len(current),
+                is_complete=(len(nodes) == 0)
+            ))
+
+        return nodes
+
+    def _split_string(self, data, chunk_size, filetype, path, depth):
+        splits = self._recursive_splitter.split_text(data, metadata_size=0)
+
+        nodes = []
+        for i, s in enumerate(splits):
+            nodes.append(self._make_node(
+                text=s,
+                filetype=filetype,
+                type='string',
+                path='/'.join(path) if path else 'root',
+                depth=depth,
+                part=f'{i+1}/{len(splits)}' if len(splits) > 1 else None,
+                is_complete=(len(splits) == 1)
+            ))
+
+        return nodes
 
 
 # ========== YAMLSplitter ==========
-class YAMLSplitter(_LanguageSplitterBase):
+class YAMLSplitter(JSONSplitter):
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:
-        return [DocNode(text=text, metadata={'filetype': 'yaml'})]
+        try:
+            data = yaml.safe_load(text)
+        except yaml.YAMLError as e:
+            LOG.warning(f'Failed to parse YAML: {e}. Returning original text as a single DocNode.')
+            return [self._make_node(text=text, filetype='yaml', error=str(e))]
+
+        return self._split_json_data(data, chunk_size, 'yaml', path=[], depth=0)
 
 
 # ========== HTMLSplitter ==========
 class HTMLSplitter(_LanguageSplitterBase):
-    def __init__(self, chunk_size: int = 1024, overlap: int = 200, num_workers: int = 0,
-                 filetype: Optional[str] = None, keep_sections: bool = False, keep_tags: bool = False, **kwargs):
+    def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
+                 filetype: Optional[str] = _UNSET, keep_sections: bool = _UNSET, keep_tags: bool = _UNSET, **kwargs):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers,
                          filetype=filetype, **kwargs)
+        keep_sections = self._get_param_value('keep_sections', keep_sections, False)
+        keep_tags = self._get_param_value('keep_tags', keep_tags, False)
+
         self._keep_sections = keep_sections
         self._keep_tags = keep_tags
 
@@ -326,10 +539,33 @@ class HTMLSplitter(_LanguageSplitterBase):
                 else:
                     chunks.append(DocNode(text=content, metadata=metadata))
 
-        all_nodes = self._sub_split(chunks, chunk_size)
+        merged_nodes = self._merge(chunks, chunk_size)
+        all_nodes = self._sub_split(merged_nodes, chunk_size)
         return all_nodes if all_nodes else [DocNode(text=text, metadata={'filetype': 'html'})]
 
-    def _extract_sections(self, soup: bs4.BeautifulSoup) -> List[dict]:
+    def _extract_child_divs(self, parent_elem, parent_metadata: dict) -> List[dict]:
+        child_sections = []
+        direct_children = []
+        for child in parent_elem.children:
+            if hasattr(child, 'name') and child.name == 'div':
+                direct_children.append(child)
+
+        if len(direct_children) > 1:
+            for idx, child_div in enumerate(direct_children):
+                child_sections.append({
+                    'element': child_div,
+                    'metadata': {
+                        'section_type': 'div',
+                        'section_id': child_div.get('id', ''),
+                        'section_class': ' '.join(child_div.get('class', [])) if child_div.get('class') else '',
+                        'parent_id': parent_metadata.get('section_id', ''),
+                        'child_index': idx,
+                    }
+                })
+
+        return child_sections
+
+    def _extract_sections(self, soup: bs4.BeautifulSoup) -> List[dict]:  # noqa: C901
         sections = []
 
         semantic_tags = ['section', 'article', 'main', 'header', 'footer', 'aside', 'nav']
@@ -349,21 +585,47 @@ class HTMLSplitter(_LanguageSplitterBase):
             container_patterns = ['container', 'content', 'wrapper', 'main-content',
                                   'page-content', 'article-content', 'post-content']
 
+            wrapper_divs = []
             for pattern in container_patterns:
-                divs = soup.find_all('div', class_=lambda x: x and any(p in str(x).lower() for p in [pattern]))
-                for div in divs:
-                    sections.append({
-                        'element': div,
-                        'metadata': {
-                            'section_type': 'div',
-                            'section_id': div.get('id', ''),
-                            'section_class': ' '.join(div.get('class', [])),
-                            'container_pattern': pattern,
-                        }
-                    })
+                divs_by_class = soup.find_all('div', class_=lambda x: x and any(p in str(x).lower() for p in [pattern]))  # noqa B023
+                divs_by_id = soup.find_all('div', id=lambda x: x and any(p in str(x).lower() for p in [pattern]))  # noqa B023
 
-                if sections:
+                all_divs = list(dict.fromkeys(divs_by_class + divs_by_id))
+
+                for div in all_divs:
+                    wrapper_metadata = {
+                        'section_type': 'div',
+                        'section_id': div.get('id', ''),
+                        'section_class': ' '.join(div.get('class', [])),
+                        'container_pattern': pattern,
+                    }
+                    wrapper_divs.append({'element': div, 'metadata': wrapper_metadata})
+
+                if wrapper_divs:
                     break
+
+            if wrapper_divs:
+                for wrapper in wrapper_divs:
+                    child_divs = self._extract_child_divs(wrapper['element'], wrapper['metadata'])
+                    if child_divs:
+                        sections.extend(child_divs)
+                    else:
+                        sections.append(wrapper)
+
+            if not sections:
+                body = soup.find('body')
+                if body:
+                    top_level_divs = body.find_all('div', recursive=False)
+                    for div in top_level_divs:
+                        if div.get('id') or div.get('class'):
+                            sections.append({
+                                'element': div,
+                                'metadata': {
+                                    'section_type': 'div',
+                                    'section_id': div.get('id', ''),
+                                    'section_class': ' '.join(div.get('class', [])) if div.get('class') else '',
+                                }
+                            })
 
         if not sections:
             body = soup.find('body')
@@ -407,34 +669,59 @@ class HTMLSplitter(_LanguageSplitterBase):
             })
             return blocks
 
-        for i, heading in enumerate(headings):
-            heading_level = int(heading.name[1])
-            heading_text = heading.get_text(strip=True)
+        heading_parents = [h.parent for h in headings]
+        all_same_parent = len(set(id(p) for p in heading_parents)) == 1
 
-            content_elements = [heading]
+        if all_same_parent and len(headings) > 1:
+            processed_headings = set()
 
-            for sibling in heading.find_next_siblings():
-                if sibling.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
-                    sibling_level = int(sibling.name[1])
-                    if sibling_level <= heading_level:
-                        break
+            for i, heading in enumerate(headings):
+                if id(heading) in processed_headings:
+                    continue
 
-                content_elements.append(sibling)
+                heading_level = int(heading.name[1])
+                heading_text = heading.get_text(strip=True)
 
-            block_soup = bs4.BeautifulSoup('', 'html.parser')
-            for elem in content_elements:
-                if isinstance(elem, bs4.Tag):
-                    block_soup.append(copy.copy(elem))
+                content_elements = [heading]
+
+                for sibling in heading.find_next_siblings():
+                    if sibling.name in ['h1', 'h2', 'h3', 'h4', 'h5', 'h6']:
+                        sibling_level = int(sibling.name[1])
+                        if sibling_level <= heading_level:
+                            break
+                    content_elements.append(sibling)
+
+                block_soup = bs4.BeautifulSoup('', 'html.parser')
+                for elem in content_elements:
+                    if isinstance(elem, bs4.Tag):
+                        block_soup.append(copy.copy(elem))
+
+                blocks.append({
+                    'element': block_soup,
+                    'metadata': {
+                        **section_metadata,
+                        'has_heading': True,
+                        'heading_level': heading_level,
+                        'heading_text': heading_text,
+                        'heading_id': heading.get('id', ''),
+                        'block_index': i,
+                    }
+                })
+
+                processed_headings.add(id(heading))
+        else:
+            heading_level = int(headings[0].name[1])
+            heading_text = headings[0].get_text(strip=True)
 
             blocks.append({
-                'element': block_soup,
+                'element': section_elem,
                 'metadata': {
                     **section_metadata,
                     'has_heading': True,
                     'heading_level': heading_level,
                     'heading_text': heading_text,
-                    'heading_id': heading.get('id', ''),
-                    'block_index': i,
+                    'heading_id': headings[0].get('id', ''),
+                    'block_index': 0,
                 }
             })
 
@@ -454,6 +741,46 @@ class HTMLSplitter(_LanguageSplitterBase):
 
         return '\n'.join(lines)
 
+    def _merge(self, chunks: List[DocNode], chunk_size: int) -> List[DocNode]:
+        if not chunks or len(chunks) <= 1:
+            return chunks
+
+        result = []
+        i = 0
+
+        while i < len(chunks):
+            current = chunks[i]
+            current_size = self._token_size(current.text)
+
+            if i + 1 < len(chunks):
+                next_chunk = chunks[i + 1]
+                next_size = self._token_size(next_chunk.text)
+
+                can_merge = (
+                    current.metadata.get('parent_id') == next_chunk.metadata.get('parent_id')
+                    and current.metadata.get('section_type') == next_chunk.metadata.get('section_type')
+                    and current_size < chunk_size * 0.5 and current_size + next_size <= chunk_size
+                )
+
+                if can_merge:
+                    merged_text = current.text + '\n\n' + next_chunk.text
+                    merged_metadata = current.metadata.copy()
+
+                    if next_chunk.metadata.get('has_heading') and not current.metadata.get('has_heading'):
+                        merged_metadata['has_heading'] = True
+                        merged_metadata['heading_text'] = next_chunk.metadata.get('heading_text', '')
+                        merged_metadata['heading_level'] = next_chunk.metadata.get('heading_level', 0)
+
+                    merged_node = DocNode(text=merged_text, metadata=merged_metadata)
+                    result.append(merged_node)
+                    i += 2
+                    continue
+
+            result.append(current)
+            i += 1
+
+        return result
+
 
 class CodeSplitter(_TextSplitterBase):
     _SPLITTER_REGISTRY: Dict[str, Type[_LanguageSplitterBase]] = {
@@ -465,17 +792,14 @@ class CodeSplitter(_TextSplitterBase):
         'htm': HTMLSplitter,
     }
 
-    def __init__(self, chunk_size: int = 1024, overlap: int = 200,
-                 num_workers: int = 0, filetype: Optional[str] = None, **kwargs):
+    def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET,
+                 num_workers: int = _UNSET, filetype: Optional[str] = _UNSET, **kwargs):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers)
-        self._chunk_size = chunk_size
-        self._overlap = overlap
-        self._num_workers = num_workers
-        self._filetype = filetype
+        self._filetype = self._get_param_value('filetype', filetype, None)
         self._extra_params = kwargs
         self._splitter: Optional[_LanguageSplitterBase] = None
 
-        if filetype:
+        if self._filetype:
             self._splitter = self.from_language(filetype)
 
     def from_language(self, filetype: str) -> _LanguageSplitterBase:
@@ -488,8 +812,8 @@ class CodeSplitter(_TextSplitterBase):
         return splitter_class(
             chunk_size=self._chunk_size,
             overlap=self._overlap,
-            num_workers=self._num_workers,
-            filetype=filetype,
+            num_workers=self._number_workers,
+            filetype=filetype_lower,
             **self._extra_params
         )
 

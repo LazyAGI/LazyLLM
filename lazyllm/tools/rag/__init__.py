@@ -4,7 +4,8 @@ from .retriever import Retriever, TempDocRetriever
 from .graph_retriever import GraphRetriever
 from .rerank import Reranker, register_reranker
 from .transform import (SentenceSplitter, LLMParser, NodeTransform, TransformArgs, AdaptiveTransform,
-                        CharacterSplitter, RecursiveSplitter, MarkdownSplitter)
+                        CharacterSplitter, RecursiveSplitter, MarkdownSplitter, CodeSplitter,
+                        JSONSplitter, YAMLSplitter, HTMLSplitter, XMLSplitter, ProgrammingSplitter)
 from .similarity import register_similarity
 from .doc_node import DocNode
 from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader, EpubReader,
@@ -61,4 +62,10 @@ __all__ = [
     'CharacterSplitter',
     'RecursiveSplitter',
     'MarkdownSplitter',
+    'CodeSplitter',
+    'JSONSplitter',
+    'YAMLSplitter',
+    'HTMLSplitter',
+    'XMLSplitter',
+    'ProgrammingSplitter',
 ]
