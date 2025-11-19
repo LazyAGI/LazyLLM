@@ -22,7 +22,8 @@ from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
 
-lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH')
+lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH',
+                   description='The default path for trainable module config map.')
 ignore_config_keys = ['log_path', 'launcher']
 
 @functools.lru_cache(maxsize=1)
@@ -63,7 +64,8 @@ class _UrlTemplateStruct(object):
         self.stream_url_suffix = stream_url_suffix or ''
 
 
-lazyllm.config.add('trainable_magic_mock', bool, False, 'TRAINABLE_MAGIC_MOCK')  # used for unit test
+lazyllm.config.add('trainable_magic_mock', bool, False, 'TRAINABLE_MAGIC_MOCK',
+                   description='Whether to use magic mock for trainable module(used for unit test).')
 fake_url = 'dummy.url/generate'
 
 
@@ -74,13 +76,13 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def __init__(self, base_model: str = '', target_path: str = '', stream: bool = False, train: Optional[type] = None,
                  finetune: Optional[LazyLLMFinetuneBase] = None, deploy: Optional[LazyLLMDeployBase] = None,
                  template: Optional[_UrlTemplateStruct] = None, url_wrapper: Optional[_UrlHelper._Wrapper] = None,
-                 trust_remote_code: bool = True, type: Optional[LLMType] = None):
+                 trust_remote_code: bool = True, type: Optional[LLMType] = None, source: Optional[str] = None):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
         base_model = base_model.rstrip('/\\')
         self._type = LLMType(type) if type else type
-        self._base_model = (ModelManager(lazyllm.config['model_source']).download(base_model) or ''
+        self._base_model = (ModelManager(source or lazyllm.config['model_source']).download(base_model) or ''
                             if trust_remote_code else base_model)
         if not self._base_model:
             LOG.warning(f'Cannot get a valid model from {base_model} by ModelManager.')
@@ -254,19 +256,21 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         self._file_name = name
 
 
-config.add('cache_local_module', bool, False, 'CACHE_LOCAL_MODULE')
+config.add('cache_local_module', bool, False, 'CACHE_LOCAL_MODULE',
+           description='Whether to cache the local module result. Use for unit test.')
 
 
 class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
 
     def __init__(self, base_model: Option = '', target_path='', *, stream: Union[bool, Dict[str, str]] = False,
-                 return_trace: bool = False, trust_remote_code: bool = True, type: Optional[Union[str, LLMType]] = None):
+                 return_trace: bool = False, trust_remote_code: bool = True,
+                 type: Optional[Union[str, LLMType]] = None, source: Optional[str] = None):
         super().__init__(url=None, stream=stream, return_trace=return_trace, init_prompt=False)
         self._template = _UrlTemplateStruct()
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
                                           lazyllm.deploy.auto, self._template, self._url_wrapper,
-                                          trust_remote_code, type)
+                                          trust_remote_code, type, source=source)
         self._stream = stream
         self.prompt()
         if config['cache_local_module']:

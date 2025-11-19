@@ -12,13 +12,43 @@ class Mode(Enum):
     Debug = 2,
 
 
-class Config(object):
+class _MetaDoc(type):
+    _description = dict()
+    _doc = ''
+
+    @staticmethod
+    def _get_description(name):
+        desc = _MetaDoc._description[name]
+        if not desc: raise ValueError(f'Description for {name} is not found')
+        doc = (f'    Description: {desc["description"]}, type is `{desc["type"]}`, default is `{desc["default"]}`.\n')
+        if (options := desc.get('options')):
+            doc += f'    Options: {", ".join(options)}\n'
+        if (env := desc.get('env')):
+            if isinstance(env, str):
+                doc += f'    Environment Variable: {("LAZYLLM_" + env).upper()}\n'
+            elif isinstance(env, dict):
+                doc += '    Environment Variable:\n'
+                for k, v in env.items():
+                    doc += f'{("      LAZYLLM_" + k).upper()}: {v}\n'
+        return doc
+
+    @property
+    def __doc__(self):
+        doc = f'{self._doc}\n**LazyLLM Configurations:**\n\n'
+        return doc + '\n'.join([f'  **{name}**:\n{self._get_description(name)}' for name in self._description.keys()])
+
+    @__doc__.setter
+    def __doc__(self, value):
+        self._doc = value
+
+
+class Config(metaclass=_MetaDoc):
     def __init__(self, prefix='LAZYLLM', home=os.path.join(os.path.expanduser('~'), '.lazyllm')):  # noqa B008
         self._config_params = dict()
         self._env_map_name = dict()
         self.prefix = prefix
         self.impl, self.cfgs = dict(), dict()
-        self.add('home', str, os.path.expanduser(home), 'HOME')
+        self.add('home', str, os.path.expanduser(home), 'HOME', description='The default home directory for LazyLLM.')
         os.makedirs(home, exist_ok=True)
         self.cgf_path = os.path.join(self['home'], 'config.json')
         if os.path.exists(self.cgf_path):
@@ -50,7 +80,7 @@ class Config(object):
         self.impl[name] = old_value
 
     def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
-            *, options: Optional[List] = None):
+            *, options: Optional[List] = None, description: Optional[str] = None):
         update_params = (type, default, env)
         if name not in self._config_params or self._config_params[name] != update_params:
             if name in self._config_params:
@@ -63,6 +93,8 @@ class Config(object):
                 for k in env.keys():
                     self._env_map_name[('lazyllm_' + k).upper()] = name
         self._update_impl(name, type, default, env)
+        _MetaDoc._description[name] = dict(type=type.__name__, default=default,
+                                           env=env, options=options, description=description)
         return self
 
     def _update_impl(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None,
@@ -103,14 +135,21 @@ class Config(object):
         for name in names:
             if name in self.impl: self._update_impl(name, *self._config_params[name])
 
-config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug)
-                ).add('repr_ml', bool, False, 'REPR_USE_ML'
-                ).add('repr_show_child', bool, False, 'REPR_SHOW_CHILD'
-                ).add('rag_store', str, 'none', 'RAG_STORE'
-                ).add('gpu_type', str, 'A100', 'GPU_TYPE'
-                ).add('train_target_root', str, os.path.join(os.getcwd(), 'save_ckpt'), 'TRAIN_TARGET_ROOT'
-                ).add('infer_log_root', str, os.path.join(os.getcwd(), 'infer_log'), 'INFER_LOG_ROOT'
-                ).add('temp_dir', str, os.path.join(os.getcwd(), '.temp'), 'TEMP_DIR'
-                ).add('thread_pool_worker_num', int, 16, 'THREAD_POOL_WORKER_NUM'
-                ).add('deploy_skip_check_kw', bool, False, 'DEPLOY_SKIP_CHECK_KW'
+config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug),
+                      description='The default mode for LazyLLM.'
+                ).add('repr_ml', bool, False, 'REPR_USE_ML', description='Whether to use Markup Language for repr.'
+                ).add('repr_show_child', bool, False, 'REPR_SHOW_CHILD',
+                      description='Whether to show child modules in repr.'
+                ).add('rag_store', str, 'none', 'RAG_STORE', description='The default store for RAG.'
+                ).add('gpu_type', str, 'A100', 'GPU_TYPE', description='The default GPU type for LazyLLM.'
+                ).add('train_target_root', str, os.path.join(os.getcwd(), 'save_ckpt'), 'TRAIN_TARGET_ROOT',
+                      description='The default target root for training.'
+                ).add('infer_log_root', str, os.path.join(os.getcwd(), 'infer_log'), 'INFER_LOG_ROOT',
+                      description='The default log root for inference.'
+                ).add('temp_dir', str, os.path.join(os.getcwd(), '.temp'), 'TEMP_DIR',
+                      description='The default temp directory for LazyLLM.'
+                ).add('thread_pool_worker_num', int, 16, 'THREAD_POOL_WORKER_NUM',
+                      description='The default number of workers for thread pool.'
+                ).add('deploy_skip_check_kw', bool, False, 'DEPLOY_SKIP_CHECK_KW',
+                      description='Whether to skip check keywords for deployment.'
                 )

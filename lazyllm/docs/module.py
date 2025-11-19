@@ -659,9 +659,11 @@ add_chinese_doc('TrainableModule', '''\
 Args:
     base_model (str): 基础模型的名称或路径。
     target_path (str): 保存微调任务的路径。
-    source (str): 模型来源，如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
     stream (bool): 输出流式结果。     
     return_trace (bool): 在trace中记录结果。
+    trust_remote_code (bool): 是否信任远程代码。
+    type (str/LLMType): 模型类型。
+    source (str): 模型来源，如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
 
@@ -809,9 +811,11 @@ Trainable module, all models (including LLM, Embedding, etc.) are served through
 Args:
     base_model (str): Name or path of the base model. 
     target_path (str): Path to save the fine-tuning task. 
-    source (str): Model source. If not set, it will read the value from the environment variable LAZYLLM_MODEL_SOURCE.
     stream (bool): Whether to output stream. 
     return_trace (bool): Record the results in trace.
+    trust_remote_code (bool): Whether to trust remote code.
+    type (str/LLMType): Model type.
+    source (str): Model source. If not set, it will read the value from the environment variable LAZYLLM_MODEL_SOURCE.
 
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
@@ -2620,7 +2624,7 @@ Args:
     **kwargs: Other model parameters
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTSModule', """\
 SiliconFlow文本转语音模块，继承自OnlineMultiModalBase。
 
 提供基于SiliconFlow的文本转语音(TTS)功能，支持将文本转换为音频文件。
@@ -2633,7 +2637,7 @@ Args:
     **kwargs: 其他模型参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTSModule', """\
 SiliconFlow Text-to-Speech module, inherits from OnlineMultiModalBase.
 
 Provides text-to-speech (TTS) functionality based on SiliconFlow, supports converting text to audio files.

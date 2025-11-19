@@ -40,9 +40,10 @@ config.add(
     int,
     min(32, (os.cpu_count() or 1) + 4),
     'MAX_EMBEDDING_WORKERS',
-)
+    description='The default number of workers for embedding in RAG.')
 
-config.add('default_dlmanager', str, 'sqlite', 'DEFAULT_DOCLIST_MANAGER')
+config.add('default_dlmanager', str, 'sqlite', 'DEFAULT_DOCLIST_MANAGER',
+           description='The default document list manager for RAG.')
 
 def gen_docid(file_path: str) -> str:
     return hashlib.sha256(file_path.encode()).hexdigest()

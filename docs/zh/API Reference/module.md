@@ -208,7 +208,7 @@
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowTTSModule
     options:
       members:
 

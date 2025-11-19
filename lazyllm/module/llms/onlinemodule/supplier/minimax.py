@@ -86,7 +86,7 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
         self._endpoint = 'image_generation'
         self._api_key = api_key or lazyllm.config['minimax_api_key']
 
-    def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 60) -> Dict[str, Any]:
+    def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
         headers = {
             'Authorization': f'Bearer {self._api_key}',
             'Content-Type': 'application/json'
@@ -138,7 +138,7 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
             if not image_urls:
                 raise Exception('Minimax API did not return any image URLs.')
             for image_url in image_urls:
-                img_response = requests.get(image_url, timeout=60)
+                img_response = requests.get(image_url, timeout=180)
                 if img_response.status_code != 200:
                     raise Exception(f'Failed to download image from {image_url}')
                 image_bytes.append(img_response.content)
@@ -208,19 +208,26 @@ class MinimaxTTSModule(OnlineMultiModalBase):
             'language_boost': language_boost,
             'voice_modify': voice_modify,
             'stream_options': stream_options,
+            'subtitle_enable': subtitle_enable,
+            'aigc_watermark': aigc_watermark,
         }
         payload.update({k: v for k, v in optional_params.items() if v is not None})
-        if subtitle_enable:
-            payload['subtitle_enable'] = subtitle_enable
-        if aigc_watermark:
-            payload['aigc_watermark'] = aigc_watermark
         payload.update(kwargs)
         result = self._make_request(self._endpoint, payload, timeout=180)
         data = result.get('data') or {}
-        audio_hex = data.get('audio')
-        if not audio_hex:
+        audio_data = data.get('audio')
+        if not audio_data:
             raise Exception('Minimax API did not return any audio data.')
-        audio_content = bytes.fromhex(audio_hex)
+
+        if output_format == 'url':
+            audio_response = requests.get(audio_data, timeout=180)
+            audio_response.raise_for_status()
+            audio_content = audio_response.content
+        elif output_format == 'hex':
+            audio_content = bytes.fromhex(audio_data)
+        else:
+            raise ValueError(f'Unsupported output_format: {output_format}. Supported formats are "url" and "hex".')
+
         file_path = bytes_to_file([audio_content])[0]
         if out_path:
             with open(file_path, 'rb') as src, open(out_path, 'wb') as dst:
