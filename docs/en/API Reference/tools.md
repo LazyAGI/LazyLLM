@@ -62,7 +62,7 @@
         - drop_table
         - insert_values
     exclude-members:
-    
+
 ::: lazyllm.tools.Reranker
     members:
     exclude-members:
