@@ -170,7 +170,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                                               display_name=display_name, description=description)
             self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
-        # kb_id -> GraphDocument (weak reference)
         self._graph_document: weakref.ref = None
 
     @staticmethod
