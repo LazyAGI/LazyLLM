@@ -133,25 +133,25 @@ jobs:
       launcher: "empty"
       nproc: 4
 
-  AdvancedStandardTests:
+  AdvancedTests:
     needs: [Clone, TestSetup]
     uses: ./.github/workflows/reusable_run_tests.yml
     with:
       CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
       changed_files: ${{ needs.TestSetup.outputs.changed_files }}
       markers: "not skip_on_linux"
-      tests_dir: "tests/advanced_tests/standard_test"
+      tests_dir: "tests/advanced_tests"
       launcher: "sco"
       nproc: 1
 
-  AdvancedFullTests:
+  EngineTests:
     needs: [Clone, TestSetup]
     uses: ./.github/workflows/reusable_run_tests.yml
     with:
       CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
       changed_files: ${{ needs.TestSetup.outputs.changed_files }}
       markers: "not skip_on_linux"
-      tests_dir: "tests/advanced_tests/full_test"
+      tests_dir: "tests/engine_tests"
       launcher: "sco"
       nproc: 1
 
@@ -268,7 +268,7 @@ jobs:
 
   Coverage_linux:
     runs-on: ubuntu-latest
-    needs: [ BasicTests, AdvancedStandardTests, AdvancedFullTests, ChargeTests ]
+    needs: [ BasicTests, AdvancedTests, EngineTests, ChargeTests ]
     steps:
       - name: Add Coverage Report Link to Summary
         run: |

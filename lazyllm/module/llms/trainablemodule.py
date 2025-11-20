@@ -235,6 +235,9 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if hasattr(self, '_launchers'):
             [[launcher.cleanup() for launcher in group.values()] for group in self._launchers.values()]
 
+    def __deepcopy__(self, memo):
+        return self
+
     def _generate_target_path(self):
         base_model_name = os.path.basename(self._base_model)
         train_set_name = os.path.basename(self._trainset) if isinstance(self._trainset, str) else ''
