@@ -2081,6 +2081,164 @@ Args:
 - List[dict]: List of search results.
 ''')
 
+add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore', '''\
+OceanBase 存储类，用于存储和检索文档节点。
+
+Args:
+    uri (str): OceanBase 数据库的 URI。
+    user (str): OceanBase 数据库的用户名。
+    password (str): OceanBase 数据库的密码。
+    db_name (str): OceanBase 数据库的名称。
+    drop_old (bool): 是否删除旧的表。
+    index_kwargs (List[dict]): 索引配置列表。
+    client_kwargs (Dict): 客户端配置字典。
+    max_pool_size (int): 最大连接池大小。
+    normalize (bool): 是否规范化数据。
+    enable_fulltext_index (bool): 是否启用全文索引。
+''')
+
+add_english_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore', '''\
+OceanBase storage class for storing and retrieving document nodes.
+
+Args:
+    uri (str): URI of the OceanBase database.
+    user (str): Username of the OceanBase database.
+    password (str): Password of the OceanBase database.
+    db_name (str): Name of the OceanBase database.
+    drop_old (bool): Whether to drop old tables.
+    index_kwargs (List[dict]): List of index configurations.
+    client_kwargs (Dict): Dictionary of client configurations.
+    max_pool_size (int): Maximum pool size.
+    normalize (bool): Whether to normalize data.
+    enable_fulltext_index (bool): Whether to enable fulltext index.
+''')
+
+add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.connect', '''\
+连接到底层的 OceanBase 数据库。
+
+Args:
+    embed_dims (Dict[str, int]): 嵌入维度字典。
+    embed_datatypes (Dict[str, DataType]): 嵌入数据类型字典。
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据描述字典。
+    **kwargs: 其他参数。
+''')
+
+add_english_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.connect', '''\
+Connect to underlying OceanBase database.
+
+Args:
+    embed_dims (Dict[str, int]): Dictionary of embedding dimensions.
+    embed_datatypes (Dict[str, DataType]): Dictionary of embedding data types.
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Dictionary of global metadata descriptions.
+    **kwargs: Additional arguments.
+''')
+
+add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.upsert', '''\
+向存储中插入或更新数据。
+
+Args:
+    collection_name (str): 集合名称。
+    data (List[dict]): 要插入或更新的数据列表，每个数据项都是一个字典。
+    range_part (Optional[RangeListPartInfo]): 范围分区信息，暂未实现分区功能。
+    **kwargs: 其他参数。
+
+**Returns:**\n
+- bool: 操作成功返回True，否则返回False。
+''')
+
+add_english_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.upsert', '''\
+Insert or update data in the stores.
+
+Args:
+    collection_name (str): Name of the collection.
+    data (List[dict]): List of data items to insert or update, each item is a dictionary.
+    range_part (Optional[RangeListPartInfo]): Range partition information, not implemented yet.
+    **kwargs: Additional arguments.
+
+**Returns:**\n
+- bool: Returns True if operation is successful, False otherwise.
+''')
+
+add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.delete', '''\
+从存储中删除数据。
+
+Args:
+    collection_name (str): 集合名称。
+    criteria (Optional[dict]): 删除条件，默认为None。
+    **kwargs: 其他参数。
+
+**Returns:**\n
+- bool: 操作成功返回True，否则返回False。
+''')
+
+add_english_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.delete', '''\
+Delete data from the stores.
+
+Args:
+    collection_name (str): Name of the collection.
+    criteria (Optional[dict]): Deletion criteria, defaults to None.
+    **kwargs: Additional arguments.
+
+**Returns:**\n
+- bool: Returns True if operation is successful, False otherwise.
+''')
+
+add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.get', '''\
+从存储中获取数据。
+
+Args:
+    collection_name (str): 集合名称。
+    criteria (Optional[dict]): 查询条件，默认为None。
+    **kwargs: 其他参数。
+
+**Returns:**\n
+- List[dict]: 返回符合条件的数据列表。
+''')
+
+add_english_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.get', '''\
+Retrieve data from the stores.
+
+Args:
+    collection_name (str): Name of the collection.
+    criteria (Optional[dict]): Query criteria, defaults to None.
+    **kwargs: Additional arguments.
+
+**Returns:**\n
+- List[dict]: List of matching data items.
+''')
+
+add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.search', '''\
+在存储中搜索数据。
+
+Args:
+    collection_name (str): 集合名称。
+    query_embedding (Union[dict, List[float]]): 查询的向量表示。
+    topk (int): 返回的最大结果数量。
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): 过滤条件，默认为None。
+    embed_key (Optional[str]): 嵌入向量的键名，默认为None。
+    filter_str (Optional[str]): 过滤条件字符串，默认为None。
+    **kwargs: 其他参数。
+
+**Returns:**\n
+- List[dict]: 返回搜索结果列表。
+''')
+
+add_english_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.search', '''\
+Search data in the stores.
+
+Args:
+    collection_name (str): Name of the collection.
+    query_embedding (Union[dict, List[float]]): Vector representation of the query.
+    topk (int): Maximum number of results to return.
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): Filter conditions, defaults to None.
+    embed_key (Optional[str]): Key name for embedding vector, defaults to None.
+    filter_str (Optional[str]): Filter conditions string, defaults to None.
+    **kwargs: Additional arguments.
+
+**Returns:**\n
+- List[dict]: List of search results.
+''')
+
 add_chinese_doc('rag.store.hybrid.sensecore_store.SenseCoreStore', '''\
 SenseCore 混合存储实现，继承自 LazyLLMStoreBase，提供基于 SenseCore 平台的文档存储和检索功能。  
 该类支持文档的序列化存储、多模态内容处理、混合搜索等功能，通过 S3 存储和 SenseCore API 实现高效的文档管理。
