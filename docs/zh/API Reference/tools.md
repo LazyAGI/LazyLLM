@@ -70,6 +70,13 @@
         - insert_values
     exclude-members:
 
+::: lazyllm.tools.SqlCall
+    members: 
+        - sql_query_promt_hook
+        - sql_explain_prompt_hook
+        - extract_sql_from_response
+    exclude-members:
+
 ::: lazyllm.tools.rag.component.bm25.BM25
     members: retrieve
     exclude-members:
