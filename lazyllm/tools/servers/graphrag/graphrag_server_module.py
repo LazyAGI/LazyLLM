@@ -14,12 +14,12 @@ class GraphRagServerModule(ServerModule):
         self._kg_dir = kg_dir
         self._graphrag_service_impl = GraphRAGServiceImpl(kg_dir=str(self._kg_dir))
         # this url can only be set by graphrag server module
-        self._graphrag_shared_url = self._get_shared_url_from_file()
+        self._service_url = self._get_shared_url_from_file()
         super().__init__(self._graphrag_service_impl, *args, **kwargs)
 
     @property
-    def graphrag_shared_url(self) -> str:
-        return self._graphrag_shared_url
+    def service_url(self) -> str:
+        return self._service_url
 
     def _get_shared_url_from_file(self):
         '''Get the GraphRAGServiceImpl URL from the file'''
@@ -58,15 +58,15 @@ class GraphRagServerModule(ServerModule):
         # refresh the shared url
         shared_url = self._get_shared_url_from_file()
         if shared_url:
-            self._graphrag_shared_url = shared_url
+            self._service_url = shared_url
         else:
             with open(Path(self._kg_dir) / 'url.txt', 'w') as f:
                 f.write(root_url)
-            self._graphrag_shared_url = root_url
+            self._service_url = root_url
 
     def stop(self, clean=False):
         super().stop()
-        is_root_server = self._url and self._url == self._graphrag_shared_url
+        is_root_server = self._url and self._url == self._service_url
         if is_root_server and clean:
             shutil.rmtree(self._kg_dir)
 
@@ -96,7 +96,7 @@ class GraphRagServerModule(ServerModule):
             raise e
 
     def create_index(self, override: bool = True) -> dict:
-        api_url = f'{self.graphrag_shared_url}/graphrag/create_index'
+        api_url = f'{self.service_url}/graphrag/create_index'
 
         # Send POST request to create_index endpoint
         response = requests.post(
@@ -110,7 +110,7 @@ class GraphRagServerModule(ServerModule):
         return response.json()
 
     def index_status(self, task_id: str) -> dict:
-        api_url = f'{self.graphrag_shared_url}/graphrag/index_status'
+        api_url = f'{self.service_url}/graphrag/index_status'
         response = requests.post(
             api_url,
             params={'task_id': task_id},
@@ -147,7 +147,7 @@ class GraphRagServerModule(ServerModule):
         community_level: int = 2,
         response_type: str = 'Multiple Paragraphs',
     ) -> dict:
-        return self.query_by_url(self.graphrag_shared_url, query, search_method, community_level, response_type)
+        return self.query_by_url(self.service_url, query, search_method, community_level, response_type)
 
     def forward(self, query: str) -> str:
         ans = self.query(query)

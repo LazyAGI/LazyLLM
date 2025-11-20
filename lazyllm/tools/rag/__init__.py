@@ -1,5 +1,5 @@
 from .document import Document
-from .graph_document import GraphDocument
+from .graph_document import GraphDocument, UrlGraphDocument
 from .retriever import Retriever, TempDocRetriever
 from .graph_retriever import GraphRetriever
 from .rerank import Reranker, register_reranker
@@ -23,6 +23,7 @@ __all__ = [
     'add_post_action_for_default_reader',
     'Document',
     'GraphDocument',
+    'UrlGraphDocument',
     'Reranker',
     'Retriever',
     'GraphRetriever',

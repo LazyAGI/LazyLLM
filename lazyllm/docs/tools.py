@@ -1,5 +1,6 @@
 # flake8: noqa E501
 import importlib
+from re import A
 from . import utils
 import functools
 import lazyllm
@@ -800,6 +801,24 @@ Args:
 - str: 查询问题的答案。
 ''')
 
+add_english_doc('UrlGraphDocument', '''\
+A lightweight wrapper for querying remote GraphRAG services via URL.
+
+This class provides a simplified interface to interact with GraphRAG services that are already deployed and running.
+
+Args:
+    graphrag_url (str): The base URL of the remote GraphRAG service endpoint. Should be in the format 'http://hostname:port'.
+''')
+
+add_chinese_doc('UrlGraphDocument', '''\
+用于通过 URL 查询远程 GraphRAG 服务的轻量级封装。
+
+此类提供了一个简化的接口，用于与已经部署并运行的 GraphRAG 服务进行交互。
+
+Args:
+    graphrag_url (str): 远程 GraphRAG 服务端点的基础 URL，应为 'http://hostname:port' 格式。
+''')
+
 # rag/graph_retriever.py
 
 add_english_doc('GraphRetriever', '''\
@@ -818,6 +837,134 @@ add_chinese_doc('GraphRetriever', '''\
 
 Args:
     document (Document): Document 或 GraphDocument 实例。如果提供的是 Document，检索器将尝试通过弱引用获取关联的 GraphDocument；如果直接提供 GraphDocument，则按原样使用。
+''')
+
+# servers/graphrag/graphrag_server_module.py
+add_english_doc('GraphRagServerModule', '''\
+GraphRAG server module for managing and operating knowledge graph-based Retrieval Augmented Generation (RAG) services.
+
+This class inherits from ServerModule and provides complete lifecycle management for GraphRAG services.
+
+Args:
+    kg_dir (str): Path to the knowledge graph storage directory. The directory will be created automatically if it doesn't exist.
+''')
+
+add_chinese_doc('GraphRagServerModule', '''\
+GraphRAG 服务器模块用于管理和操作基于知识图谱的检索增强生成 (Retrieval Augmented Generation, RAG) 服务。
+
+该类继承自 ServerModule，并为 GraphRAG 服务提供完整的生命周期管理。
+
+Args:
+    kg_dir (str): 知识图谱存储目录的路径。如果该目录不存在，系统将自动创建。
+''')
+
+
+add_english_doc('GraphRagServerModule.prepare_files', '''\
+Prepare input files for GraphRAG processing by copying them to the knowledge graph input directory with unique names.
+
+Args:
+    files (List[str]): List of file paths to be copied to the input directory. Each path should be a valid file path. Non-existent files will be skipped.
+    regenerate_config (bool, optional): Whether to force regeneration of the GraphRAG configuration files. Defaults to True. If True, existing configuration will be overwritten; if False, existing configuration will be preserved if it exists.
+''')
+
+add_chinese_doc('GraphRagServerModule.prepare_files', '''\
+通过将输入文件复制到知识图谱输入目录并使用唯一名称，来为 GraphRAG 处理准备文件。
+
+Args:
+    files (List[str]): 要复制到输入目录的文件路径列表。每个路径都应为有效的文件路径，不存在的文件将被跳过。
+    regenerate_config (bool, optional): 是否强制重新生成 GraphRAG 的配置文件。默认值为 True。为 True 时会覆盖已有配置；为 False 时如果已有配置存在则会保留
+''')
+
+add_english_doc('GraphRagServerModule.create_index', '''\
+Create a knowledge graph index from the prepared input files.
+
+This method sends an asynchronous indexing request to the GraphRAG service. The indexing process runs in the background, and you can check the status using the returned task_id.
+
+Args:
+    override (bool, optional): Whether to override an existing index if one already exists. Defaults to True. If False and an index already exists, the request will fail with a 400 error.
+''')
+
+add_chinese_doc('GraphRagServerModule.create_index', '''\
+从已准备好的输入文件创建知识图谱索引。
+
+该方法会向 GraphRAG 服务发送一个异步索引请求。索引过程在后台运行，可以使用返回的 task_id 查询状态。
+
+Args:
+    override (bool, optional): 如果索引已存在，是否覆盖重建。默认值为 True。若为 False 且索引已存在，请求将以 400 错误失败。
+''')
+
+add_english_doc('GraphRagServerModule.index_status', '''\
+Query the status of an indexing task.
+
+This method retrieves the current status of an indexing task. Use this method to monitor the progress of knowledge graph index creation.
+
+Args:
+    task_id (str): The unique identifier of the indexing task, obtained from the create_index() method.
+''')
+
+add_chinese_doc('GraphRagServerModule.index_status', '''\
+查询构建索引任务的状态。
+
+该方法用于获取某个构建索引任务的当前状态，可用于监控知识图谱索引构建的进度。
+
+Args:
+    task_id (str): 索引任务的唯一标识符，来自 create_index() 方法的返回值。
+''')
+
+add_english_doc('GraphRagServerModule.query_by_url', '''\
+Query a GraphRAG service by URL without requiring a module instance.
+
+This static method allows you to query any GraphRAG service endpoint directly by providing its URL. It's useful when you need to query a remote GraphRAG service or when you don't have a GraphRagServerModule instance available.
+
+Args:
+    graphrag_server_url (str): The base URL of the GraphRAG service endpoint. Should be in the format 'http://hostname:port'.
+    query (str): The natural language query string to search for in the knowledge graph.
+    search_method (str): The search method to use. Can be 'local' (default) or 'global'.
+    community_level (int): The community level to use for the search. Defaults to 2.
+    response_type (str): The response type to use. Can be 'Multiple Paragraphs' (default) or else.
+
+**Returns:**\n
+- dict: A dictionary containing the query result in 'answer' key.
+''')
+
+add_chinese_doc('GraphRagServerModule.query_by_url', '''\
+使用共享 URL 查询 GraphRAG 知识图谱。
+
+该静态方法允许你通过提供 GraphRAG 服务的 URL，直接对任意 GraphRAG 服务端点进行查询。适用于需要查询远程 GraphRAG 服务，或当前没有可用的 GraphRagServerModule 实例的情况。
+
+Args:
+    graphrag_server_url (str): GraphRAG 服务端点的基础 URL，应为 'http://hostname:port' 格式。
+    query (str): 用于查询知识图谱的自然语言查询字符串。
+    search_method (str): 搜索方式，可为 'local'（默认）或 'global'。
+    community_level (int): 搜索使用的社区层级，默认值为 2。
+    response_type (str): 响应类型，可为 'Multiple Paragraphs'（默认）或其他类型。
+''')
+
+add_english_doc('GraphRagServerModule.query', '''\
+Query the GraphRAG service using the instance's service URL.
+
+This method queries the knowledge graph using the instance's service URL.
+
+Args:
+    query (str): The natural language query string to search for in the knowledge graph.
+    search_method (str): The search method to use. Can be 'local' (default) or 'global'.
+    community_level (int): The community level to use for the search. Defaults to 2.
+    response_type (str): The response type to use. Can be 'Multiple Paragraphs' (default) or else.
+
+**Returns:**\n
+- dict: A dictionary containing the query result in 'answer' key.
+''')
+
+add_chinese_doc('GraphRagServerModule.query', '''\
+使用该实例的GraphRAG服务 URL 进行问答。
+
+该方法使用实例自身的服务 URL 来查询知识图谱。
+
+Args:
+    query (str): 用于查询知识图谱的自然语言查询字符串。
+    search_method (str): 搜索方式，可为 'local'（默认）或 'global'。
+    community_level (int): 搜索使用的社区层级，默认值为 2。
+    response_type (str): 响应类型，可为 'Multiple Paragraphs'（默认）或其他类型。
 ''')
 
 add_english_doc('rag.readers.ReaderBase', '''
