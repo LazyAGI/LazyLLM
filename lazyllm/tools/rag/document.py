@@ -1,5 +1,4 @@
 import os
-import json
 from typing import Callable, Optional, Dict, Union, List
 from functools import cached_property
 import lazyllm
@@ -15,7 +14,7 @@ from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_f
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
 from .index_base import IndexBase
 from .utils import DocListManager, ensure_call_endpoint
-from .global_metadata import GlobalMetadataDesc as DocField, RAG_KB_ID, RAG_DOC_PATH
+from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
 import copy
 import functools
@@ -216,23 +215,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def _list_all_files_in_dataset(self, skip_hidden_path: bool = True) -> List[str]:
         return self.list_all_files_in_directory(self._manager._dataset_path, skip_hidden_path)
 
-    def _list_all_files_in_kb(self, kb_id: Optional[str] = None) -> List[str]:
-        all_files = self._list_all_files_in_dataset()
-        if not kb_id:
-            return all_files
-        available_files = set(all_files)
-        kb_files = set()
-        segments = self._impl.store.get_segments(doc_ids=None, kb_id=kb_id)
-        for segment in segments:
-            try:
-                meta_dict = json.loads(segment['global_meta'])
-            except Exception as e:
-                lazyllm.LOG.warning(f'Convert to json failed. Exception : {str(e)}')
-                continue
-            if meta_dict.get(RAG_KB_ID, '') == kb_id and meta_dict.get(RAG_DOC_PATH, '') in available_files:
-                kb_files.add(meta_dict.get(RAG_DOC_PATH, ''))
-        return list(kb_files)
-
     @property
     def url(self):
         assert isinstance(self._manager._kbs, ServerModule), 'Document is not a service, please set `manager` to `True`'
@@ -318,8 +300,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def _impls(self): return self._manager
 
     @property
-    def _impl(self) -> DocImpl:
-        return self._manager.get_doc_by_kb_group(self._curr_group)
+    def _impl(self) -> DocImpl: return self._manager.get_doc_by_kb_group(self._curr_group)
 
     @property
     def manager(self): return self._manager._processor or self._manager

@@ -719,7 +719,7 @@ Args:
 
 add_example('GraphDocument', '''\
 >>> import lazyllm
->>> from lazyllm.tools import Document
+>>> from lazyllm.tools import Document, GraphDocument, GraphRetriever
 >>> doc = Document(dataset_path='your_doc_path', name='test_graphrag')
 >>> graph_document = GraphDocument(doc)
 >>> graph_document.start()
@@ -769,14 +769,14 @@ add_english_doc('GraphDocument.graphrag_index_status', '''
 Get the status of the current GraphRAG indexing task.
 
 **Returns:**\n
-- dict: A dictionary containing the indexing task status information:
+- dict: A dictionary containing the indexing task status information.
 ''')
 
 add_chinese_doc('GraphDocument.graphrag_index_status', '''
 获取当前 GraphRAG 索引任务的状态。
 
 **Returns:**\n
-- dict: : 一个包含索引任务状态信息的字典：
+- dict: 包含索引任务状态信息的字典。
 ''')
 
 add_english_doc('GraphDocument.query', '''
@@ -802,7 +802,7 @@ Args:
 add_english_doc('UrlGraphDocument', '''\
 A lightweight wrapper for querying remote GraphRAG services via URL.
 
-This class provides a simplified interface to interact with GraphRAG services that are already deployed and running.
+This class provides a simplified interface to query remote GraphRAG services that are already deployed and running.
 
 Args:
     graphrag_url (str): The base URL of the remote GraphRAG service endpoint. Should be in the format 'http://hostname:port'.
@@ -811,7 +811,7 @@ Args:
 add_chinese_doc('UrlGraphDocument', '''\
 用于通过 URL 查询远程 GraphRAG 服务的轻量级封装。
 
-此类提供了一个简化的接口，用于与已经部署并运行的 GraphRAG 服务进行交互。
+此类提供了一个简化的接口，用于向已经部署并运行的 GraphRAG 服务进行查询。
 
 Args:
     graphrag_url (str): 远程 GraphRAG 服务端点的基础 URL，应为 'http://hostname:port' 格式。
