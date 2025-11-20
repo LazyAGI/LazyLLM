@@ -2838,7 +2838,7 @@ Returns:
     None
 """)
 
-add_chinese_doc('rag.parsing_service.parsing_service.server.DocumentProcessor', """
+add_chinese_doc('rag.parsing_service.server.DocumentProcessor', """
 文档处理服务类，启动后可对外提供文档处理服务，支持文档的添加、删除和更新等操作。
 服务内部采取生产者-消费者模式，通过队列管理文档处理任务，支持异步处理文档任务，支持任务状态回调通知。
 
