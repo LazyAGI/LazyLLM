@@ -33,7 +33,7 @@ class MarkdownReader(LazyLLMReaderBase):
                 current_lines.append(line)
 
         markdown_tups.append((current_header, '\n'.join(current_lines)))
-        return [(key if key is None else re.sub(r'#', '', key).strip(), re.sub(r'<.*?>', '', value),)
+        return [(key.strip() if key is not None else None, re.sub(r'<.*?>', '', value))
                 for key, value in markdown_tups]
 
     def remove_images(self, content: str) -> str:

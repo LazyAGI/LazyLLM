@@ -207,6 +207,7 @@ class MarkdownSplitter(_TextSplitterBase):
 
         results = []
         path_stack = []
+        level_stack = []
 
         if heading_positions:
             first_heading_pos = heading_positions[0]
@@ -253,9 +254,11 @@ class MarkdownSplitter(_TextSplitterBase):
                 header = heading_line.strip('#').strip()
                 content = '\n'.join(lines[1:]).strip()
 
-                while len(path_stack) >= level:
+                while level_stack and level_stack[-1] >= level:
                     path_stack.pop()
+                    level_stack.pop()
                 path_stack.append(header)
+                level_stack.append(level)
 
             results.append(_MdSplit(
                 path=path_stack.copy(),

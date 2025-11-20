@@ -152,7 +152,7 @@ class _TextSplitterBase(NodeTransform):
                 cls._default_params = {}
             cls._default_params.update(kwargs)
 
-        LOG.info(f"{cls.__name__} default parameters updated: {kwargs}")
+        LOG.info(f'{cls.__name__} default parameters updated: {kwargs}')
 
     @classmethod
     def get_default(cls, param_name: Optional[str] = None):
@@ -170,7 +170,7 @@ class _TextSplitterBase(NodeTransform):
             if '_default_params' in cls.__dict__:
                 cls._default_params.clear()
 
-        LOG.info(f"{cls.__name__} default parameters reset")
+        LOG.info(f'{cls.__name__} default parameters reset')
 
     def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
                               allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
