@@ -102,6 +102,7 @@
 ::: lazyllm.module.OnlineEmbeddingModuleBase
     members:
         - forward
+        - run_embed_batch
 
 ::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoEmbedding
     options:
@@ -162,6 +163,14 @@
       members:
         - get_finetune_data 
 
+::: lazyllm.module.llms.onlinemodule.base.utils.OnlineModuleBase
+    members:
+    exclude-members:
+
+::: lazyllm.module.module.ModuleCache
+    members: [get, set, close]
+    exclude-members:
+
 ::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenModule
     options:
       members:
@@ -191,6 +200,26 @@
     options:
       members:
 
+::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIReranking
+    options:
+      members:
+
 ::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowTTSModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule
     options:
       members:

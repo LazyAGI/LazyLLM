@@ -10,7 +10,7 @@ def api_key():
 class TestOnlineChat(object):
     def test_online_chat(self, api_key):
         llm = lazyllm.OnlineChatModule(source='siliconflow', api_key=api_key)
-        response = llm("你好，介绍自己")
+        response = llm('你好，介绍自己')
         assert response is not None
         assert isinstance(response, str)
         assert len(response) > 0
@@ -26,19 +26,19 @@ class TestOnlineEmbedding(object):
 
     def test_online_rerank(self, api_key):
         rerank_model = lazyllm.OnlineEmbeddingModule(source='siliconflow', api_key=api_key, type='rerank')
-        result = rerank_model(['床前明月光', ['床前明月光', '疑是地上霜', '举头望明月', '低头思故乡']])
-        indices = [item['index'] for item in result]
-        scores = [item['relevance_score'] for item in result]
+        result = rerank_model('床前明月光', documents=['床前明月光', '疑是地上霜', '举头望明月', '低头思故乡'], top_n=4)
+        indices = [item[0] for item in result]  # item[0]: index
+        scores = [item[1] for item in result]  # item[1]: relevance_score
         assert len(result) == 4
         assert set(indices) == {0, 1, 2, 3}
         for item in result:
-            assert 0 <= item['relevance_score'] <= 1
+            assert 0 <= item[1] <= 1
         assert scores[0] == max(scores)
 
 class TestMultiModal(object):
     def setup_method(self):
-        self.test_text = "你好，这是一个测试。"
-        self.test_image_prompt = "画一只动漫风格的懒懒猫"
+        self.test_text = '你好，这是一个测试。'
+        self.test_image_prompt = '画一只动漫风格的懒懒猫'
 
     def _check_file_result(self, result, format):
         assert result is not None

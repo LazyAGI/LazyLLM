@@ -592,79 +592,6 @@ add_example('auto.AutoFinetune', '''\
 <lazyllm.llm.finetune type=AlpacaloraFinetune>
 ''')
 
-add_chinese_doc('auto.configure.core.configuration.AutoConfig', '''\
-自动配置类，用于管理和查询微调和部署的配置参数。
-
-Args:
-    finetune_file (str): 微调配置文件路径，CSV格式。
-    deploy_file (str): 部署配置文件路径，CSV格式。
-''')
-
-add_english_doc('auto.configure.core.configuration.AutoConfig', '''\
-Auto configuration class for managing and querying fine-tuning and deployment configuration parameters.
-
-Args:
-    finetune_file (str): Path to fine-tuning configuration file in CSV format.
-    deploy_file (str): Path to deployment configuration file in CSV format.
-''')
-
-add_chinese_doc('auto.configure.core.configuration.AutoConfig.query_finetune', '''\
-查询微调配置参数。
-
-Args:
-    gpu_type (str): GPU类型。
-    gpu_num (int): GPU数量。
-    model_name (str): 模型名称。
-    ctx_len (int): 上下文长度。
-    batch_size (int): 批处理大小。
-    lora_r (int): LoRA秩。
-
-**Returns:**\n
-- List[TrainingConfiguration]: 返回按TGS（训练吞吐量得分）降序排序的训练配置列表。
-''')
-
-add_english_doc('auto.configure.core.configuration.AutoConfig.query_finetune', '''\
-Query fine-tuning configuration parameters.
-
-Args:
-    gpu_type (str): GPU type.
-    gpu_num (int): Number of GPUs.
-    model_name (str): Model name.
-    ctx_len (int): Context length.
-    batch_size (int): Batch size.
-    lora_r (int): LoRA rank.
-
-**Returns:**\n
-- List[TrainingConfiguration]: Returns a list of training configurations sorted by TGS (Training Goodput Score) in descending order.
-''')
-
-add_chinese_doc('auto.configure.core.configuration.AutoConfig.query_deploy', '''\
-查询部署配置参数。
-
-Args:
-    gpu_type (str): GPU类型。
-    gpu_num (int): GPU数量。
-    model_name (str): 模型名称。
-    max_token_num (int): 最大token数量。
-
-**Returns:**\n
-- List[DeployConfiguration]: 返回按TGS（推理吞吐量得分）降序排序的部署配置列表。
-''')
-
-add_english_doc('auto.configure.core.configuration.AutoConfig.query_deploy', '''\
-Query deployment configuration parameters.
-
-Args:
-    gpu_type (str): GPU type.
-    gpu_num (int): Number of GPUs.
-    model_name (str): Model name.
-    max_token_num (int): Maximum number of tokens.
-
-**Returns:**\n
-- List[DeployConfiguration]: Returns a list of deployment configurations sorted by TGS (Throughput Goodput Score) in descending order.
-''')
-
-
 # ============= Deploy
 
 add_chinese_doc('LazyLLMDeployBase', '''\
@@ -2222,248 +2149,6 @@ Args:
 - str | bool: Full local path to the model, or False if the download fails
 ''')
 
-# Configure-Auto
-add_chinese_doc('auto.configure.core.Configurations', '''\
-配置管理类，用于管理一组规则（Rule），支持根据规则解析表头和数据值，并进行基于关键字段的查询。
-
-Args:
-    rules (List[Rule]): 规则列表，每个规则名称必须唯一。用于定义数据解析、类型转换及索引映射。
-''')
-
-add_english_doc('auto.configure.core.Configurations', '''\
-Configuration management class to handle a set of rules (Rule), supporting parsing of headers and data values, and lookup based on key fields.
-
-Args:
-    rules (List[Rule]): List of rules, each rule name must be unique. Defines data parsing, type conversion, and index mapping.
-''')
-
-add_chinese_doc('auto.configure.core.Configurations.parse_header', '''\
-解析表头，根据给定名称列表匹配已有规则，并确定关键规则和有序规则列表。
-
-Args:
-    names (List[str]): 表头名称列表，每个名称必须对应已有规则。
-
-**Returns:**\n
-- self (Configurations): 返回自身实例，便于链式调用
-''')
-
-add_english_doc('auto.configure.core.Configurations.parse_header', '''\
-Parse the header, match existing rules according to the given list of names, and determine key rules and the ordered rules list.
-
-Args:
-    names (List[str]): List of header names, each must correspond to an existing rule.
-
-**Returns:**\n
-- self (Configurations): Returns the instance itself for chaining
-''')
-
-add_chinese_doc('auto.configure.core.Configurations.parse_values', '''\
-解析数据值列表，将每行字符串值转换为对应规则的值，并生成按关键字段索引的有序值字典。
-
-Args:
-    values (Iterator[List[str]]): 数据值迭代器，每行是与表头对应的字符串列表。
-
-**Returns:**\n
-- self (Configurations): 返回自身实例，便于链式调用
-''')
-
-add_english_doc('auto.configure.core.Configurations.parse_values', '''\
-Parse the list of data values, convert each row of string values to the corresponding rule values, and generate an ordered values dictionary indexed by key fields.
-
-Args:
-    values (Iterator[List[str]]): Iterator of data rows, each row is a list of strings corresponding to the header.
-
-**Returns:**\n
-- self (Configurations): Returns the instance itself for chaining
-''')
-
-add_chinese_doc('auto.configure.core.Configurations.lookup', '''\
-根据关键字段的值进行查询，返回匹配的有序值列表，每个元素为字典形式映射规则名称与对应值。
-
-Args:
-    keys (List[Union[str, Any]]): 用于查询的关键字段值字典，键为规则名称，值为对应值。
-
-**Returns:**\n
-- List[Dict[str, Any]]: 匹配的结果列表，每个元素为规则名称到对应值的字典
-''')
-
-add_english_doc('auto.configure.core.Configurations.lookup', '''\
-Lookup based on the values of key fields, returning a list of matched ordered values, each element is a dictionary mapping rule names to their corresponding values.
-
-Args:
-    keys (List[Union[str, Any]]): Dictionary of key field values used for lookup, with rule names as keys and corresponding values.
-
-**Returns:**\n
-- List[Dict[str, Any]]: List of matched results, each element is a dictionary mapping rule names to values
-''')
-
-# Rule-Auto
-add_chinese_doc('auto.configure.core.Rule', '''\
-用于定义参数或字段的规则，支持在字符串、值和索引之间进行双向转换。  
-规则可以通过选项集合或类型推断方式构建，并提供校验功能，用于确保值在给定选项范围内。  
-同时支持不同的匹配模式（如线性匹配、二分查找等）。
-
-Args:
-    name (str): 规则名称，不能为空字符串。
-    options (Options[T] | None): 候选值集合，包含是否支持映射、索引以及匹配方式等信息。可选。
-    convert (Callable[[str], T] | None): 将字符串转换为目标值的函数。若未指定，将从 options 或类型自动推断。
-''')
-
-add_english_doc('auto.configure.core.Rule', '''\
-Defines a rule for parameters or fields, supporting bidirectional conversion between strings, values, and indices.  
-A rule can be constructed using an option set or type inference, and provides validation to ensure values fall within the allowed options.  
-It also supports different matching modes (e.g., linear search, binary search).
-
-Args:
-    name (str): Rule name, must not be an empty string.
-    options (Options[T] | None): Candidate values set, containing information about mapping, indexing, and matching modes. Optional.
-    convert (Callable[[str], T] | None): Function to convert strings to target values. If not provided, it will be inferred from options or value type.
-''')
-
-add_chinese_doc('auto.configure.core.Rule.from_indexed', '''\
-通过提供有序选项列表创建规则，启用映射和索引功能。适用于需要基于索引快速查找的场景。
-
-Args:
-    name (str): 规则名称。
-    options (List[T]): 候选值列表，不能为空。
-    matches (SearchMode): 匹配方式，默认为 ``SearchMode.LINEAR_EXACTLY``。
-
-**Returns:**\n
-- Rule[T]: 构建的规则对象
-''')
-
-add_english_doc('auto.configure.core.Rule.from_indexed', '''\
-Create a rule with an ordered option list, enabling mapping and indexing.  
-Suitable for scenarios requiring fast lookup by index.
-
-Args:
-    name (str): Rule name.
-    options (List[T]): Candidate values list, must not be empty.
-    matches (SearchMode): Matching mode, defaults to ``SearchMode.LINEAR_EXACTLY``.
-
-**Returns:**\n
-- Rule[T]: Constructed rule object
-''')
-
-add_chinese_doc('auto.configure.core.Rule.from_options', '''\
-通过提供候选值列表创建规则，可选择是否启用映射功能。  
-若 mapping 未指定，则在候选值全为字符串时自动启用。
-
-Args:
-    name (str): 规则名称。
-    options (List[T]): 候选值列表，不能为空。
-    mapping (bool | None): 是否启用映射，默认为 ``None``，此时由系统自动推断。
-    matches (SearchMode): 匹配方式，默认为 ``SearchMode.LINEAR_EXACTLY``。
-
-**Returns:**\n
-- Rule[T]: 构建的规则对象
-''')
-
-add_english_doc('auto.configure.core.Rule.from_options', '''\
-Create a rule from a candidate value list, with optional mapping support.  
-If mapping is not specified, it will be automatically enabled when all options are strings.
-
-Args:
-    name (str): Rule name.
-    options (List[T]): Candidate values list, must not be empty.
-    mapping (bool | None): Whether to enable mapping, defaults to ``None``, automatically inferred when not set.
-    matches (SearchMode): Matching mode, defaults to ``SearchMode.LINEAR_EXACTLY``.
-
-**Returns:**\n
-- Rule[T]: Constructed rule object
-''')
-
-add_chinese_doc('auto.configure.core.Rule.from_type', '''\
-通过指定值类型创建规则，系统将根据类型自动推断字符串转换函数。  
-适用于布尔型、整型和字符串类型的参数。
-
-Args:
-    name (str): 规则名称。
-    value_type (type): 值的类型，仅支持 ``bool``、``int`` 和 ``str``。
-
-**Returns:**\n
-- Rule[T]: 构建的规则对象
-''')
-
-add_english_doc('auto.configure.core.Rule.from_type', '''\
-Create a rule by specifying the value type.  
-The system will automatically infer the string-to-value converter based on the type.  
-Supports only ``bool``, ``int``, and ``str`` types.
-
-Args:
-    name (str): Rule name.
-    value_type (type): Type of the value, supports ``bool``, ``int``, and ``str`` only.
-
-**Returns:**\n
-- Rule[T]: Constructed rule object
-''')
-
-add_chinese_doc('auto.configure.core.Rule.convert_string_to_value', '''\
-将输入字符串转换为规则定义的值。  
-若定义了候选选项，则会额外检查转换后的值是否在候选范围内。
-
-Args:
-    source (str): 待转换的字符串。
-
-**Returns:**\n
-- T: 转换后的值
-''')
-
-add_english_doc('auto.configure.core.Rule.convert_string_to_value', '''\
-Convert the input string into a value defined by the rule.  
-If candidate options are defined, it additionally validates that the converted value exists in the option set.
-
-Args:
-    source (str): The input string to be converted.
-
-**Returns:**\n
-- T: Converted value
-''')
-
-add_chinese_doc('auto.configure.core.Rule.convert_value_to_index', '''\
-将值转换为在候选选项中的索引。  
-若定义了匹配函数，则优先使用匹配函数查找索引；否则尝试直接在候选列表中定位。
-
-Args:
-    value (T): 需要转换的值。
-
-**Returns:**\n
-- List[int]: 包含两个元素的列表，分别为匹配到的索引和候选项总数
-''')
-
-add_english_doc('auto.configure.core.Rule.convert_value_to_index', '''\
-Convert a value into its index within the candidate options.  
-If a match function is defined, it is used first; otherwise, the method tries to locate the value directly in the options list.
-
-Args:
-    value (T): The value to be converted.
-
-**Returns:**\n
-- List[int]: A two-element list containing the matched index and the total number of options
-''')
-
-add_chinese_doc('auto.configure.core.Rule.convert_index_to_value', '''\
-根据索引获取候选选项中的值。  
-若索引超出范围，将抛出异常。
-
-Args:
-    index (int): 候选列表中的索引。
-
-**Returns:**\n
-- T: 对应的候选值
-''')
-
-add_english_doc('auto.configure.core.Rule.convert_index_to_value', '''\
-Retrieve a value from the candidate options by its index.  
-Raises an error if the index is out of range.
-
-Args:
-    index (int): Index within the candidate options list.
-
-**Returns:**\n
-- T: The corresponding candidate value
-''')
-
 add_chinese_doc('LLMType', '''\
 LLMType 枚举类
 
@@ -2819,6 +2504,71 @@ add_example('EmptyFormatter', """\
 >>> print(f"ret: {ret!r}")
 'Based on your user input, here is the corresponding list of nested dictionaries:\n[\n    {\n        "title": "# Application of Artificial Intelligence in the Medical Field",\n        "describe": "Please provide a detailed description of the application of artificial intelligence in the medical field, including its benefits, challenges, and future prospects."\n    },\n    {\n        "title": "## AI in Medical Diagnosis",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in medical diagnosis, including specific examples of AI-based diagnostic tools and their impact on patient outcomes."\n    },\n    {\n        "title": "### AI in Medical Imaging",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in medical imaging, including the advantages of AI-based image analysis and its applications in various medical specialties."\n    },\n    {\n        "title": "### AI in Drug Discovery and Development",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in drug discovery and development, including the role of AI in identifying potential drug candidates and streamlining the drug development process."\n    },\n    {\n        "title": "## AI in Medical Research",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in medical research, including its applications in genomics, epidemiology, and clinical trials."\n    },\n    {\n        "title": "### AI in Genomics and Precision Medicine",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in genomics and precision medicine, including the role of AI in analyzing large-scale genomic data and tailoring treatments to individual patients."\n    },\n    {\n        "title": "### AI in Epidemiology and Public Health",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in epidemiology and public health, including its applications in disease surveillance, outbreak prediction, and resource allocation."\n    },\n    {\n        "title": "### AI in Clinical Trials",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in clinical trials, including its role in patient recruitment, trial design, and data analysis."\n    },\n    {\n        "title": "## AI in Medical Practice",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in medical practice, including its applications in patient monitoring, personalized medicine, and telemedicine."\n    },\n    {\n        "title": "### AI in Patient Monitoring",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in patient monitoring, including its role in real-time monitoring of vital signs and early detection of health issues."\n    },\n    {\n        "title": "### AI in Personalized Medicine",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in personalized medicine, including its role in analyzing patient data to tailor treatments and predict outcomes."\n    },\n    {\n        "title": "### AI in Telemedicine",\n        "describe": "Please provide a detailed description of how artificial intelligence is used in telemedicine, including its applications in remote consultations, virtual diagnoses, and digital health records."\n    },\n    {\n        "title": "## AI in Medical Ethics and Policy",\n        "describe": "Please provide a detailed description of the ethical and policy considerations surrounding the use of artificial intelligence in the medical field, including issues related to data privacy, bias, and accountability."\n    }\n]'
 """)
+
+# FunctionCallFormatter
+add_chinese_doc('formatter.formatterbase.FunctionCallFormatter', '''\
+函数调用格式化器，用于处理包含函数调用信息的消息字典。
+
+该格式化器专门用于处理函数调用场景下的模型输出，只提取字典中的 'role'、'content' 和 'tool_calls' 字段，过滤掉其他不需要的字段。
+
+主要用于 FunctionCall 等工具调用相关的功能模块。
+
+Args:
+    无参数，直接实例化使用。
+
+注意:
+    - 输入必须是字典类型，否则会抛出断言错误
+    - 只保留字典中存在的 'role'、'content'、'tool_calls' 字段
+''')
+
+add_english_doc('formatter.formatterbase.FunctionCallFormatter', '''\
+Function call formatter for processing message dictionaries containing function call information.
+
+This formatter is specifically designed for handling model outputs in function calling scenarios. It extracts only the 'role', 'content', and 'tool_calls' fields from the input dictionary, filtering out other unnecessary fields.
+
+Primarily used in function calling-related modules such as FunctionCall.
+
+Args:
+    No parameters, instantiate directly.
+
+Note:
+    - Input must be a dictionary type, otherwise an assertion error will be raised
+    - Only preserves 'role', 'content', and 'tool_calls' fields if they exist in the dictionary
+''')
+
+add_example('formatter.formatterbase.FunctionCallFormatter', '''\
+>>> from lazyllm.components.formatter.formatterbase import FunctionCallFormatter
+>>> formatter = FunctionCallFormatter()
+>>> 
+>>> # 处理包含函数调用的消息
+>>> msg = {
+...     'role': 'assistant',
+...     'content': 'I will call a function to get the weather.',
+...     'tool_calls': [
+...         {
+...             'id': 'call_123',
+...             'type': 'function',
+...             'function': {
+...                 'name': 'get_weather',
+...                 'arguments': '{"location": "Beijing"}'
+...             }
+...         }
+...     ],
+...     'other_field': 'will be filtered'
+... }
+>>> result = formatter.format(msg)
+>>> print(result)
+{'role': 'assistant', 'content': 'I will call a function to get the weather.', 'tool_calls': [{'id': 'call_123', 'type': 'function', 'function': {'name': 'get_weather', 'arguments': '{"location": "Beijing"}'}}]}
+>>> 
+>>> # 处理只包含部分字段的消息
+>>> msg2 = {
+...     'role': 'assistant',
+...     'content': 'Hello, how can I help you?'
+... }
+>>> result2 = formatter.format(msg2)
+>>> print(result2)
+{'role': 'assistant', 'content': 'Hello, how can I help you?'}
+''')
 
 # encode_query_with_filepaths
 add_chinese_doc('formatter.encode_query_with_filepaths', '''\

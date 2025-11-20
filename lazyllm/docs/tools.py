@@ -154,7 +154,7 @@ Args:
     doc_fields (Optional[Dict[str, DocField]]): Metadata field configuration for storing and retrieving document attributes.
     cloud (bool): Whether the dataset is stored in the cloud. Defaults to ``False``.
     doc_files (Optional[List[str]]): Temporary document files. When used, ``dataset_path`` must be ``None``. Only MapStore is supported in this mode.
-    processor (Optional[DocumentProcessor]): Document pre-processing module.
+    processor (Optional[DocumentProcessor]): Document processing service.
     display_name (Optional[str]): Human-readable display name for this document module. Defaults to the collection name.
     description (Optional[str]): Description of the document collection. Defaults to ``"algorithm description"``.
 ''')
@@ -175,7 +175,7 @@ Args:
     doc_fields (Optional[Dict[str, DocField]]): 元数据字段配置，用于存储和检索文档属性。
     cloud (bool): 是否为云端数据集。默认为 ``False``。
     doc_files (Optional[List[str]]): 临时文档文件列表。当使用此参数时，``dataset_path`` 必须为 ``None``，且仅支持 MapStore。
-    processor (Optional[DocumentProcessor]): 文档预处理模块。
+    processor (Optional[DocumentProcessor]): 文档处理服务。
     display_name (Optional[str]): 文档模块的可读显示名称。默认为集合名称。
     description (Optional[str]): 文档集合的描述。默认为 ``"algorithm description"``。
 ''')
@@ -659,6 +659,14 @@ add_example('Document.add_reader', '''
 Call the class YmlReader.
 >>> doc2._impl._reader.load_data(input_files=files)
 Call the function processYml.
+''')
+
+add_chinese_doc('Document.drop_algorithm', '''
+用于删除当前文档集合的在文档解析服务中注册的算法信息。
+''')
+
+add_english_doc('Document.drop_algorithm', '''
+Delete the algorithm information registered in the document parsing service for the current document collection.
 ''')
 
 add_english_doc('rag.readers.ReaderBase', '''
@@ -1362,28 +1370,59 @@ Args:
 ''')
 
 add_chinese_doc('rag.readers.MineruPDFReader', '''\
-用于通过 MinerU 服务解析 PDF 文件内容的模块。支持上传文件或通过 URL 方式调用解析接口，解析结果经过回调函数处理成文档节点列表。
+基于Mineru服务的PDF解析器，通过调用Mineru服务的API来解析PDF文件，支持丰富的文档结构识别。
 
 Args:
-    url (str): MineruPDFReader 服务的接口 URL。
-    upload_mode (bool): 是否采用文件上传模式调用接口，默认为 False，即通过 JSON 请求文件路径。
-    extract_table (bool): 是否提取表格，默认为 True。
-    extract_formula (bool): 是否提取公式，默认为 True。
-    split_doc (bool): 是否分割文档，默认为 True。
-    post_func (Optional[Callable]): 后处理函数。
+    url (str): Mineru服务的完整API端点URL。
+    backend (str, optional): 解析引擎类型。可选值：
+        - 'pipeline': 标准处理流水线
+        - 'vlm-transformers': 基于Transformers的视觉语言模型
+        - 'vlm-vllm-async-engine': 基于异步VLLM的视觉语言模型
+        默认为 'pipeline'。
+    upload_mode (bool, optional): 文件传输模式。
+        - True: 使用multipart/form-data上传文件内容
+        - False: 通过文件路径传递（需确保服务端可访问该路径）
+        默认为 False。
+    extract_table (bool, optional): 是否提取表格内容并转换为Markdown格式。默认为 True。
+    extract_formula (bool, optional): 是否提取公式文本。
+        - True: 提取为LaTeX等文本格式
+        - False: 将公式保留为图片
+        默认为 True。
+    split_doc (bool, optional): 是否将文档分割为多个DocNode节点。默认为 True。
+    clean_content (bool, optional): 是否清理冗余内容（页眉、页脚、页码等）。默认为 True。
+    post_func (Optional[Callable[[List[DocNode]], Any]], optional): 后处理函数，
+        接收DocNode列表作为参数，用于自定义结果处理。默认为 None。
 ''')
 
 add_english_doc('rag.readers.MineruPDFReader', '''\
-Module to parse PDF content via the MineruPDFReader service. Supports file upload or URL-based parsing, with a callback to process the parsed elements into document nodes.
+Reader for PDF files by calling the Mineru service's API.
 
 Args:
-    url (str): The MineruPDFReader service API URL.
-    upload_mode (bool): Whether to use file upload mode for the API call. Default is False, meaning JSON request with file path.
-    extract_table (bool): Whether to extract tables. Default is True.
-    extract_formula (bool): Whether to extract formulas. Default is True.
-    split_doc (bool): Whether to split the document. Default is True.
-    post_func (Optional[Callable]): Post-processing function.
+    url (str): The complete API endpoint URL for the Mineru service.
+    backend (str, optional): Type of parsing engine. Available options:
+        - 'pipeline': Standard processing pipeline
+        - 'vlm-transformers': Vision-language model based on Transformers
+        - 'vlm-vllm-async-engine': Vision-language model based on async VLLM engine
+        Defaults to 'pipeline'.
+    upload_mode (bool, optional): File transfer mode.
+        - True: Upload file content using multipart/form-data
+        - False: Pass by file path (ensure the server can access the path)
+        Defaults to False.
+    extract_table (bool, optional): Whether to extract table content and convert 
+        to Markdown format. Defaults to True.
+    extract_formula (bool, optional): Whether to extract formula text.
+        - True: Extract as text format (e.g., LaTeX)
+        - False: Keep formulas as images
+        Defaults to True.
+    split_doc (bool, optional): Whether to split the document into multiple 
+        DocNode nodes. Defaults to True.
+    clean_content (bool, optional): Whether to clean redundant content 
+        (headers, footers, page numbers, etc.). Defaults to True.
+    post_func (Optional[Callable[[List[DocNode]], Any]], optional): Post-processing 
+        function that takes a list of DocNodes as input for custom result handling. 
+        Defaults to None.
 ''')
+
 
 add_chinese_doc('rag.readers.MarkdownReader', '''\
 用于读取和解析 Markdown 文件的模块。支持去除超链接和图片，按标题和内容将 Markdown 划分成若干文本段落节点。
@@ -2042,6 +2081,208 @@ Args:
 - List[dict]: List of search results.
 ''')
 
+add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore', '''\
+OceanBase 存储类，用于存储和检索文档节点。
+
+Args:
+    uri (str): OceanBase 数据库的 URI。
+    user (str): OceanBase 数据库的用户名。
+    password (str): OceanBase 数据库的密码。
+    db_name (str): OceanBase 数据库的名称。
+    drop_old (bool): 是否删除旧的表。
+    index_kwargs (List[dict]): 索引配置列表。
+    client_kwargs (Dict): 客户端配置字典。
+    max_pool_size (int): 最大连接池大小。
+    normalize (bool): 是否规范化数据。
+    enable_fulltext_index (bool): 是否启用全文索引。
+''')
+
+add_english_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore', '''\
+OceanBase storage class for storing and retrieving document nodes.
+
+Args:
+    uri (str): URI of the OceanBase database.
+    user (str): Username of the OceanBase database.
+    password (str): Password of the OceanBase database.
+    db_name (str): Name of the OceanBase database.
+    drop_old (bool): Whether to drop old tables.
+    index_kwargs (List[dict]): List of index configurations.
+    client_kwargs (Dict): Dictionary of client configurations.
+    max_pool_size (int): Maximum pool size.
+    normalize (bool): Whether to normalize data.
+    enable_fulltext_index (bool): Whether to enable fulltext index.
+''')
+
+add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.connect', '''\
+连接到底层的 OceanBase 数据库。
+
+Args:
+    embed_dims (Dict[str, int]): 嵌入维度字典。
+    embed_datatypes (Dict[str, DataType]): 嵌入数据类型字典。
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据描述字典。
+    **kwargs: 其他参数。
+''')
+
+add_english_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.connect', '''\
+Connect to underlying OceanBase database.
+
+Args:
+    embed_dims (Dict[str, int]): Dictionary of embedding dimensions.
+    embed_datatypes (Dict[str, DataType]): Dictionary of embedding data types.
+    global_metadata_desc (Dict[str, GlobalMetadataDesc]): Dictionary of global metadata descriptions.
+    **kwargs: Additional arguments.
+''')
+
+add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.upsert', '''\
+向存储中插入或更新数据。
+
+Args:
+    collection_name (str): 集合名称。
+    data (List[dict]): 要插入或更新的数据列表，每个数据项都是一个字典。
+    range_part (Optional[RangeListPartInfo]): 范围分区信息，暂未实现分区功能。
+    **kwargs: 其他参数。
+
+**Returns:**\n
+- bool: 操作成功返回True，否则返回False。
+''')
+
+add_english_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.upsert', '''\
+Insert or update data in the stores.
+
+Args:
+    collection_name (str): Name of the collection.
+    data (List[dict]): List of data items to insert or update, each item is a dictionary.
+    range_part (Optional[RangeListPartInfo]): Range partition information, not implemented yet.
+    **kwargs: Additional arguments.
+
+**Returns:**\n
+- bool: Returns True if operation is successful, False otherwise.
+''')
+
+add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.delete', '''\
+从存储中删除数据。
+
+Args:
+    collection_name (str): 集合名称。
+    criteria (Optional[dict]): 删除条件，默认为None。
+    **kwargs: 其他参数。
+
+**Returns:**\n
+- bool: 操作成功返回True，否则返回False。
+''')
+
+add_english_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.delete', '''\
+Delete data from the stores.
+
+Args:
+    collection_name (str): Name of the collection.
+    criteria (Optional[dict]): Deletion criteria, defaults to None.
+    **kwargs: Additional arguments.
+
+**Returns:**\n
+- bool: Returns True if operation is successful, False otherwise.
+''')
+
+add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.get', '''\
+从存储中获取数据。
+
+Args:
+    collection_name (str): 集合名称。
+    criteria (Optional[dict]): 查询条件，默认为None。
+    **kwargs: 其他参数。
+
+**Returns:**\n
+- List[dict]: 返回符合条件的数据列表。
+''')
+
+add_english_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.get', '''\
+Retrieve data from the stores.
+
+Args:
+    collection_name (str): Name of the collection.
+    criteria (Optional[dict]): Query criteria, defaults to None.
+    **kwargs: Additional arguments.
+
+**Returns:**\n
+- List[dict]: List of matching data items.
+''')
+
+add_chinese_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.search', '''\
+在存储中搜索数据。
+
+Args:
+    collection_name (str): 集合名称。
+    query_embedding (Union[dict, List[float]]): 查询的向量表示。
+    topk (int): 返回的最大结果数量。
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): 过滤条件，默认为None。
+    embed_key (Optional[str]): 嵌入向量的键名，默认为None。
+    filter_str (Optional[str]): 过滤条件字符串，默认为None。
+    **kwargs: 其他参数。
+
+**Returns:**\n
+- List[dict]: 返回搜索结果列表。
+''')
+
+add_english_doc('rag.store.hybrid.oceanbase_store.OceanBaseStore.search', '''\
+Search data in the stores.
+
+Args:
+    collection_name (str): Name of the collection.
+    query_embedding (Union[dict, List[float]]): Vector representation of the query.
+    topk (int): Maximum number of results to return.
+    filters (Optional[Dict[str, Union[str, int, List, Set]]]): Filter conditions, defaults to None.
+    embed_key (Optional[str]): Key name for embedding vector, defaults to None.
+    filter_str (Optional[str]): Filter conditions string, defaults to None.
+    **kwargs: Additional arguments.
+
+**Returns:**\n
+- List[dict]: List of search results.
+''')
+
+add_chinese_doc('rag.store.hybrid.sensecore_store.SenseCoreStore', '''\
+SenseCore 混合存储实现，继承自 LazyLLMStoreBase，提供基于 SenseCore 平台的文档存储和检索功能。  
+该类支持文档的序列化存储、多模态内容处理、混合搜索等功能，通过 S3 存储和 SenseCore API 实现高效的文档管理。
+
+功能特性:
+    - 支持全功能存储能力（StoreCapability.ALL），包括插入、删除、查询、搜索等操作。
+    - 自动处理图像内容，将本地图像上传到 S3 存储并生成访问链接。
+    - 支持多模态搜索，包括文本和图像混合查询。
+    - 提供文档序列化和反序列化功能，支持复杂数据结构存储。
+    - 支持批量操作和异步任务处理，提高存储效率。
+    - 集成 S3 存储和 SenseCore API，实现云端文档管理。
+
+Args:
+    uri (str): SenseCore 服务的 API 地址，默认为空字符串。
+    **kwargs: 其他配置参数，包括 s3_config 和 image_url_config。
+
+配置参数:
+    s3_config (dict): S3 存储配置，包含 bucket_name、access_key、secret_access_key 等。
+    image_url_config (dict): 图像 URL 生成配置，用于多模态搜索。
+
+''')
+
+add_english_doc('rag.store.hybrid.sensecore_store.SenseCoreStore', '''\
+SenseCore hybrid storage implementation, inheriting from LazyLLMStoreBase, providing document storage and retrieval functionality based on the SenseCore platform.  
+This class supports document serialization storage, multimodal content processing, hybrid search, and other features, implementing efficient document management through S3 storage and SenseCore API.
+
+Key Features:
+    - Supports full storage capabilities (StoreCapability.ALL), including insert, delete, query, search operations.
+    - Automatically handles image content, uploading local images to S3 storage and generating access links.
+    - Supports multimodal search, including text and image hybrid queries.
+    - Provides document serialization and deserialization functionality, supporting complex data structure storage.
+    - Supports batch operations and asynchronous task processing for improved storage efficiency.
+    - Integrates S3 storage and SenseCore API for cloud-based document management.
+
+Args:
+    uri (str): SenseCore service API address, defaults to empty string.
+    **kwargs: Additional configuration parameters, including s3_config and image_url_config.
+
+Configuration Parameters:
+    s3_config (dict): S3 storage configuration, including bucket_name, access_key, secret_access_key, etc.
+    image_url_config (dict): Image URL generation configuration for multimodal search.
+
+''')
+
 add_chinese_doc('rag.default_index.DefaultIndex', '''\ 
 默认的索引实现，负责通过 embedding 和文本相似度在底层存储中查询、更新和删除文档节点。支持多种相似度度量方式，并在必要时对查询和节点进行 embedding 计算与更新。
 
@@ -2571,143 +2812,188 @@ Args:
     score: 相似度得分
 ''')
 
-add_chinese_doc('rag.doc_processor.DocumentProcessor', """
-文档处理器类，用于管理文档的添加、删除和更新操作。
+add_chinese_doc('rag.doc_node.DocNode.set_embedding', """\
+设置文档节点的嵌入向量。
+
+为文档节点设置指定键的嵌入向量值，用于后续的检索和相似度计算。
 
 Args:
-    server (bool): 是否以服务器模式运行。默认为True。
-    port (Optional[int]): 服务器端口号。默认为None。
-    url (Optional[str]): 远程服务URL。默认为None。
+    embed_key (str): 嵌入向量的键名
+    embed_value: 嵌入向量的值
 
-**说明:**
-- 支持异步处理文档任务
-- 提供文档元数据更新功能
-- 支持任务状态回调通知
-- 可配置数据库存储
+Returns:
+    None
 """)
 
-add_english_doc('rag.doc_processor.DocumentProcessor', """
-Document processor class for managing document addition, deletion and update operations.
+add_english_doc('rag.doc_node.DocNode.set_embedding', """\
+Set embedding vector for document node.
+
+Set the embedding vector value for specified key in document node, used for subsequent retrieval and similarity calculation.
 
 Args:
-    server (bool): Whether to run in server mode. Defaults to True.
-    port (Optional[int]): Server port number. Defaults to None.
-    url (Optional[str]): Remote service URL. Defaults to None.
+    embed_key (str): Key name of the embedding vector
+    embed_value: Value of the embedding vector
 
-**Notes:**
-- Supports asynchronous document task processing
-- Provides document metadata update functionality
-- Supports task status callback notifications
-- Configurable database storage
+Returns:
+    None
 """)
 
-add_example('rag.doc_processor.DocumentProcessor', """
+add_chinese_doc('rag.parsing_service.parsing_service.server.DocumentProcessor', """
+文档处理服务类，启动后可对外提供文档处理服务，支持文档的添加、删除和更新等操作。
+服务内部采取生产者-消费者模式，通过队列管理文档处理任务，支持异步处理文档任务，支持任务状态回调通知。
+
+Args:
+    port (Optional[int]): 服务端口号。默认为None，当为None时，将自动分配端口。
+    url (Optional[str]): 服务URL，提供服务URL时，模块可远程连接已经部署好的服务，无需再启动服务，默认为None。
+    num_workers (int): 工作线程数，默认为1，当为0时，不启动工作线程，仅启动服务。
+    db_config (Optional[Dict[str, Any]]): 用于配置SqlManager实现数据库连接，默认为None，当为None时，使用默认数据库配置。
+    launcher (Optional[Launcher]): 用于管理服务进程的Launcher实例，默认为None。
+    post_func (Optional[Callable]): 用于处理任务状态回调通知的函数，默认为None，当为None时，不进行任务状态回调通知,必须提供一个函数，函数签名如下：
+        def post_func(task_id: str, task_status: str = None, error_code: str = None, error_msg: str = None):
+            pass
+    path_prefix (Optional[str]): 用于配置上传文件存储路径前缀，默认为None。
+""")
+
+add_english_doc('rag.parsing_service.server.DocumentProcessor', """
+Document processing service class, after startup, it can provide document processing services, supporting document addition, deletion and update operations.
+The service internally adopts a producer-consumer model, manages document processing tasks through a queue, supports asynchronous processing of document tasks, and supports task status callback notifications.
+
+Args:
+    port (Optional[int]): Service port number. Defaults to None, when it is None, a random port will be assigned.
+    url (Optional[str]): Service URL, when the service URL is provided, the module can remotely connect to the already deployed service, without starting the service again, defaults to None.
+    num_workers (int): Number of worker threads, defaults to 1, when it is 0, the worker threads are not started, only the service is started.
+    db_config (Optional[Dict[str, Any]]): Used to configure the database connection information for SqlManager, defaults to None, when it is None, the default database configuration is used.
+    launcher (Optional[Launcher]): Used to manage the Launcher instance of the service process, defaults to None.
+    post_func (Optional[Callable]): Used to process the task status callback notification function, defaults to None, when it is None, the task status callback notification is not performed, must provide a function, the function signature is as follows:
+        def post_func(task_id: str, task_status: str = None, error_code: str = None, error_msg: str = None):
+            pass
+    path_prefix (Optional[str]): Used to configure the prefix of the uploaded file storage path, defaults to None.
+""")
+
+add_example('rag.parsing_service.server.DocumentProcessor', """
 ```python
-# Create local document processor
-processor = DocumentProcessor(server=False)
+# set db_config
+db_config = {
+    'db_type': 'sqlite',
+    'user': None,
+    'password': None,
+    'host': None,
+    'port': None,
+    'db_name': '/xxx/xxx/test.db',
+}
+# Create server and start it
+server = DocumentProcessor(port=28888, db_config=db_config, num_workers=4, post_func=post_func_sample)
+server.start()
 
-# Create server mode document processor
-processor = DocumentProcessor(server=True, port=8080)
+# start the document with server
+server = DocumentProcessor(port=28888, db_config=db_config, num_workers=4, post_func=post_func_sample)
+document = Document(dataset_path=None, name="algo_1", display_name="Algo_1",
+                    description="Algo_1 for testing", manager=server)
+document.start()
 
 # Create remote document processor
-processor = DocumentProcessor(url="http://remote-server:8080")
+remote_server = DocumentProcessor(url="http://remote-server:8080")
+document = Document(dataset_path=None, name="algo_1", display_name="Algo_1",
+                    description="Algo_1 for testing", manager=remote_server)
+document.start()
 ```
 """)
 
-add_chinese_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
-注册算法到文档处理器。
+add_chinese_doc('rag.parsing_service.server.DocumentProcessor.register_algorithm', """
+注册算法到文档处理服务，内部会自动将算法信息存储到数据库中，后续可使用该算法处理文档。
+该方法必须与 Document 模块配合使用，才能正常工作，一般无需自行调用。
 
 Args:
     name (str): 算法名称，作为唯一标识符。
-    store (StoreBase): 存储实例，用于管理文档数据。
+    store (_DocumentStore): _DocumentStore实例，用于管理文档数据。
     reader (DirectoryReader): 读取器实例，用于解析文档内容。
     node_groups (Dict[str, Dict]): 节点组配置信息。
     display_name (Optional[str]): 算法的显示名称，默认为None。
     description (Optional[str]): 算法的描述信息，默认为None。
-    force_refresh (bool): 是否强制刷新已存在的算法。默认为False。
-    **kwargs: 其他参数。
-
-**说明:**
-- 如果算法名称已存在且force_refresh为False，将跳过注册
-- 注册成功后可以使用该算法处理文档
 """)
 
-add_english_doc('rag.doc_processor.DocumentProcessor.register_algorithm', """
-Register an algorithm to the document processor.
+add_english_doc('rag.parsing_service.server.DocumentProcessor.register_algorithm', """
+Register an algorithm to the document processing service.
+The algorithm information will be automatically stored in the database, and can be used to process documents later.
+This method must be used with the Document module to work properly, and generally does not need to be called manually.
 
 Args:
     name (str): Algorithm name as unique identifier.
-    store (StoreBase): Storage instance for managing document data.
+    store (_DocumentStore): _DocumentStore instance for managing document data.
     reader (DirectoryReader): Reader instance for parsing document content.
     node_groups (Dict[str, Dict]): Node group configuration information.
     display_name (Optional[str]): Display name for the algorithm, defaults to None.
     description (Optional[str]): Description of the algorithm, defaults to None.
-    force_refresh (bool): Whether to force refresh existing algorithm. Defaults to False.
-    **kwargs: Additional arguments.
-
-**Notes:**
-- If algorithm name exists and force_refresh is False, registration will be skipped
-- After successful registration, the algorithm can be used to process documents
 """)
 
-add_example('rag.doc_processor.DocumentProcessor.register_algorithm', """
+add_chinese_doc('rag.parsing_service.server.DocumentProcessor.drop_algorithm', """
+从文档处理服务中移除指定算法， 该方法会自动从数据库中删除算法信息，后续无法使用该算法处理文档。
+
+Args:
+    name (str): 要移除的算法唯一标识。
+""")
+
+add_english_doc('rag.parsing_service.server.DocumentProcessor.drop_algorithm', """
+Remove specified algorithm from document processing service. This method will automatically delete the algorithm information from the database, and the algorithm will no longer be available for subsequent use.
+
+Args:
+    name (str): Unique identifier of the algorithm to remove.
+""")
+
+add_chinese_doc('rag.parsing_service.server.DocumentProcessor.start', '''
+启动文档处理服务，该方法会启动服务端口，并启动工作线程，后续可使用该服务处理文档。若初始化时设置了工作线程数大于0，则会启动工作线程，否则仅启动服务。
+''')
+
+add_english_doc('rag.parsing_service.server.DocumentProcessor.start', '''
+Start the document processing service.
+This method will start the service port and start the worker threads, and subsequent documents can be processed using this service.
+If the worker thread number is set to greater than 0 in the service, the worker threads will be started, otherwise only the service will be started.
+''')
+
+add_chinese_doc('rag.parsing_service.worker.DocumentProcessorWorker', '''
+文档处理消费者线程类，启动后将负责处理文档处理服务中的任务，并将其结果返回给服务。
+模块支持独立部署，也可直接在 DocumentProcessor 中通过设置 num_workers 参数自动启动工作线程。
+
+Args:
+    db_config (Optional[Dict[str, Any]]): 用于配置SqlManager实现数据库连接，默认为None，当为None时，使用默认数据库配置。
+    num_workers (int): 工作线程数，默认为1， 当大于1时，内部基于ray集群启动多个工作线程，否则仅启动一个工作线程。
+    port (Optional[int]): 服务端口号。默认为None，当为None时，将自动分配端口。
+''')
+
+add_english_doc('rag.parsing_service.worker.DocumentProcessorWorker', '''
+Document processing consumer thread class, after startup, it will be responsible for processing tasks in the document processing service, and returning the results to the service.
+The module supports independent deployment, or can automatically start worker threads by setting the num_workers parameter in DocumentProcessor.
+
+Args:
+    db_config (Optional[Dict[str, Any]]): Used to configure the database connection information for SqlManager, defaults to None, when it is None, the default database configuration is used.
+    num_workers (int): Number of worker threads, defaults to 1, when it is greater than 1, multiple worker threads are started internally based on the ray cluster, otherwise only one worker thread is started.
+    port (Optional[int]): Service port number. Defaults to None, when it is None, a random port will be assigned.
+''')
+
+add_chinese_doc('rag.parsing_service.worker.DocumentProcessorWorker.start', '''
+启动文档处理消费者线程，该方法会启动工作线程，并启动服务端口，后续可使用该服务处理文档。若初始化时设置了工作线程数大于1，则会启动多个工作线程，否则仅启动一个工作线程。
+''')
+
+add_english_doc('rag.parsing_service.worker.DocumentProcessorWorker.start', '''
+Start the document processing consumer thread. This method will start the worker threads and start the service port, and subsequent documents can be processed using this service.
+If the worker thread number is set to greater than 1 in the initialization, multiple worker threads will be started, otherwise only one worker thread will be started.
+''')
+
+add_example('rag.parsing_service.worker.DocumentProcessorWorker', '''
 ```python
-from lazyllm.rag import DocumentProcessor, FileStore, DirectoryReader
-
-# Create storage and reader instances
-store = FileStore(path="./data")
-reader = DirectoryReader()
-
-# Define node group configuration
-node_groups = {
-    "text": {"transform": "text", "parent": "root"},
-    "summary": {"transform": "summary", "parent": "text"}
+db_config = {
+    'db_type': 'sqlite',
+    'user': None,
+    'password': None,
+    'host': None,
+    'port': None,
+    'db_name': '/xxx/xxx/test.db',
 }
-
-# Register algorithm
-processor = DocumentProcessor()
-processor.register_algorithm(
-    name="pdf_processor",
-    store=store,
-    reader=reader,
-    node_groups=node_groups
-)
+# Create worker and start it
+worker = DocumentProcessorWorker(db_config=db_config, num_workers=2, port=28888)
+worker.start()
 ```
-""")
-
-add_chinese_doc('rag.doc_processor.DocumentProcessor.drop_algorithm', """
-从文档处理器中移除指定算法。
-
-Args:
-    name (str): 要移除的算法名称。
-    clean_db (bool): 是否清理相关数据库数据。默认为False。
-
-**说明:**
-- 如果算法名称不存在，将输出警告信息
-- 移除后该算法将无法继续使用
-""")
-
-add_english_doc('rag.doc_processor.DocumentProcessor.drop_algorithm', """
-Remove specified algorithm from document processor.
-
-Args:
-    name (str): Name of the algorithm to remove.
-    clean_db (bool): Whether to clean related database data. Defaults to False.
-
-**Notes:**
-- If algorithm name does not exist, a warning message will be output
-- After removal, the algorithm will no longer be available
-""")
-
-add_example('rag.doc_processor.DocumentProcessor.drop_algorithm', """
-```python
-# Remove algorithm
-processor.drop_algorithm("pdf_processor")
-
-# Remove algorithm and clean database
-processor.drop_algorithm("pdf_processor", clean_db=True)
-```
-""")
+''')
 
 add_english_doc('rag.dataReader.SimpleDirectoryReader', '''
 A modular document directory reader that inherits from ModuleBase, supporting reading various document formats from the file system and converting them into standardized DocNode objects.
@@ -2803,6 +3089,113 @@ Args:
 - List[DocNode]: List of parsed documents extracted from the file.
 ''')
 
+add_chinese_doc('rag.dataReader.SimpleDirectoryReader.find_extractor_by_file', '''
+根据文件名或后缀从文件读取器映射中选择合适的提取器（extractor）。
+
+该函数首先尝试使用文件后缀进行直接匹配（如 `*.txt`），
+若未命中，则会遍历 `file_extractor` 的模式键（如 `*.json`, `**/docs/*.md`），
+使用 `fnmatch` 进行模糊匹配，找到最符合的读取器。
+如果没有匹配项，将返回默认读取器 `DefaultReader`。
+
+Args:
+    input_file (Path): 输入文件路径。
+    file_extractor (Dict[str, Callable]): 文件模式到提取器的映射表。
+    pathm (PurePath): 路径处理模块，用于生成匹配模式，默认使用 `Path`。
+
+**Returns:**\n
+- Callable: 与文件匹配的提取器函数，若无匹配则返回 `DefaultReader`。
+''')
+
+add_english_doc('rag.dataReader.SimpleDirectoryReader.find_extractor_by_file', '''
+Select the appropriate file extractor based on filename or suffix.
+
+This function first attempts to match by file extension (e.g., `*.txt`),
+and if no match is found, it iterates through the `file_extractor` mapping,
+using `fnmatch` for wildcard-based pattern matching (e.g., `*.json`, `**/docs/*.md`).
+If no extractor matches, it falls back to the `DefaultReader`.
+
+Args:
+    input_file (Path): Path to the input file.
+    file_extractor (Dict[str, Callable]): Mapping of filename patterns to extractor functions.
+    pathm (PurePath): Path handling module used to construct pattern paths. Defaults to `Path`.
+
+**Returns:**\n
+- Callable: The extractor function matching the file, or `DefaultReader` if none found.
+''')
+
+add_chinese_doc('rag.dataReader.SimpleDirectoryReader.get_default_reader', '''
+根据文件扩展名获取默认的文件读取器（Reader）。
+
+该函数通过文件扩展名（如 `.txt`、`.json`）在默认读取器映射表中查找对应的 Reader，
+若未以 `"*."` 开头，会自动补全后缀格式（例如 `"txt"` → `"*.txt"`）。
+常见的默认 Reader 包括纯文本读取器、JSON 读取器、Markdown 读取器等。
+
+Args:
+    file_ext (str): 文件扩展名或匹配模式（例如 `"txt"` 或 `"*.json"`）。
+
+**Returns:**\n
+- Callable[[Path, Dict], List[DocNode]]: 与该扩展名对应的读取器函数，若未匹配则返回 `None`。
+''')
+
+add_english_doc('rag.dataReader.SimpleDirectoryReader.get_default_reader', '''
+Retrieve the default file reader (Reader) based on file extension.
+
+This function looks up the default reader mapping using the file extension
+(e.g., `.txt`, `.json`).  
+If the extension does not start with `"*."`, it automatically prepends it
+(e.g., `"txt"` → `"*.txt"`).  
+Common readers include plain text, JSON, and Markdown readers.
+
+Args:
+    file_ext (str): File extension or matching pattern (e.g., `"txt"` or `"*.json"`).
+
+**Returns:**\n
+- Callable[[Path, Dict], List[DocNode]]: The reader function associated with the extension, or `None` if not found.
+''')
+
+add_chinese_doc('rag.dataReader.SimpleDirectoryReader.add_post_action_for_default_reader', '''
+为默认 Reader 添加后处理函数（Post Action）。
+
+该方法允许在默认文件读取器（Reader）完成文档解析后，对生成的 `DocNode` 
+进行自定义后处理（如文本清洗、节点拆分、结构调整等）。  
+若指定的扩展名没有默认读取器，会抛出 `KeyError` 异常。
+
+后处理函数可以是以下类型之一：
+
+1. 继承自 `NodeTransform` 的类；
+2. 普通函数，接收一个 `DocNode` 并返回修改后的 `DocNode` 或列表；
+3. 可实例化的类型，会自动创建实例。
+
+Args:
+    file_ext (str): 文件扩展名或匹配模式（例如 `"*.txt"`）。
+    f (Callable[[DocNode], Union[DocNode, List[DocNode]]]): 后处理函数或节点转换类。
+
+**Raises:**\n
+- KeyError: 当指定文件扩展名没有默认 Reader 时抛出。
+''')
+
+add_english_doc('rag.dataReader.SimpleDirectoryReader.add_post_action_for_default_reader', '''
+Add a post-processing action (Post Action) for a default Reader.
+
+This method allows attaching a custom post-processing function to the default
+file reader (Reader), enabling transformation of parsed `DocNode` objects after
+initial loading (e.g., text cleaning, node splitting, or structural adjustments).  
+If the given file extension has no default reader, a `KeyError` is raised.
+
+The post-processing function `f` can be:
+
+1. A subclass of `NodeTransform`;
+2. A callable that takes a `DocNode` and returns a modified `DocNode` or a list;
+3. A class type, which will be instantiated automatically.
+
+Args:
+    file_ext (str): File extension or matching pattern (e.g., `"*.txt"`).
+    f (Callable[[DocNode], Union[DocNode, List[DocNode]]]): Post-processing function or node transform class.
+
+**Raises:**\n
+- KeyError: If the specified file extension has no default reader.
+''')
+
 add_english_doc('rag.dataReader.FileReader', '''
 File content reader whose main function is to convert various input file formats into concatenated plain text content.
 
@@ -2864,6 +3257,36 @@ reader = CustomReader(return_trace=True)
 documents = reader.forward(file_paths=["doc1.txt", "doc2.txt"])
 ''')
 
+add_example('rag.readers.MineruPDFReader', '''\
+from lazyllm.tools.rag.readers import MineruPDFReader
+reader = MineruPDFReader("http://0.0.0.0:8888")  # Mineru server address
+nodes = reader("path/to/pdf")
+''')
+add_chinese_doc('rag.readers.readerBase.TxtReader', '''\
+TxtReader 类用于从文本文件中加载内容，并将其封装为 `DocNode` 对象列表。
+
+该类继承自 `LazyLLMReaderBase`，主要功能包括：
+
+- 支持指定文本编码读取文件；
+- 可选返回加载过程的跟踪信息；
+
+Args:
+    encoding (str): 文件读取的文本编码，默认值为 'utf-8'。
+    return_trace (bool): 是否返回加载过程的跟踪信息，默认值为 True。
+''')
+
+add_english_doc('rag.readers.readerBase.TxtReader', '''\
+The TxtReader class loads content from text files and wraps it into a list of `DocNode` objects.
+
+This class inherits from `LazyLLMReaderBase` and mainly provides:
+
+- Support for reading files with a specified text encoding;
+- Optional tracing information of the loading process;
+
+Args:
+    encoding (str): Text encoding for reading files, default is 'utf-8'.
+    return_trace (bool): Whether to return trace information of the loading process, default is True.
+''')
 
 add_chinese_doc('rag.doc_node.QADocNode', '''\
 问答文档节点类，用于存储问答对数据。
@@ -6014,7 +6437,7 @@ add_example('FunctionCall', """\
 """)
 
 add_chinese_doc('FunctionCallAgent', '''\
-FunctionCallAgent是一个使用工具调用方式进行完整工具调用的代理，即回答用户问题时，LLM如果需要通过工具获取外部知识，就会调用工具，并将工具的返回结果反馈给LLM，最后由LLM进行汇总输出。
+(FunctionCallAgent 已被废弃，将在未来版本中移除。请使用 ReactAgent 代替。) FunctionCallAgent是一个使用工具调用方式进行完整工具调用的代理，即回答用户问题时，LLM如果需要通过工具获取外部知识，就会调用工具，并将工具的返回结果反馈给LLM，最后由LLM进行汇总输出。
 
 Args:
     llm (ModuleBase): 要使用的LLM，可以是TrainableModule或OnlineChatModule。
@@ -6025,7 +6448,7 @@ Args:
 ''')
 
 add_english_doc('FunctionCallAgent', '''\
-FunctionCallAgent is an agent that uses the tool calling method to perform complete tool calls. That is, when answering uesr questions, if LLM needs to obtain external knowledge through the tool, it will call the tool and feed back the return results of the tool to LLM, which will finally summarize and output them.
+(FunctionCallAgent is deprecated and will be removed in a future version. Please use ReactAgent instead.) FunctionCallAgent is an agent that uses the tool calling method to perform complete tool calls. That is, when answering uesr questions, if LLM needs to obtain external knowledge through the tool, it will call the tool and feed back the return results of the tool to LLM, which will finally summarize and output them.
 
 Args:
     llm (ModuleBase): The LLM to be used can be either TrainableModule or OnlineChatModule.
@@ -6093,36 +6516,6 @@ add_example('FunctionCallAgent', """\
 >>> print(res)
 'Hello! How can I assist you today?'
 """)
-
-# actors/function_call_formatter.py
-add_chinese_doc('FunctionCallFormatter', '''\
-用于解析函数调用结构消息的格式化器。
-
-该类继承自 `JsonFormatter`，用于从包含工具调用信息的消息字符串中提取 JSON 结构，并在需要时通过全局分隔符拆分内容。
-
-私有方法:
-    _load(msg)
-        解析输入的消息字符串，提取其中的 JSON 格式的工具调用结构（如果存在）。
-''')
-
-add_english_doc('FunctionCallFormatter', '''\
-Formatter for parsing structured function call messages.
-
-This class extends `JsonFormatter` and is responsible for extracting JSON-based tool call structures from a mixed message string, optionally separating them using a global delimiter.
-
-Private Method:
-    _load(msg)
-        Parses the input message string and extracts JSON-formatted tool calls, if present.
-''')
-
-add_example('FunctionCallFormatter', ['''\
->>> from lazyllm.components import FunctionCallFormatter
->>> formatter = FunctionCallFormatter()
->>> msg = "Please call this tool. <TOOL> [{\\"name\\": \\"search\\", \\"args\\": {\\"query\\": \\"weather\\"}}]"
->>> result = formatter._load(msg)
->>> print(result)
-... [{'name': 'search', 'args': {'query': 'weather'}}, 'Please call this tool. ']
-'''])
 
 add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
@@ -8461,7 +8854,7 @@ Args:
     kb_group_name (Optional[str]): 知识库组名称，默认为默认组名。
     global_metadata_desc (Dict[str, GlobalMetadataDesc]): 全局元数据描述。
     store (Optional[Union[Dict, LazyLLMStoreBase]]): 存储实例或配置。
-    processor (Optional[DocumentProcessor]): 文档处理器。
+    processor (Optional[DocumentProcessor]): 文档处理服务。
     algo_name (Optional[str]): 算法名称。
     display_name (Optional[str]): 显示名称。
     description (Optional[str]): 描述信息。
@@ -8477,7 +8870,7 @@ Args:
     kb_group_name (Optional[str]): Knowledge base group name, defaults to default group name.
     global_metadata_desc (Dict[str, GlobalMetadataDesc]): Global metadata description.
     store (Optional[Union[Dict, LazyLLMStoreBase]]): Storage instance or configuration.
-    processor (Optional[DocumentProcessor]): Document processor.
+    processor (Optional[DocumentProcessor]): Document processing service.
     algo_name (Optional[str]): Algorithm name.
     display_name (Optional[str]): Display name.
     description (Optional[str]): Description information.
@@ -8751,6 +9144,14 @@ Clear cache.
 
 Args:
     group_names (Optional[List[str]]): List of group names to clear cache for, defaults to None for clearing all cache.
+''')
+
+add_chinese_doc('rag.doc_impl.DocImpl.drop_algorithm', '''\
+删除当前文档集合的在文档解析服务中注册的算法信息。
+''')
+
+add_english_doc('rag.doc_impl.DocImpl.drop_algorithm', '''\
+Delete the algorithm information registered in the document parsing service for the current document collection.
 ''')
 
 add_services_chinese_doc('client.ClientBase', '''\

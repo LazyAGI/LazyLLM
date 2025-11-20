@@ -21,6 +21,8 @@ def reset_env(func):
         'LAZYLLM_SENSENOVA_API_KEY',
         'LAZYLLM_SENSENOVA_SECRET_KEY',
         'LAZYLLM_DOUBAO_API_KEY',
+        'LAZYLLM_SILICONFLOW_API_KEY',
+        'LAZYLLM_MINIMAX_API_KEY',
     ]
 
     @wraps(func)
@@ -37,7 +39,6 @@ def reset_env(func):
         return result
     return wrapper
 
-@pytest.mark.skipif(os.getenv('LAZYLLM_SKIP_GPU_TEST', 'True'), reason='NEED GPU!')
 class TestDeploy(object):
 
     def setup_method(self):
@@ -48,6 +49,10 @@ class TestDeploy(object):
         self.append_text = False
         self.webs = []
         self.clients = []
+        os.environ['LAZYLLM_DEPLOY_SKIP_CHECK_KW'] = 'True'
+
+    def teardown_method(self):
+        os.environ.pop('LAZYLLM_DEPLOY_SKIP_CHECK_KW', None)
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
@@ -84,6 +89,9 @@ class TestDeploy(object):
         self.clients.append(client)
         return web, client
 
+    @pytest.mark.run_on_change(
+        'lazyllm/components/deploy/lightllm.py',
+        'lazyllm/module/llms/trainablemodule.py')
     def test_deploy_lightllm(self):
         m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.lightllm)
         m.evalset(self.inputs)
@@ -91,6 +99,13 @@ class TestDeploy(object):
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
 
+    def test_deploy_kw_check(self):
+        vllm = lazyllm.deploy.vllm(test_key='test')
+        assert 'test_key' in vllm.kw
+
+    @pytest.mark.run_on_change(
+        'lazyllm/components/auto/autodeploy.py',
+        'lazyllm/module/llms/trainablemodule.py')
     def test_deploy_auto(self):
         m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.AutoDeploy)
         assert m._deploy_type != lazyllm.deploy.AutoDeploy
@@ -99,6 +114,10 @@ class TestDeploy(object):
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
 
+    @pytest.mark.run_on_change(
+        'lazyllm/components/auto/autodeploy.py',
+        'lazyllm/components/auto/auto_helper.py',
+        'lazyllm/module/llms/trainablemodule.py')
     def test_deploy_auto_without_calling_method(self):
         m = lazyllm.TrainableModule(self.model_path, '')
         m.evalset(self.inputs)
@@ -106,6 +125,9 @@ class TestDeploy(object):
         m.eval()
         assert len(m.eval_result) == len(self.inputs)
 
+    @pytest.mark.run_on_change(
+        'lazyllm/components/deploy/text_to_speech/bark.py',
+        'lazyllm/module/llms/trainablemodule.py')
     def test_bark(self):
         m = lazyllm.TrainableModule('bark')
         m.update_server()

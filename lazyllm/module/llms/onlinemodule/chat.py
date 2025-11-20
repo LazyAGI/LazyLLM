@@ -1,5 +1,6 @@
 import lazyllm
 from typing import Any, Dict, Optional
+from .map_model_type import get_model_type
 from .base import OnlineChatModuleBase
 from .supplier.openai import OpenAIModule
 from .supplier.glm import GLMModule
@@ -8,7 +9,8 @@ from .supplier.sensenova import SenseNovaModule
 from .supplier.qwen import QwenModule
 from .supplier.doubao import DoubaoModule
 from .supplier.deepseek import DeepSeekModule
-from .supplier.sliconflow import SiliconFlowModule
+from .supplier.siliconflow import SiliconFlowModule
+from .supplier.minimax import MinimaxModule
 
 class _ChatModuleMeta(type):
 
@@ -26,7 +28,8 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
               'qwen': QwenModule,
               'doubao': DoubaoModule,
               'deepseek': DeepSeekModule,
-              'siliconflow': SiliconFlowModule}
+              'siliconflow': SiliconFlowModule,
+              'minimax': MinimaxModule}
 
     @staticmethod
     def _encapsulate_parameters(base_url: str, model: str, stream: bool, return_trace: bool, **kwargs) -> Dict[str, Any]:
@@ -41,8 +44,15 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
     def __new__(self, model: str = None, source: str = None, base_url: str = None, stream: bool = True,
                 return_trace: bool = False, skip_auth: bool = False, type: Optional[str] = None, **kwargs):
         if model in OnlineChatModule.MODELS.keys() and source is None: source, model = model, source
+        if type is None and model:
+            type = get_model_type(model)
+        if type in ['embed', 'rerank', 'cross_modal_embed']:
+            raise AssertionError(f'\'{model}\' should use OnlineEmbeddingModule')
+        elif type in ['sst', 'tts', 'sd']:
+            raise AssertionError(f'\'{model}\' should use OnlineMultiModalModule')
         params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace,
-                                                          skip_auth=skip_auth, type=type, **kwargs)
+                                                          skip_auth=skip_auth, type=type.upper() if type else None,
+                                                          **kwargs)
 
         if skip_auth:
             source = source or 'openai'

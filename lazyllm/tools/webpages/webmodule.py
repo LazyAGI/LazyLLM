@@ -258,12 +258,22 @@ class WebModule(ModuleBase):
             # TODO: move context to trainable module
             files = []
             chat_history[-1][1], log_history = '', []
-            for file in chat_history[::-1]:
-                if file[-1]: break  # not current chat
-                if isinstance(file[0], (tuple, list)):
-                    files.append(file[0][0])
-                elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):  # Just for pytest
-                    files.append(file[0][13:])
+            # Extract files based on context mode
+            if use_context:
+                # When using context, extract all files from entire history
+                for file in chat_history[::-1]:
+                    if isinstance(file[0], (tuple, list)):
+                        files.append(file[0][0])
+                    elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):
+                        files.append(file[0][13:])
+            else:
+                # When not using context, only extract files from current conversation turn
+                for file in chat_history[::-1]:
+                    if file[-1]: break  # not current chat
+                    if isinstance(file[0], (tuple, list)):
+                        files.append(file[0][0])
+                    elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):
+                        files.append(file[0][13:])
             if isinstance(chat_history[-1][0], str):
                 string = chat_history[-1][0]
             else:
@@ -285,7 +295,18 @@ class WebModule(ModuleBase):
                     assert isinstance(module, ModuleBase)
                     globals['lazyllm_files'][module._module_id] = []
             input = string
-            history = chat_history[:-1] if use_context and len(chat_history) > 1 else list()
+            # Filter out file-only entries from history and ensure all user messages are strings
+            if use_context and len(chat_history) > 1:
+                history = []
+                for h in chat_history[:-1]:
+                    # Skip entries where user message is a file (list/tuple format)
+                    if isinstance(h[0], (list, tuple)):
+                        continue
+                    # Only include entries with both user and assistant messages
+                    if h[0] and h[1]:
+                        history.append([h[0], h[1]])
+            else:
+                history = list()
 
             for k, v in zip(self.ckeys, args):
                 if k[0] not in globals['global_parameters']: globals['global_parameters'][k[0]] = dict()
@@ -297,7 +318,9 @@ class WebModule(ModuleBase):
                     globals['chat_history'][h] = history
 
             if FileSystemQueue().size() > 0: FileSystemQueue().clear()
-            kw = dict(stream_output=stream_output) if isinstance(self.m, (TrainableModule, OnlineChatModule)) else {}
+            kw = dict(stream_output=stream_output, lazyllm_files=files)\
+                if isinstance(self.m, (TrainableModule, OnlineChatModule)) else {}
+            LOG.info(f'get input: {input} and kw: {kw}')
             func_future = self.pool.submit(self.m, input, **kw)
             while True:
                 if value := FileSystemQueue().dequeue():

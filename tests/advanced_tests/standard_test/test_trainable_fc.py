@@ -5,7 +5,7 @@ import wikipedia
 
 import lazyllm
 from lazyllm import fc_register, deploy
-from lazyllm.tools import FunctionCall, FunctionCallAgent, ReactAgent, PlanAndSolveAgent, ReWOOAgent
+from lazyllm.tools import FunctionCall, ReactAgent, PlanAndSolveAgent, ReWOOAgent
 from lazyllm.launcher import cleanup
 
 @fc_register('tool')
@@ -151,7 +151,7 @@ def exe_trainable_parallel_function_call(request):
     if not query or not tools:
         raise ValueError(f'query: {query} and tools: {tools} cannot be empty.')
 
-    agent = FunctionCallAgent(llm, tools)
+    agent = ReactAgent(llm, tools)
     print(f'\nStarting test 【{llm}】parallel function calling')
     ret = agent(query)
     yield ret
@@ -163,13 +163,14 @@ def exe_trainable_advance_agent(request):
     tools = params.get('tools', [])
     query = params.get('query', '')
     Agent = params.get('Agent', None)
+    return_last_tool_calls = params.get('return_last_tool_calls', False)
     llm = request.cls.llm
     if not query or not tools:
         raise ValueError(f'query: {query} and tools: {tools} cannot be empty.')
     if Agent is None:
         raise ValueError(f'Agent: {Agent} must be a valid value.')
 
-    agent = Agent(llm, tools)
+    agent = Agent(llm, tools, return_last_tool_calls=return_last_tool_calls)
     print(f'\nStarting test 【{llm}】 {Agent}.')
     ret = agent(query)
     yield ret
@@ -181,13 +182,12 @@ squery2 = 'What will the weather be like in celsius in Paris tomorrow?'
 mquery1 = 'What\'s the weather like today in celsius in Tokyo and Paris.'
 mquery2 = 'What will the weather be like in fahrenheit in san francisco and beijing tomorrow?'
 agentQuery = '计算 20*(45+23)*4, Calculate step by step.'
-rewooquery = '美国历届总统就职时年龄最大的是谁'
-rewooquery2 = '3是奇数还是偶数？'
+agentQuery2 = '美国历届总统就职时年龄最大的是谁'
 
 class TestTrainableFunctionCall(object):
     @classmethod
     def setup_class(cls):
-        cls.llm = lazyllm.TrainableModule('internlm2-chat-7b').deploy_method(
+        cls.llm = lazyllm.TrainableModule('Qwen2.5-32B-Instruct').deploy_method(
             deploy.vllm).start()
 
     @classmethod
@@ -200,7 +200,7 @@ class TestTrainableFunctionCall(object):
                              indirect=True)
     def test_trainable_single_function_call(self, exe_trainable_single_function_call):
         ret = exe_trainable_single_function_call
-        assert isinstance(ret, list)
+        assert isinstance(ret, dict)
 
     @pytest.mark.parametrize('exe_trainable_parallel_function_call',
                              [{'tools': tools, 'query': mquery1},
@@ -211,17 +211,23 @@ class TestTrainableFunctionCall(object):
         assert isinstance(ret, str)
 
     @pytest.mark.parametrize('exe_trainable_advance_agent',
-                             [{'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, 'Agent': ReactAgent},
+                             [{'tools': ['WikipediaWorker', 'LLMWorker'], 'query': agentQuery2, 'Agent': ReactAgent},
                               {'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, 'Agent': PlanAndSolveAgent},
-                              {'tools': ['WikipediaWorker', 'LLMWorker'], 'query': rewooquery, 'Agent': ReWOOAgent}],
+                              {'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, 'Agent': ReWOOAgent}],
                              indirect=True)
     def test_trainable_advance_agent(self, exe_trainable_advance_agent):
         ret = exe_trainable_advance_agent
         assert 'retrying' not in ret
 
     @pytest.mark.parametrize('exe_trainable_advance_agent',
-                             [{'tools': ['add_tool', 'is_even_or_odd'], 'query': rewooquery2, 'Agent': ReWOOAgent}],
+                             [{'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, 'Agent': ReactAgent,
+                               'return_last_tool_calls': True},
+                              {'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, 'Agent': PlanAndSolveAgent,
+                               'return_last_tool_calls': True},
+                              {'tools': ['multiply_tool', 'add_tool'], 'query': agentQuery, 'Agent': ReWOOAgent,
+                               'return_last_tool_calls': True}],
                              indirect=True)
-    def test_rewooagent_output_format(self, exe_trainable_advance_agent):
+    def test_return_last_tool_calls(self, exe_trainable_advance_agent):
         ret = exe_trainable_advance_agent
-        assert '奇数' in ret or 'odd' in ret
+        assert isinstance(ret, list) and len(ret) > 0
+        assert 'function' in ret[0] and 'tool_call_result' in ret[0]

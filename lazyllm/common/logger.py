@@ -14,21 +14,23 @@ from .common import call_once, once_flag
 
 from loguru import logger
 
-lazyllm.config.add('debug', bool, False, 'DEBUG')
-lazyllm.config.add('log_name', str, 'lazyllm', 'LOG_NAME')
-lazyllm.config.add('log_level', str, 'INFO', 'LOG_LEVEL')
+lazyllm.config.add('debug', bool, False, 'DEBUG', description='Whether to enable debug mode.')
+lazyllm.config.add('log_name', str, 'lazyllm', 'LOG_NAME', description='The name of the log file.')
+lazyllm.config.add('log_level', str, 'INFO', 'LOG_LEVEL', description='The level of the log.')
 lazyllm.config.add(
     'log_format',
     str,
     '{process}: <green>{time:YYYY-MM-DD HH:mm:ss}</green> {extra[name]} '
     '<level>{level}</level>: ({name}:{line}) <cyan>{message}</cyan>',
     'LOG_FORMAT',
-)
-lazyllm.config.add('log_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'logs'), 'LOG_DIR')
-lazyllm.config.add('log_file_level', str, 'ERROR', 'LOG_FILE_LEVEL')
-lazyllm.config.add('log_file_size', str, '4 MB', 'LOG_FILE_SIZE')
-lazyllm.config.add('log_file_retention', str, '7 days', 'LOG_FILE_RETENTION')
-lazyllm.config.add('log_file_mode', str, 'merge', 'LOG_FILE_MODE')
+    description='The format of the log.')
+lazyllm.config.add('log_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'logs'), 'LOG_DIR',
+                   description='The directory of the log file.')
+lazyllm.config.add('log_file_level', str, 'ERROR', 'LOG_FILE_LEVEL', description='The level of the log file.')
+lazyllm.config.add('log_file_size', str, '4 MB', 'LOG_FILE_SIZE', description='The size of the log file.')
+lazyllm.config.add('log_file_retention', str, '7 days', 'LOG_FILE_RETENTION',
+                   description='The retention of the log file.')
+lazyllm.config.add('log_file_mode', str, 'merge', 'LOG_FILE_MODE', description='The mode of the log file.')
 
 
 class _Log:
