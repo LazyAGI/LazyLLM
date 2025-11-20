@@ -1,5 +1,4 @@
 import os
-
 from typing import Callable, Optional, Dict, Union, List
 from functools import cached_property
 import lazyllm
@@ -19,6 +18,7 @@ from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
 import copy
 import functools
+import weakref
 
 
 class CallableDict(dict):
@@ -169,13 +169,51 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                                               display_name=display_name, description=description)
             self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
+        self._graph_document: weakref.ref = None
 
-    def _list_all_files_in_dataset(self) -> List[str]:
+    @staticmethod
+    def list_all_files_in_directory(
+        dataset_path: str, skip_hidden_path: bool = True, recursive: bool = True
+    ) -> List[str]:
         files_list = []
-        for root, _, files in os.walk(self._manager._dataset_path):
-            files = [os.path.join(root, file_path) for file_path in files]
-            files_list.extend(files)
+
+        if not os.path.exists(dataset_path):
+            return files_list
+
+        if not os.path.isdir(dataset_path):
+            return [dataset_path] if os.path.isfile(dataset_path) else files_list
+
+        if recursive:
+            for root, dirs, files in os.walk(dataset_path):
+                # Skip hidden directories
+                if skip_hidden_path:
+                    path_parts = root.split(os.sep)
+                    if any(part.startswith('.') for part in path_parts if part):
+                        continue
+                    # Filter out hidden directories
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+
+                # Skip hidden files
+                if skip_hidden_path:
+                    files = [file_path for file_path in files if not file_path.startswith('.')]
+
+                files = [os.path.join(root, file_path) for file_path in files]
+                files_list.extend(files)
+        else:
+            items = os.listdir(dataset_path)
+            for item in items:
+                item_path = os.path.join(dataset_path, item)
+                # Skip hidden files/directories
+                if skip_hidden_path and item.startswith('.'):
+                    continue
+                # Only add files, not directories
+                if os.path.isfile(item_path):
+                    files_list.append(item_path)
+
         return files_list
+
+    def _list_all_files_in_dataset(self, skip_hidden_path: bool = True) -> List[str]:
+        return self.list_all_files_in_directory(self._manager._dataset_path, skip_hidden_path)
 
     @property
     def url(self):
