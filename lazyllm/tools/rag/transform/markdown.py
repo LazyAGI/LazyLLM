@@ -158,6 +158,7 @@ class MarkdownSplitter(_TextSplitterBase):
         blocks = [m.strip('\n') for m in pattern.findall(md_text)]
         results = []
         path_stack = []
+        level_stack = []
 
         for line in blocks:
             level = self._get_heading_level(line)
@@ -170,7 +171,9 @@ class MarkdownSplitter(_TextSplitterBase):
                 content = '\n'.join(line.split('\n')[1:]).strip()
                 while len(path_stack) >= level:
                     path_stack.pop()
+                    level_stack.pop()
                 path_stack.append(header)
+                level_stack.append(level)
 
             results.append(_MdSplit(
                 path=path_stack.copy(),
