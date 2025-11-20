@@ -2,9 +2,9 @@ import lazyllm
 from lazyllm import config
 from lazyllm.engine import LightEngine, NodeMetaHook
 import pytest
-from .utils import SqlEgsData, get_db_init_keywords
+from ..utils import SqlEgsData, get_db_init_keywords
 from lazyllm.tools import SqlManager, DBStatus
-from .tools import (get_current_weather_code, get_current_weather_vars, get_current_weather_doc,
+from ..tools import (get_current_weather_code, get_current_weather_vars, get_current_weather_doc,
                     get_n_day_weather_forecast_code, multiply_tool_code, add_tool_code, dummy_code)
 import unittest
 from fastapi import FastAPI
