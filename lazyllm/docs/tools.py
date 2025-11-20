@@ -695,7 +695,6 @@ add_chinese_doc('Document.drop_algorithm', '''
 
 add_english_doc('Document.drop_algorithm', '''
 Delete the algorithm information registered in the document parsing service for the current document collection.
->>>>>>> main
 ''')
 
 # rag/graph_document.py
