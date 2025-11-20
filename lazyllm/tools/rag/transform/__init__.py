@@ -5,8 +5,8 @@ from .sentence import SentenceSplitter
 from .character import CharacterSplitter
 from .recursive import RecursiveSplitter
 from .markdown import MarkdownSplitter
-from .code import CodeSplitter, JSONSplitter, YAMLSplitter, HTMLSplitter, XMLSplitter
-from .code import ProgrammingSplitter
+from .code import (CodeSplitter, JSONSplitter, YAMLSplitter, HTMLSplitter,
+                   XMLSplitter, ProgrammingSplitter)
 
 __all__ = [
     'MetadataMode', 'make_transform', 'TransformArgs', 'NodeTransform',

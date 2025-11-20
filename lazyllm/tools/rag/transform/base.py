@@ -400,3 +400,12 @@ class _TokenTextSplitter(_TextSplitterBase):
 
     def _merge(self, splits: List[_Split], chunk_size: int) -> List[str]:
         return [split.text for split in splits]
+
+    def set_default(self, **kwargs):
+        super().set_default(**kwargs)
+
+    def get_default(self, param_name: Optional[str] = None):
+        return super().get_default(param_name)
+
+    def reset_default(self):
+        super().reset_default()

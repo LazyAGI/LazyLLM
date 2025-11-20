@@ -3649,6 +3649,7 @@ Args:
     chunk_size (int): The size of the chunk after splitting.
     chunk_overlap (int): The length of the overlapping content between two adjacent chunks.
     num_workers (int): Controls the number of threads or processes used for parallel processing.
+    **kwargs: Additional parameters passed to the splitter.
 ''')
 
 add_chinese_doc('rag.transform.sentence.SentenceSplitter', '''
@@ -3657,7 +3658,8 @@ add_chinese_doc('rag.transform.sentence.SentenceSplitter', '''
 Args:
     chunk_size (int): 拆分之后的块大小
     chunk_overlap (int): 相邻两个块之间重合的内容长度
-    num_workers(int):控制并行处理的线程/进程数量
+    num_workers (int):控制并行处理的线程/进程数量
+    **kwargs: 传递给拆分器的额外参数。
 ''')
 
 add_example('rag.transform.sentence.SentenceSplitter', '''
@@ -3666,6 +3668,66 @@ add_example('rag.transform.sentence.SentenceSplitter', '''
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+''')
+add_chinese_doc('rag.transform.sentence.SentenceSplitter.set_default', '''
+设置SentenceSplitter全局的默认参数。
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_english_doc('rag.transform.sentence.SentenceSplitter.set_default', '''
+Set the default parameters for SentenceSplitter.
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_example('rag.transform.sentence.SentenceSplitter.set_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import SentenceSplitter
+>>> SentenceSplitter.set_default(chunk_size=1024, chunk_overlap=100, num_workers=10)
+''')
+
+add_chinese_doc('rag.transform.sentence.SentenceSplitter.reset_default', '''
+重置SentenceSplitter全局的默认参数。
+''')
+
+add_english_doc('rag.transform.sentence.SentenceSplitter.reset_default', '''
+Reset the default parameters for SentenceSplitter.
+''')
+
+add_example('rag.transform.sentence.SentenceSplitter.reset_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import SentenceSplitter
+>>> SentenceSplitter.reset_default()
+''')
+
+add_chinese_doc('rag.transform.sentence.SentenceSplitter.get_default', '''
+获取SentenceSplitter全局的默认参数。
+
+Args:
+    param_name (Optional[str]): 参数的名称。默认为None。
+
+**Returns:**\n
+    Any: 参数的默认值。
+''')
+
+add_english_doc('rag.transform.sentence.SentenceSplitter.get_default', '''
+Get the default parameters for SentenceSplitter.
+
+Args:
+    param_name (Optional[str]): The name of the parameter. Defaults to None.
+
+**Returns:**\n
+    Any: The default value of the parameter.
+''')
+
+add_example('rag.transform.sentence.SentenceSplitter.get_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import SentenceSplitter
+>>> default = SentenceSplitter.get_default()
+>>> print(default)
 ''')
 
 add_chinese_doc('rag.transform.sentence.SentenceSplitter.split_text', '''\
@@ -3763,6 +3825,7 @@ Args:
     separator (str): The separator to use for splitting. Defaults to ' '.
     is_separator_regex (bool): Whether the separator is a regular expression. Defaults to False.
     keep_separator (bool): Whether to keep the separator in the split text. Defaults to False.
+    **kwargs: Additional parameters passed to the splitter.
 ''')
 
 add_chinese_doc('rag.transform.character.CharacterSplitter', '''
@@ -3770,11 +3833,12 @@ add_chinese_doc('rag.transform.character.CharacterSplitter', '''
 
 Args:
     chunk_size (int): 拆分之后的块大小
-    chunk_overlap (int): 相邻两个块之间重合的内容长度
-    num_workers(int):控制并行处理的线程/进程数量。
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
     separator (str): 用于拆分的分隔符。默认为' '。
     is_separator_regex (bool): 是否使用正则表达式作为分隔符。默认为False。
     keep_separator (bool): 是否保留分隔符在拆分后的文本中。默认为False。
+    **kwargs: 传递给拆分器的额外参数。
 ''')
 
 add_example('rag.transform.character.CharacterSplitter', '''
@@ -3783,6 +3847,67 @@ add_example('rag.transform.character.CharacterSplitter', '''
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="characters", transform=CharacterSplitter, chunk_size=1024, chunk_overlap=100)
+''')
+
+add_english_doc('rag.transform.character.CharacterSplitter.set_default', '''
+Set the default parameters for CharacterSplitter.
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.character.CharacterSplitter.set_default', '''
+设置CharacterSplitter全局的默认参数。
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_example('rag.transform.character.CharacterSplitter.set_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CharacterSplitter
+>>> CharacterSplitter.set_default(chunk_size=1024, chunk_overlap=100, num_workers=10, separator='\n', is_separator_regex=False, keep_separator=False)
+''')
+
+add_english_doc('rag.transform.character.CharacterSplitter.reset_default', '''
+Reset the default parameters for CharacterSplitter.
+''')
+
+add_chinese_doc('rag.transform.character.CharacterSplitter.reset_default', '''
+重置CharacterSplitter全局的默认参数。
+''')
+
+add_example('rag.transform.character.CharacterSplitter.reset_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CharacterSplitter
+>>> CharacterSplitter.reset_default()
+''')
+
+add_english_doc('rag.transform.character.CharacterSplitter.get_default', '''
+Get the default parameters for CharacterSplitter.
+
+Args:
+    param_name (Optional[str]): The name of the parameter. Defaults to None.
+
+**Returns:**\n
+    Any: The default value of the parameter.
+''')
+
+add_chinese_doc('rag.transform.character.CharacterSplitter.get_default', '''
+获取CharacterSplitter全局的默认参数。
+
+Args:
+    param_name (Optional[str]): 参数的名称。默认为None。
+
+**Returns:**\n
+    Any: 参数的默认值。
+''')
+
+add_example('rag.transform.character.CharacterSplitter.get_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CharacterSplitter
+>>> default = CharacterSplitter.get_default()
+>>> print(default)
 ''')
 
 add_english_doc('rag.transform.character.CharacterSplitter.from_tiktoken_encoder', '''
@@ -3955,7 +4080,7 @@ Split text by characters recursively.
 
 Args:
     chunk_size (int): The size of the chunk after splitting.
-    chunk_overlap (int): The length of the overlapping content between two adjacent chunks.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
     num_workers (int): Controls the number of threads or processes used for parallel processing.
     keep_separator (bool): Whether to keep the separator in the split text. Defaults to False.
     is_separator_regex (bool): Whether the separator is a regular expression. Defaults to False.
@@ -3967,8 +4092,8 @@ add_chinese_doc('rag.transform.recursive.RecursiveSplitter', '''
 
 Args:
     chunk_size (int): 拆分之后的块大小
-    chunk_overlap (int): 相邻两个块之间重合的内容长度
-    num_workers(int):控制并行处理的线程/进程数量。
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
     keep_separator (bool): 是否保留分隔符在拆分后的文本中。默认为False。
     is_separator_regex (bool): 是否使用正则表达式作为分隔符。默认为False。
     separators (List[str]): 用于拆分的分隔符列表。默认为['\n\n', '\n', ' ', '']。如果你想按多个分隔符拆分，可以设置这个参数。
@@ -3980,6 +4105,67 @@ add_example('rag.transform.recursive.RecursiveSplitter', '''
 >>> splitter = RecursiveSplitter(separators=['\n\n', '\n', ' ', ''])
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="recursive", transform=RecursiveSplitter, chunk_size=1024, chunk_overlap=100)
+''')
+
+add_english_doc('rag.transform.recursive.RecursiveSplitter.set_default', '''
+Set the default parameters for RecursiveSplitter.
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.recursive.RecursiveSplitter.set_default', '''
+设置RecursiveSplitter全局的默认参数。
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_example('rag.transform.recursive.RecursiveSplitter.set_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RecursiveSplitter
+>>> RecursiveSplitter.set_default(chunk_size=1024, chunk_overlap=100, num_workers=10, keep_separator=False, is_separator_regex=False, separators=['\n\n', '\n', ' ', ''])
+''')
+
+add_english_doc('rag.transform.recursive.RecursiveSplitter.reset_default', '''
+Reset the default parameters for RecursiveSplitter.
+''')
+
+add_chinese_doc('rag.transform.recursive.RecursiveSplitter.reset_default', '''
+重置RecursiveSplitter全局的默认参数。
+''')
+
+add_example('rag.transform.recursive.RecursiveSplitter.reset_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RecursiveSplitter
+>>> RecursiveSplitter.reset_default()
+''')
+
+add_english_doc('rag.transform.recursive.RecursiveSplitter.get_default', '''
+Get the default parameters for RecursiveSplitter.
+
+Args:
+    param_name (Optional[str]): The name of the parameter. Defaults to None.
+
+**Returns:**\n
+    Any: The default value of the parameter.
+''')
+
+add_chinese_doc('rag.transform.recursive.RecursiveSplitter.get_default', '''
+获取RecursiveSplitter全局的默认参数。
+
+Args:
+    param_name (Optional[str]): 参数的名称。默认为None。
+
+**Returns:**\n
+    Any: 参数的默认值。
+''')
+
+add_example('rag.transform.recursive.RecursiveSplitter.get_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RecursiveSplitter
+>>> default = RecursiveSplitter.get_default()
+>>> print(default)
 ''')
 
 add_english_doc('rag.transform.recursive.RecursiveSplitter.from_tiktoken_encoder', '''
@@ -4001,14 +4187,14 @@ add_chinese_doc('rag.transform.recursive.RecursiveSplitter.from_tiktoken_encoder
 加载自定义的tiktoken编码器。
 
 Args:
-    encoding_name (str): The name of the encoding to use. Defaults to 'gpt2'.
-    model_name (Optional[str]): The name of the model to use.
-    allowed_special (Union[Literal['all'], AbstractSet[str]]): The special tokens to allow.
-    disallowed_special (Union[Literal['all'], Collection[str]]): The special tokens to disallow.
-    **kwargs: Additional parameters passed to the encoder.
+    encoding_name (str): 编码器的名称。默认为'gpt2'。
+    model_name (Optional[str]): 模型的名称。默认为None。
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): 允许的特殊token。默认为None。
+    disallowed_special (Union[Literal['all'], Collection[str]]): 不允许的特殊token。默认为'all'。
+    **kwargs: 传递给编码器的额外参数。
 
 **Returns:**\n
-- RecursiveSplitter: The RecursiveSplitter instance.
+- RecursiveSplitter: RecursiveSplitter实例。
 '''
 )
 
@@ -4036,7 +4222,7 @@ Args:
     tokenizer (Tokenizer): 要使用的tokenizer。必须是Hugging Face tokenizer。
 
 **Returns:**\n
-- RecursiveSplitter: The RecursiveSplitter instance.
+- RecursiveSplitter: RecursiveSplitter实例。.
 '''
 )
 
@@ -4152,7 +4338,7 @@ Split markdown text by headers recursively.
 
 Args:
     chunk_size (int): The size of the chunk after splitting.
-    chunk_overlap (int): The length of the overlapping content between two adjacent chunks.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
     num_workers (int): Controls the number of threads or processes used for parallel processing.
     keep_trace (bool): Whether to keep the trace of the markdown text. Defaults to False.
     keep_headers (bool): Whether to keep the headers in the split text. Defaults to False.
@@ -4169,8 +4355,8 @@ add_chinese_doc('rag.transform.markdown.MarkdownSplitter', '''
 
 Args:
     chunk_size (int): 拆分之后的块大小
-    chunk_overlap (int): 相邻两个块之间重合的内容长度
-    num_workers(int):控制并行处理的线程/进程数量。
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
     keep_trace (bool): 是否保留markdown文本的追踪。默认为False。
     keep_headers (bool): 是否保留headers在拆分后的文本中。默认为False。
     keep_lists (bool): 是否保留lists在拆分后的文本中。默认为False。
@@ -4187,6 +4373,68 @@ add_example('rag.transform.markdown.MarkdownSplitter', '''
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="markdown", transform=MarkdownSplitter,
                                 chunk_size=1024, chunk_overlap=100, keep_trace=True, keep_headers=True)
+''')
+
+add_english_doc('rag.transform.markdown.MarkdownSplitter.set_default', '''
+Set the default parameters for MarkdownSplitter.
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.markdown.MarkdownSplitter.set_default', '''
+设置MarkdownSplitter全局的默认参数。
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_example('rag.transform.markdown.MarkdownSplitter.set_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import MarkdownSplitter
+>>> MarkdownSplitter.set_default(chunk_size=1024, chunk_overlap=100, num_workers=10, keep_trace=True, keep_headers=True,
+>>>                              keep_lists=True, keep_code_blocks=True, keep_tables=True, keep_images=True, keep_links=True)
+''')
+
+add_chinese_doc('rag.transform.markdown.MarkdownSplitter.reset_default', '''
+重置MarkdownSplitter全局的默认参数。
+''')
+
+add_english_doc('rag.transform.markdown.MarkdownSplitter.reset_default', '''
+Reset the default parameters for MarkdownSplitter.
+''')
+
+add_example('rag.transform.markdown.MarkdownSplitter.reset_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import MarkdownSplitter
+>>> MarkdownSplitter.reset_default()
+''')
+
+add_english_doc('rag.transform.markdown.MarkdownSplitter.get_default', '''
+Get the default parameters for MarkdownSplitter.
+
+Args:
+    param_name (Optional[str]): The name of the parameter. Defaults to None.
+
+**Returns:**\n
+    Any: The default value of the parameter.
+''')
+
+add_chinese_doc('rag.transform.markdown.MarkdownSplitter.get_default', '''
+获取MarkdownSplitter全局的默认参数。
+
+Args:
+    param_name (Optional[str]): 参数的名称。默认为None。
+
+**Returns:**\n
+    Any: 参数的默认值。
+''')
+
+add_example('rag.transform.markdown.MarkdownSplitter.get_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import MarkdownSplitter
+>>> default = MarkdownSplitter.get_default()
+>>> print(default)
 ''')
 
 add_english_doc('rag.transform.markdown.MarkdownSplitter.from_tiktoken_encoder', '''
@@ -4270,18 +4518,988 @@ add_example('rag.transform.markdown.MarkdownSplitter.split_markdown_by_semantics
 >>> print(splits)
 ''')
 
+add_english_doc('rag.transform.code.CodeSplitter', '''
+A code splitter that splits code text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    chunk_overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    filetype (Optional[str]): The file type to split. Defaults to None.
+    **kwargs: Additional parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter', '''
+一个代码拆分器，负责根据文件类型进行路由选择不同的拆分器。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
+    filetype (Optional[str]): 要拆分的文件类型。
+    **kwargs: 传递给拆分器的额外参数。
+''')
+
+add_example('rag.transform.code.CodeSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> splitter = CodeSplitter(filetype='python')
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.set_default', '''
+Set the default parameters for CodeSplitter.
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.set_default', '''
+设置CodeSplitter全局的默认参数。
+
+Args:
+    **kwargs: 默认参数传递给拆分器。
+''')
+
+add_example('rag.transform.code.CodeSplitter.set_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> CodeSplitter.set_default(chunk_size=1024, chunk_overlap=100, num_workers=10, filetype='python')
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.reset_default', '''
+Reset the default parameters for CodeSplitter.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.reset_default', '''
+重置CodeSplitter全局的默认参数。
+''')
+
+add_example('rag.transform.code.CodeSplitter.reset_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> CodeSplitter.reset_default()
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.get_default', '''
+Get the default parameters for CodeSplitter.
+
+Args:
+    param_name (Optional[str]): The name of the parameter. Defaults to None.
+
+**Returns:**\n
+    Any: The default value of the parameter.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.get_default', '''
+获取CodeSplitter全局的默认参数。
+
+Args:
+    param_name (Optional[str]): 参数的名称。默认为None。
+
+**Returns:**\n
+    Any: 参数的默认值。
+''')
+
+add_example('rag.transform.code.CodeSplitter.get_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> default = CodeSplitter.get_default()
+>>> print(default)
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.from_language', '''
+Load the language splitter by filetype if not specified in CodeSplitter initialization.
+
+Args:
+    filetype (str): The file type to split.
+**Returns:**\n
+    _LanguageSplitterBase: The language splitter.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.from_language', '''
+根据文件类型加载语言拆分器，如果未在CodeSplitter初始化中指定。
+
+Args:
+    filetype (str): 要拆分的文件类型。
+
+**Returns:**\n
+    _LanguageSplitterBase: 语言拆分器。
+''')
+
+add_example('rag.transform.code.CodeSplitter.from_language', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> splitter = CodeSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10)
+>>> splitter = splitter.from_language('python')
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.register_splitter', '''
+Register a language splitter.
+
+Args:
+    filetype (str): The file type to split.
+    splitter_class (Type[_LanguageSplitterBase]): The language splitter class.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.register_splitter', '''
+注册一个语言拆分器。
+
+Args:
+    filetype (str): 要拆分的文件类型。
+    splitter_class (Type[_LanguageSplitterBase]): 语言拆分器类。
+''')
+
+add_example('rag.transform.code.CodeSplitter.register_splitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> CodeSplitter.register_splitter('python', PythonSplitter)
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.get_supported_filetypes', '''
+Get the supported file types for CodeSplitter.
+
+**Returns:**\n
+    List[str]: The supported file types.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.get_supported_filetypes', '''
+获取CodeSplitter支持的文件类型。
+
+**Returns:**\n
+    List[str]: 支持的文件类型。
+''')
+
+add_example('rag.transform.code.CodeSplitter.get_supported_filetypes', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> print(CodeSplitter.get_supported_filetypes())
+''')
+
+add_english_doc('rag.transform.code.HTMLSplitter', '''
+A HTML splitter that splits HTML text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    keep_sections (bool): Whether to keep the sections in the split text. Defaults to False.
+    keep_tags (bool): Whether to keep the tags in the split text. Defaults to False.
+    **kwargs: Additional parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.HTMLSplitter', '''
+一个HTML拆分器，负责拆分HTML文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
+    keep_sections (bool): 是否保留sections在拆分后的文本中。默认为False。
+    keep_tags (bool): 是否保留tags在拆分后的文本中。默认为False。
+    **kwargs: 传递给拆分器的额外参数。
+''')
+
+add_example('rag.transform.code.HTMLSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import HTMLSplitter
+>>> splitter = HTMLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, keep_sections=True, keep_tags=True)
+''')
+
+add_english_doc('rag.transform.code.HTMLSplitter.set_default', '''
+Set the default parameters for HTMLSplitter.
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.HTMLSplitter.set_default', '''
+设置HTMLSplitter全局的默认参数。
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_example('rag.transform.code.HTMLSplitter.set_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import HTMLSplitter
+>>> HTMLSplitter.set_default(chunk_size=1024, chunk_overlap=100, num_workers=10, keep_sections=True, keep_tags=True)
+''')
+
+add_english_doc('rag.transform.code.HTMLSplitter.reset_default', '''
+Reset the default parameters for HTMLSplitter.
+''')
+
+add_chinese_doc('rag.transform.code.HTMLSplitter.reset_default', '''
+重置HTMLSplitter全局的默认参数。
+''')
+
+add_example('rag.transform.code.HTMLSplitter.reset_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import HTMLSplitter
+>>> HTMLSplitter.reset_default()
+''')
+
+add_english_doc('rag.transform.code.HTMLSplitter.get_default', '''
+Get the default parameters for HTMLSplitter.
+
+Args:
+    param_name (Optional[str]): 参数的名称。默认为None。
+
+**Returns:**\n
+    Any: 参数的默认值。
+''')
+
+add_chinese_doc('rag.transform.code.HTMLSplitter.get_default', '''
+获取HTMLSplitter全局的默认参数。
+
+Args:
+    param_name (Optional[str]): 参数的名称。默认为None。
+
+**Returns:**\n
+    Any: 参数的默认值。
+''')
+
+add_example('rag.transform.code.HTMLSplitter.get_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import HTMLSplitter
+>>> default = HTMLSplitter.get_default()
+>>> print(default)
+''')
+
+add_english_doc('rag.transform.code.HTMLSplitter.from_tiktoken_encoder', '''
+Load the HTML splitter from tiktoken encoder.
+
+Args:
+    encoding_name (str): The name of the encoding to use.
+    model_name (Optional[str]): The name of the model to use.
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): The allowed special tokens.
+    disallowed_special (Union[Literal['all'], Collection[str]]): The disallowed special tokens.
+''')
+
+add_chinese_doc('rag.transform.code.HTMLSplitter.from_tiktoken_encoder', '''
+从tiktoken编码器加载HTML拆分器。
+
+Args:
+    encoding_name (str): 要使用的编码的名称。
+    model_name (Optional[str]): 要使用的模型的名称。
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): 允许的特殊token。
+    disallowed_special (Union[Literal['all'], Collection[str]]): 不允许的特殊token。
+''')
+
+add_example('rag.transform.code.HTMLSplitter.from_tiktoken_encoder', '''
+>>> import lazyllm
+>>> from lazyllm.tools import HTMLSplitter
+>>> splitter = HTMLSplitter.from_tiktoken_encoder(encoding_name='gpt2', model_name='gpt-2')
+''')
+
+add_english_doc('rag.transform.code.HTMLSplitter.from_huggingface_tokenizer', '''
+Load the HTML splitter from huggingface tokenizer.
+
+Args:
+    tokenizer (Any): The tokenizer to use.
+''')
+
+add_chinese_doc('rag.transform.code.HTMLSplitter.from_huggingface_tokenizer', '''
+从huggingface tokenizer加载HTML拆分器。
+
+Args:
+    tokenizer (Any): 要使用的tokenizer。
+''')
+
+add_example('rag.transform.code.HTMLSplitter.from_huggingface_tokenizer', '''
+>>> import lazyllm
+>>> from lazyllm.tools import HTMLSplitter
+>>> splitter = HTMLSplitter.from_huggingface_tokenizer(tokenizer=tokenizer)
+''')
+
+add_english_doc('rag.transform.code.HTMLSplitter.split_text', '''
+Split the html text into chunks.
+
+Args:
+    text (str): The text to split.
+    metadata_size (int): The size of the metadata.
+''')
+
+add_chinese_doc('rag.transform.code.HTMLSplitter.split_text', '''
+拆分html文本为块。
+
+Args:
+    text (str): 要拆分的文本。
+    metadata_size (int): 元数据的尺寸。
+''')
+
+add_example('rag.transform.code.HTMLSplitter.split_text', '''
+>>> import lazyllm
+>>> from lazyllm.tools import HTMLSplitter
+>>> splitter = HTMLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, keep_sections=True, keep_tags=True)
+>>> text = '<html><body><h1>Hello, World!</h1><p>This is a test.</p></body></html>'
+>>> chunks = splitter.split_text(text)
+>>> print(chunks)
+''')
+
+add_english_doc('rag.transform.code.JSONSplitter', '''
+A JSON splitter that splits JSON text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    compact_output (bool): Whether to compact the output. Defaults to True.\
+    **kwargs: Additional parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.JSONSplitter', '''
+一个JSON拆分器，负责拆分JSON文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
+    compact_output (bool): 是否压缩输出。默认为True。
+    **kwargs: 传递给拆分器的额外参数。
+''')
+
+add_example('rag.transform.code.JSONSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONSplitter
+>>> splitter = JSONSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.JSONSplitter.set_default', '''
+Set the default parameters for JSONSplitter.
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.JSONSplitter.set_default', '''
+设置JSONSplitter全局的默认参数。
+
+Args:
+    **kwargs: 默认参数传递给拆分器。
+''')
+
+add_example('rag.transform.code.JSONSplitter.set_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONSplitter
+>>> JSONSplitter.set_default(chunk_size=1024, overlap=100, num_workers=10, compact_output=True)
+''')
+
+add_english_doc('rag.transform.code.JSONSplitter.reset_default', '''
+Reset the default parameters for JSONSplitter.
+''')
+
+add_chinese_doc('rag.transform.code.JSONSplitter.reset_default', '''
+重置JSONSplitter全局的默认参数。
+''')
+
+add_example('rag.transform.code.JSONSplitter.reset_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONSplitter
+>>> JSONSplitter.reset_default()
+''')
+
+add_english_doc('rag.transform.code.JSONSplitter.get_default', '''
+Get the default parameters for JSONSplitter.
+
+Args:
+    param_name (Optional[str]): 参数的名称。默认为None。
+
+**Returns:**\n
+    Any: 参数的默认值。
+''')
+
+add_chinese_doc('rag.transform.code.JSONSplitter.get_default', '''
+获取JSONSplitter全局的默认参数。
+
+Args:
+    param_name (Optional[str]): 参数的名称。默认为None。
+
+**Returns:**\n
+    Any: 参数的默认值。
+''')
+
+add_example('rag.transform.code.JSONSplitter.get_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONSplitter
+>>> default = JSONSplitter.get_default()
+>>> print(default)
+''')
+
+add_english_doc('rag.transform.code.JSONSplitter.from_tiktoken_encoder', '''
+Load the custom tiktoken encoder.
+
+Args:
+    encoder_name (str): The name of the tiktoken encoder.
+    model_name (Optional[str]): The name of the model. Defaults to None.
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): The allowed special tokens. Defaults to None.
+    disallowed_special (Union[Literal['all'], Collection[str]]): The disallowed special tokens. Defaults to 'all'.
+''')
+
+add_chinese_doc('rag.transform.code.JSONSplitter.from_tiktoken_encoder', '''
+加载自定义的tiktoken编码器。
+
+Args:
+    encoder_name (str): 编码器的名称。
+    model_name (Optional[str]): 模型的名称。默认为None。
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): 允许的特殊token。默认为None。
+    disallowed_special (Union[Literal['all'], Collection[str]]): 不允许的特殊token。默认为'all'。
+''')
+
+add_example('rag.transform.code.JSONSplitter.from_tiktoken_encoder', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONSplitter
+>>> splitter = JSONSplitter.from_tiktoken_encoder(encoder_name='p50k_base', model_name='gpt-4')
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.JSONSplitter.from_huggingface_tokenizer', '''
+Load the custom huggingface tokenizer.
+
+Args:
+    tokenizer (Any): The huggingface tokenizer.
+''')
+
+add_chinese_doc('rag.transform.code.JSONSplitter.from_huggingface_tokenizer', '''
+加载自定义的huggingface tokenizer。
+
+Args:
+    tokenizer (Any): 自定义的huggingface tokenizer。
+''')
+
+add_example('rag.transform.code.JSONSplitter.from_huggingface_tokenizer', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONSplitter
+>>> splitter = JSONSplitter.from_huggingface_tokenizer(tokenizer=tokenizer)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.JSONSplitter.split_text', '''
+Split the json text into chunks.
+
+Args:
+    text (str): The text to split.
+    metadata_size (int): The size of the metadata.
+''')
+
+add_chinese_doc('rag.transform.code.JSONSplitter.split_text', '''
+拆分json文本为块。
+
+Args:
+    text (str): 要拆分的文本。
+    metadata_size (int): 元数据的尺寸。
+''')
+
+add_example('rag.transform.code.JSONSplitter.split_text', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONSplitter
+>>> splitter = JSONSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> text = '{"name": "John", "age": 30, "city": "New York"}'
+>>> chunks = splitter.split_text(text)
+>>> print(chunks)
+''')
+
+add_english_doc('rag.transform.code.YAMLSplitter', '''
+A YAML splitter that splits YAML text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    compact_output (bool): Whether to compact the output. Defaults to True.
+''')
+
+add_chinese_doc('rag.transform.code.YAMLSplitter', '''
+一个YAML拆分器，负责拆分YAML文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    compact_output (bool): 是否压缩输出。默认为True。
+''')
+
+add_example('rag.transform.code.YAMLSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import YAMLSplitter
+>>> splitter = YAMLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.YAMLSplitter.set_default', '''
+Set the default parameters for YAMLSplitter.
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.YAMLSplitter.set_default', '''
+设置YAMLSplitter全局的默认参数。
+
+Args:
+    **kwargs: 默认参数传递给拆分器。
+''')
+
+add_example('rag.transform.code.YAMLSplitter.set_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import YAMLSplitter
+>>> YAMLSplitter.set_default(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+''')
+
+add_english_doc('rag.transform.code.YAMLSplitter.reset_default', '''
+Reset the default parameters for YAMLSplitter.
+''')
+
+add_chinese_doc('rag.transform.code.YAMLSplitter.reset_default', '''
+重置YAMLSplitter全局的默认参数。
+''')
+
+add_example('rag.transform.code.YAMLSplitter.reset_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import YAMLSplitter
+>>> YAMLSplitter.reset_default()
+''')
+
+add_english_doc('rag.transform.code.YAMLSplitter.get_default', '''
+Get the default parameters for YAMLSplitter.
+
+Args:
+    param_name (Optional[str]): name of the parameter. defaults to None.
+
+**Returns:**\n
+    Any: The default value of the parameter.
+''')
+
+add_chinese_doc('rag.transform.code.YAMLSplitter.get_default', '''
+获取YAMLSplitter全局的默认参数。
+
+Args:
+    param_name (Optional[str]): 参数的名称。默认为None。
+
+**Returns:**\n
+    Any: 参数的默认值。
+''')
+
+add_example('rag.transform.code.YAMLSplitter.get_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import YAMLSplitter
+>>> default = YAMLSplitter.get_default()
+>>> print(default)
+''')
+
+add_english_doc('rag.transform.code.YAMLSplitter.from_tiktoken_encoder', '''
+Load the custom tiktoken encoder.
+
+Args:
+    encoder_name (str): The name of the tiktoken encoder.
+    model_name (Optional[str]): The name of the model. Defaults to None.
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): The allowed special tokens. Defaults to None.
+    disallowed_special (Union[Literal['all'], Collection[str]]): The disallowed special tokens. Defaults to 'all'.
+    **kwargs: Additional parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.YAMLSplitter.from_tiktoken_encoder', '''
+加载自定义的tiktoken编码器。
+
+Args:
+    encoder_name (str): 编码器的名称。
+    model_name (Optional[str]): 模型的名称。默认为None。
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): 允许的特殊token。默认为None。
+    disallowed_special (Union[Literal['all'], Collection[str]]): 不允许的特殊token。默认为'all'。
+    **kwargs: 传递给拆分器的额外参数。
+''')
+
+add_example('rag.transform.code.YAMLSplitter.from_tiktoken_encoder', '''
+>>> import lazyllm
+>>> from lazyllm.tools import YAMLSplitter
+>>> splitter = YAMLSplitter.from_tiktoken_encoder(encoder_name='p50k_base', model_name='gpt-4')
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.YAMLSplitter.from_huggingface_tokenizer', '''
+Load the custom huggingface tokenizer.
+
+Args:
+    tokenizer (Any): The huggingface tokenizer.
+''')
+
+add_chinese_doc('rag.transform.code.YAMLSplitter.from_huggingface_tokenizer', '''
+加载自定义的huggingface tokenizer。
+
+Args:
+    tokenizer (Any): 自定义的huggingface tokenizer。
+''')
+
+add_example('rag.transform.code.YAMLSplitter.from_huggingface_tokenizer', '''
+>>> import lazyllm
+>>> from lazyllm.tools import YAMLSplitter
+>>> splitter = YAMLSplitter.from_huggingface_tokenizer(tokenizer=tokenizer)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.YAMLSplitter.split_text', '''
+Split the yaml text into chunks.
+
+Args:
+    text (str): The text to split.
+    metadata_size (int): The size of the metadata.
+''')
+
+add_chinese_doc('rag.transform.code.YAMLSplitter.split_text', '''
+拆分yaml文本为块。
+
+Args:
+    text (str): 要拆分的文本。
+    metadata_size (int): 元数据的尺寸。
+''')
+
+add_example('rag.transform.code.YAMLSplitter.split_text', '''
+>>> import lazyllm
+>>> from lazyllm.tools import YAMLSplitter
+>>> splitter = YAMLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> text = 'name: John\nage: 30\ncity: New York'
+>>> chunks = splitter.split_text(text)
+>>> print(chunks)
+''')
+
+add_english_doc('rag.transform.code.ProgrammingSplitter', '''
+A programming splitter that splits programming text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    filetype (str): The file type to split. Defaults to 'code'.
+''')
+
+add_chinese_doc('rag.transform.code.ProgrammingSplitter', '''
+一个编程拆分器，负责拆分编程文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    filetype (str): 要拆分的文件类型。
+''')
+
+add_example('rag.transform.code.ProgrammingSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import ProgrammingSplitter
+>>> splitter = ProgrammingSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, filetype='code')
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.ProgrammingSplitter.set_default', '''
+Set the default parameters for ProgrammingSplitter.
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.ProgrammingSplitter.set_default', '''
+设置ProgrammingSplitter全局的默认参数。
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_example('rag.transform.code.ProgrammingSplitter.set_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import ProgrammingSplitter
+>>> ProgrammingSplitter.set_default(chunk_size=1024, chunk_overlap=100, num_workers=10, filetype='code')
+''')
+
+add_english_doc('rag.transform.code.ProgrammingSplitter.reset_default', '''
+Reset the default parameters for ProgrammingSplitter.
+''')
+
+add_chinese_doc('rag.transform.code.ProgrammingSplitter.reset_default', '''
+重置ProgrammingSplitter全局的默认参数。
+''')
+
+add_example('rag.transform.code.ProgrammingSplitter.reset_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import ProgrammingSplitter
+>>> ProgrammingSplitter.reset_default()
+''')
+
+add_english_doc('rag.transform.code.ProgrammingSplitter.get_default', '''
+Get the default parameters for ProgrammingSplitter.
+
+Args:
+    param_name (Optional[str]): name of the parameter. defaults to None.
+
+**Returns:**\n
+    Any: The default value of the parameter.
+''')
+
+add_chinese_doc('rag.transform.code.ProgrammingSplitter.get_default', '''
+获取ProgrammingSplitter全局的默认参数。
+
+Args:
+    param_name (Optional[str]): 参数的名称。默认为None。
+
+**Returns:**\n
+    Any: 参数的默认值。
+''')
+
+add_example('rag.transform.code.ProgrammingSplitter.get_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import ProgrammingSplitter
+>>> default = ProgrammingSplitter.get_default()
+>>> print(default)
+''')
+
+add_english_doc('rag.transform.code.ProgrammingSplitter.from_tiktoken_encoder', '''
+Load the custom tiktoken encoder.
+
+Args:
+    encoder_name (str): The name of the tiktoken encoder.
+    model_name (Optional[str]): The name of the model. Defaults to None.
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): The allowed special tokens. Defaults to None.
+    disallowed_special (Union[Literal['all'], Collection[str]]): The disallowed special tokens. Defaults to 'all'.
+''')
+
+add_chinese_doc('rag.transform.code.ProgrammingSplitter.from_tiktoken_encoder', '''
+加载自定义的tiktoken编码器。
+
+Args:
+    encoder_name (str): 编码器的名称。
+    model_name (Optional[str]): 模型的名称。默认为None。
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): 允许的特殊token。默认为None。
+    disallowed_special (Union[Literal['all'], Collection[str]]): 不允许的特殊token。默认为'all'。
+''')
+
+add_example('rag.transform.code.ProgrammingSplitter.from_tiktoken_encoder', '''
+>>> import lazyllm
+>>> from lazyllm.tools import ProgrammingSplitter
+>>> splitter = ProgrammingSplitter.from_tiktoken_encoder(encoder_name='p50k_base', model_name='gpt-4')
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.ProgrammingSplitter.from_huggingface_tokenizer', '''
+Load the custom huggingface tokenizer.
+
+Args:
+    tokenizer (Any): The huggingface tokenizer.
+''')
+
+add_chinese_doc('rag.transform.code.ProgrammingSplitter.from_huggingface_tokenizer', '''
+加载自定义的huggingface tokenizer。
+
+Args:
+    tokenizer (Any): 自定义的huggingface tokenizer。
+''')
+
+add_example('rag.transform.code.ProgrammingSplitter.from_huggingface_tokenizer', '''
+>>> import lazyllm
+>>> from lazyllm.tools import ProgrammingSplitter
+>>> splitter = ProgrammingSplitter.from_huggingface_tokenizer(tokenizer=tokenizer)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.ProgrammingSplitter.split_text', '''
+Split the programming text into chunks.
+
+Args:
+    text (str): The text to split.
+    metadata_size (int): The size of the metadata.
+''')
+
+add_chinese_doc('rag.transform.code.ProgrammingSplitter.split_text', '''
+拆分编程文本为块。
+
+Args:
+    text (str): 要拆分的文本。
+    metadata_size (int): 元数据的尺寸。
+''')
+
+add_example('rag.transform.code.ProgrammingSplitter.split_text', '''
+>>> import lazyllm
+>>> from lazyllm.tools import ProgrammingSplitter
+>>> splitter = ProgrammingSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, filetype='code')
+>>> text = 'print("Hello, World!")'
+>>> chunks = splitter.split_text(text)
+>>> print(chunks)
+''')
+
+add_english_doc('rag.transform.code.XMLSplitter', '''
+A XML splitter that splits XML text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    keep_trace (bool): Whether to keep the trace in the split text. Defaults to False.
+    keep_tags (bool): Whether to keep the tags in the split text. Defaults to False.
+''')
+
+add_chinese_doc('rag.transform.code.XMLSplitter', '''
+一个XML拆分器，负责拆分XML文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    keep_trace (bool): 是否保留拆分文本中的trace。
+    keep_tags (bool): 是否保留拆分文本中的tags。
+''')
+
+add_example('rag.transform.code.XMLSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import XMLSplitter
+>>> splitter = XMLSplitter(chunk_size=1024, overlap=100, num_workers=10, keep_trace=True, keep_tags=True)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.XMLSplitter.set_default', '''
+Set the default parameters for XMLSplitter.
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.XMLSplitter.set_default', '''
+设置XMLSplitter全局的默认参数。
+
+Args:
+    **kwargs: parameters passed to the splitter.
+''')
+
+add_example('rag.transform.code.XMLSplitter.set_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import XMLSplitter
+>>> XMLSplitter.set_default(chunk_size=1024, overlap=100, num_workers=10, keep_trace=True, keep_tags=True)
+''')
+
+add_english_doc('rag.transform.code.XMLSplitter.reset_default', '''
+Reset the default parameters for XMLSplitter.
+''')
+
+add_chinese_doc('rag.transform.code.XMLSplitter.reset_default', '''
+重置XMLSplitter全局的默认参数。
+''')
+
+add_example('rag.transform.code.XMLSplitter.reset_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import XMLSplitter
+>>> XMLSplitter.reset_default()
+''')
+
+add_english_doc('rag.transform.code.XMLSplitter.get_default', '''
+Get the default parameters for XMLSplitter.
+
+Args:
+    param_name (Optional[str]): name of the parameter. defaults to None.
+
+**Returns:**\n
+    Any: The default value of the parameter.
+''')
+
+add_chinese_doc('rag.transform.code.XMLSplitter.get_default', '''
+获取XMLSplitter全局的默认参数。
+
+Args:
+    param_name (Optional[str]): 参数的名称。默认为None。
+
+**Returns:**\n
+    Any: 参数的默认值。
+''')
+
+add_example('rag.transform.code.XMLSplitter.get_default', '''
+>>> import lazyllm
+>>> from lazyllm.tools import XMLSplitter
+>>> default = XMLSplitter.get_default()
+>>> print(default)
+''')
+
+add_english_doc('rag.transform.code.XMLSplitter.from_tiktoken_encoder', '''
+Load the custom tiktoken encoder.
+
+Args:
+    encoder_name (str): The name of the tiktoken encoder.
+    model_name (Optional[str]): The name of the model. Defaults to None.
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): The allowed special tokens. Defaults to None.
+    disallowed_special (Union[Literal['all'], Collection[str]]): The disallowed special tokens. Defaults to 'all'.
+''')
+
+add_chinese_doc('rag.transform.code.XMLSplitter.from_tiktoken_encoder', '''
+加载自定义的tiktoken编码器。
+
+Args:
+    encoder_name (str): 编码器的名称。
+    model_name (Optional[str]): 模型的名称。默认为None。
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): 允许的特殊token。默认为None。
+    disallowed_special (Union[Literal['all'], Collection[str]]): 不允许的特殊token。默认为'all'。
+''')
+
+add_example('rag.transform.code.XMLSplitter.from_tiktoken_encoder', '''
+>>> import lazyllm
+>>> from lazyllm.tools import XMLSplitter
+>>> splitter = XMLSplitter.from_tiktoken_encoder(encoder_name='p50k_base', model_name='gpt-4')
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.XMLSplitter.from_huggingface_tokenizer', '''
+Load the custom huggingface tokenizer.
+
+Args:
+    tokenizer (Any): The huggingface tokenizer.
+''')
+
+add_chinese_doc('rag.transform.code.XMLSplitter.from_huggingface_tokenizer', '''
+加载自定义的huggingface tokenizer。
+
+Args:
+    tokenizer (Any): 自定义的huggingface tokenizer。
+''')
+
+add_example('rag.transform.code.XMLSplitter.from_huggingface_tokenizer', '''
+>>> import lazyllm
+>>> from lazyllm.tools import XMLSplitter
+>>> splitter = XMLSplitter.from_huggingface_tokenizer(tokenizer=tokenizer)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.XMLSplitter.split_text', '''
+Split the xml text into chunks.
+
+Args:
+    text (str): The text to split.
+    metadata_size (int): The size of the metadata.
+''')
+
+add_chinese_doc('rag.transform.code.XMLSplitter.split_text', '''
+拆分xml文本为块。
+
+Args:
+    text (str): 要拆分的文本。
+    metadata_size (int): 元数据的尺寸。
+''')
+
+add_example('rag.transform.code.XMLSplitter.split_text', '''
+>>> import lazyllm
+>>> from lazyllm.tools import XMLSplitter
+>>> splitter = XMLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, keep_trace=True, keep_tags=True)
+>>> text = '<xml><root><child>Hello, World!</child></root></xml>'
+>>> chunks = splitter.split_text(text)
+>>> print(chunks)
+''')
+
 add_english_doc('rag.transform.base.NodeTransform', '''
 Processes document nodes in batch, supporting both single-threaded and multi-threaded modes.
 
 Args:
-    num_workers(int): Controls whether multi-threading is enabled (enabled when >0).
+    num_workers (int): Controls whether multi-threading is enabled (enabled when >0).
 ''')
 
 add_chinese_doc('rag.transform.base.NodeTransform', '''
 批量处理文档节点，支持单线程/多线程模式。
 
 Args:
-    num_workers(int)：控制是否启用多线程（>0 时启用）。
+    num_workers (int)：控制是否启用多线程（>0 时启用）。
 ''')
 
 add_example('rag.transform.base.NodeTransform', '''
@@ -4359,8 +5577,8 @@ add_chinese_doc('rag.transform.factory.TransformArgs', '''
 Args:
     f(Union[str, Callable]):转换函数或注册的函数名。
     trans_node(bool):是否转换节点类型。
-    num_workers(int)：控制是否启用多线程（>0 时启用）。
-    kwargs(Dict):传递给转换函数的额外参数。
+    num_workers (int)：控制是否启用多线程（>0 时启用）。
+    kwargs(Dict): 传递给转换函数的额外参数。
     pattern(Union[str, Callable[[str], bool]]):文件名/内容匹配模式。
 ''')
 
@@ -4390,7 +5608,7 @@ Args:
     llm (TrainableModule): 可训练的模块
     language (str): 语言种类，目前只支持中文（zh）和英文（en）
     task_type (str): 目前支持两种任务：摘要（summary）和关键词抽取（keywords）。
-    num_workers(int):控制并行处理的线程/进程数量。
+    num_workers (int): 控制并行处理的线程/进程数量。
 ''')
 
 add_example('rag.transform.factory.LLMParser', '''

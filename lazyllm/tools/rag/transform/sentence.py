@@ -71,3 +71,12 @@ class SentenceSplitter(_TextSplitterBase):
 
         # Remove whitespace only chunks and remove leading and trailing whitespace.
         return [stripped_chunk for chunk in chunks if (stripped_chunk := chunk.strip())]
+
+    def set_default(self, **kwargs):
+        super().set_default(**kwargs)
+
+    def get_default(self, param_name: Optional[str] = None):
+        return super().get_default(param_name)
+
+    def reset_default(self):
+        super().reset_default()

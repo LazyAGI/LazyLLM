@@ -2,13 +2,12 @@ from .base import _TextSplitterBase, _UNSET
 from .recursive import RecursiveSplitter
 from lazyllm.thirdparty import xml
 from lazyllm.thirdparty import bs4
-from typing import List, Optional, Dict, Type
+from typing import List, Optional, Dict, Type, Union, AbstractSet, Collection, Any, Literal
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm import LOG
 import copy
 import json
 import yaml
-
 
 class _LanguageSplitterBase(_TextSplitterBase):
     def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
@@ -63,6 +62,15 @@ class _LanguageSplitterBase(_TextSplitterBase):
                 result.append(node)
         return result
 
+    def set_default(self, **kwargs):
+        super().set_default(**kwargs)
+
+    def get_default(self, param_name: Optional[str] = None):
+        return super().get_default(param_name)
+
+    def reset_default(self):
+        super().reset_default()
+
 
 # ========== XMLSplitter ==========
 class XMLSplitter(_LanguageSplitterBase):
@@ -75,6 +83,9 @@ class XMLSplitter(_LanguageSplitterBase):
 
         self._keep_trace = keep_trace
         self._keep_tags = keep_tags
+
+    def split_text(self, text: str, metadata_size: int = 0) -> List[DocNode]:
+        return super().split_text(text, metadata_size)
 
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:  # noqa: C901
         try:
@@ -167,9 +178,38 @@ class XMLSplitter(_LanguageSplitterBase):
         all_nodes = self._sub_split(all_nodes, chunk_size)
         return all_nodes
 
+    def set_default(self, **kwargs):
+        super().set_default(**kwargs)
+
+    def get_default(self, param_name: Optional[str] = None):
+        return super().get_default(param_name)
+
+    def reset_default(self):
+        super().reset_default()
+
+    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
+                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
+                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
+                              **kwargs) -> 'XMLSplitter':
+        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
+
+    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'XMLSplitter':
+        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
+
 
 # ========== ProgrammingSplitter ==========
 class ProgrammingSplitter(_LanguageSplitterBase):
+    def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
+                 filetype: str = 'code', **kwargs):
+        super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers,
+                         filetype=filetype, **kwargs)
+
+        self._filetype = filetype
+        self._extra_params = kwargs
+
+    def split_text(self, text: str, metadata_size: int = 0) -> List[DocNode]:
+        return super().split_text(text, metadata_size)
+
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:  # noqa: C901
         if not text.strip():
             return [DocNode(text='', metadata={'code_type': 'empty'})]
@@ -277,17 +317,38 @@ class ProgrammingSplitter(_LanguageSplitterBase):
 
         return nodes
 
+    def set_default(self, **kwargs):
+        super().set_default(**kwargs)
+
+    def get_default(self, param_name: Optional[str] = None):
+        return super().get_default(param_name)
+
+    def reset_default(self):
+        super().reset_default()
+
+    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
+                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
+                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
+                              **kwargs) -> 'ProgrammingSplitter':
+        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
+
+    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'ProgrammingSplitter':
+        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
+
 
 # ========== JSONSplitter ==========
 class JSONSplitter(_LanguageSplitterBase):
     def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
-                 filetype: Optional[str] = _UNSET, compact_output: bool = _UNSET, **kwargs):
+                 filetype: str = 'json', compact_output: bool = _UNSET, **kwargs):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers,
                          filetype=filetype, **kwargs)
         compact_output = self._get_param_value('compact_output', compact_output, True)
 
         self._compact_output = compact_output
         self._max_depth = 20
+
+    def split_text(self, text: str, metadata_size: int = 0) -> List[DocNode]:
+        return super().split_text(text, metadata_size)
 
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:
         try:
@@ -481,9 +542,35 @@ class JSONSplitter(_LanguageSplitterBase):
 
         return nodes
 
+    def set_default(self, **kwargs):
+        super().set_default(**kwargs)
+
+    def get_default(self, param_name: Optional[str] = None):
+        return super().get_default(param_name)
+
+    def reset_default(self):
+        super().reset_default()
+
+    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
+                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
+                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
+                              **kwargs) -> 'JSONSplitter':
+        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
+
+    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'JSONSplitter':
+        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
+
 
 # ========== YAMLSplitter ==========
 class YAMLSplitter(JSONSplitter):
+    def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
+                 filetype: str = 'yaml', compact_output: bool = _UNSET, **kwargs):
+        super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers,
+                         filetype=filetype, compact_output=compact_output, **kwargs)
+
+    def split_text(self, text: str, metadata_size: int = 0) -> List[DocNode]:
+        return super().split_text(text, metadata_size)
+
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:
         try:
             data = yaml.safe_load(text)
@@ -493,11 +580,29 @@ class YAMLSplitter(JSONSplitter):
 
         return self._split_json_data(data, chunk_size, 'yaml', path=[], depth=0)
 
+    def set_default(self, **kwargs):
+        super().set_default(**kwargs)
+
+    def get_default(self, param_name: Optional[str] = None):
+        return super().get_default(param_name)
+
+    def reset_default(self):
+        super().reset_default()
+
+    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
+                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
+                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
+                              **kwargs) -> 'YAMLSplitter':
+        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
+
+    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'YAMLSplitter':
+        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
+
 
 # ========== HTMLSplitter ==========
 class HTMLSplitter(_LanguageSplitterBase):
     def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
-                 filetype: Optional[str] = _UNSET, keep_sections: bool = _UNSET, keep_tags: bool = _UNSET, **kwargs):
+                 filetype: str = 'html', keep_sections: bool = _UNSET, keep_tags: bool = _UNSET, **kwargs):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers,
                          filetype=filetype, **kwargs)
         keep_sections = self._get_param_value('keep_sections', keep_sections, False)
@@ -505,6 +610,9 @@ class HTMLSplitter(_LanguageSplitterBase):
 
         self._keep_sections = keep_sections
         self._keep_tags = keep_tags
+
+    def split_text(self, text: str, metadata_size: int = 0) -> List[DocNode]:
+        return super().split_text(text, metadata_size)
 
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:
         try:
@@ -781,6 +889,24 @@ class HTMLSplitter(_LanguageSplitterBase):
 
         return result
 
+    def set_default(self, **kwargs):
+        super().set_default(**kwargs)
+
+    def get_default(self, param_name: Optional[str] = None):
+        return super().get_default(param_name)
+
+    def reset_default(self):
+        super().reset_default()
+
+    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
+                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
+                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
+                              **kwargs) -> 'HTMLSplitter':
+        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
+
+    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'HTMLSplitter':
+        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
+
 
 class CodeSplitter(_TextSplitterBase):
     _SPLITTER_REGISTRY: Dict[str, Type[_LanguageSplitterBase]] = {
@@ -831,6 +957,15 @@ class CodeSplitter(_TextSplitterBase):
 
         return self._splitter.split_text(text, metadata_size)
 
+    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
+                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
+                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
+                              **kwargs) -> 'CodeSplitter':
+        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
+
+    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'CodeSplitter':
+        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
+
     @classmethod
     def register_splitter(cls, filetype: str, splitter_class: Type[_LanguageSplitterBase]):
         cls._SPLITTER_REGISTRY[filetype.lower()] = splitter_class
@@ -838,3 +973,12 @@ class CodeSplitter(_TextSplitterBase):
     @classmethod
     def get_supported_filetypes(cls) -> List[str]:
         return list(cls._SPLITTER_REGISTRY.keys())
+
+    def set_default(self, **kwargs):
+        super().set_default(**kwargs)
+
+    def get_default(self, param_name: Optional[str] = None):
+        return super().get_default(param_name)
+
+    def reset_default(self):
+        super().reset_default()

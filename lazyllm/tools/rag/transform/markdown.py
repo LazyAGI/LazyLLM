@@ -333,3 +333,12 @@ class MarkdownSplitter(_TextSplitterBase):
             metadata=metadata,
             content=split.content,
         )
+
+    def set_default(self, **kwargs):
+        super().set_default(**kwargs)
+
+    def get_default(self, param_name: Optional[str] = None):
+        return super().get_default(param_name)
+
+    def reset_default(self):
+        super().reset_default()
