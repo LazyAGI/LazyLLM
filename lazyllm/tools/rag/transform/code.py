@@ -62,13 +62,16 @@ class _LanguageSplitterBase(_TextSplitterBase):
                 result.append(node)
         return result
 
-    def set_default(self, **kwargs):
+    @classmethod
+    def set_default(cls, **kwargs):
         super().set_default(**kwargs)
 
-    def get_default(self, param_name: Optional[str] = None):
+    @classmethod
+    def get_default(cls, param_name: Optional[str] = None):
         return super().get_default(param_name)
 
-    def reset_default(self):
+    @classmethod
+    def reset_default(cls):
         super().reset_default()
 
 
@@ -178,13 +181,16 @@ class XMLSplitter(_LanguageSplitterBase):
         all_nodes = self._sub_split(all_nodes, chunk_size)
         return all_nodes
 
-    def set_default(self, **kwargs):
+    @classmethod
+    def set_default(cls, **kwargs):
         super().set_default(**kwargs)
 
-    def get_default(self, param_name: Optional[str] = None):
+    @classmethod
+    def get_default(cls, param_name: Optional[str] = None):
         return super().get_default(param_name)
 
-    def reset_default(self):
+    @classmethod
+    def reset_default(cls):
         super().reset_default()
 
     def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
@@ -317,13 +323,16 @@ class ProgrammingSplitter(_LanguageSplitterBase):
 
         return nodes
 
-    def set_default(self, **kwargs):
+    @classmethod
+    def set_default(cls, **kwargs):
         super().set_default(**kwargs)
 
-    def get_default(self, param_name: Optional[str] = None):
+    @classmethod
+    def get_default(cls, param_name: Optional[str] = None):
         return super().get_default(param_name)
 
-    def reset_default(self):
+    @classmethod
+    def reset_default(cls):
         super().reset_default()
 
     def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
@@ -542,13 +551,16 @@ class JSONSplitter(_LanguageSplitterBase):
 
         return nodes
 
-    def set_default(self, **kwargs):
+    @classmethod
+    def set_default(cls, **kwargs):
         super().set_default(**kwargs)
 
-    def get_default(self, param_name: Optional[str] = None):
+    @classmethod
+    def get_default(cls, param_name: Optional[str] = None):
         return super().get_default(param_name)
 
-    def reset_default(self):
+    @classmethod
+    def reset_default(cls):
         super().reset_default()
 
     def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
@@ -580,13 +592,16 @@ class YAMLSplitter(JSONSplitter):
 
         return self._split_json_data(data, chunk_size, 'yaml', path=[], depth=0)
 
-    def set_default(self, **kwargs):
+    @classmethod
+    def set_default(cls, **kwargs):
         super().set_default(**kwargs)
 
-    def get_default(self, param_name: Optional[str] = None):
+    @classmethod
+    def get_default(cls, param_name: Optional[str] = None):
         return super().get_default(param_name)
 
-    def reset_default(self):
+    @classmethod
+    def reset_default(cls):
         super().reset_default()
 
     def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
@@ -889,13 +904,16 @@ class HTMLSplitter(_LanguageSplitterBase):
 
         return result
 
-    def set_default(self, **kwargs):
+    @classmethod
+    def set_default(cls, **kwargs):
         super().set_default(**kwargs)
 
-    def get_default(self, param_name: Optional[str] = None):
+    @classmethod
+    def get_default(cls, param_name: Optional[str] = None):
         return super().get_default(param_name)
 
-    def reset_default(self):
+    @classmethod
+    def reset_default(cls):
         super().reset_default()
 
     def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
@@ -974,11 +992,14 @@ class CodeSplitter(_TextSplitterBase):
     def get_supported_filetypes(cls) -> List[str]:
         return list(cls._SPLITTER_REGISTRY.keys())
 
-    def set_default(self, **kwargs):
+    @classmethod
+    def set_default(cls, **kwargs):
         super().set_default(**kwargs)
 
-    def get_default(self, param_name: Optional[str] = None):
+    @classmethod
+    def get_default(cls, param_name: Optional[str] = None):
         return super().get_default(param_name)
 
-    def reset_default(self):
+    @classmethod
+    def reset_default(cls):
         super().reset_default()
