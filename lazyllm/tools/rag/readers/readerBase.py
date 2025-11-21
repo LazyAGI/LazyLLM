@@ -10,7 +10,7 @@ from lazyllm.module import ModuleBase
 from pathlib import Path
 import locale
 import threading
-from charset_normalizer import from_path
+from lazyllm.thirdparty import charset_normalizer
 
 class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     post_action = None
@@ -106,7 +106,7 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         if enable_chardet:
             try:
-                detected = from_path(file_path).best().encoding
+                detected = charset_normalizer.from_path(file_path).best().encoding
                 cls._cache_encoding(cache_key, detected)
                 return detected
             except Exception as e:
@@ -218,7 +218,7 @@ class TxtReader(LazyLLMReaderBase):
                     LOG.error(f'Auto-detection also failed for {file}: {e}')
             elif self._auto_detect_encoding and self._enable_chardet:
                 try:
-                    detected = from_path(file).best()
+                    detected = charset_normalizer.from_path(file).best()
                     if detected and detected.encoding and detected.encoding.lower() != encoding.lower():
                         with (fs or get_default_fs()).open(file, mode='r', encoding=detected.encoding) as f:
                             content = f.read()

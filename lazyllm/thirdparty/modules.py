@@ -7,4 +7,4 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr', 'volcenginesdkarkruntime',
            'zhipuai', 'dashscope', ['mineru', 'cli.common'], 'opensearchpy', ['os', 'path'], 'pkg_resources', 'fastapi',
            ['fsspec', 'implementations.local'], 'bs4', 'uvicorn', 'elasticsearch', 'deepdiff', 'mem0', 'memu',
-           'pyobvector', 'sqlalchemy']
+           'pyobvector', 'sqlalchemy', 'charset_normalizer']
