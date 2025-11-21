@@ -1,9 +1,8 @@
-import os
 import time
 import traceback
 from typing import Any, Dict, List, Optional
 
-from lazyllm import LOG, config
+from lazyllm import LOG
 
 from ..data_loaders import DirectoryReader
 from ..doc_node import DocNode
@@ -14,20 +13,6 @@ from ..store.store_base import DEFAULT_KB_ID
 from ..store.utils import fibonacci_backoff
 from ..transform import AdaptiveTransform, make_transform
 from ..utils import gen_docid
-
-
-def _get_default_db_config():
-    root_dir = os.path.expanduser(os.path.join(config['home'], '.dbs'))
-    os.makedirs(root_dir, exist_ok=True)
-    db_path = os.path.join(root_dir, 'lazyllm_doc_task_management.db')
-    return {
-        'db_type': 'sqlite',
-        'user': None,
-        'password': None,
-        'host': None,
-        'port': None,
-        'db_name': db_path,
-    }
 
 
 class _Processor:

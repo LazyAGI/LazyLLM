@@ -22,7 +22,7 @@ class DocumentProcessorWorker(ModuleBase):
 
     class _Impl():
         def __init__(self, db_config: dict = None):
-            self._db_config = db_config if db_config else _get_default_db_config()
+            self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
             self._shutdown = False
             self._processors: dict[str, _Processor] = {}  # algo_id -> _Processor
             self._waiting_task_queue = None
@@ -251,7 +251,7 @@ class DocumentProcessorWorker(ModuleBase):
 
     def __init__(self, db_config: dict = None, num_workers: int = 1, port: int = None):
         super().__init__()
-        self._db_config = db_config if db_config else _get_default_db_config()
+        self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         self._num_workers = num_workers
         self._port = port
         worker_impl = DocumentProcessorWorker._Impl(db_config=self._db_config)

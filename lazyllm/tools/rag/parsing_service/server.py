@@ -16,14 +16,13 @@ from .base import (
     ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
     TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest, _calculate_task_score
 )
-from .impl import _get_default_db_config
 from .worker import DocumentProcessorWorker as Worker
 from .queue import _SQLBasedQueue as Queue
 
 from ..data_loaders import DirectoryReader
 from ..store.document_store import _DocumentStore
 from ..store.utils import create_file_path
-from ..utils import BaseResponse, ensure_call_endpoint
+from ..utils import BaseResponse, ensure_call_endpoint, _get_default_db_config
 from ...sql import SqlManager
 
 
@@ -475,7 +474,7 @@ class DocumentProcessor(ModuleBase):
                  path_prefix: Optional[str] = None):
         super().__init__()
         self._raw_impl = None  # save the reference of the original Impl object
-        self._db_config = db_config if db_config else _get_default_db_config()
+        self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         if not url:
             # create the Impl object (lazy loading, no threads created)
             self._raw_impl = DocumentProcessor._Impl(num_workers=num_workers, db_config=self._db_config,
