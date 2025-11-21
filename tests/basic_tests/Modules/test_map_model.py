@@ -3,6 +3,7 @@ from lazyllm.module.llms.onlinemodule.map_model_type import get_model_type
 
 test_models = {
     'llm': [
+        'GPT5'
         'Qwen3-32B',
         'qwen3-coder-plus',
         'sensechat-128k',
