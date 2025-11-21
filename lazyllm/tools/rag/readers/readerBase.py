@@ -76,17 +76,30 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                 cls._cache_encoding(cache_key, encoding)
                 return encoding
 
-        primary_encodings = ['utf-8', 'gbk']
-        secondary_encodings = ['gb2312', 'big5']
+        has_high_bytes = any(b > 127 for b in raw_data[:1000])
 
-        for encoding in primary_encodings:
-            if cls._try_decode(raw_data, encoding):
-                cls._cache_encoding(cache_key, encoding)
-                return encoding
-        for encoding in secondary_encodings:
-            if cls._try_decode(raw_data, encoding):
-                cls._cache_encoding(cache_key, encoding)
-                return encoding
+        if has_high_bytes:
+            chinese_encodings = ['gbk', 'gb2312', 'big5']
+            for encoding in chinese_encodings:
+                if cls._try_decode(raw_data, encoding):
+                    try:
+                        decoded = raw_data.decode(encoding)
+                        if any('\u4e00' <= c <= '\u9fff' for c in decoded[:100]):
+                            cls._cache_encoding(cache_key, encoding)
+                            return encoding
+                    except Exception:
+                        pass
+
+            if cls._try_decode(raw_data, 'utf-8'):
+                cls._cache_encoding(cache_key, 'utf-8')
+                return 'utf-8'
+        else:
+            primary_encodings = ['utf-8', 'gbk', 'gb2312', 'big5']
+            for encoding in primary_encodings:
+                if cls._try_decode(raw_data, encoding):
+                    cls._cache_encoding(cache_key, encoding)
+                    return encoding
+
         if cls._try_decode(raw_data, 'latin-1'):
             cls._cache_encoding(cache_key, 'latin-1')
             return 'latin-1'
@@ -187,24 +200,31 @@ class TxtReader(LazyLLMReaderBase):
             encoding = 'utf-8'
 
         try:
-            with (fs or get_default_fs()).open(file, encoding=encoding) as f:
+            with (fs or get_default_fs()).open(file, mode='r', encoding=encoding) as f:
                 content = f.read()
             return [DocNode(text=content)]
-        except Exception as e:
-            LOG.error(f'Failed to read {file} with encoding {encoding}: {e}')
+        except Exception:
             if not self._auto_detect_encoding and self._encoding:
-                LOG.info(f'Retrying with auto-detection for {file}')
                 try:
                     detected_encoding = self.detect_encoding(
                         file, fs,
                         use_cache=self._use_encoding_cache,
                         enable_chardet=self._enable_chardet
                     )
-                    with (fs or get_default_fs()).open(file, encoding=detected_encoding) as f:
+                    with (fs or get_default_fs()).open(file, mode='r', encoding=detected_encoding) as f:
                         content = f.read()
                     return [DocNode(text=content)]
+                except Exception as e:
+                    LOG.error(f'Auto-detection also failed for {file}: {e}')
+            elif self._auto_detect_encoding and self._enable_chardet:
+                try:
+                    detected = from_path(file).best()
+                    if detected and detected.encoding and detected.encoding.lower() != encoding.lower():
+                        with (fs or get_default_fs()).open(file, mode='r', encoding=detected.encoding) as f:
+                            content = f.read()
+                        return [DocNode(text=content)]
                 except Exception as e2:
-                    LOG.error(f'Auto-detection also failed for {file}: {e2}')
+                    LOG.error(f'charset_normalizer also failed for {file}: {e2}')
             raise
 
 class DefaultReader(TxtReader):
