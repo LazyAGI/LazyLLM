@@ -207,7 +207,7 @@ document.create_node_group(name='character3',
 
 For different document types, LazyLLM's built-in MarkdownSplitter, XMLSplitter, HTMLSplitter, JSONSplitter, YAMLSplitter, ProgrammingSplitter, and CodeSplitter can achieve different splitting requirements by configuring different parameters. Please refer to the documentation for each splitter class.
 
-Among them, CodeSplitter is more accurately described as a router class. It doesn't implement specific splitting but selects the appropriate splitter class based on input parameters. Let's use HTML files as an example:
+Among them, CodeSplitter is more accurately described as a router class. It doesn't implement specific splitting but selects the appropriate splitter class based on input parameters. Let's use XML files as an example:
 
 ```python
 from lazyllm.tools.rag import CodeSplitter

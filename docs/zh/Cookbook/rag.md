@@ -208,7 +208,7 @@ document.create_node_group(name='character3',
 
 针对不同的文档类型，LazyLLM内置的MarkdownSplitter, XMLSplitter, HTMLSPlitter, JSONSplitter, YAMLSplitter，ProgrammingSplitter和CodeSplitter可以通过配置不同的参数实现不同需求的切分，可以参考各切分类的文档。
 
-其中CodeSplitter准确的说是一个路由类，并不是实现具体的切分，而是会根据入参选择合适的切分类进行切分。我们以html文件举例：
+其中CodeSplitter准确的说是一个路由类，并不是实现具体的切分，而是会根据入参选择合适的切分类进行切分。我们以XML文件举例：
 
 ```python
 from lazyllm.tools.rag import CodeSplitter
