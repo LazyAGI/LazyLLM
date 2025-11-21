@@ -20,6 +20,9 @@
     members: connect, upsert, delete, get, search
     exclude-members:
 
+::: lazyllm.tools.rag.store.hybrid.oceanbase_store.OceanBaseStore
+    members: connect, upsert, delete, get, search
+    exclude-members:
 
 ::: lazyllm.tools.rag.store.ElasticSearchStore
     members:
@@ -231,9 +234,6 @@
     members: get_children_str, get_parent_id, get_content, to_dict, set_embedding
     exclude-members:
 
-::: lazyllm.tools.rag.doc_processor.DocumentProcessor
-    members: register_algorithm, drop_algorithm
-
 ::: lazyllm.tools.rag.doc_node.QADocNode
     members: get_text
     exclude-members:
@@ -253,7 +253,15 @@
 ::: lazyllm.tools.rag.web.DocWebModule
     members:
     exclude-members:    
-    
+
+::: lazyllm.tools.rag.parsing_service.server.DocumentProcessor
+    members: [start, register_algorithm, drop_algorithm]
+    exclude-members:
+
+::: lazyllm.tools.rag.parsing_service.worker.DocumentProcessorWorker
+    members: [start, stop]
+    exclude-members:
+
 ::: lazyllm.tools.WebModule
     members:
     exclude-members: forward
@@ -279,14 +287,6 @@
     exclude-members: forward
 
 ::: lazyllm.tools.FunctionCall
-    members: 
-    exclude-members: forward
-
-::: lazyllm.tools.FunctionCallFormatter
-    members: 
-    exclude-members: forward
-
-::: lazyllm.tools.FunctionCallAgent
     members: 
     exclude-members: forward
 

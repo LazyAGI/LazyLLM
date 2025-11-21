@@ -7,7 +7,6 @@ on:
     paths-ignore:
       - "**.md"
       - ".git*"
-      - "docs/assets/**"
       - "docs/**"
   pull_request:
     branches:
@@ -15,7 +14,6 @@ on:
     paths-ignore:
       - "**.md"
       - ".git*"
-      - "docs/assets/**"
       - "docs/**"
 env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${{ github.run_number }}'
@@ -64,6 +62,13 @@ jobs:
           
       - name: Checkout code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Fetch base branch for PR
+        if: github.event_name == 'pull_request'
+        run: |
+          git fetch origin ${{ github.event.pull_request.base.ref }} --depth=1
 
       - name: Build doc
         run: |
@@ -88,27 +93,67 @@ jobs:
       - name: Move code to custom directory
         run: |
           set -ex
-          mv $GITHUB_WORKSPACE/* ${{ env.CI_PATH }}/
+          mv $GITHUB_WORKSPACE/* $GITHUB_WORKSPACE/.[!.]* ${{ env.CI_PATH }}/
 
-  check_deploy_changes:
+  TestSetup:
     runs-on: ubuntu-latest
     outputs:
-      changed: ${{ steps.filter.outputs.any_changed }}
+      ci_path: ${{ steps.set_path.outputs.ci_path }}
+      changed_files: ${{ steps.changed_files.outputs.all_changed_files }}
     steps:
+      - name: Set CI_PATH
+        id: set_path
+        run: echo "ci_path=${{ env.CI_PATH }}" >> "$GITHUB_OUTPUT"
+
       - name: Checkout code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      - name: Filter changed files
-        id: filter
-        uses: dorny/paths-filter@v2
-        with:
-          filters: |
-            any_changed:
-              - 'lazyllm/launcher.py'
-              - 'lazyllm/components/deploy/**/*.py'
-              - 'lazyllm/module/llms/trainablemodule.py'
+      - name: Get changed files
+        id: changed-files
+        uses: tj-actions/changed-files@v47
+
+      - name: List all changed files
+        run: |
+          echo "ALL_CHANGED_FILES:"
+          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+            echo "$file"
+          done
+          echo ""
+
+  BasicTests:
+    needs: [Clone, TestSetup]
+    uses: ./.github/workflows/reusable_run_tests.yml
+    with:
+      CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
+      changed_files: ${{ needs.TestSetup.outputs.changed_files }}
+      markers: "not skip_on_linux"
+      tests_dir: "tests/basic_tests"
+      launcher: "empty"
+      nproc: 4
+
+  AdvancedTests:
+    needs: [Clone, TestSetup]
+    uses: ./.github/workflows/reusable_run_tests.yml
+    with:
+      CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
+      changed_files: ${{ needs.TestSetup.outputs.changed_files }}
+      markers: "not skip_on_linux"
+      tests_dir: "tests/advanced_tests"
+      launcher: "sco"
+      nproc: 1
+
+  EngineTests:
+    needs: [Clone, TestSetup]
+    uses: ./.github/workflows/reusable_run_tests.yml
+    with:
+      CI_PATH: ${{ needs.TestSetup.outputs.ci_path }}
+      changed_files: ${{ needs.TestSetup.outputs.changed_files }}
+      markers: "not skip_on_linux"
+      tests_dir: "tests/engine_tests"
+      launcher: "sco"
+      nproc: 1
 
   check_online_changes:
     runs-on: tps_sco_nv
@@ -130,85 +175,12 @@ jobs:
               - 'lazyllm/module/llms/onlinemodule/__init__.py'
               - 'lazyllm/module/llms/onlinemodule/automodel.py'
 
-  BasicTests:
-    runs-on: tps_sco_nv
-    needs: [Clone]
-    steps:
-      - name: RunTests
-        run: |
-          set -ex
-          cd ${{ env.CI_PATH }}
-          pip install -r tests/requirements.txt
-          realpath .
-          env | grep '^SCC'
-          export LAZYLLM_SCO_ENV_NAME=lazyllm
-          export LAZYLLM_DEFAULT_LAUNCHER=sco
-          export PYTHONPATH=$PWD:$PYTHONPATH
-          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
-          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
-          mkdir -p $LAZYLLM_HOME
-          python -m pytest --lf --last-failed-no-failures=all -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/basic_tests/
-
-  AdvancedStandardTests:
-    runs-on: tps_sco_nv
-    needs: [Clone, check_deploy_changes]
-    steps:
-      - name: Get changed env
-        run: |
-          echo "IF_CHANGED=${{ needs.check_deploy_changes.outputs.changed }}" >> $GITHUB_ENV
-
-      - name: RunTests
-        run: |
-          cd ${{ env.CI_PATH }}
-          pip install -r tests/requirements.txt
-          env | grep '^SCC'
-          export LAZYLLM_SCO_ENV_NAME=lazyllm
-          export LAZYLLM_DEFAULT_LAUNCHER=sco
-          export PYTHONPATH=$PWD:$PYTHONPATH
-          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
-          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
-          mkdir -p $LAZYLLM_HOME
-          source ~/ENV/env.sh
-          if [ "$IF_CHANGED" = "true" ]; then set LAZYLLM_SKIP_GPU_TEST=False ;fi
-          if [ -f tests/advanced_tests/standard_test/.pytest-cache/v/cache/lastfailed ]; then
-            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/standard_test/
-          else
-            python -m pytest -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/standard_test/
-          fi
-
-  AdvancedFullTests:
-    runs-on: tps_sco_nv
-    needs: [Clone, check_deploy_changes]
-    steps:
-      - name: Get changed env
-        run: |
-          echo "IF_CHANGED=${{ needs.check_deploy_changes.outputs.changed }}" >> $GITHUB_ENV
-
-      - name: RunTests
-        run: |
-          cd ${{ env.CI_PATH }}
-          env | grep '^SCC'
-          export LAZYLLM_SCO_ENV_NAME=lazyllm
-          export LAZYLLM_DEFAULT_LAUNCHER=sco
-          export PYTHONPATH=$PWD:$PYTHONPATH
-          export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
-          export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-          export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
-          mkdir -p $LAZYLLM_HOME
-          source ~/ENV/env.sh
-          if [ "$IF_CHANGED" = "true" ]; then set LAZYLLM_SKIP_GPU_TEST=False ;fi
-          if [ -f tests/advanced_tests/full_test/.pytest-cache/v/cache/lastfailed ]; then
-            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/full_test/
-          else
-            python -m pytest -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/advanced_tests/full_test/
-          fi
-
   ChargeTests:
     runs-on: tps_sco_nv
-    needs: [ Clone, check_online_changes ]
+    needs: [ Clone, check_online_changes, TestSetup]
     if: ${{ needs.check_online_changes.outputs.changed }} == 'true'
+    env:
+      CHANGED_FILES: ${{ needs.TestSetup.outputs.changed_files }}
     steps:
       - name: Clone LazyLLM-Cache for Output and Cache
         run: |
@@ -269,10 +241,13 @@ jobs:
           export LAZYLLM_HOME="${{ env.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source ~/ENV/env.sh
-          if [ -f tests/charge_tests/.pytest-cache/v/cache/lastfailed ]; then
-            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
+          if [ -f tests/charge_tests/.pytest_cache/v/cache/lastfailed ]; then
+            python -m pytest --lf --last-failed-no-failures=none -m "not skip_on_linux" --order-scope=class --durations=0 \
+              --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html --override-ini=cache_dir=tests/charge_tests/.pytest_cache \
+              tests/charge_tests
           else
-            python -m pytest -m "not skip_on_linux" --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html tests/charge_tests
+            python -m pytest -m "not skip_on_linux" --order-scope=class --durations=0 --reruns=2 -v --cov=lazyllm --cov-append \
+             --cov-report=html  --override-ini=cache_dir=tests/charge_tests/.pytest_cache tests/charge_tests
           fi
 
       - name: Success On Main Branch
@@ -293,7 +268,7 @@ jobs:
 
   Coverage_linux:
     runs-on: ubuntu-latest
-    needs: [ BasicTests, AdvancedStandardTests, AdvancedFullTests, ChargeTests ]
+    needs: [ BasicTests, AdvancedTests, EngineTests, ChargeTests ]
     steps:
       - name: Add Coverage Report Link to Summary
         run: |

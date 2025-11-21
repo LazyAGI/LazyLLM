@@ -382,6 +382,7 @@ class LLMParser(NodeTransform):
         return [result] if isinstance(result, str) else result
 
     def _format(self, input):
+        input = input.get('content', input)
         if self._task_type == 'keywords':
             return [s.strip() for s in input.split(',')]
         elif self._task_type in ('qa', 'qa_img'):

@@ -4,7 +4,8 @@ from .base import OnlineMultiModalBase
 from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
 from .supplier.doubao import DoubaoTextToImageModule
 from .supplier.glm import GLMSTTModule, GLMTextToImageModule
-from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTS
+from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule
+from .supplier.minimax import MinimaxTextToImageModule, MinimaxTTSModule
 
 
 class _OnlineMultiModalMeta(type):
@@ -40,13 +41,15 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
     }
     TTS_MODELS = {
         'qwen': QwenTTSModule,
-        'siliconflow': SiliconFlowTTS
+        'siliconflow': SiliconFlowTTSModule,
+        'minimax': MinimaxTTSModule
     }
     TEXT2IMAGE_MODELS = {
         'qwen': QwenTextToImageModule,
         'doubao': DoubaoTextToImageModule,
         'glm': GLMTextToImageModule,
-        'siliconflow': SiliconFlowTextToImageModule
+        'siliconflow': SiliconFlowTextToImageModule,
+        'minimax': MinimaxTextToImageModule
     }
 
     @staticmethod
