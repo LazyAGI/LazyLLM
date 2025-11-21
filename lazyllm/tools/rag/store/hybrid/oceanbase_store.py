@@ -7,7 +7,7 @@ from queue import Queue, Empty, Full
 from typing import Dict, List, Union, Optional
 from lazyllm.thirdparty import numpy as np
 import math
-from lazyllm.thirdparty import sqlalchemy
+import sqlalchemy
 
 from lazyllm.thirdparty import pyobvector
 
