@@ -126,6 +126,16 @@ class TestCharacterSplitter:
         splits = splitter.split_text(text, metadata_size=0)
         assert splits == ['Hello', ' world! This is a test.']
 
+        def custom_split_with_separator(text, separator):
+            chunks = text.split(separator)
+            return [chunk.strip() for chunk in chunks if chunk.strip()]
+
+        splitter = CharacterSplitter(separator=',', chunk_size=4, overlap=0)
+        splitter.set_split_fns(custom_split_with_separator)
+        text = 'apple, banana, cherry, date, happy, sad'
+        splits = splitter.split_text(text, metadata_size=0)
+        assert splits == ['apple', 'banana', 'cherry', 'date', 'happy', 'sad']
+
     def test_split_text_with_weak_split_fn(self):
         splitter = CharacterSplitter(separator=',', chunk_size=4, overlap=0)
         splitter.set_split_fns([lambda t: t.split('!')])

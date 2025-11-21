@@ -1,5 +1,6 @@
 from functools import partial
 import re
+import inspect
 
 from typing import List, Union, Tuple, Callable, Optional, AbstractSet, Collection, Literal, Any
 from .base import _TextSplitterBase, _TokenTextSplitter, _Split, _UNSET
@@ -57,14 +58,42 @@ class CharacterSplitter(_TextSplitterBase):
 
         return results
 
-    def set_split_fns(self, split_fns: List[Callable[[str], List[str]]]):
-        self._character_split_fns = split_fns
+    def set_split_fns(self, split_fns: Union[Callable[[str], List[str]], List[Callable[[str], List[str]]]], bind_separator: bool = None):  # noqa: E501
+        if not isinstance(split_fns, list):
+            split_fns = [split_fns]
+        self._character_split_fns = []
+        for split_fn in split_fns:
+            if bind_separator is None:
+                sig = inspect.signature(split_fn)
+                has_separator = 'separator' in sig.parameters
+                should_bind = has_separator
+            else:
+                should_bind = bind_separator
 
-    def add_split_fn(self, split_fn: Callable[[str], List[str]], index: Optional[int] = None):
-        if index is None:
-            self._character_split_fns.append(split_fn)
+            if should_bind:
+                fn = partial(split_fn, separator=self._separator)
+            else:
+                fn = split_fn
+
+            self._character_split_fns.append(fn)
+
+    def add_split_fn(self, split_fn: Callable[[str], List[str]], index: Optional[int] = None, bind_separator: bool = None):  # noqa: E501
+        if bind_separator is None:
+            sig = inspect.signature(split_fn)
+            has_separator = 'separator' in sig.parameters
+            should_bind = has_separator
         else:
-            self._character_split_fns.insert(index, split_fn)
+            should_bind = bind_separator
+
+        if should_bind:
+            fn = partial(split_fn, separator=self._separator)
+        else:
+            fn = split_fn
+
+        if index is None:
+            self._character_split_fns.append(fn)
+        else:
+            self._character_split_fns.insert(index, fn)
 
     def clear_split_fns(self):
         self._character_split_fns = []
