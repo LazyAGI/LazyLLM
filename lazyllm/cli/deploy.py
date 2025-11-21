@@ -81,6 +81,17 @@ def deploy(commands):
         )
         server.start()
         server.wait()
+    elif commands and commands[0] == 'graphrag':
+        commands = commands[1:]
+        parser = argparse.ArgumentParser(description='lazyllm deploy command for deploying a graphrag server.')
+        parser.add_argument('--kg_dir', help='graphrag knowledge graph directory', required=True, default=None)
+        args = parser.parse_args(commands)
+
+        lazyllm.LOG.info('Starting graphrag server')
+        from lazyllm.tools.servers.graphrag_server_module import GraphRagServerModule
+        server = GraphRagServerModule(kg_dir=args.kg_dir)
+        server.start()
+        server.wait()
     else:
         parser = argparse.ArgumentParser(description='lazyllm deploy command for deploying a model.')
         parser.add_argument('model', help='model name')
