@@ -2,6 +2,7 @@ from typing import Dict, List, Optional, Any
 
 from lazyllm import LOG
 from ...sql import SqlManager
+from ..utils import _orm_to_dict
 
 
 class _SQLBasedQueue:
@@ -62,7 +63,7 @@ class _SQLBasedQueue:
                 new_record = TableCls(**kwargs)
                 session.add(new_record)
                 session.flush()
-                result = self._orm_to_dict(new_record)
+                result = _orm_to_dict(new_record)
                 LOG.info(f'[SQLBasedQueue] Enqueued to {self._table_name}')
                 return result
         except Exception as e:
@@ -79,7 +80,7 @@ class _SQLBasedQueue:
                 if not record:
                     return None
 
-                result = self._orm_to_dict(record)
+                result = _orm_to_dict(record)
                 session.delete(record)
 
                 LOG.info(f'[SQLBasedQueue] Dequeued from {self._table_name}')
@@ -97,7 +98,7 @@ class _SQLBasedQueue:
                 if not record:
                     return None
 
-                result = self._orm_to_dict(record)
+                result = _orm_to_dict(record)
                 LOG.debug(f'[SQLBasedQueue] Peeked from {self._table_name}')
                 return result
 
@@ -141,6 +142,3 @@ class _SQLBasedQueue:
         except Exception as e:
             LOG.error(f'[SQLBasedQueue] Failed to clear {self._table_name}: {e}')
             raise
-
-    def _orm_to_dict(self, obj) -> Dict[str, Any]:
-        return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}

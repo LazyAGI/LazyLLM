@@ -1020,3 +1020,7 @@ def _get_default_db_config(db_name: str):
         'port': None,
         'db_name': db_path,
     }
+
+def _orm_to_dict(obj) -> Dict[str, Any]:
+    '''convert ORM object to dict'''
+    return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}

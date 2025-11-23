@@ -22,7 +22,7 @@ from .queue import _SQLBasedQueue as Queue
 from ..data_loaders import DirectoryReader
 from ..store.document_store import _DocumentStore
 from ..store.utils import create_file_path
-from ..utils import BaseResponse, ensure_call_endpoint, _get_default_db_config
+from ..utils import BaseResponse, ensure_call_endpoint, _get_default_db_config, _orm_to_dict
 from ...sql import SqlManager
 
 
@@ -163,10 +163,7 @@ class DocumentProcessor(ModuleBase):
                 algorithm = session.query(AlgoInfo).filter(AlgoInfo.id == algo_id).first()
                 if algorithm is None:
                     return None
-                return self._orm_to_dict(algorithm)
-
-        def _orm_to_dict(self, obj):
-            return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
+                return _orm_to_dict(algorithm)
 
         @app.get('/health')
         def get_health(self) -> None:
@@ -218,7 +215,7 @@ class DocumentProcessor(ModuleBase):
                 AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
                 algorithms = session.query(AlgoInfo).all()
                 for algorithm in algorithms:
-                    res.append(self._orm_to_dict(algorithm))
+                    res.append(_orm_to_dict(algorithm))
             data = []
             for algo_dict in res:
                 data.append({
