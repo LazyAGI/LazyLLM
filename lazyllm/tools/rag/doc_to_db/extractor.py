@@ -2,21 +2,27 @@ from __future__ import annotations
 
 from typing import Any, Dict, List, Optional, Tuple, Type, Union, get_args, get_origin
 
-import sqlalchemy
 import json
+import sqlalchemy
 from uuid import uuid4
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, create_model
 from datetime import datetime
+from string import Template
 
-from lazyllm import LOG, OnlineChatModule, TrainableModule, once_wrapper
+from lazyllm import LOG, OnlineChatModule, TrainableModule, ThreadPoolExecutor, once_wrapper
+from lazyllm.components import JsonFormatter
+
+from ...sql.sql_manager import DBStatus, SqlManager
 from ..doc_node import DocNode
 from ..global_metadata import RAG_DOC_ID, RAG_KB_ID
-from lazyllm.tools.sql.sql_manager import DBStatus, SqlManager
+from ..utils import DocListManager
 from .model import (
     TABLE_SCHEMA_SET_INFO, Table_ALGO_KB_SCHEMA, ExtractionMode,
-    _TableBase, ExtractResult
+    _TableBase, ExtractResult, ExtractMeta, ExtractClue
 )
-from ..utils import DocListManager
+from .prompts import SCHEMA_EXTRACT_PROMPT, SCHEMA_EXTRACT_INPUT_FORMAT
+
+ONE_DOC_LENGTH_LIMIT = 102400
 
 
 class SchemaExtractor:
@@ -39,7 +45,8 @@ class SchemaExtractor:
     def __init__(self, db_config: Dict[str, Any],
                  llm: Union[OnlineChatModule, TrainableModule] = OnlineChatModule(),
                  *, table_prefix: Optional[str] = None, force_refresh: bool = False,
-                 extraction_mode: ExtractionMode = ExtractionMode.TEXT):
+                 extraction_mode: ExtractionMode = ExtractionMode.TEXT,
+                 max_len: int = ONE_DOC_LENGTH_LIMIT, num_workers: int = 4):
         self._llm = llm
         self._table_prefix = table_prefix or self.TABLE_PREFIX
         self._sql_manager = None
@@ -48,6 +55,8 @@ class SchemaExtractor:
         self._schema_registry: Dict[str, Type[BaseModel]] = {}
         self._force_refresh = force_refresh
         self._extraction_mode = extraction_mode
+        self._max_len = max_len
+        self._num_workers = num_workers
 
     @property
     def sql_manager(self) -> SqlManager:
@@ -115,6 +124,31 @@ class SchemaExtractor:
             LOG.error(f'Failed to register schema set: {e}')
             raise e
 
+    def _model_from_schema_json(self, schema_json: str, model_name: str = 'RecoveredSchema') -> Type[BaseModel]:
+        """Reconstruct a minimal BaseModel subclass from stored JSON schema."""
+        try:
+            schema_dict = json.loads(schema_json)
+        except Exception as exc:
+            raise ValueError(f'Invalid schema json: {exc}') from exc
+        properties = schema_dict.get('properties', {})
+        required = set(schema_dict.get('required', []) or [])
+        type_map = {
+            'string': str,
+            'integer': int,
+            'number': float,
+            'boolean': bool,
+            'array': list,
+            'object': dict,
+        }
+        fields_def: Dict[str, Tuple[Any, Any]] = {}
+        for name, prop in properties.items():
+            t_name = prop.get('type')
+            py_type = type_map.get(t_name, str)
+            desc = prop.get('description', '')
+            default = ... if name in required else None
+            fields_def[name] = (py_type, Field(default=default, description=desc))
+        return create_model(model_name, **fields_def)  # type: ignore[arg-type]
+
     def has_schema_set(self, schema_set_id: str) -> bool:
         self._lazy_init()
         if self._sql_manager:
@@ -123,7 +157,15 @@ class SchemaExtractor:
                 raise ValueError('Schema set table not initialized')
             with self._sql_manager.get_session() as session:
                 existing = session.query(table_cls).filter_by(schema_set_id=schema_set_id).first()
-                return True if existing else False
+                if not existing:
+                    return False
+                if schema_set_id not in self._schema_registry:
+                    recovered_schema = self._model_from_schema_json(existing.schema_set_json,
+                                                                    model_name=f'Schema_{schema_set_id}')
+                    self._schema_registry[schema_set_id] = recovered_schema
+                    self._ensure_table(schema_set_id, recovered_schema)
+                return True
+        return schema_set_id in self._schema_registry
 
     def bind_kb_to_schema_set(self, algo_id: str, kb_id: str, schema_set_id: Optional[str] = None,
                               schema_set: Type[BaseModel] = None, force_refresh: bool = False) -> str:
@@ -174,12 +216,140 @@ class SchemaExtractor:
             LOG.error(f'Failed to bind kb_id {kb_id} to schema_set_id {schema_set_id} for algo {algo_id}: {e}')
             raise e
 
-    def _exec_text_extract(self, doc_nodes: List[DocNode], algo_id: str):
-        pass
+    def _get_schema_set_str(self, schema_set) -> str:
+        """Return a human readable schema description: name, description, data type."""
+        model = None
+        if isinstance(schema_set, str):
+            model = self._schema_registry.get(schema_set)
+        else:
+            model = schema_set
+        if not model:
+            raise ValueError(f'Unknown schema_set: {schema_set}')
+        fields = getattr(model, 'model_fields', None) or getattr(model, '__fields__', {})
 
-    def _exec_multimodal_extract(self, doc_nodes: List[DocNode], algo_id: str):
+        def _field_type_str(field_obj: Any) -> str:
+            anno = getattr(field_obj, 'annotation', None) or getattr(field_obj, 'outer_type_', None)
+            origin = get_origin(anno)
+            args = get_args(anno)
+            if origin is Union and args:
+                non_none = [arg for arg in args if arg is not type(None)]  # noqa: E721
+                anno = non_none[0] if non_none else anno
+            return getattr(anno, '__name__', str(anno))
+
+        lines: List[str] = []
+        for name, field in fields.items():
+            desc = getattr(field, 'description', None)
+            if desc is None:
+                field_info = getattr(field, 'field_info', None)
+                desc = getattr(field_info, 'description', None) if field_info else None
+            type_str = _field_type_str(field)
+            lines.append(f'name: {name}, description: {desc or ""}, type: {type_str}')
+        return '\n'.join(lines)
+
+    def _gen_text_list_from_nodes(self, nodes: List[DocNode]) -> list[str]:
+        '''Generate full text blocks with metadata, each capped by `self._max_len`.'''
+        if not nodes:
+            return []
+        template = "File Info:\n{file_metas}\nFile Content:\n{file_content}\n\n"
+        metas = "\n".join([f"{k}: {v}" for k, v in nodes[0].global_metadata.items()])
+
+        # Reserve space for metadata and static prompt text.
+        base_len = len(template.format(file_metas=metas, file_content=""))
+        content_limit = max(self._max_len - base_len, 0)
+        if content_limit == 0:
+            return [template.format(file_metas=metas, file_content="")]
+
+        chunks: List[str] = []
+        current = ""
+        for node in nodes:
+            node_text = node.text
+            sep_len = 1 if current else 0
+            if len(current) + sep_len + len(node_text) <= content_limit:
+                current = f"{current}\n{node_text}" if current else node_text
+                continue
+
+            if current:
+                chunks.append(current)
+            start = 0
+            while start < len(node_text):
+                end = start + content_limit
+                chunks.append(node_text[start:end])
+                start = end
+            current = ""
+
+        if current:
+            chunks.append(current)
+
+        return [template.format(file_metas=metas, file_content=chunk) for chunk in chunks]
+
+    def _text_extract_impl(self, doc_nodes: List[DocNode], schema_set_id: str) -> ExtractResult:  # noqa: C901
+        if not self._llm:
+            raise ValueError('LLM not initialized')
+        schema_set = self._schema_registry.get(schema_set_id)
+        llm = self._llm.share(prompt=SCHEMA_EXTRACT_PROMPT, format=JsonFormatter())
+        content_list = self._gen_text_list_from_nodes(doc_nodes)
+        schema_str = self._get_schema_set_str(schema_set)
+        input_list = [
+            Template(SCHEMA_EXTRACT_INPUT_FORMAT).substitute(schema=schema_str, text=content)
+            for content in content_list
+        ]
+        if self._num_workers > 1:
+            pool = ThreadPoolExecutor(max_workers=self._num_workers)
+            fs = [pool.submit(llm, text) for text in input_list]
+            res = [f.result() for f in fs]
+        else:
+            res = [llm(text) for text in input_list]
+        # process res by vote
+        schema_val_clues: Dict[str, Dict[str, List[str]]] = {}
+        for res_item in res:
+            if not isinstance(res_item, list):
+                continue
+            for info in res_item:
+                if not isinstance(info, dict):
+                    continue
+                schema_name = info.get('schema_name') or info.get('field_name')
+                if not schema_name:
+                    continue
+                val_js = json.dumps(info.get('value'), ensure_ascii=False)
+                if val_js is None:
+                    continue
+                clues = info.get('clues') or []
+                schema_val_clues.setdefault(schema_name, {}).setdefault(val_js, []).extend(clues)
+
+        data: Dict[str, Any] = {}
+        clue_meta: Dict[str, ExtractClue] = {}
+        for name, val_map in schema_val_clues.items():
+            best_val_js = None
+            best_clues: List[str] = []
+            for v_js, clues in val_map.items():
+                if len(clues) > len(best_clues):
+                    best_val_js = v_js
+                    best_clues = clues
+            if best_val_js is None:
+                continue
+            try:
+                best_val = json.loads(best_val_js)
+            except Exception:
+                best_val = best_val_js
+            data[name] = best_val
+            clue_meta[name] = ExtractClue(reason='selected_by_max_clues', citation=best_clues)
+
+        meta = ExtractMeta(
+            schema_set_id=schema_set_id,
+            mode=self._extraction_mode,
+            algo_id='',
+            kb_id='',
+            doc_id='',
+            clues=clue_meta,
+        )
+        return [ExtractResult(data=data, metadata=meta)]
+
+    def _multimodal_extract_impl(self, doc_nodes: List[DocNode], schemet_set_id: str) -> ExtractResult:
         # TODO: currently only support text extract
         raise NotImplementedError('Multimodal extract not implemented')
+
+    def _schema_extract_impl(self, doc_nodes: List[DocNode]):
+        raise NotImplementedError('Schema extract not implemented')
 
     def _validate_extract_params(self, data: List[DocNode], algo_id: str) -> Tuple[str, str, bool]:
         self._lazy_init()
@@ -214,30 +384,58 @@ class SchemaExtractor:
 
     def extract_and_store(self, data: List[DocNode], algo_id: str = DocListManager.DEFAULT_GROUP_NAME,
                           schema_set_id: str = None, schema_set: Type[BaseModel] = None) -> ExtractResult:
-        """
-        Persist extracted fields for a document.
-
-        payload is validated against the given schema_set; algo_id maps to the
-        Document/algorithm name。schema_set 支持按需传入用于临时注册。
-        """
+        '''Persist extracted fields for a document'''
         self._lazy_init()
         if schema_set is not None:
-            self.register_schema_set(schema_set, schema_set_id)
+            schema_set_id = self.register_schema_set(schema_set, schema_set_id)
+        self.has_schema_set
+        kb_id, doc_id, bound = self._validate_extract_params(data, algo_id)
+        if not bound:
+            raise ValueError(f'Algo {algo_id}, KB {kb_id} not bound to schema_set_id {schema_set_id}')
         if schema_set_id not in self._schema_registry:
             raise ValueError(f'Unknown schema_set_id: {schema_set_id}')
+        if self._extraction_mode == ExtractionMode.TEXT:
+            res = self._text_extract_impl(data, schema_set_id)
+        elif self._extraction_mode == ExtractionMode.MULTIMODAL:
+            res = self._multimodal_extract_impl(data, schema_set_id)
+        else:
+            raise ValueError(f'Unknown extraction mode: {self._extraction_mode}')
+        if not res:
+            return None
+        res_item = res[0] if isinstance(res, list) else res
+        res_item.metadata.algo_id = algo_id
+        res_item.metadata.kb_id = kb_id
+        res_item.metadata.doc_id = doc_id
 
-        # model_cls = self._schema_registry[schema_set_id]
-        # table_name = self._ensure_table(schema_set_id, model_cls)
-        # model_data = self._to_model_dict(payload, model_cls)
-        # row = {
-        #     self.SYS_KB_ID: kb_id,
-        #     self.SYS_DOC_ID: doc_id,
-        #     self.SYS_ALGO_ID: algo_id,
-        #     **model_data,
-        # }
-        # db_result = self._sql_manager.insert_values(table_name, [row])
-        # if db_result.status != DBStatus.SUCCESS:
-        #     raise ValueError(f'Insert values failed: {db_result.detail}')
+        schema_model = self._schema_registry[schema_set_id]
+        table_name = self._ensure_table(schema_set_id, schema_model)
+        table_cls = self._sql_manager.get_table_orm_class(table_name)
+        if table_cls is None:
+            raise ValueError(f'Target table {table_name} not initialized')
+        payload = {
+            self.SYS_KB_ID: kb_id,
+            self.SYS_DOC_ID: doc_id,
+            self.SYS_ALGO_ID: algo_id,
+        }
+        payload.update(self._to_model_dict(res_item.data, schema_model))
+        meta_obj = getattr(res_item, 'metadata', None) or {}
+        if isinstance(meta_obj, BaseModel):
+            try:
+                meta_payload = meta_obj.model_dump()
+            except AttributeError:
+                meta_payload = meta_obj.dict()
+        elif isinstance(meta_obj, dict):
+            meta_payload = meta_obj
+        else:
+            meta_payload = {}
+        payload['extract_meta'] = meta_payload
+
+        with self._sql_manager.get_session() as session:
+            session.query(table_cls).filter_by(
+                **{self.SYS_KB_ID: kb_id, self.SYS_DOC_ID: doc_id}
+            ).delete()
+            session.add(table_cls(**payload))
+        return res
 
     def __call__(self, data: List[DocNode], algo_id: str = DocListManager.DEFAULT_GROUP_NAME) -> ExtractResult:
         # NOTE: data should be from single file source (kb_id, doc_id should be the same)
@@ -282,6 +480,7 @@ class SchemaExtractor:
         attrs[self.SYS_KB_ID] = sqlalchemy.Column(sqlalchemy.String(128), nullable=False)
         attrs[self.SYS_DOC_ID] = sqlalchemy.Column(sqlalchemy.String(128), nullable=False)
         attrs[self.SYS_ALGO_ID] = sqlalchemy.Column(sqlalchemy.String(128), nullable=False)
+        attrs['extract_meta'] = sqlalchemy.Column(sqlalchemy.JSON, nullable=True)
 
         for field_name, field_type in self._iter_schema_fields(schema_model):
             if field_name in attrs:
