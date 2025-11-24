@@ -1,46 +1,48 @@
-name: 'Reusable Test Workflow'
+name: 'Composite Action: Run tests'
+description: 'Composite Action: Run tests'
 
 inputs:
-  CI_PATH:
+  working_directory:
+    description: 'Working directory'
     required: true
-    type: string
   tests_dir:
+    description: ''
     required: true
-    type: string
   changed_files:
+    description: ''
     required: true
-    type: string
   markers:
+    description: ''
     required: true
-    type: string
   launcher:
+    description: ''
     required: false
     default: "sco"
-    type: string
   nproc:
+    description: ''
     required: false
-    default: 1
-    type: number
+    default: "1"
 
-env:
-  CHANGED_FILES: ${{ inputs.changed_files }}
 
 runs:
   using: "composite"
   steps:
     - name: Run tests
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        CHANGED_FILES: ${{ inputs.changed_files }}
       run: |
-        echo "ci_path=${{ inputs.CI_PATH }}"
+        cd ${{ inputs.working_directory }}
         echo "tests_dir=${{ inputs.tests_dir }}"
         echo "markers=${{ inputs.markers }}"
-        cd ${{ inputs.CI_PATH }}
         env | grep '^SCC'
         export LAZYLLM_SCO_ENV_NAME=lazyllm
         export LAZYLLM_DEFAULT_LAUNCHER=${{ inputs.launcher }}
         export PYTHONPATH=$PWD:$PYTHONPATH
         export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
         export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
-        export LAZYLLM_HOME="${{ inputs.CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
+        export LAZYLLM_HOME="${{ inputs.working_directory }}/${{ github.run_id }}-${{ github.job }}"
         pip install pytest-xdist
         mkdir -p $LAZYLLM_HOME
         source ~/ENV/env.sh

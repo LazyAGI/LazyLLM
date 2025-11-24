@@ -31,8 +31,8 @@ jobs:
       && !contains(github.event.pull_request.title, '[skip ci]')
     runs-on: tps_sco_nv
     outputs:
-      changed_files: ${{ steps.changed_files.outputs.all_changed_files }}
-      online_changed: ${{ steps.OnlineModuleChecker.outputs.any_changed }}
+      changed_files: ${{ steps.changed_files_yaml.outputs.all_all_changed_files }}
+      online_changed: ${{ steps.changed_files_yaml.outputs.online_module_any_changed }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -40,13 +40,21 @@ jobs:
           fetch-depth: 0
 
       - name: Get changed files
-        id: changed-files
+        id: changed_files_yaml
         uses: tj-actions/changed-files@v47
+        with:
+          files_yaml: |
+            online_module:
+              - lazyllm/module/llms/onlinemodule/**/*.py
+              - lazyllm/module/llms/onlinemodule/__init__.py
+              - lazyllm/module/llms/onlinemodule/automodel.py
+            all:
+              - ./**
 
       - name: List all changed files
         run: |
           echo "ALL_CHANGED_FILES:"
-          for file in ${{ steps.changed-files.outputs.all_changed_files }}; do
+          for file in ${{ steps.changed_files_yaml.outputs.all_all_changed_files }}; do
             echo "$file"
           done
           echo ""
@@ -75,24 +83,17 @@ jobs:
           cd ${{ env.CI_PATH }}
           pip install -r tests/requirements.txt
 
-      - name: Check onlinmodule files' change
-        id: OnlineModuleChecker
-        uses: dorny/paths-filter@v2
-        with:
-          filters: |
-            any_changed:
-              - 'lazyllm/module/llms/onlinemodule/**/*.py'
-              - 'lazyllm/module/llms/onlinemodule/__init__.py'
-              - 'lazyllm/module/llms/onlinemodule/automodel.py'
-
   BasicTests:
     runs-on: tps_sco_nv
     needs: [Clone]
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: RunTests
         uses: ./.github/actions/run_tests
         with:
-          CI_PATH: ${{ env.CI_PATH }}
+          working_directory: ${{ env.CI_PATH }}
           changed_files: ${{ needs.Clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/basic_tests"
@@ -103,10 +104,13 @@ jobs:
     runs-on: tps_sco_nv
     needs: [Clone]
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: RunTests
         uses: ./.github/actions/run_tests
         with:
-          CI_PATH: ${{ env.CI_PATH }}
+          working_directory: ${{ env.CI_PATH }}
           changed_files: ${{ needs.Clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/advanced_tests"
@@ -115,10 +119,13 @@ jobs:
     runs-on: tps_sco_nv
     needs: [Clone]
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
       - name: RunTests
         uses: ./.github/actions/run_tests
         with:
-          CI_PATH: ${{ env.CI_PATH }}
+          working_directory: ${{ env.CI_PATH }}
           changed_files: ${{ needs.Clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/engine_tests"
@@ -128,6 +135,9 @@ jobs:
     needs: [Clone]
     if: needs.Clone.outputs.online_changed == 'true'
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4 # For run_tests afterwards.
+
       - name: Clone LazyLLM-Cache for Output and Cache
         run: |
           cd ${{ env.CI_PATH }}
@@ -157,16 +167,16 @@ jobs:
           echo "LAZYLLM_CACHE_ONLINE_MODULE: $LAZYLLM_CACHE_ONLINE_MODULE"
 
       - name: RunTests
-        id: exe_ci
+        id: RunTests
         uses: ./.github/actions/run_tests
         with:
-          CI_PATH: ${{ env.CI_PATH }}
+          working_directory: ${{ env.CI_PATH }}
           changed_files: ${{ needs.Clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/charge_tests"
 
       - name: Update LazyLLM-Cache
-        if: ${{ success() && steps.exe_ci.conclusion == 'success' && github.event_name == 'push' }}
+        if: ${{ success() && steps.RunTests.conclusion == 'success' && github.event_name == 'push' }}
         run: |
           cd ${{ env.CI_PATH }}
           cd github_cache
@@ -245,6 +255,12 @@ jobs:
       && !contains(github.event.pull_request.title, '[skip ci]')
     runs-on: macos-13
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
       - name: Setup
         uses: ./.github/actions/setup
         with:
@@ -269,7 +285,7 @@ jobs:
             --override-ini=cache_dir=tests/basic_tests/.pytest_cache --reruns=2 tests/basic_tests/
         timeout-minutes: 30
         env :
-         GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
 
       - name: Save pytest cache
         if: always()
@@ -285,6 +301,12 @@ jobs:
     runs-on: macos-13
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
       - name: Setup
         uses: ./.github/actions/setup
         with:
@@ -358,6 +380,12 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
       - name: Setup
         uses: ./.github/actions/setup
         with:
@@ -402,6 +430,12 @@ jobs:
     runs-on: windows-latest
 
     steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
       - name: Setup
         uses: ./.github/actions/setup
         with:
