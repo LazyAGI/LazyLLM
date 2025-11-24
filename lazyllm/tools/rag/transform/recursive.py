@@ -15,7 +15,7 @@ class RecursiveSplitter(CharacterSplitter):
 
         self._separators = separators if separators else ['\n\n', '\n', ' ', '']
         self._cached_recursive_split_fns = [
-            partial(self.default_split, self._get_separator_pattern(sep))
+            partial(self._default_split, self._get_separator_pattern(sep))
             for sep in self._separators
         ] + [list]
 

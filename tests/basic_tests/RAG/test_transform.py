@@ -94,17 +94,17 @@ class TestCharacterSplitter:
     def test_default_split(self):
         splitter = CharacterSplitter(separator=' ')
         text = 'Hello, world! This is a test.'
-        splits = splitter.default_split(splitter._get_separator_pattern(' '), text)
+        splits = splitter._default_split(splitter._get_separator_pattern(' '), text)
         assert splits == ['Hello,', 'world!', 'This', 'is', 'a', 'test.']
 
         splitter = CharacterSplitter(separator=',', keep_separator=True)
         text = 'Hello, world! This is a test.'
-        splits = splitter.default_split(splitter._get_separator_pattern(','), text)
+        splits = splitter._default_split(splitter._get_separator_pattern(','), text)
         assert splits == ['Hello,', ' world! This is a test.']
 
         splitter = CharacterSplitter(separator=',', keep_separator=False)
         text = 'Hello, world! This is a test.'
-        splits = splitter.default_split(splitter._get_separator_pattern(','), text)
+        splits = splitter._default_split(splitter._get_separator_pattern(','), text)
         assert splits == ['Hello', ' world! This is a test.']
 
     def test_split_text(self):
