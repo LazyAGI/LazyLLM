@@ -20,6 +20,9 @@
     members: connect, upsert, delete, get, search
     exclude-members:
 
+::: lazyllm.tools.rag.store.hybrid.oceanbase_store.OceanBaseStore
+    members: connect, upsert, delete, get, search
+    exclude-members:
 
 ::: lazyllm.tools.rag.store.ElasticSearchStore
     members:
@@ -65,6 +68,13 @@
         - create_table
         - drop_table
         - insert_values
+    exclude-members:
+
+::: lazyllm.tools.SqlCall
+    members: 
+        - sql_query_promt_hook
+        - sql_explain_prompt_hook
+        - extract_sql_from_response
     exclude-members:
 
 ::: lazyllm.tools.rag.component.bm25.BM25

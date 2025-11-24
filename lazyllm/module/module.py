@@ -22,9 +22,12 @@ from abc import ABC, abstractmethod
 from filelock import FileLock
 
 
-lazyllm.config.add('cache_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'cache'), 'CACHE_DIR')
-lazyllm.config.add('cache_strategy', str, 'memory', 'CACHE_STRATEGY')
-lazyllm.config.add('cache_mode', str, 'RW', 'CACHE_MODE', options=['RW', 'RO', 'WO', 'NONE'])
+lazyllm.config.add('cache_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'cache'), 'CACHE_DIR',
+                   description='The default result cache directory for module to use(Read and Write).')
+lazyllm.config.add('cache_strategy', str, 'memory', 'CACHE_STRATEGY',
+                   description='The default cache strategy to use(memory, file, sqlite, redis).')
+lazyllm.config.add('cache_mode', str, 'RW', 'CACHE_MODE', options=['RW', 'RO', 'WO', 'NONE'],
+                   description='The default cache mode to use(Read and Write, Read Only, Write Only, None).')
 redis_client = redis_client['module']
 
 

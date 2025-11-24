@@ -7,7 +7,8 @@ from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
 from .utils import get_log_path, make_log_dir, parse_options_keys
 
-lazyllm.config.add('default_embedding_engine', str, '', 'DEFAULT_EMBEDDING_ENGINE')
+lazyllm.config.add('default_embedding_engine', str, '', 'DEFAULT_EMBEDDING_ENGINE',
+                   description='The default embedding engine to use.')
 
 class Infinity(LazyLLMDeployBase):
     keys_name_handle = {

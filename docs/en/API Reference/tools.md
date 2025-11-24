@@ -20,6 +20,9 @@
     members: connect, upsert, delete, get, search
     exclude-members:
 
+::: lazyllm.tools.rag.store.hybrid.oceanbase_store.OceanBaseStore
+    members: connect, upsert, delete, get, search
+    exclude-members:
 
 ::: lazyllm.tools.rag.store.ElasticSearchStore
     members:

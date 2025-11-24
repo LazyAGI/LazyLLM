@@ -8,8 +8,10 @@ from typing import Type
 from lazyllm.thirdparty import redis
 from filelock import FileLock
 
-config.add('default_fsqueue', str, 'sqlite', 'DEFAULT_FSQUEUE')
-config.add('fsqredis_url', str, '', 'FSQREDIS_URL')
+config.add('default_fsqueue', str, 'sqlite', 'DEFAULT_FSQUEUE',
+           description='The default file system queue to use.')
+config.add('fsqredis_url', str, '', 'FSQREDIS_URL',
+           description='The URL of the Redis server for the file system queue.')
 
 class FileSystemQueue(ABC):
 

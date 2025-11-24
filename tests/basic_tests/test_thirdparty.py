@@ -21,7 +21,7 @@ class TestThirdparty(object):
             try:
                 faiss.a
                 return True
-            except AttributeError:
+            except (AttributeError, ImportError):
                 return False
         monkeypatch.delitem(sys.modules, "faiss", raising=False)
         assert faiss is not None
