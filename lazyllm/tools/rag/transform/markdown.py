@@ -419,9 +419,16 @@ class MarkdownSplitter(_TextSplitterBase):
         result.insert(0, self._to_docnode(end_split))
         return result
 
-    def add_meta(self, split: _MD_Split) -> str:
-        if self.keep_headers:
-            split = self._keep_headers(split)
-        if self.keep_sematics:
-            split = self._keep_sematics(split)
-        return split.content
+    def _to_docnode(self, split: _MdSplit) -> DocNode:
+        metadata = {
+            'path': split.path if self.keep_trace else None,
+            'level': split.level,
+            'header': split.header if self.keep_headers else None,
+            'token_size': split.token_size,
+            'type': split.type,
+        }
+
+        return DocNode(
+            metadata=metadata,
+            content=split.content,
+        )
