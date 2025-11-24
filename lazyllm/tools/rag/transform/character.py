@@ -103,7 +103,7 @@ class CharacterSplitter(_TextSplitterBase):
         if character_split_fns == []:
             if self._cached_default_split_fns is None:
                 self._cached_default_split_fns = [
-                    partial(self.default_split, self._cached_sep_pattern),
+                    partial(self._default_split, self._cached_sep_pattern),
                     lambda t: t.split(' '),
                     list
                 ]
@@ -117,7 +117,7 @@ class CharacterSplitter(_TextSplitterBase):
 
         return splits, False
 
-    def default_split(self, sep_pattern: Union[str, set[str]], text: str) -> List[str]:
+    def _default_split(self, sep_pattern: Union[str, set[str]], text: str) -> List[str]:
         splits = re.split(sep_pattern, text)
         results = []
         if self._keep_separator:
