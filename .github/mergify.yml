@@ -1,8 +1,0 @@
-pull_request_rules:
-  - name: Add label after CI lint passes
-    conditions:
-      - check-success=lint
-    actions:
-      label:
-        add:
-          - lint_pass

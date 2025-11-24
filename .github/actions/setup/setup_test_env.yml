@@ -1,0 +1,54 @@
+name: 'Test env setup'
+description: 'Composite Action of setting up test environment'
+inputs:
+  tests_dir:
+    required: true
+    type: string
+
+env:
+  POETRY_VERSION: "1.8.3"
+  PYTHON_VERSION: "3.10.9"
+
+runs:
+  using: "composite"
+  steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        submodules: false
+        fetch-depth: 0
+
+    - name: Init specific submodule
+      run: |
+        git submodule init LazyLLM-Env
+        git submodule update LazyLLM-Env
+
+    - name: Copy poetry.lock to root directory
+      run: |
+        git branch
+        cd LazyLLM-Env && git branch
+        cd ..
+        cp LazyLLM-Env/poetry.lock .
+
+    - name: Set up python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+
+    - name: Install Poetry
+      uses: snok/install-poetry@v1
+      with:
+        version: ${{ env.POETRY_VERSION }}
+
+    - name: Build project with Poetry
+      run: poetry build
+
+    - name: Install the built package
+      run: ls dist && pip install dist/lazyllm*.whl
+
+    - name: Restore pytest cache
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ inputs.tests_dir }}/.pytest_cache
+        key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' &&
+          github.event.pull_request.head.sha || github.sha }}

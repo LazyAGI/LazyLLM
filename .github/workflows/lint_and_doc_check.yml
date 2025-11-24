@@ -1,0 +1,54 @@
+name: Lint And Doc check
+
+on:
+  pull_request_target:
+    branches:
+      - main
+    paths:
+      - '**/*.py'
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  Lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Fetch main
+        run: |
+          git fetch origin main
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10.9'
+
+      - name: Install dependencies
+        run: |
+          pip install flake8
+          pip install flake8-bugbear
+          pip install flake8-quotes
+
+      - name: Run flake8
+        run: |
+          make lint-only-diff
+
+  DocCheck:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Run DocCheck
+        run: |
+          pip install -r tests/requirements.txt
+          pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/doc_check
