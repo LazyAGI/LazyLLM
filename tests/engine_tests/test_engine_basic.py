@@ -1,5 +1,6 @@
 from lazyllm.engine import LightEngine
 import pytest
+import shutil
 import time
 from gradio_client import Client
 import lazyllm
@@ -732,6 +733,14 @@ class TestEngine(unittest.TestCase):
 @pytest.mark.skip_on_mac
 class TestEngineRAG(object):
 
+    def setUp(self):
+        os.environ['TIKTOKEN_CACHE_DIR'] = '/tmp/tiktoken_cache'
+        os.makedirs('/tmp/tiktoken_cache', exist_ok=True)
+
+    def tearDown(self):
+        if os.path.exists('/tmp/tiktoken_cache'):
+            shutil.rmtree('/tmp/tiktoken_cache', ignore_errors=True)
+
     def test_rag(self):
         resources = [
             dict(id='0', kind='Document', name='d1', args=dict(
@@ -755,7 +764,7 @@ class TestEngineRAG(object):
 
         # test add doc_group
         resources[0] = dict(id='0', kind='Document', name='d1', args=dict(
-            dataset_path='rag_master', server=True, activated_groups=['CoarseChunk', '00'], node_group=[
+            dataset_path='rag_master', activated_groups=['CoarseChunk', '00'], node_group=[
                 dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))
         nodes.extend([dict(id='2', kind='Retriever', name='ret2',
                            args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),
