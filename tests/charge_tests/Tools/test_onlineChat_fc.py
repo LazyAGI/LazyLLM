@@ -3,7 +3,7 @@ import lazyllm
 from lazyllm import ReactAgent, PlanAndSolveAgent, ReWOOAgent
 from lazyllm.tools import FunctionCall
 import random
-from . import tools as _  # noqa F401
+from ... import tools as _  # noqa F401
 
 
 @pytest.fixture()

@@ -1,5 +1,6 @@
 from lazyllm import LOG
-
+import re
+from typing import Optional, Dict
 MODEL_MAPPING = {
     # ===== OpenAI (LLM) =====
     'gpt-5': 'vlm',
@@ -435,45 +436,75 @@ MODEL_MAPPING = {
     'deepseek-chat': 'llm',
     'deepseek-reasoner': 'llm'
 }
+_TOKEN_MAP = {
+    'embed': ('embedding', 'embed'),
+    'stt': ('whisper', 'paraformer', 'asr', 'stt', 'transcribe'),
+    'tts': ('tts', 'cosyvoice', 'nova-tts'),
+    'vlm': ('qwen-vl', 'vl', 'vision', 'caption', 'omni', 'vlm', 'seed'),
+    'ocr': ('ocr',),
+    'rerank': ('rerank',),
+    'cross_modal_embed': ('cross_modal', 'multimodal-embedding', 'embedding-vision'),
+    'sd': ('dall', 'wan', 'sora', 'image', 'video', 't2i', 't2v'),
+}
+_SUFFIX_RE = re.compile(
+    r'(?:'
+    r'|[-_.]\d{4}(?:-\d{2}-\d{2})?'   # date-like suffix
+    r'|[-_.]v?\d+[a-z0-9\-]*'         # version-like suffix
+    r')+$',
+    flags=re.I
+)
 
+def _normalize_key(name: str) -> str:
+    '''Normalize model name for consistent comparison.'''
+    if not name:
+        return ''
+    s = name.strip().lower()
+    s = re.sub(r'[^a-z0-9]+', '-', s)
+    s = s.strip('-')
+    s = re.sub(_SUFFIX_RE, '', s)
+    return s
 
-def special_model_rule(model_name: str):
-    '''Keyword-based matching'''
+def _contains_token(name: str, token: str) -> bool:
+    '''Check if token exists as a separate unit in the model name.'''
+    if not token:
+        return False
+    patterns = [
+        rf'(^|[-_.]){re.escape(token)}($|[-_.])',
+        rf'{re.escape(token)}$',
+        rf'^{re.escape(token)}'
+    ]
+    return any(re.search(p, name) for p in patterns)
+
+NORMALIZED_MODEL_MAPPING: Dict[str, str] = {
+    _normalize_key(k): v for k, v in MODEL_MAPPING.items()
+}
+
+def feature_keyword_rule(model_name: str) -> Optional[str]:
+    '''Identify the model type by normalized name or keyword match.'''
+    stripped_input = _normalize_key(model_name)
+    if stripped_input in NORMALIZED_MODEL_MAPPING:
+        return NORMALIZED_MODEL_MAPPING[stripped_input]
+
+    for model_type, tokens in _TOKEN_MAP.items():
+        for tok in tokens:
+            if _contains_token(stripped_input, tok):
+                return model_type
+    return None
+def special_model_rule(model_name: str) -> Optional[str]:
+    '''Determine the model category'''
     return MODEL_MAPPING.get(model_name)
 
-
-def feature_keyword_rule(model_name: str):
-    '''Exact match'''
-    lower_name = model_name.lower()
-    if 'embedding' in lower_name:
-        return 'embed'
-    if 'whisper' in lower_name or 'paraformer' in lower_name or 'asr' in lower_name or 'stt' in lower_name:
-        return 'stt'
-    if 'tts' in lower_name or 'cosyvoice' in lower_name:
-        return 'tts'
-    if 'vl' in lower_name or 'vision' in lower_name or 'caption' in lower_name:
-        return 'vlm'
-    if 'ocr' in lower_name:
-        return 'ocr'
-    if 'rerank' in lower_name:
-        return 'rerank'
-    if 'cross_modal' in lower_name or 'multimodal-embedding' in lower_name:
-        return 'cross_modal_embed'
-    if any(kw in lower_name for kw in ('dall', 'cogview', 'wan', 'sd', 'image', 'video')):
-        return 'sd'
-    return None
-
-def get_model_type(model_name) -> str:
-    '''Determine the model category'''
-    for rule in [special_model_rule, feature_keyword_rule]:
+def get_model_type(model_name: str) -> str:
+    model_name = model_name.lower()
+    if not model_name:
+        return 'llm'
+    for rule in (special_model_rule, feature_keyword_rule):
         try:
             result = rule(model_name)
-            if result is not None:
+            if result:
                 LOG.info(f'Model: {model_name} classified as type: {result} by rule: {rule.__name__}')
                 return result
         except Exception as e:
-            LOG.warning(f'Rule {rule.__name__} execution error: {e}')
-            continue
-
+            LOG.warning(f'Rule {rule.__name__} failed: {e}')
     LOG.warning(f'Cannot classify model type for: {model_name}. Defaulting to "llm" instead.')
     return 'llm'

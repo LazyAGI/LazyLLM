@@ -1,7 +1,7 @@
 import unittest
 from lazyllm.tools import SqlCall, SqlManager, DBStatus
 import lazyllm
-from .utils import SqlEgsData, get_db_init_keywords
+from ...utils import SqlEgsData, get_db_init_keywords
 import datetime
 import re
 import pytest

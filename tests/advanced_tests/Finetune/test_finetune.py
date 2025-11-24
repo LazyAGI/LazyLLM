@@ -9,7 +9,6 @@ from lazyllm.launcher import cleanup
 from lazyllm.components.formatter import encode_query_with_filepaths
 
 
-@pytest.mark.skipif(os.getenv('LAZYLLM_SKIP_GPU_TEST', 'True'), reason='NEED GPU!')
 class TestFinetune(object):
 
     def setup_method(self):
@@ -40,31 +39,45 @@ class TestFinetune(object):
                 return True
         return False
 
-    def test_finetune_auto(self):
-        # Test Auto LLM
+    @pytest.mark.run_on_change(
+        'lazyllm/components/auto/autofinetune.py',
+        'lazyllm/components/finetune/llamafactory.py')
+    def test_finetune_auto_llm(self):
         m = lazyllm.TrainableModule(self.llm_path, self.save_path)\
             .mode('finetune').trainset(self.llm_data)
         tasks = m._impl._get_train_tasks_impl()
         assert isinstance(tasks[-1], lazyllm.finetune.llamafactory)
 
-        # Test Auto VLM
+    @pytest.mark.run_on_change(
+        'lazyllm/components/auto/autofinetune.py',
+        'lazyllm/components/finetune/llamafactory.py')
+    def test_finetune_auto_vlm(self):
         m = lazyllm.TrainableModule(self.vlm_path, self.save_path)\
             .mode('finetune').trainset(self.vlm_data)
         tasks = m._impl._get_train_tasks_impl()
         assert isinstance(tasks[-1], lazyllm.finetune.llamafactory)
 
-        # Test Auto Embedding
+    @pytest.mark.run_on_change(
+        'lazyllm/components/auto/autofinetune.py',
+        'lazyllm/components/finetune/flagembedding.py')
+    def test_finetune_auto_embedding(self):
         m = lazyllm.TrainableModule(self.embed_path, self.save_path)\
             .mode('finetune').trainset(self.embed_data)
         tasks = m._impl._get_train_tasks_impl()
         assert isinstance(tasks[-1], lazyllm.finetune.flagembedding)
 
-        # Test Auto Rerank
+    @pytest.mark.run_on_change(
+        'lazyllm/components/auto/autofinetune.py',
+        'lazyllm/components/finetune/flagembedding.py')
+    def test_finetune_auto_rerank(self):
         m = lazyllm.TrainableModule(self.rerank_path, self.save_path)\
             .mode('finetune').trainset(self.rerank_data)
         tasks = m._impl._get_train_tasks_impl()
         assert isinstance(tasks[-1], lazyllm.finetune.flagembedding)
 
+    @pytest.mark.run_on_change(
+        'lazyllm/components/auto/autofinetune.py',
+        'lazyllm/components/finetune/llamafactory.py')
     def test_finetune_llamafactory(self):
         ppl = lazyllm.pipeline(
             lambda: self.llm_data,
@@ -77,6 +90,9 @@ class TestFinetune(object):
         assert self.has_bin_file(os.path.join(self.save_path, 'lazyllm_lora'))
         assert self.has_bin_file(os.path.join(self.save_path, 'lazyllm_merge'))
 
+    @pytest.mark.run_on_change(
+        'lazyllm/components/auto/autofinetune.py',
+        'lazyllm/components/finetune/llamafactory.py')
     def test_finetune_vlm_llamafactory(self):
         m = lazyllm.TrainableModule(self.vlm_path, self.save_path)\
             .mode('finetune')\
@@ -96,6 +112,9 @@ class TestFinetune(object):
         res = m(encode_query_with_filepaths('are regions of the brain infarcted?', image_path))
         assert type(res) is str
 
+    @pytest.mark.run_on_change(
+        'lazyllm/components/auto/autofinetune.py',
+        'lazyllm/components/finetune/flagembedding.py')
     def test_finetune_embedding(self):
         m = lazyllm.TrainableModule(self.embed_path, self.save_path)\
             .mode('finetune').trainset(self.embed_data)\
@@ -107,6 +126,9 @@ class TestFinetune(object):
         assert type(vect) is list
         assert len(vect) == 1024
 
+    @pytest.mark.run_on_change(
+        'lazyllm/components/auto/autofinetune.py',
+        'lazyllm/components/finetune/flagembedding.py')
     def test_finetune_reranker(self):
         m = lazyllm.TrainableModule(self.rerank_path, self.save_path)\
             .mode('finetune').trainset(self.rerank_data)\

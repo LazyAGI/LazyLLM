@@ -1,5 +1,7 @@
 from .document import Document
+from .graph_document import GraphDocument, UrlGraphDocument
 from .retriever import Retriever, TempDocRetriever
+from .graph_retriever import GraphRetriever
 from .rerank import Reranker, register_reranker
 from .transform import SentenceSplitter, LLMParser, NodeTransform, TransformArgs, AdaptiveTransform
 from .similarity import register_similarity
@@ -21,8 +23,11 @@ add_post_action_for_default_reader = SimpleDirectoryReader.add_post_action_for_d
 __all__ = [
     'add_post_action_for_default_reader',
     'Document',
+    'GraphDocument',
+    'UrlGraphDocument',
     'Reranker',
     'Retriever',
+    'GraphRetriever',
     'TempDocRetriever',
     'NodeTransform',
     'AdaptiveTransform',

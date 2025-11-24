@@ -10,7 +10,6 @@ from urllib.parse import urlparse
 import pytest
 
 
-@pytest.mark.skipif(os.getenv('LAZYLLM_SKIP_GPU_TEST', 'True'), reason='NEED GPU!')
 class TestInferServer:
     def setup_method(self):
         self.infer_server = lazyllm.ServerModule(InferServer(), launcher=lazyllm.launcher.EmptyLauncher(sync=False))
@@ -49,6 +48,10 @@ class TestInferServer:
 
         raise TimeoutError('inference service deploy timeout')
 
+    @pytest.mark.run_on_change(
+        'lazyllm/tools/infer_service/serve.py',
+        'lazyllm/tools/services/services.py',
+        'lazyllm/engine/lightengine.py')
     def test_engine_infer_server(self):
         model_name = 'internlm2-chat-7b'
         model_name, deploy_method, url = self.deploy_inference_service(model_name)
@@ -65,6 +68,10 @@ class TestInferServer:
         r = engine.run(gid, '1 + 1 = ?')
         assert '2' in r
 
+    @pytest.mark.run_on_change(
+        'lazyllm/tools/infer_service/serve.py',
+        'lazyllm/tools/services/services.py',
+        'lazyllm/engine/lightengine.py')
     def test_engine_infer_server_vqa(self):
         model_name = 'Mini-InternVL-Chat-2B-V1-5'
         model_name, deploy_method, url = self.deploy_inference_service(model_name, deploy_method='vllm', num_gpus=1)
@@ -81,6 +88,10 @@ class TestInferServer:
         r = engine.run(gid, '这张图片描述的是什么？', _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
         assert '鸡' in r or 'chicken' in r
 
+    @pytest.mark.run_on_change(
+        'lazyllm/tools/infer_service/serve.py',
+        'lazyllm/tools/services/services.py',
+        'lazyllm/engine/lightengine.py')
     def test_engine_infer_server_tts(self):
         model_name = 'ChatTTS-new'
         model_name, deploy_method, url = self.deploy_inference_service(model_name)
