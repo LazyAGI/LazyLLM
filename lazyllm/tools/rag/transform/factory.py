@@ -86,7 +86,8 @@ class FuncNodeTransform(NodeTransform):
         self._func, self._trans_node = func, trans_node
 
     def transform(self, node: DocNode, **kwargs) -> List[Union[str, DocNode]]:
-        return self._func(node if self._trans_node else node.get_text(), **kwargs)
+        result = self._func(node if self._trans_node else node.get_text(), **kwargs)
+        return result if isinstance(result, list) else [result]
 
 
 class LLMParser(NodeTransform):
@@ -117,6 +118,12 @@ class LLMParser(NodeTransform):
         return [result] if isinstance(result, str) else result
 
     def _format(self, input):
+        if isinstance(input, dict):
+            input = input.get('output', input.get('text', input.get('content', str(input))))
+
+        if not isinstance(input, str):
+            input = str(input)
+
         if self._task_type == 'keywords':
             return [s.strip() for s in input.split(',')]
         elif self._task_type in ('qa', 'qa_img'):

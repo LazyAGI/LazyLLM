@@ -126,7 +126,7 @@ class MarkdownSplitter(_TextSplitterBase):
             r'(?P<table>(?:^\s*\|.*\|\s*$\n?){2,})',
             re.MULTILINE
         )
-        results = self.keep_elements(splits, pattern, 'table')
+        results = self._keep_elements(splits, pattern, 'table')
 
         return results
 
@@ -135,7 +135,7 @@ class MarkdownSplitter(_TextSplitterBase):
             r'```([\w+-]*)\s*(.*?)```',
             re.DOTALL
         )
-        results = self.keep_elements(splits, pattern, 'code')
+        results = self._keep_elements(splits, pattern, 'code')
 
         return results
 
@@ -144,7 +144,7 @@ class MarkdownSplitter(_TextSplitterBase):
             r'!\[([^\]]*)\]\(([^\)]+)\)',
             re.MULTILINE
         )
-        results = self.keep_elements(splits, pattern, 'image')
+        results = self._keep_elements(splits, pattern, 'image')
 
         return results
 
@@ -153,7 +153,7 @@ class MarkdownSplitter(_TextSplitterBase):
             r'(?<!!)\[([^\]]+)\]\(([^\)]+)\)',
             re.MULTILINE
         )
-        results = self.keep_elements(splits, pattern, 'link')
+        results = self._keep_elements(splits, pattern, 'link')
 
         return results
 
@@ -162,7 +162,7 @@ class MarkdownSplitter(_TextSplitterBase):
             r'(?P<list>(?:^\s*(?:[-*+]|\d+\.)\s+.*$\n?){1,})',
             re.MULTILINE
         )
-        results = self.keep_elements(splits, pattern, 'list')
+        results = self._keep_elements(splits, pattern, 'list')
 
         return results
 
@@ -271,7 +271,7 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return results
 
-    def keep_elements(self, splits: List[_MdSplit], pattern: re.Pattern, type: str) -> List[_MdSplit]:
+    def _keep_elements(self, splits: List[_MdSplit], pattern: re.Pattern, type: str) -> List[_MdSplit]:
         results = []
 
         for split in splits:
@@ -336,7 +336,7 @@ class MarkdownSplitter(_TextSplitterBase):
             return []
 
         if len(splits) == 1:
-            return [self.to_docnode(splits[0])]
+            return [self._to_docnode(splits[0])]
 
         end_split = splits[-1]
         if end_split.token_size == chunk_size and self._overlap > 0:
@@ -398,15 +398,15 @@ class MarkdownSplitter(_TextSplitterBase):
                                 token_size=token_size, type=type
                             )
 
-                        result.insert(0, self.to_docnode(end_split))
+                        result.insert(0, self._to_docnode(end_split))
                         end_split = start_split
             else:
-                result.insert(0, self.to_docnode(end_split))
+                result.insert(0, self._to_docnode(end_split))
                 end_split = start_split
-        result.insert(0, self.to_docnode(end_split))
+        result.insert(0, self._to_docnode(end_split))
         return result
 
-    def to_docnode(self, split: _MdSplit) -> DocNode:
+    def _to_docnode(self, split: _MdSplit) -> DocNode:
         metadata = {
             'path': split.path if self.keep_trace else None,
             'level': split.level,
