@@ -66,7 +66,7 @@ class TestInferServer:
         assert '2' in r
 
     def test_engine_infer_server_vqa(self):
-        model_name = 'Mini-InternVL-Chat-2B-V1-5'
+        model_name = 'InternVL3_5-1B'
         model_name, deploy_method, url = self.deploy_inference_service(model_name, deploy_method='vllm', num_gpus=1)
         model = lazyllm.TrainableModule(model_name).deploy_method(getattr(lazyllm.deploy, deploy_method), url=url)
         assert model._impl._get_deploy_tasks.flag
@@ -82,7 +82,7 @@ class TestInferServer:
         assert '鸡' in r or 'chicken' in r
 
     def test_engine_infer_server_tts(self):
-        model_name = 'ChatTTS-new'
+        model_name = 'bark'
         model_name, deploy_method, url = self.deploy_inference_service(model_name)
         model = lazyllm.TrainableModule(model_name).deploy_method(getattr(lazyllm.deploy, deploy_method), url=url)
         assert model._impl._get_deploy_tasks.flag

@@ -29,7 +29,6 @@ vllm_gpu_util: 0.9
 vllm_enforce_eager: false
 vllm_max_lora_rank: 32
 offload_folder: offload
-use_cache: true
 infer_dtype: auto
 hf_hub_token: null
 ms_hub_token: null
@@ -112,7 +111,6 @@ use_mps_device: false
 seed: 42
 data_seed: null
 jit_mode_eval: false
-use_ipex: false
 bf16: false
 fp16: true
 fp16_opt_level: O1

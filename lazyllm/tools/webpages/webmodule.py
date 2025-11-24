@@ -402,7 +402,9 @@ class WebModule(ModuleBase):
                             show_result = show_result.replace(url, 'file=' + url)
                 if result:
                     count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
-                    if not (result in chat_history[-1][1][-count:]):
+                    if not chat_history[-1][1]:
+                        chat_history[-1][1] = show_result
+                    elif not (result in chat_history[-1][1][-count:]):
                         chat_history[-1][1] += '\n\n' + show_result
                     elif show_result != result:
                         chat_history[-1][1] = chat_history[-1][1].replace(result, show_result)
