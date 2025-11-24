@@ -16,6 +16,7 @@ from ...sql.sql_manager import DBStatus, SqlManager
 from ..doc_node import DocNode
 from ..global_metadata import RAG_DOC_ID, RAG_KB_ID
 from ..utils import DocListManager
+from ..store.store_base import DEFAULT_KB_ID
 from .model import (
     TABLE_SCHEMA_SET_INFO, Table_ALGO_KB_SCHEMA, ExtractionMode,
     _TableBase, ExtractResult, ExtractMeta, ExtractClue
@@ -26,7 +27,7 @@ ONE_DOC_LENGTH_LIMIT = 102400
 
 
 class SchemaExtractor:
-    """Schema aware extractor that materializes BaseModel schemas into database tables."""
+    '''Schema aware extractor that materializes BaseModel schemas into database tables.'''
 
     TABLE_PREFIX = 'lazyllm_schema'
     SYS_KB_ID = 'kb_id'
@@ -69,7 +70,7 @@ class SchemaExtractor:
             self._ensure_management_tables()
 
     def register_schema_set(self, schema_set: Type[BaseModel], schema_set_id: str = None) -> str:
-        """schema set registration, idempotent"""
+        '''schema set registration, idempotent'''
         try:
             self._lazy_init()
             self._validate_schema_model(schema_set)
@@ -125,7 +126,7 @@ class SchemaExtractor:
             raise e
 
     def _model_from_schema_json(self, schema_json: str, model_name: str = 'RecoveredSchema') -> Type[BaseModel]:
-        """Reconstruct a minimal BaseModel subclass from stored JSON schema."""
+        '''Reconstruct a minimal BaseModel subclass from stored JSON schema.'''
         try:
             schema_dict = json.loads(schema_json)
         except Exception as exc:
@@ -167,15 +168,17 @@ class SchemaExtractor:
                 return True
         return schema_set_id in self._schema_registry
 
-    def bind_kb_to_schema_set(self, algo_id: str, kb_id: str, schema_set_id: Optional[str] = None,
-                              schema_set: Type[BaseModel] = None, force_refresh: bool = False) -> str:
-        """
+    def register_schema_set_to_kb(self, algo_id: Optional[str] = DocListManager.DEFAULT_GROUP_NAME,
+                                  kb_id: Optional[str] = DEFAULT_KB_ID, schema_set_id: Optional[str] = None,
+                                  schema_set: Type[BaseModel] = None, force_refresh: bool = False) -> str:
+        '''
         Bind a KB to a schema set.
 
         This is used to ensure that the KB is compatible with the schema set.
-        """
+        '''
         try:
             self._lazy_init()
+            force_refresh = force_refresh or self._force_refresh
             if not schema_set_id and not schema_set:
                 raise ValueError('schema_set_id or schema_set is required')
 
@@ -217,7 +220,7 @@ class SchemaExtractor:
             raise e
 
     def _get_schema_set_str(self, schema_set) -> str:
-        """Return a human readable schema description: name, description, data type."""
+        '''Return a human readable schema description: name, description, data type.'''
         model = None
         if isinstance(schema_set, str):
             model = self._schema_registry.get(schema_set)
@@ -243,29 +246,29 @@ class SchemaExtractor:
                 field_info = getattr(field, 'field_info', None)
                 desc = getattr(field_info, 'description', None) if field_info else None
             type_str = _field_type_str(field)
-            lines.append(f'name: {name}, description: {desc or ""}, type: {type_str}')
+            lines.append(f"name: {name}, description: {desc or ''}, type: {type_str}")
         return '\n'.join(lines)
 
     def _gen_text_list_from_nodes(self, nodes: List[DocNode]) -> list[str]:
         '''Generate full text blocks with metadata, each capped by `self._max_len`.'''
         if not nodes:
             return []
-        template = "File Info:\n{file_metas}\nFile Content:\n{file_content}\n\n"
-        metas = "\n".join([f"{k}: {v}" for k, v in nodes[0].global_metadata.items()])
+        template = 'File Info:\n{file_metas}\nFile Content:\n{file_content}\n\n'
+        metas = '\n'.join([f'{k}: {v}' for k, v in nodes[0].global_metadata.items()])
 
         # Reserve space for metadata and static prompt text.
-        base_len = len(template.format(file_metas=metas, file_content=""))
+        base_len = len(template.format(file_metas=metas, file_content=''))
         content_limit = max(self._max_len - base_len, 0)
         if content_limit == 0:
-            return [template.format(file_metas=metas, file_content="")]
+            return [template.format(file_metas=metas, file_content='')]
 
         chunks: List[str] = []
-        current = ""
+        current = ''
         for node in nodes:
             node_text = node.text
             sep_len = 1 if current else 0
             if len(current) + sep_len + len(node_text) <= content_limit:
-                current = f"{current}\n{node_text}" if current else node_text
+                current = f'{current}\n{node_text}' if current else node_text
                 continue
 
             if current:
@@ -275,7 +278,7 @@ class SchemaExtractor:
                 end = start + content_limit
                 chunks.append(node_text[start:end])
                 start = end
-            current = ""
+            current = ''
 
         if current:
             chunks.append(current)
@@ -382,16 +385,21 @@ class SchemaExtractor:
 
         return kb_id, doc_id, bound
 
-    def extract_and_store(self, data: List[DocNode], algo_id: str = DocListManager.DEFAULT_GROUP_NAME,
+    def extract_and_store(self, data: List[DocNode], algo_id: str = DocListManager.DEFAULT_GROUP_NAME,  # noqa: C901
                           schema_set_id: str = None, schema_set: Type[BaseModel] = None) -> ExtractResult:
         '''Persist extracted fields for a document'''
         self._lazy_init()
         if schema_set is not None:
             schema_set_id = self.register_schema_set(schema_set, schema_set_id)
-        self.has_schema_set
+        if schema_set_id and not self.has_schema_set(schema_set_id):
+            raise ValueError(f'schema_set_id {schema_set_id} not found')
         kb_id, doc_id, bound = self._validate_extract_params(data, algo_id)
         if not bound:
             raise ValueError(f'Algo {algo_id}, KB {kb_id} not bound to schema_set_id {schema_set_id}')
+        # cache
+        search_res = self.get_extract_data(algo_id=algo_id, kb_id=kb_id, doc_ids=[doc_id])
+        if search_res: return search_res[0]
+
         if schema_set_id not in self._schema_registry:
             raise ValueError(f'Unknown schema_set_id: {schema_set_id}')
         if self._extraction_mode == ExtractionMode.TEXT:
@@ -437,12 +445,117 @@ class SchemaExtractor:
             session.add(table_cls(**payload))
         return res
 
+    def delete_extract_data(self, algo_id: str, doc_ids: List[str], kb_id: str = None) -> bool:
+        '''Delete extracted data for docs.'''
+        try:
+            self._lazy_init()
+            if not self._sql_manager:
+                raise ValueError('SqlManager is not initialized')
+            if not doc_ids:
+                return True
+
+            kb_id = kb_id or DEFAULT_KB_ID
+            doc_ids = [str(d) for d in doc_ids]
+
+            bind_table_cls = self._sql_manager.get_table_orm_class(Table_ALGO_KB_SCHEMA['name'])
+            if bind_table_cls is None:
+                raise ValueError('Algo-KB-Schema mapping table not initialized')
+
+            with self._sql_manager.get_session() as session:
+                bind_row = session.query(bind_table_cls).filter_by(algo_id=algo_id, kb_id=kb_id).first()
+            if not bind_row:
+                return True
+
+            schema_set_id = str(getattr(bind_row, 'schema_set_id'))
+            table_name = self._table_name(schema_set_id)
+            table_cls = self._sql_manager.get_table_orm_class(table_name)
+            if table_cls is None:
+                return True
+
+            with self._sql_manager.get_session() as session:
+                session.query(table_cls).filter_by(
+                    **{self.SYS_KB_ID: kb_id, self.SYS_ALGO_ID: algo_id}
+                ).filter(
+                    getattr(table_cls, self.SYS_DOC_ID).in_(doc_ids)
+                ).delete(synchronize_session=False)
+            return True
+        except Exception as e:
+            LOG.error(f'Failed to delete doc_ids={doc_ids} from kb_id={kb_id}', e)
+            return False
+
+    def get_extract_data(self, algo_id: str, doc_ids: List[str], kb_id: str = None) -> List[ExtractResult]:  # noqa: C901
+        '''Batch fetch extracted data.'''
+        self._lazy_init()
+        if not self._sql_manager:
+            raise ValueError('SqlManager is not initialized')
+        if not doc_ids:
+            return []
+
+        bind_table_cls = self._sql_manager.get_table_orm_class(Table_ALGO_KB_SCHEMA['name'])
+        if bind_table_cls is None:
+            raise ValueError('Algo-KB-Schema mapping table not initialized')
+
+        with self._sql_manager.get_session() as session:
+            bind_row = session.query(bind_table_cls).filter_by(algo_id=algo_id, kb_id=kb_id).first()
+        if not bind_row:
+            return []
+
+        schema_set_id = str(getattr(bind_row, 'schema_set_id'))
+        self.has_schema_set(schema_set_id)
+        table_name = self._table_name(schema_set_id)
+        table_cls = self._sql_manager.get_table_orm_class(table_name)
+        if table_cls is None:
+            return []
+
+        schema_model = self._schema_registry.get(schema_set_id)
+        with self._sql_manager.get_session() as session:
+            rows = session.query(table_cls).filter_by(
+                **{self.SYS_KB_ID: kb_id, self.SYS_ALGO_ID: algo_id}
+            ).filter(
+                getattr(table_cls, self.SYS_DOC_ID).in_(doc_ids)
+            ).all()
+
+        results: List[ExtractResult] = []
+        sys_fields = {self.SYS_KB_ID, self.SYS_DOC_ID, self.SYS_ALGO_ID, 'extract_meta'}
+        for row in rows:
+            row_data = {}
+            for col in table_cls.__table__.columns:
+                name = col.name
+                if name in sys_fields:
+                    continue
+                row_data[name] = getattr(row, name)
+            if schema_model:
+                try:
+                    row_data = self._to_model_dict(row_data, schema_model)
+                except Exception:
+                    pass
+
+            meta_payload = getattr(row, 'extract_meta', {}) or {}
+            if not isinstance(meta_payload, dict):
+                try:
+                    meta_payload = json.loads(meta_payload)
+                except Exception:
+                    meta_payload = {}
+            meta_payload = meta_payload if isinstance(meta_payload, dict) else {}
+            meta_payload.setdefault('schema_set_id', schema_set_id)
+            meta_payload.setdefault('algo_id', algo_id)
+            meta_payload.setdefault('kb_id', kb_id)
+            meta_payload.setdefault('doc_id', str(getattr(row, self.SYS_DOC_ID, '')))
+            try:
+                meta = ExtractMeta(**meta_payload)
+            except Exception:
+                meta = ExtractMeta(schema_set_id=schema_set_id, algo_id=algo_id, kb_id=kb_id,
+                                   doc_id=str(getattr(row, self.SYS_DOC_ID, '')))
+            results.append(ExtractResult(data=row_data, metadata=meta))
+        return results
+
     def __call__(self, data: List[DocNode], algo_id: str = DocListManager.DEFAULT_GROUP_NAME) -> ExtractResult:
         # NOTE: data should be from single file source (kb_id, doc_id should be the same)
         self._lazy_init()
         if not isinstance(data, list):
             data = [data]
-        return self.extract_and_store(data=data, algo_id=algo_id)
+        res = self.extract_and_store(data=data, algo_id=algo_id)
+        LOG.info(f'Extracted data: \n{res}\nfrom {len(data)} nodes...')
 
     def _init_sql_manager(self, db_config: Dict[str, Any]) -> SqlManager:
         return SqlManager(**db_config)
@@ -451,7 +564,7 @@ class SchemaExtractor:
         return f'{self._table_prefix}_{schema_set_id}'
 
     def _ensure_management_tables(self) -> None:
-        """Ensure internal schema management tables exist."""
+        '''Ensure internal schema management tables exist.'''
         tables_info_dict = {'tables': [TABLE_SCHEMA_SET_INFO, Table_ALGO_KB_SCHEMA]}
         try:
             self._sql_manager._init_tables_by_info(tables_info_dict)
@@ -496,7 +609,6 @@ class SchemaExtractor:
         return table_name
 
     def _delete_records(self, schema_set_id: str, kb_id: str, algo_id: str) -> None:
-        """删除指定 schema_set 表中对应 kb/algo 的记录。"""
         if not self._sql_manager:
             return
         table_name = self._table_name(schema_set_id)

@@ -4,8 +4,6 @@ from enum import Enum
 from uuid import uuid4
 from datetime import datetime
 
-from ..store.store_base import DEFAULT_KB_ID
-
 
 class FileInfo(BaseModel):
     file_path: Optional[str] = None
@@ -28,6 +26,7 @@ class DBInfo(BaseModel):
 class AddDocRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     algo_id: Optional[str] = '__default__'
+    kb_id: Optional[str] = None
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
     # NOTE: (db_info, feedback_url) is deprecated, will be removed in the future
@@ -38,6 +37,7 @@ class AddDocRequest(BaseModel):
 class UpdateMetaRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     algo_id: Optional[str] = '__default__'
+    kb_id: Optional[str] = None
     file_infos: List[FileInfo]
     priority: Optional[int] = 0
     # NOTE: (db_info) is deprecated, will be removed in the future
@@ -47,7 +47,7 @@ class UpdateMetaRequest(BaseModel):
 class DeleteDocRequest(BaseModel):
     task_id: str = Field(default_factory=lambda: str(uuid4()))
     algo_id: Optional[str] = '__default__'
-    kb_id: Optional[str] = DEFAULT_KB_ID
+    kb_id: Optional[str] = None
     doc_ids: List[str]
     priority: Optional[int] = 0
     # NOTE: (db_info) is deprecated, will be removed in the future

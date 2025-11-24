@@ -90,7 +90,9 @@ class DocumentProcessorWorker(ModuleBase):
                     store = info['store']
                     reader = info['reader']
                     node_groups = info['node_groups']
-                    processor = _Processor(store, reader, node_groups, display_name, description)
+                    schema_extractor = info['schema_extractor']
+                    processor = _Processor(algo_id, store, reader, node_groups, schema_extractor,
+                                           display_name, description)
                     self._processors[algo_id] = processor
                     LOG.info(f'[DocumentProcessorWorker._Impl] Created processor for {algo_id}')
                 return self._processors[algo_id]
@@ -101,6 +103,7 @@ class DocumentProcessorWorker(ModuleBase):
         def _exec_add_task(self, processor: _Processor, task_id: str, payload: dict):
             try:
                 file_infos = payload.get('file_infos')
+                kb_id = payload.get('kb_id', None)
                 input_files = []
                 ids = []
                 metadatas = []
@@ -110,7 +113,7 @@ class DocumentProcessorWorker(ModuleBase):
                     ids.append(file_info.get('doc_id'))
                     metadatas.append(file_info.get('metadata'))
 
-                processor.add_doc(input_files=input_files, ids=ids, metadatas=metadatas)
+                processor.add_doc(input_files=input_files, ids=ids, metadatas=metadatas, kb_id=kb_id)
             except Exception as e:
                 LOG.error(f'[DocumentProcessorWorker._Impl] Task-{task_id}: execute add task failed, error: {e}')
                 raise e
@@ -120,6 +123,7 @@ class DocumentProcessorWorker(ModuleBase):
         ):
             try:
                 file_infos = payload.get('file_infos')
+                kb_id = payload.get('kb_id', None)
                 reparse_group = None
                 reparse_doc_ids = []
                 reparse_files = []
@@ -138,7 +142,8 @@ class DocumentProcessorWorker(ModuleBase):
 
                 reparse_group = first_reparse_group
                 processor.reparse(group_name=reparse_group, doc_ids=reparse_doc_ids,
-                                  doc_paths=reparse_files, metadatas=reparse_metadatas)
+                                  doc_paths=reparse_files, metadatas=reparse_metadatas,
+                                  kb_id=kb_id)
             except Exception as e:
                 LOG.error(f'[DocumentProcessorWorker._Impl] Task-{task_id}: execute reparse task failed, error: {e}')
                 raise e
@@ -155,10 +160,11 @@ class DocumentProcessorWorker(ModuleBase):
         def _exec_update_meta_task(self, processor: _Processor, task_id: str, payload: dict):
             try:
                 file_infos = payload.get('file_infos')
+                kb_id = payload.get('kb_id', None)
                 for file_info in file_infos:
                     doc_id = file_info.get('doc_id')
                     metadata = file_info.get('metadata')
-                    processor.update_doc_meta(doc_id=doc_id, metadata=metadata)
+                    processor.update_doc_meta(doc_id=doc_id, metadata=metadata, kb_id=kb_id)
             except Exception as e:
                 LOG.error(f'[DocumentProcessorWorker._Impl] Task-{task_id}: execute update meta task failed,'
                           f'error: {e}')

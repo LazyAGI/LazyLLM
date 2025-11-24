@@ -16,6 +16,7 @@ from .global_metadata import GlobalMetadataDesc, RAG_KB_ID
 from .data_type import DataType
 from .parsing_service import _Processor, DocumentProcessor
 from .embed_wrapper import _EmbedWrapper
+from .doc_to_db import SchemaExtractor
 from dataclasses import dataclass
 from itertools import repeat
 
@@ -69,7 +70,8 @@ class DocImpl:
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  store: Optional[Union[Dict, LazyLLMStoreBase]] = None,
                  processor: Optional[DocumentProcessor] = None, algo_name: Optional[str] = None,
-                 display_name: Optional[str] = None, description: Optional[str] = None):
+                 display_name: Optional[str] = None, description: Optional[str] = None,
+                 schema_extractor: Optional[SchemaExtractor] = None):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
@@ -90,6 +92,7 @@ class DocImpl:
         self._algo_name = algo_name
         self._display_name = display_name
         self._description = description
+        self._schema_extractor = schema_extractor
 
     def _init_node_groups(self):
         node_groups = DocImpl._builtin_node_groups.copy()
@@ -136,8 +139,8 @@ class DocImpl:
             self._processor.register_algorithm(self._algo_name, self.store, self._reader, self.node_groups,
                                                self._display_name, self._description)
         else:
-            self._processor = _Processor(self.store, self._reader, self.node_groups, self._display_name,
-                                         self._description)
+            self._processor = _Processor(self._algo_name, self.store, self._reader, self.node_groups,
+                                         self._display_name, self._description)
 
         # init files when `cloud` is False
         if not cloud and self.store.is_group_empty(LAZY_ROOT_NAME):

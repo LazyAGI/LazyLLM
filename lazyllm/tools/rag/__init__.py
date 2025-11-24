@@ -13,6 +13,7 @@ from .global_metadata import GlobalMetadataDesc as DocField
 from .data_type import DataType
 from .index_base import IndexBase
 from .store import LazyLLMStoreBase
+from .doc_to_db import SchemaExtractor
 
 
 add_post_action_for_default_reader = SimpleDirectoryReader.add_post_action_for_default_reader
@@ -52,4 +53,5 @@ __all__ = [
     'IndexBase',
     'LazyLLMStoreBase',
     'FileReader',
+    'SchemaExtractor'
 ]
