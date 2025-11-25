@@ -30,6 +30,7 @@ from transformers import (
     PretrainedConfig,
     PreTrainedModel,
 )
+from lazyllm import LOG
 
 
 def merge_by_placement(tensors: List[torch.Tensor], placement: Placement):
@@ -86,7 +87,7 @@ if __name__ == "__main__":
         mesh = np.array([int(world_size)], dtype=np.int64)
         mesh_dim_names = ("fsdp",)
 
-    print(f"Got device mesh {mesh}, mesh_dim_names {mesh_dim_names}")
+    LOG.info(f"Got device mesh {mesh}, mesh_dim_names {mesh_dim_names}")
 
     assert mesh_dim_names in (("fsdp",), ("ddp", "fsdp")), f"Unsupported mesh_dim_names {mesh_dim_names}."
 
@@ -99,7 +100,7 @@ if __name__ == "__main__":
         total_shards = mesh.shape[-1]
         mesh_shape = (mesh.shape[-1],)
 
-    print(f"Processing {total_shards} model shards in total.")
+    LOG.info(f"Processing {total_shards} model shards in total.")
     model_state_dict_lst = []
     model_state_dict_lst.append(state_dict)
     model_state_dict_lst.extend([""] * (total_shards - 1))
@@ -123,7 +124,7 @@ if __name__ == "__main__":
             try:
                 tensor = model_state_dict.pop(key)
             except Exception:
-                print(f"Cannot find key {key} in rank {rank}.")
+                LOG.info(f"Cannot find key {key} in rank {rank}.")
 
             if isinstance(tensor, DTensor):
                 state_dict[key].append(tensor._local_tensor.bfloat16())
@@ -143,7 +144,7 @@ if __name__ == "__main__":
 
     for key in sorted(state_dict):
         if not isinstance(state_dict[key], list):
-            print(f"No need to merge key {key}")
+            LOG.info(f"No need to merge key {key}")
             continue
 
         if key in param_placements:
@@ -160,7 +161,7 @@ if __name__ == "__main__":
         else:
             state_dict[key] = torch.cat(state_dict[key], dim=0)
 
-    print("Merge completed.")
+    LOG.info("Merge completed.")
     hf_path = os.path.join(local_dir, "huggingface")
     config: PretrainedConfig = AutoConfig.from_pretrained(hf_path)
     architectures: List[str] = getattr(config, "architectures", ["Unknown"])
@@ -180,7 +181,7 @@ if __name__ == "__main__":
     assert isinstance(model, PreTrainedModel)
     model.to_empty(device="cpu")
 
-    print(f"Saving model to {hf_path}...")
+    LOG.info(f"Saving model to {hf_path}...")
     model.save_pretrained(hf_path, state_dict=state_dict)
     del state_dict, model
 

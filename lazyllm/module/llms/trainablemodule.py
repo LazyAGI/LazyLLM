@@ -258,9 +258,6 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def _set_file_name(self, name):
         self._file_name = name
 
-    def __deepcopy__(self, memo):
-        return self
-
 config.add('cache_local_module', bool, False, 'CACHE_LOCAL_MODULE',
            description='Whether to cache the local module result. Use for unit test.')
 

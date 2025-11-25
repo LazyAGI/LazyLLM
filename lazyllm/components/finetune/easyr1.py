@@ -35,13 +35,15 @@ class EasyR1Finetune(LazyLLMFinetuneBase):
                  base_model,
                  target_path,
                  merge_path=None,
-                 launcher=launchers.remote(ngpus=1, sync=True),
+                 launcher=None,
                  **kw
                  ):
         if not merge_path:
             merge_path = target_path
         os.makedirs(target_path, exist_ok=True)
         os.makedirs(merge_path, exist_ok=True)
+        if launcher is None:
+            launcher = launchers.remote(ngpus=1, sync=True)
         super().__init__(
             base_model,
             target_path,
