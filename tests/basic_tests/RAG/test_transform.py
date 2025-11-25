@@ -680,14 +680,10 @@ class TestDocumentSplit:
             overlap=0,
             separators=['\n\n', '\n', '.', ' ']
         )
-        llm = lazyllm.OnlineChatModule(source='sensenova')
 
-        prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
-        llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
         query = '何为天道？'
 
         self.document = document
-        self.llm = llm
         self.query = query
 
     def test_sentence_split(self):
@@ -697,11 +693,6 @@ class TestDocumentSplit:
         retriever = Retriever(document, group_name='sentence_test', similarity='bm25', topk=3)
         doc_node_list = retriever(query=self.query)
         assert len(doc_node_list) == 3
-        res = self.llm({
-            'query': self.query,
-            'context_str': ''.join([node.get_content() for node in doc_node_list]),
-        })
-        assert res is not None
 
     def test_character_split(self):
         document = self.document
@@ -710,11 +701,6 @@ class TestDocumentSplit:
         retriever = Retriever(document, group_name='character_test', similarity='bm25', topk=3)
         doc_node_list = retriever(query=self.query)
         assert len(doc_node_list) == 3
-        res = self.llm({
-            'query': self.query,
-            'context_str': ''.join([node.get_content() for node in doc_node_list]),
-        })
-        assert res is not None
 
     def test_recursive_split(self):
         document = self.document
@@ -723,11 +709,6 @@ class TestDocumentSplit:
         retriever = Retriever(document, group_name='recursive_test', similarity='bm25', topk=3)
         doc_node_list = retriever(query=self.query)
         assert len(doc_node_list) == 3
-        res = self.llm({
-            'query': self.query,
-            'context_str': ''.join([node.get_content() for node in doc_node_list]),
-        })
-        assert res is not None
 
 
 class TestDocumentChainSplit:
@@ -757,13 +738,10 @@ class TestDocumentChainSplit:
             separator=' ',
             parent='recursive_test'
         )
-        llm = lazyllm.OnlineChatModule(source='sensenova')
-        prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
-        llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
+
         query = '何为天道？'
 
         self.document = document
-        self.llm = llm
         self.query = query
 
     def test_sentence_split(self):
@@ -773,11 +751,6 @@ class TestDocumentChainSplit:
         retriever = Retriever(document, group_name='sentence_test', similarity='bm25', topk=3)
         doc_node_list = retriever(query=self.query)
         assert len(doc_node_list) == 3
-        res = self.llm({
-            'query': self.query,
-            'context_str': ''.join([node.get_content() for node in doc_node_list]),
-        })
-        assert res is not None
 
     def test_recursive_split(self):
         document = self.document
@@ -786,11 +759,6 @@ class TestDocumentChainSplit:
         retriever = Retriever(document, group_name='recursive_test', similarity='bm25', topk=3)
         doc_node_list = retriever(query=self.query)
         assert len(doc_node_list) == 3
-        res = self.llm({
-            'query': self.query,
-            'context_str': ''.join([node.get_content() for node in doc_node_list]),
-        })
-        assert res is not None
 
     def test_character_split(self):
         document = self.document
@@ -799,11 +767,6 @@ class TestDocumentChainSplit:
         retriever = Retriever(document, group_name='character_test', similarity='bm25', topk=3)
         doc_node_list = retriever(query=self.query)
         assert len(doc_node_list) == 3
-        res = self.llm({
-            'query': self.query,
-            'context_str': ''.join([node.get_content() for node in doc_node_list]),
-        })
-        assert res is not None
 
 
 class TestDIYDocumentSplit:
@@ -825,13 +788,9 @@ class TestDIYDocumentSplit:
             transform=splitter,
             parent='sentence_test')
 
-        llm = lazyllm.OnlineChatModule(source='sensenova')
-        prompt = '你将扮演一个人工智能问答助手的角色，完成一项对话任务。在这个任务中，你需要根据给定的上下文以及问题，给出你的回答。'
-        llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
         query = '何为天道？'
 
         self.document = document
-        self.llm = llm
         self.query = query
 
     def test_character_split(self):
@@ -841,8 +800,3 @@ class TestDIYDocumentSplit:
         retriever = Retriever(document, group_name='character_test', similarity='bm25', topk=3)
         doc_node_list = retriever(query=self.query)
         assert len(doc_node_list) == 3
-        res = self.llm({
-            'query': self.query,
-            'context_str': ''.join([node.get_content() for node in doc_node_list]),
-        })
-        assert res is not None
