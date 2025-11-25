@@ -2235,7 +2235,6 @@ Args:
     collection_name (str): Collection to search.
     query (Optional[str]): Query string.
     topk (Optional[int]): Number of nearest neighbors.
-    query_fields (Optional[List[str]]): Fields to search. Defaults to ['content', 'answer'].
     filters (Optional[dict]): Metadata filter map.
     kwargs: Other search parameters
 
@@ -2249,7 +2248,6 @@ Args:
     collection_name (str): 待搜索集合。
     query (Optional[str]): 查询字符串。
     topk (Optional[int]): 返回邻近数量。
-    query_fields (Optional[List[str]]): 查询字段。默认值为 ['content', 'answer']。
     filters (Optional[dict]): 元数据过滤映射。
     kwargs: 其他搜索参数
 
@@ -10057,7 +10055,6 @@ Args:
     collection_name (str): Collection to search.
     query (Optional[str]): Query string.
     topk (Optional[int]): Number of nearest neighbors.
-    query_fields (Optional[List[str]]): Fields to search. Defaults to None.
     filters (Optional[dict]): Metadata filter map.
     kwargs: Other search parameters
 
@@ -10071,7 +10068,6 @@ Args:
     collection_name (str): 待搜索集合。
     query (Optional[str]): 查询字符串。
     topk (Optional[int]): 返回邻近数量。
-    query_fields (Optional[List[str]]): 查询字段。默认值为 None。
     filters (Optional[dict]): 元数据过滤映射。
     kwargs: 其他搜索参数
 

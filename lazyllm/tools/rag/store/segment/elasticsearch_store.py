@@ -54,7 +54,7 @@ DEFAULT_MAPPING_BODY = {
                 'analyzer': 'ik_max_word',
                 'search_analyzer': 'ik_smart',
             },
-            'answer': {'type': 'text', 'index': True, 'store': True},
+            'answer': {'type': 'text', 'index': False, 'store': True},
             'meta': {'type': 'text', 'index': False, 'store': True},
             'global_meta': {'type': 'text', 'index': False, 'store': True},
             'type': {'type': 'keyword', 'store': True},
@@ -100,13 +100,18 @@ class ElasticSearchStore(LazyLLMStoreBase):
             if self._client_kwargs.get('cloud_id') and self._client_kwargs.get('api_key'):
                 cloud_id = self._client_kwargs.get('cloud_id')
                 api_key = self._client_kwargs.get('api_key')
+                request_timeout = self._client_kwargs.get('request_timeout', 30)
 
-                self._client = elasticsearch.Elasticsearch(cloud_id=cloud_id, api_key=api_key)
+                self._client = elasticsearch.Elasticsearch(
+                    cloud_id=cloud_id, api_key=api_key, request_timeout=request_timeout
+                )
                 if not self._client.ping():
                     raise ConnectionError(f'Failed to ping ES {self._uris}')
-            # local or remote url Elasticsearch
             else:
-                self._client = elasticsearch.Elasticsearch(hosts=self._uris, **self._client_kwargs)
+                client_kwargs = dict(self._client_kwargs)
+                if 'request_timeout' not in client_kwargs:
+                    client_kwargs['request_timeout'] = 30
+                self._client = elasticsearch.Elasticsearch(hosts=self._uris, **client_kwargs)
 
             self._global_metadata_desc = global_metadata_desc
 
@@ -184,6 +189,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                     body=self._construct_criteria(criteria),
                     refresh=True,
                     conflicts='proceed',
+                    request_timeout=30,
                 )
 
                 if resp.get('version_conflicts', 0) > 0:
@@ -202,7 +208,6 @@ class ElasticSearchStore(LazyLLMStoreBase):
     def get(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> List[dict]:  # noqa: C901
         try:
             if not self._client.indices.exists(index=collection_name):
-                LOG.warning(f'[ElasticsearchStore - get] Index {collection_name} does not exist')
                 return []
 
             results: List[dict] = []
@@ -243,21 +248,20 @@ class ElasticSearchStore(LazyLLMStoreBase):
             return []
 
     @override
-    def search(self, collection_name: str, query: Optional[str] = None,
+    def search(self, collection_name: str, query: str,
                topk: Optional[int] = 10, filters: Optional[dict] = None, **kwargs) -> List[Dict]:  # noqa: C901
         query_fields = ['*']
         try:
             self._ensure_index(collection_name)
             must_clauses = []
             es_query = {}
-            if query:
-                text_query = {
-                    'multi_match': {
-                        'query': query,
-                        'fields': query_fields,
-                    }
+            text_query = {
+                'multi_match': {
+                    'query': query,
+                    'fields': query_fields,
                 }
-                must_clauses.append(text_query)
+            }
+            must_clauses.append(text_query)
 
             filter_query = self._construct_criteria(filters) if filters else {}
 
@@ -339,13 +343,12 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 field_desc = self._global_metadata_desc[k]
 
                 if field_desc.data_type in (DataType.VARCHAR, DataType.STRING):
-                    field_key = f"{k}.keyword"
+                    field_key = f'{k}.keyword'
             _add_clause(field_key, v)
 
         return {'query': {'bool': {'must': must_clauses}}} if must_clauses else {}
 
     def _transform_segment(self, record: dict) -> dict:
-        '''Convert ES into normalized Python dict with uid. Return None if invalid (not found).'''
         src = record['_source']
         src['uid'] = record['_id']
         return self._deserialize_node(src)

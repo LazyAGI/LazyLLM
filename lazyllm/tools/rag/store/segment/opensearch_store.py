@@ -290,7 +290,7 @@ class OpenSearchStore(LazyLLMStoreBase):
                 field_desc = self._global_metadata_desc[k]
 
                 if field_desc.data_type in (DataType.VARCHAR, DataType.STRING):
-                    field_key = f"{k}.keyword"
+                    field_key = f'{k}.keyword'
             _add_clause(field_key, v)
 
         return {'query': {'bool': {'must': must_clauses}}} if must_clauses else {}

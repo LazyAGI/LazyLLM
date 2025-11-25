@@ -1365,7 +1365,7 @@ class TestSegmentStore:
             # ----- search_by_collection-----
             res = self.store.search(collection_name=self.collections[0], query='test')
             assert len(res) == 2, f'search {self.backend} failed'
-            res = self.store.search(collection_name=self.collections[1])
+            res = self.store.search(collection_name=self.collections[1], query='test')
             assert len(res) == 2, f'search {self.backend} failed'
             res = self.store.search(collection_name=self.collections[1], query='test3', topk=1)
             assert len(res) == 1, f'search {self.backend} failed'
@@ -1390,7 +1390,7 @@ class TestSegmentStore:
             # ----- search_by_collection-----
             res = self.store.search(collection_name=self.collections[0], query='global')
             assert len(res) == 2, f'search {self.backend} failed'
-            res = self.store.search(collection_name=self.collections[1])
+            res = self.store.search(collection_name=self.collections[1], query='global')
             assert len(res) == 2, f'search {self.backend} failed'
             res = self.store.search(collection_name=self.collections[1], query='global3', topk=1)
             assert len(res) == 1, f'search {self.backend} failed'
