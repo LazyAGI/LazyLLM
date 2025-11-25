@@ -72,9 +72,6 @@ jobs:
         with:
           ref: ${{ github.event.pull_request.head.sha }}
 
-      - name: Install LazyLLM
-        uses: ./.github/actions/setup
-
       - name: Run DocCheck
         run: |
           pip install -r tests/requirements.txt
