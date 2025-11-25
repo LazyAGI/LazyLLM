@@ -1,0 +1,35 @@
+name: 'Composite Action: Load cache'
+description: 'Composite Action: Load cache'
+
+inputs:
+  working_directory:
+    description: 'Working directory'
+    required: false
+    default: "."
+
+runs:
+  using: "composite"
+  steps:
+    - shell: bash
+      run: |
+        cd ${{ inputs.working_directory }}
+        if [ ! -d "github_cache" ]; then
+          git clone https://github.com/LazyAGI/LazyLLM-Cache.git github_cache
+          echo "Repository cloned successfully"
+        else
+          echo "github_cache folder already exists, skipping clone"
+          cd github_cache
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "Repository is clean, pulling latest changes..."
+            git pull origin main
+            echo "Repository updated successfully"
+          else
+            echo "Repository has uncommitted changes, skipping update"
+            echo "Current status:"
+            git status --short
+          fi
+          cd ..
+        fi
+        realpath github_cache
+        ls -alh github_cache
+        ls -alh .

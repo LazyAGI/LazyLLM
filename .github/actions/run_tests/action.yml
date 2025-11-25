@@ -47,13 +47,13 @@ runs:
         mkdir -p $LAZYLLM_HOME
         source ~/ENV/env.sh
         if [ -f ${{ inputs.tests_dir }}/.pytest_cache/v/cache/lastfailed ]; then
-          pytest --lf --last-failed-no-failures=none \
+          pytest --collect-only --lf --last-failed-no-failures=none \
             -n ${{ inputs.nproc }} --dist=loadfile -m "${{ inputs.markers }}" --order-scope=class \
             --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html \
             --override-ini=cache_dir=${{ inputs.tests_dir }}/.pytest_cache \
             ${{ inputs.tests_dir }}
         else
-          pytest \
+          pytest --collect-only \
             -n ${{ inputs.nproc }} --dist=loadfile -m "${{ inputs.markers }}" --order-scope=class \
             --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html \
             --override-ini=cache_dir=${{ inputs.tests_dir }}/.pytest_cache \
