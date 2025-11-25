@@ -92,12 +92,17 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
                 ray_launcher[0], post_action=(lazyllm.parallel(*parall_launcher) if len(parall_launcher) else None))
 
     def cmd(self, finetuned_model=None, base_model=None, master_ip=None):
-        if not os.path.exists(finetuned_model) or \
-            not any(filename.endswith('.bin') or filename.endswith('.safetensors')
-                    for filename in os.listdir(finetuned_model)):
-            if not finetuned_model:
-                LOG.warning(f'Note! That finetuned_model({finetuned_model}) is an invalid path, '
-                            f'base_model({base_model}) will be used')
+        if not finetuned_model:
+            LOG.warning(f'Note! finetuned_model is empty, using base_model({base_model}) instead.')
+            finetuned_model = base_model
+        elif not os.path.exists(finetuned_model):
+            LOG.warning(f'Warning! The finetuned_model path does not exist: {finetuned_model}. '
+                        f'Using base_model({base_model}) instead.')
+            finetuned_model = base_model
+        elif not any(filename.endswith(('.bin', '.safetensors', '.pt'))
+                     for filename in os.listdir(finetuned_model)):
+            LOG.warning(f'Warning! No valid model files (.bin, .safetensors or .pt) found in: {finetuned_model}. '
+                        f'Using base_model({base_model}) instead.')
             finetuned_model = base_model
 
         def impl():
