@@ -63,7 +63,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._kbs = CallableDict({name: DocImpl(
                 embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
                 store=store_conf, processor=processor, algo_name=name, display_name=display_name,
-                description=description)})
+                description=description, schema_extractor=schema_extractor)})
 
             if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)

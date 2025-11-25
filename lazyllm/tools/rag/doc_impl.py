@@ -137,10 +137,10 @@ class DocImpl:
         if self._processor:
             assert cloud and isinstance(self._processor, DocumentProcessor)
             self._processor.register_algorithm(self._algo_name, self.store, self._reader, self.node_groups,
-                                               self._display_name, self._description)
+                                               self._schema_extractor, self._display_name, self._description)
         else:
             self._processor = _Processor(self._algo_name, self.store, self._reader, self.node_groups,
-                                         self._display_name, self._description)
+                                         self._schema_extractor, self._display_name, self._description)
 
         # init files when `cloud` is False
         if not cloud and self.store.is_group_empty(LAZY_ROOT_NAME):

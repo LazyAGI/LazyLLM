@@ -54,7 +54,7 @@ class _Processor:
             schema_errors: List[Exception] = []
             if self._schema_extractor:
                 doc_to_root_nodes = {}
-                for n in root_nodes:
+                for n in root_nodes[LAZY_ROOT_NAME]:
                     if n.global_metadata.get(RAG_DOC_ID) not in doc_to_root_nodes:
                         doc_to_root_nodes[n.global_metadata.get(RAG_DOC_ID)] = []
                     doc_to_root_nodes[n.global_metadata.get(RAG_DOC_ID)].append(n)
@@ -69,6 +69,7 @@ class _Processor:
                     t = threading.Thread(target=_worker, args=(v,), daemon=True)
                     t.start()
                     schema_threads.append(t)
+                    # self._schema_extractor(v, algo_id=self._algo_id)
             for k, v in root_nodes.items():
                 if not v: continue
                 self._store.update_nodes(self._set_nodes_number(v))

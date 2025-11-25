@@ -6,12 +6,12 @@ import cloudpickle
 
 from datetime import datetime
 from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, once_wrapper
-from ..utils import BaseResponse
+from ..utils import BaseResponse, _get_default_db_config
 from .base import (
     FINISHED_TASK_QUEUE_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO,
     TaskStatus, TaskType, ALGORITHM_TABLE_INFO
 )
-from .impl import _Processor, _get_default_db_config
+from .impl import _Processor
 from .queue import _SQLBasedQueue as Queue
 from ...sql import SqlManager
 

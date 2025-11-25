@@ -40,7 +40,7 @@ class ExtractResult(BaseModel):
 
 TABLE_SCHEMA_SET_INFO = {
     'name': 'lazyllm_table_schema_set',
-    'comment': 'manages schema sets',
+    'comment': 'Manage schema sets, which contains the infomation of fields for the extraction.',
     'columns': [
         {'name': 'id', 'data_type': 'integer', 'nullable': False, 'is_primary_key': True,
          'comment': 'Auto increment ID'},
@@ -61,7 +61,7 @@ TABLE_SCHEMA_SET_INFO = {
 
 Table_ALGO_KB_SCHEMA = {
     'name': 'lazyllm_algo_kb_schema',
-    'comment': 'record the kb from a certain algorithm is using which schema set',
+    'comment': 'Record the kb from a certain algorithm is using which schema set.',
     'columns': [
         {'name': 'id', 'data_type': 'integer', 'nullable': False, 'is_primary_key': True,
          'comment': 'record ID'},
