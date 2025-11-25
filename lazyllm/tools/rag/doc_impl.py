@@ -373,10 +373,6 @@ class DocImpl:
                  filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[DocNode]:
         self._lazy_init()
 
-        if group_name in self.node_groups and self.store.is_group_empty(group_name):
-            LOG.warning(f'[DocImpl - retrieve] Group {group_name} is empty, triggering reparse')
-            self._processor.reparse(group_name)
-
         if index and index != 'default':
             query_instance = self.store.get_index(type=index)
             if query_instance is None:
