@@ -35,21 +35,7 @@ MILVUS_INDEX_TYPE_DEFAULTS = {
     'SPARSE_INVERTED_INDEX': {'metric_type': 'IP', 'params': {'inverted_index_algo': 'DAAT_MAXSCORE'}},
     'AUTOINDEX': {'metric_type': 'COSINE', 'params': {'nlist': 128}},
 }
-MILVUS_INDEX_TYPE_DEFAULTS = {
-    'HNSW': {'metric_type': 'COSINE', 'params': {'M': 16, 'efConstruction': 200}},
-    'IVF_FLAT': {'metric_type': 'L2', 'params': {'nlist': 1024}},
-    'IVF_SQ8': {'metric_type': 'L2', 'params': {'nlist': 1024}},
-    'IVF_PQ': {'metric_type': 'L2', 'params': {'nlist': 1024, 'm': 8, 'nbits': 8}},
-    'FLAT': {'metric_type': 'L2', 'params': {}},
-    'GPU_IVF_FLAT': {'metric_type': 'L2', 'params': {'nlist': 1024}},
-    'GPU_IVF_SQ8': {'metric_type': 'L2', 'params': {'nlist': 1024}},
-    'GPU_IVF_PQ': {'metric_type': 'L2', 'params': {'nlist': 1024, 'm': 8, 'nbits': 8}},
-    'DISKANN': {'metric_type': 'L2', 'params': {'nlist': 1024}},
-    'BIN_FLAT': {'metric_type': 'HAMMING', 'params': {}},
-    'BIN_IVF_FLAT': {'metric_type': 'HAMMING', 'params': {'nlist': 1024}},
-    'SPARSE_INVERTED_INDEX': {'metric_type': 'IP', 'params': {'inverted_index_algo': 'DAAT_MAXSCORE'}},
-    'AUTOINDEX': {'metric_type': 'COSINE', 'params': {'nlist': 128}},
-}
+
 
 class _ClientPool:
     def __init__(self, maker, max_size: int = 8):
@@ -156,7 +142,7 @@ class MilvusStore(LazyLLMStoreBase):
             self._client_pool.release(c)
 
     @override
-    def upsert(self, collection_name: str, data: List[dict]) -> bool:
+    def upsert(self, collection_name: str, data: List[dict]) -> bool:  # noqa: C901
         try:
             if not data: return True
             data_embeddings = data[0].get('embedding', {})
@@ -178,6 +164,15 @@ class MilvusStore(LazyLLMStoreBase):
                     client.upsert(collection_name=collection_name,
                                   data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
             return True
+        except pymilvus.MilvusException as e:
+            error_msg = str(e).lower()
+            if 'dimension' in error_msg or 'metric type' in error_msg:
+                LOG.error(f'[Milvus Store - upsert] Embedding configuration error: {e}')
+                LOG.error('Hint: You may be using a different embedding model '
+                          'than the one used to create the database.')
+            else:
+                LOG.error(f'[Milvus Store - upsert] error: {e}')
+            return False
         except Exception as e:
             LOG.error(f'[Milvus Store - upsert] error: {e}')
             LOG.error(traceback.format_exc())
@@ -481,33 +476,65 @@ class MilvusStore(LazyLLMStoreBase):
         return res
 
     @override
-    def search(self, collection_name: str, query_embedding: Union[dict, List[float]], topk: int,
+    def search(self, collection_name: str, query_embedding: Union[dict, List[float]], topk: int,  # noqa: C901
                filters: Optional[Dict[str, Union[List, set]]] = None, embed_key: Optional[str] = None,
                filter_str: Optional[str] = '', **kwargs) -> List[dict]:
-        with self._client_context() as client:
-            if not embed_key or embed_key not in self._embed_datatypes:
-                raise ValueError(f'[Milvus Store - search] Not supported or None `embed_key`: {embed_key}')
-            if not client.has_collection(collection_name):
-                return []
-            client.load_collection(collection_name)
+        try:
+            with self._client_context() as client:
+                if not embed_key or embed_key not in self._embed_datatypes:
+                    raise ValueError(f'[Milvus Store - search] Not supported or None `embed_key`: {embed_key}')
+                if not client.has_collection(collection_name):
+                    return []
+                client.load_collection(collection_name)
 
-            res = []
-            filter_expr = self._construct_filter_expr(filters) if filters else ''
-            if filter_str:
-                filter_expr = f'{filter_expr} and {filter_str}' if filter_expr else filter_str
+                res = []
+                filter_expr = self._construct_filter_expr(filters) if filters else ''
+                if filter_str:
+                    filter_expr = f'{filter_expr} and {filter_str}' if filter_expr else filter_str
 
-            results = client.search(collection_name=collection_name, data=[query_embedding], limit=topk,
-                                    anns_field=self._gen_embed_key(embed_key),
-                                    filter=filter_expr)
-            if len(results) != 1:
-                raise ValueError(f'number of results [{len(results)}] != expected [1]')
-            for result in results[0]:
-                score = result.get('distance', 0)
-                uid = result.get('id', result.get(self._primary_key, ''))
-                if not uid:
-                    continue
-                res.append({'uid': uid, 'score': score})
-        return res
+                results = client.search(collection_name=collection_name, data=[query_embedding], limit=topk,
+                                        anns_field=self._gen_embed_key(embed_key),
+                                        filter=filter_expr)
+                if len(results) != 1:
+                    raise ValueError(f'number of results [{len(results)}] != expected [1]')
+                for result in results[0]:
+                    score = result.get('distance', 0)
+                    uid = result.get('id', result.get(self._primary_key, ''))
+                    if not uid:
+                        continue
+                    res.append({'uid': uid, 'score': score})
+            return res
+        except pymilvus.MilvusException as e:
+            error_msg = str(e).lower()
+            if 'metric type not match' in error_msg or 'dimension' in error_msg:
+                with self._client_context() as client:
+                    if client.has_collection(collection_name):
+                        col_desc = client.describe_collection(collection_name=collection_name)
+                        embed_field_name = self._gen_embed_key(embed_key)
+                        existing_dim = None
+                        for field in col_desc.get('fields', []):
+                            if field.get('name') == embed_field_name:
+                                existing_dim = field.get('params', {}).get('dim')
+                                break
+
+                        current_dim = len(query_embedding) if isinstance(query_embedding, list) else None
+
+                        if existing_dim and current_dim and existing_dim != current_dim:
+                            error_hint = f'''
+                                [Milvus Store] Embedding dimension mismatch!
+                                Collection: "{collection_name}", Embed key: "{embed_key}"
+                                Expected Dimension: {existing_dim}, Got: {current_dim}
+                                Try with the same embedding model, or delete the database,
+                                or use a different embed_key.
+                                Original error: {e}
+                            '''
+                        else:
+                            error_hint = f'''
+                                [Milvus Store] Embedding configuration error in collection "{collection_name}".
+                                Original error: {e}
+                            '''
+                        raise RuntimeError(error_hint) from e
+            raise
 
     def _construct_filter_expr(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
         ret_str = ''

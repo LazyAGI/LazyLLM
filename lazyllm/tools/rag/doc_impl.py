@@ -18,6 +18,7 @@ from .parsing_service import _Processor, DocumentProcessor
 from .embed_wrapper import _EmbedWrapper
 from dataclasses import dataclass
 from itertools import repeat
+from .embedding_registry import get_embedding_registry
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
 
@@ -118,11 +119,16 @@ class DocImpl:
                 embed_dims[k] = len(embedding)
                 embed_datatypes[k] = DataType.FLOAT_VECTOR
 
+        store_conf = self.store
         self.store = _DocumentStore(algo_name=self._algo_name, store=self.store,
                                     group_embed_keys=self._activated_embeddings, embed=self.embed,
                                     embed_dims=embed_dims, embed_datatypes=embed_datatypes,
                                     global_metadata_desc=self._global_metadata_desc)
         self.store.activate_group(self._activated_groups)
+
+        if self.embed and embed_dims:
+            registry = get_embedding_registry()
+            registry.validate_and_register(store_conf, self.embed, embed_dims, embed_datatypes)
 
     @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
