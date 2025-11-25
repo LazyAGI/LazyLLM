@@ -21,9 +21,12 @@ from ..utils import DocListManager, _orm_to_dict
 from ..store.store_base import DEFAULT_KB_ID
 from .model import (
     TABLE_SCHEMA_SET_INFO, Table_ALGO_KB_SCHEMA, ExtractionMode,
-    _TableBase, ExtractResult, ExtractMeta, ExtractClue
+    _TableBase, ExtractResult, ExtractMeta, ExtractClue, SchemaSetInfo
 )
-from .prompts import SCHEMA_EXTRACT_PROMPT, SCHEMA_EXTRACT_INPUT_FORMAT
+from .prompts import (
+    SCHEMA_EXTRACT_PROMPT, SCHEMA_EXTRACT_INPUT_FORMAT,
+    SCHEMA_ANALYZE_PROMPT, SCHEMA_ANALYZE_INPUT_FORMAT
+)
 from .utils import _col_type_name
 
 ONE_DOC_LENGTH_LIMIT = 102400
@@ -44,6 +47,21 @@ class SchemaExtractor:
         bool: sqlalchemy.Boolean,
         list: sqlalchemy.JSON,
         dict: sqlalchemy.JSON,
+    }
+    TYPE_NAME_MAP = {
+        'string': str,
+        'text': str,
+        'int': int,
+        'integer': int,
+        'float': float,
+        'number': float,
+        'boolean': bool,
+        'bool': bool,
+        'list': list,
+        'array': list,
+        'dict': dict,
+        'object': dict,
+        'map': dict,
     }
 
     def __init__(self, db_config: Dict[str, Any],
@@ -356,6 +374,45 @@ class SchemaExtractor:
             lines.append(f"name: {name}, description: {desc or ''}, type: {type_str}")
         return '\n'.join(lines)
 
+    def analyze_schema_and_register(self, data: Union[str, List[DocNode]],
+                                    schema_set_id: Optional[str] = None) -> SchemaSetInfo:
+        '''Infer a schema from sample data, register it, and return the registration info.'''
+        self._lazy_init()
+        if not self._llm:
+            raise ValueError('LLM not initialized')
+        if not data:
+            raise ValueError('data is empty')
+
+        if isinstance(data, str):
+            sample_text = data[:self._max_len]
+        else:
+            chunks = self._gen_text_list_from_nodes(data)
+            sample_text = '\n\n'.join(chunks)[:self._max_len] if chunks else ''
+        if not sample_text:
+            raise ValueError('No content available for schema analysis')
+
+        llm = self._llm.share(prompt=SCHEMA_ANALYZE_PROMPT, format=JsonFormatter())
+        payload = Template(SCHEMA_ANALYZE_INPUT_FORMAT).substitute(text=sample_text)
+        res = llm(payload)
+        fields_def: Dict[str, Tuple[Any, Any]] = {}
+        for item in res:
+            if not isinstance(item, dict):
+                continue
+            name = item.get('name')
+            if not name:
+                continue
+            desc = item.get('description') or ''
+            py_type = self._normalize_py_type(item.get('type'))
+            fields_def[name] = (py_type, Field(default=None, description=desc))
+        if not fields_def:
+            # Fallback: single generic field capturing text content
+            fields_def['content'] = (str, Field(default=None, description='Raw content snippet'))
+
+        model_name = f'AutoSchema{uuid4().hex}'
+        schema_model = create_model(model_name, **fields_def)  # type: ignore[arg-type]
+        reg_id = self.register_schema_set(schema_model, schema_set_id)
+        return SchemaSetInfo(schema_set_id=reg_id, schema_model=schema_model)
+
     def _gen_text_list_from_nodes(self, nodes: List[DocNode]) -> list[str]:
         '''Generate full text blocks with metadata, each capped by `self._max_len`.'''
         if not nodes:
@@ -413,6 +470,7 @@ class SchemaExtractor:
         schema_val_clues: Dict[str, Dict[str, List[str]]] = {}
         for res_item in res:
             if not isinstance(res_item, list):
+                LOG.error(f"[Schema Extractor - _text_extract_impl] invalid format {res_item}")
                 continue
             for info in res_item:
                 if not isinstance(info, dict):
@@ -745,9 +803,13 @@ class SchemaExtractor:
         result = []
         for name, field in fields.items():
             annotation = getattr(field, 'annotation', None) or getattr(field, 'outer_type_', None)
-            column_type = self._column_type(annotation)
-            result.append((name, column_type))
+            result.append((name, self._column_type(annotation)))
         return result
+
+    def _normalize_py_type(self, type_hint: Any):
+        if isinstance(type_hint, str):
+            return self.TYPE_NAME_MAP.get(type_hint.lower(), str)
+        return type_hint or str
 
     def _column_type(self, annotation: Any):
         origin = get_origin(annotation)
@@ -758,8 +820,11 @@ class SchemaExtractor:
             origin = get_origin(annotation)
         if origin in (list, set, tuple):
             return sqlalchemy.JSON
-        if annotation in self.TYPE_MAP:
-            return self.TYPE_MAP[annotation]
+        resolved = self._normalize_py_type(annotation)
+        if resolved in self.TYPE_MAP:
+            return self.TYPE_MAP[resolved]
+        if resolved in (list, set, tuple):
+            return sqlalchemy.JSON
         return sqlalchemy.Text
 
     def _to_model_dict(self, payload: Union[BaseModel, Dict[str, Any]], model_cls: Type[BaseModel]) -> Dict[str, Any]:

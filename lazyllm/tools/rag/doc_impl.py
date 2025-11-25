@@ -489,6 +489,16 @@ class DocImpl:
         else:
             raise ValueError('This method is only available when the Document has a DocumentProcessor')
 
+    def analyze_schema_by_llm(self, kb_id: str = None, doc_ids: list[str] = None):
+        if not self._schema_extractor:
+            raise AttributeError('No schema extractor for this Document.')
+        self._lazy_init()
+        data = self.store.get_nodes(group=LAZY_ROOT_NAME, kb_id=kb_id, doc_ids=doc_ids)
+        if not data:
+            LOG.error(f'No data from store for kb_id: {kb_id}, doc_ids: {doc_ids}')
+            return None
+        return self._schema_extractor.analyze_schema_and_register(data=data)
+
     def __call__(self, func_name: str, *args, **kwargs):
         return getattr(self, func_name)(*args, **kwargs)
 

@@ -1,6 +1,7 @@
 from datetime import datetime
 from enum import Enum
-from typing import List, Optional, Dict, Any
+from typing import List, Optional, Dict, Any, Type
+from dataclasses import dataclass
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import DeclarativeBase
 
@@ -37,6 +38,11 @@ class ExtractMeta(BaseModel):
 class ExtractResult(BaseModel):
     data: Dict[str, Any]
     metadata: ExtractMeta = Field(default_factory=dict)
+
+@dataclass
+class SchemaSetInfo:
+    schema_set_id: str
+    schema_model: Type[BaseModel]
 
 TABLE_SCHEMA_SET_INFO = {
     'name': 'lazyllm_table_schema_set',

@@ -94,3 +94,31 @@ $schema
 ## Document
 $text
 '''
+
+SCHEMA_ANALYZE_PROMPT = '''# Role
+You are a concise schema designer. Given raw document content, propose a compact set of fields that captures the essential information in the text.
+
+# Requirements
+- The fields should be professional and high level, and the description should not contains any specific words (for example the certain company).
+- Prefer fewer, high-signal fields over many granular ones.
+
+# Output Format
+The output should be a JSON list of object with the following format:
+- `name`: snake_case, short, no spaces.
+- `description`: brief, clear, grounded in the text.
+- `type`: one of `string`, `integer`, `float`, `boolean`, `list`, `dict`.
+
+## Output Example
+```json
+[
+  {"name": "company", "description": "Company name mentioned in the text", "type": "string"},
+  {"name": "profit", "description": "Profit of the company in million USD", "type": "float"},
+]
+```
+
+# Document
+'''
+
+SCHEMA_ANALYZE_INPUT_FORMAT = '''
+$text
+'''
