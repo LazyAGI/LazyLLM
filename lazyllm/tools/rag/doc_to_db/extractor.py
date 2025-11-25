@@ -47,11 +47,11 @@ class SchemaExtractor:
     }
 
     def __init__(self, db_config: Dict[str, Any],
-                 llm: Union[OnlineChatModule, TrainableModule] = OnlineChatModule(),
+                 llm: Union[OnlineChatModule, TrainableModule],
                  *, table_prefix: Optional[str] = None, force_refresh: bool = False,
                  extraction_mode: ExtractionMode = ExtractionMode.TEXT,
                  max_len: int = ONE_DOC_LENGTH_LIMIT, num_workers: int = 4):
-        self._llm = llm
+        self._llm = llm or OnlineChatModule()
         self._table_prefix = table_prefix or self.TABLE_PREFIX
         self._sql_manager = None
         self._db_config = db_config
@@ -118,7 +118,7 @@ class SchemaExtractor:
             if algo_id:
                 query = query.filter_by(algo_id=str(algo_id))
             if kb_id_list:
-                query = query.filter(getattr(bind_table_cls, 'kb_id').in_(kb_id_list))
+                query = query.filter(bind_table_cls.kb_id.in_(kb_id_list))
             bound_rows = query.all()
         if not bound_rows:
             raise ValueError(f'No schema binding found for algo_id={algo_id} kb_ids={kb_ids}')
@@ -127,7 +127,7 @@ class SchemaExtractor:
         if bind_desc and bind_table_name in target_tables:
             desc_map[bind_table_name] = bind_desc
         for row in bound_rows:
-            schema_set_id = str(getattr(row, 'schema_set_id'))
+            schema_set_id = str(row.schema_set_id)
             if not self.has_schema_set(schema_set_id):
                 raise ValueError(f'Schema set {schema_set_id} not found')
             schema_model = self._schema_registry[schema_set_id]
@@ -198,7 +198,7 @@ class SchemaExtractor:
                 with self._sql_manager.get_session() as session:
                     existing = session.query(table_cls).filter_by(idem_key=idem_key).first()
                     if existing:
-                        existing_id = str(getattr(existing, 'schema_set_id', getattr(existing, 'id')))
+                        existing_id = str(existing.schema_set_id if hasattr(existing, 'schema_set_id') else existing.id)
                         if schema_set_id and str(schema_set_id) != existing_id:
                             raise ValueError(
                                 f'schema_set_id mismatch for idem_key, expect {existing_id}, got {schema_set_id}'
@@ -217,7 +217,7 @@ class SchemaExtractor:
                         new_obj = table_cls(**obj_kwargs)
                         session.add(new_obj)
                         session.flush()
-                        schema_set_id = str(getattr(new_obj, 'schema_set_id', getattr(new_obj, 'id')))
+                        schema_set_id = str(new_obj.schema_set_id if hasattr(new_obj, 'schema_set_id') else new_obj.id)
 
             if schema_set_id is None:
                 raise ValueError('schema_set_id is required and could not be derived')
@@ -305,7 +305,7 @@ class SchemaExtractor:
             with self._sql_manager.get_session() as session:
                 existing = session.query(bind_table_cls).filter_by(algo_id=algo_id, kb_id=kb_id).first()
                 if existing:
-                    existing_schema_id = str(getattr(existing, 'schema_set_id'))
+                    existing_schema_id = str(existing.schema_set_id)
                     if existing_schema_id != str(schema_set_id):
                         if not force_refresh:
                             raise ValueError(
@@ -468,7 +468,7 @@ class SchemaExtractor:
         kb_id = doc_id = None
         if isinstance(data, str):
             kb_id = DEFAULT_KB_ID
-            doc_id = hashlib.sha256(data.encode("utf-8")).hexdigest()
+            doc_id = hashlib.sha256(data.encode('utf-8')).hexdigest()
         else:
             for node in data:
                 meta = getattr(node, 'global_metadata', {}) or {}
@@ -581,7 +581,7 @@ class SchemaExtractor:
             if not bind_row:
                 return True
 
-            schema_set_id = str(getattr(bind_row, 'schema_set_id'))
+            schema_set_id = str(bind_row.schema_set_id)
             table_name = self._table_name(schema_set_id)
             table_cls = self._sql_manager.get_table_orm_class(table_name)
             if table_cls is None:
@@ -591,7 +591,7 @@ class SchemaExtractor:
                 session.query(table_cls).filter_by(
                     **{self.SYS_KB_ID: kb_id, self.SYS_ALGO_ID: algo_id}
                 ).filter(
-                    getattr(table_cls, self.SYS_DOC_ID).in_(doc_ids)
+                    table_cls.doc_id.in_(doc_ids)
                 ).delete(synchronize_session=False)
             return True
         except Exception as e:
@@ -616,7 +616,7 @@ class SchemaExtractor:
         if not bind_row:
             return []
 
-        schema_set_id = str(getattr(bind_row, 'schema_set_id'))
+        schema_set_id = str(bind_row.schema_set_id)
         self.has_schema_set(schema_set_id)
         table_name = self._table_name(schema_set_id)
         table_cls = self._sql_manager.get_table_orm_class(table_name)
@@ -628,7 +628,7 @@ class SchemaExtractor:
             rows = session.query(table_cls).filter_by(
                 **{self.SYS_KB_ID: kb_id, self.SYS_ALGO_ID: algo_id}
             ).filter(
-                getattr(table_cls, self.SYS_DOC_ID).in_(doc_ids)
+                table_cls.doc_id.in_(doc_ids)
             ).all()
 
         results: List[ExtractResult] = []
@@ -779,7 +779,7 @@ class SchemaExtractor:
             raise TypeError('schema_set must be a pydantic BaseModel subclass')
 
     def _json_safe(self, obj: Any) -> Any:
-        """Convert common objects (Enum/BaseModel) to JSON-serializable primitives."""
+        '''Convert common objects (Enum/BaseModel) to JSON-serializable primitives.'''
         if isinstance(obj, Enum):
             return obj.value
         if isinstance(obj, BaseModel):
