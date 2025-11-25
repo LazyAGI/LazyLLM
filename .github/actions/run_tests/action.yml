@@ -1,0 +1,61 @@
+name: 'Composite Action: Run tests'
+description: 'Composite Action: Run tests'
+
+inputs:
+  working_directory:
+    description: 'Working directory'
+    required: true
+  tests_dir:
+    description: ''
+    required: true
+  changed_files:
+    description: ''
+    required: true
+  markers:
+    description: ''
+    required: true
+  launcher:
+    description: ''
+    required: false
+    default: "sco"
+  nproc:
+    description: ''
+    required: false
+    default: "1"
+
+
+runs:
+  using: "composite"
+  steps:
+    - name: Run tests
+      shell: bash
+      working-directory: ${{ inputs.working_directory }}
+      env:
+        CHANGED_FILES: ${{ inputs.changed_files }}
+      run: |
+        cd ${{ inputs.working_directory }}
+        echo "tests_dir=${{ inputs.tests_dir }}"
+        echo "markers=${{ inputs.markers }}"
+        env | grep '^SCC'
+        export LAZYLLM_SCO_ENV_NAME=lazyllm
+        export LAZYLLM_DEFAULT_LAUNCHER=${{ inputs.launcher }}
+        export PYTHONPATH=$PWD:$PYTHONPATH
+        export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
+        export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
+        export LAZYLLM_HOME="${{ inputs.working_directory }}/${{ github.run_id }}-${{ github.job }}"
+        pip install pytest-xdist
+        mkdir -p $LAZYLLM_HOME
+        source ~/ENV/env.sh
+        if [ -f ${{ inputs.tests_dir }}/.pytest_cache/v/cache/lastfailed ]; then
+          pytest --lf --last-failed-no-failures=none \
+            -n ${{ inputs.nproc }} --dist=loadfile -m "${{ inputs.markers }}" --order-scope=class \
+            --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html \
+            --override-ini=cache_dir=${{ inputs.tests_dir }}/.pytest_cache \
+            ${{ inputs.tests_dir }}
+        else
+          pytest \
+            -n ${{ inputs.nproc }} --dist=loadfile -m "${{ inputs.markers }}" --order-scope=class \
+            --durations=0 --reruns=2 -v --cov=lazyllm --cov-append --cov-report=html \
+            --override-ini=cache_dir=${{ inputs.tests_dir }}/.pytest_cache \
+            ${{ inputs.tests_dir }}
+        fi

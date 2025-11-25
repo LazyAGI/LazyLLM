@@ -13,7 +13,13 @@ install-flake8:
 lint-flake8:
 	python -m flake8
 
+.ONESHELL:
 lint-flake8-only-diff:
+	@if [ -n "${CHANGED_FILES}" ]; then \
+		echo "$(CHANGED_FILES)" | xargs flake8; \
+		exit 0; \
+	fi
+
 	@echo "🔍 Collecting changed Python files..."
 	@FILES=$$( \
 		{ \
