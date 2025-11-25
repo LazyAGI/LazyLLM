@@ -126,9 +126,7 @@ jobs:
           set -ex
           echo ${{ env.CI_PATH }}
           mkdir -p ${{ env.CI_PATH }}
-          if [ -d "${{ env.CI_PATH }}" ]; then
-            rm -rf ${{ env.CI_PATH }}/*
-          fi
+          rm -rf ${{ env.CI_PATH }}/* ${{ env.CI_PATH }}/.[!.]*
           mv $GITHUB_WORKSPACE/* $GITHUB_WORKSPACE/.[!.]* ${{ env.CI_PATH }}/
           cd ${{ env.CI_PATH }}
           pip install -r tests/requirements.txt
