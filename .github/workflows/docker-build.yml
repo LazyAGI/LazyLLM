@@ -1,0 +1,343 @@
+name: Build and Push Docker Images
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  REGISTRY_DOCKERHUB: lazyllm/lazyllm
+  REGISTRY_ALIYUN: registry.cn-hangzhou.aliyuncs.com/lazyllm/lazyllm
+
+jobs:
+  build-full:
+    name: Build Full Image
+    if: github.repository == 'LazyAGI/LazyLLM'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Checkout LazyLLM-Env submodule only
+        run: |
+          git submodule init LazyLLM-Env
+          git submodule update LazyLLM-Env
+
+      - name: Prepare poetry.lock
+        run: |
+          if [ -f "LazyLLM-Env/poetry.lock" ]; then
+            cp LazyLLM-Env/poetry.lock .
+            echo "Copied poetry.lock from LazyLLM-Env submodule"
+          else
+            echo "Error: poetry.lock not found" && exit 1
+          fi
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.10'
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: '1.8.3'
+
+      - name: Generate requirements.txt
+        run: |
+          poetry export -f requirements.txt --without-hashes -o image-build-requirements.txt --extras "full"
+          cat image-build-requirements.txt
+          sed -i '/^flash-attn==/d' image-build-requirements.txt
+          if [ ! -f image-build-requirements.txt ]; then
+            echo "Error: Failed to generate image-build-requirements.txt" && exit 1
+          fi
+          echo "Generated image-build-requirements.txt successfully"
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            VERSION=${VERSION#v}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Version: $VERSION"
+          else
+            echo "Not a tag, skipping"
+            exit 1
+          fi
+
+      - name: Upload image-build-requirements.txt as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-build-requirements-${{ steps.version.outputs.version }}
+          path: image-build-requirements.txt
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Split requirements.txt
+        run: |
+          chmod +x scripts/split_requirements.sh
+          ./scripts/split_requirements.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Wait for PyPI package
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Waiting for lazyllm==$VERSION to be available on PyPI..."
+          max_attempts=30
+          attempt=0
+          while [ $attempt -lt $max_attempts ]; do
+            if pip index versions lazyllm 2>/dev/null | grep -q "$VERSION"; then
+              echo "Package lazyllm==$VERSION is now available on PyPI"
+              break
+            fi
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt/$max_attempts: Package not yet available, waiting 30 seconds..."
+            sleep 60
+          done
+          if [ $attempt -eq $max_attempts ]; then
+            echo "Error: Package lazyllm==$VERSION not found on PyPI after $max_attempts attempts"
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: lazyllm
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to Aliyun Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cn-hangzhou.aliyuncs.com
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Build and push full image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          provenance: false
+          sbom: false
+          build-args: |
+            LAZYLLM_VERSION=${{ steps.version.outputs.version }}
+          tags: |
+            ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}
+            ${{ env.REGISTRY_ALIYUN }}:latest
+
+  build-light-amd64:
+    name: Build Light Image (AMD64)
+    if: github.repository == 'LazyAGI/LazyLLM'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            VERSION=${VERSION#v}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Version: $VERSION"
+          else
+            echo "Not a tag, skipping"
+            exit 1
+          fi
+
+      - name: Wait for PyPI package
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Waiting for lazyllm==$VERSION to be available on PyPI..."
+          max_attempts=30
+          attempt=0
+          while [ $attempt -lt $max_attempts ]; do
+            if pip index versions lazyllm 2>/dev/null | grep -q "$VERSION"; then
+              echo "Package lazyllm==$VERSION is now available on PyPI"
+              break
+            fi
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt/$max_attempts: Package not yet available, waiting 30 seconds..."
+            sleep 60
+          done
+          if [ $attempt -eq $max_attempts ]; then
+            echo "Error: Package lazyllm==$VERSION not found on PyPI after $max_attempts attempts"
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: lazyllm
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to Aliyun Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cn-hangzhou.aliyuncs.com
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Setup buildx (single arch)
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
+      - name: Build and push light image (AMD64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile-light
+          push: true
+          provenance: false
+          sbom: false
+          build-args: |
+            LAZYLLM_VERSION=${{ steps.version.outputs.version }}
+          tags: |
+            ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}-light-amd64
+            ${{ env.REGISTRY_DOCKERHUB }}:${{ steps.version.outputs.version }}-light-amd64
+
+  build-light-arm64:
+    name: Build Light Image (ARM64)
+    if: github.repository == 'LazyAGI/LazyLLM'
+    runs-on: ubuntu-24.04-arm
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            VERSION=${VERSION#v}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Version: $VERSION"
+          else
+            echo "Not a tag, skipping"
+            exit 1
+          fi
+
+      - name: Wait for PyPI package
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          echo "Waiting for lazyllm==$VERSION to be available on PyPI..."
+          max_attempts=30
+          attempt=0
+          while [ $attempt -lt $max_attempts ]; do
+            if pip index versions lazyllm 2>/dev/null | grep -q "$VERSION"; then
+              echo "Package lazyllm==$VERSION is now available on PyPI"
+              break
+            fi
+            attempt=$((attempt + 1))
+            echo "Attempt $attempt/$max_attempts: Package not yet available, waiting 30 seconds..."
+            sleep 60
+          done
+          if [ $attempt -eq $max_attempts ]; then
+            echo "Error: Package lazyllm==$VERSION not found on PyPI after $max_attempts attempts"
+            exit 1
+          fi
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: lazyllm
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to Aliyun Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cn-hangzhou.aliyuncs.com
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Setup buildx (single arch)
+        uses: docker/setup-buildx-action@v3
+        with:
+          driver: docker
+
+      - name: Build and push light image (ARM64)
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./Dockerfile-light
+          push: true
+          provenance: false
+          sbom: false
+          build-args: |
+            LAZYLLM_VERSION=${{ steps.version.outputs.version }}
+          tags: |
+            ${{ env.REGISTRY_ALIYUN }}:${{ steps.version.outputs.version }}-light-arm64
+            ${{ env.REGISTRY_DOCKERHUB }}:${{ steps.version.outputs.version }}-light-arm64
+
+  create-manifest:
+    name: Create Multi-arch Manifest
+    runs-on: ubuntu-latest
+    needs: [build-light-amd64, build-light-arm64]
+    steps:
+      - name: Extract version from tag
+        id: version
+        run: |
+          if [[ "${{ github.ref }}" == refs/tags/* ]]; then
+            VERSION=${GITHUB_REF#refs/tags/}
+            VERSION=${VERSION#v}
+            echo "version=$VERSION" >> $GITHUB_OUTPUT
+            echo "Version: $VERSION"
+          else
+            echo "Not a tag, skipping"
+            exit 1
+          fi
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: lazyllm
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Log in to Aliyun Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: registry.cn-hangzhou.aliyuncs.com
+          username: ${{ secrets.ALIYUN_REGISTRY_USERNAME }}
+          password: ${{ secrets.ALIYUN_REGISTRY_PASSWORD }}
+
+      - name: Create and push manifest
+        run: |
+          VERSION="${{ steps.version.outputs.version }}"
+          
+          echo "Waiting for images to be available..."
+          sleep 30
+          
+          # Create manifest
+          docker manifest create ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light \
+            --amend ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light-amd64 \
+            --amend ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light-arm64 || true
+          docker manifest push ${{ env.REGISTRY_DOCKERHUB }}:$VERSION-light
+          
+          #  Create manifest
+          docker manifest create ${{ env.REGISTRY_ALIYUN }}:$VERSION-light \
+            --amend ${{ env.REGISTRY_ALIYUN }}:$VERSION-light-amd64 \
+            --amend ${{ env.REGISTRY_ALIYUN }}:$VERSION-light-arm64 || true
+          docker manifest push ${{ env.REGISTRY_ALIYUN }}:$VERSION-light
+          
+          echo "✓ Multi-arch manifest created and pushed"
+
