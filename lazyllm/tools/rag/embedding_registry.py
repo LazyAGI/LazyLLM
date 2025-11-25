@@ -80,34 +80,34 @@ class EmbeddingModelRegistry:
     def _raise_registration_conflict_error(self, embed_key: str, new_info: EmbeddingModelInfo,
                                            existing_info: EmbeddingModelInfo) -> None:
         error_msg = f'''
-                    ================================================================================
-                    Embedding Model Registration Conflict!
-                    ================================================================================
-                    Embed Key: "{embed_key}"
-                    Registered Model Info:
-                    Registered DB Type: {existing_info.db_type}
-                    Registered DB Connection: {existing_info.db_connection}
-                    Registered Dimension: {existing_info.dimension}
-                    Registered Model: {existing_info.model_name}
-                    Registered Provider: {existing_info.model_provider}
-                    --------------------------------------------------------------------------------
-                    New Model Info:
-                    New DB Type: {new_info.db_type}
-                    New DB Connection: {new_info.db_connection}
-                    New Dimension: {new_info.dimension}
-                    New Model: {new_info.model_name}
-                    New Provider: {new_info.model_provider}
+================================================================================
+Embedding Model Registration Conflict!
+================================================================================
+Embed Key: "{embed_key}"
+Registered Model Info:
+Registered DB Type: {existing_info.db_type}
+Registered DB Connection: {existing_info.db_connection}
+Registered Dimension: {existing_info.dimension}
+Registered Model: {existing_info.model_name}
+Registered Provider: {existing_info.model_provider}
+--------------------------------------------------------------------------------
+New Model Info:
+New DB Type: {new_info.db_type}
+New DB Connection: {new_info.db_connection}
+New Dimension: {new_info.dimension}
+New Model: {new_info.model_name}
+New Provider: {new_info.model_provider}
 
-                    This error indicates you're trying to use different embedding models
-                    or database configurations with the same embed_key.
+This error indicates you're trying to use different embedding models
+or database configurations with the same embed_key.
 
-                    Try with:
-                    1. Use the same embedding model and database configuration (recommended)
-                    2. Use a different embed_key for the new model/configuration
-                    3. Clear the registry if starting fresh
-                    ================================================================================
-                    '''
-        raise ValueError(error_msg.strip())
+Try with:
+1. Use the same embedding model and database configuration (recommended)
+2. Use a different embed_key for the new model/configuration
+3. Clear the registry if starting fresh
+================================================================================
+'''
+        LOG.error('\n' + error_msg.strip())
 
     def _extract_db_type(self, store: Any) -> Optional[str]:
         try:
