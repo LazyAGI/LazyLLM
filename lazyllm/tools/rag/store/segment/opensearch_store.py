@@ -201,14 +201,13 @@ class OpenSearchStore(LazyLLMStoreBase):
             self._ensure_index(collection_name)
             must_clauses = []
             os_query = {}
-            if query:
-                text_query = {
-                    'multi_match': {
-                        'query': query,
-                        'fields': query_fields,
-                    }
+            text_query = {
+                'multi_match': {
+                    'query': query,
+                    'fields': query_fields,
                 }
-                must_clauses.append(text_query)
+            }
+            must_clauses.append(text_query)
 
             filter_query = self._construct_criteria(filters) if filters else {}
 
