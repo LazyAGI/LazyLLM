@@ -56,7 +56,7 @@ DEFAULT_MAPPING_BODY = {
                 'analyzer': 'ik_max_word',
                 'search_analyzer': 'ik_smart',
             },
-            'answer': {'type': 'text', 'index': True, 'store': True},
+            'answer': {'type': 'text', 'index': False, 'store': True},
             'meta': {'type': 'text', 'index': False, 'store': True},
             'global_meta': {'type': 'text', 'index': False, 'store': True},
             'type': {'type': 'keyword', 'store': True},
