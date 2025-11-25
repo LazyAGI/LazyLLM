@@ -78,7 +78,7 @@ jobs:
       - name: Run DocCheck
         run: |
           pip install -r tests/requirements.txt
-          pytest --collect-only --lf --durations=0 -v tests/doc_check
+          pytest --lf --durations=0 -v tests/doc_check
 
   clone:
     if: |
@@ -86,7 +86,7 @@ jobs:
       && !contains(github.event.pull_request.title, '[skip ci]')
     # needs: [ lint, doc_check ]
     needs: [ lint ]
-    runs-on: tps_sco_nv_yzh
+    runs-on: tps_sco_nv
     environment: protected
     outputs:
       changed_files: ${{ steps.changed_files_yaml.outputs.all_changed_files }}
@@ -132,7 +132,7 @@ jobs:
           pip install -r tests/requirements.txt
 
   basic_tests:
-    runs-on: tps_sco_nv_yzh
+    runs-on: tps_sco_nv
     needs: [ clone ]
     steps:
       - name: Checkout code
@@ -151,7 +151,7 @@ jobs:
           nproc: 4
 
   advanced_tests:
-    runs-on: tps_sco_nv_yzh
+    runs-on: tps_sco_nv
     needs: [ clone ]
     steps:
       - name: Checkout code
@@ -168,7 +168,7 @@ jobs:
           tests_dir: "tests/advanced_tests"
 
   engine_tests:
-    runs-on: tps_sco_nv_yzh
+    runs-on: tps_sco_nv
     needs: [ clone ]
     steps:
       - name: Checkout code
@@ -185,7 +185,7 @@ jobs:
           tests_dir: "tests/engine_tests"
 
   charge_tests:
-    runs-on: tps_sco_nv_yzh
+    runs-on: tps_sco_nv
     needs: [ clone ]
     steps:
       - name: Checkout code
@@ -339,13 +339,13 @@ jobs:
           pip install -r tests/requirements.txt
           pip install -r tests/requirements_mac.txt
           export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
-          pytest --collect-only --lf --last-failed-no-failures=all -m "not skip_on_mac" -v \
+          pytest --lf --last-failed-no-failures=all -m "not skip_on_mac" -v \
             --override-ini=cache_dir=tests/basic_tests/.pytest_cache --reruns=2 tests/basic_tests/
         timeout-minutes: 30
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
 
-      - name: Save pytest --collect-only cache
+      - name: Save pytest cache
         if: always()
         uses: actions/cache/save@v4
         with:
@@ -394,12 +394,12 @@ jobs:
           pip install -r tests/requirements.txt
           export LAZYLLM_DATA_PATH=/tmp/lazyllm/data
           if [ -f tests/charge_tests/.pytest_cache/v/cache/lastfailed ]; then
-            pytest --collect-only --lf --last-failed-no-failures=none \
+            pytest --lf --last-failed-no-failures=none \
               -m "not skip_on_mac" --order-scope=class -v --reruns=2 \
               --override-ini=cache_dir=tests/charge_tests/.pytest_cache \
               tests/charge_tests
           else
-            pytest --collect-only \
+            pytest \
               -m "not skip_on_mac" --order-scope=class -v --reruns=2 \
               --override-ini=cache_dir=tests/charge_tests/.pytest_cache \
               tests/charge_tests
@@ -424,7 +424,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         timeout-minutes: 25
 
-      - name: Save pytest --collect-only cache
+      - name: Save pytest cache
         if: always()
         uses: actions/cache/save@v4
         with:
@@ -466,13 +466,13 @@ jobs:
           scoop install ffmpeg
           pip install -r tests/requirements.txt
           export LAZYLLM_DATA_PATH=D:/a/LazyLLM/data
-          python -m pytest --collect-only --lf --last-failed-no-failures=all -m "not skip_on_win" -v --reruns=2 \
+          python -m pytest --lf --last-failed-no-failures=all -m "not skip_on_win" -v --reruns=2 \
             --override-ini=cache_dir=tests/basic_tests/.pytest_cache tests/basic_tests
         timeout-minutes: 30
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
 
-      - name: Save pytest --collect-only cache
+      - name: Save pytest cache
         if: always()
         uses: actions/cache/save@v4
         with:
@@ -524,10 +524,10 @@ jobs:
          pip install -r tests/requirements.txt
          export LAZYLLM_DATA_PATH=D:/a/LazyLLM/data
          if [ -f tests/charge_tests/.pytest_cache/v/cache/lastfailed ]; then
-            pytest --collect-only --lf --last-failed-no-failures=none -m "not skip_on_win" --order-scope=class -v \
+            pytest --lf --last-failed-no-failures=none -m "not skip_on_win" --order-scope=class -v \
               --reruns=2 --override-ini=cache_dir=tests/charge_tests/.pytest_cache tests/charge_tests
          else
-            pytest --collect-only -m "not skip_on_win" --order-scope=class -v --reruns=2 \
+            pytest -m "not skip_on_win" --order-scope=class -v --reruns=2 \
               --override-ini=cache_dir=tests/charge_tests/.pytest_cache tests/charge_tests
          fi
         env:
@@ -550,7 +550,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         timeout-minutes: 30
 
-      - name: Save pytest --collect-only cache
+      - name: Save pytest cache
         if: always()
         uses: actions/cache/save@v4
         with:
@@ -591,4 +591,4 @@ jobs:
           export LAZYLLM_HOME="${{ env.K8S_CI_PATH }}/${{ github.run_id }}-${{ github.job }}"
           mkdir -p $LAZYLLM_HOME
           source /mnt/nfs_share/env.sh 
-          pytest --collect-only --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/k8s_tests
+          pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/k8s_tests
