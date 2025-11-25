@@ -65,7 +65,7 @@ jobs:
           fi
 
   doc_check:
-    runs-on: ubuntu-latest
+    runs-on: tps_sco_nv
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
