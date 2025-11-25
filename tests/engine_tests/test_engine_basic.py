@@ -549,7 +549,7 @@ class TestEngine(unittest.TestCase):
         assert engine.build_node('graph-1').func.web_url == web.url
         client = Client(web.url, download_files=web.cach_path)
         chat_history = [['123', None]]
-        ans = client.predict(False, chat_history, False, False, api_name='/respond_stream')
+        ans = client.predict(False, chat_history, False, False, api_name='/_respond_stream')
         assert ans[0][-1][-1] == '123123'
         client.close()
         lazyllm.launcher.cleanup()
