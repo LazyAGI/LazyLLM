@@ -1167,7 +1167,7 @@ GLOBAL_META_SCENARIOS = {
     },
 }
 PARAM_COMBINATIONS = []
-for backend in ("elasticsearch", "opensearch"):
+for backend in ('elasticsearch', 'opensearch'):
     for scenario_key, meta_desc in GLOBAL_META_SCENARIOS.items():
         PARAM_COMBINATIONS.append({
             'backend': backend,
@@ -1192,16 +1192,16 @@ class TestSegmentStore:
     @pytest.fixture(scope='class', params=PARAM_COMBINATIONS, ids=PARAM_IDS)
     def setUp(self, request):
         env = request.param
-        backend = env["backend"]
-        scenario = env["scenario"]
-        init_kwargs = env["init_kwargs"]
-        global_meta_desc = env["global_meta_desc"]
-        if env.get("skip"):
-            pytest.skip(env.get("skip_reason"))
+        backend = env['backend']
+        scenario = env['scenario']
+        init_kwargs = env['init_kwargs']
+        global_meta_desc = env['global_meta_desc']
+        if env.get('skip'):
+            pytest.skip(env.get('skip_reason'))
         store = make_store_instance(backend, init_kwargs, global_meta_desc)
-        prefix = f"test_col_{backend}_{scenario}"
+        prefix = f'test_col_{backend}_{scenario}'
         ts = int(time.time() * 1000) % 100000
-        collections = [f"{prefix}_g1_{ts}", f"{prefix}_g2_{ts}"]
+        collections = [f'{prefix}_g1_{ts}', f'{prefix}_g2_{ts}']
         for col in collections:
             try:
                 store.delete(col)
@@ -1229,7 +1229,7 @@ class TestSegmentStore:
 
     @pytest.fixture()
     def sample_data(self):
-        if self.scenario == "default":
+        if self.scenario == 'default':
             data = [
                 {'uid': 'uid1', 'doc_id': 'doc1', 'group': 'g1', 'content': 'test1', 'meta': {},
                  'global_meta': {RAG_DOC_ID: 'doc1', RAG_KB_ID: 'kb1'},
