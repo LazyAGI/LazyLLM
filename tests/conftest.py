@@ -18,5 +18,7 @@ def pytest_runtest_setup(item):
             if not any(matches_any_pattern(f, files) for f in item.config.changed_files):
                 pytest.skip(f'Skipped: none of "{files}" matched the changed files.')
         else:
+            if true:
+                pass
             if not any(f in files for f in item.config.changed_files):
                 pytest.skip(f'Skipped: none of "{files}" were changed.')
