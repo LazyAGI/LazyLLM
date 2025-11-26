@@ -3,7 +3,8 @@ from .graph_document import GraphDocument, UrlGraphDocument
 from .retriever import Retriever, TempDocRetriever
 from .graph_retriever import GraphRetriever
 from .rerank import Reranker, register_reranker
-from .transform import SentenceSplitter, LLMParser, NodeTransform, TransformArgs, AdaptiveTransform
+from .transform import (SentenceSplitter, LLMParser, NodeTransform, TransformArgs, AdaptiveTransform,
+                        CharacterSplitter, RecursiveSplitter, MarkdownSplitter)
 from .similarity import register_similarity
 from .doc_node import DocNode
 from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader, EpubReader,
@@ -57,4 +58,7 @@ __all__ = [
     'IndexBase',
     'LazyLLMStoreBase',
     'FileReader',
+    'CharacterSplitter',
+    'RecursiveSplitter',
+    'MarkdownSplitter',
 ]
