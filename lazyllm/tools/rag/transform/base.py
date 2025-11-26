@@ -13,6 +13,7 @@ import threading
 import tiktoken
 from lazyllm import config
 from lazyllm.thirdparty import nltk
+from lazyllm.thirdparty import transformers
 
 class MetadataMode(str, Enum):
     ALL = 'ALL'
@@ -96,6 +97,10 @@ class NodeTransform(ABC):
         return [DocNode(text=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
 
 
+_tiktoken_env_lock = threading.Lock()
+
+_UNSET = object()
+
 class _TextSplitterBase(NodeTransform):
     _default_params = {}
     _default_params_lock = threading.RLock()
@@ -173,16 +178,33 @@ class _TextSplitterBase(NodeTransform):
                               **kwargs: Any) -> '_TextSplitterBase':
         if allowed_special is None:
             allowed_special = set()
-        if 'TIKTOKEN_CACHE_DIR' not in os.environ and 'DATA_GYM_CACHE_DIR' not in os.environ:
-            path = os.path.join(config['model_path'], 'tiktoken')
-            os.makedirs(path, exist_ok=True)
-            os.environ['TIKTOKEN_CACHE_DIR'] = path
-        if model_name is not None:
-            enc = tiktoken.encoding_for_model(model_name)
-        else:
-            enc = tiktoken.get_encoding(encoding_name)
 
-        os.environ.pop('TIKTOKEN_CACHE_DIR')
+        with _tiktoken_env_lock:
+            tiktoken_cache_dir_set = False
+            original_value = os.environ.get('TIKTOKEN_CACHE_DIR')
+
+            if 'TIKTOKEN_CACHE_DIR' not in os.environ and 'DATA_GYM_CACHE_DIR' not in os.environ:
+                try:
+                    model_path = config['model_path']
+                except (RuntimeError, KeyError):
+                    model_path = os.path.join(os.path.expanduser('~'), '.lazyllm')
+
+                path = os.path.join(model_path, 'tiktoken')
+                os.makedirs(path, exist_ok=True)
+                os.environ['TIKTOKEN_CACHE_DIR'] = path
+                tiktoken_cache_dir_set = True
+
+        try:
+            if model_name is not None:
+                enc = tiktoken.encoding_for_model(model_name)
+            else:
+                enc = tiktoken.get_encoding(encoding_name)
+        finally:
+            with _tiktoken_env_lock:
+                if tiktoken_cache_dir_set:
+                    os.environ.pop('TIKTOKEN_CACHE_DIR', None)
+                    if original_value is not None:
+                        os.environ['TIKTOKEN_CACHE_DIR'] = original_value
 
         def _tiktoken_encoder(text: str):
             return enc.encode(
@@ -400,12 +422,3 @@ class _TokenTextSplitter(_TextSplitterBase):
 
     def _merge(self, splits: List[_Split], chunk_size: int) -> List[str]:
         return [split.text for split in splits]
-
-    def set_default(self, **kwargs):
-        super().set_default(**kwargs)
-
-    def get_default(self, param_name: Optional[str] = None):
-        return super().get_default(param_name)
-
-    def reset_default(self):
-        super().reset_default()

@@ -63,12 +63,44 @@ class MarkdownSplitter(_TextSplitterBase):
             results.extend(self._sub_split(split, chunk_size))
         return results
 
+    def _split_code_block_by_lines(self, text: str) -> List[str]:
+        lines = text.split('\n')
+        return [line for line in lines if line.strip()]
+
     def _sub_split(self, split: _MdSplit, chunk_size: int) -> List[_MdSplit]:
         token_size = split.token_size
         if token_size <= chunk_size:
             return [split]
 
-        text_splits, _ = self._get_splits_by_fns(split.content)
+        is_code_or_table = (split.type != 'content' and split.type not in ['image', 'link'])
+
+        if is_code_or_table:
+            lines = split.content.split('\n')
+            text_splits = []
+            current_chunk = []
+            current_size = 0
+
+            for line in lines:
+                line_size = self._token_size(line + '\n')
+                if line_size > chunk_size:
+                    if current_chunk:
+                        text_splits.append('\n'.join(current_chunk))
+                        current_chunk = []
+                        current_size = 0
+                    text_splits.append(line)
+                elif current_size + line_size > chunk_size:
+                    if current_chunk:
+                        text_splits.append('\n'.join(current_chunk))
+                    current_chunk = [line]
+                    current_size = line_size
+                else:
+                    current_chunk.append(line)
+                    current_size += line_size
+
+            if current_chunk:
+                text_splits.append('\n'.join(current_chunk))
+        else:
+            text_splits, _ = self._get_splits_by_fns(split.content)
 
         results = []
         for segment in text_splits:
@@ -80,12 +112,12 @@ class MarkdownSplitter(_TextSplitterBase):
                     token_size=token_size, type=split.type,
                 ))
             else:
-                split = _MdSplit(
+                new_split = _MdSplit(
                     path=split.path, level=split.level,
                     header=split.header, content=segment,
                     token_size=token_size, type=split.type
                 )
-                results.extend(self._sub_split(split, chunk_size=chunk_size))
+                results.extend(self._sub_split(new_split, chunk_size=chunk_size))
 
         return results
 
@@ -150,26 +182,79 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return level
 
+    def _get_code_block_ranges(self, text: str) -> List[tuple]:
+        code_block_pattern = re.compile(r'```[\w+-]*\s*.*?```', re.DOTALL)
+        ranges = []
+        for match in code_block_pattern.finditer(text):
+            ranges.append((match.start(), match.end()))
+        return ranges
+
+    def _is_in_code_block(self, pos: int, code_ranges: List[tuple]) -> bool:
+        for start, end in code_ranges:
+            if start <= pos < end:
+                return True
+        return False
+
     def split_markdown_by_semantics(self, md_text: str) -> List[_MdSplit]:
-        pattern = re.compile(
-            r'(\n*#{1,6}\s+[^\n]+(?:\n+[^#\n][\s\S]*?)*)(?=\n*#{1,6}\s|\Z)',
-            re.MULTILINE
-        )
-        blocks = [m.strip('\n') for m in pattern.findall(md_text)]
+        code_ranges = self._get_code_block_ranges(md_text)
+
+        heading_pattern = re.compile(r'^(#{1,6})\s+(.+)$', re.MULTILINE)
+        heading_positions = []
+
+        for match in heading_pattern.finditer(md_text):
+            if not self._is_in_code_block(match.start(), code_ranges):
+                heading_positions.append(match.start())
+
         results = []
         path_stack = []
         level_stack = []
 
-        for line in blocks:
-            level = self._get_heading_level(line)
+        if heading_positions:
+            first_heading_pos = heading_positions[0]
+            if first_heading_pos > 0:
+                content_before = md_text[:first_heading_pos].strip()
+                if content_before:
+                    results.append(_MdSplit(
+                        path=[],
+                        level=0,
+                        header=None,
+                        content=content_before,
+                        token_size=self._token_size(content_before),
+                        type='content'
+                    ))
+        else:
+            content = md_text.strip()
+            if content:
+                results.append(_MdSplit(
+                    path=[],
+                    level=0,
+                    header=None,
+                    content=content,
+                    token_size=self._token_size(content),
+                    type='content'
+                ))
+            return results
+
+        for i, heading_pos in enumerate(heading_positions):
+            if i + 1 < len(heading_positions):
+                end_pos = heading_positions[i + 1]
+            else:
+                end_pos = len(md_text)
+
+            block = md_text[heading_pos:end_pos].rstrip('\n')
+            lines = block.split('\n')
+
+            heading_line = lines[0]
+            level = self._get_heading_level(heading_line)
 
             if level == 0:
                 header = None
-                content = line.strip()
+                content = block.strip()
             else:
-                header = line.split('\n')[0].strip('#').strip()
-                content = '\n'.join(line.split('\n')[1:]).strip()
-                while len(path_stack) >= level:
+                header = heading_line.strip('#').strip()
+                content = '\n'.join(lines[1:]).strip()
+
+                while level_stack and level_stack[-1] >= level:
                     path_stack.pop()
                     level_stack.pop()
                 path_stack.append(header)
@@ -183,6 +268,7 @@ class MarkdownSplitter(_TextSplitterBase):
                 token_size=self._token_size(content),
                 type='content'
             ))
+
         return results
 
     def _keep_elements(self, splits: List[_MdSplit], pattern: re.Pattern, type: str) -> List[_MdSplit]:

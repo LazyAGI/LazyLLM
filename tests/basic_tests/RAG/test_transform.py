@@ -18,7 +18,7 @@ def doc_node():
     node.get_metadata_str.return_value = ''
     return node
 
-@pytest.mark.skip(reason="skip for now")
+
 class TestSentenceSplitter:
     def setup_method(self):
         '''Setup for tests: initialize the SentenceSplitter.'''
@@ -62,7 +62,6 @@ class TestSentenceSplitter:
         assert splits == ['This is a test sentence.', 'It needs to be split into multiple chunks.']
 
 
-@pytest.mark.skip(reason="skip for now")
 class TestCharacterSplitter:
     def setup_method(self):
         '''Setup for tests: initialize the CharacterSplitter.'''
@@ -146,7 +145,6 @@ class TestCharacterSplitter:
         assert splits == ['Hello, world', ' This is a test', '.']
 
 
-@pytest.mark.skip(reason='skip for now')
 class TestRecursiveSplitter:
     def setup_method(self):
         '''Setup for tests: initialize the RecursiveSplitter.'''
@@ -189,7 +187,6 @@ class TestRecursiveSplitter:
         assert splits == ['Hello', 'world! This\nis a test.']
 
 
-@pytest.mark.skip(reason='skip for now')
 class TestMarkdownSplitter:
     def setup_method(self):
         '''Setup for tests: initialize the MarkdownSplitter.'''
@@ -974,7 +971,6 @@ class TestSetDefaultIntegration:
         XMLSplitter.reset_default()
 
 
-@pytest.mark.skip(reason='skip for now')
 class TestTextSplitterBase:
     def test_token_size(self):
         splitter = _TextSplitterBase(chunk_size=5, overlap=0)
@@ -1104,7 +1100,7 @@ class TestTextSplitterBase:
         chunks = result.split_text(text, metadata_size=0)
         assert chunks == ['Test text']
 
-@pytest.mark.skip(reason='skip for now')
+
 class TestTokenTextSplitter:
     def test_token_splitter_basic(self):
         token_splitter = _TokenTextSplitter(chunk_size=10, overlap=3)
@@ -1184,7 +1180,7 @@ class TestTokenTextSplitter:
             if overlap_size > 0:
                 assert tokens1[-overlap_size:] == tokens2[:overlap_size]
 
-@pytest.mark.skip(reason='skip for now')
+
 class TestDocumentSplit:
     def setup_method(self):
         document = Document(
@@ -1242,7 +1238,7 @@ class TestDocumentSplit:
         doc_node_list = retriever(query=self.query)
         assert len(doc_node_list) == 3
 
-@pytest.mark.skip(reason='skip for now')
+
 class TestDocumentChainSplit:
     def setup_method(self):
         document = Document(
@@ -1300,7 +1296,7 @@ class TestDocumentChainSplit:
         doc_node_list = retriever(query=self.query)
         assert len(doc_node_list) == 3
 
-@pytest.mark.skip(reason='skip for now')
+
 class TestDIYDocumentSplit:
     def setup_method(self):
         document = Document(

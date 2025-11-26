@@ -31,8 +31,8 @@ class RecursiveSplitter(CharacterSplitter):
     def set_split_fns(self, split_fns: List[Callable[[str], List[str]]]):
         return super().set_split_fns(split_fns)
 
-    def add_split_fn(self, split_fn: Callable[[str], List[str]], index: Optional[int] = None):
-        return super().add_split_fn(split_fn, index)
+    def add_split_fn(self, split_fn: Callable[[str], List[str]], index: Optional[int] = None, bind_separator: bool = None):  # noqa: E501
+        return super().add_split_fn(split_fn, index, bind_separator)
 
     def clear_split_fns(self):
         return super().clear_split_fns()
