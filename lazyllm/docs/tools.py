@@ -4638,6 +4638,77 @@ add_example('rag.transform.code.CodeSplitter.from_language', '''
 >>> print(splitter)
 ''')
 
+add_english_doc('rag.transform.code.CodeSplitter.split_text', '''
+Split the code text into chunks.
+
+Args:
+    text (str): The text to split.
+    metadata_size (int): The size of the metadata.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.split_text', '''
+拆分代码文本为块。
+
+Args:
+    text (str): 要拆分的文本。
+    metadata_size (int): 元数据的尺寸。
+''')
+
+add_example('rag.transform.code.CodeSplitter.split_text', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> splitter = CodeSplitter(filetype='python')
+>>> text = 'print("Hello, World!")'
+>>> chunks = splitter.split_text(text)
+>>> print(chunks)
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.from_tiktoken_encoder', '''
+Load the tiktoken encoder.
+
+Args:
+    encoding_name (str): The name of the encoding to use.
+    model_name (Optional[str]): The name of the model to use.
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): The allowed special tokens.
+    disallowed_special (Union[Literal['all'], Collection[str]]): The disallowed special tokens.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.from_tiktoken_encoder', '''
+从tiktoken编码器加载代码拆分器。
+
+Args:
+    encoding_name (str): 要使用的编码的名称。
+    model_name (Optional[str]): 要使用的模型的名称。
+    allowed_special (Union[Literal['all'], AbstractSet[str]]): 允许的特殊token。
+    disallowed_special (Union[Literal['all'], Collection[str]]): 不允许的特殊token。
+''')
+
+add_example('rag.transform.code.CodeSplitter.from_tiktoken_encoder', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> splitter = CodeSplitter.from_tiktoken_encoder(encoding_name='gpt2', model_name='gpt-2')
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.from_huggingface_tokenizer', '''
+Load the huggingface tokenizer.
+
+Args:
+    tokenizer (Any): The tokenizer to use.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.from_huggingface_tokenizer', '''
+从huggingface tokenizer加载代码拆分器。
+
+Args:
+    tokenizer (Any): 要使用的tokenizer。
+''')
+
+add_example('rag.transform.code.CodeSplitter.from_huggingface_tokenizer', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> splitter = CodeSplitter.from_huggingface_tokenizer(tokenizer=tokenizer)
+''')
+
 add_english_doc('rag.transform.code.CodeSplitter.register_splitter', '''
 Register a language splitter.
 
