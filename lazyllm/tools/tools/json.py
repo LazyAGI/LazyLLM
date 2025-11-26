@@ -33,7 +33,8 @@ User input text:
 '''
 
     def __init__(self, base_model: LLMBase, schema: Union[str, Dict[str, Any]],
-                 field_descriptions: Union[str, Dict[str, str]] = None, extra_requirements: Union[str, List[str]] = ''):
+                 field_descriptions: Union[str, Dict[str, str], List[Union[str, Dict[str, str]]]] = None,
+                 extra_requirements: Union[str, List[str]] = ''):
         super().__init__()
         self._schema = json.dumps(schema, ensure_ascii=False, indent=2) if isinstance(schema, dict) else str(schema)
 
@@ -42,6 +43,8 @@ User input text:
         elif isinstance(field_descriptions, dict):
             desc_lines = [f'- {field}: {desc}' for field, desc in field_descriptions.items()]
             self._field_descriptions_str = '\n'.join(desc_lines)
+        elif isinstance(field_descriptions, list):
+            self._field_descriptions_str = '\n'.join([f'- {desc}' for desc in field_descriptions])
         else:
             self._field_descriptions_str = str(field_descriptions)
 
@@ -76,7 +79,7 @@ class JsonConcentrator(ModuleBase):
         REDUCE = 'reduce'
         DISTINCT = 'distinct'
 
-    _summary_prompt_template = '''
+    _summary_prompt = '''
 You are an intelligent assistant. Your task is to summarize the values in the list and return a concise summary text. \
 If the values in the list are the same or similar, merge the descriptions; if there are different values, summarize \
 their main characteristics. The language output should be same with the value list, do not translate the value list \
@@ -97,7 +100,7 @@ into other language.
 ### Summary:
 '''
 
-    _distinct_prompt_template = '''
+    _distinct_prompt = '''
 You are an intelligent assistant. Your task is to determine whether the current JSON object is semantically \
 similar to any of the reference JSON objects in the list.
 
@@ -124,6 +127,8 @@ Output only "true" or "false" (without quotes), nothing else.
 ## Decision (true/false):
 '''
 
+    # TODO: support specify reduce functor such as sum, max, min, avg, count, etc. for each key in reduce mode.
+    # TODO: use schema to make language model understand your keys and values easier.
     def __init__(self, base_model: Optional[LLMBase] = None, schema: Union[str, Dict[str, Any]] = None,
                  mode: str = Mode.REDUCE, *, distinct_roi: Optional[Union[str, List[str]]] = None,
                  raise_on_error: bool = False, extra_requirements: Union[str, List[str]] = 'No extra requirements.'):
@@ -183,7 +188,7 @@ Output only "true" or "false" (without quotes), nothing else.
             else:
                 result[key] = [json[key] for json in jsons if key in json]
                 if self._llm is not None:
-                    result[key] = self._llm(dict(key=key, value_list=result[key]))
+                    result[key] = self._llm(dict(key=key, value_list=str(result[key])))
         return result
 
     def _extract_schema(self, jsons: List[Dict[str, Any]], schema: Optional[Dict[str, Any]] = None,
@@ -220,7 +225,7 @@ Output only "true" or "false" (without quotes), nothing else.
                 return json.dumps(item, ensure_ascii=False, indent=2)
             return '\n'.join([f'- {key}: {_extract_roi_impl(item, key)}' for key in rois])
 
-        llm = self._llm.share(prompt=self._distinct_prompt_template)
+        llm = self._llm.share(prompt=self._distinct_prompt)
         result = [jsons[0].copy()]
         references = [extract_roi(jsons[0], self._distinct_roi)]
 
