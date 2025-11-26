@@ -11,6 +11,6 @@ from .code import (CodeSplitter, JSONSplitter, YAMLSplitter, HTMLSplitter,
 __all__ = [
     'MetadataMode', 'make_transform', 'TransformArgs', 'NodeTransform',
     'AdaptiveTransform', 'FuncNodeTransform', 'LLMParser', 'SentenceSplitter', 'CharacterSplitter',
-    'RecursiveSplitter', 'build_nodes_from_splits', 'MarkdownSplitter' 'CodeSplitter',
+    'RecursiveSplitter', 'build_nodes_from_splits', 'MarkdownSplitter', 'CodeSplitter',
     'JSONSplitter', 'YAMLSplitter', 'HTMLSplitter', 'XMLSplitter', 'ProgrammingSplitter'
 ]
