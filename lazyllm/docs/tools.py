@@ -4036,6 +4036,7 @@ Add a split function to the CharacterSplitter.
 Args:
     split_fn (Callable[[str], List[str]]): The split function to add.
     index (Optional[int]): The index to add the split function. Default to the last position.
+    bind_separator (bool): Whether to bind the separator to the split function. Default to False.
 ''')
 
 add_chinese_doc('rag.transform.character.CharacterSplitter.add_split_fn', '''
@@ -4044,6 +4045,7 @@ add_chinese_doc('rag.transform.character.CharacterSplitter.add_split_fn', '''
 Args:
     split_fn (Callable[[str], List[str]]): 要添加的拆分函数。
     index (Optional[int]): 要添加的拆分函数的位置。默认为最后一个位置。
+    bind_separator (bool): 是否将分隔符绑定到拆分函数。默认为False。
 ''')
 
 add_example('rag.transform.character.CharacterSplitter.add_split_fn', '''
@@ -4295,6 +4297,7 @@ Add a split function to the RecursiveSplitter.
 Args:
     split_fn (Callable[[str], List[str]]): The split function to add.
     index (Optional[int]): The index to add the split function. Default to the last position.
+    bind_separator (bool): Whether to bind the separator to the split function. Default to False.
 ''')
 
 add_chinese_doc('rag.transform.recursive.RecursiveSplitter.add_split_fn', '''
@@ -4303,6 +4306,7 @@ add_chinese_doc('rag.transform.recursive.RecursiveSplitter.add_split_fn', '''
 Args:
     split_fn (Callable[[str], List[str]]): 要添加的拆分函数。
     index (Optional[int]): 要添加的拆分函数的位置。默认为最后一个位置。
+    bind_separator (bool): 是否将分隔符绑定到拆分函数。默认为False。
 ''')
 
 add_example('rag.transform.recursive.RecursiveSplitter.add_split_fn', '''
