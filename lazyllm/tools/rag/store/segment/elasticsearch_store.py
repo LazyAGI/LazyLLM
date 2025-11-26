@@ -20,8 +20,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 DEFAULT_MAPPING_BODY = {
     'settings': {
         'index': {
-            'number_of_shards': 4,
-            'number_of_replicas': 1,
+            'number_of_shards': 1,
+            'number_of_replicas': 0,
             'refresh_interval': '1s',
         },
         'analysis': {
@@ -374,8 +374,24 @@ class ElasticSearchStore(LazyLLMStoreBase):
             return False
 
     def _adapt_mapping_for_global_metadata(self) -> dict:
+        check_ik = self._check_ik_plugin()
+        if check_ik:
+            LOG.info('IK plugin is installed')
+        else:
+            LOG.warning('IK plugin is not installed, ElasticSearch will \
+                use ngram analyzer which is English Only Analyzer')
+
         if not self._global_metadata_desc or self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
-            return DEFAULT_MAPPING_BODY
+            mapping = copy.deepcopy(DEFAULT_MAPPING_BODY)
+            if not check_ik:
+                content_field = mapping['mappings']['properties'].get('content', {})
+                if content_field.get('analyzer') == 'ik_max_word':
+                    content_field['analyzer'] = 'ngram_analyzer'
+                if content_field.get('search_analyzer') == 'ik_smart':
+                    content_field['search_analyzer'] = 'ngram_analyzer'
+                mapping['mappings']['properties']['content'] = content_field
+            return mapping
+
         mapping = copy.deepcopy(DEFAULT_MAPPING_BODY)
         mapping['mappings']['dynamic'] = 'true'
         props = {'uid': {'type': 'keyword'}}
@@ -389,12 +405,6 @@ class ElasticSearchStore(LazyLLMStoreBase):
             DataType.STRING: 'text',
         }
 
-        check_ik = self._check_ik_plugin()
-        if check_ik:
-            LOG.info('IK plugin is installed')
-        else:
-            LOG.warning('IK plugin is not installed, ElasticSearch will \
-                use ngram analyzer which is English Only Analyzer')
         for field_name, desc in self._global_metadata_desc.items():
             field_type = self._type2es[desc.data_type]
             field_def = {'type': field_type, 'store': True, 'index': True}
@@ -412,7 +422,6 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 else:
                     field_def['analyzer'] = 'ngram_analyzer'
                     field_def['search_analyzer'] = 'ngram_analyzer'
-                check_ik = False
             props[field_name] = field_def
         mapping['mappings']['properties'] = props
 

@@ -20,8 +20,8 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 DEFAULT_MAPPING_BODY = {
     'settings': {
         'index': {
-            'number_of_shards': 4,
-            'number_of_replicas': 1,
+            'number_of_shards': 1,
+            'number_of_replicas': 0,
             'refresh_interval': '1s',
         },
         'analysis': {
@@ -212,7 +212,6 @@ class OpenSearchStore(LazyLLMStoreBase):
             filter_query = self._construct_criteria(filters) if filters else {}
 
             if must_clauses and filter_query:
-                # combine filter_query and must_clauses
                 filter_must = filter_query['query']['bool']['must']
                 os_query = {'query': {'bool': {'must': must_clauses + filter_must}}}
             elif must_clauses:
@@ -281,7 +280,6 @@ class OpenSearchStore(LazyLLMStoreBase):
 
         for k, v in criteria.items():
             field_key = k
-            # For custom text fields, use .keyword subfield for exact matching
             if (self._global_metadata_desc
                 and self._global_metadata_desc != BUILDIN_GLOBAL_META_DESC
                 and k in self._global_metadata_desc.keys()
@@ -320,8 +318,24 @@ class OpenSearchStore(LazyLLMStoreBase):
             return False
 
     def _adapt_mapping_for_global_metadata(self) -> dict:
+        check_ik = self._check_ik_plugin()
+        if check_ik:
+            LOG.info('IK plugin is installed')
+        else:
+            LOG.warning('IK plugin is not installed, OpenSearch will \
+                use ngram analyzer which is English Only Analyzer')
+
         if not self._global_metadata_desc or self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
-            return DEFAULT_MAPPING_BODY
+            mapping = copy.deepcopy(DEFAULT_MAPPING_BODY)
+            if not check_ik:
+                content_field = mapping['mappings']['properties'].get('content', {})
+                if content_field.get('analyzer') == 'ik_max_word':
+                    content_field['analyzer'] = 'edge_ngram_analyzer'
+                if content_field.get('search_analyzer') == 'ik_smart':
+                    content_field['search_analyzer'] = 'standard'
+                mapping['mappings']['properties']['content'] = content_field
+            return mapping
+
         mapping = copy.deepcopy(DEFAULT_MAPPING_BODY)
         mapping['mappings']['dynamic'] = 'true'
         props = {'uid': {'type': 'keyword'}}
@@ -335,12 +349,6 @@ class OpenSearchStore(LazyLLMStoreBase):
             DataType.STRING: 'text',
         }
 
-        check_ik = self._check_ik_plugin()
-        if check_ik:
-            LOG.info('IK plugin is installed')
-        else:
-            LOG.warning('IK plugin is not installed, OpenSearch will \
-                use ngram analyzer which is English Only Analyzer')
         for field_name, desc in self._global_metadata_desc.items():
             field_type = self._type2os.get(desc.data_type, None)
             if not field_type:
@@ -348,7 +356,6 @@ class OpenSearchStore(LazyLLMStoreBase):
                 continue
             field_def = {'type': field_type, 'store': True, 'index': True}
             if field_type == 'text':
-                # Add keyword subfield for exact matching
                 field_def['fields'] = {
                     'keyword': {
                         'type': 'keyword',
@@ -361,7 +368,6 @@ class OpenSearchStore(LazyLLMStoreBase):
                 else:
                     field_def['analyzer'] = 'edge_ngram_analyzer'
                     field_def['search_analyzer'] = 'standard'
-                check_ik = False
             props[field_name] = field_def
         mapping['mappings']['properties'] = props
 
