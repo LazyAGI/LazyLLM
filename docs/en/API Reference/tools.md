@@ -210,20 +210,40 @@
     members: load_data
 	exclude-members:
 
-::: lazyllm.tools.SentenceSplitter
-    members: [split_text]
+::: lazyllm.tools.rag.transform.sentence.SentenceSplitter
+    members: [split_text, from_tiktoken_encoder, from_huggingface_tokenizer]
     exclude-members:
 
-::: lazyllm.tools.LLMParser
+::: lazyllm.tools.rag.transform.character.CharacterSplitter
+    memebers:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.recursive.RecursiveSplitter
+    memebers:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.markdown.MarkdownSplitter
+    memebers:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.base.NodeTransform
     members:
     exclude-members:
 
-::: lazyllm.tools.rag.transform.NodeTransform
+::: lazyllm.tools.rag.transform.factory.LLMParser
     members:
     exclude-members:
 
-::: lazyllm.tools.rag.transform.TransformArgs
+::: lazyllm.tools.rag.transform.factory.TransformArgs
     members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.factory.FuncNodeTransform
+    members: transform
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.factory.AdaptiveTransform
+    members: transform
     exclude-members:
 
 ::: lazyllm.tools.rag.similarity.register_similarity
@@ -244,10 +264,6 @@
 
 ::: lazyllm.tools.rag.dataReader.FileReader
     members:
-    exclude-members:
-
-::: lazyllm.tools.rag.transform.FuncNodeTransform
-    members: transform
     exclude-members:
 
 ::: lazyllm.tools.rag.web.DocWebModule
@@ -308,10 +324,6 @@
 
 ::: lazyllm.tools.rag.doc_node.ImageDocNode
     members: do_embedding, get_content, get_text
-    exclude-members:
-
-::: lazyllm.tools.rag.transform.AdaptiveTransform
-    members: transform
     exclude-members:
 
 ::: lazyllm.tools.rag.store.hybrid.MapStore
