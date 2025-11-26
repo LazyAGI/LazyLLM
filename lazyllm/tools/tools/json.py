@@ -67,7 +67,7 @@ User input text:
         lazyllm.LOG.warning(f'Failed to parse JSON from model output after 3 attempts. Raw output: {json_str}')
         return {}
 
-    def batch_forward(self, text_list: List[str]) -> List[Dict[str, Any]]:
+    def _batch_forward(self, text_list: List[str]) -> List[Dict[str, Any]]:
         results = lazyllm.FlatList()
         for text in text_list:
             results.absorb(self.forward(text))
