@@ -570,7 +570,7 @@ class SchemaExtractor:
         if not bound:
             raise ValueError(f'Algo {algo_id}, KB {kb_id} not bound to schema_set_id {schema_set_id}')
         # cache
-        search_res = self.get_extract_data(algo_id=algo_id, kb_id=kb_id, doc_ids=[doc_id])
+        search_res = self._get_extract_data(algo_id=algo_id, kb_id=kb_id, doc_ids=[doc_id])
         if search_res: return search_res[0]
         schema_set_id = bound['schema_set_id'] if schema_set_id is None else schema_set_id
         if schema_set_id not in self._schema_registry:
@@ -618,7 +618,7 @@ class SchemaExtractor:
             session.add(table_cls(**payload))
         return res
 
-    def delete_extract_data(self, algo_id: str, doc_ids: List[str], kb_id: str = None) -> bool:
+    def _delete_extract_data(self, algo_id: str, doc_ids: List[str], kb_id: str = None) -> bool:
         '''Delete extracted data for docs.'''
         try:
             self._lazy_init()
@@ -656,8 +656,8 @@ class SchemaExtractor:
             LOG.error(f'Failed to delete doc_ids={doc_ids} from kb_id={kb_id}', e)
             return False
 
-    def get_extract_data(self, algo_id: str, doc_ids: List[str],  # noqa: C901
-                         kb_id: str = None) -> List[ExtractResult]:
+    def _get_extract_data(self, algo_id: str, doc_ids: List[str],  # noqa: C901
+                          kb_id: str = None) -> List[ExtractResult]:
         '''Batch fetch extracted data.'''
         self._lazy_init()
         if not self._sql_manager:

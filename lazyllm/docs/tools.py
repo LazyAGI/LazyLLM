@@ -1330,6 +1330,237 @@ Args:
 - dict: Extracted key information dictionary with field names as keys and corresponding information values as values.
 ''')
 
+add_chinese_doc('rag.doc_to_db.SchemaExtractor', '''
+基于大模型的结构化信息抽取器：注册 Pydantic schema 后，自动创建/复用数据库表，并将文档内容按字段定义抽取、存储。
+可直接用于Document中，文档入库过程中自动生效。
+
+Args:
+    db_config (Dict[str, Any]): 目标数据库配置，用于初始化 SqlManager 及建表。
+    llm (Union[OnlineChatModule, TrainableModule]): 执行文本抽取的大语言模型。
+    table_prefix (str, optional): 自动建表时使用的表名前缀，默认 `lazyllm_schema`。
+    force_refresh (bool, optional): 是否强制刷新已有表/缓存。
+    extraction_mode (ExtractionMode, optional): 抽取模式，默认为 TEXT，当前仅支持纯文本提取。
+    max_len (int, optional): 单文档最大解析长度，默认 102400。
+    num_workers (int, optional): 抽取并发线程数，默认 4。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor', '''
+LLM-based structured extractor: register a Pydantic schema, auto-create/reuse DB tables, and extract document content into typed fields for persistence.
+It can be used into Document, which can make the extracting happen in file parsing progress.
+
+Args:
+    db_config (Dict[str, Any]): Database config used to initialize SqlManager and manage tables.
+    llm (Union[OnlineChatModule, TrainableModule]): LLM instance used for text extraction.
+    table_prefix (str, optional): Prefix for auto-generated tables, defaults to lazyllm_schema.
+    force_refresh (bool, optional): Force refresh existing tables/cache.
+    extraction_mode (ExtractionMode, optional): Extraction mode, TEXT by default, currently only support text extracting .
+    max_len (int, optional): Max length per document to parse, default 102400.
+    num_workers (int, optional): Worker threads for extraction, default 4.
+
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.register_schema_set', '''
+注册 Pydantic schema 集合，必要时创建管理/目标表，返回 schema_set_id（幂等）。
+
+Args:
+    schema_set (Type[BaseModel]): 要注册的 Pydantic 模型。
+    schema_set_id (str, optional): 自定义 schema 集合 ID，不传则自动生成或复用已有签名。
+    force_refresh (bool, optional): 预留参数，期望强制刷新表或缓存时使用。
+
+**Returns:**\n
+- str: 注册后的 schema_set_id。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.register_schema_set', '''
+Register a Pydantic schema set, creating management/target tables if needed, and return the schema_set_id (idempotent).
+
+Args:
+    schema_set (Type[BaseModel]): Pydantic model to register.
+    schema_set_id (str, optional): Custom schema set id; auto-generated or reused if omitted.
+    force_refresh (bool, optional): Reserved flag for forcing table/cache refresh.
+
+**Returns:**\n
+- str: Registered schema_set_id.
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.has_schema_set', '''
+检查指定 schema_set_id 是否已注册，缺失时会尝试从数据库恢复模型并建表。
+
+Args:
+    schema_set_id (str): 目标 schema 集合 ID。
+
+**Returns:**\n
+- bool: 是否已存在。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.has_schema_set', '''
+Check whether a schema_set_id is registered, recovering the model and ensuring the table if needed.
+
+Args:
+    schema_set_id (str): Target schema set id.
+
+**Returns:**\n
+- bool: True if it exists.
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.register_schema_set_to_kb', '''
+将算法/知识库绑定到指定 schema 集合；若提供 schema_set 会先注册；可选 force_refresh 覆盖已有绑定并清理旧数据。
+
+Args:
+    algo_id (str, optional): 算法/Document 名称，默认 DocListManager.DEFAULT_GROUP_NAME。
+    kb_id (str, optional): 知识库 ID，默认 DEFAULT_KB_ID。
+    schema_set_id (str, optional): 已有 schema 集合 ID。
+    schema_set (Type[BaseModel], optional): 新 schema，传入则会注册后绑定。
+    force_refresh (bool, optional): 已绑定不同 schema 时是否强制覆盖并清空旧记录。
+
+**Returns:**\n
+- str: 绑定使用的 schema_set_id。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.register_schema_set_to_kb', '''
+Bind an algo/kb pair to a schema set; optionally register a provided schema_set first; with force_refresh you can override an existing binding and purge old records.
+
+Args:
+    algo_id (str, optional): Algorithm/Document name, defaults to DocListManager.DEFAULT_GROUP_NAME.
+    kb_id (str, optional): Knowledge base id, defaults to DEFAULT_KB_ID.
+    schema_set_id (str, optional): Existing schema set id to bind.
+    schema_set (Type[BaseModel], optional): Schema to register and bind if no id is provided.
+    force_refresh (bool, optional): Whether to overwrite an existing different binding and clean previous records.
+
+**Returns:**\n
+- str: The schema_set_id used for binding.
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.analyze_schema_and_register', '''
+基于样本文本/DocNode 列表调用大模型推断字段结构，自动生成 Pydantic 模型并注册，返回 SchemaSetInfo（含 schema_set_id 和 pydantic model）。
+
+Args:
+    data (Union[str, List[DocNode]]): 用于分析的文本或节点列表（单文档）。
+    schema_set_id (str, optional): 自定义/复用的 schema_set_id。
+
+**Returns:**\n
+- SchemaSetInfo: 包含 schema_set_id 与生成的 schema 模型。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.analyze_schema_and_register', '''
+Infer a schema from sample text or DocNodes using the LLM, auto-create a Pydantic model, register it, and return SchemaSetInfo (id and pydantic model).
+
+Args:
+    data (Union[str, List[DocNode]]): Sample text or nodes from a single document.
+    schema_set_id (str, optional): Custom or reuse schema_set_id.
+
+**Returns:**\n
+- SchemaSetInfo: Contains the schema_set_id and generated schema model.
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.extract_and_store', '''
+按绑定的 schema 抽取文本/DocNode 内容并写入对应表，若传入 schema_set 会先注册；同文档重复调用会返回缓存结果。
+
+Args:
+    data (Union[str, List[DocNode]]): 文本或 DocNode 列表（需同一文档）。
+    algo_id (str, optional): 算法/Document 名称，默认 DocListManager.DEFAULT_GROUP_NAME。
+    schema_set_id (str, optional): 指定使用的 schema 集合 ID。
+    schema_set (Type[BaseModel], optional): 动态注册并使用的 schema。
+
+**Returns:**\n
+- ExtractResult: 抽取结果，`data` 为字段名到值的字典，`metadata` 包含 schema_set_id、algo_id、kb_id、doc_id 及按字段的线索信息；可能为 None 表示无可写入。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.extract_and_store', '''
+Extract content according to the bound schema and persist it; will register the provided schema_set if given; repeated calls for the same doc return cached results.
+
+Args:
+    data (Union[str, List[DocNode]]): Text or list of DocNodes from a single document.
+    algo_id (str, optional): Algorithm/Document name, defaults to DocListManager.DEFAULT_GROUP_NAME.
+    schema_set_id (str, optional): Schema set id to use.
+    schema_set (Type[BaseModel], optional): Schema to register and use if no id is provided.
+
+**Returns:**\n
+- ExtractResult: Result object where `data` is the field/value dict and `metadata` contains schema_set_id, algo_id, kb_id, doc_id, and field-level clues; or None if nothing persisted.
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.__call__', '''
+便捷调用，等同于 extract_and_store(data, algo_id)，抽取并存储后返回结果。
+
+Args:
+    data (Union[str, List[DocNode]]): 文本或 DocNode 列表。
+    algo_id (str, optional): 算法/Document 名称。
+
+**Returns:**\n
+- ExtractResult: 抽取结果。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.__call__', '''
+Convenience wrapper for extract_and_store(data, algo_id), performing extraction and persistence then returning the result.
+
+Args:
+    data (Union[str, List[DocNode]]): Text or list of DocNodes.
+    algo_id (str, optional): Algorithm/Document name.
+
+**Returns:**\n
+- ExtractResult: Extraction result.
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.sql_manager_for_nl2sql', '''
+基于已绑定的 schema，生成一个仅暴露相关表的 SqlManager，用于 SqlCall 模块中 NL2SQL 查询；会附带表结构描述和可见表列表。
+
+Args:
+    algo_id (str, optional): 算法/Document 名称；不传则返回所有绑定关系的可见表。
+    kb_ids (Union[str, List[str]], optional): 过滤的知识库 ID，可单个或列表。
+
+**Returns:**\n
+- SqlManager: 仅包含可见表、列信息及说明的 SqlManager 实例，用于 NL2SQL。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.sql_manager_for_nl2sql', '''
+Create a SqlManager tailored for NL2SQL in SqlCall Module that only exposes tables bound to the given algo/kb, with descriptions of columns and visible tables.
+
+Args:
+    algo_id (str, optional): Algorithm/Document name; when omitted, returns all bound tables.
+    kb_ids (Union[str, List[str]], optional): KB id or list to filter bindings.
+
+**Returns:**\n
+- SqlManager: Manager instance with visible_tables and column metadata set for NL2SQL use.
+''')
+
+
+add_example('rag.doc_to_db.SchemaExtractor', '''\
+from lazyllm.tools.rag import SchemaExtractor
+from lazyllm import OnlineChatModule
+from pydantic import BaseModel, Field
+db_config = {
+    "db_type": "sqlite",
+    "user": None,
+    "password": None,
+    "host": None,
+    "port": None,
+    "db_name": "./test.db",
+}
+# define a custom pydantic model
+class TestSchema(BaseModel):
+    company: str = Field(description="Name of the company", default='unknown')
+    profit: float = Field(description="Profit of the company, unit is million", default=0.0)
+
+extractor = SchemaExtractor(db_config=db_config, llm=OnlineChatModule(source='siliconflow'), force_refresh=True)
+# register to db
+extractor.register_schema_set_to_kb(schema_set=TestSchema)
+text = "The company name is Apple, and the profit is 100 million."
+# you can use it directly by giving a string
+res = extractor(data=text)
+
+# bind the schema for a specific algorithm(Document)
+extractor.register_schema_set_to_kb(algo_id='algo_1', schema_set=TestSchema)
+document = Document(
+    dataset_path='./test_docs',
+    name="algo_1",
+    display_name="Algo_1",
+    description="Algo_1 for testing",
+    schema_extractor=extractor,  # give it the extractor by this way
+)
+
+''')
+
+
 add_chinese_doc('http_request.http_executor_response.HttpExecutorResponse', """\
 HTTP执行器响应类，用于封装和处理HTTP请求的响应结果。
 
