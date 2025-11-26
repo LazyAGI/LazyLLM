@@ -398,7 +398,7 @@
 ::: lazyllm.tools.tools.GoogleSearch
     members: forward
 
-::: lazyllm.tools.tools.tencent_search.TencentSearch
+::: lazyllm.tools.tools.TencentSearch
     members: 
     exclude-members:
 
