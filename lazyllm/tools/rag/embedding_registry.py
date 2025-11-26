@@ -85,18 +85,18 @@ Embedding Model Registration Conflict!
 ================================================================================
 Embed Key: "{embed_key}"
 Registered Model Info:
-Registered DB Type: {existing_info.db_type}
-Registered DB Connection: {existing_info.db_connection}
-Registered Dimension: {existing_info.dimension}
-Registered Model: {existing_info.model_name}
-Registered Provider: {existing_info.model_provider}
+DB Type: {existing_info.db_type}
+DB Connection: {existing_info.db_connection}
+Dimension: {existing_info.dimension}
+Model: {existing_info.model_name}
+Provider: {existing_info.model_provider}
 --------------------------------------------------------------------------------
 New Model Info:
-New DB Type: {new_info.db_type}
-New DB Connection: {new_info.db_connection}
-New Dimension: {new_info.dimension}
-New Model: {new_info.model_name}
-New Provider: {new_info.model_provider}
+DB Type: {new_info.db_type}
+DB Connection: {new_info.db_connection}
+Dimension: {new_info.dimension}
+Model: {new_info.model_name}
+Provider: {new_info.model_provider}
 
 This error indicates you're trying to use different embedding models
 or database configurations with the same embed_key.
@@ -108,6 +108,7 @@ Try with:
 ================================================================================
 '''
         LOG.error('\n' + error_msg.strip())
+        raise ValueError
 
     def _extract_db_type(self, store: Any) -> Optional[str]:
         try:

@@ -36,7 +36,6 @@ MILVUS_INDEX_TYPE_DEFAULTS = {
     'AUTOINDEX': {'metric_type': 'COSINE', 'params': {'nlist': 128}},
 }
 
-
 class _ClientPool:
     def __init__(self, maker, max_size: int = 8):
         self._q = Queue(maxsize=max_size)
@@ -93,6 +92,7 @@ class MilvusStore(LazyLLMStoreBase):
         self._ddl_lock = threading.Lock()
         self._db_ready = False
         self._ensure_database()
+        self._index_kwargs = self.validate_milvus_embed_keys(self._index_kwargs)
 
         max_pool_size = int(self._client_kwargs.pop('max_pool_size', 8))
         self._client_pool = _ClientPool(self._new_client, max_size=max_pool_size)
@@ -159,11 +159,9 @@ class MilvusStore(LazyLLMStoreBase):
                     with self._ddl_lock:
                         if not client.has_collection(collection_name):
                             self._create_collection(client, collection_name, embed_kwargs)
-
-                for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
-                    client.upsert(collection_name=collection_name,
-                                  data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
-            return True
+                    for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
+                        client.upsert(collection_name=collection_name,
+                                      data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
         except pymilvus.MilvusException as e:
             error_msg = str(e).lower()
             if 'dimension' in error_msg or 'metric type' in error_msg:
@@ -177,6 +175,8 @@ class MilvusStore(LazyLLMStoreBase):
             LOG.error(f'[Milvus Store - upsert] error: {e}')
             LOG.error(traceback.format_exc())
             return False
+
+        return True
 
     @override
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
@@ -524,3 +524,73 @@ class MilvusStore(LazyLLMStoreBase):
         if len(ret_str) > 0:
             return ret_str[:-5]  # truncate the last ' and '
         return ret_str
+
+    def validate_milvus_embed_keys(self, index_kwargs: Optional[Union[List, Dict]]):  # noqa: C901
+        '''
+        Validate and preprocess the index_kwargs of milvus store_conf:
+        1. Auto fill the only one missing embed_key into the configuration without embed_key;
+        2. The embed_key in self._embed must be a subset of the embed_key in store_conf;
+        3. store_conf can contain additional embed_key;
+        4. Duplicate embed_key is forbidden;
+        5. If multiple embed_key are missing, raise an error.
+        '''
+        if not isinstance(index_kwargs, (list, dict)):
+            raise TypeError(f'[Milvus Store] index_kwargs must be a list or dict, but got {type(index_kwargs)}')
+
+        embed_keys = list(self._embed_datatypes.keys())
+        if not embed_keys:
+            raise ValueError('self._embed is empty, cannot build index configuration')
+
+        normalized_index_kwargs = []
+        no_embedkey_entries = []
+        seen = set()
+        if isinstance(index_kwargs, dict):
+            index_kwargs = [index_kwargs]
+        for i, idx_conf in enumerate(index_kwargs):
+            if not isinstance(idx_conf, dict):
+                raise TypeError(f'index_kwargs position {i} must be a dictionary, but got {type(idx_conf)}')
+
+            embed_key = idx_conf.get('embed_key')
+            if embed_key:
+                if embed_key in seen:
+                    raise ValueError(f'duplicate embed_key {embed_key} in index_kwargs position {i}')
+                seen.add(embed_key)
+            else:
+                no_embedkey_entries.append((i, idx_conf))
+
+            normalized_index_kwargs.append(idx_conf)
+
+        store_embed_keys = seen
+        missing_keys = set(embed_keys) - store_embed_keys
+
+        if len(missing_keys) > 1:
+            raise ValueError(
+                f'[Milvus Store] store_conf is missing the following embed_key: {missing_keys} '
+                f'(only supports auto filling one missing item)'
+            )
+        elif len(missing_keys) == 1:
+            missing_key = next(iter(missing_keys))
+
+            if len(no_embedkey_entries) == 1:
+                idx = no_embedkey_entries[0][1]
+                idx['embed_key'] = missing_key
+            elif len(no_embedkey_entries) == 0:
+                if self._embed_datatypes.get(missing_key) == DataType.FLOAT_VECTOR:
+                    normalized_index_kwargs.append({
+                        'embed_key': missing_key,
+                        'index_type': 'FLAT',
+                        'metric_type': 'COSINE'
+                    })
+                else:
+                    normalized_index_kwargs.append({
+                        'embed_key': missing_key,
+                        'index_type': 'SPARSE_INVERTED_INDEX',
+                        'metric_type': 'L2'
+                    })
+            else:
+                raise ValueError(
+                    f'[Milvus Store] Found multiple entries without embed_key, cannot determine '
+                    f'which one to fill. Missing embed_keys: {missing_keys}'
+                )
+
+        return normalized_index_kwargs
