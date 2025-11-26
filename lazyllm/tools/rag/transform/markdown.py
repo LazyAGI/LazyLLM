@@ -121,28 +121,6 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return results
 
-    def _keep_headers(self, split: _MD_Split) -> _MD_Split:
-        if self.keep_sematics:
-            split.content = '<!--KEEP_HEADER-->' + split.content
-        else:
-            split.content = self._gen_meta(split.path[-1], 'HEADER') + split.content
-        split.token_size = self._token_size(split.content)
-        return split
-
-    def _keep_sematics(self, split: _MD_Split) -> _MD_Split:
-        split.content = self._gen_meta(split.path, 'PATH') + split.content
-        split.token_size = self._token_size(split.content)
-        return split
-
-    def _keep_tables(self, splits: List[_MD_Split]) -> List[_MD_Split]:
-        pattern = re.compile(
-            r'(?P<table>(?:^\s*\|.*\|\s*$\n?){2,})',
-            re.MULTILINE
-        )
-        results = self._keep_elements(splits, pattern, 'table')
-
-        return results
-
     def _keep_code_blocks(self, splits: List[_MdSplit]) -> List[_MdSplit]:
         pattern = re.compile(
             r'```([\w+-]*)\s*(.*?)```',
