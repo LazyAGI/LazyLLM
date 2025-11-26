@@ -121,6 +121,15 @@ class MarkdownSplitter(_TextSplitterBase):
 
         return results
 
+    def _keep_tables(self, splits: List[_MdSplit]) -> List[_MdSplit]:
+        pattern = re.compile(
+            r'(?P<table>(?:^\s*\|.*\|\s*$\n?){2,})',
+            re.MULTILINE
+        )
+        results = self._keep_elements(splits, pattern, 'table')
+
+        return results
+
     def _keep_code_blocks(self, splits: List[_MdSplit]) -> List[_MdSplit]:
         pattern = re.compile(
             r'```([\w+-]*)\s*(.*?)```',

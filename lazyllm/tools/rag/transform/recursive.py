@@ -40,27 +40,6 @@ class RecursiveSplitter(CharacterSplitter):
     def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'RecursiveSplitter':
         return super().from_huggingface_tokenizer(tokenizer, **kwargs)
 
-    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
-                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
-                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
-                              **kwargs) -> 'RecursiveSplitter':
-        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
-
-    def split_text(self, text: str, metadata_size: int) -> List[str]:
-        return super().split_text(text, metadata_size)
-
-    def set_split_fns(self, split_fns: List[Callable[[str], List[str]]]):
-        return super().set_split_fns(split_fns)
-
-    def add_split_fn(self, split_fn: Callable[[str], List[str]]):
-        return super().add_split_fn(split_fn)
-
-    def clear_split_fns(self):
-        return super().clear_split_fns()
-
-    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'RecursiveSplitter':
-        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
-
     def _get_splits_by_fns(self, text: str) -> Tuple[List[str], bool]:
         character_split_fns = self._character_split_fns
         if character_split_fns == []:
