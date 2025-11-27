@@ -22,7 +22,8 @@ env:
   PYTHON_VERSION: "3.10.9"
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name }}-${{
+    github.event_name == 'pull_request_target' && github.event.pull_request.title || github.ref }}
   cancel-in-progress: true
 
 jobs:
