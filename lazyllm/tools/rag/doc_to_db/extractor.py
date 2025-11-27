@@ -616,7 +616,7 @@ class SchemaExtractor:
                 **{self.SYS_KB_ID: kb_id, self.SYS_DOC_ID: doc_id}
             ).delete()
             session.add(table_cls(**payload))
-        return res
+        return res_item
 
     def _delete_extract_data(self, algo_id: str, doc_ids: List[str], kb_id: str = None) -> bool:
         '''Delete extracted data for docs.'''

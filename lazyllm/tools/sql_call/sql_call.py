@@ -149,6 +149,10 @@ class SqlCall(ModuleBase):
         if matches:
             # Return the first match
             extracted_content = matches[0].strip()
+            if self._sql_tool.db_type != 'mongodb':
+                stmts = [s.strip() for s in extracted_content.split(';') if s.strip()]
+                if stmts:
+                    extracted_content = stmts[0]
             return True, extracted_content if not self.sql_post_func else self.sql_post_func(extracted_content)
         else:
             return False, str_response
