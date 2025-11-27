@@ -174,7 +174,6 @@ class GeneralCodeSplitter(_LanguageSplitterBase):
         super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers,
                          filetype=filetype, **kwargs)
 
-        self._filetype = filetype
         self._extra_params = kwargs
 
     def _do_split(self, text: str, chunk_size: int) -> List[DocNode]:  # noqa: C901
