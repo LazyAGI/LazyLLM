@@ -2,7 +2,7 @@ from functools import partial
 import re
 import inspect
 
-from typing import List, Union, Tuple, Callable, Optional, AbstractSet, Collection, Literal, Any
+from typing import List, Union, Tuple, Callable, Optional
 from .base import _TextSplitterBase, _TokenTextSplitter, _Split, _UNSET
 
 class CharacterSplitter(_TextSplitterBase):
@@ -19,18 +19,6 @@ class CharacterSplitter(_TextSplitterBase):
         self._character_split_fns = []
         self._cached_sep_pattern = self._get_separator_pattern(self._separator)
         self._cached_default_split_fns = None
-
-    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
-                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
-                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
-                              **kwargs) -> 'CharacterSplitter':
-        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
-
-    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'CharacterSplitter':
-        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
-
-    def split_text(self, text: str, metadata_size: int) -> List[str]:
-        return super().split_text(text, metadata_size)
 
     def _split(self, text: str, chunk_size: int) -> List[_Split]:
         token_size = self._token_size(text)
@@ -153,12 +141,3 @@ class CharacterSplitter(_TextSplitterBase):
             sep_pattern = f'(?:{sep_pattern})'
 
         return sep_pattern
-
-    def set_default(self, **kwargs):
-        super().set_default(**kwargs)
-
-    def get_default(self, param_name: Optional[str] = None):
-        return super().get_default(param_name)
-
-    def reset_default(self):
-        super().reset_default()

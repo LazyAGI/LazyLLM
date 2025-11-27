@@ -2,8 +2,6 @@ from typing import List, Tuple
 from functools import partial
 from .character import CharacterSplitter
 from .base import _UNSET
-from typing import Optional, Union, AbstractSet, Collection, Literal, Any
-from typing import Callable
 
 class RecursiveSplitter(CharacterSplitter):
     def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
@@ -19,27 +17,6 @@ class RecursiveSplitter(CharacterSplitter):
             for sep in self._separators
         ] + [list]
 
-    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
-                              allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
-                              disallowed_special: Union[Literal['all'], Collection[str]] = None,
-                              **kwargs) -> 'RecursiveSplitter':
-        return super().from_tiktoken_encoder(encoding_name, model_name, allowed_special, disallowed_special, **kwargs)
-
-    def split_text(self, text: str, metadata_size: int) -> List[str]:
-        return super().split_text(text, metadata_size)
-
-    def set_split_fns(self, split_fns: List[Callable[[str], List[str]]]):
-        return super().set_split_fns(split_fns)
-
-    def add_split_fn(self, split_fn: Callable[[str], List[str]], index: Optional[int] = None, bind_separator: bool = None):  # noqa: E501
-        return super().add_split_fn(split_fn, index, bind_separator)
-
-    def clear_split_fns(self):
-        return super().clear_split_fns()
-
-    def from_huggingface_tokenizer(self, tokenizer: Any, **kwargs) -> 'RecursiveSplitter':
-        return super().from_huggingface_tokenizer(tokenizer, **kwargs)
-
     def _get_splits_by_fns(self, text: str) -> Tuple[List[str], bool]:
         character_split_fns = self._character_split_fns
         if character_split_fns == []:
@@ -51,12 +28,3 @@ class RecursiveSplitter(CharacterSplitter):
                 break
 
         return splits, False
-
-    def set_default(self, **kwargs):
-        super().set_default(**kwargs)
-
-    def get_default(self, param_name: Optional[str] = None):
-        return super().get_default(param_name)
-
-    def reset_default(self):
-        super().reset_default()

@@ -1,7 +1,7 @@
 import lazyllm
 from lazyllm.tools.rag.transform import (
     SentenceSplitter, CharacterSplitter, RecursiveSplitter, MarkdownSplitter,
-    CodeSplitter, JSONSplitter, YAMLSplitter, HTMLSplitter, XMLSplitter, ProgrammingSplitter
+    CodeSplitter, JSONSplitter, YAMLSplitter, HTMLSplitter, XMLSplitter, GeneralCodeSplitter
 )
 from lazyllm.tools.rag.transform.markdown import _MdSplit
 from lazyllm.tools.rag.transform.base import _TextSplitterBase, _Split, _TokenTextSplitter
@@ -779,9 +779,9 @@ class TestHTMLSplitter:
         assert len(nodes) >= 1
 
 
-class TestProgrammingSplitter:
+class TestGeneralCodeSplitter:
     def test_python_code(self):
-        splitter = ProgrammingSplitter(chunk_size=200, overlap=0, filetype='python')
+        splitter = GeneralCodeSplitter(chunk_size=200, overlap=0, filetype='python')
         code = '''
             def function1():
                 print("Hello")
@@ -806,7 +806,7 @@ class TestProgrammingSplitter:
                    for node in nodes)
 
     def test_class_structure(self):
-        splitter = ProgrammingSplitter(chunk_size=150, overlap=0, filetype='python')
+        splitter = GeneralCodeSplitter(chunk_size=150, overlap=0, filetype='python')
         code = '''
             class Example:
                 def __init__(self, name):
@@ -824,7 +824,7 @@ class TestProgrammingSplitter:
         assert has_structure or len(nodes) > 0
 
     def test_control_structures(self):
-        splitter = ProgrammingSplitter(chunk_size=100, overlap=0, filetype='python')
+        splitter = GeneralCodeSplitter(chunk_size=100, overlap=0, filetype='python')
         code = '''
             if condition:
                 do_something()
@@ -845,7 +845,7 @@ class TestProgrammingSplitter:
         assert len(nodes) >= 1
 
     def test_empty_code(self):
-        splitter = ProgrammingSplitter(chunk_size=100, overlap=0, filetype='python')
+        splitter = GeneralCodeSplitter(chunk_size=100, overlap=0, filetype='python')
         code = ''
 
         nodes = splitter.split_text(code, metadata_size=0)
@@ -918,7 +918,7 @@ class TestCodeSplitter:
         assert 'htm' in filetypes
 
     def test_register_custom_splitter(self):
-        class CustomSplitter(ProgrammingSplitter):
+        class CustomSplitter(GeneralCodeSplitter):
             pass
 
         CodeSplitter.register_splitter('custom', CustomSplitter)
