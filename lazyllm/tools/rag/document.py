@@ -375,7 +375,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def drop_algorithm(self):
         return self._forward('drop_algorithm')
 
-    def analyze_schema_by_llm(self, kb_id: str = None, doc_ids: list[str] = None):
+    def analyze_schema_by_llm(self, kb_id: Optional[str] = None, doc_ids: Optional[List[str]] = None):
         return self._forward('_analyze_schema_by_llm', kb_id, doc_ids)
 
     def _get_post_process_tasks(self):

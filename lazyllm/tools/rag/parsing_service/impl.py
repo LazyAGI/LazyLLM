@@ -1,7 +1,8 @@
 import time
-import threading
 import traceback
 from typing import Any, Dict, List, Optional
+from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor
 
 from lazyllm import LOG
 
@@ -19,8 +20,8 @@ from ..doc_to_db import SchemaExtractor
 
 class _Processor:
     def __init__(self, algo_id: str, store: _DocumentStore, reader: DirectoryReader, node_groups: Dict[str, Dict],
-                 schema_extractor: Optional[SchemaExtractor] = None,
-                 display_name: Optional[str] = None, description: Optional[str] = None):
+                 schema_extractor: Optional[SchemaExtractor] = None, display_name: Optional[str] = None,
+                 description: Optional[str] = None, max_workers: int = 4):
         self._algo_id = algo_id
         self._store = store
         self._reader = reader
@@ -28,6 +29,11 @@ class _Processor:
         self._schema_extractor = schema_extractor
         self._display_name = display_name
         self._description = description
+        self._max_workers = max_workers
+        self._thread_pool: Optional[ThreadPoolExecutor] = (
+            ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=f'{self._algo_id}_processor')
+            if schema_extractor else None
+        )
 
     @property
     def store(self) -> _DocumentStore:
@@ -50,38 +56,45 @@ class _Processor:
                 metadata.setdefault(RAG_KB_ID, kb_id or DEFAULT_KB_ID)
             kb_id = metadatas[0].get(RAG_KB_ID, DEFAULT_KB_ID) if kb_id is None else kb_id
             root_nodes = self._reader.load_data(input_files, metadatas, split_nodes_by_type=True)
-            schema_threads: List[threading.Thread] = []
+            schema_futures = []
             schema_errors: List[Exception] = []
             if self._schema_extractor:
-                doc_to_root_nodes = {}
+                doc_to_root_nodes = defaultdict(list)
                 for n in root_nodes[LAZY_ROOT_NAME]:
-                    if n.global_metadata.get(RAG_DOC_ID) not in doc_to_root_nodes:
-                        doc_to_root_nodes[n.global_metadata.get(RAG_DOC_ID)] = []
                     doc_to_root_nodes[n.global_metadata.get(RAG_DOC_ID)].append(n)
-                for _, v in doc_to_root_nodes.items():
-                    def _worker(nodes):
-                        try:
-                            self._schema_extractor(nodes, algo_id=self._algo_id)
-                        except Exception as exc:  # pragma: no cover - defensive
-                            LOG.error(f'Schema extraction failed: {exc}')
-                            schema_errors.append(exc)
 
-                    t = threading.Thread(target=_worker, args=(v,), daemon=True)
-                    t.start()
-                    schema_threads.append(t)
-                    # self._schema_extractor(v, algo_id=self._algo_id)
+                if doc_to_root_nodes:
+                    if self._thread_pool is None:
+                        self._thread_pool = ThreadPoolExecutor(
+                            max_workers=self._max_workers, thread_name_prefix=f'{self._algo_id}_processor'
+                        )
+                    for nodes in doc_to_root_nodes.values():
+                        schema_futures.append(
+                            self._thread_pool.submit(self._schema_extractor, nodes, algo_id=self._algo_id)
+                        )
+
             for k, v in root_nodes.items():
                 if not v: continue
                 self._store.update_nodes(self._set_nodes_number(v))
                 self._create_nodes_recursive(v, k)
-            for t in schema_threads:
-                t.join()
+
+            for future in schema_futures:
+                try:
+                    future.result()
+                except Exception as exc:  # pragma: no cover - defensive
+                    LOG.error(f'Schema extraction failed: {exc}')
+                    schema_errors.append(exc)
             if schema_errors:
                 raise schema_errors[0]
             LOG.info('Add documents done!')
         except Exception as e:
             LOG.error(f'Add documents failed: {e}, {traceback.format_exc()}')
             raise e
+
+    def close(self):
+        if self._thread_pool:
+            self._thread_pool.shutdown(wait=True)
+            self._thread_pool = None
 
     def _set_nodes_number(self, nodes: List[DocNode]) -> List[DocNode]:
         doc_group_number = {}

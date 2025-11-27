@@ -489,7 +489,7 @@ class DocImpl:
         else:
             raise ValueError('This method is only available when the Document has a DocumentProcessor')
 
-    def _analyze_schema_by_llm(self, kb_id: str = None, doc_ids: list[str] = None):
+    def _analyze_schema_by_llm(self, kb_id: Optional[str] = None, doc_ids: Optional[List[str]] = None):
         if not self._schema_extractor:
             raise AttributeError('No schema extractor for this Document.')
         self._lazy_init()
