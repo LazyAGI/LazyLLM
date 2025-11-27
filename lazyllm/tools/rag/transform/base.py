@@ -172,7 +172,7 @@ class _TextSplitterBase(NodeTransform):
 
         LOG.info(f'{cls.__name__} default parameters reset')
 
-    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,
+    def from_tiktoken_encoder(self, encoding_name: str = 'gpt2', model_name: Optional[str] = None,  # noqa: C901
                               allowed_special: Union[Literal['all'], AbstractSet[str]] = None,
                               disallowed_special: Union[Literal['all'], Collection[str]] = 'all',
                               **kwargs: Any) -> '_TextSplitterBase':
@@ -187,13 +187,19 @@ class _TextSplitterBase(NodeTransform):
                     model_path = config['model_path']
                     if not model_path:
                         model_path = os.path.join(os.path.expanduser('~'), '.lazyllm')
-                except (RuntimeError, KeyError):
+                except (RuntimeError, KeyError, PermissionError):
                     model_path = os.path.join(os.path.expanduser('~'), '.lazyllm')
 
                 path = os.path.join(model_path, 'tiktoken')
-                os.makedirs(path, exist_ok=True)
-                os.environ['TIKTOKEN_CACHE_DIR'] = path
-                tiktoken_cache_dir_set = True
+                try:
+                    os.makedirs(path, exist_ok=True)
+                    os.environ['TIKTOKEN_CACHE_DIR'] = path
+                    tiktoken_cache_dir_set = True
+                except PermissionError:
+                    fallback_path = os.path.join(os.path.expanduser('~'), '.lazyllm', 'tiktoken')
+                    os.makedirs(fallback_path, exist_ok=True)
+                    os.environ['TIKTOKEN_CACHE_DIR'] = fallback_path
+                    tiktoken_cache_dir_set = True
 
         try:
             if model_name is not None:
