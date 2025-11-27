@@ -470,7 +470,7 @@ class SchemaExtractor:
         schema_val_clues: Dict[str, Dict[str, List[str]]] = {}
         for res_item in res:
             if not isinstance(res_item, list):
-                LOG.error(f"[Schema Extractor - _text_extract_impl] invalid format {res_item}")
+                LOG.error(f'[Schema Extractor - _text_extract_impl] invalid format {res_item}')
                 continue
             for info in res_item:
                 if not isinstance(info, dict):

@@ -22,12 +22,12 @@ class TestSchemaExtractor(unittest.TestCase):
             f.write(cls.text)
         cls._file_path = os.path.join(cls._temp_dir, 'test.txt')
         cls.db_config = {
-            "db_type": "sqlite",
-            "user": None,
-            "password": None,
-            "host": None,
-            "port": None,
-            "db_name": cls.db_dir,
+            'db_type': 'sqlite',
+            'user': None,
+            'password': None,
+            'host': None,
+            'port': None,
+            'db_name': cls.db_dir,
         }
         cls.llm = TrainableModule('internlm2-chat-7b').deploy_method(deploy.vllm).start()
         cls.extractor = SchemaExtractor(db_config=cls.db_config, llm=cls.llm)
@@ -47,8 +47,8 @@ class TestSchemaExtractor(unittest.TestCase):
 
     def test_custom_schema_extract(self):
         class SchemaSet1(BaseModel):
-            name: str = Field(description="Name of the people", default='unknown')
-            age: int = Field(description="Age of the people", default=0)
+            name: str = Field(description='Name of the people', default='unknown')
+            age: int = Field(description='Age of the people', default=0)
         self.extractor.register_schema_set_to_kb(schema_set=SchemaSet1)
         res = self.extractor('Tom is a boy, he is eleven.')
         assert isinstance(res, ExtractResult)
@@ -57,13 +57,13 @@ class TestSchemaExtractor(unittest.TestCase):
 
     def test_document_for_sqlcall(self):
         class TestSchema(BaseModel):
-            company: str = Field(description="Name of the company", default='unknown')
-            profit: float = Field(description="Profit of the company, unit is billion", default=0.0)
+            company: str = Field(description='Name of the company', default='unknown')
+            profit: float = Field(description='Profit of the company, unit is billion', default=0.0)
         doc = Document(
             dataset_path=self._temp_dir,
-            name="test_algo",
-            display_name="test_algo",
-            description="algo for testing",
+            name='test_algo',
+            display_name='test_algo',
+            description='algo for testing',
             store_conf={'metadata_store': self.db_config},
             schema_extractor=self.llm,
         )
