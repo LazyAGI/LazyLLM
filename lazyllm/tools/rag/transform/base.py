@@ -185,9 +185,10 @@ class _TextSplitterBase(NodeTransform):
             if 'TIKTOKEN_CACHE_DIR' not in os.environ and 'DATA_GYM_CACHE_DIR' not in os.environ:
                 try:
                     model_path = config['model_path']
-                    if not model_path:
-                        model_path = os.path.join(os.path.expanduser('~'), '.lazyllm')
                 except (RuntimeError, KeyError, PermissionError):
+                    model_path = None
+
+                if not model_path:
                     model_path = os.path.join(os.path.expanduser('~'), '.lazyllm')
 
                 path = os.path.join(model_path, 'tiktoken')
