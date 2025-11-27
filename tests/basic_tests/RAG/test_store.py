@@ -1188,6 +1188,8 @@ def make_store_instance(backend: str, init_kwargs: dict, global_metadata_desc):
     store.connect(global_metadata_desc=global_metadata_desc)
     return store
 
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestSegmentStore:
     @pytest.fixture(scope='class', params=PARAM_COMBINATIONS, ids=PARAM_IDS)
     def setUp(self, request):
