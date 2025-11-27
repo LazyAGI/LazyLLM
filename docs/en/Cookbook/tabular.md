@@ -35,7 +35,7 @@ The overall workflow is illustrated below:
 Before use, please execute the following command to install the required libraries:
 
 ```bash
-pip install lazyllm pandas chardet openpyxl sqlite3
+pip install lazyllm pandas chardet openpyxl
 ```
 
 ### Environment Variables

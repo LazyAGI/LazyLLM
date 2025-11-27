@@ -35,7 +35,7 @@ LazyLLM 不仅能处理自然语言与图像数据，还提供了强大的结构
 在使用前，请先执行以下命令安装所需库：
 
 ```bash
-pip install lazyllm pandas chardet openpyxl sqlite3
+pip install lazyllm pandas chardet openpyxl
 ```
 
 ### 环境变量
