@@ -35,8 +35,8 @@ class TestSchemaExtractor(unittest.TestCase):
     @classmethod
     def teardown_class(cls):
         cleanup()
-        # if os.path.exists(cls.db_dir):
-        #     os.remove(cls.db_dir)
+        if os.path.exists(cls.db_dir):
+            os.remove(cls.db_dir)
         if os.path.exists(cls._temp_dir):
             shutil.rmtree(cls._temp_dir)
 
