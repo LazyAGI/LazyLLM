@@ -407,8 +407,8 @@
 ::: lazyllm.tools.tools.GoogleSearch
     members: forward
 
-::: lazyllm.tools.tools.tencent_search.TencentSearch
-    members:
+::: lazyllm.tools.tools.TencentSearch
+    members: 
     exclude-members:
 
 ::: lazyllm.tools.rag.web.WebUi

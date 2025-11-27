@@ -8362,7 +8362,65 @@ searcher = TencentSearch(secret_id, secret_key)
 res = searcher('calculus')
 ''')
 
+add_tools_chinese_doc('JsonExtractor', '''
+JSON提取器，用于从文本中提取JSON数据。
 
+Args:
+    base_model (LLMBase): 语言模型
+    schema (Union[str, Dict[str, Any]]): JSON结构，可以是JSON字符串或字典。示例：'{"name": "", "age": 0, "city": ""}' 或 {"name": "", "age": 0, "city": ""}
+    field_descriptions (Union[str, Dict[str, str]], optional): 字段描述，可以是字符串或字典。如果字典，键是字段名称，值是字段描述。示例：{"name": "姓名", "age": "年龄", "city": "城市"}
+
+Returns:
+    Union[Dict[str, Any], List[Dict[str, Any]]]: 提取的JSON数据，如果有多个，则返回列表。如果提取失败则返回空字典。
+''')
+
+add_tools_english_doc('JsonExtractor', '''
+JSON extractor for extracting JSON data from text.
+
+Args:
+    base_model (LLMBase): Language model
+    schema (Union[str, Dict[str, Any]]): JSON structure, can be a JSON string or dict. Example: '{"name": "", "age": 0, "city": ""}' or {"name": "", "age": 0, "city": ""}
+    field_descriptions (Union[str, Dict[str, str]], optional): Field descriptions, can be a string or dict. If dict, keys are field names and values are descriptions. Example: {"name": "Name", "age": "Age", "city": "City"}
+
+Returns:
+    Union[Dict[str, Any], List[Dict[str, Any]]]: Extracted JSON data, returns list if there are multiple, returns empty dictionary if extraction fails.
+''')
+
+add_tools_example('JsonExtractor', '''
+>>> from lazyllm.tools.tools import JsonExtractor
+>>> from lazyllm import OnlineChatModule
+>>> llm = lazyllm.OnlineChatModule()
+>>> extractor = JsonExtractor(llm, schema='{"name": "", "age": 0, "city": ""}', field_descriptions={'name': '姓名', 'age': '年龄', 'city': '城市'})
+>>> res = extractor("张三的年龄是20岁，住在北京; 李四的年龄是25岁，住在上海")
+>>> print(res)
+[{'name': '张三', 'age': 20, 'city': '北京'}, {'name': '李四', 'age': 25, 'city': '上海'}]
+''')
+
+add_tools_chinese_doc('JsonConcentrator', '''
+JSON聚合器，用于将多个JSON数据聚合成一个JSON数据。
+
+Args:
+    base_model (LLMBase): 语言模型
+    schema (Union[str, Dict[str, Any]]): JSON结构，可以是JSON字符串或字典。示例：'{"name": "", "age": 0, "city": ""}' 或 {"name": "", "age": 0, "city": ""}
+''')
+
+add_tools_english_doc('JsonConcentrator', '''
+JSON concentrator for aggregating multiple JSON data into a single JSON data.
+
+Args:
+    base_model (LLMBase): Language model
+    schema (Union[str, Dict[str, Any]]): JSON structure, can be a JSON string or dict. Example: '{"name": "", "age": 0, "city": ""}' or {"name": "", "age": 0, "city": ""}
+''')
+
+add_tools_example('JsonConcentrator', '''
+>>> from lazyllm.tools.tools import JsonConcentrator
+>>> from lazyllm import OnlineChatModule
+>>> llm = lazyllm.OnlineChatModule()
+>>> concentrator = JsonConcentrator(llm, schema='{"name": "", "age": 0, "city": ""}')
+>>> res = concentrator([{'name': '张三', 'age': 20, 'city': '北京'}, {'name': '李四', 'age': 25, 'city': '上海'}])
+>>> print(res)
+{'name': '张三,李四', 'age': 20 - 25, 'city': '北京,上海'}
+''')
 # ---------------------------------------------------------------------------- #
 
 # mcp/client.py
