@@ -36,7 +36,7 @@ The overall structure is shown below:
 Before using the project, please run the following command to install the required libraries:
 
 ```bash
-pip install lazyllm collections functools random re tenacity typing
+pip install lazyllm tenacity typing
 ```
 
 ### Environment Variables

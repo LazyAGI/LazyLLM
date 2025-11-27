@@ -36,7 +36,7 @@
 在使用前，请先执行以下命令安装所需库：
 
 ```bash
-pip install lazyllm collections functools random re tenacity typing
+pip install lazyllm tenacity typing
 ```
 
 ### 环境变量
