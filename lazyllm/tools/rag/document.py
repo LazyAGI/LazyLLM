@@ -1,6 +1,7 @@
 import os
-from typing import Callable, Optional, Dict, Union, List
+from typing import Callable, Optional, Dict, Union, List, Type
 from functools import cached_property
+from pydantic import BaseModel
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
@@ -12,6 +13,7 @@ from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups
 from .doc_node import DocNode
 from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files, SchemaExtractor
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
+from .store.store_base import DEFAULT_KB_ID
 from .index_base import IndexBase
 from .utils import DocListManager, ensure_call_endpoint
 from .global_metadata import GlobalMetadataDesc as DocField
@@ -40,7 +42,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
                      doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
                      display_name: Optional[str] = '', description: Optional[str] = 'algorithm description',
-                     schema_extractor: Optional[SchemaExtractor] = None):
+                     schema_extractor: Optional[Union[OnlineChatModule, TrainableModule, SchemaExtractor]] = None):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
@@ -129,7 +131,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
                  store_conf: Optional[Dict] = None, display_name: Optional[str] = '',
                  description: Optional[str] = 'algorithm description',
-                 schema_extractor: Optional[SchemaExtractor] = None):
+                 schema_extractor: Optional[Union[OnlineChatModule, TrainableModule, SchemaExtractor]] = None):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
@@ -377,6 +379,10 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def analyze_schema_by_llm(self, kb_id: Optional[str] = None, doc_ids: Optional[List[str]] = None):
         return self._forward('_analyze_schema_by_llm', kb_id, doc_ids)
+
+    def register_schema_set(self, schema_set: Type[BaseModel], kb_id: Optional[str] = DEFAULT_KB_ID,
+                            force_refresh: bool = False) -> str:
+        return self._forward('_register_schema_set', schema_set, kb_id, force_refresh)
 
     def _get_post_process_tasks(self):
         return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))

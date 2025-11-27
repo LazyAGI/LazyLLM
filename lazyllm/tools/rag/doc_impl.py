@@ -2,16 +2,18 @@ import json
 import threading
 import time
 from enum import Enum
-from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
-from lazyllm import LOG, once_wrapper
+from pydantic import BaseModel
+from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
+from lazyllm import LOG, once_wrapper, OnlineChatModule, TrainableModule
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
 from .store import (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP, LazyLLMStoreBase)
+from .store.store_base import DEFAULT_KB_ID
 from .store.document_store import _DocumentStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, is_sparse
+from .utils import DocListManager, is_sparse, _get_default_db_config
 from .global_metadata import GlobalMetadataDesc, RAG_KB_ID
 from .data_type import DataType
 from .parsing_service import _Processor, DocumentProcessor
@@ -71,7 +73,7 @@ class DocImpl:
                  store: Optional[Union[Dict, LazyLLMStoreBase]] = None,
                  processor: Optional[DocumentProcessor] = None, algo_name: Optional[str] = None,
                  display_name: Optional[str] = None, description: Optional[str] = None,
-                 schema_extractor: Optional[SchemaExtractor] = None):
+                 schema_extractor: Optional[Union[OnlineChatModule, TrainableModule, SchemaExtractor]] = None):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
@@ -111,7 +113,7 @@ class DocImpl:
                 self._activated_groups.add(group := parent_group)
 
     def _create_store(self):
-        if self.store is None: self.store = {'type': 'map'}
+        self.store = self.store or {'type': 'map'}
         embed_dims, embed_datatypes = {}, {}
         for k, e in self.embed.items():
             embedding = e('a')
@@ -121,6 +123,7 @@ class DocImpl:
                 embed_dims[k] = len(embedding)
                 embed_datatypes[k] = DataType.FLOAT_VECTOR
 
+        self.store.pop('metadata_store', None)
         self.store = _DocumentStore(algo_name=self._algo_name, store=self.store,
                                     group_embed_keys=self._activated_embeddings, embed=self.embed,
                                     embed_dims=embed_dims, embed_datatypes=embed_datatypes,
@@ -128,8 +131,23 @@ class DocImpl:
         self.store.activate_group(self._activated_groups)
 
     @once_wrapper(reset_on_pickle=True)
+    def _create_schema_extractor(self):
+        if isinstance(self._schema_extractor, SchemaExtractor):
+            return
+        elif isinstance(self._schema_extractor, (OnlineChatModule, TrainableModule)):
+            metadata_store_config = (
+                (self.store.pop('metadata_store', None) if self.store else None)
+                or _get_default_db_config(db_name=f'{self._algo_name}_metadata')
+            )
+            self._schema_extractor = SchemaExtractor(db_config=metadata_store_config, llm=self._schema_extractor)
+            return
+        else:
+            raise ValueError(f'Invalid type for schema extractor: {type(self._schema_extractor)}')
+
+    @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
         self._init_node_groups()
+        self._create_schema_extractor()
         self._create_store()
         cloud = not (self._dlm or self._doc_files is not None)
 
@@ -492,12 +510,21 @@ class DocImpl:
     def _analyze_schema_by_llm(self, kb_id: Optional[str] = None, doc_ids: Optional[List[str]] = None):
         if not self._schema_extractor:
             raise AttributeError('No schema extractor for this Document.')
-        self._lazy_init()
+        self._create_schema_extractor()
         data = self.store.get_nodes(group=LAZY_ROOT_NAME, kb_id=kb_id, doc_ids=doc_ids)
         if not data:
             LOG.error(f'No data from store for kb_id: {kb_id}, doc_ids: {doc_ids}')
             return None
         return self._schema_extractor.analyze_schema_and_register(data=data)
+
+    def _register_schema_set(self, schema_set: Type[BaseModel], kb_id: Optional[str] = DEFAULT_KB_ID,
+                             force_refresh: bool = False) -> str:
+        if not self._schema_extractor:
+            raise AttributeError('No schema extractor for this Document.')
+        self._create_schema_extractor()
+        set_id = self._schema_extractor.register_schema_set_to_kb(algo_id=self._algo_name, schema_set=schema_set,
+                                                                  kb_id=kb_id, force_refresh=force_refresh)
+        return set_id
 
     def __call__(self, func_name: str, *args, **kwargs):
         return getattr(self, func_name)(*args, **kwargs)

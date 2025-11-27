@@ -163,7 +163,7 @@ class SqlCall(ModuleBase):
                              return_trace: bool = False) -> 'SqlCall':
         if not document._schema_extractor:
             raise ValueError('Only document with schema extractor can be used to create SqlCall.')
-        sql_manager = document._schema_extractor.sql_manager_for_nl2sql(algo_id=document._curr_group)
+        sql_manager = document._impl._schema_extractor.sql_manager_for_nl2sql(algo_id=document._curr_group)
         llm = document._schema_extractor._llm if not llm else llm
         if not sql_manager:
             raise ValueError('Sql manager is not initialized in schema extractor.')

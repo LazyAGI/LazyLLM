@@ -59,14 +59,15 @@ class TestSchemaExtractor(unittest.TestCase):
         class TestSchema(BaseModel):
             company: str = Field(description="Name of the company", default='unknown')
             profit: float = Field(description="Profit of the company, unit is billion", default=0.0)
-        self.extractor.register_schema_set_to_kb(algo_id='test_algo', schema_set=TestSchema)
         doc = Document(
             dataset_path=self._temp_dir,
             name="test_algo",
             display_name="test_algo",
             description="algo for testing",
-            schema_extractor=self.extractor
+            store_conf={'metadata_store': self.db_config},
+            schema_extractor=self.llm,
         )
+        doc.register_schema_set(schema_set=TestSchema, force_refresh=True)
         doc.start()
         sqlcall = SqlCall.create_from_document(document=doc, llm=self.llm.share())
         result = sqlcall('what is the profit of Tesla?')

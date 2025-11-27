@@ -714,6 +714,32 @@ Args:
     doc_ids: List of target document ids.
 ''')
 
+add_chinese_doc('Document.register_schema_set', '''
+手动注册一个 Pydantic Model 作为当前算法的字段集合（schema），并绑定到指定知识库。
+如果该知识库已绑定其他 schema，默认会报错；传入 ``force_refresh=True`` 则会替换旧绑定并清理旧数据。
+
+Args:
+    schema_set (Type[BaseModel]): 要注册的 Pydantic 模型，用作 schema 定义。
+    kb_id (Optional[str]): 目标知识库 ID，默认为 ``DEFAULT_KB_ID``。
+    force_refresh (bool): 若已有绑定，是否强制刷新并覆盖。默认 ``False``。
+
+Returns:
+    str: 生成的 schema_set_id。
+''')
+
+add_english_doc('Document.register_schema_set', '''
+Manually register a Pydantic model as the schema for the current algorithm and bind it to a specific knowledge base.
+If the KB is already bound to another schema, it raises by default; set ``force_refresh=True`` to replace the binding and clean old records.
+
+Args:
+    schema_set (Type[BaseModel]): Pydantic model that defines the schema to register.
+    kb_id (Optional[str]): Target knowledge base ID. Defaults to ``DEFAULT_KB_ID``.
+    force_refresh (bool): Whether to force refresh when a binding already exists. Defaults to ``False``.
+
+Returns:
+    str: The generated ``schema_set_id``.
+''')
+
 # rag/graph_document.py
 
 add_english_doc('GraphDocument', '''\
