@@ -697,6 +697,23 @@ add_english_doc('Document.drop_algorithm', '''
 Delete the algorithm information registered in the document parsing service for the current document collection.
 ''')
 
+add_chinese_doc('Document.analyze_schema_by_llm', '''
+用于使用大模型为文档管理模块中特定的知识库或文档集合自动抽取字段集合，返回自动生成的Pydantic Model。
+支持传入特定知识库id和文档id列表。
+
+Args:
+    kb_id: 目标知识库id
+    doc_ids: 目标文档id列表
+''')
+
+add_english_doc('Document.analyze_schema_by_llm', '''
+Use an LLM to auto-infer a field schema for a specific knowledge base or document set in the Document manager, returning a generated Pydantic model. Supports narrowing the sample by kb_id and a list of doc_ids.
+
+Args:
+    kb_id: Target knowledge base id.
+    doc_ids: List of target document ids.
+''')
+
 # rag/graph_document.py
 
 add_english_doc('GraphDocument', '''\
@@ -8100,6 +8117,36 @@ Args:
 
 **Returns:**\n
 - tuple[bool, str]: 第一个元素表示是否成功提取，第二个是清洗后的或原始内容。如果提供了 sql_post_func，则会应用于提取结果。
+''')
+
+add_english_doc('SqlCall.create_from_document', '''\
+Build a `SqlCall` tool directly from a `Document` that already has a bound `SchemaExtractor`. It reuses the extractor’s NL2SQL `SqlManager` and LLM so you can generate and execute SQL against the document’s registered schemas.
+
+Args:
+    document (Document): A Document instance with an attached SchemaExtractor (schema-aware Document).
+    llm (optional): Override LLM for SQL generation/answering; defaults to the extractor’s LLM.
+    sql_examples (str, optional): Few-shot examples appended to the schema description to guide SQL generation.
+    sql_post_func (Callable, optional): Post-processor applied to the extracted SQL/pipeline before execution.
+    use_llm_for_sql_result (bool, optional): Whether to ask the LLM to explain query results; default True.
+    return_trace (bool, optional): Whether to return pipeline trace; default False.
+
+**Returns:**\n
+- SqlCall: Configured SqlCall instance tied to the Document’s schema tables.
+''')
+
+add_chinese_doc('SqlCall.create_from_document', '''\
+基于已绑定 SchemaExtractor 的 Document 创建 SqlCall，复用其 NL2SQL SqlManager 和 LLM，可直接面向文档注册的 schema 生成/执行 SQL。
+
+Args:
+    document (Document): 具备 SchemaExtractor 的文档实例。
+    llm (optional): 覆盖用于 SQL 生成/结果说明的 LLM，默认复用文档的 LLM。
+    sql_examples (str, optional): 追加在 schema 描述后的 few-shot 示例，指导 SQL 生成。
+    sql_post_func (Callable, optional): 对提取的 SQL/管道做后处理的函数。
+    use_llm_for_sql_result (bool, optional): 是否用 LLM 解释查询结果，默认 True。
+    return_trace (bool, optional): 是否返回流水线 trace，默认 False。
+
+**Returns:**\n
+- SqlCall: 绑定到该 Document schema 表的 SqlCall 实例。
 ''')
 
 # ---------------------------------------------------------------------------- #
