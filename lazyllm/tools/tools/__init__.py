@@ -1,8 +1,8 @@
 from .http_tool import HttpTool
-from .google_search import GoogleSearch
+from .search import GoogleSearch, TencentSearch
 from .weather import Weather
 from .calculator import Calculator
-from .tencent_search import TencentSearch
+from .json import JsonExtractor, JsonConcentrator
 
 
 __all__ = [
@@ -11,4 +11,6 @@ __all__ = [
     'Weather',
     'Calculator',
     'TencentSearch',
+    'JsonExtractor',
+    'JsonConcentrator',
 ]

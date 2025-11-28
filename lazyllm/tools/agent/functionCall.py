@@ -84,6 +84,7 @@ class FunctionCall(ModuleBase):
                                                               'arguments': json.loads(match.group(2))}}]
                 except Exception: pass
         if tool_calls := llm_output.get('tool_calls'):
+            if isinstance(tool_calls, list): [item.pop('index', None) for item in tool_calls]
             tool_calls_results = self._tools_manager(tool_calls)
             locals['_lazyllm_agent']['workspace']['tool_call_trace'] = [
                 {**tool_call, 'tool_call_result': tool_result}

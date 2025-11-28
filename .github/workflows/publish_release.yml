@@ -32,13 +32,16 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
+
       - name: Install Poetry
         uses: snok/install-poetry@v1
         with:
           version: ${{ env.POETRY_VERSION }}
+
       - name: Extract tag from ref
         id: extract_tag
         run: echo "TAG=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+
       - name: Update version in pyproject.toml and __init__.py
         run: |
           sed -i "s/^version = \".*\"/version = \"$TAG\"/" pyproject.toml
@@ -46,16 +49,26 @@ jobs:
           echo $TAG
         env:
           TAG: ${{ env.TAG }}
+
       - name: Install deps
         shell: bash
         run: pip install -e .
+
       - name: Test import
         working-directory: /tmp
         shell: bash
         run: python -c "import lazyllm"
+
+      - name: Check requirements
+        shell: bash
+        run: |
+          pip install toml
+          python scripts/check_requirements.py
+
       - name: Copy files
         shell: bash
         run: cp LazyLLM-Env/poetry.lock . && cp pyproject.toml lazyllm/
+
       - name: Build doc
         run: |
           set -ex
@@ -63,11 +76,13 @@ jobs:
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
           python docs/add_docstrings.py
+
       - name: Clean cache
         shell: bash
         run: |
           pip cache purge
           pip freeze | grep -v "^-e" | xargs pip uninstall -y
+
       - name: Check PyPI for existing version
         id: pypi_check
         run: |
@@ -81,6 +96,7 @@ jobs:
             echo "Version $VERSION does not exist on PyPI. Proceeding with publish."
             echo "pypi_version_exists=false" >> $GITHUB_ENV
           fi
+
       - name: Build and publish to pypi
         if: env.pypi_version_exists == 'false'
         uses: JRubics/poetry-publish@v1.17
