@@ -3,7 +3,8 @@ from .graph_document import GraphDocument, UrlGraphDocument
 from .retriever import Retriever, TempDocRetriever
 from .graph_retriever import GraphRetriever
 from .rerank import Reranker, register_reranker
-from .transform import SentenceSplitter, LLMParser, NodeTransform, TransformArgs, AdaptiveTransform
+from .transform import (SentenceSplitter, LLMParser, NodeTransform, TransformArgs, AdaptiveTransform,
+                        CharacterSplitter, RecursiveSplitter, MarkdownSplitter)
 from .similarity import register_similarity
 from .doc_node import DocNode
 from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader, EpubReader,
@@ -15,6 +16,7 @@ from .global_metadata import GlobalMetadataDesc as DocField
 from .data_type import DataType
 from .index_base import IndexBase
 from .store import LazyLLMStoreBase
+from .doc_to_db import SchemaExtractor
 
 
 add_post_action_for_default_reader = SimpleDirectoryReader.add_post_action_for_default_reader
@@ -57,4 +59,8 @@ __all__ = [
     'IndexBase',
     'LazyLLMStoreBase',
     'FileReader',
+    'CharacterSplitter',
+    'RecursiveSplitter',
+    'MarkdownSplitter',
+    'SchemaExtractor'
 ]
