@@ -36,10 +36,8 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return r
 
     @classmethod
-    def detect_encoding(cls, file_path: Union[str, Path],   # noqa: C901
-                        fs: Optional['fsspec.AbstractFileSystem'] = None,
-                        sample_size: int = 10000,
-                        use_cache: bool = True,
+    def detect_encoding(cls, file_path: Union[str, Path], fs: Optional['fsspec.AbstractFileSystem'] = None,  # noqa: C901
+                        sample_size: int = 10000, use_cache: bool = True,
                         enable_chardet: bool = True) -> str:
         if not isinstance(file_path, Path):
             file_path = Path(file_path)
@@ -107,8 +105,11 @@ class LazyLLMReaderBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         if enable_chardet:
             try:
                 detected = charset_normalizer.from_path(file_path).best().encoding
-                cls._cache_encoding(cache_key, detected)
-                return detected
+                if detected:
+                    cls._cache_encoding(cache_key, detected)
+                    return detected
+                else:
+                    LOG.warning(f'Charset normalizer detection failed: {detected}')
             except Exception as e:
                 LOG.warning(f'Charset normalizer detection failed: {e}')
 
