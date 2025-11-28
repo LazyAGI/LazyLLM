@@ -182,7 +182,16 @@ if __name__ == "__main__":
     model.to_empty(device="cpu")
 
     LOG.info(f"Saving model to {hf_path}...")
-    model.save_pretrained(hf_path, state_dict=state_dict)
+    
+    try:
+        config.save_pretrained(hf_path)
+        model_file = os.path.join(hf_path, "pytorch_model.bin")
+        torch.save(state_dict, model_file)
+        LOG.info(f"Model weights saved to {model_file}")
+    except Exception as e:
+        LOG.error(f"Failed to save model: {e}")
+        model.save_pretrained(hf_path, state_dict=state_dict)
+
     del state_dict, model
 
     if args.hf_upload_path:

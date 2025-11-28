@@ -105,11 +105,11 @@ class EasyR1Finetune(LazyLLMFinetuneBase):
             LOG.error(not_found_msg)
             return not_found_msg
 
-        self.merge_ckpt(actor_path)
+        self._merge_ckpt(actor_path)
         huggingface_path = os.path.join(actor_path, 'huggingface')
         return huggingface_path
 
-    def merge_ckpt(self, path):
+    def _merge_ckpt(self, path):
         try:
             script_path = f'{self._folder_path}/easy_r1/model_merger.py'
             subprocess.run(

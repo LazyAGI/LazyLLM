@@ -144,7 +144,9 @@ class TestFinetune(object):
         assert type(res[0]) is tuple
 
     @pytest.mark.run_on_change(
-        'lazyllm/components/finetune/easyr1.py')
+        r'lazyllm/components/finetune/easy_r1/.*',
+        r'lazyllm/components/finetune/easyr1\.json',
+        regex_mode=True)
     def test_grpo_easyr1(self):
         m = lazyllm.TrainableModule(self.grpo_llm, self.save_path)\
             .mode('finetune')\

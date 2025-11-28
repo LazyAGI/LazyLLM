@@ -92,8 +92,10 @@ class Vllm(LazyLLMDeployBase, metaclass=_VllmStreamParseParametersMeta):
                 ray_launcher[0], post_action=(lazyllm.parallel(*parall_launcher) if len(parall_launcher) else None))
 
     def cmd(self, finetuned_model=None, base_model=None, master_ip=None):
+        if finetuned_model:
+            LOG.info(f'Using finetuned model from {finetuned_model} to deploy.')
         if not finetuned_model:
-            LOG.warning(f'Note! finetuned_model is empty, using base_model({base_model}) instead.')
+            LOG.info(f'Using model {base_model} to deploy.')
             finetuned_model = base_model
         elif not os.path.exists(finetuned_model):
             LOG.warning(f'Warning! The finetuned_model path does not exist: {finetuned_model}. '
