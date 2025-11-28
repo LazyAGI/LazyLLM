@@ -998,7 +998,6 @@ def is_sparse(embedding: Union[Dict[int, float], List[Tuple[int, float]], List[f
 
     raise TypeError(f'unsupported embedding type `{type(embedding[0])}`')
 
-
 def ensure_call_endpoint(raw: str, *, default_path: str = '/_call') -> str:
     if not raw:
         return raw
@@ -1013,3 +1012,22 @@ def ensure_call_endpoint(raw: str, *, default_path: str = '/_call') -> str:
     scheme = parts.scheme or 'http'
     new_path = default_path
     return urlunsplit((scheme, parts.netloc, new_path, parts.query, parts.fragment))
+
+def _get_default_db_config(db_name: str):
+    '''get default db config'''
+    db_name = db_name.split('.')[0]
+    root_dir = os.path.expanduser(os.path.join(config['home'], '.dbs'))
+    os.makedirs(root_dir, exist_ok=True)
+    db_path = os.path.join(root_dir, f'lazyllm_{db_name}.db')
+    return {
+        'db_type': 'sqlite',
+        'user': None,
+        'password': None,
+        'host': None,
+        'port': None,
+        'db_name': db_path,
+    }
+
+def _orm_to_dict(obj) -> Dict[str, Any]:
+    '''convert ORM object to dict'''
+    return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}

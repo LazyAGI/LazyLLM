@@ -252,8 +252,8 @@ class _DocumentStore(object):
             LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to get segments: {e}')
             raise
 
-    def update_doc_meta(self, doc_id: str, metadata: dict) -> None:
-        kb_id = metadata.get(RAG_KB_ID, None)
+    def update_doc_meta(self, doc_id: str, metadata: dict, kb_id: str = None) -> None:
+        kb_id = metadata.get(RAG_KB_ID, None) if kb_id is None else kb_id
         segments = self.get_segments(doc_ids=[doc_id], kb_id=kb_id)
         if not segments:
             LOG.warning(f'[_DocumentStore] No segments found for doc_id: {doc_id} in dataset: {kb_id}')
