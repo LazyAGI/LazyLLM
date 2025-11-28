@@ -16,14 +16,14 @@ from .base import (
     ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
     TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest, _calculate_task_score
 )
-from .impl import _get_default_db_config
 from .worker import DocumentProcessorWorker as Worker
 from .queue import _SQLBasedQueue as Queue
 
 from ..data_loaders import DirectoryReader
 from ..store.document_store import _DocumentStore
 from ..store.utils import create_file_path
-from ..utils import BaseResponse, ensure_call_endpoint
+from ..utils import BaseResponse, ensure_call_endpoint, _get_default_db_config, _orm_to_dict
+from ..doc_to_db import SchemaExtractor
 from ...sql import SqlManager
 
 
@@ -104,8 +104,8 @@ class DocumentProcessor(ModuleBase):
                     time.sleep(10)
 
         def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader,
-                               node_groups: Dict[str, Dict], display_name: Optional[str] = None,
-                               description: Optional[str] = None):
+                               node_groups: Dict[str, Dict], schema_extractor: Optional[SchemaExtractor] = None,
+                               display_name: Optional[str] = None, description: Optional[str] = None):
             # NOTE: name is the algorithm id, display_name is the algorithm display name
             self._lazy_init()
             LOG.info((f'[DocumentProcessor] Get register algorithm request: name={name},'
@@ -115,7 +115,8 @@ class DocumentProcessor(ModuleBase):
                 info_dict = {
                     'store': store,
                     'reader': reader,
-                    'node_groups': node_groups
+                    'node_groups': node_groups,
+                    'schema_extractor': schema_extractor,
                 }
                 info_pickle = cloudpickle.dumps(info_dict)
                 with self._db_manager.get_session() as session:
@@ -164,10 +165,7 @@ class DocumentProcessor(ModuleBase):
                 algorithm = session.query(AlgoInfo).filter(AlgoInfo.id == algo_id).first()
                 if algorithm is None:
                     return None
-                return self._orm_to_dict(algorithm)
-
-        def _orm_to_dict(self, obj):
-            return {c.name: getattr(obj, c.name) for c in obj.__table__.columns}
+                return _orm_to_dict(algorithm)
 
         @app.get('/health')
         def get_health(self) -> None:
@@ -219,7 +217,7 @@ class DocumentProcessor(ModuleBase):
                 AlgoInfo = self._db_manager.get_table_orm_class('lazyllm_algorithm')
                 algorithms = session.query(AlgoInfo).all()
                 for algorithm in algorithms:
-                    res.append(self._orm_to_dict(algorithm))
+                    res.append(_orm_to_dict(algorithm))
             data = []
             for algo_dict in res:
                 data.append({
@@ -475,7 +473,7 @@ class DocumentProcessor(ModuleBase):
                  path_prefix: Optional[str] = None):
         super().__init__()
         self._raw_impl = None  # save the reference of the original Impl object
-        self._db_config = db_config if db_config else _get_default_db_config()
+        self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         if not url:
             # create the Impl object (lazy loading, no threads created)
             self._raw_impl = DocumentProcessor._Impl(num_workers=num_workers, db_config=self._db_config,
@@ -510,10 +508,10 @@ class DocumentProcessor(ModuleBase):
             raise e
 
     def register_algorithm(self, name: str, store: _DocumentStore, reader: DirectoryReader,
-                           node_groups: Dict[str, Dict], display_name: Optional[str] = None,
-                           description: Optional[str] = None, **kwargs):
+                           node_groups: Dict[str, Dict], schema_extractor: Optional[SchemaExtractor] = None,
+                           display_name: Optional[str] = None, description: Optional[str] = None, **kwargs):
         assert isinstance(reader, DirectoryReader), 'Only DirectoryReader can be registered to processor'
-        self._dispatch('register_algorithm', name, store, reader, node_groups,
+        self._dispatch('register_algorithm', name, store, reader, node_groups, schema_extractor,
                        display_name, description, **kwargs)
 
     def drop_algorithm(self, name: str) -> None:
