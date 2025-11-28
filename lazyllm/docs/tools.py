@@ -4096,6 +4096,31 @@ add_example('rag.transform.code.JSONLSplitter', '''
 >>> print(splitter)
 ''')
 
+add_english_doc('rag.transform.code.JSONLSplitter.split_text', '''
+Split the JSONL text into chunks.
+
+Args:
+    text (str): The text to split.
+    metadata_size (int): The size of the metadata.
+''')
+
+add_chinese_doc('rag.transform.code.JSONLSplitter.split_text', '''
+拆分JSONL文本为块。
+
+Args:
+    text (str): 要拆分的文本。
+    metadata_size (int): 元数据的尺寸。
+''')
+
+add_example('rag.transform.code.JSONLSplitter.split_text', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONLSplitter
+>>> splitter = JSONLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> text = '{"name": "John", "age": 30}\n{"name": "Jane", "age": 25}'
+>>> chunks = splitter.split_text(text)
+>>> print(chunks)
+''')
+
 add_english_doc('rag.transform.code.YAMLSplitter', '''
 A YAML splitter that splits YAML text by semantics.
 
