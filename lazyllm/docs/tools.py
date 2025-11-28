@@ -4069,6 +4069,33 @@ add_example('rag.transform.code.JSONSplitter', '''
 >>> print(splitter)
 ''')
 
+add_english_doc('rag.transform.code.JSONLSplitter', '''
+A JSONL splitter that splits JSONL text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    compact_output (bool): Whether to compact the output. Defaults to True.
+''')
+
+add_chinese_doc('rag.transform.code.JSONLSplitter', '''
+一个JSONL拆分器，负责拆分JSONL文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    compact_output (bool): 是否压缩输出。默认为True。
+''')
+
+add_example('rag.transform.code.JSONLSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONLSplitter
+>>> splitter = JSONLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> print(splitter)
+''')
+
 add_english_doc('rag.transform.code.YAMLSplitter', '''
 A YAML splitter that splits YAML text by semantics.
 

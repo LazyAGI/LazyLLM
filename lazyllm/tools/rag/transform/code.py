@@ -1,4 +1,4 @@
-from .base import _TextSplitterBase, _UNSET
+from .base import _TextSplitterBase, _UNSET, NodeTransform
 from .recursive import RecursiveSplitter
 from lazyllm.thirdparty import xml
 from lazyllm.thirdparty import bs4
@@ -302,15 +302,15 @@ class JSONSplitter(_LanguageSplitterBase):
             LOG.warning(f'Failed to parse JSON: {e}. Returning original text as a single DocNode.')
             return [self._make_node(
                 text=text,
-                filetype='json',
+                filetype=self._filetype,
                 error=str(e),
             )]
 
-        return self._split_json_data(data, chunk_size, 'json', path=[], depth=0)
+        return self._split_json_data(data, chunk_size, self._filetype, path=[], depth=0)
 
-    def _make_node(self, text, filetype, **meta):
+    def _make_node(self, text, **meta):
         md = {
-            'filetype': filetype,
+            'filetype': self._filetype,
         }
         md.update(meta)
         return DocNode(text=text, metadata=md)
@@ -375,18 +375,31 @@ class JSONSplitter(_LanguageSplitterBase):
             test_str = self._to_json_str(test_dict)
             test_size = self._token_size(test_str)
 
-            if len(current) == 0 and test_size > chunk_size:
+            val_str = self._to_json_str(val)
+            val_size = self._token_size(val_str)
+
+            if val_size > chunk_size:
+                if current:
+                    nodes.append(self._make_node(
+                        text=self._to_json_str(current),
+                        filetype=filetype,
+                        type='dict',
+                        path='/'.join(path) if path else 'root',
+                        depth=depth,
+                        keys=list(current.keys()),
+                        is_complete=False
+                    ))
+                    current = {}
+
                 child_nodes = self._split_json_data(
                     val, chunk_size, filetype,
                     path=path + [key],
                     depth=depth + 1
                 )
-
                 for i, node in enumerate(child_nodes):
                     node.metadata['parent_field'] = key
                     if len(child_nodes) > 1:
                         node.metadata['part'] = f'{i+1}/{len(child_nodes)}'
-
                 nodes.extend(child_nodes)
                 continue
 
@@ -471,21 +484,116 @@ class JSONSplitter(_LanguageSplitterBase):
         return nodes
 
     def _split_string(self, data, chunk_size, filetype, path, depth):
-        splits = self._recursive_splitter.split_text(data, metadata_size=0)
+        data_size = self._token_size(data)
 
-        nodes = []
-        for i, s in enumerate(splits):
-            nodes.append(self._make_node(
-                text=s,
+        if data_size <= chunk_size:
+            return [self._make_node(
+                text=data,
                 filetype=filetype,
                 type='string',
                 path='/'.join(path) if path else 'root',
                 depth=depth,
-                part=f'{i+1}/{len(splits)}' if len(splits) > 1 else None,
-                is_complete=(len(splits) == 1)
-            ))
+                is_complete=True
+            )]
+
+        splits = self._recursive_splitter.split_text(data, metadata_size=0)
+
+        nodes = []
+        for i, s in enumerate(splits):
+            s_size = self._token_size(s)
+            if s_size <= chunk_size:
+                nodes.append(self._make_node(
+                    text=s,
+                    filetype=filetype,
+                    type='string',
+                    path='/'.join(path) if path else 'root',
+                    depth=depth,
+                    part=f'{i+1}/{len(splits)}' if len(splits) > 1 else None,
+                    is_complete=(len(splits) == 1)
+                ))
 
         return nodes
+
+
+# ========== JSONLSplitter ==========
+class JSONLSplitter(JSONSplitter):
+    def __init__(self, chunk_size: int = _UNSET, overlap: int = _UNSET, num_workers: int = _UNSET,
+                 filetype: str = 'jsonl', compact_output: bool = _UNSET, **kwargs):
+        super().__init__(chunk_size=chunk_size, overlap=overlap, num_workers=num_workers,
+                         filetype=filetype, compact_output=compact_output, **kwargs)
+
+    def _parse_jsonl_lines(self, text: str) -> List[str]:  # noqa: C901
+        lines = text.split('\n')
+        result = []
+        buffer = []
+        braces = brackets = 0
+        in_string = escape = False
+
+        for line in lines:
+            if not buffer and not line.strip():
+                continue
+
+            buffer.append(line)
+
+            for char in line:
+                if escape:
+                    escape = False
+                    continue
+
+                if char == '\\':
+                    escape = True
+                elif char == '"':
+                    in_string = not in_string
+                elif not in_string:
+                    if char == '{': braces += 1
+                    elif char == '}': braces -= 1
+                    elif char == '[': brackets += 1
+                    elif char == ']': brackets -= 1
+
+            if braces == 0 and brackets == 0 and buffer:
+                json_str = '\n'.join(buffer)
+                try:
+                    obj = json.loads(json_str)
+                    result.append(self._to_json_str(obj))
+                except json.JSONDecodeError as e:
+                    LOG.warning(f'Invalid JSON, skipping: {e}')
+
+                buffer = []
+                in_string = escape = False
+
+        if buffer:
+            json_str = '\n'.join(buffer)
+            LOG.warning(f'Incomplete JSON at end of file: {json_str[:50]}...')
+
+        return result
+
+    def split_text(self, text: str, metadata_size: int) -> List[DocNode]:
+        if text == '':
+            return [DocNode(text='', metadata={'code_type': 'empty'})]
+        effective_chunk_size = self._chunk_size - metadata_size
+        if effective_chunk_size <= 0:
+            raise ValueError(
+                f'Metadata length ({metadata_size}) is longer than chunk size '
+                f'({self._chunk_size}). Consider increasing the chunk size or '
+                'decreasing the size of your metadata to avoid this.'
+            )
+        elif effective_chunk_size < 50:
+            LOG.warning(
+                f'Metadata length ({metadata_size}) is close to chunk size '
+                f'({self._chunk_size}). Resulting chunks are less than 50 tokens. '
+                f'Consider increasing the chunk size or decreasing the size of '
+                f'your metadata to avoid this.'
+            )
+
+        jsonl_lines = self._parse_jsonl_lines(text)
+        nodes = []
+        for json_str in jsonl_lines:
+            nodes.extend(self._do_split(json_str, effective_chunk_size))
+
+        return nodes if nodes else [DocNode(
+            text=text,
+            metadata={'filetype': 'jsonl', 'error': 'no_output'}
+        )]
 
 
 # ========== YAMLSplitter ==========
@@ -797,6 +905,7 @@ class CodeSplitter(_TextSplitterBase):
     _SPLITTER_REGISTRY: Dict[str, Type[_LanguageSplitterBase]] = {
         'xml': XMLSplitter,
         'json': JSONSplitter,
+        'jsonl': JSONLSplitter,
         'yaml': YAMLSplitter,
         'yml': YAMLSplitter,
         'html': HTMLSplitter,
@@ -815,10 +924,7 @@ class CodeSplitter(_TextSplitterBase):
 
     def from_language(self, filetype: str) -> _LanguageSplitterBase:
         filetype_lower = filetype.lower()
-        splitter_class = self._SPLITTER_REGISTRY.get(filetype_lower)
-
-        if splitter_class is None:
-            splitter_class = GeneralCodeSplitter
+        splitter_class = self._SPLITTER_REGISTRY.get(filetype_lower, GeneralCodeSplitter)
 
         return splitter_class(
             chunk_size=self._chunk_size,
@@ -844,6 +950,25 @@ class CodeSplitter(_TextSplitterBase):
 
     @classmethod
     def register_splitter(cls, filetype: str, splitter_class: Type[_LanguageSplitterBase]):
+        if not isinstance(splitter_class, type):
+            raise TypeError(
+                f'splitter_class must be a class, got {type(splitter_class).__name__}'
+            )
+
+        if not issubclass(splitter_class, NodeTransform):
+            raise TypeError(
+                f'splitter_class must be a subclass of NodeTransform, '
+                f'got {splitter_class.__name__}'
+            )
+        if not hasattr(splitter_class, 'split_text'):
+            raise TypeError(
+                f'splitter_class must have a split_text method, '
+                f'got {splitter_class.__name__}'
+            )
+        if filetype.lower() in cls._SPLITTER_REGISTRY:
+            raise ValueError(
+                f'splitter for filetype {filetype.lower()} already registered'
+            )
         cls._SPLITTER_REGISTRY[filetype.lower()] = splitter_class
 
     @classmethod

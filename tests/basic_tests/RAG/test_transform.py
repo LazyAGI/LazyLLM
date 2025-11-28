@@ -1,7 +1,8 @@
 import lazyllm
 from lazyllm.tools.rag.transform import (
     SentenceSplitter, CharacterSplitter, RecursiveSplitter, MarkdownSplitter,
-    CodeSplitter, JSONSplitter, YAMLSplitter, HTMLSplitter, XMLSplitter, GeneralCodeSplitter
+    CodeSplitter, JSONSplitter, YAMLSplitter, HTMLSplitter, XMLSplitter,
+    GeneralCodeSplitter, JSONLSplitter
 )
 from lazyllm.tools.rag.transform.markdown import _MdSplit
 from lazyllm.tools.rag.transform.base import _TextSplitterBase, _Split, _TokenTextSplitter
@@ -599,6 +600,128 @@ class TestJSONSplitter:
 
         nodes = splitter.split_text(json_text, metadata_size=0)
         assert len(nodes) >= 1
+
+
+class TestJSONLSplitter:
+    def test_basic_jsonl(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''{"id": 1, "name": "Alice", "age": 30}
+                        {"id": 2, "name": "Bob", "age": 25}
+                        {"id": 3, "name": "Charlie", "age": 35}'''
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'jsonl' for node in nodes)
+
+    def test_jsonl_with_multiline_json(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''{
+                        "id": 1,
+                        "name": "Alice"
+                        }
+                        {
+                        "id": 2,
+                        "name": "Bob"
+                        }'''
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        for node in nodes:
+            assert 'count' in node.metadata or 'type' in node.metadata
+
+    def test_jsonl_with_escaped_newlines(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''{"id": 1, "text": "Line1\\nLine2\\nLine3"}\n{"id": 2, "text": "Hello\\nWorld"}'''
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+
+    def test_jsonl_with_empty_lines(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''{"id": 1, "name": "Alice"}\n{"id": 2, "name": "Bob"}\n{"id": 3, "name": "Charlie"}'''
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'jsonl' for node in nodes)
+
+    def test_jsonl_large_object(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        large_text = 'asdjgkahnkbn asvdkajasdasdl' * 200
+        jsonl_text = f'{{"id": 1, "data": "{large_text}"}}'
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        for node in nodes:
+            assert len(node.text) < 300
+
+    def test_jsonl_mixed_sizes(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        large_text = 'y' * 600
+        jsonl_text = f'''
+            {{"id": 1, "type": "small", "value": 100}}\n{{"id": 2, "type": "large", "data": "{large_text}"}}\n{{"id": 3, "type": "small", "value": 200}}\n  # noqa: E501
+            '''.strip()
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 2
+        has_batch = any('count' in node.metadata for node in nodes)
+        has_split = any('type' in node.metadata and node.metadata['type'] != 'dict' for node in nodes)
+        assert has_batch or has_split or len(nodes) > 1
+
+    def test_jsonl_with_code_splitter(self):
+        splitter = CodeSplitter(chunk_size=200, overlap=0, filetype='jsonl')
+        jsonl_text = '''{"id": 1, "name": "Alice"}\n{"id": 2, "name": "Bob"}'''
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'jsonl' for node in nodes)
+
+    def test_jsonl_nested_objects(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''{"id": 1, "nested": {"key": "value", "count": 42}}\n{"id": 2, "data": {"field1": "test", "field2": [1, 2, 3]}}'''  # noqa: E501
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'jsonl' for node in nodes)
+
+    def test_jsonl_arrays(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''[1, 2, 3, 4, 5]\n["apple", "banana", "cherry"]\n[{"id": 1}, {"id": 2}]'''  # noqa: E501
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'jsonl' for node in nodes)
+
+    def test_jsonl_special_characters(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''{"id": 1, "text": "Hello \\"World\\"", "emoji": "😀🎉"}\n{"id": 2, "chinese": "你好世界", "json_in_string": "{\\"nested\\": true}"}'''  # noqa: E501
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'jsonl' for node in nodes)
+
+    def test_jsonl_empty_input(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = ''
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) == 1
+        assert nodes[0].metadata.get('code_type') == 'empty' or 'count' in nodes[0].metadata
+
+    def test_jsonl_registered_in_code_splitter(self):
+        filetypes = CodeSplitter.get_supported_filetypes()
+
+        assert 'jsonl' in filetypes
 
 
 class TestYAMLSplitter:

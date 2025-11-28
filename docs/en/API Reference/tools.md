@@ -238,6 +238,10 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.rag.transform.code.JSONLSplitter
+    members:
+    exclude-members:
+
 ::: lazyllm.tools.rag.transform.code.YAMLSplitter
     members:
     exclude-members:
