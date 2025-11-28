@@ -4,7 +4,8 @@ import time
 from enum import Enum
 from pydantic import BaseModel
 from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
-from lazyllm import LOG, once_wrapper, OnlineChatModule, TrainableModule
+from lazyllm import LOG, once_wrapper
+from lazyllm.module import LLMBase
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
@@ -73,7 +74,7 @@ class DocImpl:
                  store: Optional[Union[Dict, LazyLLMStoreBase]] = None,
                  processor: Optional[DocumentProcessor] = None, algo_name: Optional[str] = None,
                  display_name: Optional[str] = None, description: Optional[str] = None,
-                 schema_extractor: Optional[Union[OnlineChatModule, TrainableModule, SchemaExtractor]] = None):
+                 schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
@@ -134,7 +135,7 @@ class DocImpl:
     def _create_schema_extractor(self):
         if isinstance(self._schema_extractor, SchemaExtractor):
             return
-        elif isinstance(self._schema_extractor, (OnlineChatModule, TrainableModule)):
+        elif isinstance(self._schema_extractor, LLMBase):
             metadata_store_config = (
                 (self.store.pop('metadata_store', None) if self.store else None)
                 or _get_default_db_config(db_name=f'{self._algo_name}_metadata')

@@ -30,10 +30,7 @@ class _Processor:
         self._display_name = display_name
         self._description = description
         self._max_workers = max_workers
-        self._thread_pool: Optional[ThreadPoolExecutor] = (
-            ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=f'{self._algo_id}_processor')
-            if schema_extractor else None
-        )
+        self._thread_pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=f'{self._algo_id}_processor')
 
     @property
     def store(self) -> _DocumentStore:
@@ -64,10 +61,6 @@ class _Processor:
                     doc_to_root_nodes[n.global_metadata.get(RAG_DOC_ID)].append(n)
 
                 if doc_to_root_nodes:
-                    if self._thread_pool is None:
-                        self._thread_pool = ThreadPoolExecutor(
-                            max_workers=self._max_workers, thread_name_prefix=f'{self._algo_id}_processor'
-                        )
                     for nodes in doc_to_root_nodes.values():
                         schema_futures.append(
                             self._thread_pool.submit(self._schema_extractor, nodes, algo_id=self._algo_id)
@@ -92,9 +85,8 @@ class _Processor:
             raise e
 
     def close(self):
-        if self._thread_pool:
-            self._thread_pool.shutdown(wait=True)
-            self._thread_pool = None
+        self._thread_pool.shutdown(wait=True)
+        self._thread_pool = None
 
     def _set_nodes_number(self, nodes: List[DocNode]) -> List[DocNode]:
         doc_group_number = {}

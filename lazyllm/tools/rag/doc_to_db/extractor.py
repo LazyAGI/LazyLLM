@@ -11,8 +11,9 @@ from pydantic import BaseModel, Field, create_model
 from datetime import datetime
 from string import Template
 
-from lazyllm import LOG, OnlineChatModule, TrainableModule, ThreadPoolExecutor, once_wrapper
+from lazyllm import LOG, ThreadPoolExecutor, once_wrapper
 from lazyllm.components import JsonFormatter
+from lazyllm.module import LLMBase
 
 from ...sql.sql_manager import DBStatus, SqlManager
 from ..doc_node import DocNode
@@ -64,12 +65,12 @@ class SchemaExtractor:
         'map': dict,
     }
 
-    def __init__(self, db_config: Dict[str, Any],
-                 llm: Union[OnlineChatModule, TrainableModule],
-                 *, table_prefix: Optional[str] = None, force_refresh: bool = False,
-                 extraction_mode: ExtractionMode = ExtractionMode.TEXT,
+    def __init__(self, db_config: Dict[str, Any], llm: LLMBase, *, table_prefix: Optional[str] = None,
+                 force_refresh: bool = False, extraction_mode: ExtractionMode = ExtractionMode.TEXT,
                  max_len: int = ONE_DOC_LENGTH_LIMIT, num_workers: int = 4):
-        self._llm = llm or OnlineChatModule()
+        if not isinstance(llm, LLMBase):
+            raise TypeError('llm must be an instance of LLMBase')
+        self._llm = llm
         self._table_prefix = table_prefix or self.TABLE_PREFIX
         self._sql_manager = None
         self._db_config = db_config

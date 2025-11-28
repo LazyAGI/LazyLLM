@@ -4,6 +4,7 @@ from functools import cached_property
 from pydantic import BaseModel
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
+from lazyllm.module import LLMBase
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 from lazyllm.common.bind import _MetaBind
@@ -42,7 +43,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
                      doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
                      display_name: Optional[str] = '', description: Optional[str] = 'algorithm description',
-                     schema_extractor: Optional[Union[OnlineChatModule, TrainableModule, SchemaExtractor]] = None):
+                     schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
@@ -131,7 +132,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
                  store_conf: Optional[Dict] = None, display_name: Optional[str] = '',
                  description: Optional[str] = 'algorithm description',
-                 schema_extractor: Optional[Union[OnlineChatModule, TrainableModule, SchemaExtractor]] = None):
+                 schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
