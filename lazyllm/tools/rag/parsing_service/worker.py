@@ -6,12 +6,12 @@ import cloudpickle
 
 from datetime import datetime
 from lazyllm import LOG, FastapiApp as app, ModuleBase, ServerModule, once_wrapper
-from ..utils import BaseResponse
+from ..utils import BaseResponse, _get_default_db_config
 from .base import (
     FINISHED_TASK_QUEUE_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO,
     TaskStatus, TaskType, ALGORITHM_TABLE_INFO
 )
-from .impl import _Processor, _get_default_db_config
+from .impl import _Processor
 from .queue import _SQLBasedQueue as Queue
 from ...sql import SqlManager
 
@@ -22,7 +22,7 @@ class DocumentProcessorWorker(ModuleBase):
 
     class _Impl():
         def __init__(self, db_config: dict = None):
-            self._db_config = db_config if db_config else _get_default_db_config()
+            self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
             self._shutdown = False
             self._processors: dict[str, _Processor] = {}  # algo_id -> _Processor
             self._waiting_task_queue = None
@@ -90,7 +90,9 @@ class DocumentProcessorWorker(ModuleBase):
                     store = info['store']
                     reader = info['reader']
                     node_groups = info['node_groups']
-                    processor = _Processor(store, reader, node_groups, display_name, description)
+                    schema_extractor = info['schema_extractor']
+                    processor = _Processor(algo_id, store, reader, node_groups, schema_extractor,
+                                           display_name, description)
                     self._processors[algo_id] = processor
                     LOG.info(f'[DocumentProcessorWorker._Impl] Created processor for {algo_id}')
                 return self._processors[algo_id]
@@ -101,6 +103,7 @@ class DocumentProcessorWorker(ModuleBase):
         def _exec_add_task(self, processor: _Processor, task_id: str, payload: dict):
             try:
                 file_infos = payload.get('file_infos')
+                kb_id = payload.get('kb_id', None)
                 input_files = []
                 ids = []
                 metadatas = []
@@ -110,7 +113,7 @@ class DocumentProcessorWorker(ModuleBase):
                     ids.append(file_info.get('doc_id'))
                     metadatas.append(file_info.get('metadata'))
 
-                processor.add_doc(input_files=input_files, ids=ids, metadatas=metadatas)
+                processor.add_doc(input_files=input_files, ids=ids, metadatas=metadatas, kb_id=kb_id)
             except Exception as e:
                 LOG.error(f'[DocumentProcessorWorker._Impl] Task-{task_id}: execute add task failed, error: {e}')
                 raise e
@@ -120,6 +123,7 @@ class DocumentProcessorWorker(ModuleBase):
         ):
             try:
                 file_infos = payload.get('file_infos')
+                kb_id = payload.get('kb_id', None)
                 reparse_group = None
                 reparse_doc_ids = []
                 reparse_files = []
@@ -138,7 +142,8 @@ class DocumentProcessorWorker(ModuleBase):
 
                 reparse_group = first_reparse_group
                 processor.reparse(group_name=reparse_group, doc_ids=reparse_doc_ids,
-                                  doc_paths=reparse_files, metadatas=reparse_metadatas)
+                                  doc_paths=reparse_files, metadatas=reparse_metadatas,
+                                  kb_id=kb_id)
             except Exception as e:
                 LOG.error(f'[DocumentProcessorWorker._Impl] Task-{task_id}: execute reparse task failed, error: {e}')
                 raise e
@@ -155,10 +160,11 @@ class DocumentProcessorWorker(ModuleBase):
         def _exec_update_meta_task(self, processor: _Processor, task_id: str, payload: dict):
             try:
                 file_infos = payload.get('file_infos')
+                kb_id = payload.get('kb_id', None)
                 for file_info in file_infos:
                     doc_id = file_info.get('doc_id')
                     metadata = file_info.get('metadata')
-                    processor.update_doc_meta(doc_id=doc_id, metadata=metadata)
+                    processor.update_doc_meta(doc_id=doc_id, metadata=metadata, kb_id=kb_id)
             except Exception as e:
                 LOG.error(f'[DocumentProcessorWorker._Impl] Task-{task_id}: execute update meta task failed,'
                           f'error: {e}')
@@ -251,7 +257,7 @@ class DocumentProcessorWorker(ModuleBase):
 
     def __init__(self, db_config: dict = None, num_workers: int = 1, port: int = None):
         super().__init__()
-        self._db_config = db_config if db_config else _get_default_db_config()
+        self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         self._num_workers = num_workers
         self._port = port
         worker_impl = DocumentProcessorWorker._Impl(db_config=self._db_config)

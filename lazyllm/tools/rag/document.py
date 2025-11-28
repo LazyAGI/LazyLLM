@@ -1,8 +1,10 @@
 import os
-from typing import Callable, Optional, Dict, Union, List
+from typing import Callable, Optional, Dict, Union, List, Type
 from functools import cached_property
+from pydantic import BaseModel
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
+from lazyllm.module import LLMBase
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 from lazyllm.common.bind import _MetaBind
@@ -10,8 +12,9 @@ from lazyllm.common.bind import _MetaBind
 from .doc_manager import DocManager
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
-from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files
+from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files, SchemaExtractor
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
+from .store.store_base import DEFAULT_KB_ID
 from .index_base import IndexBase
 from .utils import DocListManager, ensure_call_endpoint
 from .global_metadata import GlobalMetadataDesc as DocField
@@ -39,7 +42,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
                      doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
-                     display_name: Optional[str] = '', description: Optional[str] = 'algorithm description'):
+                     display_name: Optional[str] = '', description: Optional[str] = 'algorithm description',
+                     schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
@@ -62,7 +66,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._kbs = CallableDict({name: DocImpl(
                 embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
                 store=store_conf, processor=processor, algo_name=name, display_name=display_name,
-                description=description)})
+                description=description, schema_extractor=schema_extractor)})
 
             if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
@@ -127,7 +131,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                  server: Union[bool, int] = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
                  store_conf: Optional[Dict] = None, display_name: Optional[str] = '',
-                 description: Optional[str] = 'algorithm description'):
+                 description: Optional[str] = 'algorithm description',
+                 schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
@@ -142,6 +147,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 'Only map store is supported for Document with temp-files')
 
         name = name or DocListManager.DEFAULT_GROUP_NAME
+        self._schema_extractor: SchemaExtractor = schema_extractor
 
         if isinstance(manager, Document._Manager):
             assert not server, 'Server infomation is already set to by manager'
@@ -166,7 +172,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 cloud, processor = False, None
             self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher, store_conf,
                                               doc_fields, cloud=cloud, doc_files=doc_files, processor=processor,
-                                              display_name=display_name, description=description)
+                                              display_name=display_name, description=description,
+                                              schema_extractor=self._schema_extractor)
             self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
         self._graph_document: weakref.ref = None
@@ -370,6 +377,13 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def drop_algorithm(self):
         return self._forward('drop_algorithm')
+
+    def analyze_schema_by_llm(self, kb_id: Optional[str] = None, doc_ids: Optional[List[str]] = None):
+        return self._forward('_analyze_schema_by_llm', kb_id, doc_ids)
+
+    def register_schema_set(self, schema_set: Type[BaseModel], kb_id: Optional[str] = DEFAULT_KB_ID,
+                            force_refresh: bool = False) -> str:
+        return self._forward('_register_schema_set', schema_set, kb_id, force_refresh)
 
     def _get_post_process_tasks(self):
         return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))
