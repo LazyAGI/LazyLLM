@@ -3553,6 +3553,93 @@ reader = CustomReader(return_trace=True)
 documents = reader.forward(file_paths=["doc1.txt", "doc2.txt"])
 ''')
 
+add_english_doc('rag.readers.readerBase.LazyLLMReaderBase.detect_encoding', '''\
+Detect the encoding of a file.
+
+Args:
+    file_path (str): The path of the file.
+    fs (fsspec.AbstractFileSystem): The file system.
+    sample_size (int): The sample size.
+    use_cache (bool): Whether to use cache.
+    enable_chardet (bool): Whether to enable chardet.
+
+**Returns:**\n
+- str: The encoding of the file.
+''')
+
+add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase.detect_encoding', '''\
+检测文件的编码。
+
+Args:
+    file_path (str): 文件路径。
+    fs (fsspec.AbstractFileSystem): 文件系统。
+    sample_size (int): 样本大小。
+    use_cache (bool): 是否使用缓存。
+    enable_chardet (bool): 是否启用 chardet。
+
+**Returns:**\n
+- str: 文件的编码。
+''')
+
+add_example('rag.readers.readerBase.LazyLLMReaderBase.detect_encoding', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.rag.readers import LazyLLMReaderBase
+>>> reader = LazyLLMReaderBase()
+>>> encoding = reader.detect_encoding("path/to/file.txt")
+>>> print(encoding)
+''')
+
+add_english_doc('rag.readers.readerBase.LazyLLMReaderBase.clear_encoding_cache', '''\
+Clear the encoding cache.
+
+Args:
+    file_path (str): The path of the file.
+    fs (fsspec.AbstractFileSystem): The file system.
+    sample_size (int): The sample size.
+    use_cache (bool): Whether to use cache.
+    enable_chardet (bool): Whether to enable chardet.
+''')
+
+add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase.clear_encoding_cache', '''\
+清空编码缓存。
+
+Args:
+    file_path (str): 文件路径。
+    fs (fsspec.AbstractFileSystem): 文件系统。
+    sample_size (int): 样本大小。
+    use_cache (bool): 是否使用缓存。
+    enable_chardet (bool): 是否启用 chardet。
+''')
+
+add_example('rag.readers.readerBase.LazyLLMReaderBase.clear_encoding_cache', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.rag.readers import LazyLLMReaderBase
+>>> reader = LazyLLMReaderBase()
+>>> reader.clear_encoding_cache()
+''')
+
+add_english_doc('rag.readers.readerBase.LazyLLMReaderBase.get_encoding_cache_stats', '''\
+Get the encoding cache stats.
+
+**Returns:**\n
+- dict: The encoding cache stats.
+''')
+
+add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase.get_encoding_cache_stats', '''\
+获取编码缓存统计信息。
+
+**Returns:**\n
+- dict: 编码缓存统计信息。
+''')
+
+add_example('rag.readers.readerBase.LazyLLMReaderBase.get_encoding_cache_stats', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.rag.readers import LazyLLMReaderBase
+>>> reader = LazyLLMReaderBase()
+>>> stats = reader.get_encoding_cache_stats()
+>>> print(stats)
+''')
+
 add_example('rag.readers.MineruPDFReader', '''\
 from lazyllm.tools.rag.readers import MineruPDFReader
 reader = MineruPDFReader("http://0.0.0.0:8888")  # Mineru server address
