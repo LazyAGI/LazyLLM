@@ -133,7 +133,7 @@ class DocImpl:
 
     @once_wrapper(reset_on_pickle=True)
     def _create_schema_extractor(self):
-        if isinstance(self._schema_extractor, SchemaExtractor):
+        if self._schema_extractor is None or isinstance(self._schema_extractor, SchemaExtractor):
             return
         elif isinstance(self._schema_extractor, LLMBase):
             metadata_store_config = (
