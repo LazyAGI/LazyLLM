@@ -66,7 +66,7 @@ deepspeed = { version = ">=0.12.3", optional = true }
 fire = { version = ">=0.6.0", optional = true }
 peft = {version = "==0.17.1", optional = true}
 torch = { version = ">=2.1.2", optional = true }
-transformers = {version = ">=4.55.0", optional = true}
+transformers = {version = "==4.57.1", optional = true}
 collie-lm = { version = ">=1.0.7", optional = true }
 faiss-cpu = { version = ">=1.8.0", optional = true }
 google = { version = ">=3.0.0", optional = true }
@@ -109,7 +109,7 @@ zhipuai = {version = ">=2.1.5.20250708", optional = true}
 opensearch-py = {version = ">=3.0.0", optional = true}
 elasticsearch = {version = "<7.17.12", optional = true}
 tokenizers = {version = "==0.22.0", optional = true}
-lazyllm-verl = {version = "^0.3.2.dev1", optional = true}
+lazyllm-verl = {version = "==0.3.2.dev2", optional = true}
 bitsandbytes = {version = "==0.48.2", optional = true}
 pluggy = {version = "==1.6.0", optional = true}
 chardet = {version = "^5.2.0", optional = true}
