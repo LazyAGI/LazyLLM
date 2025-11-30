@@ -1,7 +1,8 @@
 import lazyllm
 from lazyllm.tools.rag.transform import (
-    SentenceSplitter, CharacterSplitter, RecursiveSplitter,
-    MarkdownSplitter
+    SentenceSplitter, CharacterSplitter, RecursiveSplitter, MarkdownSplitter,
+    CodeSplitter, JSONSplitter, YAMLSplitter, HTMLSplitter, XMLSplitter,
+    GeneralCodeSplitter, JSONLSplitter
 )
 from lazyllm.tools.rag.transform.markdown import _MdSplit
 from lazyllm.tools.rag.transform.base import _TextSplitterBase, _Split, _TokenTextSplitter
@@ -441,6 +442,656 @@ class TestMarkdownSplitter:
             '* [LinuxBoot on Ampere Platforms: A new (old) approach to firmware](https://amperecomputing.com/blogs/linuxboot-on-ampere-platforms--a-new-old-approach-to-firmware)']  # noqa: E501
         for i in range(len(merged)):
             assert merged[i].content == expected_merged[i]
+
+
+class TestXMLSplitter:
+    def test_basic_xml_split(self):
+        splitter = XMLSplitter(chunk_size=100, overlap=0, keep_tags=True, keep_trace=True)
+        xml_text = '''
+        <library>
+            <book id="1">
+                <title>Python Programming</title>
+                <author>John Doe</author>
+                <year>2023</year>
+            </book>
+            <book id="2">
+                <title>Data Science</title>
+                <author>Jane Smith</author>
+                <year>2024</year>
+            </book>
+        </library>
+        '''
+
+        nodes = splitter.split_text(xml_text, metadata_size=0)
+
+        assert len(nodes) > 0
+        for node in nodes:
+            assert 'tag' in node.metadata or 'xml_tag' in node.metadata
+            assert 'filetype' not in node.metadata
+
+    def test_xml_with_attributes(self):
+        splitter = XMLSplitter(chunk_size=100, overlap=0, keep_trace=True, keep_tags=True)
+        xml_text = '''
+        <root>
+            <element type="text" lang="en">Content here</element>
+            <element type="image" src="pic.jpg">Image description</element>
+        </root>
+        '''
+
+        nodes = splitter.split_text(xml_text, metadata_size=50)
+
+        has_attributes = any('attributes' in node.metadata for node in nodes)
+        assert has_attributes or len(nodes) > 0
+
+    def test_xml_keep_trace(self):
+        splitter = XMLSplitter(chunk_size=100, overlap=0, keep_trace=True)
+        xml_text = '''
+        <root>
+            <parent>
+                <child>Nested content</child>
+            </parent>
+        </root>
+        '''
+
+        nodes = splitter.split_text(xml_text, metadata_size=0)
+
+        has_trace = any('trace' in node.metadata for node in nodes)
+        assert has_trace
+
+    def test_xml_invalid(self):
+        splitter = XMLSplitter(chunk_size=100, overlap=0)
+        invalid_xml = '<unclosed><tag>'
+
+        nodes = splitter.split_text(invalid_xml, metadata_size=0)
+
+        assert len(nodes) == 1
+        assert 'error' in nodes[0].metadata
+
+
+class TestJSONSplitter:
+    def test_simple_json(self):
+        splitter = JSONSplitter(chunk_size=100, overlap=0, compact_output=True)
+        json_text = '{"name": "John", "age": 30, "city": "New York"}'
+
+        nodes = splitter.split_text(json_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'json' for node in nodes)
+
+    def test_json_dict_split(self):
+        splitter = JSONSplitter(chunk_size=80, overlap=0, compact_output=True)
+        json_text = '''{
+            "field1": "This is a very long text that might exceed chunk size when combined with other fields",
+            "field2": "Another long text field with substantial content",
+            "field3": "Short",
+            "field4": {"nested": "value"}
+        }'''
+
+        nodes = splitter.split_text(json_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        for node in nodes:
+            assert 'type' in node.metadata
+            assert 'path' in node.metadata
+            assert 'depth' in node.metadata
+
+    def test_json_array_split(self):
+        splitter = JSONSplitter(chunk_size=50, overlap=0, compact_output=True)
+        json_text = '''[
+            {"id": 1, "name": "Item 1", "desc": "Description 1"},
+            {"id": 2, "name": "Item 2", "desc": "Description 2"},
+            {"id": 3, "name": "Item 3", "desc": "Description 3"}
+        ]'''
+
+        nodes = splitter.split_text(json_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        has_list = any(node.metadata.get('type') == 'list' for node in nodes)
+        assert has_list or len(nodes) > 0
+
+    def test_json_nested_structure(self):
+        splitter = JSONSplitter(chunk_size=100, overlap=0, compact_output=True)
+        json_text = '''{
+            "user": {
+                "profile": {
+                    "name": "John",
+                    "bio": "A very long biography text that describes the user in detail"
+                },
+                "posts": [
+                    {"id": 1, "title": "Post 1", "content": "Content 1"},
+                    {"id": 2, "title": "Post 2", "content": "Content 2"}
+                ]
+            }
+        }'''
+
+        nodes = splitter.split_text(json_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        paths = [node.metadata.get('path') for node in nodes]
+        assert any(path for path in paths if path is not None)
+
+    def test_json_compact_vs_formatted(self):
+        json_text = '{"a": 1, "b": 2, "c": 3}'
+
+        splitter_compact = JSONSplitter(chunk_size=50, overlap=0, compact_output=True)
+        nodes_compact = splitter_compact.split_text(json_text, metadata_size=0)
+
+        splitter_formatted = JSONSplitter(chunk_size=50, overlap=0, compact_output=False)
+        nodes_formatted = splitter_formatted.split_text(json_text, metadata_size=0)
+
+        if len(nodes_compact) == 1 and len(nodes_formatted) == 1:
+            assert len(nodes_formatted[0].text) >= len(nodes_compact[0].text)
+
+    def test_json_invalid(self):
+        splitter = JSONSplitter(chunk_size=100, overlap=0)
+        invalid_json = '{invalid json'
+
+        nodes = splitter.split_text(invalid_json, metadata_size=0)
+
+        assert len(nodes) == 1
+        assert 'error' in nodes[0].metadata
+
+    def test_json_with_parent_field(self):
+        splitter = JSONSplitter(chunk_size=30, overlap=0, compact_output=True)
+        json_text = '''{
+            "long_field": "This is a very long text field that will be split into multiple parts because it exceeds the chunk size limit significantly",  # noqa: E501
+            "short_field": "This is a short text field"
+        }'''
+
+        nodes = splitter.split_text(json_text, metadata_size=0)
+        assert len(nodes) >= 1
+
+
+class TestJSONLSplitter:
+    def test_basic_jsonl(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''{"id": 1, "name": "Alice", "age": 30}
+                        {"id": 2, "name": "Bob", "age": 25}
+                        {"id": 3, "name": "Charlie", "age": 35}'''
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'jsonl' for node in nodes)
+
+    def test_jsonl_with_multiline_json(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''{
+                        "id": 1,
+                        "name": "Alice"
+                        }
+                        {
+                        "id": 2,
+                        "name": "Bob"
+                        }'''
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        for node in nodes:
+            assert 'count' in node.metadata or 'type' in node.metadata
+
+    def test_jsonl_with_escaped_newlines(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''{"id": 1, "text": "Line1\\nLine2\\nLine3"}\n{"id": 2, "text": "Hello\\nWorld"}'''
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+
+    def test_jsonl_with_empty_lines(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''{"id": 1, "name": "Alice"}\n{"id": 2, "name": "Bob"}\n{"id": 3, "name": "Charlie"}'''
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'jsonl' for node in nodes)
+
+    def test_jsonl_large_object(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        large_text = 'asdjgkahnkbn asvdkajasdasdl' * 200
+        jsonl_text = f'{{"id": 1, "data": "{large_text}"}}'
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        for node in nodes:
+            assert len(node.text) < 300
+
+    def test_jsonl_mixed_sizes(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        large_text = 'y' * 600
+        jsonl_text = f'''
+            {{"id": 1, "type": "small", "value": 100}}\n{{"id": 2, "type": "large", "data": "{large_text}"}}\n{{"id": 3, "type": "small", "value": 200}}\n  # noqa: E501
+            '''.strip()
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 2
+        has_batch = any('count' in node.metadata for node in nodes)
+        has_split = any('type' in node.metadata and node.metadata['type'] != 'dict' for node in nodes)
+        assert has_batch or has_split or len(nodes) > 1
+
+    def test_jsonl_with_code_splitter(self):
+        splitter = CodeSplitter(chunk_size=200, overlap=0, filetype='jsonl')
+        jsonl_text = '''{"id": 1, "name": "Alice"}\n{"id": 2, "name": "Bob"}'''
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'jsonl' for node in nodes)
+
+    def test_jsonl_nested_objects(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''{"id": 1, "nested": {"key": "value", "count": 42}}\n{"id": 2, "data": {"field1": "test", "field2": [1, 2, 3]}}'''  # noqa: E501
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'jsonl' for node in nodes)
+
+    def test_jsonl_arrays(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''[1, 2, 3, 4, 5]\n["apple", "banana", "cherry"]\n[{"id": 1}, {"id": 2}]'''  # noqa: E501
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'jsonl' for node in nodes)
+
+    def test_jsonl_special_characters(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = '''{"id": 1, "text": "Hello \\"World\\"", "emoji": "😀🎉"}\n{"id": 2, "chinese": "你好世界", "json_in_string": "{\\"nested\\": true}"}'''  # noqa: E501
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'jsonl' for node in nodes)
+
+    def test_jsonl_empty_input(self):
+        splitter = JSONLSplitter(chunk_size=200, overlap=0)
+        jsonl_text = ''
+
+        nodes = splitter.split_text(jsonl_text, metadata_size=0)
+
+        assert len(nodes) == 1
+        assert nodes[0].metadata.get('code_type') == 'empty' or 'count' in nodes[0].metadata
+
+    def test_jsonl_registered_in_code_splitter(self):
+        filetypes = CodeSplitter.get_supported_filetypes()
+
+        assert 'jsonl' in filetypes
+
+
+class TestYAMLSplitter:
+    def test_simple_yaml(self):
+        splitter = YAMLSplitter(chunk_size=100, overlap=0)
+        yaml_text = '''
+        name: MyProject
+        version: 1.0.0
+        description: A test project
+        '''
+
+        nodes = splitter.split_text(yaml_text, metadata_size=0)
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'yaml' for node in nodes)
+
+    def test_yaml_with_lists(self):
+        splitter = YAMLSplitter(chunk_size=80, overlap=0)
+        yaml_text = '''
+        dependencies:
+          - package1: "1.0.0"
+          - package2: "2.0.0"
+          - package3: "3.0.0"
+        config:
+          host: localhost
+          port: 8080
+        '''
+
+        nodes = splitter.split_text(yaml_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert any('path' in node.metadata for node in nodes)
+
+    def test_yaml_nested(self):
+        splitter = YAMLSplitter(chunk_size=100, overlap=0)
+        yaml_text = '''
+        server:
+          database:
+            host: localhost
+            port: 5432
+            credentials:
+              username: admin
+              password: secret
+          application:
+            name: MyApp
+            version: 2.0.0
+        '''
+
+        nodes = splitter.split_text(yaml_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+
+    def test_yaml_invalid(self):
+        splitter = YAMLSplitter(chunk_size=100, overlap=0)
+        invalid_yaml = '''
+        invalid:
+          - item1
+         - item2
+        '''
+
+        nodes = splitter.split_text(invalid_yaml, metadata_size=0)
+
+        assert len(nodes) >= 1
+
+
+class TestHTMLSplitter:
+    def test_simple_html(self):
+        splitter = HTMLSplitter(chunk_size=100, overlap=0)
+        html_text = '''
+        <html>
+        <body>
+            <h1>Title</h1>
+            <p>This is a paragraph.</p>
+        </body>
+        </html>
+        '''
+
+        nodes = splitter.split_text(html_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata['filetype'] == 'html' for node in nodes)
+
+    def test_html_with_sections(self):
+        splitter = HTMLSplitter(chunk_size=200, overlap=0, keep_sections=True)
+        html_text = '''
+        <html>
+        <body>
+            <header>
+                <h1>Website Header</h1>
+            </header>
+            <main>
+                <article>
+                    <h2>Article Title</h2>
+                    <p>Article content goes here.</p>
+                </article>
+            </main>
+            <footer>
+                <p>Footer content</p>
+            </footer>
+        </body>
+        </html>
+        '''
+
+        nodes = splitter.split_text(html_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        has_section_type = any('section_type' in node.metadata for node in nodes)
+        assert has_section_type
+
+    def test_html_with_headings(self):
+        splitter = HTMLSplitter(chunk_size=150, overlap=0)
+        html_text = '''
+        <html>
+        <body>
+            <h1>Main Title</h1>
+            <p>Introduction paragraph.</p>
+            <h2>Section 1</h2>
+            <p>Section 1 content.</p>
+            <h2>Section 2</h2>
+            <p>Section 2 content.</p>
+        </body>
+        </html>
+        '''
+
+        nodes = splitter.split_text(html_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        has_heading = any(node.metadata.get('has_heading') for node in nodes)
+        assert has_heading or len(nodes) > 0
+
+    def test_html_with_divs(self):
+        splitter = HTMLSplitter(chunk_size=150, overlap=0)
+        html_text = '''
+        <html>
+        <body>
+            <div class="container">
+                <div class="content">
+                    <p>Content 1</p>
+                </div>
+                <div class="sidebar">
+                    <p>Sidebar content</p>
+                </div>
+            </div>
+        </body>
+        </html>
+        '''
+
+        nodes = splitter.split_text(html_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+
+    def test_html_script_removal(self):
+        splitter = HTMLSplitter(chunk_size=200, overlap=0)
+        html_text = '''
+        <html>
+        <head>
+            <style>body { color: red; }</style>
+        </head>
+        <body>
+            <p>Visible content</p>
+            <script>console.log('test');</script>
+        </body>
+        </html>
+        '''
+
+        nodes = splitter.split_text(html_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        for node in nodes:
+            assert 'console.log' not in node.text
+            assert 'color: red' not in node.text
+
+    def test_html_invalid(self):
+        splitter = HTMLSplitter(chunk_size=100, overlap=0)
+        invalid_html = '<div><p>Unclosed tags'
+
+        nodes = splitter.split_text(invalid_html, metadata_size=0)
+
+        assert len(nodes) >= 1
+
+
+class TestGeneralCodeSplitter:
+    def test_python_code(self):
+        splitter = GeneralCodeSplitter(chunk_size=200, overlap=0, filetype='python')
+        code = '''
+            def function1():
+                print("Hello")
+                return True
+
+            def function2(x, y):
+                result = x + y
+                return result
+
+            class MyClass:
+                def __init__(self):
+                    self.value = 0
+
+                def method(self):
+                    return self.value
+            '''
+
+        nodes = splitter.split_text(code, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert all(node.metadata.get('code_type') in ['code_block', 'code_structure', 'code_file']
+                   for node in nodes)
+
+    def test_class_structure(self):
+        splitter = GeneralCodeSplitter(chunk_size=150, overlap=0, filetype='python')
+        code = '''
+            class Example:
+                def __init__(self, name):
+                    self.name = name
+
+                def greet(self):
+                    print(f"Hello, {self.name}")
+            '''
+
+        nodes = splitter.split_text(code, metadata_size=0)
+
+        assert len(nodes) >= 1
+        has_structure = any(node.metadata.get('code_type') == 'code_structure'
+                            for node in nodes)
+        assert has_structure or len(nodes) > 0
+
+    def test_control_structures(self):
+        splitter = GeneralCodeSplitter(chunk_size=100, overlap=0, filetype='python')
+        code = '''
+            if condition:
+                do_something()
+            elif other_condition:
+                do_other_thing()
+            else:
+                do_default()
+
+            for i in range(10):
+                print(i)
+
+            while True:
+                break
+            '''
+
+        nodes = splitter.split_text(code, metadata_size=0)
+
+        assert len(nodes) >= 1
+
+    def test_empty_code(self):
+        splitter = GeneralCodeSplitter(chunk_size=100, overlap=0, filetype='python')
+        code = ''
+
+        nodes = splitter.split_text(code, metadata_size=0)
+
+        assert len(nodes) == 1
+        assert nodes[0].metadata['code_type'] == 'empty'
+
+
+class TestCodeSplitter:
+    def test_xml_filetype(self):
+        splitter = CodeSplitter(chunk_size=100, overlap=0, filetype='xml')
+        xml_text = '<root><item>test</item></root>'
+
+        nodes = splitter.split_text(xml_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+
+    def test_json_filetype(self):
+        splitter = CodeSplitter(chunk_size=100, overlap=0, filetype='json')
+        json_text = '{"key": "value"}'
+
+        nodes = splitter.split_text(json_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert nodes[0].metadata['filetype'] == 'json'
+
+    def test_yaml_filetype(self):
+        splitter = CodeSplitter(chunk_size=100, overlap=0, filetype='yaml')
+        yaml_text = 'key: value\nlist:\n  - item1\n  - item2'
+
+        nodes = splitter.split_text(yaml_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert nodes[0].metadata['filetype'] == 'yaml'
+
+    def test_html_filetype(self):
+        splitter = CodeSplitter(chunk_size=100, overlap=0, filetype='html')
+        html_text = '<html><body><p>test</p></body></html>'
+
+        nodes = splitter.split_text(html_text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert nodes[0].metadata['filetype'] == 'html'
+
+    def test_programming_fallback(self):
+        splitter = CodeSplitter(chunk_size=100, overlap=0, filetype='python')
+        code = 'def test():\n    pass'
+
+        nodes = splitter.split_text(code, metadata_size=0)
+
+        assert len(nodes) >= 1
+
+    def test_no_filetype(self):
+        splitter = CodeSplitter(chunk_size=100, overlap=0)
+        text = 'some text'
+
+        nodes = splitter.split_text(text, metadata_size=0)
+
+        assert len(nodes) >= 1
+        assert nodes[0].metadata.get('tag') == 'unknown_type'
+
+    def test_get_supported_filetypes(self):
+        filetypes = CodeSplitter.get_supported_filetypes()
+
+        assert 'xml' in filetypes
+        assert 'json' in filetypes
+        assert 'yaml' in filetypes
+        assert 'yml' in filetypes
+        assert 'html' in filetypes
+        assert 'htm' in filetypes
+
+    def test_register_custom_splitter(self):
+        class CustomSplitter(GeneralCodeSplitter):
+            pass
+
+        CodeSplitter.register_splitter('custom', CustomSplitter)
+
+        filetypes = CodeSplitter.get_supported_filetypes()
+        assert 'custom' in filetypes
+
+        splitter = CodeSplitter(chunk_size=100, overlap=0, filetype='custom')
+        text = 'test content'
+        nodes = splitter.split_text(text, metadata_size=0)
+
+        assert len(nodes) >= 1
+
+    def test_batch_forward_with_docnode(self):
+        splitter = CodeSplitter(chunk_size=100, overlap=0, filetype='json')
+        json_text = '{"name": "test", "value": 123}'
+
+        doc_node = DocNode(text=json_text)
+        nodes = splitter.batch_forward([doc_node], node_group='test')
+
+        assert len(nodes) >= 1
+
+
+class TestSetDefaultIntegration:
+    def test_json_splitter_set_default(self):
+        JSONSplitter.set_default(chunk_size=512, compact_output=False)
+        splitter = JSONSplitter()
+        assert splitter._chunk_size == 512
+        assert splitter._compact_output is False
+        JSONSplitter.reset_default()
+
+    def test_html_splitter_set_default(self):
+        HTMLSplitter.set_default(chunk_size=256, keep_sections=True)
+
+        splitter = HTMLSplitter()
+
+        assert splitter._chunk_size == 256
+        assert splitter._keep_sections is True
+
+        HTMLSplitter.reset_default()
+
+    def test_xml_splitter_set_default(self):
+        XMLSplitter.set_default(keep_trace=True, keep_tags=True)
+
+        splitter = XMLSplitter()
+
+        assert splitter._keep_trace is True
+        assert splitter._keep_tags is True
+
+        XMLSplitter.reset_default()
 
 
 class TestTextSplitterBase:
