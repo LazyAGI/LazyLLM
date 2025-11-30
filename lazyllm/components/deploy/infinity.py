@@ -46,7 +46,7 @@ class Infinity(LazyLLMDeployBase):
         def impl():
             if self.random_port:
                 self.kw['port'] = random.randint(30000, 40000)
-            cmd = f'infinity_emb v2 --model-id {finetuned_model} '
+            cmd = f'infinity_emb v2 --model-id {finetuned_model} --no-bettertransformer '
             if isinstance(self._launcher, launchers.EmptyLauncher) and self._launcher.ngpus:
                 available_gpus = self._launcher._get_idle_gpus()
                 required_count = self._launcher.ngpus

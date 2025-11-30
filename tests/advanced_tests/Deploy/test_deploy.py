@@ -160,6 +160,7 @@ class TestDeploy(object):
         assert 'files' in res
         assert len(res['files']) == 1
 
+    @pytest.mark.skip(reason='Test skipped due to deprecated ChatTTS model')
     @pytest.mark.run_on_change(
         'lazyllm/components/deploy/text_to_speech/chattts.py',
         'lazyllm/components/auto/autodeploy.py',
@@ -240,7 +241,7 @@ class TestDeploy(object):
         'lazyllm/components/auto/autodeploy.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_vlm_and_lmdeploy(self):
-        chat = lazyllm.TrainableModule('Mini-InternVL-Chat-2B-V1-5')
+        chat = lazyllm.TrainableModule('InternVL3_5-1B')
         m = lazyllm.ServerModule(chat)
         m.update_server()
         query = '这是啥？'

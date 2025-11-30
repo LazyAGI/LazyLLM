@@ -222,7 +222,7 @@ base = TrainableModule('internlm2-chat-7b')
 with IntentClassifier(base) as ic:
     ic.case['聊天', base]
     ic.case['语音识别', TrainableModule('SenseVoiceSmall')]
-    ic.case['图片问答', TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)]
+    ic.case['图片问答', TrainableModule('InternVL3_5-1B').deploy_method(deploy.LMDeploy)]
     ic.case['画图', pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-diffusion-3-medium'))]
     ic.case['生成音乐', pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))]
     ic.case['文字转语音', TrainableModule('ChatTTS')]

@@ -16,6 +16,9 @@ class TestFinetune(object):
         self.llm_path = 'qwen1.5-0.5b-chat'
         self.vlm_data = 'ci_data/vqa_rad/train.json'
         self.vlm_path = 'qwen2.5-vl-3b-instruct'
+        self.grpo_train_data = 'ci_data/math-json-200/train200.json'
+        self.grpo_test_data = 'ci_data/math-json-200/test100.json'
+        self.grpo_llm = 'qwen2-0.5b-instruct'
         self.embed_data = os.path.join(lazyllm.config['data_path'], 'sft_embeding/embedding.json')
         self.embed_path = 'bge-m3'
         self.rerank_data = os.path.join(lazyllm.config['data_path'], 'sft_embeding/rerank.jsonl')
@@ -139,3 +142,26 @@ class TestFinetune(object):
         assert type(res) is list
         assert len(res) == 2
         assert type(res[0]) is tuple
+
+    @pytest.mark.run_on_change(
+        r'lazyllm/components/finetune/easy_r1/.*',
+        r'lazyllm/components/finetune/easyr1\.json',
+        regex_mode=True)
+    def test_grpo_easyr1(self):
+        m = lazyllm.TrainableModule(self.grpo_llm, self.save_path)\
+            .mode('finetune')\
+            .trainset(lambda: lazyllm.package(self.grpo_train_data, self.grpo_test_data))\
+            .finetune_method(
+                (lazyllm.finetune.easyr1, {
+                    'data.rollout_batch_size': 64,
+                    'data.val_batch_size': 32,
+                    'worker.actor.global_batch_size': 32,
+                    'trainer.save_model_only': True,
+                    'trainer.total_epochs': 1,
+                    'worker.rollout.tensor_parallel_size': 2,
+                    'launcher': lazyllm.launchers.remote(ngpus=2, sync=True),
+                }))
+        m.update()
+        assert self.has_bin_file(m.finetuned_model_path)
+        res = m('hi')
+        assert type(res) is str
