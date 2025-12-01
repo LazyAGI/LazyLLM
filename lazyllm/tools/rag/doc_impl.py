@@ -135,7 +135,8 @@ class DocImpl:
 
         if self.embed and embed_dims:
             registry = get_embedding_registry()
-            registry.validate_and_register(store_conf, self.embed, embed_dims, embed_datatypes)
+            registry.validate_and_register(store_conf, self.embed, embed_dims,
+                                           embed_datatypes, self._algo_name, self._kb_group_name)
 
     @once_wrapper(reset_on_pickle=True)
     def _create_schema_extractor(self):
