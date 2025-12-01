@@ -41,9 +41,9 @@ class EmbeddingModelRegistry:
         self._persistence_path: Optional[str] = None
         self._auto_save: bool = True
         self._sql_manager: Optional[SqlManager] = None
-        self.configure()
+        self._configure()
 
-    def configure(self, persistence_path: Optional[str] = None, auto_save: bool = True):
+    def _configure(self, persistence_path: Optional[str] = None, auto_save: bool = True):
         if persistence_path is None:
             persistence_path = os.getenv('EMBED_REGISTRY_CACHE')
             if not persistence_path:
@@ -302,15 +302,15 @@ Try with:
                 data_type=data_type
             )
 
-    def get(self, embed_key: str) -> Optional[EmbeddingModelInfo]:
-        return self._registry.get(embed_key)
+    def get(self, collection_name: str) -> Optional[EmbeddingModelInfo]:
+        return self._registry.get(collection_name)
 
     def get_all(self) -> Dict[str, EmbeddingModelInfo]:
         return self._registry.copy()
 
-    def unregister(self, embed_key: str) -> bool:
-        if embed_key in self._registry:
-            del self._registry[embed_key]
+    def unregister(self, collection_name: str) -> bool:
+        if collection_name in self._registry:
+            del self._registry[collection_name]
             if self._auto_save:
                 self.save()
             return True

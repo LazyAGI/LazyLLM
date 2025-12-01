@@ -287,6 +287,10 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.rag.embedding_registry.EmbeddingModelRegistry
+    members:
+    exclude-members:
+
 ::: lazyllm.tools.rag.doc_node.DocNode
     members: get_children_str, get_parent_id, get_content, to_dict, set_embedding
     exclude-members:

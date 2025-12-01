@@ -272,6 +272,10 @@
     members: transform
     exclude-members:
 
+::: lazyllm.tools.rag.embedding_registry.EmbeddingModelRegistry
+    members:
+    exclude-members:
+
 ::: lazyllm.tools.rag.similarity.register_similarity
     members:
     exclude-members:
