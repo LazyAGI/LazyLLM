@@ -2,7 +2,8 @@ from ....module import ModuleBase
 from lazyllm import config
 
 
-config.add('cache_online_module', bool, False, 'CACHE_ONLINE_MODULE')
+config.add('cache_online_module', bool, False, 'CACHE_ONLINE_MODULE',
+           description='Whether to cache the online module result. Use for unit test.')
 
 
 class OnlineModuleBase(ModuleBase):

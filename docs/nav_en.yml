@@ -4,18 +4,22 @@
   - Environment: Home/environment.md
   - Supported Models: Home/model_list.md
 - Cookbook:
-  - Chatbot: Cookbook/robot.md
+  - Chatbot: Cookbook/chatbot.md
   - Painting Master: Cookbook/painting_master.md
   - Multimodal Chatbot: Cookbook/multimodal_robot.md
   - Great Writer: Cookbook/great_writer.md
   - RAG: Cookbook/rag.md
   - Streaming: Cookbook/streaming.md
+  - Code Agent: Cookbook/code_agent.md
+  - Google Search: Cookbook/google_search.md
   - Bocha Search Agent: Cookbook/bocha_search.md
   - Voice Assistant: Cookbook/voice_assistant.md
   - API Interaction: Cookbook/API_Interaction_Agent_demo.md
   - Adaptive Tool-Calling: Cookbook/flex_agent.md
   - Chat With History: Cookbook/rag_nloop.md
   - Multi-modal Output Agent: Cookbook/multi_modal_output_agent.md
+  - Wiki Agent: Cookbook/WikiAgent.md
+  - Multi-turn dialogue: Cookbook/camel_agent.md
 - Best Practice:
   - Flow: Best Practice/flow.md
   - Flowapp: Best Practice/flowapp.md

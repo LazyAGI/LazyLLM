@@ -216,6 +216,8 @@ class _ServerModuleImpl(ModuleBase, _UrlHelper):
     def __del__(self):
         self.stop()
 
+    def __deepcopy__(self, memo):
+        return self
 
 class ServerModule(UrlModule):
     def __init__(self, m: Optional[Union[str, ModuleBase]] = None, pre: Optional[Callable] = None,

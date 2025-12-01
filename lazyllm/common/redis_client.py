@@ -1,8 +1,9 @@
 import lazyllm
 from lazyllm.thirdparty import redis
 
-lazyllm.config.add('redis_url', str, '', 'REDIS_URL')
-lazyllm.config.add('redis_recheck_delay', int, 5, 'REDIS_RECHECK_DELAY')
+lazyllm.config.add('redis_url', str, '', 'REDIS_URL', description='The URL of the Redis server.')
+lazyllm.config.add('redis_recheck_delay', int, 5, 'REDIS_RECHECK_DELAY',
+                   description='The delay of the Redis server check.')
 
 _redis_url = lazyllm.config['redis_url']
 _redis_client = None

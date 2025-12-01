@@ -252,6 +252,10 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
     options:
       heading_level: 3
 
+::: lazyllm.components.FunctionCallFormatter
+    options:
+      heading_level: 3
+
 ::: lazyllm.components.formatter.formatterbase.PipelineFormatter
     options:
       heading_level: 3

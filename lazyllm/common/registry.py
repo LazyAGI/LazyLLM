@@ -80,7 +80,8 @@ class LazyLLM{name}Base(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].b
     pass
 '''
 
-config.add('use_builtin', bool, False, 'USE_BUILTIN')
+config.add('use_builtin', bool, False, 'USE_BUILTIN',
+           description='Whether to use registry modules in python builtin.')
 
 class LazyLLMRegisterMetaClass(_MetaBind):
     all_clses = LazyDict()

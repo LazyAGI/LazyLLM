@@ -10,12 +10,13 @@ import lazyllm
 from .model_mapping import model_name_mapping, model_provider, model_groups
 from .model_directory import infer_model_type
 
-lazyllm.config.add('model_source', str, 'modelscope', 'MODEL_SOURCE')
+lazyllm.config.add('model_source', str, 'modelscope', 'MODEL_SOURCE', description='The default model source to use.')
 lazyllm.config.add('model_cache_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'model'),
-                   'MODEL_CACHE_DIR')
-lazyllm.config.add('model_path', str, '', 'MODEL_PATH')
-lazyllm.config.add('model_source_token', str, '', 'MODEL_SOURCE_TOKEN')
-lazyllm.config.add('data_path', str, '', 'DATA_PATH')
+                   'MODEL_CACHE_DIR', description='The default model cache directory to use(Read and Write).')
+lazyllm.config.add('model_path', str, '', 'MODEL_PATH', description='The default model path to use(ReadOnly).')
+lazyllm.config.add('model_source_token', str, '', 'MODEL_SOURCE_TOKEN',
+                   description='The default token for configed model source(hf or ms) to use.')
+lazyllm.config.add('data_path', str, '', 'DATA_PATH', description='The default data path to use.')
 
 
 class _CaseInsensitiveEnumMeta(EnumMeta):

@@ -1,9 +1,10 @@
 import os
-
-from typing import Callable, Optional, Dict, Union, List
+from typing import Callable, Optional, Dict, Union, List, Type
 from functools import cached_property
+from pydantic import BaseModel
 import lazyllm
 from lazyllm import ModuleBase, ServerModule, DynamicDescriptor, deprecated, OnlineChatModule, TrainableModule
+from lazyllm.module import LLMBase
 from lazyllm.launcher import LazyLLMLaunchersBase as Launcher
 from lazyllm.tools.sql.sql_manager import SqlManager, DBStatus
 from lazyllm.common.bind import _MetaBind
@@ -11,14 +12,16 @@ from lazyllm.common.bind import _MetaBind
 from .doc_manager import DocManager
 from .doc_impl import DocImpl, StorePlaceholder, EmbedPlaceholder, BuiltinGroups, DocumentProcessor, NodeGroupType
 from .doc_node import DocNode
-from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files
+from .doc_to_db import DocInfoSchema, DocToDbProcessor, extract_db_schema_from_files, SchemaExtractor
 from .store import LAZY_ROOT_NAME, EMBED_DEFAULT_KEY
+from .store.store_base import DEFAULT_KB_ID
 from .index_base import IndexBase
 from .utils import DocListManager, ensure_call_endpoint
 from .global_metadata import GlobalMetadataDesc as DocField
 from .web import DocWebModule
 import copy
 import functools
+import weakref
 
 
 class CallableDict(dict):
@@ -39,7 +42,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                      launcher: Optional[Launcher] = None, store_conf: Optional[Dict] = None,
                      doc_fields: Optional[Dict[str, DocField]] = None, cloud: bool = False,
                      doc_files: Optional[List[str]] = None, processor: Optional[DocumentProcessor] = None,
-                     display_name: Optional[str] = '', description: Optional[str] = 'algorithm description'):
+                     display_name: Optional[str] = '', description: Optional[str] = 'algorithm description',
+                     schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
             super().__init__()
             self._origin_path, self._doc_files, self._cloud = dataset_path, doc_files, cloud
 
@@ -62,7 +66,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._kbs = CallableDict({name: DocImpl(
                 embed=self._embed, dlm=self._dlm, doc_files=doc_files, global_metadata_desc=doc_fields,
                 store=store_conf, processor=processor, algo_name=name, display_name=display_name,
-                description=description)})
+                description=description, schema_extractor=schema_extractor)})
 
             if manager: self._manager = ServerModule(DocManager(self._dlm), launcher=self._launcher)
             if manager == 'ui': self._docweb = DocWebModule(doc_server=self._manager)
@@ -127,7 +131,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                  server: Union[bool, int] = False, name: Optional[str] = None, launcher: Optional[Launcher] = None,
                  doc_files: Optional[List[str]] = None, doc_fields: Dict[str, DocField] = None,
                  store_conf: Optional[Dict] = None, display_name: Optional[str] = '',
-                 description: Optional[str] = 'algorithm description'):
+                 description: Optional[str] = 'algorithm description',
+                 schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
         super().__init__()
         if create_ui:
             lazyllm.LOG.warning('`create_ui` for Document is deprecated, use `manager` instead')
@@ -142,6 +147,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 'Only map store is supported for Document with temp-files')
 
         name = name or DocListManager.DEFAULT_GROUP_NAME
+        self._schema_extractor: SchemaExtractor = schema_extractor
 
         if isinstance(manager, Document._Manager):
             assert not server, 'Server infomation is already set to by manager'
@@ -157,7 +163,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         else:
             if isinstance(manager, DocumentProcessor):
                 processor, cloud = manager, True
-                processor._impl.start()
+                processor.start()
                 manager = False
                 assert name, '`Name` of Document is necessary when using cloud service'
                 assert store_conf.get('type') != 'map', 'Cloud manager is not supported when using map store'
@@ -166,16 +172,55 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 cloud, processor = False, None
             self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher, store_conf,
                                               doc_fields, cloud=cloud, doc_files=doc_files, processor=processor,
-                                              display_name=display_name, description=description)
+                                              display_name=display_name, description=description,
+                                              schema_extractor=self._schema_extractor)
             self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
+        self._graph_document: weakref.ref = None
 
-    def _list_all_files_in_dataset(self) -> List[str]:
+    @staticmethod
+    def list_all_files_in_directory(
+        dataset_path: str, skip_hidden_path: bool = True, recursive: bool = True
+    ) -> List[str]:
         files_list = []
-        for root, _, files in os.walk(self._manager._dataset_path):
-            files = [os.path.join(root, file_path) for file_path in files]
-            files_list.extend(files)
+
+        if not os.path.exists(dataset_path):
+            return files_list
+
+        if not os.path.isdir(dataset_path):
+            return [dataset_path] if os.path.isfile(dataset_path) else files_list
+
+        if recursive:
+            for root, dirs, files in os.walk(dataset_path):
+                # Skip hidden directories
+                if skip_hidden_path:
+                    path_parts = root.split(os.sep)
+                    if any(part.startswith('.') for part in path_parts if part):
+                        continue
+                    # Filter out hidden directories
+                    dirs[:] = [d for d in dirs if not d.startswith('.')]
+
+                # Skip hidden files
+                if skip_hidden_path:
+                    files = [file_path for file_path in files if not file_path.startswith('.')]
+
+                files = [os.path.join(root, file_path) for file_path in files]
+                files_list.extend(files)
+        else:
+            items = os.listdir(dataset_path)
+            for item in items:
+                item_path = os.path.join(dataset_path, item)
+                # Skip hidden files/directories
+                if skip_hidden_path and item.startswith('.'):
+                    continue
+                # Only add files, not directories
+                if os.path.isfile(item_path):
+                    files_list.append(item_path)
+
         return files_list
+
+    def _list_all_files_in_dataset(self, skip_hidden_path: bool = True) -> List[str]:
+        return self.list_all_files_in_directory(self._manager._dataset_path, skip_hidden_path)
 
     @property
     def url(self):
@@ -329,6 +374,16 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
     def clear_cache(self, group_names: Optional[List[str]] = None) -> None:
         return self._forward('clear_cache', group_names)
+
+    def drop_algorithm(self):
+        return self._forward('drop_algorithm')
+
+    def analyze_schema_by_llm(self, kb_id: Optional[str] = None, doc_ids: Optional[List[str]] = None):
+        return self._forward('_analyze_schema_by_llm', kb_id, doc_ids)
+
+    def register_schema_set(self, schema_set: Type[BaseModel], kb_id: Optional[str] = DEFAULT_KB_ID,
+                            force_refresh: bool = False) -> str:
+        return self._forward('_register_schema_set', schema_set, kb_id, force_refresh)
 
     def _get_post_process_tasks(self):
         return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))

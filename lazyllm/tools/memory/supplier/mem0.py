@@ -6,7 +6,7 @@ from lazyllm.module import LLMBase
 from typing import Optional, List, Dict, Any
 
 
-config.add('mem0_api_key', str, '', 'MEM0_API_KEY')
+config.add('mem0_api_key', str, '', 'MEM0_API_KEY', description='The API key for Mem0.')
 
 class Mem0Memory():
     def __new__(cls, api_key: Optional[str] = None, topk: int = 10) -> LazyLLMMemoryBase:

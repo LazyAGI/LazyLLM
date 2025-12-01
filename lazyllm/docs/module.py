@@ -659,9 +659,11 @@ add_chinese_doc('TrainableModule', '''\
 Args:
     base_model (str): 基础模型的名称或路径。
     target_path (str): 保存微调任务的路径。
-    source (str): 模型来源，如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
     stream (bool): 输出流式结果。     
     return_trace (bool): 在trace中记录结果。
+    trust_remote_code (bool): 是否信任远程代码。
+    type (str/LLMType): 模型类型。
+    source (str): 模型来源，如果未设置，将从环境变量LAZYLLM_MODEL_SOURCE读取。
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
 
@@ -809,9 +811,11 @@ Trainable module, all models (including LLM, Embedding, etc.) are served through
 Args:
     base_model (str): Name or path of the base model. 
     target_path (str): Path to save the fine-tuning task. 
-    source (str): Model source. If not set, it will read the value from the environment variable LAZYLLM_MODEL_SOURCE.
     stream (bool): Whether to output stream. 
     return_trace (bool): Record the results in trace.
+    trust_remote_code (bool): Whether to trust remote code.
+    type (str/LLMType): Model type.
+    source (str): Model source. If not set, it will read the value from the environment variable LAZYLLM_MODEL_SOURCE.
 
 
 <span style="font-size: 20px;">**`TrainableModule.trainset(v):`**</span>
@@ -2620,7 +2624,7 @@ Args:
     **kwargs: Other model parameters
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTSModule', """\
 SiliconFlow文本转语音模块，继承自OnlineMultiModalBase。
 
 提供基于SiliconFlow的文本转语音(TTS)功能，支持将文本转换为音频文件。
@@ -2633,7 +2637,7 @@ Args:
     **kwargs: 其他模型参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTSModule', """\
 SiliconFlow Text-to-Speech module, inherits from OnlineMultiModalBase.
 
 Provides text-to-speech (TTS) functionality based on SiliconFlow, supports converting text to audio files.
@@ -2816,7 +2820,9 @@ Releases resources occupied by the cache storage strategy, such as closing datab
 
 add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowModule', """\
 SiliconFlow 模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
+
 提供基于 SiliconFlow 平台的大语言模型对话能力，支持多种模型（包括视觉语言模型），并具备文件处理功能。
+
 Args:
     base_url (str, optional): API 基础地址，默认为 "https://api.siliconflow.cn/v1/"
     model (str, optional): 使用的模型名称，默认为 "Qwen/QwQ-32B"
@@ -2828,7 +2834,9 @@ Args:
 
 add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowModule', """\
 SiliconFlow module, inherits from OnlineChatModuleBase and FileHandlerBase.
+
 Provides large language model chat capabilities via the SiliconFlow platform, supports multiple models (including vision-language models), and includes file handling functionality.
+
 Args:
     base_url (str, optional): Base API URL, defaults to "https://api.siliconflow.cn/v1/"
     model (str, optional): Model name to use, defaults to "Qwen/QwQ-32B"
@@ -2840,7 +2848,9 @@ Args:
 
 add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowEmbedding', """\
 SiliconFlow 向量嵌入模块，继承自 OnlineEmbeddingModuleBase。
+
 提供基于 SiliconFlow 平台的文本嵌入（Embedding）功能，支持将文本转换为向量表示。
+
 Args:
     embed_url (str, optional): 嵌入 API 的 URL，默认为 "https://api.siliconflow.cn/v1/embeddings"
     embed_model_name (str, optional): 使用的嵌入模型名称，默认为 "BAAI/bge-large-zh-v1.5"
@@ -2851,7 +2861,9 @@ Args:
 
 add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowEmbedding', """\
 SiliconFlow embedding module, inherits from OnlineEmbeddingModuleBase.
+
 Provides text embedding functionality via the SiliconFlow platform, converting text into vector representations.
+
 Args:
     embed_url (str, optional): Embedding API URL, defaults to "https://api.siliconflow.cn/v1/embeddings"
     embed_model_name (str, optional): Name of the embedding model to use, defaults to "BAAI/bge-large-zh-v1.5"
@@ -2862,7 +2874,9 @@ Args:
 
 add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking', """\
 SiliconFlow 重排序模块，继承自 OnlineEmbeddingModuleBase。
+
 提供基于 SiliconFlow 平台的文本重排序（Reranking）功能，用于对文档列表根据查询相关性进行重新排序。
+
 Args:
     embed_url (str, optional): 重排序 API 的 URL，默认为 "https://api.siliconflow.cn/v1/rerank"
     embed_model_name (str, optional): 使用的重排序模型名称，默认为 "BAAI/bge-reranker-v2-m3"
@@ -2875,7 +2889,9 @@ Returns:
 
 add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking', """\
 SiliconFlow reranking module, inherits from OnlineEmbeddingModuleBase.
+
 Provides text reranking functionality via the SiliconFlow platform, reordering a list of documents based on their relevance to a given query.
+
 Args:
     embed_url (str, optional): Reranking API URL, defaults to "https://api.siliconflow.cn/v1/rerank"
     embed_model_name (str, optional): Name of the reranking model to use, defaults to "BAAI/bge-reranker-v2-m3"
@@ -2909,4 +2925,84 @@ Args:
     base_url (str, optional): Base API URL, defaults to "https://api.siliconflow.cn/v1/"
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Other model parameters
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxModule', """\
+Minimax 模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
+
+提供基于 Minimax 平台的大语言模型对话能力。
+
+Args:
+    base_url (str, optional): API 基础地址，默认为 "https://api.minimaxi.com/v1/"
+    model (str, optional): 使用的模型名称，默认为 "MiniMax-M2"
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['minimax_api_key'] 中读取
+    stream (bool, optional): 是否启用流式输出，默认为 True；启用时会自动设置请求参数
+    return_trace (bool, optional): 是否返回追踪信息，默认为 False
+    **kwargs: 其他传递给父类的可选参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxModule', """\
+Minimax module, inheriting from OnlineChatModuleBase and FileHandlerBase.
+
+Provides large language model chat capabilities based on the Minimax platform.
+
+Args:
+    base_url (str, optional): Base API URL, defaults to "https://api.minimaxi.com/v1/"
+    model (str, optional): Model name to use, defaults to "MiniMax-M2"
+    api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
+    stream (bool, optional): Whether to enable streaming output, defaults to True; automatically configures request parameters when enabled
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    **kwargs: Additional optional parameters passed to the parent classes
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxTextToImageModule', """\
+Minimax 文生图模块，继承自 OnlineMultiModalBase。
+
+提供基于 Minimax 平台的文本生成图像功能，支持根据文本描述生成图像。
+
+Args:
+    api_key (str, optional): API 密钥，默认为配置项 lazyllm.config['minimax_api_key']
+    model_name (str, optional): 模型名称，默认为 "image-01"
+    base_url (str, optional): API 基础地址，默认为 "https://api.minimaxi.com/v1/"
+    return_trace (bool, optional): 是否返回追踪信息，默认为 False
+    **kwargs: 其他传递给父类的可选参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxTextToImageModule', """\
+Minimax text-to-image module, inheriting from OnlineMultiModalBase.
+
+Provides text-to-image generation functionality based on Minimax, supports generating images from text descriptions.
+
+Args:
+    api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
+    model_name (str, optional): Model name, defaults to "image-01"
+    base_url (str, optional): Base API URL, defaults to "https://api.minimaxi.com/v1/"
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    **kwargs: Additional optional parameters passed to the parent classes
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxTTSModule', """\
+Minimax 文本转语音模块，继承自 OnlineMultiModalBase。
+
+提供基于 Minimax 平台的文本转语音(TTS)功能，支持将文本转换为音频文件。
+
+Args:
+    api_key (str, optional): API 密钥，默认为配置项 lazyllm.config['minimax_api_key']
+    model_name (str, optional): 模型名称，默认为 "speech-2.6-hd"
+    base_url (str, optional): API 基础地址，默认为 "https://api.minimaxi.com/v1/"
+    return_trace (bool, optional): 是否返回追踪信息，默认为 False
+    **kwargs: 其他传递给父类的可选参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxTTSModule', """\
+Minimax text-to-speech module, inheriting from OnlineMultiModalBase.
+
+Provides text-to-speech (TTS) functionality based on Minimax, supports converting text to audio files.
+
+Args:
+    api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
+    model_name (str, optional): Model name, defaults to "speech-2.6-hd"
+    base_url (str, optional): Base API URL, defaults to "https://api.minimaxi.com/v1/"
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    **kwargs: Additional optional parameters passed to the parent classes
 """)

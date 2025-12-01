@@ -64,10 +64,13 @@ class PackageWrapper(object):
         if __name in ('_Wrapper__key', '_Wrapper__package', '_Wrapper__patches',
                       '_Wrapper__lib', '_Wrapper__sub_packages', 'register_patches'):
             return super(__class__, self).__getattribute__(__name)
+        matched_subpackages = []
         for sub_package in self._Wrapper__sub_packages:
             if __name == sub_package.split('.')[0]:
-                return PackageWrapper(f'{self._Wrapper__key}.{__name}', sub_package[len(__name) + 1:],
-                                      register_patches=self._Wrapper__patches)
+                matched_subpackages.append(sub_package[len(__name) + 1:])
+        if matched_subpackages:
+            return PackageWrapper(f'{self._Wrapper__key}.{__name}', *matched_subpackages,
+                                  register_patches=self._Wrapper__patches)
         if self._Wrapper__lib is None:
             try:
                 self._Wrapper__lib = importlib.import_module(self._Wrapper__key, package=self._Wrapper__package)

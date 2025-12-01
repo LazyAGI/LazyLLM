@@ -228,6 +228,9 @@ class ServerGraph(lazyllm.ModuleBase):
     def __repr__(self):
         return repr(self._g)
 
+    def __deepcopy__(self, memo):
+        return self
+
 
 class ServerResource(object):
     def __init__(self, graph: ServerGraph, kind: str, args: Dict):
@@ -499,7 +502,7 @@ def make_mcp_tool(command_or_url: str, tool_name: str, args: Optional[List[str]]
 def make_fc(base_model: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
-        lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
+        lazyllm.tools.ReactAgent
     return f(Engine().build_node(base_model).func.func, _get_tools(tools))
 
 

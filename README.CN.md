@@ -83,7 +83,7 @@ base = TrainableModule('internlm2-chat-7b')
 with IntentClassifier(base) as ic:
     ic.case['聊天', base]
     ic.case['语音识别', TrainableModule('SenseVoiceSmall')]
-    ic.case['图片问答', TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)]
+    ic.case['图片问答', TrainableModule('InternVL3_5-1B').deploy_method(deploy.LMDeploy)]
     ic.case['画图', pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-diffusion-3-medium'))]
     ic.case['生成音乐', pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))]
     ic.case['文字转语音', TrainableModule('ChatTTS')]
@@ -279,9 +279,9 @@ v0.9 预计从26年6月开始，历时3个月，重点会放提升整个系统�
   - 9.2.1.1 工程
     - 沉淀LazyRAG中的能力到LazyLLM  （V0.6 ）
     - RAG的宏观问答能力扩展到多知识库 （V0.6 ）
-    - RAG模块完全支持横向扩容，支持多机部署RAG的算法协同工作 （V0.6 ）
+    - ✅RAG模块完全支持横向扩容，支持多机部署RAG的算法协同工作 （V0.6 ）
     - 知识图谱接入至少1个开源框架 （V0.6 ）
-    - 支持常用的数据切分策略，不少于20种，覆盖各种类型的文档 （V0.6 ）
+    - 支持常用的数据切分策略，不少于20种，覆盖各种类型的文档 （V0.6 - v0.7）
   - 9.2.1.2 数据能力
     - 表格解析（V0.6 - 0.7 ）
     - CAD图片解析（V0.7 -  ）
@@ -292,7 +292,7 @@ v0.9 预计从26年6月开始，历时3个月，重点会放提升整个系统�
     - AgenticRL & 写代码解问题能力（V0.7 ）
 
 9.2.2 功能模块
-  - ✅ 支持记忆的能力 （V0.6 ）
+  - ✅支持记忆的能力 （V0.6 ）
   - 分布式Launcher的支持 （V0.7）
   - ✅基于数据库的Globals支持 （V0.6 ）
   - ServerModule可以发布成mcp服务（v0.7）
@@ -307,8 +307,8 @@ v0.9 预计从26年6月开始，历时3个月，重点会放提升整个系统�
   - GRPO全链路支持 （V0.7 ）
 
 9.2.4 文档
-  - 完善API文档，确保每个公开接口都有API文档，文档参数和函数参数一致，且有可执行的样例代码 （V0.6 ）
-  - 完善CookBook文档，案例增加至50个，并有和LangChain / Llamaindex的对比 （代码量，速度，扩展性） （V0.6 ）
+  - ✅完善API文档，确保每个公开接口都有API文档，文档参数和函数参数一致，且有可执行的样例代码 （V0.6 ）
+  - 完善CookBook文档，案例增加至50个，并有和LangChain / Llamaindex的对比 （代码量，速度，扩展性） （V0.6 - v0.7）
   - ✅完善Environment文档，补充在win/linux/macos的安装方式，补充对包的切分策略 （V0.6 ）
   - 完善Learn文档，先教大家用大模型；然后教大家构建agent；然后教大家用workflow；再教大家搭建rag； （V0.6 ）
 

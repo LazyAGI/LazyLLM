@@ -22,6 +22,10 @@ class _EmbedWrapper:
         res = self.func(*args, **kwargs)
         return self._normalize(res)
 
+    def __reduce__(self):
+        # NOTE avoid cloudpickle serialization error
+        return (_EmbedWrapper, (self.func,))
+
     def _normalize(self, res: Any) -> Any:
         if isinstance(res, (bytes, bytearray, memoryview)):
             res = res.decode('utf-8', 'ignore')
