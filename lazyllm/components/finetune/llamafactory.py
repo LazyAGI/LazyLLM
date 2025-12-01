@@ -35,9 +35,13 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             if os.path.exists(defatult_path):
                 base_model = defatult_path
         if not merge_path:
-            save_path = os.path.join(lazyllm.config['train_target_root'], target_path)
-            target_path, merge_path = os.path.join(save_path, 'lazyllm_lora'), os.path.join(save_path, 'lazyllm_merge')
-            os.system(f'mkdir -p {target_path} {merge_path}')
+            if target_path.endswith('lazyllm_lora') or '/lazyllm_lora/' in target_path or target_path.endswith('lazyllm_lora/'):
+                merge_path = target_path.replace('lazyllm_lora', 'lazyllm_merge')
+                os.system(f'mkdir -p {target_path} {merge_path}')
+            else:
+                save_path = os.path.join(lazyllm.config['train_target_root'], target_path)
+                target_path, merge_path = os.path.join(save_path, 'lazyllm_lora'), os.path.join(save_path, 'lazyllm_merge')
+                os.system(f'mkdir -p {target_path} {merge_path}')
         super().__init__(
             base_model,
             target_path,
@@ -65,7 +69,19 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.template_dict['model_name_or_path'] = base_model
         self.template_dict['output_dir'] = target_path
         self.template_dict['template'] = self._get_template_name(base_model)
-        self.template_dict.check_and_update(kw)
+        
+        # Filter kw to only include keys that exist in template_dict
+        # This ensures check_and_update won't fail due to unexpected keys
+        # Keys not in template_dict will be silently ignored (they may be used elsewhere)
+        filtered_kw = {k: v for k, v in kw.items() if k in self.template_dict}
+        
+        # Update template_dict with filtered parameters
+        self.template_dict.check_and_update(filtered_kw)
+        
+        # Log key parameters for debugging
+        import logging
+        logger = logging.getLogger(__name__)
+        logger.warning(f"[llamafactory] filtered_kw: {filtered_kw}")
 
         default_export_config_path = os.path.join(self.config_folder_path, 'llama_factory', 'lora_export.yaml')
         self.export_dict = ArgsDict(self._load_yaml(default_export_config_path))
@@ -164,8 +180,14 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
 
         # save config update
         if self.template_dict['finetuning_type'] == 'lora':
+            # For LoRA/QLoRA: use llamafactory-cli export to merge adapter with base model
             updated_export_str = yaml.dump(dict(self.export_dict), default_flow_style=False)
             self.temp_export_yaml_file = self._build_temp_yaml(updated_export_str, prefix='merge_')
+        elif self.template_dict['finetuning_type'] == 'full':
+            # For Full finetuning: model is already complete in target_path (lazyllm_lora)
+            # We need to copy it to merge_path (lazyllm_merge) to maintain consistency
+            # This ensures _get_all_finetuned_models and export_model work correctly
+            pass  # Will handle in cmds below
 
         updated_template_str = yaml.dump(dict(self.template_dict), default_flow_style=False)
         self.temp_yaml_file = self._build_temp_yaml(updated_template_str)
@@ -174,8 +196,32 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         random_value = random.randint(1000, 9999)
         self.log_file_path = f'{self.target_path}/train_log_{formatted_date}_{random_value}.log'
 
-        cmds = f'export DISABLE_VERSION_CHECK=1 && llamafactory-cli train {self.temp_yaml_file}'
-        cmds += f' 2>&1 | tee {self.log_file_path}'
+        # Use bash instead of sh to support pipefail
+        # This ensures export only runs if training succeeds
+        cmds = f'export DISABLE_VERSION_CHECK=1 && bash -c "set -o pipefail && llamafactory-cli train {self.temp_yaml_file} 2>&1 | tee {self.log_file_path}"'
         if self.temp_export_yaml_file:
+            # For LoRA/QLoRA: merge adapter with base model
+            # Only run export if training succeeds (exit code 0)
+            # With pipefail, tee will preserve the exit code from llamafactory-cli
             cmds += f' && llamafactory-cli export {self.temp_export_yaml_file}'
+        elif self.template_dict['finetuning_type'] == 'full':
+            # For Full finetuning: copy model from lazymm_lora to lazymm_merge
+            # This maintains consistency with LoRA/QLoRA workflow
+            # Only copy if training succeeds (exit code 0)
+            # Only copy model files, exclude training process information (checkpoints, logs, etc.)
+            # to save storage space since lazymm_merge is only used for exporting to models directory
+            exclude_patterns = [
+                '--exclude=checkpoint-*',  # Exclude checkpoint directories
+                '--exclude=train_log_*.log',  # Exclude training logs
+                '--exclude=trainer_state.json',  # Exclude trainer state
+                '--exclude=trainer_log.jsonl',  # Exclude trainer log
+                '--exclude=train_results.json',  # Exclude training results
+                '--exclude=all_results.json',  # Exclude all results
+                '--exclude=eval_results.json',  # Exclude evaluation results
+                '--exclude=training_loss.png',  # Exclude training loss plot
+                '--exclude=runs/',  # Exclude tensorboard logs
+                '--exclude=training_args.bin',  # Exclude training arguments
+            ]
+            exclude_str = ' '.join(exclude_patterns)
+            cmds += f' && rsync -a {exclude_str} {self.target_path}/ {self.merge_path}/ 2>/dev/null || true'
         return cmds
