@@ -305,7 +305,7 @@ class OceanBaseStore(LazyLLMStoreBase):
         return all_results
 
     def search(self, collection_name: str, query: str, query_embedding: Union[dict, List[float]], topk: int, filters: Optional[Dict[str, Union[List, set]]] = None, embed_key: Optional[str] = None, filter_str: Optional[str] = '', **kwargs) -> List[dict]:  # noqa: C901 E501
-        if query:
+        if not query_embedding:
             raise NotImplementedError('Query fulltext search is not supported for now')
         try:
             if not collection_name or not isinstance(collection_name, str):
