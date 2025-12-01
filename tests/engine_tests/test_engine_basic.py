@@ -1,5 +1,6 @@
 from lazyllm.engine import LightEngine
 import pytest
+import shutil
 import time
 from gradio_client import Client
 import lazyllm
@@ -14,8 +15,8 @@ import requests
 import os
 
 HOOK_PORT = 33733
-HOOK_ROUTE = "mock_post"
-fastapi_code = """
+HOOK_ROUTE = 'mock_post'
+fastapi_code = '''
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from collections import deque
@@ -40,7 +41,7 @@ async def get_last_report():
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port={port})
-""".format(
+'''.format(
     port=HOOK_PORT, route=HOOK_ROUTE
 )
 
@@ -51,18 +52,18 @@ class TestEngine(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
         cls.fastapi_process = subprocess.Popen(
-            ["python", "-c", fastapi_code],
+            ['python', '-c', fastapi_code],
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
         )
         hostname = socket.gethostname()
         ip_address = socket.gethostbyname(hostname)
-        cls.report_url = f"http://{ip_address}:{HOOK_PORT}/{HOOK_ROUTE}"
-        cls.get_url = f"http://{ip_address}:{HOOK_PORT}/get_last_report"
+        cls.report_url = f'http://{ip_address}:{HOOK_PORT}/{HOOK_ROUTE}'
+        cls.get_url = f'http://{ip_address}:{HOOK_PORT}/get_last_report'
 
         def read_stdout(process):
             for line in iter(process.stdout.readline, b''):
-                print("FastAPI Server Output: ", line.decode(), end='')
+                print('FastAPI Server Output: ', line.decode(), end='')
 
         cls.report_print_thread = threading.Thread(
             target=read_stdout, args=(cls.fastapi_process,)
@@ -90,7 +91,7 @@ class TestEngine(unittest.TestCase):
         yield
         LightEngine().reset()
         lazyllm.FileSystemQueue().dequeue()
-        lazyllm.FileSystemQueue(klass="lazy_trace").dequeue()
+        lazyllm.FileSystemQueue(klass='lazy_trace').dequeue()
 
     def test_engine_subgraph(self):
         resources = [dict(id='0', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
@@ -120,7 +121,7 @@ class TestEngine(unittest.TestCase):
         double = dict(id='2', kind='Code', name='m2', args=dict(code='def test(x: int):\n    return 2 * x\n'))
         square = dict(id='3', kind='Code', name='m3',
                       args=dict(code='def test(x: int):\n    return x * x\n', _lazyllm_enable_report=True))
-        switch = dict(id="4", kind="Switch", name="s1", args=dict(
+        switch = dict(id='4', kind='Switch', name='s1', args=dict(
             judge_on_full_input=True, nodes={1: [double], 2: [plus1, double], 3: [square]}, _lazyllm_enable_report=True))
         edges = [dict(iid='__start__', oid='4'), dict(iid='4', oid='__end__')]
         engine = LightEngine()
@@ -130,7 +131,7 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 2) == 6
         assert engine.run(gid, 3) == 9
 
-        diverter = dict(id="5", kind="Diverter", name="d1", args=dict(nodes=[[double], [plus1, double], square]))
+        diverter = dict(id='5', kind='Diverter', name='d1', args=dict(nodes=[[double], [plus1, double], square]))
         edges2 = [dict(iid='__start__', oid='5'), dict(iid='5', oid='__end__')]
         gid = engine.start([diverter], edges2)
         assert engine.run(gid, [1, 2, 3]) == (2, 6, 9)
@@ -138,12 +139,12 @@ class TestEngine(unittest.TestCase):
         engine.reset()
 
         switch = dict(
-            id="4",
-            kind="Switch",
-            name="s1",
+            id='4',
+            kind='Switch',
+            name='s1',
             args=dict(
                 judge_on_full_input=False,
-                nodes={"case1": [double], "case2": [plus1, double], "case3": [square]},
+                nodes={'case1': [double], 'case2': [plus1, double], 'case3': [square]},
                 _lazyllm_enable_report=True,
             ),
         )
@@ -154,18 +155,18 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 'case1', 2) == 4
         assert engine.run(gid, 'case2', 2) == 6
         assert engine.run(gid, 'case3', 3) == 9
-        assert "prompt_tokens" in self.get_last_report()
+        assert 'prompt_tokens' in self.get_last_report()
 
     def test_engine_ifs(self):
         plus1 = dict(id='1', kind='Code', name='m1', args=dict(code='def test(x: int):\n    return 1 + x\n'))
         double = dict(id='2', kind='Code', name='m2', args=dict(code='def test(x: int):\n    return 2 * x\n'))
         square = dict(id='3', kind='Code', name='m3', args=dict(code='def test(x: int):\n    return x * x\n'))
         ifs = dict(
-            id="4",
-            kind="Ifs",
-            name="i1",
+            id='4',
+            kind='Ifs',
+            name='i1',
             args=dict(
-                cond="def cond(x): return x < 10",
+                cond='def cond(x): return x < 10',
                 true=[plus1, double],
                 false=[square],
                 _lazyllm_enable_report=True,
@@ -179,81 +180,80 @@ class TestEngine(unittest.TestCase):
         assert engine.run(gid, 1) == 4
         assert engine.run(gid, 5) == 12
         assert engine.run(gid, 10) == 100
-        assert "prompt_tokens" in self.get_last_report()
+        assert 'prompt_tokens' in self.get_last_report()
 
     def test_data_reflow_in_server(self):
         nodes = [
             {
-                "id": "1",
-                "kind": "Code",
-                "name": "f1",
-                "args": {
-                    "code": "def main(x): return int(x) + 1",
-                    "_lazyllm_enable_report": True,
+                'id': '1',
+                'kind': 'Code',
+                'name': 'f1',
+                'args': {
+                    'code': 'def main(x): return int(x) + 1',
+                    '_lazyllm_enable_report': True,
                 },
             },
             {
-                "id": "2",
-                "kind": "Code",
-                "name": "f2",
-                "args": {
-                    "code": "def main(x): return int(x) + 2",
-                    "_lazyllm_enable_report": True,
+                'id': '2',
+                'kind': 'Code',
+                'name': 'f2',
+                'args': {
+                    'code': 'def main(x): return int(x) + 2',
+                    '_lazyllm_enable_report': True,
                 },
             },
             {
-                "id": "3",
-                "kind": "Code",
-                "name": "f3",
-                "args": {
-                    "code": "def main(x): return int(x) + 3",
-                    "_lazyllm_enable_report": True,
+                'id': '3',
+                'kind': 'Code',
+                'name': 'f3',
+                'args': {
+                    'code': 'def main(x): return int(x) + 3',
+                    '_lazyllm_enable_report': True,
                 },
             },
         ]
         edges = [
             {
-                "iid": "__start__",
-                "oid": "1",
+                'iid': '__start__',
+                'oid': '1',
             },
             {
-                "iid": "1",
-                "oid": "2",
+                'iid': '1',
+                'oid': '2',
             },
             {
-                "iid": "2",
-                "oid": "3",
+                'iid': '2',
+                'oid': '3',
             },
             {
-                "iid": "3",
-                "oid": "__end__",
+                'iid': '3',
+                'oid': '__end__',
             },
         ]
         resources = [
             {
-                "id": "4",
-                "kind": "server",
-                "name": "s1",
-                "args": {},
+                'id': '4',
+                'kind': 'server',
+                'name': 's1',
+                'args': {},
             }
         ]
         engine = LightEngine()
         engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges, resources)
         assert engine.run(gid, 1) == 7
-        assert "prompt_tokens" in self.get_last_report()
+        assert 'prompt_tokens' in self.get_last_report()
 
     def test_engine_loop(self):
         nodes = [dict(id='1', kind='Code', name='code', args=dict(code='def square(x: int): return x * x'))]
         edges = [dict(iid='__start__', oid='1'), dict(iid='1', oid='__end__')]
-
         nodes = [
             dict(
-                id="2",
-                kind="Loop",
-                name="loop",
+                id='2',
+                kind='Loop',
+                name='loop',
                 args=dict(
-                    stop_condition="def cond(x): return x > 10",
+                    stop_condition='def cond(x): return x > 10',
                     nodes=nodes,
                     edges=edges,
                     _lazyllm_enable_report=True,
@@ -266,7 +266,7 @@ class TestEngine(unittest.TestCase):
         engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2) == 16
-        assert "prompt_tokens" in self.get_last_report()
+        assert 'prompt_tokens' in self.get_last_report()
 
     def test_engine_warp(self):
         nodes = [dict(id='1', kind='Code', name='code', args=dict(code='def square(x: int): return x * x'))]
@@ -274,9 +274,9 @@ class TestEngine(unittest.TestCase):
 
         nodes = [
             dict(
-                id="2",
-                kind="Warp",
-                name="warp",
+                id='2',
+                kind='Warp',
+                name='warp',
                 args=dict(
                     nodes=nodes,
                     edges=edges,
@@ -290,7 +290,7 @@ class TestEngine(unittest.TestCase):
         engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 2, 3, 4, 5) == (4, 9, 16, 25)
-        assert "prompt_tokens" in self.get_last_report()
+        assert 'prompt_tokens' in self.get_last_report()
 
     def test_engine_warp_transform(self):
         nodes = [dict(id='1', kind='Code', name='code', args=dict(
@@ -299,9 +299,9 @@ class TestEngine(unittest.TestCase):
 
         nodes = [
             dict(
-                id="2",
-                kind="Warp",
-                name="warp",
+                id='2',
+                kind='Warp',
+                name='warp',
                 args=dict(
                     nodes=nodes,
                     edges=edges,
@@ -316,7 +316,7 @@ class TestEngine(unittest.TestCase):
         engine.set_report_url(self.report_url)
         gid = engine.start(nodes, edges)
         assert engine.run(gid, [2, 3, 4, 5], 1, [1, 2, 3, 1]) == (4, 6, 8, 7)
-        assert "prompt_tokens" in self.get_last_report()
+        assert 'prompt_tokens' in self.get_last_report()
 
     def test_engine_formatter(self):
         nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='python', rule='[:]'))]
@@ -341,13 +341,13 @@ class TestEngine(unittest.TestCase):
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 'hi') == 'hi'
         assert engine.run(gid, '<lazyllm-query>{"query":"aha","files":["path/to/file"]}') == \
-               {"query": "aha", "files": ["path/to/file"]}
+               {'query': 'aha', 'files': ['path/to/file']}
 
         engine.reset()
         nodes = [dict(id='1', kind='Formatter', name='f1', args=dict(ftype='file', rule='encode'))]
         gid = engine.start(nodes, edges)
         assert engine.run(gid, 'hi') == 'hi'
-        assert engine.run(gid, {"query": "aha", "files": ["path/to/file"]}) == \
+        assert engine.run(gid, {'query': 'aha', 'files': ['path/to/file']}) == \
                '<lazyllm-query>{"query": "aha", "files": ["path/to/file"]}'
 
         engine.reset()
@@ -549,7 +549,7 @@ class TestEngine(unittest.TestCase):
         assert engine.build_node('graph-1').func.web_url == web.url
         client = Client(web.url, download_files=web.cach_path)
         chat_history = [['123', None]]
-        ans = client.predict(False, chat_history, False, False, api_name="/_respond_stream")
+        ans = client.predict(False, chat_history, False, False, api_name='/_respond_stream')
         assert ans[0][-1][-1] == '123123'
         client.close()
         lazyllm.launcher.cleanup()
@@ -652,9 +652,9 @@ class TestEngine(unittest.TestCase):
         url = 'https://jsonplaceholder.typicode.com/posts'
 
         nodes = [
-            dict(id='0', kind='Constant', name='header', args="application/json"),
-            dict(id='1', kind='Constant', name='body1', args="body1"),
-            dict(id='2', kind='Constant', name='body2', args="body2"),
+            dict(id='0', kind='Constant', name='header', args='application/json'),
+            dict(id='1', kind='Constant', name='body1', args='body1'),
+            dict(id='2', kind='Constant', name='body2', args='body2'),
             dict(id='3', kind='HttpTool', name='http', args=dict(
                 method='POST', url=url, body=body, headers=headers, _lazyllm_arg_names=['h1', 'b1', 'b2']))
         ]
@@ -709,8 +709,8 @@ class TestEngine(unittest.TestCase):
         resources = [dict(id='file-resource', kind='File', name='file', args=dict(id='file-resource'))]
         nodes = [dict(id='1', kind='Reader', name='m1', args=dict()),
                  dict(id='2', kind='Reader', name='m2', args=dict(file_resource_id='file-resource'))]
-        data_root_dir = os.getenv("LAZYLLM_DATA_PATH")
-        p = os.path.join(data_root_dir, "rag_master/default/__data/sources/道德经.txt")
+        data_root_dir = os.getenv('LAZYLLM_DATA_PATH')
+        p = os.path.join(data_root_dir, 'rag_master/default/__data/sources/道德经.txt')
         engine = LightEngine()
         gid = engine.start(nodes, [['__start__', '1'], ['1', '__end__']], resources)
         data = engine.run(gid, p)
@@ -723,7 +723,7 @@ class TestEngine(unittest.TestCase):
 
         engine.reset()
         gid = engine.start(nodes, [['__start__', '2'], ['2', '__end__']], resources)
-        file = os.path.join(data_root_dir, "rag_master/default/__data/sources/大学.txt")
+        file = os.path.join(data_root_dir, 'rag_master/default/__data/sources/大学.txt')
         data = engine.run(gid, p, _file_resources={'file-resource': file})
         assert '道可道' in data
         assert '大学之道' in data
@@ -731,6 +731,14 @@ class TestEngine(unittest.TestCase):
 @pytest.mark.skip_on_win
 @pytest.mark.skip_on_mac
 class TestEngineRAG(object):
+
+    def setUp(self):
+        os.environ['TIKTOKEN_CACHE_DIR'] = '/tmp/tiktoken_cache'
+        os.makedirs('/tmp/tiktoken_cache', exist_ok=True)
+
+    def tearDown(self):
+        if os.path.exists('/tmp/tiktoken_cache'):
+            shutil.rmtree('/tmp/tiktoken_cache', ignore_errors=True)
 
     def test_rag(self):
         resources = [
@@ -741,7 +749,7 @@ class TestEngineRAG(object):
                       args=dict(doc='0', group_name='CoarseChunk', similarity='bm25_chinese', topk=3)),
                  dict(id='4', kind='Reranker', name='rek1',
                       args=dict(type='ModuleReranker', output_format='content', join=True,
-                                arguments=dict(model="bge-reranker-large", topk=3))),
+                                arguments=dict(model='bge-reranker-large', topk=3))),
                  dict(id='5', kind='Code', name='c1',
                       args=dict(code='def test(nodes, query): return f\'context_str={nodes}, query={query}\'')),
                  dict(id='6', kind='LocalLLM', name='m1', args=dict(base_model='', deploy_method='dummy'))]
@@ -755,7 +763,7 @@ class TestEngineRAG(object):
 
         # test add doc_group
         resources[0] = dict(id='0', kind='Document', name='d1', args=dict(
-            dataset_path='rag_master', server=True, activated_groups=['CoarseChunk', '00'], node_group=[
+            dataset_path='rag_master', activated_groups=['CoarseChunk', '00'], node_group=[
                 dict(name='sentence', transform='SentenceSplitter', chunk_size=100, chunk_overlap=10)]))
         nodes.extend([dict(id='2', kind='Retriever', name='ret2',
                            args=dict(doc='0', group_name='sentence', similarity='bm25', topk=3)),

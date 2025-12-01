@@ -228,6 +228,9 @@ class ServerGraph(lazyllm.ModuleBase):
     def __repr__(self):
         return repr(self._g)
 
+    def __deepcopy__(self, memo):
+        return self
+
 
 class ServerResource(object):
     def __init__(self, graph: ServerGraph, kind: str, args: Dict):

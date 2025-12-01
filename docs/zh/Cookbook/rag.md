@@ -97,7 +97,136 @@ python3 rag.py
 
 在这个例子中，我们在检索相似文档的时候只用了内置的算法 `CoarseChunk`，将文档按照固定的长度分块，对每个分块计算相似度。这种方法在某些场景下可能有不错的效果；但是在大部分情况下，这种简单粗暴的分块可能会将重要信息拆成两段，造成信息损坏，从而得到的文档并不是和用户输入的查询相关的。
 
-## 版本-2：添加召回策略和排序
+## 版本-2：选择切分方法
+
+在创建知识库时，我们需要对文档内容进行切分操作，在版本-1的Part2中，我们通过指定CoarseChunk这个内置的切分配置将文档切分成指定大小的分块。但是实际创建知识库时我们会遇到各式各样的文档格式，文档内容也是各不相同，为了在检索时能又更好的效果，我们在切分时就需要做更加细致的操作。LazyLLM提供了许多内置的切分类，并且有着非常灵活的使用方法。
+
+在LazyLLM中，针对常见的切分方式和文件类型，目前内置了CharacterSplitter，RecursiveSplitter，SentenceSplitter，MarkdownSplitter, XMLSplitter, HTMLSPlitter, JSONSplitter, YAMLSplitter，ProgrammingSplitter和CodeSplitter切分类。
+
+我们在 Part1 的基础上指定一个切分方式，将文档根据指定符号拆分成名为 `character` 的 `Node Group`，以最简单的CharacterSplitter举例：
+
+```python
+document.create_node_group(name='character',
+                           transform=CharacterSplitter)
+```
+
+这样在创建节点组时便会调用CharacterSplitter进行切分，此时使用的默认的切分符号是' '。
+当然我们也可以用separator自定义切分符号，我们在上面的基础上继续添加：
+
+```python
+document.create_node_group(name='character',
+                           transform=CharacterSplitter,
+                           separator='.')
+```
+
+在此基础上，还有着更灵活的使用，我们可以使用正则表达式进行切分，并且可以用keep_seperator来决定是否保留切分符号（默认保留在右侧）：
+
+```python
+document.create_node_group(name='character',
+                           transform=CharacterSplitter,
+                           separator=r"[,;。；]",
+                           is_separator_regex=True,
+                           keep_separator=True)
+```
+
+有时候我们需要创建的节点组比较多，但是都是使用CharacterSplitter进行切分，每次都需要去配置就会显得很麻烦，为此我们给所有切分类内置了set_default(), get_default()和reset_default()这些方法来全局设置默认参数
+
+我们还是以CharacterSplitter举例：
+
+```python
+from lazyllm.tools.rag import CharacterSplitter
+
+#通过set_default覆盖原先CharacterSplitter的默认值，这样无论在哪里调用都会是我们设置的默认值
+CharacterSplitter.set_default(
+    chunk_size = 2048,
+    overlap = 200,
+    separator = '.',
+    is_separator_regex = False,
+    keep_separator = True,
+)
+
+#还可以通过rest_default将我们原先的设置清空，恢复CharacterSplitter原先的默认设置
+CharacterSplitter.reset_default()
+
+```
+
+LazyLLM内置的切分类默认使用tiktoken库来加载tokenizer，从而计算chunk_size，对于习惯使用huggingface的用户，LazyLLM也提供了from_huggingface_tokenizer()方法来进行设置
+
+```python
+from lazyllm.tools.rag import CharacterSplitter
+
+tokenizer = AutoTokenizer.from_pretrained('gpt2')
+charactersplitter = CharacterSplitter()
+charactersplitter = charactersplitter.from_huggingface_tokenizer(tokenzier)
+
+document.create_node_group(name='character',
+                           transform=charactersplitter,
+                           separator='.')
+
+```
+此时CharacterSplitter在切分文档时便会使用huggingface上的分词器。
+
+对于CharacterSplitter和RecursiveSplitter我们还可以定义他们的切分函数。以CharacterSplitter举例，传入的切分符号，CharacterSplitter会调用内置的default_split()函数来切分。
+
+我们也可以自定义切分函数来指定如何使用我们传入的切分符号, 不同切分方式中，CharacterSplitter和RecursiveSplitter提供了set_split_fns(), add_split_fns()和clear_split_fns()三个方法来管理自定义的切分函数，SentenceSplitter会在将来提供相似方法。我们以CharacterSplitter举例，RecursiveSplitter的使用方式类似：
+
+```python
+def custom_paragraph_split(text, separator):
+    chunks = text.split(separator)
+    result = []
+    for chunk in chunks:
+        chunk = chunk.strip()
+        if len(chunk) > 10:
+            result.append(chunk)
+
+    return result
+
+def filter_empty_split(text, separator):
+    chunks = text.split(separator)
+    return [chunk.strip() for chunk in chunks if chunk.strip()]
+
+charactersplitter = CharacterSplitter()
+#自定义切分函数或流程（传输一个List[Callable]）
+charactersplitter.set_split_fns(custom_paragraph_split)
+document.create_node_group(name='character1',
+                           transform=charactersplitter,
+                           separator='.')
+
+#在自定义的切分流程内的指定位置添加切分函数
+charactersplitter.add_split_fn(filter_empty_split, 0)
+document.create_node_group(name='character2',
+                           transform=charactersplitter,
+                           separator='.')
+
+#清空自定义切分函数，使用默认切分流程
+charactersplitter.clear_split_fns()
+document.create_node_group(name='character3',
+                           transform=charactersplitter,
+                           separator='.')
+
+```
+
+针对不同的文档类型，LazyLLM内置的MarkdownSplitter, XMLSplitter, HTMLSPlitter, JSONSplitter, YAMLSplitter，ProgrammingSplitter和CodeSplitter可以通过配置不同的参数实现不同需求的切分，可以参考各切分类的文档。
+
+其中CodeSplitter准确的说是一个路由类，并不是实现具体的切分，而是会根据入参选择合适的切分类进行切分。我们以XML文件举例：
+
+```python
+from lazyllm.tools.rag import CodeSplitter
+
+#此时实际使用的是XMLSplitter切分类
+document.create_node_group(name='xmlsplitter',
+                           transform=CodeSplitter,
+                           filetype='xml')
+
+#当然也可以使用CodeSplitter的from_language()方法来指定
+splitter = CodeSplitter()
+splitter.from_language('xml')
+document.create_node_group(name='xmlsplitter',
+                           transform=splitter)
+
+```
+
+## 版本-3：添加召回策略和排序
 
 为了从不同的维度来衡量文档和查询的相关性，我们在 Part1 增加一个从句子粒度对文档进行拆分的名为 `sentences` 的 `Node Group`：
 
@@ -218,7 +347,7 @@ print(f"answer: {res}")
 
 </details>
 
-## 版本-3：自定义文档解析工具，以MinerU为例
+## 版本-4：自定义文档解析工具，以MinerU为例
 
 lazyllm 内置了一套默认的文档解析算法。如果需要更高定制化的文档解析，可以使用自定义的文档解析器。
 [MinerU](https://github.com/opendatalab/MinerU) 是业界领先的 PDF 文档解析工具。我们为 MinerU 提供了专门的接入组件，无需额外定制，即可顺畅集成。
@@ -266,9 +395,9 @@ documents.add_reader("*.pdf", MineruPDFReader(url="http://127.0.0.1:8888"))
 其余流程保持不变，即可将 MinerU 服务集成到 RAG 流程中，实现 PDF 文档解析。
 
 
-## 版本-4：使用 flow
+## 版本-5：使用 flow
 
-从 版本-2 的流程图可以看到整个流程已经比较复杂了。我们注意到两个（或多个）`Retriever` 的检索过程互不影响，它们可以并行执行。同时整个流程上下游之间也有着明确的依赖关系，需要保证上游执行完成之后才可以进行下一步。
+从 版本-3 的流程图可以看到整个流程已经比较复杂了。我们注意到两个（或多个）`Retriever` 的检索过程互不影响，它们可以并行执行。同时整个流程上下游之间也有着明确的依赖关系，需要保证上游执行完成之后才可以进行下一步。
 
 `LazyLLM` 提供了一系列的辅助工具来简化执行流程的编写。我们可以用 [parallel](../Best%20Practice/flow.md#parallel) 把两个检索过程封装起来，让其可以并行执行；同时使用 [pipeline](../Best%20Practice/flow.md#pipeline) 把整个流程封装起来。重写后的整个程序如下：
 
@@ -334,7 +463,7 @@ print(f"answer: {res}")
 
 `pipeline` 和 `parallel` 只是方便流程搭建以及可能的一些性能优化，并不会改成程序的逻辑。另外用户查询作为重要的提示内容，基本是中间每个模块都会用到，我们在这里还用了 `LazyLLM` 提供的 [bind()](../Best%20Practice/flow.md#use-bind) 函数将用户查询 `query` 作为参数传给 `ppl.reranker` 和 `ppl.formatter`。
 
-## 版本-5：自定义检索和排序策略
+## 版本-6：自定义检索和排序策略
 
 上面的例子使用的都是 `LazyLLM` 内置的组件。现实中总有我们覆盖不到的用户需求，为了满足这些需求，`Retriever` 和 `Reranker` 提供了插件机制，用户可以自定义检索和排序策略，通过 `LazyLLM` 提供的注册接口添加到框架中。
 
@@ -373,7 +502,7 @@ my_reranker = Reranker(name="MyReranker")
 
 这里只是简单介绍了怎么使用 `LazyLLM` 注册扩展的机制。可以参考 [Retriever](../Best%20Practice/rag.md#Retriever) 和 [Reranker](../Best%20Practice/rag.md#Reranker) 的文档，在遇到不能满足需求的时候通过编写自己的相似度计算和排序策略来实现自己的应用。
 
-## 版本-6：自定义存储后端
+## 版本-7：自定义存储后端
 
 在定义好 Node Group 的转换规则之后，`LazyLLM` 会把检索过程中用到的转换得到的 Node Group 内容保存起来，这样后续使用的时候可以避免重复执行转换操作。为了方便用户存取不同种类的数据，`LazyLLM` 支持用户自定义存储后端。
 
@@ -514,7 +643,7 @@ if __name__ == '__main__':
 
 </details>
 
-## 版本-7：离在线分离，接入远程部署的 `Document`
+## 版本-8：离在线分离，接入远程部署的 `Document`
 
 RAG系统往往包含文档解析与在线问答两阶段，其中文档解析阶段耗时较长，但可以离线执行，而问答阶段则需要快速响应。为了满足这一需求，`LazyLLM` 提供了 `Document` 的远程部署与接入功能，支持用户将 `Document` 部署在远程服务器上，并使用 url 的方式接入。
 

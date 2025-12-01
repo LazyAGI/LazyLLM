@@ -697,6 +697,49 @@ add_english_doc('Document.drop_algorithm', '''
 Delete the algorithm information registered in the document parsing service for the current document collection.
 ''')
 
+add_chinese_doc('Document.analyze_schema_by_llm', '''
+用于使用大模型为文档管理模块中特定的知识库或文档集合自动抽取字段集合，返回自动生成的Pydantic Model。
+支持传入特定知识库id和文档id列表。
+
+Args:
+    kb_id: 目标知识库id
+    doc_ids: 目标文档id列表
+''')
+
+add_english_doc('Document.analyze_schema_by_llm', '''
+Use an LLM to auto-infer a field schema for a specific knowledge base or document set in the Document manager, returning a generated Pydantic model. Supports narrowing the sample by kb_id and a list of doc_ids.
+
+Args:
+    kb_id: Target knowledge base id.
+    doc_ids: List of target document ids.
+''')
+
+add_chinese_doc('Document.register_schema_set', '''
+手动注册一个 Pydantic Model 作为当前算法的字段集合（schema），并绑定到指定知识库。
+如果该知识库已绑定其他 schema，默认会报错；传入 ``force_refresh=True`` 则会替换旧绑定并清理旧数据。
+
+Args:
+    schema_set (Type[BaseModel]): 要注册的 Pydantic 模型，用作 schema 定义。
+    kb_id (Optional[str]): 目标知识库 ID，默认为 ``DEFAULT_KB_ID``。
+    force_refresh (bool): 若已有绑定，是否强制刷新并覆盖。默认 ``False``。
+
+Returns:
+    str: 生成的 schema_set_id。
+''')
+
+add_english_doc('Document.register_schema_set', '''
+Manually register a Pydantic model as the schema for the current algorithm and bind it to a specific knowledge base.
+If the KB is already bound to another schema, it raises by default; set ``force_refresh=True`` to replace the binding and clean old records.
+
+Args:
+    schema_set (Type[BaseModel]): Pydantic model that defines the schema to register.
+    kb_id (Optional[str]): Target knowledge base ID. Defaults to ``DEFAULT_KB_ID``.
+    force_refresh (bool): Whether to force refresh when a binding already exists. Defaults to ``False``.
+
+Returns:
+    str: The generated ``schema_set_id``.
+''')
+
 # rag/graph_document.py
 
 add_english_doc('GraphDocument', '''\
@@ -1329,6 +1372,237 @@ Args:
 **Returns:**\n
 - dict: Extracted key information dictionary with field names as keys and corresponding information values as values.
 ''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor', '''
+基于大模型的结构化信息抽取器：注册 Pydantic schema 后，自动创建/复用数据库表，并将文档内容按字段定义抽取、存储。
+可直接用于Document中，文档入库过程中自动生效。
+
+Args:
+    db_config (Dict[str, Any]): 目标数据库配置，用于初始化 SqlManager 及建表。
+    llm (Union[OnlineChatModule, TrainableModule]): 执行文本抽取的大语言模型。
+    table_prefix (str, optional): 自动建表时使用的表名前缀，默认 `lazyllm_schema`。
+    force_refresh (bool, optional): 是否强制刷新已有表/缓存。
+    extraction_mode (ExtractionMode, optional): 抽取模式，默认为 TEXT，当前仅支持纯文本提取。
+    max_len (int, optional): 单文档最大解析长度，默认 102400。
+    num_workers (int, optional): 抽取并发线程数，默认 4。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor', '''
+LLM-based structured extractor: register a Pydantic schema, auto-create/reuse DB tables, and extract document content into typed fields for persistence.
+It can be used into Document, which can make the extracting happen in file parsing progress.
+
+Args:
+    db_config (Dict[str, Any]): Database config used to initialize SqlManager and manage tables.
+    llm (Union[OnlineChatModule, TrainableModule]): LLM instance used for text extraction.
+    table_prefix (str, optional): Prefix for auto-generated tables, defaults to lazyllm_schema.
+    force_refresh (bool, optional): Force refresh existing tables/cache.
+    extraction_mode (ExtractionMode, optional): Extraction mode, TEXT by default, currently only support text extracting .
+    max_len (int, optional): Max length per document to parse, default 102400.
+    num_workers (int, optional): Worker threads for extraction, default 4.
+
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.register_schema_set', '''
+注册 Pydantic schema 集合，必要时创建管理/目标表，返回 schema_set_id（幂等）。
+
+Args:
+    schema_set (Type[BaseModel]): 要注册的 Pydantic 模型。
+    schema_set_id (str, optional): 自定义 schema 集合 ID，不传则自动生成或复用已有签名。
+    force_refresh (bool, optional): 预留参数，期望强制刷新表或缓存时使用。
+
+**Returns:**\n
+- str: 注册后的 schema_set_id。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.register_schema_set', '''
+Register a Pydantic schema set, creating management/target tables if needed, and return the schema_set_id (idempotent).
+
+Args:
+    schema_set (Type[BaseModel]): Pydantic model to register.
+    schema_set_id (str, optional): Custom schema set id; auto-generated or reused if omitted.
+    force_refresh (bool, optional): Reserved flag for forcing table/cache refresh.
+
+**Returns:**\n
+- str: Registered schema_set_id.
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.has_schema_set', '''
+检查指定 schema_set_id 是否已注册，缺失时会尝试从数据库恢复模型并建表。
+
+Args:
+    schema_set_id (str): 目标 schema 集合 ID。
+
+**Returns:**\n
+- bool: 是否已存在。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.has_schema_set', '''
+Check whether a schema_set_id is registered, recovering the model and ensuring the table if needed.
+
+Args:
+    schema_set_id (str): Target schema set id.
+
+**Returns:**\n
+- bool: True if it exists.
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.register_schema_set_to_kb', '''
+将算法/知识库绑定到指定 schema 集合；若提供 schema_set 会先注册；可选 force_refresh 覆盖已有绑定并清理旧数据。
+
+Args:
+    algo_id (str, optional): 算法/Document 名称，默认 DocListManager.DEFAULT_GROUP_NAME。
+    kb_id (str, optional): 知识库 ID，默认 DEFAULT_KB_ID。
+    schema_set_id (str, optional): 已有 schema 集合 ID。
+    schema_set (Type[BaseModel], optional): 新 schema，传入则会注册后绑定。
+    force_refresh (bool, optional): 已绑定不同 schema 时是否强制覆盖并清空旧记录。
+
+**Returns:**\n
+- str: 绑定使用的 schema_set_id。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.register_schema_set_to_kb', '''
+Bind an algo/kb pair to a schema set; optionally register a provided schema_set first; with force_refresh you can override an existing binding and purge old records.
+
+Args:
+    algo_id (str, optional): Algorithm/Document name, defaults to DocListManager.DEFAULT_GROUP_NAME.
+    kb_id (str, optional): Knowledge base id, defaults to DEFAULT_KB_ID.
+    schema_set_id (str, optional): Existing schema set id to bind.
+    schema_set (Type[BaseModel], optional): Schema to register and bind if no id is provided.
+    force_refresh (bool, optional): Whether to overwrite an existing different binding and clean previous records.
+
+**Returns:**\n
+- str: The schema_set_id used for binding.
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.analyze_schema_and_register', '''
+基于样本文本/DocNode 列表调用大模型推断字段结构，自动生成 Pydantic 模型并注册，返回 SchemaSetInfo（含 schema_set_id 和 pydantic model）。
+
+Args:
+    data (Union[str, List[DocNode]]): 用于分析的文本或节点列表（单文档）。
+    schema_set_id (str, optional): 自定义/复用的 schema_set_id。
+
+**Returns:**\n
+- SchemaSetInfo: 包含 schema_set_id 与生成的 schema 模型。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.analyze_schema_and_register', '''
+Infer a schema from sample text or DocNodes using the LLM, auto-create a Pydantic model, register it, and return SchemaSetInfo (id and pydantic model).
+
+Args:
+    data (Union[str, List[DocNode]]): Sample text or nodes from a single document.
+    schema_set_id (str, optional): Custom or reuse schema_set_id.
+
+**Returns:**\n
+- SchemaSetInfo: Contains the schema_set_id and generated schema model.
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.extract_and_store', '''
+按绑定的 schema 抽取文本/DocNode 内容并写入对应表，若传入 schema_set 会先注册；同文档重复调用会返回缓存结果。
+
+Args:
+    data (Union[str, List[DocNode]]): 文本或 DocNode 列表（需同一文档）。
+    algo_id (str, optional): 算法/Document 名称，默认 DocListManager.DEFAULT_GROUP_NAME。
+    schema_set_id (str, optional): 指定使用的 schema 集合 ID。
+    schema_set (Type[BaseModel], optional): 动态注册并使用的 schema。
+
+**Returns:**\n
+- ExtractResult: 抽取结果，`data` 为字段名到值的字典，`metadata` 包含 schema_set_id、algo_id、kb_id、doc_id 及按字段的线索信息；可能为 None 表示无可写入。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.extract_and_store', '''
+Extract content according to the bound schema and persist it; will register the provided schema_set if given; repeated calls for the same doc return cached results.
+
+Args:
+    data (Union[str, List[DocNode]]): Text or list of DocNodes from a single document.
+    algo_id (str, optional): Algorithm/Document name, defaults to DocListManager.DEFAULT_GROUP_NAME.
+    schema_set_id (str, optional): Schema set id to use.
+    schema_set (Type[BaseModel], optional): Schema to register and use if no id is provided.
+
+**Returns:**\n
+- ExtractResult: Result object where `data` is the field/value dict and `metadata` contains schema_set_id, algo_id, kb_id, doc_id, and field-level clues; or None if nothing persisted.
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.__call__', '''
+便捷调用，等同于 extract_and_store(data, algo_id)，抽取并存储后返回结果。
+
+Args:
+    data (Union[str, List[DocNode]]): 文本或 DocNode 列表。
+    algo_id (str, optional): 算法/Document 名称。
+
+**Returns:**\n
+- ExtractResult: 抽取结果。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.__call__', '''
+Convenience wrapper for extract_and_store(data, algo_id), performing extraction and persistence then returning the result.
+
+Args:
+    data (Union[str, List[DocNode]]): Text or list of DocNodes.
+    algo_id (str, optional): Algorithm/Document name.
+
+**Returns:**\n
+- ExtractResult: Extraction result.
+''')
+
+add_chinese_doc('rag.doc_to_db.SchemaExtractor.sql_manager_for_nl2sql', '''
+基于已绑定的 schema，生成一个仅暴露相关表的 SqlManager，用于 SqlCall 模块中 NL2SQL 查询；会附带表结构描述和可见表列表。
+
+Args:
+    algo_id (str, optional): 算法/Document 名称；不传则返回所有绑定关系的可见表。
+    kb_ids (Union[str, List[str]], optional): 过滤的知识库 ID，可单个或列表。
+
+**Returns:**\n
+- SqlManager: 仅包含可见表、列信息及说明的 SqlManager 实例，用于 NL2SQL。
+''')
+
+add_english_doc('rag.doc_to_db.SchemaExtractor.sql_manager_for_nl2sql', '''
+Create a SqlManager tailored for NL2SQL in SqlCall Module that only exposes tables bound to the given algo/kb, with descriptions of columns and visible tables.
+
+Args:
+    algo_id (str, optional): Algorithm/Document name; when omitted, returns all bound tables.
+    kb_ids (Union[str, List[str]], optional): KB id or list to filter bindings.
+
+**Returns:**\n
+- SqlManager: Manager instance with visible_tables and column metadata set for NL2SQL use.
+''')
+
+
+add_example('rag.doc_to_db.SchemaExtractor', '''\
+from lazyllm.tools.rag import SchemaExtractor
+from lazyllm import OnlineChatModule
+from pydantic import BaseModel, Field
+db_config = {
+    "db_type": "sqlite",
+    "user": None,
+    "password": None,
+    "host": None,
+    "port": None,
+    "db_name": "./test.db",
+}
+# define a custom pydantic model
+class TestSchema(BaseModel):
+    company: str = Field(description="Name of the company", default='unknown')
+    profit: float = Field(description="Profit of the company, unit is million", default=0.0)
+
+extractor = SchemaExtractor(db_config=db_config, llm=OnlineChatModule(source='siliconflow'), force_refresh=True)
+# register to db
+extractor.register_schema_set_to_kb(schema_set=TestSchema)
+text = "The company name is Apple, and the profit is 100 million."
+# you can use it directly by giving a string
+res = extractor(data=text)
+
+# bind the schema for a specific algorithm(Document)
+extractor.register_schema_set_to_kb(algo_id='algo_1', schema_set=TestSchema)
+document = Document(
+    dataset_path='./test_docs',
+    name="algo_1",
+    display_name="Algo_1",
+    description="Algo_1 for testing",
+    schema_extractor=extractor,  # give it the extractor by this way
+)
+
+''')
+
 
 add_chinese_doc('http_request.http_executor_response.HttpExecutorResponse', """\
 HTTP执行器响应类，用于封装和处理HTTP请求的响应结果。
@@ -2230,11 +2504,29 @@ Args:
 ''')
 
 add_english_doc('rag.store.ElasticSearchStore.search', '''
-Not implemented yet.
+Perform vector similarity search with optional metadata filtering.
+Args:
+    collection_name (str): Collection to search.
+    query (Optional[str]): Query string.
+    topk (Optional[int]): Number of nearest neighbors.
+    filters (Optional[dict]): Metadata filter map.
+    kwargs: Other search parameters
+
+**Returns:**\n
+- List[dict]: Return matching results list and similarity 'score'.
 ''')
 
 add_chinese_doc('rag.store.ElasticSearchStore.search', '''
-待实现
+执行向量相似度检索，并可按元数据过滤。
+Args:
+    collection_name (str): 待搜索集合。
+    query (Optional[str]): 查询字符串。
+    topk (Optional[int]): 返回邻近数量。
+    filters (Optional[dict]): 元数据过滤映射。
+    kwargs: 其他搜索参数
+
+**Returns:**\n
+- List[dict]: 返回匹配结果列表及相似度 'score'。
 ''')
 
 add_chinese_doc('rag.store.hybrid.hybrid_store.HybridStore', '''\
@@ -3640,57 +3932,674 @@ Args:
 
 # ---------------------------------------------------------------------------- #
 
-# rag/transform.py
+# rag/transform
 
-add_english_doc('SentenceSplitter', '''
+add_english_doc('rag.transform.sentence.SentenceSplitter', '''
 Split sentences into chunks of a specified size. You can specify the size of the overlap between adjacent chunks.
 
 Args:
     chunk_size (int): The size of the chunk after splitting.
     chunk_overlap (int): The length of the overlapping content between two adjacent chunks.
     num_workers (int): Controls the number of threads or processes used for parallel processing.
+    **kwargs: Additional parameters passed to the splitter.
 ''')
 
-add_chinese_doc('SentenceSplitter', '''
+add_chinese_doc('rag.transform.sentence.SentenceSplitter', '''
 将句子拆分成指定大小的块。可以指定相邻块之间重合部分的大小。
 
 Args:
     chunk_size (int): 拆分之后的块大小
     chunk_overlap (int): 相邻两个块之间重合的内容长度
-    num_workers(int):控制并行处理的线程/进程数量
+    num_workers (int):控制并行处理的线程/进程数量
+    **kwargs: 传递给拆分器的额外参数。
 ''')
 
-add_example('SentenceSplitter', '''
+add_example('rag.transform.sentence.SentenceSplitter', '''
 >>> import lazyllm
 >>> from lazyllm.tools import Document, SentenceSplitter
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 ''')
-
-add_chinese_doc('SentenceSplitter.split_text', '''\
-将输入文本按句子和块大小拆分为多个文本块。
-
-Args:
-    text (str): 待拆分的文本。
-    metadata_size (int): 附加元数据占用的长度，用于调整有效文本块大小。
-
-**Returns:**\n
-- List[str]: 拆分后的文本块列表。
-''')
-
-add_english_doc('SentenceSplitter.split_text', '''\
-Split the input text into multiple chunks based on sentence boundaries and chunk size.
+add_chinese_doc('rag.transform.sentence.SentenceSplitter.set_default', '''
+设置SentenceSplitter全局的默认参数。
 
 Args:
-    text (str): The text to be split.
-    metadata_size (int): Length occupied by additional metadata, used to adjust effective chunk size.
-
-**Returns:**\n
-- List[str]: List of resulting text chunks.
+    **kwargs: parameters passed to the splitter.
 ''')
 
-add_english_doc('LLMParser', '''
+add_english_doc('rag.transform.character.CharacterSplitter', '''
+Split text by characters.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    chunk_overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    separator (str): The separator to use for splitting. Defaults to ' '.
+    is_separator_regex (bool): Whether the separator is a regular expression. Defaults to False.
+    keep_separator (bool): Whether to keep the separator in the split text. Defaults to False.
+    **kwargs: Additional parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.character.CharacterSplitter', '''
+将文本按字符拆分。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
+    separator (str): 用于拆分的分隔符。默认为' '。
+    is_separator_regex (bool): 是否使用正则表达式作为分隔符。默认为False。
+    keep_separator (bool): 是否保留分隔符在拆分后的文本中。默认为False。
+    **kwargs: 传递给拆分器的额外参数。
+''')
+
+add_example('rag.transform.character.CharacterSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import Document, CharacterSplitter
+>>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+>>> documents.create_node_group(name="characters", transform=CharacterSplitter, chunk_size=1024, chunk_overlap=100)
+''')
+
+add_english_doc('rag.transform.character.CharacterSplitter.set_split_fns', '''
+CharacterSplitter has default split functions, you can also set the split functions for the CharacterSplitter.
+You can set multiple split functions, and the CharacterSplitter will use them in order, the separator parameter will be ignored.
+
+Args:
+    split_fns (List[Callable[[str], List[str]]]): The split functions to use.
+''')
+
+add_chinese_doc('rag.transform.character.CharacterSplitter.set_split_fns', '''
+CharacterSplitter有默认的拆分函数，你也可以设置自己的拆分函数。
+可以设置多个拆分函数，CharacterSplitter会按顺序使用这些函数，分隔符参数将失效。
+
+Args:
+    split_fns (List[Callable[[str], List[str]]]): 要使用的拆分函数列表。
+''')
+
+add_example('rag.transform.character.CharacterSplitter.set_split_fns', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CharacterSplitter
+>>> splitter = CharacterSplitter(separator='\n')
+>>> splitter.set_split_fns([lambda text: text.split(' '), lambda text: text.split('\n')])
+>>> text = 'Hello, world!'
+>>> splits = splitter.split_text(text, metadata_size=0)
+>>> print(splits)
+''')
+
+add_english_doc('rag.transform.character.CharacterSplitter.add_split_fn', '''
+Add a split function to the CharacterSplitter.
+
+Args:
+    split_fn (Callable[[str], List[str]]): The split function to add.
+    index (Optional[int]): The index to add the split function. Default to the last position.
+    bind_separator (bool): Whether to bind the separator to the split function. Default to False.
+''')
+
+add_chinese_doc('rag.transform.character.CharacterSplitter.add_split_fn', '''
+添加一个拆分函数到CharacterSplitter。
+
+Args:
+    split_fn (Callable[[str], List[str]]): 要添加的拆分函数。
+    index (Optional[int]): 要添加的拆分函数的位置。默认为最后一个位置。
+    bind_separator (bool): 是否将分隔符绑定到拆分函数。默认为False。
+''')
+
+add_example('rag.transform.character.CharacterSplitter.add_split_fn', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CharacterSplitter
+>>> splitter = CharacterSplitter(separator='\n')
+>>> splitter.add_split_fn(lambda text: text.split(' '), index=0)
+>>> text = 'Hello, world!'
+>>> splits = splitter.split_text(text, metadata_size=0)
+>>> print(splits)
+''')
+
+add_english_doc('rag.transform.character.CharacterSplitter.clear_split_fns', '''
+Clear all split functions from the CharacterSplitter, and use the default split functions.
+'''
+)
+
+add_chinese_doc('rag.transform.character.CharacterSplitter.clear_split_fns', '''
+清除CharacterSplitter的所有拆分函数，并使用默认的拆分函数。
+''')
+
+add_example('rag.transform.character.CharacterSplitter.clear_split_fns', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CharacterSplitter
+>>> splitter = CharacterSplitter(separator='\n')
+>>> splitter.clear_split_fns()
+>>> text = 'Hello, world!'
+>>> splits = splitter.split_text(text, metadata_size=0)
+>>> print(splits)
+''')
+
+add_english_doc('rag.transform.recursive.RecursiveSplitter', '''
+Split text by characters recursively.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    keep_separator (bool): Whether to keep the separator in the split text. Defaults to False.
+    is_separator_regex (bool): Whether the separator is a regular expression. Defaults to False.
+    separators (List[str]): The separators to use for splitting. Defaults to ['\n\n', '\n', ' ', '']. If you want to split by multiple separators, you can set this parameter.
+''')
+
+add_chinese_doc('rag.transform.recursive.RecursiveSplitter', '''
+递归拆分文本。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    keep_separator (bool): 是否保留分隔符在拆分后的文本中。默认为False。
+    is_separator_regex (bool): 是否使用正则表达式作为分隔符。默认为False。
+    separators (List[str]): 用于拆分的分隔符列表。默认为['\n\n', '\n', ' ', '']。如果你想按多个分隔符拆分，可以设置这个参数。
+''')
+
+add_example('rag.transform.recursive.RecursiveSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RecursiveSplitter
+>>> splitter = RecursiveSplitter(separators=['\n\n', '\n', ' ', ''])
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+>>> documents.create_node_group(name="recursive", transform=RecursiveSplitter, chunk_size=1024, chunk_overlap=100)
+''')
+
+add_english_doc('rag.transform.markdown.MarkdownSplitter', '''
+Split markdown text by headers recursively.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    keep_trace (bool): Whether to keep the trace of the markdown text. Defaults to False.
+    keep_headers (bool): Whether to keep the headers in the split text. Defaults to False.
+    keep_lists (bool): Whether to keep the lists in the split text. Defaults to False.
+    keep_code_blocks (bool): Whether to keep the code blocks in the split text. Defaults to False.
+    keep_tables (bool): Whether to keep the tables in the split text. Defaults to False.
+    keep_images (bool): Whether to keep the images in the split text. Defaults to False.
+    keep_links (bool): Whether to keep the links in the split text. Defaults to False.
+    **kwargs: Additional parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.markdown.MarkdownSplitter', '''
+递归拆分markdown文本。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
+    keep_trace (bool): 是否保留markdown文本的追踪。默认为False。
+    keep_headers (bool): 是否保留headers在拆分后的文本中。默认为False。
+    keep_lists (bool): 是否保留lists在拆分后的文本中。默认为False。
+    keep_code_blocks (bool): 是否保留code blocks在拆分后的文本中。默认为False。
+    keep_tables (bool): 是否保留tables在拆分后的文本中。默认为False。
+    keep_images (bool): 是否保留images在拆分后的文本中。默认为False。
+    keep_links (bool): 是否保留links在拆分后的文本中。默认为False。
+    **kwargs: 传递给拆分器的额外参数。
+''')
+
+add_example('rag.transform.markdown.MarkdownSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import MarkdownSplitter
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+>>> documents.create_node_group(name="markdown", transform=MarkdownSplitter,
+                                chunk_size=1024, chunk_overlap=100, keep_trace=True, keep_headers=True)
+''')
+
+add_english_doc('rag.transform.markdown.MarkdownSplitter.split_markdown_by_semantics', '''
+Split markdown text by semantics.
+
+Args:
+    md_text (str): The markdown text to split.
+    **kwargs: Additional parameters passed to the splitter.
+
+**Returns:**\n
+- List[_MdSplit]: The split text with markdown semantics in metadata.
+''')
+
+add_chinese_doc('rag.transform.markdown.MarkdownSplitter.split_markdown_by_semantics', '''
+拆分markdown文本的语义。
+
+Args:
+    md_text (str): 要拆分的markdown文本。
+    **kwargs: 传递给拆分器的额外参数。
+
+**Returns:**\n
+- List[_MdSplit]: 拆分后的文本，包含markdown语义的元数据。
+''')
+
+add_example('rag.transform.markdown.MarkdownSplitter.split_markdown_by_semantics', '''
+>>> import lazyllm
+>>> from lazyllm.tools import MarkdownSplitter
+>>> splitter = MarkdownSplitter(keep_trace=True, keep_headers=True, keep_lists=True, keep_code_blocks=True, keep_tables=True, keep_images=True, keep_links=True)
+>>> md_text = '# Hello, world!\n## Hello, world!\n### Hello, world!\n### Hello, world!'
+>>> splits = splitter.split_markdown_by_semantics(md_text)
+>>> print(splits)
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter', '''
+A code splitter that splits code text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    chunk_overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    filetype (Optional[str]): The file type to split. Defaults to None.
+    **kwargs: Additional parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter', '''
+一个代码拆分器，负责根据文件类型进行路由选择不同的拆分器。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
+    filetype (Optional[str]): 要拆分的文件类型。
+    **kwargs: 传递给拆分器的额外参数。
+''')
+
+add_example('rag.transform.code.CodeSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> splitter = CodeSplitter(filetype='python')
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.from_language', '''
+Load the language splitter by filetype if not specified in CodeSplitter initialization.
+
+Args:
+    filetype (str): The file type to split.
+**Returns:**\n
+    _LanguageSplitterBase: The language splitter.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.from_language', '''
+根据文件类型加载语言拆分器，如果未在CodeSplitter初始化中指定。
+
+Args:
+    filetype (str): 要拆分的文件类型。
+
+**Returns:**\n
+    _LanguageSplitterBase: 语言拆分器。
+''')
+
+add_example('rag.transform.code.CodeSplitter.from_language', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> splitter = CodeSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10)
+>>> splitter = splitter.from_language('python')
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.split_text', '''
+Split the code text into chunks.
+
+Args:
+    text (str): The text to split.
+    metadata_size (int): The size of the metadata.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.split_text', '''
+拆分代码文本为块。
+
+Args:
+    text (str): 要拆分的文本。
+    metadata_size (int): 元数据的尺寸。
+''')
+
+add_example('rag.transform.code.CodeSplitter.split_text', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> splitter = CodeSplitter(filetype='python')
+>>> text = 'print("Hello, World!")'
+>>> chunks = splitter.split_text(text)
+>>> print(chunks)
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.register_splitter', '''
+Register a language splitter.
+
+Args:
+    filetype (str): The file type to split.
+    splitter_class (Type[_LanguageSplitterBase]): The language splitter class.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.register_splitter', '''
+注册一个语言拆分器。
+
+Args:
+    filetype (str): 要拆分的文件类型。
+    splitter_class (Type[_LanguageSplitterBase]): 语言拆分器类。
+''')
+
+add_example('rag.transform.code.CodeSplitter.register_splitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> CodeSplitter.register_splitter('python', PythonSplitter)
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.get_supported_filetypes', '''
+Get the supported file types for CodeSplitter.
+
+**Returns:**\n
+    List[str]: The supported file types.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.get_supported_filetypes', '''
+获取CodeSplitter支持的文件类型。
+
+**Returns:**\n
+    List[str]: 支持的文件类型。
+''')
+
+add_example('rag.transform.code.CodeSplitter.get_supported_filetypes', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> print(CodeSplitter.get_supported_filetypes())
+''')
+
+add_english_doc('rag.transform.code.HTMLSplitter', '''
+A HTML splitter that splits HTML text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    keep_sections (bool): Whether to keep the sections in the split text. Defaults to False.
+    keep_tags (bool): Whether to keep the tags in the split text. Defaults to False.
+    **kwargs: Additional parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.HTMLSplitter', '''
+一个HTML拆分器，负责拆分HTML文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
+    keep_sections (bool): 是否保留sections在拆分后的文本中。默认为False。
+    keep_tags (bool): 是否保留tags在拆分后的文本中。默认为False。
+    **kwargs: 传递给拆分器的额外参数。
+''')
+
+add_example('rag.transform.code.HTMLSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import HTMLSplitter
+>>> splitter = HTMLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, keep_sections=True, keep_tags=True)
+''')
+
+add_english_doc('rag.transform.code.JSONSplitter', '''
+A JSON splitter that splits JSON text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    compact_output (bool): Whether to compact the output. Defaults to True.\
+    **kwargs: Additional parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.JSONSplitter', '''
+一个JSON拆分器，负责拆分JSON文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
+    compact_output (bool): 是否压缩输出。默认为True。
+    **kwargs: 传递给拆分器的额外参数。
+''')
+
+add_example('rag.transform.code.JSONSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONSplitter
+>>> splitter = JSONSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.JSONLSplitter', '''
+A JSONL splitter that splits JSONL text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    compact_output (bool): Whether to compact the output. Defaults to True.
+''')
+
+add_chinese_doc('rag.transform.code.JSONLSplitter', '''
+一个JSONL拆分器，负责拆分JSONL文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    compact_output (bool): 是否压缩输出。默认为True。
+''')
+
+add_example('rag.transform.code.JSONLSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONLSplitter
+>>> splitter = JSONLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.JSONLSplitter.split_text', '''
+Split the JSONL text into chunks.
+
+Args:
+    text (str): The text to split.
+    metadata_size (int): The size of the metadata.
+''')
+
+add_chinese_doc('rag.transform.code.JSONLSplitter.split_text', '''
+拆分JSONL文本为块。
+
+Args:
+    text (str): 要拆分的文本。
+    metadata_size (int): 元数据的尺寸。
+''')
+
+add_example('rag.transform.code.JSONLSplitter.split_text', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONLSplitter
+>>> splitter = JSONLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> text = '{"name": "John", "age": 30}\n{"name": "Jane", "age": 25}'
+>>> chunks = splitter.split_text(text)
+>>> print(chunks)
+''')
+
+add_english_doc('rag.transform.code.YAMLSplitter', '''
+A YAML splitter that splits YAML text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    compact_output (bool): Whether to compact the output. Defaults to True.
+''')
+
+add_chinese_doc('rag.transform.code.YAMLSplitter', '''
+一个YAML拆分器，负责拆分YAML文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    compact_output (bool): 是否压缩输出。默认为True。
+''')
+
+add_example('rag.transform.code.YAMLSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import YAMLSplitter
+>>> splitter = YAMLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.GeneralCodeSplitter', '''
+A general code splitter that splits code text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    filetype (str): The file type to split. Defaults to 'code'.
+''')
+
+add_chinese_doc('rag.transform.code.GeneralCodeSplitter', '''
+一个通用代码拆分器，负责拆分代码文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    filetype (str): 要拆分的文件类型。
+''')
+
+add_example('rag.transform.code.GeneralCodeSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import GeneralCodeSplitter
+>>> splitter = GeneralCodeSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, filetype='code')
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.XMLSplitter', '''
+A XML splitter that splits XML text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    keep_trace (bool): Whether to keep the trace in the split text. Defaults to False.
+    keep_tags (bool): Whether to keep the tags in the split text. Defaults to False.
+''')
+
+add_chinese_doc('rag.transform.code.XMLSplitter', '''
+一个XML拆分器，负责拆分XML文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    keep_trace (bool): 是否保留拆分文本中的trace。
+    keep_tags (bool): 是否保留拆分文本中的tags。
+''')
+
+add_example('rag.transform.code.XMLSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import XMLSplitter
+>>> splitter = XMLSplitter(chunk_size=1024, overlap=100, num_workers=10, keep_trace=True, keep_tags=True)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.base.NodeTransform', '''
+Processes document nodes in batch, supporting both single-threaded and multi-threaded modes.
+
+Args:
+    num_workers (int): Controls whether multi-threading is enabled (enabled when >0).
+''')
+
+add_chinese_doc('rag.transform.base.NodeTransform', '''
+批量处理文档节点，支持单线程/多线程模式。
+
+Args:
+    num_workers (int)：控制是否启用多线程（>0 时启用）。
+''')
+
+add_example('rag.transform.base.NodeTransform', '''
+>>> import lazyllm
+>>> from lazyllm.tools import NodeTransform
+>>> node_tran = NodeTransform(num_workers=num_workers)
+>>> doc = lazyllm.Document(dataset_path="/path/to/your/data", embed=m, manager=False)
+>>> nodes = node_tran.batch_forward(doc, "word_split")
+''')
+
+add_english_doc('rag.transform.base.NodeTransform.batch_forward', '''
+Process documents in batch with node group transformation.
+
+Args:
+    documents (Union[DocNode, List[DocNode]]): Input node(s) to process.
+    node_group (str): Target transformation group name.
+    **kwargs: Additional transformation parameters.
+''')
+
+add_chinese_doc('rag.transform.base.NodeTransform.batch_forward', '''
+批量处理文档节点并生成指定组的子节点。
+
+Args:
+    documents (Union[DocNode, List[DocNode]]): 待处理的输入节点（单个或列表）。
+    node_group (str): 目标转换组名称。
+    **kwargs: 额外转换参数。
+''')
+
+add_english_doc('rag.transform.base.NodeTransform.transform', '''
+[Abstract] Core transformation logic to implement.
+
+Args:
+    document (DocNode): Input document node.
+    **kwargs: Implementation-specific parameters.
+''')
+
+add_chinese_doc('rag.transform.base.NodeTransform.transform', '''
+[抽象方法] 需要子类实现的核心转换逻辑。
+
+Args:
+    document (DocNode): 输入文档节点。
+    **kwargs: 实现相关的参数。
+''')
+
+add_english_doc('rag.transform.base.NodeTransform.with_name', '''
+Set transformer name with optional copying.
+
+Args:
+    name (Optional[str]): New name for the transformer.
+    copy (bool): Whether to return a copy. Default True.
+''')
+
+add_chinese_doc('rag.transform.base.NodeTransform.with_name', '''
+设置转换器名称）。
+
+Args:
+    name (Optional[str]): 转换器的新名称。
+    copy (bool): 是否返回副本，默认为True。
+''')
+
+add_english_doc('rag.transform.factory.TransformArgs', '''
+A document transformation parameter container for centralized management of processing configurations.
+
+Args:
+    f (Union[str, Callable]): Transformation function or registered function name.Can be either a callable function or a string identifier for registered functions.
+    trans_node (bool): Whether to transform node types.When True, modifies the document node structure during processing.
+    num_workers (int):Controls parallel processing threads.Values >0.
+    kwargs (Dict):Additional parameters passed to the transformation function.
+    pattern (Union[str, Callable[[str], bool]]):File name/content matching pattern.
+''')
+
+add_chinese_doc('rag.transform.factory.TransformArgs', '''
+文档转换参数容器，用于统一管理文档处理中的各类配置参数。
+
+Args:
+    f(Union[str, Callable]):转换函数或注册的函数名。
+    trans_node(bool):是否转换节点类型。
+    num_workers (int)：控制是否启用多线程（>0 时启用）。
+    kwargs(Dict): 传递给转换函数的额外参数。
+    pattern(Union[str, Callable[[str], bool]]):文件名/内容匹配模式。
+''')
+
+add_example('rag.transform.factory.TransformArgs', '''
+>>> from lazyllm.tools import TransformArgs
+>>> args = TransformArgs(f=lambda text: text.lower(),num_workers=4,pattern=r'.*\.md$')
+>>>config = {'f': 'parse_pdf','kwargs': {'engine': 'pdfminer'},'trans_node': True}
+>>>args = TransformArgs.from_dict(config)
+print(args['f'])
+print(args.get('unknown'))
+''')
+
+add_english_doc('rag.transform.factory.LLMParser', '''
 A text summarizer and keyword extractor that is responsible for analyzing the text input by the user and providing concise summaries or extracting relevant keywords based on the requested task.
 
 Args:
@@ -3700,38 +4609,38 @@ Args:
     num_workers (int): Controls the number of threads or processes used for parallel processing.
 ''')
 
-add_chinese_doc('LLMParser', '''
+add_chinese_doc('rag.transform.factory.LLMParser', '''
 一个文本摘要和关键词提取器，负责分析用户输入的文本，并根据请求任务提供简洁的摘要或提取相关关键词。
 
 Args:
     llm (TrainableModule): 可训练的模块
     language (str): 语言种类，目前只支持中文（zh）和英文（en）
     task_type (str): 目前支持两种任务：摘要（summary）和关键词抽取（keywords）。
-    num_workers(int):控制并行处理的线程/进程数量。
+    num_workers (int): 控制并行处理的线程/进程数量。
 ''')
 
-add_example('LLMParser', '''
+add_example('rag.transform.factory.LLMParser', '''
 >>> from lazyllm import TrainableModule
 >>> from lazyllm.tools.rag import LLMParser
 >>> llm = TrainableModule("internlm2-chat-7b")
 >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
 ''')
 
-add_english_doc('LLMParser.transform', '''
+add_english_doc('rag.transform.factory.LLMParser.transform', '''
 Perform the set task on the specified document.
 
 Args:
     node (DocNode): The document on which the extraction task needs to be performed.
 ''')
 
-add_chinese_doc('LLMParser.transform', '''
+add_chinese_doc('rag.transform.factory.LLMParser.transform', '''
 在指定的文档上执行设定的任务。
 
 Args:
     node (DocNode): 需要执行抽取任务的文档。
 ''')
 
-add_example('LLMParser.transform', '''
+add_example('rag.transform.factory.LLMParser.transform', '''
 >>> import lazyllm
 >>> from lazyllm.tools import LLMParser
 >>> llm = lazyllm.TrainableModule("internlm2-chat-7b").start()
@@ -3745,109 +4654,166 @@ add_example('LLMParser.transform', '''
 >>> keywords_result = keywords_parser.transform(doc_nodes[0])
 ''')
 
-add_english_doc('rag.transform.NodeTransform', '''
-Processes document nodes in batch, supporting both single-threaded and multi-threaded modes.
+# FuncNodeTransform
+add_english_doc('rag.transform.factory.FuncNodeTransform', '''
+A wrapper class for user-defined functions that transforms document nodes.
+
+This wrapper supports two modes of operation:
+    1. When trans_node is False (default): transforms text strings
+    2. When trans_node is True: transforms DocNode objects
+
+The wrapper can handle various function signatures:
+    - str -> List[str]: transform=lambda t: t.split('\\\\n')
+    - str -> str: transform=lambda t: t[:3]
+    - DocNode -> List[DocNode]: pipeline(lambda x:x, SentenceSplitter)
+    - DocNode -> DocNode: pipeline(LLMParser)
 
 Args:
-    num_workers(int): Controls whether multi-threading is enabled (enabled when >0).
+    func (Union[Callable[[str], List[str]], Callable[[DocNode], List[DocNode]]]): The user-defined function to be wrapped.
+    trans_node (bool, optional): Determines whether the function operates on DocNode objects (True) or text strings (False). Defaults to None.
+    num_workers (int): Controls the number of threads or processes used for parallel processing. Defaults to 0.
 ''')
 
-add_chinese_doc('rag.transform.NodeTransform', '''
-批量处理文档节点，支持单线程/多线程模式。
+add_chinese_doc('rag.transform.factory.FuncNodeTransform', '''
+用于包装用户自定义函数的转换器类。
+
+此包装器支持两种操作模式：
+    1. 当 trans_node 为 False（默认）：转换文本字符串
+    2. 当 trans_node 为 True：转换 DocNode 对象
+
+包装器可以处理各种函数签名：
+    - str -> List[str]: transform=lambda t: t.split('\\\\n')
+    - str -> str: transform=lambda t: t[:3]
+    - DocNode -> List[DocNode]: pipeline(lambda x:x, SentenceSplitter)
+    - DocNode -> DocNode: pipeline(LLMParser)
 
 Args:
-    num_workers(int)：控制是否启用多线程（>0 时启用）。
+    func (Union[Callable[[str], List[str]], Callable[[DocNode], List[DocNode]]]): 要包装的用户自定义函数。
+    trans_node (bool, optional): 确定函数是操作 DocNode 对象（True）还是文本字符串（False）。默认为 None。
+    num_workers (int): 控制并行处理的线程/进程数量。默认为 0。
 ''')
 
-add_example('rag.transform.NodeTransform', '''
+add_example('rag.transform.factory.FuncNodeTransform', '''
 >>> import lazyllm
->>> from lazyllm.tools import NodeTransform
->>> node_tran = NodeTransform(num_workers=num_workers)
->>> doc = lazyllm.Document(dataset_path="/path/to/your/data", embed=m, manager=False)
->>> nodes = node_tran.batch_forward(doc, "word_split")
+>>> from lazyllm.tools.rag import FuncNodeTransform
+>>> from lazyllm.tools import Document, SentenceSplitter
+
+# Example 1: Text-based transformation (trans_node=False)
+>>> def split_by_comma(text):
+...     return text.split(',')
+>>> text_transform = FuncNodeTransform(split_by_comma, trans_node=False)
+
+# Example 2: Node-based transformation (trans_node=True)
+>>> def custom_node_transform(node):
+...     # Process the DocNode and return a list of DocNodes
+...     return [node]  # Simple pass-through
+>>> node_transform = FuncNodeTransform(custom_node_transform, trans_node=True)
+
+# Example 3: Using with Document
+>>> m = lazyllm.OnlineEmbeddingModule(source="glm")
+>>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
+>>> documents.create_node_group(name="custom", transform=text_transform)
 ''')
 
-add_english_doc('rag.transform.NodeTransform.batch_forward', '''
-Process documents in batch with node group transformation.
+# FuncNodeTransform.transform
+add_english_doc('rag.transform.factory.FuncNodeTransform.transform', '''
+Transform a document node using the wrapped user-defined function.
+
+This method applies the user-defined function to either the text content of the node (when trans_node=False) or the node itself (when trans_node=True).
 
 Args:
-    documents (Union[DocNode, List[DocNode]]): Input node(s) to process.
-    node_group (str): Target transformation group name.
-    **kwargs: Additional transformation parameters.
+    node (DocNode): The document node to be transformed.
+    **kwargs: Additional keyword arguments passed to the transformation function.
+
+**Returns:**\n
+- List[Union[str, DocNode]]: The transformed results, which can be either strings or DocNode objects depending on the function implementation.
 ''')
 
-add_chinese_doc('rag.transform.NodeTransform.batch_forward', '''
-批量处理文档节点并生成指定组的子节点。
+add_chinese_doc('rag.transform.factory.FuncNodeTransform.transform', '''
+使用包装的用户自定义函数转换文档节点。
+
+此方法将用户自定义函数应用于节点的文本内容（当 trans_node=False 时）或节点本身（当 trans_node=True 时）。
 
 Args:
-    documents (Union[DocNode, List[DocNode]]): 待处理的输入节点（单个或列表）。
-    node_group (str): 目标转换组名称。
-    **kwargs: 额外转换参数。
+    node (DocNode): 要转换的文档节点。
+    **kwargs: 传递给转换函数的额外关键字参数。
+
+**Returns:**\n
+- List[Union[str, DocNode]]: 转换结果，根据函数实现可以是字符串或 DocNode 对象。
 ''')
 
-add_english_doc('rag.transform.NodeTransform.transform', '''
-[Abstract] Core transformation logic to implement.
+add_english_doc('rag.transform.factory.AdaptiveTransform', '''\
+A flexible document transformation system that applies different transforms based on document patterns.
+
+AdaptiveTransform allows you to define multiple transformation strategies and automatically selects the appropriate one based on the document's file path or custom pattern matching. This is particularly useful when you have different types of documents that require different processing approaches.
 
 Args:
-    document (DocNode): Input document node.
-    **kwargs: Implementation-specific parameters.
+    transforms (Union[List[Union[TransformArgs, Dict]], Union[TransformArgs, Dict]]): A list of transform configurations or a single transform configuration. 
+    num_workers (int, optional): Number of worker threads for parallel processing. Defaults to 0.
 ''')
 
-add_chinese_doc('rag.transform.NodeTransform.transform', '''
-[抽象方法] 需要子类实现的核心转换逻辑。
+add_chinese_doc('rag.transform.factory.AdaptiveTransform', '''\
+一个灵活的文档转换系统，根据文档模式应用不同的转换策略。
+
+AdaptiveTransform允许您定义多种转换策略，并根据文档的文件路径或自定义模式匹配自动选择适当的转换方法。当您有不同类型的文档需要不同处理方法时，这特别有用。
 
 Args:
-    document (DocNode): 输入文档节点。
-    **kwargs: 实现相关的参数。
+    transforms (Union[List[Union[TransformArgs, Dict]], Union[TransformArgs, Dict]]): 转换配置列表或单个转换配置。
+    num_workers (int, optional): 并行处理的工作线程数。默认为0。
 ''')
 
-add_english_doc('rag.transform.NodeTransform.with_name', '''
-Set transformer name with optional copying.
+add_example('rag.transform.factory.AdaptiveTransform', '''\
+>>> from lazyllm.tools.rag.transform import AdaptiveTransform, DocNode, SentenceSplitter
+>>> doc1 = DocNode(text="这是第一个文档的内容。它包含多个句子。")
+>>> doc2 = DocNode(text="这是第二个文档的内容。")
+>>> transforms = [
+...     {
+...         'f': SentenceSplitter,
+...         'pattern': '*.txt',
+...         'kwargs': {'chunk_size': 50, 'chunk_overlap': 10}
+...     },
+...     {
+...         'f': SentenceSplitter,
+...         'pattern': '*.pdf',
+...         'kwargs': {'chunk_size': 100, 'chunk_overlap': 20}
+...     }
+... ]
+>>> adaptive = AdaptiveTransform(transforms)
+>>> results1 = adaptive.transform(doc1)
+>>> print(f"文档1转换结果: {len(results1)} 个块")
+>>> for i, result in enumerate(results1):
+...     print(f"  块 {i+1}: {result.text}")
+>>> results2 = adaptive.transform(doc2)
+>>> print(f"文档2转换结果: {len(results2)} 个块")
+>>> for i, result in enumerate(results2):
+...     print(f"  块 {i+1}: {result.text}")      
+''')
+
+add_english_doc('rag.transform.factory.AdaptiveTransform.transform', '''\
+Transform a document using the appropriate transformation strategy based on pattern matching.
+
+This method evaluates each transform configuration in order and applies the first one that matches the document's path pattern. The matching logic supports both glob patterns and custom callable functions.
 
 Args:
-    name (Optional[str]): New name for the transformer.
-    copy (bool): Whether to return a copy. Default True.
+    document (DocNode): The document node to be transformed.
+    **kwargs: Additional keyword arguments passed to the transform function.
+
+**Returns:**\n
+- List[Union[str, DocNode]]: A list of transformed results (strings or DocNode objects).
 ''')
 
-add_chinese_doc('rag.transform.NodeTransform.with_name', '''
-设置转换器名称）。
+add_chinese_doc('rag.transform.factory.AdaptiveTransform.transform', '''\
+根据模式匹配使用适当的转换策略转换文档。
+
+此方法按顺序评估每个转换配置，并应用第一个匹配文档路径模式的转换。匹配逻辑支持glob模式和自定义可调用函数。
 
 Args:
-    name (Optional[str]): 转换器的新名称。
-    copy (bool): 是否返回副本，默认为True。
+    document (DocNode): 要转换的文档节点。
+    **kwargs: 传递给转换函数的附加关键字参数。
+
+**Returns:**\n
+- List[Union[str, DocNode]]: 转换结果列表（字符串或DocNode对象）。
 ''')
-
-add_english_doc('rag.transform.TransformArgs', '''
-A document transformation parameter container for centralized management of processing configurations.
-
-Args:
-    f (Union[str, Callable]): Transformation function or registered function name.Can be either a callable function or a string identifier for registered functions.
-    trans_node (bool): Whether to transform node types.When True, modifies the document node structure during processing.
-    num_workers (int):Controls parallel processing threads.Values >0.
-    kwargs (Dict):Additional parameters passed to the transformation function.
-    pattern (Union[str, Callable[[str], bool]]):File name/content matching pattern.
-''')
-
-add_chinese_doc('rag.transform.TransformArgs', '''
-文档转换参数容器，用于统一管理文档处理中的各类配置参数。
-
-Args:
-    f(Union[str, Callable]):转换函数或注册的函数名。
-    trans_node(bool):是否转换节点类型。
-    num_workers(int)：控制是否启用多线程（>0 时启用）。
-    kwargs(Dict):传递给转换函数的额外参数。
-    pattern(Union[str, Callable[[str], bool]]):文件名/内容匹配模式。
-''')
-
-add_example('rag.transform.TransformArgs', '''
->>> from lazyllm.tools import TransformArgs
->>> args = TransformArgs(f=lambda text: text.lower(),num_workers=4,pattern=r'.*\.md$')
->>>config = {'f': 'parse_pdf','kwargs': {'engine': 'pdfminer'},'trans_node': True}
->>>args = TransformArgs.from_dict(config)
-print(args['f'])
-print(args.get('unknown'))
-''')
-
 
 add_english_doc('rag.similarity.register_similarity', '''
 Similarity computation registration decorator, used for unified registration and management of different types of similarity computation methods.
@@ -7131,6 +8097,36 @@ Args:
 - tuple[bool, str]: 第一个元素表示是否成功提取，第二个是清洗后的或原始内容。如果提供了 sql_post_func，则会应用于提取结果。
 ''')
 
+add_english_doc('SqlCall.create_from_document', '''\
+Build a `SqlCall` tool directly from a `Document` that already has a bound `SchemaExtractor`. It reuses the extractor’s NL2SQL `SqlManager` and LLM so you can generate and execute SQL against the document’s registered schemas.
+
+Args:
+    document (Document): A Document instance with an attached SchemaExtractor (schema-aware Document).
+    llm (optional): Override LLM for SQL generation/answering; defaults to the extractor’s LLM.
+    sql_examples (str, optional): Few-shot examples appended to the schema description to guide SQL generation.
+    sql_post_func (Callable, optional): Post-processor applied to the extracted SQL/pipeline before execution.
+    use_llm_for_sql_result (bool, optional): Whether to ask the LLM to explain query results; default True.
+    return_trace (bool, optional): Whether to return pipeline trace; default False.
+
+**Returns:**\n
+- SqlCall: Configured SqlCall instance tied to the Document’s schema tables.
+''')
+
+add_chinese_doc('SqlCall.create_from_document', '''\
+基于已绑定 SchemaExtractor 的 Document 创建 SqlCall，复用其 NL2SQL SqlManager 和 LLM，可直接面向文档注册的 schema 生成/执行 SQL。
+
+Args:
+    document (Document): 具备 SchemaExtractor 的文档实例。
+    llm (optional): 覆盖用于 SQL 生成/结果说明的 LLM，默认复用文档的 LLM。
+    sql_examples (str, optional): 追加在 schema 描述后的 few-shot 示例，指导 SQL 生成。
+    sql_post_func (Callable, optional): 对提取的 SQL/管道做后处理的函数。
+    use_llm_for_sql_result (bool, optional): 是否用 LLM 解释查询结果，默认 True。
+    return_trace (bool, optional): 是否返回流水线 trace，默认 False。
+
+**Returns:**\n
+- SqlCall: 绑定到该 Document schema 表的 SqlCall 实例。
+''')
+
 # ---------------------------------------------------------------------------- #
 
 add_chinese_doc("HttpTool", """
@@ -7391,7 +8387,65 @@ searcher = TencentSearch(secret_id, secret_key)
 res = searcher('calculus')
 ''')
 
+add_tools_chinese_doc('JsonExtractor', '''
+JSON提取器，用于从文本中提取JSON数据。
 
+Args:
+    base_model (LLMBase): 语言模型
+    schema (Union[str, Dict[str, Any]]): JSON结构，可以是JSON字符串或字典。示例：'{"name": "", "age": 0, "city": ""}' 或 {"name": "", "age": 0, "city": ""}
+    field_descriptions (Union[str, Dict[str, str]], optional): 字段描述，可以是字符串或字典。如果字典，键是字段名称，值是字段描述。示例：{"name": "姓名", "age": "年龄", "city": "城市"}
+
+Returns:
+    Union[Dict[str, Any], List[Dict[str, Any]]]: 提取的JSON数据，如果有多个，则返回列表。如果提取失败则返回空字典。
+''')
+
+add_tools_english_doc('JsonExtractor', '''
+JSON extractor for extracting JSON data from text.
+
+Args:
+    base_model (LLMBase): Language model
+    schema (Union[str, Dict[str, Any]]): JSON structure, can be a JSON string or dict. Example: '{"name": "", "age": 0, "city": ""}' or {"name": "", "age": 0, "city": ""}
+    field_descriptions (Union[str, Dict[str, str]], optional): Field descriptions, can be a string or dict. If dict, keys are field names and values are descriptions. Example: {"name": "Name", "age": "Age", "city": "City"}
+
+Returns:
+    Union[Dict[str, Any], List[Dict[str, Any]]]: Extracted JSON data, returns list if there are multiple, returns empty dictionary if extraction fails.
+''')
+
+add_tools_example('JsonExtractor', '''
+>>> from lazyllm.tools.tools import JsonExtractor
+>>> from lazyllm import OnlineChatModule
+>>> llm = lazyllm.OnlineChatModule()
+>>> extractor = JsonExtractor(llm, schema='{"name": "", "age": 0, "city": ""}', field_descriptions={'name': '姓名', 'age': '年龄', 'city': '城市'})
+>>> res = extractor("张三的年龄是20岁，住在北京; 李四的年龄是25岁，住在上海")
+>>> print(res)
+[{'name': '张三', 'age': 20, 'city': '北京'}, {'name': '李四', 'age': 25, 'city': '上海'}]
+''')
+
+add_tools_chinese_doc('JsonConcentrator', '''
+JSON聚合器，用于将多个JSON数据聚合成一个JSON数据。
+
+Args:
+    base_model (LLMBase): 语言模型
+    schema (Union[str, Dict[str, Any]]): JSON结构，可以是JSON字符串或字典。示例：'{"name": "", "age": 0, "city": ""}' 或 {"name": "", "age": 0, "city": ""}
+''')
+
+add_tools_english_doc('JsonConcentrator', '''
+JSON concentrator for aggregating multiple JSON data into a single JSON data.
+
+Args:
+    base_model (LLMBase): Language model
+    schema (Union[str, Dict[str, Any]]): JSON structure, can be a JSON string or dict. Example: '{"name": "", "age": 0, "city": ""}' or {"name": "", "age": 0, "city": ""}
+''')
+
+add_tools_example('JsonConcentrator', '''
+>>> from lazyllm.tools.tools import JsonConcentrator
+>>> from lazyllm import OnlineChatModule
+>>> llm = lazyllm.OnlineChatModule()
+>>> concentrator = JsonConcentrator(llm, schema='{"name": "", "age": 0, "city": ""}')
+>>> res = concentrator([{'name': '张三', 'age': 20, 'city': '北京'}, {'name': '李四', 'age': 25, 'city': '上海'}])
+>>> print(res)
+{'name': '张三,李四', 'age': 20 - 25, 'city': '北京,上海'}
+''')
 # ---------------------------------------------------------------------------- #
 
 # mcp/client.py
@@ -7675,79 +8729,6 @@ add_chinese_doc('rag.doc_node.ImageDocNode.get_text', '''\
 - str: 图像文件路径。
 ''')
 
-add_english_doc('rag.transform.AdaptiveTransform', '''\
-A flexible document transformation system that applies different transforms based on document patterns.
-
-AdaptiveTransform allows you to define multiple transformation strategies and automatically selects the appropriate one based on the document's file path or custom pattern matching. This is particularly useful when you have different types of documents that require different processing approaches.
-
-Args:
-    transforms (Union[List[Union[TransformArgs, Dict]], Union[TransformArgs, Dict]]): A list of transform configurations or a single transform configuration.
-    num_workers (int, optional): Number of worker threads for parallel processing. Defaults to 0.
-''')
-
-add_chinese_doc('rag.transform.AdaptiveTransform', '''\
-一个灵活的文档转换系统，根据文档模式应用不同的转换策略。
-
-AdaptiveTransform允许您定义多种转换策略，并根据文档的文件路径或自定义模式匹配自动选择适当的转换方法。当您有不同类型的文档需要不同处理方法时，这特别有用。
-
-Args:
-    transforms (Union[List[Union[TransformArgs, Dict]], Union[TransformArgs, Dict]]): 转换配置列表或单个转换配置。
-    num_workers (int, optional): 并行处理的工作线程数。默认为0。
-''')
-
-add_example('rag.transform.AdaptiveTransform', '''\
->>> from lazyllm.tools.rag.transform import AdaptiveTransform, DocNode, SentenceSplitter
->>> doc1 = DocNode(text="这是第一个文档的内容。它包含多个句子。")
->>> doc2 = DocNode(text="这是第二个文档的内容。")
->>> transforms = [
-...     {
-...         'f': SentenceSplitter,
-...         'pattern': '*.txt',
-...         'kwargs': {'chunk_size': 50, 'chunk_overlap': 10}
-...     },
-...     {
-...         'f': SentenceSplitter,
-...         'pattern': '*.pdf',
-...         'kwargs': {'chunk_size': 100, 'chunk_overlap': 20}
-...     }
-... ]
->>> adaptive = AdaptiveTransform(transforms)
->>> results1 = adaptive.transform(doc1)
->>> print(f"文档1转换结果: {len(results1)} 个块")
->>> for i, result in enumerate(results1):
-...     print(f"  块 {i+1}: {result.text}")
->>> results2 = adaptive.transform(doc2)
->>> print(f"文档2转换结果: {len(results2)} 个块")
->>> for i, result in enumerate(results2):
-...     print(f"  块 {i+1}: {result.text}")
-''')
-
-add_english_doc('rag.transform.AdaptiveTransform.transform', '''\
-Transform a document using the appropriate transformation strategy based on pattern matching.
-
-This method evaluates each transform configuration in order and applies the first one that matches the document's path pattern. The matching logic supports both glob patterns and custom callable functions.
-
-Args:
-    document (DocNode): The document node to be transformed.
-    **kwargs: Additional keyword arguments passed to the transform function.
-
-**Returns:**\n
-- List[Union[str, DocNode]]: A list of transformed results (strings or DocNode objects).
-''')
-
-add_chinese_doc('rag.transform.AdaptiveTransform.transform', '''\
-根据模式匹配使用适当的转换策略转换文档。
-
-此方法按顺序评估每个转换配置，并应用第一个匹配文档路径模式的转换。匹配逻辑支持glob模式和自定义可调用函数。
-
-Args:
-    document (DocNode): 要转换的文档节点。
-    **kwargs: 传递给转换函数的附加关键字参数。
-
-**Returns:**\n
-- List[Union[str, DocNode]]: 转换结果列表（字符串或DocNode对象）。
-''')
-
 add_english_doc('rag.rerank.ModuleReranker', '''\
 A reranker that uses trainable modules to reorder documents based on relevance to a query.
 
@@ -7992,95 +8973,6 @@ add_chinese_doc('rag.web.DocWebModule.stop', '''\
 停止Web界面服务并释放相关资源。
 
 ''')
-
-# FuncNodeTransform
-add_english_doc('rag.transform.FuncNodeTransform', '''
-A wrapper class for user-defined functions that transforms document nodes.
-
-This wrapper supports two modes of operation:
-    1. When trans_node is False (default): transforms text strings
-    2. When trans_node is True: transforms DocNode objects
-
-The wrapper can handle various function signatures:
-    - str -> List[str]: transform=lambda t: t.split('\\\\n')
-    - str -> str: transform=lambda t: t[:3]
-    - DocNode -> List[DocNode]: pipeline(lambda x:x, SentenceSplitter)
-    - DocNode -> DocNode: pipeline(LLMParser)
-
-Args:
-    func (Union[Callable[[str], List[str]], Callable[[DocNode], List[DocNode]]]): The user-defined function to be wrapped.
-    trans_node (bool, optional): Determines whether the function operates on DocNode objects (True) or text strings (False). Defaults to None.
-    num_workers (int): Controls the number of threads or processes used for parallel processing. Defaults to 0.
-''')
-
-add_chinese_doc('rag.transform.FuncNodeTransform', '''
-用于包装用户自定义函数的转换器类。
-
-此包装器支持两种操作模式：
-    1. 当 trans_node 为 False（默认）：转换文本字符串
-    2. 当 trans_node 为 True：转换 DocNode 对象
-
-包装器可以处理各种函数签名：
-    - str -> List[str]: transform=lambda t: t.split('\\\\n')
-    - str -> str: transform=lambda t: t[:3]
-    - DocNode -> List[DocNode]: pipeline(lambda x:x, SentenceSplitter)
-    - DocNode -> DocNode: pipeline(LLMParser)
-
-Args:
-    func (Union[Callable[[str], List[str]], Callable[[DocNode], List[DocNode]]]): 要包装的用户自定义函数。
-    trans_node (bool, optional): 确定函数是操作 DocNode 对象（True）还是文本字符串（False）。默认为 None。
-    num_workers (int): 控制并行处理的线程/进程数量。默认为 0。
-''')
-
-add_example('rag.transform.FuncNodeTransform', '''
->>> import lazyllm
->>> from lazyllm.tools.rag import FuncNodeTransform
->>> from lazyllm.tools import Document, SentenceSplitter
-
-# Example 1: Text-based transformation (trans_node=False)
->>> def split_by_comma(text):
-...     return text.split(',')
->>> text_transform = FuncNodeTransform(split_by_comma, trans_node=False)
-
-# Example 2: Node-based transformation (trans_node=True)
->>> def custom_node_transform(node):
-...     # Process the DocNode and return a list of DocNodes
-...     return [node]  # Simple pass-through
->>> node_transform = FuncNodeTransform(custom_node_transform, trans_node=True)
-
-# Example 3: Using with Document
->>> m = lazyllm.OnlineEmbeddingModule(source="glm")
->>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
->>> documents.create_node_group(name="custom", transform=text_transform)
-''')
-
-# FuncNodeTransform.transform
-add_english_doc('rag.transform.FuncNodeTransform.transform', '''
-Transform a document node using the wrapped user-defined function.
-
-This method applies the user-defined function to either the text content of the node (when trans_node=False) or the node itself (when trans_node=True).
-
-Args:
-    node (DocNode): The document node to be transformed.
-    **kwargs: Additional keyword arguments passed to the transformation function.
-
-**Returns:**\n
-- List[Union[str, DocNode]]: The transformed results, which can be either strings or DocNode objects depending on the function implementation.
-''')
-
-add_chinese_doc('rag.transform.FuncNodeTransform.transform', '''
-使用包装的用户自定义函数转换文档节点。
-
-此方法将用户自定义函数应用于节点的文本内容（当 trans_node=False 时）或节点本身（当 trans_node=True 时）。
-
-Args:
-    node (DocNode): 要转换的文档节点。
-    **kwargs: 传递给转换函数的额外关键字参数。
-
-**Returns:**\n
-- List[Union[str, DocNode]]: 转换结果，根据函数实现可以是字符串或 DocNode 对象。
-''')
-
 
 add_chinese_doc('rag.web.WebUi', """\
 基于 Gradio 的知识库文件管理 Web UI 工具类。
@@ -9393,6 +10285,32 @@ Args:
 
 Returns:
     List[dict]: Query result data list
+""")
+
+add_english_doc('rag.store.segment.OpenSearchStore.search', """\
+Perform vector similarity search with optional metadata filtering.
+Args:
+    collection_name (str): Collection to search.
+    query (Optional[str]): Query string.
+    topk (Optional[int]): Number of nearest neighbors.
+    filters (Optional[dict]): Metadata filter map.
+    kwargs: Other search parameters
+
+**Returns:**\n
+- List[dict]: Return matching results list and similarity 'score'.
+""")
+
+add_chinese_doc('rag.store.segment.OpenSearchStore.search', """\
+执行向量相似度检索，并可按元数据过滤。
+Args:
+    collection_name (str): 待搜索集合。
+    query (Optional[str]): 查询字符串。
+    topk (Optional[int]): 返回邻近数量。
+    filters (Optional[dict]): 元数据过滤映射。
+    kwargs: 其他搜索参数
+
+**Returns:**\n
+- List[dict]: 返回匹配结果列表及相似度 'score'。
 """)
 
 add_chinese_doc('services.ServerBase', """\
