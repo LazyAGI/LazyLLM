@@ -155,7 +155,7 @@ class DocListManager(ABC):
 
     def _monitor_directory(self) -> Set[str]:
         files_list = []
-        for root, _, files in os.walk(self._path):
+        for root, _, files in os.walk(os.path.abspath(self._path)):
             # Skip hidden directories
             path_parts = root.split(os.sep)
             if any(part.startswith('.') for part in path_parts if part):
