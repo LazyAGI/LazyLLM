@@ -24,7 +24,7 @@ def upload_data_to_s3(  # noqa:C901
     use_minio: bool = False,
     endpoint_url: Optional[str] = None,
     signature_version: str = 's3v4',
-    max_memory_size: int = 100 * 1024 * 1024,  # 100MB阈值
+    max_memory_size: int = 100 * 1024 * 1024,  # 100MB threshold
 ):
     session = boto3.Session(
         aws_access_key_id=aws_access_key_id,
@@ -32,21 +32,21 @@ def upload_data_to_s3(  # noqa:C901
         aws_session_token=aws_session_token,
     )
     client_kwargs = {}
-    spec = importlib.util.find_spec("botocore.client")
+    spec = importlib.util.find_spec('botocore.client')
     if spec is None:
         raise ImportError(
-            "Please install boto3 to use botocore module. "
-            "You can install it with `pip install boto3`"
+            'Please install boto3 to use botocore module. '
+            'You can install it with `pip install boto3`'
         )
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     Config = m.Config
 
-    spec_exceptions = importlib.util.find_spec("botocore.exceptions")
+    spec_exceptions = importlib.util.find_spec('botocore.exceptions')
     if spec_exceptions is None:
         raise ImportError(
-            "Please install boto3 to use botocore module. "
-            "You can install it with `pip install boto3`"
+            'Please install boto3 to use botocore module. '
+            'You can install it with `pip install boto3`'
         )
     m_exceptions = importlib.util.module_from_spec(spec_exceptions)
     spec_exceptions.loader.exec_module(m_exceptions)
@@ -67,21 +67,21 @@ def upload_data_to_s3(  # noqa:C901
     )
 
     content_type, _ = mimetypes.guess_type(object_key)
-    extra_args = {"ContentType": content_type or "application/octet-stream"}
+    extra_args = {'ContentType': content_type or 'application/octet-stream'}
 
     if isinstance(data, (bytes, bytearray)):
         raw_bytes = data
     elif isinstance(data, str):
-        raw_bytes = data.encode("utf-8")
-    elif isinstance(data, list):  # 处理 JSONL
-        jsonl_str = "\n".join(json.dumps(d, ensure_ascii=False) for d in data)
-        raw_bytes = jsonl_str.encode("utf-8")
+        raw_bytes = data.encode('utf-8')
+    elif isinstance(data, list):
+        jsonl_str = '\n'.join(json.dumps(d, ensure_ascii=False) for d in data)
+        raw_bytes = jsonl_str.encode('utf-8')
     else:
-        raise TypeError(f"Unsupported data type: {type(data)}")
+        raise TypeError(f'Unsupported data type: {type(data)}')
 
     data_size = len(raw_bytes)
 
-    # 决策：小于阈值 -> 内存上传；否则 -> 临时文件上传
+    # Decision: If the value is less than the threshold, upload to memory; otherwise, upload a temporary file.
     if data_size <= max_memory_size:
         max_retries = 5
         for attempt in range(max_retries):
@@ -94,10 +94,10 @@ def upload_data_to_s3(  # noqa:C901
                 error_code = e.response['Error'].get('Code')
                 if attempt == max_retries - 1:
                     raise
-                if error_code in ['SlowDown', 'SlowDownWrite', "RequestLimitExceeded", "IncompleteBody"]:
+                if error_code in ['SlowDown', 'SlowDownWrite', 'RequestLimitExceeded', 'IncompleteBody']:
                     wait_time = (2 ** attempt) + (random.randint(0, 1000) / 1000)
-                    LOG.warning(f"Upload encountered {error_code}, retrying in {wait_time:.2f}s... "
-                                f"(Attempt {attempt + 1}/{max_retries})")
+                    LOG.warning(f'Upload encountered {error_code}, retrying in {wait_time:.2f}s... '
+                                f'(Attempt {attempt + 1}/{max_retries})')
                     time.sleep(wait_time)
                 else:
                     raise
@@ -105,8 +105,8 @@ def upload_data_to_s3(  # noqa:C901
                 if attempt == max_retries - 1:
                     raise
                 wait_time = (2 ** attempt)
-                LOG.warning(f"Upload failed with {e!r}, retrying in {wait_time:.2f}s... "
-                            f"(Attempt {attempt + 1}/{max_retries})")
+                LOG.warning(f'Upload failed with {e!r}, retrying in {wait_time:.2f}s... '
+                            f'(Attempt {attempt + 1}/{max_retries})')
                 time.sleep(wait_time)
 
     else:
@@ -127,7 +127,7 @@ def upload_data_to_s3(  # noqa:C901
                 Key=object_key,
             )
         except Exception as e:
-            LOG.error(f"Upload Failed: {e}")
+            LOG.error(f'Upload Failed: {e}')
             raise
         finally:
             try:
