@@ -101,7 +101,7 @@ In this example, we only used the built-in algorithm `CoarseChunk` for retrievin
 
 When creating a knowledge base, we need to split the document content. In Part2 of Version-1, we split documents into fixed-size chunks using the built-in CoarseChunk configuration. However, in practice, we encounter various document formats and content types. To achieve better retrieval results, we need more refined splitting operations. LazyLLM provides many built-in splitter classes with very flexible usage.
 
-In LazyLLM, for common splitting methods and file types, there are currently built-in splitters including CharacterSplitter, RecursiveSplitter, SentenceSplitter, MarkdownSplitter, XMLSplitter, HTMLSplitter, JSONSplitter, YAMLSplitter, ProgrammingSplitter, and CodeSplitter.
+In LazyLLM, for common splitting methods and file types, there are currently built-in splitters including CharacterSplitter, RecursiveSplitter, SentenceSplitter, MarkdownSplitter, XMLSplitter, HTMLSplitter, JSONSplitter, YAMLSplitter, GeneralCodeSplitter, and CodeSplitter.
 
 Based on Part1, we can specify a splitting method to split documents into a `Node Group` named `character` based on specified symbols. Let's take the simplest CharacterSplitter as an example:
 
@@ -205,7 +205,7 @@ document.create_node_group(name='character3',
                            separator='.')
 ```
 
-For different document types, LazyLLM's built-in MarkdownSplitter, XMLSplitter, HTMLSplitter, JSONSplitter, YAMLSplitter, ProgrammingSplitter, and CodeSplitter can achieve different splitting requirements by configuring different parameters. Please refer to the documentation for each splitter class.
+For different document types, LazyLLM's built-in MarkdownSplitter, XMLSplitter, HTMLSplitter, JSONSplitter, YAMLSplitter, GeneralCodeSplitter, and CodeSplitter can achieve different splitting requirements by configuring different parameters. Please refer to the documentation for each splitter class.
 
 Among them, CodeSplitter is more accurately described as a router class. It doesn't implement specific splitting but selects the appropriate splitter class based on input parameters. Let's use XML files as an example:
 
