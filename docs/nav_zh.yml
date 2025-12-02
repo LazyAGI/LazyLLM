@@ -23,6 +23,9 @@
   - 多智能体主持演讲: Cookbook/multi-agent_authoritarian_speaker.md
   - 维基搜索: Cookbook/WikiAgent.md
   - 多轮对话: Cookbook/camel_agent.md
+  - SQL 代理: Cookbook/sql_agent.md
+  - 环境交互: Cookbook/gym_v1.md
+  - 多智能体分散式演讲者选择: Cookbook/decentralized.md
 - 最佳实践:
   - 工作流: Best Practice/flow.md
   - 流程应用: Best Practice/flowapp.md

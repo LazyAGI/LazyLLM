@@ -23,6 +23,9 @@
   - Multi-Agent Speaker Selection: Cookbook/multi-agent_authoritarian_speaker.md
   - Wiki Agent: Cookbook/WikiAgent.md
   - Multi-turn dialogue: Cookbook/camel_agent.md
+  - SQL Agent: Cookbook/sql_agent.md
+  - Environment Interaction: Cookbook/gym_v1.md
+  - Multi-Agent Decentralized Speaker Selection: Cookbook/decentralized.md
 - Best Practice:
   - Flow: Best Practice/flow.md
   - Flowapp: Best Practice/flowapp.md
