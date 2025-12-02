@@ -8,7 +8,7 @@ import lazyllm
 from lazyllm import launchers, flows, LOG
 from ...components.utils.file_operate import _image_to_base64, _audio_to_base64, ocr_to_base64
 
-lazyllm.config.add('openai_api', bool, False, 'OPENAI_API')
+lazyllm.config.add('openai_api', bool, False, 'OPENAI_API', description='Whether to use OpenAI API for vllm deployer.')
 
 
 class LazyLLMDeployBase(ComponentBase):

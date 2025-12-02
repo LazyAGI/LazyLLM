@@ -8,7 +8,7 @@ from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_func_factory
 from .utils import get_log_path, make_log_dir
 
-lazyllm.config.add('mindie_home', str, '', 'MINDIE_HOME')
+lazyllm.config.add('mindie_home', str, '', 'MINDIE_HOME', description='The home directory of MindIE.')
 
 verify_fastapi_func = verify_func_factory(error_message='Service Startup Failed',
                                           running_message='Daemon start success')

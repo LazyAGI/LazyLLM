@@ -1,11 +1,12 @@
 import requests
 import lazyllm
-from typing import Dict, List, Union
+from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
+
 
 class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'deepseek-ai/deepseek-vl2',
@@ -51,37 +52,26 @@ class SiliconFlowEmbedding(OnlineEmbeddingModuleBase):
 
 
 class SiliconFlowReranking(OnlineEmbeddingModuleBase):
-    def __init__(self, rerank_url: str = 'https://api.siliconflow.cn/v1/rerank',
-                 rerank_model_name: str = 'BAAI/bge-reranker-v2-m3', api_key: str = None, **kw):
-        super().__init__('SILICONFLOW', rerank_url, api_key or lazyllm.config['siliconflow_api_key'],
-                         rerank_model_name, **kw)
-        self._rerank_model_name = rerank_model_name
+    def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/rerank',
+                 embed_model_name: str = 'BAAI/bge-reranker-v2-m3', api_key: str = None, **kw):
+        super().__init__('SILICONFLOW', embed_url, api_key or lazyllm.config['siliconflow_api_key'],
+                         embed_model_name, **kw)
 
-    def _encapsulated_data(self, input: Union[List, str], **kwargs) -> Dict:
-        if isinstance(input, str):
-            raise ValueError('Rerank requires both query and documents')
-
-        if isinstance(input, list) and len(input) == 2:
-            query = input[0]
-            documents = input[1]
-        elif isinstance(input, dict):
-            query = input.get('query', '')
-            documents = input.get('documents', [])
-        else:
-            raise ValueError("Input must be a list [query, documents] or dict with 'query' and 'documents' keys")
-
+    def _encapsulated_data(self, query: str, documents: List[str], top_n: int, **kwargs) -> Dict:
         json_data = {
-            'model': self._rerank_model_name,
+            'model': self._embed_model_name,
             'query': query,
-            'documents': documents
+            'documents': documents,
+            'top_n': top_n
         }
         if len(kwargs) > 0:
             json_data.update(kwargs)
-
         return json_data
 
-    def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Dict]:
-        return response.get('results', [])
+    def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Tuple]:
+        results = response.get('results', [])
+        return [(result['index'], result['relevance_score']) for result in results]
+
 
 class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     MODEL_NAME = 'Qwen/Qwen-Image'
@@ -96,7 +86,7 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
         self._base_url = base_url
         self._api_key = api_key or lazyllm.config['siliconflow_api_key']
 
-    def _make_request(self, endpoint, payload, timeout=60):
+    def _make_request(self, endpoint, payload, timeout=180):
 
         headers = {
             'Authorization': f'Bearer {self._api_key}',
@@ -126,7 +116,7 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
 
         image_files = []
         for url in image_urls:
-            img_response = requests.get(url, timeout=60)
+            img_response = requests.get(url, timeout=180)
             if img_response.status_code == 200:
                 image_files.append(img_response.content)
             else:
@@ -134,24 +124,17 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
 
         file_paths = bytes_to_file(image_files)
 
-        if self._return_trace:
-            return {
-                'response': encode_query_with_filepaths(None, file_paths),
-                'trace_info': {
-                    'model': self._model_name,
-                    'full_response': result
-                }
-            }
         return encode_query_with_filepaths(None, file_paths)
 
-class SiliconFlowTTS(OnlineMultiModalBase):
+
+class SiliconFlowTTSModule(OnlineMultiModalBase):
     MODEL_NAME = 'fnlp/MOSS-TTSD-v0.5'
 
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
         OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
-                                      model_name=model_name or SiliconFlowTTS.MODEL_NAME,
+                                      model_name=model_name or SiliconFlowTTSModule.MODEL_NAME,
                                       return_trace=return_trace, **kwargs)
         self._endpoint = 'audio/speech'
         self._base_url = base_url
@@ -178,16 +161,25 @@ class SiliconFlowTTS(OnlineMultiModalBase):
                  sample_rate: int = 44100, speed: float = 1.0,
                  voice: str = None, references=None, out_path: str = None, **kwargs):
 
+        if not voice:
+            if self._model_name == 'fnlp/MOSS-TTSD-v0.5':
+                voice = 'fnlp/MOSS-TTSD-v0.5:alex'
+            elif self._model_name == 'FunAudioLLM/CosyVoice2-0.5B':
+                voice = 'FunAudioLLM/CosyVoice2-0.5B:alex'
+            else:
+                raise ValueError(
+                    f'Default voice is only supported for models "fnlp/MOSS-TTSD-v0.5" and '
+                    f'"FunAudioLLM/CosyVoice2-0.5B". For model "{self._model_name}", '
+                    f'please provide a valid voice parameter.')
         payload = {
             'model': self._model_name,
             'input': input,
             'response_format': response_format,
             'sample_rate': sample_rate,
-            'speed': speed
+            'speed': speed,
+            'voice': voice
         }
 
-        if voice:
-            payload['voice'] = voice
         if references:
             payload['references'] = references
 
@@ -202,12 +194,4 @@ class SiliconFlowTTS(OnlineMultiModalBase):
 
         result = encode_query_with_filepaths(None, [file_path])
 
-        if self._return_trace:
-            return {
-                'response': result,
-                'trace_info': {
-                    'model': self._model_name,
-                    'full_response': f'Audio generated successfully, length: {len(audio_content)} bytes'
-                }
-            }
         return result

@@ -81,16 +81,26 @@ class LazyLLMLaunchersBase(object, metaclass=LazyLLMRegisterMetaClass):
 
 lazyllm.launchers['Status'] = Status
 
-lazyllm.config.add('launcher', str, 'empty', 'DEFAULT_LAUNCHER')
-lazyllm.config.add('partition', str, 'your_part', 'SLURM_PART')
-lazyllm.config.add('sco.workspace', str, 'your_workspace', 'SCO_WORKSPACE')
-lazyllm.config.add('sco_env_name', str, '', 'SCO_ENV_NAME')
-lazyllm.config.add('sco_keep_record', bool, False, 'SCO_KEEP_RECORD')
-lazyllm.config.add('sco_resource_type', str, 'N3lS.Ii.I60', 'SCO_RESOURCE_TYPE')
-lazyllm.config.add('cuda_visible', bool, False, 'CUDA_VISIBLE')
-lazyllm.config.add('k8s_env_name', str, '', 'K8S_ENV_NAME')
-lazyllm.config.add('k8s_config_path', str, '', 'K8S_CONFIG_PATH')
-lazyllm.config.add('k8s_device_type', str, 'nvidia.com/gpu', 'K8S_DEVICE_TYPE')
+lazyllm.config.add('launcher', str, 'empty', 'DEFAULT_LAUNCHER',
+                   description='The default remote launcher to use if no launcher is specified.')
+lazyllm.config.add('partition', str, 'your_part', 'SLURM_PART',
+                   description='The default Slurm partition to use if no partition is specified.')
+lazyllm.config.add('sco.workspace', str, 'your_workspace', 'SCO_WORKSPACE',
+                   description='The default SCO workspace to use if no workspace is specified.')
+lazyllm.config.add('sco_env_name', str, '', 'SCO_ENV_NAME',
+                   description='The default SCO environment name to use if no environment name is specified.')
+lazyllm.config.add('sco_keep_record', bool, False, 'SCO_KEEP_RECORD',
+                   description='Whether to keep the record of the Sensecore job.')
+lazyllm.config.add('sco_resource_type', str, 'N3lS.Ii.I60', 'SCO_RESOURCE_TYPE',
+                   description='The default SCO resource type to use if no resource type is specified.')
+lazyllm.config.add('cuda_visible', bool, False, 'CUDA_VISIBLE',
+                   description='Whether to set the CUDA_VISIBLE_DEVICES environment variable.')
+lazyllm.config.add('k8s_env_name', str, '', 'K8S_ENV_NAME',
+                   description='The default k8s environment name to use if no environment name is specified.')
+lazyllm.config.add('k8s_config_path', str, '', 'K8S_CONFIG_PATH',
+                   description='The default k8s configuration path to use if no configuration path is specified.')
+lazyllm.config.add('k8s_device_type', str, 'nvidia.com/gpu', 'K8S_DEVICE_TYPE',
+                   description='The default k8s device type to use if no device type is specified.')
 
 
 # store cmd, return message and command output.

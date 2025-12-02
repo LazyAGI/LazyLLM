@@ -8,7 +8,7 @@ from ..base import LazyLLMDeployBase, verify_fastapi_func, verify_ray_func
 from ..utils import get_log_path, make_log_dir
 from typing import Optional
 
-config.add('use_ray', bool, False, 'USE_RAY')
+config.add('use_ray', bool, False, 'USE_RAY', description='Whether to use Ray for ServerModule(relay server).')
 
 
 class RelayServer(LazyLLMDeployBase):

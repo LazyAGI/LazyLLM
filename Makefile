@@ -1,9 +1,25 @@
-.PHONY: lint lint-flake8 lint-print
+.PHONY: lint lint-flake8 lint-print install-flake8
+
+install-flake8:
+	@for pkg in flake8-quotes flake8-bugbear; do \
+		case $$pkg in \
+			flake8-quotes) mod="flake8_quotes" ;; \
+			flake8-bugbear) mod="bugbear" ;; \
+		esac; \
+		python3 -c "import importlib.util, sys; sys.exit(0 if importlib.util.find_spec('$$mod') else 1)" \
+			|| pip install $$pkg; \
+	done
 
 lint-flake8:
 	python -m flake8
 
+.ONESHELL:
 lint-flake8-only-diff:
+	@if [ -n "${CHANGED_FILES}" ]; then \
+		echo "$(CHANGED_FILES)" | xargs flake8; \
+		exit 0; \
+	fi
+
 	@echo "🔍 Collecting changed Python files..."
 	@FILES=$$( \
 		{ \
@@ -33,5 +49,5 @@ lint-print:
 		echo "✅ Lint passed: no print(...) statements found."; \
 	fi
 
-lint: lint-flake8 lint-print
-lint-only-diff: lint-flake8-only-diff lint-print
+lint: install-flake8 lint-flake8 lint-print
+lint-only-diff: install-flake8 lint-flake8-only-diff lint-print

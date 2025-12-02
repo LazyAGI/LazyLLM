@@ -84,7 +84,7 @@ base = TrainableModule('internlm2-chat-7b')
 with IntentClassifier(base) as ic:
     ic.case['Chat', base]
     ic.case['Speech Recognition', TrainableModule('SenseVoiceSmall')]
-    ic.case['Image QA', TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)]
+    ic.case['Image QA', TrainableModule('InternVL3_5-1B').deploy_method(deploy.LMDeploy)]
     ic.case['Drawing', pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-diffusion-3-medium'))]
     ic.case['Generate Music', pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))]
     ic.case['Text to Speech', TrainableModule('ChatTTS')]
@@ -153,6 +153,9 @@ For more examples, please refer to our official documentation [Usage Examples](h
 * [Painting Master](https://docs.lazyllm.ai/en/stable/Cookbook/painting_master/)
 * [Multimodal Chatbot](https://docs.lazyllm.ai/en/stable/Cookbook/multimodal_robot/)
 * [Knowledge Base](https://docs.lazyllm.ai/en/stable/Cookbook/rag/)
+* [Search Agent](https://docs.lazyllm.ai/en/latest/Cookbook/bocha_search/)
+* [API Interaction Agent](https://docs.lazyllm.ai/en/latest/Cookbook/API_Interaction_Agent_demo/)
+* [Tool-Calling Intelligent Agent](https://docs.lazyllm.ai/en/latest/Cookbook/flex_agent/)
 
 ## What can LazyLLM do
 
@@ -279,9 +282,9 @@ v0.9 Expected to start from June 2026, lasting 3 months, focusing on improving t
   - 9.2.1.1 Engineering
     - Integrate LazyRAG capabilities into LazyLLM (V0.6)
     - Extend RAG's macro Q&A capabilities to multiple knowledge bases (V0.6)
-    - RAG modules fully support horizontal scaling, supporting multi-machine deployment of RAG algorithm collaboration (V0.6)
+    - ✅ RAG modules fully support horizontal scaling, supporting multi-machine deployment of RAG algorithm collaboration (V0.6)
     - Integrate at least 1 open-source knowledge graph framework (V0.6)
-    - Support common data splitting strategies, no less than 20 types, covering various document types (V0.6)
+    - Support common data splitting strategies, no less than 20 types, covering various document types (V0.6 - v0.7)
   - 9.2.1.2 Data Capabilities
     - Table parsing (V0.6 - 0.7)
     - CAD image parsing (V0.7 -)
@@ -292,7 +295,7 @@ v0.9 Expected to start from June 2026, lasting 3 months, focusing on improving t
     - AgenticRL & code-writing problem-solving capabilities (V0.7)
 
 9.2.2 Functional Modules
-  - Support memory capabilities (V0.6)
+  - ✅ Support memory capabilities (V0.6)
   - Support for distributed Launcher (V0.7)
   - ✅ Database-based Globals support (V0.6)
   - ServerModule can be published as MCP service (v0.7)
@@ -308,7 +311,7 @@ v0.9 Expected to start from June 2026, lasting 3 months, focusing on improving t
 
 9.2.4 Documentation
   - Complete API documentation, ensure every public interface has API documentation, with consistent documentation parameters and function parameters, and executable sample code (V0.6)
-  - Complete CookBook documentation, increase cases to 50, with comparisons to LangChain/LlamaIndex (code volume, speed, extensibility) (V0.6)
+  - Complete CookBook documentation, increase cases to 50, with comparisons to LangChain/LlamaIndex (code volume, speed, extensibility) (V0.6 - v0.7)
   - ✅ Complete Environment documentation, supplement installation methods on win/linux/macos, supplement package splitting strategies (V0.6)
   - Complete Learn documentation, first teach how to use large models; then teach how to build agents; then teach how to use workflows; finally teach how to build RAG (V0.6)
 

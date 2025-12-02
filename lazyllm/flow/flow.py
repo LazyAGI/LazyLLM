@@ -310,7 +310,8 @@ class Pipeline(LazyLLMFlowsBase):
         return output
 
 
-config.add('save_flow_result', bool, False, 'SAVE_FLOW_RESULT')
+config.add('save_flow_result', bool, False, 'SAVE_FLOW_RESULT',
+           description='Whether to save the intermediate result of the pipeline.')
 
 @contextmanager
 def save_pipeline_result(flag: bool = True):
@@ -343,7 +344,8 @@ def _split_input(input: Union[Tuple, List], flag: Optional[Union[int, List]] = N
     raise TypeError(f'invalid flag type {type(flag)} given')
 
 
-config.add('parallel_multiprocessing', bool, False, 'PARALLEL_MULTIPROCESSING')
+config.add('parallel_multiprocessing', bool, False, 'PARALLEL_MULTIPROCESSING',
+           description='Whether to use multiprocessing for parallel execution, if not, default to use threading.')
 
 
 #        /> module11 -> ... -> module1N -> out1 \

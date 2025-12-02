@@ -63,7 +63,7 @@ def get_all_examples():   # Examples are not always exported, so process them in
         result.append('\n'.join(example_lines))
     return result
 
-lazyllm.config.add('language', str, 'ENGLISH', 'LANGUAGE')
+lazyllm.config.add('language', str, 'ENGLISH', 'LANGUAGE', description='The language of the documentation.')
 
 def add_doc(obj_name, docstr, module, append=''):
     _guard_register_once(obj_name, module, append)

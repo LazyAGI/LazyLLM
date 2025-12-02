@@ -53,7 +53,7 @@ class TxtReader(LazyLLMReaderBase):
     def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:
         if not isinstance(file, Path): file = Path(file)
         with (fs or get_default_fs()).open(file, encoding=self._encoding) as f:
-            return DocNode(text=f.read().decode(self._encoding))
+            return [DocNode(text=f.read().decode(self._encoding))]
 
 class DefaultReader(TxtReader):
     def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> List[DocNode]:

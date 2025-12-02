@@ -176,6 +176,11 @@ register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool')
 if 'tool' not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group('tool')
 
+TOOL_CALL_FORMAT_EXAMPLE = (
+    '{"function": {"name": "tool_name", "arguments": '
+    '"{{"arg1": "value1", "arg2": "value2"}}"}}'
+)
+
 
 class ToolManager(ModuleBase):
     def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False):
@@ -306,22 +311,27 @@ class ToolManager(ModuleBase):
         return format_tools
 
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
-        tool_calls = [tools,] if isinstance(tools, dict) else tools
-        tool_calls = [{'name': tool['name'], 'arguments': json.loads(tool['arguments'])
-                      if isinstance(tool['arguments'], str) else tool['arguments']} for tool in tool_calls]
-        output = []
-        flag_val = [True if self._validate_tool(tool['name'], tool['arguments']) else False for tool in tool_calls]
-        tool_inputs = [tool_calls[idx]['arguments'] for idx, val in enumerate(flag_val) if val]
-        tools = [self._tool_call[tool_calls[idx]['name']] for idx, val in enumerate(flag_val) if val]
-        tool_diverter = lazyllm.diverter(tuple(tools))
-        rets = tool_diverter(tuple(tool_inputs))
-        res = iter(rets)
-        rets = [next(res) if ele else None for ele in flag_val]
-        for idx, tool in enumerate(tool_calls):
-            if flag_val[idx]:
-                ret = rets[idx]
-                output.append(json.dumps(ret, ensure_ascii=False) if not isinstance(ret, str) else ret)
-            else:
-                output.append(f'{tool} parameters error.')
+        if not tools: return []
+        tools = [tools,] if isinstance(tools, dict) else tools
 
-        return output
+        assert any('function' in tool and 'name' in tool['function'] and 'arguments' in tool['function']
+                   for tool in tools), f'The tool call format is invalid; expected: {TOOL_CALL_FORMAT_EXAMPLE}'
+
+        tool_arguments = [
+            json.loads(t['function']['arguments'])
+            if isinstance(t['function']['arguments'], str)
+            else t['function']['arguments']
+            for t in tools
+        ]
+
+        tools_calls = []
+        for idx, tool in enumerate(tools):
+            name = tool['function']['name']
+            tools_calls.append(
+                self._tool_call[name] if self._validate_tool(name, tool_arguments[idx])
+                else (lambda *_, name=name: f'Tool [{name}] parameters error.')
+            )
+
+        tool_diverter = lazyllm.diverter(tuple(tools_calls))
+        tool_results = tool_diverter(tuple(tool_arguments))
+        return tool_results

@@ -11,7 +11,7 @@ from lazyllm import warp
 
 
 lazyllm.config.add('eval_result_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'eval_res'),
-                   'EVAL_RESULT_DIR')
+                   'EVAL_RESULT_DIR', description='The default result directory for eval.')
 
 class BaseEvaluator(ModuleBase):
     def __init__(self, concurrency=1, retry=3, log_base_name=None):

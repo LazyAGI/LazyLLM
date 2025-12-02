@@ -12,7 +12,7 @@ from lazyllm.thirdparty import deepdiff
 
 import lazyllm
 from lazyllm import globals, LOG, launchers, Option, package, LazyLLMDeployBase, LazyLLMFinetuneBase, config
-from ...components.formatter import decode_query_with_filepaths, encode_query_with_filepaths
+from ...components.formatter import decode_query_with_filepaths, encode_query_with_filepaths, FormatterBase
 from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from ...components.utils import ModelManager, LLMType
 from ...components.utils.file_operate import _base64_to_file, _is_base64_with_mime
@@ -22,7 +22,8 @@ from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
 
-lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH')
+lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH',
+                   description='The default path for trainable module config map.')
 ignore_config_keys = ['log_path', 'launcher']
 
 @functools.lru_cache(maxsize=1)
@@ -63,7 +64,8 @@ class _UrlTemplateStruct(object):
         self.stream_url_suffix = stream_url_suffix or ''
 
 
-lazyllm.config.add('trainable_magic_mock', bool, False, 'TRAINABLE_MAGIC_MOCK')  # used for unit test
+lazyllm.config.add('trainable_magic_mock', bool, False, 'TRAINABLE_MAGIC_MOCK',
+                   description='Whether to use magic mock for trainable module(used for unit test).')
 fake_url = 'dummy.url/generate'
 
 
@@ -74,13 +76,13 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def __init__(self, base_model: str = '', target_path: str = '', stream: bool = False, train: Optional[type] = None,
                  finetune: Optional[LazyLLMFinetuneBase] = None, deploy: Optional[LazyLLMDeployBase] = None,
                  template: Optional[_UrlTemplateStruct] = None, url_wrapper: Optional[_UrlHelper._Wrapper] = None,
-                 trust_remote_code: bool = True, type: Optional[LLMType] = None):
+                 trust_remote_code: bool = True, type: Optional[LLMType] = None, source: Optional[str] = None):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
         base_model = base_model.rstrip('/\\')
         self._type = LLMType(type) if type else type
-        self._base_model = (ModelManager(lazyllm.config['model_source']).download(base_model) or ''
+        self._base_model = (ModelManager(source or lazyllm.config['model_source']).download(base_model) or ''
                             if trust_remote_code else base_model)
         if not self._base_model:
             LOG.warning(f'Cannot get a valid model from {base_model} by ModelManager.')
@@ -233,6 +235,9 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if hasattr(self, '_launchers'):
             [[launcher.cleanup() for launcher in group.values()] for group in self._launchers.values()]
 
+    def __deepcopy__(self, memo):
+        return self
+
     def _generate_target_path(self):
         base_model_name = os.path.basename(self._base_model)
         train_set_name = os.path.basename(self._trainset) if isinstance(self._trainset, str) else ''
@@ -253,20 +258,21 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def _set_file_name(self, name):
         self._file_name = name
 
-
-config.add('cache_local_module', bool, False, 'CACHE_LOCAL_MODULE')
+config.add('cache_local_module', bool, False, 'CACHE_LOCAL_MODULE',
+           description='Whether to cache the local module result. Use for unit test.')
 
 
 class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
 
     def __init__(self, base_model: Option = '', target_path='', *, stream: Union[bool, Dict[str, str]] = False,
-                 return_trace: bool = False, trust_remote_code: bool = True, type: Optional[Union[str, LLMType]] = None):
+                 return_trace: bool = False, trust_remote_code: bool = True,
+                 type: Optional[Union[str, LLMType]] = None, source: Optional[str] = None):
         super().__init__(url=None, stream=stream, return_trace=return_trace, init_prompt=False)
         self._template = _UrlTemplateStruct()
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
                                           lazyllm.deploy.auto, self._template, self._url_wrapper,
-                                          trust_remote_code, type)
+                                          trust_remote_code, type, source=source)
         self._stream = stream
         self.prompt()
         if config['cache_local_module']:
@@ -341,7 +347,21 @@ class TrainableModule(UrlModule):
             prompter._set_model_configs(**keys)
             for key in ['tool_start_token', 'tool_args_token', 'tool_end_token']:
                 if key in keys: setattr(self, f'_{key}', keys[key])
+        if hasattr(self, '_openai_module'):
+            self._openai_module.prompt(prompt, history=history)
         return self
+
+    def formatter(self, format: Optional[FormatterBase] = None):
+        super(__class__, self).formatter(format)
+        if hasattr(self, '_openai_module'):
+            self._openai_module.formatter(format)
+        return self
+
+    def share(self, *args, **kwargs):
+        new = super(__class__, self).share(*args, **kwargs)
+        if hasattr(self, '_openai_module'):
+            new._openai_module = self._openai_module.share(*args, **kwargs)
+        return new
 
     def _loads_str(self, text: str) -> Union[str, Dict]:
         try:
@@ -450,15 +470,6 @@ class TrainableModule(UrlModule):
                  for file_content in decontent['files']]
         return encode_query_with_filepaths(query=decontent['query'], files=files)
 
-    def _build_response(self, content: str, tool_calls: List[Dict[str, str]]) -> str:
-        tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
-        if content and tc:
-            return globals['tool_delimiter'].join([content, json.dumps(tc, ensure_ascii=False)])
-        elif not content and tc:
-            return globals['tool_delimiter'] + json.dumps(tc, ensure_ascii=False)
-        else:
-            return content
-
     def _extract_and_format(self, output: str) -> str:
         '''
         1.extract tool calls information;
@@ -471,7 +482,8 @@ class TrainableModule(UrlModule):
         content, tool_calls = self._extract_tool_calls(output)
         if isinstance(content, str) and content.startswith(LAZYLLM_QUERY_PREFIX):
             content = self._decode_base64_to_file(content)
-        return self._build_response(content, tool_calls)
+        tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
+        return dict(role='assistant', content=content, tool_calls=tc)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Trainable', mode=self._impl._mode, basemodel=self.base_model,
@@ -520,8 +532,9 @@ class TrainableModule(UrlModule):
                 self._openai_module = lazyllm.OnlineChatModule(
                     source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=model_type,
                     stream=self._stream).share(prompt=self._prompt, format=self._formatter)
-                self._openai_module._prompt._set_model_configs(system='You are LazyLLM, \
-                    a large language model developed by SenseTime.')
+                self._openai_module._prompt._set_model_configs(
+                    system='You are LazyLLM, a large language model developed by SenseTime.'
+                )
             elif model_type in ['embed', 'rerank']:
                 self._openai_module = lazyllm.OnlineEmbeddingModule(
                     source='openai', embed_model_name='lazyllm', embed_url=self._url, type=model_type)
@@ -552,6 +565,10 @@ class TrainableModule(UrlModule):
             data = __input
             if stream_output: LOG.warning('stream_output is not supported when template_message is not set, ignore it')
             assert not kw, 'kw is not supported when template_message is not set'
+
+        if tools or self._tools:
+            stop_key = next((k for k in data if k.startswith('stop')), 'stop')
+            data[stop_key] = (data.get(stop_key) or []) + [self._tool_end_token]
 
         with self.stream_output((stream_output := (stream_output or self._stream))):
             return self._forward_impl(data, stream_output=stream_output, url=url, text_input=text_input_for_token_usage)
@@ -590,8 +607,8 @@ class TrainableModule(UrlModule):
                     cache += chunk
                     if not self._maybe_has_fc(token, cache): cache = self._stream_output(cache, color)
 
+            if text_input: self._record_usage(text_input, messages)
             temp_output = self._extract_and_format(messages)
-            if text_input: self._record_usage(text_input, temp_output)
             return self._formatter(temp_output)
 
     def _modify_parameters(self, paras: dict, kw: dict, *, optional_keys: Union[List[str], str] = None):

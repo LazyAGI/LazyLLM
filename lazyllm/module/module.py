@@ -4,7 +4,7 @@ import traceback
 from lazyllm import ThreadPoolExecutor
 
 import lazyllm
-from lazyllm import FlatList, Option, kwargs, globals, colored_text, redis_client
+from lazyllm import FlatList, Option, kwargs, globals, locals, colored_text, redis_client
 from ..components.formatter.formatterbase import file_content_hash, transform_path
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
@@ -22,9 +22,12 @@ from abc import ABC, abstractmethod
 from filelock import FileLock
 
 
-lazyllm.config.add('cache_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'cache'), 'CACHE_DIR')
-lazyllm.config.add('cache_strategy', str, 'memory', 'CACHE_STRATEGY')
-lazyllm.config.add('cache_mode', str, 'RW', 'CACHE_MODE', options=['RW', 'RO', 'WO', 'NONE'])
+lazyllm.config.add('cache_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'cache'), 'CACHE_DIR',
+                   description='The default result cache directory for module to use(Read and Write).')
+lazyllm.config.add('cache_strategy', str, 'memory', 'CACHE_STRATEGY',
+                   description='The default cache strategy to use(memory, file, sqlite, redis).')
+lazyllm.config.add('cache_mode', str, 'RW', 'CACHE_MODE', options=['RW', 'RO', 'WO', 'NONE'],
+                   description='The default cache mode to use(Read and Write, Read Only, Write Only, None).')
 redis_client = redis_client['module']
 
 
@@ -327,9 +330,9 @@ class ModuleBase(metaclass=_MetaBind):
                 hook_objs.append(hook_type(self))
             hook_objs[-1].pre_hook(*args, **kw)
         try:
-            kw.update(globals['global_parameters'].get(self._module_id, dict()))
-            if (files := globals['lazyllm_files'].get(self._module_id)) is not None: kw['lazyllm_files'] = files
-            if (history := globals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
+            kw.update(locals['global_parameters'].get(self._module_id, dict()))
+            if (files := locals['lazyllm_files'].get(self._module_id)) is not None: kw['lazyllm_files'] = files
+            if (history := locals['chat_history'].get(self._module_id)) is not None: kw['llm_chat_history'] = history
 
             r = (self._call_impl(**args[0], **kw)
                  if args and isinstance(args[0], kwargs) else self._call_impl(*args, **kw))

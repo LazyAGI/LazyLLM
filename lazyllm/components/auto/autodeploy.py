@@ -76,4 +76,4 @@ class AutoDeploy(LazyLLMDeployBase):
         return deploy_cls(launcher=launcher, **kw)
 
 
-config.add('gpu_memory', int, 80, 'GPU_MEMORY')
+config.add('gpu_memory', int, 80, 'GPU_MEMORY', description='The memory of the GPU.')

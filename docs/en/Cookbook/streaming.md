@@ -117,12 +117,12 @@ llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True).start()  # or l
 
 It should be noted here that when using [TrainableModule][lazyllm.module.TrainableModule], you need to explicitly specify `stream=True`, because it defaults to `stream=False`. However, when using [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule], you do not need to specify it, because [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] defaults to `stream=True`.
 
-After defining the model, we should define [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent]. [FunctionCallAgent][lazyllm.tools.agent.FunctionCallAgent] mainly passes in two parameters: model and toolset.
+After defining the model, we should define [ReactAgent][lazyllm.tools.agent.ReactAgent]. [ReactAgent][lazyllm.tools.agent.ReactAgent] mainly passes in two parameters: model and toolset.
 
 ```python
-from lazyllm.tools import FunctionCallAgent
+from lazyllm.tools import ReactAgent
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
-agent = FunctionCallAgent(llm, tools)
+agent = ReactAgent(llm, tools)
 ```
 
 Now there is only one last step left. We use [WebModule][lazyllm.tools.webpages.WebModule] to encapsulate the agent into a service with an interface.
@@ -139,7 +139,7 @@ The complete code is as follows:
 ```python
 import json
 import lazyllm
-from lazyllm import fc_register, FunctionCallAgent
+from lazyllm import fc_register, ReactAgent
 from typing import Literal
 
 @fc_register("tool")
@@ -185,7 +185,7 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 
 llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True).start()  # or llm = lazyllm.OnlineChatModule()
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
-agent = FunctionCallAgent(llm, tools)
+agent = ReactAgent(llm, tools)
 lazyllm.WebModule(agent, port=23333, stream=True).start().wait()
 ```
 
@@ -198,7 +198,7 @@ If you need to print out the intermediate results of the agent, whether it is th
 
 ```python
 llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True, return_trace=True).start()  # or llm = lazyllm.OnlineChatModule(return_trace=True)
-agent = FunctionCallAgent(llm, tools, return_trace=True)
+agent = ReactAgent(llm, tools, return_trace=True)
 ```
 
 This will display the intermediate processing results of [FunctionCall][lazyllm.tools.agent.FunctionCall] in the `处理日志` in the lower left corner of the interface.
@@ -208,7 +208,7 @@ The complete code is as follows:
 ```python
 import json
 import lazyllm
-from lazyllm import fc_register, FunctionCallAgent
+from lazyllm import fc_register, ReactAgent
 from typing import Literal
 
 @fc_register("tool")
@@ -254,7 +254,7 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 
 llm = lazyllm.TrainableModule("internlm2-chat-20b", stream=True, return_trace=True).start()  # or llm = lazyllm.OnlineChatModule(return_trace=True)
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
-agent = FunctionCallAgent(llm, tools, return_trace=True)
+agent = ReactAgent(llm, tools, return_trace=True)
 lazyllm.WebModule(agent, port=23333, stream=True).start().wait()
 ```
 
