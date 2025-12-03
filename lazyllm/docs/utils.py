@@ -3,6 +3,9 @@ import ast
 import threading
 from typing import Tuple
 
+lazyllm.config.add('raise_on_add_doc_error', bool, False, 'RAISE_ON_ADD_DOC_ERROR',
+                   description='Whether to raise an error when adding doc failed.')
+
 cpp_add_doc_code = '''
 namespace py = pybind11;
 void addDocStr(py::object obj, std::string docs) {
@@ -91,7 +94,8 @@ def add_doc(obj_name, docstr, module, append=''):
         else:
             obj.__doc__ = docstr
     except Exception:
-        raise NotImplementedError('Cannot add doc for builtin class or method now, will be supported in the feature')
+        if lazyllm.config['raise_on_add_doc_error']:
+            raise RuntimeError(f'Failed to add doc for {obj_name} in {module.__name__}')
 
 
 def add_chinese_doc(obj_name, docstr, module=lazyllm):

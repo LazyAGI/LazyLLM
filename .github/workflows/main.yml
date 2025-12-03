@@ -76,8 +76,10 @@ jobs:
       - name: Run DocCheck
         run: |
           pip install -r tests/requirements.txt
-          pytest --lf --durations=0 -v tests/doc_check
-          LAZYLLM_LANGUAGE=CHINESE pytest --lf --durations=0 -v tests/doc_check
+          pytest -v tests/doc_check
+          git checkout .
+          LAZYLLM_LANGUAGE=CHINESE pytest -v tests/doc_check
+          git checkout .
 
   clone:
     if: |
