@@ -3961,12 +3961,6 @@ add_example('rag.transform.sentence.SentenceSplitter', '''
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 ''')
-add_chinese_doc('rag.transform.sentence.SentenceSplitter.set_default', '''
-设置SentenceSplitter全局的默认参数。
-
-Args:
-    **kwargs: parameters passed to the splitter.
-''')
 
 add_english_doc('rag.transform.character.CharacterSplitter', '''
 Split text by characters.
