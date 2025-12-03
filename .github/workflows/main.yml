@@ -77,7 +77,9 @@ jobs:
         run: |
           pip install -r tests/requirements.txt
           pytest --lf --durations=0 -v tests/doc_check
+          git checkout .
           LAZYLLM_LANGUAGE=CHINESE pytest --lf --durations=0 -v tests/doc_check
+          git checkout .
 
   clone:
     if: |

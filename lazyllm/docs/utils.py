@@ -91,7 +91,7 @@ def add_doc(obj_name, docstr, module, append=''):
         else:
             obj.__doc__ = docstr
     except Exception:
-        raise NotImplementedError('Cannot add doc for builtin class or method now, will be supported in the feature')
+        pass
 
 
 def add_chinese_doc(obj_name, docstr, module=lazyllm):
