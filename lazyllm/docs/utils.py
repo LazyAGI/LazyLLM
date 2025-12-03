@@ -66,11 +66,13 @@ def get_all_examples():   # Examples are not always exported, so process them in
 lazyllm.config.add('language', str, 'ENGLISH', 'LANGUAGE', description='The language of the documentation.')
 
 def add_doc(obj_name, docstr, module, append=''):
+    """Add document for lazyllm functions"""
     _guard_register_once(obj_name, module, append)
 
     obj = module
     for n in obj_name.split('.'):
-        if isinstance(obj, type): obj = obj.__dict__[n]
+        if isinstance(obj, type):
+            obj = obj.__dict__[n] if n in obj.__dict__ else getattr(obj, n)
         else: obj = getattr(obj, n)
     if isinstance(obj, (classmethod, staticmethod, lazyllm.DynamicDescriptor)): obj = obj.__func__
     try:
