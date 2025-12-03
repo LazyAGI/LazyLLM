@@ -1,5 +1,5 @@
 from typing import List, Optional, Union, Dict, Set, Callable
-from lazyllm import ModuleBase, once_wrapper
+from lazyllm import ModuleBase, once_wrapper, LOG
 
 from .doc_node import DocNode
 from .document import Document, UrlDocument, DocImpl
@@ -53,6 +53,9 @@ class Retriever(ModuleBase, _PostProcess):
         self._group_name = group_name
         self._similarity = similarity  # similarity function str
         self._similarity_cut_off = similarity_cut_off
+        if index == 'smart_embedding_index':
+            index = 'default'
+            LOG.warning('[Retriever] `smart_embedding_index` is deprecated, converted to `default`')
         self._index = index
         self._topk = topk
         self._similarity_kw = kwargs  # kw parameters
