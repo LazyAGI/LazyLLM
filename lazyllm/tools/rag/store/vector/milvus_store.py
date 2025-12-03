@@ -142,7 +142,7 @@ class MilvusStore(LazyLLMStoreBase):
             self._client_pool.release(c)
 
     @override
-    def upsert(self, collection_name: str, data: List[dict]) -> bool:
+    def upsert(self, collection_name: str, data: List[dict]) -> bool:  # noqa: C901
         try:
             if not data: return True
             data_embeddings = data[0].get('embedding', {})
@@ -159,15 +159,24 @@ class MilvusStore(LazyLLMStoreBase):
                     with self._ddl_lock:
                         if not client.has_collection(collection_name):
                             self._create_collection(client, collection_name, embed_kwargs)
-
-                for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
-                    client.upsert(collection_name=collection_name,
-                                  data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
-            return True
+                    for i in range(0, len(data), MILVUS_UPSERT_BATCH_SIZE):
+                        client.upsert(collection_name=collection_name,
+                                      data=[self._serialize_data(d) for d in data[i:i + MILVUS_UPSERT_BATCH_SIZE]])
+        except pymilvus.MilvusException as e:
+            error_msg = str(e).lower()
+            if 'dimension' in error_msg or 'metric type' in error_msg:
+                LOG.error(f'[Milvus Store - upsert] Embedding configuration error: {e}')
+                LOG.error('Hint: You may be using a different embedding model '
+                          'than the one used to create the database.')
+            else:
+                LOG.error(f'[Milvus Store - upsert] error: {e}')
+            return False
         except Exception as e:
             LOG.error(f'[Milvus Store - upsert] error: {e}')
             LOG.error(traceback.format_exc())
             return False
+
+        return True
 
     @override
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
