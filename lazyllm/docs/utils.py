@@ -70,7 +70,8 @@ def add_doc(obj_name, docstr, module, append=''):
 
     obj = module
     for n in obj_name.split('.'):
-        if isinstance(obj, type): obj = obj.__dict__[n]
+        if isinstance(obj, type):
+            obj = obj.__dict__[n] if n in obj.__dict__ else getattr(obj, n)
         else: obj = getattr(obj, n)
     if isinstance(obj, (classmethod, staticmethod, lazyllm.DynamicDescriptor)): obj = obj.__func__
     try:
