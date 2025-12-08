@@ -14,17 +14,20 @@ VIDEO_SRC_PATTERN = re.compile(r'(<source\s+src=")\./([^"]+)(")')
 script_dir = os.path.dirname(os.path.abspath(__file__))
 
 
-def convert_ipynb_to_md(ipynb_path: str, output_dir: str):
+ZH_OUTPUT_DIR = Path(script_dir) / 'zh' / 'Tutorial'
+EN_OUTPUT_DIR = Path(script_dir) / 'en' / 'Tutorial'
+
+
+def convert_ipynb_to_md(ipynb_path: str):
     '''
     Convert a Jupyter notebook to Markdown, replacing video src paths.
 
     Args:
         ipynb_path (str): Path to the input .ipynb file.
-        output_dir (str): Directory to save the converted .md file.
     '''
     ipynb_path = Path(ipynb_path)
     notebook_name = ipynb_path.stem
-    output_dir = Path(output_dir)
+    output_dir = EN_OUTPUT_DIR if notebook_name.endswith('.en') else ZH_OUTPUT_DIR
     md_path = output_dir / f'{notebook_name}.md'
     os.makedirs(md_path.parent, exist_ok=True)
 
@@ -58,7 +61,6 @@ def convert_ipynb_to_md(ipynb_path: str, output_dir: str):
 if __name__ == '__main__':
     # Batch convert all notebooks matching the pattern
     input_files = glob.glob('Tutorial/rag/notebook/chapter*/*.ipynb', recursive=True)
-    output_dir = os.path.join(script_dir, 'zh/Tutorial')
 
     for ipynb_file in input_files:
-        convert_ipynb_to_md(ipynb_file, output_dir)
+        convert_ipynb_to_md(ipynb_file)
