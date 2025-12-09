@@ -255,7 +255,7 @@
     members:
     exclude-members:
 
-::: lazyllm.tools.rag.transform.code.ProgrammingSplitter
+::: lazyllm.tools.rag.transform.code.GeneralCodeSplitter
     members:
     exclude-members:
 

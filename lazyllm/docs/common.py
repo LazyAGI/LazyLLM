@@ -62,6 +62,15 @@ Args:
     group_name (str): The name of the group to be created.
 ''')
 
+
+add_chinese_doc('Register.new_group', '''\
+创建一个新的ComponentGroup。新建的group会自动加入到__builtin__中，无需import即可在任一位置访问到该group。
+
+Args:
+    group_name (str): 待创建的group的名字
+''')
+
+
 # add_example('Register', '''\
 # >>> import lazyllm
 # >>> @lazyllm.component_register('mygroup')
