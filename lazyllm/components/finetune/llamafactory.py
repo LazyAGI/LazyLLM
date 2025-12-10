@@ -35,12 +35,15 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             if os.path.exists(defatult_path):
                 base_model = defatult_path
         if not merge_path:
-            if target_path.endswith('lazyllm_lora') or '/lazyllm_lora/' in target_path or target_path.endswith('lazyllm_lora/'):
-                merge_path = target_path.replace('lazyllm_lora', 'lazyllm_merge')
-                os.system(f'mkdir -p {target_path} {merge_path}')
+            normalized_target = os.path.normpath(target_path).replace('\\', '/')
+            if normalized_target.endswith('lazyllm_lora'):
+                merge_path = normalized_target.replace('lazyllm_lora', 'lazyllm_merge')
+                os.makedirs(target_path, exist_ok=True)
+                os.makedirs(merge_path, exist_ok=True)
             else:
                 save_path = os.path.join(lazyllm.config['train_target_root'], target_path)
-                target_path, merge_path = os.path.join(save_path, 'lazyllm_lora'), os.path.join(save_path, 'lazyllm_merge')
+                target_path = os.path.join(save_path, 'lazyllm_lora')
+                merge_path = os.path.join(save_path, 'lazyllm_merge')
                 os.system(f'mkdir -p {target_path} {merge_path}')
         super().__init__(
             base_model,
@@ -69,19 +72,14 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         self.template_dict['model_name_or_path'] = base_model
         self.template_dict['output_dir'] = target_path
         self.template_dict['template'] = self._get_template_name(base_model)
-        
+
         # Filter kw to only include keys that exist in template_dict
         # This ensures check_and_update won't fail due to unexpected keys
         # Keys not in template_dict will be silently ignored (they may be used elsewhere)
         filtered_kw = {k: v for k, v in kw.items() if k in self.template_dict}
-        
+
         # Update template_dict with filtered parameters
         self.template_dict.check_and_update(filtered_kw)
-        
-        # Log key parameters for debugging
-        import logging
-        logger = logging.getLogger(__name__)
-        logger.warning(f"[llamafactory] filtered_kw: {filtered_kw}")
 
         default_export_config_path = os.path.join(self.config_folder_path, 'llama_factory', 'lora_export.yaml')
         self.export_dict = ArgsDict(self._load_yaml(default_export_config_path))
@@ -119,48 +117,281 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             temp_file.write(updated_template_str)
         return temp_yaml_file
 
-    def _build_temp_dataset_info(self, datapaths):
+    def _build_temp_dataset_info(self, datapaths, stage=None):
+        '''
+        Build dataset_info.json based on training stage and dataset format.
+        '''
         if isinstance(datapaths, str):
             datapaths = [datapaths]
         elif isinstance(datapaths, list) and all(isinstance(item, str) for item in datapaths):
             pass
         else:
             raise TypeError(f'datapaths({datapaths}) should be str or list of str.')
+
+        # Get stage from parameter or template_dict
+        if stage is None:
+            stage = self.template_dict.get('stage', 'sft').lower()
+        
+        # Validate stage: only support sft, pt, dpo
+        supported_stages = ['sft', 'pt', 'dpo']
+        if stage not in supported_stages:
+            raise ValueError(
+                f'Unsupported training stage: {stage}. '
+                f'Only supported stages are: {", ".join(supported_stages)}'
+            )
+
         temp_dataset_dict = dict()
         for datapath in datapaths:
             datapath = os.path.join(lazyllm.config['data_path'], datapath)
             assert os.path.isfile(datapath)
             file_name, _ = os.path.splitext(os.path.basename(datapath))
             temp_dataset_dict[file_name] = {'file_name': datapath}
-            formatting = 'alpaca'
-            try:
-                with open(datapath, 'r', encoding='utf-8') as file:
-                    data = json.load(file)
-                if 'messages' in data[0]:
-                    formatting = 'sharegpt'
-                media_types = []
-                for media in ['images', 'videos', 'audios']:
-                    if media in data[0]:
-                        media_types.append(media)
-                if media_types:
-                    columns = {item: item for item in media_types}
-                    columns.update({'messages': 'messages'})
-                    temp_dataset_dict[file_name].update({
-                        'tags': {
-                            'role_tag': 'role',
-                            'content_tag': 'content',
-                            'user_tag': 'user',
-                            'assistant_tag': 'assistant'
-                        },
-                        'columns': columns
-                    })
-            except Exception:
-                pass
-            temp_dataset_dict[file_name].update({'formatting': formatting})
+
+            # Detect dataset format and extract columns based on stage
+            formatting = None
+            first_item = None
+            
+            # PT mode requires special handling: plain text or JSON with text field
+            if stage == 'pt':
+                formatting = None  # PT mode uses plain text, no formatting
+                try:
+                    with open(datapath, 'r', encoding='utf-8') as file:
+                        # Priority 1: Check if it's plain text (PT mode usually uses plain text)
+                        # Read first few bytes to detect format
+                        first_bytes = file.read(1024)
+                        file.seek(0)
+                        
+                        # Plain text: no JSON structure, just lines of text
+                        if not first_bytes.strip().startswith(('[', '{')):
+                            # Plain text format detected
+                            lines = file.readlines()
+                            if not lines:
+                                raise ValueError(f'PT stage: Dataset file {datapath} is empty')
+                            
+                            # Create a dummy first_item for column detection
+                            # LLaMA-Factory will handle plain text conversion automatically
+                            first_item = {'text': lines[0].strip() if lines else ''}
+                            lazyllm.LOG.info(
+                                f'PT stage: Dataset {file_name} detected as plain text format '
+                                f'({len(lines)} lines). LLaMA-Factory will handle conversion.'
+                            )
+                        else:
+                            # Priority 2: Try to parse as JSON
+                            try:
+                                data = json.load(file)
+                                if isinstance(data, list):
+                                    if not data:
+                                        raise ValueError(f'PT stage: Dataset file {datapath} is empty (empty list)')
+                                    first_item = data[0]
+                                elif isinstance(data, dict):
+                                    # Single object
+                                    first_item = data
+                                else:
+                                    raise ValueError(
+                                        f'PT stage: Dataset file {datapath} has invalid JSON structure. '
+                                        f'Expected list or dict, got {type(data).__name__}'
+                                    )
+                                lazyllm.LOG.info(
+                                    f'PT stage: Dataset {file_name} detected as JSON format. '
+                                    f'Looking for "text" field.'
+                                )
+                            except json.JSONDecodeError as json_err:
+                                raise ValueError(
+                                    f'PT stage: Dataset file {datapath} is neither valid plain text nor valid JSON. '
+                                    f'JSON parse error: {str(json_err)}'
+                                )
+                    
+                    if not first_item:
+                        raise ValueError(f'PT stage: Failed to extract first item from dataset {datapath}')
+                    
+                    # PT mode: only needs text column
+                    self._build_alpaca_dataset_info(
+                        temp_dataset_dict, file_name, first_item, stage
+                    )
+                    
+                except Exception as e:
+                    error_msg = (
+                        f'PT stage: Failed to process dataset {file_name} from {datapath}. '
+                        f'Error: {str(e)}. '
+                        f'PT mode requires either: '
+                        f'(1) Plain text format (one text per line), or '
+                        f'(2) JSON format with "text" field in each object.'
+                    )
+                    lazyllm.LOG.error(error_msg)
+                    raise ValueError(error_msg) from e
+            else:
+                # For other stages (SFT, DPO), detect format
+                formatting = 'alpaca'  # Default to alpaca
+                try:
+                    with open(datapath, 'r', encoding='utf-8') as file:
+                        data = json.load(file)
+                    if not data:
+                        raise ValueError(f'Dataset file {datapath} is empty')
+
+                    first_item = data[0]
+
+                    # Detect format: sharegpt or alpaca
+                    if 'messages' in first_item:
+                        formatting = 'sharegpt'
+                        self._build_sharegpt_dataset_info(
+                            temp_dataset_dict, file_name, first_item, stage
+                        )
+                    else:
+                        # Alpaca format
+                        self._build_alpaca_dataset_info(
+                            temp_dataset_dict, file_name, first_item, stage
+                        )
+
+                except Exception as e:
+                    lazyllm.LOG.warning(
+                        f'Failed to analyze dataset {datapath} for stage {stage}: {e}. '
+                        f'Using default formatting.'
+                    )
+            
+            if formatting is not None:
+                temp_dataset_dict[file_name].update({'formatting': formatting})
+
         self.temp_dataset_info_path = os.path.join(self.temp_folder, 'dataset_info.json')
         with open(self.temp_dataset_info_path, 'w') as json_file:
             json.dump(temp_dataset_dict, json_file, indent=4)
         return self.temp_dataset_info_path, ','.join(temp_dataset_dict.keys())
+
+    def _build_alpaca_dataset_info(self, dataset_dict, file_name, first_item, stage):
+        '''
+        Build dataset info for Alpaca format based on training stage.
+        '''
+        columns = {}
+        ranking = False
+
+        # Check for multimodal data
+        media_types = []
+        for media in ['images', 'videos', 'audios']:
+            if media in first_item:
+                media_types.append(media)
+
+        if stage == 'pt':
+            if 'text' in first_item:
+                columns['prompt'] = 'text'
+            else:
+                # Fallback: use instruction or output as text
+                if 'instruction' in first_item:
+                    columns['prompt'] = 'instruction'
+                elif 'output' in first_item:
+                    columns['prompt'] = 'output'
+                else:
+                    lazyllm.LOG.warning(
+                        f'PT stage: No "text" field found in dataset {file_name}, '
+                        f'using "instruction" or "output" as fallback'
+                    )
+                    columns['prompt'] = 'instruction' if 'instruction' in first_item else 'output'
+
+        elif stage == 'dpo':
+            # DPO training: needs chosen and rejected
+            ranking = True
+            if 'chosen' in first_item and 'rejected' in first_item:
+                columns['prompt'] = 'instruction' if 'instruction' in first_item else None
+                columns['query'] = 'input' if 'input' in first_item else None
+                columns['chosen'] = 'chosen'
+                columns['rejected'] = 'rejected'
+                # Remove None values
+                columns = {k: v for k, v in columns.items() if v is not None}
+            else:
+                raise ValueError(
+                    f'DPO stage requires "chosen" and "rejected" fields in dataset, '
+                    f'but found: {list(first_item.keys())}'
+                )
+
+        elif stage == 'sft':
+            # SFT: standard alpaca format
+            if 'instruction' in first_item:
+                columns['prompt'] = 'instruction'
+            if 'input' in first_item:
+                columns['query'] = 'input'
+            if 'output' in first_item:
+                columns['response'] = 'output'
+            if 'system' in first_item:
+                columns['system'] = 'system'
+            if 'history' in first_item:
+                columns['history'] = 'history'
+        else:
+            raise ValueError(f'Unsupported stage: {stage}. Only sft, pt, dpo are supported.')
+
+        # Add multimodal columns if present
+        if media_types:
+            multimodal_columns = {item: item for item in media_types}
+            multimodal_columns.update(columns)
+            columns = multimodal_columns
+
+        # Update dataset dict
+        update_dict = {'columns': columns}
+        if ranking:
+            update_dict['ranking'] = True
+
+        dataset_dict[file_name].update(update_dict)
+
+    def _build_sharegpt_dataset_info(self, dataset_dict, file_name, first_item, stage):
+        '''
+        Build dataset info for ShareGPT format based on training stage.
+        '''
+        columns = {}
+        ranking = False
+
+        # Check for multimodal data
+        media_types = []
+        for media in ['images', 'videos', 'audios']:
+            if media in first_item:
+                media_types.append(media)
+
+        if stage == 'dpo':
+            # DPO training: needs chosen and rejected
+            ranking = True
+            if 'chosen' in first_item and 'rejected' in first_item:
+                columns['messages'] = 'conversations' if 'conversations' in first_item else 'messages'
+                columns['chosen'] = 'chosen'
+                columns['rejected'] = 'rejected'
+            else:
+                raise ValueError(
+                    f'DPO stage requires "chosen" and "rejected" fields in dataset, '
+                    f'but found: {list(first_item.keys())}'
+                )
+        elif stage == 'sft':
+            # SFT: standard sharegpt format
+            columns['messages'] = 'conversations' if 'conversations' in first_item else 'messages'
+            if 'system' in first_item:
+                columns['system'] = 'system'
+            if 'tools' in first_item:
+                columns['tools'] = 'tools'
+
+            # Check if OpenAI format (has role/content tags)
+            if 'messages' in first_item and isinstance(first_item['messages'], list):
+                if len(first_item['messages']) > 0:
+                    msg = first_item['messages'][0]
+                    if 'role' in msg and 'content' in msg:
+                        # OpenAI format: add tags
+                        dataset_dict[file_name].update({
+                            'tags': {
+                                'role_tag': 'role',
+                                'content_tag': 'content',
+                                'user_tag': 'user',
+                                'assistant_tag': 'assistant',
+                                'system_tag': 'system'
+                            }
+                        })
+        else:
+            raise ValueError(f'Unsupported stage: {stage}. Only sft, pt, dpo are supported.')
+
+        # Add multimodal columns if present
+        if media_types:
+            multimodal_columns = {item: item for item in media_types}
+            multimodal_columns.update(columns)
+            columns = multimodal_columns
+
+        # Update dataset dict
+        update_dict = {'columns': columns}
+        if ranking:
+            update_dict['ranking'] = True
+
+        dataset_dict[file_name].update(update_dict)
 
     def _rm_temp_yaml(self):
         if self.temp_yaml_file:
@@ -172,7 +403,9 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         thirdparty.check_packages(['datasets', 'deepspeed', 'numpy', 'peft', 'torch', 'transformers', 'trl'])
         # train config update
         if 'dataset_dir' in self.template_dict and self.template_dict['dataset_dir'] == 'lazyllm_temp_dir':
-            _, datasets = self._build_temp_dataset_info(trainset)
+            # Get stage from template_dict for dataset info generation
+            stage = self.template_dict.get('stage', 'sft')
+            _, datasets = self._build_temp_dataset_info(trainset, stage=stage)
             self.template_dict['dataset_dir'] = self.temp_folder
         else:
             datasets = trainset
@@ -181,13 +414,9 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         # save config update
         if self.template_dict['finetuning_type'] == 'lora':
             # For LoRA/QLoRA: use llamafactory-cli export to merge adapter with base model
+            # For Full finetuning: model copy handling is done in cmds below
             updated_export_str = yaml.dump(dict(self.export_dict), default_flow_style=False)
             self.temp_export_yaml_file = self._build_temp_yaml(updated_export_str, prefix='merge_')
-        elif self.template_dict['finetuning_type'] == 'full':
-            # For Full finetuning: model is already complete in target_path (lazyllm_lora)
-            # We need to copy it to merge_path (lazyllm_merge) to maintain consistency
-            # This ensures _get_all_finetuned_models and export_model work correctly
-            pass  # Will handle in cmds below
 
         updated_template_str = yaml.dump(dict(self.template_dict), default_flow_style=False)
         self.temp_yaml_file = self._build_temp_yaml(updated_template_str)
@@ -198,7 +427,10 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
 
         # Use bash instead of sh to support pipefail
         # This ensures export only runs if training succeeds
-        cmds = f'export DISABLE_VERSION_CHECK=1 && bash -c "set -o pipefail && llamafactory-cli train {self.temp_yaml_file} 2>&1 | tee {self.log_file_path}"'
+        train_cmd = (f'export DISABLE_VERSION_CHECK=1 && bash -c "set -o pipefail && '
+                     f'llamafactory-cli train {self.temp_yaml_file} 2>&1 | '
+                     f'tee {self.log_file_path}"')
+        cmds = train_cmd
         if self.temp_export_yaml_file:
             # For LoRA/QLoRA: merge adapter with base model
             # Only run export if training succeeds (exit code 0)
