@@ -3,6 +3,4 @@
 	url = https://github.com/LazyAGI/LazyLLM-Env.git
 [submodule "Tutorial"]
 	path = Tutorial
-	# url = https://github.com/LazyAGI/Tutorial.git
-	url = https://github.com/Mustafa974/Tutorial.git
-	branch = add_en_docs
+	url = https://github.com/LazyAGI/Tutorial.git
