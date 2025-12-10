@@ -3,30 +3,14 @@ import ast
 import threading
 from typing import Tuple
 
+try:
+    from lazyllm_cpp import add_doc as _cpp_add_doc
+except ImportError:
+    def _cpp_add_doc(*args, **kwargs):
+        raise RuntimeError('add doc failed')
+
 lazyllm.config.add('raise_on_add_doc_error', bool, False, 'RAISE_ON_ADD_DOC_ERROR',
                    description='Whether to raise an error when adding doc failed.')
-
-cpp_add_doc_code = '''
-namespace py = pybind11;
-void addDocStr(py::object obj, std::string docs) {
-    static std::vector<std::string> allDocs;
-    PyObject* ptr = obj.ptr();
-    allDocs.push_back(std::move(docs));
-    if (Py_TYPE(ptr) == &PyCFunction_Type) {
-        auto f = reinterpret_cast<PyCFunctionObject*>(ptr);
-        f->m_ml->ml_doc = strdup(allDocs.back().c_str());
-        return;
-    } else if (Py_TYPE(ptr) == &PyInstanceMethod_Type) {
-        auto im = reinterpret_cast<PyInstanceMethodObject*>(ptr);
-        if (Py_TYPE(im->func) == &PyCFunction_Type) {
-            auto f = reinterpret_cast<PyCFunctionObject*>(im->func);
-            f->m_ml->ml_doc = strdup(allDocs.back().c_str());
-            return;
-        }
-    }
-    allDocs.pop_back();
-}
-'''
 
 
 class DuplicateDocError(RuntimeError):
@@ -68,6 +52,12 @@ def get_all_examples():   # Examples are not always exported, so process them in
 
 lazyllm.config.add('language', str, 'ENGLISH', 'LANGUAGE', description='The language of the documentation.')
 
+def _set_doc(obj, doc):
+    try:
+        obj.__doc__ = doc
+    except Exception:
+        _cpp_add_doc(obj, doc)
+
 def add_doc(obj_name, docstr, module, append=''):
     _guard_register_once(obj_name, module, append)
 
@@ -80,7 +70,7 @@ def add_doc(obj_name, docstr, module, append=''):
     try:
         if append:
             if isinstance(docstr, str):
-                obj.__doc__ += append + docstr
+                _set_doc(obj, obj.__doc__ + append + docstr)
             else:
                 cnt = obj.__doc__.count('.. function::')
                 if cnt == len(docstr):
@@ -89,13 +79,13 @@ def add_doc(obj_name, docstr, module, append=''):
                     docs = obj.__doc__.rsplit('.. function::', cnt)
                 else:
                     raise ValueError(f'function number {cnt}, doc number{len(docstr)}')
-                obj.__doc__ = '\n.. function::'.join(
-                    [(o + append + a) if a.strip() else o for o, a in zip(docs, docstr)])
+                _set_doc(obj, '\n.. function::'.join(
+                    [(o + append + a) if a.strip() else o for o, a in zip(docs, docstr)]))
         else:
-            obj.__doc__ = docstr
+            _set_doc(obj, docstr)
     except Exception:
         if lazyllm.config['raise_on_add_doc_error']:
-            raise RuntimeError(f'Failed to add doc for {obj_name} in {module.__name__}')
+            raise RuntimeError(f'Failed to add doc for {obj_name} in {module.__name__}') from None
 
 
 def add_chinese_doc(obj_name, docstr, module=lazyllm):

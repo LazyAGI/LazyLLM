@@ -12,8 +12,8 @@ add_subdirectory(${PROJECT_SOURCE_DIR}/thirdparty/pybind11
 set(LAZYLLM lazyllm_cpp)
 
 set(LAZYLLM_SOURCE_FILES
-    lazyllm.cpp
-    doc.cpp
+    binding/lazyllm.cpp
+    binding/doc.cpp
 )
 
 pybind11_add_module(${LAZYLLM} SHARED ${LAZYLLM_SOURCE_FILES})
