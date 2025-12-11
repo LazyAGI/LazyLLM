@@ -1,8 +1,8 @@
 [tool.poetry]
-name = "lazyllm"
+name = "lazyllm_compromisedkiwi"
 version = "0.7.0"
 description = "A Low-code Development Tool For Building Multi-agent LLMs Applications."
-authors = ["wangzhihong <wangzhihong@sensetime.com>"]
+authors = ["a <a@sensetime.com>"]
 license = "Apache-2.0 license"
 readme = "README.md"
 include = [

@@ -14,7 +14,7 @@ env:
 jobs:
   check-exists:
     name: Check Pypi version exists
-    if: github.repository == 'LazyAGI/LazyLLM'
+    if: github.repository == 'CompromisedKiwi/LazyLLM'
     runs-on: ubuntu-latest
     outputs:
       pypi_version_exists: ${{ steps.pypi_check.outputs.pypi_version_exists }}
@@ -176,7 +176,7 @@ jobs:
 
   publish:
     name: publish to PyPI
-    if: github.repository == 'LazyAGI/LazyLLM'
+    if: github.repository == 'CompromisedKiwi/LazyLLM'
     needs: build-wheels
     runs-on: ubuntu-latest
 
@@ -194,7 +194,7 @@ jobs:
 
   check-release:
     name: check and create GitHub Release
-    if: github.repository == 'LazyAGI/LazyLLM'
+    if: github.repository == 'CompromisedKiwi/LazyLLM'
     needs: publish
     runs-on: ubuntu-latest
     steps:
@@ -224,14 +224,17 @@ jobs:
           release_name: ${{ github.ref }}
           draft: false
           prerelease: false
+
       - name: Set upload_url for new release
         if: env.release_exists == 'false'
         run: echo "upload_url=${{ steps.create_release.outputs.upload_url }}" >> $GITHUB_ENV
+
       - name: Get Asset name
         run: |
           export PKG=$(ls dist/ | grep tar)
           set -- $PKG
           echo "name=$1" >> $GITHUB_ENV
+          
       - name: Upload Release Asset (sdist) to GitHub
         id: upload-release-asset
         uses: actions/upload-release-asset@v1
