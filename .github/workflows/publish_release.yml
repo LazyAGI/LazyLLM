@@ -76,14 +76,16 @@ jobs:
 
       - name: Extract tag from ref
         id: extract_tag
-        run: echo "TAG=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
+        run: |
+          echo "${GITHUB_REF}"
+          echo "TAG=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
       - name: Update version in pyproject.toml and __init__.py
         run: |
+          echo $TAG
           sed -i "s#^version = \".*\"#version = \"$TAG\"#" pyproject.toml
           sed -i "s#version='[^']*',#version='$TAG',#" setup.py
           sed -i "s#^__version__ = '.*'#__version__ = '$TAG'#" lazyllm/__init__.py
-          echo $TAG
         env:
           TAG: ${{ env.TAG }}
 
