@@ -637,7 +637,7 @@ class TrainServer(ServerBase):
             num_gpus = hypram['ngpus']
             if isinstance(num_gpus, str):
                 try:
-                    num_gpus = int(num_gpus)
+                    ngpus = int(num_gpus)
                 except (ValueError, TypeError):
                     pass
             elif isinstance(num_gpus, int):
@@ -661,18 +661,18 @@ class TrainServer(ServerBase):
 
         if 'ref_model' in hypram:
             if not os.path.exists(hypram['ref_model']):
-                defatult_path = os.path.join(lazyllm.config['model_path'], hypram['ref_model'])
-                if os.path.exists(defatult_path):
-                    hypram['ref_model'] = defatult_path
+                default_path = os.path.join(lazyllm.config['model_path'], hypram['ref_model'])
+                if os.path.exists(default_path):
+                    hypram['ref_model'] = default_path
                 else:
                     raise HTTPException(
                         status_code=404,
                         detail=f'ref_model {hypram["ref_model"]} not found')
         if 'reward_model' in hypram:
             if not os.path.exists(hypram['reward_model']):
-                defatult_path = os.path.join(lazyllm.config['model_path'], hypram['reward_model'])
-                if os.path.exists(defatult_path):
-                    hypram['reward_model'] = defatult_path
+                default_path = os.path.join(lazyllm.config['model_path'], hypram['reward_model'])
+                if os.path.exists(default_path):
+                    hypram['reward_model'] = default_path
                 else:
                     raise HTTPException(
                         status_code=404,
@@ -710,7 +710,6 @@ class TrainServer(ServerBase):
                                 protected_checkpoint_path=protected_checkpoint)
                     except Exception:
                         pass
-                        time.sleep(60)
 
             cleanup_thread = threading.Thread(target=periodic_cleanup, daemon=True)
             cleanup_thread.start()
@@ -1138,7 +1137,6 @@ class TrainServer(ServerBase):
                                 protected_checkpoint_path=protected_checkpoint)
                     except Exception:
                         pass
-                        time.sleep(60)
 
             cleanup_thread = threading.Thread(target=periodic_cleanup, daemon=True)
             cleanup_thread.start()
