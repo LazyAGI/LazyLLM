@@ -4,7 +4,7 @@ import threading
 from typing import Tuple
 
 try:
-    from lazyllm_cpp import add_doc as _cpp_add_doc
+    from lazyllm.cpp import add_doc as _cpp_add_doc
 except ImportError:
     def _cpp_add_doc(*args, **kwargs):
         raise RuntimeError('add doc failed')

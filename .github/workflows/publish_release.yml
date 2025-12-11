@@ -12,9 +12,46 @@ env:
   PYTHON_VERSION: "3.10.9"
 
 jobs:
+  build-cpp-files:
+    name: Build native extensions (${{ matrix.os }}-py${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
+    
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install build deps
+        run: |
+          python -m pip install -U pip setuptools wheel
+
+      - name: Build C++ extension
+        run: |
+          python setup.py build_ext --inplace
+
+      - name: List artifacts
+        run: ls -R .
+
+      - name: Upload extension artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: so-${{ matrix.os }}-py${{ matrix.python-version }}
+          path: |
+            **/*.so
+            **/*.pyd
+          retention-days: 5
+
   build-n-publish:
     name: Build and publish to PyPI
     if: github.repository == 'LazyAGI/LazyLLM'
+    needs: build-cpp-files
     runs-on: ubuntu-latest
 
     steps:
@@ -122,6 +159,7 @@ jobs:
             echo "Release $RELEASE_TAG does not exist. Proceeding with release creation."
             echo "release_exists=false" >> $GITHUB_ENV
           fi
+
       - name: Create GitHub Release
         if: env.release_exists == 'false'
         id: create_release
