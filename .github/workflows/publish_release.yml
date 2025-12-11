@@ -2,8 +2,8 @@ name: Upload PyPI And Release
 
 on:
   push:
-    tags:
-      - "v*"
+    # tags:
+    #   - "v*"
 
   workflow_dispatch:
 
@@ -19,6 +19,21 @@ jobs:
     outputs:
       pypi_version_exists: ${{ steps.pypi_check.outputs.pypi_version_exists }}
     steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Set up python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+
       - name: Check PyPI for existing version
         id: pypi_check
         run: |
@@ -119,6 +134,7 @@ jobs:
 
   build-wheels:
     name: Build wheels with native extensions (${{ matrix.os }}-py${{ matrix.python-version }})
+    needs: build-doc
     runs-on: ${{ matrix.os }}
     strategy:
       matrix:
