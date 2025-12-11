@@ -81,6 +81,7 @@ jobs:
 
       - name: Update version in pyproject.toml and __init__.py
         run: |
+          echo $GITHUB_REF
           echo $TAG
           sed -i "s#^version = \".*\"#version = \"$TAG\"#" pyproject.toml
           sed -i "s#version='[^']*',#version='$TAG',#" setup.py
