@@ -11,6 +11,7 @@ from .supplier.doubao import DoubaoModule
 from .supplier.deepseek import DeepSeekModule
 from .supplier.siliconflow import SiliconFlowModule
 from .supplier.minimax import MinimaxModule
+from .supplier.aiping import AipingModule
 
 class _ChatModuleMeta(type):
 
@@ -29,7 +30,8 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
               'doubao': DoubaoModule,
               'deepseek': DeepSeekModule,
               'siliconflow': SiliconFlowModule,
-              'minimax': MinimaxModule}
+              'minimax': MinimaxModule,
+              'aiping': AipingModule}
 
     @staticmethod
     def _encapsulate_parameters(base_url: str, model: str, stream: bool, return_trace: bool, **kwargs) -> Dict[str, Any]:
