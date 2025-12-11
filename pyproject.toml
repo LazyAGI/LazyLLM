@@ -1,5 +1,5 @@
 [tool.poetry]
-name = "lazyllm_compromisedkiwi"
+name = "lazyllm"
 version = "0.7.0"
 description = "A Low-code Development Tool For Building Multi-agent LLMs Applications."
 authors = ["a <a@sensetime.com>"]
