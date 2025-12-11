@@ -39,7 +39,7 @@ jobs:
         run: |
           VERSION=$(poetry version -s)
           PACKAGE_NAME=$(poetry version | awk '{print $1}')
-          RESPONSE=$(curl -s https://pypi.org/pypi/$PACKAGE_NAME/json)
+          RESPONSE=$(curl -s https://test.pypi.org/pypi/$PACKAGE_NAME/json)
           if echo "$RESPONSE" | jq -e ".releases | has(\"$VERSION\")"; then
             echo "Version $VERSION already exists on PyPI. Skipping publish."
             echo "pypi_version_exists=true" >> $GITHUB_OUTPUT
@@ -83,7 +83,7 @@ jobs:
         run: |
           echo $GITHUB_REF
           echo $TAG
-          
+
           sed -i "s#^version = \".*\"#version = \"$TAG\"#" pyproject.toml
           sed -i "s#version='[^']*',#version='$TAG',#" setup.py
           sed -i "s#^__version__ = '.*'#__version__ = '$TAG'#" lazyllm/__init__.py
