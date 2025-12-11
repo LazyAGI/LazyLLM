@@ -854,13 +854,12 @@ class TrainServer(ServerBase):
         for job_id in jobs_to_remove:
             try:
                 await self.cancel_job(job_id, token)
-                pass
             except Exception:
-                pass
                 try:
                     self._pop_user_job_info(token, job_id)
                 except Exception:
                     pass
+            finally:
                 if job_id in server_running_dict:
                     del server_running_dict[job_id]
 
