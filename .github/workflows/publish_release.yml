@@ -77,7 +77,6 @@ jobs:
       - name: Extract tag from ref
         id: extract_tag
         run: |
-          echo "${GITHUB_REF}"
           echo "TAG=${GITHUB_REF#refs/tags/v}" >> $GITHUB_ENV
 
       - name: Update version in pyproject.toml and __init__.py
