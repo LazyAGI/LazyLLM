@@ -101,7 +101,7 @@ python3 rag.py
 
 在创建知识库时，我们需要对文档内容进行切分操作，在版本-1的Part2中，我们通过指定CoarseChunk这个内置的切分配置将文档切分成指定大小的分块。但是实际创建知识库时我们会遇到各式各样的文档格式，文档内容也是各不相同，为了在检索时能又更好的效果，我们在切分时就需要做更加细致的操作。LazyLLM提供了许多内置的切分类，并且有着非常灵活的使用方法。
 
-在LazyLLM中，针对常见的切分方式和文件类型，目前内置了CharacterSplitter，RecursiveSplitter，SentenceSplitter，MarkdownSplitter, XMLSplitter, HTMLSPlitter, JSONSplitter, YAMLSplitter，ProgrammingSplitter和CodeSplitter切分类。
+在LazyLLM中，针对常见的切分方式和文件类型，目前内置了CharacterSplitter，RecursiveSplitter，SentenceSplitter，MarkdownSplitter, XMLSplitter, HTMLSPlitter, JSONSplitter, YAMLSplitter，GeneralCodeSplitter和CodeSplitter切分类。
 
 我们在 Part1 的基础上指定一个切分方式，将文档根据指定符号拆分成名为 `character` 的 `Node Group`，以最简单的CharacterSplitter举例：
 
@@ -206,7 +206,7 @@ document.create_node_group(name='character3',
 
 ```
 
-针对不同的文档类型，LazyLLM内置的MarkdownSplitter, XMLSplitter, HTMLSPlitter, JSONSplitter, YAMLSplitter，ProgrammingSplitter和CodeSplitter可以通过配置不同的参数实现不同需求的切分，可以参考各切分类的文档。
+针对不同的文档类型，LazyLLM内置的MarkdownSplitter, XMLSplitter, HTMLSPlitter, JSONSplitter, YAMLSplitter，GeneralCodeSplitter 和CodeSplitter可以通过配置不同的参数实现不同需求的切分，可以参考各切分类的文档。
 
 其中CodeSplitter准确的说是一个路由类，并不是实现具体的切分，而是会根据入参选择合适的切分类进行切分。我们以XML文件举例：
 

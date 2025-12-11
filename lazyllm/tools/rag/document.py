@@ -191,7 +191,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             return [dataset_path] if os.path.isfile(dataset_path) else files_list
 
         if recursive:
-            for root, dirs, files in os.walk(dataset_path):
+            for root, dirs, files in os.walk(os.path.abspath(dataset_path)):
                 # Skip hidden directories
                 if skip_hidden_path:
                     path_parts = root.split(os.sep)

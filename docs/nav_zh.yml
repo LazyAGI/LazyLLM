@@ -14,12 +14,18 @@
   - Google 搜索: Cookbook/google_search.md
   - Bocha 搜索代理: Cookbook/bocha_search.md
   - 语音助手: Cookbook/voice_assistant.md
-  - API交互: Cookbook/API_Interaction_Agent_demo.md
+  - API 交互: Cookbook/API_Interaction_Agent_demo.md
   - 自适应工具调用: Cookbook/flex_agent.md
   - 历史聊天: Cookbook/rag_nloop.md
   - 多模态输出: Cookbook/multi_modal_output_agent.md
+  - AI 销售助手: Cookbook/sales_assistant.md
+  - 多源数据 SQL 查询: Cookbook/tabular.md
+  - 多智能体主持演讲: Cookbook/multi-agent_authoritarian_speaker.md
   - 维基搜索: Cookbook/WikiAgent.md
   - 多轮对话: Cookbook/camel_agent.md
+  - SQL 代理: Cookbook/sql_agent.md
+  - 环境交互: Cookbook/gym_v1.md
+  - 多智能体分散式演讲者选择: Cookbook/decentralized.md
 - 最佳实践:
   - 工作流: Best Practice/flow.md
   - 流程应用: Best Practice/flowapp.md

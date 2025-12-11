@@ -34,8 +34,9 @@ class FlatList(list):
 
 
 class ArgsDict(dict):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, with_line=True, **kwargs):
         super(ArgsDict, self).__init__(*args, **kwargs)
+        self._with_line = with_line
 
     def check_and_update(self, kw):
         if not kw.pop('skip_check', config['deploy_skip_check_kw']):
@@ -47,7 +48,10 @@ class ArgsDict(dict):
         for k, v in self.items():
             if type(v) is dict:
                 v = json.dumps(v).replace('\"', '\\\"')
-            string.append(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"')
+            if self._with_line:
+                string.append(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"')
+            else:
+                string.append(f'{k}={v}' if type(v) is not str else f'{k}=\"{v}\"')
         string = ' '.join(string)
         return string
 
