@@ -69,11 +69,11 @@ class AipingModule(OnlineChatModuleBase, FileHandlerBase):
         except Exception:
             return False
         
-    @property
-    def get_models(self):
-        url = urljoin(self._base_url, 'models')
+    @classmethod
+    def get_models(cls):
+        url = urljoin(AIPING_BASE_URL, 'models')
         try:
-            response = requests.get(url, timeout=20)
+            response = requests.get(url, timeout=TIMEOUT)
             response.raise_for_status()
             return response.json()
         except requests.exceptions.RequestException as e:
