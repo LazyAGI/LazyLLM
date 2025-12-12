@@ -4,6 +4,6 @@
 [submodule "Tutorial"]
 	path = Tutorial
 	url = https://github.com/LazyAGI/Tutorial.git
-[submodule "csrc/thirdparty/pybind11"]
+[submodule "pybind11"]
 	path = csrc/thirdparty/pybind11
 	url = https://github.com/pybind/pybind11.git
