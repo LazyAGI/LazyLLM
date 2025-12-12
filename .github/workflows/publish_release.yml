@@ -10,7 +10,7 @@ on:
 env:
   POETRY_VERSION: "1.8.3"
   PYTHON_VERSION: "3.10.9"
-  TAG: ${{ github.ref_name.replace('v', '') }}
+  TAG: ${{ replace(github.ref_name, 'v', '') }}
 
 defaults:
   run:
