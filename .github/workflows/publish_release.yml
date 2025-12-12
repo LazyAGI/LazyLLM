@@ -27,7 +27,8 @@ jobs:
       - name: Extract tag from ref
         id: set_tag_var
         run: |
-          echo "tag=${${{ github.ref_name }}#v}" >> $GITHUB_OUTPUT
+          FULL_TAG_NAME="${{ github.ref_name }}"
+          echo "tag=${FULL_TAG_NAME#v}" >> $GITHUB_OUTPUT
           echo "TAG: ${{ steps.set_tag_var.outputs.tag }}"
 
       - uses: actions/checkout@v4
