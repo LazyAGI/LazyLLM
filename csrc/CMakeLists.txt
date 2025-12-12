@@ -29,8 +29,7 @@ if(WIN32)
     # On Windows, use copy instead of symlink (more reliable)
     add_custom_target(liblink ALL
         COMMAND ${CMAKE_COMMAND} -E copy_if_different
-            ${PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LAZYLLM}>
-            ${CMAKE_SOURCE_DIR}/../$<TARGET_FILE_NAME:${LAZYLLM}>
+            ${PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LAZYLLM}> ${CMAKE_SOURCE_DIR}/..
     )
 else()
     # On Linux/macOS, use symlink
