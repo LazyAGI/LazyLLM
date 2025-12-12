@@ -11,6 +11,10 @@ env:
   POETRY_VERSION: "1.8.3"
   PYTHON_VERSION: "3.10.9"
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   check-exists:
     name: Check Pypi version exists
