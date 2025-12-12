@@ -10,7 +10,7 @@ on:
 env:
   POETRY_VERSION: "1.8.3"
   PYTHON_VERSION: "3.10.9"
-  TAG: ${{ github.ref.replace('v', '') }}
+  TAG: ${{ github.ref_name.replace('v', '') }}
 
 defaults:
   run:
@@ -42,6 +42,7 @@ jobs:
       - name: Check PyPI for existing version
         id: pypi_check
         run: |
+          echo $TAG
           PACKAGE_NAME=$(poetry version | awk '{print $1}')
           RESPONSE=$(curl -s https://test.pypi.org/pypi/$PACKAGE_NAME/json)
           if echo "$RESPONSE" | jq -e ".releases | has(\"$TAG\")"; then
