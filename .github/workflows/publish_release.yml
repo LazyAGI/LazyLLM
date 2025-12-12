@@ -29,7 +29,6 @@ jobs:
         run: |
           FULL_TAG_NAME="${{ github.ref_name }}"
           echo "tag=${FULL_TAG_NAME#v}" >> $GITHUB_OUTPUT
-          echo "TAG: ${{ steps.set_tag_var.outputs.tag }}"
 
       - uses: actions/checkout@v4
         with:
@@ -49,7 +48,8 @@ jobs:
       - name: Check PyPI for existing version
         id: pypi_check
         run: |
-          echo $TAG
+          TAG=${{ steps.set_tag_var.outputs.tag }}
+          echo "TAG: ${TAG}"
           PACKAGE_NAME=$(poetry version | awk '{print $1}')
           RESPONSE=$(curl -s https://test.pypi.org/pypi/$PACKAGE_NAME/json)
           if echo "$RESPONSE" | jq -e ".releases | has(\"$TAG\")"; then
