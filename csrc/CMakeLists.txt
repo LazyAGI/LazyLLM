@@ -24,9 +24,22 @@ if (SHOW_SYMBOL)
     add_definitions(-DPYBIND11_NAMESPACE=pybind11)
 endif()
 
-add_custom_target(liblink ALL
-    COMMAND ln -sf ${PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LAZYLLM}> ../../$<TARGET_FILE_NAME:${LAZYLLM}>
-)
+# Create symlink or copy based on platform
+if(WIN32)
+    # On Windows, use copy instead of symlink (more reliable)
+    add_custom_target(liblink ALL
+        COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            ${PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LAZYLLM}>
+            ../../$<TARGET_FILE_NAME:${LAZYLLM}>
+    )
+else()
+    # On Linux/macOS, use symlink
+    add_custom_target(liblink ALL
+        COMMAND ${CMAKE_COMMAND} -E create_symlink
+            ${PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LAZYLLM}>
+            ../../$<TARGET_FILE_NAME:${LAZYLLM}>
+    )
+endif()
 
 set(PYBIND11_FINDPYTHON ON)
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
