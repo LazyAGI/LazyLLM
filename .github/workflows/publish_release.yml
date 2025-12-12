@@ -125,7 +125,7 @@ jobs:
       
       - name: Tar repo with docs
         run: |
-          tar --exclude='.git' --warning=no-file-changed -czf repo-with-docs.tar.gz .
+          tar --exclude='.git' -v -czf repo-with-docs.tar.gz .
           ls -lh repo-with-docs.tar.gz
 
       - name: Upload repo artifact (with docs inserted)
