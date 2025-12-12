@@ -66,7 +66,7 @@ jobs:
       - name: Init specific submodule
         run: |
           git submodule update --init LazyLLM-Env
-          git submodule update --init pybind11
+          git submodule update --init csrc/thirdparty/pybind11
 
       - name: Set up python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
