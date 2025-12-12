@@ -24,30 +24,12 @@ if (SHOW_SYMBOL)
     add_definitions(-DPYBIND11_NAMESPACE=pybind11)
 endif()
 
-# Create symlink or copy based on platform
-if(WIN32)
-    # On Windows, use copy instead of symlink (more reliable)
-    add_custom_target(liblink ALL
-        COMMAND ${CMAKE_COMMAND} -E copy 
-        "${PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LAZYLLM}>"
-        "${CMAKE_SOURCE_DIR}/../"
-    )
-else()
-    # On Linux/macOS, use symlink
-    add_custom_target(liblink ALL
-        COMMAND ${CMAKE_COMMAND} -E create_symlink
-            ${PROJECT_BINARY_DIR}/$<TARGET_FILE_NAME:${LAZYLLM}>
-            ${CMAKE_SOURCE_DIR}/../$<TARGET_FILE_NAME:${LAZYLLM}>
-    )
-endif()
-
 set(PYBIND11_FINDPYTHON ON)
 find_package(Python REQUIRED COMPONENTS Interpreter Development)
 include_directories(${PYTHON_INCLUDE_DIRS})
 
 # for test executables
-set(LAZYLLM_EXE_FILES
-)
+set(LAZYLLM_EXE_FILES)
 
 foreach (tname ${LAZYLLM_EXE_FILES})
     add_executable(${tname} ${tname}.cpp)

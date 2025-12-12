@@ -187,6 +187,19 @@ jobs:
           set -ex
           python setup.py build_ext --inplace
 
+      - name: Copy .pyd/.so file to root
+        run: |
+          WORKSPACE_ROOT="${{ github.workspace }}"
+          echo "WORKSPACE_ROOT: $WORKSPACE_ROOT"
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+              EXT_FILE=$(find "$WORKSPACE_ROOT" -name "*.pyd" -print -quit)
+          else
+              # Linux/macOS: 查找 .so 文件
+              EXT_FILE=$(find "$WORKSPACE_ROOT" -name "*.so" -print -quit)
+          fi
+          echo "Find target file: $EXT_FILE"
+          cp -f "$EXT_FILE" "$WORKSPACE_ROOT"
+
       - name: Build wheel
         run: |
           python -m build --wheel --outdir dist/
