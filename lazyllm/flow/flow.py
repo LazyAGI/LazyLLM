@@ -50,6 +50,10 @@ def _is_function(f):
     return isinstance(f, (types.BuiltinFunctionType, types.FunctionType,
                           types.BuiltinMethodType, types.MethodType, types.LambdaType))
 
+
+_flow_stack = threading.local()
+_flow_stack.value = []
+
 class FlowBase(metaclass=_MetaBind):
     def __init__(self, *items, item_names=None, auto_capture=False) -> None:
         self._father = None
@@ -63,6 +67,7 @@ class FlowBase(metaclass=_MetaBind):
             self._add(k, v)
 
         self._capture = False
+        self._auto_registered = False
 
     def __post_init__(self): pass
 
@@ -87,6 +92,7 @@ class FlowBase(metaclass=_MetaBind):
         if self._auto_capture:
             self._frame_keys = list(self._curr_frame.f_locals.keys())
         self._capture = True
+        _flow_stack.value.append(self)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -96,6 +102,7 @@ class FlowBase(metaclass=_MetaBind):
                 if var != 'self' and var not in self._frame_keys and (
                         (val._f if isinstance(val, bind) else val) is not self):
                     self._add(var, val)
+        assert _flow_stack.value.pop() == self, 'Do not operate FLow._flow_stack manually!'
         self._capture = False
         self._curr_frame = None
         self.__post_init__()
@@ -107,6 +114,13 @@ class FlowBase(metaclass=_MetaBind):
 
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
+            if len(_flow_stack.value) > 1 and not self._auto_registered:
+                super(__class__, self).__setattr__('_auto_registered', True)
+                locals = self._curr_frame.f_locals.copy()
+                for key, item in locals.items():
+                    if item == self and (parent := _flow_stack.value[-2]) != item:
+                        if key not in parent._item_names: parent._add(key, self)
+                        break
             assert name not in self._item_names, f'Duplicated name: {name}'
             self._add(name, value)
         elif name in getattr(self, '_item_names', ()):
