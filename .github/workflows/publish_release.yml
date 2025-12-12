@@ -163,7 +163,7 @@ jobs:
           mkdir -p repo
           tar -xzf repo_artifact/repo-with-docs.tar.gz -C repo
           # copy extracted content to workspace root (overwrite)
-          rsync -a repo/ ./
+          cp -a repo/. ./
           # show a bit for debug
           ls -la | sed -n '1,200p'
 
