@@ -13,6 +13,7 @@ def is_3(x): return True if x == 3 else False
 def t1(x): return 2 * x
 def t2(x): return 3 * x
 def t3(x): return x
+def plus_n(n): return lambda x: str(x) + str(n)
 
 
 class TestFlow(object):
@@ -29,6 +30,27 @@ class TestFlow(object):
         # 2 + 4 + 2 * 3
         assert p(2) == 12
 
+    def test_pipeline_recursive(self):
+        with pipeline() as p:
+            with pipeline() as p2:
+                p2.f1 = plus_n(1)
+                p2.f2 = plus_n(2)
+                with pipeline() as p21:
+                    p21.f1 = plus_n(3)
+                    p21.f2 = plus_n(4)
+            with pipeline() as p.p3:
+                with pipeline() as p31:
+                    p31.f1 = plus_n(5)
+                    p31.f2 = plus_n(6)
+                p.p3.f1 = plus_n(7)
+                p.p3.f2 = plus_n(8)
+        assert p('0') == '012345678'
+        assert p._item_names == ['p2', 'p3']
+        assert p.p2._item_names == ['f1', 'f2', 'p21']
+        assert p.p2.p21._item_names == ['f1', 'f2']
+        assert p.p3._item_names == ['p31', 'f1', 'f2']
+        assert p.p3.p31._item_names == ['f1', 'f2']
+
     def test_server_with_bind(self):
         with pipeline() as ppl:
             ppl.f1 = lambda x: str(len(x))
@@ -36,8 +58,8 @@ class TestFlow(object):
             ppl.f2 = lambda y: f"The original query is : {y['query']}, length is : {y['length']}"
         sm = lazyllm.ServerModule(ppl)
         sm.start()
-        query = "Hello World"
-        assert sm(query) == f"The original query is : {query}, length is : {len(query)}"
+        query = 'Hello World'
+        assert sm(query) == f'The original query is : {query}, length is : {len(query)}'
 
     def test_parallel(self):
         fl = parallel(add_one, add_one)(1)
@@ -261,14 +283,14 @@ class TestFlowBind(object):
                         ppl.wp.ppl.for_output = lazyllm.ifs(lambda x, y: y is None,
                                                             lambda x, y: [{'idx': i} for i in range(num)],
                                                             lambda x, y: -1
-                                                            ) | bind(ppl.wp.ppl.input["idx"], lazyllm._0)
+                                                            ) | bind(ppl.wp.ppl.input['idx'], lazyllm._0)
                         with warp() as ppl.wp.ppl.wp2:
                             with pipeline() as ppl.wp.ppl.wp2.ppl:
                                 ppl.wp.ppl.wp2.ppl.bug = lambda x: time.sleep(random.randint(0, 30) / 1000)
                                 ppl.wp.ppl.wp2.ppl.for_output = lazyllm.ifs(lambda x, y, z: z is None,
                                                                             lambda x, y, z: x * num + y,
                                                                             lambda x, y, z: -1
-                                    ) | bind(ppl.wp.ppl.input["idx"], ppl.wp.ppl.wp2.ppl.input["idx"], lazyllm._0)
+                                    ) | bind(ppl.wp.ppl.input['idx'], ppl.wp.ppl.wp2.ppl.input['idx'], lazyllm._0)
 
         test_data = [{'idx': i} for i in range(num)]
         assert ppl(test_data) == tuple(range(num * num))
