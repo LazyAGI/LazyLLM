@@ -26,7 +26,7 @@ lint-flake8-only-diff:
 			git diff --name-status origin/main..HEAD -- 'lazyllm/**.py'  'docs/**.py' 'scripts/**.py' 'tests/**.py' 'examples/**.py'; \
 			git diff --cached --name-status -- 'lazyllm/**.py' 'docs/**.py' 'scripts/**.py' 'tests/**.py' 'examples/**.py'; \
 			git diff --name-status -- 'lazyllm/**.py' 'docs/**.py' 'scripts/**.py' 'tests/**.py' 'examples/**.py'; \
-		} | awk '$$1 ~ /^(A|M)$$/ {print $$2}' \
+		} | awk '$$1 ~ /^(A|M)$$/ {print $$2}' | sort -u \
 	);  \
 	if [ -n "$$FILES" ]; then \
 		echo "➡️  Running flake8 on:"; \
