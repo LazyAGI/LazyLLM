@@ -224,8 +224,12 @@ jobs:
         with:
           pattern: wheels-*
           path: ./dist
-          merge-multiple: true
-          
+
+      - name: List downloaded files
+        run: |
+          echo "Files in dist directory:"
+          ls -la ./dist/
+
       - name: Publish all wheels to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
