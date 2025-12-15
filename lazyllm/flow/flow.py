@@ -25,17 +25,26 @@ class FlowException(Exception):
     pass
 
 
-def _is_lazyllm_internal_frame(frame):
+def _is_lazyllm_internal_frame(frame, expected: Optional[dict] = None):
+    expected = expected or {'lazyllm.flow.flow': ['_run', 'invoke'], 'lazyllm.common.bind': ['__call__']}
     mod = frame.f_globals.get('__name__', '')
     if not mod.startswith('lazyllm.'): return False
-    expected = {'lazyllm.flow.flow': ['_run', 'invoke'], 'lazyllm.common.bind': ['__call__']}
     if mod in expected and frame.f_code.co_name in expected[mod]: return True
     return False
 
+_is_lazyllm_call_frame = bind(_is_lazyllm_internal_frame, expected={'lazyllm.flow.flow': '__call__'})
+
 def _trim_traceback(tb):
-    kept = []
+    kept, keep_call = [], True
     while tb:
-        if not _is_lazyllm_internal_frame(tb.tb_frame): kept.append(tb)
+        if not _is_lazyllm_internal_frame(tb.tb_frame):
+            if _is_lazyllm_call_frame(tb.tb_frame):
+                if keep_call:
+                    kept.append(tb)
+                    keep_call = False
+            else:
+                kept.append(tb)
+                keep_call = True
         tb = tb.tb_next
 
     new_tb = None
