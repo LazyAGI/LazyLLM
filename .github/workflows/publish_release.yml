@@ -174,7 +174,7 @@ jobs:
 
       - name: Install build deps
         run: |
-          python -m pip install -U pip build setuptools wheel
+          python -m pip install -U pip build setuptools wheel pybind11
 
       - name: Build default wheel
         if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
@@ -194,7 +194,6 @@ jobs:
           if [[ "${{ runner.os }}" == "Windows" ]]; then
               EXT_FILE=$(find "$WORKSPACE_ROOT" -name "*.pyd" -print -quit)
           else
-              # Linux/macOS: 查找 .so 文件
               EXT_FILE=$(find "$WORKSPACE_ROOT" -name "*.so" -print -quit)
           fi
           echo "Find target file: $EXT_FILE"
@@ -204,7 +203,6 @@ jobs:
         run: |
           python -m build --wheel --outdir dist/
           ls -la dist/
-          mv dist/*.whl dist/lazyllm-${{ github.ref_name }}-${{ matrix.os }}-py${{ matrix.python-version }}.whl
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
