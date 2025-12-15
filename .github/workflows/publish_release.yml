@@ -235,7 +235,6 @@ jobs:
       - name: Publish all wheels to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          password: ${{ secrets.LazyLLM_INDEX_PYPI_TOKEN }}
           packages_dir: dist/
 
   check-release:
