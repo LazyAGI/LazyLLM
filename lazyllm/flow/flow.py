@@ -299,16 +299,17 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 return it(*__input, **kw) if isinstance(__input, package) else it(**__input, **kw)
             else:
                 return it(__input, **kw)
-        except FlowException:
-            raise
+        except FlowException as e:
+            raise e
         except Exception as e:
             try:
                 pos = self._item_pos[self._items.index(it)]
             except Exception:
                 pos = None
             err_msg = (f'Flow defined at {self._defined_pos or "Unknown position"} encountered an error:\n'
-                       f'invoking `{type(it._f) if isinstance(it, _FuncWrap) else type(it)}({it})`'
-                       f'({pos or "Position not found"}) with input {type(__input)}`{__input}` and kw `{kw}`')
+                       f'invoking `{type(it._f).__name__ if isinstance(it, _FuncWrap) else type(it).__name__}({it})`'
+                       f'({pos or "Position not found"}) with input `{__input}` and kw `{kw}` failed. '
+                       + 'Details: `{type}: {value}`'.format(type=type(e).__name__, value=str(e).replace('\n', '\\n')))
             LOG.error(err_msg)
             LOG.debug(f'Error type: {type(e).__name__}, Error message: {str(e)}\n'
                       f'Traceback: {"".join(traceback.format_exception(*sys.exc_info()))}')
