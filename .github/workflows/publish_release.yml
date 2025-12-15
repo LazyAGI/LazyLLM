@@ -224,6 +224,7 @@ jobs:
         with:
           pattern: wheels-*
           path: ./dist
+          merge-multiple: true
           
       - name: Publish all wheels to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
