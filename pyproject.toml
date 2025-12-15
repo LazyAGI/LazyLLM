@@ -8,6 +8,7 @@ readme = "README.md"
 include = [
     "lazyllm/pyproject.toml",
 ]
+build = "setup.py"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
@@ -380,8 +381,8 @@ dev = "Install developer dependencies for code style checks and testing scripts"
 online-advanced = "Install dependencies for online multimodal"
 
 [build-system]
-requires = ["poetry-core"]
-build-backend = "poetry.core.masonry.api"
+requires = ["poetry-core", "setuptools>=64", "wheel"]
+build-backend = "setuptools.build_meta"
 
 [tool.poetry.scripts]
 lazyllm = "lazyllm.cli.main:main"
