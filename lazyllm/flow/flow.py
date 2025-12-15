@@ -91,6 +91,9 @@ def _get_callsite(depth=1):
         frame = inspect.currentframe()
         for _ in range(depth): frame = frame.f_back
         if frame is None: return None
+        else:
+            while frame.f_code.co_name == '__setattr__' and frame.f_globals.get('__name__', '') == 'lazyllm.common.bind':
+                frame = frame.f_back
         return f'"file: {os.path.abspath(frame.f_code.co_filename)}", line {frame.f_lineno}'
     except Exception:
         return None
@@ -133,7 +136,7 @@ class FlowBase(metaclass=_MetaBind):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
         self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) or v in self._items else v)
         self._item_ids.append(k or str(uuid.uuid4().hex))
-        self._item_pos.append(_get_callsite(depth=4))
+        self._item_pos.append(_get_callsite(depth=3))
         if isinstance(v, FlowBase): v._father = self
         if k:
             assert k not in self._item_names, f'Duplicated names {k}'
@@ -311,9 +314,9 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 pos = self._item_pos[self._items.index(it)]
             except Exception:
                 pos = None
+            if '_bind_args_source' in kw: kw = kw['_bind_args_source'].pop('kwargs', None)
             err_msg = (f'Flow defined at {self._defined_pos or "Unknown position"} encountered an error:\n'
-                       f'invoking `{type(it._f).__name__ if isinstance(it, _FuncWrap) else type(it).__name__}({it})`'
-                       f'({pos or "Position not found"}) with input `{__input}` and kw `{kw}` failed. '
+                       f'invoking `{it}`({pos or "Position not found"}) with input `{__input}` and kw `{kw}` failed. '
                        + 'Details: `{type}: {value}`'.format(type=type(e).__name__, value=str(e).replace('\n', '\\n')))
             LOG.error(err_msg)
             LOG.debug(f'Error type: {type(e).__name__}, Error message: {str(e)}\n'
