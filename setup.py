@@ -2,7 +2,7 @@ import os
 import sys
 import platform
 import subprocess
-from setuptools import setup, Extension
+from setuptools import setup, Extension, find_packages
 from setuptools.command.build_ext import build_ext
 
 class CMakeExtension(Extension):
@@ -48,6 +48,7 @@ setup(
     author='wangzhihong',
     author_email='wangzhihong@sensetime.com',
     description='LazyLLM C++ extension with pybind11',
+    packages=find_packages(),
     ext_modules=[CMakeExtension('lazyllm_cpp', sourcedir='csrc')],
     cmdclass={'build_ext': CMakeBuild},
     zip_safe=False,
