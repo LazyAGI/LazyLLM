@@ -138,12 +138,8 @@ class FlowBase(metaclass=_MetaBind):
         if k:
             assert k not in self._item_names, f'Duplicated names {k}'
             self._item_names.append(k)
-        if self._curr_frame and isinstance(v, FlowBase):
-            if k:
-                if k not in self._curr_frame.f_locals:
-                    self._curr_frame.f_locals[k] = v
-                else:
-                    lazyllm.LOG.warning(f'{k} is already defined in this scope, ignor it')
+        if self._curr_frame and isinstance(v, FlowBase) and k and k not in self._curr_frame.f_locals:
+            self._curr_frame.f_locals[k] = v  # make sense only when locals is globals
 
     def __enter__(self, __frame=None):
         assert len(self._items) == 0, f'Cannot init {self.__class__} with items if you want to use it by context.'
