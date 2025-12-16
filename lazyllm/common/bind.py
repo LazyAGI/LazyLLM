@@ -117,6 +117,11 @@ class Bind(object):
         self._has_root = (any([isinstance(a, AttrTree) for a in args])
                           or any([isinstance(v, AttrTree) for v in kw.values()]))
 
+    def __or__(self, other):
+        if isinstance(other, Bind):
+            return other.__ror__(self)
+        return NotImplementedError('Only support `binded-func | bind()` syntax!')
+
     def __ror__(self, __value: Callable):
         if self._f is not Bind._None: self._args = (self._f,) + self._args
         self._f = __value
@@ -137,8 +142,9 @@ class Bind(object):
 
     # TODO: modify it
     def __repr__(self) -> str:
-        return self._f.__repr__() + '(bind args:{})'.format(
-            ', '.join([repr(a) if a is not self else 'self' for a in self._args]))
+        return self._f.__repr__() + '(bind args: {})'.format(
+            ', '.join([repr(a) if a is not self else 'self' for a in self._args] + [
+                f'{k}={repr(v) if v is not self else "self"}' for k, v in self._kw.items()]))
 
     def __getattr__(self, name):
         # name will be '_f' in copy.deepcopy
@@ -150,6 +156,12 @@ class Bind(object):
         if __name not in ('_f', '_args', '_kw', '_has_root'):
             return setattr(self._f, __name, __value)
         return super(__class__, self).__setattr__(__name, __value)
+
+    def __eq__(self, value):
+        return value == self._f
+
+    def bind(self, *args, **kw):
+        return Bind(self, *args, **kw)
 
 
 builtins.bind = Bind
