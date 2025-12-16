@@ -59,15 +59,6 @@ def _lazyllm_excepthook(exc_type, exc_value, tb):
 
 sys.excepthook = _lazyllm_excepthook
 
-
-def _find_user_instantiation_frame():
-    try:
-        for fm in inspect.stack():
-            if fm.frame.f_globals.get('__name__', '').startswith('lazyllm.flow') or fm.filename.startswith('<'): continue
-            return f'"file: {os.path.abspath(fm.frame.f_code.co_filename)}", line {fm.frame.f_lineno}'
-    except Exception:
-        return None
-
 class _FuncWrap(object):
     def __init__(self, f):
         self._f = f._f if isinstance(f, _FuncWrap) else f
@@ -122,7 +113,7 @@ class FlowBase(metaclass=_MetaBind):
         self._capture = True
         self._curr_frame = None
         self._flow_id = str(uuid.uuid4().hex)
-        self._defined_pos = _find_user_instantiation_frame()
+        self._find_user_instantiation_frame()
 
         for k, v in zip(item_names if item_names else repeat(None), items):
             self._add(k, v)
@@ -170,6 +161,20 @@ class FlowBase(metaclass=_MetaBind):
         # used to support `with pipeline() as (a.b, b):`
         return iter([self, self])
 
+    def _find_user_instantiation_frame(self):
+        try:
+            for fm in inspect.stack():
+                if fm.frame.f_globals.get('__name__', '').startswith('lazyllm.flow') or fm.filename.startswith('<'):
+                    continue
+                self._defined_file = os.path.abspath(fm.frame.f_code.co_filename)
+                self._defined_func = fm.frame.f_code.co_name
+                self._defined_pos = f'"file: {self._defined_file}", line {fm.frame.f_lineno}({self._defined_func})'
+        except Exception:
+            self._defined_file, self._defined_pos, self._defined_func = None, None, None
+
+    def _defined_at_the_same_scope(self, other: 'FlowBase'):
+        return self._defined_file == other._defined_file and self._defined_func == other._defined_func
+
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
             if len(_flow_stack.value) > 1 and not self._auto_registered:
@@ -177,7 +182,8 @@ class FlowBase(metaclass=_MetaBind):
                 locals = self._curr_frame.f_locals.copy()
                 for key, item in locals.items():
                     if item == self and (parent := _flow_stack.value[-2]) != item:
-                        if key not in parent._item_names: parent._add(key, self)
+                        if key not in parent._item_names and parent._defined_at_the_same_scope(self):
+                            parent._add(key, self)
                         break
             assert name not in self._item_names, f'Duplicated name: {name}'
             self._add(name, value)
