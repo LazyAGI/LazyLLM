@@ -8,21 +8,12 @@ from .utils import OnlineModuleBase
 class OnlineEmbeddingModuleBase(OnlineModuleBase):
     NO_PROXY = True
 
-    def __init__(self,
-                 model_series: str,
-                 embed_url: str,
-                 api_key: str,
-                 embed_model_name: str,
-                 return_trace: bool = False,
-                 batch_size: int = 1,
-                 num_worker: int = 1,
-                 timeout: int = 10):
-        super().__init__(return_trace=return_trace)
+    def __init__(self, model_series: str, embed_url: str, api_key: str, embed_model_name: str,
+                 return_trace: bool = False, batch_size: int = 1, num_worker: int = 1, timeout: int = 10):
+        super().__init__(api_key=api_key, skip_auth=False, return_trace=return_trace)
         self._model_series = model_series
         self._embed_url = embed_url
-        self._api_key = api_key
         self._embed_model_name = embed_model_name
-        self._set_headers()
         self._batch_size = batch_size
         self._num_worker = num_worker
         self._timeout = timeout
@@ -44,19 +35,13 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
     def batch_size(self, value: int):
         self._batch_size = value
 
-    def _set_headers(self) -> Dict[str, str]:
-        self._headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self._api_key}'
-        }
-
     def forward(self, input: Union[List, str], **kwargs) -> Union[List[float], List[List[float]]]:
         data = self._encapsulated_data(input, **kwargs)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         if isinstance(data, list):
             return self.run_embed_batch(input, data, proxies, **kwargs)
         else:
-            with requests.post(self._embed_url, json=data, headers=self._headers, proxies=proxies,
+            with requests.post(self._embed_url, json=data, headers=self._header, proxies=proxies,
                                timeout=self._timeout) as r:
                 if r.status_code == 200:
                     return self._parse_response(r.json(), input=input)
@@ -96,7 +81,7 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
             with requests.Session() as session:
                 while not flag:
                     for i in range(len(data)):
-                        r = session.post(self._embed_url, json=data[i], headers=self._headers,
+                        r = session.post(self._embed_url, json=data[i], headers=self._header,
                                          proxies=proxies, timeout=self._timeout)
                         if r.status_code == 200:
                             vec = self._parse_response(r.json(), input=input)
@@ -118,7 +103,7 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
         else:
             with ThreadPoolExecutor(max_workers=self._num_worker) as executor:
                 while not flag:
-                    futures = [executor.submit(requests.post, self._embed_url, json=t, headers=self._headers,
+                    futures = [executor.submit(requests.post, self._embed_url, json=t, headers=self._header,
                                                proxies=proxies, timeout=self._timeout) for t in data]
                     fut_to_index = {fut: idx for idx, fut in enumerate(futures)}
                     for fut in as_completed(futures):
