@@ -21,6 +21,44 @@ from ..hook import LazyLLMHook
 from itertools import repeat
 
 
+class FlowException(Exception):
+    pass
+
+
+def _is_lazyllm_internal_frame(frame, expected: Optional[dict] = None):
+    expected = expected or {'lazyllm.flow.flow': ['_run', 'invoke'], 'lazyllm.common.bind': ['__call__']}
+    mod = frame.f_globals.get('__name__', '')
+    if not mod.startswith('lazyllm.'): return False
+    if mod in expected and frame.f_code.co_name in expected[mod]: return True
+    return False
+
+_is_lazyllm_call_frame = bind(_is_lazyllm_internal_frame, expected={'lazyllm.flow.flow': '__call__'})
+
+def _trim_traceback(tb):
+    kept, keep_call = [], True
+    while tb:
+        if not _is_lazyllm_internal_frame(tb.tb_frame):
+            if _is_lazyllm_call_frame(tb.tb_frame):
+                if keep_call:
+                    kept.append(tb)
+                    keep_call = False
+            else:
+                kept.append(tb)
+                keep_call = True
+        tb = tb.tb_next
+
+    new_tb = None
+    for tb in reversed(kept):
+        new_tb = types.TracebackType(tb_next=new_tb, tb_frame=tb.tb_frame, tb_lasti=tb.tb_lasti, tb_lineno=tb.tb_lineno)
+    return new_tb
+
+_original_excepthook = sys.excepthook
+
+def _lazyllm_excepthook(exc_type, exc_value, tb):
+    _original_excepthook(exc_type, exc_value, _trim_traceback(tb))
+
+sys.excepthook = _lazyllm_excepthook
+
 class _FuncWrap(object):
     def __init__(self, f):
         self._f = f._f if isinstance(f, _FuncWrap) else f
@@ -30,13 +68,26 @@ class _FuncWrap(object):
     def __repr__(self):
         # TODO: specify lambda/staticmethod/classmethod/instancemethod
         # TODO: add registry message
-        return lazyllm.make_repr('Function', (
+        return lazyllm.make_repr('Function', type(self._f).__name__, name=(
             self._f if _is_function(self._f) else self._f.__class__).__name__.strip('<>'))
 
     def __getattr__(self, __key):
         if __key != '_f':
             return getattr(self._f, __key)
         return super(__class__, self).__getattr__(__key)
+
+
+def _get_callsite(depth=1):
+    try:
+        frame = inspect.currentframe()
+        for _ in range(depth): frame = frame.f_back
+        if frame is None: return None
+        else:
+            while frame.f_code.co_name == '__setattr__' and frame.f_globals.get('__name__', '') == 'lazyllm.common.bind':
+                frame = frame.f_back
+        return f'"file: {os.path.abspath(frame.f_code.co_filename)}", line {frame.f_lineno}'
+    except Exception:
+        return None
 
 _oldins = isinstance
 def new_ins(obj, cls):
@@ -50,19 +101,25 @@ def _is_function(f):
     return isinstance(f, (types.BuiltinFunctionType, types.FunctionType,
                           types.BuiltinMethodType, types.MethodType, types.LambdaType))
 
+
+_flow_stack = threading.local()
+_flow_stack.value = []
+
 class FlowBase(metaclass=_MetaBind):
     def __init__(self, *items, item_names=None, auto_capture=False) -> None:
         self._father = None
-        self._items, self._item_names, self._item_ids = [], [], []
+        self._items, self._item_names, self._item_ids, self._item_pos = [], [], [], []
         self._auto_capture = auto_capture
         self._capture = True
         self._curr_frame = None
         self._flow_id = str(uuid.uuid4().hex)
+        self._find_user_instantiation_frame()
 
         for k, v in zip(item_names if item_names else repeat(None), items):
             self._add(k, v)
 
         self._capture = False
+        self._auto_registered = False
 
     def __post_init__(self): pass
 
@@ -70,16 +127,13 @@ class FlowBase(metaclass=_MetaBind):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
         self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) or v in self._items else v)
         self._item_ids.append(k or str(uuid.uuid4().hex))
+        self._item_pos.append(_get_callsite(depth=3))
         if isinstance(v, FlowBase): v._father = self
         if k:
             assert k not in self._item_names, f'Duplicated names {k}'
             self._item_names.append(k)
-        if self._curr_frame and isinstance(v, FlowBase):
-            if k:
-                if k not in self._curr_frame.f_locals:
-                    self._curr_frame.f_locals[k] = v
-                else:
-                    lazyllm.LOG.warning(f'{k} is already defined in this scope, ignor it')
+        if self._curr_frame and isinstance(v, FlowBase) and k and k not in self._curr_frame.f_locals:
+            self._curr_frame.f_locals[k] = v  # make sense only when locals is globals
 
     def __enter__(self, __frame=None):
         assert len(self._items) == 0, f'Cannot init {self.__class__} with items if you want to use it by context.'
@@ -87,6 +141,7 @@ class FlowBase(metaclass=_MetaBind):
         if self._auto_capture:
             self._frame_keys = list(self._curr_frame.f_locals.keys())
         self._capture = True
+        _flow_stack.value.append(self)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -96,6 +151,7 @@ class FlowBase(metaclass=_MetaBind):
                 if var != 'self' and var not in self._frame_keys and (
                         (val._f if isinstance(val, bind) else val) is not self):
                     self._add(var, val)
+        assert _flow_stack.value.pop() == self, 'Do not operate FLow._flow_stack manually!'
         self._capture = False
         self._curr_frame = None
         self.__post_init__()
@@ -105,8 +161,31 @@ class FlowBase(metaclass=_MetaBind):
         # used to support `with pipeline() as (a.b, b):`
         return iter([self, self])
 
+    def _find_user_instantiation_frame(self):
+        try:
+            for fm in inspect.stack():
+                if fm.frame.f_globals.get('__name__', '').startswith('lazyllm.flow') or fm.filename.startswith('<'):
+                    continue
+                self._defined_file = os.path.abspath(fm.frame.f_code.co_filename)
+                self._defined_func = fm.frame.f_code.co_name
+                self._defined_pos = f'"file: {self._defined_file}", line {fm.frame.f_lineno}({self._defined_func})'
+                break
+        except Exception:
+            self._defined_file, self._defined_pos, self._defined_func = None, None, None
+
+    def _defined_at_the_same_scope(self, other: 'FlowBase'):
+        return self._defined_file == other._defined_file and self._defined_func == other._defined_func
+
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
+            if len(_flow_stack.value) > 1 and not self._auto_registered:
+                super(__class__, self).__setattr__('_auto_registered', True)
+                locals = self._curr_frame.f_locals.copy()
+                for key, item in locals.items():
+                    if item == self and (parent := _flow_stack.value[-2]) != item:
+                        if key not in parent._item_names and parent._defined_at_the_same_scope(self):
+                            parent._add(key, self)
+                        break
             assert name not in self._item_names, f'Duplicated name: {name}'
             self._add(name, value)
         elif name in getattr(self, '_item_names', ()):
@@ -141,11 +220,12 @@ class FlowBase(metaclass=_MetaBind):
 
 def _bind_enter(self):
     assert isinstance(self._f, FlowBase)
-    self._f.__enter__(inspect.currentframe().f_back)
+    self._f.__enter__() if type(self._f) is bind else self._f.__enter__(inspect.currentframe().f_back)
     return self
 
 def _bind_exit(self, exc_type, exc_val, exc_tb):
-    return self._f.__exit__(exc_type, exc_val, exc_tb)
+    return (self._f.__exit__(exc_type, exc_val, exc_tb)
+            if type(self._f) is bind else self._f.__exit__(exc_type, exc_val, exc_tb))
 
 bind.__enter__ = _bind_enter
 bind.__exit__ = _bind_exit
@@ -235,14 +315,21 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 return it(*__input, **kw) if isinstance(__input, package) else it(**__input, **kw)
             else:
                 return it(__input, **kw)
+        except FlowException as e:
+            raise e
         except Exception as e:
-            LOG.error(f'An error occored when invoking `{type(it)}({it})` with '
-                      f'input {type(__input)}`{__input}` and kw `{kw}`')
-            error_type, error_message = type(e).__name__, str(e)
-            tb_str = ''.join(traceback.format_exception(*sys.exc_info()))
-            LOG.debug(f'Error type: {error_type}, Error message: {error_message}\n'
-                      f'Traceback: {tb_str}')
-            raise
+            try:
+                pos = self._item_pos[self._items.index(it)]
+            except Exception:
+                pos = None
+            if '_bind_args_source' in kw: kw = (kw.get('_bind_args_source') or {}).pop('kwargs', None)
+            err_msg = (f'Flow defined at {self._defined_pos or "Unknown position"} encountered an error:\n'
+                       f'invoking `{it}`({pos or "Position not found"}) with input `{__input}` and kw `{kw}` failed. '
+                       + 'Details: `{type}: {value}`'.format(type=type(e).__name__, value=str(e).replace('\n', '\\n')))
+            LOG.error(err_msg)
+            LOG.debug(f'Error type: {type(e).__name__}, Error message: {str(e)}\n'
+                      f'Traceback: {"".join(traceback.format_exception(*sys.exc_info()))}')
+            raise FlowException(err_msg) from e
 
     def bind(self, *args, **kw):
         return bind(self, *args, **kw)

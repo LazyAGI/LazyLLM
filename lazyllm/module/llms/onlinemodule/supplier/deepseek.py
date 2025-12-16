@@ -13,17 +13,10 @@ class DeepSeekModule(OnlineChatModuleBase):
     def _get_system_prompt(self):
         return 'You are an intelligent assistant developed by China\'s DeepSeek. You are a helpful assistanti.'
 
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat/completions')
-
     def _validate_api_key(self):
         try:
             models_url = urljoin(self._base_url, 'models')
-            headers = {
-                'Authorization': f'Bearer {self._api_key}',
-                'Content-Type': 'application/json'
-            }
-            response = requests.get(models_url, headers=headers, timeout=10)
+            response = requests.get(models_url, headers=self._header, timeout=10)
             return response.status_code == 200
         except Exception:
             return False
