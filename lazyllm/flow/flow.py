@@ -315,7 +315,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 pos = self._item_pos[self._items.index(it)]
             except Exception:
                 pos = None
-            if '_bind_args_source' in kw: kw = kw['_bind_args_source'].pop('kwargs', None)
+            if '_bind_args_source' in kw: kw = (kw.get('_bind_args_source') or {}).pop('kwargs', None)
             err_msg = (f'Flow defined at {self._defined_pos or "Unknown position"} encountered an error:\n'
                        f'invoking `{it}`({pos or "Position not found"}) with input `{__input}` and kw `{kw}` failed. '
                        + 'Details: `{type}: {value}`'.format(type=type(e).__name__, value=str(e).replace('\n', '\\n')))

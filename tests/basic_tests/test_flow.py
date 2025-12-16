@@ -250,7 +250,8 @@ class TestFlowBind(object):
             with pipeline() as p.subp:
                 p.subp.f3 = xy2z | bind(y=p.input, z=p.output('f1'))
 
-        with pytest.raises(RuntimeError, match='pipeline.input/output can only be bind in direct member of pipeline!'):
+        with pytest.raises(lazyllm.flow.flow.FlowException,
+                           match='pipeline.input/output can only be bind in direct member of pipeline!'):
             p(3)
 
         with lazyllm.save_pipeline_result():
@@ -268,7 +269,7 @@ class TestFlowBind(object):
         assert p(3) == 36  # (6 + 3 + 8) + (6 + 3 + 10)
 
         with lazyllm.save_pipeline_result(False):
-            with pytest.raises(RuntimeError,
+            with pytest.raises(lazyllm.flow.flow.FlowException,
                                match='pipeline.input/output can only be bind in direct member of pipeline!'):
                 p(3)
 
@@ -302,7 +303,8 @@ class TestFlowBind(object):
             with pipeline() as p.subp:
                 p.subp.f3 = xy2z | bind(y=p.kwargs['x'], z=p.output('f1'))
 
-        with pytest.raises(RuntimeError, match='pipeline.input/output can only be bind in direct member of pipeline!'):
+        with pytest.raises(lazyllm.flow.flow.FlowException,
+                           match='pipeline.input/output can only be bind in direct member of pipeline!'):
             p(x=3)
 
         with lazyllm.save_pipeline_result():
