@@ -83,8 +83,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
 
     def _get_models_list(self):
         url = urljoin(self._base_url, 'models')
-        headers = {'Authorization': 'Bearer ' + self._api_key} if self._api_key else None
-        with requests.get(url, headers=headers) as r:
+        with requests.get(url, headers=self._header) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 

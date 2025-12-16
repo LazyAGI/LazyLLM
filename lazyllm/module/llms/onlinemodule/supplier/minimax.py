@@ -58,16 +58,12 @@ class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
     def _validate_api_key(self):
         '''Validate API Key by sending a minimal chat request'''
         try:
-            headers = {
-                'Authorization': f'Bearer {self._api_key}',
-                'Content-Type': 'application/json'
-            }
             data = {
                 'model': self._model_name,
                 'messages': [{'role': 'user', 'content': 'test'}],
                 'max_tokens': 1
             }
-            response = requests.post(self._url, headers=headers, json=data, timeout=10)
+            response = requests.post(self._url, headers=self._header, json=data, timeout=10)
             return response.status_code == 200
         except Exception:
             return False
@@ -87,12 +83,8 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
         self._api_key = api_key or lazyllm.config['minimax_api_key']
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
         url = urljoin(self._base_url, endpoint)
-        response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
         response.raise_for_status()
         result = response.json()
         base_resp = result.get('base_resp')
@@ -167,13 +159,9 @@ class MinimaxTTSModule(OnlineMultiModalBase):
         self._api_key = api_key or lazyllm.config['minimax_api_key']
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
         url = urljoin(self._base_url, endpoint)
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
             result = response.json()
             base_resp = result.get('base_resp')

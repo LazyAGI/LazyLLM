@@ -78,14 +78,8 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         return '\n'.join(json_strs)
 
     def _upload_train_file(self, train_file):
-        headers = {
-            'Authorization': 'Bearer ' + self._api_key
-        }
-
         url = urljoin(self._base_url, 'api/v1/files')
-
         self.get_finetune_data(train_file)
-
         file_object = {
             # The correct format should be to pass in a tuple in the format of:
             # (<fileName>, <fileObject>, <Content-Type>),
@@ -94,7 +88,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             'descriptions': (None, 'training file', None)
         }
 
-        with requests.post(url, headers=headers, files=file_object) as r:
+        with requests.post(url, headers=self._get_empty_header(), files=file_object) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
@@ -122,10 +116,6 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
         url = urljoin(self._base_url, 'api/v1/fine-tunes')
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self._api_key}',
-        }
         data = {
             'model': train_model,
             'training_file_ids': [train_file_id]
@@ -135,7 +125,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         elif 'finetuning_type' in kw:
             data = self._update_kw(data, kw)
 
-        with requests.post(url, headers=headers, json=data) as r:
+        with requests.post(url, headers=self._header, json=data) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
@@ -149,11 +139,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
             return 'Invalid'
         job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
         fine_tune_url = urljoin(self._base_url, f'api/v1/fine-tunes/{job_id}/cancel')
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
-        with requests.post(fine_tune_url, headers=headers) as r:
+        with requests.post(fine_tune_url, headers=self._header) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         status = r.json()['output']['status']
@@ -164,11 +150,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _query_finetuned_jobs(self):
         fine_tune_url = urljoin(self._base_url, 'api/v1/fine-tunes')
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
-        with requests.get(fine_tune_url, headers=headers) as r:
+        with requests.get(fine_tune_url, headers=self._header) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         return r.json()
@@ -213,11 +195,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                                'provided as an argument or started a training job.')
         job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
         fine_tune_url = urljoin(self._base_url, f'api/v1/fine-tunes/{job_id}/logs')
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
-        with requests.get(fine_tune_url, headers=headers) as r:
+        with requests.get(fine_tune_url, headers=self._header) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         return job_id, r.json()
@@ -230,11 +208,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _query_finetuning_job_info(self, fine_tuning_job_id):
         fine_tune_url = urljoin(self._base_url, f'api/v1/fine-tunes/{fine_tuning_job_id}')
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
-        with requests.get(fine_tune_url, headers=headers) as r:
+        with requests.get(fine_tune_url, headers=self._header) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         return r.json()['output']
@@ -261,10 +235,6 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _create_deployment(self) -> Tuple[str, str]:
         url = urljoin(self._base_url, 'api/v1/deployments')
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self._api_key}',
-        }
         data = {
             'model_name': self._model_name,
             'capacity': self._deploy_paramters.get('capcity', 2)
@@ -272,7 +242,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         if self._deploy_paramters and len(self._deploy_paramters) > 0:
             data.update(self._deploy_paramters)
 
-        with requests.post(url, headers=headers, json=data) as r:
+        with requests.post(url, headers=self._header, json=data) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
@@ -282,11 +252,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _query_deployment(self, deployment_id) -> str:
         fine_tune_url = urljoin(self._base_url, f'api/v1/deployments/{deployment_id}')
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self._api_key}'
-        }
-        with requests.get(fine_tune_url, headers=headers) as r:
+        with requests.get(fine_tune_url, headers=self._header) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 

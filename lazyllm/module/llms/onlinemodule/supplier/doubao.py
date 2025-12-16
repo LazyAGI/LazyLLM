@@ -29,16 +29,12 @@ class DoubaoModule(OnlineChatModuleBase):
         try:
             # Doubao (Volcano Engine) validates API key using a minimal chat request
             chat_url = urljoin(self._base_url, 'chat/completions')
-            headers = {
-                'Authorization': f'Bearer {self._api_key}',
-                'Content-Type': 'application/json'
-            }
             data = {
                 'model': self._model_name,
                 'messages': [{'role': 'user', 'content': 'hi'}],
                 'max_tokens': 1  # Only generate 1 token for validation
             }
-            response = requests.post(chat_url, headers=headers, json=data, timeout=10)
+            response = requests.post(chat_url, headers=self._header, json=data, timeout=10)
             return response.status_code == 200
         except Exception:
             return False

@@ -33,11 +33,7 @@ class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
         try:
             # SiliconFlow validates API key using a minimal chat request
             models_url = urljoin(self._base_url, 'models')
-            headers = {
-                'Authorization': f'Bearer {self._api_key}',
-                'Content-Type': 'application/json'
-            }
-            response = requests.get(models_url, headers=headers, timeout=10)
+            response = requests.get(models_url, headers=self._header, timeout=10)
             return response.status_code == 200
         except Exception:
             return False
@@ -87,16 +83,9 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
         self._api_key = api_key or lazyllm.config['siliconflow_api_key']
 
     def _make_request(self, endpoint, payload, timeout=180):
-
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
-
         url = f'{self._base_url}{endpoint}'
-
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -141,16 +130,9 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
         self._api_key = api_key or lazyllm.config['siliconflow_api_key']
 
     def _make_binary_request(self, endpoint, payload, timeout=180):
-
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
-
         url = f'{self._base_url}{endpoint}'
-
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
             return response.content
         except Exception as e:
