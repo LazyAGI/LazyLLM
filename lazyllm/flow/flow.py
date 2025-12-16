@@ -169,6 +169,7 @@ class FlowBase(metaclass=_MetaBind):
                 self._defined_file = os.path.abspath(fm.frame.f_code.co_filename)
                 self._defined_func = fm.frame.f_code.co_name
                 self._defined_pos = f'"file: {self._defined_file}", line {fm.frame.f_lineno}({self._defined_func})'
+                break
         except Exception:
             self._defined_file, self._defined_pos, self._defined_func = None, None, None
 
