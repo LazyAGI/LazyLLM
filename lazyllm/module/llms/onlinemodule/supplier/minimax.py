@@ -72,12 +72,11 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.minimaxi.com/v1/',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series='MINIMAX',
+        OnlineMultiModalBase.__init__(self, model_series='MINIMAX', api_key=api_key or lazyllm.config['minimax_api_key'],
                                       model_name=model_name or MinimaxTextToImageModule.MODEL_NAME,
                                       return_trace=return_trace, **kwargs)
         self._base_url = base_url
         self._endpoint = 'image_generation'
-        self._api_key = api_key or lazyllm.config['minimax_api_key']
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
         url = urljoin(self._base_url, endpoint)
@@ -149,11 +148,11 @@ class MinimaxTTSModule(OnlineMultiModalBase):
         if kwargs.pop('stream', False):
             raise ValueError('MinimaxTTSModule does not support streaming output, please set stream to False')
         OnlineMultiModalBase.__init__(self, model_series='MINIMAX',
+                                      api_key=api_key or lazyllm.config['minimax_api_key'],
                                       model_name=model_name or MinimaxTTSModule.MODEL_NAME,
                                       return_trace=return_trace, **kwargs)
         self._endpoint = 't2a_v2'
         self._base_url = base_url
-        self._api_key = api_key or lazyllm.config['minimax_api_key']
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
         url = urljoin(self._base_url, endpoint)

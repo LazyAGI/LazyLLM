@@ -73,11 +73,11 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
         OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
+                                      api_key=api_key or lazyllm.config['siliconflow_api_key'],
                                       model_name=model_name or SiliconFlowTextToImageModule.MODEL_NAME,
                                       return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
         self._base_url = base_url
-        self._api_key = api_key or lazyllm.config['siliconflow_api_key']
 
     def _make_request(self, endpoint, payload, timeout=180):
         url = f'{self._base_url}{endpoint}'
@@ -120,11 +120,11 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
         OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
+                                      api_key=api_key or lazyllm.config['siliconflow_api_key'],
                                       model_name=model_name or SiliconFlowTTSModule.MODEL_NAME,
                                       return_trace=return_trace, **kwargs)
         self._endpoint = 'audio/speech'
         self._base_url = base_url
-        self._api_key = api_key or lazyllm.config['siliconflow_api_key']
 
     def _make_binary_request(self, endpoint, payload, timeout=180):
         url = f'{self._base_url}{endpoint}'
