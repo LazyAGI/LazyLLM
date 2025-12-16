@@ -24,11 +24,11 @@ class OnlineModuleBase(ModuleBase):
 
     @staticmethod
     def _get_header(api_key: str) -> dict:
-        return {'Content-Type': 'application/json', **({'Authorization': 'Bearer ' + api_key} if api_key else None)}
+        return {'Content-Type': 'application/json', **({'Authorization': 'Bearer ' + api_key} if api_key else {})}
 
     def _get_empty_header(self, api_key: Optional[str] = None) -> dict:
         api_key = api_key or self._api_key
-        return {'Authorizatio': f'Bearer {api_key}'} if api_key else None
+        return {'Authorization': f'Bearer {api_key}'} if api_key else None
 
     @property
     def _header(self):
