@@ -25,9 +25,6 @@ class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
     def _get_system_prompt(self):
         return 'You are an intelligent assistant provided by SiliconFlow. You are a helpful assistant.'
 
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat/completions')
-
     def _validate_api_key(self):
         '''Validate API Key by sending a minimal request'''
         try:

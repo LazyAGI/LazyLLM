@@ -13,9 +13,6 @@ class DeepSeekModule(OnlineChatModuleBase):
     def _get_system_prompt(self):
         return 'You are an intelligent assistant developed by China\'s DeepSeek. You are a helpful assistanti.'
 
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat/completions')
-
     def _validate_api_key(self):
         try:
             models_url = urljoin(self._base_url, 'models')

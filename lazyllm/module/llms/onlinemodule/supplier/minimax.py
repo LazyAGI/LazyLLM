@@ -24,9 +24,6 @@ class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
     def _get_system_prompt(self):
         return 'You are an intelligent assistant provided by Minimax. You are a helpful assistant.'
 
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat/completions')
-
     def _convert_msg_format(self, msg: Dict[str, Any]):
         '''Convert the reasoning_details in output to reasoning_content field in message'''
         choices = msg.get('choices')
@@ -63,7 +60,7 @@ class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
                 'messages': [{'role': 'user', 'content': 'test'}],
                 'max_tokens': 1
             }
-            response = requests.post(self._url, headers=self._header, json=data, timeout=10)
+            response = requests.post(self._chat_url, headers=self._header, json=data, timeout=10)
             return response.status_code == 200
         except Exception:
             return False

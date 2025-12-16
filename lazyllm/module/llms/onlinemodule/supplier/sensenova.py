@@ -56,9 +56,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     def _get_system_prompt(self):
         return 'You are an AI assistant, developed by SenseTime.'
 
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat/completions')
-
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:
             dataset = [json.loads(line) for line in fr]

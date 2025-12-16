@@ -57,8 +57,9 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         return ('You are a large-scale language model from Alibaba Cloud, '
                 'your name is Tongyi Qianwen, and you are a useful assistant.')
 
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'compatible-mode/v1/chat/completions')
+    @property
+    def _chat_url(self):
+        return urljoin(self._base_url, 'compatible-mode/v1/chat/completions')
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:

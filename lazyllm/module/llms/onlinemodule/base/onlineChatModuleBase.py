@@ -40,10 +40,9 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         OnlineModuleBase.__init__(self, api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
         LLMBase.__init__(self, stream=stream, type=type)
         self._model_series = model_series
-        self._base_url = base_url
+        self.__base_url = base_url
         self._model_name = model_name
         self.trainable_models = self.TRAINABLE_MODEL_LIST
-        self._set_chat_url()
         self._is_trained = False
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
@@ -78,8 +77,13 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
     def _get_system_prompt(self):
         raise NotImplementedError('_get_system_prompt is not implemented.')
 
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat/completions')
+    @property
+    def _base_url(self):
+        return random.choice(self.__base_url) if isinstance(self.__base_url, list) else self.__base_url
+
+    @property
+    def _chat_url(self):
+        return urljoin(self._base_url, 'chat/completions')
 
     def _get_models_list(self):
         url = urljoin(self._base_url, 'models')
@@ -159,7 +163,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
             data['messages'][-1]['content'] = self._format_input_with_files(data['messages'][-1]['content'], files)
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
-        with requests.post(self._url, json=data, headers=self._header, stream=stream_output, proxies=proxies) as r:
+        with requests.post(self._chat_url, json=data, headers=self._header, stream=stream_output, proxies=proxies) as r:
             if r.status_code != 200:  # request error
                 msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]) if stream_output else r.text
                 raise requests.RequestException(f'{r.status_code}: {msg}')

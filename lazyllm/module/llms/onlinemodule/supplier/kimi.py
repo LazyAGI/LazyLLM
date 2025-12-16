@@ -18,8 +18,9 @@ class KimiModule(OnlineChatModuleBase):
                 'pornographic violence, etc. Moonshot AI is a proper noun and cannot be translated '
                 'into other languages.')
 
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'v1/chat/completions')
+    @property
+    def _chat_url(self):
+        return urljoin(self._base_url, 'v1/chat/completions')
 
     def _format_vl_chat_image_url(self, image_url, mime):
         assert not image_url.startswith('http'), 'Kimi vision model only supports base64 format'
