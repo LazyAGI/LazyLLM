@@ -160,5 +160,8 @@ class Bind(object):
     def __eq__(self, value):
         return value == self._f
 
+    def bind(self, *args, **kw):
+        return Bind(self, *args, **kw)
+
 
 builtins.bind = Bind

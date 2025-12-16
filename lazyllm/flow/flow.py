@@ -63,7 +63,7 @@ sys.excepthook = _lazyllm_excepthook
 def _find_user_instantiation_frame():
     try:
         for fm in inspect.stack():
-            if fm.frame.f_globals.get('__name__', '').startswith('lazyllm') or fm.filename.startswith('<'): continue
+            if fm.frame.f_globals.get('__name__', '').startswith('lazyllm.flow') or fm.filename.startswith('<'): continue
             return f'"file: {os.path.abspath(fm.frame.f_code.co_filename)}", line {fm.frame.f_lineno}'
     except Exception:
         return None
@@ -213,11 +213,12 @@ class FlowBase(metaclass=_MetaBind):
 
 def _bind_enter(self):
     assert isinstance(self._f, FlowBase)
-    self._f.__enter__(inspect.currentframe().f_back)
+    self._f.__enter__() if type(self._f) is bind else self._f.__enter__(inspect.currentframe().f_back)
     return self
 
 def _bind_exit(self, exc_type, exc_val, exc_tb):
-    return self._f.__exit__(exc_type, exc_val, exc_tb)
+    return (self._f.__exit__(exc_type, exc_val, exc_tb)
+            if type(self._f) is bind else self._f.__exit__(exc_type, exc_val, exc_tb))
 
 bind.__enter__ = _bind_enter
 bind.__exit__ = _bind_exit
