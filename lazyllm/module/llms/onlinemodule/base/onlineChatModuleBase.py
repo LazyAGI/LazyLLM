@@ -31,23 +31,18 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
     VLM_MODEL_PREFIX = []
     NO_PROXY = True
 
-    def __init__(self, model_series: str, api_key: str, base_url: str, model_name: str,
+    def __init__(self, model_series: str, api_key: Union[str, List[str]], base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
                  static_params: Optional[StaticParams] = None, type: Optional[str] = None, **kwargs):
         if any([model_name.startswith(prefix) for prefix in self.VLM_MODEL_PREFIX]):
             if type is None: type = 'VLM'
             else: assert type == 'VLM', f'model_name {model_name} is a VLM model, but type is {type}'
-        OnlineModuleBase.__init__(self, return_trace=return_trace)
+        OnlineModuleBase.__init__(self, api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
         LLMBase.__init__(self, stream=stream, type=type)
         self._model_series = model_series
-        if not skip_auth and not api_key:
-            raise ValueError('api_key is required')
-        self._api_key = '' if skip_auth else api_key
-        self._base_url = base_url
+        self.__base_url = base_url
         self._model_name = model_name
         self.trainable_models = self.TRAINABLE_MODEL_LIST
-        self._set_headers()
-        self._set_chat_url()
         self._is_trained = False
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
@@ -82,19 +77,17 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
     def _get_system_prompt(self):
         raise NotImplementedError('_get_system_prompt is not implemented.')
 
-    def _set_headers(self):
-        self._headers = {
-            'Content-Type': 'application/json',
-            **({'Authorization': 'Bearer ' + self._api_key} if self._api_key else {})
-        }
+    @property
+    def _base_url(self):
+        return random.choice(self.__base_url) if isinstance(self.__base_url, list) else self.__base_url
 
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat/completions')
+    @property
+    def _chat_url(self):
+        return urljoin(self._base_url, 'chat/completions')
 
     def _get_models_list(self):
         url = urljoin(self._base_url, 'models')
-        headers = {'Authorization': 'Bearer ' + self._api_key} if self._api_key else None
-        with requests.get(url, headers=headers) as r:
+        with requests.get(url, headers=self._header) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
@@ -170,7 +163,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
             data['messages'][-1]['content'] = self._format_input_with_files(data['messages'][-1]['content'], files)
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
-        with requests.post(self._url, json=data, headers=self._headers, stream=stream_output, proxies=proxies) as r:
+        with requests.post(self._chat_url, json=data, headers=self._header, stream=stream_output, proxies=proxies) as r:
             if r.status_code != 200:  # request error
                 msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]) if stream_output else r.text
                 raise requests.RequestException(f'{r.status_code}: {msg}')
