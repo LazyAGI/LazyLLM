@@ -1993,6 +1993,62 @@ Args:
         Defaults to None.
 ''')
 
+add_chinese_doc('rag.readers.PaddleOCRPDFReader', '''\
+基于PaddleOCR服务的PDF解析器，通过调用PaddleOCR服务的API来解析PDF文件，支持丰富的文档结构识别。
+
+Args:
+    url (str, 可选):PaddleOCR 服务的接口地址。如果不提供，使用官方地址。
+    api_key (str, 可选):
+        访问 PaddleOCR 服务所需的 API Key。 url 与 api_key 至少提供一个。
+    format_block_content (bool, 默认 True): 是否将块级内容格式化为 Markdown。
+        若需要正确提取多级标题及文档层级结构，必须启用该选项。
+    use_layout_detection (bool, 默认 True): 是否启用版面检测进行 PDF 解析。
+        若为 False，则每一页仅视为一个整体元素进行处理。
+    use_chart_recognition (bool, 默认 True): 是否启用图表识别。
+        若为 True，图表将被解析为结构化表格；
+        若为 False，图表仅作为普通图片处理。
+    split_doc (bool, 默认 True): 是否按内容块将文档拆分为多个 `DocNode`。
+        若为 False，则整个文档内容将合并为一个单独的节点返回(markdown 内容)。
+    drop_types (List[str], 可选): 需要在解析结果中过滤掉的版面块类型列表，
+        默认为页眉、页脚、页码、印章等非正文内容。
+    post_func (Callable, 可选): 解析完成后对 `DocNode` 列表进行二次处理的后置函数。
+        该函数必须接收并返回 `List[DocNode]`。
+    images_dir (str, 可选):图片结果的保存目录。
+        若提供该参数，解析过程中提取的图片将写入该目录。
+''')
+
+add_english_doc('rag.readers.PaddleOCRPDFReader', '''\
+Reader for PDF files by calling the PaddleOCR service's API.
+
+Args:
+    url (str, optional): PaddleOCR service endpoint URL. If not provided, use the official address.
+    api_key (str, optional): API key required to access the PaddleOCR service.
+        Either url or api_key must be provided.
+    format_block_content (bool, default=True): Whether to format block-level content as Markdown.
+        This option must be enabled to correctly extract multi-level headings
+        and preserve the document's hierarchical structure.
+    use_layout_detection (bool, default=True): Whether to enable layout detection during PDF parsing.
+        If False, each page is treated as a single, unified element.
+    use_chart_recognition (bool, default=True): Whether to enable chart recognition.
+        If True, charts are parsed into structured table representations;
+        if False, charts are treated as regular images.
+    split_doc (bool, default=True): Whether to split the document into multiple `DocNode` objects based on content blocks.
+        If False, the entire document content is returned as a single node
+        containing the full Markdown text.
+    drop_types (List[str], optional): List of layout block types to be excluded from parsing results.
+        By default, this includes non-body elements such as headers, footers, page numbers, and seals.
+    post_func (Callable, optional): Optional post-processing function applied to the list of `DocNode`
+        objects after parsing.
+        The function must accept and return a `List[DocNode]`.
+    images_dir (str, optional): Directory used to save extracted image results.
+        If provided, images extracted during parsing will be written to this directory.
+''')
+
+add_example('rag.readers.PaddleOCRPDFReader', '''\
+from lazyllm.tools.rag.readers import PaddleOCRPDFReader
+reader = PaddleOCRPDFReader(url="http://0.0.0.0:9000")  # PaddleOCR server address
+nodes = reader("path/to/pdf")
+''')
 
 add_chinese_doc('rag.readers.MarkdownReader', '''\
 用于读取和解析 Markdown 文件的模块。支持去除超链接和图片，按标题和内容将 Markdown 划分成若干文本段落节点。
