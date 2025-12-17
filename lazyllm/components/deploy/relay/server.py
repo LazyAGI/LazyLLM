@@ -9,6 +9,7 @@ from types import GeneratorType
 import lazyllm
 from lazyllm import kwargs, package, load_obj
 from lazyllm import FastapiApp, globals
+from lazyllm.common import _trim_traceback, _register_trim_module
 import time
 import pickle
 import codecs
@@ -50,6 +51,11 @@ if args.after_function:
     after_func = load_obj(args.after_function)
 
 
+_register_trim_module({'__main__': ['async_wrapper', 'impl']})
+_err_msg = ('service of ServerModule execuate failed.\n\nThe above exception was the direct cause '
+            'of the following exception in service of ServerModule:\n')
+
+
 app = FastAPI()
 FastapiApp.update()
 
@@ -82,8 +88,10 @@ async def lazyllm_call(request: Request):
         return Response(content=codecs.encode(pickle.dumps(r), 'base64'))
     except requests.RequestException as e:
         return Response(content=f'{str(e)}', status_code=500)
-    except Exception as e:
-        return Response(content=f'{e}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
+    except Exception:
+        exc_type, exc_value, exc_tb = sys.exc_info()
+        formatted = ''.join(traceback.format_exception(exc_type, exc_value, _trim_traceback(exc_tb)))
+        return Response(content=f'{_err_msg}\n{formatted}', status_code=500)
 
 @app.post('/generate')
 @security_check
@@ -141,8 +149,10 @@ async def generate(request: Request): # noqa C901
         return Response(content=impl(output))
     except requests.RequestException as e:
         return Response(content=f'{str(e)}', status_code=500)
-    except Exception as e:
-        return Response(content=f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
+    except Exception:
+        exc_type, exc_value, exc_tb = sys.exc_info()
+        formatted = ''.join(traceback.format_exception(exc_type, exc_value, _trim_traceback(exc_tb)))
+        return Response(content=f'{_err_msg}\n{formatted}', status_code=500)
     finally:
         globals.clear()
 

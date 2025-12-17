@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 import lazyllm
 from lazyllm import launchers, LOG, package, obj2str, globals, is_valid_url, LazyLLMLaunchersBase, redis_client
+from lazyllm.common import _register_trim_module
 from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
@@ -20,6 +21,9 @@ from ..flow import FlowBase, Pipeline
 from urllib.parse import urljoin
 from .utils import light_reduce
 from .module import ModuleBase, ActionModule
+
+
+_register_trim_module({'lazyllm.module.servermodule': ['__call__']})
 
 
 class LLMBase(object):
