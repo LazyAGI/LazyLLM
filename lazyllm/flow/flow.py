@@ -2,7 +2,7 @@ import lazyllm
 import builtins
 from lazyllm import config
 from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root
-from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals
+from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals, _get_callsite
 from lazyllm.common import _register_trim_module, HandledException, _change_exception_type
 from lazyllm.common.bind import _MetaBind
 from functools import partial
@@ -42,19 +42,6 @@ class _FuncWrap(object):
         if __key != '_f':
             return getattr(self._f, __key)
         return super(__class__, self).__getattr__(__key)
-
-
-def _get_callsite(depth=1):
-    try:
-        frame = inspect.currentframe()
-        for _ in range(depth): frame = frame.f_back
-        if frame is None: return None
-        else:
-            while frame.f_code.co_name == '__setattr__' and frame.f_globals.get('__name__', '') == 'lazyllm.common.bind':
-                frame = frame.f_back
-        return f'"file: {os.path.abspath(frame.f_code.co_filename)}", line {frame.f_lineno}'
-    except Exception:
-        return None
 
 _oldins = isinstance
 def new_ins(obj, cls):

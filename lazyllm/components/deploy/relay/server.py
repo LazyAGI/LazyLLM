@@ -39,6 +39,7 @@ parser.add_argument('--after_function')
 parser.add_argument('--pythonpath')
 parser.add_argument('--num_replicas', type=int, default=1, help='num of ray replicas')
 parser.add_argument('--security_key', type=str, default=None, help='security key')
+parser.add_argument('--defined_pos', type=str, default=None, help='user defined positional')
 args = parser.parse_args()
 
 if args.pythonpath:
@@ -53,7 +54,8 @@ if args.after_function:
 
 _register_trim_module({'__main__': ['async_wrapper', 'impl']})
 _err_msg = ('service of ServerModule execuate failed.\n\nThe above exception was the direct cause '
-            'of the following exception in service of ServerModule:\n')
+            'of the following exception in service of ServerModule')
+_err_msg += (f'defined at `{args.defined_pos}`' if args.defined_pos else '') + ':\n'
 
 
 app = FastAPI()
