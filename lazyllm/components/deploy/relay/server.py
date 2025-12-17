@@ -55,7 +55,7 @@ if args.after_function:
 _register_trim_module({'__main__': ['async_wrapper', 'impl']})
 _err_msg = ('service of ServerModule execuate failed.\n\nThe above exception was the direct cause '
             'of the following exception in service of ServerModule')
-_err_msg += (f'defined at `{args.defined_pos}`' if args.defined_pos else '') + ':\n'
+_err_msg += (f' defined at `{args.defined_pos}`' if args.defined_pos else '') + ':\n'
 
 
 app = FastAPI()
