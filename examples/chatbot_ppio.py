@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-"""
+'''
 PPIO (Paiou Cloud) chatbot example.
 
 Before running, set environment variable:
@@ -9,7 +9,7 @@ Or create config file ~/.lazyllm/config.json:
 {
     "ppio_api_key": "your_api_key"
 }
-"""
+'''
 
 import lazyllm
 
@@ -26,4 +26,3 @@ chat = lazyllm.OnlineChatModule(source='ppio', model='deepseek/deepseek-v3.2')
 if __name__ == '__main__':
     # Start web interface, port range 23466-23470
     lazyllm.WebModule(chat, port=range(23466, 23470)).start().wait()
-
