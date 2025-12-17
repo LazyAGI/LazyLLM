@@ -57,7 +57,7 @@ class RelayServer(LazyLLMDeployBase):
 
         return LazyLLMCMD(cmd=impl, return_value=self.geturl,
                           checkf=verify_ray_func if config['use_ray'] else verify_fastapi_func,
-                          no_displays=['function', 'before_function', 'after_function', 'security_key'])
+                          no_displays=['function', 'before_function', 'after_function', 'security_key', 'defined_pos'])
 
     def geturl(self, job=None):
         if job is None:
