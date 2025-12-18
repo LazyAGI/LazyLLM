@@ -231,6 +231,7 @@ jobs:
         env:
           CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
+          CIBW_BUILD_VERBOSITY: 1
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
