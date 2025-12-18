@@ -135,31 +135,17 @@ class AipingTextToImageModule(OnlineMultiModalBase):
     AIPing文生图模型
     支持多种图像生成模型
     """
-    SUPPORTED_MODELS = [
-        'Qwen-Image',
-        'HunyuanImage-3.0',
-        '即梦文生图 3.0',
-        '即梦文生图 3.1',
-        'Doubao-Seedream-4.0',
-        'Kolors',
-        'Qwen-Image-Plus',
-        'Wan2.5-T2I-Preview'
-    ]
 
     def __init__(self, api_key: str = None, model_name: str = 'Qwen-Image',
                  base_url: str = None,
                  return_trace: bool = False, **kwargs):
-        if model_name not in self.SUPPORTED_MODELS:
-            raise ValueError(f'Unsupported model: {model_name}. Supported models: {self.SUPPORTED_MODELS}')
-
         OnlineMultiModalBase.__init__(self, model_series='AIPING',
-                                      model_name=model_name,
+                                      model_name=model_name, api_key=api_key,
                                       return_trace=return_trace, **kwargs)
         if base_url is None:
             base_url = AIPING_BASE_URL
         self._endpoint = 'images/generations'
         self._base_url = base_url
-        self._api_key = api_key
 
     def _make_request(self, endpoint, payload, timeout=TIMEOUT):
         """发起HTTP请求"""
