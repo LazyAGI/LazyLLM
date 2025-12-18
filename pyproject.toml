@@ -2,13 +2,23 @@
 name = "lazyllm"
 version = "0.7.0"
 description = "A Low-code Development Tool For Building Multi-agent LLMs Applications."
-authors = ["a <a@sensetime.com>"]
+authors = ["wangzhihong <wangzhihong@sensetime.com>"]
 license = "Apache-2.0 license"
 readme = "README.md"
+packages = [{ include = "lazyllm" }]
 include = [
-    "lazyllm/pyproject.toml",
+    { path = "lazyllm/pyproject.toml", format = "wheel" },
+    { path = "csrc/**/*.[ch]pp", format = "sdist" },
+    { path = "lazyllm/*.so", format = "wheel" },
 ]
-build = "setup.py"
+build = "csrc/setup.py"
+
+[build-system]
+requires = ["poetry-core==2.2.1", "setuptools==79.0.1", "pybind11==3.0.1"]
+build-backend = "poetry.core.masonry.api"
+
+[tool.poetry.scripts]
+lazyllm = "lazyllm.cli.main:main"
 
 [tool.poetry.dependencies]
 python = ">=3.10,<3.13"
@@ -362,6 +372,7 @@ online-advanced = [
     "dashscope",
     "zhipuai"
 ]
+
 [tool.lazyllm.extras_descriptions]
 standard = "Install minimal dependencies for all LazyLLM features. Supports online model fine-tuning and inference, as well as offline model fine-tuning (requires LLaMA-Factory) and inference (requires vLLM)"
 full = "Install all dependencies for LazyLLM, enabling every feature and advanced tools: automatic framework selection (AutoFinetune, AutoDeploy), additional offline inference engines (LightLLM), and extra training tools (AlpacaloraFinetune, CollieFinetune)"
@@ -379,13 +390,6 @@ rag-advanced = "Install advanced RAG features, including vector database support
 agent-advanced = "Install advanced agent-related features with MCP support"
 dev = "Install developer dependencies for code style checks and testing scripts"
 online-advanced = "Install dependencies for online multimodal"
-
-[build-system]
-requires = ["poetry-core", "setuptools>=64", "wheel"]
-build-backend = "setuptools.build_meta"
-
-[tool.poetry.scripts]
-lazyllm = "lazyllm.cli.main:main"
 
 [tool.pytest.ini_options]
 markers = [

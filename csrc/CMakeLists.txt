@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.5)
+cmake_minimum_required(VERSION 3.16)
 project(LazyLLMCPP)
 
 option(SHOW_SYMBOL "Whether to hide symbols" OFF)
@@ -35,3 +35,5 @@ foreach (tname ${LAZYLLM_EXE_FILES})
     add_executable(${tname} ${tname}.cpp)
     target_link_libraries(${tname} ${LAZYLLM} pybind11::module Python::Python)
 endforeach (tname)
+
+install(TARGETS lazyllm_cpp LIBRARY DESTINATION ../lazyllm)

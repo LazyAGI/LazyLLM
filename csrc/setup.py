@@ -2,7 +2,7 @@ import os
 import sys
 import platform
 import subprocess
-from setuptools import setup, Extension, find_packages
+from setuptools import Extension
 from setuptools.command.build_ext import build_ext
 
 class CMakeExtension(Extension):
@@ -12,11 +12,6 @@ class CMakeExtension(Extension):
 
 class CMakeBuild(build_ext):
     def run(self):
-        try:
-            subprocess.check_output(['cmake', '--version'])
-        except OSError:
-            raise RuntimeError("CMake is required to build the extension")
-
         for ext in self.extensions:
             self.build_extension(ext)
 
@@ -42,14 +37,15 @@ class CMakeBuild(build_ext):
         subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=build_temp)
         subprocess.check_call(['cmake', '--build', '.'] + build_args, cwd=build_temp)
 
-setup(
-    name='lazyllm_cpp',
-    version='0.7.0',
-    author='wangzhihong',
-    author_email='wangzhihong@sensetime.com',
-    description='LazyLLM C++ extension with pybind11',
-    packages=find_packages(),
-    ext_modules=[CMakeExtension('lazyllm_cpp', sourcedir='csrc')],
-    cmdclass={'build_ext': CMakeBuild},
-    zip_safe=False,
-)
+def build(setup_kwargs):
+    if os.environ.get('BUILD_CPP_EXT', False):
+        print("BUILD_CPP_EXT is True, build C++ extension")
+        setup_kwargs.update({
+            'ext_modules': [CMakeExtension('lazyllm_cpp', sourcedir='csrc')],
+            'cmdclass': {'build_ext': CMakeBuild},
+        })
+    else:
+        print("BUILD_CPP_EXT is not True, skip building C++ extension")
+
+if __name__ == "__main__":
+    build({})
