@@ -17,6 +17,50 @@ defaults:
     shell: bash
 
 jobs:
+  check-exists:
+      name: Check Pypi version exists
+      if: github.repository == 'CompromisedKiwi/LazyLLM'
+      runs-on: ubuntu-latest
+      outputs:
+        TAG: ${{ steps.set_tag_var.outputs.tag }}
+        pypi_version_exists: ${{ steps.pypi_check.outputs.pypi_version_exists }}
+      steps:
+        - name: Extract tag from ref
+          id: set_tag_var
+          run: |
+            FULL_TAG_NAME="${{ github.ref_name }}"
+            echo "tag=${FULL_TAG_NAME#v}" >> $GITHUB_OUTPUT
+
+        - uses: actions/checkout@v4
+          with:
+            submodules: false
+            fetch-depth: 0
+
+        - name: Set up python ${{ env.PYTHON_VERSION }}
+          uses: actions/setup-python@v5
+          with:
+            python-version: ${{ env.PYTHON_VERSION }}
+
+        - name: Install Poetry
+          uses: snok/install-poetry@v1
+          with:
+            version: ${{ env.POETRY_VERSION }}
+
+        - name: Check PyPI for existing version
+          id: pypi_check
+          run: |
+            TAG=${{ steps.set_tag_var.outputs.tag }}
+            echo "TAG: ${TAG}"
+            PACKAGE_NAME=$(poetry version | awk '{print $1}')
+            RESPONSE=$(curl -s https://test.pypi.org/pypi/$PACKAGE_NAME/json)
+            if echo "$RESPONSE" | jq -e ".releases | has(\"$TAG\")"; then
+              echo "Version $TAG already exists on PyPI. Skipping publish."
+              echo "pypi_version_exists=true" >> $GITHUB_OUTPUT
+            else
+              echo "Version $TAG does not exist on PyPI. Proceeding with publish."
+              echo "pypi_version_exists=false" >> $GITHUB_OUTPUT
+            fi
+
   build-doc:
     name: Build docs
     runs-on: ubuntu-latest
