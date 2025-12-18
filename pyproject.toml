@@ -15,6 +15,9 @@ include = [
     { path = "csrc/src/**", format = "sdist" },
 ]
 
+[tool.poetry.build]
+generate-setup-file = true
+
 [build-system]
 requires = ["poetry-core", "setuptools", "pybind11"]
 build-backend = "poetry.core.masonry.api"
