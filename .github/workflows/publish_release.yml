@@ -41,17 +41,12 @@ jobs:
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: ${{ env.POETRY_VERSION }}
-
       - name: Check PyPI for existing version
         id: pypi_check
         run: |
           TAG=${{ steps.set_tag_var.outputs.tag }}
           echo "TAG: ${TAG}"
-          PACKAGE_NAME=$(poetry version | awk '{print $1}')
+          PACKAGE_NAME=$(grep -m 1 'name = "' pyproject.toml | cut -d'"' -f2)
           RESPONSE=$(curl -s https://test.pypi.org/pypi/$PACKAGE_NAME/json)
           if echo "$RESPONSE" | jq -e ".releases | has(\"$TAG\")"; then
             echo "Version $TAG already exists on PyPI. Skipping publish."
