@@ -35,16 +35,15 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             if os.path.exists(default_path):
                 base_model = default_path
         if not merge_path:
-            normalized_target = os.path.normpath(target_path).replace('\\', '/')
+            normalized_target = os.path.normpath(target_path).replace(os.path.sep, '/')
             if normalized_target.endswith('lazyllm_lora'):
                 merge_path = normalized_target.replace('lazyllm_lora', 'lazyllm_merge')
-                os.makedirs(target_path, exist_ok=True)
-                os.makedirs(merge_path, exist_ok=True)
             else:
                 save_path = os.path.join(lazyllm.config['train_target_root'], target_path)
                 target_path = os.path.join(save_path, 'lazyllm_lora')
                 merge_path = os.path.join(save_path, 'lazyllm_merge')
-                os.system(f'mkdir -p {target_path} {merge_path}')
+            os.makedirs(target_path, exist_ok=True)
+            os.makedirs(merge_path, exist_ok=True)
         super().__init__(
             base_model,
             target_path,
@@ -76,6 +75,9 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         # Filter kw to only include keys that exist in template_dict
         # This ensures check_and_update won't fail due to unexpected keys
         # Keys not in template_dict will be silently ignored (they may be used elsewhere)
+        ignored_keys = set(kw.keys()) - set(self.template_dict.keys())
+        if ignored_keys:
+            lazyllm.LOG.info(f'Ignored parameters not in template_dict: {sorted(ignored_keys)}')
         filtered_kw = {k: v for k, v in kw.items() if k in self.template_dict}
 
         self.template_dict.check_and_update(filtered_kw)
@@ -393,10 +395,9 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
 
         # Use bash instead of sh to support pipefail
         # This ensures export only runs if training succeeds
-        train_cmd = (f'export DISABLE_VERSION_CHECK=1 && bash -c "set -o pipefail && '
+        cmds = (f'export DISABLE_VERSION_CHECK=1 && bash -c "set -o pipefail && '
                      f'llamafactory-cli train {self.temp_yaml_file} 2>&1 | '
                      f'tee {self.log_file_path}"')
-        cmds = train_cmd
         if self.temp_export_yaml_file:
             # For LoRA/QLoRA: merge adapter with base model
             # Only run export if training succeeds (exit code 0)
