@@ -2,12 +2,15 @@
 requires = ["setuptools", "wheel", "pybind11", "cmake",]
 build-backend = "setuptools.build_meta"
 
+[tool.setuptools]
+packages = ["lazyllm"]
+
 [project]
 name = "lazyllm"
 version = "0.7.0"
 description = "A Low-code Development Tool For Building Multi-agent LLMs Applications."
 authors = [{name = "wangzhihong", email = "wangzhihong@sensetime.com"}]
-license = {text = "Apache-2.0 license"}
+license = "Apache-2.0"
 readme = "README.md"
 requires-python = ">=3.10,<3.14"
 dependencies = [
