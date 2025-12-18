@@ -7,11 +7,14 @@ license = "Apache-2.0 license"
 readme = "README.md"
 packages = [{ include = "lazyllm" }]
 include = [
-    { path = "lazyllm/pyproject.toml", format = "wheel" },
-    { path = "csrc/**/*.[ch]pp", format = "sdist" },
     { path = "lazyllm/*.so", format = "wheel" },
+    { path = "lazyllm/*.pyd", format = "wheel" },
+    { path = "csrc/CMakeLists.txt", format = "sdist" },
+    { path = "csrc/binding/**", format = "sdist" },
+    { path = "csrc/include/**", format = "sdist" },
+    { path = "csrc/src/**", format = "sdist" },
 ]
-build = "csrc/setup.py"
+build = "csrc/build.py"
 
 [build-system]
 requires = ["poetry-core==2.2.1", "setuptools==79.0.1", "pybind11==3.0.1"]

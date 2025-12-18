@@ -10,6 +10,7 @@ on:
 env:
   POETRY_VERSION: "1.8.3"
   PYTHON_VERSION: "3.10.9"
+  PYPI_URL: "https://test.pypi.org/legacy/"
 
 defaults:
   run:
@@ -141,7 +142,49 @@ jobs:
           path: repo-with-docs.tar.gz
           retention-days: 7
 
-  build-wheels:
+  build-wheel-rollback-version:
+    needs: build-doc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download repo-with-docs
+        uses: actions/download-artifact@v4
+        with:
+          name: repo-with-docs
+          path: ./repo_artifact
+
+      - name: Extract repo-with-docs
+        run: |
+          set -ex
+          mkdir -p repo
+          tar -xzf repo_artifact/repo-with-docs.tar.gz -C repo
+          # copy extracted content to workspace root (overwrite)
+          cp -a repo/. ./
+          # show a bit for debug
+          ls -la | sed -n '1,200p'
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
+
+      - name: Install build deps
+        run: |
+          pip install build poetry
+
+      - name: Build default wheel
+        run: |
+          sed -i '/build = "build.py"/d' pyproject.toml
+          poetry build -f wheel
+          ls -la dist/
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-pure-python
+          path: dist/*.whl
+          retention-days: 7
+
+  build-wheel-with-cpp-extension:
     name: Build wheels with native extensions (${{ matrix.os }}-py${{ matrix.python-version }})
     needs: build-doc
     runs-on: ${{ matrix.os }}
@@ -174,47 +217,42 @@ jobs:
 
       - name: Install build deps
         run: |
-          python -m pip install -U pip build setuptools wheel pybind11
-
-      - name: Build default wheel
-        if: matrix.os == 'ubuntu-latest' && matrix.python-version == '3.10'
-        run: |
-          python -m build --wheel --outdir dist/ --config-setting="--universal"
-          ls -la dist/
+          pip install -U pip build pybind11 poetry
 
       - name: Build C++ extension
         run: |
           set -ex
-          python setup.py build_ext --inplace
-
-      - name: Copy .pyd/.so file to root
-        run: |
-          WORKSPACE_ROOT="${{ github.workspace }}"
-          echo "WORKSPACE_ROOT: $WORKSPACE_ROOT"
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-              EXT_FILE=$(find "$WORKSPACE_ROOT" -name "*.pyd" -print -quit)
-          else
-              EXT_FILE=$(find "$WORKSPACE_ROOT" -name "*.so" -print -quit)
-          fi
-          echo "Find target file: $EXT_FILE"
-          cp -f "$EXT_FILE" "$WORKSPACE_ROOT"
+          mkdir -p build && cd build
+          cmake ../csrc
+          cmake --build .
 
       - name: Build wheel
         run: |
-          python -m build --wheel --outdir dist/
+          poetry build -f wheel
           ls -la dist/
+
+      - name: Build wheel
+        run: |
+          # Invoke poetry build by cibuildwheel, for automatic dependency bundling
+          pip install cibuildwheel==2.22.0
+          python -m cibuildwheel --output-dir repaired_wheel
+          ls -la dist/
+          ls -la repaired_wheel/
+        env:
+          CIBW_SKIP: "*-win32 *-manylinux_i686" # 跳过不兼容的架构（如 32位 Windows）
+          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
 
       - name: Upload wheel artifact
         uses: actions/upload-artifact@v4
         with:
           name: wheels-${{ matrix.os }}-py${{ matrix.python-version }}
-          path: dist/*.whl
+          path: repaired_wheel/*.whl
           retention-days: 7
 
   publish:
     name: publish to PyPI
     if: github.repository == 'CompromisedKiwi/LazyLLM'
-    needs: build-wheels
+    needs: [build-wheel-with-cpp-extension, build-wheel-rollback-version]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -236,13 +274,31 @@ jobs:
       - name: Publish all wheels to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          # password: ${{ secrets.LazyLLM_INDEX_PYPI_TOKEN }} 
-          repository-url: https://test.pypi.org/legacy/
+          repository-url: ${{ env.PYPI_URL }}
           packages_dir: dist/
+
+  check-multi-platform-installation:
+    name: Check multi-platform installation
+    needs: publish
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    steps:
+      - name: Set up Python
+        uses: actions/setup-python@v5
+
+      - name: Install LazyLLM from PyPI
+        run: |
+          pip install --index-url ${{ env.PYPI_URL }} lazyllm
+
+      - name: Verify installation
+        run: |
+          python -c "import LazyLLM; print(LazyLLM.__version__)"
+          python -c "from lazyllm_cpp import *"
 
   check-release:
     name: check and create GitHub Release
-    if: github.repository == 'CompromisedKiwi/LazyLLM'
     needs: publish
     runs-on: ubuntu-latest
     steps:

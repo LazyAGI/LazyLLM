@@ -5,6 +5,11 @@ option(SHOW_SYMBOL "Whether to hide symbols" OFF)
 
 set(NEWCXX_ENABLED_FLAG "-std=c++11 -Werror")
 set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_BUILD_TYPE Release)
+set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ../lazyllm)
+
+find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+set(PYTHON_EXECUTABLE ${Python3_EXECUTABLE})
 
 add_subdirectory(${PROJECT_SOURCE_DIR}/thirdparty/pybind11
                  ${PROJECT_BINARY_DIR}/thirdparty/pybind11)
@@ -35,5 +40,3 @@ foreach (tname ${LAZYLLM_EXE_FILES})
     add_executable(${tname} ${tname}.cpp)
     target_link_libraries(${tname} ${LAZYLLM} pybind11::module Python::Python)
 endforeach (tname)
-
-install(TARGETS lazyllm_cpp LIBRARY DESTINATION ../lazyllm)
