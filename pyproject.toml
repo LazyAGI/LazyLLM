@@ -16,7 +16,7 @@ include = [
 ]
 
 [build-system]
-requires = ["poetry-core", "setuptools>=64", "pybind11>=3.0.1"]
+requires = ["poetry-core", "setuptools", "pybind11"]
 build-backend = "poetry.core.masonry.api"
 
 [tool.poetry.scripts]

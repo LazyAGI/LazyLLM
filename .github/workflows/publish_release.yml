@@ -229,8 +229,8 @@ jobs:
       - name: Build wheel
         run: |
           # Tell poetry this is a project with binary extensions
-          if [[ "$RUNNER_OS" == "macOS" ]]; then
-            sed -i '' '/\[tool.poetry\]/a build = "csrc/cpp_ext_build.py"' pyproject.toml
+          if [[ ${{ matrix.os }} == "macos-latest" ]]; then
+            sed -i '' '/\[tool.poetry\]/a\ build = "csrc/cpp_ext_build.py"' pyproject.toml
           else
             sed -i '/\[tool.poetry\]/a build = "csrc/cpp_ext_build.py"' pyproject.toml
           fi
