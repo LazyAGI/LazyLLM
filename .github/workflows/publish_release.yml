@@ -92,7 +92,6 @@ jobs:
           TAG=${{ needs.check-exists.outputs.TAG }}
           echo "TAG: ${TAG}"
           sed -i "s#^version = \".*\"#version = \"$TAG\"#" pyproject.toml
-          sed -i "s#version='[^']*',#version='$TAG',#" setup.py
           sed -i "s#^__version__ = '.*'#__version__ = '$TAG'#" lazyllm/__init__.py
 
       - name: Install deps
