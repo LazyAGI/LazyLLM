@@ -223,37 +223,14 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
 
-      - name: Install build deps
-        run: |
-          pip install -U pip build pybind11 poetry
-
-      - name: Build C++ extension
-        run: |
-          set -ex
-          mkdir -p build && cd build
-          cmake ../csrc
-          cmake --build .
-          cd ..
-
-      - name: Prepare build
-        run: |
-          # Tell poetry this is a project with binary extensions
-          if [[ ${{ matrix.os }} == "macos-latest" ]]; then
-            sed -i '' '/[tool.poetry]/a\'$'\n''build = "csrc/cpp_ext_build.py"' pyproject.toml
-          else
-            sed -i '/\[tool.poetry\]/a build = "csrc/cpp_ext_build.py"' pyproject.toml
-          fi
-
-          # Invoke poetry build by cibuildwheel, for automatic dependency bundling
-          pip install cibuildwheel
-
       - name: Build wheel
         run: |
-          python -m cibuildwheel --output-dir repaired_wheel
+          pip install cibuildwheel
+          cibuildwheel --output-dir repaired_wheel
           ls -la dist/
           ls -la repaired_wheel/
         env:
-          CIBW_BUILD: cp${{ join(split(matrix.python-version, '.'), '') }}-*
+          CIBW_BUILD: ${{ format('cp{0}-*', replaceAll(matrix.python-version, '.', '')) }}
           CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
 
       - name: Upload wheel artifact
