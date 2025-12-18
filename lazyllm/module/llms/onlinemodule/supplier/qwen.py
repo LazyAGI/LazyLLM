@@ -349,9 +349,10 @@ class QwenMultiModal(OnlineMultiModalBase):
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series='QWEN', api_key=api_key or lazyllm.config['qwen_api_key'],
+        api_key = api_key or lazyllm.config['qwen_api_key']
+        OnlineMultiModalBase.__init__(self, model_series='QWEN', api_key=api_key,
                                       model_name=model_name, return_trace=return_trace, **kwargs)
-        dashscope.api_key = api_key or lazyllm.config['qwen_api_key']
+        dashscope.api_key = api_key
         dashscope.base_http_api_url = base_url
         dashscope.base_websocket_api_url = base_websocket_url
 
@@ -406,8 +407,8 @@ class QwenTextToImageModule(QwenMultiModal):
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
         task_response = dashscope.ImageSynthesis.async_call(**call_params)
-        if not task_response.output:
-            raise RuntimeError('Failed to create image synthesis task, may due to insufficient balance on your account.')
+        if task_response.status_code != HTTPStatus.OK:
+            raise RuntimeError(f'Failed to create image synthesis task, {task_response.message}')
         response = dashscope.ImageSynthesis.wait(task=task_response.output.task_id, api_key=self._api_key)
         if response.status_code == HTTPStatus.OK:
             return encode_query_with_filepaths(None, bytes_to_file([requests.get(result.url).content
