@@ -193,10 +193,16 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     
     steps:
-      - name: Download repo-with-docs
-        uses: actions/download-artifact@v4
+      # - name: Download repo-with-docs
+      #   uses: actions/download-artifact@v4
+      #   with:
+      #     name: repo-with-docs
+      #     path: ./repo_artifact
+
+      - uses: actions/checkout@v4
         with:
-          name: repo-with-docs
+          submodules: false
+          sparse-checkout: .github/workflows/repo-with-docs.tar.gz
           path: ./repo_artifact
 
       - name: Extract repo-with-docs
