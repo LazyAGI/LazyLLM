@@ -172,7 +172,6 @@ jobs:
 
       - name: Build default wheel
         run: |
-          sed -i '/build = "build.py"/d' pyproject.toml
           poetry build -f wheel
           ls -la dist/
 
@@ -227,11 +226,9 @@ jobs:
 
       - name: Build wheel
         run: |
-          poetry build -f wheel
-          ls -la dist/
+          # Tell poetry this is a project with binary extensions
+          sed -i '/\[tool.poetry\]/a build = "csrc/cpp_ext_build.py"' pyproject.toml
 
-      - name: Build wheel
-        run: |
           # Invoke poetry build by cibuildwheel, for automatic dependency bundling
           pip install cibuildwheel==2.22.0
           python -m cibuildwheel --output-dir repaired_wheel
