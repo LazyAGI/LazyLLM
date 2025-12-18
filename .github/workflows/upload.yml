@@ -63,6 +63,7 @@ jobs:
 
   build-doc:
     name: Build docs
+    needs: check-exists
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
