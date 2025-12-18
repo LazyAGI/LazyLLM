@@ -256,7 +256,7 @@ jobs:
   publish:
     name: publish to PyPI
     if: github.repository == 'CompromisedKiwi/LazyLLM'
-    needs: [build-wheel-with-cpp-extension, build-wheel-rollback-version]
+    # needs: [build-wheel-with-cpp-extension, build-wheel-rollback-version]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
