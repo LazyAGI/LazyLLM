@@ -81,12 +81,10 @@ class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
 class DoubaoMultiModal(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None, base_url='https://ark.cn-beijing.volces.com/api/v3',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series='DOUBAO', model_name=model_name,
+        api_key = api_key or lazyllm.config['doubao_api_key']
+        OnlineMultiModalBase.__init__(self, model_series='DOUBAO', model_name=model_name, api_key=api_key,
                                       return_trace=return_trace, **kwargs)
-        self._client = volcenginesdkarkruntime.Ark(
-            base_url=base_url,
-            api_key=api_key or lazyllm.config['doubao_api_key'],
-        )
+        self._client = volcenginesdkarkruntime.Ark(base_url=base_url, api_key=api_key)
 
 
 class DoubaoTextToImageModule(DoubaoMultiModal):
