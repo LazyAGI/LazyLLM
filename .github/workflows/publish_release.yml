@@ -17,171 +17,171 @@ defaults:
     shell: bash
 
 jobs:
-  # check-exists:
-  #   name: Check Pypi version exists
-  #   if: github.repository == 'CompromisedKiwi/LazyLLM'
-  #   runs-on: ubuntu-latest
-  #   outputs:
-  #     TAG: ${{ steps.set_tag_var.outputs.tag }}
-  #     pypi_version_exists: ${{ steps.pypi_check.outputs.pypi_version_exists }}
-  #   steps:
-  #     - name: Extract tag from ref
-  #       id: set_tag_var
-  #       run: |
-  #         FULL_TAG_NAME="${{ github.ref_name }}"
-  #         echo "tag=${FULL_TAG_NAME#v}" >> $GITHUB_OUTPUT
+  check-exists:
+    name: Check Pypi version exists
+    if: github.repository == 'CompromisedKiwi/LazyLLM'
+    runs-on: ubuntu-latest
+    outputs:
+      TAG: ${{ steps.set_tag_var.outputs.tag }}
+      pypi_version_exists: ${{ steps.pypi_check.outputs.pypi_version_exists }}
+    steps:
+      - name: Extract tag from ref
+        id: set_tag_var
+        run: |
+          FULL_TAG_NAME="${{ github.ref_name }}"
+          echo "tag=${FULL_TAG_NAME#v}" >> $GITHUB_OUTPUT
 
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         submodules: false
-  #         fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
 
-  #     - name: Set up python ${{ env.PYTHON_VERSION }}
-  #       uses: actions/setup-python@v5
-  #       with:
-  #         python-version: ${{ env.PYTHON_VERSION }}
+      - name: Set up python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-  #     - name: Check PyPI for existing version
-  #       id: pypi_check
-  #       run: |
-  #         TAG=${{ steps.set_tag_var.outputs.tag }}
-  #         echo "TAG: ${TAG}"
-  #         PACKAGE_NAME=$(grep -m 1 'name = "' pyproject.toml | cut -d'"' -f2)
-  #         RESPONSE=$(curl -s https://test.pypi.org/pypi/$PACKAGE_NAME/json)
-  #         if echo "$RESPONSE" | jq -e ".releases | has(\"$TAG\")"; then
-  #           echo "Version $TAG already exists on PyPI. Skipping publish."
-  #           echo "pypi_version_exists=true" >> $GITHUB_OUTPUT
-  #         else
-  #           echo "Version $TAG does not exist on PyPI. Proceeding with publish."
-  #           echo "pypi_version_exists=false" >> $GITHUB_OUTPUT
-  #         fi
+      - name: Check PyPI for existing version
+        id: pypi_check
+        run: |
+          TAG=${{ steps.set_tag_var.outputs.tag }}
+          echo "TAG: ${TAG}"
+          PACKAGE_NAME=$(grep -m 1 'name = "' pyproject.toml | cut -d'"' -f2)
+          RESPONSE=$(curl -s https://test.pypi.org/pypi/$PACKAGE_NAME/json)
+          if echo "$RESPONSE" | jq -e ".releases | has(\"$TAG\")"; then
+            echo "Version $TAG already exists on PyPI. Skipping publish."
+            echo "pypi_version_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version $TAG does not exist on PyPI. Proceeding with publish."
+            echo "pypi_version_exists=false" >> $GITHUB_OUTPUT
+          fi
 
-  # build-doc:
-  #   name: Build docs
-  #   needs: check-exists
-  #   if: needs.check-exists.outputs.pypi_version_exists == 'false'
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         submodules: false
-  #         fetch-depth: 0
+  build-doc:
+    name: Build docs
+    needs: check-exists
+    if: needs.check-exists.outputs.pypi_version_exists == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
 
-  #     - name: Init specific submodule
-  #       run: |
-  #         git submodule update --init LazyLLM-Env
-  #         git submodule update --init csrc/thirdparty/pybind11
+      - name: Init specific submodule
+        run: |
+          git submodule update --init LazyLLM-Env
+          git submodule update --init csrc/thirdparty/pybind11
 
-  #     - name: Set up python ${{ env.PYTHON_VERSION }}
-  #       uses: actions/setup-python@v5
-  #       with:
-  #         python-version: ${{ env.PYTHON_VERSION }}
+      - name: Set up python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-  #     - name: Install Poetry
-  #       uses: snok/install-poetry@v1
-  #       with:
-  #         version: ${{ env.POETRY_VERSION }}
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
 
-  #     - name: Update version in pyproject.toml and __init__.py
-  #       run: |
-  #         TAG=${{ needs.check-exists.outputs.TAG }}
-  #         echo "TAG: ${TAG}"
-  #         sed -i "s#^version = \".*\"#version = \"$TAG\"#" pyproject.toml
-  #         sed -i "s#^__version__ = '.*'#__version__ = '$TAG'#" lazyllm/__init__.py
+      - name: Update version in pyproject.toml and __init__.py
+        run: |
+          TAG=${{ needs.check-exists.outputs.TAG }}
+          echo "TAG: ${TAG}"
+          sed -i "s#^version = \".*\"#version = \"$TAG\"#" pyproject.toml
+          sed -i "s#^__version__ = '.*'#__version__ = '$TAG'#" lazyllm/__init__.py
 
-  #     - name: Install deps
-  #       shell: bash
-  #       run: pip install -e .
+      - name: Install deps
+        shell: bash
+        run: pip install -e .
 
-  #     - name: Test import
-  #       working-directory: /tmp
-  #       shell: bash
-  #       run: python -c "import lazyllm"
+      - name: Test import
+        working-directory: /tmp
+        shell: bash
+        run: python -c "import lazyllm"
 
-  #     - name: Check requirements
-  #       shell: bash
-  #       run: |
-  #         pip install toml
-  #         python scripts/check_requirements.py
+      - name: Check requirements
+        shell: bash
+        run: |
+          pip install toml
+          python scripts/check_requirements.py
 
-  #     - name: Copy files
-  #       shell: bash
-  #       run: cp LazyLLM-Env/poetry.lock . && cp pyproject.toml lazyllm/
+      - name: Copy files
+        shell: bash
+        run: cp LazyLLM-Env/poetry.lock . && cp pyproject.toml lazyllm/
 
-  #     - name: Build doc
-  #       run: |
-  #         set -ex
-  #         export PYTHONPATH=$PWD:$PYTHONPATH
-  #         pip install -r requirements.txt
-  #         pip install -r docs/requirements.txt
-  #         python docs/add_docstrings.py
+      - name: Build doc
+        run: |
+          set -ex
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          pip install -r requirements.txt
+          pip install -r docs/requirements.txt
+          python docs/add_docstrings.py
 
-  #     - name: Clean cache
-  #       shell: bash
-  #       run: |
-  #         pip cache purge
-  #         pip freeze | grep -v "^-e" | xargs pip uninstall -y
+      - name: Clean cache
+        shell: bash
+        run: |
+          pip cache purge
+          pip freeze | grep -v "^-e" | xargs pip uninstall -y
       
-  #     - name: Tar repo with docs
-  #       run: |
-  #         touch repo-with-docs.tar.gz
-  #         tar --exclude=.git --exclude=repo-with-docs.tar.gz \
-  #           -czf repo-with-docs.tar.gz .
-  #         ls -lh repo-with-docs.tar.gz
+      - name: Tar repo with docs
+        run: |
+          touch repo-with-docs.tar.gz
+          tar --exclude=.git --exclude=repo-with-docs.tar.gz \
+            -czf repo-with-docs.tar.gz .
+          ls -lh repo-with-docs.tar.gz
 
-  #     - name: Upload repo artifact (with docs inserted)
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: repo-with-docs
-  #         path: repo-with-docs.tar.gz
-  #         retention-days: 7
+      - name: Upload repo artifact (with docs inserted)
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-with-docs
+          path: repo-with-docs.tar.gz
+          retention-days: 7
 
-  #     - name: Save wheels to cache
-  #       uses: actions/cache/save@v3
-  #       with:
-  #         path: repo-with-docs.tar.gz
-  #         key: repo-with-docs
+      - name: Save wheels to cache
+        uses: actions/cache/save@v3
+        with:
+          path: repo-with-docs.tar.gz
+          key: repo-with-docs
 
-  # build-wheel-rollback-version:
-  #   needs: build-doc
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Download repo-with-docs
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         name: repo-with-docs
-  #         path: ./repo_artifact
+  build-wheel-rollback-version:
+    needs: build-doc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download repo-with-docs
+        uses: actions/download-artifact@v4
+        with:
+          name: repo-with-docs
+          path: ./repo_artifact
 
-  #     - name: Extract repo-with-docs
-  #       run: |
-  #         set -ex
-  #         mkdir -p repo
-  #         tar -xzf repo_artifact/repo-with-docs.tar.gz -C repo
-  #         # copy extracted content to workspace root (overwrite)
-  #         cp -a repo/. ./
-  #         # show a bit for debug
-  #         ls -la | sed -n '1,200p'
+      - name: Extract repo-with-docs
+        run: |
+          set -ex
+          mkdir -p repo
+          tar -xzf repo_artifact/repo-with-docs.tar.gz -C repo
+          # copy extracted content to workspace root (overwrite)
+          cp -a repo/. ./
+          # show a bit for debug
+          ls -la | sed -n '1,200p'
 
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v5
-  #       with:
-  #         python-version: "3.10"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
-  #     - name: Install build deps
-  #       run: |
-  #         pip install build poetry
+      - name: Install build deps
+        run: |
+          pip install build poetry
 
-  #     - name: Build default wheel
-  #       run: |
-  #         poetry build -f wheel
-  #         ls -la dist/
+      - name: Build default wheel
+        run: |
+          poetry build -f wheel
+          ls -la dist/
 
-  #     - name: Upload wheel artifact
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: wheels-pure-python
-  #         path: dist/*.whl
-  #         retention-days: 7
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-pure-python
+          path: dist/*.whl
+          retention-days: 7
 
   build-wheel-with-cpp-extension:
     name: Build wheels with native extensions (${{ matrix.os }}-py${{ matrix.python-version }})
@@ -193,20 +193,20 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
     
     steps:
-      # - name: Download repo-with-docs
-      #   uses: actions/download-artifact@v4
-      #   with:
-      #     name: repo-with-docs
-      #     path: ./repo_artifact
-
-      - name: Restore wheels from cache
-        uses: actions/cache/restore@v3
+      - name: Download repo-with-docs
+        uses: actions/download-artifact@v4
         with:
-          fail-on-cache-miss: true
-          path: repo-with-docs.tar.gz
-          key: repo-with-docs
+          name: repo-with-docs
+          path: ./repo_artifact
+
+      # - name: Restore wheels from cache
+      #   uses: actions/cache/restore@v3
+      #   with:
+      #     fail-on-cache-miss: true
+      #     path: repo-with-docs.tar.gz
+      #     key: repo-with-docs
       
-      - run: mkdir repo_artifact && mv repo-with-docs.tar.gz repo_artifact/
+      # - run: mkdir repo_artifact && mv repo-with-docs.tar.gz repo_artifact/
 
       - name: Extract repo-with-docs
         run: |
