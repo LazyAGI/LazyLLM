@@ -1,0 +1,96 @@
+name: Upload
+
+on:
+  push:
+    tags:
+      - "v*"
+
+  workflow_dispatch:
+
+env:
+  POETRY_VERSION: "1.8.3"
+  PYTHON_VERSION: "3.10.9"
+  PYPI_URL: "https://test.pypi.org/legacy/"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-doc:
+    name: Build docs
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
+
+      - name: Init specific submodule
+        run: |
+          git submodule update --init LazyLLM-Env
+          git submodule update --init csrc/thirdparty/pybind11
+
+      - name: Set up python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Install Poetry
+        uses: snok/install-poetry@v1
+        with:
+          version: ${{ env.POETRY_VERSION }}
+
+      - name: Update version in pyproject.toml and __init__.py
+        run: |
+          TAG=${{ needs.check-exists.outputs.TAG }}
+          echo "TAG: ${TAG}"
+          sed -i "s#^version = \".*\"#version = \"$TAG\"#" pyproject.toml
+          sed -i "s#^__version__ = '.*'#__version__ = '$TAG'#" lazyllm/__init__.py
+
+      - name: Install deps
+        shell: bash
+        run: pip install -e .
+
+      - name: Test import
+        working-directory: /tmp
+        shell: bash
+        run: python -c "import lazyllm"
+
+      - name: Check requirements
+        shell: bash
+        run: |
+          pip install toml
+          python scripts/check_requirements.py
+
+      - name: Copy files
+        shell: bash
+        run: cp LazyLLM-Env/poetry.lock . && cp pyproject.toml lazyllm/
+
+      - name: Build doc
+        run: |
+          set -ex
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          pip install -r requirements.txt
+          pip install -r docs/requirements.txt
+          python docs/add_docstrings.py
+
+      - name: Clean cache
+        shell: bash
+        run: |
+          pip cache purge
+          pip freeze | grep -v "^-e" | xargs pip uninstall -y
+      
+      - name: Tar repo with docs
+        run: |
+          touch repo-with-docs.tar.gz
+          tar --exclude=.git --exclude=repo-with-docs.tar.gz \
+            -czf repo-with-docs.tar.gz .
+          ls -lh repo-with-docs.tar.gz
+
+      - name: Upload repo artifact (with docs inserted)
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-with-docs
+          path: repo-with-docs.tar.gz
+          retention-days: 7
