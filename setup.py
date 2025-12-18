@@ -15,15 +15,17 @@ class CMakeBuild(build_ext):
             self.build_cmake(ext)
 
     def build_cmake(self, ext):
+        cfg = 'Debug' if self.debug else 'Release'
+
         build_temp = os.path.join(self.build_temp, ext.name)
         os.makedirs(build_temp, exist_ok=True)
 
-        cmake_args = []
-        if platform.system() == "Windows":
+        cmake_args = [f'-DPYTHON_EXECUTABLE={sys.executable}']
+        if platform.system() == 'Windows':
             cmake_args = ['-A', 'x64']
         
-        subprocess.check_call(["cmake", ext.sourcedir] + cmake_args, cwd=build_temp)
-        subprocess.check_call(["cmake", "--build", "."], cwd=build_temp)
+        subprocess.check_call(['cmake', ext.sourcedir] + cmake_args, cwd=build_temp)
+        subprocess.check_call(['cmake', '--build', '.', '--config', cfg], cwd=build_temp)
 
 setup(
     ext_modules=[CMakeExtension('lazyllm_cpp', sourcedir='csrc')],
