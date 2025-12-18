@@ -14,7 +14,7 @@ include = [
     { path = "csrc/include/**", format = "sdist" },
     { path = "csrc/src/**", format = "sdist" },
 ]
-build = "csrc/build.py"
+build = "csrc/cpp_ext_build.py"
 
 [build-system]
 requires = ["poetry-core==2.2.1", "setuptools==79.0.1", "pybind11==3.0.1"]
