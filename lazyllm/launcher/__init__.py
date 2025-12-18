@@ -1,7 +1,7 @@
 import atexit
 from multiprocessing.util import register_after_fork
 
-from .base import LazyLLMLaunchersBase, Status, Job, EmptyLauncher
+from .base import LazyLLMLaunchersBase, Status, Job, EmptyLauncher, RemoteLauncher
 from .slurm import SlurmLauncher
 from .sco import ScoLauncher
 from .k8s import K8sLauncher
