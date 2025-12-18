@@ -4,8 +4,6 @@ import os
 from setuptools import setup, Extension
 from setuptools.command.build_ext import build_ext
 
-raise RuntimeError("SETUP.PY WAS EXECUTED")
-
 class CMakeExtension(Extension):
     def __init__(self, name, sourcedir='csrc'):
         super().__init__(name, sources=[])
