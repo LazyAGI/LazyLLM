@@ -1,6 +1,5 @@
 import lazyllm
 from typing import Dict, List, Union
-from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 import requests
 from lazyllm.components.formatter import encode_query_with_filepaths
@@ -21,24 +20,16 @@ class DoubaoModule(OnlineChatModuleBase):
         return ('You are Doubao, an AI assistant. Your task is to provide appropriate responses '
                 'and support to user\'s questions and requests.')
 
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat/completions')
-
     def _validate_api_key(self):
         '''Validate API Key by sending a minimal request'''
         try:
             # Doubao (Volcano Engine) validates API key using a minimal chat request
-            chat_url = urljoin(self._base_url, 'chat/completions')
-            headers = {
-                'Authorization': f'Bearer {self._api_key}',
-                'Content-Type': 'application/json'
-            }
             data = {
                 'model': self._model_name,
                 'messages': [{'role': 'user', 'content': 'hi'}],
                 'max_tokens': 1  # Only generate 1 token for validation
             }
-            response = requests.post(chat_url, headers=headers, json=data, timeout=10)
+            response = requests.post(self._chat_url, headers=self._header, json=data, timeout=10)
             return response.status_code == 200
         except Exception:
             return False
@@ -90,12 +81,10 @@ class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
 class DoubaoMultiModal(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None, base_url='https://ark.cn-beijing.volces.com/api/v3',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series='DOUBAO', model_name=model_name,
+        api_key = api_key or lazyllm.config['doubao_api_key']
+        OnlineMultiModalBase.__init__(self, model_series='DOUBAO', model_name=model_name, api_key=api_key,
                                       return_trace=return_trace, **kwargs)
-        self._client = volcenginesdkarkruntime.Ark(
-            base_url=base_url,
-            api_key=api_key or lazyllm.config['doubao_api_key'],
-        )
+        self._client = volcenginesdkarkruntime.Ark(base_url=base_url, api_key=api_key)
 
 
 class DoubaoTextToImageModule(DoubaoMultiModal):

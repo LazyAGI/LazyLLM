@@ -18,7 +18,7 @@ class RelayServer(LazyLLMDeployBase):
 
     def __init__(self, port=None, *, func=None, pre_func=None, post_func=None, pythonpath=None,
                  log_path=None, cls=None, launcher=launchers.remote(sync=False), num_replicas: int = 1,  # noqa B008
-                 security_key: Optional[str] = None):
+                 security_key: Optional[str] = None, defined_pos: Optional[str] = None):
         # func must dump in __call__ to wait for dependancies.
         self._func = func
         self._pre = dump_obj(pre_func)
@@ -27,6 +27,7 @@ class RelayServer(LazyLLMDeployBase):
         self._pythonpath = pythonpath
         self._num_replicas = num_replicas
         self._security_key = security_key
+        self._defined_pos = defined_pos
         super().__init__(launcher=launcher)
         self.temp_folder = make_log_dir(log_path, cls or 'relay') if log_path else None
 
@@ -49,12 +50,14 @@ class RelayServer(LazyLLMDeployBase):
                 cmd += f'--num_replicas={self._num_replicas}'
             if self._security_key:
                 cmd += f'--security_key="{self._security_key}" '
+            if self._defined_pos:
+                cmd += '--defined_pos="{}" '.format(self._defined_pos.replace('"', r'\"'))
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 
         return LazyLLMCMD(cmd=impl, return_value=self.geturl,
                           checkf=verify_ray_func if config['use_ray'] else verify_fastapi_func,
-                          no_displays=['function', 'before_function', 'after_function', 'security_key'])
+                          no_displays=['function', 'before_function', 'after_function', 'security_key', 'defined_pos'])
 
     def geturl(self, job=None):
         if job is None:

@@ -12,6 +12,7 @@ from dataclasses import dataclass
 
 import lazyllm
 from lazyllm import launchers, LOG, package, obj2str, globals, is_valid_url, LazyLLMLaunchersBase, redis_client
+from lazyllm.common import _register_trim_module, _get_callsite
 from ..components.formatter import FormatterBase, EmptyFormatter, decode_query_with_filepaths
 from ..components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX, _lazyllm_get_file_list
 from ..components.prompter import PrompterBase, ChatPrompter, EmptyPrompter
@@ -20,6 +21,9 @@ from ..flow import FlowBase, Pipeline
 from urllib.parse import urljoin
 from .utils import light_reduce
 from .module import ModuleBase, ActionModule
+
+
+_register_trim_module({'lazyllm.module.servermodule': ['__call__']})
 
 
 class LLMBase(object):
@@ -198,6 +202,7 @@ class _ServerModuleImpl(ModuleBase, _UrlHelper):
         self._pythonpath = pythonpath
         self._num_replicas = num_replicas
         self._security_key = security_key
+        self._defined_pos = _get_callsite(depth=3)
 
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
@@ -206,7 +211,7 @@ class _ServerModuleImpl(ModuleBase, _UrlHelper):
             lazyllm.deploy.RelayServer(func=self._m, pre_func=self._pre_func, port=self._port,
                                        pythonpath=self._pythonpath, post_func=self._post_func,
                                        launcher=self._launcher, num_replicas=self._num_replicas,
-                                       security_key=self._security_key),
+                                       security_key=self._security_key, defined_pos=self._defined_pos),
             self._set_url)
 
     def stop(self):

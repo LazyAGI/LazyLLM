@@ -24,9 +24,6 @@ class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
     def _get_system_prompt(self):
         return 'You are an intelligent assistant provided by Minimax. You are a helpful assistant.'
 
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat/completions')
-
     def _convert_msg_format(self, msg: Dict[str, Any]):
         '''Convert the reasoning_details in output to reasoning_content field in message'''
         choices = msg.get('choices')
@@ -58,16 +55,12 @@ class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
     def _validate_api_key(self):
         '''Validate API Key by sending a minimal chat request'''
         try:
-            headers = {
-                'Authorization': f'Bearer {self._api_key}',
-                'Content-Type': 'application/json'
-            }
             data = {
                 'model': self._model_name,
                 'messages': [{'role': 'user', 'content': 'test'}],
                 'max_tokens': 1
             }
-            response = requests.post(self._url, headers=headers, json=data, timeout=10)
+            response = requests.post(self._chat_url, headers=self._header, json=data, timeout=10)
             return response.status_code == 200
         except Exception:
             return False
@@ -79,20 +72,15 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.minimaxi.com/v1/',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series='MINIMAX',
+        OnlineMultiModalBase.__init__(self, model_series='MINIMAX', api_key=api_key or lazyllm.config['minimax_api_key'],
                                       model_name=model_name or MinimaxTextToImageModule.MODEL_NAME,
                                       return_trace=return_trace, **kwargs)
         self._base_url = base_url
         self._endpoint = 'image_generation'
-        self._api_key = api_key or lazyllm.config['minimax_api_key']
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
         url = urljoin(self._base_url, endpoint)
-        response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+        response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
         response.raise_for_status()
         result = response.json()
         base_resp = result.get('base_resp')
@@ -160,20 +148,16 @@ class MinimaxTTSModule(OnlineMultiModalBase):
         if kwargs.pop('stream', False):
             raise ValueError('MinimaxTTSModule does not support streaming output, please set stream to False')
         OnlineMultiModalBase.__init__(self, model_series='MINIMAX',
+                                      api_key=api_key or lazyllm.config['minimax_api_key'],
                                       model_name=model_name or MinimaxTTSModule.MODEL_NAME,
                                       return_trace=return_trace, **kwargs)
         self._endpoint = 't2a_v2'
         self._base_url = base_url
-        self._api_key = api_key or lazyllm.config['minimax_api_key']
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
         url = urljoin(self._base_url, endpoint)
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
             result = response.json()
             base_resp = result.get('base_resp')
