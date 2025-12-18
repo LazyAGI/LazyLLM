@@ -230,7 +230,7 @@ jobs:
         run: |
           # Tell poetry this is a project with binary extensions
           if [[ ${{ matrix.os }} == "macos-latest" ]]; then
-            sed -i '' '/[tool.poetry]/a\$'\n''build = "csrc/cpp_ext_build.py"' pyproject.toml
+            sed -i '' '/[tool.poetry]/a\'$'\n''build = "csrc/cpp_ext_build.py"' pyproject.toml
           else
             sed -i '/\[tool.poetry\]/a build = "csrc/cpp_ext_build.py"' pyproject.toml
           fi
