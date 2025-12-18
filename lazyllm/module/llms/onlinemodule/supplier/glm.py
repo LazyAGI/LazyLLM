@@ -249,10 +249,11 @@ class GLMMultiModal(OnlineMultiModalBase):
     def __init__(self, model_name: str, api_key: str = None,
                  base_url: str = 'https://open.bigmodel.cn/api/paas/v4', return_trace: bool = False,
                  **kwargs):
+        api_key = api_key or lazyllm.config['glm_api_key']
         OnlineMultiModalBase.__init__(self, model_series='GLM', model_name=model_name,
-                                      api_key=api_key or lazyllm.config['glm_api_key'],
+                                      api_key=api_key,
                                       return_trace=return_trace, **kwargs)
-        self._client = zhipuai.ZhipuAI(api_key=api_key or lazyllm.config['glm_api_key'], base_url=base_url)
+        self._client = zhipuai.ZhipuAI(api_key=api_key, base_url=base_url)
 
 
 class GLMSTTModule(GLMMultiModal):
