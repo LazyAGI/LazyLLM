@@ -1,14 +1,25 @@
+## Licence Tree
 LazyLLM/                 ← Apache-2.0
   csrc/thirdparty/
     pybind11/            ← BSD-3-Clause
   lazyllm/tools/services/
-    mineru.py            ← AGPL-3.0
+    mineru               ← AGPL-3.0
   LICENSE                ← Apache-2.0
 
-This project includes code from the following third-party components:
+## Optional Modules
 
--------------------------------------------------------------------------------
-Component: lazyllm/tools/services/mineru.py
+This project includes code from the following third-party components, These are all optional
+modules and are typically not used; however, if you do use any of these modules, please comply
+with the open-source licenses of the respective software:
+
+- [MinerU](#mineru): AGPL-3.0
+- [pybind11](#pybind11): BSD-3-Clause
+
+## Licence and usage of optional modules
+
+### MinerU
+
+Component: lazyllm/tools/services/mineru
 License: AGPL-3.0
 Usage: This optional component is used to parse pdf document for RAG
 Github: https://github.com/opendatalab/MinerU
@@ -676,6 +687,9 @@ For more information on this, and how to apply and follow the GNU AGPL, see
 <https://www.gnu.org/licenses/>.
 
 -------------------------------------------------------------------------------
+
+### pybind11
+
 Component: csrc/thirdparty/pybind11
 License: BSD-3-Clause
 Usage: This component is statically or dynamically linked into `lazyllm-cpp` when that module is enabled.
