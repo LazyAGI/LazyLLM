@@ -5,6 +5,7 @@ import pytest
 import lazyllm
 import multiprocessing
 from lazyllm.launcher import cleanup
+from lazyllm.module.module import ModuleExecutionError
 
 class TestModule:
 
@@ -63,7 +64,7 @@ class TestModule:
 
         m3 = lazyllm.UrlModule(url=m1._url)
         assert m3._url == m1._url
-        with pytest.raises(RuntimeError, match='Authentication failed'):
+        with pytest.raises(ModuleExecutionError, match='Authentication failed'):
             m3(1)
 
     def test_ServerModule(self):

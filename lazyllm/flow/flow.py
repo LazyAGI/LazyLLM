@@ -2,7 +2,8 @@ import lazyllm
 import builtins
 from lazyllm import config
 from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root
-from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals
+from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals, _get_callsite
+from lazyllm.common import _register_trim_module, HandledException, _change_exception_type
 from lazyllm.common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
@@ -21,43 +22,9 @@ from ..hook import LazyLLMHook
 from itertools import repeat
 
 
-class FlowException(Exception):
+class FlowException(HandledException):
     pass
 
-
-def _is_lazyllm_internal_frame(frame, expected: Optional[dict] = None):
-    expected = expected or {'lazyllm.flow.flow': ['_run', 'invoke'], 'lazyllm.common.bind': ['__call__']}
-    mod = frame.f_globals.get('__name__', '')
-    if not mod.startswith('lazyllm.'): return False
-    if mod in expected and frame.f_code.co_name in expected[mod]: return True
-    return False
-
-_is_lazyllm_call_frame = bind(_is_lazyllm_internal_frame, expected={'lazyllm.flow.flow': '__call__'})
-
-def _trim_traceback(tb):
-    kept, keep_call = [], True
-    while tb:
-        if not _is_lazyllm_internal_frame(tb.tb_frame):
-            if _is_lazyllm_call_frame(tb.tb_frame):
-                if keep_call:
-                    kept.append(tb)
-                    keep_call = False
-            else:
-                kept.append(tb)
-                keep_call = True
-        tb = tb.tb_next
-
-    new_tb = None
-    for tb in reversed(kept):
-        new_tb = types.TracebackType(tb_next=new_tb, tb_frame=tb.tb_frame, tb_lasti=tb.tb_lasti, tb_lineno=tb.tb_lineno)
-    return new_tb
-
-_original_excepthook = sys.excepthook
-
-def _lazyllm_excepthook(exc_type, exc_value, tb):
-    _original_excepthook(exc_type, exc_value, _trim_traceback(tb))
-
-sys.excepthook = _lazyllm_excepthook
 
 class _FuncWrap(object):
     def __init__(self, f):
@@ -76,19 +43,6 @@ class _FuncWrap(object):
             return getattr(self._f, __key)
         return super(__class__, self).__getattr__(__key)
 
-
-def _get_callsite(depth=1):
-    try:
-        frame = inspect.currentframe()
-        for _ in range(depth): frame = frame.f_back
-        if frame is None: return None
-        else:
-            while frame.f_code.co_name == '__setattr__' and frame.f_globals.get('__name__', '') == 'lazyllm.common.bind':
-                frame = frame.f_back
-        return f'"file: {os.path.abspath(frame.f_code.co_filename)}", line {frame.f_lineno}'
-    except Exception:
-        return None
-
 _oldins = isinstance
 def new_ins(obj, cls):
     if _oldins(obj, _FuncWrap) and os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) != 'ON':
@@ -104,6 +58,9 @@ def _is_function(f):
 
 _flow_stack = threading.local()
 _flow_stack.value = []
+
+_register_trim_module({'lazyllm.flow.flow': ['__call__']}, continuous=True)
+_register_trim_module({'lazyllm.flow.flow': ['_run', 'invoke'], 'lazyllm.common.bind': ['__call__']})
 
 class FlowBase(metaclass=_MetaBind):
     def __init__(self, *items, item_names=None, auto_capture=False) -> None:
@@ -315,8 +272,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 return it(*__input, **kw) if isinstance(__input, package) else it(**__input, **kw)
             else:
                 return it(__input, **kw)
-        except FlowException as e:
-            raise e
+        except HandledException as e: raise e
         except Exception as e:
             try:
                 pos = self._item_pos[self._items.index(it)]
@@ -329,7 +285,7 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
             LOG.error(err_msg)
             LOG.debug(f'Error type: {type(e).__name__}, Error message: {str(e)}\n'
                       f'Traceback: {"".join(traceback.format_exception(*sys.exc_info()))}')
-            raise FlowException(err_msg) from e
+            raise _change_exception_type(e, FlowException) from None
 
     def bind(self, *args, **kw):
         return bind(self, *args, **kw)
