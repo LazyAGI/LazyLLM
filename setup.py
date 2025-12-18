@@ -16,12 +16,18 @@ class CMakeBuild(build_ext):
             self.build_cmake(ext)
 
     def build_cmake(self, ext):
+        extdir = os.path.abspath(os.path.join(os.path.dirname(__file__), 'lazyllm'))
         cfg = 'Debug' if self.debug else 'Release'
 
         build_temp = os.path.join(self.build_temp, ext.name)
         os.makedirs(build_temp, exist_ok=True)
 
-        cmake_args = [f'-DPYTHON_EXECUTABLE={sys.executable}']
+        cmake_args = [
+            f'-DCMAKE_LIBRARY_OUTPUT_DIRECTORY={extdir}',
+            f'-DPYTHON_EXECUTABLE={sys.executable}',
+            f'-DCMAKE_BUILD_TYPE={cfg}',
+        ]
+
         if platform.system() == 'Windows':
             cmake_args = ['-A', 'x64']
         

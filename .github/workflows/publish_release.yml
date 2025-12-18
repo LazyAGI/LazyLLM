@@ -197,11 +197,6 @@ jobs:
         with:
           submodules: false
 
-      - name: Init specific submodule
-        run: |
-          git submodule update --init LazyLLM-Env
-          git submodule update --init csrc/thirdparty/pybind11
-
       # - name: Download repo-with-docs
       #   uses: actions/download-artifact@v4
       #   with:
