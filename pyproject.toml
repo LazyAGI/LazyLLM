@@ -1,27 +1,6 @@
 [build-system]
-requires = ["scikit-build-core>=0.9","pybind11>=2.11"]
-build-backend = "scikit_build_core.build"
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["lazyllm"]
-
-[tool.setuptools.package-data]
-"*" = ["*.toml"]
-
-[tool.scikit-build]
-cmake.source-dir = "csrc"
-cmake.build-type = "Release"
-build.verbose = true
-wheel.cmake = true
-# pip freeze > requirements-build-lock.txt
-# pip install -r requirements-build-lock.txt
-# python -m build --wheel --no-isolation
-# python -m build --wheel --no-isolation --config-setting=skbuild.wheel.cmake=true
-wheel.expand-macos-universal-tags = true
-
-[tool.scikit-build.cmake.define]
-PYBIND11_FINDPYTHON = "ON"
+requires = ["setuptools", "wheel", "pybind11", "cmake",]
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "lazyllm"
