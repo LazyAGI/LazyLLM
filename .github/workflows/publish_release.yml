@@ -223,6 +223,7 @@ jobs:
           mkdir -p build && cd build
           cmake ../csrc
           cmake --build .
+          cd ..
 
       - name: Build wheel
         run: |
