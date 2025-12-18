@@ -1,7 +1,9 @@
 import base64
 import requests
 import uuid
+import re
 from pathlib import Path
+from lazyllm.thirdparty import bs4
 from typing import Dict, List, Optional, Callable, Union
 
 from lazyllm import LOG
@@ -161,17 +163,21 @@ class PaddleOCRPDFReader(LazyLLMReaderBase):
             block['content'] = item.get('block_content', '')
 
             if block['type'] in ['paragraph_title', 'doc_title']:
-                block['text_level'] = block['content'].count('#')
-                block['content'] = block['content'].replace('#', '').strip()
+                m = re.match(r'^(#+)\s*(.*)$', block['content'])
+                if m:
+                    block['text_level'] = len(m.group(1))
+                    block['content'] = m.group(2).strip()
             elif block['type'] == 'image':
-                image_path = []
-                for img_name, img_obj in img_map.items():
-                    if img_obj.startswith(('http://', 'https://')) or len(img_obj) <= 92:
-                        block['content'] = block['content'].replace(img_name, img_obj)
-                        image_path.append(img_obj)
-                block['image_path'] = image_path
+                img_paths = self._extract_img_path(block['content'])
+                if not img_paths or not img_map.get(img_paths[0]):
+                    continue
+                true_img_path = img_map.get(img_paths[0])
+                block['content'] = f'![]({true_img_path})'
+                block['image_path'] = true_img_path
             elif block['type'] == 'ocr':
                 block['type'] = 'page'
+            elif block['type'] == 'display_formula':
+                block['type'] = 'equation'
 
             blocks.append(block)
         return blocks
@@ -227,3 +233,12 @@ class PaddleOCRPDFReader(LazyLLMReaderBase):
                 LOG.warning(f'[PaddleOCRPDFReader] Failed to save image {img_path}: {e}')
                 md_images[img_path] = md_images[img_path]
                 continue
+
+    def _extract_img_path(self, html: str) -> List[str]:
+        soup = bs4.BeautifulSoup(html, 'html.parser')
+        imgs = soup.find_all('img')
+        imgs_path = []
+        for img in imgs:
+            src = img.get('src', '')
+            imgs_path.append(src)
+        return imgs_path

@@ -8,6 +8,7 @@ import lazyllm
 from lazyllm.tools.rag.readers.paddleocr_pdf_reader import PaddleOCRPDFReader
 from lazyllm.tools.rag import DocNode
 
+lazyllm.config.add('PADDLEOCRVL_URL', str, '', 'PADDLEOCRVL_URL')
 
 def _is_url_accessible(base_url: str, timeout: float = 1.0) -> bool:
     if not base_url or not base_url.strip():
@@ -28,7 +29,7 @@ def _is_url_accessible(base_url: str, timeout: float = 1.0) -> bool:
 class TestPaddleOCRPDFReader(object):
     def setup_method(self):
         # Skip all tests if paddleocrvl_url is empty or not accessible
-        self.url = os.environ.get('LAZYLLM_PADDLEOCRVL_URL')
+        self.url = lazyllm.config['PADDLEOCRVL_URL']
         if not self.url or not self.url.strip():
             pytest.skip('paddleocrvl_url is empty or not set')
         if not _is_url_accessible(self.url):
@@ -63,10 +64,8 @@ class TestPaddleOCRPDFReader(object):
         # Check if image_path in image node metadata actually exists
         image_nodes = [doc for doc in docs if doc.metadata.get('type') == 'image']
         for image_node in image_nodes:
-            image_paths = image_node.metadata.get('image_path', [])
-            assert isinstance(image_paths, list), 'image_path should be a list'
-            for image_path in image_paths:
-                assert os.path.exists(image_path), f'Image path does not exist: {image_path}'
+            image_path = image_node.metadata.get('image_path')
+            assert os.path.exists(image_path), f'Image path does not exist: {image_path}'
 
     def test_load_data_with_split_doc_false(self):
         if not os.path.exists(self.test_pdf):

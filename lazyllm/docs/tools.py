@@ -1995,6 +1995,13 @@ Args:
 
 add_chinese_doc('rag.readers.PaddleOCRPDFReader', '''\
 基于PaddleOCR服务的PDF解析器，通过调用PaddleOCR服务的API来解析PDF文件，支持丰富的文档结构识别。
+服务接入方式：
+1. 使用官方提供的 API 服务
+    - 在飞桨开发者平台（https://aistudio.baidu.com）注册账号并创建 api_key（访问令牌）
+    - 初始化时传入 api_key：PaddleOCRPDFReader(api_key="your_api_key")
+2. 使用本地部署的PaddleOCR-VL文档解析服务
+    - 服务化部署方式请参考官方文档第 4 节「服务化部署」：https://www.paddleocr.ai/main/version3.x/pipeline_usage/PaddleOCR-VL.html
+    - 初始化时传入服务地址 url：PaddleOCRPDFReader(url="http://127.0.0.1:8000")
 
 Args:
     url (str, 可选):PaddleOCR 服务的接口地址。如果不提供，使用官方地址。
@@ -2019,6 +2026,14 @@ Args:
 
 add_english_doc('rag.readers.PaddleOCRPDFReader', '''\
 Reader for PDF files by calling the PaddleOCR service's API.
+Service Access Methods:
+1. Using the official API service
+    - Register an account on the PaddlePaddle Developer Platform (https://aistudio.baidu.com) and create an api_key (access token)
+    - Pass the api_key during initialization: PaddleOCRPDFReader(api_key="your_api_key")
+2. Using a locally deployed PaddleOCR-VL document parsing service
+    - For service-based deployment, refer to Section 4, “Service Deployment,” in the official documentation: 
+    https://www.paddleocr.ai/main/version3.x/pipeline_usage/PaddleOCR-VL.html
+    - Pass the service URL during initialization: PaddleOCRPDFReader(url="http://127.0.0.1:8000")
 
 Args:
     url (str, optional): PaddleOCR service endpoint URL. If not provided, use the official address.
