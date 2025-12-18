@@ -5,12 +5,13 @@ from lazyllm import ThreadPoolExecutor
 
 import lazyllm
 from lazyllm import FlatList, Option, kwargs, globals, locals, colored_text, redis_client
+from lazyllm.common import _register_trim_module, HandledException, _change_exception_type
 from ..components.formatter.formatterbase import file_content_hash, transform_path
 from ..flow import FlowBase, Pipeline, Parallel
 from ..common.bind import _MetaBind
 import uuid
 from ..hook import LazyLLMHook, LazyLLMFuncHook
-from lazyllm import FileSystemQueue
+from lazyllm import FileSystemQueue, LOG
 from contextlib import contextmanager
 from typing import Optional, Union, Dict, List, Callable
 import copy
@@ -32,6 +33,10 @@ redis_client = redis_client['module']
 
 
 class CacheNotFoundError(Exception): pass
+class ModuleExecutionError(HandledException): pass
+
+
+_register_trim_module({'lazyllm.module.module': ['__call__', '_call_impl']})
 
 
 class _CacheStorageStrategy(ABC):
@@ -338,11 +343,12 @@ class ModuleBase(metaclass=_MetaBind):
                  if args and isinstance(args[0], kwargs) else self._call_impl(*args, **kw))
             if self._return_trace:
                 lazyllm.FileSystemQueue.get_instance('lazy_trace').enqueue(str(r))
+        except HandledException as e: raise e
         except Exception as e:
-            raise RuntimeError(
-                f'\nAn error occured in {self.__class__} with name {self.name}.\n'
-                f'Args:\n{args}\nKwargs\n{kw}\nError messages:\n{e}\n'
-                f'Original traceback:\n{"".join(traceback.format_tb(e.__traceback__))}')
+            LOG.error(f'An error occured in {self.__class__}' + (f' with name {self.name}' if self.name else
+                      '') + f'. Args: `{args}`, Kwargs: `{kw}`')
+            raise _change_exception_type(e, ModuleExecutionError) from None
+
         for hook_obj in hook_objs[::-1]:
             hook_obj.post_hook(r)
         for hook_obj in hook_objs:
