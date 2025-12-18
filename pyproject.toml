@@ -1,6 +1,27 @@
 [build-system]
-requires = ["setuptools", "wheel", "pybind11", "cmake",]
-build-backend = "setuptools.build_meta"
+requires = ["scikit-build-core>=0.9","pybind11>=2.11"]
+build-backend = "scikit_build_core.build"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["lazyllm"]
+
+[tool.setuptools.package-data]
+"*" = ["*.toml"]
+
+[tool.scikit-build]
+cmake.source-dir = "csrc"
+cmake.build-type = "Release"
+build.verbose = true
+wheel.cmake = true
+# pip freeze > requirements-build-lock.txt
+# pip install -r requirements-build-lock.txt
+# python -m build --wheel --no-isolation
+# python -m build --wheel --no-isolation --config-setting=skbuild.wheel.cmake=true
+wheel.expand-macos-universal-tags = true
+
+[tool.scikit-build.cmake.define]
+PYBIND11_FINDPYTHON = "ON"
 
 [project]
 name = "lazyllm"
@@ -9,7 +30,7 @@ description = "A Low-code Development Tool For Building Multi-agent LLMs Applica
 authors = [{name = "wangzhihong", email = "wangzhihong@sensetime.com"}]
 license = {text = "Apache-2.0 license"}
 readme = "README.md"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "toml",
     "fastapi >=0.111.0",
