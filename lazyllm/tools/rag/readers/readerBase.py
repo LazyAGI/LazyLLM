@@ -2,7 +2,7 @@ from lazyllm.thirdparty import fsspec
 from typing import Iterable, List, Optional, Union
 
 from lazyllm.thirdparty import torch
-from lazyllm import LOG
+from lazyllm import LOG, config
 
 from ....common import LazyLLMRegisterMetaClass
 from ..doc_node import DocNode
@@ -177,11 +177,19 @@ def infer_torch_device() -> str:
     if torch.backends.mps.is_available(): return 'mps'
     return 'cpu'
 
+config.add('auto_detect_encoding', bool, True, 'AUTO_DETECT_ENCODING',
+           description='Whether auto detecting txt encoding')
+config.add('enable_chardet', bool, True, 'ENABLE_CHARDET',
+           description='Whether to use chardet when detect txt encoding')
+config.add('use_encoding_cache', bool, True, 'USE_ENCODING_CACHE',
+           description='Whether use cahce to accelerate txt encoding')
+
+
 class TxtReader(LazyLLMReaderBase):
     def __init__(self, encoding: Optional[str] = None, return_trace: bool = True,
-                 auto_detect_encoding: bool = True,
-                 enable_chardet: bool = True,
-                 use_encoding_cache: bool = True) -> None:
+                 auto_detect_encoding: bool = config['auto_detect_encoding'],
+                 enable_chardet: bool = config['enable_chardet'],
+                 use_encoding_cache: bool = config['use_encoding_cache']) -> None:
         super().__init__(return_trace=return_trace)
         self._encoding = encoding
         self._auto_detect_encoding = auto_detect_encoding
