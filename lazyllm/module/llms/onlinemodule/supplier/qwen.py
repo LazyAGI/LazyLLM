@@ -406,7 +406,7 @@ class QwenTextToImageModule(QwenMultiModal):
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
         task_response = dashscope.ImageSynthesis.async_call(**call_params)
-        if not task_response:
+        if not task_response.output:
             raise RuntimeError('Failed to create image synthesis task, may due to insufficient balance on your account.')
         response = dashscope.ImageSynthesis.wait(task=task_response.output.task_id, api_key=self._api_key)
         if response.status_code == HTTPStatus.OK:
