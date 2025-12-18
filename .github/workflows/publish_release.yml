@@ -230,13 +230,13 @@ jobs:
         run: |
           # Tell poetry this is a project with binary extensions
           if [[ ${{ matrix.os }} == "macos-latest" ]]; then
-            sed -i '' '/\[tool.poetry\]/a\ build = "csrc/cpp_ext_build.py"' pyproject.toml
+            sed -i '' '/[tool.poetry]/a\$'\n''build = "csrc/cpp_ext_build.py"' pyproject.toml
           else
             sed -i '/\[tool.poetry\]/a build = "csrc/cpp_ext_build.py"' pyproject.toml
           fi
 
           # Invoke poetry build by cibuildwheel, for automatic dependency bundling
-          pip install cibuildwheel==2.22.0
+          pip install cibuildwheel
           python -m cibuildwheel --output-dir repaired_wheel
           ls -la dist/
           ls -la repaired_wheel/
