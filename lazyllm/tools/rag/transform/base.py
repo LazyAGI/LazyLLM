@@ -9,6 +9,7 @@ from lazyllm import ThreadPoolExecutor
 import re
 from functools import partial
 import os
+import tempfile
 import threading
 import tiktoken
 from lazyllm import config
@@ -194,6 +195,8 @@ class _TextSplitterBase(NodeTransform):
                 path = os.path.join(model_path, 'tiktoken')
                 try:
                     os.makedirs(path, exist_ok=True)
+                    with tempfile.NamedTemporaryFile(dir=path, delete=True):
+                        pass
                     os.environ['TIKTOKEN_CACHE_DIR'] = path
                     tiktoken_cache_dir_set = True
                 except PermissionError:
