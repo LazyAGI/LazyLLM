@@ -18,15 +18,10 @@ httpcore
 httpx 
 idna 
 libcst==1.4.0 
-openai 
 pydantic-core 
 pydantic 
 pyyaml 
 sniffio
 tqdm 
 typing-extensions
-redis
-funasr
-transformers
-ChatTTS
 nbformat

@@ -68,10 +68,6 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
         return '\n'.join(json_strs)
 
     def _upload_train_file(self, train_file):
-        headers = {
-            'Authorization': 'Bearer ' + self._api_key
-        }
-
         url = urljoin(self._base_url, 'files')
         self.get_finetune_data(train_file)
 
@@ -80,7 +76,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
             'file': (os.path.basename(train_file), self._dataHandler, 'application/json')
         }
 
-        with requests.post(url, headers=headers, files=file_object) as r:
+        with requests.post(url, headers=self._get_empty_header(), files=file_object) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
@@ -102,21 +98,14 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
         url = urljoin(self._base_url, 'fine_tuning/jobs')
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self._api_key}',
-        }
-        data = {
-            'model': train_model,
-            'training_file': train_file_id
-        }
+        data = {'model': train_model, 'training_file': train_file_id}
         if len(kw) > 0:
             if 'finetuning_type' in kw:
                 data = self._update_kw(data, kw)
             else:
                 data.update(kw)
 
-        with requests.post(url, headers=headers, json=data) as r:
+        with requests.post(url, headers=self._header, json=data) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
@@ -130,11 +119,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
             return 'Invalid'
         job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
         fine_tune_url = os.path.join(self._base_url, f'fine_tuning/jobs/{job_id}/cancel')
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self._api_key}',
-        }
-        with requests.post(fine_tune_url, headers=headers) as r:
+        with requests.post(fine_tune_url, headers=self._header) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         status = r.json()['status']
@@ -145,10 +130,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _query_finetuned_jobs(self):
         fine_tune_url = os.path.join(self._base_url, 'fine_tuning/jobs/')
-        headers = {
-            'Authorization': f'Bearer {self._api_key}'
-        }
-        with requests.get(fine_tune_url, headers=headers) as r:
+        with requests.get(fine_tune_url, headers=self._get_empty_header()) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         return r.json()
@@ -186,10 +168,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
                                'provided as an argument or started a training job.')
         job_id = fine_tuning_job_id if fine_tuning_job_id else self.fine_tuning_job_id
         fine_tune_url = os.path.join(self._base_url, f'fine_tuning/jobs/{job_id}/events')
-        headers = {
-            'Authorization': f'Bearer {self._api_key}'
-        }
-        with requests.get(fine_tune_url, headers=headers) as r:
+        with requests.get(fine_tune_url, headers=self._get_empty_header()) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         return job_id, r.json()
@@ -202,10 +181,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
 
     def _query_finetuning_job_info(self, fine_tuning_job_id):
         fine_tune_url = os.path.join(self._base_url, f'fine_tuning/jobs/{fine_tuning_job_id}')
-        headers = {
-            'Authorization': f'Bearer {self._api_key}'
-        }
-        with requests.get(fine_tune_url, headers=headers) as r:
+        with requests.get(fine_tune_url, headers=self._get_empty_header()) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
         return r.json()
@@ -274,6 +250,7 @@ class GLMMultiModal(OnlineMultiModalBase):
                  base_url: str = 'https://open.bigmodel.cn/api/paas/v4', return_trace: bool = False,
                  **kwargs):
         OnlineMultiModalBase.__init__(self, model_series='GLM', model_name=model_name,
+                                      api_key=api_key or lazyllm.config['glm_api_key'],
                                       return_trace=return_trace, **kwargs)
         self._client = zhipuai.ZhipuAI(api_key=api_key or lazyllm.config['glm_api_key'], base_url=base_url)
 

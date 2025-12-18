@@ -6,7 +6,7 @@ import requests
 import unittest
 import lazyllm
 from lazyllm import LOG
-from lazyllm.tools.servers.mineru import MineruServer
+from lazyllm.tools.servers.mineru.mineru_server_module import MineruServer
 from lazyllm.tools.rag.readers.mineru_pdf_reader import MineruPDFReader
 
 os.environ['MINERU_MODEL_SOURCE'] = 'modelscope'
