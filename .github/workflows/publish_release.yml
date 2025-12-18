@@ -187,6 +187,7 @@ jobs:
     needs: build-doc
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
         python-version: ["3.10", "3.11", "3.12", "3.13"]
@@ -228,7 +229,11 @@ jobs:
       - name: Build wheel
         run: |
           # Tell poetry this is a project with binary extensions
-          sed -i '/\[tool.poetry\]/a build = "csrc/cpp_ext_build.py"' pyproject.toml
+          if [[ "$RUNNER_OS" == "macOS" ]]; then
+            sed -i '' '/\[tool.poetry\]/a build = "csrc/cpp_ext_build.py"' pyproject.toml
+          else
+            sed -i '/\[tool.poetry\]/a build = "csrc/cpp_ext_build.py"' pyproject.toml
+          fi
 
           # Invoke poetry build by cibuildwheel, for automatic dependency bundling
           pip install cibuildwheel==2.22.0
@@ -279,6 +284,7 @@ jobs:
     needs: publish
     runs-on: ${{ matrix.os }}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
     steps:
