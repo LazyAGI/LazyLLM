@@ -209,6 +209,8 @@ jobs:
         run: |
           set -ex
           mkdir -p repo
+          ls repo_artifact/
+          mv repo_artifact/LazyLLM/.github/workflows/repo-with-docs.tar.gz repo_artifact/repo-with-docs.tar.gz
           tar -xzf repo_artifact/repo-with-docs.tar.gz -C repo
           # copy extracted content to workspace root (overwrite)
           cp -a repo/. ./
