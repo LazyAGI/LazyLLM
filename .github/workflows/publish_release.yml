@@ -282,7 +282,7 @@ jobs:
 
       - name: Verify installation
         run: |
-          python -c "import LazyLLM; print(LazyLLM.__version__)"
+          python -c "import lazyllm; print(lazyllm.__version__)"
           python -c "from lazyllm_cpp import *"
 
   check-release:
