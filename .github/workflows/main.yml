@@ -144,7 +144,7 @@ jobs:
         uses: ./.github/actions/run_tests
         with:
           working_directory: ${{ env.CI_PATH }}
-          changed_files: ${{ needs.Clone.outputs.changed_files }}
+          changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/basic_tests"
           launcher: "empty"
@@ -163,13 +163,15 @@ jobs:
         uses: ./.github/actions/run_tests
         with:
           working_directory: ${{ env.CI_PATH }}
-          changed_files: ${{ needs.Clone.outputs.changed_files }}
+          changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/advanced_tests"
 
   engine_tests:
     runs-on: tps_sco_nv
     needs: [ clone ]
+    if: |
+      contains(needs.clone.outputs.changed_files, 'lazyllm/engine/')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -180,7 +182,7 @@ jobs:
         uses: ./.github/actions/run_tests
         with:
           working_directory: ${{ env.CI_PATH }}
-          changed_files: ${{ needs.Clone.outputs.changed_files }}
+          changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/engine_tests"
 
@@ -230,7 +232,7 @@ jobs:
         uses: ./.github/actions/run_tests
         with:
           working_directory: ${{ env.CI_PATH }}
-          changed_files: ${{ needs.Clone.outputs.changed_files }}
+          changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/charge_tests"
 
@@ -454,7 +456,7 @@ jobs:
               tests/charge_tests
           fi
         env:
-          CHANGED_FILES: ${{ needs.Clone.outputs.changed_files }}
+          CHANGED_FILES: ${{ needs.clone.outputs.changed_files }}
           LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
           LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
           LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
@@ -580,7 +582,7 @@ jobs:
               --override-ini=cache_dir=tests/charge_tests/.pytest_cache tests/charge_tests
          fi
         env:
-          CHANGED_FILES: ${{ needs.Clone.outputs.changed_files }}
+          CHANGED_FILES: ${{ needs.clone.outputs.changed_files }}
           LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
           LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
           LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
