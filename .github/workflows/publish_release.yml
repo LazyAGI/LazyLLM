@@ -271,7 +271,7 @@ jobs:
       - name: Install LazyLLM from PyPI
         run: |
           pip install -U pip setuptools wheel
-          sleep 15
+          sleep 60
           FULL_TAG_NAME="${{ github.ref_name }}"
           if [ -n "${{ vars.PYPI_DOWNLOAD_URL }}" ]; then
             pip install lazyllm==${FULL_TAG_NAME#v} \
@@ -287,7 +287,7 @@ jobs:
       - name: Verify installation
         run: |
           python -c "import lazyllm; print(lazyllm.__version__)"
-          python -c "from lazyllm_cpp import *"
+          python -c "from lazyllm import lazyllm_cpp"
 
   check-release:
     name: check and create GitHub Release
