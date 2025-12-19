@@ -9,7 +9,8 @@ on:
 
 env:
   PYTHON_VERSION: "3.10.9"
-  PYPI_URL: "https://test.pypi.org/simple/"
+  PYPI_PUBLISH_URL: ${{ var.PYPI_PUBLISH_URL || "https://pypi.org/legacy/" }}
+  PYPI_DOWNLOAD_URL: ${{ var.PYPI_DOWNLOAD_URL || "https://pypi.org/simple/" }}
 
 defaults:
   run:
@@ -18,7 +19,7 @@ defaults:
 jobs:
   check-exists:
     name: Check Pypi version exists
-    if: github.repository == 'CompromisedKiwi/LazyLLM'
+    if: endsWith(github.repository, '/LazyLLM')
     runs-on: ubuntu-latest
     outputs:
       TAG: ${{ steps.set_tag_var.outputs.tag }}
@@ -227,7 +228,7 @@ jobs:
 
   publish:
     name: publish to PyPI
-    if: github.repository == 'CompromisedKiwi/LazyLLM'
+    if: endsWith(github.repository, '/LazyLLM')
     needs: [build-wheel-with-cpp-extension, build-wheel-rollback-version]
     runs-on: ubuntu-latest
     permissions:
@@ -250,7 +251,7 @@ jobs:
       - name: Publish all wheels to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          repository-url: ${{ env.PYPI_URL }}
+          repository-url: ${{ env.PYPI_PUBLISH_URL }}
           packages_dir: dist/
 
   check-pypi-installation:
@@ -268,7 +269,7 @@ jobs:
       - name: Install LazyLLM from PyPI
         run: |
           FULL_TAG_NAME="${{ github.ref_name }}"
-          pip install lazyllm==${FULL_TAG_NAME#v} --index-url ${{ env.PYPI_URL }}
+          pip install lazyllm==${FULL_TAG_NAME#v} --index-url ${{ env.PYPI_DOWNLOAD_URL }}
 
       - name: Verify installation
         run: |
