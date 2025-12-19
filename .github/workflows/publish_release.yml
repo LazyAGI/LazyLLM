@@ -158,6 +158,7 @@ jobs:
 
       - name: Build default wheel
         run: |
+          pip install build
           python -m build --config-setting=skbuild.wheel.cmake=false
           ls -la dist/
 
@@ -267,7 +268,7 @@ jobs:
       - name: Install LazyLLM from PyPI
         run: |
           FULL_TAG_NAME="${{ github.ref_name }}"
-          pip install lazyllm==${FULL_TAG_NAME#v} --index-url ${{ env.PYPI_URL }} 
+          pip install lazyllm==${FULL_TAG_NAME#v} --index-url ${{ env.PYPI_URL }}
 
       - name: Verify installation
         run: |
