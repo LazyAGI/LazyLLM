@@ -35,7 +35,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             if os.path.exists(default_path):
                 base_model = default_path
         if not merge_path:
-            normalized_target = os.path.normpath(target_path).replace(os.path.sep, '/')
+            normalized_target = os.path.normpath(target_path)
             if normalized_target.endswith('lazyllm_lora'):
                 merge_path = normalized_target.replace('lazyllm_lora', 'lazyllm_merge')
             else:
