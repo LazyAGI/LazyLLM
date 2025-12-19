@@ -270,6 +270,8 @@ jobs:
 
       - name: Install LazyLLM from PyPI
         run: |
+          pip install -U pip setuptools wheel
+          sleep 15
           FULL_TAG_NAME="${{ github.ref_name }}"
           if [ -n "${{ vars.PYPI_DOWNLOAD_URL }}" ]; then
             pip install lazyllm==${FULL_TAG_NAME#v} \
