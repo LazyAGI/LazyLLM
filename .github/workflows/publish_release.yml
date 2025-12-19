@@ -69,7 +69,6 @@ jobs:
       - name: Init specific submodule
         run: |
           git submodule update --init LazyLLM-Env
-          git submodule update --init csrc/thirdparty/pybind11
 
       - name: Set up python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
@@ -177,7 +176,7 @@ jobs:
 
   build-wheel-with-cpp-extension:
     name: Build wheels with native extensions (${{ matrix.os }})
-    # needs: build-doc
+    needs: build-doc
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
