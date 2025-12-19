@@ -301,10 +301,20 @@ finetune-all = [
     "transformers",
     "wandb" 
 ]
+vllm = [
+    "huggingface-hub",
+    "modelscope",
+    "vllm"
+]
 lmdeploy = [
     "huggingface-hub",
     "modelscope",
     "lazyllm-lmdeploy"
+]
+lightllm = [
+    "huggingface-hub",
+    "modelscope",
+    "lightllm"
 ]
 infinity = [
     "huggingface-hub",
