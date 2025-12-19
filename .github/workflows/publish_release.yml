@@ -8,176 +8,172 @@ on:
   workflow_dispatch:
 
 env:
-  POETRY_VERSION: "1.8.3"
   PYTHON_VERSION: "3.10.9"
-  PYPI_URL: "https://test.pypi.org/legacy/"
+  PYPI_URL: "https://test.pypi.org/simple/"
 
 defaults:
   run:
     shell: bash
 
 jobs:
-  # check-exists:
-  #   name: Check Pypi version exists
-  #   if: github.repository == 'CompromisedKiwi/LazyLLM'
-  #   runs-on: ubuntu-latest
-  #   outputs:
-  #     TAG: ${{ steps.set_tag_var.outputs.tag }}
-  #     pypi_version_exists: ${{ steps.pypi_check.outputs.pypi_version_exists }}
-  #   steps:
-  #     - name: Extract tag from ref
-  #       id: set_tag_var
-  #       run: |
-  #         FULL_TAG_NAME="${{ github.ref_name }}"
-  #         echo "tag=${FULL_TAG_NAME#v}" >> $GITHUB_OUTPUT
+  check-exists:
+    name: Check Pypi version exists
+    if: github.repository == 'CompromisedKiwi/LazyLLM'
+    runs-on: ubuntu-latest
+    outputs:
+      TAG: ${{ steps.set_tag_var.outputs.tag }}
+      pypi_version_exists: ${{ steps.pypi_check.outputs.pypi_version_exists }}
+    steps:
+      - name: Extract tag from ref
+        id: set_tag_var
+        run: |
+          FULL_TAG_NAME="${{ github.ref_name }}"
+          echo "tag=${FULL_TAG_NAME#v}" >> $GITHUB_OUTPUT
 
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         submodules: false
-  #         fetch-depth: 0
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
 
-  #     - name: Set up python ${{ env.PYTHON_VERSION }}
-  #       uses: actions/setup-python@v5
-  #       with:
-  #         python-version: ${{ env.PYTHON_VERSION }}
+      - name: Set up python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-  #     - name: Check PyPI for existing version
-  #       id: pypi_check
-  #       run: |
-  #         TAG=${{ steps.set_tag_var.outputs.tag }}
-  #         echo "TAG: ${TAG}"
-  #         PACKAGE_NAME=$(grep -m 1 'name = "' pyproject.toml | cut -d'"' -f2)
-  #         RESPONSE=$(curl -s https://test.pypi.org/pypi/$PACKAGE_NAME/json)
-  #         if echo "$RESPONSE" | jq -e ".releases | has(\"$TAG\")"; then
-  #           echo "Version $TAG already exists on PyPI. Skipping publish."
-  #           echo "pypi_version_exists=true" >> $GITHUB_OUTPUT
-  #         else
-  #           echo "Version $TAG does not exist on PyPI. Proceeding with publish."
-  #           echo "pypi_version_exists=false" >> $GITHUB_OUTPUT
-  #         fi
+      - name: Check PyPI for existing version
+        id: pypi_check
+        run: |
+          TAG=${{ steps.set_tag_var.outputs.tag }}
+          echo "TAG: ${TAG}"
+          PACKAGE_NAME=$(grep -m 1 'name = "' pyproject.toml | cut -d'"' -f2)
+          RESPONSE=$(curl -s https://test.pypi.org/pypi/$PACKAGE_NAME/json)
+          if echo "$RESPONSE" | jq -e ".releases | has(\"$TAG\")"; then
+            echo "Version $TAG already exists on PyPI. Skipping publish."
+            echo "pypi_version_exists=true" >> $GITHUB_OUTPUT
+          else
+            echo "Version $TAG does not exist on PyPI. Proceeding with publish."
+            echo "pypi_version_exists=false" >> $GITHUB_OUTPUT
+          fi
 
-  # build-doc:
-  #   name: Build docs
-  #   needs: check-exists
-  #   if: needs.check-exists.outputs.pypi_version_exists == 'false'
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - uses: actions/checkout@v4
-  #       with:
-  #         submodules: false
-  #         fetch-depth: 0
+  build-doc:
+    name: Build docs
+    needs: check-exists
+    if: needs.check-exists.outputs.pypi_version_exists == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+          fetch-depth: 0
 
-  #     - name: Init specific submodule
-  #       run: |
-  #         git submodule update --init LazyLLM-Env
-  #         git submodule update --init csrc/thirdparty/pybind11
+      - name: Init specific submodule
+        run: |
+          git submodule update --init LazyLLM-Env
+          git submodule update --init csrc/thirdparty/pybind11
 
-  #     - name: Set up python ${{ env.PYTHON_VERSION }}
-  #       uses: actions/setup-python@v5
-  #       with:
-  #         python-version: ${{ env.PYTHON_VERSION }}
+      - name: Set up python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
-  #     - name: Install Poetry
-  #       uses: snok/install-poetry@v1
-  #       with:
-  #         version: ${{ env.POETRY_VERSION }}
+      - name: Update version in pyproject.toml and __init__.py
+        run: |
+          TAG=${{ needs.check-exists.outputs.TAG }}
+          echo "TAG: ${TAG}"
+          sed -i "s#^version = \".*\"#version = \"$TAG\"#" pyproject.toml
+          sed -i "s#^__version__ = '.*'#__version__ = '$TAG'#" lazyllm/__init__.py
 
-  #     - name: Update version in pyproject.toml and __init__.py
-  #       run: |
-  #         TAG=${{ needs.check-exists.outputs.TAG }}
-  #         echo "TAG: ${TAG}"
-  #         sed -i "s#^version = \".*\"#version = \"$TAG\"#" pyproject.toml
-  #         sed -i "s#^__version__ = '.*'#__version__ = '$TAG'#" lazyllm/__init__.py
+      - name: Install deps
+        run: pip install -e .
 
-  #     - name: Install deps
-  #       shell: bash
-  #       run: pip install -e .
+      - name: Test import
+        working-directory: /tmp
+        run: python -c "import lazyllm"
 
-  #     - name: Test import
-  #       working-directory: /tmp
-  #       shell: bash
-  #       run: python -c "import lazyllm"
+      - name: Check requirements
+        run: |
+          pip install toml
+          python scripts/check_requirements.py
 
-  #     - name: Check requirements
-  #       shell: bash
-  #       run: |
-  #         pip install toml
-  #         python scripts/check_requirements.py
+      - name: Copy files
+        run: cp pyproject.toml lazyllm/
 
-  #     - name: Copy files
-  #       shell: bash
-  #       run: cp LazyLLM-Env/poetry.lock . && cp pyproject.toml lazyllm/
+      - name: Build doc
+        run: |
+          set -ex
+          export PYTHONPATH=$PWD:$PYTHONPATH
+          pip install -r requirements.txt
+          pip install -r docs/requirements.txt
+          python docs/add_docstrings.py
 
-  #     - name: Build doc
-  #       run: |
-  #         set -ex
-  #         export PYTHONPATH=$PWD:$PYTHONPATH
-  #         pip install -r requirements.txt
-  #         pip install -r docs/requirements.txt
-  #         python docs/add_docstrings.py
-
-  #     - name: Clean cache
-  #       shell: bash
-  #       run: |
-  #         pip cache purge
-  #         pip freeze | grep -v "^-e" | xargs pip uninstall -y
+      - name: Clean cache
+        shell: bash
+        run: |
+          pip cache purge
+          pip freeze | grep -v "^-e" | xargs pip uninstall -y
       
-  #     - name: Tar repo with docs
-  #       run: |
-  #         touch repo-with-docs.tar.gz
-  #         tar --exclude=.git --exclude=repo-with-docs.tar.gz \
-  #           -czf repo-with-docs.tar.gz .
-  #         ls -lh repo-with-docs.tar.gz
+      - name: Tar repo with docs
+        run: |
+          touch repo-with-docs.tar.gz
+          tar --exclude=.git --exclude=repo-with-docs.tar.gz \
+            -czf repo-with-docs.tar.gz .
+          ls -lh repo-with-docs.tar.gz
 
-  #     - name: Upload repo artifact (with docs inserted)
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: repo-with-docs
-  #         path: repo-with-docs.tar.gz
-  #         retention-days: 7
+      - name: Upload repo artifact (with docs inserted)
+        uses: actions/upload-artifact@v4
+        with:
+          name: repo-with-docs
+          path: repo-with-docs.tar.gz
+          retention-days: 7
 
-  #     - name: Save wheels to cache
-  #       uses: actions/cache/save@v3
-  #       with:
-  #         path: repo-with-docs.tar.gz
-  #         key: repo-with-docs
+      - name: Save wheels to cache
+        uses: actions/cache/save@v3
+        with:
+          path: repo-with-docs.tar.gz
+          key: repo-with-docs
 
-  # build-wheel-rollback-version:
-    # needs: build-doc
-    # runs-on: ubuntu-latest
-    # steps:
-    #   - name: Download repo-with-docs
-    #     uses: actions/download-artifact@v4
-    #     with:
-    #       name: repo-with-docs
-    #       path: ./repo_artifact
+  build-wheel-rollback-version:
+    needs: build-doc
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download repo-with-docs
+        uses: actions/download-artifact@v4
+        with:
+          name: repo-with-docs
+          path: ./repo_artifact
 
-    #   - name: Extract repo-with-docs
-    #     run: |
-    #       set -ex
-    #       mkdir -p repo
-    #       tar -xzf repo_artifact/repo-with-docs.tar.gz -C repo
-    #       # copy extracted content to workspace root (overwrite)
-    #       cp -a repo/. ./
-    #       # show a bit for debug
-    #       ls -la | sed -n '1,200p'
+      - name: Extract repo-with-docs
+        run: |
+          set -ex
+          mkdir -p repo
+          tar -xzf repo_artifact/repo-with-docs.tar.gz -C repo
+          # copy extracted content to workspace root (overwrite)
+          cp -a repo/. ./
+          # show a bit for debug
+          ls -la | sed -n '1,200p'
 
-    #   - name: Set up Python
-    #     uses: actions/setup-python@v5
-    #     with:
-    #       python-version: "3.10"
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.10"
 
-    #   - name: Build default wheel
-    #     run: |
-    #       python -m build --wheel --no-isolation --config-setting=skbuild.wheel.cmake=false
-    #       ls -la dist/
+      - name: Build default wheel
+        run: |
+          python -m build --config-setting=skbuild.wheel.cmake=false
+          ls -la dist/
 
-    #   - name: Upload wheel artifact
-    #     uses: actions/upload-artifact@v4
-    #     with:
-    #       name: wheels-pure-python
-    #       path: dist/*.whl
-    #       retention-days: 7
+      - name: Upload source_code
+        uses: actions/upload-artifact@v4
+        with:
+          name: source_code
+          path: dist/*.tar.gz
+
+      - name: Upload wheel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: wheels-pure-python
+          path: dist/*.whl
+          retention-days: 7
 
   build-wheel-with-cpp-extension:
     name: Build wheels with native extensions (${{ matrix.os }})
@@ -189,30 +185,30 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
 
     steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-
-      # - name: Download repo-with-docs
-      #   uses: actions/download-artifact@v4
+      # - uses: actions/checkout@v4
       #   with:
-      #     name: repo-with-docs
-      #     path: ./repo_artifact
+      #     submodules: false
 
-      # - name: Extract repo-with-docs
-      #   run: |
-      #     set -ex
-      #     mkdir -p repo
-      #     tar -xzf repo_artifact/repo-with-docs.tar.gz -C repo
-      #     # copy extracted content to workspace root (overwrite)
-      #     cp -a repo/. ./
-      #     # show a bit for debug
-      #     ls -la | sed -n '1,200p'
+      - name: Download repo-with-docs
+        uses: actions/download-artifact@v4
+        with:
+          name: repo-with-docs
+          path: ./repo_artifact
+
+      - name: Extract repo-with-docs
+        run: |
+          set -ex
+          mkdir -p repo
+          tar -xzf repo_artifact/repo-with-docs.tar.gz -C repo
+          # copy extracted content to workspace root (overwrite)
+          cp -a repo/. ./
+          # show a bit for debug
+          ls -la | sed -n '1,200p'
 
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
-          python-version: "3.10"
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Build wheel
         run: |
@@ -232,8 +228,7 @@ jobs:
   publish:
     name: publish to PyPI
     if: github.repository == 'CompromisedKiwi/LazyLLM'
-    # needs: [build-wheel-with-cpp-extension, build-wheel-rollback-version]
-    needs: [build-wheel-with-cpp-extension]
+    needs: [build-wheel-with-cpp-extension, build-wheel-rollback-version]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
@@ -258,8 +253,8 @@ jobs:
           repository-url: ${{ env.PYPI_URL }}
           packages_dir: dist/
 
-  check-multi-platform-installation:
-    name: Check multi-platform installation
+  check-pypi-installation:
+    name: Check pypi installation
     needs: publish
     runs-on: ${{ matrix.os }}
     strategy:
@@ -272,7 +267,8 @@ jobs:
 
       - name: Install LazyLLM from PyPI
         run: |
-          pip install --index-url ${{ env.PYPI_URL }} lazyllm
+          FULL_TAG_NAME="${{ github.ref_name }}"
+          pip install lazyllm==${FULL_TAG_NAME#v} --index-url ${{ env.PYPI_URL }} 
 
       - name: Verify installation
         run: |
@@ -315,19 +311,32 @@ jobs:
         if: env.release_exists == 'false'
         run: echo "upload_url=${{ steps.create_release.outputs.upload_url }}" >> $GITHUB_ENV
 
-      - name: Get Asset name
+      - name: Download artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: source_code
+          path: ./dist
+
+      - name: Upload Release Asset (sdist)
         run: |
-          export PKG=$(ls dist/ | grep tar)
-          set -- $PKG
-          echo "name=$1" >> $GITHUB_ENV
-          
-      - name: Upload Release Asset (sdist) to GitHub
-        id: upload-release-asset
-        uses: actions/upload-release-asset@v1
+          FILE_PATH=$(ls dist/*)
+          gh release upload "${GITHUB_REF#refs/tags/}" "$FILE_PATH" --repo "$GITHUB_REPOSITORY" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
-        with:
-          upload_url: ${{ env.upload_url }}
-          asset_path: dist/${{ env.name }}
-          asset_name: ${{ env.name }}
-          asset_content_type: application/zip
+
+      # - name: Get Asset name
+      #   run: |
+      #     export PKG=$(ls dist/ | grep tar)
+      #     set -- $PKG
+      #     echo "name=$1" >> $GITHUB_ENV
+          
+      # - name: Upload Release Asset (sdist) to GitHub
+      #   id: upload-release-asset
+      #   uses: actions/upload-release-asset@v1
+      #   env:
+      #     GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+      #   with:
+      #     upload_url: ${{ env.upload_url }}
+      #     asset_path: dist/${{ env.name }}
+      #     asset_name: ${{ env.name }}
+      #     asset_content_type: application/zip
