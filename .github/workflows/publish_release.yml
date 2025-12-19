@@ -269,7 +269,16 @@ jobs:
       - name: Install LazyLLM from PyPI
         run: |
           FULL_TAG_NAME="${{ github.ref_name }}"
-          pip install lazyllm==${FULL_TAG_NAME#v} --index-url ${{ env.PYPI_DOWNLOAD_URL }}
+          if [ -n "${{ vars.PYPI_DOWNLOAD_URL }}" ]; then
+            pip install lazyllm==${FULL_TAG_NAME#v} \
+              --index-url ${{ vars.PYPI_DOWNLOAD_URL }} \
+              --no-deps
+            pip install lazyllm==${FULL_TAG_NAME#v} \
+              --extra-index-url https://pypi.org/simple \
+              --no-build-isolation
+          else
+            pip install lazyllm==${FULL_TAG_NAME#v}
+          fi
 
       - name: Verify installation
         run: |
@@ -324,20 +333,3 @@ jobs:
           gh release upload "${GITHUB_REF#refs/tags/}" "$FILE_PATH" --repo "$GITHUB_REPOSITORY" --clobber
         env:
           GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
-
-      # - name: Get Asset name
-      #   run: |
-      #     export PKG=$(ls dist/ | grep tar)
-      #     set -- $PKG
-      #     echo "name=$1" >> $GITHUB_ENV
-          
-      # - name: Upload Release Asset (sdist) to GitHub
-      #   id: upload-release-asset
-      #   uses: actions/upload-release-asset@v1
-      #   env:
-      #     GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
-      #   with:
-      #     upload_url: ${{ env.upload_url }}
-      #     asset_path: dist/${{ env.name }}
-      #     asset_name: ${{ env.name }}
-      #     asset_content_type: application/zip
