@@ -61,6 +61,9 @@ dependencies = [
     "deepdiff >=8.6.1",
 ]
 
+[project.scripts]
+lazyllm = "lazyllm.cli.main:main"
+
 [tool.poetry.dependencies]
 appdirs = { version = "*", optional = true }
 loralib = { version = "*", optional = true }
