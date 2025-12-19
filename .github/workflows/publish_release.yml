@@ -265,6 +265,8 @@ jobs:
     steps:
       - name: Set up Python
         uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Install LazyLLM from PyPI
         run: |
