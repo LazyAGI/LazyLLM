@@ -143,55 +143,51 @@ jobs:
   #         key: repo-with-docs
 
   # build-wheel-rollback-version:
-  #   needs: build-doc
-  #   runs-on: ubuntu-latest
-  #   steps:
-  #     - name: Download repo-with-docs
-  #       uses: actions/download-artifact@v4
-  #       with:
-  #         name: repo-with-docs
-  #         path: ./repo_artifact
+    # needs: build-doc
+    # runs-on: ubuntu-latest
+    # steps:
+    #   - name: Download repo-with-docs
+    #     uses: actions/download-artifact@v4
+    #     with:
+    #       name: repo-with-docs
+    #       path: ./repo_artifact
 
-  #     - name: Extract repo-with-docs
-  #       run: |
-  #         set -ex
-  #         mkdir -p repo
-  #         tar -xzf repo_artifact/repo-with-docs.tar.gz -C repo
-  #         # copy extracted content to workspace root (overwrite)
-  #         cp -a repo/. ./
-  #         # show a bit for debug
-  #         ls -la | sed -n '1,200p'
+    #   - name: Extract repo-with-docs
+    #     run: |
+    #       set -ex
+    #       mkdir -p repo
+    #       tar -xzf repo_artifact/repo-with-docs.tar.gz -C repo
+    #       # copy extracted content to workspace root (overwrite)
+    #       cp -a repo/. ./
+    #       # show a bit for debug
+    #       ls -la | sed -n '1,200p'
 
-  #     - name: Set up Python
-  #       uses: actions/setup-python@v5
-  #       with:
-  #         python-version: "3.10"
+    #   - name: Set up Python
+    #     uses: actions/setup-python@v5
+    #     with:
+    #       python-version: "3.10"
 
-  #     - name: Install build deps
-  #       run: |
-  #         pip install build poetry
+    #   - name: Build default wheel
+    #     run: |
+    #       python -m build --wheel --no-isolation --config-setting=skbuild.wheel.cmake=false
+    #       ls -la dist/
 
-  #     - name: Build default wheel
-  #       run: |
-  #         poetry build -f wheel
-  #         ls -la dist/
-
-  #     - name: Upload wheel artifact
-  #       uses: actions/upload-artifact@v4
-  #       with:
-  #         name: wheels-pure-python
-  #         path: dist/*.whl
-  #         retention-days: 7
+    #   - name: Upload wheel artifact
+    #     uses: actions/upload-artifact@v4
+    #     with:
+    #       name: wheels-pure-python
+    #       path: dist/*.whl
+    #       retention-days: 7
 
   build-wheel-with-cpp-extension:
-    name: Build wheels with native extensions (${{ matrix.os }}-py${{ matrix.python-version }})
+    name: Build wheels with native extensions (${{ matrix.os }})
     # needs: build-doc
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-    
+
     steps:
       - uses: actions/checkout@v4
         with:
@@ -222,11 +218,8 @@ jobs:
         run: |
           pip install cibuildwheel
           cibuildwheel --output-dir repaired_wheel
-          ls -la dist/
           ls -la repaired_wheel/
         env:
-          CIBW_BUILD: "cp310-* cp311-* cp312-* cp313-*"
-          CIBW_MANYLINUX_X86_64_IMAGE: manylinux2014
           CIBW_BUILD_VERBOSITY: 1
 
       - name: Upload wheel artifact
@@ -240,6 +233,7 @@ jobs:
     name: publish to PyPI
     if: github.repository == 'CompromisedKiwi/LazyLLM'
     # needs: [build-wheel-with-cpp-extension, build-wheel-rollback-version]
+    needs: [build-wheel-with-cpp-extension]
     runs-on: ubuntu-latest
     permissions:
       id-token: write
