@@ -22,9 +22,8 @@ from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
 
-lazyllm.config.add(
-    'trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH',
-    description='The default path for trainable module config map.')
+lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH',
+                   description='The default path for trainable module config map.')
 ignore_config_keys = ['log_path', 'launcher']
 
 @functools.lru_cache(maxsize=1)
@@ -129,10 +128,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
 
         # Get default args and merge with user-provided kw, with kw taking precedence
         default_args = self._get_train_or_deploy_args(mode, disable=['base_model', 'target_path'])
-        if kw:
-            kw = {**default_args, **kw}
-        else:
-            kw = default_args
+        kw = {**default_args, **kw} if kw else default_args
 
         task = getattr(self, f'_{mode}')(base_model=self._base_model, target_path=target_path, **kw)
         return [trainset_getf, task]
