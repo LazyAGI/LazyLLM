@@ -1999,6 +1999,7 @@ add_chinese_doc('rag.readers.PaddleOCRPDFReader', '''\
 1. 使用官方提供的 API 服务
     - 在飞桨开发者平台（https://aistudio.baidu.com）注册账号并创建 api_key（访问令牌）
     - 初始化时传入 api_key：PaddleOCRPDFReader(api_key="your_api_key")
+    - 或者通过环境变量 LAZYLLM_PADDLEOCR_API_KEY 设置 api_key 后初始化：PaddleOCRPDFReader()
 2. 使用本地部署的PaddleOCR-VL文档解析服务
     - 服务化部署方式请参考官方文档第 4 节「服务化部署」：https://www.paddleocr.ai/main/version3.x/pipeline_usage/PaddleOCR-VL.html
     - 初始化时传入服务地址 url：PaddleOCRPDFReader(url="http://127.0.0.1:8000")
@@ -2030,6 +2031,8 @@ Service Access Methods:
 1. Using the official API service
     - Register an account on the PaddlePaddle Developer Platform (https://aistudio.baidu.com) and create an api_key (access token)
     - Pass the api_key during initialization: PaddleOCRPDFReader(api_key="your_api_key")
+    - Alternatively, set the api_key via the environment variable LAZYLLM_PADDLEOCR_API_KEY 
+      and initialize with: PaddleOCRPDFReader().
 2. Using a locally deployed PaddleOCR-VL document parsing service
     - For service-based deployment, refer to Section 4, “Service Deployment,” in the official documentation: 
     https://www.paddleocr.ai/main/version3.x/pipeline_usage/PaddleOCR-VL.html

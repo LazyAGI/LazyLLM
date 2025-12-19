@@ -6,10 +6,12 @@ from pathlib import Path
 from lazyllm.thirdparty import bs4
 from typing import Dict, List, Optional, Callable, Union
 
+import lazyllm
 from lazyllm import LOG
 from ..doc_node import DocNode
 from .readerBase import LazyLLMReaderBase
 
+lazyllm.config.add('paddleocr_api_key', str, None, 'PADDLEOCR_API_KEY', description='The API key for PaddleOCR')
 
 class PaddleOCRPDFReader(LazyLLMReaderBase):
     def __init__(self, url: str = None, api_key: str = None,
@@ -23,12 +25,15 @@ class PaddleOCRPDFReader(LazyLLMReaderBase):
                  return_trace: bool = True,
                  images_dir: str = None):
         super().__init__(return_trace=return_trace)
+        api_key = api_key or lazyllm.config['paddleocr_api_key']
         if not url and not api_key:
             raise ValueError('Either url or api_key must be provided')
+
         if url:
             self._url = url.rstrip('/') + '/layout-parsing'
         else:
             self._url = 'https://k4q3k6o0l1hbx6jc.aistudio-app.com/layout-parsing'
+
         if api_key:
             self._headers = {
                 'Authorization': f'token {api_key}',
