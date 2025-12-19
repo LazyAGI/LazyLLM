@@ -254,7 +254,7 @@ jobs:
 
   coverage_linux:
     runs-on: ubuntu-latest
-    needs: [ basic_tests, advanced_tests, engine_tests, charge_tests ]
+    needs: [ basic_tests, advanced_tests, charge_tests ]
     steps:
       - name: Add Coverage Report Link to Summary
         run: |
