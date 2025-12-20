@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*"
     paths-ignore:
       - "**.md"
       - ".git*"
@@ -81,13 +83,28 @@ jobs:
           LAZYLLM_LANGUAGE=CHINESE pytest -v tests/doc_check
           git checkout .
 
+  wait_approve:
+    if: github.ref_type != 'tag'
+    needs: [lint, doc_check]
+    runs-on: tps_sco_nv
+    environment: protected
+    steps:
+      - run: echo "run on branch"
+
+  skip_approve:
+    if: github.ref_type == 'tag'
+    needs: [lint, doc_check]
+    runs-on: tps_sco_nv
+    steps:
+      - run: echo "run on tag"
+
   clone:
     if: |
       !contains(github.event.head_commit.message, '[skip ci]')
       && !contains(github.event.pull_request.title, '[skip ci]')
-    needs: [ lint, doc_check ]
+      && (needs.wait_approve.result == 'success' || needs.skip_approve.result == 'success')
+    needs: [ wait_approve, skip_approve ]
     runs-on: tps_sco_nv
-    environment: protected
     outputs:
       changed_files: ${{ steps.changed_files_yaml.outputs.all_changed_files }}
     steps:
