@@ -100,7 +100,8 @@ jobs:
 
   clone:
     if: |
-      !contains(github.event.head_commit.message, '[skip ci]')
+      always()
+      && !contains(github.event.head_commit.message, '[skip ci]')
       && !contains(github.event.pull_request.title, '[skip ci]')
       && (needs.wait_approve.result == 'success' || needs.skip_approve.result == 'success')
     needs: [ wait_approve, skip_approve ]
