@@ -152,6 +152,7 @@ jobs:
   basic_tests:
     runs-on: tps_sco_nv
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -171,6 +172,7 @@ jobs:
   advanced_tests:
     runs-on: tps_sco_nv
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -189,7 +191,9 @@ jobs:
     runs-on: tps_sco_nv
     needs: [ clone ]
     if: |
-      contains(needs.clone.outputs.changed_files, 'lazyllm/engine/')
+      always()
+      && needs.clone.result == 'success'
+      && (contains(needs.clone.outputs.changed_files, 'lazyllm/engine/') || github.ref_type == 'tag')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -207,6 +211,7 @@ jobs:
   charge_tests:
     runs-on: tps_sco_nv
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4 # For run_tests afterwards.
@@ -273,6 +278,11 @@ jobs:
   coverage_linux:
     runs-on: ubuntu-latest
     needs: [ basic_tests, advanced_tests, charge_tests ]
+    if: |
+      always()
+      && needs.basic_tests.result == 'success'
+      && needs.advanced_tests.result == 'success'
+      && needs.charge_tests.result == 'success'
     steps:
       - name: Add Coverage Report Link to Summary
         run: |
@@ -285,6 +295,7 @@ jobs:
   build_and_test_package:
     runs-on: ubuntu-latest
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -333,6 +344,7 @@ jobs:
   deploy_doc:
     runs-on: ubuntu-latest
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -380,6 +392,7 @@ jobs:
 
   mac_basic_tests:
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -424,6 +437,7 @@ jobs:
 
   mac_charge_tests:
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -503,6 +517,7 @@ jobs:
 
   win_basic_tests:
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -551,6 +566,7 @@ jobs:
 
   win_charge_tests:
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -630,6 +646,7 @@ jobs:
   k8s_tests:
     runs-on: tps_k8s
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     env:
       K8S_CI_PATH: '/mnt/nfs_share/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
     steps:
