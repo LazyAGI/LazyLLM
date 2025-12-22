@@ -3,6 +3,8 @@
   - FAQ: Home/FAQ.md
   - Environment: Home/environment.md
   - Supported Models: Home/model_list.md
+- Learn:
+  - Getting Started: Learn/learn.md
 - Cookbook:
   - Chatbot: Cookbook/chatbot.md
   - Painting Master: Cookbook/painting_master.md
