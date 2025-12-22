@@ -32,7 +32,7 @@ lazyllm.config.add('log_file_mode', str, 'merge', 'LOG_FILE_MODE', description='
 def _get_log_format(fmt: str):
     if not fmt or fmt in [None, 'default', 'lang']:
         return ('<green>{time:YYYY-MM-DD HH:mm:ss}</> {extra[name]} <level>{level}</> '
-                '({name}:{line}, {process}{extra[jobid]}): {message}')
+                '({name}:{line}, {process}{extra[jobid]}): <cyan>{message}</>')
     return '<green>{time:YYYY-MM-DD HH:mm:ss}</> <level>{level}</>: {message}'
 
 

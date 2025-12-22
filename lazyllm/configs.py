@@ -20,22 +20,23 @@ class _MetaDoc(type):
     def _get_description(name):
         desc = _MetaDoc._description[name]
         if not desc: raise ValueError(f'Description for {name} is not found')
-        doc = (f'    Description: {desc["description"]}, type is `{desc["type"]}`, default is `{desc["default"]}`.\n')
+        doc = (f'  - Description: {desc["description"]}, type: `{desc["type"]}`, default: `{desc["default"]}`<br>\n')
         if (options := desc.get('options')):
-            doc += f'    Options: {", ".join(options)}\n'
+            doc += f'  - Options: {", ".join(options)}<br>\n'
         if (env := desc.get('env')):
             if isinstance(env, str):
-                doc += f'    Environment Variable: {("LAZYLLM_" + env).upper()}\n'
+                doc += f'  - Environment Variable: {("LAZYLLM_" + env).upper()}<br>\n'
             elif isinstance(env, dict):
-                doc += '    Environment Variable:\n'
+                doc += '  - Environment Variable:<br>\n'
                 for k, v in env.items():
-                    doc += f'{("      LAZYLLM_" + k).upper()}: {v}\n'
+                    doc += f'{("    - LAZYLLM_" + k).upper()}: {v}<br>\n'
         return doc
 
     @property
     def __doc__(self):
         doc = f'{self._doc}\n**LazyLLM Configurations:**\n\n'
-        return doc + '\n'.join([f'  **{name}**:\n{self._get_description(name)}' for name in self._description.keys()])
+        return doc + '<br>\n'.join([f'- **{name}**:<br>\n{self._get_description(name)}'
+                                    for name in self._description.keys()])
 
     @__doc__.setter
     def __doc__(self, value):
