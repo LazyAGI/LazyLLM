@@ -75,13 +75,13 @@ The goal for this chapter is simple yet crucial. If you can complete it smoothly
 
     Before applying for an API key, make sure LazyLLM is set up correctly: **install dependencies** and finish the **basic configuration**. This guarantees that the sample code will run without you having to chase environment issues.
 
-    Follow the [official guide](https://docs.lazyllm.ai/zh-cn/latest/Tutorial/2/?h=api#1) for detailed steps.
+    Follow the [official guide](https://docs.lazyllm.ai/en/latest/Tutorial/2.en/#1-development-environment-setup) for detailed steps.
 
 2. API key configuration
 
     LazyLLM itself does not host models. Instead, it connects to online or local providers. To make the tutorial easy to follow, we use online models throughout. Therefore you need to prepare an API key for the provider you plan to call.
 
-    Check the [docs](https://docs.lazyllm.ai/zh-cn/latest/Tutorial/2/?h=api#2-api-key) for instructions on obtaining keys.
+    Check the [docs](https://docs.lazyllm.ai/en/latest/Tutorial/2.en/#2-configure-api-keys) for instructions on obtaining keys.
 
     In this tutorial we use the `SenseNova` online model. Configure the following environment variables locally:
 
@@ -660,7 +660,7 @@ Pipeline value is less about specific APIs and more about making flows **compreh
 
 In short, pipelines surface the flow that was previously implicit, making development, debugging, and iteration easier.
 
-For deeper dives into pipelines, see the [advanced guide](https://docs.lazyllm.ai/zh-cn/stable/Tutorial/3/#_3).
+For deeper dives into pipelines, see the [advanced guide](https://docs.lazyllm.ai/en/latest/Tutorial/3.en/#data-flow-overview).
 
 ## 7. Use Agents for Non-Deterministic Tasks
 
@@ -729,7 +729,7 @@ Agents are useful when:
 
 If the flow is stable, pipelines stay simpler and more reliable. Greater agent freedom demands tighter design and guardrails.
 
-For more agent details see the [advanced guide](https://docs.lazyllm.ai/zh-cn/stable/Tutorial/18/#2-ai-agent).
+For more agent details see the [advanced guide](https://docs.lazyllm.ai/en/latest/Tutorial/18.en/#2-introduction-to-ai-agent).
 
 ## 8. Advanced Directions with LazyLLM
 
@@ -737,24 +737,24 @@ You have now completed the LazyLLM onboarding path: you can call models, organiz
 
 1. Deepen prompt design and output controls  
 Downstream systems demand stable, controllable outputs.  
-👉 [Docs](https://docs.lazyllm.ai/zh-cn/stable/Tutorial/3/#3-prompt)
+👉 [Docs](https://docs.lazyllm.ai/en/latest/Tutorial/3.en/#3-using-prompts)
 
 2. Optimize retrieval quality in RAG  
 Bottlenecks usually lie in retrieval and reranking: chunking, strategy, parameter tuning.  
-👉 [Docs](https://docs.lazyllm.ai/zh-cn/stable/Tutorial/7/)
+👉 [Docs](https://docs.lazyllm.ai/en/latest/Tutorial/7.en/)
 
 3. Fine-tune models for your domain  
 When general models underperform in-domain, fine-tune LLMs or embedding models to align with your data.  
-👉 [Docs](https://docs.lazyllm.ai/zh-cn/stable/Tutorial/9/)
+👉 [Docs](https://docs.lazyllm.ai/en/latest/Tutorial/9.en/)
 
 4. Accelerate execution with caching, async, and efficient engines  
 High-throughput scenarios benefit from caching, async pipelines, and fast vector stores.  
-👉 [Docs](https://docs.lazyllm.ai/zh-cn/stable/Tutorial/12/)
+👉 [Docs](https://docs.lazyllm.ai/en/latest/Tutorial/12.en/)
 
 5. Multimodal RAG  
 Handle images, PDFs, audio, or video with multimodal retrieval-and-generation.  
-👉 [Docs](https://docs.lazyllm.ai/zh-cn/stable/Tutorial/13/)
+👉 [Docs](https://docs.lazyllm.ai/en/latest/Tutorial/13.en/)
 
 6. Agentic RAG  
 For multi-step reasoning and iterative retrieval, pair RAG with agents for decision-making powers.  
-👉 [Docs](https://docs.lazyllm.ai/zh-cn/stable/Tutorial/18/)
+👉 [Docs](https://docs.lazyllm.ai/en/latest/Tutorial/18.en/)
