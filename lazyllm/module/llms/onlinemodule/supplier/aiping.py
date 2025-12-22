@@ -14,16 +14,16 @@ TIMEOUT = 300
 # AIPing API 基础URL
 # 优先级：环境变量 > 默认值
 AIPING_BASE_URL = (
-    os.environ.get("AIPING_BASE_URL")
-    or "https://aiping.cn/api/v1/"
+    os.environ.get('AIPING_BASE_URL')
+    or 'https://aiping.cn/api/v1/'
 )
 
 
 class AipingModule(OnlineChatModuleBase, FileHandlerBase):
-    """
+    '''
     AIPing AI大语言模型实现
     支持多种模型类型，包括大模型和视觉问答模型
-    """
+    '''
     # 视觉语言模型前缀，支持图像理解的多模态模型
     VLM_MODEL_PREFIX = [
         'Qwen2.5-VL-',
@@ -51,7 +51,7 @@ class AipingModule(OnlineChatModuleBase, FileHandlerBase):
         self._url = urljoin(self._base_url, 'chat/completions')
 
     def _validate_api_key(self):
-        """验证API Key"""
+        '''验证API Key'''
         try:
             # 参考 doubao.py 的实现
             chat_url = urljoin(self._base_url, 'chat/completions')
@@ -68,7 +68,7 @@ class AipingModule(OnlineChatModuleBase, FileHandlerBase):
             return response.status_code == 200
         except Exception:
             return False
-        
+
     @classmethod
     def get_models(cls):
         url = urljoin(AIPING_BASE_URL, 'models')
@@ -76,15 +76,15 @@ class AipingModule(OnlineChatModuleBase, FileHandlerBase):
             response = requests.get(url, timeout=TIMEOUT)
             response.raise_for_status()
             return response.json()
-        except requests.exceptions.RequestException as e:
-            print(f"请求失败: {e}")
+        except Exception as e:
+            lazyllm.LOG.error(f'Failed to get models: {e}')
             return None
 
 
 class AipingEmbedding(OnlineEmbeddingModuleBase):
-    """
+    '''
     AIPing文本向量化模型
-    """
+    '''
     def __init__(self, embed_url: str = None,
                  embed_model_name: str = 'text-embedding-v1', api_key: str = None,
                  batch_size: int = 16, **kw):
@@ -95,9 +95,9 @@ class AipingEmbedding(OnlineEmbeddingModuleBase):
 
 
 class AipingReranking(OnlineEmbeddingModuleBase):
-    """
+    '''
     AIPing重排序模型
-    """
+    '''
     def __init__(self, embed_url: str = None,
                  embed_model_name: str = 'Qwen3-Reranker-0.6B', api_key: str = None, **kw):
         if embed_url is None:
@@ -110,7 +110,7 @@ class AipingReranking(OnlineEmbeddingModuleBase):
         return 'RERANK'
 
     def _encapsulated_data(self, query: str, documents: List[str], top_n: int, **kwargs) -> Dict[str, str]:
-        """封装数据"""
+        '''封装数据'''
         json_data = {
             'model': self._embed_model_name,
             'query': query,
@@ -123,7 +123,7 @@ class AipingReranking(OnlineEmbeddingModuleBase):
         return json_data
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Tuple]:
-        """解析响应"""
+        '''解析响应'''
         results = response.get('results', [])
         if not results:
             return []
@@ -131,10 +131,10 @@ class AipingReranking(OnlineEmbeddingModuleBase):
 
 
 class AipingTextToImageModule(OnlineMultiModalBase):
-    """
+    '''
     AIPing文生图模型
     支持多种图像生成模型
-    """
+    '''
 
     def __init__(self, api_key: str = None, model_name: str = 'Qwen-Image',
                  base_url: str = None,
@@ -148,7 +148,7 @@ class AipingTextToImageModule(OnlineMultiModalBase):
         self._base_url = base_url
 
     def _make_request(self, endpoint, payload, timeout=TIMEOUT):
-        """发起HTTP请求"""
+        '''发起HTTP请求'''
         headers = {
             'Authorization': f'Bearer {self._api_key}',
             'Content-Type': 'application/json'
@@ -166,7 +166,7 @@ class AipingTextToImageModule(OnlineMultiModalBase):
 
     def _forward(self, input: str = None, negative_prompt: str = None, n: int = None,
                  size: str = None, seed: int = None, **kwargs):
-        """文生图推理"""
+        '''文生图推理'''
         if not input:
             raise ValueError('Prompt is required')
 
@@ -203,7 +203,7 @@ class AipingTextToImageModule(OnlineMultiModalBase):
         try:
             result = self._make_request(self._endpoint, payload)
 
-            # AIPing新格式：{"data": [{"url": "https://..."}, ...]}
+            # AIPing新格式：{'data': [{'url': 'https://...'}, ...]}
             images = result.get('data')
             if not images or not isinstance(images, list) or not images:
                 raise ValueError(f'Unexpected response format: {result}')
