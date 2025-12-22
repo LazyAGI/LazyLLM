@@ -127,7 +127,7 @@ You can treat `llm` like a normal Python callable: pass input, get output.
 
 After the code runs, you should see text returned by the model in your terminal. A sample output looks like this:
 
-![image-1.png](../assets/learn_1.png)
+![image-1.png](../assets/learn_1_en.png)
 
 Even this tiny example shows several core LazyLLM concepts:
 
@@ -263,14 +263,13 @@ PROMPT = """
 You are an information extractor.
 Extract the user's name and age from the 【input text】 and output JSON only—no explanations or extra text.
 
-【Output format】:
+# Output format:
 {{
-  "name": "string",
-  "age": number
+  "name": "John Doe",
+  "age": 0
 }}
 
-【Input text】:
-Hi everyone, my name is Zhang San, I am 28, and I work in Shanghai.
+# Input text:
 """
 
 llm_raw = llm.prompt(PROMPT)
@@ -280,7 +279,7 @@ print(result)
 
 The model may output valid JSON or sprinkle commentary or slightly off formats. In the screenshot below the model wrapped the JSON with reasoning steps: acceptable for humans, unstable for production.
 
-![image-2.png](../assets/learn_2.png)
+![image-2.png](../assets/learn_2_en.png)
 
 #### 3.3.3 Use a Formatter to Clean Up Output
 
@@ -294,6 +293,8 @@ llm_fmt = llm.prompt(PROMPT).formatter(JsonFormatter())
 fmt_result = llm_fmt("Hi everyone, my name is Zhang San, I am 28, and I work in Shanghai.")
 print(fmt_result)
 ```
+
+![image-3.png](../assets/learn_3_en.png)
 
 A formatter usually yields cleaner output with fewer explanations. Keep in mind:
 
@@ -311,12 +312,17 @@ from lazyllm.tools.tools import JsonExtractor
 
 extractor = JsonExtractor(
     base_model=llm,
-    schema='{"name": "string", "age": number}'
+    schema='{"name": "", "age": 0}', 
+    field_descriptions={'name': 'name', 'age': 'age'}
 )
 
-ext_result = extractor(PROMPT.format("Hi everyone, my name is Zhang San, I am 28, and I work in Shanghai."))
+ext_result = extractor("Zhang San's age is 20, and Li Si's age is 25.")
 print(ext_result)
 ```
+
+Result:
+
+![image-4.png](../assets/learn_4_en.png)
 
 In this pattern the extractor:
 

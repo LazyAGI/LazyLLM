@@ -289,7 +289,6 @@ PROMPT = """
 }}
 
 【输入文本】：
-大家好，我叫张三，今年 28 岁，在上海工作。
 """
 
 llm_raw = llm.prompt(PROMPT)
@@ -323,6 +322,8 @@ print(fmt_result)
 使用 Formatter 后，模型的输出通常会更加“干净”，
 例如减少自然语言说明，输出更接近标准 JSON 字符串。
 
+![image-3.png](../assets/learn_3.png)
+
 需要注意的是：
 
 - Formatter 主要作用于输出格式
@@ -342,12 +343,17 @@ from lazyllm.tools.tools import JsonExtractor
 
 extractor = JsonExtractor(
     base_model=llm,
-    schema='{"name": "string", "age": number}'
+    schema='{"name": "", "age": 0}', 
+    field_descriptions={'name': '姓名', 'age': '年龄'}
 )
 
-ext_result = extractor(PROMPT.format("大家好，我叫张三，今年 28 岁，在上海工作。"))
+ext_result = extractor("张三的年龄是20岁，李四的年龄是25岁")
 print(ext_result)
 ```
+
+使用 Extractor 的输出结果如下：
+
+![image-4.png](../assets/learn_4.png)
 
 在这种方式下：
 
