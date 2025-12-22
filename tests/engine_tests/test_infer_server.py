@@ -74,7 +74,7 @@ class TestInferServer:
         'lazyllm/engine/lightengine.py')
     def test_engine_infer_server_vqa(self):
         model_name = 'InternVL3_5-1B'
-        model_name, deploy_method, url = self.deploy_inference_service(model_name, deploy_method='vllm', num_gpus=1)
+        model_name, deploy_method, url = self.deploy_inference_service(model_name, deploy_method='lmdeploy', num_gpus=1)
         model = lazyllm.TrainableModule(model_name).deploy_method(getattr(lazyllm.deploy, deploy_method), url=url)
         assert model._impl._get_deploy_tasks.flag
         r = model('这张图片描述的是什么？', lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))

@@ -146,7 +146,8 @@ class InferServer(ServerBase):
         os.makedirs(save_root, exist_ok=True)
         # wait 5 minutes for launch cmd
         hypram = dict(launcher=lazyllm.launchers.remote(sync=False, ngpus=job.num_gpus, retry=30), log_path=save_root)
-        m = lazyllm.TrainableModule(job.model_name).deploy_method((getattr(lazyllm.deploy, job.framework), hypram))
+        m = lazyllm.TrainableModule(job.model_name, use_model_map=False)\
+            .deploy_method((getattr(lazyllm.deploy, job.framework), hypram))
 
         # Launch Deploy:
         thread = threading.Thread(target=m.start)
