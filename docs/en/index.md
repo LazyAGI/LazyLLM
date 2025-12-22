@@ -157,6 +157,7 @@ First, statement 1 imports the `lazyllm` module, and in statement 2, an instance
 | [Doubao](https://www.volcengine.com/product/doubao)                              | [API Keys](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey)                                                                                                   | LAZYLLM_DOUBAO_API_KEY                                     |
 | [SiliconFlow](https://cloud.siliconflow.cn/)                                          | [API Keys](https://cloud.siliconflow.cn/account/ak)                                                                                                                           | LAZYLLM_SILICONFLOW_API_KEY                                |
 | [MiniMax](https://platform.minimax.io/)                                              | [API Keys](https://platform.minimax.io/user-center/basic-information/interface-key)                                                                                         | LAZYLLM_MINIMAX_API_KEY                                    |
+| [AI Ping](https://aiping.cn/)                                                     | [API Keys](https://aiping.cn/user/apikey)                                                                                                                                     | LAZYLLM_AIPING_API_KEY                                     |
 
 You can use the corresponding platform by setting different environment variables.
 

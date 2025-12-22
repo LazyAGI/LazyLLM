@@ -23,6 +23,7 @@ def reset_env(func):
         'LAZYLLM_DOUBAO_API_KEY',
         'LAZYLLM_SILICONFLOW_API_KEY',
         'LAZYLLM_MINIMAX_API_KEY',
+        'LAZYLLM_AIPING_API_KEY',
     ]
 
     @wraps(func)
