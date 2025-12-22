@@ -43,6 +43,12 @@ runs:
         export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
         export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
         export LAZYLLM_HOME="${{ inputs.working_directory }}/${{ github.run_id }}-${{ github.job }}"
+        echo "GITHUB_REF=$GITHUB_REF"
+        if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
+          echo "Now on tag, set cache mode to NONE and disable run on change"
+          export LAZYLLM_CACHE_MODE=NONE
+          export DISABLE_RUN_ON_CHANGE=True
+        fi
         pip install pytest-xdist
         mkdir -p $LAZYLLM_HOME
         source ~/ENV/env.sh
