@@ -298,7 +298,7 @@ jobs:
           rm -rf $POETRY_CACHE_DIR
 
       - name: Build
-        run: poetry build
+        run: python -m build --config-setting=skbuild.wheel.cmake=false
 
       - name: Test installing built package
         run: python -m pip install .
