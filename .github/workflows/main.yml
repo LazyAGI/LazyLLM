@@ -490,6 +490,7 @@ jobs:
         env:
           CHANGED_FILES: ${{ needs.clone.outputs.changed_files }}
           LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
+          LAZYLLM_AIPING_API_KEY: ${{ secrets.LAZYLLM_AIPING_API_KEY }}
           LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
           LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
           LAZYLLM_QWEN_API_KEY: ${{ secrets.LAZYLLM_QWEN_API_KEY }}
@@ -618,6 +619,7 @@ jobs:
         env:
           CHANGED_FILES: ${{ needs.clone.outputs.changed_files }}
           LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
+          LAZYLLM_AIPING_API_KEY: ${{ secrets.LAZYLLM_AIPING_API_KEY }}
           LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
           LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
           LAZYLLM_QWEN_API_KEY: ${{ secrets.LAZYLLM_QWEN_API_KEY }}
