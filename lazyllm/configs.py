@@ -63,7 +63,7 @@ class Config(metaclass=_MetaDoc):
         r = os.getenv(f'{self.prefix}_{name.upper()}', default)
         if type == bool:
             return r in (True, 'TRUE', 'True', 1, 'ON', '1')
-        return type(r)
+        return type(r) if r is not None else r
 
     @staticmethod
     def get_config(cfg):
@@ -107,7 +107,7 @@ class Config(metaclass=_MetaDoc):
                     break
         elif env:
             self.impl[name] = self.getenv(env, type, self.impl[name])
-        if not isinstance(self.impl[name], type): raise TypeError(
+        if not isinstance(self.impl[name], type) and self.impl[name] is not None: raise TypeError(
             f'Invalid config type for {name}, type is {type}')
 
     def __getitem__(self, name):

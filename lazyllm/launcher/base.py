@@ -174,7 +174,7 @@ class Job(object):
                     queue.put(line)
                     if hooks:
                         hooks(line) if callable(hooks) else [hook(line) for hook in hooks]
-                LOG.info(f'{self.jobid}: {line.rstrip()}', )
+                LOG.info(f'{line.lstrip("INFO:").rstrip()}', jobid=self.jobid, name='launcher')
                 if self.output_thread_event.is_set():
                     break
             out.close()
