@@ -19,7 +19,7 @@ defaults:
 jobs:
   check-exists:
     name: Check Pypi version exists
-    if: endsWith(github.repository, '/LazyLLM')
+    if: github.repository == 'LazyAGI/LazyLLM'
     runs-on: ubuntu-latest
     outputs:
       TAG: ${{ steps.set_tag_var.outputs.tag }}
@@ -224,7 +224,7 @@ jobs:
 
   publish:
     name: publish to PyPI
-    if: endsWith(github.repository, '/LazyLLM')
+    if: github.repository == 'LazyAGI/LazyLLM'
     needs: [build-wheel-with-cpp-extension, build-wheel-rollback-version]
     runs-on: ubuntu-latest
     permissions:
