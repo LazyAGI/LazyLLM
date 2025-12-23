@@ -78,6 +78,7 @@ class _Log:
 
         jobid = f', jobid={kw["jobid"]}' if 'jobid' in kw else ''
         # opt depth for printing correct stack depth information
+        message = message.replace('{', '{{').replace('}', '}}')
         call_once(self._once_flags[context],
                   getattr(self.opt(depth=2, record=True).bind(name=(kw.get('name') or 'lazyllm'),
                                                               jobid=jobid), level), message)
@@ -117,6 +118,7 @@ class _Log:
             call_kw = dict(jobid=(f', jobid={jobid}' if (jobid := kw.pop('jobid', None)) else ''))
             if 'name' in kw: call_kw['name'] = kw.pop('name')
             s = str(args[0]) if len(args) == 1 else join.join([str(a) for a in args])
+            s = s.replace('{', '{{').replace('}', '}}')
             getattr(self._logger.opt(depth=depth + 1, **kw), attr)(s, **call_kw)
 
         return impl if attr in self.__dynamic_attrs__ else getattr(self._logger, attr)
