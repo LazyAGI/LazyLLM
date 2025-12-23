@@ -16,14 +16,10 @@ from loguru import logger
 
 lazyllm.config.add('debug', bool, False, 'DEBUG', description='Whether to enable debug mode.')
 lazyllm.config.add('log_name', str, 'lazyllm', 'LOG_NAME', description='The name of the log file.')
+lazyllm.config.add('expected_log_modules', str, 'lazyllm', 'EXPECTED_LOG_MODULES',
+                   description='The expected log modules, separated by comma.')
 lazyllm.config.add('log_level', str, 'INFO', 'LOG_LEVEL', description='The level of the log.')
-lazyllm.config.add(
-    'log_format',
-    str,
-    '{process}: <green>{time:YYYY-MM-DD HH:mm:ss}</green> {extra[name]} '
-    '<level>{level}</level>: ({name}:{line}) <cyan>{message}</cyan>',
-    'LOG_FORMAT',
-    description='The format of the log.')
+lazyllm.config.add('log_format', str, 'long', 'LOG_FORMAT', description='The format of the log.')
 lazyllm.config.add('log_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'logs'), 'LOG_DIR',
                    description='The directory of the log file.')
 lazyllm.config.add('log_file_level', str, 'ERROR', 'LOG_FILE_LEVEL', description='The level of the log file.')
@@ -33,14 +29,28 @@ lazyllm.config.add('log_file_retention', str, '7 days', 'LOG_FILE_RETENTION',
 lazyllm.config.add('log_file_mode', str, 'merge', 'LOG_FILE_MODE', description='The mode of the log file.')
 
 
+def _get_log_format(fmt: str):
+    if not fmt or fmt in [None, 'default', 'long']:
+        return ('<green>{time:YYYY-MM-DD HH:mm:ss}</> {extra[name]} <level>{level}</> '
+                '({name}:{line}, {process}{extra[jobid]}): <cyan>{message}</>')
+    elif fmt == 'short': return '<green>{time:YYYY-MM-DD HH:mm:ss}</> <level>{level}</>: <cyan>{message}</>'
+    else: return fmt
+
+
+def _get_expected_log_modules():
+    if (log_name := lazyllm.config['expected_log_modules']) is None:
+        return None
+    if log_name == 'all': return None
+    return [n.strip() for n in log_name.split(',')]
+
 class _Log:
     _stderr_initialized = False
     _once_flags: Dict = {}
     __dynamic_attrs__ = ['debug', 'info', 'warning', 'error', 'success', 'critical']
 
     def __init__(self):
-        self._name = lazyllm.config['log_name']
         self._pid = getpid()
+        self._expected = _get_expected_log_modules()
         self._log_dir_path = check_path(lazyllm.config['log_dir'], exist=False, file=False)
 
         if getenv('LOGURU_AUTOINIT', 'true').lower() in ('1', 'true') and stderr:
@@ -55,20 +65,24 @@ class _Log:
             self._stderr_i = logger.add(
                 stderr,
                 level=lazyllm.config['log_level'] if not lazyllm.config['debug'] else 'DEBUG',
-                format=lazyllm.config['log_format'], colorize=True,
-                filter=lambda record: (record['extra'].get('name') == self._name and self.stderr))
+                format=_get_log_format(lazyllm.config['log_format']), colorize=True,
+                filter=lambda rd: (not self._expected or rd['extra'].get('name') in self._expected) and self.stderr)
             _Log._stderr_initialized = True
 
-        self._logger = logger.bind(name=self._name, process=self._pid)
+        self._logger = logger.bind(name='lazyllm', jobid='')
 
-    def log_once(self, message: str, level: str = 'warning') -> None:
+    def log_once(self, message: str, level: str = 'warning', **kw) -> None:
         frame = inspect.currentframe().f_back
         context = (frame.f_code.co_filename, frame.f_code.co_name, frame.f_lineno)
         if context not in self._once_flags:
             self._once_flags[context] = once_flag()
+
+        jobid = f', jobid={kw["jobid"]}' if 'jobid' in kw else ''
         # opt depth for printing correct stack depth information
+        message = message.replace('{', '{{').replace('}', '}}')
         call_once(self._once_flags[context],
-                  getattr(self.opt(depth=2, record=True).bind(name=self._name), level), message)
+                  getattr(self.opt(depth=2, record=True).bind(name=(kw.get('name') or 'lazyllm'),
+                                                              jobid=jobid), level), message)
 
     def read(self, limit: int = 10, level: str = 'error'):
         names = listdir(self._log_dir_path)
@@ -102,8 +116,11 @@ class _Log:
 
     def __getattr__(self, attr):
         def impl(*args, join: str = '\n', depth: int = 0, **kw):
+            call_kw = dict(jobid=(f', jobid={jobid}' if (jobid := kw.pop('jobid', None)) else ''))
+            if 'name' in kw: call_kw['name'] = kw.pop('name')
             s = str(args[0]) if len(args) == 1 else join.join([str(a) for a in args])
-            getattr(self._logger.opt(depth=depth + 1, **kw), attr)(s)
+            s = s.replace('{', '{{').replace('}', '}}')
+            getattr(self._logger.opt(depth=depth + 1, **kw), attr)(s, **call_kw)
 
         return impl if attr in self.__dynamic_attrs__ else getattr(self._logger, attr)
 
@@ -121,6 +138,7 @@ LOG = _Log()
 
 def add_file_sink():
     name = lazyllm.config['log_name']
+    excepted = _get_expected_log_modules()
     pid = getpid()
     log_dir_path = LOG._log_dir_path
     if log_dir_path:
@@ -147,7 +165,7 @@ def add_file_sink():
             enqueue=enqueue,  # multiprocessing-safe
             colorize=True,
             serialize=True,
-            filter=lambda record: (record['extra'].get('name') == name),
+            filter=(lambda rd: not excepted or rd['extra'].get('name') in excepted)
         )
 
 

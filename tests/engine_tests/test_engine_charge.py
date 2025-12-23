@@ -5,7 +5,7 @@ import pytest
 from ..utils import SqlEgsData, get_db_init_keywords
 from lazyllm.tools import SqlManager, DBStatus
 from ..tools import (get_current_weather_code, get_current_weather_vars, get_current_weather_doc,
-                    get_n_day_weather_forecast_code, multiply_tool_code, add_tool_code, dummy_code)
+                     get_n_day_weather_forecast_code, multiply_tool_code, add_tool_code, dummy_code)
 import unittest
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
@@ -305,8 +305,8 @@ class TestEngine(unittest.TestCase):
         nodes = [
             dict(id='1', kind='TTS', name='m1', args=dict(source='qwen', type='online')),
             dict(id='2', kind='STT', name='m2', args=dict(source='glm', type='online')),
-            dict(id='3', kind='SD', name='m3', args=dict(source='qwen', type='online',
-                                                         target_dir=lazyllm.config['temp_dir'])),
+            dict(id='3', kind='SD', name='m3', args=dict(source='siliconflow', type='online',
+                                                         target_dir=lazyllm.config['temp_dir'], base_model='Kolors')),
             dict(id='4', kind='VQA', name='m4', args=dict(source='qwen', base_model='qwen-vl-plus', type='online'))
         ]
         engine = LightEngine()

@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "lazyllm"
-version = "0.7.0"
+version = "0.7.1"
 description = "A Low-code Development Tool For Building Multi-agent LLMs Applications."
 authors = ["wangzhihong <wangzhihong@sensetime.com>"]
 license = "Apache-2.0 license"

@@ -46,6 +46,8 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     def __init__(self, base_url: str = 'https://api.sensenova.cn/compatible-mode/v1/', model: str = 'SenseChat-5',
                  api_key: str = None, secret_key: str = None, stream: bool = True,
                  return_trace: bool = False, **kwargs):
+        if secret_key and isinstance(api_key, (tuple, list)):
+            raise KeyError('multi-key is not support when secret_key is provided, please use single-key mode!')
         api_key = self._get_api_key(api_key, secret_key)
         OnlineChatModuleBase.__init__(self, model_series='SENSENOVA', api_key=api_key, base_url=base_url,
                                       model_name=model, stream=stream, return_trace=return_trace, **kwargs)
@@ -55,9 +57,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
 
     def _get_system_prompt(self):
         return 'You are an AI assistant, developed by SenseTime.'
-
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat/completions')
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:
@@ -77,9 +76,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
         return '\n'.join(json_strs)
 
     def _upload_train_file(self, train_file):
-        headers = {
-            'Authorization': 'Bearer ' + self._api_key
-        }
         url = self._train_parameters.get('upload_url', 'https://file.sensenova.cn/v1/files')
         self.get_finetune_data(train_file)
         file_object = {
@@ -93,7 +89,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
         }
 
         train_file_id = None
-        with requests.post(url, headers=headers, files=file_object) as r:
+        with requests.post(url, headers=self._get_empty_header(), files=file_object) as r:
             if r.status_code != 200:
                 raise requests.RequestException(r.text)
 
@@ -104,15 +100,11 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
 
         def _create_finetuning_dataset(description, files):
             url = urljoin(self._base_url, 'fine-tune/datasets')
-            headers = {
-                'Content-Type': 'application/json',
-                'Authorization': f'Bearer {self._api_key}',
-            }
             data = {
                 'description': description,
                 'files': files
             }
-            with requests.post(url, headers=headers, json=data) as r:
+            with requests.post(url, headers=self._header, json=data) as r:
                 if r.status_code != 200:
                     raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
@@ -122,7 +114,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
                 while status.lower() != 'ready':
                     try:
                         time.sleep(10)
-                        with requests.get(url, headers=headers) as r:
+                        with requests.get(url, headers=self._header) as r:
                             if r.status_code != 200:
                                 raise requests.RequestException(r.text)
 
@@ -137,10 +129,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
         url = urljoin(self._base_url, 'fine-tunes')
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self._api_key}',
-        }
         data = {
             'model': train_model,
             'training_file': train_file_id,
@@ -149,7 +137,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
         if 'training_parameters' in kw.keys():
             data.update(kw['training_parameters'])
 
-        with requests.post(url, headers=headers, json=data) as r:
+        with requests.post(url, headers=self._header, json=data) as r:
             if r.status_code != 200:
                 raise requests.RequestException(r.text)
 
@@ -159,22 +147,14 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
 
     def _validate_api_key(self):
         fine_tune_url = urljoin('https://api.sensenova.cn/v1/llm/', 'models')
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
-        response = requests.get(fine_tune_url, headers=headers)
+        response = requests.get(fine_tune_url, headers=self._header)
         if response.status_code == 200:
             return True
         return False
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
         fine_tune_url = urljoin(self._base_url, f'fine-tunes/{fine_tuning_job_id}')
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self._api_key}'
-        }
-        with requests.get(fine_tune_url, headers=headers) as r:
+        with requests.get(fine_tune_url, headers=self._header) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
@@ -189,10 +169,6 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
 
     def _create_deployment(self) -> Tuple[str, str]:
         url = urljoin(self._base_url, 'fine-tune/servings')
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self._api_key}',
-        }
         data = {
             'model': self._model_name,
             'config': {
@@ -202,7 +178,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
         if self._deploy_paramters and len(self._deploy_paramters) > 0:
             data.update(self._deploy_paramters)
 
-        with requests.post(url, headers=headers, json=data) as r:
+        with requests.post(url, headers=self._header, json=data) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
@@ -212,11 +188,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
 
     def _query_deployment(self, deployment_id) -> str:
         fine_tune_url = urljoin(self._base_url, f'fine-tune/servings/{deployment_id}')
-        headers = {
-            'Content-Type': 'application/json',
-            'Authorization': f'Bearer {self._api_key}'
-        }
-        with requests.get(fine_tune_url, headers=headers) as r:
+        with requests.get(fine_tune_url, headers=self._header) as r:
             if r.status_code != 200:
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 

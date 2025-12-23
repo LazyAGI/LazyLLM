@@ -25,19 +25,12 @@ class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
     def _get_system_prompt(self):
         return 'You are an intelligent assistant provided by SiliconFlow. You are a helpful assistant.'
 
-    def _set_chat_url(self):
-        self._url = urljoin(self._base_url, 'chat/completions')
-
     def _validate_api_key(self):
         '''Validate API Key by sending a minimal request'''
         try:
             # SiliconFlow validates API key using a minimal chat request
             models_url = urljoin(self._base_url, 'models')
-            headers = {
-                'Authorization': f'Bearer {self._api_key}',
-                'Content-Type': 'application/json'
-            }
-            response = requests.get(models_url, headers=headers, timeout=10)
+            response = requests.get(models_url, headers=self._header, timeout=10)
             return response.status_code == 200
         except Exception:
             return False
@@ -80,23 +73,16 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
         OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
+                                      api_key=api_key or lazyllm.config['siliconflow_api_key'],
                                       model_name=model_name or SiliconFlowTextToImageModule.MODEL_NAME,
                                       return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
         self._base_url = base_url
-        self._api_key = api_key or lazyllm.config['siliconflow_api_key']
 
     def _make_request(self, endpoint, payload, timeout=180):
-
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
-
         url = f'{self._base_url}{endpoint}'
-
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
             return response.json()
         except Exception as e:
@@ -134,23 +120,16 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
         OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
+                                      api_key=api_key or lazyllm.config['siliconflow_api_key'],
                                       model_name=model_name or SiliconFlowTTSModule.MODEL_NAME,
                                       return_trace=return_trace, **kwargs)
         self._endpoint = 'audio/speech'
         self._base_url = base_url
-        self._api_key = api_key or lazyllm.config['siliconflow_api_key']
 
     def _make_binary_request(self, endpoint, payload, timeout=180):
-
-        headers = {
-            'Authorization': f'Bearer {self._api_key}',
-            'Content-Type': 'application/json'
-        }
-
         url = f'{self._base_url}{endpoint}'
-
         try:
-            response = requests.post(url, headers=headers, json=payload, timeout=timeout)
+            response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
             return response.content
         except Exception as e:

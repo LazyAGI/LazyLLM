@@ -78,7 +78,8 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def __init__(self, base_model: str = '', target_path: str = '', stream: bool = False, train: Optional[type] = None,
                  finetune: Optional[LazyLLMFinetuneBase] = None, deploy: Optional[LazyLLMDeployBase] = None,
                  template: Optional[_UrlTemplateStruct] = None, url_wrapper: Optional[_UrlHelper._Wrapper] = None,
-                 trust_remote_code: bool = True, type: Optional[LLMType] = None, source: Optional[str] = None):
+                 trust_remote_code: bool = True, type: Optional[LLMType] = None, source: Optional[str] = None,
+                 use_model_map: bool = True):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
@@ -98,6 +99,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         self._specific_target_path = target_path or None
         self._train, self._finetune = train, finetune
         self._template = template
+        self._use_model_map = use_model_map
         _UrlHelper.__init__(self, url=url_wrapper)
         if base_model and deploy: self.deploy_method(deploy)
         self._prepare_deploy = lambda target_path, base_model: lazyllm.package(target_path, base_model)
@@ -207,7 +209,8 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if hasattr(self._deploy, 'auto_map') and self._deploy.auto_map:
             self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
 
-        trainable_module_config_map = get_trainable_module_config_map(lazyllm.config['trainable_module_config_map_path'])
+        trainable_module_config_map = get_trainable_module_config_map(
+            lazyllm.config['trainable_module_config_map_path']) if self._use_model_map else {}
 
         base_model_name = os.path.basename(self._base_model)
         if base_model_name in trainable_module_config_map:
@@ -275,13 +278,14 @@ class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
 
     def __init__(self, base_model: Option = '', target_path='', *, stream: Union[bool, Dict[str, str]] = False,
-                 return_trace: bool = False, trust_remote_code: bool = True, type: Optional[Union[str, LLMType]] = None,
-                 source: Optional[str] = None):
+                 return_trace: bool = False, trust_remote_code: bool = True,
+                 type: Optional[Union[str, LLMType]] = None, source: Optional[str] = None,
+                 use_model_map: bool = True):
         super().__init__(url=None, stream=stream, return_trace=return_trace, init_prompt=False)
         self._template = _UrlTemplateStruct()
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
                                           lazyllm.deploy.auto, self._template, self._url_wrapper,
-                                          trust_remote_code, type, source)
+                                          trust_remote_code, type, source=source, use_model_map=use_model_map)
         self._stream = stream
         self.prompt()
         if config['cache_local_module']:
