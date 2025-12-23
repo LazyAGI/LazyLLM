@@ -62,7 +62,7 @@ def load_pyproject():
 def load_extras():
     config = load_pyproject()
     try:
-        return config['tool']['poetry']['extras']
+        return config['project']['optional-dependencies']
     except KeyError:
         logging.error('No "extras" information found in the pyproject.toml file.')
         sys.exit(1)
@@ -70,7 +70,7 @@ def load_extras():
 def load_dependencies():
     config = load_pyproject()
     try:
-        return config['tool']['poetry']['dependencies']
+        return config['project']['dependencies']
     except KeyError:
         logging.error('No "dependencies" information found in the pyproject.toml file.')
         sys.exit(1)
