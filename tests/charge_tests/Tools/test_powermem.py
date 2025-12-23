@@ -1,22 +1,7 @@
 import pytest
 import time
-import os
 
 
-def check_env_exists():
-    try:
-        current_dir = os.path.dirname(os.path.abspath(__file__))
-        project_root = os.path.abspath(os.path.join(current_dir, '../../../'))
-        env_path = os.path.join(project_root, '.env')
-        return os.path.exists(env_path) or os.path.exists(os.path.join(os.getcwd(), '.env'))
-    except Exception:
-        return False
-
-
-keys_ready = check_env_exists()
-
-
-@pytest.mark.skipif(not keys_ready, reason='env config not ready')
 class TestPowerMem(object):
     def test_powermem(self):
         from lazyllm.tools.memory import Memory
