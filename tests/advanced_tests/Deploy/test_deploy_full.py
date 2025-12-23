@@ -94,7 +94,8 @@ class TestDeploy(object):
         'lazyllm/components/deploy/lightllm.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_deploy_lightllm(self):
-        m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.lightllm)
+        m = lazyllm.TrainableModule(self.model_path, '', use_model_map=False)\
+            .deploy_method(deploy.lightllm)
         m.evalset(self.inputs)
         m.update_server()
         m.eval()
@@ -108,7 +109,8 @@ class TestDeploy(object):
         'lazyllm/components/auto/autodeploy.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_deploy_auto(self):
-        m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.AutoDeploy)
+        m = lazyllm.TrainableModule(self.model_path, '', use_model_map=False)\
+            .deploy_method(deploy.AutoDeploy)
         assert m._deploy_type != lazyllm.deploy.AutoDeploy
         m.evalset(self.inputs)
         m.update_server()
@@ -120,7 +122,7 @@ class TestDeploy(object):
         'lazyllm/components/auto/auto_helper.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_deploy_auto_without_calling_method(self):
-        m = lazyllm.TrainableModule(self.model_path, '')
+        m = lazyllm.TrainableModule(self.model_path, '', use_model_map=False)
         m.evalset(self.inputs)
         m.update_server()
         m.eval()
@@ -130,7 +132,7 @@ class TestDeploy(object):
         'lazyllm/components/deploy/text_to_speech/bark.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_bark(self):
-        m = lazyllm.TrainableModule('bark')
+        m = lazyllm.TrainableModule('bark', use_model_map=False)
         m.update_server()
         r = m('你好啊，很高兴认识你。')
         res = decode_query_with_filepaths(r)

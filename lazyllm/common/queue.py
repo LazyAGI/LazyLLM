@@ -4,14 +4,47 @@ from abc import ABC, abstractmethod
 from .globals import globals
 from ..configs import config
 import os
-from typing import Type
+from typing import Type, Optional
 from lazyllm.thirdparty import redis
+from queue import Queue
+from collections import deque
 from filelock import FileLock
 
 config.add('default_fsqueue', str, 'sqlite', 'DEFAULT_FSQUEUE',
            description='The default file system queue to use.')
 config.add('fsqredis_url', str, '', 'FSQREDIS_URL',
            description='The URL of the Redis server for the file system queue.')
+config.add('default_recent_k', int, 0, 'DEFAULT_RECENT_K',
+           description='The number of recent inputs that RecentQueue keeps track of.')
+
+
+class RecentQueue(Queue):
+    def __init__(self, maxsize=0, recent_k=None):
+        super().__init__(maxsize)
+        self._recent_k = recent_k or config['default_recent_k']
+        if self._recent_k:
+            self._recent = deque(maxlen=self._recent_k)
+            self._recent_lock = threading.Lock()
+
+    def put(self, item, block=True, timeout=None):
+        super().put(item, block, timeout)
+        if self._recent_k:
+            with self._recent_lock:
+                self._recent.append(item)
+        return self
+
+    def get_recent(self, join: Optional[str] = None, join_prefix: Optional[str] = None):
+        r = []
+        if self._recent_k:
+            with self._recent_lock:
+                r = list(self._recent)
+        if join:
+            assert isinstance(join, str), 'join symbol must be str'
+            assert all([isinstance(s, str) for s in r]), 'all items of list to join must be str'
+            r = join.join(r)
+            if join_prefix and r: r = join_prefix + r
+        return r
+
 
 class FileSystemQueue(ABC):
 

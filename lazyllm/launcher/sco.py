@@ -182,14 +182,13 @@ class ScoLauncher(LazyLLMLaunchersBase):
                  framework='pt', nnode=1, nproc=1, ngpus=1, torchrun=False, sync=True, **kwargs):
         assert nnode >= 1, 'Use at least one node.'
         assert nproc >= 1, 'Start at least one process.'
-        assert ngpus >= 1, 'Use at least one GPU.'
         assert type(workspace_name) is str, f'"workspace_name" is {workspace_name}. Please set workspace_name.'
         self.partition = partition if partition else lazyllm.config['partition']
         self.workspace_name = workspace_name
         self.framework = framework
         self.nnode = nnode
         self.nproc = nproc
-        self.ngpus = ngpus
+        self.ngpus = ngpus or 1
         self.torchrun = torchrun
         self.sync = sync
         super(__class__, self).__init__()

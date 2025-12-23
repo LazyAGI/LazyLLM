@@ -43,6 +43,7 @@ runs:
         export LAZYLLM_DATA_PATH=/mnt/lustre/share_data/lazyllm/data/
         export LAZYLLM_MODEL_PATH=/mnt/lustre/share_data/lazyllm/models
         export LAZYLLM_HOME="${{ inputs.working_directory }}/${{ github.run_id }}-${{ github.job }}"
+        export LAZYLLM_DEFAULT_RECENT_K=20
         echo "GITHUB_REF=$GITHUB_REF"
         if [[ "${GITHUB_REF}" == refs/tags/v* ]]; then
           echo "Now on tag, set cache mode to NONE and disable run on change"
