@@ -8,8 +8,8 @@ from lazyllm.components.formatter import decode_query_with_filepaths
 class TestMultiModal(object):
 
     def setup_method(self):
-        self.test_text = "你好，这是一个测试。"
-        self.test_image_prompt = "画一只动漫风格的懒懒猫"
+        self.test_text = '你好，这是一个测试。'
+        self.test_image_prompt = '画一只动漫风格的懒懒猫'
         self.test_audio_file = os.path.join(lazyllm.config['data_path'], 'ci_data/asr_test.wav')
         self.test_audio_file_url = (
             'https://dashscope.oss-cn-beijing.aliyuncs.com/'
@@ -30,7 +30,7 @@ class TestMultiModal(object):
     def test_online_stt(self):
         stt = lazyllm.OnlineMultiModalModule(source='glm', function='stt')
         result = stt(lazyllm_files=self.test_audio_file)
-        assert "地铁站" in result
+        assert '地铁站' in result
 
     def _check_file_result(self, result, format):
         assert result is not None

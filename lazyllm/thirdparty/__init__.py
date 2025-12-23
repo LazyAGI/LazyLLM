@@ -35,9 +35,9 @@ def get_pip_install_cmd(names):
 def split_package_version(s: str, pattern: re.Pattern):
     m = pattern.match(s)
     if not m:
-        raise ValueError(f"Invalid package version format: {s}")
-    name = m.group("name")
-    version = m.group("version") or ""
+        raise ValueError(f'Invalid package version format: {s}')
+    name = m.group('name')
+    version = m.group('version') or ''
     return name, version
 
 def prep_req_dict():
@@ -48,13 +48,13 @@ def prep_req_dict():
     except FileNotFoundError:
         LOG.error('requirements.full.txt missing. Cannot generate pip install command.')
 
-    pattern = re.compile(r"""
+    pattern = re.compile(r'''
         ^\s*
-        (?P<name>[A-Za-z0-9_.-]+)   # 包名
+        (?P<name>[A-Za-z0-9_.-]+)
         \s*
-        (?P<version>(==|<=|>=|<|>).*?)?  # 可选的版本约束
+        (?P<version>(==|<=|>=|<|>).*?)?
         \s*$
-    """, re.VERBOSE)
+    ''', re.VERBOSE)
 
     required_dependencies = toml_config['project']['dependencies']
     for dep in required_dependencies:

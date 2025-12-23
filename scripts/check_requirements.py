@@ -2,22 +2,20 @@ import toml
 import re
 import os
 
-import re
-
-pattern = re.compile(r"""
+pattern = re.compile(r'''
     ^\s*
-    (?P<name>[A-Za-z0-9_.-]+)   # 包名
+    (?P<name>[A-Za-z0-9_.-]+)
     \s*
-    (?P<version>(==|<=|>=|<|>).*?)?  # 可选的版本约束
+    (?P<version>(==|<=|>=|<|>).*?)?
     \s*$
-""", re.VERBOSE)
+''', re.VERBOSE)
 
 def split_package_version(s: str):
     m = pattern.match(s)
     if not m:
-        raise ValueError(f"Invalid package version format: {s}")
-    name = m.group("name")
-    version = m.group("version") or ""
+        raise ValueError(f'Invalid package version format: {s}')
+    name = m.group('name')
+    version = m.group('version') or ''
     return name, version
 
 def load_toml():
@@ -52,7 +50,7 @@ def check_requirements(requirements_from_toml, requirements_file):
             if not version_match_or_not(version_spec, req_dict[package_name]):
                 mismatched.append(
                     f'{package_name:<25} toml version: {version_spec:<25}'
-                    f'requirements version: "{req_dict[package_name]}" does not match'
+                    f'requirements version: \'{req_dict[package_name]}\' does not match'
                 )
         else:
             missing.append(f'{package_name} is missing from requirements')
