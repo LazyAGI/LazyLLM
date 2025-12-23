@@ -15,7 +15,7 @@ pattern = re.compile(r"""
 def split_package_version(s: str):
     m = pattern.match(s)
     if not m:
-        raise ValueError(f"无法解析: {s}")
+        raise ValueError(f"Invalid package version format: {s}")
     name = m.group("name")
     version = m.group("version") or ""
     return name, version
@@ -31,10 +31,10 @@ def load_toml():
 
     return deps_dict
 
-def version_match_or_not(version_spec, req_version):
-    if version_spec.startswith('^'):
+def version_match_or_not(source_version, target_version):
+    if target_version == '':
         return True
-    return version_spec == req_version
+    return source_version == target_version
 
 def check_requirements(requirements_from_toml, requirements_file):
     mismatched = []
@@ -49,7 +49,7 @@ def check_requirements(requirements_from_toml, requirements_file):
 
     for package_name, version_spec in requirements_from_toml.items():
         if package_name in req_dict:
-            if not version_spec == req_dict[package_name]:
+            if not version_match_or_not(version_spec, req_dict[package_name]):
                 mismatched.append(
                     f'{package_name:<25} toml version: {version_spec:<25}'
                     f'requirements version: "{req_dict[package_name]}" does not match'
