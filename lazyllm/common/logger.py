@@ -19,7 +19,7 @@ lazyllm.config.add('log_name', str, 'lazyllm', 'LOG_NAME', description='The name
 lazyllm.config.add('expected_log_modules', str, 'lazyllm', 'EXPECTED_LOG_MODULES',
                    description='The expected log modules, separated by comma.')
 lazyllm.config.add('log_level', str, 'INFO', 'LOG_LEVEL', description='The level of the log.')
-lazyllm.config.add('log_format', str, 'lang', 'LOG_FORMAT', description='The format of the log.')
+lazyllm.config.add('log_format', str, 'long', 'LOG_FORMAT', description='The format of the log.')
 lazyllm.config.add('log_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'logs'), 'LOG_DIR',
                    description='The directory of the log file.')
 lazyllm.config.add('log_file_level', str, 'ERROR', 'LOG_FILE_LEVEL', description='The level of the log file.')
@@ -30,10 +30,11 @@ lazyllm.config.add('log_file_mode', str, 'merge', 'LOG_FILE_MODE', description='
 
 
 def _get_log_format(fmt: str):
-    if not fmt or fmt in [None, 'default', 'lang']:
+    if not fmt or fmt in [None, 'default', 'long']:
         return ('<green>{time:YYYY-MM-DD HH:mm:ss}</> {extra[name]} <level>{level}</> '
                 '({name}:{line}, {process}{extra[jobid]}): <cyan>{message}</>')
-    return '<green>{time:YYYY-MM-DD HH:mm:ss}</> <level>{level}</>: {message}'
+    elif fmt == 'short': return '<green>{time:YYYY-MM-DD HH:mm:ss}</> <level>{level}</>: <cyan>{message}</>'
+    else: return fmt
 
 
 def _get_expected_log_modules():
