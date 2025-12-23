@@ -2,64 +2,57 @@ import toml
 import re
 import os
 
+import re
+
+pattern = re.compile(r"""
+    ^\s*
+    (?P<name>[A-Za-z0-9_.-]+)   # 包名
+    \s*
+    (?P<version>(==|<=|>=|<|>).*?)?  # 可选的版本约束
+    \s*$
+""", re.VERBOSE)
+
+def split_package_version(s: str):
+    m = pattern.match(s)
+    if not m:
+        raise ValueError(f"无法解析: {s}")
+    name = m.group("name")
+    version = m.group("version") or ""
+    return name, version
+
 def load_toml():
     with open('../pyproject.toml', 'r') as f:
         config = toml.load(f)
-    all_dependencies = config['tool']['poetry']['dependencies']
-    light = {}
-    full = {}
-    for package_name in all_dependencies:
-        if isinstance(all_dependencies[package_name], dict):
-            dep_config = all_dependencies[package_name]
-            version = dep_config.get('version', '')
-            if dep_config.get('optional', False):
-                full[package_name] = version
-            else:
-                full[package_name] = version
-                light[package_name] = version
-        elif isinstance(all_dependencies[package_name], str):
-            version = all_dependencies[package_name]
-            full[package_name] = version
-            light[package_name] = version
+    required_dependencies = config['project']['dependencies']
+    deps_dict = {}
+    for dep in required_dependencies:
+        name, version = split_package_version(dep)
+        deps_dict[name] = version
 
-    if 'python' in full:
-        del full['python']
-    if 'python' in light:
-        del light['python']
-    return full, light
+    return deps_dict
 
-def parse_requirement(line):
-    # 支持带有 extras 的包名格式，如 package[extra] 或 package[extra1,extra2]
-    match = re.match(r'^([a-zA-Z0-9_-]+)(\[[^\]]+\])?([><=~!^*]+.*)?$', line.strip())
-    if match:
-        package_name = match.group(1)
-        version = match.group(3) if match.group(3) else '*'
-        return package_name, version
-    return None, None
-
-def compare_versions(version_spec, req_version):
+def version_match_or_not(version_spec, req_version):
     if version_spec.startswith('^'):
         return True
     return version_spec == req_version
 
-def check_requirements(level, requirements_file):
+def check_requirements(requirements_from_toml, requirements_file):
     mismatched = []
     missing = []
     with open(requirements_file, 'r') as file:
-        requirements = file.readlines()
+        requirements_from_txt = file.readlines()
 
     req_dict = {}
-    for req_line in requirements:
-        req_name, req_version = parse_requirement(req_line)
-        if req_name:
-            req_dict[req_name] = req_version
+    for req_line in requirements_from_txt:
+        name, version = split_package_version(req_line)
+        req_dict[name] = version
 
-    for package_name, version_spec in level.items():
+    for package_name, version_spec in requirements_from_toml.items():
         if package_name in req_dict:
-            if not compare_versions(version_spec, req_dict[package_name]):
+            if not version_spec == req_dict[package_name]:
                 mismatched.append(
-                    f'{package_name}: toml version {version_spec} does not match '
-                    f'requirements {req_dict[package_name]}'
+                    f'{package_name:<25} toml version: {version_spec:<25}'
+                    f'requirements version: "{req_dict[package_name]}" does not match'
                 )
         else:
             missing.append(f'{package_name} is missing from requirements')
@@ -81,8 +74,5 @@ def check_requirements(level, requirements_file):
 if __name__ == '__main__':
     script_dir = os.path.dirname(os.path.abspath(__file__))
     os.chdir(script_dir)
-    full, light = load_toml()
-    print('=' * 30, 'full', '=' * 30)
-    check_requirements(full, '../requirements.full.txt')
-    print('=' * 30, 'light', '=' * 30)
-    check_requirements(light, '../requirements.txt')
+    print('=' * 30, 'light: requirements.txt', '=' * 30)
+    check_requirements(load_toml(), '../requirements.txt')

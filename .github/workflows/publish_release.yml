@@ -67,10 +67,6 @@ jobs:
           submodules: false
           fetch-depth: 0
 
-      - name: Init specific submodule
-        run: |
-          git submodule update --init LazyLLM-Env
-
       - name: Set up python ${{ env.PYTHON_VERSION }}
         uses: actions/setup-python@v5
         with:
