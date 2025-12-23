@@ -7,7 +7,9 @@ from lazyllm.common import _register_trim_module, HandledException, _change_exce
 from lazyllm.common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
+from contextvars import ContextVar
 from enum import Enum
+import asyncio
 import types
 import inspect
 import threading
@@ -56,8 +58,23 @@ def _is_function(f):
                           types.BuiltinMethodType, types.MethodType, types.LambdaType))
 
 
-_flow_stack = threading.local()
-_flow_stack.value = []
+_thread_local = threading.local()
+_async_var = ContextVar('lazyllm.flow_stack')
+
+def _get_flow_stack():
+    try:
+        asyncio.get_running_loop()
+        stack = getattr(_thread_local, 'stack', None)
+        if stack is None:
+            _thread_local.stack = stack = []
+        return stack
+    except RuntimeError:
+        stack = _async_var.get(None)
+        if stack is None:
+            stack = []
+            _async_var.set(stack)
+        return stack
+
 
 _register_trim_module({'lazyllm.flow.flow': ['__call__']}, continuous=True)
 _register_trim_module({'lazyllm.flow.flow': ['_run', 'invoke'], 'lazyllm.common.bind': ['__call__']})
@@ -98,7 +115,7 @@ class FlowBase(metaclass=_MetaBind):
         if self._auto_capture:
             self._frame_keys = list(self._curr_frame.f_locals.keys())
         self._capture = True
-        _flow_stack.value.append(self)
+        _get_flow_stack().append(self)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -108,7 +125,7 @@ class FlowBase(metaclass=_MetaBind):
                 if var != 'self' and var not in self._frame_keys and (
                         (val._f if isinstance(val, bind) else val) is not self):
                     self._add(var, val)
-        assert _flow_stack.value.pop() == self, 'Do not operate FLow._flow_stack manually!'
+        assert _get_flow_stack().pop() == self, 'Do not operate FLow.stack manually!'
         self._capture = False
         self._curr_frame = None
         self.__post_init__()
@@ -135,11 +152,11 @@ class FlowBase(metaclass=_MetaBind):
 
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
-            if len(_flow_stack.value) > 1 and not self._auto_registered:
+            if len(_get_flow_stack()) > 1 and not self._auto_registered:
                 super(__class__, self).__setattr__('_auto_registered', True)
                 locals = self._curr_frame.f_locals.copy()
                 for key, item in locals.items():
-                    if item == self and (parent := _flow_stack.value[-2]) != item:
+                    if item == self and (parent := _get_flow_stack()[-2]) != item:
                         if key not in parent._item_names and parent._defined_at_the_same_scope(self):
                             parent._add(key, self)
                         break

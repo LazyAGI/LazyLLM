@@ -51,7 +51,7 @@ class RelayServer(LazyLLMDeployBase):
             if self._security_key:
                 cmd += f'--security_key="{self._security_key}" '
             if self._defined_pos:
-                cmd += '--defined_pos="{}" '.format(self._defined_pos.replace('"', r'\"'))
+                cmd += '--defined_pos="{}" '.format(dump_obj(self._defined_pos.replace('"', r'\"')))
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 

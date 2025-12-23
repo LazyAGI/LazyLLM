@@ -197,7 +197,7 @@ class _ServerModuleImpl(ModuleBase, _UrlHelper):
         _UrlHelper.__init__(self, url=url_wrapper)
         self._m = ActionModule(m) if isinstance(m, FlowBase) else m
         self._pre_func, self._post_func = pre, post
-        self._launcher = launcher.clone() if launcher else launchers.remote(sync=False)
+        self._launcher = launcher.clone() if launcher else launchers.remote(sync=False, ngpus=0)
         self._port = port
         self._pythonpath = pythonpath
         self._num_replicas = num_replicas
