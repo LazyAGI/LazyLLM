@@ -9,11 +9,11 @@ import threading
 import subprocess
 import multiprocessing
 from enum import Enum
-from queue import Queue
 from datetime import datetime
 from collections import defaultdict
 
 import lazyllm
+from lazyllm.common import RecentQueue as Queue
 from lazyllm import LazyLLMRegisterMetaClass, LazyLLMCMD, final, LOG
 
 
@@ -153,9 +153,11 @@ class Job(object):
                     self.restart(fixed=fixed)
                     if self._fixed_cmd.checkf(self): break
                 else:
-                    raise RuntimeError(f'Job failed after retrying {restart} times')
+                    detail = self.queue.get_recent(join='\n', join_prefix=' Last logs:\n')
+                    raise RuntimeError(f'Job failed after retrying {restart} times.{detail}')
             else:
-                raise RuntimeError('Job failed without retries')
+                detail = self.queue.get_recent(join='\n', join_prefix=' Last logs:\n')
+                raise RuntimeError(f'Job failed without retries.{detail}')
         self._set_return_value()
 
     def _enqueue_subprocess_output(self, hooks=None):
