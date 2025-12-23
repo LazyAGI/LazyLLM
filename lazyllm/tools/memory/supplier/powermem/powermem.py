@@ -28,10 +28,9 @@ class LocalPowerMemMemory(LazyLLMMemoryBase):
             if os.path.exists(config_path):
                 try:
                     from dotenv import load_dotenv
-                    from powermem.config_loader import load_config_from_env
                     load_dotenv(config_path, override=False)
-                    powermemConfig = load_config_from_env()
-                    return powermem.Memory(config=powermemConfig)
+                    powermemconfig = powermem.config_loader.load_config_from_env()
+                    return powermem.Memory(config=powermemconfig)
                 except ImportError:
                     pass
                 except Exception as e:
