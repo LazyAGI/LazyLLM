@@ -1,6 +1,5 @@
 import os
 import time
-import shutil
 import functools
 import threading
 from abc import ABC, abstractmethod
@@ -225,13 +224,15 @@ class ModelManager():
         # Use `BaseException` to capture `KeyboardInterrupt` and normal `Exceptioin`.
         except BaseException as e:  # noqa B036
             lazyllm.LOG.warning(f'Download encountered an error: {e}')
+            if '401' in str(e) or 'Client Error' in str(e):
+                raise RuntimeError('Authentication failed (401 Error). Please check your access token and '
+                                   'permissions.  And set the token with the environment variable '
+                                   'LAZYLLM_MODEL_SOURCE_TOKEN.')
             if not self.token and 'Permission denied' not in str(e):
                 lazyllm.LOG.warning('Token is empty, which may prevent private models from being downloaded, '
                                     'as indicated by "the model does not exist." Please set the token with the '
                                     'environment variable LAZYLLM_MODEL_SOURCE_TOKEN to download private models.')
-            if os.path.isdir(full_model_dir):
-                shutil.rmtree(full_model_dir)
-                lazyllm.LOG.warning(f'{full_model_dir} removed due to exceptions.')
+            raise RuntimeError(f'Model download failed for model: {model}, with error: {e}')
         return False
 
 class _HubDownloader(ABC):

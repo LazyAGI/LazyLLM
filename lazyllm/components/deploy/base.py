@@ -79,17 +79,21 @@ def verify_func_factory(error_message: str, running_message: str,  # noqa: C901
                 line = ''
                 status = job.status
                 if status == lazyllm.launchers.status.Failed:
-                    LOG.error('[Verify] Service Startup Failed.')
+                    LOG.error('[Verify] Service Startup Failed, '
+                              'use `export LAZYLLM_EXPECTED_LOG_MODULES=all` for more logs')
                     return False
                 LOG.debug(f'[Verify] Timeout when getting log line and current service status: {status}.')
             if _hit(error_message, line, err_judge):
-                LOG.error(f'[Verify] Capture error message: {line} \n\n')
+                LOG.error(f'[Verify] Capture error message: {line} \n\n '
+                          ', use `export LAZYLLM_EXPECTED_LOG_MODULES=all` for more logs')
                 return False
             elif _hit(running_message, line, run_judge):
-                LOG.info(f'[Verify] Capture startup message: {line}')
+                LOG.info(f'[Verify] Capture startup message: {line}', name='launcher')
+                LOG.success(f'job `{str(job._fixed_cmd).strip()}` executed successfully!')
                 break
             if time.time() - begin_time > 600:
-                LOG.error('[Verify] Service Startup Timeout.')
+                LOG.error('[Verify] Service Startup Timeout, '
+                          'use `export LAZYLLM_EXPECTED_LOG_MODULES=all` for more logs')
                 return False
         return True
     return verify_func

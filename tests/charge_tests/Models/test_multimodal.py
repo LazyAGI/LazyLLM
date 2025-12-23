@@ -46,8 +46,8 @@ class TestMultiModal(object):
         suffix = ('.png', '.jpg', '.jpeg') if format == 'image' else ('.wav', '.mp3', '.flac')
         assert file.endswith(suffix)
 
-    @pytest.mark.ignore_cache_on_change('lazyllm/module/llms/onlinemodule/supplier/qwen.py')
+    @pytest.mark.ignore_cache_on_change('lazyllm/module/llms/onlinemodule/supplier/siliconflow.py')
     def test_online_text2image(self):
-        sd = lazyllm.OnlineMultiModalModule(source='qwen', function='text2image')
-        result = sd(self.test_image_prompt)
+        text2image = lazyllm.OnlineMultiModalModule(source='siliconflow', function='text2image', model='Kolors')
+        result = text2image(self.test_image_prompt)
         self._check_file_result(result, format='image')

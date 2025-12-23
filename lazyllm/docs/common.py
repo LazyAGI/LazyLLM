@@ -444,6 +444,113 @@ True
 (1, 2, 3, 4, 5)
 ''')
 
+# ============= queue
+
+add_chinese_doc('RecentQueue', """\
+最近元素队列（RecentQueue）是对标准 Queue 的扩展实现，在不改变原有队列语义的前提下，额外维护一份「最近放入队列的 K 个元素」缓存。
+
+该类常用于：
+- 最近上下文记录（如 Prompt / 消息历史）
+- 调试与问题定位时追踪最近输入
+- 轻量级时间窗口缓存或回溯分析
+
+参数说明：
+- maxsize (int)：
+    队列最大容量，语义与 queue.Queue 一致
+
+- recent_k (Optional[int])：
+    需要保留的最近元素数量：
+    - None 或 0：不启用 recent 功能
+    - 大于 0：最多保留 recent_k 个最近 put 进队列的元素
+""")
+
+add_english_doc('RecentQueue', """\
+RecentQueue
+
+RecentQueue is an extension of the standard Queue that maintains
+an additional cache of the most recently put K items, without
+altering the original queue semantics.
+
+Typical use cases include:
+- Tracking recent context (e.g. prompt or message history)
+- Debugging and tracing recent inputs
+- Lightweight sliding-window or rollback-style analysis
+
+Parameters:
+- maxsize (int):
+    Maximum size of the queue, same semantics as queue.Queue
+
+- recent_k (Optional[int]):
+    Number of recent items to retain:
+    - None or 0: disable recent tracking
+    - > 0: keep at most recent_k most recently put items
+""")
+
+add_example('RecentQueue', """\
+>>> from queue import Queue
+>>> from collections import deque
+>>> import threading
+
+>>> q = RecentQueue(maxsize=10, recent_k=3)
+>>> q.put("msg-1")
+>>> q.put("msg-2")
+>>> q.put("msg-3")
+
+>>> print(q.get_recent())
+['msg-1', 'msg-2', 'msg-3']
+
+>>> q.put("msg-4")
+>>> print(q.get_recent())
+输出: ['msg-2', 'msg-3', 'msg-4']
+""")
+
+add_chinese_doc('RecentQueue.get_recent', """\
+获取最近放入队列的元素。返回最近放入队列的元素列表或拼接后的字符串，不会消费（remove）队列中的任何元素。
+
+重要说明：
+- recent 是队列的旁路缓存（side-channel）
+- 返回结果按时间顺序排列（从旧到新）
+
+参数说明：
+- join (Optional[str])：如果提供该参数，将 recent 列表中的元素使用 join 作为分隔符拼接为一个字符串。要求 recent 中的所有元素均为字符串类型。
+- join_prefix (Optional[str])：当 join 生效且拼接结果非空时，在结果字符串前追加前缀，常用于上下文提示头。
+
+返回值：
+- List[Any]：当 join 为 None 时，返回 recent 元素的列表副本
+- str：当 join 提供时，返回拼接后的字符串（可能带前缀）
+""")
+
+add_english_doc('RecentQueue.get_recent', """\
+Retrieve recently put items
+
+Returns the most recently put items in the queue, either as a list
+or as a joined string. This method does NOT consume items from
+the queue.
+
+Notes:
+- The recent buffer is a side-channel cache
+- Items are ordered from oldest to newest
+
+Parameters:
+- join (Optional[str]): If provided, recent items will be joined into a single string using this value as the separator. All items in the recent buffer must be strings.
+- join_prefix (Optional[str]): If join is used and the result is non-empty, this prefix will be prepended to the joined string.
+
+Returns:
+- List[Any]: When join is None, returns a copy of the recent items list
+- str: When join is provided, returns the joined string (with optional prefix)
+""")
+
+add_example('RecentQueue.get_recent', """\
+>>> q = RecentQueue(recent_k=3)
+>>> q.put("a").put("b").put("c").put("d")
+>>> q.get_recent()
+['b', 'c', 'd']
+
+>>> q.get_recent(join="\\n", join_prefix="Recent:\\n")
+'Recent:\\nb\\nc\\nd'
+""")
+
+
 add_chinese_doc('FileSystemQueue', """\
 基于文件系统的队列抽象基类。
 
