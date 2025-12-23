@@ -39,12 +39,6 @@ Install the basic dependencies:
 pip3 install -r requirements.txt
 ```
 
-If you want to use all features of LazyLLM, you can install the full set of dependencies by running the following command:
-
-```bash
-pip3 install -r requirements.full.txt
-```
-
 Add `LazyLLM` to the module search path:
 
 ```bash

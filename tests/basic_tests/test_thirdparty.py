@@ -1,6 +1,6 @@
 import sys
 import pytest
-from lazyllm.thirdparty import faiss
+from lazyllm.thirdparty import faiss, requirements, prep_req_dict
 
 class TestThirdparty(object):
 
@@ -52,3 +52,9 @@ class TestThirdparty(object):
         assert not flag.flag
         _ = path.join
         assert flag.flag
+
+    def test_toml_dependencies_extraction(self):
+        prep_req_dict()
+        assert requirements
+        for name, version in requirements.items():
+            print(f'{name} {version}')

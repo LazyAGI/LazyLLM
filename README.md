@@ -197,8 +197,6 @@ cd LazyLLM
 pip install -r requirements.txt
 ```
 
-If you want to fine-tune, deploy inference services, or build RAG applications, you need to use `pip install -r requirements.full.txt`
-
 ### Installation on Windows or macOS
 
 For installation on Windows or macOS, please refer to our [tutorial](https://docs.lazyllm.ai/zh-cn/stable/Home/environment)
