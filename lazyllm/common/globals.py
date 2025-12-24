@@ -3,7 +3,6 @@ import contextvars
 import copy
 from typing import Any, Tuple, Optional, List, Dict
 import uuid
-from pydantic import BaseModel as struct
 from .common import package, kwargs, SingletonABCMeta
 from .redis_client import redis_client
 from .deprecated import deprecated
@@ -281,11 +280,12 @@ class LazyLlmRequest(object):
 
 
 @deprecated
-class LazyLlmResponse(struct):
+class LazyLlmResponse():
     messages: Any = None
     trace: str = ''
     err: Tuple[int, str] = (0, '')
 
+    def __init__(self, *args, **kw): pass
     def __repr__(self): return repr(self.messages)
     def __str__(self): return str(self.messages)
 
