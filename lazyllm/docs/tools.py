@@ -4,19 +4,19 @@ from . import utils
 import functools
 import lazyllm
 
-add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools)
-add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools)
-add_example = functools.partial(utils.add_example, module=lazyllm.tools)
+add_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools'))
+add_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools'))
+add_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools'))
 
 # functions for lazyllm.tools.tools
-add_tools_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools.tools)
-add_tools_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools.tools)
-add_tools_example = functools.partial(utils.add_example, module=lazyllm.tools.tools)
+add_tools_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.tools'))
+add_tools_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.tools'))
+add_tools_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.tools'))
 
 # functions for lazyllm.tools.agent
-add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools.agent)
-add_agent_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools.agent)
-add_agent_example = functools.partial(utils.add_example, module=lazyllm.tools.agent)
+add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.agent'))
+add_agent_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent'))
+add_agent_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent'))
 
 # functions for lazyllm.tools.services
 add_services_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.services'))
