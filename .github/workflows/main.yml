@@ -136,7 +136,7 @@ jobs:
           set -e
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
-          python docs/add_docstrings.py
+          LAZYLLM_INIT_DOC=True python docs/add_docstrings.py
 
       - name: Setup CI directory
         run: |
@@ -350,7 +350,7 @@ jobs:
           pip install -r docs/requirements.txt
           cp -r docs/assets docs/zh
           cp -r docs/assets docs/en
-          python docs/add_docstrings.py
+          LAZYLLM_INIT_DOC=True python docs/add_docstrings.py
           python docs/link_assets.py
           python docs/ipynb2md.py
           python docs/gen_mkdocs_yaml.py

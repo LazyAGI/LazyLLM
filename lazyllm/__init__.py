@@ -18,10 +18,10 @@ from .hook import LazyLLMHook, LazyLLMFuncHook
 from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
                     FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
                     LLMParser)
-from .docs import add_doc
 from .patch import patch_os_env
-
+from .docs import add_doc
 config.done()
+
 patch_os_env(lambda key, value: config.refresh(key), config.refresh)
 
 

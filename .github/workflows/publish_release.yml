@@ -100,7 +100,7 @@ jobs:
           export PYTHONPATH=$PWD:$PYTHONPATH
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
-          python docs/add_docstrings.py
+          LAZYLLM_INIT_DOC=True python docs/add_docstrings.py
 
       - name: Clean cache
         shell: bash
