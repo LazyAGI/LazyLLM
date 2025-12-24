@@ -426,25 +426,29 @@ Here:
 - `Document` loads and manages the raw files
 - The model remains an independent module
 
+> Tip:
+>
+> Regarding the usage of the extra_keys field, please refer to the [detailed API documentation](https://docs.lazyllm.ai/en/stable/API%20Reference/components/#lazyllm.components.ChatPrompter) for more information.
+
 #### 4.2.2 Build the Retriever
 
-Next we need a retriever to find relevant content per question.
+Next we need a retriever instance to find relevant content per question.
 
 ```python
 retriever = lazyllm.Retriever(
     doc=documents,
     group_name="CoarseChunk",
-    similarity="bm25_chinese",
-    topk=3,
-    output_format='content',
-    join=True
+    similarity="bm25",
+    topk=3
 )
 ```
 
-You do not need to fully grasp each parameter now. Just know:
+This `retriever` serves as the retrieval module in the subsequent pipeline. It is initialized with a set of parameters and encapsulates the complete logic of “input a question → return relevant content.”
 
-- The retriever takes the user question as input
-- It outputs top matching text chunks
+In practice, you only need to pass the user’s question as input, and it will return a set of text segments most relevant to that question. The exact input and output formats are introduced in [Section 5.2.2](#522-retriever-search).
+.
+
+For a detailed explanation of the retriever parameters, you can refer to the [documentation](https://docs.lazyllm.ai/en/stable/Tutorial/8.en/#detailed-explanation-of-retriever-parameters) if you are interested.
 
 #### 4.2.3 Chain the RAG Flow with a Pipeline
 
@@ -544,80 +548,53 @@ Pipelines make each step’s input and output explicit.
 
 Walk through a complete example to see how a request moves through the system.
 
-#### 5.2.1 Embedder: Vectorization
-
-The embedder converts text into vectors for similarity search. In RAG it often processes:
-
-- Document text (offline or during ingestion)
-- User questions (online during queries)
-
-Example:
-
-```text
-Input text:
-"What is an AI agent?"
-
-Output vector:
-[0.021, -0.134, 0.557, ..., -0.089]
-```
-
-#### 5.2.2 Retriever: Search
+#### 5.2.1 Retriever: Search
 
 The retriever takes the question (or its vector) and returns relevant chunks:
 
 ```python
-# Input question
 query = "How is RAG different from fine-tuning?"
-
-# Output
-retrieved_docs = [
-    "RAG injects external knowledge before generation, so it depends less on model parameters.",
-    "Fine-tuning retrains model parameters for a specific task or domain.",
-    "When knowledge updates frequently, RAG is easier to maintain."
-]
+print(f"========== input ==========\n{query}")
+retrieved_docs = retriever(query)
+for doc in retrieved_docs:
+    print(f"========== output ==========\n{doc.text}")
 ```
 
-#### 5.2.3 Reranker: Optional Reordering
+The output result:
+
+![image-5.png](../assets/learn_5_en.png)
+
+#### 5.2.2 Reranker: Optional Reordering
 
 The reranker re-scores candidate texts relative to the question. It does not create new text; it reorders existing ones.
 
 ```python
-query = "How is RAG different from fine-tuning?"
-
-retrieved_docs = [
-  "RAG injects external knowledge before generation, reducing reliance on model parameters.",
-  "Fine-tuning retrains model parameters for specific tasks or domains.",
-  "RAG is easier to maintain when knowledge updates frequently."
-]
-
-# Output with scores
-reranked = [
-  {
-    "text": "Fine-tuning retrains the model parameters for specific tasks or domains.",
-    "score": 0.91
-  },
-  {
-    "text": "RAG injects external knowledge before generation, reducing reliance on model parameters.",
-    "score": 0.88
-  },
-  {
-    "text": "RAG is easier to maintain when knowledge updates frequently.",
-    "score": 0.12
-  }
-]
+reranker = Reranker('ModuleReranker', model='bge-reranker-large', topk=2)
+reranked_docs = reranker(retrieved_docs)
+for doc in reranked_docs:
+    print(f"========== reranked doc ==========\n{doc.text}")
+    print(f"---------- relevance score ----------\n{doc.relevance_score}")
 ```
+
+The rerank result is as below. The document which is more relevant to the user query has higher rank and relevance score.
+
+![image-6.png](../assets/learn_6_en.png)
 
 Rerankers are optional. Without one you can pass `retrieved_docs` straight to the LLM.
 
-#### 5.2.4 LLM: Generation
+#### 5.2.3 LLM: Generation
 
 At this stage the LLM takes the original prompt plus context and produces the answer:
 
 ```python
-input = "Answer the question: How is RAG different from fine-tuning? Keep it concise.\n\n【Context】\n1. RAG injects external knowledge before generation, reducing reliance on model parameters.\n2. Fine-tuning retrains model parameters for specific tasks or domains."
-
-output = "RAG retrieves external materials before answering, so it avoids changing model weights; fine-tuning updates the model parameters to fit a target task."
+rerank_contexts = [doc.text for doc in reranked_docs]
+context_str = "\n-------------------\n".join(rerank_contexts)
+res = llm({"query": query, "context_str": context_str})
+print(f'---------- llm result ----------')
+print(res)
 ```
+
+![image-7.png](../assets/learn_7_en.png)
 
 ## 6. Use Pipelines to Organize LLM Flows
 
@@ -710,20 +687,35 @@ def multiply_tool(a: int, b: int) -> int:
     :rtype: int
     """
     return a * b
+@fc_register("tool")
+def add_tool(a: int, b: int):
+    """
+    Docstring for add_tool
+    
+    :param a: Description
+    :type a: int
+    :param b: Description
+    :type b: int
+    """
+    return a + b
 ```
 
 ### 7.4 Invoke a Custom Tool from an Agent
 
-After exposing tools, the agent decides whether to call them. Execution paths become model-driven instead of hardcoded. When asked "What is 12*36? Show the steps," the agent will call `multiply_tool` on its own.
+After exposing tools, the agent decides whether to call them. Execution paths become model-driven instead of hardcoded. When asked "What is 12*36? Show the steps," the agent will call `multiply_tool` and `add_tool` on its own.
 
 ```python
 from lazyllm.tools import ReactAgent
 
-llm = lazyllm.OnlineChatModule(source="sensenova", model="SenseNova-V6-5-Pro")
-agent = ReactAgent(llm, [multiply_tool])
-res = agent("What is 12*36? Show the steps.")
+tools = ["multiply_tool", "add_tool"]
+llm = lazyllm.OnlineChatModule(source="sensenova", model="DeepSeek-V3")
+agent = ReactAgent(llm, tools)
+query = "What is 20+(2*4)? Calculate step by step."
+res = agent(query)
 print(res)
 ```
+
+![image-8.png](../assets/learn_8_en.png)
 
 ### 7.5 When to Use Agents
 
