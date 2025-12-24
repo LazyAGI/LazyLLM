@@ -5,7 +5,9 @@ on:
     branches:
       - main
     tags:
-      - "v*"
+      - "v*.*.*a*"
+      - "v*.*.*b*"
+      - "v*.*.*rc*"
     paths-ignore:
       - "**.md"
       - ".git*"
@@ -136,7 +138,7 @@ jobs:
           set -e
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
-          python docs/add_docstrings.py
+          LAZYLLM_INIT_DOC=True python docs/add_docstrings.py
 
       - name: Setup CI directory
         run: |
@@ -308,7 +310,9 @@ jobs:
           python-version: ${{ env.PYTHON_VERSION }}
 
       - name: Build
-        run: python -m build --config-setting=skbuild.wheel.cmake=false
+        run: |
+          pip install build
+          python -m build --config-setting=skbuild.wheel.cmake=false
 
       - name: Test installing built package
         run: pip install dist/lazyllm*.whl
@@ -350,7 +354,7 @@ jobs:
           pip install -r docs/requirements.txt
           cp -r docs/assets docs/zh
           cp -r docs/assets docs/en
-          python docs/add_docstrings.py
+          LAZYLLM_INIT_DOC=True python docs/add_docstrings.py
           python docs/link_assets.py
           python docs/ipynb2md.py
           python docs/gen_mkdocs_yaml.py

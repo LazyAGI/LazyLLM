@@ -19,6 +19,7 @@ runs:
     - name: Build project
       shell: bash
       run: |
+        pip install build
         python -m build --config-setting=skbuild.wheel.cmake=false
 
     - name: Install the built package
