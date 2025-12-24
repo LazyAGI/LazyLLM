@@ -1,6 +1,6 @@
 import sys
 import pytest
-from lazyllm.thirdparty import faiss
+from lazyllm.thirdparty import faiss, requirements, prep_req_dict
 
 class TestThirdparty(object):
 
@@ -13,7 +13,7 @@ class TestThirdparty(object):
             except ImportError:
                 return False
         third_import_type = type(faiss)
-        monkeypatch.delitem(sys.modules, "faiss", raising=False)
+        monkeypatch.delitem(sys.modules, 'faiss', raising=False)
         assert not check_installed(third_import_type)
 
     def test_lazy_import(self, monkeypatch):
@@ -23,7 +23,7 @@ class TestThirdparty(object):
                 return True
             except (AttributeError, ImportError):
                 return False
-        monkeypatch.delitem(sys.modules, "faiss", raising=False)
+        monkeypatch.delitem(sys.modules, 'faiss', raising=False)
         assert faiss is not None
         assert not check_lazy_import(faiss)
 
@@ -52,3 +52,9 @@ class TestThirdparty(object):
         assert not flag.flag
         _ = path.join
         assert flag.flag
+
+    def test_toml_dependencies_extraction(self):
+        prep_req_dict()
+        assert requirements
+        for name, version in requirements.items():
+            print(f'{name} {version}')

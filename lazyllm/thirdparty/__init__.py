@@ -1,4 +1,6 @@
 import importlib
+import toml
+import re
 from lazyllm.common import LOG
 from .modules import modules
 import os
@@ -30,20 +32,41 @@ def get_pip_install_cmd(names):
         return 'pip install ' + ', '.join(install_parts)
     return None
 
+def split_package_version(s: str, pattern: re.Pattern):
+    m = pattern.match(s)
+    if not m:
+        raise ValueError(f'Invalid package version format: {s}')
+    name = m.group('name')
+    version = m.group('version') or ''
+    return name, version
 
 def prep_req_dict():
-    req_file_path = os.path.abspath(__file__).replace('lazyllm/thirdparty/__init__.py', 'requirements.full.txt')
+    toml_file_path = os.path.abspath(__file__).replace('lazyllm/thirdparty/__init__.py', 'pyproject.toml')
     try:
-        with open(req_file_path, 'r') as req_f:
-            lines = req_f.readlines()
-        lines = [line.strip() for line in lines]
-        for line in lines:
-            req_parts = line.split('>=')
-            if len(req_parts) == 2:
-                requirements[req_parts[0]] = '>=' + req_parts[1]
+        with open(toml_file_path, 'r') as f:
+            toml_config = toml.load(f)
     except FileNotFoundError:
         LOG.error('requirements.full.txt missing. Cannot generate pip install command.')
 
+    pattern = re.compile(r'''
+        ^\s*
+        (?P<name>[A-Za-z0-9_.-]+)
+        \s*
+        (?P<version>(==|<=|>=|<|>).*?)?
+        \s*$
+    ''', re.VERBOSE)
+
+    required_dependencies = toml_config['project']['dependencies']
+    for dep in required_dependencies:
+        name, version = split_package_version(dep, pattern)
+        requirements[name] = version
+
+    optional_dependencies = toml_config['tool']['poetry']['dependencies']
+    for name, spec in optional_dependencies.items():
+        version = spec.get('version', '')
+        if version == '*':
+            version = ''
+        requirements[name] = version
 
 class PackageWrapper(object):
     def __init__(self, key, *sub_package, package=None, register_patches=None) -> None:
