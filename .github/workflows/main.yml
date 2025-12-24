@@ -5,7 +5,9 @@ on:
     branches:
       - main
     tags:
-      - "v*"
+      - "v*.*.*a*"
+      - "v*.*.*b*"
+      - "v*.*.*rc*"
     paths-ignore:
       - "**.md"
       - ".git*"
