@@ -3,7 +3,7 @@ import toml
 import re
 from lazyllm.common import LOG
 from .modules import modules
-import os
+from pathlib import Path
 
 package_name_map = {
     'huggingface_hub': 'huggingface-hub',
@@ -41,7 +41,7 @@ def split_package_version(s: str, pattern: re.Pattern):
     return name, version
 
 def prep_req_dict():
-    toml_file_path = os.path.abspath(__file__).replace('lazyllm/thirdparty/__init__.py', 'pyproject.toml')
+    toml_file_path = Path(__file__).resolve().parents[2] / 'pyproject.toml'
     try:
         with open(toml_file_path, 'r') as f:
             toml_config = toml.load(f)
