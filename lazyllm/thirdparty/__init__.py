@@ -47,7 +47,7 @@ def prep_req_dict():
         with open(toml_file_path, 'r') as f:
             toml_config = toml.load(f)
     except FileNotFoundError:
-        LOG.error('requirements.full.txt missing. Cannot generate pip install command.')
+        LOG.error('pyproject.toml missing. Cannot extract required dependencies.')
 
     pattern = re.compile(r'''
         ^\s*

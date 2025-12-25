@@ -373,6 +373,16 @@ multimodal = [
     "torch",
     "transformers"
 ]
+rag-standard = [
+    "pandas",
+    # "torch",
+    # "transformers",
+    # "boto3",
+    # "botocore",
+    "numpy",
+    "PIL",
+    "fsspec",
+]
 rag-advanced = [
     "chromadb",
     "ctranslate2",

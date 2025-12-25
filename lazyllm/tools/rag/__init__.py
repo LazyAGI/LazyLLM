@@ -1,3 +1,6 @@
+from ..common.dep_check import warn_missing_packages
+warn_missing_packages('rag-standard')
+
 from .document import Document
 from .graph_document import GraphDocument, UrlGraphDocument
 from .retriever import Retriever, TempDocRetriever
