@@ -2,9 +2,9 @@ import lazyllm
 from typing import Any, Dict
 from .base import OnlineMultiModalBase
 from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
-from .supplier.doubao import DoubaoTextToImageModule
+from .supplier.doubao import DoubaoTextToImageModule, DoubaoTextToImageEditModule
 from .supplier.glm import GLMSTTModule, GLMTextToImageModule
-from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule
+from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule, SiliconFlowTextToImageEditModule
 from .supplier.minimax import MinimaxTextToImageModule, MinimaxTTSModule
 
 
@@ -51,6 +51,10 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         'siliconflow': SiliconFlowTextToImageModule,
         'minimax': MinimaxTextToImageModule
     }
+    TEXT2IMAGEEDIT_MODELS = {
+        'doubao': DoubaoTextToImageEditModule,
+        'siliconflow': SiliconFlowTextToImageEditModule
+    }
 
     @staticmethod
     def _encapsulate_parameters(base_url: str,
@@ -96,6 +100,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
             'stt': OnlineMultiModalModule.STT_MODELS,
             'tts': OnlineMultiModalModule.TTS_MODELS,
             'text2image': OnlineMultiModalModule.TEXT2IMAGE_MODELS,
+            'text2imageedit': OnlineMultiModalModule.TEXT2IMAGEEDIT_MODELS
         }
 
         if function not in FUNCTION_MODEL_MAP:

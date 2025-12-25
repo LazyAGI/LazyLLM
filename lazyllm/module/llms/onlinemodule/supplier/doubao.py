@@ -109,3 +109,109 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
         )
         return encode_query_with_filepaths(None, bytes_to_file([requests.get(result.url).content
                                                                 for result in imagesResponse.data]))
+
+
+class DoubaoTextToImageEditModule(DoubaoMultiModal):
+    """ByteDance Doubao Text-to-Image Edit module supporting image editing with reference images.
+
+        Based on ByteDance Doubao multimodal model's text-to-image editing functionality, 
+        inherits from DoubaoMultiModal, providing high-quality image editing capability with reference images.
+
+        Args:
+            api_key (str, optional): Doubao API key, defaults to None.
+            model_name (str, optional): Model name, defaults to "doubao-seedream-4-5-251128".
+            return_trace (bool, optional): Whether to return trace information, defaults to False.
+            **kwargs: Other parameters passed to parent class.
+    """
+    MODEL_NAME = 'doubao-seedream-4-5-251128'
+
+    def __init__(self, api_key: str = None, model_name: str = None, return_trace: bool = False, **kwargs):
+        DoubaoMultiModal.__init__(self, api_key=api_key, model_name=model_name
+                                  or DoubaoTextToImageEditModule.MODEL_NAME
+                                  or lazyllm.config.get('doubao_text2image_model_name'),
+                                  return_trace=return_trace, **kwargs)
+
+    def _load_image_as_base64(self, image_path: str) -> str:
+        """
+        Load image from file path or URL and convert to base64 string.
+        
+        Args:
+            image_path: Local file path or HTTP(S) URL of the image
+            
+        Returns:
+            Base64 encoded image string
+        """
+        import base64
+        from pathlib import Path
+        
+        try:
+            if image_path.startswith('http://') or image_path.startswith('https://'):
+                # Download image from URL
+                response = requests.get(image_path, timeout=30)
+                response.raise_for_status()
+                image_data = response.content
+            else:
+                # Load from local file
+                if not Path(image_path).exists():
+                    raise FileNotFoundError(f'Image file not found: {image_path}')
+                with open(image_path, 'rb') as f:
+                    image_data = f.read()
+            
+            # Convert to base64
+            return base64.b64encode(image_data).decode('utf-8')
+        except Exception as e:
+            lazyllm.LOG.error(f'Failed to load image from {image_path}: {str(e)}')
+            raise
+
+    def _forward(self, input: str = None, files: List[str] = None, size: str = '2K',
+                 seed: int = -1, guidance_scale: float = 2.5, watermark: bool = True, **kwargs):
+        """
+        Forward method for image editing with reference images.
+        
+        Args:
+            input (str): Text prompt for editing instructions.
+            files (List[str]): List of reference image file paths or URLs (must provide at least one).
+            size (str): Output image size (e.g., '4096x2160', '2048x2048'). Defaults to '4096x2160'.
+            seed (int): Random seed for generation reproducibility. Defaults to -1 (random).
+            guidance_scale (float): Guidance scale for generation quality. Defaults to 2.5.
+            watermark (bool): Whether to add watermark to generated images. Defaults to True.
+            **kwargs: Additional parameters passed to the API.
+            
+        Returns:
+            str: Encoded file paths containing the edited images.
+            
+        Raises:
+            ValueError: If no reference images are provided.
+        """
+        if not files or len(files) == 0:
+            raise ValueError('DoubaoTextToImageEditModule requires at least one reference image in files parameter')
+        
+        # Load the first image as reference
+        reference_image_base64 = self._load_image_as_base64(files[0])
+        
+        # Build request parameters with reference image
+        # Note: Doubao API expects base64 image data in the format: data:image/png;base64,{base64_data}
+        reference_image_data_url = f"data:image/png;base64,{reference_image_base64}"
+        
+        try:
+            # Make API request using the client
+            imagesResponse = self._client.images.generate(
+                model=self._model_name,
+                prompt=input,
+                # image参数格式：base64
+                image=reference_image_data_url,  # Reference image for editing
+                size=size,
+                seed=seed,
+                guidance_scale=guidance_scale,
+                watermark=watermark,
+                
+                **kwargs
+            )
+            
+            # Download images and convert to files
+            image_contents = [requests.get(result.url).content for result in imagesResponse.data]
+            
+            return encode_query_with_filepaths(None, bytes_to_file(image_contents))
+        except Exception as e:
+            lazyllm.LOG.error(f'Image editing request failed: {str(e)}')
+            raise
