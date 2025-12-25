@@ -2,6 +2,7 @@ import importlib
 import toml
 import re
 from lazyllm.common import LOG
+from lazyllm.common.dep_check import check_package_installed
 from .modules import modules
 from pathlib import Path
 
@@ -29,7 +30,7 @@ def get_pip_install_cmd(names):
             name = package_name_map[name]
         install_parts.append(name + requirements.get(name, ''))
     if len(install_parts) > 0:
-        return ', '.join(install_parts)
+        return 'pip install ' + ', '.join(install_parts)
     return None
 
 def split_package_version(s: str, pattern: re.Pattern):
@@ -120,13 +121,6 @@ for m in modules:
     else:
         vars()[m[0]] = PackageWrapper(m[0], *m[1:])
 
-def check_package_installed(package_name: str) -> bool:
-    try:
-        importlib.metadata.version(package_name)
-        return True
-    except:
-        return False
-
 def check_packages(names):
     assert isinstance(names, list)
     missing_pack = []
@@ -134,5 +128,5 @@ def check_packages(names):
         if not check_package_installed(name):
             missing_pack.append(name)
     if len(missing_pack) > 0:
-        packs = get_pip_install_cmd(missing_pack)
-        LOG.warning(f'Some packages not found, please install it by \'pip install {packs}\'')
+        cmd = get_pip_install_cmd(missing_pack)
+        LOG.warning(f'Some packages not found, please install it by \'{cmd}\'')
