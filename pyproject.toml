@@ -159,6 +159,8 @@ lazyllm-verl = {version = "==0.3.2.dev2", optional = true}
 bitsandbytes = {version = "==0.48.2", optional = true}
 pluggy = {version = "==1.6.0", optional = true}
 chardet = {version = "^5.2.0", optional = true}
+pydub = {version = "^0.25.1", optional = true}
+nbconvert = {version = "^7.16.6", optional = true}
 
 [tool.poetry.extras]
 standard = [
@@ -268,7 +270,9 @@ full = [
     "lazyllm-verl",
     "bitsandbytes",
     "pluggy",
-    "chardet"
+    "chardet",
+    "pydub",
+    "nbconvert"
 ]
 alpaca-lora = [
     "appdirs",
@@ -392,7 +396,10 @@ rag-advanced = [
     "boto3",
     "botocore",
     "opensearch-py",
-    "elasticsearch"
+    "elasticsearch",
+    "nbconvert",
+    "pydub",
+    "openai-whisper",
 ]
 agent-advanced = [
     "ctranslate2",
