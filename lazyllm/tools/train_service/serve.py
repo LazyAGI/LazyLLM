@@ -88,8 +88,21 @@ class ModelExport(BaseModel):
 
 
 class TrainServer(ServerBase):
+    # Compiled regex patterns for performance optimization
+    _re_progress_bar = re.compile(r'(\d+)%\s*\|\s*[█▉▊▋▌▍▎▏\s]+\s*\|\s*(\d+)/(\d+)')
+    _re_non_training_patterns = [
+        re.compile(r'Loading checkpoint shards', re.IGNORECASE),
+        re.compile(r'Converting format of dataset', re.IGNORECASE),
+        re.compile(r'Running tokenizer on dataset', re.IGNORECASE),
+    ]
+    _re_time_format = re.compile(r'\[\d+:\d+<\d+:\d+,\s*[\d.]+\s*(?:s/it|it/s)\]')
+    _re_loss = re.compile(r"'loss':\s*([\d.]+)")
+    _re_epoch = re.compile(r"'epoch':\s*([\d.]+)")
+    _re_metrics = re.compile(r"\{'loss':\s*([\d.]+).*'epoch':\s*([\d.]+)")
+    _re_total_steps = re.compile(r'Total optimization steps\s*=\s*(\d+)')
+    _re_step_ratio = re.compile(r'(\d+)/(\d+)')
 
-    def _calculate_final_cost(self, token, job_id, info):
+    def _calculate_final_cost(self, info):
         '''
         Calculate final cost for a job when it's completed (Failed or Done).
         '''
@@ -108,17 +121,78 @@ class TrainServer(ServerBase):
             total_cost = previous_cost
         return total_cost
 
-    def _check_log_for_errors(self, log_path, job_id):
+    def _verify_final_model_files(self, fine_tuned_model_path, finetuning_type='lora'):
         '''
-        Check log file for common failure indicators.
+        Verify that final model files are complete and valid.
+        Returns True if model files are complete, False otherwise.
         '''
+        if not fine_tuned_model_path or not os.path.exists(fine_tuned_model_path):
+            return False
+
+        try:
+            # Check if merge_path exists (merged model is preferred)
+            if 'lazyllm_lora' in fine_tuned_model_path:
+                merge_path = fine_tuned_model_path.replace('lazyllm_lora', 'lazyllm_merge')
+                if os.path.exists(merge_path):
+                    fine_tuned_model_path = merge_path
+
+            if finetuning_type == 'full':
+                # For full finetuning, check for config.json and model files
+                config_path = os.path.join(fine_tuned_model_path, 'config.json')
+                if not os.path.exists(config_path):
+                    return False
+
+                # Check for model files (safetensors, bin, or index.json for sharded models)
+                model_files = [
+                    'model.safetensors',
+                    'pytorch_model.bin',
+                    'model.safetensors.index.json'
+                ]
+                has_model = any(
+                    os.path.exists(os.path.join(fine_tuned_model_path, f))
+                    for f in model_files
+                )
+                return has_model
+            else:
+                # For LoRA/QLoRA, check for adapter files
+                adapter_config = os.path.join(fine_tuned_model_path, 'adapter_config.json')
+                if not os.path.exists(adapter_config):
+                    return False
+
+                # Check for adapter weight files
+                adapter_files = [
+                    'adapter_model.safetensors',
+                    'adapter_model.bin'
+                ]
+                has_adapter = any(
+                    os.path.exists(os.path.join(fine_tuned_model_path, f))
+                    for f in adapter_files
+                )
+                return has_adapter
+        except Exception:
+            return False
+
+    def _check_log_for_errors(self, log_path, job_id, info=None):
+        # Priority 1: Verify model files first (most reliable indicator)
+        if info:
+            fine_tuned_model = info.get('fine_tuned_model')
+            if fine_tuned_model:
+                finetuning_type = info.get('hyperparameters', {}).get('finetuning_type', 'lora')
+                if self._verify_final_model_files(fine_tuned_model, finetuning_type):
+                    # Model files are complete, training succeeded regardless of log content
+                    logger.info(
+                        f'[_check_log_for_errors] Job {job_id} model files are complete, '
+                        f'training succeeded')
+                    return False
+
+        # Priority 2: If model files are incomplete, use original log check logic (conservative approach)
         if not log_path or not os.path.exists(log_path):
             return False
 
         try:
             with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
                 log_content = f.read()
-                # Check for common failure indicators
+                # Check for common failure indicators (original logic - conservative)
                 error_indicators = [
                     # Memory errors
                     'OutOfMemoryError', 'CUDA out of memory', 'torch.OutOfMemoryError',
@@ -145,7 +219,7 @@ class TrainServer(ServerBase):
                 ]
                 if any(error in log_content for error in error_indicators):
                     logger.info(
-                        f'[_update_status] Job {job_id} marked as Done but found '
+                        f'[_check_log_for_errors] Job {job_id} marked as Done but found '
                         f'errors in log, changing to Failed')
                     return True
         except Exception:
@@ -202,7 +276,8 @@ class TrainServer(ServerBase):
                 update['started_at'] = datetime.now().strftime(self._time_format)
 
             now = datetime.now()
-            started_at = datetime.strptime(info['started_at'], self._time_format)
+            started_at_str = update.get('started_at') or info.get('started_at')
+            started_at = datetime.strptime(started_at_str, self._time_format)
 
             last_update_time_str = info.get('last_cost_update_time')
             if last_update_time_str:
@@ -221,59 +296,58 @@ class TrainServer(ServerBase):
                 # Save progress_percent to user_job_info for display (not stored in database)
                 if 'percent' in progress_info:
                     update['progress_percent'] = progress_info['percent']
+                # Use total_steps from progress_info if available (avoid duplicate file reading)
+                total_steps = progress_info.get('total_steps')
             else:
-                # If no progress from log, try to initialize from checkpoint step
+                total_steps = None
+
+            # If no progress from log, try to initialize from checkpoint step
+            if 'progress_percent' not in update:
                 checkpoint_step = info.get('checkpoint_step')
                 if checkpoint_step is not None and isinstance(checkpoint_step, int):
-                    # Try to get total steps from log (if available) to calculate progress
-                    log_path = info.get('log_path')
-                    if log_path and os.path.exists(log_path):
-                        try:
-                            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                                lines = f.readlines()
-                                total_steps = None
-                                # First, try to find 'Total optimization steps' line (most accurate)
-                                # Search from the end to get the latest total steps (after resume)
-                                for line in reversed(lines):
-                                    if 'Total optimization steps' in line:
-                                        total_steps_match = re.search(
-                                            r'Total optimization steps\s*=\s*(\d+)', line)
-                                        if total_steps_match:
-                                            total_steps = int(total_steps_match.group(1))
-                                            break
-
-                                # If not found, try to find from progress bar (less accurate)
-                                if total_steps is None:
-                                    # Exclude non-training progress bars
-                                    non_training_patterns = [
-                                        r'Loading checkpoint shards',
-                                        r'Converting format of dataset',
-                                        r'Running tokenizer on dataset',
-                                    ]
-                                    for line in reversed(lines[-100:]):
-                                        # Skip non-training progress bars
-                                        is_non_training = any(
-                                            re.search(pattern, line, re.IGNORECASE)
-                                            for pattern in non_training_patterns)
-                                        if is_non_training:
-                                            continue
-
-                                        # Match progress bar format: ' 50/150 [08:11<00:33,  1.11s/it]'
-                                        progress_match = re.search(r'(\d+)/(\d+)', line)
-                                        if progress_match:
-                                            potential_total = int(progress_match.group(2))
-                                            # Only use if reasonable (>= checkpoint_step and <= 10000)
-                                            if (potential_total >= checkpoint_step
-                                                    and potential_total <= 10000):
-                                                total_steps = potential_total
+                    # Use total_steps from progress_info if available (already read from file)
+                    if total_steps is None:
+                        # Fallback: try to get total steps from log (if not already extracted)
+                        log_path = info.get('log_path')
+                        if log_path and os.path.exists(log_path):
+                            try:
+                                with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                    lines = f.readlines()
+                                    # First, try to find 'Total optimization steps' line (most accurate)
+                                    # Search from the end to get the latest total steps (after resume)
+                                    for line in reversed(lines):
+                                        if 'Total optimization steps' in line:
+                                            total_steps_match = self._re_total_steps.search(line)
+                                            if total_steps_match:
+                                                total_steps = int(total_steps_match.group(1))
                                                 break
 
-                                if total_steps and total_steps > 0:
-                                    # Use current total steps (after resume) for accurate calculation
-                                    base_percent = int((checkpoint_step / total_steps) * 100)
-                                    update['progress_percent'] = max(0, min(100, base_percent))
-                        except Exception:
-                            pass
+                                    # If not found, try to find from progress bar (less accurate)
+                                    if total_steps is None:
+                                        for line in reversed(lines[-100:]):
+                                            # Skip non-training progress bars
+                                            is_non_training = any(
+                                                pattern.search(line)
+                                                for pattern in self._re_non_training_patterns)
+                                            if is_non_training:
+                                                continue
+
+                                            # Match progress bar format: ' 50/150 [08:11<00:33,  1.11s/it]'
+                                            progress_match = self._re_step_ratio.search(line)
+                                            if progress_match:
+                                                potential_total = int(progress_match.group(2))
+                                                # Only use if reasonable (>= checkpoint_step and <= 10000)
+                                                if (potential_total >= checkpoint_step
+                                                        and potential_total <= 10000):
+                                                    total_steps = potential_total
+                                                    break
+                            except Exception:
+                                pass
+
+                    if total_steps and total_steps > 0:
+                        # Use current total steps (after resume) for accurate calculation
+                        base_percent = int((checkpoint_step / total_steps) * 100)
+                        update['progress_percent'] = max(0, min(100, base_percent))
 
                 # Clear progress_percent if no progress info available
                 if 'progress_percent' not in update:
@@ -285,7 +359,7 @@ class TrainServer(ServerBase):
         if Status[status] == Status.Failed:
             update['progress_percent'] = None
             if 'cost' not in update:
-                total_cost = self._calculate_final_cost(token, job_id, info)
+                total_cost = self._calculate_final_cost(info)
                 self._update_user_job_info(
                     token, job_id, {'cost': total_cost, 'progress_percent': None})
                 logger.info(
@@ -306,14 +380,15 @@ class TrainServer(ServerBase):
 
         if Status[status] == Status.Done:
             log_path = info.get('log_path') or update.get('log_path')
-            should_mark_failed = self._check_log_for_errors(log_path, job_id)
+            # Pass info to allow model file verification
+            should_mark_failed = self._check_log_for_errors(log_path, job_id, info)
 
             if should_mark_failed:
                 update['status'] = 'Failed'
                 status = 'Failed'
                 self._update_user_job_info(token, job_id, update)
                 if 'cost' not in update:
-                    total_cost = self._calculate_final_cost(token, job_id, info)
+                    total_cost = self._calculate_final_cost(info)
                     self._update_user_job_info(
                         token, job_id, {'cost': total_cost, 'progress_percent': None})
 
@@ -326,7 +401,7 @@ class TrainServer(ServerBase):
 
             update['progress_percent'] = None
             if 'cost' not in update:
-                total_cost = self._calculate_final_cost(token, job_id, info)
+                total_cost = self._calculate_final_cost(info)
                 self._update_user_job_info(
                     token, job_id, {'cost': total_cost, 'progress_percent': None})
                 logger.info(
@@ -389,6 +464,16 @@ class TrainServer(ServerBase):
                 else:
                     search_lines = lines[-200:]
 
+                # Also search for total_steps from 'Total optimization steps' line
+                # This avoids duplicate file reading in _update_status
+                total_steps = None
+                for line in reversed(lines):
+                    if 'Total optimization steps' in line:
+                        total_steps_match = self._re_total_steps.search(line)
+                        if total_steps_match:
+                            total_steps = int(total_steps_match.group(1))
+                            break
+
                 # Search backwards for progress information
                 for line in reversed(search_lines):
                     original_line = line
@@ -397,17 +482,12 @@ class TrainServer(ServerBase):
                         continue
 
                     # Match progress bar format: ' 75%|███████▌  | 90/120 [08:11<00:33,  1.11s/it]'
-                    progress_match = re.search(r'(\d+)%\s*\|\s*[█▉▊▋▌▍▎▏\s]+\s*\|\s*(\d+)/(\d+)', line)
+                    progress_match = self._re_progress_bar.search(line)
                     if progress_match:
                         # Exclude non-training progress bars with descriptive prefixes
-                        non_training_patterns = [
-                            r'Loading checkpoint shards',
-                            r'Converting format of dataset',
-                            r'Running tokenizer on dataset',
-                        ]
                         is_non_training = any(
-                            re.search(pattern, original_line, re.IGNORECASE)
-                            for pattern in non_training_patterns)
+                            pattern.search(original_line)
+                            for pattern in self._re_non_training_patterns)
 
                         # Only extract training progress (has time format and
                         # no descriptive prefix)
@@ -415,36 +495,51 @@ class TrainServer(ServerBase):
                             # Check if has time format (training progress bar has
                             # [HH:MM<HH:MM, X.XXs/it] or [HH:MM<HH:MM, X.XXit/s])
                             # Support both 's/it' and 'it/s' formats
-                            time_format_pattern = r'\[\d+:\d+<\d+:\d+,\s*[\d.]+\s*(?:s/it|it/s)\]'
-                            if re.search(time_format_pattern, original_line):
+                            if self._re_time_format.search(original_line):
                                 percent = int(progress_match.group(1))
                                 current_step = int(progress_match.group(2))
-                                total_steps = int(progress_match.group(3))
+                                progress_total_steps = int(progress_match.group(3))
+
+                                # Use total_steps from 'Total optimization steps' if available,
+                                # otherwise use progress_total_steps from progress bar
+                                final_total_steps = total_steps if total_steps is not None else progress_total_steps
 
                                 # Try to extract loss information
-                                loss_match = re.search(r"'loss':\s*([\d.]+)", line)
+                                loss_match = self._re_loss.search(line)
                                 loss = float(loss_match.group(1)) if loss_match else None
 
                                 # Try to extract epoch information
-                                epoch_match = re.search(r"'epoch':\s*([\d.]+)", line)
+                                epoch_match = self._re_epoch.search(line)
                                 epoch = float(epoch_match.group(1)) if epoch_match else None
 
-                                return {
+                                result = {
                                     'percent': percent,
-                                    'step': f'{current_step}/{total_steps}',
+                                    'step': f'{current_step}/{final_total_steps}',
                                     'loss': loss,
                                     'epoch': epoch
                                 }
+                                # Add total_steps to result if found, to avoid duplicate file reading
+                                if total_steps is not None:
+                                    result['total_steps'] = total_steps
+                                return result
 
                     # Match training metrics format: '{'loss': 0.6341, 'epoch': 20.0, ...}'
-                    metrics_match = re.search(r"\{'loss':\s*([\d.]+).*'epoch':\s*([\d.]+)", line)
+                    metrics_match = self._re_metrics.search(line)
                     if metrics_match:
                         loss = float(metrics_match.group(1))
                         epoch = float(metrics_match.group(2))
-                        return {
+                        result = {
                             'loss': loss,
                             'epoch': epoch
                         }
+                        # Add total_steps to result if found, to avoid duplicate file reading
+                        if total_steps is not None:
+                            result['total_steps'] = total_steps
+                        return result
+
+                # If no progress found but total_steps was found, return it
+                if total_steps is not None:
+                    return {'total_steps': total_steps}
         except Exception as e:
             logger.debug(f'[_extract_training_progress] Failed to extract progress from {log_path}: {e}')
 
@@ -531,6 +626,37 @@ class TrainServer(ServerBase):
             return fine_tuned_model.replace('lazyllm_merge', 'lazyllm_lora')
         else:
             return os.path.join(os.path.dirname(fine_tuned_model), 'lazyllm_lora')
+
+    def _start_periodic_checkpoint_cleanup(self, token, job_id):
+        '''
+        Start a daemon thread to periodically clean up old checkpoints.
+        The thread will run every 60 seconds and clean up checkpoints while the job is active.
+        '''
+        def periodic_cleanup():
+            time.sleep(30)  # Initial delay before first cleanup
+            while True:
+                try:
+                    time.sleep(60)  # Run cleanup every 60 seconds
+                    if not self._in_active_jobs(token, job_id):
+                        break
+                    info = self._read_user_job_info(token, job_id)
+                    if not info:
+                        break
+                    lora_dir = self._get_lora_dir(info.get('fine_tuned_model'))
+                    if lora_dir and os.path.exists(lora_dir):
+                        # Get protected checkpoint path from hyperparameters (if resume is in progress)
+                        protected_checkpoint = None
+                        hyperparameters = info.get('hyperparameters', {})
+                        if hyperparameters and 'resume_from_checkpoint' in hyperparameters:
+                            protected_checkpoint = hyperparameters['resume_from_checkpoint']
+                        self._cleanup_old_checkpoints(
+                            lora_dir, keep_count=3,
+                            protected_checkpoint_path=protected_checkpoint)
+                except Exception:
+                    pass
+
+        cleanup_thread = threading.Thread(target=periodic_cleanup, daemon=True)
+        cleanup_thread.start()
 
     def _cleanup_old_checkpoints(self, lora_dir, keep_count=3, protected_checkpoint_path=None):
         if not lora_dir or not os.path.exists(lora_dir):
@@ -686,33 +812,8 @@ class TrainServer(ServerBase):
             except (ValueError, TypeError):
                 hypram['save_steps'] = 500
 
-        cleanup_thread = None
         if 'save_steps' in hypram and hypram['save_steps'] > 0:
-            def periodic_cleanup():
-                time.sleep(30)
-                while True:
-                    try:
-                        time.sleep(60)
-                        if not self._in_active_jobs(token, job_id):
-                            break
-                        info = self._read_user_job_info(token, job_id)
-                        if not info:
-                            break
-                        lora_dir = self._get_lora_dir(info.get('fine_tuned_model'))
-                        if lora_dir and os.path.exists(lora_dir):
-                            # Get protected checkpoint path from hyperparameters (if resume is in progress)
-                            protected_checkpoint = None
-                            hyperparameters = info.get('hyperparameters', {})
-                            if hyperparameters and 'resume_from_checkpoint' in hyperparameters:
-                                protected_checkpoint = hyperparameters['resume_from_checkpoint']
-                            self._cleanup_old_checkpoints(
-                                lora_dir, keep_count=3,
-                                protected_checkpoint_path=protected_checkpoint)
-                    except Exception:
-                        pass
-
-            cleanup_thread = threading.Thread(target=periodic_cleanup, daemon=True)
-            cleanup_thread.start()
+            self._start_periodic_checkpoint_cleanup(token, job_id)
 
         m = lazyllm.TrainableModule(job.model, save_root)\
             .trainset(data_path)\
@@ -995,9 +1096,11 @@ class TrainServer(ServerBase):
             # Full finetuning doesn't use adapter, so skip this logic
             if finetuning_type in ('lora', 'qlora'):
                 adapter_config_path = os.path.join(lora_dir, 'adapter_config.json')
-                if not os.path.exists(adapter_config_path):
-                    if checkpoint_path and os.path.exists(os.path.join(checkpoint_path, 'adapter_config.json')):
-                        shutil.copy(os.path.join(checkpoint_path, 'adapter_config.json'), adapter_config_path)
+                checkpoint_adapter = (os.path.join(checkpoint_path, 'adapter_config.json')
+                                     if checkpoint_path else None)
+                if (not os.path.exists(adapter_config_path) and
+                        checkpoint_adapter and os.path.exists(checkpoint_adapter)):
+                    shutil.copy(checkpoint_adapter, adapter_config_path)
 
             self._cleanup_old_checkpoints(lora_dir, keep_count=3, protected_checkpoint_path=checkpoint_path)
 
@@ -1047,6 +1150,8 @@ class TrainServer(ServerBase):
             checkpoint_path = info.get('checkpoint_path')
 
         has_checkpoint = checkpoint_path and os.path.exists(checkpoint_path)
+        # Track whether this is a resume or restart
+        resume_type = 'resume'  # Default to resume
 
         base_model = info.get('base_model')
         hyperparameters = info.get('hyperparameters', {}).copy()
@@ -1062,6 +1167,8 @@ class TrainServer(ServerBase):
                 save_root = os.path.join(lazyllm.config['train_target_root'], token, job_id)
         else:
             # No checkpoint: start fresh with new save_root (similar to create_job)
+            logger.info(f'[resume_job] Job {job_id} no checkpoint found, starting fresh training')
+            resume_type = 'restart'
             save_root = os.path.join(lazyllm.config['train_target_root'], token, job_id)
 
         os.makedirs(save_root, exist_ok=True)
@@ -1084,6 +1191,8 @@ class TrainServer(ServerBase):
         if has_checkpoint:
             finetuning_type = hyperparameters.get('finetuning_type', 'lora')
             if not self._is_checkpoint_complete(checkpoint_path, finetuning_type):
+                logger.info(f'[resume_job] Job {job_id} checkpoint incomplete, starting fresh training')
+                resume_type = 'restart'
                 has_checkpoint = False
                 checkpoint_path = None
                 # Remove resume_from_checkpoint from hyperparameters
@@ -1114,31 +1223,7 @@ class TrainServer(ServerBase):
             hyperparameters.pop('resume_from_checkpoint', None)
 
         if 'save_steps' in hyperparameters and hyperparameters['save_steps'] > 0:
-            def periodic_cleanup():
-                time.sleep(30)
-                while True:
-                    try:
-                        time.sleep(60)
-                        if not self._in_active_jobs(token, job_id):
-                            break
-                        info = self._read_user_job_info(token, job_id)
-                        if not info:
-                            break
-                        lora_dir = self._get_lora_dir(info.get('fine_tuned_model'))
-                        if lora_dir and os.path.exists(lora_dir):
-                            # Get protected checkpoint path from hyperparameters (if resume is in progress)
-                            protected_checkpoint = None
-                            hyperparameters = info.get('hyperparameters', {})
-                            if hyperparameters and 'resume_from_checkpoint' in hyperparameters:
-                                protected_checkpoint = hyperparameters['resume_from_checkpoint']
-                            self._cleanup_old_checkpoints(
-                                lora_dir, keep_count=3,
-                                protected_checkpoint_path=protected_checkpoint)
-                    except Exception:
-                        pass
-
-            cleanup_thread = threading.Thread(target=periodic_cleanup, daemon=True)
-            cleanup_thread.start()
+            self._start_periodic_checkpoint_cleanup(token, job_id)
 
         ngpus = info.get('ngpus', 1)
         if isinstance(ngpus, str):
@@ -1208,5 +1293,5 @@ class TrainServer(ServerBase):
         self._update_user_job_info(token, job_id, update_data)
         logger.info(
             f'[resume_job] Job {job_id} resumed successfully, '
-            f'status: {status}, checkpoint: {has_checkpoint}')
-        return {'status': status}
+            f'status: {status}, checkpoint: {has_checkpoint}, resume_type: {resume_type}')
+        return {'status': status, 'resume_type': resume_type}
