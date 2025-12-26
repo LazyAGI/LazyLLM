@@ -39,12 +39,6 @@ cd LazyLLM
 pip3 install -r requirements.txt
 ```
 
-如果您期望使用LazyLLM的所有功能，您可以运行以下命令来安装LazyLLM的全量依赖：
-
-```bash
-pip3 install -r requirements.full.txt
-```
-
 把 `LazyLLM` 加入到模块搜索路径中：
 
 ```bash

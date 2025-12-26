@@ -16,6 +16,8 @@ import lazyllm
 #           You can apply for the API key at https://platform.sensenova.cn/home
 #       - LAZYLLM_AIPING_API_KEY: the API key of AIPing, default model "DeepSeek-R1", `source="aiping"`.
 #           You can apply for the API key at https://aiping.cn/user/apikey
+#       - LAZYLLM_PPIO_API_KEY: the API key of PPIO (Paiou Cloud), default model "deepseek/deepseek-v3.2", `source="ppio"`.
+#           You can apply for the API key at https://www.ppinfra.com/
 #     * `source` needs to be specified for multiple API keys, but it does not need to be set for a single API key.
 
 chat = lazyllm.OnlineChatModule()

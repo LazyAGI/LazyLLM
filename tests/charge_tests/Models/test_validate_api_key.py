@@ -9,6 +9,7 @@ from lazyllm.module.llms.onlinemodule.supplier.qwen import QwenModule
 from lazyllm.module.llms.onlinemodule.supplier.sensenova import SenseNovaModule
 from lazyllm.module.llms.onlinemodule.supplier.siliconflow import SiliconFlowModule
 from lazyllm.module.llms.onlinemodule.supplier.aiping import AipingModule
+from lazyllm.module.llms.onlinemodule.supplier.ppio import PPIOModule
 
 
 class TestValidateApiKey:
@@ -26,6 +27,7 @@ class TestValidateApiKey:
             'sensenova': os.getenv('LAZYLLM_SENSENOVA_API_KEY'),
             'siliconflow': os.getenv('LAZYLLM_SILICONFLOW_API_KEY'),
             'aiping': os.getenv('LAZYLLM_AIPING_API_KEY'),
+            'ppio': os.getenv('LAZYLLM_PPIO_API_KEY'),
         }
         # Get sensenova secret key
         self.sensenova_secret_key = os.getenv('LAZYLLM_SENSENOVA_SECRET_KEY')
@@ -180,3 +182,17 @@ class TestValidateApiKey:
         module = AipingModule(api_key='invalid_api_key_12345')
         result = module._validate_api_key()
         assert result is False, 'Aiping invalid API Key should fail validation'
+    def test_ppio_validate_valid_api_key(self):
+        '''Test PPIO valid API Key validation'''
+        if not self.api_keys['ppio']:
+            pytest.skip('LAZYLLM_PPIO_API_KEY environment variable is not set')
+
+        module = PPIOModule(api_key=self.api_keys['ppio'])
+        result = module._validate_api_key()
+        assert result is True, 'PPIO valid API Key should pass validation'
+
+    def test_ppio_validate_invalid_api_key(self):
+        '''Test PPIO invalid API Key validation'''
+        module = PPIOModule(api_key='invalid_api_key_12345')
+        result = module._validate_api_key()
+        assert result is False, 'PPIO invalid API Key should fail validation'

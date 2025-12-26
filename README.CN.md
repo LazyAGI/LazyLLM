@@ -195,8 +195,6 @@ cd LazyLLM
 pip install -r requirements.txt
 ```
 
-如果想进行微调、推理部署或搭建rag应用等，则需使用 `pip install -r requirements.full.txt`
-
 ### 在Windows或MacOS上安装
 
 在Windows或MacOS上安装请参考我们的[教程](https://docs.lazyllm.ai/zh-cn/stable/Home/environment)
