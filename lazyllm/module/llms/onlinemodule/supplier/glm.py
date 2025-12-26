@@ -277,7 +277,10 @@ class GLMSTTModule(GLMMultiModal):
 class GLMTextToImageModule(GLMMultiModal):
     MODEL_NAME = 'cogview-4-250304'
 
-    def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
+    def __init__(self, model_name: str = None, api_key: str = None, image_edit: bool = None, return_trace: bool = False, **kwargs):
+        # 新增
+        if image_edit:
+            raise ValueError("Error: GLM series models do not support image editing (image-to-image) now. Please set image_edit=False or omit it.")
         GLMMultiModal.__init__(self, model_name=model_name or GLMTextToImageModule.MODEL_NAME
                                or lazyllm.config['glm_text_to_image_model_name'], api_key=api_key,
                                return_trace=return_trace, **kwargs)

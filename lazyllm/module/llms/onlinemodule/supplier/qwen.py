@@ -388,7 +388,10 @@ class QwenSTTModule(QwenMultiModal):
 class QwenTextToImageModule(QwenMultiModal):
     MODEL_NAME = 'wanx2.1-t2i-turbo'
 
-    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
+    def __init__(self, model: str = None, api_key: str = None, image_edit: bool = None, return_trace: bool = False, **kwargs):
+        if image_edit:
+            raise ValueError("Error: Qwen series models do not support image editing (image-to-image) now. Please set image_edit=False or omit it.\n"
+                            "We will resolve this bug promptly.")
         QwenMultiModal.__init__(self, api_key=api_key,
                                 model_name=model or lazyllm.config['qwen_text2image_model_name']
                                 or QwenTextToImageModule.MODEL_NAME, return_trace=return_trace, **kwargs)

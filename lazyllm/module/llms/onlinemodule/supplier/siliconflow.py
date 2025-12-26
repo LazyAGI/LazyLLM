@@ -65,21 +65,86 @@ class SiliconFlowReranking(OnlineEmbeddingModuleBase):
         results = response.get('results', [])
         return [(result['index'], result['relevance_score']) for result in results]
 
-
 class SiliconFlowTextToImageModule(OnlineMultiModalBase):
+    """
+    SiliconFlow Text-to-Image module supporting both text-to-image and image-to-image generation.
+    
+    This class supports two modes:
+    1. Text-to-Image: Generate images from text prompts only
+    2. Image-to-Image: Edit/generate images based on reference images and text prompts
+    
+    Args:
+        api_key (str, optional): API key, defaults to configured siliconflow_api_key
+        model (str, optional): Model name (compatible with OnlineMultiModalModule)
+        model_name (str, optional): Model name (alternative parameter name)
+        base_url (str, optional): Base API URL, defaults to "https://api.siliconflow.cn/v1/"
+        image_edit (bool, optional): Whether to enable image editing mode. If None, auto-detect based on model name.
+        return_trace (bool, optional): Whether to return trace information, defaults to False
+        **kwargs: Other model parameters
+    """
+    # Models that only support text-to-image generation
+    IMAGE_MODEL = [
+        'Qwen/Qwen-Image',
+        # Add other text-to-image only models here
+    ]
+    
+    # Models that support both text-to-image and image-to-image editing
+    IMAGE_MODEL_EDIT = [
+        'Qwen/Qwen-Image-Edit-2509',
+        'Qwen/Qwen-Image-Edit'
+        # Add other image editing capable models here
+    ]
+    
     MODEL_NAME = 'Qwen/Qwen-Image'
 
-    def __init__(self, api_key: str = None, model_name: str = None,
+    def __init__(self, api_key: str = None, model: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',
-                 return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
-                                      api_key=api_key or lazyllm.config['siliconflow_api_key'],
-                                      model_name=model_name or SiliconFlowTextToImageModule.MODEL_NAME,
-                                      return_trace=return_trace, **kwargs)
+                 image_edit: bool = None, return_trace: bool = False, **kwargs):
+        """
+        Initialize SiliconFlowTextToImageModule.
+        
+        Args:
+            api_key: API key for SiliconFlow service
+            model: Model name to use (preferred, compatible with OnlineMultiModalModule)
+            model_name: Model name to use (alternative, for backward compatibility)
+            base_url: Base API URL
+            image_edit: Whether to enable image editing mode. 
+                       If None, auto-detect based on model name.
+            return_trace: Whether to return trace information
+            **kwargs: Additional parameters
+        """
+        # Determine model name (优先使用 model，兼容 OnlineMultiModalModule)
+        final_model_name = (model 
+                            or SiliconFlowTextToImageModule.MODEL_NAME
+                            or lazyllm.config.get('siliconflow_text2image_model_name'))
+        
+        # Auto-detect image_edit capability if not explicitly specified
+        if image_edit is None:
+            image_edit = final_model_name in SiliconFlowTextToImageModule.IMAGE_MODEL_EDIT
+        
+        # Store image_edit capability
+        self._supports_image_edit = image_edit
+        
+        # Validate model capability if image_edit is requested
+        if image_edit and final_model_name in SiliconFlowTextToImageModule.IMAGE_MODEL:
+            lazyllm.LOG.warning(
+                f'Model {final_model_name} does not support image editing. '
+                f'Use models from IMAGE_MODEL_EDIT list: {SiliconFlowTextToImageModule.IMAGE_MODEL_EDIT}'
+            )
+        
+        OnlineMultiModalBase.__init__(
+            self, 
+            model_series='SiliconFlow',
+            api_key=api_key or lazyllm.config['siliconflow_api_key'],
+            model_name=final_model_name,
+            return_trace=return_trace, 
+            **kwargs
+        )
         self._endpoint = 'images/generations'
         self._base_url = base_url
 
     def _make_request(self, endpoint, payload, timeout=180):
+        """Make HTTP request to SiliconFlow API"""
         url = f'{self._base_url}{endpoint}'
         try:
             response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
@@ -89,29 +154,97 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
             lazyllm.LOG.error(f'API request failed: {str(e)}')
             raise
 
-    def _forward(self, input: str = None, size: str = '1024x1024', **kwargs):
+    
+    def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024',
+                 num_inference_steps: int = 20, guidance_scale: float = 7.5, **kwargs):
+        """
+        Forward method for image generation/editing.
+        
+        Supports two modes:
+        1. Text-to-Image: When files is None or empty, generates images from text only
+        2. Image-to-Image: When files is provided, edits/generates images based on reference image
+        
+        Args:
+            input (str): Text prompt for image generation/editing instructions.
+            files (List[str], optional): List of reference image file paths or URLs for image editing.
+            size (str): Output image size. Defaults to '1024x1024' for text-to-image, '1328x1328' for image editing.
+            num_inference_steps (int): Number of inference steps (for image editing). Defaults to 20.
+            guidance_scale (float): Guidance scale (for image editing). Defaults to 7.5.
+            **kwargs: Additional parameters passed to the API.
+            
+        Returns:
+            str: Encoded file paths containing the generated/edited images.
+            
+        Raises:
+            ValueError: If files is provided but model doesn't support image editing.
+            ValueError: If files is provided but is empty.
+        """
+        # Determine if image editing mode is requested
+        use_image_edit = files is not None and len(files) > 0
+        
+        # Validate image editing capability
+        if use_image_edit:
+            if not self._supports_image_edit:
+                raise ValueError(
+                    f'Model {self._model_name} does not support image editing. '
+                    f'Please use a model from IMAGE_MODEL_EDIT list: {self.IMAGE_MODEL_EDIT}'
+                )
+            
+            # Load reference image and convert to base64
+            reference_image_base64 = self._load_image_as_base64(files[0])
+            # SiliconFlow API expects base64 image data in the format: data:image/png;base64,{base64_data}
+            reference_image_data_url = f"data:image/png;base64,{reference_image_base64}"
+            
+            # Use '1328x1328' as default size for image editing if not explicitly set
+            if size == '1024x1024':  # Default text-to-image size
+                size = '1328x1328'
+        else:
+            reference_image_data_url = None
+        
+        # Build request payload
         payload = {
             'model': self._model_name,
-            'prompt': input
+            'prompt': input,
+            **kwargs
         }
-        payload.update(kwargs)
-
-        result = self._make_request(self._endpoint, payload)
-
-        image_urls = [item['url'] for item in result['data']]
-
-        image_files = []
-        for url in image_urls:
-            img_response = requests.get(url, timeout=180)
-            if img_response.status_code == 200:
-                image_files.append(img_response.content)
-            else:
-                raise Exception(f'Failed to download image from {url}')
-
-        file_paths = bytes_to_file(image_files)
-
-        return encode_query_with_filepaths(None, file_paths)
-
+        
+        # Add image parameter only for image editing mode
+        if use_image_edit:
+            payload['image'] = reference_image_data_url
+            # Note: num_inference_steps and guidance_scale are typically not used by SiliconFlow
+            # but can be passed via kwargs if the API supports them
+        
+        try:
+            # Make API request
+            result = self._make_request(self._endpoint, payload)
+            
+            # Extract image URLs from response
+            image_urls = [item['url'] for item in result.get('data', [])]
+            
+            if not image_urls:
+                raise Exception('No images returned from API')
+            
+            # Download and convert images to files
+            image_files = []
+            for url in image_urls:
+                img_response = requests.get(url, timeout=180)
+                if img_response.status_code == 200:
+                    image_files.append(img_response.content)
+                else:
+                    lazyllm.LOG.warning(
+                        f'Failed to download image from {url}, status code: {img_response.status_code}'
+                    )
+            
+            if not image_files:
+                raise Exception('Failed to download any images')
+            
+            # Convert to file paths and return encoded result
+            file_paths = bytes_to_file(image_files)
+            return encode_query_with_filepaths(None, file_paths)
+            
+        except Exception as e:
+            lazyllm.LOG.error(f'Error in SiliconFlowTextToImageModule._forward: {str(e)}')
+            raise
 
 class SiliconFlowTextToImageEditModule(OnlineMultiModalBase):
     """SiliconFlow Text-to-Image Edit module, inherits from OnlineMultiModalBase.
@@ -134,6 +267,8 @@ class SiliconFlowTextToImageEditModule(OnlineMultiModalBase):
         **kwargs: Additional parameters passed to the API.
     """
     MODEL_NAME = 'Qwen/Qwen-Image-Edit-2509'
+
+
 
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',

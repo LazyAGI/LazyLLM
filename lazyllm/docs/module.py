@@ -1946,6 +1946,7 @@ GLM文本生成图像模块，继承自 GLMMultiModal，封装了调用 GLM CogV
 Args:
     model_name (Optional[str]): 使用的 GLM 模型名称，默认使用 "cogview-4-250304" 或配置中的 'glm_text_to_image_model_name'。
     api_key (Optional[str]): API Key，用于访问 GLM 图像生成服务。
+    image_edit (bool, optional): 判断是否使用图像编辑模型
     return_trace (bool): 是否返回调试追踪信息，默认为 False。
     **kwargs: 其他传递给 GLMMultiModal 的参数。
 ''')
@@ -1962,18 +1963,19 @@ Args:
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenTextToImageModule', '''\
-Qwen文本生成图像模块，继承自 QwenMultiModal，封装了调用 Qwen Wanx2.1-t2i-turbo 模型生成图像的能力。  
+Qwen文本生成图像模块和图像编辑模块，继承自 QwenMultiModal，封装了调用 Qwen Wanx2.1-t2i-turbo 模型生成图像的能力。  
 支持根据文本提示生成指定数量和分辨率的图像，并可设置负面提示、随机种子及扩展提示功能，通过 DashScope API 远程调用服务。
 
 Args:
     model (Optional[str]): 使用的 Qwen 模型名称，默认从配置 'qwen_text2image_model_name' 获取，若未设置则使用 "wanx2.1-t2i-turbo"。
     api_key (Optional[str]): 调用 DashScope 服务的 API Key。
+    image_edit (bool, optional): Judge the necessity of an image editing model
     return_trace (bool): 是否返回调试追踪信息，默认为 False。
     **kwargs: 其他传递给 QwenMultiModal 的参数。
 ''')
 
 add_english_doc('llms.onlinemodule.supplier.qwen.QwenTextToImageModule', '''\
-Qwen Text-to-Image module, inheriting from QwenMultiModal, encapsulates the functionality to generate images using the Qwen Wanx2.1-t2i-turbo model.  
+Qwen Text-to-Image module and Image-Edit module, inheriting from QwenMultiModal, encapsulates the functionality to generate images using the Qwen Wanx2.1-t2i-turbo model.  
 It supports generating a specified number of images with given resolution based on a text prompt, and allows setting negative prompts, random seeds, and prompt extension. The service is called remotely via DashScope API.
 
 Args:
@@ -2467,12 +2469,13 @@ Args:
 add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule', '''\
 字节跳动豆包文生图模块，支持文本到图像的生成。
 
-基于字节跳动豆包多模态模型的文生图功能，继承自DoubaoMultiModal，
+基于字节跳动豆包多模态模型的文生图、图像编辑功能，继承自DoubaoMultiModal，
 提供高质量的文本到图像生成能力。
 
 Args:
     api_key (str, optional): 豆包API密钥，默认为None。
     model_name (str, optional): 模型名称，默认为"doubao-seedream-3-0-t2i-250415"。
+    image_edit (bool, optional): 判断是否使用图像编辑模型
     return_trace (bool, optional): 是否返回追踪信息，默认为False。
     **kwargs: 其他传递给父类的参数。
 ''')
@@ -2486,6 +2489,7 @@ inherits from DoubaoMultiModal, providing high-quality text to image generation 
 Args:
     api_key (str, optional): Doubao API key, defaults to None.
     model_name (str, optional): Model name, defaults to "doubao-seedream-3-0-t2i-250415".
+    image_edit (bool, optional): Judge the necessity of an image editing model
     return_trace (bool, optional): Whether to return trace information, defaults to False.
     **kwargs: Other parameters passed to parent class.
 ''')
@@ -2904,12 +2908,13 @@ Returns:
 add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule', """\
 SiliconFlow文生图模块，继承自OnlineMultiModalBase。
 
-提供基于SiliconFlow的文本生成图像功能，支持根据文本描述生成图像。
+提供基于SiliconFlow的文本生成图像功能，支持根据文本描述生成图像，支持图像编辑。
 
 Args:
     api_key (str, optional): API密钥，默认为配置中的siliconflow_api_key
     model_name (str, optional): 模型名称，默认为"Qwen/Qwen-Image"
     base_url (str, optional): API基础URL，默认为"https://api.siliconflow.cn/v1/"
+    image_edit (bool, optional): 判断是否使用图像编辑模型
     return_trace (bool, optional): 是否返回追踪信息，默认为False
     **kwargs: 其他模型参数
 """)
@@ -2917,12 +2922,13 @@ Args:
 add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule', """\
 SiliconFlow Text-to-Image module, inherits from OnlineMultiModalBase.
 
-Provides text-to-image generation functionality based on SiliconFlow, supports generating images from text descriptions.
+Provides text-to-image generation functionality based on SiliconFlow, supports generating images from text descriptions and image editing.
 
 Args:
     api_key (str, optional): API key, defaults to configured siliconflow_api_key
     model_name (str, optional): Model name, defaults to "Qwen/Qwen-Image"
     base_url (str, optional): Base API URL, defaults to "https://api.siliconflow.cn/v1/"
+    image_edit (bool, optional): Judge the necessity of an image editing model
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Other model parameters
 """)
@@ -2958,12 +2964,13 @@ Args:
 add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxTextToImageModule', """\
 Minimax 文生图模块，继承自 OnlineMultiModalBase。
 
-提供基于 Minimax 平台的文本生成图像功能，支持根据文本描述生成图像。
+提供基于 Minimax 平台的文本生成图像功能，支持根据文本描述生成图像,支持图像编辑。
 
 Args:
     api_key (str, optional): API 密钥，默认为配置项 lazyllm.config['minimax_api_key']
     model_name (str, optional): 模型名称，默认为 "image-01"
     base_url (str, optional): API 基础地址，默认为 "https://api.minimaxi.com/v1/"
+    image_edit (bool, optional): 判断是否使用图像编辑模型
     return_trace (bool, optional): 是否返回追踪信息，默认为 False
     **kwargs: 其他传递给父类的可选参数
 """)
@@ -2971,12 +2978,13 @@ Args:
 add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxTextToImageModule', """\
 Minimax text-to-image module, inheriting from OnlineMultiModalBase.
 
-Provides text-to-image generation functionality based on Minimax, supports generating images from text descriptions.
+Provides text-to-image generation functionality based on Minimax, supports generating images from text descriptions and image editing.
 
 Args:
     api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
     model_name (str, optional): Model name, defaults to "image-01"
     base_url (str, optional): Base API URL, defaults to "https://api.minimaxi.com/v1/"
+    image_edit (bool, optional): Judge the necessity of an image editing model
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Additional optional parameters passed to the parent classes
 """)

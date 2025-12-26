@@ -2,7 +2,7 @@ import lazyllm
 from typing import Any, Dict
 from .base import OnlineMultiModalBase
 from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
-from .supplier.doubao import DoubaoTextToImageModule, DoubaoTextToImageEditModule
+from .supplier.doubao import DoubaoTextToImageModule
 from .supplier.glm import GLMSTTModule, GLMTextToImageModule
 from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule, SiliconFlowTextToImageEditModule
 from .supplier.minimax import MinimaxTextToImageModule, MinimaxTTSModule
@@ -51,15 +51,13 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         'siliconflow': SiliconFlowTextToImageModule,
         'minimax': MinimaxTextToImageModule
     }
-    TEXT2IMAGEEDIT_MODELS = {
-        'doubao': DoubaoTextToImageEditModule,
-        'siliconflow': SiliconFlowTextToImageEditModule
-    }
+    
 
     @staticmethod
     def _encapsulate_parameters(base_url: str,
                                 model: str,
                                 return_trace: bool,
+                                image_edit: bool,
                                 **kwargs) -> Dict[str, Any]:
         '''Encapsulate parameters for module initialization'''
         params = {'return_trace': return_trace}
@@ -67,6 +65,8 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
             params['base_url'] = base_url
         if model is not None:
             params['model'] = model
+        if image_edit is not None:
+            params['image_edit'] = image_edit
         params.update(kwargs)
         return params
 
@@ -76,6 +76,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                 base_url: str = None,
                 return_trace: bool = False,
                 function: str = 'stt',
+                image_edit: bool = False, # 新增
                 **kwargs):
         '''
         Create a new OnlineMultiModalModule instance.
@@ -99,8 +100,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         FUNCTION_MODEL_MAP = {
             'stt': OnlineMultiModalModule.STT_MODELS,
             'tts': OnlineMultiModalModule.TTS_MODELS,
-            'text2image': OnlineMultiModalModule.TEXT2IMAGE_MODELS,
-            'text2imageedit': OnlineMultiModalModule.TEXT2IMAGEEDIT_MODELS
+            'text2image': OnlineMultiModalModule.TEXT2IMAGE_MODELS
         }
 
         if function not in FUNCTION_MODEL_MAP:
@@ -111,7 +111,8 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         if model in available_model and source is None:
             source, model = model, source
 
-        params = OnlineMultiModalModule._encapsulate_parameters(base_url, model, return_trace, **kwargs)
+        # 新增
+        params = OnlineMultiModalModule._encapsulate_parameters(base_url, model, return_trace, image_edit, **kwargs)
 
         if kwargs.get('skip_auth', False):
             source = source or 'openai'
