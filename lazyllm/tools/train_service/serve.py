@@ -87,6 +87,114 @@ class ModelExport(BaseModel):
     model_id: str
 
 
+def _verify_final_model_files(fine_tuned_model_path, finetuning_type='lora'):
+    '''
+    Verify that final model files are complete and valid.
+    Returns True if model files are complete, False otherwise.
+    '''
+    if not fine_tuned_model_path or not os.path.exists(fine_tuned_model_path):
+        return False
+
+    try:
+        # Check if merge_path exists (merged model is preferred)
+        if 'lazyllm_lora' in fine_tuned_model_path:
+            merge_path = fine_tuned_model_path.replace('lazyllm_lora', 'lazyllm_merge')
+            if os.path.exists(merge_path):
+                fine_tuned_model_path = merge_path
+
+        if finetuning_type == 'full':
+            # For full finetuning, check for config.json and model files
+            config_path = os.path.join(fine_tuned_model_path, 'config.json')
+            if not os.path.exists(config_path):
+                return False
+
+            # Check for model files (safetensors, bin, or index.json for sharded models)
+            model_files = [
+                'model.safetensors',
+                'pytorch_model.bin',
+                'model.safetensors.index.json'
+            ]
+            has_model = any(
+                os.path.exists(os.path.join(fine_tuned_model_path, f))
+                for f in model_files
+            )
+            return has_model
+        else:
+            # For LoRA/QLoRA, check for adapter files
+            adapter_config = os.path.join(fine_tuned_model_path, 'adapter_config.json')
+            if not os.path.exists(adapter_config):
+                return False
+
+            # Check for adapter weight files
+            adapter_files = [
+                'adapter_model.safetensors',
+                'adapter_model.bin'
+            ]
+            has_adapter = any(
+                os.path.exists(os.path.join(fine_tuned_model_path, f))
+                for f in adapter_files
+            )
+            return has_adapter
+    except Exception:
+        return False
+
+
+def _check_log_for_errors(log_path, job_id, info=None):
+    # Priority 1: Verify model files first (most reliable indicator)
+    if info:
+        fine_tuned_model = info.get('fine_tuned_model')
+        if fine_tuned_model:
+            finetuning_type = info.get('hyperparameters', {}).get('finetuning_type', 'lora')
+            if _verify_final_model_files(fine_tuned_model, finetuning_type):
+                # Model files are complete, training succeeded regardless of log content
+                logger.info(
+                    f'[_check_log_for_errors] Job {job_id} model files are complete, '
+                    f'training succeeded')
+                return False
+
+    # Priority 2: If model files are incomplete, use original log check logic (conservative approach)
+    if not log_path or not os.path.exists(log_path):
+        return False
+
+    try:
+        with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+            log_content = f.read()
+            # Check for common failure indicators (original logic - conservative)
+            error_indicators = [
+                # Memory errors
+                'OutOfMemoryError', 'CUDA out of memory', 'torch.OutOfMemoryError',
+                # Process/Subprocess errors
+                'CalledProcessError', 'returned non-zero exit status',
+                'ChildFailedError', 'FAILED',
+                # File system errors
+                'FileNotFoundError', 'OSError', 'PermissionError',
+                'No space left', 'Disk quota exceeded',
+                # Python standard exceptions
+                'RuntimeError', 'ValueError', 'TypeError',
+                'KeyError', 'AttributeError', 'ImportError',
+                'AssertionError', 'IndexError',
+                # CUDA/NCCL errors
+                'CUDA error', 'NCCL error', 'cuda runtime error',
+                'NCCL initialization', 'NCCL communicator',
+                # Training framework errors
+                'Training failed', 'Trainer crashed', 'Training crashed',
+                # System/Connection errors
+                'Broken pipe', 'Connection refused', 'Connection reset',
+                'TimeoutError', 'ConnectionError',
+                # Traceback indicates serious errors
+                'Traceback (most recent call last)'
+            ]
+            if any(error in log_content for error in error_indicators):
+                logger.info(
+                    f'[_check_log_for_errors] Job {job_id} marked as Done but found '
+                    f'errors in log, changing to Failed')
+                return True
+    except Exception:
+        pass
+
+    return False
+
+
 class TrainServer(ServerBase):
     # Compiled regex patterns for performance optimization
     _re_progress_bar = re.compile(r'(\d+)%\s*\|\s*[█▉▊▋▌▍▎▏\s]+\s*\|\s*(\d+)/(\d+)')
@@ -121,111 +229,162 @@ class TrainServer(ServerBase):
             total_cost = previous_cost
         return total_cost
 
-    def _verify_final_model_files(self, fine_tuned_model_path, finetuning_type='lora'):
-        '''
-        Verify that final model files are complete and valid.
-        Returns True if model files are complete, False otherwise.
-        '''
-        if not fine_tuned_model_path or not os.path.exists(fine_tuned_model_path):
-            return False
+
+    def _get_job_status_and_model(self, token, job_id, info):
+        try:
+            m, thread = self._read_active_job(token, job_id)
+            try:
+                status = m.status(info['model_id']).name
+                return status, m
+            except Exception:
+                if thread and not thread.is_alive():
+                    logger.info(
+                        f'[_get_job_status_and_model] Job {job_id} thread is dead, '
+                        f'marking as Failed')
+                    update = {'status': 'Failed'}
+                    self._update_user_job_info(token, job_id, update)
+                    try:
+                        m, _ = self._pop_active_job(token, job_id)
+                    except Exception:
+                        pass
+                    return None
+                return None
+        except Exception:
+            return None
+
+    def _update_progress_percent(self, info, update):
+        progress_info = self._extract_training_progress(info.get('log_path'))
+        if progress_info:
+            if 'percent' in progress_info:
+                update['progress_percent'] = progress_info['percent']
+            total_steps = progress_info.get('total_steps')
+        else:
+            total_steps = None
+
+        if 'progress_percent' not in update:
+            checkpoint_step = info.get('checkpoint_step')
+            if checkpoint_step is not None and isinstance(checkpoint_step, int):
+                if total_steps is None:
+                    log_path = info.get('log_path')
+                    if log_path and os.path.exists(log_path):
+                        try:
+                            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                lines = f.readlines()
+                                for line in reversed(lines):
+                                    if 'Total optimization steps' in line:
+                                        total_steps_match = self._re_total_steps.search(line)
+                                        if total_steps_match:
+                                            total_steps = int(total_steps_match.group(1))
+                                            break
+
+                                if total_steps is None:
+                                    for line in reversed(lines[-100:]):
+                                        is_non_training = any(
+                                            pattern.search(line)
+                                            for pattern in self._re_non_training_patterns)
+                                        if is_non_training:
+                                            continue
+
+                                        progress_match = self._re_step_ratio.search(line)
+                                        if progress_match:
+                                            potential_total = int(progress_match.group(2))
+                                            if (potential_total >= checkpoint_step
+                                                    and potential_total <= 50000):
+                                                total_steps = potential_total
+                                                break
+                        except Exception:
+                            pass
+
+                if total_steps and total_steps > 0:
+                    base_percent = int((checkpoint_step / total_steps) * 100)
+                    update['progress_percent'] = max(0, min(100, base_percent))
+
+            if 'progress_percent' not in update and 'progress_percent' in info:
+                update['progress_percent'] = None
+
+    def _handle_running_status(self, info, update):
+        if not info.get('started_at'):
+            update['started_at'] = datetime.now().strftime(self._time_format)
+
+        now = datetime.now()
+        started_at_str = update.get('started_at') or info.get('started_at')
+        started_at = datetime.strptime(started_at_str, self._time_format)
+
+        last_update_time_str = info.get('last_cost_update_time')
+        if last_update_time_str:
+            last_update_time = datetime.strptime(last_update_time_str, self._time_format)
+            current_segment_cost = (now - last_update_time).total_seconds()
+        else:
+            current_segment_cost = (now - started_at).total_seconds()
+
+        previous_cost = info.get('cost', 0) or 0
+        total_cost = previous_cost + current_segment_cost
+        update['cost'] = total_cost
+        update['last_cost_update_time'] = now.strftime(self._time_format)
+
+        self._update_progress_percent(info, update)
+
+    def _handle_failed_status(self, token, job_id, info, update, m):
+        update['progress_percent'] = None
+        if 'cost' not in update:
+            total_cost = self._calculate_final_cost(info)
+            self._update_user_job_info(
+                token, job_id, {'cost': total_cost, 'progress_percent': None})
+            logger.info(
+                f'[_update_status] Job {job_id} failed, '
+                f'final cost: {total_cost}s')
+        else:
+            logger.info(
+                f'[_update_status] Job {job_id} failed, '
+                f'cost: {update["cost"]}s')
 
         try:
-            # Check if merge_path exists (merged model is preferred)
-            if 'lazyllm_lora' in fine_tuned_model_path:
-                merge_path = fine_tuned_model_path.replace('lazyllm_lora', 'lazyllm_merge')
-                if os.path.exists(merge_path):
-                    fine_tuned_model_path = merge_path
+            m, _ = self._pop_active_job(token, job_id)
+            m.stop(info['model_id'])
+        except Exception as e:
+            logger.info(f'[_update_status] Failed to stop job {job_id} after Failed status: {e}')
 
-            if finetuning_type == 'full':
-                # For full finetuning, check for config.json and model files
-                config_path = os.path.join(fine_tuned_model_path, 'config.json')
-                if not os.path.exists(config_path):
-                    return False
+    def _handle_done_status(self, token, job_id, info, update, m):
+        logger.info(f'[_handle_done_status] [NEW_CODE] Handling Done status for job {job_id}')
+        log_path = info.get('log_path') or update.get('log_path')
+        should_mark_failed = _check_log_for_errors(log_path, job_id, info)
 
-                # Check for model files (safetensors, bin, or index.json for sharded models)
-                model_files = [
-                    'model.safetensors',
-                    'pytorch_model.bin',
-                    'model.safetensors.index.json'
-                ]
-                has_model = any(
-                    os.path.exists(os.path.join(fine_tuned_model_path, f))
-                    for f in model_files
-                )
-                return has_model
-            else:
-                # For LoRA/QLoRA, check for adapter files
-                adapter_config = os.path.join(fine_tuned_model_path, 'adapter_config.json')
-                if not os.path.exists(adapter_config):
-                    return False
+        if should_mark_failed:
+            update['status'] = 'Failed'
+            self._update_user_job_info(token, job_id, update)
+            if 'cost' not in update:
+                total_cost = self._calculate_final_cost(info)
+                self._update_user_job_info(
+                    token, job_id, {'cost': total_cost, 'progress_percent': None})
 
-                # Check for adapter weight files
-                adapter_files = [
-                    'adapter_model.safetensors',
-                    'adapter_model.bin'
-                ]
-                has_adapter = any(
-                    os.path.exists(os.path.join(fine_tuned_model_path, f))
-                    for f in adapter_files
-                )
-                return has_adapter
-        except Exception:
-            return False
+            try:
+                m, _ = self._pop_active_job(token, job_id)
+                m.stop(info['model_id'])
+            except Exception as e:
+                logger.info(f'[_update_status] Failed to stop job {job_id} after Failed status: {e}')
+            return True, 'Failed'
 
-    def _check_log_for_errors(self, log_path, job_id, info=None):
-        # Priority 1: Verify model files first (most reliable indicator)
-        if info:
-            fine_tuned_model = info.get('fine_tuned_model')
-            if fine_tuned_model:
-                finetuning_type = info.get('hyperparameters', {}).get('finetuning_type', 'lora')
-                if self._verify_final_model_files(fine_tuned_model, finetuning_type):
-                    # Model files are complete, training succeeded regardless of log content
-                    logger.info(
-                        f'[_check_log_for_errors] Job {job_id} model files are complete, '
-                        f'training succeeded')
-                    return False
-
-        # Priority 2: If model files are incomplete, use original log check logic (conservative approach)
-        if not log_path or not os.path.exists(log_path):
-            return False
+        update['progress_percent'] = None
+        if 'cost' not in update:
+            total_cost = self._calculate_final_cost(info)
+            self._update_user_job_info(
+                token, job_id, {'cost': total_cost, 'progress_percent': None})
+            logger.info(
+                f'[_update_status] Job {job_id} completed, '
+                f'final cost: {total_cost}s')
+        else:
+            update['progress_percent'] = None
 
         try:
-            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                log_content = f.read()
-                # Check for common failure indicators (original logic - conservative)
-                error_indicators = [
-                    # Memory errors
-                    'OutOfMemoryError', 'CUDA out of memory', 'torch.OutOfMemoryError',
-                    # Process/Subprocess errors
-                    'CalledProcessError', 'returned non-zero exit status',
-                    'ChildFailedError', 'FAILED',
-                    # File system errors
-                    'FileNotFoundError', 'OSError', 'PermissionError',
-                    'No space left', 'Disk quota exceeded',
-                    # Python standard exceptions
-                    'RuntimeError', 'ValueError', 'TypeError',
-                    'KeyError', 'AttributeError', 'ImportError',
-                    'AssertionError', 'IndexError',
-                    # CUDA/NCCL errors
-                    'CUDA error', 'NCCL error', 'cuda runtime error',
-                    'NCCL initialization', 'NCCL communicator',
-                    # Training framework errors
-                    'Training failed', 'Trainer crashed', 'Training crashed',
-                    # System/Connection errors
-                    'Broken pipe', 'Connection refused', 'Connection reset',
-                    'TimeoutError', 'ConnectionError',
-                    # Traceback indicates serious errors
-                    'Traceback (most recent call last)'
-                ]
-                if any(error in log_content for error in error_indicators):
-                    logger.info(
-                        f'[_check_log_for_errors] Job {job_id} marked as Done but found '
-                        f'errors in log, changing to Failed')
-                    return True
-        except Exception:
-            pass
+            m, _ = self._pop_active_job(token, job_id)
+        except Exception as e:
+            logger.info(f'[_update_status] Failed to pop job {job_id} after Done status: {e}')
+        return True, None
 
-        return False
+    def _handle_cancelled_status(self, token, job_id, info, m):
+        if info.get('started_at') and not info.get('cost'):
+            cost = (datetime.now() - datetime.strptime(info['started_at'], self._time_format)).total_seconds()
+            self._update_user_job_info(token, job_id, {'cost': cost})
 
     def _update_status(self, token, job_id):
         if not self._in_active_jobs(token, job_id):
@@ -236,26 +395,10 @@ class TrainServer(ServerBase):
         if info.get('status') == 'Suspended':
             return
 
-        try:
-            m, _ = self._read_active_job(token, job_id)
-            status = m.status(info['model_id']).name
-        except Exception:
-            try:
-                _, thread = self._read_active_job(token, job_id)
-                if thread and not thread.is_alive():
-                    logger.info(
-                        f'[_update_status] Job {job_id} thread is dead, '
-                        f'marking as Failed')
-                    update = {'status': 'Failed'}
-                    self._update_user_job_info(token, job_id, update)
-                    try:
-                        m, _ = self._pop_active_job(token, job_id)
-                    except Exception:
-                        pass
-                    return
-            except Exception:
-                pass
+        result = self._get_job_status_and_model(token, job_id, info)
+        if result is None:
             return
+        status, m = result
 
         update = {'status': status}
 
@@ -272,149 +415,20 @@ class TrainServer(ServerBase):
                 pass
 
         if Status[status] == Status.Running:
-            if not info.get('started_at'):
-                update['started_at'] = datetime.now().strftime(self._time_format)
-
-            now = datetime.now()
-            started_at_str = update.get('started_at') or info.get('started_at')
-            started_at = datetime.strptime(started_at_str, self._time_format)
-
-            last_update_time_str = info.get('last_cost_update_time')
-            if last_update_time_str:
-                last_update_time = datetime.strptime(last_update_time_str, self._time_format)
-                current_segment_cost = (now - last_update_time).total_seconds()
-            else:
-                current_segment_cost = (now - started_at).total_seconds()
-
-            previous_cost = info.get('cost', 0) or 0
-            total_cost = previous_cost + current_segment_cost
-            update['cost'] = total_cost
-            update['last_cost_update_time'] = now.strftime(self._time_format)
-
-            progress_info = self._extract_training_progress(info.get('log_path'))
-            if progress_info:
-                # Save progress_percent to user_job_info for display (not stored in database)
-                if 'percent' in progress_info:
-                    update['progress_percent'] = progress_info['percent']
-                # Use total_steps from progress_info if available (avoid duplicate file reading)
-                total_steps = progress_info.get('total_steps')
-            else:
-                total_steps = None
-
-            # If no progress from log, try to initialize from checkpoint step
-            if 'progress_percent' not in update:
-                checkpoint_step = info.get('checkpoint_step')
-                if checkpoint_step is not None and isinstance(checkpoint_step, int):
-                    # Use total_steps from progress_info if available (already read from file)
-                    if total_steps is None:
-                        # Fallback: try to get total steps from log (if not already extracted)
-                        log_path = info.get('log_path')
-                        if log_path and os.path.exists(log_path):
-                            try:
-                                with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
-                                    lines = f.readlines()
-                                    # First, try to find 'Total optimization steps' line (most accurate)
-                                    # Search from the end to get the latest total steps (after resume)
-                                    for line in reversed(lines):
-                                        if 'Total optimization steps' in line:
-                                            total_steps_match = self._re_total_steps.search(line)
-                                            if total_steps_match:
-                                                total_steps = int(total_steps_match.group(1))
-                                                break
-
-                                    # If not found, try to find from progress bar (less accurate)
-                                    if total_steps is None:
-                                        for line in reversed(lines[-100:]):
-                                            # Skip non-training progress bars
-                                            is_non_training = any(
-                                                pattern.search(line)
-                                                for pattern in self._re_non_training_patterns)
-                                            if is_non_training:
-                                                continue
-
-                                            # Match progress bar format: ' 50/150 [08:11<00:33,  1.11s/it]'
-                                            progress_match = self._re_step_ratio.search(line)
-                                            if progress_match:
-                                                potential_total = int(progress_match.group(2))
-                                                # Only use if reasonable (>= checkpoint_step and <= 10000)
-                                                if (potential_total >= checkpoint_step
-                                                        and potential_total <= 10000):
-                                                    total_steps = potential_total
-                                                    break
-                            except Exception:
-                                pass
-
-                    if total_steps and total_steps > 0:
-                        # Use current total steps (after resume) for accurate calculation
-                        base_percent = int((checkpoint_step / total_steps) * 100)
-                        update['progress_percent'] = max(0, min(100, base_percent))
-
-                # Clear progress_percent if no progress info available
-                if 'progress_percent' not in update:
-                    if 'progress_percent' in info:
-                        update['progress_percent'] = None
+            self._handle_running_status(info, update)
 
         self._update_user_job_info(token, job_id, update)
 
         if Status[status] == Status.Failed:
-            update['progress_percent'] = None
-            if 'cost' not in update:
-                total_cost = self._calculate_final_cost(info)
-                self._update_user_job_info(
-                    token, job_id, {'cost': total_cost, 'progress_percent': None})
-                logger.info(
-                    f'[_update_status] Job {job_id} failed, '
-                    f'final cost: {total_cost}s')
-            else:
-                update['progress_percent'] = None
-                logger.info(
-                    f'[_update_status] Job {job_id} failed, '
-                    f'cost: {update["cost"]}s')
-
-            try:
-                m, _ = self._pop_active_job(token, job_id)
-                m.stop(info['model_id'])
-            except Exception as e:
-                logger.info(f'[_update_status] Failed to stop job {job_id} after Failed status: {e}')
+            self._handle_failed_status(token, job_id, info, update, m)
             return
 
         if Status[status] == Status.Done:
-            log_path = info.get('log_path') or update.get('log_path')
-            # Pass info to allow model file verification
-            should_mark_failed = self._check_log_for_errors(log_path, job_id, info)
-
-            if should_mark_failed:
-                update['status'] = 'Failed'
-                status = 'Failed'
-                self._update_user_job_info(token, job_id, update)
-                if 'cost' not in update:
-                    total_cost = self._calculate_final_cost(info)
-                    self._update_user_job_info(
-                        token, job_id, {'cost': total_cost, 'progress_percent': None})
-
-                try:
-                    m, _ = self._pop_active_job(token, job_id)
-                    m.stop(info['model_id'])
-                except Exception as e:
-                    logger.info(f'[_update_status] Failed to stop job {job_id} after Failed status: {e}')
+            should_return, new_status = self._handle_done_status(token, job_id, info, update, m)
+            if new_status:
+                status = new_status
+            if should_return:
                 return
-
-            update['progress_percent'] = None
-            if 'cost' not in update:
-                total_cost = self._calculate_final_cost(info)
-                self._update_user_job_info(
-                    token, job_id, {'cost': total_cost, 'progress_percent': None})
-                logger.info(
-                    f'[_update_status] Job {job_id} completed, '
-                    f'final cost: {total_cost}s')
-            else:
-                update['progress_percent'] = None
-
-            try:
-                m, _ = self._pop_active_job(token, job_id)
-            except Exception as e:
-                logger.info(f'[_update_status] Failed to pop job {job_id} after Done status: {e}')
-            return
 
         create_time = datetime.strptime(info['created_at'], self._time_format)
         delta_time = (datetime.now() - create_time).total_seconds()
@@ -422,9 +436,7 @@ class TrainServer(ServerBase):
         if delta_time > 300 and Status[status] == Status.Cancelled:
             m, _ = self._pop_active_job(token, job_id)
             m.stop(info['model_id'])
-            if info.get('started_at') and not info.get('cost'):
-                cost = (datetime.now() - datetime.strptime(info['started_at'], self._time_format)).total_seconds()
-                self._update_user_job_info(token, job_id, {'cost': cost})
+            self._handle_cancelled_status(token, job_id, info, m)
             return
 
         if delta_time > 3000 and Status[status] in (Status.TBSubmitted, Status.InQueue, Status.Pending):
@@ -549,37 +561,38 @@ class TrainServer(ServerBase):
         '''Extract step number from checkpoint path (e.g., checkpoint-40 -> 40)'''
         if not checkpoint_path:
             return None
-        try:
-            checkpoint_name = os.path.basename(checkpoint_path)
-            if checkpoint_name.startswith('checkpoint-'):
-                step_str = checkpoint_name.split('-')[1]
-                if step_str.isdigit():
-                    return int(step_str)
-        except Exception:
-            pass
+        
+        checkpoint_name = os.path.basename(checkpoint_path)
+        if not checkpoint_name.startswith('checkpoint-'):
+            return None
+        
+        step_str = checkpoint_name.split('-')[1]
+        if step_str.isdigit():
+            step = int(step_str)
+            logger.info(f'[_extract_checkpoint_step] [NEW_CODE] Extracted checkpoint step: {step} from {checkpoint_path}')
+            return step
         return None
 
     def _is_checkpoint_complete(self, checkpoint_path, finetuning_type='lora'):
         if not checkpoint_path or not os.path.exists(checkpoint_path):
             return False
 
-        try:
-            if finetuning_type == 'full':
-                # For full finetuning, trainer_state.json is required for resume
-                trainer_state_path = os.path.join(checkpoint_path, 'trainer_state.json')
-                if not os.path.exists(trainer_state_path):
-                    return False
-                # Also check for model files
-                if not os.path.exists(os.path.join(checkpoint_path, 'config.json')) and \
-                   not os.path.exists(os.path.join(checkpoint_path, 'model.safetensors.index.json')):
-                    return False
-                return True
-            else:
-                # For LoRA/QLoRA, adapter_config.json is required
-                if os.path.exists(os.path.join(checkpoint_path, 'adapter_config.json')):
-                    return True
+        if finetuning_type == 'full':
+            # For full finetuning, trainer_state.json is required for resume
+            trainer_state_path = os.path.join(checkpoint_path, 'trainer_state.json')
+            if not os.path.exists(trainer_state_path):
                 return False
-        except Exception:
+            # Also check for model files
+            if not os.path.exists(os.path.join(checkpoint_path, 'config.json')) and \
+               not os.path.exists(os.path.join(checkpoint_path, 'model.safetensors.index.json')):
+                return False
+            return True
+        else:
+            # For LoRA/QLoRA, adapter_config.json and trainer_state.json are required for resume
+            adapter_config_path = os.path.join(checkpoint_path, 'adapter_config.json')
+            trainer_state_path = os.path.join(checkpoint_path, 'trainer_state.json')
+            if os.path.exists(adapter_config_path) and os.path.exists(trainer_state_path):
+                return True
             return False
 
     def _get_complete_checkpoint(self, lora_dir, finetuning_type='lora'):
@@ -598,17 +611,15 @@ class TrainServer(ServerBase):
                 key=lambda d: int(d.split('-')[1]) if d.split('-')[1].isdigit() else 0,
                 reverse=True)
 
-            # Check the latest checkpoint first
             latest_path = os.path.join(lora_dir, checkpoint_dirs[0])
             if self._is_checkpoint_complete(latest_path, finetuning_type):
                 return latest_path, None
 
-            # Latest checkpoint is incomplete, return the second latest (which must be complete)
-            if len(checkpoint_dirs) >= 2:
-                second_latest_path = os.path.join(lora_dir, checkpoint_dirs[1])
-                return second_latest_path, latest_path
+            for checkpoint_dir in checkpoint_dirs[1:]:
+                checkpoint_path = os.path.join(lora_dir, checkpoint_dir)
+                if self._is_checkpoint_complete(checkpoint_path, finetuning_type):
+                    return checkpoint_path, latest_path
 
-            # Only one checkpoint and it's incomplete
             return None, latest_path
         except Exception as e:
             logger.info(f'[_get_complete_checkpoint] Error: {e}')
@@ -675,15 +686,10 @@ class TrainServer(ServerBase):
                 key=lambda d: int(d.split('-')[1]) if d.split('-')[1].isdigit() else 0,
                 reverse=True)
 
-            protected_dir = None
             if protected_checkpoint_path:
                 protected_dir = os.path.basename(protected_checkpoint_path)
-                if protected_dir in checkpoint_dirs:
-                    if protected_dir in checkpoint_dirs[keep_count:]:
-                        checkpoint_dirs.remove(protected_dir)
-                        checkpoint_dirs.sort(
-                            key=lambda d: int(d.split('-')[1]) if d.split('-')[1].isdigit() else 0,
-                            reverse=True)
+                if protected_dir in checkpoint_dirs and protected_dir in checkpoint_dirs[keep_count:]:
+                    checkpoint_dirs.remove(protected_dir)
 
             to_delete = checkpoint_dirs[keep_count:]
             for checkpoint_dir in to_delete:
@@ -963,24 +969,6 @@ class TrainServer(ServerBase):
             finally:
                 if job_id in server_running_dict:
                     del server_running_dict[job_id]
-
-        # Clean up fine-tuning task folders created more than 1 month ago
-        try:
-            one_month_ago = datetime.now().timestamp() - 30 * 24 * 60 * 60  # Timestamp from 30 days ago
-            if os.path.exists(save_root):
-                for item in os.listdir(save_root):
-                    item_path = os.path.join(save_root, item)
-                    if os.path.isdir(item_path):
-                        try:
-                            mtime = os.path.getmtime(item_path)
-                            if mtime < one_month_ago:
-                                if item.startswith('ft-'):
-                                    shutil.rmtree(item_path)
-                                    pass
-                        except Exception:
-                            pass
-        except Exception:
-            pass
 
         for job_id, job_info in updated_jobs.items():
             self._update_user_job_info(token, job_id, job_info)
