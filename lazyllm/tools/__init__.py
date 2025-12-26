@@ -1,6 +1,7 @@
 import importlib
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
+    # flake8: noqa: E401
     from .rag import (Document, GraphDocument, UrlGraphDocument, Reranker, Retriever, TempDocRetriever,
                     GraphRetriever, SentenceSplitter, LLMParser)
     from .webpages import WebModule
@@ -33,14 +34,14 @@ def __getattr__(name: str):
 
     if name == 'fc_register':
         agent = importlib.import_module('.agent')
-        globals()['fc_register'] = value = getattr(agent, 'register')
+        globals()['fc_register'] = value = agent.register
     elif name in _deps_map_reverse:
         module = importlib.import_module(_deps_map_reverse[name])
         globals()[name] = value = getattr(module, name)
     return value
 
 _deps_map = {
-    '.rag' : [
+    '.rag': [
         'Document',
         'GraphDocument',
         'UrlGraphDocument',
@@ -51,8 +52,8 @@ _deps_map = {
         'LLMParser',
         'SentenceSplitter'
     ],
-    '.webpages' : ['WebModule'],
-    '.agent' : [
+    '.webpages': ['WebModule'],
+    '.agent': [
         'ToolManager',
         'ModuleTool',
         'FunctionCall',
@@ -62,27 +63,27 @@ _deps_map = {
         'PlanAndSolveAgent',
         'ReWOOAgent'
     ],
-    '.classifier' : ['IntentClassifier'],
-    '.sql' : [
+    '.classifier': ['IntentClassifier'],
+    '.sql': [
         'SqlManager',
         'MongoDBManager',
         'DBManager',
         'DBResult',
         'DBStatus'
     ],
-    '.sql_call' : ['SqlCall'],
-    '.tools.http_tool' : ['HttpTool'],
-    '.servers.graphrag.graphrag_server_module' : ['GraphRagServerModule'],
-    '.mcp.client' : ['MCPClient'],
-    '.actors' : [
+    '.sql_call': ['SqlCall'],
+    '.tools.http_tool': ['HttpTool'],
+    '.servers.graphrag.graphrag_server_module': ['GraphRagServerModule'],
+    '.mcp.client': ['MCPClient'],
+    '.actors': [
         'ParameterExtractor',
         'QustionRewrite',
         'CodeGenerator'
     ],
-    '.common' : [
+    '.common': [
         'StreamCallHelper'
     ],
-    '.eval' : [
+    '.eval': [
         'BaseEvaluator',
         'ResponseRelevancy',
         'Faithfulness',
@@ -90,7 +91,7 @@ _deps_map = {
         'NonLLMContextRecall',
         'ContextRelevance',
     ],
-    '.http_request' : [
+    '.http_request': [
         'HttpRequest',
         'HttpExecutorResponse'
     ],

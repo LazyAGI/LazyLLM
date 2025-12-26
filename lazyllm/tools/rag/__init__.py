@@ -1,6 +1,7 @@
-from ...common.dep_check import _warn_missing_packages
-_warn_missing_packages('rag-standard')
+from ...dep_check import _check_dependency_by_group
+_check_dependency_by_group('rag')
 
+# flake8: noqa: E402
 from .document import Document
 from .graph_document import GraphDocument, UrlGraphDocument
 from .retriever import Retriever, TempDocRetriever
