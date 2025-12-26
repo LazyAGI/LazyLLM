@@ -30,10 +30,10 @@ if TYPE_CHECKING:
 
 def __getattr__(name: str):
     if name not in _SUBMOD_MAP_REVERSE:
-        raise AttributeError(f"module 'tools' has no attribute '{name}'")
+        raise AttributeError(f"Module 'tools' has no attribute '{name}'")
 
     if name == 'fc_register':
-        agent = import_module('.agent')
+        agent = import_module('.agent', package=__package__)
         globals()['fc_register'] = value = agent.register
     elif name in _SUBMOD_MAP_REVERSE:
         module = import_module(_SUBMOD_MAP_REVERSE[name], package=__package__)

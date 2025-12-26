@@ -1,6 +1,5 @@
 import pytest
 
-pytest_plugins = "pytester"
 failed_test_classes = set()
 
 @pytest.hookimpl(tryfirst=True, hookwrapper=True)
