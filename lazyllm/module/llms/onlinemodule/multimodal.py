@@ -6,6 +6,7 @@ from .supplier.doubao import DoubaoTextToImageModule
 from .supplier.glm import GLMSTTModule, GLMTextToImageModule
 from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule
 from .supplier.minimax import MinimaxTextToImageModule, MinimaxTTSModule
+from .supplier.aiping import AipingTextToImageModule
 
 
 class _OnlineMultiModalMeta(type):
@@ -49,7 +50,8 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         'doubao': DoubaoTextToImageModule,
         'glm': GLMTextToImageModule,
         'siliconflow': SiliconFlowTextToImageModule,
-        'minimax': MinimaxTextToImageModule
+        'minimax': MinimaxTextToImageModule,
+        'aiping': AipingTextToImageModule
     }
 
     @staticmethod
