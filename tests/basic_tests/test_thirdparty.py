@@ -69,7 +69,6 @@ class TestThirdparty(object):
     
     def test_check_dependency_by_group(self):
         try:
-            thirdparty.check_dependency_by_group('standard')
-            assert '_DEPS_INSTALLED_standard' in thirdparty.globals()
-        except SystemExit as e:
-            assert e.code == 0xff + 1, 'Normal exit due to missing dependencies'
+            assert thirdparty.check_dependency_by_group('standard')
+        except ImportError:
+            assert True, 'Normal exit due to missing dependencies'

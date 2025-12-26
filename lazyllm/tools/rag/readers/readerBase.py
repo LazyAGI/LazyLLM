@@ -38,8 +38,10 @@ def is_default_fs(fs: 'fsspec.AbstractFileSystem') -> bool:
 def infer_torch_device() -> str:
     try:
         has_cuda = torch.cuda.is_available()
-    except (NameError, ImportError):
+    except NameError:
         has_cuda = torch.cuda.is_available()
+    except ImportError:
+        return 'cpu'
 
     if has_cuda: return 'cuda'
     if torch.backends.mps.is_available(): return 'mps'

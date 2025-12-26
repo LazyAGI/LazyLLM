@@ -48,7 +48,7 @@ def prep_req_dict():
         with open(toml_file_path, 'r') as f:
             toml_config = toml.load(f)
     except FileNotFoundError:
-        LOG.error('pyproject.toml missing. Cannot extract required dependencies.')
+        LOG.error('pyproject.toml is missing. Cannot extract required dependencies.')
 
     pattern = re.compile(r'''
         ^\s*
@@ -150,16 +150,12 @@ def load_toml_dep_group(group_name: str) -> List[str]:
         LOG.error(f'Group {group_name} not found in pyproject.toml.')
 
 def check_dependency_by_group(group_name: str):
-    if globals().get('_DEPS_INSTALLED_' + group_name, False):
-        return
-
     missing_pack = []
     for name in load_toml_dep_group(group_name):
         if not check_package_installed(name):
             missing_pack.append(name)
     if len(missing_pack) > 0:
         LOG.error(f'Missing package(s): {missing_pack}\nYou can install them by:\n    lazyllm install {group_name}')
-        globals()['_DEPS_INSTALLED_' + group_name] = False
-        exit(0xff + 1)
+        raise ImportError(f'Missing package(s): {missing_pack}')
     else:
-        globals()['_DEPS_INSTALLED_' + group_name] = True
+        return True
