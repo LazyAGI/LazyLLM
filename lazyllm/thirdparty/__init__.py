@@ -21,11 +21,12 @@ package_name_map = {
 
 requirements = {}
 
-def get_pip_install_cmd(names):
+def get_pip_install_cmd(packages_to_install: List[str]):
+    assert len(packages_to_install) > 0
     if len(requirements) == 0:
         prep_req_dict()
     install_parts = []
-    for name in names:
+    for name in packages_to_install:
         if name in package_name_map:
             name = package_name_map[name]
         install_parts.append(name + requirements.get(name, ''))
@@ -101,10 +102,7 @@ class PackageWrapper(object):
                 for patch_func in self._Wrapper__patches: patch_func()
             except ImportError:
                 pip_cmd = get_pip_install_cmd([self._Wrapper__key])
-                if pip_cmd:
-                    err_msg = f'Cannot import module `{self._Wrapper__key}`, please install it by `{pip_cmd}`'
-                else:
-                    err_msg = f'Cannot import module `{self._Wrapper__key}`'
+                err_msg = f'Cannot import module `{self._Wrapper__key}`, please install it by `{pip_cmd}`'
                 raise ImportError(err_msg) from None
         return getattr(self._Wrapper__lib, __name)
 
@@ -129,7 +127,7 @@ def check_packages(names):
             missing_pack.append(name)
     if len(missing_pack) > 0:
         cmd = get_pip_install_cmd(missing_pack)
-        LOG.warning(f'Some packages not found, please install it by \'{cmd}\'')
+        LOG.warning(f'Some packages are not found, please install it by \'{cmd}\'')
 
 def check_package_installed(package_name: str | List[str]) -> bool:
     if isinstance(package_name, list):
