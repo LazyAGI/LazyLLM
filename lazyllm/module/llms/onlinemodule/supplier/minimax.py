@@ -65,20 +65,75 @@ class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
         except Exception:
             return False
 
-
 class MinimaxTextToImageModule(OnlineMultiModalBase):
+    """Minimax text-to-image module, supporting both text-to-image and image-to-image (edit) generation.
+
+    This class supports two modes:
+    1. Text-to-Image: Generate images from text prompts only
+    2. Image-to-Image: Edit/generate images based on reference images and text prompts
+
+    Args:
+        api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
+        model (str, optional): Model name to use (preferred, compatible with OnlineMultiModalModule)
+        model_name (str, optional): Model name (alternative, for backward compatibility)
+        base_url (str, optional): Base API URL, defaults to "https://api.minimaxi.com/v1/"
+        image_edit (bool, optional): Whether to enable image editing mode. If None, auto-detect based on model name.
+        return_trace (bool, optional): Whether to return trace information, defaults to False
+        **kwargs: Additional optional parameters passed to the parent classes
+    """
+    
+    IMAGE_MODEL = [
+        'image-01',
+        # 在这里补充其他仅支持文生图的 minimax 模型
+    ]
+
+    # 支持图生图 / 图文生图的模型
+    IMAGE_MODEL_EDIT = [
+        'image-01',
+        # 在这里补充支持图生图的 minimax 模型
+    ]
+
     MODEL_NAME = 'image-01'
 
-    def __init__(self, api_key: str = None, model_name: str = None,
+    def __init__(self, api_key: str = None, model: str = None,
                  base_url: str = 'https://api.minimaxi.com/v1/',
-                 return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series='MINIMAX', api_key=api_key or lazyllm.config['minimax_api_key'],
-                                      model_name=model_name or MinimaxTextToImageModule.MODEL_NAME,
-                                      return_trace=return_trace, **kwargs)
+                 image_edit: bool = None, return_trace: bool = False, **kwargs):
+        """
+        Initialize MinimaxTextToImageModule.
+        """
+        # 统一确定最终模型名：优先用 model，其次 model_name，最后默认/配置
+        final_model_name = (
+            model
+            or MinimaxTextToImageModule.MODEL_NAME
+            or lazyllm.config.get('minimax_text2image_model_name')
+        )
+
+        # 如果没显式指定 image_edit，则根据模型名自动判断是否支持图生图
+        if image_edit is None:
+            image_edit = final_model_name in MinimaxTextToImageModule.IMAGE_MODEL_EDIT
+
+        # 记录能力
+        self._supports_image_edit = image_edit
+
+        # 如果强行开启 image_edit 但模型在纯文生图列表里，打 warning
+        if image_edit and final_model_name in MinimaxTextToImageModule.IMAGE_MODEL:
+            lazyllm.LOG.warning(
+                f'Model {final_model_name} may not support image editing. '
+                f'Please use models from IMAGE_MODEL_EDIT list: {MinimaxTextToImageModule.IMAGE_MODEL_EDIT}'
+            )
+
+        OnlineMultiModalBase.__init__(
+            self,
+            model_series='MINIMAX',
+            api_key=api_key or lazyllm.config['minimax_api_key'],
+            model_name=final_model_name,
+            return_trace=return_trace,
+            **kwargs,
+        )
         self._base_url = base_url
         self._endpoint = 'image_generation'
 
-    def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
+    def _make_request(self, endpoint: str, payload: dict, timeout: int = 180) -> dict:
         url = urljoin(self._base_url, endpoint)
         response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
         response.raise_for_status()
@@ -88,11 +143,35 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
             raise Exception(f"Minimax API error {base_resp.get('status_code')}: {base_resp.get('status_msg')}")
         return result
 
-    def _forward(self, input: str = None, style: Dict[str, Any] = None,
-                 aspect_ratio: str = None, width: int = None, height: int = None,
-                 response_format: str = 'url', seed: int = None, n: int = 1,
-                 prompt_optimizer: bool = False, aigc_watermark: bool = False, **kwargs):
-        payload: Dict[str, Any] = {
+
+    def _forward(
+        self,
+        input: str = None,
+        files: list[str] | None = None,
+        style: dict | None = None,
+        aspect_ratio: str | None = None,
+        width: int | None = None,
+        height: int | None = None,
+        response_format: str = 'url',
+        seed: int | None = None,
+        n: int = 1,
+        prompt_optimizer: bool = False,
+        aigc_watermark: bool = False,
+        **kwargs,
+    ):
+        
+        use_image_edit = bool(files)
+
+        if use_image_edit:
+            if not self._supports_image_edit:
+                raise ValueError(
+                    f'Model {self._model_name} does not support image editing. '
+                    f'Please use a model from IMAGE_MODEL_EDIT list: {self.IMAGE_MODEL_EDIT}'
+                )
+            
+            ref_b64 = self._load_image_as_base64(files[0])
+
+        payload: dict = {
             'model': self._model_name,
             'prompt': input,
             'response_format': response_format or 'url',
@@ -100,6 +179,7 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
             'prompt_optimizer': prompt_optimizer,
             'aigc_watermark': aigc_watermark,
         }
+
         if style is not None:
             payload['style'] = style
         if aspect_ratio is not None:
@@ -109,12 +189,21 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
             payload['height'] = height
         if seed is not None:
             payload['seed'] = seed
+
+        # 图生图模式下，追加参考图字段（字段名需按 minimax 文档调整）
+        if use_image_edit:
+            # 示例：假设 minimax 使用 'image' 字段 + data URL
+            payload['image'] = f"data:image/png;base64,{ref_b64}"
+            # 或者，如果文档要求另一个字段，可以改成：
+            # payload['ref_image'] = ref_b64
+
         payload.update(kwargs)
 
         result = self._make_request(self._endpoint, payload)
         data = result.get('data') or {}
 
-        image_bytes: List[bytes] = []
+        image_bytes: list[bytes] = []
+
         if payload['response_format'] == 'base64':
             images_base64 = data.get('image_base64') or []
             if not images_base64:

@@ -6,11 +6,12 @@ from .utils import OnlineModuleBase
 
 
 class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
-    def __init__(self, model_series: str, model_name: str = None, return_trace: bool = False,
+    def __init__(self, model_series: str, model: str = None, model_name: str = None, return_trace: bool = False,
                  api_key: Optional[Union[str, List[str]]] = None, **kwargs):
         super().__init__(api_key=api_key, return_trace=return_trace)
         self._model_series = model_series
-        self._model_name = model_name
+        # 做一个兼容：传model
+        self._model_name = model if model is not None else model_name
         self._validate_model_config()
 
     def _validate_model_config(self):
@@ -54,3 +55,24 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
                                  series=self._model_series,
                                  name=self._model_name,
                                  return_trace=self._return_trace)
+
+    
+    def _load_image_as_base64(self, image_path: str) -> str:
+        """
+        Load image from local path or URL and return base64 string (no data URI prefix).
+        """
+        import base64
+        from pathlib import Path
+        import requests
+
+        if image_path.startswith('http://') or image_path.startswith('https://'):
+            resp = requests.get(image_path, timeout=30)
+            resp.raise_for_status()
+            data = resp.content
+        else:
+            p = Path(image_path)
+            if not p.exists():
+                raise FileNotFoundError(f'Image file not found: {image_path}')
+            data = p.read_bytes()
+
+        return base64.b64encode(data).decode('utf-8')
