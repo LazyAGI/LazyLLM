@@ -2,7 +2,7 @@ import importlib
 import toml
 import re
 from lazyllm.common import LOG
-from lazyllm.common.dep_check import check_package_installed
+from lazyllm.common.dep_check import _check_package_installed
 from .modules import modules
 from pathlib import Path
 
@@ -125,7 +125,7 @@ def check_packages(names):
     assert isinstance(names, list)
     missing_pack = []
     for name in names:
-        if not check_package_installed(name):
+        if not _check_package_installed(name):
             missing_pack.append(name)
     if len(missing_pack) > 0:
         cmd = get_pip_install_cmd(missing_pack)

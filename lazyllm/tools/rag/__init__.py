@@ -1,5 +1,5 @@
-from ..common.dep_check import warn_missing_packages
-warn_missing_packages('rag-standard')
+from ...common.dep_check import _warn_missing_packages
+_warn_missing_packages('rag-standard')
 
 from .document import Document
 from .graph_document import GraphDocument, UrlGraphDocument
