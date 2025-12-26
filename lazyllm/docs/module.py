@@ -1466,11 +1466,11 @@ Args:
 ''')
 
 add_chinese_doc('OnlineChatModule', '''\
-用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao、deekseek(由于该平台暂时不让充值了，暂时不支持访问)。平台的api key获取方法参见 [开始入门](/#platform)
+用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao、ppio、deekseek(由于该平台暂时不让充值了，暂时不支持访问)。平台的api key获取方法参见 [开始入门](/#platform)
 
 Args:
-    model (str): 指定要访问的模型 (注意使用豆包时需用 Model ID 或 Endpoint ID，获取方式详见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522)。使用模型前，要先在豆包平台开通对应服务。)，默认为 ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` 
-    source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``deepseek(暂时不支持访问)``
+    model (str): 指定要访问的模型 (注意使用豆包时需用 Model ID 或 Endpoint ID，获取方式详见 [获取推理接入点](https://www.volcengine.com/docs/82379/1099522)。使用模型前，要先在豆包平台开通对应服务。)，默认为 ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` / ``deepseek/deepseek-v3.2(ppio)`` 
+    source (str): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``ppio`` / ``deepseek(暂时不支持访问)``
     base_url (str): 指定要访问的平台的基础链接，默认是官方链接
     system_prompt (str): 指定请求的system prompt，默认是官方给的system prompt
     stream (bool): 是否流式请求和输出，默认为流式
@@ -1478,11 +1478,11 @@ Args:
 ''')
 
 add_english_doc('OnlineChatModule', '''\
-Used to manage and create access modules for large model platforms currently available on the market. Currently, it supports openai, sensenova, glm, kimi, qwen, doubao and deepseek (since the platform does not allow recharges for the time being, access is not supported for the time being). For how to obtain the platform's API key, please visit [Getting Started](/#platform)
+Used to manage and create access modules for large model platforms currently available on the market. Currently, it supports openai, sensenova, glm, kimi, qwen, doubao, ppio and deepseek (since the platform does not allow recharges for the time being, access is not supported for the time being). For how to obtain the platform's API key, please visit [Getting Started](/#platform)
 
 Args:
-    model (str): Specify the model to access (Note that you need to use Model ID or Endpoint ID when using Doubao. For details on how to obtain it, see [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522). Before using the model, you must first activate the corresponding service on the Doubao platform.), default is ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` .
-    source (str): Specify the type of module to create. Options include  ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``deepseek (not yet supported)`` .
+    model (str): Specify the model to access (Note that you need to use Model ID or Endpoint ID when using Doubao. For details on how to obtain it, see [Getting the Inference Access Point](https://www.volcengine.com/docs/82379/1099522). Before using the model, you must first activate the corresponding service on the Doubao platform.), default is ``gpt-3.5-turbo(openai)`` / ``SenseChat-5(sensenova)`` / ``glm-4(glm)`` / ``moonshot-v1-8k(kimi)`` / ``qwen-plus(qwen)`` / ``mistral-7b-instruct-v0.2(doubao)`` / ``deepseek/deepseek-v3.2(ppio)`` .
+    source (str): Specify the type of module to create. Options include  ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` / ``ppio`` / ``deepseek (not yet supported)`` .
     base_url (str): Specify the base link of the platform to be accessed. The default is the official link.
     system_prompt (str): Specify the requested system prompt. The default is the official system prompt.
     stream (bool): Whether to request and output in streaming mode, default is streaming.
@@ -1537,6 +1537,41 @@ Args:
     stream (bool): Whether to enable streaming output. Defaults to True.
     return_trace (bool): Whether to return trace information. Defaults to False.
     **kwargs: Additional arguments passed to the base class OnlineChatModuleBase.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.ppio.PPIOModule', '''\
+PPIO（派欧云）在线聊天模块，继承自 OnlineChatModuleBase。  
+封装了对 PPIO (Paiou Cloud) API 的调用，用于进行多轮问答交互。默认使用模型 `deepseek/deepseek-v3.2`，支持流式输出和调用链追踪。PPIO 提供 OpenAI 兼容的 API 接口。
+
+Args:
+    model (str): 使用的模型名称，默认为 `deepseek/deepseek-v3.2`。
+    base_url (str): API 基础 URL，默认为 "https://api.ppinfra.com/openai"。
+    api_key (Optional[str]): PPIO API Key，若未提供，则从 lazyllm.config['ppio_api_key'] 读取。
+    stream (bool): 是否启用流式输出，默认为 True。
+    return_trace (bool): 是否返回调用链追踪信息，默认为 False。
+    **kwargs: 其他传递给基类 OnlineChatModuleBase 的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.ppio.PPIOModule', '''\
+PPIO (Paiou Cloud) online chat module, inheriting from OnlineChatModuleBase.  
+Encapsulates the PPIO API for multi-turn Q&A interactions. Defaults to model `deepseek/deepseek-v3.2`, supporting streaming and optional trace return. PPIO provides OpenAI-compatible API interface.
+
+Args:
+    model (str): The model name to use. Defaults to `deepseek/deepseek-v3.2`.
+    base_url (str): Base URL of the API, default is "https://api.ppinfra.com/openai".
+    api_key (Optional[str]): PPIO API key. If not provided, it is read from `lazyllm.config['ppio_api_key']`.
+    stream (bool): Whether to enable streaming output. Defaults to True.
+    return_trace (bool): Whether to return trace information. Defaults to False.
+    **kwargs: Additional arguments passed to the base class OnlineChatModuleBase.
+''')
+
+add_example('llms.onlinemodule.supplier.ppio.PPIOModule', '''\
+>>> import lazyllm
+>>> # Set environment variable: export LAZYLLM_PPIO_API_KEY=your_api_key
+>>> # Or create config file ~/.lazyllm/config.json: {"ppio_api_key": "your_api_key"}
+>>> chat = lazyllm.OnlineChatModule(source='ppio', model='deepseek/deepseek-v3.2')
+>>> response = chat('Hello, how are you?')
+>>> print(response)
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoMultiModal', '''\
