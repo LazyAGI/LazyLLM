@@ -1,5 +1,5 @@
-from ...dep_check import _check_dependency_by_group
-_check_dependency_by_group('rag')
+from lazyllm.thirdparty import check_dependency_by_group
+check_dependency_by_group('rag')
 
 # flake8: noqa: E402
 from .document import Document

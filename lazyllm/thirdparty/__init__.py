@@ -1,8 +1,8 @@
 import importlib
 import toml
 import re
+from typing import List
 from lazyllm.common import LOG
-from lazyllm.common.dep_check import _check_package_installed
 from .modules import modules
 from pathlib import Path
 
@@ -125,8 +125,43 @@ def check_packages(names):
     assert isinstance(names, list)
     missing_pack = []
     for name in names:
-        if not _check_package_installed(name):
+        if not check_package_installed(name):
             missing_pack.append(name)
     if len(missing_pack) > 0:
         cmd = get_pip_install_cmd(missing_pack)
         LOG.warning(f'Some packages not found, please install it by \'{cmd}\'')
+
+def check_package_installed(package_name: str | List[str]) -> bool:
+    if isinstance(package_name, list):
+        for name in package_name:
+            if importlib.util.find_spec(name) is None:
+                return False
+    else:
+        if importlib.util.find_spec(package_name) is None:
+            return False
+    return True
+
+def load_toml_dep_group(group_name: str) -> List[str]:
+    toml_file_path = Path(__file__).resolve().parents[2] / 'pyproject.toml'
+    try:
+        with open(toml_file_path, 'r') as f:
+            return toml.load(f)['tool']['poetry']['extras'][group_name]
+    except FileNotFoundError:
+        LOG.error('pyproject.toml missing. Cannot extract required dependencies.')
+    except KeyError:
+        LOG.error(f'Group {group_name} not found in pyproject.toml.')
+
+def check_dependency_by_group(group_name: str):
+    if globals().get('_DEPS_INSTALLED_' + group_name, False):
+        return
+
+    missing_pack = []
+    for name in load_toml_dep_group(group_name):
+        if not check_package_installed(name):
+            missing_pack.append(name)
+    if len(missing_pack) > 0:
+        LOG.error(f'Missing package(s): {missing_pack}\nYou can install them by:\n    lazyllm install {group_name}')
+        globals()['_DEPS_INSTALLED_' + group_name] = False
+        exit(0xff + 1)
+    else:
+        globals()['_DEPS_INSTALLED_' + group_name] = True

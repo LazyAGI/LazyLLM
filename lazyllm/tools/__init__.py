@@ -36,7 +36,7 @@ def __getattr__(name: str):
         agent = import_module('.agent')
         globals()['fc_register'] = value = agent.register
     elif name in _SUBMOD_MAP_REVERSE:
-        module = import_module(_SUBMOD_MAP_REVERSE[name])
+        module = import_module(_SUBMOD_MAP_REVERSE[name], package=__package__)
         globals()[name] = value = getattr(module, name)
     return value
 

@@ -1,6 +1,7 @@
 import sys
 import pytest
-from lazyllm.thirdparty import faiss, requirements, prep_req_dict
+from lazyllm.thirdparty import faiss, requirements
+from lazyllm import thirdparty
 
 class TestThirdparty(object):
 
@@ -54,7 +55,21 @@ class TestThirdparty(object):
         assert flag.flag
 
     def test_toml_dependencies_extraction(self):
-        prep_req_dict()
+        thirdparty.prep_req_dict()
         assert requirements
-        for name, version in requirements.items():
-            print(f'{name} {version}')
+
+    def test_check_package_installed(self):
+        assert thirdparty.check_package_installed('lazyllm')
+        assert thirdparty.check_package_installed(['lazyllm', 'requests'])
+        assert not thirdparty.check_package_installed(['lazyllm', 'requests', 'nonexistent_module_kasduf45123'])
+        assert not thirdparty.check_package_installed('nonexistent_module_kasduf45123')
+    
+    def test_load_toml_dep_group(self):
+        assert len(thirdparty.load_toml_dep_group('full')) > 0
+    
+    def test_check_dependency_by_group(self):
+        try:
+            thirdparty.check_dependency_by_group('standard')
+            assert '_DEPS_INSTALLED_standard' in thirdparty.globals()
+        except SystemExit as e:
+            assert e.code == 0xff + 1, 'Normal exit due to missing dependencies'
