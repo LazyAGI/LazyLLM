@@ -375,10 +375,6 @@ multimodal = [
 ]
 rag = [
     "pandas",
-    # "torch",
-    # "transformers",
-    # "boto3",
-    # "botocore",
     "numpy",
     "PIL",
     "fsspec",
