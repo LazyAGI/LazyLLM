@@ -63,10 +63,10 @@ class TestThirdparty(object):
         assert thirdparty.check_package_installed(['lazyllm', 'requests'])
         assert not thirdparty.check_package_installed(['lazyllm', 'requests', 'nonexistent_module_kasduf45123'])
         assert not thirdparty.check_package_installed('nonexistent_module_kasduf45123')
-    
+
     def test_load_toml_dep_group(self):
         assert len(thirdparty.load_toml_dep_group('full')) > 0
-    
+
     def test_check_dependency_by_group(self):
         try:
             assert thirdparty.check_dependency_by_group('standard')

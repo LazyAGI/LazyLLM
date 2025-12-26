@@ -1,4 +1,4 @@
-from lazyllm.thirdparty import sqlalchemy
+from lazyllm.thirdparty import sqlalchemy # noqa F401
 
 from .sql_manager import SqlManager
 from .mongodb_manager import MongoDBManager
