@@ -77,6 +77,10 @@
     members:
     exclude-members:
 
+::: lazyllm.module.llms.onlinemodule.supplier.ppio.PPIOModule
+    members:
+    exclude-members:
+
 ::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultiModal
     members:
     exclude-members:

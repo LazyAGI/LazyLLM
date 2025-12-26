@@ -11,6 +11,7 @@ from .supplier.doubao import DoubaoModule
 from .supplier.deepseek import DeepSeekModule
 from .supplier.siliconflow import SiliconFlowModule
 from .supplier.minimax import MinimaxModule
+from .supplier.ppio import PPIOModule
 from .supplier.aiping import AipingModule
 
 class _ChatModuleMeta(type):
@@ -31,6 +32,7 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
               'deepseek': DeepSeekModule,
               'siliconflow': SiliconFlowModule,
               'minimax': MinimaxModule,
+              'ppio': PPIOModule,
               'aiping': AipingModule}
 
     @staticmethod

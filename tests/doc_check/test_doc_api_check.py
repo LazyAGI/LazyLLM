@@ -7,6 +7,7 @@ import dataclasses
 import enum
 from typing import Callable
 
+os.environ['LAZYLLM_INIT_DOC'] = 'True'
 current_dir = os.path.dirname(os.path.abspath(__file__))
 lazyllm_root = os.path.dirname(os.path.dirname(current_dir))
 

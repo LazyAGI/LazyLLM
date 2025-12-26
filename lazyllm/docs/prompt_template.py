@@ -1,10 +1,11 @@
 # flake8: noqa E501
 from . import utils
+import importlib
 import functools
 import lazyllm
 
-add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.prompt_templates)
-add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.prompt_templates)
+add_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.prompt_templates'))
+add_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.prompt_templates'))
 add_example = functools.partial(utils.add_example, module=lazyllm.prompt_templates)
 
 add_chinese_doc('prompt_template.PromptTemplate.validate_variables', """\

@@ -9,8 +9,8 @@ from typing import Dict
 from zipfile import ZipFile
 import lazyllm
 import platform
-from .utils import check_path
-from .common import call_once, once_flag
+from ..utils import check_path
+from ..common import call_once, once_flag
 
 from loguru import logger
 
