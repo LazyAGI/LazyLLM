@@ -22,7 +22,7 @@ def _load_toml_dep_group(group_name: str) -> List[str]:
     except FileNotFoundError:
         LOG.error('pyproject.toml missing. Cannot extract required dependencies.')
 
-def _check_dependency_by_group(group_name : str):
+def _check_dependency_by_group(group_name: str):
     if globals().get('_DEPS_INSTALLED_' + group_name, False):
         return
 

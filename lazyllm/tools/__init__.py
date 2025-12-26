@@ -1,4 +1,4 @@
-import importlib
+from importlib import import_module
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     # flake8: noqa: E401
@@ -29,18 +29,18 @@ if TYPE_CHECKING:
 
 
 def __getattr__(name: str):
-    if name not in _deps_map_reverse:
+    if name not in _SUBMOD_MAP_REVERSE:
         raise AttributeError(f"module 'tools' has no attribute '{name}'")
 
     if name == 'fc_register':
-        agent = importlib.import_module('.agent')
+        agent = import_module('.agent')
         globals()['fc_register'] = value = agent.register
-    elif name in _deps_map_reverse:
-        module = importlib.import_module(_deps_map_reverse[name])
+    elif name in _SUBMOD_MAP_REVERSE:
+        module = import_module(_SUBMOD_MAP_REVERSE[name])
         globals()[name] = value = getattr(module, name)
     return value
 
-_deps_map = {
+_SUBMOD_MAP = {
     '.rag': [
         'Document',
         'GraphDocument',
@@ -96,5 +96,5 @@ _deps_map = {
         'HttpExecutorResponse'
     ],
 }
-_deps_map_reverse = {v: k for k, vs in _deps_map.items() for v in vs}
-__all__ = sum(_deps_map.values(), [])
+_SUBMOD_MAP_REVERSE = {v: k for k, vs in _SUBMOD_MAP.items() for v in vs}
+__all__ = sum(_SUBMOD_MAP.values(), [])
