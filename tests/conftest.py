@@ -2,6 +2,8 @@ import os
 import re
 import pytest
 
+pytest_plugins = "pytester"
+
 def pytest_configure(config):
     env_str = os.getenv('CHANGED_FILES')  # Set outside pytest.
     config.changed_files = env_str.split(',') if env_str is not None else []
