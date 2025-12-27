@@ -145,9 +145,12 @@ def load_toml_dep_group(group_name: str) -> List[str]:
         with open(toml_file_path, 'r') as f:
             return toml.load(f)['tool']['poetry']['extras'][group_name]
     except FileNotFoundError:
-        LOG.error('pyproject.toml missing. Cannot extract required dependencies.')
+        LOG.error('pyproject.toml missing. Please reinstall LazyLLM.')
+        raise FileNotFoundError('pyproject.toml missing. Please reinstall LazyLLM.')
     except KeyError:
         LOG.error(f'Group {group_name} not found in pyproject.toml.')
+        raise KeyError(f'''Group {group_name} not found in pyproject.toml.
+You cloud report issue to https://github.com/LazyAGI/LazyLLM in case specific deps group needed.''')
 
 def check_dependency_by_group(group_name: str):
     missing_pack = []
