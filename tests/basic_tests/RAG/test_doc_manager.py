@@ -169,7 +169,7 @@ class TestDocListServer(object):
 
     @classmethod
     def setup_class(cls):
-        cls.test_dir = test_dir = cls.tmpdir.mkdir("test_server")
+        cls.test_dir = test_dir = cls.tmpdir.mkdir("test_server", exist_ok=True)
 
         test_file_1, test_file_2 = test_dir.join("test1.txt"), test_dir.join("test2.txt")
         test_file_1.write("This is a test file 1.")
