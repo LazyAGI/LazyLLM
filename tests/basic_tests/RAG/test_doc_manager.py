@@ -160,8 +160,8 @@ class TestDocListManager(unittest.TestCase):
 
 
 @pytest.fixture(scope="class", autouse=True)
-def setup_tmpdir_class(request, tmp_path_factory):
-    request.cls.tmpdir = tmp_path_factory.mktemp("class_tmpdir")
+def setup_tmpdir_class(request, tmpdir_factory):
+    request.cls.tmpdir = tmpdir_factory.mktemp("class_tmpdir")
 
 
 @pytest.mark.usefixtures("setup_tmpdir_class")
@@ -169,8 +169,7 @@ class TestDocListServer(object):
 
     @classmethod
     def setup_class(cls):
-        cls.test_dir = cls.tmpdir / "test_server"
-        cls.test_dir.mkdir(parents=True, exist_ok=True)
+        cls.test_dir = test_dir = cls.tmpdir.mkdir("test_server")
 
         test_file_1, test_file_2 = test_dir.join("test1.txt"), test_dir.join("test2.txt")
         test_file_1.write("This is a test file 1.")
