@@ -1,0 +1,49 @@
+name: CI
+on:
+  push:
+
+env:
+  PYTHON_VERSION: "3.10.9"
+  LAZYLLM_DEFAULT_RECENT_K: 20
+
+jobs:
+  win_basic_tests:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          submodules: false
+
+      - name: Set up python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+        env:
+          PYTHON_VERSION: "3.10.9"
+
+      - name: Build project
+        shell: bash
+        run: |
+          pip install build
+          python -m build --config-setting=skbuild.wheel.cmake=false
+
+      - name: Install the built package
+        shell: bash
+        run: ls dist && pip install dist/lazyllm*.whl
+
+      - name: Run tests
+        shell: bash
+        run: |
+          git clone https://$GITHUB_TOKEN@github.com/LazyAGI/LazyLLM-Data.git D:/a/LazyLLM/data
+          powershell -Command "Set-ExecutionPolicy RemoteSigned -Scope CurrentUser -Force; irm get.scoop.sh | iex"
+          export PATH="$HOME/scoop/shims:$PATH"
+          scoop install ffmpeg
+          pip install -r tests/requirements.txt
+          export LAZYLLM_DATA_PATH=D:/a/LazyLLM/data
+          pytest -m "not skip_on_win" -v tests/basic_tests/RAG/test_doc_manager.py::TestDocListServer
+        timeout-minutes: 30
+        env:
+          GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
+
