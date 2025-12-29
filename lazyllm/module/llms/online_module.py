@@ -16,35 +16,34 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
 
     _CHAT_TYPES = {'llm', 'vlm'}
     _EMBED_TYPES = {'embed', 'cross_modal_embed', 'rerank'}
-    _MULTI_TYPE_TO_FUNCTION = {'stt': 'stt', 'tts': 'tts', 'sd': 'text2image'}
-    _FUNCTION_TO_TYPE = {'stt': 'stt', 'tts': 'tts', 'text2image': 'sd', 'sd': 'sd'}
+    _MULTI_TYPES = {'stt', 'tts', 'text2image'}
+    _MULTI_TYPE_ALIASES = {'sd': 'text2image', 'text2image': 'text2image', 'stt': 'stt', 'tts': 'tts'}
 
     @classmethod
-    def _resolve_type(cls, model: Optional[str], type_hint: Optional[str], function_hint: Optional[str]) -> str:
-        if type_hint:
-            return type_hint.lower()
-        if function_hint:
-            func = function_hint.lower()
-            if func in cls._FUNCTION_TO_TYPE:
-                return cls._FUNCTION_TO_TYPE[func]
+    def _normalize_type(cls, value: Optional[str]) -> Optional[str]:
+        if not value:
+            return None
+        lowered = value.lower()
+        if lowered in cls._MULTI_TYPE_ALIASES:
+            return cls._MULTI_TYPE_ALIASES[lowered]
+        return lowered
+
+    @classmethod
+    def _resolve_type(cls, model: Optional[str], type_hint: Optional[str]) -> str:
+        normalized = cls._normalize_type(type_hint)
+        if normalized:
+            return normalized
         if model:
-            return (get_model_type(model) or 'llm').lower()
+            inferred = cls._normalize_type(get_model_type(model))
+            if inferred:
+                return inferred
         return 'llm'
 
-    @classmethod
-    def _resolve_function(cls, resolved_type: str, function_hint: Optional[str]) -> Optional[str]:
-        if function_hint:
-            func = function_hint.lower()
-            if func == 'sd':
-                func = 'text2image'
-            return func
-        return cls._MULTI_TYPE_TO_FUNCTION.get(resolved_type)
-
     def __new__(self, model: Optional[str] = None, source: Optional[str] = None, *,
-                type: Optional[str] = None, function: Optional[str] = None, 
-                url: Optional[str] = None, **kwargs):
+                type: Optional[str] = None, url: Optional[str] = None, **kwargs):
         params: Dict[str, Any] = dict(kwargs)
-        resolved_type = self._resolve_type(model, type or params.get('type'), function or params.get('function'))
+        legacy_function = params.pop('function', None)
+        resolved_type = self._resolve_type(model, type or params.get('type') or legacy_function)
 
         if resolved_type in self._EMBED_TYPES:
             embed_kwargs = params.copy()
@@ -55,14 +54,11 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
                                          embed_model_name=model,
                                          **embed_kwargs)
 
-        if resolved_type in self._MULTI_TYPE_TO_FUNCTION:
+        if resolved_type in self._MULTI_TYPES:
             multi_kwargs = params.copy()
             multi_kwargs.pop('type', None)
-            function_name = self._resolve_function(resolved_type, function or multi_kwargs.pop('function', None))
-            if function_name not in {'stt', 'tts', 'text2image'}:
-                raise ValueError('Invalid function for OnlineMultiModalModule.')
             return OnlineMultiModalModule(model=model, source=source, base_url=url,
-                                          function=function_name, **multi_kwargs)
+                                          function=resolved_type, **multi_kwargs)
 
         chat_kwargs = params.copy()
         chat_kwargs.pop('function', None)
