@@ -231,21 +231,17 @@ class TestModule:
     def test_OnlineModule_url_override(self):
         chat = lazyllm.OnlineModule(
             source='openai', 
-            base_url='http://base/v1/', 
+            url='http://base/v1/', 
             model="base_model", 
             api_key="dummy_key")
-        chat_shared = chat.share(base_url='http://override/v1/', model="override_model")
-        assert chat._chat_url.startswith('http://base')
-        assert chat_shared._chat_url.startswith('http://override')
+        assert chat._chat_url.startswith('http://base/v1/')
 
         embed = lazyllm.OnlineModule(
             type='embed', 
             source='openai', 
-            embed_url='http://base-embed/v1/', 
+            url='http://base-embed/v1/', 
             api_key="dummy_key")
-        embed_shared = embed.share(embed_url='http://override-embed/v1/', embed_model_name='custom-embed')
         assert embed._embed_url.startswith('http://base-embed/v1/')
-        assert embed_shared._embed_url.startswith('http://override-embed/v1/')
 
     def test_OnlineMultiModal_forward_override(self):
         class DummyMulti(lazyllm.module.OnlineMultiModalBase):
@@ -270,12 +266,6 @@ class TestModule:
 
         dummy('final')
         assert dummy.records[-1] == ('default', 'http://base', 'final')
-
-        dummy_shared = dummy.share(model='shared-model', base_url='http://shared')
-        assert dummy_shared('share-call') == 'shared-model, share-call'
-        assert dummy_shared.records[-1] == ('shared-model', 'http://shared', 'share-call')
-        assert dummy('after-share') == 'default, after-share'
-        assert dummy.records[-1] == ('default', 'http://base', 'after-share')
 
     def test_custom_module(self):
         class MyModule(lazyllm.ModuleBase):

@@ -3,11 +3,6 @@ from .onlinemodule import (
     OnlineChatModule, OnlineEmbeddingModule, OnlineMultiModalModule,
     OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 )
-# from .chat import OnlineChatModule
-# from .embedding import OnlineEmbeddingModule
-# from .multimodal import OnlineMultiModalModule
-# from .base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
-
 from .onlinemodule.map_model_type import get_model_type
 
 
@@ -46,8 +41,8 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
         return cls._MULTI_TYPE_TO_FUNCTION.get(resolved_type)
 
     def __new__(self, model: Optional[str] = None, source: Optional[str] = None, *,
-                type: Optional[str] = None, function: Optional[str] = None, base_url: Optional[str] = None,
-                embed_model_name: Optional[str] = None, embed_url: Optional[str] = None, **kwargs):
+                type: Optional[str] = None, function: Optional[str] = None, 
+                url: Optional[str] = None, **kwargs):
         params: Dict[str, Any] = dict(kwargs)
         resolved_type = self._resolve_type(model, type or params.get('type'), function or params.get('function'))
 
@@ -55,12 +50,9 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
             embed_kwargs = params.copy()
             embed_kwargs.pop('function', None)
             embed_kwargs.setdefault('type', 'rerank' if resolved_type == 'rerank' else 'embed')
-            target_embed_model = embed_model_name or model
-            # if not target_embed_model:
-            #     raise ValueError('`embed_model_name` or `model` must be provided for embedding modules.')
             return OnlineEmbeddingModule(source=source,
-                                         embed_url=embed_url or base_url,
-                                         embed_model_name=target_embed_model,
+                                         embed_url=url,
+                                         embed_model_name=model,
                                          **embed_kwargs)
 
         if resolved_type in self._MULTI_TYPE_TO_FUNCTION:
@@ -69,10 +61,10 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
             function_name = self._resolve_function(resolved_type, function or multi_kwargs.pop('function', None))
             if function_name not in {'stt', 'tts', 'text2image'}:
                 raise ValueError('Invalid function for OnlineMultiModalModule.')
-            return OnlineMultiModalModule(model=model, source=source, base_url=base_url,
+            return OnlineMultiModalModule(model=model, source=source, base_url=url,
                                           function=function_name, **multi_kwargs)
 
         chat_kwargs = params.copy()
         chat_kwargs.pop('function', None)
         chat_kwargs.setdefault('type', resolved_type)
-        return OnlineChatModule(model=model, source=source, base_url=base_url, **chat_kwargs)
+        return OnlineChatModule(model=model, source=source, base_url=url, **chat_kwargs)
