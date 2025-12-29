@@ -51,8 +51,6 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
         params: Dict[str, Any] = dict(kwargs)
         resolved_type = self._resolve_type(model, type or params.get('type'), function or params.get('function'))
 
-        print(f"[ OnlineModule.__new__ ] resolved_type: {resolved_type}")
-
         if resolved_type in self._EMBED_TYPES:
             embed_kwargs = params.copy()
             embed_kwargs.pop('function', None)
