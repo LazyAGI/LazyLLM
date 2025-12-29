@@ -1,5 +1,5 @@
 import lazyllm
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 import requests
 from lazyllm.components.formatter import encode_query_with_filepaths
@@ -83,8 +83,13 @@ class DoubaoMultiModal(OnlineMultiModalBase):
                  return_trace: bool = False, **kwargs):
         api_key = api_key or lazyllm.config['doubao_api_key']
         OnlineMultiModalBase.__init__(self, model_series='DOUBAO', model_name=model_name, api_key=api_key,
-                                      return_trace=return_trace, **kwargs)
+                                      return_trace=return_trace, base_url=base_url, **kwargs)
         self._client = volcenginesdkarkruntime.Ark(base_url=base_url, api_key=api_key)
+
+    def _set_base_url(self, base_url: Optional[str]):
+        if base_url:
+            self._base_url = base_url
+            self._client = volcenginesdkarkruntime.Ark(base_url=base_url, api_key=self._api_key)
 
 
 class DoubaoTextToImageModule(DoubaoMultiModal):

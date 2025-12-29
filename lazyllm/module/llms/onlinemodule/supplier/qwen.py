@@ -2,7 +2,7 @@ import json
 import os
 import re
 import requests
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
@@ -351,10 +351,15 @@ class QwenMultiModal(OnlineMultiModalBase):
                  return_trace: bool = False, **kwargs):
         api_key = api_key or lazyllm.config['qwen_api_key']
         OnlineMultiModalBase.__init__(self, model_series='QWEN', api_key=api_key,
-                                      model_name=model_name, return_trace=return_trace, **kwargs)
+                                      model_name=model_name, return_trace=return_trace, base_url=base_url, **kwargs)
         dashscope.api_key = api_key
         dashscope.base_http_api_url = base_url
         dashscope.base_websocket_api_url = base_websocket_url
+
+    def _set_base_url(self, base_url: Optional[str]):
+        if base_url:
+            self._base_url = base_url
+            dashscope.base_http_api_url = base_url
 
 
 class QwenSTTModule(QwenMultiModal):

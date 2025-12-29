@@ -193,6 +193,82 @@ class TestModule:
         if m != 'spawn':
             multiprocessing.set_start_method(m, force=True)
 
+    def test_OnlineModule_init(self):
+        def assert_cases(expected_cls, cases):
+            for kwargs in cases:
+                module = lazyllm.OnlineModule(**kwargs)
+                assert isinstance(module, expected_cls)
+
+        chat_cases = [
+            {},
+            {'type': 'llm'},
+            {'model': 'DeepSeek-V3'},
+            {'type': 'vlm'},
+            {'model': 'SenseNova-V6-5-Pro'},
+        ]
+        assert_cases(lazyllm.module.OnlineChatModuleBase, chat_cases)
+
+        embed_cases = [
+            {'type': 'embed'},
+            {'model': 'nova-embedding-stable'},
+            {'type': 'cross_modal_embed'},
+            {'model': 'qwen2.5-vl-embedding'},
+            {'type': 'rerank'},
+            {'model': 'rerank'},
+        ]
+        assert_cases(lazyllm.module.OnlineEmbeddingModuleBase, embed_cases)
+
+        multimodal_cases = [
+            {'type': 'stt'},
+            {'model': 'qwen-audio-turbo'},
+            {'type': 'tts'},
+            {'model': 'qwen-tts'},
+            {'type': 'sd'},
+            {'model': 'qwen-image'},
+        ]
+        assert_cases(lazyllm.module.OnlineMultiModalModule, multimodal_cases)
+
+    def test_OnlineModule_url_override(self):
+        chat = lazyllm.OnlineModule(source='openai', base_url='http://base/v1/', model="base_model", api_key="dummy_key")
+        chat_shared = chat.share(base_url='http://override/v1/', model="override_model")
+        assert chat._chat_url.startswith('http://base')
+        assert chat_shared._chat_url.startswith('http://override')
+
+        embed = lazyllm.OnlineModule(type='embed', source='openai', embed_url='http://base-embed/v1/', api_key="dummy_key")
+        embed_shared = embed.share(embed_url='http://override-embed/v1/', embed_model_name='custom-embed')
+        assert embed._embed_url.startswith('http://base-embed/v1/')
+        assert embed_shared._embed_url.startswith('http://override-embed/v1/')
+
+    def test_OnlineMultiModal_forward_override(self):
+        class DummyMulti(lazyllm.module.OnlineMultiModalBase):
+            def __init__(self):
+                super().__init__('DUMMY', model_name='default', api_key='dummy', base_url='http://base')
+                self.records = []
+
+            def _set_base_url(self, base_url: str):
+                if base_url:
+                    self._base_url = base_url
+
+            def _forward(self, input: str = None, **kwargs):
+                self.records.append((self._model_name, getattr(self, '_base_url', None), input))
+                return self._model_name + ', ' + input
+
+        dummy = DummyMulti()
+        assert dummy('hello') == 'default, hello'
+        assert dummy.records[-1] == ('default', 'http://base', 'hello')
+
+        assert dummy('new', model='override', base_url='http://override') == 'override, new'
+        assert dummy.records[-1] == ('override', 'http://override', 'new')
+
+        dummy('final')
+        assert dummy.records[-1] == ('default', 'http://base', 'final')
+
+        dummy_shared = dummy.share(model='shared-model', base_url='http://shared')
+        assert dummy_shared('share-call') == 'shared-model, share-call'
+        assert dummy_shared.records[-1] == ('shared-model', 'http://shared', 'share-call')
+        assert dummy('after-share') == 'default, after-share'
+        assert dummy.records[-1] == ('default', 'http://base', 'after-share')
+
     def test_custom_module(self):
         class MyModule(lazyllm.ModuleBase):
             def forward(self, a, b):

@@ -1,4 +1,5 @@
 import copy
+from contextlib import contextmanager
 from itertools import groupby
 import json
 import os
@@ -69,9 +70,11 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
 
     def share(self, prompt: Optional[Union[str, dict, PrompterBase]] = None, format: Optional[FormatterBase] = None,
               stream: Optional[Union[bool, Dict[str, str]]] = None, history: Optional[List[List[str]]] = None,
-              copy_static_params: bool = False):
+              copy_static_params: bool = False, *, base_url: Optional[str] = None, model: Optional[str] = None):
         new = super().share(prompt, format, stream, history)
         if copy_static_params: new._static_params = copy.deepcopy(self._static_params)
+        if base_url is not None: new._set_base_url(base_url)
+        if model is not None: new._set_model_name(model)
         return new
 
     def _get_system_prompt(self):
@@ -80,6 +83,27 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
     @property
     def _base_url(self):
         return random.choice(self.__base_url) if isinstance(self.__base_url, list) else self.__base_url
+
+    def _set_base_url(self, base_url: Union[str, List[str]]):
+        self.__base_url = base_url
+
+    def _set_model_name(self, model_name: str):
+        if model_name:
+            self._model_name = model_name
+
+    @contextmanager
+    def _override_endpoint(self, base_url: Optional[str] = None, model: Optional[str] = None):
+        old_base_url = self.__base_url
+        old_model = self._model_name
+        if base_url is not None:
+            self.__base_url = base_url
+        if model is not None:
+            self._model_name = model
+        try:
+            yield
+        finally:
+            self.__base_url = old_base_url
+            self._model_name = old_model
 
     @property
     def _chat_url(self):
@@ -151,34 +175,39 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         # TODO(dengyuang): if current forward set stream_output = False but self._stream = True, will use stream = True
         stream_output = stream_output or self._stream
         __input, files = self._get_files(__input, lazyllm_files)
+        runtime_base_url = kw.pop('base_url', None)
+        runtime_model = kw.get('model')
         params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
         if tools: params['tools'] = tools
         data = self._prompt.generate_prompt(**params)
-        data.update(self._static_params, **dict(model=self._model_name, stream=bool(stream_output)))
+        with self._override_endpoint(runtime_base_url, runtime_model):
+            data.update(self._static_params, **dict(model=self._model_name, stream=bool(stream_output)))
 
-        if len(kw) > 0: data.update(kw)
-        if len(self._model_optional_params) > 0: data.update(self._model_optional_params)
+            if len(kw) > 0: data.update(kw)
+            if len(self._model_optional_params) > 0: data.update(self._model_optional_params)
 
-        if self.type == 'VLM' and (files or self._vlm_force_format_input_with_files):
-            data['messages'][-1]['content'] = self._format_input_with_files(data['messages'][-1]['content'], files)
+            if self.type == 'VLM' and (files or self._vlm_force_format_input_with_files):
+                data['messages'][-1]['content'] = self._format_input_with_files(data['messages'][-1]['content'], files)
 
-        proxies = {'http': None, 'https': None} if self.NO_PROXY else None
-        with requests.post(self._chat_url, json=data, headers=self._header, stream=stream_output, proxies=proxies) as r:
-            if r.status_code != 200:  # request error
-                msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]) if stream_output else r.text
-                raise requests.RequestException(f'{r.status_code}: {msg}')
+            proxies = {'http': None, 'https': None} if self.NO_PROXY else None
+            with requests.post(self._chat_url, json=data, headers=self._header, stream=stream_output,
+                               proxies=proxies) as r:
+                if r.status_code != 200:  # request error
+                    msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]) if stream_output else r.text
+                    raise requests.RequestException(f'{r.status_code}: {msg}')
 
-            with self.stream_output(stream_output):
-                msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
-                                if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]),))
+                with self.stream_output(stream_output):
+                    msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output)
+                                    for line in r.iter_lines() if len(line)]
+                                    if stream_output else [self._str_to_json(r.text, stream_output)]),))
 
-            usage = {'prompt_tokens': -1, 'completion_tokens': -1}
-            if len(msg_json) > 0 and 'usage' in msg_json[-1] and isinstance(msg_json[-1]['usage'], dict):
-                for k in usage:
-                    usage[k] = msg_json[-1]['usage'].get(k, usage[k])
-            self._record_usage(usage)
-            extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
-            return self._formatter(extractor) if extractor else ''
+                usage = {'prompt_tokens': -1, 'completion_tokens': -1}
+                if len(msg_json) > 0 and 'usage' in msg_json[-1] and isinstance(msg_json[-1]['usage'], dict):
+                    for k in usage:
+                        usage[k] = msg_json[-1]['usage'].get(k, usage[k])
+                self._record_usage(usage)
+                extractor = self._extract_specified_key_fields(self._merge_stream_result(msg_json))
+                return self._formatter(extractor) if extractor else ''
 
     def _record_usage(self, usage: dict):
         globals['usage'][self._module_id] = usage

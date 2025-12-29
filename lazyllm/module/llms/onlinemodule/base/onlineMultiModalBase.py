@@ -1,4 +1,5 @@
 import copy
+from contextlib import contextmanager
 from typing import List, Dict, Union, Optional
 import lazyllm
 from ....servermodule import LLMBase
@@ -11,6 +12,7 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
         super().__init__(api_key=api_key, return_trace=return_trace)
         self._model_series = model_series
         self._model_name = model_name
+        self._base_url = kwargs.get('base_url')
         self._validate_model_config()
 
     def _validate_model_config(self):
@@ -28,10 +30,39 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
     def type(self):
         return 'MultiModal'
 
-    def share(self):
+    def _set_base_url(self, base_url: Optional[str]):
+        self._base_url = base_url
+
+    def share(self, *, model: Optional[str] = None, base_url: Optional[str] = None):
         '''Create a shared instance of the module'''
         new = copy.copy(self)
+        if model is not None:
+            new._model_name = model
+        if base_url is not None:
+            new._set_base_url(base_url)
         return new
+
+    @contextmanager
+    def _override_endpoint(self, *, model: Optional[str] = None, base_url: Optional[str] = None):
+        old_model = self._model_name
+        base_url_defined = hasattr(self, '_base_url')
+        old_base_url = getattr(self, '_base_url', None)
+        if model is not None:
+            self._model_name = model
+        if base_url is not None:
+            if hasattr(self, '_set_base_url'):
+                self._set_base_url(base_url)
+            else:
+                self._base_url = base_url
+        try:
+            yield
+        finally:
+            self._model_name = old_model
+            if base_url is not None and base_url_defined:
+                if hasattr(self, '_set_base_url'):
+                    self._set_base_url(old_base_url)
+                else:
+                    self._base_url = old_base_url
 
     def _forward(self, input: Union[Dict, str] = None, files: List[str] = None, **kwargs):
         '''Forward method to be implemented by subclasses'''
@@ -41,9 +72,12 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
         '''Main forward method with file handling'''
         try:
             input, files = self._get_files(input, lazyllm_files)
+            runtime_base_url = kwargs.pop('base_url', None)
+            runtime_model = kwargs.pop('model', None)
             call_params = {'input': input, **kwargs}
             if files: call_params['files'] = files
-            return self._forward(**call_params)
+            with self._override_endpoint(model=runtime_model, base_url=runtime_base_url):
+                return self._forward(**call_params)
 
         except Exception as e:
             lazyllm.LOG.error(f'Error in {self.__class__.__name__}.forward: {str(e)}')

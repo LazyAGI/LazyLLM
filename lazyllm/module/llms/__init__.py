@@ -1,5 +1,5 @@
 from .automodel import AutoModel
-from .onlinemodule import OnlineEmbeddingModule, OnlineEmbeddingModuleBase
+from .onlinemodule import OnlineModule, OnlineEmbeddingModule, OnlineEmbeddingModuleBase
 from .onlinemodule import OnlineChatModule, OnlineChatModuleBase
 from .trainablemodule import TrainableModule
 from .onlinemodule import OnlineMultiModalModule, OnlineMultiModalBase
@@ -8,6 +8,7 @@ from lazyllm import config
 
 __all__ = [
     'AutoModel',
+    'OnlineModule',
     'OnlineEmbeddingModule',
     'OnlineEmbeddingModuleBase',
     'OnlineChatModule',

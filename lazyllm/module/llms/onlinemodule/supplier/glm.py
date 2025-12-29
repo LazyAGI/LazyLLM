@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import requests
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
@@ -252,8 +252,13 @@ class GLMMultiModal(OnlineMultiModalBase):
         api_key = api_key or lazyllm.config['glm_api_key']
         OnlineMultiModalBase.__init__(self, model_series='GLM', model_name=model_name,
                                       api_key=api_key,
-                                      return_trace=return_trace, **kwargs)
+                                      return_trace=return_trace, base_url=base_url, **kwargs)
         self._client = zhipuai.ZhipuAI(api_key=api_key, base_url=base_url)
+
+    def _set_base_url(self, base_url: Optional[str]):
+        if base_url:
+            self._base_url = base_url
+            self._client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=base_url)
 
 
 class GLMSTTModule(GLMMultiModal):
