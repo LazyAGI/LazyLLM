@@ -141,8 +141,11 @@ def check_package_installed(package_name: str | List[str]) -> bool:
     return True
 
 def load_toml_dep_group(group_name: str) -> List[str]:
-    try:
+    toml_file_path = Path(__file__).resolve().parents[2] / 'pyproject.toml'
+    if not toml_file_path.exists():
         toml_file_path = os.path.join(lazyllm.__path__[0], 'pyproject.toml')
+
+    try:
         with open(toml_file_path, 'r') as f:
             return toml.load(f)['tool']['poetry']['extras'][group_name]
     except FileNotFoundError:
