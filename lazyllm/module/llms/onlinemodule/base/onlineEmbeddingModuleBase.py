@@ -1,6 +1,5 @@
-import copy
-from contextlib import contextmanager
 from typing import Dict, List, Union, Optional
+import random
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from lazyllm import LOG
@@ -37,44 +36,26 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
     def batch_size(self, value: int):
         self._batch_size = value
 
-    def share(self, *, embed_url: Optional[str] = None, embed_model_name: Optional[str] = None):
-        new = copy.copy(self)
-        if embed_url is not None:
-            new._embed_url = embed_url
-        if embed_model_name is not None:
-            new._embed_model_name = embed_model_name
-        return new
-
-    @contextmanager
-    def _override_endpoint(self, embed_url: Optional[str] = None, embed_model_name: Optional[str] = None):
-        old_url = self._embed_url
-        old_model = self._embed_model_name
-        if embed_url is not None:
-            self._embed_url = embed_url
-        if embed_model_name is not None:
-            self._embed_model_name = embed_model_name
-        try:
-            yield
-        finally:
-            self._embed_url = old_url
-            self._embed_model_name = old_model
-
     def forward(self, input: Union[List, str], **kwargs) -> Union[List[float], List[List[float]]]:
-        runtime_embed_url = kwargs.pop('embed_url', kwargs.pop('base_url', None))
-        runtime_embed_model = kwargs.pop('embed_model_name', kwargs.pop('model_name', None))
-        override_model = kwargs.get('model', runtime_embed_model)
-        with self._override_endpoint(runtime_embed_url, override_model):
-            data = self._encapsulated_data(input, **kwargs)
-            proxies = {'http': None, 'https': None} if self.NO_PROXY else None
-            if isinstance(data, list):
-                return self.run_embed_batch(input, data, proxies, **kwargs)
-            else:
-                with requests.post(self._embed_url, json=data, headers=self._header, proxies=proxies,
-                                   timeout=self._timeout) as r:
-                    if r.status_code == 200:
-                        return self._parse_response(r.json(), input=input)
-                    else:
-                        raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
+        runtime_embed_url = kwargs.pop('embed_url', kwargs.pop('base_url', kwargs.pop('url', None)))
+        runtime_embed_model = kwargs.pop('embed_model_name', kwargs.pop('model_name', kwargs.pop('model', None)))
+        model_name = runtime_embed_model or self._embed_model_name
+        if isinstance(runtime_embed_url, list):
+            runtime_embed_url = random.choice(runtime_embed_url)
+        request_url = runtime_embed_url or self._embed_url
+        if model_name is not None:
+            kwargs['model'] = model_name
+        data = self._encapsulated_data(input, **kwargs)
+        proxies = {'http': None, 'https': None} if self.NO_PROXY else None
+        if isinstance(data, list):
+            return self.run_embed_batch(input, data, proxies, request_url, **kwargs)
+        else:
+            with requests.post(request_url, json=data, headers=self._header, proxies=proxies,
+                               timeout=self._timeout) as r:
+                if r.status_code == 200:
+                    return self._parse_response(r.json(), input=input)
+                else:
+                    raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
     def _encapsulated_data(self, input: Union[List, str], **kwargs):
         if isinstance(input, str):
@@ -102,14 +83,16 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
         else:
             return [res.get('embedding', []) for res in data]
 
-    def run_embed_batch(self, input: List, data: List, proxies, **kwargs):
+    def run_embed_batch(self, input: List, data: List, proxies, request_url: str = None, **kwargs):
         ret = [[] for _ in range(len(input))]
         flag = False
+        if request_url is None:
+            request_url = self._embed_url
         if self._num_worker == 1:
             with requests.Session() as session:
                 while not flag:
                     for i in range(len(data)):
-                        r = session.post(self._embed_url, json=data[i], headers=self._header,
+                        r = session.post(request_url, json=data[i], headers=self._header,
                                          proxies=proxies, timeout=self._timeout)
                         if r.status_code == 200:
                             vec = self._parse_response(r.json(), input=input)
@@ -131,7 +114,7 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
         else:
             with ThreadPoolExecutor(max_workers=self._num_worker) as executor:
                 while not flag:
-                    futures = [executor.submit(requests.post, self._embed_url, json=t, headers=self._header,
+                    futures = [executor.submit(requests.post, request_url, json=t, headers=self._header,
                                                proxies=proxies, timeout=self._timeout) for t in data]
                     fut_to_index = {fut: idx for idx, fut in enumerate(futures)}
                     for fut in as_completed(futures):

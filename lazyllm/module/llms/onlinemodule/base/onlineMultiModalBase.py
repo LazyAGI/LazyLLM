@@ -33,36 +33,27 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
     def _set_base_url(self, base_url: Optional[str]):
         self._base_url = base_url
 
-    def share(self, *, model: Optional[str] = None, base_url: Optional[str] = None):
+    def share(self, *, model: Optional[str] = None):
         '''Create a shared instance of the module'''
         new = copy.copy(self)
         if model is not None:
             new._model_name = model
-        if base_url is not None:
-            new._set_base_url(base_url)
         return new
 
     @contextmanager
     def _override_endpoint(self, *, model: Optional[str] = None, base_url: Optional[str] = None):
         old_model = self._model_name
-        base_url_defined = hasattr(self, '_base_url')
         old_base_url = getattr(self, '_base_url', None)
         if model is not None:
             self._model_name = model
         if base_url is not None:
-            if hasattr(self, '_set_base_url'):
-                self._set_base_url(base_url)
-            else:
-                self._base_url = base_url
+            self._set_base_url(base_url)
         try:
             yield
         finally:
             self._model_name = old_model
-            if base_url is not None and base_url_defined:
-                if hasattr(self, '_set_base_url'):
-                    self._set_base_url(old_base_url)
-                else:
-                    self._base_url = old_base_url
+            if base_url is not None:
+                self._set_base_url(old_base_url)
 
     def _forward(self, input: Union[Dict, str] = None, files: List[str] = None, **kwargs):
         '''Forward method to be implemented by subclasses'''
@@ -72,10 +63,10 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
         '''Main forward method with file handling'''
         try:
             input, files = self._get_files(input, lazyllm_files)
-            runtime_base_url = kwargs.pop('base_url', None)
-            runtime_model = kwargs.pop('model', None)
             call_params = {'input': input, **kwargs}
             if files: call_params['files'] = files
+            runtime_base_url = kwargs.pop('base_url', None)
+            runtime_model = kwargs.pop('model', None)
             with self._override_endpoint(model=runtime_model, base_url=runtime_base_url):
                 return self._forward(**call_params)
 
