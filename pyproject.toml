@@ -8,13 +8,6 @@ cmake.source-dir = "csrc"
 cmake.build-type = "Release"
 build.verbose = true
 
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["lazyllm"]
-
-[tool.setuptools.package-data]
-"*" = ["pyproject.toml"]
-
 [tool.cibuildwheel]
 # Skip musllinux (Alpine) and all 32bits systems.
 skip = ["*-musllinux_*", "*i686", "*-win32"]

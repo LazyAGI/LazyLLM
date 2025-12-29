@@ -1,6 +1,7 @@
 import importlib
 import toml
 import re
+import lazyllm
 from typing import List
 from lazyllm.common import LOG
 from .modules import modules
@@ -140,12 +141,12 @@ def check_package_installed(package_name: str | List[str]) -> bool:
     return True
 
 def load_toml_dep_group(group_name: str) -> List[str]:
-    toml_file_path = Path(__file__).resolve().parents[2] / 'pyproject.toml'
+    toml_file_path = os.path.join(lazyllm.__path__[0], 'pyproject.toml')
+    # toml_file_path = Path(__file__).resolve().parents[2] / 'pyproject.toml'
+    # print(toml_file_path)
     if not toml_file_path.exists():
-        toml_file_path = Path(__file__).resolve().parents[1] / 'pyproject.toml'
-        if not toml_file_path.exists():
-            LOG.error('pyproject.toml missing. Please reinstall LazyLLM.')
-            raise FileNotFoundError(f'''
+        LOG.error('pyproject.toml missing. Please reinstall LazyLLM.')
+        raise FileNotFoundError(f'''
 pyproject.toml missing. Please reinstall LazyLLM.\n
 {Path(__file__).resolve().parents[1] / 'pyproject.toml'}\n
 {os.listdir(Path(__file__).resolve().parents[1])}\n

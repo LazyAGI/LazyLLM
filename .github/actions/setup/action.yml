@@ -20,6 +20,7 @@ runs:
       shell: bash
       run: |
         pip install build
+        cp pyproject.toml ./lazyllm
         python -m build --config-setting=skbuild.wheel.cmake=false
 
     - name: Install the built package
