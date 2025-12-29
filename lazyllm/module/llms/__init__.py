@@ -1,8 +1,11 @@
 from .automodel import AutoModel
-from .onlinemodule import OnlineModule, OnlineEmbeddingModule, OnlineEmbeddingModuleBase
-from .onlinemodule import OnlineChatModule, OnlineChatModuleBase
+from .onlinemodule import (
+    OnlineEmbeddingModule, OnlineEmbeddingModuleBase,
+    OnlineChatModule, OnlineChatModuleBase,
+    OnlineMultiModalModule, OnlineMultiModalBase
+)
+from .online_module import OnlineModule
 from .trainablemodule import TrainableModule
-from .onlinemodule import OnlineMultiModalModule, OnlineMultiModalBase
 from lazyllm import config
 
 
