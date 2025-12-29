@@ -3,6 +3,8 @@
   - 常见问题: Home/FAQ.md
   - 环境配置: Home/environment.md
   - 支持模型: Home/model_list.md
+- 入门教程:
+  - 新手入门教程: Learn/learn.md
 - 使用示例:
   - 聊天机器人: Cookbook/chatbot.md
   - 绘画大师: Cookbook/painting_master.md
@@ -51,7 +53,7 @@
   - 钩子: API Reference/hook.md
   - 补丁: API Reference/patch.md
   - 提示词: API Reference/prompt_template.md
-- 教程:
+- 课程体系:
   - 概述: Tutorial/index.md
   - 1. RAG原理解读: Tutorial/1.md
   - 2. 快速上手RAG: Tutorial/2.md
