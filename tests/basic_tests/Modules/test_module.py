@@ -307,8 +307,10 @@ class TestModule:
                 self.records = []
 
             def _forward(self, input: str = None, **kwargs):
-                self.records.append((self._model_name, getattr(self, '_base_url', None), input))
-                return self._model_name + ', ' + input
+                model_name = kwargs.pop('_forward_model', self._model_name)
+                base_url = kwargs.pop('_forward_url', getattr(self, '_base_url', None))
+                self.records.append((model_name, base_url, input))
+                return model_name + ', ' + input
 
         dummy = DummyMulti()
         assert dummy('hello') == 'default, hello'

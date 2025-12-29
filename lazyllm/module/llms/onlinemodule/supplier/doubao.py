@@ -103,8 +103,13 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
 
     def _forward(self, input: str = None, size: str = '1024x1024', seed: int = -1, guidance_scale: float = 2.5,
                  watermark: bool = True, **kwargs):
-        imagesResponse = self._client.images.generate(
-            model=self._model_name,
+        model_name = kwargs.pop('_forward_model', self._model_name)
+        base_url = kwargs.pop('_forward_url', None)
+        client = self._client
+        if base_url and base_url != getattr(self, '_base_url', None):
+            client = volcenginesdkarkruntime.Ark(base_url=base_url, api_key=self._api_key)
+        imagesResponse = client.images.generate(
+            model=model_name,
             prompt=input,
             size=size,
             seed=seed,

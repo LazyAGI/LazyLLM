@@ -1,7 +1,7 @@
 import base64
 import requests
 import lazyllm
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase, OnlineMultiModalBase
 from lazyllm.components.formatter import encode_query_with_filepaths
@@ -78,8 +78,9 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
         self._base_url = base_url
         self._endpoint = 'image_generation'
 
-    def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
-        url = urljoin(self._base_url, endpoint)
+    def _make_request(self, endpoint: str, payload: Dict[str, Any], base_url: Optional[str] = None,
+                      timeout: int = 180) -> Dict[str, Any]:
+        url = urljoin(base_url or self._base_url, endpoint)
         response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
         response.raise_for_status()
         result = response.json()
@@ -92,8 +93,10 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
                  aspect_ratio: str = None, width: int = None, height: int = None,
                  response_format: str = 'url', seed: int = None, n: int = 1,
                  prompt_optimizer: bool = False, aigc_watermark: bool = False, **kwargs):
+        model_name = kwargs.pop('_forward_model', self._model_name)
+        base_url = kwargs.pop('_forward_url', None)
         payload: Dict[str, Any] = {
-            'model': self._model_name,
+            'model': model_name,
             'prompt': input,
             'response_format': response_format or 'url',
             'n': n,
@@ -111,7 +114,7 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
             payload['seed'] = seed
         payload.update(kwargs)
 
-        result = self._make_request(self._endpoint, payload)
+        result = self._make_request(self._endpoint, payload, base_url=base_url)
         data = result.get('data') or {}
 
         image_bytes: List[bytes] = []
@@ -154,8 +157,9 @@ class MinimaxTTSModule(OnlineMultiModalBase):
         self._endpoint = 't2a_v2'
         self._base_url = base_url
 
-    def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
-        url = urljoin(self._base_url, endpoint)
+    def _make_request(self, endpoint: str, payload: Dict[str, Any], base_url: Optional[str] = None,
+                      timeout: int = 180) -> Dict[str, Any]:
+        url = urljoin(base_url or self._base_url, endpoint)
         try:
             response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
@@ -176,10 +180,12 @@ class MinimaxTTSModule(OnlineMultiModalBase):
                  stream_options: Dict[str, Any] = None, out_path: str = None, **kwargs):
         if stream:
             raise ValueError('MinimaxTTSModule does not support streaming output, please set stream to False')
+        model_name = kwargs.pop('_forward_model', self._model_name)
+        base_url = kwargs.pop('_forward_url', None)
         voice_setting = voice_setting or {}
         voice_setting.setdefault('voice_id', 'male-qn-qingse')
         payload: Dict[str, Any] = {
-            'model': self._model_name,
+            'model': model_name,
             'text': input,
             'stream': stream,
             'output_format': output_format,
@@ -197,7 +203,7 @@ class MinimaxTTSModule(OnlineMultiModalBase):
         }
         payload.update({k: v for k, v in optional_params.items() if v is not None})
         payload.update(kwargs)
-        result = self._make_request(self._endpoint, payload, timeout=180)
+        result = self._make_request(self._endpoint, payload, base_url=base_url, timeout=180)
         data = result.get('data') or {}
         audio_data = data.get('audio')
         if not audio_data:

@@ -79,8 +79,8 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
         self._endpoint = 'images/generations'
         self._base_url = base_url
 
-    def _make_request(self, endpoint, payload, timeout=180):
-        url = f'{self._base_url}{endpoint}'
+    def _make_request(self, endpoint, payload, base_url=None, timeout=180):
+        url = f'{(base_url or self._base_url)}{endpoint}'
         try:
             response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
@@ -90,13 +90,15 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
             raise
 
     def _forward(self, input: str = None, size: str = '1024x1024', **kwargs):
+        model_name = kwargs.pop('_forward_model', self._model_name)
+        base_url = kwargs.pop('_forward_url', None)
         payload = {
-            'model': self._model_name,
+            'model': model_name,
             'prompt': input
         }
         payload.update(kwargs)
 
-        result = self._make_request(self._endpoint, payload)
+        result = self._make_request(self._endpoint, payload, base_url=base_url)
 
         image_urls = [item['url'] for item in result['data']]
 
@@ -126,8 +128,8 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
         self._endpoint = 'audio/speech'
         self._base_url = base_url
 
-    def _make_binary_request(self, endpoint, payload, timeout=180):
-        url = f'{self._base_url}{endpoint}'
+    def _make_binary_request(self, endpoint, payload, base_url=None, timeout=180):
+        url = f'{(base_url or self._base_url)}{endpoint}'
         try:
             response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
@@ -139,19 +141,22 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
     def _forward(self, input: str = None, response_format: str = 'mp3',
                  sample_rate: int = 44100, speed: float = 1.0,
                  voice: str = None, references=None, out_path: str = None, **kwargs):
+        model_name = kwargs.pop('_forward_model', self._model_name)
+        base_url = kwargs.pop('_forward_url', None)
 
         if not voice:
-            if self._model_name == 'fnlp/MOSS-TTSD-v0.5':
+            active_model = model_name
+            if active_model == 'fnlp/MOSS-TTSD-v0.5':
                 voice = 'fnlp/MOSS-TTSD-v0.5:alex'
-            elif self._model_name == 'FunAudioLLM/CosyVoice2-0.5B':
+            elif active_model == 'FunAudioLLM/CosyVoice2-0.5B':
                 voice = 'FunAudioLLM/CosyVoice2-0.5B:alex'
             else:
                 raise ValueError(
                     f'Default voice is only supported for models "fnlp/MOSS-TTSD-v0.5" and '
-                    f'"FunAudioLLM/CosyVoice2-0.5B". For model "{self._model_name}", '
+                    f'"FunAudioLLM/CosyVoice2-0.5B". For model "{active_model}", '
                     f'please provide a valid voice parameter.')
         payload = {
-            'model': self._model_name,
+            'model': model_name,
             'input': input,
             'response_format': response_format,
             'sample_rate': sample_rate,
@@ -163,7 +168,7 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
             payload['references'] = references
 
         payload.update(kwargs)
-        audio_content = self._make_binary_request(self._endpoint, payload, timeout=180)
+        audio_content = self._make_binary_request(self._endpoint, payload, base_url=base_url, timeout=180)
         file_path = bytes_to_file([audio_content])[0]
 
         if out_path:

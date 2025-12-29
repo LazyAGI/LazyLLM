@@ -272,8 +272,13 @@ class GLMSTTModule(GLMMultiModal):
     def _forward(self, files: List[str] = [], **kwargs):  # noqa B006
         assert len(files) == 1, 'GLMSTTModule only supports one file'
         assert os.path.exists(files[0]), f'File {files[0]} not found'
-        transcriptResponse = self._client.audio.transcriptions.create(
-            model=self._model_name,
+        model_name = kwargs.pop('_forward_model', self._model_name)
+        base_url = kwargs.pop('_forward_url', None)
+        client = self._client
+        if base_url and base_url != getattr(self, '_base_url', None):
+            client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=base_url)
+        transcriptResponse = client.audio.transcriptions.create(
+            model=model_name,
             file=open(files[0], 'rb'),
         )
         return transcriptResponse.text
@@ -288,13 +293,18 @@ class GLMTextToImageModule(GLMMultiModal):
                                return_trace=return_trace, **kwargs)
 
     def _forward(self, input: str = None, n: int = 1, size: str = '1024x1024', **kwargs):
+        model_name = kwargs.pop('_forward_model', self._model_name)
+        base_url = kwargs.pop('_forward_url', None)
+        client = self._client
+        if base_url and base_url != getattr(self, '_base_url', None):
+            client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=base_url)
         call_params = {
-            'model': self._model_name,
+            'model': model_name,
             'prompt': input,
             'n': n,
             'size': size,
             **kwargs
         }
-        response = self._client.images.generations(**call_params)
+        response = client.images.generations(**call_params)
         return encode_query_with_filepaths(None, bytes_to_file([requests.get(result.url).content
                                                                 for result in response.data]))

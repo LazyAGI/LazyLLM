@@ -1,5 +1,4 @@
-import copy
-from contextlib import contextmanager
+import random
 from typing import List, Dict, Union, Optional
 import lazyllm
 from ....servermodule import LLMBase
@@ -33,28 +32,6 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
     def _set_base_url(self, base_url: Optional[str]):
         self._base_url = base_url
 
-    def share(self, *, model: Optional[str] = None):
-        '''Create a shared instance of the module'''
-        new = copy.copy(self)
-        if model is not None:
-            new._model_name = model
-        return new
-
-    @contextmanager
-    def _override_endpoint(self, *, model: Optional[str] = None, base_url: Optional[str] = None):
-        old_model = self._model_name
-        old_base_url = getattr(self, '_base_url', None)
-        if model is not None:
-            self._model_name = model
-        if base_url is not None:
-            self._set_base_url(base_url)
-        try:
-            yield
-        finally:
-            self._model_name = old_model
-            if base_url is not None:
-                self._set_base_url(old_base_url)
-
     def _forward(self, input: Union[Dict, str] = None, files: List[str] = None, **kwargs):
         '''Forward method to be implemented by subclasses'''
         raise NotImplementedError(f'Subclass {self.__class__.__name__} must implement this method')
@@ -63,12 +40,19 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
         '''Main forward method with file handling'''
         try:
             input, files = self._get_files(input, lazyllm_files)
+            runtime_base_url = kwargs.pop('base_url', kwargs.pop('url', None))
+            runtime_model = kwargs.pop('model', kwargs.pop('model_name', None))
+            if isinstance(runtime_base_url, list):
+                runtime_base_url = random.choice(runtime_base_url)
+            forward_url = runtime_base_url or getattr(self, '_base_url', None)
+            forward_model = runtime_model or self._model_name
             call_params = {'input': input, **kwargs}
             if files: call_params['files'] = files
-            runtime_base_url = kwargs.pop('base_url', None)
-            runtime_model = kwargs.pop('model', None)
-            with self._override_endpoint(model=runtime_model, base_url=runtime_base_url):
-                return self._forward(**call_params)
+            if forward_model is not None:
+                call_params['_forward_model'] = forward_model
+            if forward_url is not None:
+                call_params['_forward_url'] = forward_url
+            return self._forward(**call_params)
 
         except Exception as e:
             lazyllm.LOG.error(f'Error in {self.__class__.__name__}.forward: {str(e)}')
