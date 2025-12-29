@@ -141,12 +141,15 @@ def check_package_installed(package_name: str | List[str]) -> bool:
 
 def load_toml_dep_group(group_name: str) -> List[str]:
     toml_file_path = Path(__file__).resolve().parents[2] / 'pyproject.toml'
+    if not toml_file_path.exists():
+        toml_file_path = Path(__file__).resolve().parents[1] / 'pyproject.toml'
+        if not toml_file_path.exists():
+            LOG.error('pyproject.toml missing. Please reinstall LazyLLM.')
+            raise FileNotFoundError('pyproject.toml missing. Please reinstall LazyLLM.')
+
     try:
         with open(toml_file_path, 'r') as f:
             return toml.load(f)['tool']['poetry']['extras'][group_name]
-    except FileNotFoundError:
-        LOG.error('pyproject.toml missing. Please reinstall LazyLLM.')
-        raise FileNotFoundError('pyproject.toml missing. Please reinstall LazyLLM.')
     except KeyError:
         LOG.error(f'Group {group_name} not found in pyproject.toml.')
         raise KeyError(f'''Group {group_name} not found in pyproject.toml.
