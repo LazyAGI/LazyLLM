@@ -145,7 +145,11 @@ def load_toml_dep_group(group_name: str) -> List[str]:
         toml_file_path = Path(__file__).resolve().parents[1] / 'pyproject.toml'
         if not toml_file_path.exists():
             LOG.error('pyproject.toml missing. Please reinstall LazyLLM.')
-            raise FileNotFoundError(f'pyproject.toml missing. Please reinstall LazyLLM. {toml_file_path}')
+            raise FileNotFoundError(f'''
+pyproject.toml missing. Please reinstall LazyLLM.\n
+{os.listdir(Path(__file__).resolve().parents[1])}\n
+{os.listdir(Path(__file__).resolve().parents[2])}
+''')
 
     try:
         with open(toml_file_path, 'r') as f:
