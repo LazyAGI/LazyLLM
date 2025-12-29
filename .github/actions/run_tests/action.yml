@@ -32,6 +32,7 @@ runs:
       working-directory: ${{ inputs.working_directory }}
       env:
         CHANGED_FILES: ${{ inputs.changed_files }}
+        LAZYLLM_EXPECTED_LOG_MODULES: "all"
       run: |
         cd ${{ inputs.working_directory }}
         echo "tests_dir=${{ inputs.tests_dir }}"
