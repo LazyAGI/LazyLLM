@@ -40,7 +40,7 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
         runtime_url = url or kwargs.pop('base_url', kwargs.pop('embed_url', None)) or self._embed_url
         runtime_model = model or kwargs.pop('model_name', kwargs.pop('embed_model_name', None)) or self._embed_model_name
         if get_model_type(runtime_model) not in ('embed', 'cross_modal_embed', 'rerank'):
-            raise ValueError(f"Model type must be 'embed', 'cross_modal_embed' or 'rerank', got {runtime_model}")
+            raise ValueError(f"Model type must be 'embed', 'cross_modal_embed' or 'rerank', got model {runtime_model}")
 
         if runtime_model is not None:
             kwargs['model'] = runtime_model

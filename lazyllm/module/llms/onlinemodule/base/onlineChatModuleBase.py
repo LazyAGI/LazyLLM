@@ -162,7 +162,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         runtime_url = self._get_chat_url(runtime_base_url) if runtime_base_url else self._chat_url
         runtime_model = model or kw.pop('model_name', None) or self._model_name
         if get_model_type(runtime_model) not in ('llm', 'vlm'):
-            raise ValueError(f"Model type must be 'llm' or 'vlm', got {runtime_model}")
+            raise ValueError(f"Model type must be 'llm' or 'vlm', got model {runtime_model}")
 
         params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
         if tools: params['tools'] = tools

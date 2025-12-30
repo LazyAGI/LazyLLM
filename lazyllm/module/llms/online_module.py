@@ -4,6 +4,7 @@ from .onlinemodule import (
     OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 )
 from lazyllm.components.utils.downloader.model_downloader import LLMType
+from .onlinemodule.map_model_type import get_model_type
 
 
 class _OnlineModuleMeta(type):
@@ -37,7 +38,13 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
                 type: Optional[str] = None, url: Optional[str] = None, **kwargs):
         params: Dict[str, Any] = dict(kwargs)
         legacy_function = params.pop('function', None)
-        resolved_type = self._transfer_type_to_LLMType(type or params.get('type') or legacy_function) or LLMType.LLM
+        type_hint = type or legacy_function
+        if type_hint:
+            resolved_type = self._transfer_type_to_LLMType(type_hint)
+        else:
+            inferred_type = (get_model_type(model) or 'llm') if model else 'llm'
+            resolved_type = self._transfer_type_to_LLMType(inferred_type)
+        resolved_type = resolved_type or LLMType.LLM
 
         if resolved_type in self._EMBED_TYPES:
             embed_kwargs = params.copy()

@@ -114,21 +114,21 @@ class TestOnlineModule(object):
     def test_OnlineMultiModal_forward_override(self):
         class DummyMulti(lazyllm.module.OnlineMultiModalBase):
             def __init__(self):
-                super().__init__('DUMMY', model_name='default', api_key='dummy', base_url='http://base')
+                super().__init__('DUMMY', model_name='whisper-1', api_key='dummy', base_url='http://base')
                 self.records = []
 
-            def _forward(self, input: str = None, **kwargs):
-                model_name = kwargs.pop('_forward_model', self._model_name)
-                base_url = kwargs.pop('_forward_url', getattr(self, '_base_url', None))
-                self.records.append((model_name, base_url, input))
-                return model_name + ', ' + input
+            def _forward(self, input: str = None, model: str = None, url: str = None, **kwargs):
+                model = model or self._model_name
+                url = url or self._base_url
+                self.records.append((model, url, input))
+                return model + ', ' + input
 
         dummy = DummyMulti()
-        assert dummy('hello') == 'default, hello'
-        assert dummy.records[-1] == ('default', 'http://base', 'hello')
+        assert dummy('hello') == 'whisper-1, hello'
+        assert dummy.records[-1] == ('whisper-1', 'http://base', 'hello')
 
-        assert dummy('new', model='override', base_url='http://override') == 'override, new'
-        assert dummy.records[-1] == ('override', 'http://override', 'new')
+        assert dummy('new', model='glm-asr', url='http://override') == 'glm-asr, new'
+        assert dummy.records[-1] == ('glm-asr', 'http://override', 'new')
 
-        assert dummy('final') == 'default, final'
-        assert dummy.records[-1] == ('default', 'http://base', 'final')
+        assert dummy('final') == 'whisper-1, final'
+        assert dummy.records[-1] == ('whisper-1', 'http://base', 'final')
