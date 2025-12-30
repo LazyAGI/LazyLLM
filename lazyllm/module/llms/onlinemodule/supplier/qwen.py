@@ -384,23 +384,131 @@ class QwenSTTModule(QwenMultiModal):
             lazyllm.LOG.error(f'failed to transcribe: {transcribe_response.output}')
             raise Exception(f'failed to transcribe: {transcribe_response.output.message}')
 
-
 class QwenTextToImageModule(QwenMultiModal):
     MODEL_NAME = 'wanx2.1-t2i-turbo'
 
-    def __init__(self, model: str = None, api_key: str = None, image_edit: bool = None, return_trace: bool = False, **kwargs):
-        if image_edit:
-            raise ValueError("Error: Qwen series models do not support image editing (image-to-image) now. Please set image_edit=False or omit it.\n"
-                            "We will resolve this bug promptly.")
+    IMAGE_EDITING_MODEL = [
+       'qwen-image-edit-plus',
+       'qwen-image-edit'
+    ]
+
+
+    def __init__(self, model: str = None, api_key: str = None, image_editing: bool = None, return_trace: bool = False, **kwargs):
+        self._supports_image_editing = image_editing
         QwenMultiModal.__init__(self, api_key=api_key,
                                 model_name=model or lazyllm.config['qwen_text2image_model_name']
                                 or QwenTextToImageModule.MODEL_NAME, return_trace=return_trace, **kwargs)
 
-    def _forward(self, input: str = None, negative_prompt: str = None, n: int = 1, prompt_extend: bool = True,
+    def _call_sync_text2image(self, call_params):
+        task_response = dashscope.MultiModalConversation.call(**call_params)
+        if task_response.status_code != HTTPStatus.OK:
+            raise RuntimeError(
+                f'Failed to create image synthesis task, '
+                f'status: {task_response.status_code}, message: {task_response.message}'
+            )
+        return task_response
+
+    def _call_async_text2image(self, call_params):
+        task_response = dashscope.ImageSynthesis.async_call(**call_params)
+        if task_response.status_code != HTTPStatus.OK:
+            raise RuntimeError(
+                f'Failed to create image synthesis task, '
+                f'status: {task_response.status_code}, message: {task_response.message}'
+            )
+        
+        task_id = getattr(task_response.output, 'task_id', None)
+        if not task_id:
+            raise RuntimeError('No task_id returned from async image synthesis call')
+        
+        response = dashscope.ImageSynthesis.wait(task=task_id, api_key=self._api_key)
+        return response
+    
+    def _extract_sync_image_urls(self, response):
+        try:
+            image_urls = []
+            for idx, content in enumerate(response.output.choices[0].message.content):
+                try:
+                    image_url = content['image']
+                    
+                    if image_url:
+                        image_urls.append(image_url)
+                        lazyllm.LOG.info(f'Extracted image URL {idx + 1}: {image_url}')
+                except Exception as e:
+                    lazyllm.LOG.warning(f'Failed to extract image URL from item {idx}: {str(e)}')
+                    continue
+            
+            if not image_urls:
+                lazyllm.LOG.warning('No image URLs found in content')
+            return image_urls
+        except Exception as e:
+            lazyllm.LOG.error(f'Failed to extract sync image URLs: {str(e)}')
+            import traceback
+            lazyllm.LOG.error(traceback.format_exc())
+            return []
+
+    def _extract_async_image_urls(self, response):
+        try:
+            output = getattr(response, 'output', None)
+            if not output:
+                lazyllm.LOG.warning('No output in async response')
+                return []
+            
+            results = getattr(output, 'results', [])
+            if not results:
+                lazyllm.LOG.warning('No results in async response output')
+                return []
+            
+            return [getattr(result, 'url', None) for result in results if getattr(result, 'url', None)]
+        except Exception as e:
+            lazyllm.LOG.error(f'Failed to extract async image URLs: {str(e)}')
+            return []
+        
+    def _download_images(self, image_urls: List[str]) -> List[bytes]:
+        image_bytes = []
+        
+        for idx, url in enumerate(image_urls):
+            try:
+                img_response = requests.get(url, timeout=60)
+                img_response.raise_for_status()
+                image_bytes.append(img_response.content)
+            except requests.exceptions.Timeout:
+                lazyllm.LOG.error(f'Timeout downloading image {idx} from {url}')
+                raise Exception(f'Timeout downloading image from {url}')
+            except requests.exceptions.RequestException as e:
+                lazyllm.LOG.error(f'Failed to download image {idx} from {url}: {str(e)}')
+                raise Exception(f'Failed to download image from {url}')
+        
+        return image_bytes
+        
+    def _forward(self, input: str = None, files: List[str] = None, negative_prompt: str = None, n: int = 1, prompt_extend: bool = True,
                  size: str = '1024*1024', seed: int = None, **kwargs):
+        use_image_edit = files is not None and len(files) > 0
+        reference_image_data=None
+
+
+        messages = []
+        if use_image_edit:
+            if not self._supports_image_editing:
+                raise ValueError(
+                    f'Model {self._model_name} does not support image editing. '
+                    f'Please use a model from IMAGE_EDITING_MODEL list: {self.IMAGE_EDITING_MODEL}'
+                )
+            reference_image_base64 = self._load_image_as_base64(files[0])
+            reference_image_data = f"data:image/png;base64,{reference_image_base64}"
+            
+            messages = [
+                {
+                    "role": "user",
+                    "content": [
+                        {"image": reference_image_data},
+                        {"text": input}
+                    ]
+                }
+            ]
+
+        
         call_params = {
             'model': self._model_name,
-            'prompt': input,
             'negative_prompt': negative_prompt,
             'n': n,
             'prompt_extend': prompt_extend,
@@ -409,16 +517,24 @@ class QwenTextToImageModule(QwenMultiModal):
         }
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
-        task_response = dashscope.ImageSynthesis.async_call(**call_params)
-        if task_response.status_code != HTTPStatus.OK:
-            raise RuntimeError(f'Failed to create image synthesis task, {task_response.message}')
-        response = dashscope.ImageSynthesis.wait(task=task_response.output.task_id, api_key=self._api_key)
-        if response.status_code == HTTPStatus.OK:
-            return encode_query_with_filepaths(None, bytes_to_file([requests.get(result.url).content
-                                                                    for result in response.output.results]))
+
+        if use_image_edit:
+            call_params['messages'] = messages
+            response = self._call_sync_text2image(call_params)
+            image_urls = self._extract_sync_image_urls(response)
         else:
-            lazyllm.LOG.error(f'failed to generate image: {response.output}')
-            raise Exception(f'failed to generate image: {response.output.message}')
+            call_params['prompt'] = input
+            response = self._call_async_text2image(call_params)
+            image_urls = self._extract_async_image_urls(response)
+        
+        if response.status_code != HTTPStatus.OK:
+            error_msg = getattr(response.output, 'message', 'Unknown error')
+            lazyllm.LOG.error(f'Image generation failed: {error_msg}')
+            raise Exception(f'Image generation failed: {error_msg}')
+        
+        image_bytes = self._download_images(image_urls)
+        return encode_query_with_filepaths(None, bytes_to_file(image_bytes))
+        
 
 
 def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,

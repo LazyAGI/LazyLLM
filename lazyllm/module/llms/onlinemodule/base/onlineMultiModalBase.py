@@ -3,6 +3,9 @@ from typing import List, Dict, Union, Optional
 import lazyllm
 from ....servermodule import LLMBase
 from .utils import OnlineModuleBase
+import base64
+from pathlib import Path
+import requests
 
 
 class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
@@ -10,7 +13,6 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
                  api_key: Optional[Union[str, List[str]]] = None, **kwargs):
         super().__init__(api_key=api_key, return_trace=return_trace)
         self._model_series = model_series
-        # 做一个兼容：传model
         self._model_name = model if model is not None else model_name
         self._validate_model_config()
 
@@ -56,15 +58,7 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
                                  name=self._model_name,
                                  return_trace=self._return_trace)
 
-    
     def _load_image_as_base64(self, image_path: str) -> str:
-        """
-        Load image from local path or URL and return base64 string (no data URI prefix).
-        """
-        import base64
-        from pathlib import Path
-        import requests
-
         if image_path.startswith('http://') or image_path.startswith('https://'):
             resp = requests.get(image_path, timeout=30)
             resp.raise_for_status()
@@ -74,5 +68,4 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
             if not p.exists():
                 raise FileNotFoundError(f'Image file not found: {image_path}')
             data = p.read_bytes()
-
-        return base64.b64encode(data).decode('utf-8')
+        return base64.b64encode(data).decode('utf-8')    

@@ -10432,35 +10432,3 @@ Returns:
 Raises:
     HTTPException: 401 exception when token is invalid
 """)
-
-add_chinese_doc('onlineMultiModalBase.OnlineMultiModalBase._load_image_as_base64',"""\
-    图片格式转换
-    
-    从本地路径或网络URL加载图片，并返回其Base64编码字符串（无Data URI前缀）。
-
-    Args:
-        image_path (str): 图片的本地文件路径（如 "/home/user/photo.jpg"）或网络URL（如 "https://example.com/image.png"）
-
-    Returns:
-        str: 图片数据的Base64编码字符串（仅纯编码内容，不包含 "data:image/xxx;base64," 前缀）
-
-    Raises:
-        FileNotFoundError: 当传入的本地路径不存在时抛出
-        requests.exceptions.RequestException: 当请求网络图片URL失败时抛出（如超时、404、500等）
-
-""")
-
-
-add_english_doc('onlineMultiModalBase.OnlineMultiModalBase._load_image_as_base64', """\
-    Load image from local path or URL and return base64 string (no data URI prefix).
-
-    Args:
-        image_path (str): Local file path of the image (e.g., "/home/user/photo.jpg") or network URL (e.g., "https://example.com/image.png")
-
-    Returns:
-        str: Base64 encoded string of the image data (pure encoded content only, no "data:image/xxx;base64," prefix)
-
-    Raises:
-        FileNotFoundError: Raised when the input local path does not exist
-        requests.exceptions.RequestException: Raised when requesting the network image URL fails (e.g., timeout, 404, 500, etc.)
-""")

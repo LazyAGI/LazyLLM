@@ -4,7 +4,7 @@ from .base import OnlineMultiModalBase
 from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
 from .supplier.doubao import DoubaoTextToImageModule
 from .supplier.glm import GLMSTTModule, GLMTextToImageModule
-from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule, SiliconFlowTextToImageEditModule
+from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule
 from .supplier.minimax import MinimaxTextToImageModule, MinimaxTTSModule
 
 
@@ -51,82 +51,85 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         'siliconflow': SiliconFlowTextToImageModule,
         'minimax': MinimaxTextToImageModule
     }
+
+    FUNCTION_MODEL_MAP = {
+        'stt': STT_MODELS,
+        'tts': TTS_MODELS,
+        'text2image': TEXT2IMAGE_MODELS
+    }
     
-
     @staticmethod
-    def _encapsulate_parameters(base_url: str,
-                                model: str,
-                                return_trace: bool,
-                                image_edit: bool,
-                                **kwargs) -> Dict[str, Any]:
-        '''Encapsulate parameters for module initialization'''
-        params = {'return_trace': return_trace}
-        if base_url is not None:
-            params['base_url'] = base_url
-        if model is not None:
-            params['model'] = model
-        if image_edit is not None:
-            params['image_edit'] = image_edit
-        params.update(kwargs)
-        return params
+    def _validate_parameters(source: str, model: str, function: str, base_url: str, **kwargs) -> tuple[str, str, Dict[str, Any]]:
+        assert function in OnlineMultiModalModule.FUNCTION_MODEL_MAP, f'Invalid function: {function}'
+        available_model = OnlineMultiModalModule.FUNCTION_MODEL_MAP[function]
+        if model in available_model and source is None:
+            source, model = model, source
 
+        if kwargs.get('skip_auth', False):
+            source = source or 'openai'
+            if not base_url:
+                raise KeyError('base_url must be set for local serving.')
+        
+        if source is None:
+            if kwargs.get('api_key'):
+                raise ValueError('No source is given but an api_key is provided.')
+            for src in available_model:
+                if lazyllm.config.get(f'{src}_api_key'):
+                    source = src
+                    break
+            if source is None:
+                raise KeyError(f'No api_key is configured for any of the models {available_model}.')
+
+        assert source in available_model, f'Unsupported source: {source}'
+
+        if function == 'text2image':
+            image_editing = kwargs.get('image_editing', False)
+            model_class = available_model[source]
+            edit_list = getattr(model_class, 'IMAGE_EDITING_MODEL', None)
+            if edit_list:
+                if not image_editing and model in edit_list:
+                    image_editing = True
+                    lazyllm.LOG.info(f'Model {model} supports image editing. Automatically enabled image_editing.')
+                if image_editing and model is None:
+                    model = edit_list[0]
+                    lazyllm.LOG.info(f'Image editing enabled for {source}. Automatically selected model: {model}')
+                elif image_editing and model not in edit_list:
+                    lazyllm.LOG.warning(
+                        f'Model {model} from {source} does not support image editing. '
+                        f'Please use models from: {edit_list}'
+                    )
+            else: 
+                if image_editing:
+                    lazyllm.LOG.warning(
+                        f'Image editing requested for {source}, but no editing models available for this provider.'
+                    )
+            kwargs['image_editing'] = image_editing
+
+        
+        if base_url is not None:
+            kwargs['base_url'] = base_url
+
+        return source, model, kwargs
+        
+    
     def __new__(self,
                 model: str = None,
                 source: str = None,
                 base_url: str = None,
                 return_trace: bool = False,
                 function: str = 'stt',
-                image_edit: bool = False, # 新增
                 **kwargs):
-        '''
-        Create a new OnlineMultiModalModule instance.
 
-        Args:
-            model: Model name to use
-            source: Model provider (e.g., 'qwen', 'openai', 'glm')
-            base_url: Base URL for the model API
-            return_trace: Whether to return trace information
-            function: Function type ('stt', 'tts', 'text2image')
-            **kwargs: Additional parameters for the specific module
-
-        Returns:
-            Instance of the appropriate module class
-
-        Raises:
-            ValueError: If function is not supported
-            KeyError: If no API key is configured
-        '''
-        # Define function to model mapping
-        FUNCTION_MODEL_MAP = {
-            'stt': OnlineMultiModalModule.STT_MODELS,
-            'tts': OnlineMultiModalModule.TTS_MODELS,
-            'text2image': OnlineMultiModalModule.TEXT2IMAGE_MODELS
-        }
-
-        if function not in FUNCTION_MODEL_MAP:
-            raise ValueError(f'Invalid function: {function}')
-
-        available_model = FUNCTION_MODEL_MAP[function]
-
-        if model in available_model and source is None:
-            source, model = model, source
-
-        # 新增
-        params = OnlineMultiModalModule._encapsulate_parameters(base_url, model, return_trace, image_edit, **kwargs)
-
-        if kwargs.get('skip_auth', False):
-            source = source or 'openai'
-            if not base_url:
-                raise KeyError('base_url must be set for local serving.')
-
-        if source is None:
-            if 'api_key' in kwargs and kwargs['api_key']:
-                raise ValueError('No source is given but an api_key is provided.')
-            for source in available_model:
-                if lazyllm.config[f'{source}_api_key']:
-                    break
-            else:
-                raise KeyError(f'No api_key is configured for any of the models {available_model}.')
-
-        assert source in available_model, f'Unsupported source: {source}'
+        source, model, kwargs_normalized = OnlineMultiModalModule._validate_parameters(
+            source=source, model=model, function=function, base_url=base_url,**kwargs
+        )
+        # 直接组装参数，删除 _encapsulate_parameters 方法
+        params = {'return_trace': return_trace}
+        if model is not None:
+            params['model'] = model
+        params.update(kwargs_normalized)
+        available_model = OnlineMultiModalModule.FUNCTION_MODEL_MAP[function]
         return available_model[source](**params)
+
+
+    

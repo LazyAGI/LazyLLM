@@ -17,7 +17,6 @@ class TestOnlineChat(object):
         assert isinstance(response, str)
         assert len(response) > 0
 
-
 class TestMultiModal(object):
     def setup_method(self):
         self.test_text = '你好，这是一个测试。'
@@ -46,11 +45,5 @@ class TestMultiModal(object):
     def test_online_text2image(self, api_key):
         text2image = lazyllm.OnlineMultiModalModule(source='minimax', function='text2image', api_key=api_key)
         result = text2image(self.test_image_prompt)
-        self._check_file_result(result, format='image')
-
-    def test_online_text2image_edit(self, api_key):
-        image_url = "https://bizyair-prod.oss-cn-shanghai.aliyuncs.com/outputs%2Fe2f95819-2703-46f1-bfad-b0f7d8136cf3_c7ba266fa220eec3a1be65cd8e1f777e_ComfyUI_81bce3ba_00001_.png?OSSAccessKeyId=LTAI5tPza7RAEKed35dCML5U&Expires=1766749359&Signature=SSvc%2F%2FYu8z1iUMqPRFH6KyaFJHI%3D"
-        text2image_edit = lazyllm.OnlineMultiModalModule(source='minimax', model='image-01', function='text2image', api_key=api_key,image_edit=True)
-        result = text2image_edit(self.test_image_edit_prompt,files=[image_url])
         self._check_file_result(result, format='image')
     

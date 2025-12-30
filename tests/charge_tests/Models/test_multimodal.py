@@ -4,6 +4,9 @@ import pytest
 from lazyllm import config
 from lazyllm.components.formatter import decode_query_with_filepaths
 
+@pytest.fixture
+def api_key():
+    return [lazyllm.config['siliconflow_api_key'],lazyllm.config['doubao_api_key'],lazyllm.config['qwen_api_key']]
 
 class TestMultiModal(object):
 
@@ -15,6 +18,8 @@ class TestMultiModal(object):
             'https://dashscope.oss-cn-beijing.aliyuncs.com/'
             'samples/audio/paraformer/hello_world_male2.wav'
         )
+        self.test_image_editing_prompt = '在参考图片中的正中间添加"LazyLLM"这段英文,字体风格要和图片相同'
+        self.test_image_file = os.path.join(lazyllm.config['data_path'], 'ci_data/pig.png')
 
     def test_online_tts(self):
         api_key = lazyllm.config['qwen_api_key']
@@ -51,3 +56,25 @@ class TestMultiModal(object):
         text2image = lazyllm.OnlineMultiModalModule(source='siliconflow', function='text2image', model='Kolors')
         result = text2image(self.test_image_prompt)
         self._check_file_result(result, format='image')
+
+    def test_online_text2image_editinging_siliconflow(self, api_key):
+        text2image_editing = lazyllm.OnlineMultiModalModule(source='siliconflow', model='Qwen/Qwen-Image-Edit', function='text2image', api_key=api_key,image_editing=True)
+        result = text2image_editing(self.test_image_editing_prompt,files=[self.test_image_file])
+        self._check_file_result(result, format='image')
+
+    def test_online_text2image_editinging_doubao(self, api_key):
+        text2image_editing = lazyllm.OnlineMultiModalModule(source='doubao', model='doubao-seedream-4-5-251128', function='text2image', api_key=api_key,image_editing=True)
+        result = text2image_editing(self.test_image_editing_prompt,files=[self.test_image_file])
+        self._check_file_result(result, format='image')
+
+    def test_online_text2image_editinging_siliconflow(self, api_key):
+        text2image_editing = lazyllm.OnlineMultiModalModule(source='siliconflow', model='Qwen/Qwen-Image-Edit', function='text2image', api_key=api_key,image_editing=True)
+        result = text2image_editing(self.test_image_editing_prompt,files=[self.test_image_file])
+        self._check_file_result(result, format='image')
+
+    def test_online_text2image_editinging_qwen(self, api_key):
+        text2image_editing = lazyllm.OnlineMultiModalModule(source='qwen', model='qwen-image-edit-plus', function='text2image', api_key=api_key,image_editing=True)
+        result = text2image_editing(self.test_image_editing_prompt,files=[self.test_image_file])
+        self._check_file_result(result, format='image')
+
+    
