@@ -83,16 +83,16 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
         else:
             return [res.get('embedding', []) for res in data]
 
-    def run_embed_batch(self, input: List, data: List, proxies, request_url: str = None, **kwargs):
+    def run_embed_batch(self, input: List, data: List, proxies, url: str = None, **kwargs):
         ret = [[] for _ in range(len(input))]
         flag = False
-        if request_url is None:
-            request_url = self._embed_url
+        if url is None:
+            url = self._embed_url
         if self._num_worker == 1:
             with requests.Session() as session:
                 while not flag:
                     for i in range(len(data)):
-                        r = session.post(request_url, json=data[i], headers=self._header,
+                        r = session.post(url, json=data[i], headers=self._header,
                                          proxies=proxies, timeout=self._timeout)
                         if r.status_code == 200:
                             vec = self._parse_response(r.json(), input=input)
@@ -114,7 +114,7 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
         else:
             with ThreadPoolExecutor(max_workers=self._num_worker) as executor:
                 while not flag:
-                    futures = [executor.submit(requests.post, request_url, json=t, headers=self._header,
+                    futures = [executor.submit(requests.post, url, json=t, headers=self._header,
                                                proxies=proxies, timeout=self._timeout) for t in data]
                     fut_to_index = {fut: idx for idx, fut in enumerate(futures)}
                     for fut in as_completed(futures):

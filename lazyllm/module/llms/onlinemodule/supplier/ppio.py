@@ -1,6 +1,7 @@
 from typing import Tuple
 import requests
 import lazyllm
+from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase
 
 # PPIO (Paiou Cloud) online model module.
@@ -54,6 +55,18 @@ class PPIOModule(OnlineChatModuleBase):
         if not base.endswith('/openai'):
             base = base + '/openai'
         return base + '/chat/completions'
+
+    @property
+    def _chat_url(self):
+        return self._get_chat_url(self._base_url)
+
+    def _get_chat_url(self, url):
+        if url.endswith('/openai/chat/completions'):
+            return url
+        base = url.rstrip('/')
+        if not base.endswith('/openai'):
+            base = urljoin(base, '/openai')
+        return urljoin(base, '/chat/completions')
 
     # PPIO does not support deployment, return model name and running status.
     def _create_deployment(self) -> Tuple[str, str]:

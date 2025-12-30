@@ -56,10 +56,11 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     def _get_system_prompt(self):
         return ('You are a large-scale language model from Alibaba Cloud, '
                 'your name is Tongyi Qianwen, and you are a useful assistant.')
-
-    @property
-    def _chat_url(self):
-        return urljoin(self._base_url, 'compatible-mode/v1/chat/completions')
+    
+    def _get_chat_url(self, url):
+        if url.endswith('compatible-mode/v1/chat/completions'):
+            return url
+        return urljoin(url, 'compatible-mode/v1/chat/completions')
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:
@@ -355,11 +356,6 @@ class QwenMultiModal(OnlineMultiModalBase):
         dashscope.api_key = api_key
         dashscope.base_http_api_url = base_url
         dashscope.base_websocket_api_url = base_websocket_url
-
-    def _set_base_url(self, base_url: Optional[str]):
-        if base_url:
-            self._base_url = base_url
-            dashscope.base_http_api_url = base_url
 
     def _with_temp_base_url(self, base_url: Optional[str], fn):
         if not base_url:

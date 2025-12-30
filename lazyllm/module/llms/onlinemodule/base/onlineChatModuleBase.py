@@ -16,7 +16,7 @@ from lazyllm.components.prompter import PrompterBase
 from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from ....servermodule import LLMBase
-from .utils import OnlineModuleBase
+from .utils import OnlineModuleBase, check_model_type
 
 class StaticParams(TypedDict, total=False):
     temperature: float
@@ -81,12 +81,14 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
     def _base_url(self):
         return random.choice(self.__base_url) if isinstance(self.__base_url, list) else self.__base_url
 
-    def _set_base_url(self, base_url: Union[str, List[str]]):
-        self.__base_url = base_url
-
     @property
     def _chat_url(self):
-        return urljoin(self._base_url, 'chat/completions')
+        return self._get_chat_url(self._base_url)
+
+    def _get_chat_url(self, url):
+        if url.endswith('chat/completions'):
+            return url
+        return urljoin(url, 'chat/completions')
 
     def _get_models_list(self):
         url = urljoin(self._base_url, 'models')
@@ -149,22 +151,23 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         return src[-1]
 
     def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
-                tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None, **kw):
+                tools: List[Dict[str, Any]] = None, stream_output: bool = False, lazyllm_files=None,
+                url: str = None, model: str = None, **kw):
         '''LLM inference interface'''
         # TODO(dengyuang): if current forward set stream_output = False but self._stream = True, will use stream = True
         stream_output = stream_output or self._stream
         __input, files = self._get_files(__input, lazyllm_files)
-        runtime_base_url = kw.pop('base_url', kw.pop('url', None))
-        runtime_model = kw.pop('model', kw.pop('model_name', None))
-        if isinstance(runtime_base_url, list):
-            runtime_base_url = random.choice(runtime_base_url)
-        request_base_url = runtime_base_url or self._base_url
-        request_url = urljoin(request_base_url, 'chat/completions')
-        model_name = runtime_model or self._model_name
+        runtime_base_url = url or kw.pop('base_url', None)
+        runtime_url = self._get_chat_url(runtime_base_url) if runtime_base_url else self._chat_url
+        runtime_model = model or kw.pop('model_name', None) or self._model_name
+        assert check_model_type(runtime_model, ['llm', 'vlm']), (
+            f'Model `{runtime_model}` is not recognized as an llm/vlm type; please ensure it is configured in `map_model_type`.'
+        )
+
         params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
         if tools: params['tools'] = tools
         data = self._prompt.generate_prompt(**params)
-        data.update(self._static_params, **dict(model=model_name, stream=bool(stream_output)))
+        data.update(self._static_params, **dict(model=runtime_model, stream=bool(stream_output)))
 
         if len(kw) > 0: data.update(kw)
         if len(self._model_optional_params) > 0: data.update(self._model_optional_params)
@@ -173,7 +176,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
             data['messages'][-1]['content'] = self._format_input_with_files(data['messages'][-1]['content'], files)
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
-        with requests.post(request_url, json=data, headers=self._header, stream=stream_output,
+        with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,
                            proxies=proxies) as r:
             if r.status_code != 200:  # request error
                 msg = '\n'.join([c.decode('utf-8') for c in r.iter_content(None)]) if stream_output else r.text

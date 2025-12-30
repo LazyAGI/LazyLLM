@@ -29,9 +29,6 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
     def type(self):
         return 'MultiModal'
 
-    def _set_base_url(self, base_url: Optional[str]):
-        self._base_url = base_url
-
     def _forward(self, input: Union[Dict, str] = None, files: List[str] = None, **kwargs):
         '''Forward method to be implemented by subclasses'''
         raise NotImplementedError(f'Subclass {self.__class__.__name__} must implement this method')

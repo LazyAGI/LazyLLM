@@ -1930,7 +1930,7 @@ Args:
     input (List): 原始的输入文本列表
     data (List): 封装好的批量请求数据列表
     proxies: 代理设置，如果NO_PROXY为True则设置为None
-    request_url (str, optional): 本次请求使用的完整接口地址，默认为初始传入的 embed_url
+    url (str, optional): 本次请求使用的完整接口地址，默认为初始传入的 embed_url
     **kwargs: 其他关键字参数
 
 **Returns:**\n
@@ -1948,7 +1948,7 @@ Args:
     input (List): Original input text list
     data (List): Encapsulated batch request data list
     proxies: Proxy settings, set to None if NO_PROXY is True
-    request_url (str, optional): Full endpoint URL used for this request, default to be self._embed_url
+    url (str, optional): Full endpoint URL used for this request, default to be self._embed_url
     **kwargs: Additional keyword arguments
 
 **Returns:**\n

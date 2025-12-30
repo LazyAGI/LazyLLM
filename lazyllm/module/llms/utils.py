@@ -1,5 +1,7 @@
 import os
 import json
+import yaml
+import functools
 from datetime import datetime
 from dataclasses import dataclass, asdict
 from typing import Callable, Dict, Union, Tuple, Any, Optional
@@ -245,3 +247,13 @@ def check_config_map_format(config_map: dict):
                 raise ValueError(f'framework for model {k} should be a string')
             if not isinstance(item.get('deploy_config', {}), dict):
                 raise ValueError(f'deploy_config for model {k} should be a dict')
+
+@functools.lru_cache(maxsize=1)
+def get_module_config_map(path):
+    try:
+        cfg = yaml.safe_load(open(path, 'r')) if os.path.exists(path) else {}
+        check_config_map_format(cfg)
+    except Exception:
+        LOG.warning(f'Failed to load trainable module config map from {path}')
+        cfg = {}
+    return cfg

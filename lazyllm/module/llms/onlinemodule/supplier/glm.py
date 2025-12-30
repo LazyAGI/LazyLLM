@@ -255,11 +255,6 @@ class GLMMultiModal(OnlineMultiModalBase):
                                       return_trace=return_trace, base_url=base_url, **kwargs)
         self._client = zhipuai.ZhipuAI(api_key=api_key, base_url=base_url)
 
-    def _set_base_url(self, base_url: Optional[str]):
-        if base_url:
-            self._base_url = base_url
-            self._client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=base_url)
-
 
 class GLMSTTModule(GLMMultiModal):
     MODEL_NAME = 'glm-asr'
