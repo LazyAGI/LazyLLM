@@ -68,13 +68,14 @@ class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
 class MinimaxTextToImageModule(OnlineMultiModalBase):
     MODEL_NAME = 'image-01'
 
-    def __init__(self, api_key: str = None, model_name: str = None,
+    def __init__(self, api_key: str = None, model: str = None,
                  base_url: str = 'https://api.minimaxi.com/v1/',
                  image_editing: bool = False, return_trace: bool = False, **kwargs):
         if image_editing:
-            raise ValueError("Error: MINIMAX series models do not support image editing now. Please set image_edit=False or omit it.")
+            raise ValueError("Error: MINIMAX series models do not support image editing now. " \
+            "                 Please set image_editing=False or omit it.")
         OnlineMultiModalBase.__init__(self, model_series='MINIMAX', api_key=api_key or lazyllm.config['minimax_api_key'],
-                                      model_name=model_name or MinimaxTextToImageModule.MODEL_NAME,
+                                      model_name=model or MinimaxTextToImageModule.MODEL_NAME,
                                       return_trace=return_trace, **kwargs)
         self._base_url = base_url
         self._endpoint = 'image_generation'

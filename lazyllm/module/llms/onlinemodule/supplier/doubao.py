@@ -104,11 +104,10 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
                             or lazyllm.config['doubao_text2image_model_name'],
                             return_trace = return_trace, **kwargs)
 
-    def _forward(self, input: str = None, files: List[str] = None, size: str = '2560x1440', seed: int = -1, guidance_scale: float = 2.5, 
-                 watermark: bool = True, **kwargs):
+    def _forward(self, input: str = None, files: List[str] = None, size: str = '2560x1440', 
+                 seed: int = -1, guidance_scale: float = 2.5, watermark: bool = True, **kwargs):
         use_image_edit = files is not None and len(files) > 0
         reference_image_data_url=None
-        
         if use_image_edit:
             if not self._supports_image_edit:
                 raise ValueError(
@@ -134,9 +133,6 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
             imagesResponse = self._client.images.generate(**api_params)
             image_contents = [requests.get(result.url).content for result in imagesResponse.data]
             return encode_query_with_filepaths(None, bytes_to_file(image_contents))
-            
         except Exception as e:
             lazyllm.LOG.error(f'Image generation/editing request failed: {str(e)}')
             raise
-
-

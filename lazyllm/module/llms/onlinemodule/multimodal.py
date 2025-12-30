@@ -59,7 +59,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
     }
     
     @staticmethod
-    def _validate_parameters(source: str, model: str, function: str, base_url: str, **kwargs) -> tuple[str, str, Dict[str, Any]]:
+    def _validate_parameters(source: str, model: str, function: str, base_url: str, **kwargs) -> tuple:
         assert function in OnlineMultiModalModule.FUNCTION_MODEL_MAP, f'Invalid function: {function}'
         available_model = OnlineMultiModalModule.FUNCTION_MODEL_MAP[function]
         if model in available_model and source is None:

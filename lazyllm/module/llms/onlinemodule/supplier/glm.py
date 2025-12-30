@@ -277,7 +277,8 @@ class GLMSTTModule(GLMMultiModal):
 class GLMTextToImageModule(GLMMultiModal):
     MODEL_NAME = 'cogview-4-250304'
 
-    def __init__(self, model_name: str = None, api_key: str = None, image_editing: bool = None, return_trace: bool = False, **kwargs):
+    def __init__(self, model_name: str = None, api_key: str = None, 
+                 image_editing: bool = None, return_trace: bool = False, **kwargs):
         if image_editing:
             raise ValueError("Error: GLM series models do not support image editing now. Please set image_edit=False or omit it.")
         GLMMultiModal.__init__(self, model_name=model_name or GLMTextToImageModule.MODEL_NAME

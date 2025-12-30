@@ -391,8 +391,6 @@ class QwenTextToImageModule(QwenMultiModal):
        'qwen-image-edit-plus',
        'qwen-image-edit'
     ]
-
-
     def __init__(self, model: str = None, api_key: str = None, image_editing: bool = None, return_trace: bool = False, **kwargs):
         self._supports_image_editing = image_editing
         QwenMultiModal.__init__(self, api_key=api_key,
@@ -465,7 +463,6 @@ class QwenTextToImageModule(QwenMultiModal):
         
     def _download_images(self, image_urls: List[str]) -> List[bytes]:
         image_bytes = []
-        
         for idx, url in enumerate(image_urls):
             try:
                 img_response = requests.get(url, timeout=60)
@@ -480,12 +477,10 @@ class QwenTextToImageModule(QwenMultiModal):
         
         return image_bytes
         
-    def _forward(self, input: str = None, files: List[str] = None, negative_prompt: str = None, n: int = 1, prompt_extend: bool = True,
-                 size: str = '1024*1024', seed: int = None, **kwargs):
+    def _forward(self, input: str = None, files: List[str] = None, negative_prompt: str = None, n: int = 1, 
+                 prompt_extend: bool = True, size: str = '1024*1024', seed: int = None, **kwargs):
         use_image_edit = files is not None and len(files) > 0
         reference_image_data=None
-
-
         messages = []
         if use_image_edit:
             if not self._supports_image_editing:
@@ -506,7 +501,6 @@ class QwenTextToImageModule(QwenMultiModal):
                 }
             ]
 
-        
         call_params = {
             'model': self._model_name,
             'negative_prompt': negative_prompt,
