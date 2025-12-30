@@ -87,7 +87,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         return self._get_chat_url(self._base_url)
 
     def _get_chat_url(self, url):
-        if url.endswith('chat/completions'):
+        if url.rstrip('/').endswith('chat/completions'):
             return url
         return urljoin(url, 'chat/completions')
 

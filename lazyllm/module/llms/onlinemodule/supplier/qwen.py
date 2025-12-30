@@ -58,7 +58,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
                 'your name is Tongyi Qianwen, and you are a useful assistant.')
     
     def _get_chat_url(self, url):
-        if url.endswith('compatible-mode/v1/chat/completions'):
+        if url.rstrip('/').endswith('compatible-mode/v1/chat/completions'):
             return url
         return urljoin(url, 'compatible-mode/v1/chat/completions')
 

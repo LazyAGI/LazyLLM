@@ -19,7 +19,7 @@ class KimiModule(OnlineChatModuleBase):
                 'into other languages.')
     
     def _get_chat_url(self, url):
-        if url.endswith('v1/chat/completions'):
+        if url.rstrip('/').endswith('v1/chat/completions'):
             return url
         return urljoin(url, 'v1/chat/completions')
 
