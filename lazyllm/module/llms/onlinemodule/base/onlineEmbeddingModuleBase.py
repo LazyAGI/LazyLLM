@@ -3,7 +3,7 @@ import random
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from lazyllm import LOG
-from .utils import OnlineModuleBase
+from .utils import OnlineModuleBase, check_model_type
 
 
 class OnlineEmbeddingModuleBase(OnlineModuleBase):
@@ -36,21 +36,21 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
     def batch_size(self, value: int):
         self._batch_size = value
 
-    def forward(self, input: Union[List, str], **kwargs) -> Union[List[float], List[List[float]]]:
-        runtime_embed_url = kwargs.pop('embed_url', kwargs.pop('base_url', kwargs.pop('url', None)))
-        runtime_embed_model = kwargs.pop('embed_model_name', kwargs.pop('model_name', kwargs.pop('model', None)))
-        model_name = runtime_embed_model or self._embed_model_name
-        if isinstance(runtime_embed_url, list):
-            runtime_embed_url = random.choice(runtime_embed_url)
-        request_url = runtime_embed_url or self._embed_url
-        if model_name is not None:
-            kwargs['model'] = model_name
+    def forward(self, input: Union[List, str], url: str = None, model: str = None, **kwargs) -> Union[List[float], List[List[float]]]:
+        runtime_url = url or kwargs.pop('base_url', kwargs.pop('embed_url', None)) or self._embed_url
+        runtime_model = model or kwargs.pop('model_name', kwargs.pop('embed_model_name', None)) or self._embed_model_name
+        assert check_model_type(runtime_model, ('embed', 'cross_modal_embed', 'rerank')), (
+            f'Model `{runtime_model}` is not recognized as an embed/cross_modal_embed/rerank type; please ensure it is configured in `map_model_type`.'
+        )
+
+        if runtime_model is not None:
+            kwargs['model'] = runtime_model
         data = self._encapsulated_data(input, **kwargs)
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         if isinstance(data, list):
-            return self.run_embed_batch(input, data, proxies, request_url, **kwargs)
+            return self.run_embed_batch(input, data, proxies, runtime_url, **kwargs)
         else:
-            with requests.post(request_url, json=data, headers=self._header, proxies=proxies,
+            with requests.post(runtime_url, json=data, headers=self._header, proxies=proxies,
                                timeout=self._timeout) as r:
                 if r.status_code == 200:
                     return self._parse_response(r.json(), input=input)

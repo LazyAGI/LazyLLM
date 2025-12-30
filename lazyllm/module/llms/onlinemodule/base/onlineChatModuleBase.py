@@ -160,7 +160,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         runtime_base_url = url or kw.pop('base_url', None)
         runtime_url = self._get_chat_url(runtime_base_url) if runtime_base_url else self._chat_url
         runtime_model = model or kw.pop('model_name', None) or self._model_name
-        assert check_model_type(runtime_model, ['llm', 'vlm']), (
+        assert check_model_type(runtime_model, ('llm', 'vlm')), (
             f'Model `{runtime_model}` is not recognized as an llm/vlm type; please ensure it is configured in `map_model_type`.'
         )
 
@@ -183,9 +183,8 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
                 raise requests.RequestException(f'{r.status_code}: {msg}')
 
             with self.stream_output(stream_output):
-                msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output)
-                                for line in r.iter_lines() if len(line)]
-                                if stream_output else [self._str_to_json(r.text, stream_output)]),))
+                msg_json = list(filter(lambda x: x, ([self._str_to_json(line, stream_output) for line in r.iter_lines()
+                                if len(line)] if stream_output else [self._str_to_json(r.text, stream_output)]),))
 
             usage = {'prompt_tokens': -1, 'completion_tokens': -1}
             if len(msg_json) > 0 and 'usage' in msg_json[-1] and isinstance(msg_json[-1]['usage'], dict):
