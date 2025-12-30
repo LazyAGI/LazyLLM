@@ -1,3 +1,7 @@
+from lazyllm.thirdparty import check_dependency_by_group
+check_dependency_by_group('rag')
+
+# flake8: noqa: E402
 from .document import Document
 from .graph_document import GraphDocument, UrlGraphDocument
 from .retriever import Retriever, TempDocRetriever
