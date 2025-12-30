@@ -1,9 +1,7 @@
 from ....module import ModuleBase
 from lazyllm import config
-from typing import Optional, Union, List, Tuple
+from typing import Optional, Union, List
 import random
-import functools
-from ..map_model_type import MODEL_MAPPING
 
 
 config.add('cache_online_module', bool, False, 'CACHE_ONLINE_MODULE',
@@ -35,9 +33,3 @@ class OnlineModuleBase(ModuleBase):
     @property
     def _header(self):
         return random.choice(self.__headers)
-
-@functools.lru_cache
-def check_model_type(model: str, target_types: Tuple[str, ...] = ()) -> bool:
-    if not model or not target_types:
-        return False
-    return MODEL_MAPPING.get(model, '').lower() in target_types

@@ -1,8 +1,8 @@
-import copy
 from typing import List, Dict, Union, Optional
 import lazyllm
 from ....servermodule import LLMBase
-from .utils import OnlineModuleBase, check_model_type
+from .utils import OnlineModuleBase
+from ..map_model_type import get_model_type
 
 
 class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
@@ -40,9 +40,9 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
             input, files = self._get_files(input, lazyllm_files)
             runtime_url = url or kwargs.pop('base_url', None) or self._base_url
             runtime_model = model or kwargs.pop('model_name', None) or self._model_name
-            assert check_model_type(runtime_model, ('sd', 'stt', 'tts')), (
-                f'Model `{runtime_model}` is not recognized as an sd/stt/tts type; please ensure it is configured in `map_model_type`.'
-            )
+            if get_model_type(runtime_model) not in ('sd', 'stt', 'tts'):
+                raise ValueError(f"Model type must be 'sd', 'stt' or 'tts', got {runtime_model}")
+            
             call_params = {'input': input, **kwargs}
             if files: call_params['files'] = files
             if runtime_model is not None:

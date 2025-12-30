@@ -16,7 +16,8 @@ from lazyllm.components.prompter import PrompterBase
 from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from ....servermodule import LLMBase
-from .utils import OnlineModuleBase, check_model_type
+from .utils import OnlineModuleBase
+from ..map_model_type import get_model_type
 
 class StaticParams(TypedDict, total=False):
     temperature: float
@@ -160,9 +161,8 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         runtime_base_url = url or kw.pop('base_url', None)
         runtime_url = self._get_chat_url(runtime_base_url) if runtime_base_url else self._chat_url
         runtime_model = model or kw.pop('model_name', None) or self._model_name
-        assert check_model_type(runtime_model, ('llm', 'vlm')), (
-            f'Model `{runtime_model}` is not recognized as an llm/vlm type; please ensure it is configured in `map_model_type`.'
-        )
+        if get_model_type(runtime_model) not in ('llm', 'vlm'):
+            raise ValueError(f"Model type must be 'llm' or 'vlm', got {runtime_model}")
 
         params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
         if tools: params['tools'] = tools

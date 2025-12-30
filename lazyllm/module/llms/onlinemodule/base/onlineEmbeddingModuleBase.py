@@ -1,9 +1,9 @@
-from typing import Dict, List, Union, Optional
-import random
+from typing import Dict, List, Union
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from lazyllm import LOG
-from .utils import OnlineModuleBase, check_model_type
+from .utils import OnlineModuleBase
+from ..map_model_type import get_model_type
 
 
 class OnlineEmbeddingModuleBase(OnlineModuleBase):
@@ -39,9 +39,8 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
     def forward(self, input: Union[List, str], url: str = None, model: str = None, **kwargs) -> Union[List[float], List[List[float]]]:
         runtime_url = url or kwargs.pop('base_url', kwargs.pop('embed_url', None)) or self._embed_url
         runtime_model = model or kwargs.pop('model_name', kwargs.pop('embed_model_name', None)) or self._embed_model_name
-        assert check_model_type(runtime_model, ('embed', 'cross_modal_embed', 'rerank')), (
-            f'Model `{runtime_model}` is not recognized as an embed/cross_modal_embed/rerank type; please ensure it is configured in `map_model_type`.'
-        )
+        if get_model_type(runtime_model) not in ('embed', 'cross_modal_embed', 'rerank'):
+            raise ValueError(f"Model type must be 'embed', 'cross_modal_embed' or 'rerank', got {runtime_model}")
 
         if runtime_model is not None:
             kwargs['model'] = runtime_model
