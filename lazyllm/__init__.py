@@ -15,7 +15,7 @@ from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeploy
 
 from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
-                     OnlineChatModule, OnlineEmbeddingModule, AutoModel, OnlineMultiModalModule)
+                     OnlineModule, OnlineChatModule, OnlineEmbeddingModule, AutoModel, OnlineMultiModalModule)
 from .hook import LazyLLMHook, LazyLLMFuncHook
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
@@ -72,6 +72,7 @@ __all__ = [
     'WebModule',
     'TrialModule',
     'module_register',
+    'OnlineModule',
     'OnlineChatModule',
     'OnlineEmbeddingModule',
     'OnlineMultiModalModule',

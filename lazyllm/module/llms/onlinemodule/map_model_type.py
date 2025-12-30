@@ -1,5 +1,6 @@
 from lazyllm import LOG
 import re
+import functools
 from typing import Optional, Dict
 MODEL_MAPPING = {
     # ===== OpenAI (LLM) =====
@@ -494,6 +495,7 @@ def special_model_rule(model_name: str) -> Optional[str]:
     '''Determine the model category'''
     return MODEL_MAPPING.get(model_name)
 
+@functools.lru_cache
 def get_model_type(model_name: str) -> str:
     model_name = model_name.lower()
     if not model_name:

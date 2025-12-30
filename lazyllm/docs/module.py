@@ -1465,6 +1465,51 @@ Args:
     framework (str): The local inference framework to use for deployment. Supported values are ``lightllm``, ``vllm``, and ``lmdeploy``. The model will be deployed via ``TrainableModule`` using the specified framework.
 ''')
 
+add_chinese_doc('OnlineModule', '''\
+在线模型基类，用来管理创建目前市面上公开的在线模型推理服务，包括LLM模块、Embedding模块以及多模态模块。
+根据用户指定的在线模型类型和模型名自动创建对应的模块实例，目前支持的实例类型包括OnlineChatModule, OnlineEmbeddingModule和OnlineMultiModalModule。
+                
+Args:
+    type (Optional[str]): 指定在线模型服务的类型，如果不指定则默认为 ``llm``。目前支持 ``llm`` / ``vlm`` / ``embed`` / ``cross_modal_embed`` / ``rerank`` / ``stt`` / ``tts`` / ``sd`` 这几类。
+    model (Optional[str]): 指定要加载的模型名称，例如 ``internlm2-chat-7b``，可为空。为空时默认加载 ``internlm2-chat-7b``。
+    source (Optional[str]): 指定要创建的模块类型，可选为 ``openai`` /  ``sensenova`` /  ``glm`` /  ``kimi`` /  ``qwen`` / ``doubao`` 等。
+    url (Optional[str]): 指定要访问的平台的基础链接，默认是官方链接
+    **kwargs: 其他传递给基类的参数。
+''')
+
+add_english_doc('OnlineModule', '''\
+Base class for online models that orchestrates creation of publicly available online inference services, covering LLM, embedding, and multimodal modules.  
+Automatically creates the proper module instance according to the requested model type and model name. Supported module classes currently include OnlineChatModule, OnlineEmbeddingModule, and OnlineMultiModalModule.
+                
+Args:
+    type (Optional[str]): Category of the online service. Defaults to ``llm``. Supported options include ``llm`` / ``vlm`` / ``embed`` / ``cross_modal_embed`` / ``rerank`` / ``stt`` / ``tts`` / ``sd``.
+    model (Optional[str]): Model to load, e.g., ``internlm2-chat-7b``. Defaults to ``internlm2-chat-7b`` when omitted.
+    source (Optional[str]): Provider of the module to instantiate, e.g., ``openai`` / ``sensenova`` / ``glm`` / ``kimi`` / ``qwen`` / ``doubao``.
+    url (Optional[str]): Base URL of the target platform, defaulting to the official endpoint.
+    **kwargs: Additional keyword arguments passed to the base class.
+''')
+
+add_example('OnlineModule', '''\
+>>> import lazyllm
+>>> chat = lazyllm.OnlineModule(model="qwen-plus", source="qwen")
+>>> isinstance(chat, lazyllm.OnlineChatModule)
+True
+>>> print(chat("Say hi in one sentence."))
+Hi there! Happy to help.
+>>> embed = lazyllm.OnlineModule(type="embed", source="qwen", model="text-embedding-v1")
+>>> isinstance(embed, lazyllm.OnlineEmbeddingModule)
+True
+>>> vec = embed("LazyLLM routes models automatically.")
+>>> len(vec)
+1536
+>>> tts = lazyllm.OnlineModule(type="tts", source="qwen", model="qwen-tts")
+>>> isinstance(tts, lazyllm.OnlineMultiModalModule)
+True
+>>> audio_bytes = tts("Convert this line to speech.")
+>>> len(audio_bytes) > 0
+True
+''')
+
 add_chinese_doc('OnlineChatModule', '''\
 用来管理创建目前市面上公开的大模型平台访问模块，目前支持openai、sensenova、glm、kimi、qwen、doubao、ppio、deekseek(由于该平台暂时不让充值了，暂时不支持访问)。平台的api key获取方法参见 [开始入门](/#platform)
 
@@ -1885,6 +1930,7 @@ Args:
     input (List): 原始的输入文本列表
     data (List): 封装好的批量请求数据列表
     proxies: 代理设置，如果NO_PROXY为True则设置为None
+    url (str, optional): 本次请求使用的完整接口地址，默认为初始传入的 embed_url
     **kwargs: 其他关键字参数
 
 **Returns:**\n
@@ -1902,6 +1948,7 @@ Args:
     input (List): Original input text list
     data (List): Encapsulated batch request data list
     proxies: Proxy settings, set to None if NO_PROXY is True
+    url (str, optional): Full endpoint URL used for this request, default to be self._embed_url
     **kwargs: Additional keyword arguments
 
 **Returns:**\n

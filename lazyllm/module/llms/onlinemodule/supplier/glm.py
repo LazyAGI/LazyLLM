@@ -2,7 +2,7 @@ import json
 import os
 import uuid
 import requests
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
@@ -252,7 +252,7 @@ class GLMMultiModal(OnlineMultiModalBase):
         api_key = api_key or lazyllm.config['glm_api_key']
         OnlineMultiModalBase.__init__(self, model_series='GLM', model_name=model_name,
                                       api_key=api_key,
-                                      return_trace=return_trace, **kwargs)
+                                      return_trace=return_trace, base_url=base_url, **kwargs)
         self._client = zhipuai.ZhipuAI(api_key=api_key, base_url=base_url)
 
 
@@ -264,11 +264,14 @@ class GLMSTTModule(GLMMultiModal):
                                or lazyllm.config['glm_stt_model_name'], api_key=api_key,
                                return_trace=return_trace, **kwargs)
 
-    def _forward(self, files: List[str] = [], **kwargs):  # noqa B006
+    def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
         assert len(files) == 1, 'GLMSTTModule only supports one file'
         assert os.path.exists(files[0]), f'File {files[0]} not found'
-        transcriptResponse = self._client.audio.transcriptions.create(
-            model=self._model_name,
+        client = self._client
+        if url and url != getattr(self, '_base_url', None):
+            client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=url)
+        transcriptResponse = client.audio.transcriptions.create(
+            model=model,
             file=open(files[0], 'rb'),
         )
         return transcriptResponse.text
@@ -282,14 +285,20 @@ class GLMTextToImageModule(GLMMultiModal):
                                or lazyllm.config['glm_text_to_image_model_name'], api_key=api_key,
                                return_trace=return_trace, **kwargs)
 
-    def _forward(self, input: str = None, n: int = 1, size: str = '1024x1024', **kwargs):
+    def _forward(self, input: str = None, n: int = 1, size: str = '1024x1024',
+                 url: str = None, model: str = None, **kwargs):
+        runtime_url = url or self._base_url
+        runtime_model = model or self._model_name
+        client = self._client
+        if runtime_url and runtime_url != getattr(self, '_base_url', None):
+            client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=runtime_url)
         call_params = {
-            'model': self._model_name,
+            'model': runtime_model,
             'prompt': input,
             'n': n,
             'size': size,
             **kwargs
         }
-        response = self._client.images.generations(**call_params)
+        response = client.images.generations(**call_params)
         return encode_query_with_filepaths(None, bytes_to_file([requests.get(result.url).content
                                                                 for result in response.data]))

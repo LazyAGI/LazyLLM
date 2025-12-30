@@ -17,10 +17,11 @@ class KimiModule(OnlineChatModuleBase):
                 'At the same time, you will reject all answers involving terrorism, racial discrimination, '
                 'pornographic violence, etc. Moonshot AI is a proper noun and cannot be translated '
                 'into other languages.')
-
-    @property
-    def _chat_url(self):
-        return urljoin(self._base_url, 'v1/chat/completions')
+    
+    def _get_chat_url(self, url):
+        if url.rstrip('/').endswith('v1/chat/completions'):
+            return url
+        return urljoin(url, 'v1/chat/completions')
 
     def _format_vl_chat_image_url(self, image_url, mime):
         assert not image_url.startswith('http'), 'Kimi vision model only supports base64 format'
