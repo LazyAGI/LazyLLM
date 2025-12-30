@@ -29,8 +29,9 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
         resolved_type = type or params.pop('function', None)
         if not resolved_type:
             resolved_type = (get_model_type(model) or 'llm') if model else 'llm'
+        resolved_type = resolved_type.lower()
 
-        if any(embed_type == resolved_type for embed_type in self._EMBED_TYPES):
+        if resolved_type in self._EMBED_TYPES:
             embed_kwargs = params.copy()
             embed_kwargs.pop('function', None)
             embed_kwargs.setdefault('type', 'rerank' if resolved_type == LLMType.RERANK else 'embed')
@@ -39,12 +40,12 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
                                          embed_model_name=model,
                                          **embed_kwargs)
         
-        for k, v in self._MULTI_TYPE_TO_FUNCTION.items():
-            if k == resolved_type:
-                multi_kwargs = params.copy()
-                multi_kwargs.pop('type', None)
-                return OnlineMultiModalModule(model=model, source=source, base_url=url,
-                                              function=v, **multi_kwargs)
+        if resolved_type in list(self._MULTI_TYPE_TO_FUNCTION.keys()):
+            multi_kwargs = params.copy()
+            multi_kwargs.pop('type', None)
+            return OnlineMultiModalModule(model=model, source=source, base_url=url,
+                                          function=self._MULTI_TYPE_TO_FUNCTION[LLMType(resolved_type)],
+                                          **multi_kwargs)
 
         chat_kwargs = params.copy()
         chat_kwargs.pop('function', None)
