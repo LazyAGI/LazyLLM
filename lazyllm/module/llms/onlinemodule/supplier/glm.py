@@ -267,13 +267,11 @@ class GLMSTTModule(GLMMultiModal):
     def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
         assert len(files) == 1, 'GLMSTTModule only supports one file'
         assert os.path.exists(files[0]), f'File {files[0]} not found'
-        runtime_url = url or self._base_url
-        runtime_model = model or self._model_name
         client = self._client
-        if runtime_url and runtime_url != getattr(self, '_base_url', None):
-            client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=runtime_url)
+        if url and url != getattr(self, '_base_url', None):
+            client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=url)
         transcriptResponse = client.audio.transcriptions.create(
-            model=runtime_model,
+            model=model,
             file=open(files[0], 'rb'),
         )
         return transcriptResponse.text

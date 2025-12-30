@@ -372,8 +372,7 @@ class QwenSTTModule(QwenMultiModal):
         if url and url != self._base_url:
             raise Exception('Qwen STT forward() does not support overriding the `url` parameter, please remove it.')
         
-        runtime_model = model or self._model_name
-        call_params = {'model': runtime_model, 'file_urls': files, **kwargs}
+        call_params = {'model': model, 'file_urls': files, **kwargs}
         if self._api_key: call_params['api_key'] = self._api_key
         task_response = dashscope.audio.asr.Transcription.async_call(**call_params)
         transcribe_response = dashscope.audio.asr.Transcription.wait(task=task_response.output.task_id,
@@ -404,9 +403,8 @@ class QwenTextToImageModule(QwenMultiModal):
         if url and url != self._base_url:
             raise Exception('Qwen TextToImage forward() does not support overriding the `url` parameter, please remove it.')
         
-        runtime_model = model or self._model_name
         call_params = {
-            'model': runtime_model,
+            'model': model,
             'prompt': input,
             'negative_prompt': negative_prompt,
             'n': n,
@@ -495,19 +493,18 @@ class QwenTTSModule(QwenMultiModal):
         if url and url != self._base_url:
             raise Exception('Qwen TTS forward() does not support overriding the `url` parameter, please remove it.')
         
-        runtime_model = model or self._model_name
         # double check for the forward model name
-        if runtime_model == self._model_name:
+        if model == self._model_name:
             synthesizer_func, default_voice = self._synthesizer_func, self._voice
         else:
-            if runtime_model not in self.SYNTHESIZERS:
-                raise ValueError(f'unsupported model: {runtime_model}. '
+            if model not in self.SYNTHESIZERS:
+                raise ValueError(f'unsupported model: {model}. '
                                  f'supported models: {QwenTTSModule.SYNTHESIZERS.keys()}')
-            synthesizer_func, default_voice = QwenTTSModule.SYNTHESIZERS[runtime_model]
+            synthesizer_func, default_voice = QwenTTSModule.SYNTHESIZERS[model]
 
         call_params = {
             'input': input,
-            'model_name': runtime_model,
+            'model_name': model,
             'voice': voice or default_voice,
             'speech_rate': speech_rate,
             'volume': volume,

@@ -93,10 +93,8 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
                  response_format: str = 'url', seed: int = None, n: int = 1,
                  prompt_optimizer: bool = False, aigc_watermark: bool = False,
                  url: str = None, model: str = None, **kwargs):
-        runtime_url = url or self._base_url
-        runtime_model = model or self._model_name
         payload: Dict[str, Any] = {
-            'model': runtime_model,
+            'model': model,
             'prompt': input,
             'response_format': response_format or 'url',
             'n': n,
@@ -114,7 +112,7 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
             payload['seed'] = seed
         payload.update(kwargs)
 
-        result = self._make_request(self._endpoint, payload, base_url=runtime_url)
+        result = self._make_request(self._endpoint, payload, base_url=url)
         data = result.get('data') or {}
 
         image_bytes: List[bytes] = []
@@ -180,12 +178,10 @@ class MinimaxTTSModule(OnlineMultiModalBase):
                  url: str = None, model: str = None, **kwargs):
         if stream:
             raise ValueError('MinimaxTTSModule does not support streaming output, please set stream to False')
-        runtime_url = url or self._base_url
-        runtime_model = model or self._model_name
         voice_setting = voice_setting or {}
         voice_setting.setdefault('voice_id', 'male-qn-qingse')
         payload: Dict[str, Any] = {
-            'model': runtime_model,
+            'model': model,
             'text': input,
             'stream': stream,
             'output_format': output_format,
@@ -203,7 +199,7 @@ class MinimaxTTSModule(OnlineMultiModalBase):
         }
         payload.update({k: v for k, v in optional_params.items() if v is not None})
         payload.update(kwargs)
-        result = self._make_request(self._endpoint, payload, base_url=runtime_url, timeout=180)
+        result = self._make_request(self._endpoint, payload, base_url=url, timeout=180)
         data = result.get('data') or {}
         audio_data = data.get('audio')
         if not audio_data:

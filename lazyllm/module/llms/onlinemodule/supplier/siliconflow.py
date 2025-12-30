@@ -89,15 +89,13 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
             raise
 
     def _forward(self, input: str = None, size: str = '1024x1024', url: str = None, model: str = None, **kwargs):
-        runtime_url = url or self._base_url
-        runtime_model = model or self._model_name
         payload = {
-            'model': runtime_model,
+            'model': model,
             'prompt': input
         }
         payload.update(kwargs)
 
-        result = self._make_request(self._endpoint, payload, base_url=runtime_url)
+        result = self._make_request(self._endpoint, payload, base_url=url)
 
         image_urls = [item['url'] for item in result['data']]
 
@@ -140,11 +138,9 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
                  sample_rate: int = 44100, speed: float = 1.0,
                  voice: str = None, references=None, out_path: str = None,
                  url: str = None, model: str = None, **kwargs):
-        runtime_url = url or self._base_url
-        runtime_model = model or self._model_name
 
         if not voice:
-            active_model = runtime_model
+            active_model = model
             if active_model == 'fnlp/MOSS-TTSD-v0.5':
                 voice = 'fnlp/MOSS-TTSD-v0.5:alex'
             elif active_model == 'FunAudioLLM/CosyVoice2-0.5B':
@@ -155,7 +151,7 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
                     f'"FunAudioLLM/CosyVoice2-0.5B". For model "{active_model}", '
                     f'please provide a valid voice parameter.')
         payload = {
-            'model': runtime_model,
+            'model': model,
             'input': input,
             'response_format': response_format,
             'sample_rate': sample_rate,
@@ -167,7 +163,7 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
             payload['references'] = references
 
         payload.update(kwargs)
-        audio_content = self._make_binary_request(self._endpoint, payload, base_url=runtime_url, timeout=180)
+        audio_content = self._make_binary_request(self._endpoint, payload, base_url=url, timeout=180)
         file_path = bytes_to_file([audio_content])[0]
 
         if out_path:

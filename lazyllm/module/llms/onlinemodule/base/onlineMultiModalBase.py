@@ -45,11 +45,7 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
             
             call_params = {'input': input, **kwargs}
             if files: call_params['files'] = files
-            if runtime_model is not None:
-                call_params['model'] = runtime_model
-            if runtime_url is not None:
-                call_params['url'] = runtime_url
-            return self._forward(**call_params)
+            return self._forward(**call_params, model=runtime_model, url=runtime_url)
 
         except Exception as e:
             lazyllm.LOG.error(f'Error in {self.__class__.__name__}.forward: {str(e)}')
