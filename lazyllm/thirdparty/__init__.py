@@ -1,6 +1,8 @@
 import importlib
 import toml
 import re
+import lazyllm
+from typing import List
 from lazyllm.common import LOG
 from .modules import modules
 from pathlib import Path
@@ -20,11 +22,12 @@ package_name_map = {
 
 requirements = {}
 
-def get_pip_install_cmd(names):
+def get_pip_install_cmd(packages_to_install: List[str]):
+    assert len(packages_to_install) > 0
     if len(requirements) == 0:
         prep_req_dict()
     install_parts = []
-    for name in names:
+    for name in packages_to_install:
         if name in package_name_map:
             name = package_name_map[name]
         install_parts.append(name + requirements.get(name, ''))
@@ -46,7 +49,7 @@ def prep_req_dict():
         with open(toml_file_path, 'r') as f:
             toml_config = toml.load(f)
     except FileNotFoundError:
-        LOG.error('requirements.full.txt missing. Cannot generate pip install command.')
+        LOG.error('pyproject.toml is missing. Cannot extract required dependencies.')
 
     pattern = re.compile(r'''
         ^\s*
@@ -100,10 +103,7 @@ class PackageWrapper(object):
                 for patch_func in self._Wrapper__patches: patch_func()
             except ImportError:
                 pip_cmd = get_pip_install_cmd([self._Wrapper__key])
-                if pip_cmd:
-                    err_msg = f'Cannot import module `{self._Wrapper__key}`, please install it by `{pip_cmd}`'
-                else:
-                    err_msg = f'Cannot import module `{self._Wrapper__key}`'
+                err_msg = f'Cannot import module `{self._Wrapper__key}`, please install it by `{pip_cmd}`'
                 raise ImportError(err_msg) from None
         return getattr(self._Wrapper__lib, __name)
 
@@ -124,14 +124,45 @@ def check_packages(names):
     assert isinstance(names, list)
     missing_pack = []
     for name in names:
-        try:
-            pkg_resources.get_distribution(name)  # noqa: F821
-        except pkg_resources.DistributionNotFound:  # noqa: F821
+        if not check_package_installed(name):
             missing_pack.append(name)
     if len(missing_pack) > 0:
-        packs = get_pip_install_cmd(missing_pack)
-        if packs:
-            LOG.warning(f'Some packages not found, please install it by \'pip install {packs}\'')
-        else:
-            # should not be here.
-            LOG.warning('Some packages not found: ' + ' '.join(missing_pack))
+        cmd = get_pip_install_cmd(missing_pack)
+        LOG.warning(f'Some packages are not found, please install it by \'{cmd}\'')
+
+def check_package_installed(package_name: str | List[str]) -> bool:
+    if isinstance(package_name, list):
+        for name in package_name:
+            if importlib.util.find_spec(name) is None:
+                return False
+    else:
+        if importlib.util.find_spec(package_name) is None:
+            return False
+    return True
+
+def load_toml_dep_group(group_name: str) -> List[str]:
+    toml_file_path = Path(__file__).resolve().parents[2] / 'pyproject.toml'
+    if not toml_file_path.exists():
+        toml_file_path = os.path.join(lazyllm.__path__[0], 'pyproject.toml')
+
+    try:
+        with open(toml_file_path, 'r') as f:
+            return toml.load(f)['tool']['poetry']['extras'][group_name]
+    except FileNotFoundError:
+        LOG.error('pyproject.toml is missing. Please reinstall LazyLLM.')
+        raise FileNotFoundError('pyproject.toml is missing. Please reinstall LazyLLM.')
+    except KeyError:
+        LOG.error(f'Group {group_name} not found in pyproject.toml.')
+        raise KeyError(f'''Group {group_name} not found in pyproject.toml.
+You cloud report issue to https://github.com/LazyAGI/LazyLLM in case specific deps group needed.''')
+
+def check_dependency_by_group(group_name: str):
+    missing_pack = []
+    for name in load_toml_dep_group(group_name):
+        if not check_package_installed(name):
+            missing_pack.append(name)
+    if len(missing_pack) > 0:
+        LOG.error(f'Missing package(s): {missing_pack}\nYou can install them by:\n    lazyllm install {group_name}')
+        raise ImportError(f'Missing package(s): {missing_pack}')
+    else:
+        return True
