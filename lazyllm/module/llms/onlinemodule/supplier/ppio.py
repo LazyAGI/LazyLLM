@@ -49,17 +49,6 @@ class PPIOModule(OnlineChatModuleBase):
             return False
 
     # Chat API URL - PPIO endpoint is /openai/chat/completions.
-    @property
-    def _chat_url(self):
-        base = self._base_url.rstrip('/')
-        if not base.endswith('/openai'):
-            base = base + '/openai'
-        return base + '/chat/completions'
-
-    @property
-    def _chat_url(self):
-        return self._get_chat_url(self._base_url)
-
     def _get_chat_url(self, url):
         if url.endswith('/openai/chat/completions'):
             return url
