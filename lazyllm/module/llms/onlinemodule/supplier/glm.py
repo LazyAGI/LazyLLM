@@ -264,16 +264,16 @@ class GLMSTTModule(GLMMultiModal):
                                or lazyllm.config['glm_stt_model_name'], api_key=api_key,
                                return_trace=return_trace, **kwargs)
 
-    def _forward(self, files: List[str] = [], **kwargs):  # noqa B006
+    def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
         assert len(files) == 1, 'GLMSTTModule only supports one file'
         assert os.path.exists(files[0]), f'File {files[0]} not found'
-        model_name = kwargs.pop('_forward_model', self._model_name)
-        base_url = kwargs.pop('_forward_url', None)
+        runtime_url = url or self._base_url
+        runtime_model = model or self._model_name
         client = self._client
-        if base_url and base_url != getattr(self, '_base_url', None):
-            client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=base_url)
+        if runtime_url and runtime_url != getattr(self, '_base_url', None):
+            client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=runtime_url)
         transcriptResponse = client.audio.transcriptions.create(
-            model=model_name,
+            model=runtime_model,
             file=open(files[0], 'rb'),
         )
         return transcriptResponse.text
@@ -287,14 +287,15 @@ class GLMTextToImageModule(GLMMultiModal):
                                or lazyllm.config['glm_text_to_image_model_name'], api_key=api_key,
                                return_trace=return_trace, **kwargs)
 
-    def _forward(self, input: str = None, n: int = 1, size: str = '1024x1024', **kwargs):
-        model_name = kwargs.pop('_forward_model', self._model_name)
-        base_url = kwargs.pop('_forward_url', None)
+    def _forward(self, input: str = None, n: int = 1, size: str = '1024x1024',
+                 url: str = None, model: str = None, **kwargs):
+        runtime_url = url or self._base_url
+        runtime_model = model or self._model_name
         client = self._client
-        if base_url and base_url != getattr(self, '_base_url', None):
-            client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=base_url)
+        if runtime_url and runtime_url != getattr(self, '_base_url', None):
+            client = zhipuai.ZhipuAI(api_key=self._api_key, base_url=runtime_url)
         call_params = {
-            'model': model_name,
+            'model': runtime_model,
             'prompt': input,
             'n': n,
             'size': size,

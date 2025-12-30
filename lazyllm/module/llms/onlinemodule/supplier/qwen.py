@@ -352,20 +352,11 @@ class QwenMultiModal(OnlineMultiModalBase):
                  return_trace: bool = False, **kwargs):
         api_key = api_key or lazyllm.config['qwen_api_key']
         OnlineMultiModalBase.__init__(self, model_series='QWEN', api_key=api_key,
-                                      model_name=model_name, return_trace=return_trace, base_url=base_url, **kwargs)
+                                      model_name=model_name, return_trace=return_trace,
+                                      base_url=base_url, **kwargs)
         dashscope.api_key = api_key
         dashscope.base_http_api_url = base_url
         dashscope.base_websocket_api_url = base_websocket_url
-
-    def _with_temp_base_url(self, base_url: Optional[str], fn):
-        if not base_url:
-            return fn()
-        original_url = dashscope.base_http_api_url
-        dashscope.base_http_api_url = base_url
-        try:
-            return fn()
-        finally:
-            dashscope.base_http_api_url = original_url
 
 
 class QwenSTTModule(QwenMultiModal):
@@ -376,30 +367,28 @@ class QwenSTTModule(QwenMultiModal):
                                 model_name=model or lazyllm.config['qwen_stt_model_name'] or QwenSTTModule.MODEL_NAME,
                                 return_trace=return_trace, **kwargs)
 
-    def _forward(self, files: List[str] = [], **kwargs):  # noqa B006
+    def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
         assert any(file.startswith('http') for file in files), 'QwenSTTModule only supports http file urls'
-        model_name = kwargs.pop('_forward_model', self._model_name)
-        base_url = kwargs.pop('_forward_url', None)
-
-        def _invoke():
-            call_params = {'model': model_name, 'file_urls': files, **kwargs}
-            if self._api_key: call_params['api_key'] = self._api_key
-            task_response = dashscope.audio.asr.Transcription.async_call(**call_params)
-            transcribe_response = dashscope.audio.asr.Transcription.wait(task=task_response.output.task_id,
-                                                                         api_key=self._api_key)
-            if transcribe_response.status_code == HTTPStatus.OK:
-                result_text = ''
-                for task in transcribe_response.output.results:
-                    assert task['subtask_status'] == 'SUCCEEDED', 'subtask_status is not SUCCEEDED'
-                    response = json.loads(requests.get(task['transcription_url']).text)
-                    for transcript in response['transcripts']:
-                        result_text += re.sub(r'<[^>]+>', '', transcript['text'])
-                return result_text
-            else:
-                lazyllm.LOG.error(f'failed to transcribe: {transcribe_response.output}')
-                raise Exception(f'failed to transcribe: {transcribe_response.output.message}')
-
-        return self._with_temp_base_url(base_url, _invoke)
+        if url and url != self._base_url:
+            raise Exception('Qwen STT forward() does not support overriding the `url` parameter, please remove it.')
+        
+        runtime_model = model or self._model_name
+        call_params = {'model': runtime_model, 'file_urls': files, **kwargs}
+        if self._api_key: call_params['api_key'] = self._api_key
+        task_response = dashscope.audio.asr.Transcription.async_call(**call_params)
+        transcribe_response = dashscope.audio.asr.Transcription.wait(task=task_response.output.task_id,
+                                                                        api_key=self._api_key)
+        if transcribe_response.status_code == HTTPStatus.OK:
+            result_text = ''
+            for task in transcribe_response.output.results:
+                assert task['subtask_status'] == 'SUCCEEDED', 'subtask_status is not SUCCEEDED'
+                response = json.loads(requests.get(task['transcription_url']).text)
+                for transcript in response['transcripts']:
+                    result_text += re.sub(r'<[^>]+>', '', transcript['text'])
+            return result_text
+        else:
+            lazyllm.LOG.error(f'failed to transcribe: {transcribe_response.output}')
+            raise Exception(f'failed to transcribe: {transcribe_response.output.message}')
 
 
 class QwenTextToImageModule(QwenMultiModal):
@@ -411,11 +400,13 @@ class QwenTextToImageModule(QwenMultiModal):
                                 or QwenTextToImageModule.MODEL_NAME, return_trace=return_trace, **kwargs)
 
     def _forward(self, input: str = None, negative_prompt: str = None, n: int = 1, prompt_extend: bool = True,
-                 size: str = '1024*1024', seed: int = None, **kwargs):
-        model_name = kwargs.pop('_forward_model', self._model_name)
-        base_url = kwargs.pop('_forward_url', None)
+                 size: str = '1024*1024', seed: int = None, url: str = None, model: str = None, **kwargs):
+        if url and url != self._base_url:
+            raise Exception('Qwen TextToImage forward() does not support overriding the `url` parameter, please remove it.')
+        
+        runtime_model = model or self._model_name
         call_params = {
-            'model': model_name,
+            'model': runtime_model,
             'prompt': input,
             'negative_prompt': negative_prompt,
             'n': n,
@@ -425,21 +416,18 @@ class QwenTextToImageModule(QwenMultiModal):
         }
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
-        def _invoke():
-            task_response = dashscope.ImageSynthesis.async_call(**call_params)
-            if task_response.status_code != HTTPStatus.OK:
-                raise RuntimeError(f'Failed to create image synthesis task, {task_response.message}')
-            response = dashscope.ImageSynthesis.wait(task=task_response.output.task_id, api_key=self._api_key)
-            if response.status_code == HTTPStatus.OK:
-                return encode_query_with_filepaths(
-                    None,
-                    bytes_to_file([requests.get(result.url).content for result in response.output.results])
-                )
-            else:
-                lazyllm.LOG.error(f'failed to generate image: {response.output}')
-                raise Exception(f'failed to generate image: {response.output.message}')
-
-        return self._with_temp_base_url(base_url, _invoke)
+        task_response = dashscope.ImageSynthesis.async_call(**call_params)
+        if task_response.status_code != HTTPStatus.OK:
+            raise RuntimeError(f'Failed to create image synthesis task, {task_response.message}')
+        response = dashscope.ImageSynthesis.wait(task=task_response.output.task_id, api_key=self._api_key)
+        if response.status_code == HTTPStatus.OK:
+            return encode_query_with_filepaths(
+                None,
+                bytes_to_file([requests.get(result.url).content for result in response.output.results])
+            )
+        else:
+            lazyllm.LOG.error(f'failed to generate image: {response.output}')
+            raise Exception(f'failed to generate image: {response.output.message}')
 
 
 def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
@@ -503,29 +491,29 @@ class QwenTTSModule(QwenMultiModal):
         self._synthesizer_func, self._voice = QwenTTSModule.SYNTHESIZERS[self._model_name]
 
     def _forward(self, input: str = None, voice: str = None, speech_rate: float = 1.0, volume: int = 50,
-                 pitch: float = 1.0, **kwargs):
-        model_name = kwargs.pop('_forward_model', self._model_name)
-        base_url = kwargs.pop('_forward_url', None)
+                 pitch: float = 1.0, url: str = None, model: str = None, **kwargs):
+        if url and url != self._base_url:
+            raise Exception('Qwen TTS forward() does not support overriding the `url` parameter, please remove it.')
+        
+        runtime_model = model or self._model_name
         # double check for the forward model name
-        if model_name == self._model_name:
+        if runtime_model == self._model_name:
             synthesizer_func, default_voice = self._synthesizer_func, self._voice
         else:
-            if model_name not in self.SYNTHESIZERS:
-                raise ValueError(f'unsupported model: {model_name}. '
+            if runtime_model not in self.SYNTHESIZERS:
+                raise ValueError(f'unsupported model: {runtime_model}. '
                                  f'supported models: {QwenTTSModule.SYNTHESIZERS.keys()}')
-            synthesizer_func, default_voice = QwenTTSModule.SYNTHESIZERS[model_name]
+            synthesizer_func, default_voice = QwenTTSModule.SYNTHESIZERS[runtime_model]
 
-        def _invoke():
-            call_params = {
-                'input': input,
-                'model_name': model_name,
-                'voice': voice or default_voice,
-                'speech_rate': speech_rate,
-                'volume': volume,
-                'pitch': pitch,
-                **kwargs
-            }
-            if self._api_key: call_params['api_key'] = self._api_key
-            return encode_query_with_filepaths(None, bytes_to_file(synthesizer_func(**call_params)))
+        call_params = {
+            'input': input,
+            'model_name': runtime_model,
+            'voice': voice or default_voice,
+            'speech_rate': speech_rate,
+            'volume': volume,
+            'pitch': pitch,
+            **kwargs
+        }
+        if self._api_key: call_params['api_key'] = self._api_key
+        return encode_query_with_filepaths(None, bytes_to_file(synthesizer_func(**call_params)))
 
-        return self._with_temp_base_url(base_url, _invoke)

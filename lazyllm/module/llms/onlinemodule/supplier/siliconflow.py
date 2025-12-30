@@ -75,9 +75,8 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
         OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
                                       api_key=api_key or lazyllm.config['siliconflow_api_key'],
                                       model_name=model_name or SiliconFlowTextToImageModule.MODEL_NAME,
-                                      return_trace=return_trace, **kwargs)
+                                      return_trace=return_trace, base_url=base_url, **kwargs)
         self._endpoint = 'images/generations'
-        self._base_url = base_url
 
     def _make_request(self, endpoint, payload, base_url=None, timeout=180):
         url = f'{(base_url or self._base_url)}{endpoint}'
@@ -89,16 +88,16 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
             lazyllm.LOG.error(f'API request failed: {str(e)}')
             raise
 
-    def _forward(self, input: str = None, size: str = '1024x1024', **kwargs):
-        model_name = kwargs.pop('_forward_model', self._model_name)
-        base_url = kwargs.pop('_forward_url', None)
+    def _forward(self, input: str = None, size: str = '1024x1024', url: str = None, model: str = None, **kwargs):
+        runtime_url = url or self._base_url
+        runtime_model = model or self._model_name
         payload = {
-            'model': model_name,
+            'model': runtime_model,
             'prompt': input
         }
         payload.update(kwargs)
 
-        result = self._make_request(self._endpoint, payload, base_url=base_url)
+        result = self._make_request(self._endpoint, payload, base_url=runtime_url)
 
         image_urls = [item['url'] for item in result['data']]
 
@@ -124,9 +123,8 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
         OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
                                       api_key=api_key or lazyllm.config['siliconflow_api_key'],
                                       model_name=model_name or SiliconFlowTTSModule.MODEL_NAME,
-                                      return_trace=return_trace, **kwargs)
+                                      return_trace=return_trace, base_url=base_url, **kwargs)
         self._endpoint = 'audio/speech'
-        self._base_url = base_url
 
     def _make_binary_request(self, endpoint, payload, base_url=None, timeout=180):
         url = f'{(base_url or self._base_url)}{endpoint}'
@@ -140,12 +138,13 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
 
     def _forward(self, input: str = None, response_format: str = 'mp3',
                  sample_rate: int = 44100, speed: float = 1.0,
-                 voice: str = None, references=None, out_path: str = None, **kwargs):
-        model_name = kwargs.pop('_forward_model', self._model_name)
-        base_url = kwargs.pop('_forward_url', None)
+                 voice: str = None, references=None, out_path: str = None,
+                 url: str = None, model: str = None, **kwargs):
+        runtime_url = url or self._base_url
+        runtime_model = model or self._model_name
 
         if not voice:
-            active_model = model_name
+            active_model = runtime_model
             if active_model == 'fnlp/MOSS-TTSD-v0.5':
                 voice = 'fnlp/MOSS-TTSD-v0.5:alex'
             elif active_model == 'FunAudioLLM/CosyVoice2-0.5B':
@@ -156,7 +155,7 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
                     f'"FunAudioLLM/CosyVoice2-0.5B". For model "{active_model}", '
                     f'please provide a valid voice parameter.')
         payload = {
-            'model': model_name,
+            'model': runtime_model,
             'input': input,
             'response_format': response_format,
             'sample_rate': sample_rate,
@@ -168,7 +167,7 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
             payload['references'] = references
 
         payload.update(kwargs)
-        audio_content = self._make_binary_request(self._endpoint, payload, base_url=base_url, timeout=180)
+        audio_content = self._make_binary_request(self._endpoint, payload, base_url=runtime_url, timeout=180)
         file_path = bytes_to_file([audio_content])[0]
 
         if out_path:

@@ -1,17 +1,17 @@
-import random
+import copy
 from typing import List, Dict, Union, Optional
 import lazyllm
 from ....servermodule import LLMBase
-from .utils import OnlineModuleBase
+from .utils import OnlineModuleBase, check_model_type
 
 
 class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
     def __init__(self, model_series: str, model_name: str = None, return_trace: bool = False,
-                 api_key: Optional[Union[str, List[str]]] = None, **kwargs):
+                 api_key: Optional[Union[str, List[str]]] = None, base_url: str = None, **kwargs):
         super().__init__(api_key=api_key, return_trace=return_trace)
         self._model_series = model_series
         self._model_name = model_name
-        self._base_url = kwargs.get('base_url')
+        self._base_url = base_url
         self._validate_model_config()
 
     def _validate_model_config(self):
@@ -33,22 +33,22 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
         '''Forward method to be implemented by subclasses'''
         raise NotImplementedError(f'Subclass {self.__class__.__name__} must implement this method')
 
-    def forward(self, input: Union[Dict, str] = None, *, lazyllm_files=None, **kwargs):
+    def forward(self, input: Union[Dict, str] = None, *, lazyllm_files=None, 
+                url: str = None, model: str = None, **kwargs):
         '''Main forward method with file handling'''
         try:
             input, files = self._get_files(input, lazyllm_files)
-            runtime_base_url = kwargs.pop('base_url', kwargs.pop('url', None))
-            runtime_model = kwargs.pop('model', kwargs.pop('model_name', None))
-            if isinstance(runtime_base_url, list):
-                runtime_base_url = random.choice(runtime_base_url)
-            forward_url = runtime_base_url or getattr(self, '_base_url', None)
-            forward_model = runtime_model or self._model_name
+            runtime_url = url or kwargs.pop('base_url', None) or self._base_url
+            runtime_model = model or kwargs.pop('model_name', None) or self._model_name
+            assert check_model_type(runtime_model, ('sd', 'stt', 'tts')), (
+                f'Model `{runtime_model}` is not recognized as an sd/stt/tts type; please ensure it is configured in `map_model_type`.'
+            )
             call_params = {'input': input, **kwargs}
             if files: call_params['files'] = files
-            if forward_model is not None:
-                call_params['_forward_model'] = forward_model
-            if forward_url is not None:
-                call_params['_forward_url'] = forward_url
+            if runtime_model is not None:
+                call_params['model'] = runtime_model
+            if runtime_url is not None:
+                call_params['url'] = runtime_url
             return self._forward(**call_params)
 
         except Exception as e:
