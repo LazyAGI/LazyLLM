@@ -6,14 +6,16 @@ from .utils import OnlineModuleBase
 import base64
 from pathlib import Path
 import requests
+from ..map_model_type import get_model_type
 
 
 class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
     def __init__(self, model_series: str, model: str = None, model_name: str = None, return_trace: bool = False,
-                 api_key: Optional[Union[str, List[str]]] = None, **kwargs):
+                 api_key: Optional[Union[str, List[str]]] = None, base_url: str = None, **kwargs):
         super().__init__(api_key=api_key, return_trace=return_trace)
         self._model_series = model_series
         self._model_name = model if model is not None else model_name
+        self._base_url = base_url
         self._validate_model_config()
 
     def _validate_model_config(self):

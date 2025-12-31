@@ -130,6 +130,3 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         params.update(kwargs_normalized)
         available_model = OnlineMultiModalModule.FUNCTION_MODEL_MAP[function]
         return available_model[source](**params)
-
-
-    

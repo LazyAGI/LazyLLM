@@ -143,4 +143,3 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
         except Exception as e:
             lazyllm.LOG.error(f'Image generation/editing request failed: {str(e)}')
             raise
-        
