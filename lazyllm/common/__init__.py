@@ -13,7 +13,7 @@ from .registry import LazyLLMRegisterMetaClass, LazyLLMRegisterMetaABCClass, _ge
 from .redis_client import redis_client
 from .deprecated import deprecated
 from .globals import globals, locals, LazyLlmResponse, LazyLlmRequest, encode_request, decode_request
-from .bind import root, Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, Placeholder
+from .bind import Bind as bind, _0, _1, _2, _3, _4, _5, _6, _7, _8, _9, Placeholder
 from .queue import RecentQueue, FileSystemQueue
 from .utils import compile_func, obj2str, str2obj, str2bool, dump_obj, load_obj
 
@@ -90,7 +90,7 @@ __all__ = [
     'ThreadPoolExecutor',
 
     # bind
-    'bind', 'root',
+    'bind',
     '_0', '_1', '_2', '_3', '_4',
     '_5', '_6', '_7', '_8', '_9',
     'Placeholder',

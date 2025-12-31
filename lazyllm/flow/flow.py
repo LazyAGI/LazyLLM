@@ -1,7 +1,7 @@
 import lazyllm
 import builtins
 from lazyllm import config
-from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root
+from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind
 from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals, _get_callsite
 from lazyllm.common import _register_trim_module, HandledException, _change_exception_type
 from lazyllm.common.bind import _MetaBind
@@ -276,10 +276,6 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
     # bind_args: dict(input=input, args=dict(key=value))
     def invoke(self, it, __input, *, bind_args_source=None, **kw):
         if isinstance(it, bind):
-            if it._has_root:
-                it._args = [a.get_from(self.ancestor) if isinstance(a, type(root)) else a for a in it._args]
-                it._kw = {k: v.get_from(self.ancestor) if isinstance(v, type(root)) else v for k, v in it._kw.items()}
-                it._has_root = False
             if isinstance(self, Pipeline):
                 it._args = [self.output(a) if a in self._items else a for a in it._args]
                 it._kw = {k: self.output(v) if v in self._items else v for k, v in it._kw.items()}
