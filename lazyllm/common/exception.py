@@ -44,7 +44,10 @@ def _trim_traceback(tb):
 _original_excepthook = sys.excepthook
 
 def _lazyllm_excepthook(exc_type, exc_value, tb):
-    _original_excepthook(exc_type, exc_value, _trim_traceback(tb))
+    exc_value.__traceback__ = tb = _trim_traceback(tb)
+    if exc_value.__cause__ and exc_value.__cause__.__traceback__:
+        exc_value.__cause__.__traceback__ = _trim_traceback(exc_value.__cause__.__traceback__)
+    _original_excepthook(exc_type, exc_value, tb)
 
 sys.excepthook = _lazyllm_excepthook
 
