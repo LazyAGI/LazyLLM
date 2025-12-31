@@ -2,7 +2,8 @@ import builtins
 import itertools
 from typing import Callable, Any
 from .globals import locals
-from .common import package, LOG
+from .logger import LOG
+from .common import package
 
 
 class Placeholder(object):

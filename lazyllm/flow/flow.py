@@ -9,7 +9,7 @@ from functools import partial
 from contextlib import contextmanager
 from contextvars import ContextVar
 from enum import Enum
-import asyncio
+from asyncio import events
 import types
 import inspect
 import threading
@@ -62,17 +62,16 @@ _thread_local = threading.local()
 _async_var = ContextVar('lazyllm.flow_stack')
 
 def _get_flow_stack():
-    try:
-        asyncio.get_running_loop()
-        stack = getattr(_thread_local, 'stack', None)
-        if stack is None:
-            _thread_local.stack = stack = []
-        return stack
-    except RuntimeError:
+    if events._get_running_loop() is not None:
         stack = _async_var.get(None)
         if stack is None:
             stack = []
             _async_var.set(stack)
+        return stack
+    else:
+        stack = getattr(_thread_local, 'stack', None)
+        if stack is None:
+            _thread_local.stack = stack = []
         return stack
 
 
@@ -304,15 +303,41 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
         return bind(self, *args, **kw)
 
 
+_async_save_flag = ContextVar('lazyllm.pipeline.save_flag')
+
+def _get_current_save_flag():
+    return (_async_save_flag.get(None) if events._get_running_loop() is not None else
+            getattr(_thread_local, 'save_flag', None))
+
+def _set_current_save_flag(flag):
+    if events._get_running_loop() is not None:
+        _async_save_flag.set(flag)
+    else:
+        _thread_local.save_flag = flag
+
+@contextmanager
+def save_pipeline_result(flag: bool = True):
+    old_flag = _get_current_save_flag()
+    try:
+        _set_current_save_flag(flag)
+        yield
+    finally:
+        _set_current_save_flag(old_flag)
+
 # input -> module1 -> module2 -> ... -> moduleN -> output
 #                                               \> post-action
 # TODO(wangzhihong): support mult-input and output
 class Pipeline(LazyLLMFlowsBase):
-    g_save_flow_result = None
-
-    def __init__(self, *args, post_action=None, auto_capture=False, **kw):
+    def __init__(self, *args, post_action=None, auto_capture=False, save_result=None, **kw):
         super().__init__(*args, post_action=post_action, auto_capture=auto_capture, **kw)
-        self.save_flow_result = __class__.g_save_flow_result
+        self._save_flow_result = save_result if save_result is not None else (
+            _get_current_save_flag() or config['save_flow_result'])
+
+    @property
+    def save_flow_result(self): return self._save_flow_result
+
+    @save_flow_result.setter
+    def save_flow_result(self, value): self._save_flow_result = value
 
     @property
     def _loop_count(self):
@@ -348,8 +373,7 @@ class Pipeline(LazyLLMFlowsBase):
     def _run(self, __input, **kw):
         output = __input
         bind_args_source = dict(source=self.id(), input=output, kwargs=kw.copy())
-        bind_flag = config['save_flow_result'] or __class__.g_save_flow_result or (
-            self.save_flow_result and __class__.g_save_flow_result is not False)
+        bind_flag = self.save_flow_result or (_get_current_save_flag() is not False)
         if bind_flag:
             lazyllm.LOG.debug(f'add {self.id()} to bind_args')
             locals['bind_args'][self.id()] = bind_args_source
@@ -372,13 +396,6 @@ class Pipeline(LazyLLMFlowsBase):
 
 config.add('save_flow_result', bool, False, 'SAVE_FLOW_RESULT',
            description='Whether to save the intermediate result of the pipeline.')
-
-@contextmanager
-def save_pipeline_result(flag: bool = True):
-    old_flag = Pipeline.g_save_flow_result
-    Pipeline.g_save_flow_result = flag
-    yield
-    Pipeline.g_save_flow_result = old_flag
 
 
 _barr = threading.local()
