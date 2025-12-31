@@ -1946,7 +1946,7 @@ GLM文本生成图像模块，继承自 GLMMultiModal，封装了调用 GLM CogV
 Args:
     model_name (Optional[str]): 使用的 GLM 模型名称，默认使用 "cogview-4-250304" 或配置中的 'glm_text_to_image_model_name'。
     api_key (Optional[str]): API Key，用于访问 GLM 图像生成服务。
-    image_edit (bool, optional): 判断是否使用图像编辑模型
+    image_editing (bool, optional): 判断是否使用图像编辑模型
     return_trace (bool): 是否返回调试追踪信息，默认为 False。
     **kwargs: 其他传递给 GLMMultiModal 的参数。
 ''')
@@ -1969,7 +1969,7 @@ Qwen文本生成图像模块和图像编辑模块，继承自 QwenMultiModal，�
 Args:
     model (Optional[str]): 使用的 Qwen 模型名称，默认从配置 'qwen_text2image_model_name' 获取，若未设置则使用 "wanx2.1-t2i-turbo"。
     api_key (Optional[str]): 调用 DashScope 服务的 API Key。
-    image_edit (bool, optional): Judge the necessity of an image editing model
+    image_editing (bool, optional): Judge the necessity of an image editing model
     return_trace (bool): 是否返回调试追踪信息，默认为 False。
     **kwargs: 其他传递给 QwenMultiModal 的参数。
 ''')
@@ -2475,7 +2475,7 @@ add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule', '''
 Args:
     api_key (str, optional): 豆包API密钥，默认为None。
     model_name (str, optional): 模型名称，默认为"doubao-seedream-3-0-t2i-250415"。
-    image_edit (bool, optional): 判断是否使用图像编辑模型
+    image_editing (bool, optional): 判断是否使用图像编辑模型
     return_trace (bool, optional): 是否返回追踪信息，默认为False。
     **kwargs: 其他传递给父类的参数。
 ''')
@@ -2489,7 +2489,7 @@ inherits from DoubaoMultiModal, providing high-quality text to image generation 
 Args:
     api_key (str, optional): Doubao API key, defaults to None.
     model_name (str, optional): Model name, defaults to "doubao-seedream-3-0-t2i-250415".
-    image_edit (bool, optional): Judge the necessity of an image editing model
+    image_editing (bool, optional): Judge the necessity of an image editing model
     return_trace (bool, optional): Whether to return trace information, defaults to False.
     **kwargs: Other parameters passed to parent class.
 ''')
@@ -2914,7 +2914,7 @@ Args:
     api_key (str, optional): API密钥，默认为配置中的siliconflow_api_key
     model_name (str, optional): 模型名称，默认为"Qwen/Qwen-Image"
     base_url (str, optional): API基础URL，默认为"https://api.siliconflow.cn/v1/"
-    image_edit (bool, optional): 判断是否使用图像编辑模型
+    image_editing (bool, optional): 判断是否使用图像编辑模型
     return_trace (bool, optional): 是否返回追踪信息，默认为False
     **kwargs: 其他模型参数
 """)
@@ -2928,7 +2928,7 @@ Args:
     api_key (str, optional): API key, defaults to configured siliconflow_api_key
     model_name (str, optional): Model name, defaults to "Qwen/Qwen-Image"
     base_url (str, optional): Base API URL, defaults to "https://api.siliconflow.cn/v1/"
-    image_edit (bool, optional): Judge the necessity of an image editing model
+    image_editing (bool, optional): Judge the necessity of an image editing model
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Other model parameters
 """)
@@ -2970,7 +2970,7 @@ Args:
     api_key (str, optional): API 密钥，默认为配置项 lazyllm.config['minimax_api_key']
     model_name (str, optional): 模型名称，默认为 "image-01"
     base_url (str, optional): API 基础地址，默认为 "https://api.minimaxi.com/v1/"
-    image_edit (bool, optional): 判断是否使用图像编辑模型
+    image_editing (bool, optional): 判断是否使用图像编辑模型
     return_trace (bool, optional): 是否返回追踪信息，默认为 False
     **kwargs: 其他传递给父类的可选参数
 """)
@@ -2984,7 +2984,7 @@ Args:
     api_key (str, optional): API key, defaults to lazyllm.config['minimax_api_key']
     model_name (str, optional): Model name, defaults to "image-01"
     base_url (str, optional): Base API URL, defaults to "https://api.minimaxi.com/v1/"
-    image_edit (bool, optional): Judge the necessity of an image editing model
+    image_editing (bool, optional): Judge the necessity of an image editing model
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Additional optional parameters passed to the parent classes
 """)

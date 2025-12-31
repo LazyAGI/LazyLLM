@@ -392,7 +392,7 @@ class QwenTextToImageModule(QwenMultiModal):
        'qwen-image-edit'
     ]
     def __init__(self, model: str = None, api_key: str = None, image_editing: bool = None, return_trace: bool = False, **kwargs):
-        self._supports_image_editing = image_editing
+        self._image_editing = image_editing
         QwenMultiModal.__init__(self, api_key=api_key,
                                 model_name=model or lazyllm.config['qwen_text2image_model_name']
                                 or QwenTextToImageModule.MODEL_NAME, return_trace=return_trace, **kwargs)
@@ -479,18 +479,24 @@ class QwenTextToImageModule(QwenMultiModal):
         
     def _forward(self, input: str = None, files: List[str] = None, negative_prompt: str = None, n: int = 1, 
                  prompt_extend: bool = True, size: str = '1024*1024', seed: int = None, **kwargs):
-        use_image_edit = files is not None and len(files) > 0
+        use_image_editing = files is not None and len(files) > 0
         reference_image_data=None
         messages = []
-        if use_image_edit:
-            if not self._supports_image_editing:
-                raise ValueError(
-                    f'Model {self._model_name} does not support image editing. '
-                    f'Please use a model from IMAGE_EDITING_MODEL list: {self.IMAGE_EDITING_MODEL}'
-                )
+        if self._image_editing and not use_image_editing:
+            raise ValueError(
+                f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
+                f'Please provide an image file via the "files" parameter.'
+            )
+        
+        if not self._image_editing and use_image_editing:
+            raise ValueError(
+                f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
+                f'Please set image_editing=True or use an image editing model from: {self.IMAGE_EDITING_MODEL}'
+            )
+        
+        if use_image_editing:
             reference_image_base64 = self._load_image_as_base64(files[0])
             reference_image_data = f"data:image/png;base64,{reference_image_base64}"
-            
             messages = [
                 {
                     "role": "user",
@@ -512,7 +518,7 @@ class QwenTextToImageModule(QwenMultiModal):
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
 
-        if use_image_edit:
+        if use_image_editing:
             call_params['messages'] = messages
             response = self._call_sync_text2image(call_params)
             image_urls = self._extract_sync_image_urls(response)

@@ -75,7 +75,7 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  image_editing: bool = False, return_trace: bool = False, **kwargs):
-        self._supports_image_editing = image_editing
+        self._image_editing = image_editing
         self._endpoint = 'images/generations'
         self._base_url = base_url
         
@@ -86,7 +86,6 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
         
 
     def _make_request(self, endpoint, payload, timeout=180):
-        """Make HTTP request to SiliconFlow API"""
         url = f'{self._base_url}{endpoint}'
         try:
             response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
@@ -101,13 +100,19 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
                  num_inference_steps: int = 20, guidance_scale: float = 7.5, **kwargs):
         use_image_edit = files is not None and len(files) > 0
         reference_image_data_url = None
+        if self._image_editing and not use_image_edit:
+            raise ValueError(
+                f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
+                f'Please provide an image file via the "files" parameter.'
+            )
+        
+        if not self._image_editing and use_image_edit:
+            raise ValueError(
+                f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
+                f'Please set image_editing=True or use an image editing model from: {self.IMAGE_EDITING_MODEL}'
+            )
+        
         if use_image_edit:
-            if not self._supports_image_editing:
-                raise ValueError(
-                    f'Model {self._model_name} does not support image editing. '
-                    f'Please use a model from IMAGE_EDITING_MODEL list: {self.IMAGE_EDITING_MODEL}'
-                )
-            
             reference_image_base64 = self._load_image_as_base64(files[0])
             reference_image_data_url = f"data:image/png;base64,{reference_image_base64}"
         
