@@ -70,12 +70,15 @@ class Bind(object):
             self._item_key, self._attr_key, self._source_id, self._target_id = state
 
         def get_arg(self, source):
-            if (not source or self._source_id != source['source']) and self._source_id in locals['bind_args']:
-                source = locals['bind_args'][self._source_id]
             if not source or source['source'] != self._source_id:
-                raise RuntimeError('Unable to find the bound parameter, possibly due to pipeline.input/output can only '
-                                   'be bind in direct member of pipeline! You may solve this by defining the pipeline '
-                                   'in a `with lazyllm.save_pipeline_result():` block.')
+                if self._source_id in locals['bind_args']:
+                    source = locals['bind_args'][self._source_id]
+                    if not source or source['source'] != self._source_id:
+                        raise RuntimeError('Internal Error, please report issue to `https://github.com/LazyAGI/LazyLLM`')
+                else:
+                    raise RuntimeError('Unable to find the bound parameter, possibly due to pipeline.input/output can '
+                                       'only be bind in direct member of pipeline! You may solve this by defining the '
+                                       'pipeline in a `with lazyllm.save_pipeline_result():` block.')
             input = result = source[self._target_id]
             source = source['source']
             if self._item_key is not Bind.Args._None: result = input[self._item_key]
