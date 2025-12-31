@@ -332,6 +332,7 @@ class Pipeline(LazyLLMFlowsBase):
         super().__init__(*args, post_action=post_action, auto_capture=auto_capture, **kw)
         self._save_flow_result = save_result if save_result is not None else (
             _get_current_save_flag() or config['save_flow_result'])
+        print("self._save_flow_result", self._save_flow_result)
 
     @property
     def save_flow_result(self): return self._save_flow_result
@@ -373,7 +374,7 @@ class Pipeline(LazyLLMFlowsBase):
     def _run(self, __input, **kw):
         output = __input
         bind_args_source = dict(source=self.id(), input=output, kwargs=kw.copy())
-        bind_flag = self.save_flow_result or (_get_current_save_flag() is not False)
+        bind_flag = self.save_flow_result if (flag := _get_current_save_flag()) is None else flag
         if bind_flag:
             lazyllm.LOG.debug(f'add {self.id()} to bind_args')
             locals['bind_args'][self.id()] = bind_args_source
