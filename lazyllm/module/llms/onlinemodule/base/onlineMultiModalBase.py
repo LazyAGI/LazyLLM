@@ -1,4 +1,3 @@
-import copy
 from typing import List, Dict, Union, Optional
 import lazyllm
 from ....servermodule import LLMBase
@@ -33,22 +32,23 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
     def type(self):
         return 'MultiModal'
 
-    def share(self):
-        '''Create a shared instance of the module'''
-        new = copy.copy(self)
-        return new
-
     def _forward(self, input: Union[Dict, str] = None, files: List[str] = None, **kwargs):
         '''Forward method to be implemented by subclasses'''
         raise NotImplementedError(f'Subclass {self.__class__.__name__} must implement this method')
 
-    def forward(self, input: Union[Dict, str] = None, *, lazyllm_files=None, **kwargs):
+    def forward(self, input: Union[Dict, str] = None, *, lazyllm_files=None, 
+                url: str = None, model: str = None, **kwargs):
         '''Main forward method with file handling'''
         try:
             input, files = self._get_files(input, lazyllm_files)
+            runtime_url = url or kwargs.pop('base_url', None) or self._base_url
+            runtime_model = model or kwargs.pop('model_name', None) or self._model_name
+            if get_model_type(runtime_model) not in ('sd', 'stt', 'tts'):
+                raise ValueError(f"Model type must be 'sd', 'stt' or 'tts', got model {runtime_model}")
+            
             call_params = {'input': input, **kwargs}
             if files: call_params['files'] = files
-            return self._forward(**call_params)
+            return self._forward(**call_params, model=runtime_model, url=runtime_url)
 
         except Exception as e:
             lazyllm.LOG.error(f'Error in {self.__class__.__name__}.forward: {str(e)}')

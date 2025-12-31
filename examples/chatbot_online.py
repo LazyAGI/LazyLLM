@@ -14,6 +14,8 @@ import lazyllm
 #       - LAZYLLM_SENSENOVA_API_KEY: the API key of SenseTime, default model "SenseChat-5", `source="sensenova"`.
 #                                  You also have to set LAZYLLM_SENSENOVA_SECRET_KEY` togather.
 #           You can apply for the API key at https://platform.sensenova.cn/home
+#       - LAZYLLM_PPIO_API_KEY: the API key of PPIO (Paiou Cloud), default model "deepseek/deepseek-v3.2", `source="ppio"`.
+#           You can apply for the API key at https://www.ppinfra.com/
 #     * `source` needs to be specified for multiple API keys, but it does not need to be set for a single API key.
 
 chat = lazyllm.OnlineChatModule()

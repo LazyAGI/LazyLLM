@@ -2,7 +2,7 @@ import json
 import os
 import re
 import requests
-from typing import Tuple, List, Dict, Union
+from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
@@ -56,10 +56,11 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     def _get_system_prompt(self):
         return ('You are a large-scale language model from Alibaba Cloud, '
                 'your name is Tongyi Qianwen, and you are a useful assistant.')
-
-    @property
-    def _chat_url(self):
-        return urljoin(self._base_url, 'compatible-mode/v1/chat/completions')
+    
+    def _get_chat_url(self, url):
+        if url.rstrip('/').endswith('compatible-mode/v1/chat/completions'):
+            return url
+        return urljoin(url, 'compatible-mode/v1/chat/completions')
 
     def _convert_file_format(self, filepath: str) -> None:
         with open(filepath, 'r', encoding='utf-8') as fr:
@@ -351,7 +352,8 @@ class QwenMultiModal(OnlineMultiModalBase):
                  return_trace: bool = False, **kwargs):
         api_key = api_key or lazyllm.config['qwen_api_key']
         OnlineMultiModalBase.__init__(self, model_series='QWEN', api_key=api_key,
-                                      model_name=model_name, return_trace=return_trace, **kwargs)
+                                      model_name=model_name, return_trace=return_trace,
+                                      base_url=base_url, **kwargs)
         dashscope.api_key = api_key
         dashscope.base_http_api_url = base_url
         dashscope.base_websocket_api_url = base_websocket_url
@@ -365,13 +367,16 @@ class QwenSTTModule(QwenMultiModal):
                                 model_name=model or lazyllm.config['qwen_stt_model_name'] or QwenSTTModule.MODEL_NAME,
                                 return_trace=return_trace, **kwargs)
 
-    def _forward(self, files: List[str] = [], **kwargs):  # noqa B006
+    def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
         assert any(file.startswith('http') for file in files), 'QwenSTTModule only supports http file urls'
-        call_params = {'model': self._model_name, 'file_urls': files, **kwargs}
+        if url and url != self._base_url:
+            raise Exception('Qwen STT forward() does not support overriding the `url` parameter, please remove it.')
+        
+        call_params = {'model': model, 'file_urls': files, **kwargs}
         if self._api_key: call_params['api_key'] = self._api_key
         task_response = dashscope.audio.asr.Transcription.async_call(**call_params)
         transcribe_response = dashscope.audio.asr.Transcription.wait(task=task_response.output.task_id,
-                                                                     api_key=self._api_key)
+                                                                        api_key=self._api_key)
         if transcribe_response.status_code == HTTPStatus.OK:
             result_text = ''
             for task in transcribe_response.output.results:
@@ -598,15 +603,28 @@ class QwenTTSModule(QwenMultiModal):
         self._synthesizer_func, self._voice = QwenTTSModule.SYNTHESIZERS[self._model_name]
 
     def _forward(self, input: str = None, voice: str = None, speech_rate: float = 1.0, volume: int = 50,
-                 pitch: float = 1.0, **kwargs):
+                 pitch: float = 1.0, url: str = None, model: str = None, **kwargs):
+        if url and url != self._base_url:
+            raise Exception('Qwen TTS forward() does not support overriding the `url` parameter, please remove it.')
+        
+        # double check for the forward model name
+        if model == self._model_name:
+            synthesizer_func, default_voice = self._synthesizer_func, self._voice
+        else:
+            if model not in self.SYNTHESIZERS:
+                raise ValueError(f'unsupported model: {model}. '
+                                 f'supported models: {QwenTTSModule.SYNTHESIZERS.keys()}')
+            synthesizer_func, default_voice = QwenTTSModule.SYNTHESIZERS[model]
+
         call_params = {
             'input': input,
-            'model_name': self._model_name,
-            'voice': voice or self._voice,
+            'model_name': model,
+            'voice': voice or default_voice,
             'speech_rate': speech_rate,
             'volume': volume,
             'pitch': pitch,
             **kwargs
         }
         if self._api_key: call_params['api_key'] = self._api_key
-        return encode_query_with_filepaths(None, bytes_to_file(self._synthesizer_func(**call_params)))
+        return encode_query_with_filepaths(None, bytes_to_file(synthesizer_func(**call_params)))
+

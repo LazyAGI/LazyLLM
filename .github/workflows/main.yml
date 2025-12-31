@@ -23,6 +23,7 @@ on:
 env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${{ github.run_number }}'
   PYTHON_VERSION: "3.10.9"
+  LAZYLLM_DEFAULT_RECENT_K: 20
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{
@@ -533,7 +534,7 @@ jobs:
           scoop install ffmpeg
           pip install -r tests/requirements.txt
           export LAZYLLM_DATA_PATH=D:/a/LazyLLM/data
-          python -m pytest --lf --last-failed-no-failures=all -m "not skip_on_win" -v --reruns=2 \
+          pytest --lf --last-failed-no-failures=all -m "not skip_on_win" -v --reruns=2 \
             --override-ini=cache_dir=tests/basic_tests/.pytest_cache tests/basic_tests
         timeout-minutes: 30
         env:
