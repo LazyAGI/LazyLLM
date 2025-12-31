@@ -21,7 +21,6 @@ class TestMultiModal(object):
     def setup_method(self):
         self.test_text = '你好，这是一个测试。'
         self.test_image_prompt = '画一只动漫风格的懒懒猫'
-        self.test_image_edit_prompt = '在参考图片中的正中间添加"LazyLLM"这段英文,字体风格要和图片相同'
 
     def _check_file_result(self, result, format):
         assert result is not None

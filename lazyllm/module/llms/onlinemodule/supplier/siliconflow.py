@@ -74,7 +74,6 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
 
     def __init__(self, api_key: str = None, model: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',
-<<<<<<< HEAD
                  image_editing: bool = False, return_trace: bool = False, **kwargs):
         self._image_editing = image_editing
         self._endpoint = 'images/generations'
@@ -85,14 +84,6 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
                                       model=model or SiliconFlowTextToImageModule.MODEL_NAME,
                                       return_trace=return_trace, **kwargs)
         
-=======
-                 return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
-                                      api_key=api_key or lazyllm.config['siliconflow_api_key'],
-                                      model_name=model_name or SiliconFlowTextToImageModule.MODEL_NAME,
-                                      return_trace=return_trace, base_url=base_url, **kwargs)
-        self._endpoint = 'images/generations'
->>>>>>> upstream/main
 
     def _make_request(self, endpoint, payload, base_url=None, timeout=180):
         url = f'{(base_url or self._base_url)}{endpoint}'
@@ -104,7 +95,6 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
             lazyllm.LOG.error(f'API request failed: {str(e)}')
             raise
 
-<<<<<<< HEAD
     
     def _forward(self, input: str = None, files: List[str] = None, size: str = '1328x1328',
                  num_inference_steps: int = 20, guidance_scale: float = 7.5, **kwargs):
@@ -134,30 +124,6 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
         
         if use_image_edit:
             payload['image'] = reference_image_data_url
-=======
-    def _forward(self, input: str = None, size: str = '1024x1024', url: str = None, model: str = None, **kwargs):
-        payload = {
-            'model': model,
-            'prompt': input
-        }
-        payload.update(kwargs)
-
-        result = self._make_request(self._endpoint, payload, base_url=url)
-
-        image_urls = [item['url'] for item in result['data']]
-
-        image_files = []
-        for url in image_urls:
-            img_response = requests.get(url, timeout=180)
-            if img_response.status_code == 200:
-                image_files.append(img_response.content)
-            else:
-                raise Exception(f'Failed to download image from {url}')
-
-        file_paths = bytes_to_file(image_files)
-
-        return encode_query_with_filepaths(None, file_paths)
->>>>>>> upstream/main
 
         try:
             result = self._make_request(self._endpoint, payload)

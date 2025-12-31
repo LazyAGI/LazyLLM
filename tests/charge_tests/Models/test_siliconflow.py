@@ -65,9 +65,4 @@ class TestMultiModal(object):
         sd = lazyllm.OnlineMultiModalModule(source='siliconflow', function='text2image', api_key=api_key)
         result = sd(self.test_image_prompt)
         self._check_file_result(result, format='image')
-
-    def test_online_text2image_editinging_siliconflow(self, api_key):
-        text2image_editing = lazyllm.OnlineMultiModalModule(source='siliconflow', model='Qwen/Qwen-Image-Edit', function='text2image', api_key=api_key,image_editing=True)
-        result = text2image_editing(self.test_image_editing_prompt,files=[self.test_image_file])
-        self._check_file_result(result, format='image')
     

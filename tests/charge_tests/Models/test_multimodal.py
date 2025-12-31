@@ -4,10 +4,6 @@ import pytest
 from lazyllm import config
 from lazyllm.components.formatter import decode_query_with_filepaths
 
-@pytest.fixture
-def api_key():
-    return [lazyllm.config['siliconflow_api_key'],lazyllm.config['doubao_api_key'],lazyllm.config['qwen_api_key']]
-
 class TestMultiModal(object):
 
     def setup_method(self):
