@@ -123,7 +123,6 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         source, model, kwargs_normalized = OnlineMultiModalModule._validate_parameters(
             source=source, model=model, function=function, base_url=base_url,**kwargs
         )
-        # 直接组装参数，删除 _encapsulate_parameters 方法
         params = {'return_trace': return_trace}
         if model is not None:
             params['model'] = model
