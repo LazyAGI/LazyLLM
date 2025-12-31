@@ -256,4 +256,8 @@ def get_module_config_map(path):
     except Exception:
         LOG.warning(f'Failed to load trainable module config map from {path}')
         cfg = {}
+<<<<<<< HEAD
     return cfg
+=======
+    return cfg
+>>>>>>> 05ac9e6 (move get_module_config_map function to utils.py)

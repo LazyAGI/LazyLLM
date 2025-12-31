@@ -7,7 +7,6 @@ import copy
 import uuid
 import re
 import requests
-import yaml
 from lazyllm.thirdparty import deepdiff
 
 import lazyllm
@@ -17,7 +16,7 @@ from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from ...components.utils import ModelManager, LLMType
 from ...components.utils.file_operate import _base64_to_file, _is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
-from .utils import map_kw_for_framework, encode_files, check_config_map_format
+from .utils import map_kw_for_framework, encode_files, get_module_config_map
 from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
@@ -26,15 +25,7 @@ lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODUL
                    description='The default path for trainable module config map.')
 ignore_config_keys = ['log_path', 'launcher']
 
-@functools.lru_cache(maxsize=1)
-def get_trainable_module_config_map(path):
-    try:
-        cfg = yaml.safe_load(open(path, 'r')) if os.path.exists(path) else {}
-        check_config_map_format(cfg)
-    except Exception:
-        LOG.warning(f'Failed to load trainable module config map from {path}')
-        cfg = {}
-    return cfg
+
 
 class _UrlTemplateStruct(object):
     def __init__(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
@@ -209,7 +200,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if hasattr(self._deploy, 'auto_map') and self._deploy.auto_map:
             self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
 
-        trainable_module_config_map = get_trainable_module_config_map(
+        trainable_module_config_map = get_module_config_map(
             lazyllm.config['trainable_module_config_map_path']) if self._use_model_map else {}
 
         base_model_name = os.path.basename(self._base_model)
