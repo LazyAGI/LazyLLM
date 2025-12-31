@@ -3,6 +3,8 @@ import contextvars
 import copy
 from typing import Any, Tuple, Optional, List, Dict
 import uuid
+import inspect
+import builtins
 from .common import package, kwargs, SingletonABCMeta
 from .redis_client import redis_client
 from .deprecated import deprecated
@@ -194,6 +196,9 @@ class Globals(metaclass=SingletonABCMeta):
     def unpickle_and_update_data(self, data: Optional[str]) -> dict:
         if data: self._data.update(str2obj(data))
 
+    def __call__(self):
+        return builtins.globals()
+
     def __reduce__(self):
         return __class__, ()
 
@@ -262,6 +267,9 @@ globals = Globals()
 
 class Locals(MemoryGlobals):
     __global_attrs__ = ThreadSafeDict(_lazyllm_agent={})
+
+    def __call__(self):
+        return inspect.currentframe().f_back.f_locals
 
     def __getitem__(self, __key: str):
         try:
