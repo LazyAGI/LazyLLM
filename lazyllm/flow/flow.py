@@ -348,8 +348,10 @@ class Pipeline(LazyLLMFlowsBase):
     def _run(self, __input, **kw):
         output = __input
         bind_args_source = dict(source=self.id(), input=output, kwargs=kw.copy())
-        if config['save_flow_result'] or __class__.g_save_flow_result or (
-                self.save_flow_result and __class__.g_save_flow_result is not False):
+        bind_flag = config['save_flow_result'] or __class__.g_save_flow_result or (
+            self.save_flow_result and __class__.g_save_flow_result is not False)
+        if bind_flag:
+            lazyllm.LOG.debug(f'add {self.id()} to bind_args')
             locals['bind_args'][self.id()] = bind_args_source
         for _ in range(self._loop_count):
             for it in self._items:
@@ -362,7 +364,9 @@ class Pipeline(LazyLLMFlowsBase):
                 exp = output[0]
                 output = output[1:]
             if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
-        locals['bind_args'].pop(self.id(), None)
+        if bind_flag:
+            lazyllm.LOG.debug(f'delete {self.id()} form bind_args')
+            locals['bind_args'].pop(self.id(), None)
         return output
 
 

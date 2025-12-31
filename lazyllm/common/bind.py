@@ -2,7 +2,7 @@ import builtins
 import itertools
 from typing import Callable, Any
 from .globals import locals
-from .common import package
+from .common import package, LOG
 
 
 class Placeholder(object):
@@ -74,8 +74,10 @@ class Bind(object):
                 if self._source_id in locals['bind_args']:
                     source = locals['bind_args'][self._source_id]
                     if not source or source['source'] != self._source_id:
+                        LOG.debug(f'Get source failed, source is {source}, and expect id is {self._source_id}')
                         raise RuntimeError('Internal Error, please report issue to `https://github.com/LazyAGI/LazyLLM`')
                 else:
+                    LOG.debug(f'Get source failed, locals is {locals["bind_args"]}, and expect id is {self._source_id}')
                     raise RuntimeError('Unable to find the bound parameter, possibly due to pipeline.input/output can '
                                        'only be bind in direct member of pipeline! You may solve this by defining the '
                                        'pipeline in a `with lazyllm.save_pipeline_result():` block.')

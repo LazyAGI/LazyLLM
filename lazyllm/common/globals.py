@@ -8,6 +8,7 @@ import builtins
 from .common import package, kwargs, SingletonABCMeta
 from .redis_client import redis_client
 from .deprecated import deprecated
+from contextlib import contextmanager
 import asyncio
 from .utils import obj2str, str2obj
 from abc import abstractmethod
@@ -277,6 +278,21 @@ class Locals(MemoryGlobals):
         return globals[__key]
 
 locals = Locals()
+
+
+def init_session():
+    globals._init_sid()
+    locals._init_sid()
+
+def teardown_session():
+    globals.clear()
+    locals.clear()
+
+@contextmanager
+def new_session():
+    init_session()
+    yield
+    teardown_session()
 
 
 @deprecated
