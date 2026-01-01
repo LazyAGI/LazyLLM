@@ -3,9 +3,12 @@ import contextvars
 import copy
 from typing import Any, Tuple, Optional, List, Dict
 import uuid
+import inspect
+import builtins
 from .common import package, kwargs, SingletonABCMeta
 from .redis_client import redis_client
 from .deprecated import deprecated
+from contextlib import contextmanager
 import asyncio
 from .utils import obj2str, str2obj
 from abc import abstractmethod
@@ -122,8 +125,7 @@ class ThreadSafeDict(dict):
 
 
 class Globals(metaclass=SingletonABCMeta):
-    __global_attrs__ = ThreadSafeDict(user_id=None, chat_history={}, global_parameters={}, bind_args={},
-                                      tool_delimiter='<|tool_calls|>', lazyllm_files={}, usage={}, _lazyllm_agent={})
+    __global_attrs__ = ThreadSafeDict(user_id=None, chat_history={}, global_parameters={}, lazyllm_files={}, usage={})
 
     def __new__(cls, *args, **kw):
         if cls is not Globals: return super().__new__(cls)
@@ -194,6 +196,9 @@ class Globals(metaclass=SingletonABCMeta):
     def unpickle_and_update_data(self, data: Optional[str]) -> dict:
         if data: self._data.update(str2obj(data))
 
+    def __call__(self):
+        return builtins.globals()
+
     def __reduce__(self):
         return __class__, ()
 
@@ -261,7 +266,10 @@ globals = Globals()
 
 
 class Locals(MemoryGlobals):
-    __global_attrs__ = ThreadSafeDict(_lazyllm_agent={})
+    __global_attrs__ = ThreadSafeDict(bind_args={}, _lazyllm_agent={})
+
+    def __call__(self):
+        return inspect.currentframe().f_back.f_locals
 
     def __getitem__(self, __key: str):
         try:
@@ -270,6 +278,21 @@ class Locals(MemoryGlobals):
         return globals[__key]
 
 locals = Locals()
+
+
+def init_session():
+    globals._init_sid()
+    locals._init_sid()
+
+def teardown_session():
+    globals.clear()
+    locals.clear()
+
+@contextmanager
+def new_session():
+    init_session()
+    yield
+    teardown_session()
 
 
 @deprecated

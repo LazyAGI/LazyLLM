@@ -1466,3 +1466,63 @@ Dynamic descriptor class for creating descriptors that support both instance and
 Args:
     func (callable): Function or method to be wrapped
 """)
+
+# ============= Globals
+
+add_chinese_doc('init_session', '''
+初始化一个新的会话环境。
+
+该函数会为当前上下文初始化全局与局部的 session id，通常用于隔离不同执行流程中的状态，避免相互污染。
+''')
+
+add_english_doc('init_session', '''
+Initialize a new session environment.
+
+This function initializes session IDs for both global and local contexts, and is typically used to isolate states across different execution flows.
+''')
+
+add_example('init_session', '''
+from lazyllm.common import init_session
+
+init_session()
+''')
+
+add_chinese_doc('teardown_session', '''
+销毁当前会话环境。
+
+该函数会清空当前会话中保存的全局和局部状态，通常与 init_session 成对使用，用于释放资源和避免状态泄漏。
+''')
+
+add_english_doc('teardown_session', '''
+Tear down the current session environment.
+
+This function clears all global and local states associated with the current session. It is usually paired with init_session to release resources and prevent state leakage.
+''')
+
+add_example('teardown_session', '''
+from lazyllm.common import init_session, teardown_session
+
+init_session()
+# ...
+teardown_session()
+''')
+
+
+add_chinese_doc('new_session', '''
+创建一个新的会话上下文（上下文管理器）。
+
+进入上下文时会自动初始化 session，退出上下文时会自动清理 session。适合用于临时、隔离的执行场景。
+''')
+
+add_english_doc('new_session', '''
+Create a new session context (context manager).
+
+A session is automatically initialized when entering the context and automatically torn down when exiting. This is suitable for temporary and isolated execution scenarios.
+''')
+
+add_example('new_session', '''
+from lazyllm.common import new_session
+
+with new_session():
+    pass
+''')

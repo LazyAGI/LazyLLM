@@ -5,8 +5,7 @@ build:
   tools:
     python: "3.10"
   environment:
-    variables:
-      LAZYLLM_INIT_DOC: "True"
+    LAZYLLM_INIT_DOC: "True"
   jobs:
     pre_build:
       - pip install -r requirements.txt
