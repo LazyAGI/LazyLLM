@@ -18,9 +18,9 @@ class LocalPowerMemMemory(LazyLLMMemoryBase):
     @lru_cache
     def _get_client():
         config_path = config['powermem_config_path']
-        # load .env from current_dir
+        current_dir = os.path.dirname(os.path.abspath(__file__))
+        # load .env from POWERMEM_CONFIG_PATH  or current_dir
         if not config_path:
-            current_dir = os.path.dirname(os.path.abspath(__file__))
             default_env = os.path.join(current_dir, '.env')
             if os.path.exists(default_env):
                 config_path = default_env
@@ -31,11 +31,36 @@ class LocalPowerMemMemory(LazyLLMMemoryBase):
                     load_dotenv(config_path, override=False)
                     powermemconfig = powermem.config_loader.load_config_from_env()
                     return powermem.Memory(config=powermemconfig)
-                except ImportError:
-                    pass
                 except Exception as e:
                     pass
-            # load config_path fail, use auto_config get .env
+        else:
+            config_path = os.path.join(current_dir, '.env.memory')
+            if os.path.exists(config_path):
+                try:
+                    from dotenv import load_dotenv
+                    load_dotenv(config_path, override=False)
+                except Exception as e:
+                    pass
+        if 'LAZYLLM_QWEN_API_KEY' in os.environ:
+            # value exists in .env.memory but not correct, need to be overwritten
+            qwen_key = os.environ['LAZYLLM_QWEN_API_KEY']
+            os.environ['LLM_PROVIDER'] = 'qwen'
+            os.environ['LLM_API_KEY'] = qwen_key
+            os.environ['LLM_MODEL'] = 'qwen-plus'
+            os.environ['EMBEDDING_PROVIDER'] = 'qwen'
+            os.environ['EMBEDDING_API_KEY'] = qwen_key
+            os.environ['EMBEDDING_MODEL'] = 'text-embedding-v4'
+            os.environ['EMBEDDING_DIMS'] = '1536'
+        elif 'LAZYLLM_OPENAI_API_KEY' in os.environ:
+            openai_key = os.environ['LAZYLLM_OPENAI_API_KEY']
+            os.environ['LLM_PROVIDER'] = 'openai'
+            os.environ['LLM_API_KEY'] = openai_key
+            os.environ['LLM_MODEL'] = 'gpt-3.5-turbo'
+            os.environ['EMBEDDING_PROVIDER'] = 'openai'
+            os.environ['EMBEDDING_API_KEY'] = openai_key
+            os.environ['EMBEDDING_MODEL'] = 'text-embedding-3-small'
+            os.environ['EMBEDDING_DIMS'] = '1536'
+        # can't find .env file, will use sqlite as default
         return powermem.Memory(config=powermem.auto_config())
 
     def __init__(self, *, topk: int = 10, custom_instruction: Optional[str] = None):
