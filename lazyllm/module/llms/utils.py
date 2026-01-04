@@ -282,17 +282,24 @@ def _classify_config_entry(entry: Dict[str, Any]) -> str:
 
 def select_config_entry(entries: List[Dict[str, Any]],
                         entry_type: str,
-                        preferred_source: Optional[str]) -> Optional[Dict[str, Any]]:
+                        preferred_source: Optional[str],
+                        preferred_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     preferred_source = (preferred_source or '').lower()
+    preferred_id = preferred_id or ''
     fallback = None
+    source_match = None
     for entry in entries:
         if _classify_config_entry(entry) != entry_type:
             continue
+        if preferred_id and entry.get('id') == preferred_id:
+            return deepcopy(entry)
+        entry_source = (entry.get('source') or '').lower()
+        if preferred_source and entry_source == preferred_source and source_match is None:
+            source_match = entry
         if fallback is None:
             fallback = entry
-        entry_source = (entry.get('source') or '').lower()
-        if preferred_source and entry_source == preferred_source:
-            return deepcopy(entry)
+    if source_match is not None:
+        return deepcopy(source_match)
     return deepcopy(fallback) if fallback else None
 
 

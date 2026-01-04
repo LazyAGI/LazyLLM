@@ -115,6 +115,16 @@ class TestAutoModel(object):
         assert kwargs['source'] == 'sensenova'
         assert kwargs['api_key'] == 'config-key'
 
+    def test_autmodel_selects_entry_by_id(self, monkeypatch, dummy_modules):
+        DummyOnline, DummyTrainable = dummy_modules
+
+        result = AutoModel(model='sensenova-model', id='id-sensenova-alt')
+
+        assert isinstance(result, DummyOnline)
+        kwargs = DummyOnline.instances[0].kwargs
+        assert kwargs['url'] == 'https://alt.sensenova.com/v1/'
+        assert kwargs['api_key'] == 'config-api-key'
+
     def test_autmodel_reads_env_key_when_config_lacks_api_key(self, monkeypatch, dummy_modules):
         DummyOnline, DummyTrainable = dummy_modules
         monkeypatch.setenv('LAZYLLM_SENSENOVA_API_KEY', 'env-key')

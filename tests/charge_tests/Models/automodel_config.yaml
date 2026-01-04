@@ -5,7 +5,8 @@
 
 # Prefer local trainable models when framework info exists.
 internlm-test:
-  - name: internlm-alias
+  - id: id-internlm-default
+    name: internlm-alias
     framework: vllm
     source: local
     url: http://127.0.0.1:8000/v1/
@@ -16,16 +17,19 @@ internlm-test:
 
 # SenseNova service; env variables can provide missing keys.
 sensenova-model:
-  - source: sensenova
+  - id: id-sensenova-default
+    source: sensenova
     url: https://api.sensenova.com/v1/
     task: llm
-  - source: sensenova
+  - id: id-sensenova-alt
+    source: sensenova
     api_key: config-api-key
     url: https://alt.sensenova.com/v1/
 
 # Explicitly specify online supplier (e.g. glm).
 glm-model:
-  - name: glm-remote
+  - id: id-glm-default
+    name: glm-remote
     source: glm
     url: https://glm.fake.endpoint/v1/
 

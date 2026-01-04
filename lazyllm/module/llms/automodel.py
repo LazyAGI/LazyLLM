@@ -26,6 +26,7 @@ class AutoModel:
         entry_overrides.pop('deploy_config', None)
         entry_overrides.pop('framework', None)
         entry_overrides.pop('name', None)
+        entry_overrides.pop('id', None)
         online_args = dict(module_kwargs)
         for key, value in entry_overrides.items():
             if value is not None:
@@ -63,6 +64,7 @@ class AutoModel:
 
     def __new__(cls,
                 model: str = '',
+                id: Optional[str] = None,
                 *,
                 source: Optional[str] = None,
                 type: Optional[str] = None,
@@ -74,6 +76,7 @@ class AutoModel:
         module_kwargs = dict(kwargs)
 
         # check and accomodate user params
+        config_id = id or module_kwargs.pop('id', None)
         model = model or module_kwargs.pop('base_model', module_kwargs.pop('embed_model_name', None))
         url = url or module_kwargs.pop('base_url', module_kwargs.pop('embed_url', None))
         type = type or module_kwargs.pop('task', None)
@@ -86,8 +89,8 @@ class AutoModel:
 
         # process config entries and distinguish target mode
         entries = load_config_entries(model, use_config)
-        online_entry = select_config_entry(entries, 'online', source)
-        trainable_entry = select_config_entry(entries, 'trainable', source)
+        online_entry = select_config_entry(entries, 'online', source, config_id)
+        trainable_entry = select_config_entry(entries, 'trainable', source, config_id)
 
         target_mode = decide_target_mode(source, type, url, framework, port, deploy_config or {},
                                          online_entry is not None, trainable_entry is not None)
