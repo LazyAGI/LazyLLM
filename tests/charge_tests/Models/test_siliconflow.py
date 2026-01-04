@@ -39,7 +39,6 @@ class TestMultiModal(object):
     def setup_method(self):
         self.test_text = '你好，这是一个测试。'
         self.test_image_prompt = '画一只动漫风格的懒懒猫'
-        self.test_image_editing_prompt = '在参考图片中的正中间添加"LazyLLM"这段英文,字体风格要和图片相同'
         self.test_image_file ='.temp/template.png' or os.path.join(lazyllm.config['data_path'], 'ci_data/pig.png')
 
     def _check_file_result(self, result, format):
@@ -65,4 +64,3 @@ class TestMultiModal(object):
         sd = lazyllm.OnlineMultiModalModule(source='siliconflow', function='text2image', api_key=api_key)
         result = sd(self.test_image_prompt)
         self._check_file_result(result, format='image')
-    
