@@ -5,7 +5,7 @@ import lazyllm
 
 from .online_module import OnlineModule
 from .trainablemodule import TrainableModule
-from .utils import load_config_entries, select_config_entry, decide_target_mode
+from .utils import load_config_entries, select_config_entry, decide_target_mode, resolve_model_name
 
 lazyllm.config.add('auto_model_config_map_path', str, '', 'AUTO_MODEL_CONFIG_MAP_PATH',
                    description='The default path for automodel config map.')
@@ -25,6 +25,7 @@ class AutoModel:
         entry_overrides = dict(entry or {})
         entry_overrides.pop('deploy_config', None)
         entry_overrides.pop('framework', None)
+        entry_overrides.pop('name', None)
         online_args = dict(module_kwargs)
         for key, value in entry_overrides.items():
             if value is not None:
@@ -100,5 +101,7 @@ class AutoModel:
                 module_kwargs['framework'] = framework
             if port:
                 module_kwargs['port'] = port
-            return cls._build_trainable_module(module_kwargs, model, type, use_config, framework, url)
-        return cls._build_online_module(online_entry, module_kwargs, model, source, type, url)
+            resolved_model = resolve_model_name(model, trainable_entry)
+            return cls._build_trainable_module(module_kwargs, resolved_model, type, use_config, framework, url)
+        resolved_model = resolve_model_name(model, online_entry)
+        return cls._build_online_module(online_entry, module_kwargs, resolved_model, source, type, url)

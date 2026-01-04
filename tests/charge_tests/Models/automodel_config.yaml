@@ -1,11 +1,12 @@
 #
-# AutoModel charge tests 使用的示例配置。
-# 这些条目覆盖了不同的推理模式，以便验证 AutoModel 在各种输入下的路由逻辑。
+# Example config for AutoModel charge tests.
+# Entries cover various routing scenarios for AutoModel.
 #
 
-# 默认走本地可训练模型：框架信息触发 TrainableModule。
+# Prefer local trainable models when framework info exists.
 internlm-test:
-  - framework: vllm
+  - name: internlm-alias
+    framework: vllm
     source: local
     url: http://127.0.0.1:8000/v1/
     port: 8000
@@ -13,7 +14,7 @@ internlm-test:
       max_model_len: 4096
       gpu_memory_utilization: 0.6
 
-# SenseNova 在线服务：如果用户未提供 api_key，可通过环境变量补齐。
+# SenseNova service; env variables can provide missing keys.
 sensenova-model:
   - source: sensenova
     url: https://api.sensenova.com/v1/
@@ -22,12 +23,13 @@ sensenova-model:
     api_key: config-api-key
     url: https://alt.sensenova.com/v1/
 
-# 显式指定在线供应商（如 glm）。
+# Explicitly specify online supplier (e.g. glm).
 glm-model:
-  - source: glm
+  - name: glm-remote
+    source: glm
     url: https://glm.fake.endpoint/v1/
 
-# 指定了框架但没有其它限制，仍然优先部署到本地框架。
+# Framework provided, still deploy to local TrainableModule.
 trainable-model:
   - framework: vllm
     source: local
@@ -37,17 +39,17 @@ trainable-model:
       pipeline_parallel_size: 1
       tensor_parallel_size: 1
 
-# 仅给出自定义 url/port，则构造成在线模块。
+# Only url/port provided, route to OnlineModule.
 online-url-model:
   - url: http://custom.online.endpoint/v1/
     port: 9001
 
-# 在 config 中直接提供线上凭证。
+# Config includes credential information for online service.
 credential-model:
   - source: sensenova
     api_key: config-key
     url: https://credential.endpoint/v1/
 
-# 只声明 source=sensenova；期望 AutoModel 从环境变量读取 key。
+# Only source=sensenova; expect env variable to provide key.
 env-only-model:
   - source: sensenova

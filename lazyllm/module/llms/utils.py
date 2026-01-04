@@ -261,13 +261,6 @@ def get_module_config_map(path):
     except Exception:
         LOG.warning(f'Failed to load trainable module config map from {path}')
         cfg = {}
-<<<<<<< HEAD
-<<<<<<< HEAD
-    return cfg
-=======
-    return cfg
->>>>>>> 05ac9e6 (move get_module_config_map function to utils.py)
-=======
     return cfg
 
 
@@ -325,4 +318,10 @@ def decide_target_mode(source: Optional[str],
         api_key = os.environ['LAZYLLM_SENSENOVA_API_KEY']
         return 'online' if (has_online_entry or api_key) else 'trainable'
     return 'online' if has_online_entry else 'trainable'
->>>>>>> b05a064 (enable automodel and add utils to load config yaml)
+
+
+def resolve_model_name(original: Optional[str], entry: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not entry:
+        return original
+    override = entry.get('name')
+    return override or original

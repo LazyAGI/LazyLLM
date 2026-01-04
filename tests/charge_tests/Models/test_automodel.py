@@ -56,7 +56,7 @@ class TestAutoModel(object):
 
         assert isinstance(result, DummyTrainable)
         assert len(DummyOnline.instances) == 0
-        assert DummyTrainable.instances[0].kwargs['base_model'] == 'internlm-test'
+        assert DummyTrainable.instances[0].kwargs['base_model'] == 'internlm-alias'
         assert os.environ['LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH'] == CONFIG_PATH
 
     def test_autmodel_prefers_online_when_env_key_available(self, monkeypatch, dummy_modules):
@@ -83,6 +83,7 @@ class TestAutoModel(object):
         kwargs = DummyOnline.instances[0].kwargs
         assert kwargs['source'] == 'glm'
         assert kwargs['url'] == 'https://glm.fake.endpoint/v1/'
+        assert kwargs['model'] == 'glm-remote'
 
     def test_autmodel_uses_trainable_when_config_entry_has_framework(self, monkeypatch, dummy_modules):
         DummyOnline, DummyTrainable = dummy_modules
