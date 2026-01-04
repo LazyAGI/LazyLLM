@@ -45,4 +45,3 @@ class TestMultiModal(object):
         text2image = lazyllm.OnlineMultiModalModule(source='minimax', function='text2image', api_key=api_key)
         result = text2image(self.test_image_prompt)
         self._check_file_result(result, format='image')
-    

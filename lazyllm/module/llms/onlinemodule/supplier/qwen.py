@@ -627,4 +627,3 @@ class QwenTTSModule(QwenMultiModal):
         }
         if self._api_key: call_params['api_key'] = self._api_key
         return encode_query_with_filepaths(None, bytes_to_file(synthesizer_func(**call_params)))
-

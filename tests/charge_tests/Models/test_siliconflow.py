@@ -39,7 +39,7 @@ class TestMultiModal(object):
     def setup_method(self):
         self.test_text = '你好，这是一个测试。'
         self.test_image_prompt = '画一只动漫风格的懒懒猫'
-        self.test_image_file ='.temp/template.png' or os.path.join(lazyllm.config['data_path'], 'ci_data/pig.png')
+        self.test_image_file = os.path.join(lazyllm.config['data_path'], 'ci_data/pig.png')
 
     def _check_file_result(self, result, format):
         assert result is not None
