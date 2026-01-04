@@ -146,6 +146,9 @@ class TempRetriever(ModuleBase, _PostProcess):
         if init: lazyllm.parallel(*retrievers).sum('hello world')
         return retrievers
 
+    def _get_retrievers(self, doc_files: List[str], init: bool = False):
+        raise NotImplementedError('Please implement it at subclass')
+
     def forward(self, files: Union[str, List[str]], query: str):
         if isinstance(files, str): files = [files]
         retrievers = self._get_retrievers(tuple(set(files)))
@@ -158,6 +161,9 @@ class TempDocRetriever(TempRetriever):
     def _get_retrievers(self, doc_files: List[str]):
         return self._get_retrievers_impl(doc_files)
 
+    def __del__(self):
+        self._get_retrievers.cache_clear()
+
 
 class ContextRetriever(TempRetriever):
     def forward(self, context: Union[str, List[str]], query):
@@ -167,3 +173,6 @@ class ContextRetriever(TempRetriever):
     def _get_retrievers(self, context: List[str]):
         with TempPathGenerator(context) as pathes:
             return super()._get_retrievers_impl(pathes, init=True)
+
+    def __del__(self):
+        self._get_retrievers.cache_clear()
