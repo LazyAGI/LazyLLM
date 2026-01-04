@@ -1448,21 +1448,33 @@ Iterates through all configuration options of the module, updates the module in 
 ''')
 
 add_chinese_doc('AutoModel', '''\
-用于部署在线 API 模型或本地模型的模块，支持加载在线推理模块或本地可微调模块。
+用于快速创建在线推理模块 OnlineModule 或本地 TrainableModule 的工厂类。它会优先采用用户传入的参数，若开启 ``use_config`` 则会根据 ``auto_model_config_map`` 中的配置进行覆盖，然后自动判断应当构建在线模块还是本地模块：\n
+- 当判定为在线模块时，参数会透传给 OnlineModule（自动匹配 OnlineChatModule / OnlineEmbeddingModule / OnlineMultiModalModule）。\n
+- 当判定为本地模块时，则以 ``model`` 与原始 kwargs 初始化 TrainableModule，并为其注入 ``LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH`` 以便下游读取配置。
 
 Args:
-    model (str): 指定要加载的模型名称，例如 ``internlm2-chat-7b``，可为空。为空时默认加载 ``internlm2-chat-7b``。
-    source (str): 指定要使用的在线模型服务，如需使用在线模型，必须传入此参数。支持 ``qwen`` / ``glm`` / ``openai`` / ``moonshot`` 等。
-    framework (str): 指定本地部署所使用的推理框架，支持 ``lightllm`` / ``vllm`` / ``lmdeploy``。将通过 ``TrainableModule`` 与指定框架组合进行部署。
+    model (str): 指定模型名称。例如 ``internlm2-chat-7b``。必填。
+    source (Optional[str]): 使用的服务提供方。为在线模块（``OnlineModule``）指定 ``qwen`` / ``glm`` / ``openai`` 等；若设为 ``local`` 则强制创建本地 TrainableModule。
+    type (Optional[str]): 模型类型。若未指定会尝试从 kwargs 中获取或由在线模块自动推断。
+    url (Optional[str]): 在线模块的 base_url，或本地 TrainableModule 的服务地址。
+    framework (Optional[str]): 本地部署时可传入推理框架（如 ``lightllm`` / ``vllm`` / ``lmdeploy``），会随 kwargs 一起交给 TrainableModule 处理。
+    use_config (bool): 是否启用 ``auto_model_config_map`` 的覆盖逻辑。默认为 True。
+    **kwargs: 其余参数会根据 online/trainable 路径透传给对应模块。
 ''')
 
 add_english_doc('AutoModel', '''\
-A module for deploying either online API-based models or local models, supporting both online inference and locally trainable modules.
+A lightweight factory that creates either online inference modules or local ``TrainableModule`` instances. User-provided arguments always take precedence; when ``use_config`` is True, entries in ``auto_model_config_map`` can override them. AutoModel then routes to the right module: \n
+- For online mode, the resolved arguments are forwarded to ``OnlineModule`` (and it will internally pick OnlineChat/Embedding/MultiModal).\n
+- For trainable mode, it constructs ``TrainableModule`` with the given ``model`` plus remaining kwargs, and sets ``LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH`` so TrainableModule can load its own config map.
 
 Args:
-    model (str): The name of the model to load, e.g., ``internlm2-chat-7b``. If None, ``internlm2-chat-7b`` will be loaded by default.
-    source (str): Specifies the online model service to use. Required when using online models. Supported values include ``qwen``, ``glm``, ``openai``, ``moonshot``, etc.
-    framework (str): The local inference framework to use for deployment. Supported values are ``lightllm``, ``vllm``, and ``lmdeploy``. The model will be deployed via ``TrainableModule`` using the specified framework.
+    model (str): Name of the model, e.g., ``internlm2-chat-7b``. Required.
+    source (Optional[str]): Online provider for ``OnlineModule`` (``qwen``, ``glm``, ``openai``), or set to ``local`` to force TrainableModule.
+    type (Optional[str]): Model type hint. If omitted, the online module may infer it automatically.
+    url (Optional[str]): Base URL for online models or a local TrainableModule endpoint.
+    framework (Optional[str]): When using local deployment, a framework such as ``lightllm``, ``vllm``, or ``lmdeploy`` can be passed via kwargs to TrainableModule.
+    use_config (bool): Whether to enable overrides from ``auto_model_config_map``. Defaults to True.
+    **kwargs: Any additional keyword arguments are forwarded to the chosen module.
 ''')
 
 add_chinese_doc('OnlineModule', '''\

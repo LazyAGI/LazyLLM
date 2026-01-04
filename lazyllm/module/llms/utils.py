@@ -4,13 +4,16 @@ import yaml
 import functools
 from datetime import datetime
 from dataclasses import dataclass, asdict
-from typing import Callable, Dict, Union, Tuple, Any, Optional
+from typing import Callable, Dict, Union, Tuple, Any, Optional, List
+from copy import deepcopy
 
 import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import datasets
 from ...components.utils.file_operate import _delete_old_files
 from lazyllm.common.utils import check_path
+
+LOCAL_SOURCES = {'local'}
 
 
 @dataclass
@@ -241,12 +244,14 @@ def check_config_map_format(config_map: dict):
         for item in v:
             if not isinstance(item, dict):
                 raise ValueError(f'config item for model {k} should be a dict')
-            if not isinstance(item.get('url'), str):
+            if 'url' in item and item['url'] is not None and not isinstance(item['url'], str):
                 raise ValueError(f'url for model {k} should be a string')
-            if not isinstance(item.get('framework'), str):
+            if 'framework' in item and item['framework'] is not None and not isinstance(item['framework'], str):
                 raise ValueError(f'framework for model {k} should be a string')
-            if not isinstance(item.get('deploy_config', {}), dict):
+            if 'deploy_config' in item and not isinstance(item['deploy_config'], dict):
                 raise ValueError(f'deploy_config for model {k} should be a dict')
+            if 'source' in item and item['source'] is not None and not isinstance(item['source'], str):
+                raise ValueError(f'source for model {k} should be a string')
 
 @functools.lru_cache(maxsize=1)
 def get_module_config_map(path):
@@ -257,7 +262,67 @@ def get_module_config_map(path):
         LOG.warning(f'Failed to load trainable module config map from {path}')
         cfg = {}
 <<<<<<< HEAD
+<<<<<<< HEAD
     return cfg
 =======
     return cfg
 >>>>>>> 05ac9e6 (move get_module_config_map function to utils.py)
+=======
+    return cfg
+
+
+def load_config_entries(model: Optional[str], use_config: bool) -> List[Dict[str, Any]]:
+    if not (use_config and model):
+        return []
+    config_map = get_module_config_map(lazyllm.config['auto_model_config_map_path'])
+    return [deepcopy(item) for item in (config_map.get(model) or [])]
+
+
+def _classify_config_entry(entry: Dict[str, Any]) -> str:
+    if entry.get('framework') or entry.get('deploy_config'):
+        return 'trainable'
+    source = (entry.get('source') or '').lower()
+    if source in LOCAL_SOURCES:
+        return 'trainable'
+    return 'online'
+
+
+def select_config_entry(entries: List[Dict[str, Any]],
+                        entry_type: str,
+                        preferred_source: Optional[str]) -> Optional[Dict[str, Any]]:
+    preferred_source = (preferred_source or '').lower()
+    fallback = None
+    for entry in entries:
+        if _classify_config_entry(entry) != entry_type:
+            continue
+        if fallback is None:
+            fallback = entry
+        entry_source = (entry.get('source') or '').lower()
+        if preferred_source and entry_source == preferred_source:
+            return deepcopy(entry)
+    return deepcopy(fallback) if fallback else None
+
+
+def decide_target_mode(source: Optional[str],
+                       type: Optional[str],
+                       url: Optional[str],
+                       framework: Optional[Union[str, Any]],
+                       port: Optional[Union[int, str]],
+                       user_deploy_config: Dict[str, Any],
+                       has_online_entry: bool,
+                       has_trainable_entry: bool) -> str:
+    normalized_source = (source or '').lower()
+    explicit_online = bool(type or url or (source and normalized_source not in LOCAL_SOURCES))
+    explicit_trainable = bool(framework or port or user_deploy_config or
+                              (source and normalized_source in LOCAL_SOURCES))
+    if explicit_online and explicit_trainable:
+        return 'trainable' if has_trainable_entry else 'online'
+    if explicit_trainable:
+        return 'trainable'
+    if explicit_online:
+        return 'online'
+    if has_online_entry == has_trainable_entry:
+        api_key = os.environ['LAZYLLM_SENSENOVA_API_KEY']
+        return 'online' if (has_online_entry or api_key) else 'trainable'
+    return 'online' if has_online_entry else 'trainable'
+>>>>>>> b05a064 (enable automodel and add utils to load config yaml)
