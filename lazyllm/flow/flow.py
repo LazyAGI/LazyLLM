@@ -479,8 +479,8 @@ class Parallel(LazyLLMFlowsBase):
     def sequential(cls, *args, **kw):
         return cls(*args, _concurrent=False, **kw)
 
-    def _run(self, __input, items=None, **kw):
-        if items is None:
+    def _run(self, __input, __items=None, **kw):
+        if (items := __items) is None:
             items = self._items
             size = len(items)
             if self._scatter:

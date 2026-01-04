@@ -1,5 +1,5 @@
 from typing import List, Optional, Union, Dict, Set, Callable
-from lazyllm import ModuleBase, once_wrapper, LOG, TempPathGenerator
+from lazyllm import ModuleBase, once_wrapper, LOG, TempPathGenerator, parallel
 
 from .doc_node import DocNode
 from .document import Document, UrlDocument, DocImpl
@@ -176,3 +176,13 @@ class ContextRetriever(TempRetriever):
 
     def __del__(self):
         self._get_retrievers.cache_clear()
+
+
+class WeightedRetriever(parallel):
+    def __init__(self, *retrievers: List[Retriever]):
+        super().__init__(*retrievers)
+        self.sum
+
+    def _run(self, __input, **kw):
+        r = super()._run(__input, **kw)
+        return r
