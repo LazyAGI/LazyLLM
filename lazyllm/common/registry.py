@@ -86,6 +86,20 @@ config.add('use_builtin', bool, False, 'USE_BUILTIN',
 class LazyLLMRegisterMetaClass(_MetaBind):
     all_clses = LazyDict()
 
+    @staticmethod
+    def _get_or_create_group(path: str):
+        registry = LazyLLMRegisterMetaClass.all_clses
+        if not path:
+            return registry
+        parts = path.split('.')
+        current = registry
+        for part in parts:
+            if part not in current:
+                parent_base = current.base if isinstance(current, LazyDict) else None
+                current[part] = LazyDict(part, parent_base)
+            current = current[part]
+        return current
+
     def __new__(metas, name, bases, attrs):
         new_cls = type.__new__(metas, name, bases, attrs)
         if new_cls.__dict__.get('__lazyllm_registry_disable__'): return new_cls

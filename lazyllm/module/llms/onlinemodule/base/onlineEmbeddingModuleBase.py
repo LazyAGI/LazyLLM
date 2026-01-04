@@ -2,11 +2,12 @@ from typing import Dict, List, Union
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from lazyllm import LOG
-from .utils import OnlineModuleBase
+from .utils import LazyLLMOnlineModuleBase
 
 
-class OnlineEmbeddingModuleBase(OnlineModuleBase):
+class OnlineEmbeddingModuleBase(LazyLLMOnlineModuleBase):
     NO_PROXY = True
+    _lazy_llm_group = 'online.embedding'
 
     def __init__(self, model_series: str, embed_url: str, api_key: str, embed_model_name: str, skip_auth: bool = False,
                  return_trace: bool = False, batch_size: int = 1, num_worker: int = 1, timeout: int = 10):

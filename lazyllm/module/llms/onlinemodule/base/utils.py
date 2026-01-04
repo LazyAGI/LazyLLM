@@ -1,5 +1,5 @@
 from ....module import ModuleBase
-from lazyllm import config
+from lazyllm import config, LazyLLMRegisterMetaClass
 from typing import Optional, Union, List
 import random
 
@@ -33,3 +33,14 @@ class OnlineModuleBase(ModuleBase):
     @property
     def _header(self):
         return random.choice(self.__headers)
+
+
+class LazyLLMOnlineBase(OnlineModuleBase, metaclass=LazyLLMRegisterMetaClass):
+    """Base class for online modules that need registry support."""
+
+    def __init__(self, api_key: Optional[Union[str, List[str]]],
+                 skip_auth: Optional[bool] = False, return_trace: bool = False):
+        super().__init__(api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
+
+
+LazyLLMOnlineModuleBase = LazyLLMOnlineBase
