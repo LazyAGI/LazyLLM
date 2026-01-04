@@ -3240,7 +3240,7 @@ add_example('rag.retriever.TempDocRetriever', '''
     print(results)
 ''')
 
-add_english_doc('rag.retriever.TempDocRetriever.create_node_group', '''
+add_english_doc('rag.retriever.TempRetriever.create_node_group', '''
 Create document processing node group for configuring document chunking and transformation strategies.
 
 Args:
@@ -3255,7 +3255,39 @@ Args:
 - self: Current instance supporting chained calls
 ''')
 
-add_chinese_doc('rag.retriever.TempDocRetriever.create_node_group', '''
+add_english_doc('rag.retriever.ContextRetriever', '''
+A context-based retriever that inherits from TempRetriever, designed to perform retrieval directly over in-memory text content rather than physical document files.
+
+It internally converts the provided context strings into temporary files using TempPathGenerator, builds retrievers on demand, and caches them for efficient reuse.
+
+Args:
+    embed: The embedding function used for vector-based retrieval. If not provided, a keyword-based method (e.g., BM25) is used.
+    output_format: The format of the output result (e.g., "text", "json"). Optional, defaults to None.
+    join: Whether to merge multiple retrieved segments. Can be True or a custom separator string such as "\\n".
+''')
+
+add_chinese_doc('rag.retriever.ContextRetriever', '''
+基于上下文内容的检索器，继承自 TempRetriever，用于直接对内存中的文本内容进行检索，而非依赖真实存在的文档文件。
+
+该检索器会通过 TempPathGenerator 将传入的上下文字符串临时转换为文件路径，
+在此基础上构建 Retriever，并使用 LRU 缓存以提升重复查询时的性能。
+
+Args:
+    embed: 用于向量检索的嵌入函数；若未提供，则自动退化为关键词检索（如 BM25）。
+    output_format: 结果输出格式（如 "text"、"json"），可选，默认 None。
+    join: 是否合并多段检索结果，可为 True 或自定义分隔符（如 "\\n"）。
+''')
+
+add_example('rag.retriever.ContextRetriever', '''\
+>>> ret = ContextRetriever(output_format='dict')
+>>> ret.create_node_group('block', transform=lambda x: x.split('\n'))
+>>> ret.add_subretriever(Document.CoarseChunk, topk=1)
+>>> ret.add_subretriever('block', topk=3)
+>>> ret([ctx1, ctx2], '大学')
+''')
+
+
+add_chinese_doc('rag.retriever.TempRetriever.create_node_group', '''
 创建文档处理节点组，用于配置文档的分块和转换策略。
 
 Args:
@@ -3270,7 +3302,7 @@ Args:
 - self: 支持链式调用的当前实例
 ''')
 
-add_english_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
+add_english_doc('rag.retriever.TempRetriever.add_subretriever', '''
 Add a sub-retriever with search configuration.
 
 Args:
@@ -3283,7 +3315,7 @@ Args:
 - self: For method chaining.
 ''')
 
-add_chinese_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
+add_chinese_doc('rag.retriever.TempRetriever.add_subretriever', '''
 添加带搜索配置的子检索器。
 
 Args:

@@ -209,21 +209,20 @@ class TestTempRetriever():
         assert len(r) == 4 and isinstance(r[0], dict)
 
     def test_context_retriever(self):
-        def test_context_retriever():
-            ctx1 = '大学之道，在明明德，\n在亲民，在止于至善。\n知止而后有定，定而后能静，静而后能安。'
-            ctx2 = '子曰：学而时习之，不亦说乎？\n有朋自远方来，不亦乐乎？'
+        ctx1 = '大学之道，在明明德，\n在亲民，在止于至善。\n知止而后有定，定而后能静，静而后能安。'
+        ctx2 = '子曰：学而时习之，不亦说乎？\n有朋自远方来，不亦乐乎？'
 
-            r = ContextRetriever()(ctx1, '大学')
-            assert len(r) > 0 and isinstance(r[0], DocNode)
-            r = ContextRetriever(output_format='content')([ctx1, ctx2], '大学')
-            assert len(r) > 0 and isinstance(r[0], str)
+        r = ContextRetriever()(ctx1, '大学')
+        assert len(r) > 0 and isinstance(r[0], DocNode)
+        r = ContextRetriever(output_format='content')([ctx1, ctx2], '大学')
+        assert len(r) > 0 and isinstance(r[0], str)
 
-            ret = ContextRetriever(output_format='dict')
-            ret.create_node_group('block', transform=lambda x: x.split('\n'))
-            ret.add_subretriever(Document.CoarseChunk, topk=1)
-            ret.add_subretriever('block', topk=3)
-            r = ret([ctx1, ctx2], '大学')
-            assert len(r) == 4 and isinstance(r[0], dict)
+        ret = ContextRetriever(output_format='dict')
+        ret.create_node_group('block', transform=lambda x: x.split('\n'))
+        ret.add_subretriever(Document.CoarseChunk, topk=1)
+        ret.add_subretriever('block', topk=3)
+        r = ret([ctx1, ctx2], '大学')
+        assert len(r) == 4 and isinstance(r[0], dict)
 
 
 class TmpDir:
