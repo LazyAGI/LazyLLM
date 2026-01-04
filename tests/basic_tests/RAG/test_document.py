@@ -5,7 +5,7 @@ from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import LAZY_ROOT_NAME
 from lazyllm.tools.rag.doc_node import DocNode
 from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID
-from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform, TempDocRetriever
+from lazyllm.tools.rag import Document, Retriever, TransformArgs, AdaptiveTransform, TempDocRetriever, ContextRetriever
 from lazyllm.tools.rag.doc_manager import DocManager
 from lazyllm.tools.rag.utils import DocListManager, gen_docid
 from lazyllm.launcher import cleanup
@@ -30,7 +30,7 @@ class TestDocImpl(unittest.TestCase):
         # use temporary file as only existing files can be added to DocImpl
         self.tmp_file_a = tempfile.NamedTemporaryFile()
         self.tmp_file_b = tempfile.NamedTemporaryFile()
-        mock_node = DocNode(group=LAZY_ROOT_NAME, text="dummy text")
+        mock_node = DocNode(group=LAZY_ROOT_NAME, text='dummy text')
         mock_node._global_metadata = {RAG_DOC_ID: gen_docid(self.tmp_file_a.name), RAG_DOC_PATH: self.tmp_file_a.name}
         self.mock_directory_reader.load_data.return_value = {LAZY_ROOT_NAME: [mock_node], LAZY_IMAGE_GROUP: []}
 
@@ -44,45 +44,45 @@ class TestDocImpl(unittest.TestCase):
     def test_create_node_group_default(self):
         self.doc_impl._create_builtin_node_group('MyChunk', transform=lambda x: ','.split(x))
         self.doc_impl._lazy_init()
-        assert "MyChunk" in self.doc_impl.node_groups
-        assert "CoarseChunk" in self.doc_impl.node_groups
-        assert "MediumChunk" in self.doc_impl.node_groups
-        assert "FineChunk" in self.doc_impl.node_groups
+        assert 'MyChunk' in self.doc_impl.node_groups
+        assert 'CoarseChunk' in self.doc_impl.node_groups
+        assert 'MediumChunk' in self.doc_impl.node_groups
+        assert 'FineChunk' in self.doc_impl.node_groups
 
     def test_create_node_group(self):
         self.doc_impl._lazy_init.flag.reset()
         self.doc_impl.create_node_group(
-            name="CustomChunk",
+            name='CustomChunk',
             transform=SentenceSplitter,
             chunk_size=512,
             chunk_overlap=50,
         )
-        assert "CustomChunk" in self.doc_impl.node_groups
-        node_group = self.doc_impl.node_groups["CustomChunk"]
-        assert node_group["transform"].f == SentenceSplitter
-        assert node_group["transform"].kwargs["chunk_size"] == 512
-        assert node_group["transform"]["kwargs"]["chunk_overlap"] == 50
+        assert 'CustomChunk' in self.doc_impl.node_groups
+        node_group = self.doc_impl.node_groups['CustomChunk']
+        assert node_group['transform'].f == SentenceSplitter
+        assert node_group['transform'].kwargs['chunk_size'] == 512
+        assert node_group['transform']['kwargs']['chunk_overlap'] == 50
 
     def test_retrieve(self):
-        self.mock_embed.return_value = "[0.1, 0.2, 0.3]"
+        self.mock_embed.return_value = '[0.1, 0.2, 0.3]'
         self.doc_impl.activate_group(Document.FineChunk, [])
         result = self.doc_impl.retrieve(
-            query="test query",
-            group_name="FineChunk",
-            similarity="bm25",
+            query='test query',
+            group_name='FineChunk',
+            similarity='bm25',
             similarity_cut_off=-100,
             index='default',
             topk=1,
             similarity_kws={},
         )
         node = result[0]
-        assert node.text == "dummy text"
+        assert node.text == 'dummy text'
 
     def test_add_files(self):
         assert self.doc_impl.store is None
         self.doc_impl._lazy_init()
         assert len(self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)) == 1
-        new_doc = DocNode(text="new dummy text", group=LAZY_ROOT_NAME)
+        new_doc = DocNode(text='new dummy text', group=LAZY_ROOT_NAME)
         new_doc._global_metadata = {RAG_DOC_ID: gen_docid(self.tmp_file_b.name), RAG_DOC_PATH: self.tmp_file_b.name}
         self.mock_directory_reader.load_data.return_value = {LAZY_ROOT_NAME: [new_doc], LAZY_IMAGE_GROUP: []}
         self.doc_impl._add_doc_to_store([self.tmp_file_b.name])
@@ -208,6 +208,23 @@ class TestTempRetriever():
         r = ret(['rag_master/default/__data/sources/论语.txt', 'rag_master/default/__data/sources/大学.txt'], '大学')
         assert len(r) == 4 and isinstance(r[0], dict)
 
+    def test_context_retriever(self):
+        def test_context_retriever():
+            ctx1 = '大学之道，在明明德，\n在亲民，在止于至善。\n知止而后有定，定而后能静，静而后能安。'
+            ctx2 = '子曰：学而时习之，不亦说乎？\n有朋自远方来，不亦乐乎？'
+
+            r = ContextRetriever()(ctx1, '大学')
+            assert len(r) > 0 and isinstance(r[0], DocNode)
+            r = ContextRetriever(output_format='content')([ctx1, ctx2], '大学')
+            assert len(r) > 0 and isinstance(r[0], str)
+
+            ret = ContextRetriever(output_format='dict')
+            ret.create_node_group('block', transform=lambda x: x.split('\n'))
+            ret.add_subretriever(Document.CoarseChunk, topk=1)
+            ret.add_subretriever('block', topk=3)
+            r = ret([ctx1, ctx2], '大学')
+            assert len(r) == 4 and isinstance(r[0], dict)
+
 
 class TmpDir:
     def __init__(self):
@@ -236,9 +253,9 @@ class TestDocumentServer(unittest.TestCase):
         self.time_sleep = 30
 
     def test_delete_files_in_store(self):
-        files = [('files', ('test1.txt', io.BytesIO(b"John's house is in Beijing"), 'text/palin')),
-                 ('files', ('test2.txt', io.BytesIO(b"John's house is in Shanghai"), 'text/plain'))]
-        metadatas = [{"comment": "comment1"}, {"signature": "signature2"}]
+        files = [('files', ('test1.txt', io.BytesIO(b'John\'s house is in Beijing'), 'text/palin')),
+                 ('files', ('test2.txt', io.BytesIO(b'John\'s house is in Shanghai'), 'text/plain'))]
+        metadatas = [{'comment': 'comment1'}, {'signature': 'signature2'}]
         params = dict(override='true', metadatas=json.dumps(metadatas))
 
         url = f'{self.doc_server_addr}/upload_files'
@@ -261,9 +278,9 @@ class TestDocumentServer(unittest.TestCase):
             doc_ids.append(node.global_metadata[RAG_DOC_ID])
             doc_file_paths.append(node.global_metadata.get(RAG_DOC_PATH, ''))
             doc_metadatas.append(node.global_metadata)
-            if "test1" in node.global_metadata.get(RAG_DOC_PATH, ''):
+            if 'test1' in node.global_metadata.get(RAG_DOC_PATH, ''):
                 test1_docid = node.global_metadata[RAG_DOC_ID]
-            elif "test2" in node.global_metadata.get(RAG_DOC_PATH, ''):
+            elif 'test2' in node.global_metadata.get(RAG_DOC_PATH, ''):
                 test2_docid = node.global_metadata[RAG_DOC_ID]
         lazyllm.LOG.info(f'debug!!! doc_ids -> {doc_ids}\n')
         lazyllm.LOG.info(f'debug!!! doc_file_paths -> {doc_file_paths}\n')
@@ -283,31 +300,31 @@ class TestDocumentServer(unittest.TestCase):
         cur_meta_dict = nodes[0].global_metadata
 
         url = f'{self.doc_server_addr}/add_metadata'
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "title2"}))
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={'title': 'title2'}))
         assert response.status_code == 200 and response.json().get('code') == 200
         time.sleep(self.time_sleep)
         lazyllm.LOG.info(f'debug!!! cur_meta_dict -> {cur_meta_dict}\n')
-        assert cur_meta_dict["title"] == "title2"
+        assert cur_meta_dict['title'] == 'title2'
 
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "TITLE2"}))
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={'title': 'TITLE2'}))
         assert response.status_code == 200 and response.json().get('code') == 200
         time.sleep(self.time_sleep)
         lazyllm.LOG.info(f'debug!!! cur_meta_dict -> {cur_meta_dict}\n')
-        assert cur_meta_dict["title"] == ["title2", "TITLE2"]
+        assert cur_meta_dict['title'] == ['title2', 'TITLE2']
 
         url = f'{self.doc_server_addr}/delete_metadata_item'
 
-        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={"title": "TITLE2"}))
+        response = httpx.post(url, json=dict(doc_ids=[test2_docid], kv_pair={'title': 'TITLE2'}))
         assert response.status_code == 200 and response.json().get('code') == 200
         time.sleep(self.time_sleep)
-        assert cur_meta_dict["title"] == ["title2"]
+        assert cur_meta_dict['title'] == ['title2']
 
         url = f'{self.doc_server_addr}/reset_metadata'
         response = httpx.post(url, json=dict(doc_ids=[test2_docid],
-                                             new_meta={"author": "author2", "signature": "signature_new"}))
+                                             new_meta={'author': 'author2', 'signature': 'signature_new'}))
         assert response.status_code == 200 and response.json().get('code') == 200
         time.sleep(self.time_sleep)
-        assert cur_meta_dict["signature"] == "signature_new" and cur_meta_dict["author"] == "author2"
+        assert cur_meta_dict['signature'] == 'signature_new' and cur_meta_dict['author'] == 'author2'
 
         url = f'{self.doc_server_addr}/query_metadata'
         response = httpx.post(url, json=dict(doc_id=test2_docid))
