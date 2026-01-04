@@ -193,7 +193,11 @@ class _TextSplitterBase(NodeTransform):
 
                 path = os.path.join(model_path, 'tiktoken')
                 try:
-                    os.makedirs(path, exist_ok=True)
+                    if path.exists():
+                        if not os.access(path, os.W_OK):
+                            raise PermissionError(f'No write permission for existing directory: {path}')
+                    else:
+                        os.makedirs(path, exist_ok=True)
                     os.environ['TIKTOKEN_CACHE_DIR'] = path
                     tiktoken_cache_dir_set = True
                 except PermissionError:

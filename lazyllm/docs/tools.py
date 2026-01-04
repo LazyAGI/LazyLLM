@@ -3211,8 +3211,26 @@ add_example('Retriever', '''
 >>> print(rm("user query"))
 ''')
 
+add_english_doc('rag.retriever.TempRetriever', '''
+TempRetriever Base class. used for `TempDocRetriever` and `ContextRetriever`.
+
+Args:
+    embed: The embedding function.
+    output_format: The format of the output result (e.g., JSON). Optional, defaults to None.
+    join: Whether to merge multiple result segments (set to True or specify a separator like "\n").
+''')
+
+add_chinese_doc('rag.retriever.TempRetriever', '''
+临时文档检索器基类，用于 `TempDocRetriever` 和 `ContextRetriever`。
+
+Args:
+    embed:嵌入函数。
+    output_format:结果输出格式(如json),可选默认为None
+    join:是否合并多段结果(True或用分隔符如"\n")
+''')
+
 add_english_doc('rag.retriever.TempDocRetriever', '''
-A temporary document retriever that inherits from ModuleBase and _PostProcess, used for quickly processing temporary files and performing retrieval tasks.
+A temporary document retriever that inherits from TempRetriever, used for quickly processing temporary files and performing retrieval tasks.
 
 Args:
     embed: The embedding function.
@@ -3221,7 +3239,7 @@ Args:
 ''')
 
 add_chinese_doc('rag.retriever.TempDocRetriever', '''
-临时文档检索器，继承自 ModuleBase 和 _PostProcess，用于快速处理临时文件并执行检索任务。
+临时文档检索器，继承自TempRetriever，用于快速处理临时文件并执行检索任务。
 
 Args:
     embed:嵌入函数。
