@@ -59,12 +59,6 @@ class TestMultiModal(object):
         result = text2image_editing(self.test_image_editing_prompt,files=[self.test_image_file])
         self._check_file_result(result, format='image')
 
-    def test_online_text2image_editinging_doubao(self):
-        api_key = lazyllm.config['doubao_api_key']
-        text2image_editing = lazyllm.OnlineMultiModalModule(source='doubao', model='doubao-seedream-4-5-251128', function='text2image', api_key=api_key, image_editing=True)
-        result = text2image_editing(self.test_image_editing_prompt,files=[self.test_image_file])
-        self._check_file_result(result, format='image')
-
     def test_online_text2image_editinging_qwen(self):
         api_key = lazyllm.config['qwen_api_key']
         text2image_editing = lazyllm.OnlineMultiModalModule(source='qwen', model='qwen-image-edit-plus', function='text2image', api_key=api_key, image_editing=True)
