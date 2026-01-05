@@ -2,7 +2,7 @@ from typing import Optional, Dict, Any, Union, Callable, List
 from enum import Enum, auto
 from collections import defaultdict
 from lazyllm.thirdparty import PIL
-from lazyllm import config, reset_on_pickle
+from lazyllm import config, reset_on_pickle, Mode
 from lazyllm.components.utils.file_operate import _image_to_base64
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 import uuid
@@ -210,7 +210,7 @@ class DocNode:
         )
 
     def __repr__(self) -> str:
-        return str(self) if config['debug'] else f'<Node id={self._uid}>'
+        return str(self) if config['mode'] == Mode.Debug else f'<Node id={self._uid}>'
 
     def __eq__(self, other):
         if isinstance(other, DocNode):
