@@ -13,6 +13,7 @@ import tempfile
 import threading
 import tiktoken
 from lazyllm import config
+from pathlib import Path
 from lazyllm.thirdparty import nltk
 from lazyllm.thirdparty import transformers
 
@@ -192,12 +193,14 @@ class _TextSplitterBase(NodeTransform):
                 if not model_path:
                     model_path = os.path.join(os.path.expanduser('~'), '.lazyllm')
 
-                path = os.path.join(model_path, 'tiktoken')
+                path = Path(model_path) / 'tiktoken'
                 try:
-                    os.makedirs(path, exist_ok=True)
-                    with tempfile.NamedTemporaryFile(dir=path, delete=True):
-                        pass
-                    os.environ['TIKTOKEN_CACHE_DIR'] = path
+                    if path.exists():
+                        if not os.access(path, os.W_OK):
+                            raise PermissionError(f'No write permission for existing directory: {path}')
+                    else:
+                        path.mkdir(parents=True, exist_ok=True)
+                    os.environ['TIKTOKEN_CACHE_DIR'] = str(path)
                     tiktoken_cache_dir_set = True
                 except PermissionError:
                     fallback_path = os.path.join(os.path.expanduser('~'), '.lazyllm', 'tiktoken')

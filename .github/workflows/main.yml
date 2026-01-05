@@ -4,6 +4,10 @@ on:
   push:
     branches:
       - main
+    tags:
+      - "v*.*.*a*"
+      - "v*.*.*b*"
+      - "v*.*.*rc*"
     paths-ignore:
       - "**.md"
       - ".git*"
@@ -18,8 +22,8 @@ on:
 
 env:
   CI_PATH: '/home/mnt/platform_ci/GitHub/${{ github.repository }}/${{ github.run_number }}'
-  POETRY_VERSION: "1.8.3"
   PYTHON_VERSION: "3.10.9"
+  LAZYLLM_DEFAULT_RECENT_K: 20
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{
@@ -76,15 +80,34 @@ jobs:
       - name: Run DocCheck
         run: |
           pip install -r tests/requirements.txt
-          pytest --lf --durations=0 -v tests/doc_check
+          pytest -v tests/doc_check
+          git checkout .
+          LAZYLLM_LANGUAGE=CHINESE pytest -v tests/doc_check
+          git checkout .
+
+  wait_approve:
+    if: github.ref_type != 'tag'
+    needs: [lint, doc_check]
+    runs-on: tps_sco_nv
+    environment: protected
+    steps:
+      - run: echo "run on branch"
+
+  skip_approve:
+    if: github.ref_type == 'tag'
+    needs: [lint, doc_check]
+    runs-on: tps_sco_nv
+    steps:
+      - run: echo "run on tag"
 
   clone:
     if: |
-      !contains(github.event.head_commit.message, '[skip ci]')
+      always()
+      && !contains(github.event.head_commit.message, '[skip ci]')
       && !contains(github.event.pull_request.title, '[skip ci]')
-    needs: [ lint, doc_check ]
+      && (needs.wait_approve.result == 'success' || needs.skip_approve.result == 'success')
+    needs: [ wait_approve, skip_approve ]
     runs-on: tps_sco_nv
-    environment: protected
     outputs:
       changed_files: ${{ steps.changed_files_yaml.outputs.all_changed_files }}
     steps:
@@ -116,7 +139,7 @@ jobs:
           set -e
           pip install -r requirements.txt
           pip install -r docs/requirements.txt
-          python docs/add_docstrings.py
+          LAZYLLM_INIT_DOC=True python docs/add_docstrings.py
 
       - name: Setup CI directory
         run: |
@@ -131,6 +154,7 @@ jobs:
   basic_tests:
     runs-on: tps_sco_nv
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -141,7 +165,7 @@ jobs:
         uses: ./.github/actions/run_tests
         with:
           working_directory: ${{ env.CI_PATH }}
-          changed_files: ${{ needs.Clone.outputs.changed_files }}
+          changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/basic_tests"
           launcher: "empty"
@@ -150,6 +174,7 @@ jobs:
   advanced_tests:
     runs-on: tps_sco_nv
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -160,13 +185,17 @@ jobs:
         uses: ./.github/actions/run_tests
         with:
           working_directory: ${{ env.CI_PATH }}
-          changed_files: ${{ needs.Clone.outputs.changed_files }}
+          changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/advanced_tests"
 
   engine_tests:
     runs-on: tps_sco_nv
     needs: [ clone ]
+    if: |
+      always()
+      && needs.clone.result == 'success'
+      && (contains(needs.clone.outputs.changed_files, 'lazyllm/engine/') || github.ref_type == 'tag')
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -177,13 +206,14 @@ jobs:
         uses: ./.github/actions/run_tests
         with:
           working_directory: ${{ env.CI_PATH }}
-          changed_files: ${{ needs.Clone.outputs.changed_files }}
+          changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/engine_tests"
 
   charge_tests:
     runs-on: tps_sco_nv
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     steps:
       - name: Checkout code
         uses: actions/checkout@v4 # For run_tests afterwards.
@@ -227,7 +257,7 @@ jobs:
         uses: ./.github/actions/run_tests
         with:
           working_directory: ${{ env.CI_PATH }}
-          changed_files: ${{ needs.Clone.outputs.changed_files }}
+          changed_files: ${{ needs.clone.outputs.changed_files }}
           markers: "not skip_on_linux"
           tests_dir: "tests/charge_tests"
 
@@ -249,7 +279,12 @@ jobs:
 
   coverage_linux:
     runs-on: ubuntu-latest
-    needs: [ basic_tests, advanced_tests, engine_tests, charge_tests ]
+    needs: [ basic_tests, advanced_tests, charge_tests ]
+    if: |
+      always()
+      && needs.basic_tests.result == 'success'
+      && needs.advanced_tests.result == 'success'
+      && needs.charge_tests.result == 'success'
     steps:
       - name: Add Coverage Report Link to Summary
         run: |
@@ -262,6 +297,7 @@ jobs:
   build_and_test_package:
     runs-on: ubuntu-latest
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -269,34 +305,18 @@ jobs:
           submodules: false
           fetch-depth: 0
 
-      - name: Init specific submodule
-        run: |
-          git submodule init LazyLLM-Env
-          git submodule update LazyLLM-Env
-
       - name: Set up python
         uses: actions/setup-python@v5
         with:
           python-version: ${{ env.PYTHON_VERSION }}
 
-      - name: Install Poetry
-        uses: snok/install-poetry@v1
-        with:
-          version: ${{ env.POETRY_VERSION }}
-
-      - name: Install deps
-        run: |
-          set -ex
-          cp LazyLLM-Env/poetry.lock . 
-          export POETRY_CACHE_DIR=$(mktemp -d)
-          poetry install
-          rm -rf $POETRY_CACHE_DIR
-
       - name: Build
-        run: poetry build
+        run: |
+          pip install build
+          python -m build --config-setting=skbuild.wheel.cmake=false
 
       - name: Test installing built package
-        run: python -m pip install .
+        run: pip install dist/lazyllm*.whl
 
       - name: Test import
         working-directory: /tmp
@@ -310,6 +330,7 @@ jobs:
   deploy_doc:
     runs-on: ubuntu-latest
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -319,8 +340,6 @@ jobs:
 
       - name: Init specific submodule
         run: |
-          git submodule init LazyLLM-Env
-          git submodule update LazyLLM-Env
           git submodule init Tutorial
           git submodule update Tutorial
 
@@ -336,7 +355,7 @@ jobs:
           pip install -r docs/requirements.txt
           cp -r docs/assets docs/zh
           cp -r docs/assets docs/en
-          python docs/add_docstrings.py
+          LAZYLLM_INIT_DOC=True python docs/add_docstrings.py
           python docs/link_assets.py
           python docs/ipynb2md.py
           python docs/gen_mkdocs_yaml.py
@@ -357,6 +376,7 @@ jobs:
 
   mac_basic_tests:
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -401,6 +421,7 @@ jobs:
 
   mac_charge_tests:
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     runs-on: macos-latest
     steps:
       - name: Checkout code
@@ -451,7 +472,7 @@ jobs:
               tests/charge_tests
           fi
         env:
-          CHANGED_FILES: ${{ needs.Clone.outputs.changed_files }}
+          CHANGED_FILES: ${{ needs.clone.outputs.changed_files }}
           LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
           LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
           LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
@@ -480,6 +501,7 @@ jobs:
 
   win_basic_tests:
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -512,7 +534,7 @@ jobs:
           scoop install ffmpeg
           pip install -r tests/requirements.txt
           export LAZYLLM_DATA_PATH=D:/a/LazyLLM/data
-          python -m pytest --lf --last-failed-no-failures=all -m "not skip_on_win" -v --reruns=2 \
+          pytest --lf --last-failed-no-failures=all -m "not skip_on_win" -v --reruns=2 \
             --override-ini=cache_dir=tests/basic_tests/.pytest_cache tests/basic_tests
         timeout-minutes: 30
         env:
@@ -528,6 +550,7 @@ jobs:
 
   win_charge_tests:
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     runs-on: windows-latest
     steps:
       - name: Checkout code
@@ -577,7 +600,7 @@ jobs:
               --override-ini=cache_dir=tests/charge_tests/.pytest_cache tests/charge_tests
          fi
         env:
-          CHANGED_FILES: ${{ needs.Clone.outputs.changed_files }}
+          CHANGED_FILES: ${{ needs.clone.outputs.changed_files }}
           LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
           LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
           LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
@@ -607,6 +630,7 @@ jobs:
   k8s_tests:
     runs-on: tps_k8s
     needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
     env:
       K8S_CI_PATH: '/mnt/nfs_share/GitHub/${{ github.repository }}/${GITHUB_RUN_NUMBER}'
     steps:

@@ -62,6 +62,15 @@ Args:
     group_name (str): The name of the group to be created.
 ''')
 
+
+add_chinese_doc('Register.new_group', '''\
+创建一个新的ComponentGroup。新建的group会自动加入到__builtin__中，无需import即可在任一位置访问到该group。
+
+Args:
+    group_name (str): 待创建的group的名字
+''')
+
+
 # add_example('Register', '''\
 # >>> import lazyllm
 # >>> @lazyllm.component_register('mygroup')
@@ -434,6 +443,113 @@ True
 >>> p + p2
 (1, 2, 3, 4, 5)
 ''')
+
+# ============= queue
+
+add_chinese_doc('RecentQueue', """\
+最近元素队列（RecentQueue）是对标准 Queue 的扩展实现，在不改变原有队列语义的前提下，额外维护一份「最近放入队列的 K 个元素」缓存。
+
+该类常用于：
+- 最近上下文记录（如 Prompt / 消息历史）
+- 调试与问题定位时追踪最近输入
+- 轻量级时间窗口缓存或回溯分析
+
+参数说明：
+- maxsize (int)：
+    队列最大容量，语义与 queue.Queue 一致
+
+- recent_k (Optional[int])：
+    需要保留的最近元素数量：
+    - None 或 0：不启用 recent 功能
+    - 大于 0：最多保留 recent_k 个最近 put 进队列的元素
+""")
+
+add_english_doc('RecentQueue', """\
+RecentQueue
+
+RecentQueue is an extension of the standard Queue that maintains
+an additional cache of the most recently put K items, without
+altering the original queue semantics.
+
+Typical use cases include:
+- Tracking recent context (e.g. prompt or message history)
+- Debugging and tracing recent inputs
+- Lightweight sliding-window or rollback-style analysis
+
+Parameters:
+- maxsize (int):
+    Maximum size of the queue, same semantics as queue.Queue
+
+- recent_k (Optional[int]):
+    Number of recent items to retain:
+    - None or 0: disable recent tracking
+    - > 0: keep at most recent_k most recently put items
+""")
+
+add_example('RecentQueue', """\
+>>> from queue import Queue
+>>> from collections import deque
+>>> import threading
+
+>>> q = RecentQueue(maxsize=10, recent_k=3)
+>>> q.put("msg-1")
+>>> q.put("msg-2")
+>>> q.put("msg-3")
+
+>>> print(q.get_recent())
+['msg-1', 'msg-2', 'msg-3']
+
+>>> q.put("msg-4")
+>>> print(q.get_recent())
+输出: ['msg-2', 'msg-3', 'msg-4']
+""")
+
+add_chinese_doc('RecentQueue.get_recent', """\
+获取最近放入队列的元素。返回最近放入队列的元素列表或拼接后的字符串，不会消费（remove）队列中的任何元素。
+
+重要说明：
+- recent 是队列的旁路缓存（side-channel）
+- 返回结果按时间顺序排列（从旧到新）
+
+参数说明：
+- join (Optional[str])：如果提供该参数，将 recent 列表中的元素使用 join 作为分隔符拼接为一个字符串。要求 recent 中的所有元素均为字符串类型。
+- join_prefix (Optional[str])：当 join 生效且拼接结果非空时，在结果字符串前追加前缀，常用于上下文提示头。
+
+返回值：
+- List[Any]：当 join 为 None 时，返回 recent 元素的列表副本
+- str：当 join 提供时，返回拼接后的字符串（可能带前缀）
+""")
+
+add_english_doc('RecentQueue.get_recent', """\
+Retrieve recently put items
+
+Returns the most recently put items in the queue, either as a list
+or as a joined string. This method does NOT consume items from
+the queue.
+
+Notes:
+- The recent buffer is a side-channel cache
+- Items are ordered from oldest to newest
+
+Parameters:
+- join (Optional[str]): If provided, recent items will be joined into a single string using this value as the separator. All items in the recent buffer must be strings.
+- join_prefix (Optional[str]): If join is used and the result is non-empty, this prefix will be prepended to the joined string.
+
+Returns:
+- List[Any]: When join is None, returns a copy of the recent items list
+- str: When join is provided, returns the joined string (with optional prefix)
+""")
+
+add_example('RecentQueue.get_recent', """\
+>>> q = RecentQueue(recent_k=3)
+>>> q.put("a").put("b").put("c").put("d")
+>>> q.get_recent()
+['b', 'c', 'd']
+
+>>> q.get_recent(join="\\n", join_prefix="Recent:\\n")
+'Recent:\\nb\\nc\\nd'
+""")
+
 
 add_chinese_doc('FileSystemQueue', """\
 基于文件系统的队列抽象基类。
@@ -1350,3 +1466,115 @@ Dynamic descriptor class for creating descriptors that support both instance and
 Args:
     func (callable): Function or method to be wrapped
 """)
+
+# ============= Globals
+
+add_chinese_doc('init_session', '''
+初始化一个新的会话环境。
+
+该函数会为当前上下文初始化全局与局部的 session id，通常用于隔离不同执行流程中的状态，避免相互污染。
+''')
+
+add_english_doc('init_session', '''
+Initialize a new session environment.
+
+This function initializes session IDs for both global and local contexts, and is typically used to isolate states across different execution flows.
+''')
+
+add_example('init_session', '''
+from lazyllm.common import init_session
+
+init_session()
+''')
+
+add_chinese_doc('teardown_session', '''
+销毁当前会话环境。
+
+该函数会清空当前会话中保存的全局和局部状态，通常与 init_session 成对使用，用于释放资源和避免状态泄漏。
+''')
+
+add_english_doc('teardown_session', '''
+Tear down the current session environment.
+
+This function clears all global and local states associated with the current session. It is usually paired with init_session to release resources and prevent state leakage.
+''')
+
+add_example('teardown_session', '''
+from lazyllm.common import init_session, teardown_session
+
+init_session()
+# ...
+teardown_session()
+''')
+
+
+add_chinese_doc('new_session', '''
+创建一个新的会话上下文（上下文管理器）。
+
+进入上下文时会自动初始化 session，退出上下文时会自动清理 session。适合用于临时、隔离的执行场景。
+''')
+
+add_english_doc('new_session', '''
+Create a new session context (context manager).
+
+A session is automatically initialized when entering the context and automatically torn down when exiting. This is suitable for temporary and isolated execution scenarios.
+''')
+
+add_example('new_session', '''
+from lazyllm.common import new_session
+
+with new_session():
+    pass
+''')
+
+# ========== Temp files
+
+add_chinese_doc('TempPathGenerator', '''
+一个临时文件路径生成器，用于将字符串内容写入临时文件，并返回对应的文件路径列表。
+
+该类实现了上下文管理协议（with 语法），在进入上下文时会为每一段文本创建一个临时文件，
+并将其内容写入文件中；在退出上下文时，如果未设置 persist=True，则会自动清理临时目录。
+
+常用于需要将内存中的文本内容临时转为文件路径，以复用现有基于文件路径的处理逻辑
+（如文档加载、embedding、检索等）的场景。
+
+Args:
+    contents (Iterable[str]): 需要写入临时文件的文本内容，可以是字符串或字符串列表。
+    suffix (str): 临时文件的后缀名，默认为 '.txt'。
+    encoding (str): 写入文件时使用的编码格式，默认为 'utf-8'。
+    persist (bool): 是否在退出上下文后保留临时文件。默认为 False，表示自动清理。
+''')
+
+add_english_doc('TempPathGenerator', '''
+A temporary file path generator that writes text contents into temporary files
+and returns the corresponding file path list.
+
+This class implements the context manager protocol (via the `with` statement).
+When entering the context, it creates a temporary directory and writes each
+text content into a separate file. When exiting the context, the temporary
+files will be automatically cleaned up unless `persist=True` is specified.
+
+It is commonly used in scenarios where in-memory text needs to be temporarily
+converted into file paths in order to reuse existing file-based processing
+pipelines (e.g., document loading, embedding, retrieval).
+
+Args:
+    contents (Iterable[str]): Text contents to be written into temporary files. Can be a single string or a list of strings.
+    suffix (str): Suffix of the temporary files. Defaults to '.txt'.
+    encoding (str): Encoding used when writing files. Defaults to 'utf-8'.
+    persist (bool): Whether to keep temporary files after exiting the context. Defaults to False, meaning files are cleaned up automatically.
+''')
+
+add_example('TempPathGenerator', '''
+from lazyllm import TempPathGenerator
+
+texts = [
+    "This is the first temporary document.",
+    "This is the second temporary document."
+]
+
+with TempPathGenerator(texts, suffix=".txt") as paths:
+    for p in paths:
+        print(p)
+        # p can be passed to any file-based document loader
+''')

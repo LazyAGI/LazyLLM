@@ -1,10 +1,15 @@
+from lazyllm.thirdparty import check_dependency_by_group
+check_dependency_by_group('rag')
+
+# flake8: noqa: E402
 from .document import Document
 from .graph_document import GraphDocument, UrlGraphDocument
-from .retriever import Retriever, TempDocRetriever
+from .retriever import Retriever, TempDocRetriever, ContextRetriever
 from .graph_retriever import GraphRetriever
 from .rerank import Reranker, register_reranker
 from .transform import (SentenceSplitter, LLMParser, NodeTransform, TransformArgs, AdaptiveTransform,
-                        CharacterSplitter, RecursiveSplitter, MarkdownSplitter)
+                        CharacterSplitter, RecursiveSplitter, MarkdownSplitter, CodeSplitter,
+                        JSONSplitter, YAMLSplitter, HTMLSplitter, XMLSplitter, GeneralCodeSplitter, JSONLSplitter)
 from .similarity import register_similarity
 from .doc_node import DocNode
 from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader, EpubReader,
@@ -30,6 +35,7 @@ __all__ = [
     'Retriever',
     'GraphRetriever',
     'TempDocRetriever',
+    'ContextRetriever',
     'NodeTransform',
     'AdaptiveTransform',
     'TransformArgs',
@@ -62,5 +68,12 @@ __all__ = [
     'CharacterSplitter',
     'RecursiveSplitter',
     'MarkdownSplitter',
+    'CodeSplitter',
+    'JSONSplitter',
+    'YAMLSplitter',
+    'HTMLSplitter',
+    'XMLSplitter',
+    'GeneralCodeSplitter',
+    'JSONLSplitter',
     'SchemaExtractor'
 ]

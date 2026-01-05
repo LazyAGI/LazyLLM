@@ -8,6 +8,7 @@ class _ChatTTSModule(_TTSInfer):
     def __init__(self, base_path, source=None, save_path=None, init=False, trust_remote_code=True):
         self.seed = 1024
         super().__init__(base_path, source, save_path, init, trust_remote_code, 'chattts')
+        raise RuntimeError('ChatTTS is deprecated and no longer supported.')
 
     def _load_model(self):
         self.model = ChatTTS.Chat()

@@ -1,12 +1,15 @@
 import lazyllm
 import builtins
 from lazyllm import config
-from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind, root
-from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals
+from lazyllm.common import LazyLLMRegisterMetaClass, package, kwargs, arguments, bind
+from lazyllm.common import ReadOnlyWrapper, LOG, globals, locals, _get_callsite
+from lazyllm.common import _register_trim_module, HandledException, _change_exception_type
 from lazyllm.common.bind import _MetaBind
 from functools import partial
 from contextlib import contextmanager
+from contextvars import ContextVar
 from enum import Enum
+from asyncio import events
 import types
 import inspect
 import threading
@@ -21,6 +24,10 @@ from ..hook import LazyLLMHook
 from itertools import repeat
 
 
+class FlowException(HandledException):
+    pass
+
+
 class _FuncWrap(object):
     def __init__(self, f):
         self._f = f._f if isinstance(f, _FuncWrap) else f
@@ -30,7 +37,7 @@ class _FuncWrap(object):
     def __repr__(self):
         # TODO: specify lambda/staticmethod/classmethod/instancemethod
         # TODO: add registry message
-        return lazyllm.make_repr('Function', (
+        return lazyllm.make_repr('Function', type(self._f).__name__, name=(
             self._f if _is_function(self._f) else self._f.__class__).__name__.strip('<>'))
 
     def __getattr__(self, __key):
@@ -50,19 +57,42 @@ def _is_function(f):
     return isinstance(f, (types.BuiltinFunctionType, types.FunctionType,
                           types.BuiltinMethodType, types.MethodType, types.LambdaType))
 
+
+_thread_local = threading.local()
+_async_var = ContextVar('lazyllm.flow_stack')
+
+def _get_flow_stack():
+    if events._get_running_loop() is not None:
+        stack = _async_var.get(None)
+        if stack is None:
+            stack = []
+            _async_var.set(stack)
+        return stack
+    else:
+        stack = getattr(_thread_local, 'stack', None)
+        if stack is None:
+            _thread_local.stack = stack = []
+        return stack
+
+
+_register_trim_module({'lazyllm.flow.flow': ['__call__']}, continuous=True)
+_register_trim_module({'lazyllm.flow.flow': ['_run', 'invoke'], 'lazyllm.common.bind': ['__call__']})
+
 class FlowBase(metaclass=_MetaBind):
     def __init__(self, *items, item_names=None, auto_capture=False) -> None:
         self._father = None
-        self._items, self._item_names, self._item_ids = [], [], []
+        self._items, self._item_names, self._item_ids, self._item_pos = [], [], [], []
         self._auto_capture = auto_capture
         self._capture = True
         self._curr_frame = None
         self._flow_id = str(uuid.uuid4().hex)
+        self._find_user_instantiation_frame()
 
         for k, v in zip(item_names if item_names else repeat(None), items):
             self._add(k, v)
 
         self._capture = False
+        self._auto_registered = False
 
     def __post_init__(self): pass
 
@@ -70,16 +100,13 @@ class FlowBase(metaclass=_MetaBind):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
         self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) or v in self._items else v)
         self._item_ids.append(k or str(uuid.uuid4().hex))
+        self._item_pos.append(_get_callsite(depth=3))
         if isinstance(v, FlowBase): v._father = self
         if k:
             assert k not in self._item_names, f'Duplicated names {k}'
             self._item_names.append(k)
-        if self._curr_frame and isinstance(v, FlowBase):
-            if k:
-                if k not in self._curr_frame.f_locals:
-                    self._curr_frame.f_locals[k] = v
-                else:
-                    lazyllm.LOG.warning(f'{k} is already defined in this scope, ignor it')
+        if self._curr_frame and isinstance(v, FlowBase) and k and k not in self._curr_frame.f_locals:
+            self._curr_frame.f_locals[k] = v  # make sense only when locals is globals
 
     def __enter__(self, __frame=None):
         assert len(self._items) == 0, f'Cannot init {self.__class__} with items if you want to use it by context.'
@@ -87,6 +114,7 @@ class FlowBase(metaclass=_MetaBind):
         if self._auto_capture:
             self._frame_keys = list(self._curr_frame.f_locals.keys())
         self._capture = True
+        _get_flow_stack().append(self)
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
@@ -96,6 +124,7 @@ class FlowBase(metaclass=_MetaBind):
                 if var != 'self' and var not in self._frame_keys and (
                         (val._f if isinstance(val, bind) else val) is not self):
                     self._add(var, val)
+        assert _get_flow_stack().pop() == self, 'Do not operate FLow.stack manually!'
         self._capture = False
         self._curr_frame = None
         self.__post_init__()
@@ -105,8 +134,31 @@ class FlowBase(metaclass=_MetaBind):
         # used to support `with pipeline() as (a.b, b):`
         return iter([self, self])
 
+    def _find_user_instantiation_frame(self):
+        try:
+            for fm in inspect.stack():
+                if fm.frame.f_globals.get('__name__', '').startswith('lazyllm.flow') or fm.filename.startswith('<'):
+                    continue
+                self._defined_file = os.path.abspath(fm.frame.f_code.co_filename)
+                self._defined_func = fm.frame.f_code.co_name
+                self._defined_pos = f'"file: {self._defined_file}", line {fm.frame.f_lineno}({self._defined_func})'
+                break
+        except Exception:
+            self._defined_file, self._defined_pos, self._defined_func = None, None, None
+
+    def _defined_at_the_same_scope(self, other: 'FlowBase'):
+        return self._defined_file == other._defined_file and self._defined_func == other._defined_func
+
     def __setattr__(self, name: str, value):
         if '_capture' in self.__dict__ and self._capture and not name.startswith('_'):
+            if len(_get_flow_stack()) > 1 and not self._auto_registered:
+                super(__class__, self).__setattr__('_auto_registered', True)
+                locals = self._curr_frame.f_locals.copy()
+                for key, item in locals.items():
+                    if item == self and (parent := _get_flow_stack()[-2]) != item:
+                        if key not in parent._item_names and parent._defined_at_the_same_scope(self):
+                            parent._add(key, self)
+                        break
             assert name not in self._item_names, f'Duplicated name: {name}'
             self._add(name, value)
         elif name in getattr(self, '_item_names', ()):
@@ -141,11 +193,12 @@ class FlowBase(metaclass=_MetaBind):
 
 def _bind_enter(self):
     assert isinstance(self._f, FlowBase)
-    self._f.__enter__(inspect.currentframe().f_back)
+    self._f.__enter__() if type(self._f) is bind else self._f.__enter__(inspect.currentframe().f_back)
     return self
 
 def _bind_exit(self, exc_type, exc_val, exc_tb):
-    return self._f.__exit__(exc_type, exc_val, exc_tb)
+    return (self._f.__exit__(exc_type, exc_val, exc_tb)
+            if type(self._f) is bind else self._f.__exit__(exc_type, exc_val, exc_tb))
 
 bind.__enter__ = _bind_enter
 bind.__exit__ = _bind_exit
@@ -222,10 +275,6 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
     # bind_args: dict(input=input, args=dict(key=value))
     def invoke(self, it, __input, *, bind_args_source=None, **kw):
         if isinstance(it, bind):
-            if it._has_root:
-                it._args = [a.get_from(self.ancestor) if isinstance(a, type(root)) else a for a in it._args]
-                it._kw = {k: v.get_from(self.ancestor) if isinstance(v, type(root)) else v for k, v in it._kw.items()}
-                it._has_root = False
             if isinstance(self, Pipeline):
                 it._args = [self.output(a) if a in self._items else a for a in it._args]
                 it._kw = {k: self.output(v) if v in self._items else v for k, v in it._kw.items()}
@@ -235,28 +284,60 @@ class LazyLLMFlowsBase(FlowBase, metaclass=LazyLLMRegisterMetaClass):
                 return it(*__input, **kw) if isinstance(__input, package) else it(**__input, **kw)
             else:
                 return it(__input, **kw)
+        except HandledException as e: raise e
         except Exception as e:
-            LOG.error(f'An error occored when invoking `{type(it)}({it})` with '
-                      f'input {type(__input)}`{__input}` and kw `{kw}`')
-            error_type, error_message = type(e).__name__, str(e)
-            tb_str = ''.join(traceback.format_exception(*sys.exc_info()))
-            LOG.debug(f'Error type: {error_type}, Error message: {error_message}\n'
-                      f'Traceback: {tb_str}')
-            raise
+            try:
+                pos = self._item_pos[self._items.index(it)]
+            except Exception:
+                pos = None
+            if '_bind_args_source' in kw: kw = (kw.get('_bind_args_source') or {}).pop('kwargs', None)
+            err_msg = (f'Flow defined at {self._defined_pos or "Unknown position"} encountered an error:\n'
+                       f'invoking `{it}`({pos or "Position not found"}) with input `{__input}` and kw `{kw}` failed. '
+                       + 'Details: `{type}: {value}`'.format(type=type(e).__name__, value=str(e).replace('\n', '\\n')))
+            LOG.error(err_msg)
+            LOG.debug(f'Error type: {type(e).__name__}, Error message: {str(e)}\n'
+                      f'Traceback: {"".join(traceback.format_exception(*sys.exc_info()))}')
+            raise _change_exception_type(e, FlowException) from None
 
     def bind(self, *args, **kw):
         return bind(self, *args, **kw)
 
 
+_async_save_flag = ContextVar('lazyllm.pipeline.save_flag')
+
+def _get_current_save_flag():
+    return (_async_save_flag.get(None) if events._get_running_loop() is not None else
+            getattr(_thread_local, 'save_flag', None))
+
+def _set_current_save_flag(flag):
+    if events._get_running_loop() is not None:
+        _async_save_flag.set(flag)
+    else:
+        _thread_local.save_flag = flag
+
+@contextmanager
+def save_pipeline_result(flag: bool = True):
+    old_flag = _get_current_save_flag()
+    try:
+        _set_current_save_flag(flag)
+        yield
+    finally:
+        _set_current_save_flag(old_flag)
+
 # input -> module1 -> module2 -> ... -> moduleN -> output
 #                                               \> post-action
 # TODO(wangzhihong): support mult-input and output
 class Pipeline(LazyLLMFlowsBase):
-    g_save_flow_result = None
-
-    def __init__(self, *args, post_action=None, auto_capture=False, **kw):
+    def __init__(self, *args, post_action=None, auto_capture=False, save_result=None, **kw):
         super().__init__(*args, post_action=post_action, auto_capture=auto_capture, **kw)
-        self.save_flow_result = __class__.g_save_flow_result
+        self._save_flow_result = save_result if save_result is not None else (
+            _get_current_save_flag() or config['save_flow_result'])
+
+    @property
+    def save_flow_result(self): return self._save_flow_result
+
+    @save_flow_result.setter
+    def save_flow_result(self, value): self._save_flow_result = value
 
     @property
     def _loop_count(self):
@@ -292,8 +373,9 @@ class Pipeline(LazyLLMFlowsBase):
     def _run(self, __input, **kw):
         output = __input
         bind_args_source = dict(source=self.id(), input=output, kwargs=kw.copy())
-        if config['save_flow_result'] or __class__.g_save_flow_result or (
-                self.save_flow_result and __class__.g_save_flow_result is not False):
+        bind_flag = self.save_flow_result if (flag := _get_current_save_flag()) is None else flag
+        if bind_flag:
+            lazyllm.LOG.debug(f'add {self.id()} to bind_args')
             locals['bind_args'][self.id()] = bind_args_source
         for _ in range(self._loop_count):
             for it in self._items:
@@ -306,19 +388,14 @@ class Pipeline(LazyLLMFlowsBase):
                 exp = output[0]
                 output = output[1:]
             if callable(self._stop_condition) and self.invoke(self._stop_condition, exp): break
-        locals['bind_args'].pop(self.id(), None)
+        if bind_flag:
+            lazyllm.LOG.debug(f'delete {self.id()} form bind_args')
+            locals['bind_args'].pop(self.id(), None)
         return output
 
 
 config.add('save_flow_result', bool, False, 'SAVE_FLOW_RESULT',
            description='Whether to save the intermediate result of the pipeline.')
-
-@contextmanager
-def save_pipeline_result(flag: bool = True):
-    old_flag = Pipeline.g_save_flow_result
-    Pipeline.g_save_flow_result = flag
-    yield
-    Pipeline.g_save_flow_result = old_flag
 
 
 _barr = threading.local()

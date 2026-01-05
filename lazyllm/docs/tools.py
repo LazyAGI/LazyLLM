@@ -4,19 +4,19 @@ from . import utils
 import functools
 import lazyllm
 
-add_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools)
-add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools)
-add_example = functools.partial(utils.add_example, module=lazyllm.tools)
+add_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools'))
+add_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools'))
+add_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools'))
 
 # functions for lazyllm.tools.tools
-add_tools_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools.tools)
-add_tools_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools.tools)
-add_tools_example = functools.partial(utils.add_example, module=lazyllm.tools.tools)
+add_tools_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.tools'))
+add_tools_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.tools'))
+add_tools_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.tools'))
 
 # functions for lazyllm.tools.agent
-add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=lazyllm.tools.agent)
-add_agent_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.tools.agent)
-add_agent_example = functools.partial(utils.add_example, module=lazyllm.tools.agent)
+add_agent_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.agent'))
+add_agent_english_doc = functools.partial(utils.add_english_doc, module=importlib.import_module('lazyllm.tools.agent'))
+add_agent_example = functools.partial(utils.add_example, module=importlib.import_module('lazyllm.tools.agent'))
 
 # functions for lazyllm.tools.services
 add_services_chinese_doc = functools.partial(utils.add_chinese_doc, module=importlib.import_module('lazyllm.tools.services'))
@@ -1993,6 +1993,80 @@ Args:
         Defaults to None.
 ''')
 
+add_chinese_doc('rag.readers.PaddleOCRPDFReader', '''\
+基于PaddleOCR服务的PDF解析器，通过调用PaddleOCR服务的API来解析PDF文件，支持丰富的文档结构识别。
+服务接入方式：
+1. 使用官方提供的 API 服务
+    - 在飞桨开发者平台（https://aistudio.baidu.com）注册账号并创建 api_key（访问令牌）
+    - 初始化时传入 api_key：PaddleOCRPDFReader(api_key="your_api_key")
+    - 或者通过环境变量 LAZYLLM_PADDLEOCR_API_KEY 设置 api_key 后初始化：PaddleOCRPDFReader()
+2. 使用本地部署的PaddleOCR-VL文档解析服务
+    - 服务化部署方式请参考官方文档第 4 节「服务化部署」：https://www.paddleocr.ai/main/version3.x/pipeline_usage/PaddleOCR-VL.html
+    - 初始化时传入服务地址 url：PaddleOCRPDFReader(url="http://127.0.0.1:8000")
+
+Args:
+    url (str, 可选):PaddleOCR 服务的接口地址。如果不提供，使用官方地址。
+    api_key (str, 可选):
+        访问 PaddleOCR 服务所需的 API Key。 url 与 api_key 至少提供一个。
+    format_block_content (bool, 默认 True): 是否将块级内容格式化为 Markdown。
+        若需要正确提取多级标题及文档层级结构，必须启用该选项。
+    use_layout_detection (bool, 默认 True): 是否启用版面检测进行 PDF 解析。
+        若为 False，则每一页仅视为一个整体元素进行处理。
+    use_chart_recognition (bool, 默认 True): 是否启用图表识别。
+        若为 True，图表将被解析为结构化表格；
+        若为 False，图表仅作为普通图片处理。
+    split_doc (bool, 默认 True): 是否按内容块将文档拆分为多个 `DocNode`。
+        若为 False，则整个文档内容将合并为一个单独的节点返回(markdown 内容)。
+    drop_types (List[str], 可选): 需要在解析结果中过滤掉的版面块类型列表，
+        默认为页眉、页脚、页码、印章等非正文内容。
+    post_func (Callable, 可选): 解析完成后对 `DocNode` 列表进行二次处理的后置函数。
+        该函数必须接收并返回 `List[DocNode]`。
+    images_dir (str, 可选):图片结果的保存目录。
+        若提供该参数，解析过程中提取的图片将写入该目录。
+''')
+
+add_english_doc('rag.readers.PaddleOCRPDFReader', '''\
+Reader for PDF files by calling the PaddleOCR service's API.
+Service Access Methods:
+1. Using the official API service
+    - Register an account on the PaddlePaddle Developer Platform (https://aistudio.baidu.com) and create an api_key (access token)
+    - Pass the api_key during initialization: PaddleOCRPDFReader(api_key="your_api_key")
+    - Alternatively, set the api_key via the environment variable LAZYLLM_PADDLEOCR_API_KEY 
+      and initialize with: PaddleOCRPDFReader().
+2. Using a locally deployed PaddleOCR-VL document parsing service
+    - For service-based deployment, refer to Section 4, “Service Deployment,” in the official documentation: 
+    https://www.paddleocr.ai/main/version3.x/pipeline_usage/PaddleOCR-VL.html
+    - Pass the service URL during initialization: PaddleOCRPDFReader(url="http://127.0.0.1:8000")
+
+Args:
+    url (str, optional): PaddleOCR service endpoint URL. If not provided, use the official address.
+    api_key (str, optional): API key required to access the PaddleOCR service.
+        Either url or api_key must be provided.
+    format_block_content (bool, default=True): Whether to format block-level content as Markdown.
+        This option must be enabled to correctly extract multi-level headings
+        and preserve the document's hierarchical structure.
+    use_layout_detection (bool, default=True): Whether to enable layout detection during PDF parsing.
+        If False, each page is treated as a single, unified element.
+    use_chart_recognition (bool, default=True): Whether to enable chart recognition.
+        If True, charts are parsed into structured table representations;
+        if False, charts are treated as regular images.
+    split_doc (bool, default=True): Whether to split the document into multiple `DocNode` objects based on content blocks.
+        If False, the entire document content is returned as a single node
+        containing the full Markdown text.
+    drop_types (List[str], optional): List of layout block types to be excluded from parsing results.
+        By default, this includes non-body elements such as headers, footers, page numbers, and seals.
+    post_func (Callable, optional): Optional post-processing function applied to the list of `DocNode`
+        objects after parsing.
+        The function must accept and return a `List[DocNode]`.
+    images_dir (str, optional): Directory used to save extracted image results.
+        If provided, images extracted during parsing will be written to this directory.
+''')
+
+add_example('rag.readers.PaddleOCRPDFReader', '''\
+from lazyllm.tools.rag.readers import PaddleOCRPDFReader
+reader = PaddleOCRPDFReader(url="http://0.0.0.0:9000")  # PaddleOCR server address
+nodes = reader("path/to/pdf")
+''')
 
 add_chinese_doc('rag.readers.MarkdownReader', '''\
 用于读取和解析 Markdown 文件的模块。支持去除超链接和图片，按标题和内容将 Markdown 划分成若干文本段落节点。
@@ -3137,8 +3211,26 @@ add_example('Retriever', '''
 >>> print(rm("user query"))
 ''')
 
+add_english_doc('rag.retriever.TempRetriever', '''
+TempRetriever Base class. used for `TempDocRetriever` and `ContextRetriever`.
+
+Args:
+    embed: The embedding function.
+    output_format: The format of the output result (e.g., JSON). Optional, defaults to None.
+    join: Whether to merge multiple result segments (set to True or specify a separator like "\n").
+''')
+
+add_chinese_doc('rag.retriever.TempRetriever', '''
+临时文档检索器基类，用于 `TempDocRetriever` 和 `ContextRetriever`。
+
+Args:
+    embed:嵌入函数。
+    output_format:结果输出格式(如json),可选默认为None
+    join:是否合并多段结果(True或用分隔符如"\n")
+''')
+
 add_english_doc('rag.retriever.TempDocRetriever', '''
-A temporary document retriever that inherits from ModuleBase and _PostProcess, used for quickly processing temporary files and performing retrieval tasks.
+A temporary document retriever that inherits from TempRetriever, used for quickly processing temporary files and performing retrieval tasks.
 
 Args:
     embed: The embedding function.
@@ -3147,7 +3239,7 @@ Args:
 ''')
 
 add_chinese_doc('rag.retriever.TempDocRetriever', '''
-临时文档检索器，继承自 ModuleBase 和 _PostProcess，用于快速处理临时文件并执行检索任务。
+临时文档检索器，继承自TempRetriever，用于快速处理临时文件并执行检索任务。
 
 Args:
     embed:嵌入函数。
@@ -3166,7 +3258,7 @@ add_example('rag.retriever.TempDocRetriever', '''
     print(results)
 ''')
 
-add_english_doc('rag.retriever.TempDocRetriever.create_node_group', '''
+add_english_doc('rag.retriever.TempRetriever.create_node_group', '''
 Create document processing node group for configuring document chunking and transformation strategies.
 
 Args:
@@ -3181,7 +3273,39 @@ Args:
 - self: Current instance supporting chained calls
 ''')
 
-add_chinese_doc('rag.retriever.TempDocRetriever.create_node_group', '''
+add_english_doc('rag.retriever.ContextRetriever', '''
+A context-based retriever that inherits from TempRetriever, designed to perform retrieval directly over in-memory text content rather than physical document files.
+
+It internally converts the provided context strings into temporary files using TempPathGenerator, builds retrievers on demand, and caches them for efficient reuse.
+
+Args:
+    embed: The embedding function used for vector-based retrieval. If not provided, a keyword-based method (e.g., BM25) is used.
+    output_format: The format of the output result (e.g., "text", "json"). Optional, defaults to None.
+    join: Whether to merge multiple retrieved segments. Can be True or a custom separator string such as "\\n".
+''')
+
+add_chinese_doc('rag.retriever.ContextRetriever', '''
+基于上下文内容的检索器，继承自 TempRetriever，用于直接对内存中的文本内容进行检索，而非依赖真实存在的文档文件。
+
+该检索器会通过 TempPathGenerator 将传入的上下文字符串临时转换为文件路径，
+在此基础上构建 Retriever，并使用 LRU 缓存以提升重复查询时的性能。
+
+Args:
+    embed: 用于向量检索的嵌入函数；若未提供，则自动退化为关键词检索（如 BM25）。
+    output_format: 结果输出格式（如 "text"、"json"），可选，默认 None。
+    join: 是否合并多段检索结果，可为 True 或自定义分隔符（如 "\\n"）。
+''')
+
+add_example('rag.retriever.ContextRetriever', '''\
+>>> ret = ContextRetriever(output_format='dict')
+>>> ret.create_node_group('block', transform=lambda x: x.split('\n'))
+>>> ret.add_subretriever(Document.CoarseChunk, topk=1)
+>>> ret.add_subretriever('block', topk=3)
+>>> ret([ctx1, ctx2], '大学')
+''')
+
+
+add_chinese_doc('rag.retriever.TempRetriever.create_node_group', '''
 创建文档处理节点组，用于配置文档的分块和转换策略。
 
 Args:
@@ -3196,7 +3320,7 @@ Args:
 - self: 支持链式调用的当前实例
 ''')
 
-add_english_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
+add_english_doc('rag.retriever.TempRetriever.add_subretriever', '''
 Add a sub-retriever with search configuration.
 
 Args:
@@ -3209,7 +3333,7 @@ Args:
 - self: For method chaining.
 ''')
 
-add_chinese_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
+add_chinese_doc('rag.retriever.TempRetriever.add_subretriever', '''
 添加带搜索配置的子检索器。
 
 Args:
@@ -4028,6 +4152,7 @@ Args:
     chunk_size (int): The size of the chunk after splitting.
     chunk_overlap (int): The length of the overlapping content between two adjacent chunks.
     num_workers (int): Controls the number of threads or processes used for parallel processing.
+    **kwargs: Additional parameters passed to the splitter.
 ''')
 
 add_chinese_doc('rag.transform.sentence.SentenceSplitter', '''
@@ -4036,7 +4161,8 @@ add_chinese_doc('rag.transform.sentence.SentenceSplitter', '''
 Args:
     chunk_size (int): 拆分之后的块大小
     chunk_overlap (int): 相邻两个块之间重合的内容长度
-    num_workers(int):控制并行处理的线程/进程数量
+    num_workers (int):控制并行处理的线程/进程数量
+    **kwargs: 传递给拆分器的额外参数。
 ''')
 
 add_example('rag.transform.sentence.SentenceSplitter', '''
@@ -4046,90 +4172,11 @@ add_example('rag.transform.sentence.SentenceSplitter', '''
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
 ''')
-
-add_chinese_doc('rag.transform.sentence.SentenceSplitter.split_text', '''\
-将输入文本按句子和块大小拆分为多个文本块。
-
-Args:
-    text (str): 待拆分的文本。
-    metadata_size (int): 附加元数据占用的长度，用于调整有效文本块大小。
-
-**Returns:**\n
-- List[str]: 拆分后的文本块列表。
-''')
-
-add_english_doc('rag.transform.sentence.SentenceSplitter.split_text', '''\
-Split the input text into multiple chunks based on sentence boundaries and chunk size.
+add_chinese_doc('rag.transform.sentence.SentenceSplitter.set_default', '''
+设置SentenceSplitter全局的默认参数。
 
 Args:
-    text (str): The text to be split.
-    metadata_size (int): Length occupied by additional metadata, used to adjust effective chunk size.
-
-**Returns:**\n
-- List[str]: List of resulting text chunks.
-''')
-
-add_english_doc('rag.transform.sentence.SentenceSplitter.from_tiktoken_encoder', '''
-Load the self-defined tiktoken encoder.
-
-Args:
-    encoding_name (str): The name of the encoding to use. Defaults to 'gpt2'.
-    model_name (Optional[str]): The name of the model to use.
-    allowed_special (Union[Literal['all'], AbstractSet[str]]): The special tokens to allow.
-    disallowed_special (Union[Literal['all'], Collection[str]]): The special tokens to disallow.
-    **kwargs: Additional parameters passed to the encoder.
-
-**Returns:**\n
-- SentenceSplitter: The SentenceSplitter instance.
-'''
-)
-
-add_chinese_doc('rag.transform.sentence.SentenceSplitter.from_tiktoken_encoder', '''
-加载自定义的tiktoken编码器。
-
-Args:
-    encoding_name (str): 编码器的名称。默认为'gpt2'。
-    model_name (Optional[str]): 模型的名称。
-    allowed_special (Union[Literal['all'], AbstractSet[str]]): 允许的特殊标记。
-    disallowed_special (Union[Literal['all'], Collection[str]]): 不允许的特殊标记。
-    **kwargs: 传递给编码器的额外参数。
-
-**Returns:**\n
-- SentenceSplitter: 返回SentenceSplitter实例。
-'''
-)
-
-add_example('rag.transform.sentence.SentenceSplitter.from_tiktoken_encoder', '''
->>> import lazyllm
->>> from lazyllm.tools import SentenceSplitter
->>> splitter = SentenceSplitter.from_tiktoken_encoder(model_name='gpt-4o-mini')
-''')
-
-add_english_doc('rag.transform.sentence.SentenceSplitter.from_huggingface_tokenizer', '''
-Load the self-defined huggingface tokenizer.
-
-Args:
-    tokenizer (Tokenizer): The tokenizer to use. Must be a Hugging Face tokenizer.
-
-**Returns:**\n
-- SentenceSplitter: The SentenceSplitter instance.
-'''
-)
-
-add_chinese_doc('rag.transform.sentence.SentenceSplitter.from_huggingface_tokenizer', '''
-加载自定义的huggingface tokenizer。
-
-Args:
-    tokenizer (Tokenizer): 要使用的tokenizer。必须是Hugging Face tokenizer。
-
-**Returns:**\n
-- SentenceSplitter: 返回SentenceSplitter实例。
-'''
-)
-add_example('rag.transform.sentence.SentenceSplitter.from_huggingface_tokenizer', '''
->>> import lazyllm
->>> from lazyllm.tools import SentenceSplitter
->>> splitter = SentenceSplitter.from_huggingface_tokenizer(tokenizer=tokenizer)
+    **kwargs: parameters passed to the splitter.
 ''')
 
 add_english_doc('rag.transform.character.CharacterSplitter', '''
@@ -4142,6 +4189,7 @@ Args:
     separator (str): The separator to use for splitting. Defaults to ' '.
     is_separator_regex (bool): Whether the separator is a regular expression. Defaults to False.
     keep_separator (bool): Whether to keep the separator in the split text. Defaults to False.
+    **kwargs: Additional parameters passed to the splitter.
 ''')
 
 add_chinese_doc('rag.transform.character.CharacterSplitter', '''
@@ -4149,11 +4197,12 @@ add_chinese_doc('rag.transform.character.CharacterSplitter', '''
 
 Args:
     chunk_size (int): 拆分之后的块大小
-    chunk_overlap (int): 相邻两个块之间重合的内容长度
-    num_workers(int):控制并行处理的线程/进程数量。
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
     separator (str): 用于拆分的分隔符。默认为' '。
     is_separator_regex (bool): 是否使用正则表达式作为分隔符。默认为False。
     keep_separator (bool): 是否保留分隔符在拆分后的文本中。默认为False。
+    **kwargs: 传递给拆分器的额外参数。
 ''')
 
 add_example('rag.transform.character.CharacterSplitter', '''
@@ -4162,100 +4211,6 @@ add_example('rag.transform.character.CharacterSplitter', '''
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="characters", transform=CharacterSplitter, chunk_size=1024, chunk_overlap=100)
-''')
-
-add_english_doc('rag.transform.character.CharacterSplitter.from_tiktoken_encoder', '''
-Load the self-defined tiktoken encoder.
-
-Args:
-    encoding_name (str): The name of the encoding to use. Defaults to 'gpt2'.
-    model_name (Optional[str]): The name of the model to use.
-    allowed_special (Union[Literal['all'], AbstractSet[str]]): The special tokens to allow.
-    disallowed_special (Union[Literal['all'], Collection[str]]): The special tokens to disallow.
-    **kwargs: Additional parameters passed to the encoder.
-
-**Returns:**\n
-- CharacterSplitter: The CharacterSplitter instance.
-''')
-
-add_chinese_doc('rag.transform.character.CharacterSplitter.from_tiktoken_encoder', '''
-加载自定义的tiktoken编码器。
-
-Args:
-    encoding_name (str): 编码器的名称。默认为'gpt2'。
-    model_name (Optional[str]): 模型的名称。
-    allowed_special (Union[Literal['all'], AbstractSet[str]]): 允许的特殊标记。
-    disallowed_special (Union[Literal['all'], Collection[str]]): 不允许的特殊标记。
-    **kwargs: 传递给编码器的额外参数。
-
-**Returns:**\n
-- CharacterSplitter: 返回CharacterSplitter实例。
-'''
-)
-
-add_example('rag.transform.character.CharacterSplitter.from_tiktoken_encoder', '''
->>> import lazyllm
->>> from lazyllm.tools import CharacterSplitter
->>> splitter = CharacterSplitter.from_tiktoken_encoder(model_name='gpt-4o-mini')
-''')
-
-add_english_doc('rag.transform.character.CharacterSplitter.from_huggingface_tokenizer', '''
-Load the self-defined huggingface tokenizer.
-
-Args:
-    tokenizer (Tokenizer): The tokenizer to use. Must be a Hugging Face tokenizer.
-
-**Returns:**\n
-- CharacterSplitter: The CharacterSplitter instance.
-'''
-)
-
-add_chinese_doc('rag.transform.character.CharacterSplitter.from_huggingface_tokenizer', '''
-加载自定义的huggingface tokenizer。
-
-Args:
-    tokenizer (Tokenizer): 要使用的tokenizer。必须是Hugging Face tokenizer。
-
-**Returns:**\n
-- CharacterSplitter: 返回CharacterSplitter实例。
-'''
-)
-
-add_example('rag.transform.character.CharacterSplitter.from_huggingface_tokenizer', '''
->>> import lazyllm
->>> from lazyllm.tools import CharacterSplitter
->>> splitter = CharacterSplitter.from_huggingface_tokenizer(tokenizer=tokenizer)
-''')
-
-add_english_doc('rag.transform.character.CharacterSplitter.split_text', '''
-Split the input text into multiple chunks based on characters.
-
-Args:
-    text (str): The text to be split.
-    metadata_size (int): Length occupied by additional metadata, used to adjust effective chunk size.
-
-**Returns:**\n
-- List[str]: List of resulting text chunks.
-''')
-
-add_chinese_doc('rag.transform.character.CharacterSplitter.split_text', '''
-将输入文本按字符拆分为多个文本块。
-
-Args:
-    text (str): 待拆分的文本。
-    metadata_size (int): 附加元数据占用的长度，用于调整有效文本块大小。
-
-**Returns:**\n
-- List[str]: 拆分后的文本块列表。
-''')
-
-add_example('rag.transform.character.CharacterSplitter.split_text', '''
->>> import lazyllm
->>> from lazyllm.tools import CharacterSplitter
->>> splitter = CharacterSplitter(separator='\n')
->>> text = 'Hello, world!'
->>> splits = splitter.split_text(text, metadata_size=0)
->>> print(splits)
 ''')
 
 add_english_doc('rag.transform.character.CharacterSplitter.set_split_fns', '''
@@ -4290,6 +4245,7 @@ Add a split function to the CharacterSplitter.
 Args:
     split_fn (Callable[[str], List[str]]): The split function to add.
     index (Optional[int]): The index to add the split function. Default to the last position.
+    bind_separator (bool): Whether to bind the separator to the split function. Default to False.
 ''')
 
 add_chinese_doc('rag.transform.character.CharacterSplitter.add_split_fn', '''
@@ -4298,6 +4254,7 @@ add_chinese_doc('rag.transform.character.CharacterSplitter.add_split_fn', '''
 Args:
     split_fn (Callable[[str], List[str]]): 要添加的拆分函数。
     index (Optional[int]): 要添加的拆分函数的位置。默认为最后一个位置。
+    bind_separator (bool): 是否将分隔符绑定到拆分函数。默认为False。
 ''')
 
 add_example('rag.transform.character.CharacterSplitter.add_split_fn', '''
@@ -4334,7 +4291,7 @@ Split text by characters recursively.
 
 Args:
     chunk_size (int): The size of the chunk after splitting.
-    chunk_overlap (int): The length of the overlapping content between two adjacent chunks.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
     num_workers (int): Controls the number of threads or processes used for parallel processing.
     keep_separator (bool): Whether to keep the separator in the split text. Defaults to False.
     is_separator_regex (bool): Whether the separator is a regular expression. Defaults to False.
@@ -4346,8 +4303,8 @@ add_chinese_doc('rag.transform.recursive.RecursiveSplitter', '''
 
 Args:
     chunk_size (int): 拆分之后的块大小
-    chunk_overlap (int): 相邻两个块之间重合的内容长度
-    num_workers(int):控制并行处理的线程/进程数量。
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
     keep_separator (bool): 是否保留分隔符在拆分后的文本中。默认为False。
     is_separator_regex (bool): 是否使用正则表达式作为分隔符。默认为False。
     separators (List[str]): 用于拆分的分隔符列表。默认为['\n\n', '\n', ' ', '']。如果你想按多个分隔符拆分，可以设置这个参数。
@@ -4361,177 +4318,12 @@ add_example('rag.transform.recursive.RecursiveSplitter', '''
 >>> documents.create_node_group(name="recursive", transform=RecursiveSplitter, chunk_size=1024, chunk_overlap=100)
 ''')
 
-add_english_doc('rag.transform.recursive.RecursiveSplitter.from_tiktoken_encoder', '''
-Load the self-defined tiktoken encoder.
-
-Args:
-    encoding_name (str): The name of the encoding to use. Defaults to 'gpt2'.
-    model_name (Optional[str]): The name of the model to use.
-    allowed_special (Union[Literal['all'], AbstractSet[str]]): The special tokens to allow.
-    disallowed_special (Union[Literal['all'], Collection[str]]): The special tokens to disallow.
-    **kwargs: Additional parameters passed to the encoder.
-
-**Returns:**\n
-- RecursiveSplitter: The RecursiveSplitter instance.
-'''
-)
-
-add_chinese_doc('rag.transform.recursive.RecursiveSplitter.from_tiktoken_encoder', '''
-加载自定义的tiktoken编码器。
-
-Args:
-    encoding_name (str): The name of the encoding to use. Defaults to 'gpt2'.
-    model_name (Optional[str]): The name of the model to use.
-    allowed_special (Union[Literal['all'], AbstractSet[str]]): The special tokens to allow.
-    disallowed_special (Union[Literal['all'], Collection[str]]): The special tokens to disallow.
-    **kwargs: Additional parameters passed to the encoder.
-
-**Returns:**\n
-- RecursiveSplitter: The RecursiveSplitter instance.
-'''
-)
-
-add_example('rag.transform.recursive.RecursiveSplitter.from_tiktoken_encoder', '''
->>> import lazyllm
->>> from lazyllm.tools import RecursiveSplitter
->>> splitter = RecursiveSplitter.from_tiktoken_encoder(model_name='gpt-4o-mini')
-''')
-
-add_english_doc('rag.transform.recursive.RecursiveSplitter.from_huggingface_tokenizer', '''
-Load the self-defined huggingface tokenizer.
-
-Args:
-    tokenizer (Tokenizer): The tokenizer to use. Must be a Hugging Face tokenizer.
-
-**Returns:**\n
-- RecursiveSplitter: The RecursiveSplitter instance.
-'''
-)
-
-add_chinese_doc('rag.transform.recursive.RecursiveSplitter.from_huggingface_tokenizer', '''
-加载自定义的huggingface tokenizer。
-
-Args:
-    tokenizer (Tokenizer): 要使用的tokenizer。必须是Hugging Face tokenizer。
-
-**Returns:**\n
-- RecursiveSplitter: The RecursiveSplitter instance.
-'''
-)
-
-add_example('rag.transform.recursive.RecursiveSplitter.from_huggingface_tokenizer', '''
->>> import lazyllm
->>> from lazyllm.tools import RecursiveSplitter
->>> splitter = RecursiveSplitter.from_huggingface_tokenizer(tokenizer=tokenizer)
-''')
-
-add_english_doc('rag.transform.recursive.RecursiveSplitter.split_text', '''
-Split the input text into multiple chunks based on characters recursively.
-
-Args:
-    text (str): The text to be split.
-    metadata_size (int): Length occupied by additional metadata, used to adjust effective chunk size.
-
-**Returns:**\n
-- List[str]: List of resulting text chunks.
-''')
-
-add_chinese_doc('rag.transform.recursive.RecursiveSplitter.split_text', '''
-将输入文本按字符递归拆分为多个文本块。
-
-Args:
-    text (str): 待拆分的文本。
-    metadata_size (int): 附加元数据占用的长度，用于调整有效文本块大小。
-
-**Returns:**\n
-- List[str]: 拆分后的文本块列表。
-''')
-
-add_example('rag.transform.recursive.RecursiveSplitter.split_text', '''
->>> import lazyllm
->>> from lazyllm.tools import RecursiveSplitter
->>> splitter = RecursiveSplitter(separators=['\n\n', '\n', ' ', ''])
->>> text = 'Hello, world!'
->>> splits = splitter.split_text(text, metadata_size=0)
->>> print(splits)
-''')
-
-add_english_doc('rag.transform.recursive.RecursiveSplitter.set_split_fns', '''
-RecursiveSplitter has default split functions, you can also set the split functions for the RecursiveSplitter.
-You can set multiple split functions, and the RecursiveSplitter will use them in order, the separators will be ignored.
-
-Args:
-    split_fns (List[Callable[[str], List[str]]]): The split functions to use.
-''')
-
-add_chinese_doc('rag.transform.recursive.RecursiveSplitter.set_split_fns', '''
-RecursiveSplitter有默认的拆分函数，你也可以设置自己的拆分函数。
-可以设置多个拆分函数，RecursiveSplitter会按顺序使用这些函数，分隔符参数将失效。
-
-Args:
-    split_fns (List[Callable[[str], List[str]]]): 要使用的拆分函数列表。
-''')
-
-add_example('rag.transform.recursive.RecursiveSplitter.set_split_fns', '''
->>> import lazyllm
->>> from lazyllm.tools import RecursiveSplitter
->>> splitter = RecursiveSplitter(separators=['\n\n', '\n', ' ', ''])
->>> splitter.set_split_fns([lambda text: text.split(' '), lambda text: text.split('\n')])
->>> text = 'Hello, world!'
->>> splits = splitter.split_text(text, metadata_size=0)
->>> print(splits)
-''')
-
-add_english_doc('rag.transform.recursive.RecursiveSplitter.add_split_fn', '''
-Add a split function to the RecursiveSplitter.
-
-Args:
-    split_fn (Callable[[str], List[str]]): The split function to add.
-    index (Optional[int]): The index to add the split function. Default to the last position.
-''')
-
-add_chinese_doc('rag.transform.recursive.RecursiveSplitter.add_split_fn', '''
-添加一个拆分函数到RecursiveSplitter。
-
-Args:
-    split_fn (Callable[[str], List[str]]): 要添加的拆分函数。
-    index (Optional[int]): 要添加的拆分函数的位置。默认为最后一个位置。
-''')
-
-add_example('rag.transform.recursive.RecursiveSplitter.add_split_fn', '''
->>> import lazyllm
->>> from lazyllm.tools import RecursiveSplitter
->>> splitter = RecursiveSplitter(separators=['\n\n', '\n', ' ', ''])
->>> splitter.add_split_fn(lambda text: text.split(' '), index=0)
->>> text = 'Hello, world!'
->>> splits = splitter.split_text(text, metadata_size=0)
->>> print(splits)
-''')
-
-add_english_doc('rag.transform.recursive.RecursiveSplitter.clear_split_fns', '''
-Clear all split functions from the RecursiveSplitter, and use the default split functions.
-''')
-
-add_chinese_doc('rag.transform.recursive.RecursiveSplitter.clear_split_fns', '''
-清除RecursiveSplitter的所有拆分函数，并使用默认的拆分函数。
-''')
-
-add_example('rag.transform.recursive.RecursiveSplitter.clear_split_fns', '''
->>> import lazyllm
->>> from lazyllm.tools import RecursiveSplitter
->>> splitter = RecursiveSplitter(separators=['\n\n', '\n', ' ', ''])
->>> splitter.clear_split_fns()
->>> text = 'Hello, world!'
->>> splits = splitter.split_text(text, metadata_size=0)
->>> print(splits)
-''')
-
 add_english_doc('rag.transform.markdown.MarkdownSplitter', '''
 Split markdown text by headers recursively.
 
 Args:
     chunk_size (int): The size of the chunk after splitting.
-    chunk_overlap (int): The length of the overlapping content between two adjacent chunks.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
     num_workers (int): Controls the number of threads or processes used for parallel processing.
     keep_trace (bool): Whether to keep the trace of the markdown text. Defaults to False.
     keep_headers (bool): Whether to keep the headers in the split text. Defaults to False.
@@ -4548,8 +4340,8 @@ add_chinese_doc('rag.transform.markdown.MarkdownSplitter', '''
 
 Args:
     chunk_size (int): 拆分之后的块大小
-    chunk_overlap (int): 相邻两个块之间重合的内容长度
-    num_workers(int):控制并行处理的线程/进程数量。
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
     keep_trace (bool): 是否保留markdown文本的追踪。默认为False。
     keep_headers (bool): 是否保留headers在拆分后的文本中。默认为False。
     keep_lists (bool): 是否保留lists在拆分后的文本中。默认为False。
@@ -4566,56 +4358,6 @@ add_example('rag.transform.markdown.MarkdownSplitter', '''
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="markdown", transform=MarkdownSplitter,
                                 chunk_size=1024, chunk_overlap=100, keep_trace=True, keep_headers=True)
-''')
-
-add_english_doc('rag.transform.markdown.MarkdownSplitter.from_tiktoken_encoder', '''
-Load the self-defined tiktoken encoder.
-
-Args:
-    encoding_name (str): The name of the encoding to use. Defaults to 'gpt2'.
-    model_name (Optional[str]): The name of the model to use.
-    allowed_special (Union[Literal['all'], AbstractSet[str]]): The special tokens to allow.
-    disallowed_special (Union[Literal['all'], Collection[str]]): The special tokens to disallow.
-    **kwargs: Additional parameters passed to the encoder.
-''')
-
-add_chinese_doc('rag.transform.markdown.MarkdownSplitter.from_tiktoken_encoder', '''
-加载自定义的tiktoken编码器。
-
-Args:
-    encoding_name (str): 编码器的名称。默认为'gpt2'。
-    model_name (Optional[str]): 模型的名称。
-    allowed_special (Union[Literal['all'], AbstractSet[str]]): 允许的特殊标记。
-    disallowed_special (Union[Literal['all'], Collection[str]]): 不允许的特殊标记。
-    **kwargs: 传递给编码器的额外参数。
-''')
-
-add_example('rag.transform.markdown.MarkdownSplitter.from_tiktoken_encoder', '''
->>> import lazyllm
->>> from lazyllm.tools import MarkdownSplitter
->>> splitter = MarkdownSplitter.from_tiktoken_encoder(model_name='gpt-4o-mini')
-''')
-
-add_english_doc('rag.transform.markdown.MarkdownSplitter.from_huggingface_tokenizer', '''
-Load the self-defined huggingface tokenizer.
-
-Args:
-    tokenizer (Tokenizer): The tokenizer to use.
-    **kwargs: Additional parameters passed to the tokenizer.
-''')
-
-add_chinese_doc('rag.transform.markdown.MarkdownSplitter.from_huggingface_tokenizer', '''
-加载自定义的huggingface tokenizer。
-
-Args:
-    tokenizer (Tokenizer): 要使用的tokenizer。
-    **kwargs: 传递给tokenizer的额外参数。
-''')
-
-add_example('rag.transform.markdown.MarkdownSplitter.from_huggingface_tokenizer', '''
->>> import lazyllm
->>> from lazyllm.tools import MarkdownSplitter
->>> splitter = MarkdownSplitter.from_huggingface_tokenizer(tokenizer=tokenizer)
 ''')
 
 add_english_doc('rag.transform.markdown.MarkdownSplitter.split_markdown_by_semantics', '''
@@ -4649,18 +4391,334 @@ add_example('rag.transform.markdown.MarkdownSplitter.split_markdown_by_semantics
 >>> print(splits)
 ''')
 
+add_english_doc('rag.transform.code.CodeSplitter', '''
+A code splitter that splits code text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    chunk_overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    filetype (Optional[str]): The file type to split. Defaults to None.
+    **kwargs: Additional parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter', '''
+一个代码拆分器，负责根据文件类型进行路由选择不同的拆分器。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
+    filetype (Optional[str]): 要拆分的文件类型。
+    **kwargs: 传递给拆分器的额外参数。
+''')
+
+add_example('rag.transform.code.CodeSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> splitter = CodeSplitter(filetype='python')
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.from_language', '''
+Load the language splitter by filetype if not specified in CodeSplitter initialization.
+
+Args:
+    filetype (str): The file type to split.
+**Returns:**\n
+    _LanguageSplitterBase: The language splitter.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.from_language', '''
+根据文件类型加载语言拆分器，如果未在CodeSplitter初始化中指定。
+
+Args:
+    filetype (str): 要拆分的文件类型。
+
+**Returns:**\n
+    _LanguageSplitterBase: 语言拆分器。
+''')
+
+add_example('rag.transform.code.CodeSplitter.from_language', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> splitter = CodeSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10)
+>>> splitter = splitter.from_language('python')
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.split_text', '''
+Split the code text into chunks.
+
+Args:
+    text (str): The text to split.
+    metadata_size (int): The size of the metadata.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.split_text', '''
+拆分代码文本为块。
+
+Args:
+    text (str): 要拆分的文本。
+    metadata_size (int): 元数据的尺寸。
+''')
+
+add_example('rag.transform.code.CodeSplitter.split_text', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> splitter = CodeSplitter(filetype='python')
+>>> text = 'print("Hello, World!")'
+>>> chunks = splitter.split_text(text)
+>>> print(chunks)
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.register_splitter', '''
+Register a language splitter.
+
+Args:
+    filetype (str): The file type to split.
+    splitter_class (Type[_LanguageSplitterBase]): The language splitter class.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.register_splitter', '''
+注册一个语言拆分器。
+
+Args:
+    filetype (str): 要拆分的文件类型。
+    splitter_class (Type[_LanguageSplitterBase]): 语言拆分器类。
+''')
+
+add_example('rag.transform.code.CodeSplitter.register_splitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> CodeSplitter.register_splitter('python', PythonSplitter)
+''')
+
+add_english_doc('rag.transform.code.CodeSplitter.get_supported_filetypes', '''
+Get the supported file types for CodeSplitter.
+
+**Returns:**\n
+    List[str]: The supported file types.
+''')
+
+add_chinese_doc('rag.transform.code.CodeSplitter.get_supported_filetypes', '''
+获取CodeSplitter支持的文件类型。
+
+**Returns:**\n
+    List[str]: 支持的文件类型。
+''')
+
+add_example('rag.transform.code.CodeSplitter.get_supported_filetypes', '''
+>>> import lazyllm
+>>> from lazyllm.tools import CodeSplitter
+>>> print(CodeSplitter.get_supported_filetypes())
+''')
+
+add_english_doc('rag.transform.code.HTMLSplitter', '''
+A HTML splitter that splits HTML text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    keep_sections (bool): Whether to keep the sections in the split text. Defaults to False.
+    keep_tags (bool): Whether to keep the tags in the split text. Defaults to False.
+    **kwargs: Additional parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.HTMLSplitter', '''
+一个HTML拆分器，负责拆分HTML文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
+    keep_sections (bool): 是否保留sections在拆分后的文本中。默认为False。
+    keep_tags (bool): 是否保留tags在拆分后的文本中。默认为False。
+    **kwargs: 传递给拆分器的额外参数。
+''')
+
+add_example('rag.transform.code.HTMLSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import HTMLSplitter
+>>> splitter = HTMLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, keep_sections=True, keep_tags=True)
+''')
+
+add_english_doc('rag.transform.code.JSONSplitter', '''
+A JSON splitter that splits JSON text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    compact_output (bool): Whether to compact the output. Defaults to True.\
+    **kwargs: Additional parameters passed to the splitter.
+''')
+
+add_chinese_doc('rag.transform.code.JSONSplitter', '''
+一个JSON拆分器，负责拆分JSON文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int): 控制并行处理的线程/进程数量。
+    compact_output (bool): 是否压缩输出。默认为True。
+    **kwargs: 传递给拆分器的额外参数。
+''')
+
+add_example('rag.transform.code.JSONSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONSplitter
+>>> splitter = JSONSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.JSONLSplitter', '''
+A JSONL splitter that splits JSONL text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    compact_output (bool): Whether to compact the output. Defaults to True.
+''')
+
+add_chinese_doc('rag.transform.code.JSONLSplitter', '''
+一个JSONL拆分器，负责拆分JSONL文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    compact_output (bool): 是否压缩输出。默认为True。
+''')
+
+add_example('rag.transform.code.JSONLSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONLSplitter
+>>> splitter = JSONLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.JSONLSplitter.split_text', '''
+Split the JSONL text into chunks.
+
+Args:
+    text (str): The text to split.
+    metadata_size (int): The size of the metadata.
+''')
+
+add_chinese_doc('rag.transform.code.JSONLSplitter.split_text', '''
+拆分JSONL文本为块。
+
+Args:
+    text (str): 要拆分的文本。
+    metadata_size (int): 元数据的尺寸。
+''')
+
+add_example('rag.transform.code.JSONLSplitter.split_text', '''
+>>> import lazyllm
+>>> from lazyllm.tools import JSONLSplitter
+>>> splitter = JSONLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> text = '{"name": "John", "age": 30}\n{"name": "Jane", "age": 25}'
+>>> chunks = splitter.split_text(text)
+>>> print(chunks)
+''')
+
+add_english_doc('rag.transform.code.YAMLSplitter', '''
+A YAML splitter that splits YAML text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    compact_output (bool): Whether to compact the output. Defaults to True.
+''')
+
+add_chinese_doc('rag.transform.code.YAMLSplitter', '''
+一个YAML拆分器，负责拆分YAML文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    compact_output (bool): 是否压缩输出。默认为True。
+''')
+
+add_example('rag.transform.code.YAMLSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import YAMLSplitter
+>>> splitter = YAMLSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, compact_output=True)
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.GeneralCodeSplitter', '''
+A general code splitter that splits code text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    filetype (str): The file type to split. Defaults to 'code'.
+''')
+
+add_chinese_doc('rag.transform.code.GeneralCodeSplitter', '''
+一个通用代码拆分器，负责拆分代码文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    filetype (str): 要拆分的文件类型。
+''')
+
+add_example('rag.transform.code.GeneralCodeSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import GeneralCodeSplitter
+>>> splitter = GeneralCodeSplitter(chunk_size=1024, chunk_overlap=100, num_workers=10, filetype='code')
+>>> print(splitter)
+''')
+
+add_english_doc('rag.transform.code.XMLSplitter', '''
+A XML splitter that splits XML text by semantics.
+
+Args:
+    chunk_size (int): The size of the chunk after splitting.
+    overlap (int): The length of the overlapping content between two adjacent chunks.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    keep_trace (bool): Whether to keep the trace in the split text. Defaults to False.
+    keep_tags (bool): Whether to keep the tags in the split text. Defaults to False.
+''')
+
+add_chinese_doc('rag.transform.code.XMLSplitter', '''
+一个XML拆分器，负责拆分XML文本的语义。
+
+Args:
+    chunk_size (int): 拆分之后的块大小
+    overlap (int): 相邻两个块之间重合的内容长度
+    num_workers (int):控制并行处理的线程/进程数量。
+    keep_trace (bool): 是否保留拆分文本中的trace。
+    keep_tags (bool): 是否保留拆分文本中的tags。
+''')
+
+add_example('rag.transform.code.XMLSplitter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import XMLSplitter
+>>> splitter = XMLSplitter(chunk_size=1024, overlap=100, num_workers=10, keep_trace=True, keep_tags=True)
+>>> print(splitter)
+''')
+
 add_english_doc('rag.transform.base.NodeTransform', '''
 Processes document nodes in batch, supporting both single-threaded and multi-threaded modes.
 
 Args:
-    num_workers(int): Controls whether multi-threading is enabled (enabled when >0).
+    num_workers (int): Controls whether multi-threading is enabled (enabled when >0).
 ''')
 
 add_chinese_doc('rag.transform.base.NodeTransform', '''
 批量处理文档节点，支持单线程/多线程模式。
 
 Args:
-    num_workers(int)：控制是否启用多线程（>0 时启用）。
+    num_workers (int)：控制是否启用多线程（>0 时启用）。
 ''')
 
 add_example('rag.transform.base.NodeTransform', '''
@@ -4738,8 +4796,8 @@ add_chinese_doc('rag.transform.factory.TransformArgs', '''
 Args:
     f(Union[str, Callable]):转换函数或注册的函数名。
     trans_node(bool):是否转换节点类型。
-    num_workers(int)：控制是否启用多线程（>0 时启用）。
-    kwargs(Dict):传递给转换函数的额外参数。
+    num_workers (int)：控制是否启用多线程（>0 时启用）。
+    kwargs(Dict): 传递给转换函数的额外参数。
     pattern(Union[str, Callable[[str], bool]]):文件名/内容匹配模式。
 ''')
 
@@ -4769,7 +4827,7 @@ Args:
     llm (TrainableModule): 可训练的模块
     language (str): 语言种类，目前只支持中文（zh）和英文（en）
     task_type (str): 目前支持两种任务：摘要（summary）和关键词抽取（keywords）。
-    num_workers(int):控制并行处理的线程/进程数量。
+    num_workers (int): 控制并行处理的线程/进程数量。
 ''')
 
 add_example('rag.transform.factory.LLMParser', '''

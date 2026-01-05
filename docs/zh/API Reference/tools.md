@@ -224,6 +224,34 @@
     memebers:
     exclude-members:
 
+::: lazyllm.tools.rag.transform.code.CodeSplitter
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.code.HTMLSplitter
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.code.JSONSplitter
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.code.JSONLSplitter
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.code.YAMLSplitter
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.code.GeneralCodeSplitter
+    members:
+    exclude-members:
+
+::: lazyllm.tools.rag.transform.code.XMLSplitter
+    members:
+    exclude-members:
+
 ::: lazyllm.tools.rag.transform.base.NodeTransform
     members:
     exclude-members:

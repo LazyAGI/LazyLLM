@@ -26,7 +26,7 @@ lint-flake8-only-diff:
 			git diff --name-status origin/main..HEAD -- 'lazyllm/**.py'  'docs/**.py' 'scripts/**.py' 'tests/**.py' 'examples/**.py'; \
 			git diff --cached --name-status -- 'lazyllm/**.py' 'docs/**.py' 'scripts/**.py' 'tests/**.py' 'examples/**.py'; \
 			git diff --name-status -- 'lazyllm/**.py' 'docs/**.py' 'scripts/**.py' 'tests/**.py' 'examples/**.py'; \
-		} | awk '$$1 ~ /^(A|M)$$/ {print $$2}' \
+		} | awk '$$1 ~ /^(A|M)$$/ {print $$2}' | sort -u \
 	);  \
 	if [ -n "$$FILES" ]; then \
 		echo "➡️  Running flake8 on:"; \
@@ -51,3 +51,13 @@ lint-print:
 
 lint: install-flake8 lint-flake8 lint-print
 lint-only-diff: install-flake8 lint-flake8-only-diff lint-print
+poetry-install:
+	cp pyproject.toml pyproject.toml.backup; \
+	python scripts/generate_toml_optional_deps.py; \
+	poetry install; \
+	mv pyproject.toml.backup pyproject.toml
+poetry-lock:
+	cp pyproject.toml pyproject.toml.backup; \
+	python scripts/generate_toml_optional_deps.py; \
+	poetry lock; \
+	mv pyproject.toml.backup pyproject.toml

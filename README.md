@@ -84,7 +84,7 @@ base = TrainableModule('internlm2-chat-7b')
 with IntentClassifier(base) as ic:
     ic.case['Chat', base]
     ic.case['Speech Recognition', TrainableModule('SenseVoiceSmall')]
-    ic.case['Image QA', TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)]
+    ic.case['Image QA', TrainableModule('InternVL3_5-1B').deploy_method(deploy.LMDeploy)]
     ic.case['Drawing', pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-diffusion-3-medium'))]
     ic.case['Generate Music', pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))]
     ic.case['Text to Speech', TrainableModule('ChatTTS')]
@@ -196,8 +196,6 @@ git clone git@github.com:LazyAGI/LazyLLM.git
 cd LazyLLM
 pip install -r requirements.txt
 ```
-
-If you want to fine-tune, deploy inference services, or build RAG applications, you need to use `pip install -r requirements.full.txt`
 
 ### Installation on Windows or macOS
 

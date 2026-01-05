@@ -1,7 +1,9 @@
 # -*- coding: utf-8 -*-
 
-__version__ = '0.6.4dev'
+__version__ = '0.7.1'
 
+import importlib
+import builtins
 from .configs import config
 from .configs import * # noqa F401 of Config
 from .common import *  # noqa F403
@@ -13,23 +15,31 @@ from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeploy
 
 from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModule, ActionModule,
                      ServerModule, TrialModule, register as module_register,
-                     OnlineChatModule, OnlineEmbeddingModule, AutoModel, OnlineMultiModalModule)
+                     OnlineModule, OnlineChatModule, OnlineEmbeddingModule, AutoModel, OnlineMultiModalModule)
 from .hook import LazyLLMHook, LazyLLMFuncHook
-from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
-                    FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
-                    LLMParser)
-from .docs import add_doc
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
+                        FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
+                        LLMParser)
 from .patch import patch_os_env
-
+from .docs import add_doc
 config.done()
+
 patch_os_env(lambda key, value: config.refresh(key), config.refresh)
-
-
 
 del LazyLLMRegisterMetaClass  # noqa F821
 del LazyLLMRegisterMetaABCClass  # noqa F821
 del _get_base_cls_from_registry  # noqa F821
 del patch_os_env
+
+
+def __getattr__(name: str):
+    if name in __all__:
+        tools = importlib.import_module('lazyllm.tools')
+        builtins.globals()[name] = value = getattr(tools, name)
+        return value
+    raise AttributeError(f"module 'lazyllm' has no attribute '{name}'")
 
 
 __all__ = [
@@ -62,6 +72,7 @@ __all__ = [
     'WebModule',
     'TrialModule',
     'module_register',
+    'OnlineModule',
     'OnlineChatModule',
     'OnlineEmbeddingModule',
     'OnlineMultiModalModule',

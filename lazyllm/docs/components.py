@@ -592,6 +592,101 @@ add_example('auto.AutoFinetune', '''\
 <lazyllm.llm.finetune type=AlpacaloraFinetune>
 ''')
 
+
+# Finetune-EasyR1Finetune
+add_chinese_doc('finetune.EasyR1Finetune', '''\
+此类是 ``LazyLLMFinetuneBase`` 的子类，基于 [EasyR1](https://github.com/hiyouga/EasyR1) 框架提供的强化学习的能力，用于对大语言模型进行强化学习训练。
+
+Args:
+    base_model: 用于进行训练的基模型路径。支持本地路径，若路径不存在则尝试从配置的模型路径中查找。
+    target_path: 训练完成后，模型权重保存的目标路径。
+    merge_path (str, optional): 同 ``target_path``，不需要配置。
+    launcher (lazyllm.launcher, optional): 训练任务的启动器，默认为``None``, 使用单卡同步远程启动器 ``launchers.remote(ngpus=1, sync=True)``。
+    **kw: 关键字参数，用于动态覆盖默认训练配置中的参数。
+
+此类的关键字参数及其默认值如下：
+
+Keyword Args:
+    data.max_prompt_length (int): 默认值是：``2048``。用于限定输入 prompt 的最大 token 长度，超出会根据实现截断或丢弃多余 tokens。
+    data.max_response_length (int): 默认值是：``2048``。模型生成时允许的最大响应长度（token 数）。
+    data.rollout_batch_size (int): 默认值是：``128``。rollout（策略采样/生成）时的 batch 大小，增大可提高吞吐但占用更多显存。
+    data.val_batch_size (int): 默认值是：``1024``。验证/评估阶段的 batch 大小，通常可设大以提高评估效率，但受显存限制。
+    data.format_prompt (typing.Optional[typing.Union[str, callable]]): 默认值是：``None``。用于将原始样本格式化为模型输入 prompt 的模板或函数。为 ``None`` 时使用框架/数据集默认格式化逻辑。
+    worker.actor.global_batch_size (int): 默认值是：``128``。actor（用于生成与训练的组件）的一次更新对应的全局 batch 大小。
+    worker.actor.micro_batch_size_per_device_for_update (int): 默认值是：``4``。训练更新（反向传播）阶段每个设备上的微批大小，用于计算梯度累积步数。
+    worker.actor.micro_batch_size_per_device_for_experience (int): 默认值是：``16``。生成经验（rollout）阶段每个设备上的微批大小，通常大于更新阶段以提高采样吞吐。
+    worker.rollout.gpu_memory_utilization (float): 默认值是：``0.6``。控制 rollout 阶段每张 GPU 可用显存比例，框架会据此估算可用 batch/并行度以避免 OOM。
+    worker.rollout.tensor_parallel_size (int): 默认值是：``1``。rollout/采样阶段使用的 tensor 并行度大小，>1 时启用张量并行以分摊显存与计算。
+    worker.reward.reward_function (typing.Optional[typing.Union[str, callable]]): 默认值是：``None``。用于计算 reward 的函数或可识别标识。函数原型通常为 func(samples) -> rewards。自定义 reward 函数须高效且可序列化（或可在子进程/远程环境中调用），以免成为训练瓶颈。
+    trainer.total_epochs (int): 默认值是：``2``。训练的总轮次。对于强化学习微调场景通常不需很大轮次，可通过 rollout 次数与 batch 调整训练强度。
+    trainer.n_gpus_per_node (int): 默认值是：``1``。每个节点上用于训练的 GPU 数量。
+    trainer.save_freq (int): 默认值是：``5``。以 epoch 为单位的 checkpoint 保存频率。设置为 0 或负值的行为由实现决定（可能只在结束时保存）。
+    trainer.save_checkpoint_path (typing.Optional[str]): 默认值是：``None``。指定 checkpoint 的保存路径，若 ``None`` 则使用 ``target_path`` 或框架默认路径。
+    trainer.save_model_only (bool): 默认值是：``False``。是否仅保存模型权重而不保存优化器/调度器等训练状态。
+''')
+
+add_english_doc('finetune.EasyR1Finetune', '''\
+This class is a subclass of ``LazyLLMFinetuneBase`` and provides reinforcement learning training capabilities for large language models using the EasyR1 framework (https://github.com/hiyouga/EasyR1).
+
+Args:
+    base_model (str): Path to the base model used for training. A local path is supported; if the path does not exist it will try to locate the model from configured model locations.
+    target_path (str): Destination path where the trained model weights will be saved.
+    merge_path (str, optional): Same purpose as ``target_path``; not required in most cases.
+    launcher (lazyllm.launcher, optional): Launcher used to start the training job. Defaults to ``None``, in which case a single-GPU synchronous remote launcher ``launchers.remote(ngpus=1, sync=True)`` is used.
+    **kw: Additional keyword arguments used to dynamically override parameters in the default training configuration.
+
+The following keyword arguments and their default values are supported:
+
+Keyword Args:
+    data.max_prompt_length (int): Default: ``2048``. Maximum number of tokens allowed for the input prompt. Inputs longer than this will be truncated or otherwise handled according to the implementation.
+    data.max_response_length (int): Default: ``2048``. Maximum number of tokens the model is allowed to generate as a response.
+    data.rollout_batch_size (int): Default: ``128``. Batch size used during rollouts (policy sampling/generation). Increasing this can improve throughput but will use more GPU memory.
+    data.val_batch_size (int): Default: ``1024``. Batch size used during validation/evaluation. This can typically be set large to speed up evaluation, subject to memory limits.
+    data.format_prompt (typing.Optional[typing.Union[str, callable]]): Default: ``None``. Template string or callable used to format raw examples into model prompts. If ``None``, the framework or dataset default formatting is used.
+    worker.actor.global_batch_size (int): Default: ``128``. Global batch size per update for actors (components responsible for generation and interaction with the environment).
+    worker.actor.micro_batch_size_per_device_for_update (int): Default: ``4``. Micro-batch size per device for the optimization/update phase; used to determine gradient accumulation steps.
+    worker.actor.micro_batch_size_per_device_for_experience (int): Default: ``16``. Micro-batch size per device during experience generation (rollout); typically larger than the update micro-batch to increase sampling throughput.
+    worker.rollout.gpu_memory_utilization (float): Default: ``0.6``. Fraction of each GPU's memory available for rollout. The framework uses this to estimate safe batch sizes/parallelism to avoid OOM.
+    worker.rollout.tensor_parallel_size (int): Default: ``1``. Tensor parallelism degree during rollout/sampling. Values >1 enable tensor parallelism to share memory and computation across devices.
+    worker.reward.reward_function (typing.Optional[typing.Union[str, callable]]): Default: ``None``. A function or identifiable name used to compute rewards. Typical signature is ``func(samples) -> rewards``. Custom reward functions should be efficient and serializable (or callable in worker/subprocess/remote environments) to avoid becoming a training bottleneck.
+    trainer.total_epochs (int): Default: ``2``. Total number of training epochs. In RL fine-tuning scenarios this usually does not need to be large; training intensity is commonly adjusted via number of rollouts and batch sizes.
+    trainer.n_gpus_per_node (int): Default: ``1``. Number of GPUs used per node for training.
+    trainer.save_freq (int): Default: ``5``. Checkpoint save frequency measured in epochs. Behavior for 0 or negative values is implementation-defined (for example, only saving at the end).
+    trainer.save_checkpoint_path (typing.Optional[str]): Default: ``None``. Path to save checkpoints. If ``None``, ``target_path`` or the framework default path is used.
+    trainer.save_model_only (bool): Default: ``False``. Whether to save only model weights (``True``) instead of saving optimizer/scheduler and other training state.
+''')
+
+add_example('finetune.EasyR1Finetune', '''\
+>>> from lazyllm import finetune
+>>> finetune.easyr1('qwen2-0.5b-instruct', 'path/to/target')
+<lazyllm.llm.finetune type=EasyR1Finetune>
+''')
+
+add_chinese_doc('finetune.EasyR1Finetune.cmd', """\
+生成EasyR1训练命令序列。
+
+Args:
+    trainset (str): 训练数据集路径(支持相对lazyllm.config['data_path']的路径)
+    valset (str, optional): 验证数据集路径
+
+**Returns:**\n
+- str: 完整的shell命令字符串，包含:
+    - 训练命令(自动配置参数)
+    - 日志重定向(保存到目标路径)
+""")
+
+add_english_doc('finetune.EasyR1Finetune.cmd', """\
+Generate EasyR1 fine-tuning command sequence.
+Args:
+    trainset (str): Training dataset path (supports relative path to lazyllm.config['data_path'])
+    valset (str, optional): Validation dataset path
+
+**Returns:**\n
+- str: Complete shell command string containing:
+    - Training command (with auto-configured parameters)
+    - Log redirection (saved to target path)
+""")
+
 # ============= Deploy
 
 add_chinese_doc('LazyLLMDeployBase', '''\
@@ -1522,7 +1617,7 @@ add_example('deploy.LMDeploy', '''\
 >>> import lazyllm
 >>> from lazyllm import deploy, globals
 >>> from lazyllm.components.formatter import encode_query_with_filepaths
->>> chat = lazyllm.TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)
+>>> chat = lazyllm.TrainableModule('InternVL3_5-1B').deploy_method(deploy.LMDeploy)
 >>> chat.update_server()
 >>> inputs = encode_query_with_filepaths('What is it?', ['path/to/image'])
 >>> res = chat(inputs)

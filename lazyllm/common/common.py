@@ -1,16 +1,18 @@
-from abc import ABCMeta
 import re
 import os
-import builtins
-import typing
-from typing import Any, Callable, Optional, List, Dict
-from contextlib import contextmanager
 import copy
-import threading
-import types
 import json
+import types
+import typing
+import builtins
+import tempfile
+import threading
+from abc import ABCMeta
+from pathlib import Path
 from ..configs import config
 from urllib.parse import urlparse
+from contextlib import contextmanager
+from typing import Any, Callable, Optional, List, Dict, Iterable
 
 try:
     from typing import final
@@ -34,8 +36,9 @@ class FlatList(list):
 
 
 class ArgsDict(dict):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, with_line=True, **kwargs):
         super(ArgsDict, self).__init__(*args, **kwargs)
+        self._with_line = with_line
 
     def check_and_update(self, kw):
         if not kw.pop('skip_check', config['deploy_skip_check_kw']):
@@ -47,7 +50,10 @@ class ArgsDict(dict):
         for k, v in self.items():
             if type(v) is dict:
                 v = json.dumps(v).replace('\"', '\\\"')
-            string.append(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"')
+            if self._with_line:
+                string.append(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"')
+            else:
+                string.append(f'{k}={v}' if type(v) is not str else f'{k}=\"{v}\"')
         string = ' '.join(string)
         return string
 
@@ -494,3 +500,27 @@ class SingletonMeta(type):
 
 
 class SingletonABCMeta(SingletonMeta, ABCMeta): pass
+
+
+class TempPathGenerator(object):
+    def __init__(self, contents: Iterable[str], *, suffix: str = '.txt', encoding: str = 'utf-8', persist: bool = False):
+        if isinstance(contents, str): contents = [contents]
+        self._contents, self._suffix, self._encoding, self._persist = list(contents), suffix, encoding, persist
+        self._tmpdir = None
+        self._paths: List[str] = []
+
+    def __enter__(self) -> List[str]:
+        if self._tmpdir: raise RuntimeError('TempPathGenerator is not thread-safe, please create a new object.')
+        self._tmpdir = tempfile.TemporaryDirectory()
+        base = Path(self._tmpdir.name)
+
+        self._paths = []
+        for i, text in enumerate(self._contents):
+            p = base / f'{i}{self._suffix}'
+            p.write_text(text, encoding=self._encoding)
+            self._paths.append(str(p))
+        return self._paths
+
+    def __exit__(self, exc_type, exc, tb):
+        if not self._persist:
+            self._tmpdir.cleanup()
