@@ -188,6 +188,16 @@ class TestDocument(unittest.TestCase):
         assert doc2.manager == doc.manager
         doc.stop()
 
+    def test_get_nodes(self):
+        doc = Document('rag_master')
+        doc.create_node_group('chunk1', parent=Document.CoarseChunk,
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
+        doc.activate_groups(groups=['chunk1'])
+        nodes = doc.get_nodes(group='chunk1', numbers=[2])
+        assert len(nodes) > 0
+        for n in nodes:
+            assert n.number == 2
+
 
 class TestTempRetriever():
     def test_temp_retriever(self):
