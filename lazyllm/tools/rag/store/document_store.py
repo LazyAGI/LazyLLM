@@ -211,9 +211,11 @@ class _DocumentStore(object):
             raise
 
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                  group: Optional[str] = None, kb_id: Optional[str] = None, **kwargs) -> List[DocNode]:
+                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None,
+                  **kwargs) -> List[DocNode]:
         try:
-            segments = self.get_segments(uids, doc_ids, group, kb_id, **kwargs)
+            segments = self.get_segments(uids=uids, doc_ids=doc_ids, group=group,
+                                         kb_id=kb_id, numbers=numbers, **kwargs)
             return [self._deserialize_node(segment) for segment in segments]
         except Exception as e:
             LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to get nodes: {e}')
@@ -231,12 +233,14 @@ class _DocumentStore(object):
             if uids:
                 criteria = {'uid': uids}
             if doc_ids:
-                criteria = {RAG_DOC_ID: doc_ids}
+                criteria[RAG_DOC_ID] = list(set(doc_ids))
             if kb_id:
                 criteria[RAG_KB_ID] = kb_id
             # for find method, parent id should be in the criteria
             if kwargs.get('parent'):
                 criteria['parent'] = kwargs['parent']
+            if kwargs.get('numbers'):
+                criteria['number'] = list(set(kwargs['numbers']))
             if not group:
                 groups = self._activated_groups
             else:

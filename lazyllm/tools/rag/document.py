@@ -1,5 +1,5 @@
 import os
-from typing import Callable, Optional, Dict, Union, List, Type
+from typing import Callable, Optional, Dict, Union, List, Type, Set
 from functools import cached_property
 from pydantic import BaseModel
 import lazyllm
@@ -384,6 +384,11 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def register_schema_set(self, schema_set: Type[BaseModel], kb_id: Optional[str] = DEFAULT_KB_ID,
                             force_refresh: bool = False) -> str:
         return self._forward('_register_schema_set', schema_set, kb_id, force_refresh)
+    
+    def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
+                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
+                  ) -> List[DocNode]:
+        return self._forward('_get_nodes', uids, doc_ids, group, kb_id, numbers)
 
     def _get_post_process_tasks(self):
         return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))
@@ -408,6 +413,11 @@ class UrlDocument(ModuleBase):
 
     def forward(self, *args, **kw):
         return self._forward('retrieve', *args, **kw)
+
+    def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
+                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
+                  ) -> List[DocNode]:
+        return self._forward('_get_nodes', uids, doc_ids, group, kb_id, numbers)
 
     @cached_property
     def active_node_groups(self):

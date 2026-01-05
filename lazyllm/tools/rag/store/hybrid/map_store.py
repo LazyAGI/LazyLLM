@@ -65,6 +65,7 @@ class MapStore(LazyLLMStoreBase):
         cursor.execute(f'CREATE INDEX IF NOT EXISTS idx_{table}_parent ON {table}(parent)')
         cursor.execute(f'CREATE INDEX IF NOT EXISTS idx_{table}_docid ON {table}(doc_id)')
         cursor.execute(f'CREATE INDEX IF NOT EXISTS idx_{table}_kbid ON {table}(kb_id)')
+        cursor.execute(f'CREATE INDEX IF NOT EXISTS idx_{table}_number ON {table}(number)')
 
     def _save_to_uri(self, collection_name: str, data: List[dict]):
         with self._lock:
@@ -93,6 +94,7 @@ class MapStore(LazyLLMStoreBase):
         self._col_kb_doc_uids: Dict[str, Dict[str, Dict[str, Set[str]]]] = defaultdict(
             lambda: defaultdict(lambda: defaultdict(set)))
         self._col_parent_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
+        self._col_number_uids: Dict[str, Dict[int, Set[str]]] = defaultdict(lambda: defaultdict(set))
         self._lock = threading.Lock()
         if self._uri:
             db_path = Path(self._uri)
@@ -124,6 +126,7 @@ class MapStore(LazyLLMStoreBase):
                 self._col_kb_doc_uids[collection_name][kb_id][doc_id].add(uid)
                 self._col_doc_uids[collection_name][doc_id].add(uid)
                 self._col_parent_uids[collection_name][item.get('parent')].add(uid)
+                self._col_number_uids[collection_name][item.get('number')].add(uid)
             return True
         except Exception as e:
             LOG.error(f'[MapStore - upsert] Error upserting data: {e}')
@@ -136,7 +139,7 @@ class MapStore(LazyLLMStoreBase):
                 with self._lock:
                     conn = self._open_conn()
                     cur = conn.cursor()
-                    where, args = self._build_where(collection_name, criteria)
+                    where, args = self._build_where(criteria)
                     cur.execute(f'DELETE FROM {collection_name} {where}', args)
                     conn.commit()
                     affected_rows = cur.rowcount
@@ -146,11 +149,12 @@ class MapStore(LazyLLMStoreBase):
                         data = self._uid2data.pop(uid, None)
                         if not data: continue
                         kb_id = data.get(RAG_KB_ID, DEFAULT_KB_ID)
-                        doc_id = data.get('doc_id'); parent = data.get('parent')
+                        doc_id = data.get('doc_id')
                         self._collection2uids[collection_name].discard(uid)
                         self._col_kb_doc_uids[collection_name][kb_id][doc_id].discard(uid)
                         self._col_doc_uids[collection_name][doc_id].discard(uid)
-                        self._col_parent_uids[collection_name][parent].discard(uid)
+                        self._col_parent_uids[collection_name][data.get('parent')].discard(uid)
+                        self._col_number_uids[collection_name][data.get('number')].discard(uid)
                 return True
             else:
                 need_delete = self._get_uids_by_criteria(collection_name, criteria)
@@ -162,11 +166,11 @@ class MapStore(LazyLLMStoreBase):
                         continue
                     kb_id = data.get(RAG_KB_ID, DEFAULT_KB_ID)
                     doc_id = data.get('doc_id')
-                    parent = data.get('parent')
                     self._collection2uids[collection_name].remove(uid)
                     self._col_kb_doc_uids[collection_name][kb_id][doc_id].remove(uid)
                     self._col_doc_uids[collection_name][doc_id].remove(uid)
-                    self._col_parent_uids[collection_name][parent].remove(uid)
+                    self._col_parent_uids[collection_name][data.get('parent')].remove(uid)
+                    self._col_number_uids[collection_name][data.get('number')].remove(uid)
             return True
         except Exception as e:
             LOG.error(f'[MapStore - delete] Error deleting data: {e}')
@@ -179,7 +183,7 @@ class MapStore(LazyLLMStoreBase):
                 conn = self._open_conn()
                 cur = conn.cursor()
                 self._ensure_table(cur, collection_name)
-                where, args = self._build_where(collection_name, criteria)
+                where, args = self._build_where(criteria)
                 cur.execute(f'''SELECT uid, doc_id, "group", content, meta, global_meta, type, number, kb_id,
                                 excluded_embed_metadata_keys, excluded_llm_metadata_keys, parent, answer, image_keys
                                 FROM {collection_name}{where}''', args)
@@ -193,12 +197,13 @@ class MapStore(LazyLLMStoreBase):
                     self._col_doc_uids[collection_name][item['doc_id']].add(item['uid'])
                     self._col_kb_doc_uids[collection_name][item['kb_id']][item['doc_id']].add(item['uid'])
                     self._col_parent_uids[collection_name][item['parent']].add(item['uid'])
+                    self._col_number_uids[collection_name][item['number']].add(item['uid'])
             return res
         else:
             uids = self._get_uids_by_criteria(collection_name, criteria)
             return [self._uid2data[uid] for uid in uids if uid in self._uid2data]
 
-    def _build_where(self, collection_name: str, criteria: dict):
+    def _build_where(self, criteria: dict):
         if not criteria:
             return '', ()
         clauses, args = [], []
@@ -206,6 +211,7 @@ class MapStore(LazyLLMStoreBase):
         kb_id = criteria.get(RAG_KB_ID)
         doc_ids = criteria.get(RAG_DOC_ID)
         parents = criteria.get('parent')
+        numbers = criteria.get('number')
         if uids:
             placeholders = ','.join('?' for _ in uids)
             clauses.append(f'uid IN ({placeholders})')
@@ -220,6 +226,10 @@ class MapStore(LazyLLMStoreBase):
             placeholders = ','.join('?' for _ in parents)
             clauses.append(f'parent IN ({placeholders})')
             args.extend(parents)
+        if numbers:
+            placeholders = ','.join('?' for _ in numbers)
+            clauses.append(f'number IN ({placeholders})')
+            args.extend(numbers)
         where = (' WHERE ' + ' AND '.join(clauses)) if clauses else ''
         return where, tuple(args)
 
@@ -231,6 +241,7 @@ class MapStore(LazyLLMStoreBase):
             kb_id = criteria.get(RAG_KB_ID)
             doc_ids = criteria.get(RAG_DOC_ID, [])
             parents = criteria.get('parent', [])
+            numbers = criteria.get('number', [])
             if uids:
                 return [uid for uid in uids if uid in self._collection2uids.get(collection_name, set())]
             elif kb_id and doc_ids:
@@ -245,6 +256,9 @@ class MapStore(LazyLLMStoreBase):
             elif parents:
                 return [uid for parent in parents for uid in
                         self._col_parent_uids.get(collection_name, {}).get(parent, ())]
+            elif numbers:
+                return [uid for number in numbers for uid in
+                        self._col_number_uids.get(collection_name, {}).get(number, ())]
             else:
                 raise ValueError(f'[MapStore - get] Invalid criteria: {criteria}')
 
