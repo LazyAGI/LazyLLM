@@ -194,7 +194,7 @@ class ContextRetriever(TempRetriever):
 
 
 class _CompositeRetrieverBase(_RetrieverBase, _PostProcess):
-    def __init__(self, *retrievers: List[Retriever], strict: bool = True,
+    def __init__(self, *retrievers: List[Retriever], strict: bool = True, topk: Optional[int] = None,
                  output_format: Optional[str] = None, join: Union[bool, str] = False):
         super().__init__()
         if retrievers:
@@ -236,9 +236,9 @@ class _CompositeRetrieverBase(_RetrieverBase, _PostProcess):
                 raise RuntimeError(f'You should set output_format / join to {self.__class__} instead of sub-retrievers')
         self._further_check(retrievers)
 
-    def _get_cached_value(self, name):
+    def _get_cached_value(self, name, default=None):
         if not getattr(self, '_cached_values', None) is None:
-            self._cached_values = [r.get(name, None) for r in self._items]
+            self._cached_values = [r.get(name, default) for r in self._items]
         return self._cached_values
 
     def _get_real_params(self, params, name, checkf, default, err_msg):
@@ -259,42 +259,45 @@ class _CompositeRetrieverBase(_RetrieverBase, _PostProcess):
 
 class WeightedRetriever(_CompositeRetrieverBase):
     def _further_check(self, retrievers: List[Retriever]):
-        if any(hasattr(r, 'priority') for r in retrievers):
+        if any(getattr(r, 'priority', None) for r in retrievers):
             raise RuntimeError('priority is not allowed in `WeightedRetriever`.')
-        if all(hasattr(r, '_weight') for r in retrievers):
+        if all(getattr(r, 'weight', None) for r in retrievers):
             self._valid = True
-        elif any(hasattr(r, '_weight') for r in retrievers):
+        elif any(getattr(r, 'weight', None) for r in retrievers):
             raise RuntimeError('All retrievers must define a "weight" attribute if any retriever defines one.')
 
     def _combine(self, result: List[List[DocNode]], weights: List[float]):
         return sum(result, [])
 
     @property
-    def _weights(self): return self._get_cached_value('_weight')
+    def _weights(self): return self._get_cached_value('weight')
+
+    @staticmethod
+    def _normalize(weights: List[float]):
+        sum_weight = sum(weights, 0)
+        return [w / sum_weight for w in weights]
 
     def forward(self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                 *, weights: Optional[List[float]] = None, **kwargs):
         weights = self._get_real_params(weights, 'weights', (lambda x: isinstance(x, (int, float))),
                                         self._weights, '(int, float)')
+        weights = self._normalize(weights)
         rs = self._retrievers(query, filters, **kwargs)
         return self._post_process(self._combine(rs, weights))
 
 
 class PriorityRetriever(_CompositeRetrieverBase):
     def _further_check(self, retrievers: List[Retriever]):
-        if any(hasattr(r, 'weight') for r in retrievers):
+        if any(getattr(r, 'weight', None) for r in retrievers):
             raise RuntimeError('weight is not allowed in `PriorityRetriever`.')
-        if all(hasattr(r, '_priority') for r in retrievers):
-            self._valid = True
-        elif any(hasattr(r, '_priority') for r in retrievers):
-            raise RuntimeError('All retrievers must define a "priority" attribute if any retriever defines one.')
+        self._valid = True
 
     def _combine(self, result: List[List[DocNode]], priorities: List[Retriever.Priority]):
         return sum(result, [])
 
     @property
     def _priorities(self):
-        return self._get_cached_value('_priority')
+        return self._get_cached_value('priority', Retriever.Priority.normal)
 
     def forward(self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                 *, priorities: Optional[List[Retriever.Priority]] = None, **kwargs):
