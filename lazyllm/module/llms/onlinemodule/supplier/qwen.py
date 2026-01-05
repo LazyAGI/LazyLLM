@@ -11,6 +11,7 @@ from http import HTTPStatus
 from lazyllm.thirdparty import dashscope
 from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.components.formatter import encode_query_with_filepaths
+from lazyllm import LOG
 
 
 class QwenModule(OnlineChatModuleBase, FileHandlerBase):
@@ -386,7 +387,7 @@ class QwenSTTModule(QwenMultiModal):
                     result_text += re.sub(r'<[^>]+>', '', transcript['text'])
             return result_text
         else:
-            lazyllm.LOG.error(f'failed to transcribe: {transcribe_response.output}')
+            LOG.error(f'failed to transcribe: {transcribe_response.output}')
             raise Exception(f'failed to transcribe: {transcribe_response.output.message}')
 
 class QwenTextToImageModule(QwenMultiModal):
@@ -431,35 +432,35 @@ class QwenTextToImageModule(QwenMultiModal):
                     image_url = content['image']
                     if image_url:
                         image_urls.append(image_url)
-                        lazyllm.LOG.info(f'Extracted image URL {idx + 1}: {image_url}')
+                        LOG.info(f'Extracted image URL {idx + 1}: {image_url}')
                 except Exception as e:
-                    lazyllm.LOG.warning(f'Failed to extract image URL from item {idx}: {str(e)}')
+                    LOG.warning(f'Failed to extract image URL from item {idx}: {str(e)}')
                     continue
             
             if not image_urls:
-                lazyllm.LOG.warning('No image URLs found in content')
+                LOG.warning('No image URLs found in content')
             return image_urls
         except Exception as e:
-            lazyllm.LOG.error(f'Failed to extract sync image URLs: {str(e)}')
+            LOG.error(f'Failed to extract sync image URLs: {str(e)}')
             import traceback
-            lazyllm.LOG.error(traceback.format_exc())
+            LOG.error(traceback.format_exc())
             return []
 
     def _extract_async_image_urls(self, response):
         try:
             output = getattr(response, 'output', None)
             if not output:
-                lazyllm.LOG.warning('No output in async response')
+                LOG.warning('No output in async response')
                 return []
             
             results = getattr(output, 'results', [])
             if not results:
-                lazyllm.LOG.warning('No results in async response output')
+                LOG.warning('No results in async response output')
                 return []
             
             return [getattr(result, 'url', None) for result in results if getattr(result, 'url', None)]
         except Exception as e:
-            lazyllm.LOG.error(f'Failed to extract async image URLs: {str(e)}')
+            LOG.error(f'Failed to extract async image URLs: {str(e)}')
             return []
         
     def _download_images(self, image_urls: List[str]) -> List[bytes]:
@@ -489,7 +490,7 @@ class QwenTextToImageModule(QwenMultiModal):
         if not self._type == 'image_editing' and has_ref_image:
             raise ValueError(
                 f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
-                f'Please set image_editing=True or use an image editing model from: {self.IMAGE_EDITING_MODEL}'
+                f'Please set image_editing=True or use an image editing model from: {self.IMAGE_EDITING_MODEL_NAME}'
             )
         
         if has_ref_image:
@@ -525,7 +526,7 @@ class QwenTextToImageModule(QwenMultiModal):
             image_urls = self._extract_async_image_urls(response)        
         if response.status_code != HTTPStatus.OK:
             error_msg = getattr(response.output, 'message', 'Unknown error')
-            lazyllm.LOG.error(f'Image generation failed: {error_msg}')
+            LOG.error(f'Image generation failed: {error_msg}')
             raise Exception(f'Image generation failed: {error_msg}')
         
         image_bytes = self._download_images(image_urls)
@@ -546,7 +547,7 @@ def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: flo
     if response.status_code == HTTPStatus.OK:
         return requests.get(response.output['audio']['url']).content
     else:
-        lazyllm.LOG.error(f'failed to synthesize: {response}')
+        LOG.error(f'failed to synthesize: {response}')
         raise Exception(f'failed to synthesize: {response.message}')
 
 def synthesize(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
@@ -558,7 +559,7 @@ def synthesize(input: str, model_name: str, voice: str, speech_rate: float, volu
     if response.get_response().status_code == HTTPStatus.OK:
         return response.get_audio_data()
     else:
-        lazyllm.LOG.error(f'failed to synthesize: {response.get_response()}')
+        LOG.error(f'failed to synthesize: {response.get_response()}')
         raise Exception(f'failed to synthesize: {response.get_response().message}')
 
 def synthesize_v2(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
@@ -570,7 +571,7 @@ def synthesize_v2(input: str, model_name: str, voice: str, speech_rate: float, v
     if synthesizer.last_response['header']['event'] == 'task-finished':
         return audio
     else:
-        lazyllm.LOG.error(f'failed to synthesize: {synthesizer.last_response}')
+        LOG.error(f'failed to synthesize: {synthesizer.last_response}')
         raise Exception(f'failed to synthesize: {synthesizer.last_response["header"]["error_message"]}')
 
 

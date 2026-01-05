@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 import ipaddress
 import socket
 from io import BytesIO
-from thirdparty import PIL
+from PIL import Image
 
 class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
     def __init__(self, model_series: str, model: str = None, return_trace: bool = False, skip_auth: bool = False,
@@ -48,8 +48,8 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
             input, files = self._get_files(input, lazyllm_files)
             runtime_url = url or kwargs.pop('base_url', None) or self._base_url
             runtime_model = model or kwargs.pop('model_name', None) or self._model_name
-            if get_model_type(runtime_model) not in ('sd', 'stt', 'tts'):
-                raise ValueError(f"Model type must be 'sd', 'stt' or 'tts', got model {runtime_model}")            
+            if get_model_type(runtime_model) not in ('sd', 'stt', 'tts', 'image_editing'):
+                raise ValueError(f"Model type must be 'sd', 'stt', 'tts' or 'image_editing', got model {runtime_model}")            
             call_params = {'input': input, **kwargs}
             if files: call_params['files'] = files
             return self._forward(**call_params, model=runtime_model, url=runtime_url)
@@ -72,7 +72,8 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
                 if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
                     return True
             return False
-        except (socket.gaierror, ValueError):
+        except Exception as e: 
+            lazyllm.LOG.warning(f"Failed to parse hostname={hostname}: {e}") 
             return True
     
     def _validate_url_security(self, url: str) -> None:
@@ -94,24 +95,28 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
 
     def _validate_image_data(self, data: bytes, source: str) -> None:
         try:
-            with PIL.Image.open(BytesIO(data)) as img:
+            with Image.open(BytesIO(data)) as img:
                 img.verify()
         except Exception:
             raise ValueError(
                 f'Invalid image data from {source}. '
                 f'The file does not appear to be a valid image.'
             )
+        
+    def _get_image_data_from_url(self, url: str, timeout: int = 30) -> bytes:
+        self._validate_url_security(url)
+        resp = requests.get(url, timeout=timeout, allow_redirects=False)
+        resp.raise_for_status()
+        content_type = resp.headers.get('Content-Type', '')
+        self._validate_image_content_type(content_type, url)
+        data = resp.content
+        self._validate_image_data(data, url)
+        return data
 
     def _load_image(self, image_path: str) -> Union[str, bytes]:
         try:
             if image_path.startswith('http://') or image_path.startswith('https://'):
-                self._validate_url_security(image_path)
-                resp = requests.get(image_path, timeout=30)
-                resp.raise_for_status()
-                content_type = resp.headers.get('Content-Type', '')
-                self._validate_image_content_type(content_type, image_path)
-                data = resp.content
-                self._validate_image_data(data, image_path)
+                data = self._get_image_data_from_url(image_path)
             else:
                 p = Path(image_path)
                 if not p.exists():

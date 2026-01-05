@@ -6,6 +6,7 @@ from .supplier.doubao import DoubaoTextToImageModule
 from .supplier.glm import GLMSTTModule, GLMTextToImageModule
 from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule
 from .supplier.minimax import MinimaxTextToImageModule, MinimaxTTSModule
+from .map_model_type import get_model_type 
 
 class _OnlineMultiModalMeta(type):
     '''Metaclass for OnlineMultiModalModule to support isinstance checks'''
@@ -53,7 +54,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
     FUNCTION_MODEL_MAP = {
         'stt': STT_MODELS,
         'tts': TTS_MODELS,
-        'text2image': TEXT2IMAGE_MODELS
+        'text2image': TEXT2IMAGE_MODELS,
     }
     
     @staticmethod
@@ -81,6 +82,11 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         assert source in available_model, f'Unsupported source: {source}'
 
         if function == 'text2image':
+            if kwargs.get('type') is None and model is not None:
+                inferred_type = get_model_type(model)
+                if inferred_type == 'image_editing':
+                    kwargs['type'] = 'image_editing'
+                    lazyllm.LOG.info(f'Model {model} detected as image editing model. Automatically set type="image_editing".')
             image_editing = (kwargs.get('type') == 'image_editing')
             module_cls = OnlineMultiModalModule.FUNCTION_MODEL_MAP[function][source]
             editing_model = getattr(module_cls, 'IMAGE_EDITING_MODEL_NAME', None)
@@ -91,7 +97,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                 if image_editing and model is None:
                     model = editing_model
                     lazyllm.LOG.info(f'Image editing enabled for {source}. Automatically selected model: {model}')
-                elif image_editing and model == editing_model:
+                elif image_editing and model is not None and model != editing_model:
                     lazyllm.LOG.warning(
                         f'Model {model} from {source} does not support image editing. '
                         f'Please use model: {editing_model}'

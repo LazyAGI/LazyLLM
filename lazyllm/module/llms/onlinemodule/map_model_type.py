@@ -297,9 +297,9 @@ MODEL_MAPPING = {
     # SD
     'qwen-image-plus': 'sd',
     'qwen-image': 'sd',
-    'qwen-image-edit-plus': 'sd',
-    'qwen-image-edit-plus-2025-10-30': 'sd',
-    'qwen-image-edit': 'sd',
+    'qwen-image-edit-plus': 'image_editing',
+    'qwen-image-edit-plus-2025-10-30': 'image_editing',
+    'qwen-image-edit': 'image_editing',
     'qwen-mt-image': 'sd',
     'wan2.5-t2i-preview': 'sd',
     'wan2.2-t2i-plus': 'sd',
@@ -423,10 +423,10 @@ MODEL_MAPPING = {
     'doubao-seedance-1-0-pro-fast-251015': 'sd',
     'doubao-seedance-1-0-lite-t2v-250428': 'sd',
     'doubao-seedance-1-0-lite-i2v-250428': 'sd',
-    'doubao-seedream-4-5': 'sd',
-    'doubao-seedream-4-0-250828': 'sd',
+    'doubao-seedream-4-5': 'image_editing',
+    'doubao-seedream-4-0-250828': 'image_editing',
     'doubao-seedream-3-0-t2i-250415': 'sd',
-    'doubao-seededit-3-0-i2i-250628': 'sd',
+    'doubao-seededit-3-0-i2i-250628': 'image_editing',
     'doubao-seed3d-1-0-250928': 'sd',
     'doubao-embedding-large-text-250515': 'embed',
     'doubao-embedding-large-text-240915': 'embed',
@@ -439,8 +439,8 @@ MODEL_MAPPING = {
     'deepseek-reasoner': 'llm',
 
     # ===== SiliconFlow =====
-    'Qwen/Qwen-Image-Edit': 'sd',
-    'Qwen/Qwen-Image-Edit-2509': 'sd',
+    'Qwen/Qwen-Image-Edit': 'image_editing',
+    'Qwen/Qwen-Image-Edit-2509': 'image_editing',
 }
 _TOKEN_MAP = {
     'embed': ('embedding', 'embed'),
