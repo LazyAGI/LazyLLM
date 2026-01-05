@@ -395,8 +395,8 @@ class QwenTextToImageModule(QwenMultiModal):
 
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
         QwenMultiModal.__init__(self, api_key=api_key,
-                                model_name=model or lazyllm.config['qwen_text2image_model_name'] 
-                                or QwenTextToImageModule.MODEL_NAME or QwenTextToImageModule.IMAGE_EDITING_MODEL_NAME, 
+                                model_name=model or lazyllm.config['qwen_text2image_model_name']
+                                or QwenTextToImageModule.MODEL_NAME or QwenTextToImageModule.IMAGE_EDITING_MODEL_NAME,
                                 return_trace=return_trace, **kwargs)
 
     def _call_sync_text2image(self, call_params):
@@ -429,7 +429,6 @@ class QwenTextToImageModule(QwenMultiModal):
             for idx, content in enumerate(response.output.choices[0].message.content):
                 try:
                     image_url = content['image']
-                    
                     if image_url:
                         image_urls.append(image_url)
                         lazyllm.LOG.info(f'Extracted image URL {idx + 1}: {image_url}')
@@ -474,11 +473,12 @@ class QwenTextToImageModule(QwenMultiModal):
                  prompt_extend: bool = True, size: str = '1024*1024', seed: int = None,
                  url: str = None, model: str = None, **kwargs):
         has_ref_image = files is not None and len(files) > 0
-        reference_image_data=None
+        reference_image_data = None
         messages = []
 
         if url and url != self._base_url:
-            raise Exception('Qwen TextToImage forward() does not support overriding the `url` parameter, please remove it.')
+            raise Exception('Qwen TextToImage forward() does not support overriding the `url` parameter,' \
+                            'please remove it.')
         
         if self._type == 'image_editing' and not has_ref_image:
             raise ValueError(
@@ -515,7 +515,6 @@ class QwenTextToImageModule(QwenMultiModal):
         }
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
-
         if has_ref_image:
             call_params['messages'] = messages
             response = self._call_sync_text2image(call_params)
@@ -523,8 +522,7 @@ class QwenTextToImageModule(QwenMultiModal):
         else:
             call_params['prompt'] = input
             response = self._call_async_text2image(call_params)
-            image_urls = self._extract_async_image_urls(response)
-        
+            image_urls = self._extract_async_image_urls(response)        
         if response.status_code != HTTPStatus.OK:
             error_msg = getattr(response.output, 'message', 'Unknown error')
             lazyllm.LOG.error(f'Image generation failed: {error_msg}')

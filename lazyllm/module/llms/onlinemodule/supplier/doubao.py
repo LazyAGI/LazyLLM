@@ -85,21 +85,20 @@ class DoubaoMultiModal(OnlineMultiModalBase):
                  return_trace: bool = False, **kwargs):
         api_key = api_key or lazyllm.config['doubao_api_key']
         OnlineMultiModalBase.__init__(self, model_series='DOUBAO', model=model, api_key=api_key,
-                                      return_trace=return_trace, **kwargs)
+                                      return_trace=return_trace, base_url=base_url, **kwargs)
         self._client = volcenginesdkarkruntime.Ark(base_url=base_url, api_key=api_key)
 
 class DoubaoTextToImageModule(DoubaoMultiModal):
     MODEL_NAME = 'doubao-seedream-3-0-t2i-250415'
-    IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'
-    
+    IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'    
     def __init__(self, api_key: str = None, model: str = None, return_trace: bool = False, **kwargs):
-        DoubaoMultiModal.__init__(self, api_key = api_key, model = model
+        DoubaoMultiModal.__init__(self, api_key=api_key, model=model
                             or DoubaoTextToImageModule.MODEL_NAME or DoubaoTextToImageModule.IMAGE_EDITING_MODEL_NAME
                             or lazyllm.config['doubao_text2image_model_name'],
-                            return_trace = return_trace, **kwargs)
+                            return_trace=return_trace, **kwargs)
 
-    def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024', seed: int = -1, guidance_scale: float = 2.5, 
-                 watermark: bool = True, model: str = None, url: str = None, **kwargs):
+    def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024', seed: int = -1, 
+                 guidance_scale: float = 2.5, watermark: bool = True, model: str = None, url: str = None, **kwargs):
         has_ref_image = files is not None and len(files) > 0
         reference_image_data_url=None
         if self._type=='image_editing' and not has_ref_image:
@@ -107,14 +106,12 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
                 f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
                 f'Please provide an image file via the "files" parameter.'
             )
-        
         if not self._type=='image_editing' and has_ref_image:
             LOG.error(
                 f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
                 f'Please use default image editing model {self.IMAGE_EDITING_MODEL_NAME}'
             )
-            raise ValueError()
-        
+            raise ValueError()        
         if has_ref_image:
             reference_image_base64, _ = self._load_image(files[0])
             reference_image_data_url = f"data:image/png;base64,{reference_image_base64}"
@@ -128,8 +125,7 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
                 'guidance_scale': guidance_scale,
                 'watermark': watermark,
                 **kwargs
-            }
-            
+            }            
             if has_ref_image:
                 api_params['image'] = reference_image_data_url
             imagesResponse = self._client.images.generate(**api_params)

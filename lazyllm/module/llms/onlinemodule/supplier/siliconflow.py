@@ -74,10 +74,9 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
                  return_trace: bool = False, **kwargs):
         self._endpoint = 'images/generations'
         OnlineMultiModalBase.__init__(self, model_series='SiliconFlow', api_key=api_key or lazyllm.config['siliconflow_api_key'],
-                                      model=model or SiliconFlowTextToImageModule.MODEL_NAME or SiliconFlowTextToImageModule.IMAGE_EDITING_MODEL_NAME, 
+                                      model=model or SiliconFlowTextToImageModule.MODEL_NAME,
                                       base_url=base_url, return_trace=return_trace, **kwargs)
         
-
     def _make_request(self, endpoint, payload, base_url=None, timeout=180):
         url = f'{(base_url or self._base_url)}{endpoint}'
         try:
@@ -88,8 +87,8 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
             lazyllm.LOG.error(f'API request failed: {str(e)}')
             raise
 
-    
-    def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024', url: str = None, model: str = None, **kwargs):
+    def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024', url: str = None, 
+                 model: str = None, **kwargs):
         has_ref_image = files is not None and len(files) > 0
         reference_image_data_url = None
         if self._type=='image_editing' and not has_ref_image:
@@ -97,23 +96,19 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
                 f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
                 f'Please provide an image file via the "files" parameter.'
             )
-        
         if not self._type=='image_editing' and has_ref_image:
             raise ValueError(
                 f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
                 f'Please use an image editing model from: {self.IMAGE_EDITING_MODEL_NAME}'
-            )
-        
+            )        
         if has_ref_image:
             reference_image_base64, _ = self._load_image(files[0])
-            reference_image_data_url = f"data:image/png;base64,{reference_image_base64}"
-        
+            reference_image_data_url = f"data:image/png;base64,{reference_image_base64}"        
         payload = {
             'model': model,
             'prompt': input,
             **kwargs
-        }
-        
+        }        
         if has_ref_image:
             payload['image'] = reference_image_data_url
 
@@ -129,14 +124,11 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
                     _, image_byte = self._load_image(image_url)
                     image_bytes.append(image_byte)
                 except Exception as e:
-                    lazyllm.LOG.warning(f'Failed to download image from {image_url}: {str(e)}')
-            
+                    lazyllm.LOG.warning(f'Failed to download image from {image_url}: {str(e)}')            
             if not image_bytes:
                 raise Exception('Failed to download any images')
-            
             file_paths = bytes_to_file(image_bytes)
             return encode_query_with_filepaths(None, file_paths)
-            
         except Exception as e:
             lazyllm.LOG.error(f'Error in SiliconFlowTextToImageModule._forward: {str(e)}')
             raise

@@ -516,4 +516,3 @@ def get_model_type(model_name: str) -> str:
             LOG.warning(f'Rule {rule.__name__} failed: {e}')
     LOG.warning(f'Cannot classify model type for: {model_name}. Defaulting to "llm" instead.')
     return 'llm'
-

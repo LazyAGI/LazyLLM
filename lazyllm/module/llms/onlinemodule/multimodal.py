@@ -96,12 +96,11 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                         f'Model {model} from {source} does not support image editing. '
                         f'Please use model: {editing_model}'
                     )
-            else: 
+            else:
                 if image_editing:
                     lazyllm.LOG.warning(
                         f'Image editing requested for {source}, but no editing models available for this provider.'
-                    )
-        
+                    )        
         if base_url is not None:
             kwargs['base_url'] = base_url
 
@@ -116,7 +115,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                 **kwargs):
 
         source, model, kwargs_normalized = OnlineMultiModalModule._validate_parameters(
-            source=source, model=model, function=function, base_url=base_url,**kwargs
+            source=source, model=model, function=function, base_url=base_url, **kwargs
         )
         params = {'return_trace': return_trace}
         if model is not None:
