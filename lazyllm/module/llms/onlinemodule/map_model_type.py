@@ -451,7 +451,7 @@ _TOKEN_MAP = {
     'rerank': ('rerank',),
     'cross_modal_embed': ('cross_modal', 'multimodal-embedding', 'embedding-vision'),
     'sd': ('dall', 'wan', 'sora', 'image', 'video', 't2i', 't2v'),
-    'image_editing': ('image-edit', 'seededit', 'i2i'),  # 新增
+    'image_editing': ('image-edit', 'seededit', 'i2i'),  
 }
 _SUFFIX_RE = re.compile(
     r'(?:'

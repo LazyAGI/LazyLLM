@@ -21,7 +21,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
                  api_key: str = None, stream: str = True, return_trace: bool = False, **kwargs):
         OnlineChatModuleBase.__init__(self, model_series='GLM', api_key=api_key or lazyllm.config['glm_api_key'],
                                       model_name=model or lazyllm.config['glm_model_name'] or GLMModule.MODEL_NAME,
-                                      base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
+                                      stream=stream, return_trace=return_trace, base_url=base_url, **kwargs)
         FileHandlerBase.__init__(self)
         self.default_train_data = {
             'model': None,

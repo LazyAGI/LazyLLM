@@ -6,6 +6,7 @@ from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiM
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
+from lazyllm import LOG
 
 
 class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
@@ -72,10 +73,10 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
-        self._endpoint = 'images/generations'
         OnlineMultiModalBase.__init__(self, model_series='SiliconFlow', api_key=api_key or lazyllm.config['siliconflow_api_key'],
                                       model=model or SiliconFlowTextToImageModule.MODEL_NAME,
                                       base_url=base_url, return_trace=return_trace, **kwargs)
+        self._endpoint = 'images/generations'
         
     def _make_request(self, endpoint, payload, base_url=None, timeout=180):
         url = f'{(base_url or self._base_url)}{endpoint}'
@@ -84,7 +85,7 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            lazyllm.LOG.error(f'API request failed: {str(e)}')
+            LOG.error(f'API request failed: {str(e)}')
             raise
 
     def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024', url: str = None, 
@@ -124,13 +125,13 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
                     _, image_byte = self._load_image(image_url)
                     image_bytes.append(image_byte)
                 except Exception as e:
-                    lazyllm.LOG.warning(f'Failed to download image from {image_url}: {str(e)}')            
+                    LOG.warning(f'Failed to download image from {image_url}: {str(e)}')            
             if not image_bytes:
                 raise Exception('Failed to download any images')
             file_paths = bytes_to_file(image_bytes)
             return encode_query_with_filepaths(None, file_paths)
         except Exception as e:
-            lazyllm.LOG.error(f'Error in SiliconFlowTextToImageModule._forward: {str(e)}')
+            LOG.error(f'Error in SiliconFlowTextToImageModule._forward: {str(e)}')
             raise
 
 class SiliconFlowTTSModule(OnlineMultiModalBase):
@@ -152,7 +153,7 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
             response.raise_for_status()
             return response.content
         except Exception as e:
-            lazyllm.LOG.error(f'API request failed: {str(e)}')
+            LOG.error(f'API request failed: {str(e)}')
             raise
 
     def _forward(self, input: str = None, response_format: str = 'mp3',

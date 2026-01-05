@@ -7,7 +7,6 @@ from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.thirdparty import volcenginesdkarkruntime
 from lazyllm import LOG
 
-
 class DoubaoModule(OnlineChatModuleBase):
     MODEL_NAME = 'doubao-1-5-pro-32k-250115'
     VLM_MODEL_PREFIX = ['doubao-seed-1-6-vision', 'doubao-1-5-ui-tars']
