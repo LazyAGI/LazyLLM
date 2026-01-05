@@ -66,23 +66,16 @@ class SiliconFlowReranking(OnlineEmbeddingModuleBase):
         return [(result['index'], result['relevance_score']) for result in results]
 
 class SiliconFlowTextToImageModule(OnlineMultiModalBase):
-    IMAGE_EDITING_MODEL = [
-        'Qwen/Qwen-Image-Edit-2509',
-        'Qwen/Qwen-Image-Edit'
-    ]
     MODEL_NAME = 'Qwen/Qwen-Image'
+    IMAGE_EDITING_MODEL_NAME = 'Qwen/Qwen-Image-Edit'
 
     def __init__(self, api_key: str = None, model: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',
-                 image_editing: bool = False, return_trace: bool = False, **kwargs):
-        self._image_editing = image_editing
+                 return_trace: bool = False, **kwargs):
         self._endpoint = 'images/generations'
-        self._base_url = base_url
-        
-        OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
-                                      api_key=api_key or lazyllm.config['siliconflow_api_key'],
-                                      model=model or SiliconFlowTextToImageModule.MODEL_NAME,
-                                      return_trace=return_trace, **kwargs)
+        OnlineMultiModalBase.__init__(self, model_series='SiliconFlow', api_key=api_key or lazyllm.config['siliconflow_api_key'],
+                                      model=model or SiliconFlowTextToImageModule.MODEL_NAME or SiliconFlowTextToImageModule.IMAGE_EDITING_MODEL_NAME, 
+                                      base_url=base_url, return_trace=return_trace, **kwargs)
         
 
     def _make_request(self, endpoint, payload, base_url=None, timeout=180):
@@ -96,33 +89,32 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
             raise
 
     
-    def _forward(self, input: str = None, files: List[str] = None, size: str = '1328x1328',
-                 num_inference_steps: int = 20, guidance_scale: float = 7.5, **kwargs):
-        use_image_edit = files is not None and len(files) > 0
+    def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024', url: str = None, model: str = None, **kwargs):
+        has_ref_image = files is not None and len(files) > 0
         reference_image_data_url = None
-        if self._image_editing and not use_image_edit:
+        if self._type=='image_editing' and not has_ref_image:
             raise ValueError(
                 f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
                 f'Please provide an image file via the "files" parameter.'
             )
         
-        if not self._image_editing and use_image_edit:
+        if not self._type=='image_editing' and has_ref_image:
             raise ValueError(
                 f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
-                f'Please set image_editing=True or use an image editing model from: {self.IMAGE_EDITING_MODEL}'
+                f'Please use an image editing model from: {self.IMAGE_EDITING_MODEL_NAME}'
             )
         
-        if use_image_edit:
-            reference_image_base64 = self._load_image_as_base64(files[0])
+        if has_ref_image:
+            reference_image_base64, _ = self._load_image(files[0])
             reference_image_data_url = f"data:image/png;base64,{reference_image_base64}"
         
         payload = {
-            'model': self._model_name,
+            'model': model,
             'prompt': input,
             **kwargs
         }
         
-        if use_image_edit:
+        if has_ref_image:
             payload['image'] = reference_image_data_url
 
         try:
@@ -131,20 +123,18 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
             if not image_urls:
                 raise Exception('No images returned from API')
             
-            image_files = []
-            for url in image_urls:
-                img_response = requests.get(url, timeout=180)
-                if img_response.status_code == 200:
-                    image_files.append(img_response.content)
-                else:
-                    lazyllm.LOG.warning(
-                        f'Failed to download image from {url}, status code: {img_response.status_code}'
-                    )
+            image_bytes = []
+            for image_url in image_urls:
+                try:
+                    _, image_byte = self._load_image(image_url)
+                    image_bytes.append(image_byte)
+                except Exception as e:
+                    lazyllm.LOG.warning(f'Failed to download image from {image_url}: {str(e)}')
             
-            if not image_files:
+            if not image_bytes:
                 raise Exception('Failed to download any images')
             
-            file_paths = bytes_to_file(image_files)
+            file_paths = bytes_to_file(image_bytes)
             return encode_query_with_filepaths(None, file_paths)
             
         except Exception as e:

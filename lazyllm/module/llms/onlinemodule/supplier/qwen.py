@@ -391,16 +391,13 @@ class QwenSTTModule(QwenMultiModal):
 
 class QwenTextToImageModule(QwenMultiModal):
     MODEL_NAME = 'wanx2.1-t2i-turbo'
+    IMAGE_EDITING_MODEL_NAME = 'qwen-image-edit-plus'
 
-    IMAGE_EDITING_MODEL = [
-       'qwen-image-edit-plus',
-       'qwen-image-edit'
-    ]
-    def __init__(self, model: str = None, api_key: str = None, image_editing: bool = None, return_trace: bool = False, **kwargs):
-        self._image_editing = image_editing
+    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
         QwenMultiModal.__init__(self, api_key=api_key,
-                                model_name=model or lazyllm.config['qwen_text2image_model_name']
-                                or QwenTextToImageModule.MODEL_NAME, return_trace=return_trace, **kwargs)
+                                model_name=model or lazyllm.config['qwen_text2image_model_name'] 
+                                or QwenTextToImageModule.MODEL_NAME or QwenTextToImageModule.IMAGE_EDITING_MODEL_NAME, 
+                                return_trace=return_trace, **kwargs)
 
     def _call_sync_text2image(self, call_params):
         task_response = dashscope.MultiModalConversation.call(**call_params)
@@ -468,39 +465,35 @@ class QwenTextToImageModule(QwenMultiModal):
         
     def _download_images(self, image_urls: List[str]) -> List[bytes]:
         image_bytes = []
-        for idx, url in enumerate(image_urls):
-            try:
-                img_response = requests.get(url, timeout=60)
-                img_response.raise_for_status()
-                image_bytes.append(img_response.content)
-            except requests.exceptions.Timeout:
-                lazyllm.LOG.error(f'Timeout downloading image {idx} from {url}')
-                raise Exception(f'Timeout downloading image from {url}')
-            except requests.exceptions.RequestException as e:
-                lazyllm.LOG.error(f'Failed to download image {idx} from {url}: {str(e)}')
-                raise Exception(f'Failed to download image from {url}')
-        
+        for path in image_urls:
+            _, image_byte = self._load_image(path)
+            image_bytes.append(image_byte)
         return image_bytes
         
     def _forward(self, input: str = None, files: List[str] = None, negative_prompt: str = None, n: int = 1, 
-                 prompt_extend: bool = True, size: str = '1024*1024', seed: int = None, **kwargs):
-        use_image_editing = files is not None and len(files) > 0
+                 prompt_extend: bool = True, size: str = '1024*1024', seed: int = None,
+                 url: str = None, model: str = None, **kwargs):
+        has_ref_image = files is not None and len(files) > 0
         reference_image_data=None
         messages = []
-        if self._image_editing and not use_image_editing:
+
+        if url and url != self._base_url:
+            raise Exception('Qwen TextToImage forward() does not support overriding the `url` parameter, please remove it.')
+        
+        if self._type == 'image_editing' and not has_ref_image:
             raise ValueError(
                 f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
                 f'Please provide an image file via the "files" parameter.'
             )
         
-        if not self._image_editing and use_image_editing:
+        if not self._type == 'image_editing' and has_ref_image:
             raise ValueError(
                 f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
                 f'Please set image_editing=True or use an image editing model from: {self.IMAGE_EDITING_MODEL}'
             )
         
-        if use_image_editing:
-            reference_image_base64 = self._load_image_as_base64(files[0])
+        if has_ref_image:
+            reference_image_base64, _ = self._load_image(files[0])
             reference_image_data = f"data:image/png;base64,{reference_image_base64}"
             messages = [
                 {
@@ -513,7 +506,7 @@ class QwenTextToImageModule(QwenMultiModal):
             ]
 
         call_params = {
-            'model': self._model_name,
+            'model': model,
             'negative_prompt': negative_prompt,
             'n': n,
             'prompt_extend': prompt_extend,
@@ -523,7 +516,7 @@ class QwenTextToImageModule(QwenMultiModal):
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
 
-        if use_image_editing:
+        if has_ref_image:
             call_params['messages'] = messages
             response = self._call_sync_text2image(call_params)
             image_urls = self._extract_sync_image_urls(response)

@@ -5,6 +5,7 @@ import requests
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.thirdparty import volcenginesdkarkruntime
+from lazyllm import LOG
 
 
 class DoubaoModule(OnlineChatModuleBase):
@@ -88,44 +89,39 @@ class DoubaoMultiModal(OnlineMultiModalBase):
         self._client = volcenginesdkarkruntime.Ark(base_url=base_url, api_key=api_key)
 
 class DoubaoTextToImageModule(DoubaoMultiModal):
-    IMAGE_EDITING_MODEL = [
-        'doubao-seedream-4-5-251128',
-    ]
     MODEL_NAME = 'doubao-seedream-3-0-t2i-250415'
-
-    def __init__(self, api_key: str = None, model: str = None, 
-                 image_editing: bool = False, return_trace: bool = False, **kwargs):
-        self._image_editing = image_editing
-        
-
+    IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'
+    
+    def __init__(self, api_key: str = None, model: str = None, return_trace: bool = False, **kwargs):
         DoubaoMultiModal.__init__(self, api_key = api_key, model = model
-                            or DoubaoTextToImageModule.MODEL_NAME
+                            or DoubaoTextToImageModule.MODEL_NAME or DoubaoTextToImageModule.IMAGE_EDITING_MODEL_NAME
                             or lazyllm.config['doubao_text2image_model_name'],
                             return_trace = return_trace, **kwargs)
 
-    def _forward(self, input: str = None, files: List[str] = None, size: str = '2560x1440', 
-                 seed: int = -1, guidance_scale: float = 2.5, watermark: bool = True, **kwargs):
-        use_image_edit = files is not None and len(files) > 0
+    def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024', seed: int = -1, guidance_scale: float = 2.5, 
+                 watermark: bool = True, model: str = None, url: str = None, **kwargs):
+        has_ref_image = files is not None and len(files) > 0
         reference_image_data_url=None
-        if self._image_editing and not use_image_edit:
-            raise ValueError(
+        if self._type=='image_editing' and not has_ref_image:
+            LOG.warning(
                 f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
                 f'Please provide an image file via the "files" parameter.'
             )
         
-        if not self._image_editing and use_image_edit:
-            raise ValueError(
+        if not self._type=='image_editing' and has_ref_image:
+            LOG.error(
                 f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
-                f'Please set image_editing=True or use an image editing model from: {self.IMAGE_EDITING_MODEL}'
+                f'Please use default image editing model {self.IMAGE_EDITING_MODEL_NAME}'
             )
+            raise ValueError()
         
-        if use_image_edit:
-            reference_image_base64 = self._load_image_as_base64(files[0])
+        if has_ref_image:
+            reference_image_base64, _ = self._load_image(files[0])
             reference_image_data_url = f"data:image/png;base64,{reference_image_base64}"
 
         try:
             api_params = {
-                'model': self._model_name,
+                'model': model,
                 'prompt': input,
                 'size': size,
                 'seed': seed,
@@ -134,7 +130,7 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
                 **kwargs
             }
             
-            if use_image_edit:
+            if has_ref_image:
                 api_params['image'] = reference_image_data_url
             imagesResponse = self._client.images.generate(**api_params)
             image_contents = [requests.get(result.url).content for result in imagesResponse.data]

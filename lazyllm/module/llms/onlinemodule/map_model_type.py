@@ -423,6 +423,7 @@ MODEL_MAPPING = {
     'doubao-seedance-1-0-pro-fast-251015': 'sd',
     'doubao-seedance-1-0-lite-t2v-250428': 'sd',
     'doubao-seedance-1-0-lite-i2v-250428': 'sd',
+    'doubao-seedream-4-5': 'sd',
     'doubao-seedream-4-0-250828': 'sd',
     'doubao-seedream-3-0-t2i-250415': 'sd',
     'doubao-seededit-3-0-i2i-250628': 'sd',
@@ -435,7 +436,11 @@ MODEL_MAPPING = {
 
     # ===== DeepSeek =====
     'deepseek-chat': 'llm',
-    'deepseek-reasoner': 'llm'
+    'deepseek-reasoner': 'llm',
+
+    # ===== SiliconFlow =====
+    'Qwen/Qwen-Image-Edit': 'sd',
+    'Qwen/Qwen-Image-Edit-2509': 'sd',
 }
 _TOKEN_MAP = {
     'embed': ('embedding', 'embed'),
@@ -446,6 +451,7 @@ _TOKEN_MAP = {
     'rerank': ('rerank',),
     'cross_modal_embed': ('cross_modal', 'multimodal-embedding', 'embedding-vision'),
     'sd': ('dall', 'wan', 'sora', 'image', 'video', 't2i', 't2v'),
+    'image_editing': ('image-edit', 'seededit', 'i2i'),  # 新增
 }
 _SUFFIX_RE = re.compile(
     r'(?:'
@@ -510,3 +516,4 @@ def get_model_type(model_name: str) -> str:
             LOG.warning(f'Rule {rule.__name__} failed: {e}')
     LOG.warning(f'Cannot classify model type for: {model_name}. Defaulting to "llm" instead.')
     return 'llm'
+

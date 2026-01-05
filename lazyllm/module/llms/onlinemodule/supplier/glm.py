@@ -280,13 +280,14 @@ class GLMSTTModule(GLMMultiModal):
 class GLMTextToImageModule(GLMMultiModal):
     MODEL_NAME = 'cogview-4-250304'
 
-    def __init__(self, model_name: str = None, api_key: str = None, 
-                 image_editing: bool = None, return_trace: bool = False, **kwargs):
-        if image_editing:
-            raise ValueError("Error: GLM series models do not support image editing now. Please set image_edit=False or omit it.")
+    def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
         GLMMultiModal.__init__(self, model_name=model_name or GLMTextToImageModule.MODEL_NAME
                                or lazyllm.config['glm_text_to_image_model_name'], api_key=api_key,
                                return_trace=return_trace, **kwargs)
+        if self._type == 'image_editing':
+            lazyllm.LOG.error(f"no support model!")
+            raise ValueError("GLM series models do not support image editing now. " \
+                            "Please set image_editing=False or omit it.")
 
     def _forward(self, input: str = None, n: int = 1, size: str = '1024x1024',
                  url: str = None, model: str = None, **kwargs):

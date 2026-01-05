@@ -7,14 +7,12 @@ from .supplier.glm import GLMSTTModule, GLMTextToImageModule
 from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule
 from .supplier.minimax import MinimaxTextToImageModule, MinimaxTTSModule
 
-
 class _OnlineMultiModalMeta(type):
     '''Metaclass for OnlineMultiModalModule to support isinstance checks'''
     def __instancecheck__(self, __instance: Any) -> bool:
         if isinstance(__instance, OnlineMultiModalBase):
             return True
         return super().__instancecheck__(__instance)
-
 
 class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
     '''
@@ -83,34 +81,31 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         assert source in available_model, f'Unsupported source: {source}'
 
         if function == 'text2image':
-            image_editing = kwargs.get('image_editing', False)
-            model_class = available_model[source]
-            edit_list = getattr(model_class, 'IMAGE_EDITING_MODEL', None)
-            if edit_list:
-                if not image_editing and model in edit_list:
+            image_editing = (kwargs.get('type') == 'image_editing')
+            module_cls = OnlineMultiModalModule.FUNCTION_MODEL_MAP[function][source]
+            editing_model = getattr(module_cls, 'IMAGE_EDITING_MODEL_NAME', None)
+            if editing_model:
+                if not image_editing and model == editing_model:
                     image_editing = True
                     lazyllm.LOG.info(f'Model {model} supports image editing. Automatically enabled image_editing.')
                 if image_editing and model is None:
-                    model = edit_list[0]
+                    model = editing_model
                     lazyllm.LOG.info(f'Image editing enabled for {source}. Automatically selected model: {model}')
-                elif image_editing and model not in edit_list:
+                elif image_editing and model == editing_model:
                     lazyllm.LOG.warning(
                         f'Model {model} from {source} does not support image editing. '
-                        f'Please use models from: {edit_list}'
+                        f'Please use model: {editing_model}'
                     )
             else: 
                 if image_editing:
                     lazyllm.LOG.warning(
                         f'Image editing requested for {source}, but no editing models available for this provider.'
                     )
-            kwargs['image_editing'] = image_editing
-
         
         if base_url is not None:
             kwargs['base_url'] = base_url
 
         return source, model, kwargs
-        
     
     def __new__(self,
                 model: str = None,
