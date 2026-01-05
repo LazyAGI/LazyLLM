@@ -397,7 +397,7 @@ class QwenTextToImageModule(QwenMultiModal):
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
         QwenMultiModal.__init__(self, api_key=api_key,
                                 model_name=model or lazyllm.config['qwen_text2image_model_name']
-                                or QwenTextToImageModule.MODEL_NAME or QwenTextToImageModule.IMAGE_EDITING_MODEL_NAME,
+                                or QwenTextToImageModule.MODEL_NAME,
                                 return_trace=return_trace, **kwargs)
 
     def _call_sync_text2image(self, call_params):

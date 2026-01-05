@@ -92,7 +92,7 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
     IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'    
     def __init__(self, api_key: str = None, model: str = None, return_trace: bool = False, **kwargs):
         DoubaoMultiModal.__init__(self, api_key=api_key, model=model
-                            or DoubaoTextToImageModule.MODEL_NAME or DoubaoTextToImageModule.IMAGE_EDITING_MODEL_NAME
+                            or DoubaoTextToImageModule.MODEL_NAME 
                             or lazyllm.config['doubao_text2image_model_name'],
                             return_trace=return_trace, **kwargs)
 
