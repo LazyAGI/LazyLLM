@@ -2,6 +2,7 @@ from typing import List, Optional, Union, Dict, Set, Callable
 from lazyllm import ModuleBase, once_wrapper, LOG, TempPathGenerator, parallel
 
 from .doc_node import DocNode
+from enum import Enum
 from .document import Document, UrlDocument, DocImpl
 from .store import LAZY_ROOT_NAME
 from .similarity import registered_similarities
@@ -10,8 +11,7 @@ import lazyllm
 
 
 class _PostProcess(object):
-    def __init__(self, output_format: Optional[str] = None,
-                 join: Union[bool, str] = False) -> None:
+    def __init__(self, output_format: Optional[str] = None, join: Union[bool, str] = False) -> None:
         assert output_format in (None, 'content', 'dict'), 'output_format should be None, \'content\', or \'dict\''
         self._output_format = output_format
         if join is True: join = ''
@@ -27,11 +27,19 @@ class _PostProcess(object):
             nodes = [node.to_dict() for node in nodes]
         return nodes
 
-class Retriever(ModuleBase, _PostProcess):
+
+class _RetrieverBase(ModuleBase):
+    class Priority(str, Enum):
+        low = 'low'
+        normal = 'normal'
+        high = 'high'
+
+class Retriever(_RetrieverBase, _PostProcess):
     def __init__(self, doc: object, group_name: str, similarity: Optional[str] = None,
                  similarity_cut_off: Union[float, Dict[str, float]] = float('-inf'), index: str = 'default',
                  topk: int = 6, embed_keys: Optional[List[str]] = None, target: Optional[str] = None,
-                 output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs):
+                 output_format: Optional[str] = None, join: Union[bool, str] = False,
+                 weight: Optional[float] = None, priority: Optional[_RetrieverBase.Priority] = None, **kwargs):
         super().__init__()
 
         if similarity:
@@ -61,7 +69,14 @@ class Retriever(ModuleBase, _PostProcess):
         self._similarity_kw = kwargs  # kw parameters
         self._embed_keys = embed_keys
         self._target = target
+        self._weight, self._priority = weight, priority
+        if weight or priority:
+            assert not (weight and property), 'cannot provide weight and property at the same time'
+            assert not output_format or not join, 'shouldn\'t provide output_format/join when weight or priority is set'
         _PostProcess.__init__(self, output_format, join)
+
+    weight = property(lambda self: self._weight)
+    priority = property(lambda self: self._priority)
 
     @once_wrapper
     def _lazy_init(self):
@@ -118,7 +133,7 @@ class Retriever(ModuleBase, _PostProcess):
         return self._post_process(all_nodes)
 
 
-class TempRetriever(ModuleBase, _PostProcess):
+class TempRetriever(_RetrieverBase, _PostProcess):
     def __init__(self, embed: Callable = None, output_format: Optional[str] = None, join: Union[bool, str] = False):
         super().__init__()
         self._doc = Document(doc_files=[])
@@ -178,11 +193,112 @@ class ContextRetriever(TempRetriever):
         self._get_retrievers.cache_clear()
 
 
-class WeightedRetriever(parallel):
-    def __init__(self, *retrievers: List[Retriever]):
-        super().__init__(*retrievers)
-        self.sum
+class _CompositeRetrieverBase(_RetrieverBase, _PostProcess):
+    def __init__(self, *retrievers: List[Retriever], strict: bool = True,
+                 output_format: Optional[str] = None, join: Union[bool, str] = False):
+        super().__init__()
+        if retrievers:
+            self._check_retrievers(retrievers)
+            self._cached_values = None
+        self._retrievers = parallel(*retrievers).sum
+        self._strict = strict
+        self._valid = False  # will be set in _further_check
+        self._capture = False
+        _PostProcess.__init__(self, output_format, join)
 
-    def _run(self, __input, **kw):
-        r = super()._run(__input, **kw)
-        return r
+    _items = property(lambda self: self._retrievers._items)
+
+    def __enter__(self):
+        assert len(self._items) == 0, f'Cannot init {self.__class__}\'s element twice! Existing element: {self._items}'
+        assert not self._capture, f'{self.__class__}.__erter__() cannot support multi-thread'
+        self._capture = True
+        self._retrievers.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self._retrievers.__exit__(exc_type, exc_val, exc_tb)
+        self._capture = False
+        self._check_retrievers(self._items)
+        self._cached_values = None
+
+    def __setattr__(self, name: str, value):
+        if name not in self.__dict__ and '_capture' in self.__dict__ and self._capture:
+            setattr(self._retrievers, name, value)
+        else:
+            super(__class__, self).__setattr__(name, value)
+
+    def _check_retrievers(self, retrievers: List[Retriever]):
+        if not retrievers: return
+        for v in retrievers:
+            if self._strict and not isinstance(v, _RetrieverBase): raise RuntimeError(
+                'Non-Retriever element detected. If you insist on using it, please set strict=False.')
+            if getattr(v, '_output_format', None) or getattr(v, '_join', None):
+                raise RuntimeError(f'You should set output_format / join to {self.__class__} instead of sub-retrievers')
+        self._further_check(retrievers)
+
+    def _get_cached_value(self, name):
+        if not getattr(self, '_cached_values', None) is None:
+            self._cached_values = [r.get(name, None) for r in self._items]
+        return self._cached_values
+
+    def _get_real_params(self, params, name, checkf, default, err_msg):
+        if params:
+            if len(params) != len(self._items):
+                raise RuntimeError(f'Dimension mismatch: expected {len(self._items)} {name} '
+                                   f'for {len(self._items)} retrievers, but got {len(params)}.')
+            if not all(checkf(p) for p in params):
+                raise RuntimeError(f'Invalid {name}: all {name} must be one of {err_msg}.')
+        elif self._valid:
+            params = default
+        else:
+            raise RuntimeError(f'`{name}` not fully provided, please check your parameters')
+        return params
+
+    def _further_check(self, retrievers: List[Retriever]): pass
+
+
+class WeightedRetriever(_CompositeRetrieverBase):
+    def _further_check(self, retrievers: List[Retriever]):
+        if any(hasattr(r, 'priority') for r in retrievers):
+            raise RuntimeError('priority is not allowed in `WeightedRetriever`.')
+        if all(hasattr(r, '_weight') for r in retrievers):
+            self._valid = True
+        elif any(hasattr(r, '_weight') for r in retrievers):
+            raise RuntimeError('All retrievers must define a "weight" attribute if any retriever defines one.')
+
+    def _combine(self, result: List[List[DocNode]], weights: List[float]):
+        return sum(result, [])
+
+    @property
+    def _weights(self): return self._get_cached_value('_weight')
+
+    def forward(self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
+                *, weights: Optional[List[float]] = None, **kwargs):
+        weights = self._get_real_params(weights, 'weights', (lambda x: isinstance(x, (int, float))),
+                                        self._weights, '(int, float)')
+        rs = self._retrievers(query, filters, **kwargs)
+        return self._post_process(self._combine(rs, weights))
+
+
+class PriorityRetriever(_CompositeRetrieverBase):
+    def _further_check(self, retrievers: List[Retriever]):
+        if any(hasattr(r, 'weight') for r in retrievers):
+            raise RuntimeError('weight is not allowed in `PriorityRetriever`.')
+        if all(hasattr(r, '_priority') for r in retrievers):
+            self._valid = True
+        elif any(hasattr(r, '_priority') for r in retrievers):
+            raise RuntimeError('All retrievers must define a "priority" attribute if any retriever defines one.')
+
+    def _combine(self, result: List[List[DocNode]], priorities: List[Retriever.Priority]):
+        return sum(result, [])
+
+    @property
+    def _priorities(self):
+        return self._get_cached_value('_priority')
+
+    def forward(self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
+                *, priorities: Optional[List[Retriever.Priority]] = None, **kwargs):
+        priorities = self._get_real_params(priorities, 'priorities', (lambda x: x in list(Retriever.Priority)),
+                                           self._priorities, list(Retriever.Priority))
+        rs = self._retrievers(query, filters, **kwargs)
+        return self._post_process(self._combine(rs))

@@ -99,6 +99,7 @@ class FlowBase(metaclass=_MetaBind):
     def _add(self, k, v):
         assert self._capture, f'_add can only be used in `{self.__class__}.__init__` or `with {self.__class__}()`'
         self._items.append(v() if isinstance(v, type) else _FuncWrap(v) if _is_function(v) or v in self._items else v)
+        self._check_value(self._items[-1])
         self._item_ids.append(k or str(uuid.uuid4().hex))
         self._item_pos.append(_get_callsite(depth=3))
         if isinstance(v, FlowBase): v._father = self
@@ -107,6 +108,8 @@ class FlowBase(metaclass=_MetaBind):
             self._item_names.append(k)
         if self._curr_frame and isinstance(v, FlowBase) and k and k not in self._curr_frame.f_locals:
             self._curr_frame.f_locals[k] = v  # make sense only when locals is globals
+
+    def _check_value(self, v): pass
 
     def __enter__(self, __frame=None):
         assert len(self._items) == 0, f'Cannot init {self.__class__} with items if you want to use it by context.'
