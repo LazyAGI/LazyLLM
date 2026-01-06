@@ -88,25 +88,19 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                     kwargs['type'] = 'image_editing'
                     lazyllm.LOG.info(f'Model {model} detected as image editing model. Automatically set type="image_editing".')
             image_editing = (kwargs.get('type') == 'image_editing')
-            module_cls = OnlineMultiModalModule.FUNCTION_MODEL_MAP[function][source]
-            editing_model = getattr(module_cls, 'IMAGE_EDITING_MODEL_NAME', None)
-            if editing_model:
-                if not image_editing and model == editing_model:
-                    image_editing = True
-                    lazyllm.LOG.info(f'Model {model} supports image editing. Automatically enabled image_editing.')
-                if image_editing and model is None:
-                    model = editing_model
+            default_module_cls = OnlineMultiModalModule.FUNCTION_MODEL_MAP[function][source]
+            default_editing_model = getattr(default_module_cls, 'IMAGE_EDITING_MODEL_NAME', None)
+            if image_editing:
+                if model is None and default_editing_model:
+                    model = default_editing_model
                     lazyllm.LOG.info(f'Image editing enabled for {source}. Automatically selected model: {model}')
-                elif image_editing and model is not None and model != editing_model:
+                elif model is None and not default_editing_model:
                     lazyllm.LOG.warning(
-                        f'Model {model} from {source} does not support image editing. '
-                        f'Please use model: {editing_model}'
+                        f'Image editing requested for {source}, but no default editing model available for this provider.'
                     )
-            else:
-                if image_editing:
-                    lazyllm.LOG.warning(
-                        f'Image editing requested for {source}, but no editing models available for this provider.'
-                    )        
+            elif model is not None and default_editing_model and model == default_editing_model:
+                kwargs['type'] = 'image_editing'
+                lazyllm.LOG.info(f'Model {model} is the default editing model. Automatically set type="image_editing".')
         if base_url is not None:
             kwargs['base_url'] = base_url
 

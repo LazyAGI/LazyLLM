@@ -2,6 +2,8 @@ import requests
 import lazyllm
 from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
+
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
@@ -68,7 +70,7 @@ class SiliconFlowReranking(OnlineEmbeddingModuleBase):
 
 class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     MODEL_NAME = 'Qwen/Qwen-Image'
-    IMAGE_EDITING_MODEL_NAME = 'Qwen/Qwen-Image-Edit'
+    IMAGE_EDITING_MODEL_NAME = 'Qwen/Qwen-Image-Edit-2509'
 
     def __init__(self, api_key: str = None, model: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',
@@ -88,44 +90,51 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
             LOG.error(f'API request failed: {str(e)}')
             raise
 
-    def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024', url: str = None, 
+    def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024', url: str = None,
                  model: str = None, **kwargs):
         has_ref_image = files is not None and len(files) > 0
-        reference_image_data_url = None
-        if self._type=='image_editing' and not has_ref_image:
+        reference_image_data = None
+        if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
             raise ValueError(
                 f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
                 f'Please provide an image file via the "files" parameter.'
             )
-        if not self._type=='image_editing' and has_ref_image:
+        if self._type != LLMType.IMAGE_EDITING and has_ref_image:
             raise ValueError(
                 f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
-                f'Please use an image editing model from: {self.IMAGE_EDITING_MODEL_NAME}'
-            )        
-        if has_ref_image:
-            reference_image_base64, _ = self._load_image(files[0])
-            reference_image_data_url = f"data:image/png;base64,{reference_image_base64}"        
+                f'Please use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model'
+            )
+
         payload = {
             'model': model,
             'prompt': input,
             **kwargs
-        }        
+        }
         if has_ref_image:
-            payload['image'] = reference_image_data_url
-
+            if len(files) > 3:
+                raise ValueError(
+                    f'Too many reference images provided ({len(files)}). '
+                    f'Image editing supports at most 3 reference images.'
+                )
+            for i, file in enumerate(files):
+                reference_image_base64, _ = self._load_image(file)
+                reference_image_data = f"data:image/png;base64,{reference_image_base64}"
+                if i == 0:
+                    payload['image'] = reference_image_data
+                elif i > 0:
+                    payload[f'image{i+1}'] = reference_image_data
         try:
             result = self._make_request(self._endpoint, payload)
             image_urls = [item['url'] for item in result.get('data', [])]
             if not image_urls:
-                raise Exception('No images returned from API')
-            
+                raise Exception('No images returned from API')            
             image_bytes = []
             for image_url in image_urls:
                 try:
                     _, image_byte = self._load_image(image_url)
                     image_bytes.append(image_byte)
                 except Exception as e:
-                    LOG.warning(f'Failed to download image from {image_url}: {str(e)}')            
+                    LOG.warning(f'Failed to download image from {image_url}: {str(e)}')
             if not image_bytes:
                 raise Exception('Failed to download any images')
             file_paths = bytes_to_file(image_bytes)

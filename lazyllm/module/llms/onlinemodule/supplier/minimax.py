@@ -3,6 +3,8 @@ import requests
 import lazyllm
 from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
+
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import OnlineChatModuleBase, OnlineMultiModalBase
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
@@ -73,10 +75,9 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
         OnlineMultiModalBase.__init__(self, model_series='MINIMAX', api_key=api_key or lazyllm.config['minimax_api_key'],
                                       model_name=model or MinimaxTextToImageModule.MODEL_NAME, base_url=base_url,
                                       return_trace=return_trace, **kwargs)
-        if self._type == 'image_editing':
+        if self._type == LLMType.IMAGE_EDITING :
             lazyllm.LOG.error("no support model!")
-            raise ValueError("MINIMAX series models do not support image editing now. "\
-                             "Please set image_editing=False or omit it.")
+            raise ValueError("MINIMAX series models do not support image editing now. ")
         self._endpoint = 'image_generation'
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any], base_url: Optional[str] = None,

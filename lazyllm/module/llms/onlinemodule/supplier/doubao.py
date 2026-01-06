@@ -1,10 +1,13 @@
 import lazyllm
 from typing import Dict, List, Union, Optional
+
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 import requests
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.thirdparty import volcenginesdkarkruntime
+from volcenginesdkarkruntime.types.images import SequentialImageGenerationOptions
 from lazyllm import LOG
 
 class DoubaoModule(OnlineChatModuleBase):
@@ -88,7 +91,7 @@ class DoubaoMultiModal(OnlineMultiModalBase):
         self._client = volcenginesdkarkruntime.Ark(base_url=base_url, api_key=api_key)
 
 class DoubaoTextToImageModule(DoubaoMultiModal):
-    MODEL_NAME = 'doubao-seedream-3-0-t2i-250415'
+    MODEL_NAME = 'doubao-seedream-4-0-250828'
     IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'    
     def __init__(self, api_key: str = None, model: str = None, return_trace: bool = False, **kwargs):
         DoubaoMultiModal.__init__(self, api_key=api_key, model=model
@@ -96,25 +99,34 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
                             or lazyllm.config['doubao_text2image_model_name'],
                             return_trace=return_trace, **kwargs)
 
-    def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024', seed: int = -1, 
+    def _forward(self, input: str = None, files: List[str] = None, n: int = 1, size: str = '1024x1024', seed: int = -1, 
                  guidance_scale: float = 2.5, watermark: bool = True, model: str = None, url: str = None, **kwargs):
         has_ref_image = files is not None and len(files) > 0
-        reference_image_data_url=None
-        if self._type=='image_editing' and not has_ref_image:
+        reference_image_data = None
+        if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
             LOG.warning(
                 f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
                 f'Please provide an image file via the "files" parameter.'
             )
-        if not self._type=='image_editing' and has_ref_image:
+        if self._type != LLMType.IMAGE_EDITING and has_ref_image:
             LOG.error(
                 f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
-                f'Please use default image editing model {self.IMAGE_EDITING_MODEL_NAME}'
+                f'Please use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model.'
             )
-            raise ValueError()        
+            raise ValueError()
+      
         if has_ref_image:
-            reference_image_base64, _ = self._load_image(files[0])
-            reference_image_data_url = f"data:image/png;base64,{reference_image_base64}"
-
+            if len(files) > 10:
+                raise ValueError(
+                    f'Too many images provided: {len(files)}. '
+                    f'Qwen image editing supports 1 to 10 reference images.'
+                )
+            
+            contents = []
+            for file in files:
+                reference_image_base64, _ = self._load_image(file)
+                reference_image_data = f"data:image/png;base64,{reference_image_base64}"
+                contents.append(reference_image_data)
         try:
             api_params = {
                 'model': model,
@@ -124,9 +136,14 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
                 'guidance_scale': guidance_scale,
                 'watermark': watermark,
                 **kwargs
-            }            
+            }
             if has_ref_image:
-                api_params['image'] = reference_image_data_url
+                api_params['image'] = contents
+                if n > 1:
+                    api_params['sequential_image_generation'] = 'auto'
+                    max_images = min(n, 15)
+                    api_params['sequential_image_generation_options'] = SequentialImageGenerationOptions(max_images=max_images)
+                    LOG.info(f'model {model} supports generating up to 15 images.')
             imagesResponse = self._client.images.generate(**api_params)
             image_contents = [requests.get(result.url).content for result in imagesResponse.data]
             return encode_query_with_filepaths(None, bytes_to_file(image_contents))

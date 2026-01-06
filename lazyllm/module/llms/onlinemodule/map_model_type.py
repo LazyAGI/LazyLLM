@@ -423,10 +423,10 @@ MODEL_MAPPING = {
     'doubao-seedance-1-0-pro-fast-251015': 'sd',
     'doubao-seedance-1-0-lite-t2v-250428': 'sd',
     'doubao-seedance-1-0-lite-i2v-250428': 'sd',
-    'doubao-seedream-4-5': 'image_editing',
-    'doubao-seedream-4-0-250828': 'image_editing',
+    'doubao-seedream-4-5': 'sd',
+    'doubao-seedream-4-0-250828': 'sd',
     'doubao-seedream-3-0-t2i-250415': 'sd',
-    'doubao-seededit-3-0-i2i-250628': 'image_editing',
+    'doubao-seededit-3-0-i2i-250628': 'sd',
     'doubao-seed3d-1-0-250928': 'sd',
     'doubao-embedding-large-text-250515': 'embed',
     'doubao-embedding-large-text-240915': 'embed',
@@ -439,8 +439,8 @@ MODEL_MAPPING = {
     'deepseek-reasoner': 'llm',
 
     # ===== SiliconFlow =====
-    'Qwen/Qwen-Image-Edit': 'image_editing',
-    'Qwen/Qwen-Image-Edit-2509': 'image_editing',
+    'qwen/qwen-image-edit': 'image_editing',
+    'qwen/qwen-image-edit-2509': 'image_editing',
 }
 _TOKEN_MAP = {
     'embed': ('embedding', 'embed'),
@@ -451,7 +451,7 @@ _TOKEN_MAP = {
     'rerank': ('rerank',),
     'cross_modal_embed': ('cross_modal', 'multimodal-embedding', 'embedding-vision'),
     'sd': ('dall', 'wan', 'sora', 'image', 'video', 't2i', 't2v'),
-    'image_editing': ('image-edit', 'seededit', 'i2i'),  
+    'image_editing': ('image-edit', 'seededit', 'i2i', 'seedream-3', 'seedream-4'),
 }
 _SUFFIX_RE = re.compile(
     r'(?:'

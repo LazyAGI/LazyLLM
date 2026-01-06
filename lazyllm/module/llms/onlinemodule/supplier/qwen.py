@@ -5,6 +5,7 @@ import requests
 from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 import lazyllm
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 from ..fileHandler import FileHandlerBase
 from http import HTTPStatus
@@ -470,7 +471,7 @@ class QwenTextToImageModule(QwenMultiModal):
             image_bytes.append(image_byte)
         return image_bytes
         
-    def _forward(self, input: str = None, files: List[str] = None, negative_prompt: str = None, n: int = 1, 
+    def _forward(self, input: str = None, files: List[str] = None, negative_prompt: str = None, n: int = 1,
                  prompt_extend: bool = True, size: str = '1024*1024', seed: int = None,
                  url: str = None, model: str = None, **kwargs):
         has_ref_image = files is not None and len(files) > 0
@@ -481,28 +482,32 @@ class QwenTextToImageModule(QwenMultiModal):
             raise Exception('Qwen TextToImage forward() does not support overriding the `url` parameter,' \
                             'please remove it.')
         
-        if self._type == 'image_editing' and not has_ref_image:
+        if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
             raise ValueError(
                 f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
                 f'Please provide an image file via the "files" parameter.'
             )
-        
-        if not self._type == 'image_editing' and has_ref_image:
+        if self._type != LLMType.IMAGE_EDITING and has_ref_image:
             raise ValueError(
                 f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
-                f'Please set image_editing=True or use an image editing model from: {self.IMAGE_EDITING_MODEL_NAME}'
-            )
-        
+                f'Please use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model'
+            )        
         if has_ref_image:
-            reference_image_base64, _ = self._load_image(files[0])
-            reference_image_data = f"data:image/png;base64,{reference_image_base64}"
+            if len(files) > 3:
+                raise ValueError(
+                    f'Too many images provided: {len(files)}. '
+                    f'Qwen image editing supports 1 to 3 reference images.'
+                )
+            content = []
+            for file in files:
+                reference_image_base64, _ = self._load_image(file)
+                reference_image_data = f"data:image/png;base64,{reference_image_base64}"
+                content.append({"image": reference_image_data})
+            content.append({"text": input})
             messages = [
                 {
                     "role": "user",
-                    "content": [
-                        {"image": reference_image_data},
-                        {"text": input}
-                    ]
+                    "content": content
                 }
             ]
 
@@ -516,21 +521,24 @@ class QwenTextToImageModule(QwenMultiModal):
         }
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
-        if has_ref_image:
-            call_params['messages'] = messages
-            response = self._call_sync_text2image(call_params)
-            image_urls = self._extract_sync_image_urls(response)
-        else:
-            call_params['prompt'] = input
-            response = self._call_async_text2image(call_params)
-            image_urls = self._extract_async_image_urls(response)        
-        if response.status_code != HTTPStatus.OK:
-            error_msg = getattr(response.output, 'message', 'Unknown error')
-            LOG.error(f'Image generation failed: {error_msg}')
-            raise Exception(f'Image generation failed: {error_msg}')
-        
-        image_bytes = self._download_images(image_urls)
-        return encode_query_with_filepaths(None, bytes_to_file(image_bytes))
+        try:
+            if has_ref_image:
+                call_params['messages'] = messages
+                response = self._call_sync_text2image(call_params)
+                image_urls = self._extract_sync_image_urls(response)
+            else:
+                call_params['prompt'] = input
+                response = self._call_async_text2image(call_params)
+                image_urls = self._extract_async_image_urls(response)
+            if response.status_code != HTTPStatus.OK:
+                error_msg = getattr(response.output, 'message', 'Unknown error')
+                LOG.error(f'Image generation failed: {error_msg}')
+                raise Exception(f'Image generation failed: {error_msg}')        
+            image_bytes = self._download_images(image_urls)
+            return encode_query_with_filepaths(None, bytes_to_file(image_bytes))
+        except Exception as e:
+            lazyllm.LOG.error(f'Image generation/editing request failed: {str(e)}')
+            raise
         
 
 

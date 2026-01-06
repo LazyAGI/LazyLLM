@@ -113,18 +113,21 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
         self._validate_image_data(data, url)
         return data
 
-    def _load_image(self, image_path: str) -> Union[str, bytes]:
-        try:
-            if image_path.startswith('http://') or image_path.startswith('https://'):
-                data = self._get_image_data_from_url(image_path)
-            else:
-                p = Path(image_path)
-                if not p.exists():
-                    raise FileNotFoundError(f'Image file not found: {image_path}')
-                data = p.read_bytes()
-                self._validate_image_data(data, image_path)
-            base64_str = base64.b64encode(data).decode('utf-8')
-            return base64_str, data
-        except Exception as e:
-            lazyllm.LOG.error(f'Unexpected error loading image from {image_path}: {str(e)}')
-            raise ValueError(f'Failed to load image from {image_path}: {str(e)}')
+    def _load_image(self, image_paths: Union[str, List[str]]) -> Union[str, bytes]:
+        if isinstance(image_paths, str):
+            image_paths = [image_paths]
+        for image_path in image_paths:
+            try:
+                if image_path.startswith('http://') or image_path.startswith('https://'):
+                    data = self._get_image_data_from_url(image_path)
+                else:
+                    p = Path(image_path)
+                    if not p.exists():
+                        raise FileNotFoundError(f'Image file not found: {image_path}')
+                    data = p.read_bytes()
+                    self._validate_image_data(data, image_path)
+                base64_str = base64.b64encode(data).decode('utf-8')
+                return base64_str, data
+            except Exception as e:
+                lazyllm.LOG.error(f'Unexpected error loading image from {image_path}: {str(e)}')
+                raise ValueError(f'Failed to load image from {image_path}: {str(e)}')
