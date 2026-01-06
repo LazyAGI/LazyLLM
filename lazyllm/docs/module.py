@@ -2742,8 +2742,8 @@ Args:
     **kwargs: Other model parameters
 """)
 
-add_chinese_doc('llms.onlinemodule.base.utils.OnlineModuleBase', '''\
-在线模块基类，继承自 ModuleBase，为所有在线服务模块提供统一的基础功能。  
+add_chinese_doc('llms.onlinemodule.base.utils.LazyLLMOnlineBase', '''\
+LazyLLM 在线模块基类，继承自 ModuleBase，并使用 LazyLLMRegisterMetaClass， 为所有在线服务模块提供统一的基础功能。  
 该类封装了在线模块的通用行为，包括缓存机制和调试追踪功能，是构建各种在线API服务模块的基础类。
 
 功能特性:
@@ -2762,8 +2762,8 @@ Args:
     4. 为自定义在线服务模块提供统一的基础功能。
 ''')
 
-add_english_doc('llms.onlinemodule.base.utils.OnlineModuleBase', '''\
-Base class for online modules, inheriting from ModuleBase, providing unified basic functionality for all online service modules.  
+add_english_doc('llms.onlinemodule.base.utils.LazyLLMOnlineBase', '''\
+Base class for online modules, inheriting from ModuleBase and powered by LazyLLMRegisterMetaClass, providing unified basic functionality for all online service modules.  
 This class encapsulates common behaviors of online modules, including caching mechanisms and debug tracing functionality, serving as the foundation for building various online API service modules.
 
 Key Features:

@@ -2,10 +2,10 @@ from typing import Dict, List, Union
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from lazyllm import LOG
-from .utils import LazyLLMOnlineModuleBase
+from .utils import LazyLLMOnlineBase
 
 
-class OnlineEmbeddingModuleBase(LazyLLMOnlineModuleBase):
+class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
     NO_PROXY = True
     _lazy_llm_group = 'online.embedding'
 

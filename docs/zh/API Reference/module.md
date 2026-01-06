@@ -167,7 +167,7 @@
       members:
         - get_finetune_data 
 
-::: lazyllm.module.llms.onlinemodule.base.utils.OnlineModuleBase
+::: lazyllm.module.llms.onlinemodule.base.utils.LazyLLMOnlineBase
     members:
     exclude-members:
 

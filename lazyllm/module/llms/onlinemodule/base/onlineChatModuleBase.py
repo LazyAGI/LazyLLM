@@ -16,7 +16,7 @@ from lazyllm.components.prompter import PrompterBase
 from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from ....servermodule import LLMBase
-from .utils import LazyLLMOnlineModuleBase
+from .utils import LazyLLMOnlineBase
 
 class StaticParams(TypedDict, total=False):
     temperature: float
@@ -26,7 +26,7 @@ class StaticParams(TypedDict, total=False):
     frequency_penalty: float  # Note some online api use 'repetition_penalty'
 
 
-class OnlineChatModuleBase(LazyLLMOnlineModuleBase, LLMBase):
+class OnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     TRAINABLE_MODEL_LIST = []
     VLM_MODEL_PREFIX = []
     NO_PROXY = True
@@ -38,7 +38,7 @@ class OnlineChatModuleBase(LazyLLMOnlineModuleBase, LLMBase):
         if any([model_name.startswith(prefix) for prefix in self.VLM_MODEL_PREFIX]):
             if type is None: type = 'VLM'
             else: assert type == 'VLM', f'model_name {model_name} is a VLM model, but type is {type}'
-        LazyLLMOnlineModuleBase.__init__(self, api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
+        LazyLLMOnlineBase.__init__(self, api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
         LLMBase.__init__(self, stream=stream, type=type)
         self._model_series = model_series
         self.__base_url = base_url

@@ -8,7 +8,7 @@ config.add('cache_online_module', bool, False, 'CACHE_ONLINE_MODULE',
            description='Whether to cache the online module result. Use for unit test.')
 
 
-class OnlineModuleBase(ModuleBase):
+class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, api_key: Optional[Union[str, List[str]]],
                  skip_auth: Optional[bool] = False, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
@@ -34,13 +34,5 @@ class OnlineModuleBase(ModuleBase):
     def _header(self):
         return random.choice(self.__headers)
 
-
-class LazyLLMOnlineBase(OnlineModuleBase, metaclass=LazyLLMRegisterMetaClass):
-    """Base class for online modules that need registry support."""
-
-    def __init__(self, api_key: Optional[Union[str, List[str]]],
-                 skip_auth: Optional[bool] = False, return_trace: bool = False):
-        super().__init__(api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
-
-
-LazyLLMOnlineModuleBase = LazyLLMOnlineBase
+# deprecated class name
+OnlineModuleBase = LazyLLMOnlineBase  # alias for legacy imports

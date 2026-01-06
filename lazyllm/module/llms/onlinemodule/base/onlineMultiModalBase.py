@@ -1,7 +1,7 @@
 from typing import List, Dict, Union, Optional
 import lazyllm
 from ....servermodule import LLMBase
-from .utils import LazyLLMOnlineModuleBase
+from .utils import LazyLLMOnlineBase
 import base64
 from pathlib import Path
 import requests
@@ -11,7 +11,7 @@ import socket
 from io import BytesIO
 from lazyllm.thirdparty import PIL
 
-class OnlineMultiModalBase(LazyLLMOnlineModuleBase, LLMBase):
+class OnlineMultiModalBase(LazyLLMOnlineBase, LLMBase):
     _lazy_llm_group = 'online.multimodal'
     def __init__(self, model_series: str, model: str = None, return_trace: bool = False, skip_auth: bool = False,
                  api_key: Optional[Union[str, List[str]]] = None, url: str = None, type: Optional[str] = None, **kwargs):
