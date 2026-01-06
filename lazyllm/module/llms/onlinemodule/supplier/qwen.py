@@ -482,11 +482,6 @@ class QwenTextToImageModule(QwenMultiModal):
                 f'Please use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model'
             )
         if has_ref_image:
-            if len(files) > 3:
-                raise ValueError(
-                    f'Too many images provided: {len(files)}. '
-                    f'Qwen image-editing model {model} supports 1 to 3 reference images.'
-                )
             image_results = self._load_images(files)
             content = []
             for base64_str, _ in image_results:

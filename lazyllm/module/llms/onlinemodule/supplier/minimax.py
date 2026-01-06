@@ -77,8 +77,8 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
                                       model_name=model or MinimaxTextToImageModule.MODEL_NAME, base_url=base_url,
                                       return_trace=return_trace, **kwargs)
         if self._type == LLMType.IMAGE_EDITING:
-            lazyllm.LOG.error("no support model!")
-            raise ValueError("MINIMAX series models do not support image editing now. ")
+            lazyllm.LOG.error('no support model!')
+            raise ValueError('MINIMAX series models do not support image editing now.')
         self._endpoint = 'image_generation'
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any], base_url: Optional[str] = None,

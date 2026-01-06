@@ -115,13 +115,8 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
             raise ValueError()
 
         if has_ref_image:
-            if len(files) > 10:
-                raise ValueError(
-                    f'Too many images provided: {len(files)}. '
-                    f'Doubao image-editing model{model} supports 1 to 10 reference images.'
-                )
             image_results = self._load_images(files)
-            contents = [f"data:image/png;base64,{base64_str}" for base64_str, _ in image_results]
+            contents = [f'data:image/png;base64,{base64_str}' for base64_str, _ in image_results]
         try:
             api_params = {
                 'model': model,

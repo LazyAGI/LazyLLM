@@ -111,14 +111,9 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
             **kwargs
         }
         if has_ref_image:
-            if len(files) > 3:
-                raise ValueError(
-                    f'Too many reference images provided ({len(files)}). '
-                    f'Image editing supports at most 3 reference images.'
-                )
             for i, file in enumerate(files):
                 reference_image_base64, _ = self._load_images(file)[0]
-                reference_image_data = f"data:image/png;base64,{reference_image_base64}"
+                reference_image_data = f'data:image/png;base64,{reference_image_base64}'
                 if i == 0:
                     payload['image'] = reference_image_data
                 elif i > 0:

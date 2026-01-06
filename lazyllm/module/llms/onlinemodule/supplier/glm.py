@@ -286,8 +286,8 @@ class GLMTextToImageModule(GLMMultiModal):
                                or lazyllm.config['glm_text_to_image_model_name'], api_key=api_key,
                                return_trace=return_trace, **kwargs)
         if self._type == LLMType.IMAGE_EDITING:
-            lazyllm.LOG.error("no support model!")
-            raise ValueError("GLM series models do not support image editing now. ")
+            lazyllm.LOG.error('no support model!')
+            raise ValueError('GLM series models do not support image editing now.')
 
     def _forward(self, input: str = None, n: int = 1, size: str = '1024x1024',
                  url: str = None, model: str = None, **kwargs):
