@@ -3253,7 +3253,7 @@ add_example('rag.retriever.TempDocRetriever', '''
 >>> retriever = TempDocRetriever(output_format="text", join="\n---------------\n")
     retriever.create_node_group(transform=lambda text: [s.strip() for s in text.split("。") if s] )
     retriever.add_subretriever(group=Document.MediumChunk, topk=3)
-    files = ["机器学习是AI的核心领域。深度学习是其重要分支。"]
+    files = ["/path/to/file.txt"]
     results = retriever.forward(files, "什么是机器学习?")
     print(results)
 ''')
@@ -3297,6 +3297,8 @@ Args:
 ''')
 
 add_example('rag.retriever.ContextRetriever', '''\
+>>> ctx1 = '大学之道，在明明德，\n在亲民，在止于至善。\n知止而后有定，定而后能静，静而后能安。'
+>>> ctx2 = '子曰：学而时习之，不亦说乎？\n有朋自远方来，不亦乐乎？'
 >>> ret = ContextRetriever(output_format='dict')
 >>> ret.create_node_group('block', transform=lambda x: x.split('\n'))
 >>> ret.add_subretriever(Document.CoarseChunk, topk=1)
