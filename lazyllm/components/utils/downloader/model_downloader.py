@@ -31,10 +31,14 @@ class _CaseInsensitiveEnumMeta(EnumMeta):
             raise
 
 
+_EQUIVALENT = {'sd': 'text2image'}
+
+
 class LLMType(str, Enum, metaclass=_CaseInsensitiveEnumMeta):
     LLM = 'LLM'
     VLM = 'VLM'
     SD = 'SD'
+    TEXT2IMAGE = 'TEXT2IMAGE'
     TTS = 'TTS'
     STT = 'STT'
     EMBED = 'EMBED'
@@ -43,26 +47,31 @@ class LLMType(str, Enum, metaclass=_CaseInsensitiveEnumMeta):
     OCR = 'OCR'
 
     @classmethod
+    def _normalize(cls, value: str) -> str:
+        v = value.casefold()
+        return _EQUIVALENT.get(v, v)
+
+    @classmethod
     def _missing_(cls, value):
         if isinstance(value, str):
-            v = value.casefold()
+            v = cls._normalize(value)
             for m in cls:
-                if m.value.casefold() == v:
+                if cls._normalize(m.value) == v:
                     return m
             for m in cls:
-                if m.name.casefold() == v:
+                if cls._normalize(m.name) == v:
                     return m
         return None
 
     def __eq__(self, other):
         if isinstance(other, str):
-            return self.value.casefold() == other.casefold()
+            return self._normalize(self.value) == self._normalize(other)
         if isinstance(other, LLMType):
-            return self.value.casefold() == other.value.casefold()
+            return self._normalize(self.value) == self._normalize(other.value)
         return NotImplemented
 
     def __hash__(self):
-        return hash(self.value.casefold())
+        return hash(self._normalize(self.value))
 
 
 class ModelManager():

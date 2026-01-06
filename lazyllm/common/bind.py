@@ -1,35 +1,9 @@
-import copy
 import builtins
 import itertools
-from typing import Callable, Any, Optional, List
+from typing import Callable, Any
 from .globals import locals
+from .logger import LOG
 from .common import package
-
-
-class AttrTree(object):
-    def __init__(self, name: Optional[str] = None, pres: Optional[List[str]] = None):
-        self._path = copy.deepcopy(pres or [])
-        if name is not None:
-            self._path.append(name)
-
-    def __str__(self):
-        return '.'.join(self._path)
-
-    def __getattr__(self, name):
-        v = __class__(name, pres=self._path)
-        setattr(self, name, v)
-        return v
-
-    def get_from(self, obj):
-        v = obj
-        for name in self._path:
-            v = getattr(v, name)
-        return v
-
-    def __deepcopy__(self, memo):
-        return self
-
-root = AttrTree()
 
 
 class Placeholder(object):
@@ -97,12 +71,17 @@ class Bind(object):
             self._item_key, self._attr_key, self._source_id, self._target_id = state
 
         def get_arg(self, source):
-            if (not source or self._source_id != source['source']) and self._source_id in locals['bind_args']:
-                source = locals['bind_args'][self._source_id]
             if not source or source['source'] != self._source_id:
-                raise RuntimeError('Unable to find the bound parameter, possibly due to pipeline.input/output can only '
-                                   'be bind in direct member of pipeline! You may solve this by defining the pipeline '
-                                   'in a `with lazyllm.save_pipeline_result():` block.')
+                if self._source_id in locals['bind_args']:
+                    source = locals['bind_args'][self._source_id]
+                    if not source or source['source'] != self._source_id:
+                        LOG.debug(f'Get source failed, source is {source}, and expect id is {self._source_id}')
+                        raise RuntimeError('Internal Error, please report issue to `https://github.com/LazyAGI/LazyLLM`')
+                else:
+                    LOG.debug(f'Get source failed, locals is {locals["bind_args"]}, and expect id is {self._source_id}')
+                    raise RuntimeError('Unable to find the bound parameter, possibly due to pipeline.input/output can '
+                                       'only be bind in direct member of pipeline! You may solve this by defining the '
+                                       'pipeline in a `with lazyllm.save_pipeline_result():` block.')
             input = result = source[self._target_id]
             source = source['source']
             if self._item_key is not Bind.Args._None: result = input[self._item_key]
@@ -114,8 +93,6 @@ class Bind(object):
         self._f = __bind_func() if isinstance(__bind_func, type) and __bind_func is not Bind._None else __bind_func
         self._args = args
         self._kw = kw
-        self._has_root = (any([isinstance(a, AttrTree) for a in args])
-                          or any([isinstance(v, AttrTree) for v in kw.values()]))
 
     def __or__(self, other):
         if isinstance(other, Bind):

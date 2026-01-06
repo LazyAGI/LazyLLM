@@ -1,5 +1,5 @@
 import lazyllm
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 import requests
 from lazyllm.components.formatter import encode_query_with_filepaths
@@ -83,9 +83,8 @@ class DoubaoMultiModal(OnlineMultiModalBase):
                  return_trace: bool = False, **kwargs):
         api_key = api_key or lazyllm.config['doubao_api_key']
         OnlineMultiModalBase.__init__(self, model_series='DOUBAO', model_name=model_name, api_key=api_key,
-                                      return_trace=return_trace, **kwargs)
+                                      return_trace=return_trace, base_url=base_url, **kwargs)
         self._client = volcenginesdkarkruntime.Ark(base_url=base_url, api_key=api_key)
-
 
 class DoubaoTextToImageModule(DoubaoMultiModal):
     MODEL_NAME = 'doubao-seedream-3-0-t2i-250415'
@@ -97,9 +96,12 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
                                   return_trace=return_trace, **kwargs)
 
     def _forward(self, input: str = None, size: str = '1024x1024', seed: int = -1, guidance_scale: float = 2.5,
-                 watermark: bool = True, **kwargs):
-        imagesResponse = self._client.images.generate(
-            model=self._model_name,
+                 watermark: bool = True, url: str = None, model: str = None, **kwargs):
+        client = self._client
+        if url and url != getattr(self, '_base_url', None):
+            client = volcenginesdkarkruntime.Ark(base_url=url, api_key=self._api_key)
+        imagesResponse = client.images.generate(
+            model=model,
             prompt=input,
             size=size,
             seed=seed,

@@ -1,5 +1,5 @@
 from typing import List, Optional, Union, Dict, Set, Callable
-from lazyllm import ModuleBase, once_wrapper, LOG
+from lazyllm import ModuleBase, once_wrapper, LOG, TempPathGenerator
 
 from .doc_node import DocNode
 from .document import Document, UrlDocument, DocImpl
@@ -118,7 +118,7 @@ class Retriever(ModuleBase, _PostProcess):
         return self._post_process(all_nodes)
 
 
-class TempDocRetriever(ModuleBase, _PostProcess):
+class TempRetriever(ModuleBase, _PostProcess):
     def __init__(self, embed: Callable = None, output_format: Optional[str] = None, join: Union[bool, str] = False):
         super().__init__()
         self._doc = Document(doc_files=[])
@@ -137,17 +137,42 @@ class TempDocRetriever(ModuleBase, _PostProcess):
         self._node_groups.append((group, kwargs))
         return self
 
-    @functools.lru_cache    # noqa: B019
-    def _get_retrievers(self, doc_files: List[str]):
+    def _get_retrievers_impl(self, doc_files: List[str], init: bool = False):
         active_node_groups = self._node_groups or [[Document.MediumChunk,
                                                     dict(similarity=('cosine' if self._embed else 'bm25'))]]
         doc = Document(embed=self._embed, doc_files=doc_files)
         doc._impl.node_groups = self._doc._impl.node_groups
         retrievers = [Retriever(doc, name, **kw) for (name, kw) in active_node_groups]
+        if init: lazyllm.parallel(*retrievers).sum('hello world')
         return retrievers
+
+    def _get_retrievers(self, doc_files: List[str], init: bool = False):
+        raise NotImplementedError('Please implement it at subclass')
 
     def forward(self, files: Union[str, List[str]], query: str):
         if isinstance(files, str): files = [files]
-        retrievers = self._get_retrievers(doc_files=tuple(set(files)))
+        retrievers = self._get_retrievers(tuple(set(files)))
         r = lazyllm.parallel(*retrievers).sum
         return self._post_process(r(query))
+
+
+class TempDocRetriever(TempRetriever):
+    @functools.lru_cache(maxsize=128)  # noqa B019
+    def _get_retrievers(self, doc_files: List[str]):
+        return self._get_retrievers_impl(doc_files)
+
+    def __del__(self):
+        self._get_retrievers.cache_clear()
+
+
+class ContextRetriever(TempRetriever):
+    def forward(self, context: Union[str, List[str]], query):
+        return super().forward(context, query)
+
+    @functools.lru_cache(maxsize=128)  # noqa B019
+    def _get_retrievers(self, context: List[str]):
+        with TempPathGenerator(context) as pathes:
+            return super()._get_retrievers_impl(pathes, init=True)
+
+    def __del__(self):
+        self._get_retrievers.cache_clear()

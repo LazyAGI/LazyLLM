@@ -4,7 +4,7 @@ check_dependency_by_group('rag')
 # flake8: noqa: E402
 from .document import Document
 from .graph_document import GraphDocument, UrlGraphDocument
-from .retriever import Retriever, TempDocRetriever
+from .retriever import Retriever, TempDocRetriever, ContextRetriever
 from .graph_retriever import GraphRetriever
 from .rerank import Reranker, register_reranker
 from .transform import (SentenceSplitter, LLMParser, NodeTransform, TransformArgs, AdaptiveTransform,
@@ -35,6 +35,7 @@ __all__ = [
     'Retriever',
     'GraphRetriever',
     'TempDocRetriever',
+    'ContextRetriever',
     'NodeTransform',
     'AdaptiveTransform',
     'TransformArgs',
