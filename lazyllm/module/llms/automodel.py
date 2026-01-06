@@ -63,8 +63,8 @@ class AutoModel:
         return TrainableModule(use_model_map=use_config, **config)
 
     def __new__(cls,
-                model: str = '',
-                id: Optional[str] = None,
+                model: str,
+                config_id: Optional[str] = None,
                 *,
                 source: Optional[str] = None,
                 type: Optional[str] = None,
@@ -76,10 +76,8 @@ class AutoModel:
         module_kwargs = dict(kwargs)
 
         # check and accomodate user params
-        config_id = id or module_kwargs.pop('id', None)
         model = model or module_kwargs.pop('base_model', module_kwargs.pop('embed_model_name', None))
         url = url or module_kwargs.pop('base_url', module_kwargs.pop('embed_url', None))
-        type = type or module_kwargs.pop('task', None)
         if not model:
             raise ValueError('`model` is required for AutoModel.')
 
