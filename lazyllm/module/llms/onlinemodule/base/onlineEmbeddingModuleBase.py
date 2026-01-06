@@ -8,9 +8,9 @@ from .utils import OnlineModuleBase
 class OnlineEmbeddingModuleBase(OnlineModuleBase):
     NO_PROXY = True
 
-    def __init__(self, model_series: str, embed_url: str, api_key: str, embed_model_name: str,
+    def __init__(self, model_series: str, embed_url: str, api_key: str, embed_model_name: str, skip_auth: bool = False,
                  return_trace: bool = False, batch_size: int = 1, num_worker: int = 1, timeout: int = 10):
-        super().__init__(api_key=api_key, skip_auth=False, return_trace=return_trace)
+        super().__init__(api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
         self._model_series = model_series
         self._embed_url = embed_url
         self._embed_model_name = embed_model_name
