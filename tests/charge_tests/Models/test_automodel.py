@@ -94,7 +94,7 @@ class TestAutoModel(object):
         assert len(DummyOnline.instances) == 0
         assert os.environ['LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH'] == CONFIG_PATH
 
-    def test_autmodel_uses_online_entry_url_and_port(self, monkeypatch, dummy_modules):
+    def test_autmodel_uses_online_entry_url(self, monkeypatch, dummy_modules):
         DummyOnline, DummyTrainable = dummy_modules
 
         result = AutoModel(model='online-url-model')
@@ -103,7 +103,6 @@ class TestAutoModel(object):
         assert len(DummyTrainable.instances) == 0
         kwargs = DummyOnline.instances[0].kwargs
         assert kwargs['url'] == 'http://custom.online.endpoint/v1/'
-        assert kwargs['port'] == 9001
 
     def test_autmodel_uses_configured_online_credentials(self, monkeypatch, dummy_modules):
         DummyOnline, DummyTrainable = dummy_modules
@@ -118,7 +117,7 @@ class TestAutoModel(object):
     def test_autmodel_selects_entry_by_id(self, monkeypatch, dummy_modules):
         DummyOnline, DummyTrainable = dummy_modules
 
-        result = AutoModel(model='sensenova-model', id='id-sensenova-alt')
+        result = AutoModel(model='sensenova-model', config_id='id-sensenova-alt')
 
         assert isinstance(result, DummyOnline)
         kwargs = DummyOnline.instances[0].kwargs

@@ -23,6 +23,8 @@ from ..utils import light_reduce
 
 lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH',
                    description='The default path for trainable module config map.')
+lazyllm.config.add('auto_model_config_map_path', str, '', 'AUTO_MODEL_CONFIG_MAP_PATH',
+                   description='The default path for automodel config map.')
 ignore_config_keys = ['log_path', 'launcher']
 
 
@@ -200,8 +202,11 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if hasattr(self._deploy, 'auto_map') and self._deploy.auto_map:
             self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
 
-        trainable_module_config_map = get_module_config_map(
-            lazyllm.config['trainable_module_config_map_path']) if self._use_model_map else {}
+        # to accommodate both trainable & auto config map
+        trainable_module_config_map = (
+            get_module_config_map(lazyllm.config['trainable_module_config_map_path']) or
+            get_module_config_map(lazyllm.config['auto_model_config_map_path'])
+        ) if self._use_model_map else {}
 
         base_model_name = os.path.basename(self._base_model)
         if base_model_name in trainable_module_config_map:

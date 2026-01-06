@@ -264,13 +264,6 @@ def get_module_config_map(path):
     return cfg
 
 
-def load_config_entries(model: Optional[str], use_config: bool) -> List[Dict[str, Any]]:
-    if not (use_config and model):
-        return []
-    config_map = get_module_config_map(lazyllm.config['auto_model_config_map_path'])
-    return [deepcopy(item) for item in (config_map.get(model) or [])]
-
-
 def _classify_config_entry(entry: Dict[str, Any]) -> str:
     if entry.get('framework') or entry.get('deploy_config'):
         return 'trainable'
@@ -280,12 +273,11 @@ def _classify_config_entry(entry: Dict[str, Any]) -> str:
     return 'online'
 
 
-def select_config_entry(entries: List[Dict[str, Any]],
+def _select_config_entry(entries: List[Dict[str, Any]],
                         entry_type: str,
                         preferred_source: Optional[str],
                         preferred_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     preferred_source = (preferred_source or '').lower()
-    preferred_id = preferred_id or ''
     fallback = None
     source_match = None
     for entry in entries:
@@ -303,23 +295,21 @@ def select_config_entry(entries: List[Dict[str, Any]],
     return deepcopy(fallback) if fallback else None
 
 
-def decide_target_mode(source: Optional[str],
+def _decide_target_mode(source: Optional[str],
                        type: Optional[str],
-                       url: Optional[str],
                        framework: Optional[Union[str, Any]],
-                       port: Optional[Union[int, str]],
                        user_deploy_config: Dict[str, Any],
                        has_online_entry: bool,
                        has_trainable_entry: bool) -> str:
     normalized_source = (source or '').lower()
-    explicit_online = bool(type or url or (source and normalized_source not in LOCAL_SOURCES))
-    explicit_trainable = bool(framework or port or user_deploy_config or
-                              (source and normalized_source in LOCAL_SOURCES))
+    explicit_online = bool(type or (normalized_source not in LOCAL_SOURCES))
+    explicit_trainable = bool(framework or user_deploy_config or
+                              (normalized_source in LOCAL_SOURCES))
     if explicit_online and explicit_trainable:
         return 'trainable' if has_trainable_entry else 'online'
-    if explicit_trainable:
+    elif explicit_trainable:
         return 'trainable'
-    if explicit_online:
+    elif explicit_online:
         return 'online'
     if has_online_entry == has_trainable_entry:
         api_key = os.environ['LAZYLLM_SENSENOVA_API_KEY']
@@ -327,8 +317,63 @@ def decide_target_mode(source: Optional[str],
     return 'online' if has_online_entry else 'trainable'
 
 
+def get_target_entry(model: str,
+                     config_id: str,
+                     source: str,
+                     type: str,
+                     framework: str,
+                     use_config: bool,
+                     deploy_config: dict):
+    # get entries
+    if not use_config:
+        entries = []
+    else:
+        config_map = get_module_config_map(lazyllm.config['auto_model_config_map_path'])
+        entries = [deepcopy(item) for item in (config_map.get(model) or [])]
+
+    # process config entries and distinguish target mode
+    online_entry = _select_config_entry(entries, 'online', source, config_id)
+    trainable_entry = _select_config_entry(entries, 'trainable', source, config_id)
+    deploy_config = deploy_config or trainable_entry.get('deploy_config', {}) if trainable_entry else {}
+
+    target_mode = _decide_target_mode(source, type, framework, deploy_config,
+                                      online_entry is not None, trainable_entry is not None)
+    entry = online_entry if target_mode=='online' else trainable_entry
+    return target_mode, entry
+
+
 def resolve_model_name(original: Optional[str], entry: Optional[Dict[str, Any]]) -> Optional[str]:
     if not entry:
         return original
     override = entry.get('name')
     return override or original
+
+
+def process_trainable_args(model: str, type: str, use_config: bool, **kwargs: Any) -> dict:
+    module_kwargs = dict(kwargs)
+    return {
+        'base_model': model,
+        'target_path': module_kwargs.get('target_path', ''),
+        'stream': module_kwargs.get('stream', False),
+        'return_trace': module_kwargs.get('return_trace', False),
+        'trust_remote_code': module_kwargs.get('trust_remote_code', True),
+        'type': type,
+        'source': module_kwargs.get('source', None),
+        'use_model_map': use_config,
+    }
+
+def process_online_args(model: str, source: str, type: str, url: str, 
+                        entry: dict, **kwargs: Any) -> dict:
+    config = {**entry, **kwargs}
+    config['model'] = model
+    if source:
+        config['source'] = source
+    if type:
+        config['type'] = type
+    if url:
+        config['url'] = url
+    config.pop('deploy_config', None)
+    config.pop('framework', None)
+    config.pop('name', None)
+    config.pop('id', None)
+    return config

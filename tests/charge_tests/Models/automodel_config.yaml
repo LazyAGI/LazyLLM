@@ -10,7 +10,6 @@ internlm-test:
     framework: vllm
     source: local
     url: http://127.0.0.1:8000/v1/
-    port: 8000
     deploy_config:
       max_model_len: 4096
       gpu_memory_utilization: 0.6
@@ -38,15 +37,13 @@ trainable-model:
   - framework: vllm
     source: local
     url: http://127.0.0.1:2333/v1/
-    port: 2333
     deploy_config:
       pipeline_parallel_size: 1
       tensor_parallel_size: 1
 
-# Only url/port provided, route to OnlineModule.
+# Only url provided, route to OnlineModule.
 online-url-model:
   - url: http://custom.online.endpoint/v1/
-    port: 9001
 
 # Config includes credential information for online service.
 credential-model:
