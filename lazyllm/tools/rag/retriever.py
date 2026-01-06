@@ -30,9 +30,11 @@ class _PostProcess(object):
 
 class _RetrieverBase(ModuleBase):
     class Priority(str, Enum):
+        ignore = 'ignore'
         low = 'low'
         normal = 'normal'
         high = 'high'
+
 
 class Retriever(_RetrieverBase, _PostProcess):
     def __init__(self, doc: object, group_name: str, similarity: Optional[str] = None,
@@ -204,6 +206,7 @@ class _CompositeRetrieverBase(_RetrieverBase, _PostProcess):
         self._strict = strict
         self._valid = False  # will be set in _further_check
         self._capture = False
+        self._topk = topk
         _PostProcess.__init__(self, output_format, join)
 
     _items = property(lambda self: self._retrievers._items)
@@ -241,15 +244,18 @@ class _CompositeRetrieverBase(_RetrieverBase, _PostProcess):
             self._cached_values = [r.get(name, default) for r in self._items]
         return self._cached_values
 
-    def _get_real_params(self, params, name, checkf, default, err_msg):
+    @staticmethod
+    def _real_params_checkf(x): raise NotImplementedError()
+
+    def _get_real_params(self, params, name, err_msg):
         if params:
             if len(params) != len(self._items):
                 raise RuntimeError(f'Dimension mismatch: expected {len(self._items)} {name} '
                                    f'for {len(self._items)} retrievers, but got {len(params)}.')
-            if not all(checkf(p) for p in params):
+            if not all(self.__class__._real_params_checkf(p) for p in params):
                 raise RuntimeError(f'Invalid {name}: all {name} must be one of {err_msg}.')
         elif self._valid:
-            params = default
+            params = getattr(self, name)
         else:
             raise RuntimeError(f'`{name}` not fully provided, please check your parameters')
         return params
@@ -270,19 +276,22 @@ class WeightedRetriever(_CompositeRetrieverBase):
         return sum(result, [])
 
     @property
-    def _weights(self): return self._get_cached_value('weight')
+    def weights(self): return self._get_cached_value('weight')
 
     @staticmethod
     def _normalize(weights: List[float]):
         sum_weight = sum(weights, 0)
         return [w / sum_weight for w in weights]
 
+    @staticmethod
+    def _real_params_checkf(x): return isinstance(x, (int, float))
+
     def forward(self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
-                *, weights: Optional[List[float]] = None, **kwargs):
-        weights = self._get_real_params(weights, 'weights', (lambda x: isinstance(x, (int, float))),
-                                        self._weights, '(int, float)')
+                *, weights: Optional[List[float]] = None, topk: Optional[int] = None, **kwargs):
+        weights = self._get_real_params(weights, 'weights', '(int, float)')
         weights = self._normalize(weights)
-        rs = self._retrievers(query, filters, **kwargs)
+        retrievers, weights = self._calc_retrievers(self._retrievers, weights, topk or self._topk)
+        rs = retrievers(query, filters, **kwargs)
         return self._post_process(self._combine(rs, weights))
 
 
@@ -296,12 +305,15 @@ class PriorityRetriever(_CompositeRetrieverBase):
         return sum(result, [])
 
     @property
-    def _priorities(self):
+    def priorities(self):
         return self._get_cached_value('priority', Retriever.Priority.normal)
 
+    @staticmethod
+    def _real_params_checkf(x): return x in list(Retriever.Priority)
+
     def forward(self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
-                *, priorities: Optional[List[Retriever.Priority]] = None, **kwargs):
-        priorities = self._get_real_params(priorities, 'priorities', (lambda x: x in list(Retriever.Priority)),
-                                           self._priorities, list(Retriever.Priority))
-        rs = self._retrievers(query, filters, **kwargs)
-        return self._post_process(self._combine(rs))
+                *, priorities: Optional[List[Retriever.Priority]] = None, topk: Optional[int] = None, **kwargs):
+        priorities = self._get_real_params(priorities, 'priorities', list(Retriever.Priority))
+        retrievers, priorities = self._calc_retrievers(self._retrievers, priorities, topk or self._topk)
+        rs = retrievers(query, filters, **kwargs)
+        return self._post_process(self._combine(rs, priorities))
