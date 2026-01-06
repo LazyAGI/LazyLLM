@@ -91,14 +91,15 @@ class DoubaoMultiModal(OnlineMultiModalBase):
 
 class DoubaoTextToImageModule(DoubaoMultiModal):
     MODEL_NAME = 'doubao-seedream-4-0-250828'
-    IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'    
+    IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'
+    
     def __init__(self, api_key: str = None, model: str = None, return_trace: bool = False, **kwargs):
         DoubaoMultiModal.__init__(self, api_key=api_key, model=model
-                            or DoubaoTextToImageModule.MODEL_NAME 
+                            or DoubaoTextToImageModule.MODEL_NAME
                             or lazyllm.config['doubao_text2image_model_name'],
                             return_trace=return_trace, **kwargs)
 
-    def _forward(self, input: str = None, files: List[str] = None, n: int = 1, size: str = '1024x1024', seed: int = -1, 
+    def _forward(self, input: str = None, files: List[str] = None, n: int = 1, size: str = '1024x1024', seed: int = -1,
                  guidance_scale: float = 2.5, watermark: bool = True, model: str = None, url: str = None, **kwargs):
         has_ref_image = files is not None and len(files) > 0
         if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
@@ -119,7 +120,7 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
                     f'Too many images provided: {len(files)}. '
                     f'Doubao image-editing model{model} supports 1 to 10 reference images.'
                 )
-            image_results = self._load_image(files)
+            image_results = self._load_images(files)
             contents = [f"data:image/png;base64,{base64_str}" for base64_str, _ in image_results]
         try:
             api_params = {

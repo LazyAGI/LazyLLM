@@ -10,7 +10,7 @@ from urllib.parse import urlparse
 import ipaddress
 import socket
 from io import BytesIO
-from PIL import Image
+from lazyllm.thirdparty import PIL
 
 class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
     def __init__(self, model_series: str, model: str = None, return_trace: bool = False, skip_auth: bool = False,
@@ -41,7 +41,7 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
         '''Forward method to be implemented by subclasses'''
         raise NotImplementedError(f'Subclass {self.__class__.__name__} must implement this method')
 
-    def forward(self, input: Union[Dict, str] = None, *, lazyllm_files=None, 
+    def forward(self, input: Union[Dict, str] = None, *, lazyllm_files=None,
                 url: str = None, model: str = None, **kwargs):
         '''Main forward method with file handling'''
         try:
@@ -63,7 +63,7 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
                                  series=self._model_series,
                                  name=self._model_name,
                                  return_trace=self._return_trace)
-    
+
     def _is_internal_address(self, hostname: str) -> bool:
         try:
             ip_addresses = socket.gethostbyname_ex(hostname)[2]
@@ -72,10 +72,10 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
                 if ip.is_private or ip.is_loopback or ip.is_reserved or ip.is_link_local:
                     return True
             return False
-        except Exception as e: 
-            lazyllm.LOG.warning(f"Failed to parse hostname={hostname}: {e}") 
+        except Exception as e:
+            lazyllm.LOG.warning(f"Failed to parse hostname={hostname}: {e}")
             return True
-    
+
     def _validate_url_security(self, url: str) -> None:
         if not lazyllm.config['allow_internal_network']:
             parse = urlparse(url)
@@ -85,7 +85,7 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
                     f'Access to internal network address is not allowed: {hostname}. '
                     f'Set LAZYLLM_ALLOW_INTERNAL_NETWORK=True to enable internal network access.'
                 )
-            
+
     def _validate_image_content_type(self, content_type: str, source: str) -> None:
         if not content_type.startswith('image/'):
             raise ValueError(
@@ -95,14 +95,14 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
 
     def _validate_image_data(self, data: bytes, source: str) -> None:
         try:
-            with Image.open(BytesIO(data)) as img:
+            with PIL.Image.open(BytesIO(data)) as img:
                 img.verify()
         except Exception:
             raise ValueError(
                 f'Invalid image data from {source}. '
                 f'The file does not appear to be a valid image.'
             )
-        
+
     def _get_image_data_from_url(self, url: str, timeout: int = 30) -> bytes:
         self._validate_url_security(url)
         resp = requests.get(url, timeout=timeout, allow_redirects=False)
@@ -113,8 +113,11 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
         self._validate_image_data(data, url)
         return data
 
-    def _load_image(self, image_paths: Union[str, List[str]]) -> Union[str, bytes]:
-        def load_single_image(image_path: str) -> tuple:
+    def _load_images(self, image_paths: Union[str, List[str]]) -> List[tuple]:
+        if isinstance(image_paths, str):
+            image_paths = [image_paths]
+        results = []
+        for image_path in image_paths:
             try:
                 if image_path.startswith('http://') or image_path.startswith('https://'):
                     data = self._get_image_data_from_url(image_path)
@@ -125,11 +128,8 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
                     data = p.read_bytes()
                     self._validate_image_data(data, image_path)
                 base64_str = base64.b64encode(data).decode('utf-8')
-                return base64_str, data
+                results.append((base64_str, data))
             except Exception as e:
                 lazyllm.LOG.error(f'Unexpected error loading image from {image_path}: {str(e)}')
                 raise ValueError(f'Failed to load image from {image_path}: {str(e)}')
-        if isinstance(image_paths, str):
-            return load_single_image(image_paths)
-        else:
-            return [load_single_image(path) for path in image_paths]
+        return results

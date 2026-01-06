@@ -418,14 +418,12 @@ class QwenTextToImageModule(QwenMultiModal):
                 f'Failed to create image synthesis task, '
                 f'status: {task_response.status_code}, message: {task_response.message}'
             )
-        
         task_id = getattr(task_response.output, 'task_id', None)
         if not task_id:
             raise RuntimeError('No task_id returned from async image synthesis call')
-        
         response = dashscope.ImageSynthesis.wait(task=task_id, api_key=self._api_key)
         return response
-    
+
     def _extract_sync_image_urls(self, response):
         try:
             image_urls = []
@@ -437,8 +435,7 @@ class QwenTextToImageModule(QwenMultiModal):
                         LOG.info(f'Extracted image URL {idx + 1}: {image_url}')
                 except Exception as e:
                     LOG.warning(f'Failed to extract image URL from item {idx}: {str(e)}')
-                    continue
-            
+                    continue            
             if not image_urls:
                 LOG.warning('No image URLs found in content')
             return image_urls
@@ -454,17 +451,16 @@ class QwenTextToImageModule(QwenMultiModal):
             if not output:
                 LOG.warning('No output in async response')
                 return []
-            
             results = getattr(output, 'results', [])
             if not results:
                 LOG.warning('No results in async response output')
                 return []
-            
+
             return [getattr(result, 'url', None) for result in results if getattr(result, 'url', None)]
         except Exception as e:
             LOG.error(f'Failed to extract async image URLs: {str(e)}')
             return []
-        
+
     def _forward(self, input: str = None, files: List[str] = None, negative_prompt: str = None, n: int = 1,
                  prompt_extend: bool = True, size: str = '1024*1024', seed: int = None,
                  url: str = None, model: str = None, **kwargs):
@@ -473,9 +469,8 @@ class QwenTextToImageModule(QwenMultiModal):
         messages = []
 
         if url and url != self._base_url:
-            raise Exception('Qwen TextToImage forward() does not support overriding the `url` parameter,' \
+            raise Exception('Qwen TextToImage forward() does not support overriding the `url` parameter,'\
                             'please remove it.')
-        
         if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
             raise ValueError(
                 f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
@@ -485,17 +480,17 @@ class QwenTextToImageModule(QwenMultiModal):
             raise ValueError(
                 f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
                 f'Please use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model'
-            )        
+            )
         if has_ref_image:
             if len(files) > 3:
                 raise ValueError(
                     f'Too many images provided: {len(files)}. '
                     f'Qwen image-editing model {model} supports 1 to 3 reference images.'
                 )
+            image_results = self._load_images(files)
             content = []
-            for file in files:
-                reference_image_base64, _ = self._load_image(file)
-                reference_image_data = f'data:image/png;base64,{reference_image_base64}'
+            for base64_str, _ in image_results:
+                reference_image_data = f'data:image/png;base64,{base64_str}'
                 content.append({'image': reference_image_data})
             content.append({'text': input})
             messages = [
@@ -527,8 +522,8 @@ class QwenTextToImageModule(QwenMultiModal):
             if response.status_code != HTTPStatus.OK:
                 error_msg = getattr(response.output, 'message', 'Unknown error')
                 LOG.error(f'Image generation failed: {error_msg}')
-                raise Exception(f'Image generation failed: {error_msg}')        
-            image_results = self._load_image(image_urls)
+                raise Exception(f'Image generation failed: {error_msg}')
+            image_results = self._load_images(image_urls)
             image_bytes = [data for _, data in image_results]
             return encode_query_with_filepaths(None, bytes_to_file(image_bytes))
         except Exception as e:

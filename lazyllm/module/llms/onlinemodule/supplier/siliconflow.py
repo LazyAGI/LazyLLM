@@ -117,7 +117,7 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
                     f'Image editing supports at most 3 reference images.'
                 )
             for i, file in enumerate(files):
-                reference_image_base64, _ = self._load_image(file)
+                reference_image_base64, _ = self._load_images(file)[0]
                 reference_image_data = f"data:image/png;base64,{reference_image_base64}"
                 if i == 0:
                     payload['image'] = reference_image_data
@@ -128,13 +128,8 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
             image_urls = [item['url'] for item in result.get('data', [])]
             if not image_urls:
                 raise Exception('No images returned from API')            
-            image_bytes = []
-            for image_url in image_urls:
-                try:
-                    _, image_byte = self._load_image(image_url)
-                    image_bytes.append(image_byte)
-                except Exception as e:
-                    LOG.warning(f'Failed to download image from {image_url}: {str(e)}')
+            image_results = self._load_images(image_urls)
+            image_bytes = [data for _, data in image_results]
             if not image_bytes:
                 raise Exception('Failed to download any images')
             file_paths = bytes_to_file(image_bytes)

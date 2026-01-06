@@ -1,5 +1,5 @@
 import lazyllm
-from typing import Any, Dict
+from typing import Any
 from .base import OnlineMultiModalBase
 from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
 from .supplier.doubao import DoubaoTextToImageModule
