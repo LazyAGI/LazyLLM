@@ -349,7 +349,8 @@ def resolve_model_name(original: Optional[str], entry: Optional[Dict[str, Any]])
     return override or original
 
 
-def process_trainable_args(model: str, type: str, use_config: bool, **kwargs: Any) -> dict:
+def process_trainable_args(model: str, type: str, use_config: bool, 
+                           entry: dict, **kwargs: Any) -> dict:
     module_kwargs = dict(kwargs)
     return {
         'base_model': model,
@@ -357,7 +358,7 @@ def process_trainable_args(model: str, type: str, use_config: bool, **kwargs: An
         'stream': module_kwargs.get('stream', False),
         'return_trace': module_kwargs.get('return_trace', False),
         'trust_remote_code': module_kwargs.get('trust_remote_code', True),
-        'type': type,
+        'type': type or entry.get('type', None),
         'source': module_kwargs.get('source', None),
         'use_model_map': use_config,
     }

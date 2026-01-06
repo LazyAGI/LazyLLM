@@ -59,7 +59,8 @@ class AutoModel:
         # build instance of online/trainable module and return
         resolved_model = resolve_model_name(model, entry)
         if target_mode == 'trainable':
-            trainable_args = process_trainable_args(model=resolved_model, type=type, use_config=use_config, **module_kwargs)
+            trainable_args = process_trainable_args(model=resolved_model, type=type, use_config=use_config, 
+                                                    entry=entry, **module_kwargs)
             return cls._build_trainable_module(use_config=use_config, config=trainable_args,
                                                framework=framework, url=url)
         elif target_mode == 'online':
