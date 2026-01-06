@@ -3088,3 +3088,169 @@ Args:
     return_trace (bool, optional): Whether to return trace information, defaults to False
     **kwargs: Additional optional parameters passed to the parent classes
 """)
+
+add_chinese_doc('llms.onlinemodule.supplier.intel.IntelModule', """\
+Intel 模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
+
+提供基于 Intel Gaudi2E 加速器的大语言模型对话能力，支持多种模型。
+
+Args:
+    base_url (str, optional): API 基础地址，默认为 "http://aidemo.intel.cn/v1/"
+    model (str, optional): 使用的模型名称，默认为 "Qwen3-235B-A22B"
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['intel_api_key'] 中读取
+    stream (bool, optional): 是否启用流式输出，默认为 True
+    return_trace (bool, optional): 是否返回追踪信息，默认为 False
+    **kwargs: 其他模型参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.intel.IntelModule', """\
+Intel module, inherits from OnlineChatModuleBase and FileHandlerBase.
+
+Provides large language model chat capabilities via the Intel Gaudi2E platform, supports multiple models.
+
+Args:
+    base_url (str, optional): Base API URL, defaults to "http://aidemo.intel.cn/v1/"
+    model (str, optional): Model name to use, defaults to "Qwen3-235B-A22B"
+    api_key (str, optional): API key, defaults to lazyllm.config['intel_api_key']
+    stream (bool, optional): Whether to enable streaming output, defaults to True
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    **kwargs: Other model parameters
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.intel.IntelEmbedding', """\
+Intel 向量嵌入模块，继承自 OnlineEmbeddingModuleBase。
+
+提供基于 Intel Gaudi2E 加速器的文本嵌入（Embedding）功能，支持将文本转换为向量表示。
+
+Args:
+    embed_url (str, optional): 嵌入 API 的 URL，默认为 "http://aidemo.intel.cn/v1/embeddings"
+    embed_model_name (str, optional): 使用的嵌入模型名称，默认为 "bge-large-zh"
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['intel_api_key'] 中读取
+    batch_size (int, optional): 批处理大小，默认为 16
+    **kw: 其他嵌入模块参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.intel.IntelEmbedding', """\
+Intel embedding module, inherits from OnlineEmbeddingModuleBase.
+
+Provides text embedding functionality via the Intel Gaudi2E platform, converting text into vector representations.
+
+Args:
+    embed_url (str, optional): Embedding API URL, defaults to "http://aidemo.intel.cn/v1/embeddings"
+    embed_model_name (str, optional): Name of the embedding model to use, defaults to "bge-large-zh"
+    api_key (str, optional): API key, defaults to lazyllm.config['intel_api_key']
+    batch_size (int, optional): Batch size for processing, defaults to 16
+    **kw: Additional embedding module parameters
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.intel.IntelReranking', """\
+Intel 重排序模块，继承自 OnlineEmbeddingModuleBase。
+
+提供基于 Intel Gaudi2E 加速器的文本重排序（Reranking）功能，用于对文档列表根据查询相关性进行重新排序。
+
+Args:
+    embed_url (str, optional): 重排序 API 的 URL，默认为 "http://aidemo.intel.cn/v1/rerank"
+    embed_model_name (str, optional): 使用的重排序模型名称，默认为 "bge-reranker-v2-m3"
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['intel_api_key'] 中读取
+    **kw: 其他重排序模块参数
+
+Returns:
+    List[Tuple]: 包含排序结果的列表，每个元素为包含 'index'、'relevance_score' 的元组。
+""")
+
+add_english_doc('llms.onlinemodule.supplier.intel.IntelReranking', """\
+Intel reranking module, inherits from OnlineEmbeddingModuleBase.
+
+Provides text reranking functionality via the Intel Gaudi2E platform, reordering a list of documents based on their relevance to a given query.
+
+Args:
+    embed_url (str, optional): Reranking API URL, defaults to "http://aidemo.intel.cn/v1/rerank"
+    embed_model_name (str, optional): Name of the reranking model to use, defaults to "bge-reranker-v2-m3"
+    api_key (str, optional): API key, defaults to lazyllm.config['intel_api_key']
+    **kw: Additional reranking module parameters
+Returns:
+    List[Tuple]: A list of reranking results, each containing 'index' and 'relevance_score'.
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.moark.MoarkModule', """\
+Moark 模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
+
+提供基于 Moark 平台的大语言模型对话能力，支持多种模型。
+
+Args:
+    base_url (str, optional): API 基础地址，默认为 "https://api.moark.com/v1/"
+    model (str, optional): 使用的模型名称，默认为 "Qwen3-32B"
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['moark_api_key'] 中读取
+    stream (bool, optional): 是否启用流式输出，默认为 True
+    return_trace (bool, optional): 是否返回追踪信息，默认为 False
+    **kwargs: 其他模型参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.moark.MoarkModule', """\
+Moark module, inherits from OnlineChatModuleBase and FileHandlerBase.
+
+Provides large language model chat capabilities via the Moark platform, supports multiple models.
+
+Args:
+    base_url (str, optional): Base API URL, defaults to "https://api.moark.com/v1/"
+    model (str, optional): Model name to use, defaults to "Qwen3-32B"
+    api_key (str, optional): API key, defaults to lazyllm.config['moark_api_key']
+    stream (bool, optional): Whether to enable streaming output, defaults to True
+    return_trace (bool, optional): Whether to return trace information, defaults to False
+    **kwargs: Other model parameters
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.moark.MoarkEmbedding', """\
+Moark 向量嵌入模块，继承自 OnlineEmbeddingModuleBase。
+
+提供基于 Moark 平台的文本嵌入（Embedding）功能，支持将文本转换为向量表示。
+
+Args:
+    embed_url (str, optional): 嵌入 API 的 URL，默认为 "https://api.moark.com/v1/embeddings"
+    embed_model_name (str, optional): 使用的嵌入模型名称，默认为 "bge-large-zh-v1.5"
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['moark_api_key'] 中读取
+    batch_size (int, optional): 批处理大小，默认为 16
+    **kw: 其他嵌入模块参数
+""")
+
+add_english_doc('llms.onlinemodule.supplier.moark.MoarkEmbedding', """\
+Moark embedding module, inherits from OnlineEmbeddingModuleBase.
+
+Provides text embedding functionality via the Moark platform, converting text into vector representations.
+
+Args:
+    embed_url (str, optional): Embedding API URL, defaults to "https://api.moark.com/v1/embeddings"
+    embed_model_name (str, optional): Name of the embedding model to use, defaults to "bge-large-zh-v1.5"
+    api_key (str, optional): API key, defaults to lazyllm.config['moark_api_key']
+    batch_size (int, optional): Batch size for processing, defaults to 16
+    **kw: Additional embedding module parameters
+""")
+
+add_chinese_doc('llms.onlinemodule.supplier.moark.MoarkReranking', """\
+Moark 重排序模块，继承自 OnlineEmbeddingModuleBase。
+
+提供基于 Moark 平台的文本重排序（Reranking）功能，用于对文档列表根据查询相关性进行重新排序。
+
+Args:
+    embed_url (str, optional): 重排序 API 的 URL，默认为 "https://api.moark.com/v1/rerank"
+    embed_model_name (str, optional): 使用的重排序模型名称，默认为 "bge-reranker-v2-m3"
+    api_key (str, optional): API 密钥，默认从配置项 lazyllm.config['moark_api_key'] 中读取
+    **kw: 其他重排序模块参数
+
+Returns:
+    List[Tuple]: 包含排序结果的列表，每个元素为包含 'index'、'relevance_score' 的元组。
+""")
+
+add_english_doc('llms.onlinemodule.supplier.moark.MoarkReranking', """\
+Moark reranking module, inherits from OnlineEmbeddingModuleBase.
+
+Provides text reranking functionality via the Moark platform, reordering a list of documents based on their relevance to a given query.
+
+Args:
+    embed_url (str, optional): Reranking API URL, defaults to "https://api.moark.com/v1/rerank"
+    embed_model_name (str, optional): Name of the reranking model to use, defaults to "bge-reranker-v2-m3"
+    api_key (str, optional): API key, defaults to lazyllm.config['moark_api_key']
+    **kw: Additional reranking module parameters
+Returns:
+    List[Tuple]: A list of reranking results, each containing 'index' and 'relevance_score'.
+""")
