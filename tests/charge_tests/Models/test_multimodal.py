@@ -5,7 +5,6 @@ from lazyllm import config
 from lazyllm.components.formatter import decode_query_with_filepaths
 
 class TestMultiModal(object):
-
     def setup_method(self):
         self.test_text = '你好，这是一个测试。'
         self.test_image_prompt = '画一只动漫风格的懒懒猫'

@@ -391,6 +391,7 @@ class QwenSTTModule(QwenMultiModal):
             LOG.error(f'failed to transcribe: {transcribe_response.output}')
             raise Exception(f'failed to transcribe: {transcribe_response.output.message}')
 
+
 class QwenTextToImageModule(QwenMultiModal):
     MODEL_NAME = 'wanx2.1-t2i-turbo'
     IMAGE_EDITING_MODEL_NAME = 'qwen-image-edit-plus'
@@ -464,13 +465,6 @@ class QwenTextToImageModule(QwenMultiModal):
             LOG.error(f'Failed to extract async image URLs: {str(e)}')
             return []
         
-    def _download_images(self, image_urls: List[str]) -> List[bytes]:
-        image_bytes = []
-        for path in image_urls:
-            _, image_byte = self._load_image(path)
-            image_bytes.append(image_byte)
-        return image_bytes
-        
     def _forward(self, input: str = None, files: List[str] = None, negative_prompt: str = None, n: int = 1,
                  prompt_extend: bool = True, size: str = '1024*1024', seed: int = None,
                  url: str = None, model: str = None, **kwargs):
@@ -496,18 +490,18 @@ class QwenTextToImageModule(QwenMultiModal):
             if len(files) > 3:
                 raise ValueError(
                     f'Too many images provided: {len(files)}. '
-                    f'Qwen image editing supports 1 to 3 reference images.'
+                    f'Qwen image-editing model {model} supports 1 to 3 reference images.'
                 )
             content = []
             for file in files:
                 reference_image_base64, _ = self._load_image(file)
-                reference_image_data = f"data:image/png;base64,{reference_image_base64}"
-                content.append({"image": reference_image_data})
-            content.append({"text": input})
+                reference_image_data = f'data:image/png;base64,{reference_image_base64}'
+                content.append({'image': reference_image_data})
+            content.append({'text': input})
             messages = [
                 {
-                    "role": "user",
-                    "content": content
+                    'role': 'user',
+                    'content': content
                 }
             ]
 
@@ -534,7 +528,8 @@ class QwenTextToImageModule(QwenMultiModal):
                 error_msg = getattr(response.output, 'message', 'Unknown error')
                 LOG.error(f'Image generation failed: {error_msg}')
                 raise Exception(f'Image generation failed: {error_msg}')        
-            image_bytes = self._download_images(image_urls)
+            image_results = self._load_image(image_urls)
+            image_bytes = [data for _, data in image_results]
             return encode_query_with_filepaths(None, bytes_to_file(image_bytes))
         except Exception as e:
             lazyllm.LOG.error(f'Image generation/editing request failed: {str(e)}')

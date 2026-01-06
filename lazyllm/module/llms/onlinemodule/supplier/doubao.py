@@ -1,13 +1,11 @@
 import lazyllm
 from typing import Dict, List, Union, Optional
-
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 import requests
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.thirdparty import volcenginesdkarkruntime
-from volcenginesdkarkruntime.types.images import SequentialImageGenerationOptions
 from lazyllm import LOG
 
 class DoubaoModule(OnlineChatModuleBase):
@@ -90,6 +88,7 @@ class DoubaoMultiModal(OnlineMultiModalBase):
                                       return_trace=return_trace, base_url=base_url, **kwargs)
         self._client = volcenginesdkarkruntime.Ark(base_url=base_url, api_key=api_key)
 
+
 class DoubaoTextToImageModule(DoubaoMultiModal):
     MODEL_NAME = 'doubao-seedream-4-0-250828'
     IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'    
@@ -102,7 +101,6 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
     def _forward(self, input: str = None, files: List[str] = None, n: int = 1, size: str = '1024x1024', seed: int = -1, 
                  guidance_scale: float = 2.5, watermark: bool = True, model: str = None, url: str = None, **kwargs):
         has_ref_image = files is not None and len(files) > 0
-        reference_image_data = None
         if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
             LOG.warning(
                 f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
@@ -114,19 +112,15 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
                 f'Please use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model.'
             )
             raise ValueError()
-      
+
         if has_ref_image:
             if len(files) > 10:
                 raise ValueError(
                     f'Too many images provided: {len(files)}. '
-                    f'Qwen image editing supports 1 to 10 reference images.'
+                    f'Doubao image-editing model{model} supports 1 to 10 reference images.'
                 )
-            
-            contents = []
-            for file in files:
-                reference_image_base64, _ = self._load_image(file)
-                reference_image_data = f"data:image/png;base64,{reference_image_base64}"
-                contents.append(reference_image_data)
+            image_results = self._load_image(files)
+            contents = [f"data:image/png;base64,{base64_str}" for base64_str, _ in image_results]
         try:
             api_params = {
                 'model': model,
@@ -142,8 +136,8 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
                 if n > 1:
                     api_params['sequential_image_generation'] = 'auto'
                     max_images = min(n, 15)
+                    SequentialImageGenerationOptions = volcenginesdkarkruntime.types.images.SequentialImageGenerationOptions
                     api_params['sequential_image_generation_options'] = SequentialImageGenerationOptions(max_images=max_images)
-                    LOG.info(f'model {model} supports generating up to 15 images.')
             imagesResponse = self._client.images.generate(**api_params)
             image_contents = [requests.get(result.url).content for result in imagesResponse.data]
             return encode_query_with_filepaths(None, bytes_to_file(image_contents))

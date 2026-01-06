@@ -2,7 +2,6 @@ import requests
 import lazyllm
 from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
-
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 from lazyllm.components.formatter import encode_query_with_filepaths
@@ -68,6 +67,7 @@ class SiliconFlowReranking(OnlineEmbeddingModuleBase):
         results = response.get('results', [])
         return [(result['index'], result['relevance_score']) for result in results]
 
+
 class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     MODEL_NAME = 'Qwen/Qwen-Image'
     IMAGE_EDITING_MODEL_NAME = 'Qwen/Qwen-Image-Edit-2509'
@@ -79,7 +79,7 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
                                       model=model or SiliconFlowTextToImageModule.MODEL_NAME,
                                       base_url=base_url, return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
-        
+
     def _make_request(self, endpoint, payload, base_url=None, timeout=180):
         url = f'{(base_url or self._base_url)}{endpoint}'
         try:

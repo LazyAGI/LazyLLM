@@ -68,7 +68,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
             source = source or 'openai'
             if not base_url:
                 raise KeyError('base_url must be set for local serving.')
-        
+
         if source is None:
             if kwargs.get('api_key'):
                 raise ValueError('No source is given but an api_key is provided.')
@@ -103,9 +103,8 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                 lazyllm.LOG.info(f'Model {model} is the default editing model. Automatically set type="image_editing".')
         if base_url is not None:
             kwargs['base_url'] = base_url
-
         return source, model, kwargs
-    
+
     def __new__(self,
                 model: str = None,
                 source: str = None,

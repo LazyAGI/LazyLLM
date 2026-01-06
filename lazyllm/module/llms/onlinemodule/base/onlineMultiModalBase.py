@@ -114,9 +114,7 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
         return data
 
     def _load_image(self, image_paths: Union[str, List[str]]) -> Union[str, bytes]:
-        if isinstance(image_paths, str):
-            image_paths = [image_paths]
-        for image_path in image_paths:
+        def load_single_image(image_path: str) -> tuple:
             try:
                 if image_path.startswith('http://') or image_path.startswith('https://'):
                     data = self._get_image_data_from_url(image_path)
@@ -131,3 +129,7 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
             except Exception as e:
                 lazyllm.LOG.error(f'Unexpected error loading image from {image_path}: {str(e)}')
                 raise ValueError(f'Failed to load image from {image_path}: {str(e)}')
+        if isinstance(image_paths, str):
+            return load_single_image(image_paths)
+        else:
+            return [load_single_image(path) for path in image_paths]

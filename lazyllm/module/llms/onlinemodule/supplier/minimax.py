@@ -67,6 +67,7 @@ class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
         except Exception:
             return False
 
+
 class MinimaxTextToImageModule(OnlineMultiModalBase):
     MODEL_NAME = 'image-01'
 
@@ -139,7 +140,6 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
 
         file_paths = bytes_to_file(image_bytes)
         response = encode_query_with_filepaths(None, file_paths)
-
         return response
 
 class MinimaxTTSModule(OnlineMultiModalBase):
