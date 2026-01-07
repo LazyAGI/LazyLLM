@@ -73,7 +73,7 @@ class Retriever(_RetrieverBase, _PostProcess):
         self._target = target
         self._weight, self._priority = weight, priority
         if weight or priority:
-            assert not (weight and property), 'cannot provide weight and property at the same time'
+            assert not (weight and priority), f'Cannot provide weight({weight}) and priority({priority}) together!'
             assert not output_format or not join, 'shouldn\'t provide output_format/join when weight or priority is set'
         _PostProcess.__init__(self, output_format, join)
 
@@ -202,7 +202,7 @@ class _CompositeRetrieverBase(_RetrieverBase, _PostProcess):
         if retrievers:
             self._check_retrievers(retrievers)
             self._cached_values = None
-        self._retrievers = parallel(*retrievers).sum
+        self._retrievers = parallel(*retrievers)
         self._strict = strict
         self._valid = False  # will be set in _further_check
         self._capture = False
@@ -210,6 +210,7 @@ class _CompositeRetrieverBase(_RetrieverBase, _PostProcess):
         _PostProcess.__init__(self, output_format, join)
 
     _items = property(lambda self: self._retrievers._items)
+    submodules = property(lambda self: self._items)
 
     def __enter__(self):
         assert len(self._items) == 0, f'Cannot init {self.__class__}\'s element twice! Existing element: {self._items}'
@@ -240,8 +241,8 @@ class _CompositeRetrieverBase(_RetrieverBase, _PostProcess):
         self._further_check(retrievers)
 
     def _get_cached_value(self, name, default=None):
-        if not getattr(self, '_cached_values', None) is None:
-            self._cached_values = [r.get(name, default) for r in self._items]
+        if getattr(self, '_cached_values', None) is None:
+            self._cached_values = [getattr(r, name, default) for r in self._items]
         return self._cached_values
 
     @staticmethod
@@ -253,7 +254,7 @@ class _CompositeRetrieverBase(_RetrieverBase, _PostProcess):
                 raise RuntimeError(f'Dimension mismatch: expected {len(self._items)} {name} '
                                    f'for {len(self._items)} retrievers, but got {len(params)}.')
             if not all(self.__class__._real_params_checkf(p) for p in params):
-                raise RuntimeError(f'Invalid {name}: all {name} must be one of {err_msg}.')
+                raise RuntimeError(f'Invalid {name}: all {name} must be one of {err_msg}, yours are {params}')
         elif self._valid:
             params = getattr(self, name)
         else:
@@ -295,11 +296,12 @@ class WeightedRetriever(_CompositeRetrieverBase):
                 else:
                     cur.append(r)
                     cur_weight.append(w)
-            if not cur:
+            if len(cur) == len(current):
                 ideal, frac = zip(*[[int(w * remain), w * remain - int(w * remain)] for w in weights])
                 remain -= sum(ideal, 0)
                 if remain:
                     current, ideal = zip(*[(x, y) for _, x, y in sorted(zip(frac, current, ideal), key=lambda t: t[0])])
+                    ideal = list(ideal)
                     for i in range(len(ideal)):
                         if not remain: break
                         ideal[i] += 1
@@ -308,7 +310,7 @@ class WeightedRetriever(_CompositeRetrieverBase):
                 break
             remain -= taken
             current, weights = cur, cur_weight
-        return final
+        return sum(final, [])
 
     @staticmethod
     def _real_params_checkf(x): return isinstance(x, (int, float))
@@ -318,9 +320,9 @@ class WeightedRetriever(_CompositeRetrieverBase):
                 combine: Optional[Callable[[List, List, int], List]] = None, **kwargs):
         weights = self._get_real_params(weights, 'weights', '(int, float)')
         weights = self._normalize(weights)
-        retrievers, weights = zip(*[(self._items[i], w) for i, w in enumerate(weights) if w < 1e-5])
-        rs = retrievers(query, filters, **kwargs)
-        return self._post_process((self._combine or combine)(rs, weights, topk))
+        indices, weights = zip(*[(i, w) for i, w in enumerate(weights) if w > 1e-5])
+        rs = self._retrievers(query, filters, _kept_items=indices, **kwargs)
+        return self._post_process((self._combine or combine)(rs, weights, topk or self._topk))
 
 
 class PriorityRetriever(_CompositeRetrieverBase):
@@ -330,26 +332,26 @@ class PriorityRetriever(_CompositeRetrieverBase):
         self._valid = True
 
     def _combine(self, result: List[List[DocNode]], priorities: List[Retriever.Priority], topk: Optional[int]):
-        if not topk: return result
-        result = []
+        if not topk: final = result
+        final = []
         for expected in (Retriever.Priority.high, Retriever.Priority.normal, Retriever.Priority.low):
-            result.extend([r for r, p in zip(result, priorities) if p == expected])
-            if sum([len(r) for r in result], 0) >= topk: break
-        return result
+            final.extend([r for r, p in zip(result, priorities) if p == expected])
+            if sum([len(r) for r in final], 0) >= topk: break
+        return sum(final, [])
 
     @property
     def priorities(self):
         return self._get_cached_value('priority', Retriever.Priority.normal)
 
     @staticmethod
-    def _real_params_checkf(x): return x in list(Retriever.Priority)
+    def _real_params_checkf(x):
+        return x in list(Retriever.Priority)
 
     def forward(self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                 *, priorities: Optional[List[Retriever.Priority]] = None, topk: Optional[int] = None,
                 combinef: Optional[Callable[[List, List, int], List]] = None, **kwargs):
         priorities = self._get_real_params(priorities, 'priorities', list(Retriever.Priority))
         # Top-k is not used during the preprocessing stage.
-        retrievers, priorities = zip(*[(self._items[i], p) for i, p in enumerate(priorities)
-                                       if p != Retriever.Priority.ignore])
-        rs = retrievers(query, filters, **kwargs)
-        return self._post_process((combinef or self._combine)(rs, priorities, topk or self.topk))
+        indices, priorities = zip(*[(i, p) for i, p in enumerate(priorities) if p != Retriever.Priority.ignore])
+        rs = self._retrievers(query, filters, _kept_items=indices, **kwargs)
+        return self._post_process((combinef or self._combine)(rs, priorities, topk or self._topk))
