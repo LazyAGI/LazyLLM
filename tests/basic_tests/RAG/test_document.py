@@ -257,6 +257,7 @@ class TestCompositeRetriever(object):
         assert len(result) == 9
 
     def test_weighted_retriever_with_temp_retriever(self):
+        # TODO: support temp retrievers in weighted retriever
         pass
 
     def test_priority_retriever(self):
@@ -264,7 +265,7 @@ class TestCompositeRetriever(object):
         doc.create_node_group('chunk1', parent=Document.CoarseChunk,
                               transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
         with PriorityRetriever(topk=3) as w:
-            w.retriever1 = Retriever(doc, 'chunk1', similarity='bm25', topk=3, priority='high')
+            w.retriever1 = Retriever(doc, 'chunk1', similarity='bm25', topk=3, priority=Retriever.Priority.high)
             w.retriever2 = Retriever(doc, Document.CoarseChunk, similarity='bm25', topk=3, priority='low')
             w.retriever3 = Retriever(doc, Document.FineChunk, similarity='bm25', topk=3)
         w.start()
@@ -273,11 +274,22 @@ class TestCompositeRetriever(object):
         assert len(result) == 3
         assert len([r.group for r in result if r.group == 'chunk1']) == 3
 
-        result = w('什么是道', priorities=['ignore', 'high', 'low'])
+        result = w('什么是道', priorities=[Retriever.Priority.ignore, 'high', 'low'])
         assert len(result) == 3
         assert len([r.group for r in result if r.group == Document.CoarseChunk.name]) == 3
 
+        result = w('什么是道', priorities=['ignore', Retriever.Priority.high, 'low'], topk=7)
+        assert len(result) == 6
+        assert len([r.group for r in result if r.group == Document.CoarseChunk.name]) == 3
+        assert len([r.group for r in result if r.group == Document.FineChunk.name]) == 3
+
+        result = w('什么是道', topk=4)
+        assert len(result) == 6
+        assert len([r.group for r in result if r.group == 'chunk1']) == 3
+        assert len([r.group for r in result if r.group == Document.FineChunk.name]) == 3
+
     def test_priority_retriever_with_temp_retriever(self):
+        # TODO: support temp retrievers in priority retriever
         pass
 
 

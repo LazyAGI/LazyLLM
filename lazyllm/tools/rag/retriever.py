@@ -1,4 +1,4 @@
-from typing import List, Optional, Union, Dict, Set, Callable
+from typing import List, Optional, Union, Dict, Set, Callable, Any
 from lazyllm import ModuleBase, once_wrapper, LOG, TempPathGenerator, parallel
 
 from .doc_node import DocNode
@@ -34,6 +34,8 @@ class _RetrieverBase(ModuleBase):
         low = 'low'
         normal = 'normal'
         high = 'high'
+
+        def __repr__(self): return self.casefold()
 
 
 class Retriever(_RetrieverBase, _PostProcess):
@@ -242,7 +244,7 @@ class _CompositeRetrieverBase(_RetrieverBase, _PostProcess):
 
     def _get_cached_value(self, name, default=None):
         if getattr(self, '_cached_values', None) is None:
-            self._cached_values = [getattr(r, name, default) for r in self._items]
+            self._cached_values = [(getattr(r, name, default) or default) for r in self._items]
         return self._cached_values
 
     @staticmethod
@@ -253,8 +255,8 @@ class _CompositeRetrieverBase(_RetrieverBase, _PostProcess):
             if len(params) != len(self._items):
                 raise RuntimeError(f'Dimension mismatch: expected {len(self._items)} {name} '
                                    f'for {len(self._items)} retrievers, but got {len(params)}.')
-            if not all(self.__class__._real_params_checkf(p) for p in params):
-                raise RuntimeError(f'Invalid {name}: all {name} must be one of {err_msg}, yours are {params}')
+            if (error := list(p for p in params if not self.__class__._real_params_checkf(p))):
+                raise RuntimeError(f'Invalid {name}: all {name} must be one of {err_msg}, yours are {error}')
         elif self._valid:
             params = getattr(self, name)
         else:
@@ -317,11 +319,12 @@ class WeightedRetriever(_CompositeRetrieverBase):
 
     def forward(self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                 *, weights: Optional[List[float]] = None, topk: Optional[int] = None,
-                combine: Optional[Callable[[List, List, int], List]] = None, **kwargs):
+                combine: Optional[Callable[[List, List, int], List]] = None,
+                search_kwargs: Optional[Dict[str, Any]] = None):
         weights = self._get_real_params(weights, 'weights', '(int, float)')
         weights = self._normalize(weights)
         indices, weights = zip(*[(i, w) for i, w in enumerate(weights) if w > 1e-5])
-        rs = self._retrievers(query, filters, _kept_items=indices, **kwargs)
+        rs = self._retrievers(query, filters, _kept_items=indices, **(search_kwargs or {}))
         return self._post_process((self._combine or combine)(rs, weights, topk or self._topk))
 
 
@@ -349,9 +352,10 @@ class PriorityRetriever(_CompositeRetrieverBase):
 
     def forward(self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                 *, priorities: Optional[List[Retriever.Priority]] = None, topk: Optional[int] = None,
-                combinef: Optional[Callable[[List, List, int], List]] = None, **kwargs):
+                combinef: Optional[Callable[[List, List, int], List]] = None,
+                search_kwargs: Optional[Dict[str, Any]] = None):
         priorities = self._get_real_params(priorities, 'priorities', list(Retriever.Priority))
         # Top-k is not used during the preprocessing stage.
         indices, priorities = zip(*[(i, p) for i, p in enumerate(priorities) if p != Retriever.Priority.ignore])
-        rs = self._retrievers(query, filters, _kept_items=indices, **kwargs)
+        rs = self._retrievers(query, filters, _kept_items=indices, **(search_kwargs or {}))
         return self._post_process((combinef or self._combine)(rs, priorities, topk or self._topk))
