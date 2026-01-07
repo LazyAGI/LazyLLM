@@ -74,7 +74,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
             if kwargs.get('api_key'):
                 raise ValueError('No source is given but an api_key is provided.')
             for src in available_model:
-                if lazyllm.config.get(f'{src}_api_key'):
+                if lazyllm.config[f'{src}_api_key']:
                     source = src
                     break
             if source is None:
