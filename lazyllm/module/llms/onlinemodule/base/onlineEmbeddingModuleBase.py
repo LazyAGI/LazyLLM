@@ -3,15 +3,14 @@ import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from lazyllm import LOG
 from .utils import OnlineModuleBase
-from ..map_model_type import get_model_type
 
 
 class OnlineEmbeddingModuleBase(OnlineModuleBase):
     NO_PROXY = True
 
-    def __init__(self, model_series: str, embed_url: str, api_key: str, embed_model_name: str,
+    def __init__(self, model_series: str, embed_url: str, api_key: str, embed_model_name: str, skip_auth: bool = False,
                  return_trace: bool = False, batch_size: int = 1, num_worker: int = 1, timeout: int = 10):
-        super().__init__(api_key=api_key, skip_auth=False, return_trace=return_trace)
+        super().__init__(api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
         self._model_series = model_series
         self._embed_url = embed_url
         self._embed_model_name = embed_model_name
@@ -39,8 +38,6 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
     def forward(self, input: Union[List, str], url: str = None, model: str = None, **kwargs) -> Union[List[float], List[List[float]]]:
         runtime_url = url or kwargs.pop('base_url', kwargs.pop('embed_url', None)) or self._embed_url
         runtime_model = model or kwargs.pop('model_name', kwargs.pop('embed_model_name', None)) or self._embed_model_name
-        if get_model_type(runtime_model) not in ('embed', 'cross_modal_embed', 'rerank'):
-            raise ValueError(f"Model type must be 'embed', 'cross_modal_embed' or 'rerank', got model {runtime_model}")
 
         if runtime_model is not None:
             kwargs['model'] = runtime_model
