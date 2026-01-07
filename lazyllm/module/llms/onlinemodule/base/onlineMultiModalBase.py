@@ -14,12 +14,12 @@ from lazyllm.thirdparty import PIL
 
 class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
     def __init__(self, model_series: str, model: str = None, return_trace: bool = False, skip_auth: bool = False,
-                 api_key: Optional[Union[str, List[str]]] = None, base_url: str = None, type: Optional[str] = None, **kwargs):
+                 api_key: Optional[Union[str, List[str]]] = None, url: str = None, type: Optional[str] = None, **kwargs):
         OnlineModuleBase.__init__(self, api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
         LLMBase.__init__(self, stream=False, init_prompt=False, type=type)
         self._model_series = model_series
         self._model_name = model if model is not None else kwargs.get('model_name')
-        self._base_url = base_url
+        self._base_url = url if url is not None else kwargs.get('base_url')
         self._validate_model_config()
 
     def _validate_model_config(self):
@@ -47,9 +47,7 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
         try:
             input, files = self._get_files(input, lazyllm_files)
             runtime_url = url or kwargs.pop('base_url', None) or self._base_url
-            runtime_model = model or kwargs.pop('model_name', None) or self._model_name
-            if get_model_type(runtime_model) not in ('sd', 'stt', 'tts', 'image_editing'):
-                raise ValueError(f"Model type must be 'sd', 'stt', 'tts' or 'image_editing', got model {runtime_model}")            
+            runtime_model = model or kwargs.pop('model_name', None) or self._model_name           
             call_params = {'input': input, **kwargs}
             if files: call_params['files'] = files
             return self._forward(**call_params, model=runtime_model, url=runtime_url)

@@ -51,16 +51,17 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         'minimax': MinimaxTextToImageModule
     }
 
-    FUNCTION_MODEL_MAP = {
+    TYPE_MODEL_MAP = {
         'stt': STT_MODELS,
         'tts': TTS_MODELS,
         'text2image': TEXT2IMAGE_MODELS,
+        'image_editing': TEXT2IMAGE_MODELS,
     }
     
     @staticmethod
-    def _validate_parameters(source: str, model: str, function: str, base_url: str, **kwargs) -> tuple:
-        assert function in OnlineMultiModalModule.FUNCTION_MODEL_MAP, f'Invalid function: {function}'
-        available_model = OnlineMultiModalModule.FUNCTION_MODEL_MAP[function]
+    def _validate_parameters(source: str, model: str, type: str, base_url: str, **kwargs) -> tuple:
+        assert type in OnlineMultiModalModule.TYPE_MODEL_MAP, f'Invalid type: {type}'
+        available_model = OnlineMultiModalModule.TYPE_MODEL_MAP[type]
         if model in available_model and source is None:
             source, model = model, source
 
@@ -81,26 +82,13 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
 
         assert source in available_model, f'Unsupported source: {source}'
 
-        if function == 'text2image':
-            if kwargs.get('type') is None and model is not None:
-                inferred_type = get_model_type(model)
-                if inferred_type == 'image_editing':
-                    kwargs['type'] = 'image_editing'
-                    lazyllm.LOG.info(f'Model {model} detected as image editing model. Automatically set type="image_editing".')
-            image_editing = (kwargs.get('type') == 'image_editing')
-            default_module_cls = OnlineMultiModalModule.FUNCTION_MODEL_MAP[function][source]
+        if type == 'image_editing':
+            default_module_cls = OnlineMultiModalModule.TYPE_MODEL_MAP[type][source]
             default_editing_model = getattr(default_module_cls, 'IMAGE_EDITING_MODEL_NAME', None)
-            if image_editing:
-                if model is None and default_editing_model:
-                    model = default_editing_model
-                    lazyllm.LOG.info(f'Image editing enabled for {source}. Automatically selected model: {model}')
-                elif model is None and not default_editing_model:
-                    lazyllm.LOG.warning(
-                        f'Image editing requested for {source}, but no default editing model available for this provider.'
-                    )
-            elif model is not None and default_editing_model and model == default_editing_model:
-                kwargs['type'] = 'image_editing'
-                lazyllm.LOG.info(f'Model {model} is the default editing model. Automatically set type="image_editing".')
+            if model is None and default_editing_model:
+                model = default_editing_model
+                lazyllm.LOG.info(f'Image editing enabled for {source}. Automatically selected default model: {model}')
+        
         if base_url is not None:
             kwargs['base_url'] = base_url
         return source, model, kwargs
@@ -110,15 +98,17 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                 source: str = None,
                 base_url: str = None,
                 return_trace: bool = False,
-                function: str = 'stt',
+                type: str = 'stt',
                 **kwargs):
-
+        if type is None:
+            type = kwargs.pop('function', None)
         source, model, kwargs_normalized = OnlineMultiModalModule._validate_parameters(
-            source=source, model=model, function=function, base_url=base_url, **kwargs
+            source=source, model=model, type=type, base_url=base_url, **kwargs
         )
-        params = {'return_trace': return_trace}
+        params = {'return_trace': return_trace, 
+                  'type': type}
         if model is not None:
             params['model'] = model
         params.update(kwargs_normalized)
-        available_model = OnlineMultiModalModule.FUNCTION_MODEL_MAP[function]
+        available_model = OnlineMultiModalModule.TYPE_MODEL_MAP[type]
         return available_model[source](**params)

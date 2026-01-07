@@ -81,18 +81,18 @@ class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
 
 
 class DoubaoMultiModal(OnlineMultiModalBase):
-    def __init__(self, api_key: str = None, model: str = None, base_url='https://ark.cn-beijing.volces.com/api/v3',
+    def __init__(self, api_key: str = None, model: str = None, url='https://ark.cn-beijing.volces.com/api/v3',
                  return_trace: bool = False, **kwargs):
         api_key = api_key or lazyllm.config['doubao_api_key']
         OnlineMultiModalBase.__init__(self, model_series='DOUBAO', model=model, api_key=api_key,
-                                      return_trace=return_trace, base_url=base_url, **kwargs)
-        self._client = volcenginesdkarkruntime.Ark(base_url=base_url, api_key=api_key)
+                                      return_trace=return_trace, url=url, **kwargs)
+        self._client = volcenginesdkarkruntime.Ark(base_url=url, api_key=api_key)
 
 
 class DoubaoTextToImageModule(DoubaoMultiModal):
     MODEL_NAME = 'doubao-seedream-4-0-250828'
     IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'
-    
+
     def __init__(self, api_key: str = None, model: str = None, return_trace: bool = False, **kwargs):
         DoubaoMultiModal.__init__(self, api_key=api_key, model=model
                             or DoubaoTextToImageModule.MODEL_NAME
@@ -108,35 +108,29 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
                 f'Please provide an image file via the "files" parameter.'
             )
         if self._type != LLMType.IMAGE_EDITING and has_ref_image:
-            LOG.error(
-                f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
-                f'Please use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model.'
-            )
-            raise ValueError()
+            msg = str(f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
+                f'Please use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model.')
+            raise ValueError(msg)
 
         if has_ref_image:
             image_results = self._load_images(files)
             contents = [f'data:image/png;base64,{base64_str}' for base64_str, _ in image_results]
-        try:
-            api_params = {
-                'model': model,
-                'prompt': input,
-                'size': size,
-                'seed': seed,
-                'guidance_scale': guidance_scale,
-                'watermark': watermark,
-                **kwargs
-            }
-            if has_ref_image:
-                api_params['image'] = contents
-                if n > 1:
-                    api_params['sequential_image_generation'] = 'auto'
-                    max_images = min(n, 15)
-                    SequentialImageGenerationOptions = volcenginesdkarkruntime.types.images.SequentialImageGenerationOptions
-                    api_params['sequential_image_generation_options'] = SequentialImageGenerationOptions(max_images=max_images)
-            imagesResponse = self._client.images.generate(**api_params)
-            image_contents = [requests.get(result.url).content for result in imagesResponse.data]
-            return encode_query_with_filepaths(None, bytes_to_file(image_contents))
-        except Exception as e:
-            lazyllm.LOG.error(f'Image generation/editing request failed: {str(e)}')
-            raise
+        api_params = {
+            'model': model,
+            'prompt': input,
+            'size': size,
+            'seed': seed,
+            'guidance_scale': guidance_scale,
+            'watermark': watermark,
+            **kwargs
+        }
+        if has_ref_image:
+            api_params['image'] = contents
+            if n > 1:
+                api_params['sequential_image_generation'] = 'auto'
+                max_images = min(n, 15)
+                SequentialImageGenerationOptions = volcenginesdkarkruntime.types.images.SequentialImageGenerationOptions
+                api_params['sequential_image_generation_options'] = SequentialImageGenerationOptions(max_images=max_images)
+        imagesResponse = self._client.images.generate(**api_params)
+        image_contents = [requests.get(result.url).content for result in imagesResponse.data]
+        return encode_query_with_filepaths(None, bytes_to_file(image_contents))

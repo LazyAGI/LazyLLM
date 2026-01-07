@@ -22,7 +22,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
                  api_key: str = None, stream: str = True, return_trace: bool = False, **kwargs):
         OnlineChatModuleBase.__init__(self, model_series='GLM', api_key=api_key or lazyllm.config['glm_api_key'],
                                       model_name=model or lazyllm.config['glm_model_name'] or GLMModule.MODEL_NAME,
-                                      stream=stream, return_trace=return_trace, base_url=base_url, **kwargs)
+                                      base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self.default_train_data = {
             'model': None,
@@ -286,7 +286,6 @@ class GLMTextToImageModule(GLMMultiModal):
                                or lazyllm.config['glm_text_to_image_model_name'], api_key=api_key,
                                return_trace=return_trace, **kwargs)
         if self._type == LLMType.IMAGE_EDITING:
-            lazyllm.LOG.error('no support model!')
             raise ValueError('GLM series models do not support image editing now.')
 
     def _forward(self, input: str = None, n: int = 1, size: str = '1024x1024',

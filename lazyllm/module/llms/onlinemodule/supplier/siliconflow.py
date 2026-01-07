@@ -73,11 +73,11 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     IMAGE_EDITING_MODEL_NAME = 'Qwen/Qwen-Image-Edit-2509'
 
     def __init__(self, api_key: str = None, model: str = None,
-                 base_url: str = 'https://api.siliconflow.cn/v1/',
+                 url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
         OnlineMultiModalBase.__init__(self, model_series='SiliconFlow', api_key=api_key or lazyllm.config['siliconflow_api_key'],
                                       model=model or SiliconFlowTextToImageModule.MODEL_NAME,
-                                      base_url=base_url, return_trace=return_trace, **kwargs)
+                                      url=url, return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
 
     def _make_request(self, endpoint, payload, base_url=None, timeout=180):
@@ -118,20 +118,17 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
                     payload['image'] = reference_image_data
                 elif i > 0:
                     payload[f'image{i+1}'] = reference_image_data
-        try:
-            result = self._make_request(self._endpoint, payload)
-            image_urls = [item['url'] for item in result.get('data', [])]
-            if not image_urls:
-                raise Exception('No images returned from API')            
-            image_results = self._load_images(image_urls)
-            image_bytes = [data for _, data in image_results]
-            if not image_bytes:
-                raise Exception('Failed to download any images')
-            file_paths = bytes_to_file(image_bytes)
-            return encode_query_with_filepaths(None, file_paths)
-        except Exception as e:
-            LOG.error(f'Error in SiliconFlowTextToImageModule._forward: {str(e)}')
-            raise
+        result = self._make_request(self._endpoint, payload)
+        image_urls = [item['url'] for item in result.get('data', [])]
+        if not image_urls:
+            raise Exception('No images returned from API')
+        image_results = self._load_images(image_urls)
+        image_bytes = [data for _, data in image_results]
+        if not image_bytes:
+            raise Exception('Failed to download any images')
+        file_paths = bytes_to_file(image_bytes)
+        return encode_query_with_filepaths(None, file_paths)
+
 
 class SiliconFlowTTSModule(OnlineMultiModalBase):
     MODEL_NAME = 'fnlp/MOSS-TTSD-v0.5'

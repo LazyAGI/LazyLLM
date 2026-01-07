@@ -61,27 +61,39 @@ class TestMultiModal(object):
     def test_online_image_editinging_siliconflow(self):
         api_key = lazyllm.config['siliconflow_api_key']
         text2image_editing = lazyllm.OnlineModule(source='siliconflow', model='Qwen/Qwen-Image-Edit-2509',
-                                                  function='image_editing', api_key=api_key)
+                                                  type='image_editing', api_key=api_key)
         result = text2image_editing(self.test_image_editing_prompt, files=self.test_image_file)
         self._check_file_result(result, format='image')
 
     def test_online_image_editinging_qwen(self):
         api_key = lazyllm.config['qwen_api_key']
         text2image_editing = lazyllm.OnlineModule(source='qwen', model='qwen-image-edit-plus',
-                                                  function='image_editing', api_key=api_key)
+                                                  type='image_editing', api_key=api_key)
+        result = text2image_editing(self.test_image_editing_prompt, files=self.test_image_file)
+        self._check_file_result(result, format='image')
+
+    def test_online_image_editinging_siliconflow_automatically_select(self):
+        api_key = lazyllm.config['siliconflow_api_key']
+        text2image_editing = lazyllm.OnlineModule(source='siliconflow', type='image_editing', api_key=api_key)
+        result = text2image_editing(self.test_image_editing_prompt, files=self.test_image_file)
+        self._check_file_result(result, format='image')
+
+    def test_online_image_editinging_qwen_automatically_select(self):
+        api_key = lazyllm.config['qwen_api_key']
+        text2image_editing = lazyllm.OnlineModule(source='qwen', type='image_editing', api_key=api_key)
         result = text2image_editing(self.test_image_editing_prompt, files=self.test_image_file)
         self._check_file_result(result, format='image')
 
     def test_online_images_fusion_siliconflow(self):
         api_key = lazyllm.config['siliconflow_api_key']
         text2image_editing = lazyllm.OnlineModule(source='siliconflow', model='Qwen/Qwen-Image-Edit-2509',
-                                                  function='image_editing', api_key=api_key)
+                                                  type='image_editing', api_key=api_key)
         result = text2image_editing(self.test_multi_images_fusion, files=self.test_images_files)
         self._check_file_result(result, format='image')
 
     def test_online_imags_fusion_qwen(self):
         api_key = lazyllm.config['qwen_api_key']
         text2image_editing = lazyllm.OnlineModule(source='qwen', model='qwen-image-edit-plus',
-                                                  function='image_editing', api_key=api_key)
+                                                  type='image_editing', api_key=api_key)
         result = text2image_editing(self.test_multi_images_fusion, files=self.test_images_files)
         self._check_file_result(result, format='image')

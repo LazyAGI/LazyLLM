@@ -432,30 +432,25 @@ class QwenTextToImageModule(QwenMultiModal):
                     image_url = content['image']
                     if image_url:
                         image_urls.append(image_url)
-                        LOG.info(f'Extracted image URL {idx + 1}: {image_url}')
                 except Exception as e:
                     LOG.warning(f'Failed to extract image URL from item {idx}: {str(e)}')
-                    continue            
+                    continue
             if not image_urls:
                 LOG.warning('No image URLs found in content')
             return image_urls
         except Exception as e:
             LOG.error(f'Failed to extract sync image URLs: {str(e)}')
-            import traceback
-            LOG.error(traceback.format_exc())
             return []
 
     def _extract_async_image_urls(self, response):
         try:
             output = getattr(response, 'output', None)
             if not output:
-                LOG.warning('No output in async response')
                 return []
             results = getattr(output, 'results', [])
             if not results:
                 LOG.warning('No results in async response output')
                 return []
-
             return [getattr(result, 'url', None) for result in results if getattr(result, 'url', None)]
         except Exception as e:
             LOG.error(f'Failed to extract async image URLs: {str(e)}')
@@ -505,27 +500,21 @@ class QwenTextToImageModule(QwenMultiModal):
         }
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
-        try:
-            if has_ref_image:
-                call_params['messages'] = messages
-                response = self._call_sync_text2image(call_params)
-                image_urls = self._extract_sync_image_urls(response)
-            else:
-                call_params['prompt'] = input
-                response = self._call_async_text2image(call_params)
-                image_urls = self._extract_async_image_urls(response)
-            if response.status_code != HTTPStatus.OK:
-                error_msg = getattr(response.output, 'message', 'Unknown error')
-                LOG.error(f'Image generation failed: {error_msg}')
-                raise Exception(f'Image generation failed: {error_msg}')
-            image_results = self._load_images(image_urls)
-            image_bytes = [data for _, data in image_results]
-            return encode_query_with_filepaths(None, bytes_to_file(image_bytes))
-        except Exception as e:
-            lazyllm.LOG.error(f'Image generation/editing request failed: {str(e)}')
-            raise
-        
-
+        if has_ref_image:
+            call_params['messages'] = messages
+            response = self._call_sync_text2image(call_params)
+            image_urls = self._extract_sync_image_urls(response)
+        else:
+            call_params['prompt'] = input
+            response = self._call_async_text2image(call_params)
+            image_urls = self._extract_async_image_urls(response)
+        if response.status_code != HTTPStatus.OK:
+            error_msg = getattr(response.output, 'message', 'Unknown error')
+            raise Exception(f'Image generation failed: {error_msg}')
+        image_results = self._load_images(image_urls)
+        image_bytes = [data for _, data in image_results]
+        return encode_query_with_filepaths(None, bytes_to_file(image_bytes))
+       
 
 def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
                        api_key: str = None, **kwargs):
