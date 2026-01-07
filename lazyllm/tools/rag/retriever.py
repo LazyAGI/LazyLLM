@@ -272,27 +272,55 @@ class WeightedRetriever(_CompositeRetrieverBase):
         elif any(getattr(r, 'weight', None) for r in retrievers):
             raise RuntimeError('All retrievers must define a "weight" attribute if any retriever defines one.')
 
-    def _combine(self, result: List[List[DocNode]], weights: List[float]):
-        return sum(result, [])
-
     @property
     def weights(self): return self._get_cached_value('weight')
 
     @staticmethod
     def _normalize(weights: List[float]):
-        sum_weight = sum(weights, 0)
+        sum_weight = sum(weights, 0) + 1e-8
         return [w / sum_weight for w in weights]
+
+    def _combine(self, result: List[List[DocNode]], weights: List[float], topk: Optional[int]):
+        if not topk: return result
+
+        current, remain = result, topk
+        final = []
+        while (current and remain):
+            cur, cur_weight, taken = [], [], 0
+            weights = self._normalize(weights)
+            for r, w in zip(current, weights):
+                if len(r) <= int(w * remain):
+                    final.append(r)
+                    taken += len(r)
+                else:
+                    cur.append(r)
+                    cur_weight.append(w)
+            if not cur:
+                ideal, frac = zip(*[[int(w * remain), w * remain - int(w * remain)] for w in weights])
+                remain -= sum(ideal, 0)
+                if remain:
+                    current, ideal = zip(*[(x, y) for _, x, y in sorted(zip(frac, current, ideal), key=lambda t: t[0])])
+                    for i in range(len(ideal)):
+                        if not remain: break
+                        ideal[i] += 1
+                        remain -= 1
+                final.extend([current[i][:k] for i, k in enumerate(ideal)])
+                break
+            remain -= taken
+            current, weights = cur, cur_weight
+        return final
 
     @staticmethod
     def _real_params_checkf(x): return isinstance(x, (int, float))
 
     def forward(self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
-                *, weights: Optional[List[float]] = None, topk: Optional[int] = None, **kwargs):
+                *, weights: Optional[List[float]] = None, topk: Optional[int] = None,
+                combine: Optional[Callable[[List, List, int], List]] = None, **kwargs):
         weights = self._get_real_params(weights, 'weights', '(int, float)')
         weights = self._normalize(weights)
-        retrievers, weights = self._calc_retrievers(self._retrievers, weights, topk or self._topk)
+        retrievers, weights = zip(*[(self._items[i], w) for i, w in enumerate(weights) if w < 1e-5])
         rs = retrievers(query, filters, **kwargs)
-        return self._post_process(self._combine(rs, weights))
+        return self._post_process((self._combine or combine)(rs, weights, topk))
 
 
 class PriorityRetriever(_CompositeRetrieverBase):
@@ -301,8 +329,13 @@ class PriorityRetriever(_CompositeRetrieverBase):
             raise RuntimeError('weight is not allowed in `PriorityRetriever`.')
         self._valid = True
 
-    def _combine(self, result: List[List[DocNode]], priorities: List[Retriever.Priority]):
-        return sum(result, [])
+    def _combine(self, result: List[List[DocNode]], priorities: List[Retriever.Priority], topk: Optional[int]):
+        if not topk: return result
+        result = []
+        for expected in (Retriever.Priority.high, Retriever.Priority.normal, Retriever.Priority.low):
+            result.extend([r for r, p in zip(result, priorities) if p == expected])
+            if sum([len(r) for r in result], 0) >= topk: break
+        return result
 
     @property
     def priorities(self):
@@ -312,8 +345,11 @@ class PriorityRetriever(_CompositeRetrieverBase):
     def _real_params_checkf(x): return x in list(Retriever.Priority)
 
     def forward(self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
-                *, priorities: Optional[List[Retriever.Priority]] = None, topk: Optional[int] = None, **kwargs):
+                *, priorities: Optional[List[Retriever.Priority]] = None, topk: Optional[int] = None,
+                combinef: Optional[Callable[[List, List, int], List]] = None, **kwargs):
         priorities = self._get_real_params(priorities, 'priorities', list(Retriever.Priority))
-        retrievers, priorities = self._calc_retrievers(self._retrievers, priorities, topk or self._topk)
+        # Top-k is not used during the preprocessing stage.
+        retrievers, priorities = zip(*[(self._items[i], p) for i, p in enumerate(priorities)
+                                       if p != Retriever.Priority.ignore])
         rs = retrievers(query, filters, **kwargs)
-        return self._post_process(self._combine(rs, priorities))
+        return self._post_process((combinef or self._combine)(rs, priorities, topk or self.topk))
