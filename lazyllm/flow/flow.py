@@ -483,10 +483,16 @@ class Parallel(LazyLLMFlowsBase):
             inputs = [inputs] * len(items)
         return inputs
 
-    def _run(self, __input, __items=None, *, _skip_items: Optional[Union[int, str, List[Union[int, str]]]] = None, **kw):
+    def _run(self, __input, __items=None, *, _kept_items: Optional[Union[int, str, List[Union[int, str]]]] = None,
+             _skip_items: Optional[Union[int, str, List[Union[int, str]]]] = None, **kw):
         if (items := __items) is None: items = self._items
-        _kept_idx = ([i for i, (_, n) in enumerate(zip(self._items, self._item_names or repeat(None)))
-                      if i not in _skip_items and n not in _skip_items] if _skip_items else None)
+        if _kept_items:
+            if _skip_items: raise RuntimeError('Cannot provide `_kept_items` and `_skip_items` at the same time!')
+            _kept_idx = [i for i, (_, n) in enumerate(zip(self._items, self._item_names or repeat(None)))
+                         if i in _kept_items or n in _kept_items]
+        else:
+            _kept_idx = ([i for i, (_, n) in enumerate(zip(self._items, self._item_names or repeat(None)))
+                          if i not in _skip_items and n not in _skip_items] if _skip_items else None)
         if _kept_idx: items = [it for i, it in enumerate(self._items) if i in _kept_idx]
         inputs = self._split_input(__input, items, _kept_idx)
 
@@ -556,6 +562,7 @@ class Warp(Parallel):
     def _run(self, __input, **kw):
         assert 1 == len(self._items), 'Only one function is enabled in warp'
         assert '_skip_items' not in kw, '`skip_items` is not allowed in warp'
+        assert '_kept_items' not in kw, '`_kept_items` is not allowed in warp'
         return super(__class__, self)._run(__input, self._items * len(package(__input)), **kw)
 
     @property
