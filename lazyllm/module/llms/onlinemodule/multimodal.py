@@ -96,9 +96,9 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
     def __new__(self,
                 model: str = None,
                 source: str = None,
+                type: str = None,
                 base_url: str = None,
                 return_trace: bool = False,
-                type: str = 'stt',
                 **kwargs):
         if type is None:
             type = kwargs.pop('function', None)

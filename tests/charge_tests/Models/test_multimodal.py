@@ -15,11 +15,10 @@ class TestMultiModal(object):
         )
         self.test_image_editing_prompt = '在参考图片中的正中间添加"LazyLLM"这段英文,字体风格要和图片相同'
         self.test_multi_images_fusion = '将上传的参考图片融合在一起'
-        self.test_image_file = [os.path.join(lazyllm.config['data_path'], 'ci_data/pig.png')]
+        self.test_image_file = [os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg')]
         self.test_images_files = [
-            os.path.join(lazyllm.config['data_path'], 'ci_data/pig.png'),
-            os.path.join(lazyllm.config['data_path'], 'ci_data/dog.png'),
-            os.path.join(lazyllm.config['data_path'], 'ci_data/cow.png'),
+            os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'),
+            os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'),
         ]
 
     def test_online_tts(self):
@@ -54,7 +53,7 @@ class TestMultiModal(object):
 
     @pytest.mark.ignore_cache_on_change('lazyllm/module/llms/onlinemodule/supplier/siliconflow.py')
     def test_online_text2image(self):
-        text2image = lazyllm.OnlineMultiModalModule(source='siliconflow', function='text2image', model='Kolors')
+        text2image = lazyllm.OnlineMultiModalModule(source='siliconflow', type='text2image', model='Qwen/Qwen-Image')
         result = text2image(self.test_image_prompt)
         self._check_file_result(result, format='image')
 
