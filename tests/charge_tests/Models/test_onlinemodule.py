@@ -112,6 +112,7 @@ class TestOnlineModule(object):
                 return model + ', ' + input + ', ' + url
 
         dummy = DummyMulti()
+        dummy.use_cache(False)
         assert dummy('hello') == 'whisper-1, hello, http://base'
         assert dummy('new', model='glm-asr', url='http://override') == 'glm-asr, new, http://override'
         assert dummy('final') == 'whisper-1, final, http://base'
