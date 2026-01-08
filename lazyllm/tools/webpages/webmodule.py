@@ -4,6 +4,7 @@ import json
 import signal
 import socket
 import sys
+import base64
 import requests
 import traceback
 from lazyllm.thirdparty import gradio as gr, PIL
@@ -397,9 +398,26 @@ class WebModule(ModuleBase):
                 if contains_markdown_image(show_result):
                     urls = extract_img_path(show_result)
                     for url in urls:
+                        b64_encoded = None
                         suffix = os.path.splitext(url)[-1].lower()
-                        if suffix in PIL.Image.registered_extensions().keys() and os.path.exists(url):
-                            show_result = show_result.replace(url, 'file=' + url)
+                        if suffix and suffix not in PIL.Image.registered_extensions():
+                            continue
+                        suffix = suffix.lstrip('.') if suffix else 'jpeg'
+                        if url.startswith('http://') or url.startswith('https://'):
+                            try:
+                                response = requests.get(url, timeout=5)
+                                if response.status_code == 200:
+                                    b64_encoded = base64.b64encode(response.content).decode('utf-8')
+                            except Exception: pass
+                        elif os.path.exists(url):
+                            try:
+                                with open(url, 'rb') as image_file:
+                                    b64_encoded = base64.b64encode(image_file.read()).decode('utf-8')
+                            except Exception: pass
+
+                        if b64_encoded:
+                            show_result = show_result.replace(url, f'data:image/{suffix};base64,{b64_encoded}')
+
                 if result:
                     count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
                     if not chat_history[-1][1]:
