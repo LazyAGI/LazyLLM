@@ -39,6 +39,20 @@ Install the basic dependencies:
 pip3 install -r requirements.txt
 ```
 
+If you want to use all the features of LazyLLM, you can run the following commands to fetch and install the full set of LazyLLM dependencies:
+
+```bash
+git submodule update --init LazyLLM-Env
+cp LazyLLM-Env/poetry.lock .
+pip3 install tomlkit poetry==2.2.1
+poetry self add poetry-plugin-export
+python scripts/generate_toml_optional_deps.py
+poetry lock
+poetry export -f requirements.txt --without-hashes -o requirements.full.txt  --extras "optional"
+# flash-attn depends on torch, so it is recommended to install it last.
+pip3 install -r requirements.full.txt
+```
+
 Add `LazyLLM` to the module search path:
 
 ```bash
