@@ -5,6 +5,7 @@ from .onlinemodule import (
 )
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from .onlinemodule.map_model_type import get_model_type
+from lazyllm import LOG
 
 
 class _OnlineModuleMeta(type):
@@ -21,6 +22,7 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
         LLMType.TTS: 'tts',
         LLMType.SD: 'text2image',
         LLMType.TEXT2IMAGE: 'text2image',
+        LLMType.IMAGE_EDITING: 'image_editing',
     }
 
     def __new__(self, model: Optional[str] = None, source: Optional[str] = None, *,
@@ -39,12 +41,11 @@ class OnlineModule(metaclass=_OnlineModuleMeta):
                                          embed_url=url,
                                          embed_model_name=model,
                                          **embed_kwargs)
-        
+
         if resolved_type in list(self._MULTI_TYPE_TO_FUNCTION.keys()):
             multi_kwargs = params.copy()
-            multi_kwargs.pop('type', None)
             return OnlineMultiModalModule(model=model, source=source, base_url=url,
-                                          function=self._MULTI_TYPE_TO_FUNCTION[LLMType(resolved_type)],
+                                          type=self._MULTI_TYPE_TO_FUNCTION[LLMType(resolved_type)],
                                           **multi_kwargs)
 
         chat_kwargs = params.copy()
