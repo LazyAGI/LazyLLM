@@ -16,7 +16,7 @@ import threading
 import traceback
 import sys
 import os
-from typing import Union, Tuple, List, Optional
+from typing import Union, List, Optional
 import concurrent.futures
 from collections import deque
 import uuid
@@ -404,23 +404,6 @@ def barrier(args):
     return args
 
 
-def _split_input(input: Union[Tuple, List], flag: Optional[Union[int, List]] = None):
-    if flag is None or isinstance(flag, int):
-        if isinstance(flag, int) and flag > 1 and isinstance(input, package) and len(input) == 1:
-            input = input[0]
-        assert isinstance(input, (tuple, list)), (
-            f'Only tuple and list input can be split automatically, your input is {input} <{type(input)}>')
-        if isinstance(flag, int):
-            assert flag == len(input), 'input size mismatch with split number'
-        return package(input)
-    elif isinstance(flag, list):
-        if isinstance(input, dict):
-            return package(input[key] for key in flag)
-        elif isinstance(input, (tuple, list)):
-            return _split_input(input, len(flag))
-    raise TypeError(f'invalid flag type {type(flag)} given')
-
-
 config.add('parallel_multiprocessing', bool, False, 'PARALLEL_MULTIPROCESSING',
            description='Whether to use multiprocessing for parallel execution, if not, default to use threading.')
 
@@ -479,16 +462,39 @@ class Parallel(LazyLLMFlowsBase):
     def sequential(cls, *args, **kw):
         return cls(*args, _concurrent=False, **kw)
 
-    def _run(self, __input, items=None, **kw):
-        if items is None:
-            items = self._items
-            size = len(items)
-            if self._scatter:
-                inputs = _split_input(__input, self._item_names if self._item_names else size)
+    # items = [a, b, c, d, e], skip_items = [1, 3]/['b', 'd'] -> items = [a, c, e]
+    # input = [0, 1, 2, 3, 4] -> [0, 2, 4]
+    # input = [0, 2, 4] -> [0, 2, 4]
+    # input = dict(a=0, b=1, c=2, d=3, e=4) -> [0, 2, 4]
+    # input = dict(a=0, c=2, e=4) -> [0, 2, 4]
+    def _split_input(self, inputs, items, _kept_idx):
+        if self._scatter:
+            if isinstance(inputs, dict):
+                inputs = package(inputs[n] for n in ([n for i, n in enumerate(self._item_names or repeat(None))
+                                                     if i in _kept_idx] if _kept_idx else self._item_names))
             else:
-                inputs = [__input] * size
+                if isinstance(inputs, package) and len(inputs) == 1: inputs = inputs[0]
+                assert isinstance(inputs, (tuple, list)), (
+                    f'Only tuple and list input can be split automatically, your input is {inputs} <{type(inputs)}>')
+                if _kept_idx and len(inputs) != len(_kept_idx):
+                    assert len(inputs) == len(self._items)
+                    inputs = [inp for i, inp in enumerate(inputs) if i in _kept_idx]
         else:
-            inputs = __input
+            inputs = [inputs] * len(items)
+        return inputs
+
+    def _run(self, __input, __items=None, *, _kept_items: Optional[Union[int, str, List[Union[int, str]]]] = None,
+             _skip_items: Optional[Union[int, str, List[Union[int, str]]]] = None, **kw):
+        if (items := __items) is None: items = self._items
+        if _kept_items:
+            if _skip_items: raise RuntimeError('Cannot provide `_kept_items` and `_skip_items` at the same time!')
+            _kept_idx = [i for i, (_, n) in enumerate(zip(self._items, self._item_names or repeat(None)))
+                         if i in _kept_items or n in _kept_items]
+        else:
+            _kept_idx = ([i for i, (_, n) in enumerate(zip(self._items, self._item_names or repeat(None)))
+                          if i not in _skip_items and n not in _skip_items] if _skip_items else None)
+        if _kept_idx: items = [it for i, it in enumerate(self._items) if i in _kept_idx]
+        inputs = self._split_input(__input, items, _kept_idx)
 
         if self._concurrent:
             if self._multiprocessing:
@@ -546,9 +552,8 @@ class Diverter(Parallel):
 # Attention: Cannot be used in async tasks, ie: training and deploy
 # TODO: add check for async tasks
 class Warp(Parallel):
-    def __init__(self, *args, _scatter: bool = False, _concurrent: Union[bool, int] = True,
-                 auto_capture: bool = False, **kw):
-        super().__init__(*args, _scatter=_scatter, _concurrent=_concurrent, auto_capture=auto_capture, **kw)
+    def __init__(self, *args, _concurrent: Union[bool, int] = True, auto_capture: bool = False, **kw):
+        super().__init__(*args, _scatter=True, _concurrent=_concurrent, auto_capture=auto_capture, **kw)
         if len(self._items) > 1: self._items = [Pipeline(*self._items)]
 
     def __post_init__(self):
@@ -556,9 +561,9 @@ class Warp(Parallel):
 
     def _run(self, __input, **kw):
         assert 1 == len(self._items), 'Only one function is enabled in warp'
-        inputs = _split_input(__input)
-        items = self._items * len(inputs)
-        return super(__class__, self)._run(inputs, items, **kw)
+        assert '_skip_items' not in kw, '`skip_items` is not allowed in warp'
+        assert '_kept_items' not in kw, '`_kept_items` is not allowed in warp'
+        return super(__class__, self)._run(__input, self._items * len(package(__input)), **kw)
 
     @property
     def asdict(self): raise NotImplementedError

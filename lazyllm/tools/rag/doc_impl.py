@@ -52,6 +52,7 @@ class BuiltinGroups(object):
         trans_node: bool = None
 
         def __str__(self): return self.name
+        def __hash__(self): return hash(self.name)
 
     CoarseChunk = Struct('CoarseChunk', '1024 Tokens Chunk', NodeGroupType.CHUNK,
                          TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))

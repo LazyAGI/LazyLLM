@@ -9,6 +9,7 @@ from lazyllm import ThreadPoolExecutor
 import re
 from functools import partial
 import os
+import tempfile
 import threading
 import tiktoken
 from lazyllm import config
