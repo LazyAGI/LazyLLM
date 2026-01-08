@@ -15,7 +15,11 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm import LOG
 
 
-class QwenModule(OnlineChatModuleBase, FileHandlerBase):
+class LazyLLMQwenBase():
+    pass
+
+
+class QwenModule(LazyLLMQwenBase, OnlineChatModuleBase, FileHandlerBase):
     '''
     #TODO: The Qianwen model has been finetuned and deployed successfully,
            but it is not compatible with the OpenAI interface and can only
@@ -269,7 +273,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         return [{'type': 'image_url', 'image_url': {'url': image_url}}]
 
 
-class QwenEmbedding(OnlineEmbeddingModuleBase):
+class QwenEmbedding(LazyLLMQwenBase, OnlineEmbeddingModuleBase):
 
     def __init__(self,
                  embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
@@ -313,7 +317,7 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
             return [res.get('embedding', []) for res in embeddings]
 
 
-class QwenReranking(OnlineEmbeddingModuleBase):
+class QwenReranking(LazyLLMQwenBase, OnlineEmbeddingModuleBase):
 
     def __init__(self,
                  embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
@@ -347,7 +351,7 @@ class QwenReranking(OnlineEmbeddingModuleBase):
         return [(result['index'], result['relevance_score']) for result in results]
 
 
-class QwenMultiModal(OnlineMultiModalBase):
+class QwenMultiModal(LazyLLMQwenBase, OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',

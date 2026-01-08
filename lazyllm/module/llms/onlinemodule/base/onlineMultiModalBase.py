@@ -12,11 +12,10 @@ from io import BytesIO
 from lazyllm.thirdparty import PIL
 
 class OnlineMultiModalBase(LazyLLMOnlineBase, LLMBase):
-    _lazy_llm_group = 'online.multimodal'
+    _lazy_llm_group = 'multimodal'
     def __init__(self, model_series: str, model: str = None, return_trace: bool = False, skip_auth: bool = False,
                  api_key: Optional[Union[str, List[str]]] = None, url: str = None, type: Optional[str] = None, **kwargs):
-        LazyLLMOnlineModuleBase.__init__(self, api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
-        LLMBase.__init__(self, stream=False, init_prompt=False, type=type)
+        LazyLLMOnlineBase.__init__(self, api_key=api_key,  return_trace=return_trace)
         self._model_series = model_series
         self._model_name = model if model is not None else kwargs.get('model_name')
         self._base_url = url if url is not None else kwargs.get('base_url')

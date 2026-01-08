@@ -7,7 +7,7 @@ from .utils import LazyLLMOnlineBase
 
 class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
     NO_PROXY = True
-    _lazy_llm_group = 'online.embedding'
+    _lazy_llm_group = 'embedding'
 
     def __init__(self, model_series: str, embed_url: str, api_key: str, embed_model_name: str, skip_auth: bool = False,
                  return_trace: bool = False, batch_size: int = 1, num_worker: int = 1, timeout: int = 10):

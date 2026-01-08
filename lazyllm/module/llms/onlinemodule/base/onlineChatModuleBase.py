@@ -30,7 +30,7 @@ class OnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     TRAINABLE_MODEL_LIST = []
     VLM_MODEL_PREFIX = []
     NO_PROXY = True
-    _lazy_llm_group = 'online.chat'
+    _lazy_llm_group = 'chat'
 
     def __init__(self, model_series: str, api_key: Union[str, List[str]], base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,

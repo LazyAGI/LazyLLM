@@ -2,13 +2,61 @@ from ....module import ModuleBase
 from lazyllm import config, LazyLLMRegisterMetaClass
 from typing import Optional, Union, List
 import random
+import re
 
 
 config.add('cache_online_module', bool, False, 'CACHE_ONLINE_MODULE',
            description='Whether to cache the online module result. Use for unit test.')
 
+def _normalize_key(s: str) -> str:
+    return re.sub(r'[_\-\s]', '', s).lower()
+
+def _split_camel(s: str) -> List[str]:
+    return re.findall(r'[A-Z]+(?=[A-Z][a-z]|[0-9]|$)|[A-Z]?[a-z0-9]+', s)
+
+def _parse_supplier(cls) -> Optional[str]:
+    for base in cls.__mro__:
+        name = base.__name__
+        if name.startswith('LazyLLM') and name.endswith('Base'):
+            return _normalize_key(name[len('LazyLLM'):-len('Base')])
+    return None
+
+def _parse_type(cls, supplier_key: str) -> Optional[str]:
+    name = cls.__name__
+    if name.endswith('Module'):
+        name = name[:-len('Module')]
+    parts = _split_camel(name)
+    if not parts:
+        return None
+    acc = ''
+    idx = 0
+    for i, p in enumerate(parts):
+        acc += p
+        if _normalize_key(acc) == supplier_key:
+            idx = i + 1
+            break
+    else:
+        return None
+    type_parts = parts[idx:]
+    if not type_parts:
+        return None
+    return _normalize_key(''.join(type_parts))
+
+def build_online_group(cls) -> Optional[str]:
+    supplier = _parse_supplier(cls)
+    if not supplier:
+        return None
+    type_key = _parse_type(cls, supplier)
+    if not type_key:
+        return None
+    return f'online.{supplier}.{type_key}'
+
 
 class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
+    @classmethod
+    def __lazyllm_group__(cls):
+        return build_online_group(cls)
+
     def __init__(self, api_key: Optional[Union[str, List[str]]],
                  skip_auth: Optional[bool] = False, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
@@ -34,5 +82,5 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def _header(self):
         return random.choice(self.__headers)
 
-# deprecated class name
+
 OnlineModuleBase = LazyLLMOnlineBase  # alias for legacy imports
