@@ -3,7 +3,6 @@ import tempfile
 import threading
 import lazyllm
 from lazyllm.tools.rag.parsing_service import DocumentProcessor
-from lazyllm.tools.rag.parsing_service.base import TaskStatus
 
 
 # callback func example
@@ -36,7 +35,7 @@ def run():
         try:
             threading.Event().wait()
         except KeyboardInterrupt:
-            print("\n>> Ctrl+C pressed, stopping service...")
+            lazyllm.LOG.info('\n>> Ctrl+C pressed, stopping service...')
     finally:
         try:
             os.remove(db_dir)

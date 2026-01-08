@@ -3,7 +3,7 @@ import tempfile
 import threading
 from lazyllm.tools.rag.parsing_service import DocumentProcessor
 from lazyllm.tools.rag.transform import RecursiveSplitter
-from lazyllm import Document, TrainableModule
+from lazyllm import Document, TrainableModule, LOG
 
 
 def run():
@@ -13,13 +13,13 @@ def run():
     os.close(fd)
     try:
         milvus_store_conf = {
-            'segment_store':{
+            'segment_store': {
                 'type': 'map',
                 'kwargs': {
                     'uri': segment_store_dir,
                 }
             },
-            'vector_store':{
+            'vector_store': {
                 'type': 'milvus',
                 'kwargs': {
                     'uri': os.getenv('MILVUS_URI', 'http://10.119.26.205:19530'),
@@ -31,7 +31,6 @@ def run():
                             'nlist': 128,
                         }
                     }
-                    
                 },
             }
         }
@@ -53,7 +52,7 @@ def run():
         try:
             threading.Event().wait()
         except KeyboardInterrupt:
-            print("\n>> Ctrl+C pressed, stopping service...")
+            LOG.info('\n>> Ctrl+C pressed, stopping service...')
     finally:
         try:
             os.remove(milvus_store_dir)
