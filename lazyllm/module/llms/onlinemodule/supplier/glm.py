@@ -5,6 +5,7 @@ import requests
 from typing import Tuple, List, Dict, Union, Optional
 from urllib.parse import urljoin
 import lazyllm
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 from ..fileHandler import FileHandlerBase
 from lazyllm.thirdparty import zhipuai
@@ -284,6 +285,8 @@ class GLMTextToImageModule(GLMMultiModal):
         GLMMultiModal.__init__(self, model_name=model_name or GLMTextToImageModule.MODEL_NAME
                                or lazyllm.config['glm_text_to_image_model_name'], api_key=api_key,
                                return_trace=return_trace, **kwargs)
+        if self._type == LLMType.IMAGE_EDITING:
+            raise ValueError('GLM series models do not support image editing now.')
 
     def _forward(self, input: str = None, n: int = 1, size: str = '1024x1024',
                  url: str = None, model: str = None, **kwargs):

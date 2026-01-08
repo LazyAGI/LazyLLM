@@ -2044,8 +2044,8 @@ Args:
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenTextToImageModule', '''\
-Qwen文本生成图像模块，继承自 QwenMultiModal，封装了调用 Qwen Wanx2.1-t2i-turbo 模型生成图像的能力。  
-支持根据文本提示生成指定数量和分辨率的图像，并可设置负面提示、随机种子及扩展提示功能，通过 DashScope API 远程调用服务。
+Qwen文本生成图像模块和图像编辑模块，继承自 QwenMultiModal，封装了调用 Qwen Wanx2.1-t2i-turbo 模型生成图像的能力和调用Qwen-image-edit-plus模型进行图像编辑的能力。  
+支持根据文本提示生成指定数量和分辨率的图像，支持图像编辑，并可设置负面提示、随机种子及扩展提示功能，通过 DashScope API 远程调用服务。
 
 Args:
     model (Optional[str]): 使用的 Qwen 模型名称，默认从配置 'qwen_text2image_model_name' 获取，若未设置则使用 "wanx2.1-t2i-turbo"。
@@ -2055,7 +2055,7 @@ Args:
 ''')
 
 add_english_doc('llms.onlinemodule.supplier.qwen.QwenTextToImageModule', '''\
-Qwen Text-to-Image module, inheriting from QwenMultiModal, encapsulates the functionality to generate images using the Qwen Wanx2.1-t2i-turbo model.  
+Qwen Text-to-Image module and Image-Edit module, inheriting from QwenMultiModal, encapsulates the functionality to generate images using the Qwen Wanx2.1-t2i-turbo model.  
 It supports generating a specified number of images with given resolution based on a text prompt, and allows setting negative prompts, random seeds, and prompt extension. The service is called remotely via DashScope API.
 
 Args:
@@ -2547,9 +2547,9 @@ Args:
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule', '''\
-字节跳动豆包文生图模块，支持文本到图像的生成。
+字节跳动豆包文生图模块，支持纯文本生成图像和图像编辑模型。
 
-基于字节跳动豆包多模态模型的文生图功能，继承自DoubaoMultiModal，
+基于字节跳动豆包多模态模型的文生图、图像编辑功能，继承自DoubaoMultiModal，
 提供高质量的文本到图像生成能力。
 
 Args:
@@ -2560,7 +2560,7 @@ Args:
 ''')
 
 add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule', '''\
-ByteDance Doubao Text-to-Image module supporting text to image generation.
+ByteDance Doubao Text-to-Image module supporting text to image generation and image editing.
 
 Based on ByteDance Doubao multimodal model's text-to-image functionality, 
 inherits from DoubaoMultiModal, providing high-quality text to image generation capability.
@@ -2986,7 +2986,7 @@ Returns:
 add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule', """\
 SiliconFlow文生图模块，继承自OnlineMultiModalBase。
 
-提供基于SiliconFlow的文本生成图像功能，支持根据文本描述生成图像。
+提供基于SiliconFlow的文本生成图像功能，支持根据文本描述生成图像，支持纯文本生成图像和图像编辑。
 
 Args:
     api_key (str, optional): API密钥，默认为配置中的siliconflow_api_key
@@ -2999,7 +2999,7 @@ Args:
 add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule', """\
 SiliconFlow Text-to-Image module, inherits from OnlineMultiModalBase.
 
-Provides text-to-image generation functionality based on SiliconFlow, supports generating images from text descriptions.
+Provides text-to-image generation functionality based on SiliconFlow, supports generating images from text descriptions and image editing.
 
 Args:
     api_key (str, optional): API key, defaults to configured siliconflow_api_key
