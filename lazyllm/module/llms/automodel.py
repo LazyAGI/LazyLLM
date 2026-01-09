@@ -3,7 +3,7 @@ import lazyllm
 from lazyllm import LOG
 from .online_module import OnlineModule
 from .trainablemodule import TrainableModule
-from .utils import get_candidate_entries, resolve_model_name, process_trainable_args, process_online_args
+from .utils import get_candidate_entries, process_trainable_args, process_online_args
 
 
 class AutoModel:
@@ -28,33 +28,30 @@ class AutoModel:
             )
 
         trainable_entry, online_entry = get_candidate_entries(model, config_id, source, config)
-        resolved_model = resolve_model_name(
-                model, trainable_entry
-            ) if trainable_entry else resolve_model_name(model, online_entry)
 
         # 1) first: try TrainableModule with trainable config (for directly connecting deployed endpoint)
         if trainable_entry is not None:
             trainable_args = process_trainable_args(
-                model=resolved_model, type=type, source=source, use_config=config, entry=trainable_entry
+                model=model, type=type, source=source, config=config, entry=trainable_entry
             )
             try:
                 module = TrainableModule(**trainable_args)
                 if module._url or module._impl._get_deploy_tasks.flag:
                     return module
             except Exception as e:
-                LOG.error('Fail to create `TrainableModule`, will try to '
+                LOG.warning('Fail to create `TrainableModule`, will try to '
                           f'load model {model} with `OnlineModule`. Since the error: {e}')
 
         # 2) second: try OnlineModule with online config if found
         if online_entry is not None:
-            online_args = process_online_args(model=resolved_model, source=source, type=type, entry=online_entry)
+            online_args = process_online_args(model=model, source=source, type=type, entry=online_entry)
             if online_args:
                 return OnlineModule(**online_args)
 
         # 3) finally: fallback (no config or config unusable)
         try:
-            return OnlineModule(model=resolved_model, source=source, type=type)
+            return OnlineModule(model=model, source=source, type=type)
         except Exception as e:
             LOG.warning('`OnlineModule` creation failed, and will try to '
                         f'load model {model} with local `TrainableModule`. Since the error: {e}')
-            return TrainableModule(resolved_model, type=type)
+            return TrainableModule(model, type=type)

@@ -275,16 +275,38 @@ def _classify_config_entry(entry: Dict[str, Any]) -> str:
         return 'trainable'
     return 'online'
 
-def _select_config_entry(entries: List[Dict[str, Any]],
-                        entry_type: str,
+@functools.cache
+def _load_and_split_config_map(config_path: str):
+    raw_map = _get_module_config_map(config_path)
+    online_map = {}
+    trainable_map = {}
+    for model, entries in raw_map.items():
+        for entry in entries:
+            mode = _classify_config_entry(entry)
+            target = online_map if mode == 'online' else trainable_map
+            target.setdefault(model, []).append(entry)
+    return online_map, trainable_map
+
+def get_module_config_map(config: Union[str, bool]):
+    if config is False:
+        return {}, {}
+    if config is True:
+        return (
+            _load_and_split_config_map(lazyllm.config['auto_model_config_map_path'] or 
+                                   lazyllm.config['trainable_module_config_map_path'])
+        )
+    return _load_and_split_config_map(config)
+
+def _select_config_entry(entries: Optional[List[Dict[str, Any]]],
                         preferred_source: Optional[str],
                         preferred_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     preferred_source = (preferred_source or '').lower()
+    if not entries:
+        return None
+    
     fallback = None
     source_match = None
     for entry in entries:
-        if _classify_config_entry(entry) != entry_type:
-            continue
         if preferred_id and entry.get('id') == preferred_id:
             return deepcopy(entry)
         entry_source = (entry.get('source') or '').lower()
@@ -292,56 +314,46 @@ def _select_config_entry(entries: List[Dict[str, Any]],
             source_match = entry
         if fallback is None:
             fallback = entry
-    if source_match is not None:
-        return deepcopy(source_match)
-    return deepcopy(fallback) if fallback else None
-
-def get_module_config_map(use_config: Union[str, bool]):
-    if use_config is False:
-        return {}
-    if use_config is True:
-        return (
-            _get_module_config_map(lazyllm.config['auto_model_config_map_path']) or
-            _get_module_config_map(lazyllm.config['trainable_module_config_map_path'])
-        )
-    return _get_module_config_map(use_config)
+    
+    return deepcopy(source_match) if source_match is not None else deepcopy(fallback)
 
 def get_candidate_entries(model: str,
                           config_id: Optional[str],
                           source: Optional[str],
-                          use_config: Union[str, bool]):
-    config_map = get_module_config_map(use_config=use_config)
-    entries = [deepcopy(item) for item in (config_map.get(model) or [])]
+                          config: Union[str, bool]):
+    online_map, trainable_map = get_module_config_map(config=config)
+    online_entries = online_map.get(model, [])
+    trainable_entries = trainable_map.get(model, [])
 
-    online_entry = _select_config_entry(entries, 'online', source, config_id)
-    trainable_entry = _select_config_entry(entries, 'trainable', source, config_id)
+    online_entry = _select_config_entry(online_entries, source, config_id)
+    trainable_entry = _select_config_entry(trainable_entries, source, config_id)
     return trainable_entry, online_entry
 
-def resolve_model_name(original: Optional[str], entry: Optional[Dict[str, Any]]) -> Optional[str]:
+def resolve_model_name(model: Optional[str], entry: Optional[Dict[str, Any]]) -> Optional[str]:
     if not entry:
-        return original
+        return model
     override = entry.get('name')
-    return override or original
+    return override or model
 
 def process_trainable_args(model: str, type: str, source: str,
-                           use_config: Union[str, bool],
+                           config: Union[str, bool],
                            entry: Optional[Dict[str, Any]]) -> dict:
     entry = entry or {}
     return {
-        'base_model': model,
+        'base_model': resolve_model_name(model=model, entry=entry),
         'target_path': entry.get('target_path', ''),
         'stream': entry.get('stream', False),
         'return_trace': entry.get('return_trace', False),
         'trust_remote_code': entry.get('trust_remote_code', True),
         'type': type or entry.get('type', entry.get('task', None)),
         'source': source or entry.get('source', None),
-        'use_model_map': use_config,
+        'use_model_map': config,
     }
 
 def process_online_args(model: str, source: str, type: str,
                         entry: Optional[Dict[str, Any]]) -> dict:
     entry = entry or {}
-    entry['model'] = model
+    entry['model'] = resolve_model_name(model=model, entry=entry)
     if source:
         entry['source'] = source
     if type:

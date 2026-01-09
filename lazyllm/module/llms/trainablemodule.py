@@ -197,7 +197,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if hasattr(self._deploy, 'auto_map') and self._deploy.auto_map:
             self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
 
-        trainable_module_config_map = get_module_config_map(self._use_model_map)
+        _, trainable_module_config_map = get_module_config_map(self._use_model_map)
 
         base_model_name = os.path.basename(self._base_model)
         if base_model_name in trainable_module_config_map:
