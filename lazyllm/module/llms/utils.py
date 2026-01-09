@@ -13,7 +13,12 @@ from lazyllm.thirdparty import datasets
 from ...components.utils.file_operate import _delete_old_files
 from lazyllm.common.utils import check_path
 
+
 LOCAL_SOURCES = {'local'}
+lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH',
+                   description='The default path for trainable module config map.')
+lazyllm.config.add('auto_model_config_map_path', str, '', 'AUTO_MODEL_CONFIG_MAP_PATH',
+                   description='The default path for automodel config map.')
 
 
 @dataclass
@@ -291,24 +296,6 @@ def _select_config_entry(entries: List[Dict[str, Any]],
         return deepcopy(source_match)
     return deepcopy(fallback) if fallback else None
 
-def _decide_target_mode(source: Optional[str],
-                       deploy_config: Dict[str, Any],
-                       has_online_entry: bool,
-                       has_trainable_entry: bool) -> str:
-    normalized_source = (source or '').lower()
-    explicit_online = normalized_source not in LOCAL_SOURCES
-    explicit_trainable = bool(deploy_config or (normalized_source in LOCAL_SOURCES))
-    if explicit_online and explicit_trainable:
-        return 'trainable' if has_trainable_entry else 'online'
-    elif explicit_trainable:
-        return 'trainable'
-    elif explicit_online:
-        return 'online'
-    if has_online_entry == has_trainable_entry:
-        api_key = os.environ['LAZYLLM_SENSENOVA_API_KEY']
-        return 'online' if (has_online_entry or api_key) else 'trainable'
-    return 'online' if has_online_entry else 'trainable'
-
 def get_module_config_map(use_config: Union[str, bool]):
     if use_config is False:
         return {}
@@ -319,23 +306,16 @@ def get_module_config_map(use_config: Union[str, bool]):
         )
     return _get_module_config_map(use_config)
 
-def get_target_entry(model: str,
-                     config_id: str,
-                     source: str,
-                     use_config: Union[str, bool]):
-    # get entries by `use_config` param
+def get_candidate_entries(model: str,
+                          config_id: Optional[str],
+                          source: Optional[str],
+                          use_config: Union[str, bool]):
     config_map = get_module_config_map(use_config=use_config)
     entries = [deepcopy(item) for item in (config_map.get(model) or [])]
 
-    # process config entries and distinguish target mode
     online_entry = _select_config_entry(entries, 'online', source, config_id)
     trainable_entry = _select_config_entry(entries, 'trainable', source, config_id)
-    deploy_config = trainable_entry.get('deploy_config', {}) if trainable_entry else {}
-
-    target_mode = _decide_target_mode(source, deploy_config,
-                                      online_entry is not None, trainable_entry is not None)
-    entry = online_entry if target_mode=='online' else trainable_entry
-    return target_mode, entry
+    return trainable_entry, online_entry
 
 def resolve_model_name(original: Optional[str], entry: Optional[Dict[str, Any]]) -> Optional[str]:
     if not entry:
@@ -366,8 +346,6 @@ def process_online_args(model: str, source: str, type: str,
         entry['source'] = source
     if type:
         entry['type'] = type
-    entry.pop('deploy_config', None)
-    entry.pop('framework', None)
     entry.pop('name', None)
     entry.pop('id', None)
     return entry

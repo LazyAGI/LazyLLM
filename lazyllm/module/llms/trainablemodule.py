@@ -21,10 +21,7 @@ from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
 
-lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH',
-                   description='The default path for trainable module config map.')
-lazyllm.config.add('auto_model_config_map_path', str, '', 'AUTO_MODEL_CONFIG_MAP_PATH',
-                   description='The default path for automodel config map.')
+
 ignore_config_keys = ['log_path', 'launcher']
 
 

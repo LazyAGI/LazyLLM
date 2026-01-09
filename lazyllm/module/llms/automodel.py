@@ -3,10 +3,7 @@ import lazyllm
 from lazyllm import LOG
 from .online_module import OnlineModule
 from .trainablemodule import TrainableModule
-from .utils import get_target_entry, resolve_model_name, process_trainable_args, process_online_args
-
-lazyllm.config.add('auto_model_config_map_path', str, '', 'AUTO_MODEL_CONFIG_MAP_PATH',
-                   description='The default path for automodel config map.')
+from .utils import get_candidate_entries, resolve_model_name, process_trainable_args, process_online_args
 
 
 class AutoModel:
@@ -30,27 +27,34 @@ class AutoModel:
                 list(kwargs.keys()),
             )
 
-        target_mode, entry = get_target_entry(model, config_id, source, config)
+        trainable_entry, online_entry = get_candidate_entries(model, config_id, source, config)
+        resolved_model = resolve_model_name(
+                model, trainable_entry
+            ) if trainable_entry else resolve_model_name(model, online_entry)
 
-        if entry is not None:
-            resolved_model = resolve_model_name(model, entry)
-            if target_mode == 'trainable':
-                trainable_args = process_trainable_args(model=resolved_model, type=type, source=source,
-                                                        use_config=config, entry=entry)
-                try:
-                    module = TrainableModule(**trainable_args)
-                    if module._url or module._impl._get_deploy_tasks.flag:
-                        return module
-                except Exception as e:
-                    LOG.error('Fail to create `TrainableModule`, will try to '
-                              f'load model {model} with `OnlineModule`. Since the error: {e}')
-
-            online_args = process_online_args(model=resolved_model, source=source, type=type, entry=entry)
-            return OnlineModule(**online_args)
-        else:
+        # 1) first: try TrainableModule with trainable config (for directly connecting deployed endpoint)
+        if trainable_entry is not None:
+            trainable_args = process_trainable_args(
+                model=resolved_model, type=type, source=source, use_config=config, entry=trainable_entry
+            )
             try:
-                return OnlineModule(model=model, source=source, type=type)
-            except KeyError as e:
-                LOG.warning('`OnlineModule` creation failed, and will try to '
-                            f'load model {model} with local `TrainableModule`. Since the error: {e}')
-                return TrainableModule(model, type=type)
+                module = TrainableModule(**trainable_args)
+                if module._url or module._impl._get_deploy_tasks.flag:
+                    return module
+            except Exception as e:
+                LOG.error('Fail to create `TrainableModule`, will try to '
+                          f'load model {model} with `OnlineModule`. Since the error: {e}')
+
+        # 2) second: try OnlineModule with online config if found
+        if online_entry is not None:
+            online_args = process_online_args(model=resolved_model, source=source, type=type, entry=online_entry)
+            if online_args:
+                return OnlineModule(**online_args)
+
+        # 3) finally: fallback (no config or config unusable)
+        try:
+            return OnlineModule(model=resolved_model, source=source, type=type)
+        except Exception as e:
+            LOG.warning('`OnlineModule` creation failed, and will try to '
+                        f'load model {model} with local `TrainableModule`. Since the error: {e}')
+            return TrainableModule(resolved_model, type=type)
