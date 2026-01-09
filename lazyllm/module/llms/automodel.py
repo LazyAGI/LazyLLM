@@ -8,24 +8,12 @@ from .utils import get_candidate_entries, process_trainable_args, process_online
 
 class AutoModel:
 
-    def __new__(cls,
-                model: Optional[str] = None,
-                *,
-                config_id: Optional[str] = None,
-                source: Optional[str] = None,
-                type: Optional[str] = None,
-                config: Union[str, bool] = True,
-                **kwargs: Any):
-
+    def __new__(cls, model: Optional[str] = None, *, config_id: Optional[str] = None, source: Optional[str] = None,  # noqa C901
+                type: Optional[str] = None, config: Union[str, bool] = True, **kwargs: Any):
         # check and accomodate user params
         model = model or kwargs.pop('base_model', kwargs.pop('embed_model_name', None))
         if model in OnlineChatModule.MODELS.keys():
             source, model = model, None
-        if kwargs:
-            LOG.warning(
-                'AutoModel ignores extra kwargs: %s; only kwargs `base_model`/`embed_model_name` are supported.',
-                list(kwargs.keys()),
-            )
 
         if not model:
             try:
@@ -42,17 +30,15 @@ class AutoModel:
             )
             try:
                 module = TrainableModule(**trainable_args)
-                if module._url or module._impl._get_deploy_tasks.flag:
-                    return module
+                if module._url or module._impl._get_deploy_tasks.flag: return module
             except Exception as e:
                 LOG.warning('Fail to create `TrainableModule`, will try to '
-                          f'load model {model} with `OnlineModule`. Since the error: {e}')
+                            f'load model {model} with `OnlineModule`. Since the error: {e}')
 
         # 2) second: try OnlineModule with online config if found
         if online_entry is not None:
             online_args = process_online_args(model=model, source=source, type=type, entry=online_entry)
-            if online_args:
-                return OnlineModule(**online_args)
+            if online_args: return OnlineModule(**online_args)
 
         # 3) finally: fallback (no config or config unusable)
         try:

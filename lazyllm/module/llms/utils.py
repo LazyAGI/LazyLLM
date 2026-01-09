@@ -288,22 +288,17 @@ def _load_and_split_config_map(config_path: str):
     return online_map, trainable_map
 
 def get_module_config_map(config: Union[str, bool]):
-    if config is False:
-        return {}, {}
+    if config is False: return {}, {}
     if config is True:
-        return (
-            _load_and_split_config_map(lazyllm.config['auto_model_config_map_path'] or 
-                                   lazyllm.config['trainable_module_config_map_path'])
-        )
+        config = lazyllm.config['auto_model_config_map_path'] or lazyllm.config['trainable_module_config_map_path']
     return _load_and_split_config_map(config)
 
-def _select_config_entry(entries: Optional[List[Dict[str, Any]]],
-                        preferred_source: Optional[str],
-                        preferred_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+def _select_config_entry(entries: Optional[List[Dict[str, Any]]], preferred_source: Optional[str],
+                         preferred_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
     preferred_source = (preferred_source or '').lower()
     if not entries:
         return None
-    
+
     fallback = None
     source_match = None
     for entry in entries:
@@ -314,7 +309,7 @@ def _select_config_entry(entries: Optional[List[Dict[str, Any]]],
             source_match = entry
         if fallback is None:
             fallback = entry
-    
+
     return deepcopy(source_match) if source_match is not None else deepcopy(fallback)
 
 def get_candidate_entries(model: str,
