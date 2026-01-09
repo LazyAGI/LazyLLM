@@ -229,7 +229,6 @@ class TrainServer(ServerBase):
             total_cost = previous_cost
         return total_cost
 
-
     def _get_job_status_and_model(self, token, job_id, info):
         try:
             m, thread = self._read_active_job(token, job_id)
@@ -252,7 +251,7 @@ class TrainServer(ServerBase):
         except Exception:
             return None
 
-    def _update_progress_percent(self, info, update):
+    def _update_progress_percent(self, info, update):  # noqa C901
         progress_info = self._extract_training_progress(info.get('log_path'))
         if progress_info:
             if 'percent' in progress_info:
@@ -386,7 +385,7 @@ class TrainServer(ServerBase):
             cost = (datetime.now() - datetime.strptime(info['started_at'], self._time_format)).total_seconds()
             self._update_user_job_info(token, job_id, {'cost': cost})
 
-    def _update_status(self, token, job_id):
+    def _update_status(self, token, job_id):  # noqa C901
         if not self._in_active_jobs(token, job_id):
             return
 
@@ -449,7 +448,7 @@ class TrainServer(ServerBase):
             return None
         return model._impl._temp_finetuned_model_path
 
-    def _extract_training_progress(self, log_path):
+    def _extract_training_progress(self, log_path):  # noqa C901
         if not log_path or not os.path.exists(log_path):
             return None
 
@@ -561,15 +560,15 @@ class TrainServer(ServerBase):
         '''Extract step number from checkpoint path (e.g., checkpoint-40 -> 40)'''
         if not checkpoint_path:
             return None
-        
+
         checkpoint_name = os.path.basename(checkpoint_path)
         if not checkpoint_name.startswith('checkpoint-'):
             return None
-        
+
         step_str = checkpoint_name.split('-')[1]
         if step_str.isdigit():
             step = int(step_str)
-            logger.info(f'[_extract_checkpoint_step] [NEW_CODE] Extracted checkpoint step: {step} from {checkpoint_path}')
+            logger.info(f'[NEW_CODE] Extracted checkpoint step: {step} from {checkpoint_path}')
             return step
         return None
 
@@ -1085,9 +1084,9 @@ class TrainServer(ServerBase):
             if finetuning_type in ('lora', 'qlora'):
                 adapter_config_path = os.path.join(lora_dir, 'adapter_config.json')
                 checkpoint_adapter = (os.path.join(checkpoint_path, 'adapter_config.json')
-                                     if checkpoint_path else None)
-                if (not os.path.exists(adapter_config_path) and
-                        checkpoint_adapter and os.path.exists(checkpoint_adapter)):
+                                      if checkpoint_path else None)
+                if (not os.path.exists(adapter_config_path) and checkpoint_adapter
+                        and os.path.exists(checkpoint_adapter)):
                     shutil.copy(checkpoint_adapter, adapter_config_path)
 
             self._cleanup_old_checkpoints(lora_dir, keep_count=3, protected_checkpoint_path=checkpoint_path)
@@ -1121,7 +1120,7 @@ class TrainServer(ServerBase):
         return {'status': 'Suspended', 'checkpoint_path': checkpoint_path or '', 'cost': cost}
 
     @app.post('/v1/finetuneTasks/{job_id}:resume')
-    async def resume_job(self, job_id: str, name: str = _DEFAULT_BODY_EMBED,
+    async def resume_job(self, job_id: str, name: str = _DEFAULT_BODY_EMBED,  # noqa C901
                          checkpoint_path: str = _DEFAULT_BODY_OPTIONAL,
                          token: str = _DEFAULT_HEADER_TOKEN):
         await self.authorize_current_user(token)
