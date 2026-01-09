@@ -19,7 +19,7 @@ class LazyLLMQwenBase():
     pass
 
 
-class QwenModule(LazyLLMQwenBase, OnlineChatModuleBase, FileHandlerBase):
+class QwenChat(LazyLLMQwenBase, OnlineChatModuleBase, FileHandlerBase):
     '''
     #TODO: The Qianwen model has been finetuned and deployed successfully,
            but it is not compatible with the OpenAI interface and can only
@@ -32,7 +32,7 @@ class QwenModule(LazyLLMQwenBase, OnlineChatModuleBase, FileHandlerBase):
     def __init__(self, base_url: str = 'https://dashscope.aliyuncs.com/', model: str = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         OnlineChatModuleBase.__init__(self, model_series='QWEN', api_key=api_key or lazyllm.config['qwen_api_key'],
-                                      model_name=model or lazyllm.config['qwen_model_name'] or QwenModule.MODEL_NAME,
+                                      model_name=model or lazyllm.config['qwen_model_name'] or QwenChat.MODEL_NAME,
                                       base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = dict()
@@ -605,3 +605,6 @@ class QwenTTSModule(QwenMultiModal):
         }
         if self._api_key: call_params['api_key'] = self._api_key
         return encode_query_with_filepaths(None, bytes_to_file(synthesizer_func(**call_params)))
+
+
+QwenModule = QwenChat

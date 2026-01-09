@@ -11,7 +11,11 @@ from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
 
 
-class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
+class LazyLLMMinimaxBase():
+    pass
+
+
+class MinimaxChat(LazyLLMMinimaxBase, OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://api.minimaxi.com/v1/', model: str = 'MiniMax-M2',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
@@ -68,7 +72,7 @@ class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
             return False
 
 
-class MinimaxTextToImageModule(OnlineMultiModalBase):
+class MinimaxTextToImageModule(LazyLLMMinimaxBase, OnlineMultiModalBase):
     MODEL_NAME = 'image-01'
 
     def __init__(self, api_key: str = None, model: str = None,
@@ -141,7 +145,8 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
         response = encode_query_with_filepaths(None, file_paths)
         return response
 
-class MinimaxTTSModule(OnlineMultiModalBase):
+
+class MinimaxTTSModule(LazyLLMMinimaxBase, OnlineMultiModalBase):
     MODEL_NAME = 'speech-2.6-hd'
 
     def __init__(self, api_key: str = None, model_name: str = None,
@@ -222,3 +227,6 @@ class MinimaxTTSModule(OnlineMultiModalBase):
             file_path = out_path
         result_encoded = encode_query_with_filepaths(None, [file_path])
         return result_encoded
+
+
+MinimaxModule = MinimaxChat

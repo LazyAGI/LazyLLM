@@ -8,7 +8,11 @@ import lazyllm
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
 from ..fileHandler import FileHandlerBase
 
-class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
+
+class LazyLLMOpenAIBase():
+    pass
+
+class OpenAIChat(LazyLLMOpenAIBase, OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ['gpt-3.5-turbo-0125', 'gpt-3.5-turbo-1106',
                             'gpt-3.5-turbo-0613', 'babbage-002',
                             'davinci-002', 'gpt-4-0613']
@@ -192,7 +196,7 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
         return 'RUNNING'
 
 
-class OpenAIEmbedding(OnlineEmbeddingModuleBase):
+class OpenAIEmbedding(LazyLLMOpenAIBase, OnlineEmbeddingModuleBase):
     NO_PROXY = True
 
     def __init__(self,
@@ -206,7 +210,7 @@ class OpenAIEmbedding(OnlineEmbeddingModuleBase):
         self._embed_url = urljoin(self._embed_url, 'embeddings')
 
 
-class OpenAIReranking(OnlineEmbeddingModuleBase):
+class OpenAIReranking(LazyLLMOpenAIBase, OnlineEmbeddingModuleBase):
     NO_PROXY = True
 
     def __init__(self,
@@ -238,3 +242,5 @@ class OpenAIReranking(OnlineEmbeddingModuleBase):
     def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Tuple]:
         results = response['results']
         return [(result['index'], result['relevance_score']) for result in results]
+
+OpenAIModule = OpenAIChat

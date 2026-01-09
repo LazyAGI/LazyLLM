@@ -13,7 +13,11 @@ from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.components.formatter import encode_query_with_filepaths
 
 
-class GLMModule(OnlineChatModuleBase, FileHandlerBase):
+class LazyLLMGLMBase():
+    pass
+
+
+class GLMChat(LazyLLMGLMBase, OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ['chatglm3-6b', 'chatglm_12b', 'chatglm_32b', 'chatglm_66b', 'chatglm_130b']
     VLM_MODEL_PREFIX = ['glm-4.5v', 'glm-4.1v', 'glm-4v']
     MODEL_NAME = 'glm-4'
@@ -21,7 +25,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
     def __init__(self, base_url: str = 'https://open.bigmodel.cn/api/paas/v4/', model: str = None,
                  api_key: str = None, stream: str = True, return_trace: bool = False, **kwargs):
         OnlineChatModuleBase.__init__(self, model_series='GLM', api_key=api_key or lazyllm.config['glm_api_key'],
-                                      model_name=model or lazyllm.config['glm_model_name'] or GLMModule.MODEL_NAME,
+                                      model_name=model or lazyllm.config['glm_model_name'] or GLMChat.MODEL_NAME,
                                       base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self.default_train_data = {
@@ -207,7 +211,7 @@ class GLMModule(OnlineChatModuleBase, FileHandlerBase):
         return 'RUNNING'
 
 
-class GLMEmbedding(OnlineEmbeddingModuleBase):
+class GLMEmbedding(LazyLLMGLMBase, OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = 'https://open.bigmodel.cn/api/paas/v4/embeddings',
                  embed_model_name: str = 'embedding-2',
@@ -217,7 +221,8 @@ class GLMEmbedding(OnlineEmbeddingModuleBase):
         super().__init__('GLM', embed_url, api_key or lazyllm.config['glm_api_key'], embed_model_name,
                          batch_size=batch_size, **kw)
 
-class GLMReranking(OnlineEmbeddingModuleBase):
+
+class GLMReranking(LazyLLMGLMBase, OnlineEmbeddingModuleBase):
 
     def __init__(self,
                  embed_url: str = 'https://open.bigmodel.cn/api/paas/v4/rerank',
@@ -246,7 +251,7 @@ class GLMReranking(OnlineEmbeddingModuleBase):
         return [(result['index'], result['relevance_score']) for result in response['results']]
 
 
-class GLMMultiModal(OnlineMultiModalBase):
+class GLMMultiModal(LazyLLMGLMBase, OnlineMultiModalBase):
     def __init__(self, model_name: str, api_key: str = None,
                  base_url: str = 'https://open.bigmodel.cn/api/paas/v4', return_trace: bool = False,
                  **kwargs):
@@ -257,7 +262,7 @@ class GLMMultiModal(OnlineMultiModalBase):
         self._client = zhipuai.ZhipuAI(api_key=api_key, base_url=base_url)
 
 
-class GLMSTTModule(GLMMultiModal):
+class GLMSTTMultiModal(GLMMultiModal):
     MODEL_NAME = 'glm-asr'
 
     def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
@@ -277,6 +282,7 @@ class GLMSTTModule(GLMMultiModal):
         )
         return transcriptResponse.text
 
+GLMSTTModule = GLMSTTMultiModal
 
 class GLMTextToImageModule(GLMMultiModal):
     MODEL_NAME = 'cogview-4-250304'
@@ -305,3 +311,6 @@ class GLMTextToImageModule(GLMMultiModal):
         response = client.images.generations(**call_params)
         return encode_query_with_filepaths(None, bytes_to_file([requests.get(result.url).content
                                                                 for result in response.data]))
+
+
+GLMModule = GLMChat

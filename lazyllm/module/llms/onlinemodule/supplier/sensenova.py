@@ -12,6 +12,10 @@ from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
 from ..fileHandler import FileHandlerBase
 
 
+class LazyLLMSenseNovaBase():
+    pass
+
+
 class _SenseNovaBase(object):
 
     def _get_api_key(self, api_key: str, secret_key: str):
@@ -22,7 +26,7 @@ class _SenseNovaBase(object):
         if not api_key.startswith('sk-'):
             if ':' in api_key: api_key, secret_key = api_key.split(':', 1)
             assert secret_key, 'secret_key should be provided with sensecore api_key'
-            api_key = SenseNovaModule.encode_jwt_token(api_key, secret_key)
+            api_key = SenseNovaChat.encode_jwt_token(api_key, secret_key)
         return api_key
 
     @staticmethod
@@ -38,7 +42,8 @@ class _SenseNovaBase(object):
         token = jwt.encode(payload, sk, headers=headers)
         return token
 
-class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
+
+class SenseNovaChat(LazyLLMSenseNovaBase, OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     TRAINABLE_MODEL_LIST = ['nova-ptc-s-v2']
     VLM_MODEL_PREFIX = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
                         'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']
@@ -202,7 +207,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
             return [{'type': 'image_base64', 'image_base64': image_url}]
 
 
-class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
+class SenseNovaEmbedding(LazyLLMSenseNovaBase, OnlineEmbeddingModuleBase, _SenseNovaBase):
 
     def __init__(self,
                  embed_url: str = 'https://api.sensenova.cn/v1/llm/embeddings',
@@ -223,3 +228,6 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
             return embeddings[0].get('embedding', [])
         else:
             return [res.get('embedding', []) for res in embeddings]
+
+
+SenseNovaModule = SenseNovaChat

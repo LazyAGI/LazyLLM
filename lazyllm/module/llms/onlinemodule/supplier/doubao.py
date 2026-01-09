@@ -8,14 +8,19 @@ from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.thirdparty import volcenginesdkarkruntime
 from lazyllm import LOG
 
-class DoubaoModule(OnlineChatModuleBase):
+
+class LazyLLMDoubaoBase():
+    pass
+
+
+class DoubaoChat(LazyLLMDoubaoBase, OnlineChatModuleBase):
     MODEL_NAME = 'doubao-1-5-pro-32k-250115'
     VLM_MODEL_PREFIX = ['doubao-seed-1-6-vision', 'doubao-1-5-ui-tars']
 
     def __init__(self, model: str = None, base_url: str = 'https://ark.cn-beijing.volces.com/api/v3/',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         super().__init__(model_series='DOUBAO', api_key=api_key or lazyllm.config['doubao_api_key'], base_url=base_url,
-                         model_name=model or lazyllm.config['doubao_model_name'] or DoubaoModule.MODEL_NAME,
+                         model_name=model or lazyllm.config['doubao_model_name'] or DoubaoChat.MODEL_NAME,
                          stream=stream, return_trace=return_trace, **kwargs)
 
     def _get_system_prompt(self):
@@ -36,7 +41,8 @@ class DoubaoModule(OnlineChatModuleBase):
         except Exception:
             return False
 
-class DoubaoEmbedding(OnlineEmbeddingModuleBase):
+
+class DoubaoEmbedding(LazyLLMDoubaoBase, OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings',
                  embed_model_name: str = 'doubao-embedding-text-240715',
@@ -47,7 +53,7 @@ class DoubaoEmbedding(OnlineEmbeddingModuleBase):
                          batch_size=batch_size, **kw)
 
 
-class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
+class DoubaoMultimodalEmbedding(LazyLLMDoubaoBase, OnlineEmbeddingModuleBase):
     def __init__(self,
                  embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal',
                  embed_model_name: str = 'doubao-embedding-vision-241215',
@@ -80,13 +86,14 @@ class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
         return response['data']['embedding']
 
 
-class DoubaoMultiModal(OnlineMultiModalBase):
+class DoubaoMultiModal(LazyLLMDoubaoBase, OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model: str = None, url='https://ark.cn-beijing.volces.com/api/v3',
                  return_trace: bool = False, **kwargs):
         api_key = api_key or lazyllm.config['doubao_api_key']
         OnlineMultiModalBase.__init__(self, model_series='DOUBAO', model=model, api_key=api_key,
                                       return_trace=return_trace, url=url, **kwargs)
         self._client = volcenginesdkarkruntime.Ark(base_url=url, api_key=api_key)
+
 
 
 class DoubaoTextToImageModule(DoubaoMultiModal):
@@ -132,3 +139,5 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
         imagesResponse = self._client.images.generate(**api_params)
         image_contents = [requests.get(result.url).content for result in imagesResponse.data]
         return encode_query_with_filepaths(None, bytes_to_file(image_contents))
+
+DoubaoModule = DoubaoChat

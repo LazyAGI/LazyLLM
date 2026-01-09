@@ -3,7 +3,11 @@ from urllib.parse import urljoin
 import requests
 from ..base import OnlineChatModuleBase
 
-class KimiModule(OnlineChatModuleBase):
+
+class LazyLLMKimiBase():
+    pass
+
+class KimiChat(LazyLLMKimiBase, OnlineChatModuleBase):
 
     def __init__(self, base_url: str = 'https://api.moonshot.cn/', model: str = 'moonshot-v1-8k',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
@@ -39,3 +43,6 @@ class KimiModule(OnlineChatModuleBase):
             return response.status_code == 200
         except Exception:
             return False
+
+
+KimiModule = KimiChat

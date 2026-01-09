@@ -4,9 +4,14 @@ import lazyllm
 from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase
 
+
+class LazyLLMPPIOBase():
+    pass
+
+
 # PPIO (Paiou Cloud) online model module.
 # PPIO provides OpenAI-compatible API interface, supporting both streaming and non-streaming responses.
-class PPIOModule(OnlineChatModuleBase):
+class PPIOChat(LazyLLMPPIOBase, OnlineChatModuleBase):
     TRAINABLE_MODEL_LIST = []
     NO_PROXY = False
 
@@ -68,3 +73,6 @@ class PPIOModule(OnlineChatModuleBase):
     def __repr__(self):
         return lazyllm.make_repr('Module', 'PPIO', name=self._model_name, url=self._base_url,
                                  stream=bool(self._stream), return_trace=self._return_trace)
+
+
+PPIOModule = PPIOChat

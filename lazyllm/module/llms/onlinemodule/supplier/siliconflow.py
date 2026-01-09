@@ -10,7 +10,11 @@ from ..fileHandler import FileHandlerBase
 from lazyllm import LOG
 
 
-class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
+class LazyLLMSiliconFlowBase():
+    pass
+
+
+class SiliconFlowChat(LazyLLMSiliconFlowBase, OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'deepseek-ai/deepseek-vl2',
                         'Qwen/Qwen3-VL-30B-A3B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking']
 
@@ -38,7 +42,7 @@ class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
             return False
 
 
-class SiliconFlowEmbedding(OnlineEmbeddingModuleBase):
+class SiliconFlowEmbedding(LazyLLMSiliconFlowBase, OnlineEmbeddingModuleBase):
     def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/embeddings',
                  embed_model_name: str = 'BAAI/bge-large-zh-v1.5', api_key: str = None,
                  batch_size: int = 16, **kw):
@@ -46,7 +50,7 @@ class SiliconFlowEmbedding(OnlineEmbeddingModuleBase):
                          embed_model_name, batch_size=batch_size, **kw)
 
 
-class SiliconFlowReranking(OnlineEmbeddingModuleBase):
+class SiliconFlowReranking(LazyLLMSiliconFlowBase, OnlineEmbeddingModuleBase):
     def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/rerank',
                  embed_model_name: str = 'BAAI/bge-reranker-v2-m3', api_key: str = None, **kw):
         super().__init__('SILICONFLOW', embed_url, api_key or lazyllm.config['siliconflow_api_key'],
@@ -68,7 +72,7 @@ class SiliconFlowReranking(OnlineEmbeddingModuleBase):
         return [(result['index'], result['relevance_score']) for result in results]
 
 
-class SiliconFlowTextToImageModule(OnlineMultiModalBase):
+class SiliconFlowTextToImageModule(LazyLLMSiliconFlowBase, OnlineMultiModalBase):
     MODEL_NAME = 'Qwen/Qwen-Image'
     IMAGE_EDITING_MODEL_NAME = 'Qwen/Qwen-Image-Edit-2509'
 
@@ -130,7 +134,7 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
         return encode_query_with_filepaths(None, file_paths)
 
 
-class SiliconFlowTTSModule(OnlineMultiModalBase):
+class SiliconFlowTTSModule(LazyLLMSiliconFlowBase, OnlineMultiModalBase):
     MODEL_NAME = 'fnlp/MOSS-TTSD-v0.5'
 
     def __init__(self, api_key: str = None, model_name: str = None,
@@ -192,3 +196,6 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
         result = encode_query_with_filepaths(None, [file_path])
 
         return result
+
+
+SiliconFlowModule = SiliconFlowChat
