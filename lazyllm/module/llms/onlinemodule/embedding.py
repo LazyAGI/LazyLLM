@@ -8,6 +8,7 @@ from .supplier.sensenova import SenseNovaEmbedding
 from .supplier.qwen import QwenEmbedding, QwenReranking
 from .supplier.doubao import DoubaoEmbedding, DoubaoMultimodalEmbedding
 from .supplier.siliconflow import SiliconFlowEmbedding, SiliconFlowReranking
+from .supplier.aiping import AipingEmbedding, AipingReranking
 
 class __EmbedModuleMeta(type):
 
@@ -23,12 +24,14 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                     'glm': GLMEmbedding,
                     'qwen': QwenEmbedding,
                     'doubao': DoubaoEmbedding,
-                    'siliconflow': SiliconFlowEmbedding
+                    'siliconflow': SiliconFlowEmbedding,
+                    'aiping': AipingEmbedding
                     }
     RERANK_MODELS = {'qwen': QwenReranking,
                      'glm': GLMReranking,
                      'openai': OpenAIReranking,
-                     'siliconflow': SiliconFlowReranking}
+                     'siliconflow': SiliconFlowReranking,
+                     'aiping': AipingReranking}
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,

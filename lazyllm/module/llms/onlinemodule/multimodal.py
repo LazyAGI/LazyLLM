@@ -6,6 +6,7 @@ from .supplier.doubao import DoubaoTextToImageModule
 from .supplier.glm import GLMSTTModule, GLMTextToImageModule
 from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule
 from .supplier.minimax import MinimaxTextToImageModule, MinimaxTTSModule
+from .supplier.aiping import AipingTextToImageModule
 from .map_model_type import get_model_type 
 
 class _OnlineMultiModalMeta(type):
@@ -48,7 +49,8 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         'doubao': DoubaoTextToImageModule,
         'glm': GLMTextToImageModule,
         'siliconflow': SiliconFlowTextToImageModule,
-        'minimax': MinimaxTextToImageModule
+        'minimax': MinimaxTextToImageModule,
+        'aiping': AipingTextToImageModule
     }
 
     TYPE_MODEL_MAP = {
@@ -57,7 +59,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         'text2image': TEXT2IMAGE_MODELS,
         'image_editing': TEXT2IMAGE_MODELS,
     }
-    
+
     @staticmethod
     def _validate_parameters(source: str, model: str, type: str, base_url: str, **kwargs) -> tuple:
         assert type in OnlineMultiModalModule.TYPE_MODEL_MAP, f'Invalid type: {type}'
