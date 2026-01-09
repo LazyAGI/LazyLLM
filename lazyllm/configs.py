@@ -154,5 +154,5 @@ config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBU
                 ).add('deploy_skip_check_kw', bool, False, 'DEPLOY_SKIP_CHECK_KW',
                       description='Whether to skip check keywords for deployment.'
                 ).add('allow_internal_network', bool, False, 'ALLOW_INTERNAL_NETWORK',
-                   description='Whether to allow loading images from internal network addresses. '
-                               'Set to False for security in production environments.')
+                      description='Whether to allow loading images from internal network addresses. '
+                                  'Set to False for security in production environments.')

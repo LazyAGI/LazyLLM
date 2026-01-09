@@ -17,7 +17,7 @@ class KimiModule(OnlineChatModuleBase):
                 'At the same time, you will reject all answers involving terrorism, racial discrimination, '
                 'pornographic violence, etc. Moonshot AI is a proper noun and cannot be translated '
                 'into other languages.')
-    
+
     def _get_chat_url(self, url):
         if url.rstrip('/').endswith('v1/chat/completions'):
             return url

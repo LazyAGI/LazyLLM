@@ -2,7 +2,7 @@ import json
 import os
 import re
 import requests
-from typing import Tuple, List, Dict, Union, Optional
+from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
@@ -58,7 +58,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     def _get_system_prompt(self):
         return ('You are a large-scale language model from Alibaba Cloud, '
                 'your name is Tongyi Qianwen, and you are a useful assistant.')
-    
+
     def _get_chat_url(self, url):
         if url.rstrip('/').endswith('compatible-mode/v1/chat/completions'):
             return url
@@ -373,12 +373,12 @@ class QwenSTTModule(QwenMultiModal):
         assert any(file.startswith('http') for file in files), 'QwenSTTModule only supports http file urls'
         if url and url != self._base_url:
             raise Exception('Qwen STT forward() does not support overriding the `url` parameter, please remove it.')
-        
+
         call_params = {'model': model, 'file_urls': files, **kwargs}
         if self._api_key: call_params['api_key'] = self._api_key
         task_response = dashscope.audio.asr.Transcription.async_call(**call_params)
         transcribe_response = dashscope.audio.asr.Transcription.wait(task=task_response.output.task_id,
-                                                                        api_key=self._api_key)
+                                                                     api_key=self._api_key)
         if transcribe_response.status_code == HTTPStatus.OK:
             result_text = ''
             for task in transcribe_response.output.results:
@@ -464,7 +464,7 @@ class QwenTextToImageModule(QwenMultiModal):
         messages = []
 
         if url and url != self._base_url:
-            raise Exception('Qwen TextToImage forward() does not support overriding the `url` parameter,'\
+            raise Exception('Qwen TextToImage forward() does not support overriding the `url` parameter,'
                             'please remove it.')
         if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
             raise ValueError(
@@ -514,7 +514,7 @@ class QwenTextToImageModule(QwenMultiModal):
         image_results = self._load_images(image_urls)
         image_bytes = [data for _, data in image_results]
         return encode_query_with_filepaths(None, bytes_to_file(image_bytes))
-       
+
 
 def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
                        api_key: str = None, **kwargs):
@@ -580,7 +580,7 @@ class QwenTTSModule(QwenMultiModal):
                  pitch: float = 1.0, url: str = None, model: str = None, **kwargs):
         if url and url != self._base_url:
             raise Exception('Qwen TTS forward() does not support overriding the `url` parameter, please remove it.')
-        
+
         # double check for the forward model name
         if model == self._model_name:
             synthesizer_func, default_voice = self._synthesizer_func, self._voice
