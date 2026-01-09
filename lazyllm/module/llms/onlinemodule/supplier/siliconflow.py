@@ -75,9 +75,9 @@ class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model: str = None,
                  url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series='SiliconFlow', api_key=api_key or lazyllm.config['siliconflow_api_key'],
-                                      model=model or SiliconFlowTextToImageModule.MODEL_NAME,
-                                      url=url, return_trace=return_trace, **kwargs)
+        OnlineMultiModalBase.__init__(
+            self, model_series='SiliconFlow', api_key=api_key or lazyllm.config['siliconflow_api_key'],
+            model=model or SiliconFlowTextToImageModule.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
 
     def _make_request(self, endpoint, payload, base_url=None, timeout=180):

@@ -1,5 +1,5 @@
 import lazyllm
-from typing import Dict, List, Union, Optional
+from typing import Dict, List, Union
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 import requests
@@ -94,10 +94,8 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
     IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'
 
     def __init__(self, api_key: str = None, model: str = None, return_trace: bool = False, **kwargs):
-        DoubaoMultiModal.__init__(self, api_key=api_key, model=model
-                            or DoubaoTextToImageModule.MODEL_NAME
-                            or lazyllm.config['doubao_text2image_model_name'],
-                            return_trace=return_trace, **kwargs)
+        DoubaoMultiModal.__init__(self, api_key=api_key, model=model or DoubaoTextToImageModule.MODEL_NAME
+                                  or lazyllm.config['doubao_text2image_model_name'], return_trace=return_trace, **kwargs)
 
     def _forward(self, input: str = None, files: List[str] = None, n: int = 1, size: str = '1024x1024', seed: int = -1,
                  guidance_scale: float = 2.5, watermark: bool = True, model: str = None, url: str = None, **kwargs):
@@ -108,8 +106,8 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
                 f'Please provide an image file via the "files" parameter.'
             )
         if self._type != LLMType.IMAGE_EDITING and has_ref_image:
-            msg = str(f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
-                f'Please use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model.')
+            msg = str(f'Image file was provided, but image editing is not enabled for model {self._model_name}. Please '
+                      f'use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model.')
             raise ValueError(msg)
 
         if has_ref_image:
@@ -129,8 +127,8 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
             if n > 1:
                 api_params['sequential_image_generation'] = 'auto'
                 max_images = min(n, 15)
-                SequentialImageGenerationOptions = volcenginesdkarkruntime.types.images.SequentialImageGenerationOptions
-                api_params['sequential_image_generation_options'] = SequentialImageGenerationOptions(max_images=max_images)
+                sigo = volcenginesdkarkruntime.types.images.SequentialImageGenerationOptions
+                api_params['sequential_image_generation_options'] = sigo(max_images=max_images)
         imagesResponse = self._client.images.generate(**api_params)
         image_contents = [requests.get(result.url).content for result in imagesResponse.data]
         return encode_query_with_filepaths(None, bytes_to_file(image_contents))

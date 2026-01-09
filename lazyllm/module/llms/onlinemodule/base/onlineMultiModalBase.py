@@ -5,7 +5,6 @@ from .utils import OnlineModuleBase
 import base64
 from pathlib import Path
 import requests
-from ..map_model_type import get_model_type
 from urllib.parse import urlparse
 import ipaddress
 import socket
@@ -47,7 +46,7 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
         try:
             input, files = self._get_files(input, lazyllm_files)
             runtime_url = url or kwargs.pop('base_url', None) or self._base_url
-            runtime_model = model or kwargs.pop('model_name', None) or self._model_name           
+            runtime_model = model or kwargs.pop('model_name', None) or self._model_name
             call_params = {'input': input, **kwargs}
             if files: call_params['files'] = files
             return self._forward(**call_params, model=runtime_model, url=runtime_url)
@@ -71,7 +70,7 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
                     return True
             return False
         except Exception as e:
-            lazyllm.LOG.warning(f"Failed to parse hostname={hostname}: {e}")
+            lazyllm.LOG.warning(f'Failed to parse hostname={hostname}: {e}')
             return True
 
     def _validate_url_security(self, url: str) -> None:
