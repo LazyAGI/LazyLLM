@@ -270,7 +270,6 @@ Flow in LazyLLM defines the data stream, describing how data is passed from one 
 ## Future Plans
 
 ### Timeline
-V0.6 Expected to start from September 1st, lasting 3 months, with continuous small version releases in between, such as v0.6.1, v0.6.2
 V0.7 Expected to start from December 1st, lasting 3 months, with continuous small version releases in between, such as v0.7.1, v0.7.2
 v0.8 Expected to start from March 2026, lasting 3 months, focusing on improving system observability and reducing user debugging costs
 v0.9 Expected to start from June 2026, lasting 3 months, focusing on improving the overall system running speed
@@ -279,9 +278,9 @@ v0.9 Expected to start from June 2026, lasting 3 months, focusing on improving t
 9.2.1 RAG
   - 9.2.1.1 Engineering
     - Integrate LazyRAG capabilities into LazyLLM (V0.6)
-    - Extend RAG's macro Q&A capabilities to multiple knowledge bases (V0.6)
+    - ✅Extend RAG's macro Q&A capabilities to multiple knowledge bases (V0.6)
     - ✅ RAG modules fully support horizontal scaling, supporting multi-machine deployment of RAG algorithm collaboration (V0.6)
-    - Integrate at least 1 open-source knowledge graph framework (V0.6)
+    - ✅Integrate at least 1 open-source knowledge graph framework (V0.6)
     - Support common data splitting strategies, no less than 20 types, covering various document types (V0.6 - v0.7)
   - 9.2.1.2 Data Capabilities
     - Table parsing (V0.6 - 0.7)
@@ -308,13 +307,13 @@ v0.9 Expected to start from June 2026, lasting 3 months, focusing on improving t
   - Full-chain GRPO support (V0.7)
 
 9.2.4 Documentation
-  - Complete API documentation, ensure every public interface has API documentation, with consistent documentation parameters and function parameters, and executable sample code (V0.6)
+  - ✅ Complete API documentation, ensure every public interface has API documentation, with consistent documentation parameters and function parameters, and executable sample code (V0.6)
   - Complete CookBook documentation, increase cases to 50, with comparisons to LangChain/LlamaIndex (code volume, speed, extensibility) (V0.6 - v0.7)
   - ✅ Complete Environment documentation, supplement installation methods on win/linux/macos, supplement package splitting strategies (V0.6)
-  - Complete Learn documentation, first teach how to use large models; then teach how to build agents; then teach how to use workflows; finally teach how to build RAG (V0.6)
+  - ✅ Complete Learn documentation, first teach how to use large models; then teach how to build agents; then teach how to use workflows; finally teach how to build RAG (V0.6)
 
 9.2.5 Quality
-  - Reduce CI time to within 10 minutes by mocking most modules (V0.6)
+  - ✅ Reduce CI time to within 10 minutes by mocking most modules (V0.6)
   - Add daily builds, put high-time-consuming/token tasks in daily builds (V0.6)
 
 9.2.6 Development, Deployment and Release
