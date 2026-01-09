@@ -21,9 +21,7 @@ from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
 
-
 ignore_config_keys = ['log_path', 'launcher']
-
 
 
 class _UrlTemplateStruct(object):
