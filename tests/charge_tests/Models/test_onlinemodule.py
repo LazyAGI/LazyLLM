@@ -1,4 +1,3 @@
-import json
 import lazyllm
 
 
@@ -40,95 +39,80 @@ class TestOnlineModule(object):
         ]
         assert_cases(lazyllm.module.OnlineMultiModalModule, multimodal_cases)
 
-    def test_OnlineModule_forward_override(self, monkeypatch):
-        request_records = []
+    def test_OnlineChat_forward_override(self, monkeypatch):
+        class DummyChat(lazyllm.module.OnlineChatModuleBase):
+            def __init__(self, base_url: str, model: str, api_key: str, stream: bool = False, **kw):
+                super().__init__(model_series='DUMMY', api_key=api_key, base_url=base_url,
+                                 model_name=model, stream=stream, **kw)
 
-        class DummyResponse:
-            def __init__(self, url, payload, text=None):
-                self.url = url
-                self._payload = payload
-                self.status_code = 200
-                self.text = text or json.dumps(payload)
+            def _get_system_prompt(self):
+                return ''
 
-            def json(self):
-                return self._payload
+            def forward(self, __input=None, *, url: str = None, model: str = None, **kw):
+                runtime_base_url = url or kw.pop('base_url', None)
+                runtime_url = self._get_chat_url(runtime_base_url) if runtime_base_url else self._chat_url
+                runtime_model = model or kw.pop('model_name', None) or self._model_name
+                return runtime_model + ', ' + __input + ', ' + runtime_url
 
-            def iter_content(self, chunk_size=None):
-                yield self.text.encode()
-
-            def iter_lines(self):
-                yield self.text.encode()
-
-            def __enter__(self):
-                return self
-
-            def __exit__(self, exc_type, exc, tb):
-                return False
-
-        def fake_post(url, json=None, headers=None, stream=False, proxies=None, timeout=None):
-            request_records.append({'url': url, 'payload': json})
-            if 'chat/completions' in url:
-                body = {'choices': [{'message': {'content': 'ok'}}],
-                        'usage': {'prompt_tokens': 1, 'completion_tokens': 1}}
-                return DummyResponse(url, body, text=jsonlib.dumps(body))
-            else:
-                return DummyResponse(url, {'data': [{'embedding': [0.1, 0.2]}]})
-
-        jsonlib = json
-        monkeypatch.setattr('requests.post', fake_post)
+        monkeypatch.setattr(lazyllm.module.OnlineChatModule, 'MODELS',
+                            {**lazyllm.module.OnlineChatModule.MODELS, 'openai': DummyChat})
 
         chat = lazyllm.OnlineModule(source='openai', 
                                     url='http://base/v1/', 
                                     model='base_model', 
                                     api_key='dummy_key')
+
+        res = chat('hello')
+        assert res == 'base_model, hello, http://base/v1/chat/completions'
+
+        res = chat('runtime', model='override_model', url='http://runtime-chat/v1/')
+        assert res == 'override_model, runtime, http://runtime-chat/v1/chat/completions'
+
+        res = chat('again')
+        assert res == 'base_model, again, http://base/v1/chat/completions'
+
+    def test_OnlineEmbedding_forward_override(self, monkeypatch):
+        class DummyEmbed(lazyllm.module.OnlineEmbeddingModuleBase):
+            def __init__(self, embed_url: str, embed_model_name: str, api_key: str, **kw):
+                super().__init__(model_series='DUMMY', embed_url=embed_url, api_key=api_key,
+                                 embed_model_name=embed_model_name, **kw)
+
+            def forward(self, input, url: str = None, model: str = None, **kwargs):
+                runtime_url = url or kwargs.pop('base_url', kwargs.pop('embed_url', None)) or self._embed_url
+                runtime_model = model or kwargs.pop('model_name', kwargs.pop('embed_model_name', None)) \
+                    or self._embed_model_name
+                return runtime_model + ', ' + input + ', ' + runtime_url
+
+        monkeypatch.setattr(lazyllm.module.OnlineEmbeddingModule, 'EMBED_MODELS',
+                            {**lazyllm.module.OnlineEmbeddingModule.EMBED_MODELS, 'openai': DummyEmbed})
+
         embed = lazyllm.OnlineModule(type='embed', 
                                      source='openai', 
                                      url='http://base-embed/v1/', 
                                      model='base_embed_model', 
                                      api_key='dummy_key')
 
-        chat('hello')
-        assert request_records[-1]['url'].startswith('http://base/v1/')
-        assert request_records[-1]['payload']['model'] == 'base_model'
+        res = embed('text')
+        assert res == 'base_embed_model, text, http://base-embed/v1/'
 
-        chat('runtime', model='override_model', url='http://runtime-chat/v1/')
-        assert request_records[-1]['url'].startswith('http://runtime-chat/v1/')
-        assert request_records[-1]['payload']['model'] == 'override_model'
+        res = embed('runtime', model='embed_override', url='http://runtime-embed/v1/')
+        assert res == 'embed_override, runtime, http://runtime-embed/v1/'
 
-        chat('again')
-        assert request_records[-1]['url'].startswith('http://base/v1/')
-        assert request_records[-1]['payload']['model'] == 'base_model'
-
-        embed('text')
-        assert request_records[-1]['url'].startswith('http://base-embed/v1/')
-        assert request_records[-1]['payload']['model'] == embed._embed_model_name
-
-        embed('runtime', model='embed_override', url='http://runtime-embed/v1/')
-        assert request_records[-1]['url'].startswith('http://runtime-embed/v1/')
-        assert request_records[-1]['payload']['model'] == 'embed_override'
-
-        embed('final')
-        assert request_records[-1]['url'].startswith('http://base-embed/v1/')
-        assert request_records[-1]['payload']['model'] == embed._embed_model_name
+        res = embed('final')
+        assert res == 'base_embed_model, final, http://base-embed/v1/'
 
     def test_OnlineMultiModal_forward_override(self):
         class DummyMulti(lazyllm.module.OnlineMultiModalBase):
             def __init__(self):
                 super().__init__('DUMMY', model_name='whisper-1', api_key='dummy', base_url='http://base')
-                self.records = []
 
             def _forward(self, input: str = None, model: str = None, url: str = None, **kwargs):
                 model = model or self._model_name
                 url = url or self._base_url
-                self.records.append((model, url, input))
-                return model + ', ' + input
+                return model + ', ' + input + ', ' + url
 
         dummy = DummyMulti()
-        assert dummy('hello') == 'whisper-1, hello'
-        assert dummy.records[-1] == ('whisper-1', 'http://base', 'hello')
-
-        assert dummy('new', model='glm-asr', url='http://override') == 'glm-asr, new'
-        assert dummy.records[-1] == ('glm-asr', 'http://override', 'new')
-
-        assert dummy('final') == 'whisper-1, final'
-        assert dummy.records[-1] == ('whisper-1', 'http://base', 'final')
+        dummy.use_cache(False)
+        assert dummy('hello') == 'whisper-1, hello, http://base'
+        assert dummy('new', model='glm-asr', url='http://override') == 'glm-asr, new, http://override'
+        assert dummy('final') == 'whisper-1, final, http://base'

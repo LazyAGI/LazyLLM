@@ -39,6 +39,20 @@ cd LazyLLM
 pip3 install -r requirements.txt
 ```
 
+如果您期望使用LazyLLM的所有功能，您可以运行以下命令来获取并安装LazyLLM的全量依赖：
+
+```bash
+git submodule update --init LazyLLM-Env
+cp LazyLLM-Env/poetry.lock .
+pip3 install tomlkit poetry==2.2.1
+poetry self add poetry-plugin-export
+python scripts/generate_toml_optional_deps.py
+poetry lock
+poetry export -f requirements.txt --without-hashes -o requirements.full.txt  --extras "optional"
+# flash-attn依赖torch,建议最后装
+pip3 install -r requirements.full.txt
+```
+
 把 `LazyLLM` 加入到模块搜索路径中：
 
 ```bash
