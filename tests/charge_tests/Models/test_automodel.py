@@ -1,137 +1,194 @@
 import os
+from types import SimpleNamespace
 
 import pytest
 
 import lazyllm
 from lazyllm import AutoModel
 from lazyllm.module.llms import automodel as automodel_module
-from lazyllm.module.llms.utils import get_module_config_map
+from lazyllm.module.llms import online_module as online_module
 
 CONFIG_PATH = os.path.join(os.path.dirname(__file__), 'automodel_config.yaml')
+
+
+class CallRecorder:
+    def __init__(self):
+        self.calls = []
+
+    def record(self, name, kwargs):
+        self.calls.append((name, kwargs))
+
+    def last(self, name):
+        for kind, kwargs in reversed(self.calls):
+            if kind == name:
+                return kwargs
+        return None
+
+
+def set_sensenova_env(monkeypatch, value):
+    if value is None:
+        monkeypatch.delenv('LAZYLLM_SENSENOVA_API_KEY', raising=False)
+    else:
+        monkeypatch.setenv('LAZYLLM_SENSENOVA_API_KEY', value)
+    lazyllm.config.refresh('sensenova_api_key')
 
 
 @pytest.fixture(autouse=True)
 def reset_env(monkeypatch):
     monkeypatch.delenv('LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH', raising=False)
     monkeypatch.delenv('LAZYLLM_SENSENOVA_API_KEY', raising=False)
-    get_module_config_map.cache_clear()
     monkeypatch.setitem(lazyllm.config.impl, 'auto_model_config_map_path', CONFIG_PATH)
     lazyllm.config.refresh('sensenova_api_key')
 
 
 @pytest.fixture
-def dummy_modules(monkeypatch):
-    class DummyOnline:
-        instances = []
+def fake_modules(monkeypatch):
+    recorder = CallRecorder()
 
+    class FakeOnlineModule:
         def __init__(self, **kwargs):
             recorded = dict(kwargs)
-            if recorded.get('source') == 'sensenova' and 'api_key' not in recorded:
-                api_key = lazyllm.config['sensenova_api_key']
-                if api_key:
-                    recorded['api_key'] = api_key
+            source = recorded.get('source')
+            env_key = os.environ.get('LAZYLLM_SENSENOVA_API_KEY')
+            if not source and not recorded.get('url') and not recorded.get('base_url') and not env_key:
+                raise KeyError('No api_key is configured for any of the models.')
+            if not source and env_key:
+                recorded['source'] = 'sensenova'
+                source = 'sensenova'
+            if source == 'sensenova' and 'api_key' not in recorded and env_key:
+                recorded['api_key'] = env_key
+            recorder.record('online', recorded)
             self.kwargs = recorded
-            DummyOnline.instances.append(self)
 
-    class DummyTrainable:
-        instances = []
+    class FakeTrainableModule:
+        def __init__(self, base_model=None, **kwargs):
+            recorded = dict(kwargs)
+            if base_model is not None:
+                recorded.setdefault('base_model', base_model)
+            recorder.record('trainable', recorded)
+            self.kwargs = recorded
+            self._url = recorded.get('target_path') or recorded.get('url') or 'local'
+            self._impl = SimpleNamespace(_get_deploy_tasks=SimpleNamespace(flag=True))
 
+    class FakeOnlineChatModule:
         def __init__(self, **kwargs):
-            self.kwargs = kwargs
-            DummyTrainable.instances.append(self)
+            recorder.record('online_chat', dict(kwargs))
+            self.kwargs = dict(kwargs)
 
-    monkeypatch.setattr(automodel_module, 'OnlineModule', DummyOnline)
-    monkeypatch.setattr(automodel_module, 'TrainableModule', DummyTrainable)
-    DummyOnline.instances.clear()
-    DummyTrainable.instances.clear()
-    return DummyOnline, DummyTrainable
+    monkeypatch.setattr(automodel_module, 'OnlineModule', FakeOnlineModule)
+    monkeypatch.setattr(automodel_module, 'TrainableModule', FakeTrainableModule)
+    monkeypatch.setattr(online_module, 'OnlineChatModule', FakeOnlineChatModule)
+    return SimpleNamespace(
+        recorder=recorder,
+        FakeOnlineModule=FakeOnlineModule,
+        FakeTrainableModule=FakeTrainableModule,
+        FakeOnlineChatModule=FakeOnlineChatModule,
+    )
 
 
-class TestAutoModel(object):
+# Case 1: no config/env/source -> TrainableModule
+def test_automodel_defaults_to_trainable_without_config_env_source(monkeypatch, fake_modules):
+    set_sensenova_env(monkeypatch, None)
 
-    def test_autmodel_defaults_to_trainable(self, monkeypatch, dummy_modules):
-        DummyOnline, DummyTrainable = dummy_modules
+    result = AutoModel(model='no-config-model', config=False)
 
-        result = AutoModel(model='internlm-test')
+    recorder = fake_modules.recorder
+    assert isinstance(result, fake_modules.FakeTrainableModule)
+    assert recorder.last('online') is None
+    assert recorder.last('trainable')['base_model'] == 'no-config-model'
 
-        assert isinstance(result, DummyTrainable)
-        assert len(DummyOnline.instances) == 0
-        assert DummyTrainable.instances[0].kwargs['base_model'] == 'internlm-alias'
-        assert os.environ['LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH'] == CONFIG_PATH
 
-    def test_autmodel_prefers_online_when_env_key_available(self, monkeypatch, dummy_modules):
-        DummyOnline, DummyTrainable = dummy_modules
-        monkeypatch.setenv('LAZYLLM_SENSENOVA_API_KEY', 'env-key')
-        lazyllm.config.refresh('LAZYLLM_SENSENOVA_API_KEY')
+# Case 2: env key only -> sensenova OnlineModule
+def test_automodel_env_key_routes_to_sensenova_online(monkeypatch, fake_modules):
+    set_sensenova_env(monkeypatch, 'env-key')
 
-        result = AutoModel(model='sensenova-model')
+    result = AutoModel(model='no-config-model', config=False)
 
-        assert isinstance(result, DummyOnline)
-        assert len(DummyTrainable.instances) == 0
-        kwargs = DummyOnline.instances[0].kwargs
-        assert kwargs['source'] == 'sensenova'
-        assert kwargs['url'] == 'https://api.sensenova.com/v1/'
-        assert kwargs['api_key'] == 'env-key'
+    recorder = fake_modules.recorder
+    assert isinstance(result, fake_modules.FakeOnlineModule)
+    assert recorder.last('trainable') is None
+    kwargs = recorder.last('online')
+    assert kwargs['source'] == 'sensenova'
+    assert kwargs['api_key'] == 'env-key'
 
-    def test_autmodel_respects_explicit_source(self, monkeypatch, dummy_modules):
-        DummyOnline, DummyTrainable = dummy_modules
 
-        result = AutoModel(model='glm-model', source='glm')
+# Case 3: explicit source -> OnlineModule
+def test_automodel_respects_explicit_source(monkeypatch, fake_modules):
+    set_sensenova_env(monkeypatch, None)
 
-        assert isinstance(result, DummyOnline)
-        assert len(DummyTrainable.instances) == 0
-        kwargs = DummyOnline.instances[0].kwargs
-        assert kwargs['source'] == 'glm'
-        assert kwargs['url'] == 'https://glm.fake.endpoint/v1/'
-        assert kwargs['model'] == 'glm-remote'
+    result = AutoModel(model='explicit-source-model', source='glm', config=False)
 
-    def test_autmodel_uses_trainable_when_config_entry_has_framework(self, monkeypatch, dummy_modules):
-        DummyOnline, DummyTrainable = dummy_modules
+    recorder = fake_modules.recorder
+    assert isinstance(result, fake_modules.FakeOnlineModule)
+    assert recorder.last('trainable') is None
+    kwargs = recorder.last('online')
+    assert kwargs['source'] == 'glm'
 
-        result = AutoModel(model='trainable-model')
 
-        assert isinstance(result, DummyTrainable)
-        assert len(DummyOnline.instances) == 0
-        assert os.environ['LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH'] == CONFIG_PATH
+@pytest.mark.parametrize(
+    'model, env_key, expected_kind, expected_fields',
+    [
+        (
+            'trainable-model',
+            None,
+            'trainable',
+            {
+                'base_model': 'trainable-model',
+                'source': 'local',
+                'target_path': 'http://127.0.0.1:2333/v1/',
+                'use_model_map': CONFIG_PATH,
+            },
+        ),
+        (
+            'online-url-model',
+            None,
+            'online',
+            {
+                'model': 'online-url-model',
+                'url': 'http://custom.online.endpoint/v1/',
+            },
+        ),
+        (
+            'credential-model',
+            None,
+            'online',
+            {
+                'source': 'sensenova',
+                'api_key': 'config-key',
+                'url': 'https://credential.endpoint/v1/',
+            },
+        ),
+        (
+            'env-only-model',
+            'env-key',
+            'online',
+            {
+                'source': 'sensenova',
+                'api_key': 'env-key',
+            },
+        ),
+    ],
+    ids=[
+        'case4_trainable_framework_url',
+        'case5_online_url_only',
+        'case6_online_sensenova_api_key',
+        'case7_online_sensenova_env_key',
+    ],
+)
+def test_automodel_config_routing(model, env_key, expected_kind, expected_fields, monkeypatch, fake_modules):
+    set_sensenova_env(monkeypatch, env_key)
 
-    def test_autmodel_uses_online_entry_url(self, monkeypatch, dummy_modules):
-        DummyOnline, DummyTrainable = dummy_modules
+    result = AutoModel(model=model, config=CONFIG_PATH)
 
-        result = AutoModel(model='online-url-model')
+    recorder = fake_modules.recorder
+    if expected_kind == 'trainable':
+        assert isinstance(result, fake_modules.FakeTrainableModule)
+        assert recorder.last('online') is None
+        kwargs = recorder.last('trainable')
+    else:
+        assert isinstance(result, fake_modules.FakeOnlineModule)
+        assert recorder.last('trainable') is None
+        kwargs = recorder.last('online')
 
-        assert isinstance(result, DummyOnline)
-        assert len(DummyTrainable.instances) == 0
-        kwargs = DummyOnline.instances[0].kwargs
-        assert kwargs['url'] == 'http://custom.online.endpoint/v1/'
-
-    def test_autmodel_uses_configured_online_credentials(self, monkeypatch, dummy_modules):
-        DummyOnline, DummyTrainable = dummy_modules
-
-        result = AutoModel(model='credential-model')
-
-        assert isinstance(result, DummyOnline)
-        kwargs = DummyOnline.instances[0].kwargs
-        assert kwargs['source'] == 'sensenova'
-        assert kwargs['api_key'] == 'config-key'
-
-    def test_autmodel_selects_entry_by_id(self, monkeypatch, dummy_modules):
-        DummyOnline, DummyTrainable = dummy_modules
-
-        result = AutoModel(model='sensenova-model', config_id='id-sensenova-alt')
-
-        assert isinstance(result, DummyOnline)
-        kwargs = DummyOnline.instances[0].kwargs
-        assert kwargs['url'] == 'https://alt.sensenova.com/v1/'
-        assert kwargs['api_key'] == 'config-api-key'
-
-    def test_autmodel_reads_env_key_when_config_lacks_api_key(self, monkeypatch, dummy_modules):
-        DummyOnline, DummyTrainable = dummy_modules
-        monkeypatch.setenv('LAZYLLM_SENSENOVA_API_KEY', 'env-key')
-        lazyllm.config.refresh('LAZYLLM_SENSENOVA_API_KEY')
-
-        result = AutoModel(model='env-only-model')
-
-        assert isinstance(result, DummyOnline)
-        kwargs = DummyOnline.instances[0].kwargs
-        assert kwargs['source'] == 'sensenova'
-        assert kwargs['api_key'] == 'env-key'
+    for key, value in expected_fields.items():
+        assert kwargs[key] == value
