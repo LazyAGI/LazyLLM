@@ -1448,33 +1448,31 @@ Iterates through all configuration options of the module, updates the module in 
 ''')
 
 add_chinese_doc('AutoModel', '''\
-用于快速创建在线推理模块 OnlineModule 或本地 TrainableModule 的工厂类。它会优先采用用户传入的参数，若开启 ``use_config`` 则会根据 ``auto_model_config_map`` 中的配置进行覆盖，然后自动判断应当构建在线模块还是本地模块：\n
+用于快速创建在线推理模块 OnlineModule 或本地 TrainableModule 的工厂类。它会优先采用用户传入的参数，若开启 ``config`` 则会根据 ``auto_model_config_map`` 中的配置进行覆盖，然后自动判断应当构建在线模块还是本地模块：\n
 - 当判定为在线模块时，参数会透传给 OnlineModule（自动匹配 OnlineChatModule / OnlineEmbeddingModule / OnlineMultiModalModule）。\n
-- 当判定为本地模块时，则以 ``model`` 与原始 kwargs 初始化 TrainableModule，并为其注入 ``LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH`` 以便下游读取配置。
+- 当判定为本地模块时，则以 ``model`` 与用户参数初始化 TrainableModule，并读取 config map 里的配置参数。
 
 Args:
-    model (str): 指定模型名称。例如 ``internlm2-chat-7b``。必填。
+    model (str): 指定模型名称。例如 ``Qwen3-32B``。必填。
+    config_id (Optional[str]): 指定配置文件里的id。默认为空。
     source (Optional[str]): 使用的服务提供方。为在线模块（``OnlineModule``）指定 ``qwen`` / ``glm`` / ``openai`` 等；若设为 ``local`` 则强制创建本地 TrainableModule。
     type (Optional[str]): 模型类型。若未指定会尝试从 kwargs 中获取或由在线模块自动推断。
-    url (Optional[str]): 在线模块的 base_url，或本地 TrainableModule 的服务地址。
-    framework (Optional[str]): 本地部署时可传入推理框架（如 ``lightllm`` / ``vllm`` / ``lmdeploy``），会随 kwargs 一起交给 TrainableModule 处理。
-    use_config (bool): 是否启用 ``auto_model_config_map`` 的覆盖逻辑。默认为 True。
-    **kwargs: 其余参数会根据 online/trainable 路径透传给对应模块。
+    config (Union[str, bool]): 是否启用 ``auto_model_config_map`` 的覆盖逻辑，或者用户指定的 config 文件路径。默认为 True。
+    **kwargs: 兼容 `model` 的同义字段 `base_model` 和 `embed_model_name`，不接收其他用户传入的字段。
 ''')
 
 add_english_doc('AutoModel', '''\
-A lightweight factory that creates either online inference modules or local ``TrainableModule`` instances. User-provided arguments always take precedence; when ``use_config`` is True, entries in ``auto_model_config_map`` can override them. AutoModel then routes to the right module: \n
-- For online mode, the resolved arguments are forwarded to ``OnlineModule`` (and it will internally pick OnlineChat/Embedding/MultiModal).\n
-- For trainable mode, it constructs ``TrainableModule`` with the given ``model`` plus remaining kwargs, and sets ``LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH`` so TrainableModule can load its own config map.
+A factory for quickly creating either an online ``OnlineModule`` or a local ``TrainableModule``. It prioritizes user-provided arguments; when ``config`` is enabled, settings in ``auto_model_config_map`` can override them, and it automatically decides which module to build: \n
+- For online mode, arguments are passed through to ``OnlineModule`` (automatically matching OnlineChatModule / OnlineEmbeddingModule / OnlineMultiModalModule).\n
+- For local mode, it initializes ``TrainableModule`` with ``model`` and user parameters, then reads the config map for configuration values.
 
 Args:
-    model (str): Name of the model, e.g., ``internlm2-chat-7b``. Required.
-    source (Optional[str]): Online provider for ``OnlineModule`` (``qwen``, ``glm``, ``openai``), or set to ``local`` to force TrainableModule.
-    type (Optional[str]): Model type hint. If omitted, the online module may infer it automatically.
-    url (Optional[str]): Base URL for online models or a local TrainableModule endpoint.
-    framework (Optional[str]): When using local deployment, a framework such as ``lightllm``, ``vllm``, or ``lmdeploy`` can be passed via kwargs to TrainableModule.
-    use_config (bool): Whether to enable overrides from ``auto_model_config_map``. Defaults to True.
-    **kwargs: Any additional keyword arguments are forwarded to the chosen module.
+    model (str): Name of the model, e.g., ``Qwen3-32B``. Required.
+    config_id (Optional[str]): ID from the config file. Defaults to empty.
+    source (Optional[str]): Provider for online modules (``qwen`` / ``glm`` / ``openai``). Set to ``local`` to force a local TrainableModule.
+    type (Optional[str]): Model type. If omitted, it will try to fetch from kwargs or be inferred by the online module.
+    config (Union[str, bool]): Whether to enable overrides from ``auto_model_config_map``, or a user-specified config file path. Defaults to True.
+    **kwargs: Accepts `base_model` and `embed_model_name` as synonyms for `model`; does not accept other user-provided fields.
 ''')
 
 add_chinese_doc('OnlineModule', '''\

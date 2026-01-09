@@ -253,8 +253,7 @@ def check_config_map_format(config_map: dict):
             if 'source' in item and item['source'] is not None and not isinstance(item['source'], str):
                 raise ValueError(f'source for model {k} should be a string')
 
-@functools.lru_cache(maxsize=1)
-def get_module_config_map(path):
+def _get_module_config_map(path):
     try:
         cfg = yaml.safe_load(open(path, 'r')) if os.path.exists(path) else {}
         check_config_map_format(cfg)
@@ -263,7 +262,6 @@ def get_module_config_map(path):
         cfg = {}
     return cfg
 
-
 def _classify_config_entry(entry: Dict[str, Any]) -> str:
     if entry.get('framework') or entry.get('deploy_config'):
         return 'trainable'
@@ -271,7 +269,6 @@ def _classify_config_entry(entry: Dict[str, Any]) -> str:
     if source in LOCAL_SOURCES:
         return 'trainable'
     return 'online'
-
 
 def _select_config_entry(entries: List[Dict[str, Any]],
                         entry_type: str,
@@ -294,17 +291,13 @@ def _select_config_entry(entries: List[Dict[str, Any]],
         return deepcopy(source_match)
     return deepcopy(fallback) if fallback else None
 
-
 def _decide_target_mode(source: Optional[str],
-                       type: Optional[str],
-                       framework: Optional[Union[str, Any]],
-                       user_deploy_config: Dict[str, Any],
+                       deploy_config: Dict[str, Any],
                        has_online_entry: bool,
                        has_trainable_entry: bool) -> str:
     normalized_source = (source or '').lower()
-    explicit_online = bool(type or (normalized_source not in LOCAL_SOURCES))
-    explicit_trainable = bool(framework or user_deploy_config or
-                              (normalized_source in LOCAL_SOURCES))
+    explicit_online = normalized_source not in LOCAL_SOURCES
+    explicit_trainable = bool(deploy_config or (normalized_source in LOCAL_SOURCES))
     if explicit_online and explicit_trainable:
         return 'trainable' if has_trainable_entry else 'online'
     elif explicit_trainable:
@@ -316,31 +309,33 @@ def _decide_target_mode(source: Optional[str],
         return 'online' if (has_online_entry or api_key) else 'trainable'
     return 'online' if has_online_entry else 'trainable'
 
+def get_module_config_map(use_config: Union[str, bool]):
+    if use_config is False:
+        return {}
+    if use_config is True:
+        return (
+            _get_module_config_map(lazyllm.config['auto_model_config_map_path']) or
+            _get_module_config_map(lazyllm.config['trainable_module_config_map_path'])
+        )
+    return _get_module_config_map(use_config)
 
 def get_target_entry(model: str,
                      config_id: str,
                      source: str,
-                     type: str,
-                     framework: str,
-                     use_config: bool,
-                     deploy_config: dict):
-    # get entries
-    if not use_config:
-        entries = []
-    else:
-        config_map = get_module_config_map(lazyllm.config['auto_model_config_map_path'])
-        entries = [deepcopy(item) for item in (config_map.get(model) or [])]
+                     use_config: Union[str, bool]):
+    # get entries by `use_config` param
+    config_map = get_module_config_map(use_config=use_config)
+    entries = [deepcopy(item) for item in (config_map.get(model) or [])]
 
     # process config entries and distinguish target mode
     online_entry = _select_config_entry(entries, 'online', source, config_id)
     trainable_entry = _select_config_entry(entries, 'trainable', source, config_id)
-    deploy_config = deploy_config or trainable_entry.get('deploy_config', {}) if trainable_entry else {}
+    deploy_config = trainable_entry.get('deploy_config', {}) if trainable_entry else {}
 
-    target_mode = _decide_target_mode(source, type, framework, deploy_config,
+    target_mode = _decide_target_mode(source, deploy_config,
                                       online_entry is not None, trainable_entry is not None)
     entry = online_entry if target_mode=='online' else trainable_entry
     return target_mode, entry
-
 
 def resolve_model_name(original: Optional[str], entry: Optional[Dict[str, Any]]) -> Optional[str]:
     if not entry:
@@ -348,33 +343,31 @@ def resolve_model_name(original: Optional[str], entry: Optional[Dict[str, Any]])
     override = entry.get('name')
     return override or original
 
-
-def process_trainable_args(model: str, type: str, use_config: bool, 
-                           entry: dict, **kwargs: Any) -> dict:
-    module_kwargs = dict(kwargs)
+def process_trainable_args(model: str, type: str, source: str,
+                           use_config: Union[str, bool],
+                           entry: Optional[Dict[str, Any]]) -> dict:
+    entry = entry or {}
     return {
         'base_model': model,
-        'target_path': module_kwargs.get('target_path', ''),
-        'stream': module_kwargs.get('stream', False),
-        'return_trace': module_kwargs.get('return_trace', False),
-        'trust_remote_code': module_kwargs.get('trust_remote_code', True),
-        'type': type or entry.get('type', None),
-        'source': module_kwargs.get('source', None),
+        'target_path': entry.get('target_path', ''),
+        'stream': entry.get('stream', False),
+        'return_trace': entry.get('return_trace', False),
+        'trust_remote_code': entry.get('trust_remote_code', True),
+        'type': type or entry.get('type', entry.get('task', None)),
+        'source': source or entry.get('source', None),
         'use_model_map': use_config,
     }
 
-def process_online_args(model: str, source: str, type: str, url: str, 
-                        entry: dict, **kwargs: Any) -> dict:
-    config = {**entry, **kwargs}
-    config['model'] = model
+def process_online_args(model: str, source: str, type: str,
+                        entry: Optional[Dict[str, Any]]) -> dict:
+    entry = entry or {}
+    entry['model'] = model
     if source:
-        config['source'] = source
+        entry['source'] = source
     if type:
-        config['type'] = type
-    if url:
-        config['url'] = url
-    config.pop('deploy_config', None)
-    config.pop('framework', None)
-    config.pop('name', None)
-    config.pop('id', None)
-    return config
+        entry['type'] = type
+    entry.pop('deploy_config', None)
+    entry.pop('framework', None)
+    entry.pop('name', None)
+    entry.pop('id', None)
+    return entry
