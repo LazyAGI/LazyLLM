@@ -35,7 +35,9 @@ del patch_os_env
 
 
 def __getattr__(name: str):
-    if name in __all__:
+    if name == 'tools':
+        return importlib.import_module('lazyllm.tools')
+    elif name in __all__:
         tools = importlib.import_module('lazyllm.tools')
         builtins.globals()[name] = value = getattr(tools, name)
         return value

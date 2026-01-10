@@ -9,7 +9,7 @@ on:
 
 env:
   PYTHON_VERSION: "3.10.9"
-  PYPI_PUBLISH_URL: ${{ vars.PYPI_PUBLISH_URL || 'https://pypi.org/legacy/' }}
+  PYPI_PUBLISH_URL: ${{ vars.PYPI_PUBLISH_URL || 'https://upload.pypi.org/legacy/' }}
   PYPI_DOWNLOAD_URL: ${{ vars.PYPI_DOWNLOAD_URL || 'https://pypi.org/simple/' }}
 
 defaults:
