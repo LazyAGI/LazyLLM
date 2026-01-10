@@ -306,7 +306,7 @@ class TestEngine(unittest.TestCase):
             dict(id='1', kind='TTS', name='m1', args=dict(source='qwen', type='online')),
             dict(id='2', kind='STT', name='m2', args=dict(source='glm', type='online')),
             dict(id='3', kind='SD', name='m3', args=dict(source='siliconflow', type='online',
-                                                         target_dir=lazyllm.config['temp_dir'], base_model='Kolors')),
+                 target_dir=lazyllm.config['temp_dir'], base_model='Qwen/Qwen-Image')),
             dict(id='4', kind='VQA', name='m4', args=dict(source='qwen', base_model='qwen-vl-plus', type='online'))
         ]
         engine = LightEngine()
