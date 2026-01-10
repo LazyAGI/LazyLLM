@@ -3,6 +3,8 @@ from typing import Any, Dict, Optional
 from .map_model_type import get_model_type
 from .base import OnlineChatModuleBase
 from .supplier.openai import OpenAIModule
+from .supplier.moark import MoarkModule
+from .supplier.intel import IntelModule
 from .supplier.glm import GLMModule
 from .supplier.kimi import KimiModule
 from .supplier.sensenova import SenseNovaModule
@@ -31,7 +33,9 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
               'deepseek': DeepSeekModule,
               'siliconflow': SiliconFlowModule,
               'minimax': MinimaxModule,
-              'ppio': PPIOModule}
+              'ppio': PPIOModule,
+              'intel': IntelModule,
+              'moark': MoarkModule}
 
     @staticmethod
     def _encapsulate_parameters(base_url: str, model: str, stream: bool, return_trace: bool, **kwargs) -> Dict[str, Any]:

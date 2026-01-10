@@ -3,6 +3,8 @@ from typing import Any, Dict
 import lazyllm
 from .base import OnlineEmbeddingModuleBase
 from .supplier.openai import OpenAIEmbedding, OpenAIReranking
+from .supplier.intel import IntelEmbedding, IntelReranking
+from .supplier.moark import MoarkEmbedding, MoarkReranking
 from .supplier.glm import GLMEmbedding, GLMReranking
 from .supplier.sensenova import SenseNovaEmbedding
 from .supplier.qwen import QwenEmbedding, QwenReranking
@@ -23,12 +25,17 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                     'glm': GLMEmbedding,
                     'qwen': QwenEmbedding,
                     'doubao': DoubaoEmbedding,
-                    'siliconflow': SiliconFlowEmbedding
+                    'siliconflow': SiliconFlowEmbedding,
+                    'intel': IntelEmbedding,
+                    'moark': MoarkEmbedding
                     }
     RERANK_MODELS = {'qwen': QwenReranking,
                      'glm': GLMReranking,
                      'openai': OpenAIReranking,
-                     'siliconflow': SiliconFlowReranking}
+                     'siliconflow': SiliconFlowReranking,
+                     'intel': IntelReranking,
+                     'moark': MoarkReranking
+                     }
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,
