@@ -29,19 +29,21 @@ if TYPE_CHECKING:
 
 
 def __getattr__(name: str):
-    if name not in _SUBMOD_MAP_REVERSE:
+    if name not in _SUBMOD_MAP_REVERSE and name not in _SUBMOD_MAP:
         raise AttributeError(f"Module 'tools' has no attribute '{name}'")
 
     if name == 'fc_register':
         agent = import_module('.agent', package=__package__)
         globals()['fc_register'] = value = agent.register
+    elif name in _SUBMOD_MAP:
+        return import_module(f'.{name}', package=__package__)
     elif name in _SUBMOD_MAP_REVERSE:
-        module = import_module(_SUBMOD_MAP_REVERSE[name], package=__package__)
+        module = import_module(f'.{_SUBMOD_MAP_REVERSE[name]}', package=__package__)
         globals()[name] = value = getattr(module, name)
     return value
 
 _SUBMOD_MAP = {
-    '.rag': [
+    'rag': [
         'Document',
         'GraphDocument',
         'UrlGraphDocument',
@@ -52,8 +54,8 @@ _SUBMOD_MAP = {
         'LLMParser',
         'SentenceSplitter'
     ],
-    '.webpages': ['WebModule'],
-    '.agent': [
+    'webpages': ['WebModule'],
+    'agent': [
         'ToolManager',
         'ModuleTool',
         'FunctionCall',
@@ -63,27 +65,27 @@ _SUBMOD_MAP = {
         'PlanAndSolveAgent',
         'ReWOOAgent'
     ],
-    '.classifier': ['IntentClassifier'],
-    '.sql': [
+    'classifier': ['IntentClassifier'],
+    'sql': [
         'SqlManager',
         'MongoDBManager',
         'DBManager',
         'DBResult',
         'DBStatus'
     ],
-    '.sql_call': ['SqlCall'],
-    '.tools.http_tool': ['HttpTool'],
-    '.servers.graphrag.graphrag_server_module': ['GraphRagServerModule'],
-    '.mcp.client': ['MCPClient'],
-    '.actors': [
+    'sql_call': ['SqlCall'],
+    'tools.http_tool': ['HttpTool'],
+    'servers.graphrag.graphrag_server_module': ['GraphRagServerModule'],
+    'mcp.client': ['MCPClient'],
+    'actors': [
         'ParameterExtractor',
         'QustionRewrite',
         'CodeGenerator'
     ],
-    '.common': [
+    'common': [
         'StreamCallHelper'
     ],
-    '.eval': [
+    'eval': [
         'BaseEvaluator',
         'ResponseRelevancy',
         'Faithfulness',
@@ -91,7 +93,7 @@ _SUBMOD_MAP = {
         'NonLLMContextRecall',
         'ContextRelevance',
     ],
-    '.http_request': [
+    'http_request': [
         'HttpRequest',
         'HttpExecutorResponse'
     ],
