@@ -55,7 +55,9 @@ class Retriever(_RetrieverBase, _PostProcess):
         self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
         for doc in self._docs:
             assert isinstance(doc, (Document, UrlDocument)), 'Only Document or List[Document] are supported'
-            if isinstance(doc, UrlDocument): continue
+            if isinstance(doc, UrlDocument):
+                group_name, embed_keys = self._validate_remote_vec_retr_params(doc, group_name, embed_keys)
+                continue
             self._submodules.append(doc)
             if mode == 'embedding' and embed_keys is None:
                 embed_keys = list(doc._impl.embed.keys())
@@ -119,6 +121,22 @@ class Retriever(_RetrieverBase, _PostProcess):
         self._join = state['join']
         self._docs = [Document(url=doc['url'], name=doc['name']) for doc in state['docs']]
         _PostProcess.__init__(self, self._output_format, self._join)
+
+    def _validate_remote_vec_retr_params(self, doc: UrlDocument, group_name, embed_keys: Optional[List[str]] = None):
+        active_groups = doc.active_node_groups
+        if not active_groups:
+            raise RuntimeError(f'No active groups found in document {doc._manager._url}')
+        if group_name not in active_groups:
+            raise RuntimeError(f'Group {group_name} not found or not activated in document {doc._manager._url}')
+        if not embed_keys:
+            embed_keys = list(active_groups[group_name])
+        else:
+            for k in embed_keys:
+                if k not in active_groups[group_name]:
+                    raise RuntimeError(f'Embedding key {k} not found in group {group_name} '
+                                       f'from document {doc._manager._url},'
+                                       f'available keys: {list(active_groups[group_name])}')
+        return group_name, embed_keys
 
     def forward(
             self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,

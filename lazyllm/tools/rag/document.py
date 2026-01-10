@@ -316,6 +316,9 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                        enable_embed: bool = True):
         if embed_keys and not enable_embed:
             raise ValueError('`enable_embed` must be set to True when `embed_keys` is provided')
+        # if embed_keys is None, use default embed keys
+        if (enable_embed and not embed_keys) and self._manager._embed:
+            embed_keys = self._manager._embed.keys()
         if isinstance(embed_keys, str): embed_keys = [embed_keys]
         self._impl.activate_group(group_name, embed_keys, enable_embed)
 
