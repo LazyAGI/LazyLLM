@@ -872,9 +872,9 @@ class TrainServer(ServerBase):
 
         if self._in_active_jobs(token, job_id):
             try:
-                await self.pause_job(job_id, token)
+                await self.pause_job(job_id, token=token, _pop_job=False)
             except Exception as e:
-                raise HTTPException(status_code=404, detail=f'Task {job_id}, cancelled failed, {e}')
+                raise HTTPException(status_code=400, detail=f'Task {job_id}, cancelled failed, {e}')
             m, _ = self._pop_active_job(token, job_id)
             info = self._read_user_job_info(token, job_id)
             return {'status': m.status(info['model_id']).name}
@@ -1045,7 +1045,8 @@ class TrainServer(ServerBase):
         raise HTTPException(status_code=404, detail='not implemented')
 
     @app.post('/v1/finetuneTasks/{job_id}:pause')
-    async def pause_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN)):  # noqa B008
+    async def pause_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN),  # noqa C901, B008
+                        *, _pop_job: bool = True):
         await self.authorize_current_user(token)
         self._update_status(token, job_id)
         if not self._in_active_jobs(token, job_id):
@@ -1105,7 +1106,7 @@ class TrainServer(ServerBase):
                 logger.info(f'[pause_job] Job {job_id} extracted checkpoint step: {checkpoint_step}')
 
         self._update_user_job_info(token, job_id, {
-            'status': 'Suspended',
+            'status': 'Suspended' if _pop_job else 'Cancelled',
             'checkpoint_path': checkpoint_path,
             'checkpoint_step': checkpoint_step,
             'cost': cost,
@@ -1113,10 +1114,11 @@ class TrainServer(ServerBase):
             'last_cost_update_time': None,
         })
 
-        try:
-            self._pop_active_job(token, job_id)
-        except Exception:
-            pass
+        if _pop_job:
+            try:
+                self._pop_active_job(token, job_id)
+            except Exception:
+                pass
         return {'status': 'Suspended', 'checkpoint_path': checkpoint_path or '', 'cost': cost}
 
     @app.post('/v1/finetuneTasks/{job_id}:resume')
