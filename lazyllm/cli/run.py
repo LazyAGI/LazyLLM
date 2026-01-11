@@ -78,7 +78,7 @@ def run(commands):
     if args.command in ('chatbot', 'rag'):
         parser.add_argument('--model', type=str, default=None, help='model name')
         parser.add_argument('--source', type=str, default=None, help='Online model source, conflict with framework',
-                            choices=['openai', 'sensenova', 'glm', 'kimi', 'qwen', 'doubao'])
+                            choices=['openai', 'sensenova', 'glm', 'kimi', 'qwen', 'doubao','intel', 'moark'])
         parser.add_argument('--framework', type=str, default=None, help='Online model source, conflict with source',
                             choices=['lightllm', 'vllm', 'lmdeploy'])
         if args.command == 'rag':
