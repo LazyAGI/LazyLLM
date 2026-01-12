@@ -31,12 +31,14 @@ def reset_env(func):
         original_values = {var: os.environ.get(var, None) for var in env_vars_to_reset}
         for var in env_vars_to_reset:
             os.environ.pop(var, None)
-        result = func(*args, **kwargs)
-        for var, value in original_values.items():
-            if value is None:
-                os.environ.pop(var, None)
-            else:
-                os.environ[var] = value
+        try:
+            result = func(*args, **kwargs)
+        finally:
+            for var, value in original_values.items():
+                if value is None:
+                    os.environ.pop(var, None)
+                else:
+                    os.environ[var] = value
         return result
     return wrapper
 
@@ -142,17 +144,13 @@ class TestDeploy(object):
     @reset_env
     def test_AutoModel(self):
         # No model_name and key
-        chat = lazyllm.AutoModel()
-        assert isinstance(chat, lazyllm.TrainableModule)
-
-        # set framework
-        chat = lazyllm.AutoModel(framework='vllm')
-        assert isinstance(chat, lazyllm.TrainableModule)
+        with pytest.raises(RuntimeError, match='`model` is not provided in AutoModel, and'):
+            chat = lazyllm.AutoModel()
 
         lazyllm.config.add('openai_api_key', str, '123', 'OPENAI_API_KEY')
 
         # set source
-        with pytest.raises(ValueError, match='api_key is required for sensecore'):
+        with pytest.raises(RuntimeError, match='api_key is required for sensecore'):
             chat = lazyllm.AutoModel('sensenova')
         chat = lazyllm.AutoModel(source='openai')
         assert isinstance(chat, lazyllm.OnlineChatModule)

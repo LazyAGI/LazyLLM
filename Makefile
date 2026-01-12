@@ -15,6 +15,7 @@ lint-flake8:
 
 .ONESHELL:
 lint-flake8-only-diff:
+	@set -e
 	@if [ -n "${CHANGED_FILES}" ]; then \
 		echo "$(CHANGED_FILES)" | xargs flake8; \
 		exit 0; \

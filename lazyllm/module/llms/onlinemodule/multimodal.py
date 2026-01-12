@@ -1,5 +1,5 @@
 import lazyllm
-from typing import Any, Dict
+from typing import Any
 from .base import OnlineMultiModalBase
 from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
 from .supplier.doubao import DoubaoTextToImageModule
@@ -7,7 +7,7 @@ from .supplier.glm import GLMSTTModule, GLMTextToImageModule
 from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule
 from .supplier.minimax import MinimaxTextToImageModule, MinimaxTTSModule
 from .supplier.aiping import AipingTextToImageModule
-from .map_model_type import get_model_type 
+
 
 class _OnlineMultiModalMeta(type):
     '''Metaclass for OnlineMultiModalModule to support isinstance checks'''
@@ -90,7 +90,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
             if model is None and default_editing_model:
                 model = default_editing_model
                 lazyllm.LOG.info(f'Image editing enabled for {source}. Automatically selected default model: {model}')
-        
+
         if base_url is not None:
             kwargs['base_url'] = base_url
         return source, model, kwargs
@@ -107,7 +107,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         source, model, kwargs_normalized = OnlineMultiModalModule._validate_parameters(
             source=source, model=model, type=type, base_url=base_url, **kwargs
         )
-        params = {'return_trace': return_trace, 
+        params = {'return_trace': return_trace,
                   'type': type}
         if model is not None:
             params['model'] = model

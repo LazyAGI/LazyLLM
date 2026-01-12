@@ -1448,21 +1448,31 @@ Iterates through all configuration options of the module, updates the module in 
 ''')
 
 add_chinese_doc('AutoModel', '''\
-用于部署在线 API 模型或本地模型的模块，支持加载在线推理模块或本地可微调模块。
+用于快速创建在线推理模块 OnlineModule 或本地 TrainableModule 的工厂类。它会优先采用用户传入的参数，若开启 ``config`` 则会根据 ``auto_model_config_map`` 中的配置进行覆盖，然后自动判断应当构建在线模块还是本地模块：\n
+- 当判定为在线模块时，参数会透传给 OnlineModule（自动匹配 OnlineChatModule / OnlineEmbeddingModule / OnlineMultiModalModule）。\n
+- 当判定为本地模块时，则以 ``model`` 与用户参数初始化 TrainableModule，并读取 config map 里的配置参数。
 
 Args:
-    model (str): 指定要加载的模型名称，例如 ``internlm2-chat-7b``，可为空。为空时默认加载 ``internlm2-chat-7b``。
-    source (str): 指定要使用的在线模型服务，如需使用在线模型，必须传入此参数。支持 ``qwen`` / ``glm`` / ``openai`` / ``moonshot`` 等。
-    framework (str): 指定本地部署所使用的推理框架，支持 ``lightllm`` / ``vllm`` / ``lmdeploy``。将通过 ``TrainableModule`` 与指定框架组合进行部署。
+    model (str): 指定模型名称。例如 ``Qwen3-32B``。必填。
+    config_id (Optional[str]): 指定配置文件里的id。默认为空。
+    source (Optional[str]): 使用的服务提供方。为在线模块（``OnlineModule``）指定 ``qwen`` / ``glm`` / ``openai`` 等；若设为 ``local`` 则强制创建本地 TrainableModule。
+    type (Optional[str]): 模型类型。若未指定会尝试从 kwargs 中获取或由在线模块自动推断。
+    config (Union[str, bool]): 是否启用 ``auto_model_config_map`` 的覆盖逻辑，或者用户指定的 config 文件路径。默认为 True。
+    **kwargs: 兼容 `model` 的同义字段 `base_model` 和 `embed_model_name`，不接收其他用户传入的字段。
 ''')
 
 add_english_doc('AutoModel', '''\
-A module for deploying either online API-based models or local models, supporting both online inference and locally trainable modules.
+A factory for quickly creating either an online ``OnlineModule`` or a local ``TrainableModule``. It prioritizes user-provided arguments; when ``config`` is enabled, settings in ``auto_model_config_map`` can override them, and it automatically decides which module to build: \n
+- For online mode, arguments are passed through to ``OnlineModule`` (automatically matching OnlineChatModule / OnlineEmbeddingModule / OnlineMultiModalModule).\n
+- For local mode, it initializes ``TrainableModule`` with ``model`` and user parameters, then reads the config map for configuration values.
 
 Args:
-    model (str): The name of the model to load, e.g., ``internlm2-chat-7b``. If None, ``internlm2-chat-7b`` will be loaded by default.
-    source (str): Specifies the online model service to use. Required when using online models. Supported values include ``qwen``, ``glm``, ``openai``, ``moonshot``, etc.
-    framework (str): The local inference framework to use for deployment. Supported values are ``lightllm``, ``vllm``, and ``lmdeploy``. The model will be deployed via ``TrainableModule`` using the specified framework.
+    model (str): Name of the model, e.g., ``Qwen3-32B``. Required.
+    config_id (Optional[str]): ID from the config file. Defaults to empty.
+    source (Optional[str]): Provider for online modules (``qwen`` / ``glm`` / ``openai``). Set to ``local`` to force a local TrainableModule.
+    type (Optional[str]): Model type. If omitted, it will try to fetch from kwargs or be inferred by the online module.
+    config (Union[str, bool]): Whether to enable overrides from ``auto_model_config_map``, or a user-specified config file path. Defaults to True.
+    **kwargs: Accepts `base_model` and `embed_model_name` as synonyms for `model`; does not accept other user-provided fields.
 ''')
 
 add_chinese_doc('OnlineModule', '''\

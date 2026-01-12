@@ -5,7 +5,6 @@ from .onlinemodule import (
 )
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from .onlinemodule.map_model_type import get_model_type
-from lazyllm import LOG
 
 
 class _OnlineModuleMeta(type):

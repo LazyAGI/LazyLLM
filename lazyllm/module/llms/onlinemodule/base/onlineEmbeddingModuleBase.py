@@ -35,7 +35,8 @@ class OnlineEmbeddingModuleBase(OnlineModuleBase):
     def batch_size(self, value: int):
         self._batch_size = value
 
-    def forward(self, input: Union[List, str], url: str = None, model: str = None, **kwargs) -> Union[List[float], List[List[float]]]:
+    def forward(self, input: Union[List, str], url: str = None, model: str = None, **kwargs
+                ) -> Union[List[float], List[List[float]]]:
         runtime_url = url or kwargs.pop('base_url', kwargs.pop('embed_url', None)) or self._embed_url
         runtime_model = model or kwargs.pop('model_name', kwargs.pop('embed_model_name', None)) or self._embed_model_name
 

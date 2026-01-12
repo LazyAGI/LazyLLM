@@ -16,7 +16,7 @@ manylinux-x86_64-image = "manylinux2014"
 
 [project]
 name = "lazyllm"
-version = "0.7.1"
+version = "0.7.2"
 description = "A Low-code Development Tool For Building Multi-agent LLMs Applications."
 authors = [{name = "wangzhihong", email = "wangzhihong@sensetime.com"}]
 license = "Apache-2.0"
