@@ -1,9 +1,9 @@
 import os
 from enum import Enum
 import json
+import threading
 from typing import List, Union, Optional
 from contextlib import contextmanager
-import logging
 
 
 class Mode(Enum):
@@ -12,15 +12,26 @@ class Mode(Enum):
     Debug = 2,
 
 
-class _MetaDoc(type):
-    _description = dict()
+class _ConfigMeta(type):
+    _registered_cfgs = dict()
+    _env_name_map = dict()
     _doc = ''
+    _instances = dict()
+    _lock = threading.RLock()
+
+    def __call__(cls, prefix: str = 'LAZYLLM', *args, **kwargs):
+        if prefix.lower() not in cls._instances:
+            with cls._lock:
+                if prefix.lower() not in cls._instances:
+                    cls._instances[prefix.lower()] = super().__call__(prefix, *args, **kwargs)
+        return cls._instances[prefix.lower()]
 
     @staticmethod
     def _get_description(name):
-        desc = _MetaDoc._description[name]
+        desc = _ConfigMeta._registered_cfgs[name]
         if not desc: raise ValueError(f'Description for {name} is not found')
-        doc = (f'  - Description: {desc["description"]}, type: `{desc["type"]}`, default: `{desc["default"]}`<br>\n')
+        doc = (f'  - Description: {desc["description"]}, type: `{desc["type"].__name__}`, '
+               'default: `{desc["default"]}`<br>\n')
         if (options := desc.get('options')):
             doc += f'  - Options: {", ".join(options)}<br>\n'
         if (env := desc.get('env')):
@@ -36,31 +47,32 @@ class _MetaDoc(type):
     def __doc__(self):
         doc = f'{self._doc}\n**LazyLLM Configurations:**\n\n'
         return doc + '<br>\n'.join([f'- **{name}**:<br>\n{self._get_description(name)}'
-                                    for name in self._description.keys()])
+                                    for name in self._registered_cfgs.keys()])
 
     @__doc__.setter
     def __doc__(self, value):
         self._doc = value
 
+    def __contains__(self, key):
+        return key.lower() in self._instances or '_' in key and key.split('_')[0].lower() in self._instances
 
-class Config(metaclass=_MetaDoc):
-    def __init__(self, prefix='LAZYLLM', home: Optional[str] = None, config_file: str = 'config.json'):
-        self._config_params = dict()
-        self._env_map_name = dict()
-        self._prefix = prefix
-        self.impl, self.cfgs = dict(), dict()
+
+class Config(metaclass=_ConfigMeta):
+    def __init__(self, prefix: str = 'LAZYLLM', home: Optional[str] = None, config_file: str = 'config.json'):
+        self._prefix = prefix.upper()
+        self._impl, self._cfgs = dict(), dict()
         if not home:
-            home = '.lazyllm' if prefix == 'LAZYLLM' else f'.lazyllm_{prefix.lower()}'
+            home = '.lazyllm' if self._prefix == 'LAZYLLM' else f'.lazyllm_{prefix.lower()}'
             home = os.path.join(os.path.expanduser('~'), home)
         self.add('home', str, os.path.expanduser(home), 'HOME', description='The default home directory for LazyLLM.')
         os.makedirs(home, exist_ok=True)
         self._cgf_path = os.path.join(self['home'], config_file)
         if os.path.exists(self._cgf_path):
             with open(self._cgf_path, 'r+') as f:
-                self.cfgs = Config.get_config(json.loads(f))
+                self._cfgs = Config.get_config(json.loads(f))
 
     def done(self):
-        assert len(self.cfgs) == 0, f'Invalid cfgs ({"".join(self.cfgs.keys())}) are given in {self._cgf_path}'
+        assert len(self._cfgs) == 0, f'Invalid cfgs ({"".join(self._cfgs.keys())}) are given in {self._cgf_path}'
         return self
 
     def getenv(self, name, type, default=None):
@@ -74,73 +86,81 @@ class Config(metaclass=_MetaDoc):
         return cfg
 
     def get_all_configs(self):
-        return self.impl
+        return self._impl
 
     @contextmanager
     def temp(self, name, value):
         old_value = self[name]
-        self.impl[name] = value
+        self._impl[name] = value
         yield
-        self.impl[name] = old_value
+        self._impl[name] = old_value
 
     def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
             *, options: Optional[List] = None, description: Optional[str] = None):
-        update_params = (type, default, env)
-        if name not in self._config_params or self._config_params[name] != update_params:
-            if name in self._config_params:
-                logging.warning(f'The default configuration parameter {name}({self._config_params[name]}) '
-                                f'has been added, but a new {name}({update_params}) has been added repeatedly.')
-            self._config_params.update({name: update_params})
-            envs = [env] if isinstance(env, str) else env.keys() if isinstance(env, dict) else env
-            for k in envs: self._env_map_name[(f'{self._prefix.lower()}_' + k).upper()] = name
+        if name in Config.__dict__.keys():
+            raise RuntimeError(f'{name} is attribute of Config, please change it!')
+        update_params = dict(type=type, default=default, env=env, options=options, description=description)
+        if name not in _ConfigMeta._registered_cfgs or _ConfigMeta._registered_cfgs[name] != update_params:
+            _ConfigMeta._registered_cfgs[name] = update_params
+            if not env: env = name.lower()
+            for k in ([env] if isinstance(env, str) else env.keys() if isinstance(env, dict) else env):
+                _ConfigMeta._env_name_map[k.lower()] = name
         self._update_impl(name, type, default, env)
-        if self._prefix == 'LAZYLLM':
-            _MetaDoc._description[name] = dict(type=type.__name__, default=default,
-                                               env=env, options=options, description=description)
         return self
 
     def _update_impl(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None,
-                     env: Union[str, dict] = None):
-        self.impl[name] = self.cfgs.pop(name) if name in self.cfgs else default
+                     env: Union[str, dict, list] = None):
+        self._impl[name] = self._cfgs.pop(name) if name in self._cfgs else default
         if isinstance(env, dict):
             for k, v in env.items():
                 if self.getenv(k, bool):
-                    self.impl[name] = v
+                    self._impl[name] = v
                     break
         elif isinstance(env, list):
             for k in env:
-                if (v := self.getenv(k, bool)):
-                    self.impl[name] = v
+                if (v := self.getenv(k, type)):
+                    self._impl[name] = v
                     break
         elif env:
-            self.impl[name] = self.getenv(env, type, self.impl[name])
-        if not isinstance(self.impl[name], type) and self.impl[name] is not None: raise TypeError(
+            self._impl[name] = self.getenv(env, type, self._impl[name])
+        if not isinstance(self._impl[name], type) and self._impl[name] is not None: raise TypeError(
             f'Invalid config type for {name}, type is {type}')
 
     def __getitem__(self, name):
         try:
             if isinstance(name, bytes): name = name.decode('utf-8')
-            return self.impl[name]
+            name = name.lower()
+            if name.startswith(f'{self._prefix.lower()}_'): name = name[len(self._prefix) + 1:]
+            return self._impl[name]
         except KeyError:
             raise RuntimeError(f'Key `{name}` is not in lazyllm global config')
 
+    def __getattr__(self, __key: str):
+        try:
+            return self[__key]
+        except (RuntimeError, KeyError):
+            raise AttributeError(f'class {self.__class__.__name__} has no attribute {__key}')
+
     def __str__(self):
-        return str(self.impl)
+        return str(self._impl)
+
+    @property
+    def _envs(self):
+        return [f'{self._prefix}_{e}'.lower() for e in _ConfigMeta._env_name_map.keys()]
 
     def refresh(self, targets: Union[bytes, str, List[str]] = None) -> None:
-        names = targets
+        names, all_envs = targets, self._envs
         if isinstance(targets, bytes): targets = targets.decode('utf-8')
         if isinstance(targets, str):
-            names = targets.lower()
-            if names.startswith(f'{self._prefix.lower()}_'):
-                names = names[(len(self._prefix) + 1):]
-            names = [names]
+            names = [targets.lower()]
         elif targets is None:
-            curr_envs = [key for key in os.environ.keys() if key.startswith(f'{self._prefix}_')]
-            names = list(set([self._env_map_name[key] for key in curr_envs if key in self._env_map_name]))
+            names = [key.lower() for key in os.environ.keys() if key.lower() in all_envs]
         assert isinstance(names, list)
         for name in names:
-            if name in self.impl: self._update_impl(name, *self._config_params[name])
+            if name.lower() in all_envs:
+                name = _ConfigMeta._env_name_map[name[len(self._prefix) + 1:]]
+            cfg = _ConfigMeta._registered_cfgs[name]
+            if name in self._impl: self._update_impl(name, cfg['type'], cfg['default'], cfg['env'])
 
 config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug),
                       description='The default mode for LazyLLM.'

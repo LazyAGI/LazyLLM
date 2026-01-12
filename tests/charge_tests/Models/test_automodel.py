@@ -37,7 +37,7 @@ def set_sensenova_env(monkeypatch, value):
 def reset_env(monkeypatch):
     monkeypatch.delenv('LAZYLLM_TRAINABLE_MODULE_CONFIG_MAP_PATH', raising=False)
     monkeypatch.delenv('LAZYLLM_SENSENOVA_API_KEY', raising=False)
-    monkeypatch.setitem(lazyllm.config.impl, 'auto_model_config_map_path', CONFIG_PATH)
+    monkeypatch.setitem(lazyllm.config._impl, 'auto_model_config_map_path', CONFIG_PATH)
     lazyllm.config.refresh('sensenova_api_key')
 
 
