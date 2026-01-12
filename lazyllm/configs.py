@@ -44,11 +44,14 @@ class _MetaDoc(type):
 
 
 class Config(metaclass=_MetaDoc):
-    def __init__(self, prefix='LAZYLLM', home=os.path.join(os.path.expanduser('~'), '.lazyllm')):  # noqa B008
+    def __init__(self, prefix='LAZYLLM', home=None):  # noqa B008
         self._config_params = dict()
         self._env_map_name = dict()
-        self.prefix = prefix
+        self._prefix = prefix
         self.impl, self.cfgs = dict(), dict()
+        if not home:
+            home = '.lazyllm' if prefix == 'LAZYLLM' else f'.lazyllm_{prefix.lower()}'
+            home = os.path.join(os.path.expanduser('~'), home)
         self.add('home', str, os.path.expanduser(home), 'HOME', description='The default home directory for LazyLLM.')
         os.makedirs(home, exist_ok=True)
         self.cgf_path = os.path.join(self['home'], 'config.json')
@@ -61,7 +64,7 @@ class Config(metaclass=_MetaDoc):
         return self
 
     def getenv(self, name, type, default=None):
-        r = os.getenv(f'{self.prefix}_{name.upper()}', default)
+        r = os.getenv(f'{self._prefix}_{name.upper()}', default)
         if type == bool:
             return r in (True, 'TRUE', 'True', 1, 'ON', '1')
         return type(r) if r is not None else r
@@ -89,13 +92,14 @@ class Config(metaclass=_MetaDoc):
                                 f'has been added, but a new {name}({update_params}) has been added repeatedly.')
             self._config_params.update({name: update_params})
             if isinstance(env, str):
-                self._env_map_name[('lazyllm_' + env).upper()] = name
+                self._env_map_name[(f'{self._prefix.lower()}_' + env).upper()] = name
             elif isinstance(env, dict):
                 for k in env.keys():
-                    self._env_map_name[('lazyllm_' + k).upper()] = name
+                    self._env_map_name[(f'{self._prefix.lower()}_' + k).upper()] = name
         self._update_impl(name, type, default, env)
-        _MetaDoc._description[name] = dict(type=type.__name__, default=default,
-                                           env=env, options=options, description=description)
+        if self._prefix == 'LAZYLLM':
+            _MetaDoc._description[name] = dict(type=type.__name__, default=default,
+                                               env=env, options=options, description=description)
         return self
 
     def _update_impl(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None,
@@ -126,11 +130,11 @@ class Config(metaclass=_MetaDoc):
         if isinstance(targets, bytes): targets = targets.decode('utf-8')
         if isinstance(targets, str):
             names = targets.lower()
-            if names.startswith('lazyllm_'):
-                names = names[8:]
+            if names.startswith(f'{self._prefix.lower()}_'):
+                names = names[(len(self._prefix) + 1):]
             names = [names]
         elif targets is None:
-            curr_envs = [key for key in os.environ.keys() if key.startswith('LAZYLLM_')]
+            curr_envs = [key for key in os.environ.keys() if key.startswith(f'{self._prefix}_')]
             names = list(set([self._env_map_name[key] for key in curr_envs if key in self._env_map_name]))
         assert isinstance(names, list)
         for name in names:
