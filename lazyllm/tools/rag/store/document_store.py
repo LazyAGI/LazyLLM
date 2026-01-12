@@ -211,22 +211,35 @@ class _DocumentStore(object):
             raise
 
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                  group: Optional[str] = None, kb_id: Optional[str] = None, **kwargs) -> List[DocNode]:
+                  group: Optional[str] = None, kb_id: Optional[str] = None,
+                  limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
+                  **kwargs) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
         try:
-            segments = self.get_segments(uids, doc_ids, group, kb_id, **kwargs)
-            return [self._deserialize_node(segment) for segment in segments]
+            result = self.get_segments(uids, doc_ids, group, kb_id,
+                                       limit=limit, offset=offset, return_total=return_total, **kwargs)
+            if return_total:
+                segments, total = result
+                return [self._deserialize_node(segment) for segment in segments], total
+            return [self._deserialize_node(segment) for segment in result]
         except Exception as e:
             LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to get nodes: {e}')
             raise
 
     def get_segments(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
-                     group: Optional[str] = None, kb_id: Optional[str] = None, **kwargs) -> List[dict]:
+                     group: Optional[str] = None, kb_id: Optional[str] = None,
+                     limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
+                     **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
         # get a set of segments by uids
         # get the segments of the whole file -- doc ids only
         # get the segments of a certain group for one file -- doc ids and group (kb_id is optional)
         # forbid to get the segments from multiple kb (only one kb_id is allowed)
-        # TODO: pagination
+        # pagination is applied after merging groups; group=None uses sorted activation order for stability
+        # return_total triggers a full scan to count all matching segments
         try:
+            if offset is None or offset < 0:
+                offset = 0
+            if limit is not None and limit < 0:
+                limit = None
             criteria = {}
             if uids:
                 criteria = {'uid': uids}
@@ -238,7 +251,7 @@ class _DocumentStore(object):
             if kwargs.get('parent'):
                 criteria['parent'] = kwargs['parent']
             if not group:
-                groups = self._activated_groups
+                groups = sorted(self._activated_groups)
             else:
                 groups = [group]
             segments = []
@@ -247,14 +260,18 @@ class _DocumentStore(object):
                     LOG.warning(f'[_DocumentStore - {self._algo_name}] Group {group} is not active, skip')
                     continue
                 segments.extend(self.impl.get(self._gen_collection_name(group), criteria, **kwargs))
-            return segments
+            total = len(segments)
+            if offset > 0 or limit is not None:
+                end = None if limit is None else offset + limit
+                segments = segments[offset:end]
+            return (segments, total) if return_total else segments
         except Exception as e:
             LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to get segments: {e}')
             raise
 
     def update_doc_meta(self, doc_id: str, metadata: dict, kb_id: str = None) -> None:
         kb_id = metadata.get(RAG_KB_ID, None) if kb_id is None else kb_id
-        segments = self.get_segments(doc_ids=[doc_id], kb_id=kb_id)
+        segments = self.get_segments(doc_ids=[doc_id], kb_id=kb_id, return_total=False)
         if not segments:
             LOG.warning(f'[_DocumentStore] No segments found for doc_id: {doc_id} in dataset: {kb_id}')
             return
