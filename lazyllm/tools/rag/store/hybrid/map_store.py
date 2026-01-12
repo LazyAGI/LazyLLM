@@ -2,16 +2,19 @@ import json
 import sqlite3
 import os
 import threading
+import math
 
 from pathlib import Path
 from collections import defaultdict
-from typing import Dict, List, Optional, Union, Set
+from typing import Dict, List, Optional, Union, Set, Any
 
 from lazyllm import LOG
 from lazyllm.common import override
 
 from ..store_base import LazyLLMStoreBase, StoreCapability, DEFAULT_KB_ID
 from ...global_metadata import RAG_DOC_ID, RAG_KB_ID
+from ...doc_node import DocNode
+from ...component.bm25 import BM25
 
 
 class MapStore(LazyLLMStoreBase):
@@ -94,6 +97,8 @@ class MapStore(LazyLLMStoreBase):
             lambda: defaultdict(lambda: defaultdict(set)))
         self._col_parent_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
         self._lock = threading.Lock()
+        self._bm25_cache: Dict[tuple, BM25] = {}
+        self._bm25_cache_lock = threading.Lock()
         if self._uri:
             db_path = Path(self._uri)
             if not db_path.exists():
@@ -124,6 +129,7 @@ class MapStore(LazyLLMStoreBase):
                 self._col_kb_doc_uids[collection_name][kb_id][doc_id].add(uid)
                 self._col_doc_uids[collection_name][doc_id].add(uid)
                 self._col_parent_uids[collection_name][item.get('parent')].add(uid)
+            self._clear_bm25_cache(collection_name)
             return True
         except Exception as e:
             LOG.error(f'[MapStore - upsert] Error upserting data: {e}')
@@ -151,6 +157,7 @@ class MapStore(LazyLLMStoreBase):
                         self._col_kb_doc_uids[collection_name][kb_id][doc_id].discard(uid)
                         self._col_doc_uids[collection_name][doc_id].discard(uid)
                         self._col_parent_uids[collection_name][parent].discard(uid)
+                self._clear_bm25_cache(collection_name)
                 return True
             else:
                 need_delete = self._get_uids_by_criteria(collection_name, criteria)
@@ -167,6 +174,7 @@ class MapStore(LazyLLMStoreBase):
                     self._col_kb_doc_uids[collection_name][kb_id][doc_id].remove(uid)
                     self._col_doc_uids[collection_name][doc_id].remove(uid)
                     self._col_parent_uids[collection_name][parent].remove(uid)
+            self._clear_bm25_cache(collection_name)
             return True
         except Exception as e:
             LOG.error(f'[MapStore - delete] Error deleting data: {e}')
@@ -271,8 +279,151 @@ class MapStore(LazyLLMStoreBase):
         }
 
     @override
-    def search(self, collection_name: str, query: str, topk: int,
-               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None, **kwargs) -> List[dict]:
-        # TODO(chenjiahao): implement search in map store, using default index to search data in map store
-        raise NotImplementedError(
-            '[MapStore - search] Not implemented, please use default index to search data in map store...')
+    def search(self, collection_name: str, query: Optional[str] = None,
+               query_embedding: Optional[Union[dict, List[float]]] = None, topk: int = 10,
+               filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
+               embed_key: Optional[str] = None, **kwargs) -> List[dict]:
+        segments = self.get(collection_name=collection_name, criteria=None)
+        segments = self._apply_filters(segments, filters)
+        if query_embedding is not None:
+            return self._search_by_embedding(segments, query_embedding, topk, embed_key)
+        if not query:
+            return []
+        language = kwargs.get('language', 'en')
+        return self._search_by_text(collection_name, segments, query, topk, language, filters)
+
+    def _apply_filters(self, segments: List[dict],
+                       filters: Optional[Dict[str, Union[str, int, List, Set]]]) -> List[dict]:
+        if not filters:
+            return segments
+        filtered = []
+        for seg in segments:
+            global_meta = seg.get('global_meta', {})
+            for name, candidates in filters.items():
+                value = global_meta.get(name)
+                if isinstance(candidates, (list, set)):
+                    if value not in candidates:
+                        break
+                else:
+                    if value != candidates:
+                        break
+            else:
+                filtered.append(seg)
+        return filtered
+
+    def _search_by_text(self, collection_name: str, segments: List[dict], query: str, topk: int,
+                        language: str, filters: Optional[Dict[str, Union[str, int, List, Set]]]) -> List[dict]:
+        nodes = []
+        uid2segment = {}
+        for seg in segments:
+            content = seg.get('content', '')
+            if not content:
+                continue
+            uid = seg.get('uid')
+            node = DocNode(uid=uid, content=content, metadata=seg.get('meta', {}),
+                           global_metadata=seg.get('global_meta', {}))
+            nodes.append(node)
+            if uid:
+                uid2segment[uid] = seg
+        if not nodes:
+            return []
+        topk = len(nodes) if topk is None else min(topk, len(nodes))
+        filter_key = self._make_filter_key(filters)
+        cache_key = (collection_name, language, filter_key, topk)
+        bm25 = self._get_bm25(cache_key, nodes, language, topk)
+        results = bm25.retrieve(query)
+        scored = []
+        for node, score in results:
+            seg = uid2segment.get(node.uid)
+            if not seg:
+                continue
+            item = dict(seg)
+            item['score'] = float(score)
+            scored.append(item)
+        return scored
+
+    def _search_by_embedding(self, segments: List[dict], query_embedding: Union[dict, List[float]],
+                             topk: int, embed_key: Optional[str]) -> List[dict]:
+        query_vector = self._select_query_embedding(query_embedding, embed_key)
+        if query_vector is None:
+            LOG.warning('[MapStore - search] Missing query embedding for search')
+            return []
+        scored = []
+        for seg in segments:
+            seg_embed = seg.get('embedding') or {}
+            vector = self._select_segment_embedding(seg_embed, embed_key)
+            if vector is None:
+                continue
+            score = self._cosine_similarity(query_vector, vector)
+            item = dict(seg)
+            item['score'] = score
+            scored.append(item)
+        scored.sort(key=lambda x: x.get('score', 0), reverse=True)
+        return scored[:topk] if topk is not None else scored
+
+    def _select_query_embedding(self, query_embedding: Union[dict, List[float]],
+                                embed_key: Optional[str]) -> Optional[Union[dict, List[float]]]:
+        if isinstance(query_embedding, dict):
+            if embed_key:
+                return query_embedding.get(embed_key)
+            if len(query_embedding) == 1:
+                return next(iter(query_embedding.values()))
+            return None
+        return query_embedding
+
+    def _select_segment_embedding(self, embedding: Dict[str, Any],
+                                  embed_key: Optional[str]) -> Optional[Union[dict, List[float]]]:
+        if embed_key:
+            return embedding.get(embed_key)
+        if len(embedding) == 1:
+            return next(iter(embedding.values()))
+        return None
+
+    def _cosine_similarity(self, query: Union[dict, List[float]],
+                           vector: Union[dict, List[float]]) -> float:
+        if isinstance(query, dict) and isinstance(vector, dict):
+            dot = sum(val * vector.get(key, 0.0) for key, val in query.items())
+            q_norm = math.sqrt(sum(val * val for val in query.values()))
+            v_norm = math.sqrt(sum(val * val for val in vector.values()))
+        elif isinstance(query, dict):
+            dot = sum(vector[int(key)] * val for key, val in query.items() if int(key) < len(vector))
+            q_norm = math.sqrt(sum(val * val for val in query.values()))
+            v_norm = math.sqrt(sum(val * val for val in vector))
+        elif isinstance(vector, dict):
+            dot = sum(query[int(key)] * val for key, val in vector.items() if int(key) < len(query))
+            q_norm = math.sqrt(sum(val * val for val in query))
+            v_norm = math.sqrt(sum(val * val for val in vector.values()))
+        else:
+            length = min(len(query), len(vector))
+            dot = sum(query[i] * vector[i] for i in range(length))
+            q_norm = math.sqrt(sum(val * val for val in query))
+            v_norm = math.sqrt(sum(val * val for val in vector))
+        if q_norm == 0 or v_norm == 0:
+            return 0.0
+        return dot / (q_norm * v_norm)
+
+    def _get_bm25(self, cache_key: tuple, nodes: List[DocNode], language: str, topk: int) -> BM25:
+        with self._bm25_cache_lock:
+            cached = self._bm25_cache.get(cache_key)
+            if cached:
+                return cached
+            bm25 = BM25(nodes, language=language, topk=topk)
+            self._bm25_cache[cache_key] = bm25
+            return bm25
+
+    def _clear_bm25_cache(self, collection_name: str) -> None:
+        with self._bm25_cache_lock:
+            for key in list(self._bm25_cache.keys()):
+                if key[0] == collection_name:
+                    del self._bm25_cache[key]
+
+    def _make_filter_key(self, filters: Optional[Dict[str, Union[str, int, List, Set]]]) -> Optional[tuple]:
+        if not filters:
+            return None
+        items = []
+        for key in sorted(filters.keys()):
+            value = filters[key]
+            if isinstance(value, (list, set)):
+                value = tuple(sorted(value, key=repr))
+            items.append((key, value))
+        return tuple(items)
