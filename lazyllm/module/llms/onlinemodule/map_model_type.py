@@ -256,6 +256,8 @@ MODEL_MAPPING = {
     'qwen-vl-v1': 'vlm',
     'qwen-vl-chat-v1': 'vlm',
     'Qwen3-Omni-Captioner': 'vlm',
+    'GLM-4.5V': 'vlm',
+    'GLM-4.6V': 'vlm',
 
     # OCR
     'qwen-vl-ocr': 'ocr',
@@ -263,6 +265,7 @@ MODEL_MAPPING = {
     'qwen-vl-ocr-2025-08-28': 'ocr',
     'qwen-vl-ocr-2025-04-13': 'ocr',
     'qwen-vl-ocr-2024-10-28': 'ocr',
+    'DeepSeek-OCR': 'ocr',
 
     # STT
     'qwen-audio-turbo': 'stt',
