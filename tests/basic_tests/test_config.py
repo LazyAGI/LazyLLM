@@ -7,7 +7,7 @@ import contextlib
 import inspect
 
 
-isolate_env = 'PARROTS_ISOLATE_STATUS'
+isolate_env = 'LAZYLLM_ISOLATE_STATUS'
 
 
 def isolated(func):

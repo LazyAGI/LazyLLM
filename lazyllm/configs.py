@@ -151,14 +151,14 @@ class Config(metaclass=_ConfigMeta):
     def refresh(self, targets: Union[bytes, str, List[str]] = None) -> None:
         names, all_envs = targets, self._envs
         if isinstance(targets, bytes): targets = targets.decode('utf-8')
-        if isinstance(targets, str):
-            names = [targets.lower()]
+        if isinstance(targets, str): names = [targets.lower()]
         elif targets is None:
             names = [key.lower() for key in os.environ.keys() if key.lower() in all_envs]
         assert isinstance(names, list)
         for name in names:
             if name.lower() in all_envs:
                 name = _ConfigMeta._env_name_map[name[len(self._prefix) + 1:]]
+            elif name in Config: continue
             cfg = _ConfigMeta._registered_cfgs[name]
             if name in self._impl: self._update_impl(name, cfg['type'], cfg['default'], cfg['env'])
 
@@ -182,3 +182,7 @@ config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBU
                 ).add('allow_internal_network', bool, False, 'ALLOW_INTERNAL_NETWORK',
                       description='Whether to allow loading images from internal network addresses. '
                                   'Set to False for security in production environments.')
+
+def refresh_config(key):
+    if key in Config:
+        Config._instances[key.split('_')[0].lower()].refresh(key)

@@ -4,7 +4,7 @@ __version__ = '0.7.2'
 
 import importlib
 import builtins
-from .configs import config
+from .configs import config, refresh_config
 from .configs import * # noqa F401 of Config
 from .common import *  # noqa F403
 from .launcher import LazyLLMLaunchersBase
@@ -26,7 +26,7 @@ from .patch import patch_os_env
 from .docs import add_doc
 config.done()
 
-patch_os_env(lambda key, value: config.refresh(key), config.refresh)
+patch_os_env(lambda key, value: refresh_config(key), refresh_config)
 
 del LazyLLMRegisterMetaClass  # noqa F821
 del LazyLLMRegisterMetaABCClass  # noqa F821
@@ -63,6 +63,8 @@ __all__ = [
 
     # configs
     'Mode',
+    'config',
+    'refresh_config',
 
     # module
     'ModuleBase',
