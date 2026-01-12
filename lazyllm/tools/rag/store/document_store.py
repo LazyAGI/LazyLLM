@@ -236,24 +236,9 @@ class _DocumentStore(object):
         # pagination is applied after merging groups; group=None uses sorted activation order for stability
         # return_total triggers a full scan to count all matching segments
         try:
-            if offset is None or offset < 0:
-                offset = 0
-            if limit is not None and limit < 0:
-                limit = None
-            criteria = {}
-            if uids:
-                criteria = {'uid': uids}
-            if doc_ids:
-                criteria = {RAG_DOC_ID: doc_ids}
-            if kb_id:
-                criteria[RAG_KB_ID] = kb_id
-            # for find method, parent id should be in the criteria
-            if kwargs.get('parent'):
-                criteria['parent'] = kwargs['parent']
-            if not group:
-                groups = sorted(self._activated_groups)
-            else:
-                groups = [group]
+            limit, offset = self._normalize_pagination(limit, offset)
+            criteria = self._build_get_criteria(uids, doc_ids, kb_id, kwargs.get('parent'))
+            groups = self._resolve_groups(group)
             segments = []
             for group in groups:
                 if not self.is_group_active(group):
@@ -261,9 +246,7 @@ class _DocumentStore(object):
                     continue
                 segments.extend(self.impl.get(self._gen_collection_name(group), criteria, **kwargs))
             total = len(segments)
-            if offset > 0 or limit is not None:
-                end = None if limit is None else offset + limit
-                segments = segments[offset:end]
+            segments = self._slice_segments(segments, limit, offset)
             return (segments, total) if return_total else segments
         except Exception as e:
             LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to get segments: {e}')
@@ -283,6 +266,39 @@ class _DocumentStore(object):
             self.impl.upsert(self._gen_collection_name(group), segments)
         LOG.info(f'[_DocumentStore] Updated metadata for doc_id: {doc_id} in dataset: {kb_id}')
         return
+
+    @staticmethod
+    def _normalize_pagination(limit: Optional[int], offset: Optional[int]) -> Tuple[Optional[int], int]:
+        if offset is None or offset < 0:
+            offset = 0
+        if limit is not None and limit < 0:
+            limit = None
+        return limit, offset
+
+    @staticmethod
+    def _slice_segments(segments: List[dict], limit: Optional[int], offset: int) -> List[dict]:
+        if offset > 0 or limit is not None:
+            end = None if limit is None else offset + limit
+            return segments[offset:end]
+        return segments
+
+    def _resolve_groups(self, group: Optional[str]) -> List[str]:
+        if not group:
+            return sorted(self._activated_groups)
+        return [group]
+
+    def _build_get_criteria(self, uids: Optional[List[str]], doc_ids: Optional[Set],
+                            kb_id: Optional[str], parent: Optional[Union[str, List[str]]]) -> Dict[str, Any]:
+        criteria: Dict[str, Any] = {}
+        if uids:
+            criteria = {'uid': uids}
+        if doc_ids:
+            criteria[RAG_DOC_ID] = doc_ids
+        if kb_id:
+            criteria[RAG_KB_ID] = kb_id
+        if parent:
+            criteria['parent'] = parent
+        return criteria
 
     def query(self, query: str, group_name: str, similarity_name: Optional[str] = None,
               similarity_cut_off: Union[float, Dict[str, float]] = float('-inf'),
