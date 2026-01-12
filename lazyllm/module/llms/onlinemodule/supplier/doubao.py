@@ -95,7 +95,6 @@ class DoubaoMultiModal(LazyLLMDoubaoBase, OnlineMultiModalBase):
         self._client = volcenginesdkarkruntime.Ark(base_url=url, api_key=api_key)
 
 
-
 class DoubaoTextToImageModule(DoubaoMultiModal):
     MODEL_NAME = 'doubao-seedream-4-0-250828'
     IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'

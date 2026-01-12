@@ -83,6 +83,7 @@ class LazyLLM{name}Base(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].b
 config.add('use_builtin', bool, False, 'USE_BUILTIN',
            description='Whether to use registry modules in python builtin.')
 
+
 class LazyLLMRegisterMetaClass(_MetaBind):
     all_clses = LazyDict()
 
@@ -112,6 +113,62 @@ class LazyLLMRegisterMetaClass(_MetaBind):
             if (f := getattr(new_cls, '__lazyllm_after_registry_hook__', None)):
                 f(new_cls._lazy_llm_group, name, isleaf=True)
         return new_cls
+
+    @classmethod
+    def _handle_base_class(cls, new_cls, name: str):
+        ori = re.match('(LazyLLM)(.*)(Base)', name.split('.')[-1])[2]
+        group = ori.lower()
+
+        new_cls._lazy_llm_group = f'{getattr(new_cls, "_lazy_llm_group", "")}.{group}'.strip('.')
+        ld = LazyDict(group, new_cls)
+
+        if new_cls._lazy_llm_group == group:
+            for m in (builtins, lazyllm) if config['use_builtin'] else (lazyllm,):
+                assert not (hasattr(m, group) and hasattr(m, ori)), f'group name \'{ori}\' cannot be used'
+            for m in (builtins, lazyllm) if config['use_builtin'] else (lazyllm,):
+                setattr(m, group, ld)
+                setattr(m, ori, ld)
+
+        cls.all_clses[new_cls._lazy_llm_group] = ld
+
+    @classmethod
+    def _handle_impl_class(cls, new_cls, bases):
+        group_override = None
+        key_override = None
+
+        if hasattr(new_cls, '__lazyllm_group__'):
+            group_override = new_cls.__lazyllm_group__()
+            if isinstance(group_override, tuple) and len(group_override) == 2:
+                group_override, key_override = group_override
+
+        if group_override == '':
+            return
+
+        if group_override:
+            new_cls._lazy_llm_group = group_override
+            _get_base_cls_from_registry(group_override)
+        else:
+            base_group = None
+            for base in bases:
+                if hasattr(base, '_lazy_llm_group'):
+                    base_group = base._lazy_llm_group
+                    break
+
+            if base_group and base_group.startswith('online'):
+                if new_cls.__name__.endswith('Base'):
+                    key_override = new_cls._lazy_llm_group
+                    new_cls._lazy_llm_group = base_group
+                else:
+                    assert '.' not in new_cls._lazy_llm_group, (
+                        f'group name \'{new_cls._lazy_llm_group}\' should not contain "."')
+                    new_cls._lazy_llm_group = f'{base_group}.{new_cls._lazy_llm_group}'
+                    _get_base_cls_from_registry(new_cls._lazy_llm_group)
+
+        group = cls.all_clses[new_cls._lazy_llm_group]
+        reg_key = key_override or new_cls.__name__
+        assert reg_key not in group, (
+            f'duplicate class \'{reg_key}\' in group {new_cls._lazy_llm_group}')
+        group[reg_key] = new_cls
 
 
 class LazyLLMRegisterMetaABCClass(LazyLLMRegisterMetaClass, ABCMeta): pass

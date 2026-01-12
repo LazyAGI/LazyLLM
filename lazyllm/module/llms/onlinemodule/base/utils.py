@@ -11,9 +11,6 @@ config.add('cache_online_module', bool, False, 'CACHE_ONLINE_MODULE',
 def _normalize_key(s: str) -> str:
     return re.sub(r'[_\-\s]', '', s).lower()
 
-def _split_camel(s: str) -> List[str]:
-    return re.findall(r'[A-Z]+(?=[A-Z][a-z]|[0-9]|$)|[A-Z]?[a-z0-9]+', s)
-
 def _parse_supplier(cls) -> Optional[str]:
     for base in cls.__mro__:
         name = base.__name__
@@ -25,31 +22,24 @@ def _parse_type(cls, supplier_key: str) -> Optional[str]:
     name = cls.__name__
     if name.endswith('Module'):
         name = name[:-len('Module')]
-    parts = _split_camel(name)
-    if not parts:
+    if name.endswith('MultiModal'):
+        name = name[:-len('MultiModal')]
+    normalized = _normalize_key(name)
+    if not normalized.startswith(supplier_key):
         return None
-    acc = ''
-    idx = 0
-    for i, p in enumerate(parts):
-        acc += p
-        if _normalize_key(acc) == supplier_key:
-            idx = i + 1
-            break
-    else:
-        return None
-    type_parts = parts[idx:]
-    if not type_parts:
-        return None
-    return _normalize_key(''.join(type_parts))
+    type_key = normalized[len(supplier_key):]
+    return type_key or None
 
-def build_online_group(cls) -> Optional[str]:
+def build_online_group(cls) -> Optional[Union[str, tuple]]:
+    if cls.__name__.endswith('Base'):
+        return None
     supplier = _parse_supplier(cls)
     if not supplier:
         return None
     type_key = _parse_type(cls, supplier)
     if not type_key:
-        return None
-    return f'online.{supplier}.{type_key}'
+        return ''
+    return (f'online.{supplier}', type_key)
 
 
 class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):

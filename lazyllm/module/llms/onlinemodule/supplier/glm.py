@@ -262,7 +262,7 @@ class GLMMultiModal(LazyLLMGLMBase, OnlineMultiModalBase):
         self._client = zhipuai.ZhipuAI(api_key=api_key, base_url=base_url)
 
 
-class GLMSTTMultiModal(GLMMultiModal):
+class GLMSTTModule(GLMMultiModal):
     MODEL_NAME = 'glm-asr'
 
     def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
@@ -282,7 +282,6 @@ class GLMSTTMultiModal(GLMMultiModal):
         )
         return transcriptResponse.text
 
-GLMSTTModule = GLMSTTMultiModal
 
 class GLMTextToImageModule(GLMMultiModal):
     MODEL_NAME = 'cogview-4-250304'

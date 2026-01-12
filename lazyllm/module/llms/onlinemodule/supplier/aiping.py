@@ -9,7 +9,11 @@ from ..fileHandler import FileHandlerBase
 TIMEOUT = 300
 
 
-class AipingModule(OnlineChatModuleBase, FileHandlerBase):
+class LazyLLMAipingBase():
+    pass
+
+
+class AipingChat(LazyLLMAipingBase, OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = [
         'Qwen2.5-VL-',
         'Qwen3-VL-',
@@ -43,7 +47,7 @@ class AipingModule(OnlineChatModuleBase, FileHandlerBase):
             return False
 
 
-class AipingEmbedding(OnlineEmbeddingModuleBase):
+class AipingEmbedding(LazyLLMAipingBase, OnlineEmbeddingModuleBase):
     def __init__(self, embed_url: str = 'https://aiping.cn/api/v1/embeddings',
                  embed_model_name: str = 'text-embedding-v1', api_key: str = None,
                  batch_size: int = 16, **kw):
@@ -51,7 +55,7 @@ class AipingEmbedding(OnlineEmbeddingModuleBase):
                          embed_model_name, batch_size=batch_size, **kw)
 
 
-class AipingReranking(OnlineEmbeddingModuleBase):
+class AipingReranking(LazyLLMAipingBase, OnlineEmbeddingModuleBase):
     def __init__(self, embed_url: str = 'https://aiping.cn/api/v1/rerank',
                  embed_model_name: str = 'Qwen3-Reranker-0.6B', api_key: str = None, **kw):
         super().__init__('AIPING', embed_url, api_key or lazyllm.config['aiping_api_key'],
@@ -80,7 +84,7 @@ class AipingReranking(OnlineEmbeddingModuleBase):
         return [(result['index'], result['relevance_score']) for result in results]
 
 
-class AipingTextToImageModule(OnlineMultiModalBase):
+class AipingTextToImageModule(LazyLLMAipingBase, OnlineMultiModalBase):
     def __init__(self, api_key: str = None, model_name: str = 'Qwen-Image',
                  base_url: str = 'https://aiping.cn/api/v1/',
                  return_trace: bool = False, **kwargs):
@@ -151,3 +155,6 @@ class AipingTextToImageModule(OnlineMultiModalBase):
         except Exception as e:
             lazyllm.LOG.error(f'Failed to generate image: {e}')
             raise Exception(f'Failed to generate image: {str(e)}')
+
+
+AipingModule = AipingChat
