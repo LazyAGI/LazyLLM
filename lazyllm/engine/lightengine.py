@@ -41,7 +41,8 @@ class LightEngine(Engine):
                     return self._nodes.get(node)
             node = Node(id=node['id'], kind=node['kind'], name=node['name'], args=node['args'],
                         hyperparameter=node.get('hyperparameter'))
-        if node.id not in self._nodes:
+        if node.id not in self._nodes or self._nodes[node.id].kind != \
+           node.kind or self._nodes[node.id].args != node.args:
             self._nodes[node.id] = super(__class__, self).build_node(node)
         return self._nodes[node.id]
 
