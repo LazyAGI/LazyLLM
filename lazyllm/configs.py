@@ -44,7 +44,7 @@ class _MetaDoc(type):
 
 
 class Config(metaclass=_MetaDoc):
-    def __init__(self, prefix='LAZYLLM', home=None):  # noqa B008
+    def __init__(self, prefix='LAZYLLM', home: Optional[str] = None, config_file: str = 'config.json'):
         self._config_params = dict()
         self._env_map_name = dict()
         self._prefix = prefix
@@ -54,13 +54,13 @@ class Config(metaclass=_MetaDoc):
             home = os.path.join(os.path.expanduser('~'), home)
         self.add('home', str, os.path.expanduser(home), 'HOME', description='The default home directory for LazyLLM.')
         os.makedirs(home, exist_ok=True)
-        self.cgf_path = os.path.join(self['home'], 'config.json')
-        if os.path.exists(self.cgf_path):
-            with open(self.cgf_path, 'r+') as f:
+        self._cgf_path = os.path.join(self['home'], config_file)
+        if os.path.exists(self._cgf_path):
+            with open(self._cgf_path, 'r+') as f:
                 self.cfgs = Config.get_config(json.loads(f))
 
     def done(self):
-        assert len(self.cfgs) == 0, f'Invalid cfgs ({"".join(self.cfgs.keys())}) are given in {self.cgf_path}'
+        assert len(self.cfgs) == 0, f'Invalid cfgs ({"".join(self.cfgs.keys())}) are given in {self._cgf_path}'
         return self
 
     def getenv(self, name, type, default=None):
@@ -91,11 +91,8 @@ class Config(metaclass=_MetaDoc):
                 logging.warning(f'The default configuration parameter {name}({self._config_params[name]}) '
                                 f'has been added, but a new {name}({update_params}) has been added repeatedly.')
             self._config_params.update({name: update_params})
-            if isinstance(env, str):
-                self._env_map_name[(f'{self._prefix.lower()}_' + env).upper()] = name
-            elif isinstance(env, dict):
-                for k in env.keys():
-                    self._env_map_name[(f'{self._prefix.lower()}_' + k).upper()] = name
+            envs = [env] if isinstance(env, str) else env.keys() if isinstance(env, dict) else env
+            for k in envs: self._env_map_name[(f'{self._prefix.lower()}_' + k).upper()] = name
         self._update_impl(name, type, default, env)
         if self._prefix == 'LAZYLLM':
             _MetaDoc._description[name] = dict(type=type.__name__, default=default,
@@ -108,6 +105,11 @@ class Config(metaclass=_MetaDoc):
         if isinstance(env, dict):
             for k, v in env.items():
                 if self.getenv(k, bool):
+                    self.impl[name] = v
+                    break
+        elif isinstance(env, list):
+            for k in env:
+                if (v := self.getenv(k, bool)):
                     self.impl[name] = v
                     break
         elif env:
