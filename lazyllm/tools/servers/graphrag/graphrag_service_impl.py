@@ -45,12 +45,12 @@ class _CreateIndexResponse(BaseModel):
 class _IndexState:
     '''Index state containing all GraphRAG data'''
     config: Any
-    communities: pd.DataFrame
-    community_reports: pd.DataFrame
-    entities: pd.DataFrame
-    relationships: pd.DataFrame
-    text_units: pd.DataFrame
-    covariates: Optional[pd.DataFrame] = None
+    communities: 'pd.DataFrame'
+    community_reports: 'pd.DataFrame'
+    entities: 'pd.DataFrame'
+    relationships: 'pd.DataFrame'
+    text_units: 'pd.DataFrame'
+    covariates: 'Optional[pd.DataFrame]' = None
 
 class _QueryRequest(BaseModel):
     query: str = Field(..., description='Search query string')

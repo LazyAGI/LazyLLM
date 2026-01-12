@@ -217,7 +217,12 @@ class SimpleDirectoryReader(ModuleBase):
         user_metadata: Dict = metadata or {}
         metadata_generated: Dict = metadata_genf(str(input_file)) if metadata_genf else {}
         rd = SimpleDirectoryReader.find_extractor_by_file(input_file, file_extractor, pathm)
-        reader = rd(encoding=encoding) if isinstance(rd, TxtReader) else rd() if isinstance(rd, type) else rd
+        if isinstance(rd, type) and issubclass(rd, TxtReader):
+            reader = rd(encoding=encoding)
+        elif isinstance(rd, type):
+            reader = rd()
+        else:
+            reader = rd
         kwargs = {'fs': fs} if fs and not is_default_fs(fs) else {}
 
         try:

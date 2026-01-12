@@ -20,22 +20,23 @@ class _MetaDoc(type):
     def _get_description(name):
         desc = _MetaDoc._description[name]
         if not desc: raise ValueError(f'Description for {name} is not found')
-        doc = (f'    Description: {desc["description"]}, type is `{desc["type"]}`, default is `{desc["default"]}`.\n')
+        doc = (f'  - Description: {desc["description"]}, type: `{desc["type"]}`, default: `{desc["default"]}`<br>\n')
         if (options := desc.get('options')):
-            doc += f'    Options: {", ".join(options)}\n'
+            doc += f'  - Options: {", ".join(options)}<br>\n'
         if (env := desc.get('env')):
             if isinstance(env, str):
-                doc += f'    Environment Variable: {("LAZYLLM_" + env).upper()}\n'
+                doc += f'  - Environment Variable: {("LAZYLLM_" + env).upper()}<br>\n'
             elif isinstance(env, dict):
-                doc += '    Environment Variable:\n'
+                doc += '  - Environment Variable:<br>\n'
                 for k, v in env.items():
-                    doc += f'{("      LAZYLLM_" + k).upper()}: {v}\n'
+                    doc += f'{("    - LAZYLLM_" + k).upper()}: {v}<br>\n'
         return doc
 
     @property
     def __doc__(self):
         doc = f'{self._doc}\n**LazyLLM Configurations:**\n\n'
-        return doc + '\n'.join([f'  **{name}**:\n{self._get_description(name)}' for name in self._description.keys()])
+        return doc + '<br>\n'.join([f'- **{name}**:<br>\n{self._get_description(name)}'
+                                    for name in self._description.keys()])
 
     @__doc__.setter
     def __doc__(self, value):
@@ -63,7 +64,7 @@ class Config(metaclass=_MetaDoc):
         r = os.getenv(f'{self.prefix}_{name.upper()}', default)
         if type == bool:
             return r in (True, 'TRUE', 'True', 1, 'ON', '1')
-        return type(r)
+        return type(r) if r is not None else r
 
     @staticmethod
     def get_config(cfg):
@@ -107,7 +108,7 @@ class Config(metaclass=_MetaDoc):
                     break
         elif env:
             self.impl[name] = self.getenv(env, type, self.impl[name])
-        if not isinstance(self.impl[name], type): raise TypeError(
+        if not isinstance(self.impl[name], type) and self.impl[name] is not None: raise TypeError(
             f'Invalid config type for {name}, type is {type}')
 
     def __getitem__(self, name):
@@ -152,4 +153,6 @@ config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBU
                       description='The default number of workers for thread pool.'
                 ).add('deploy_skip_check_kw', bool, False, 'DEPLOY_SKIP_CHECK_KW',
                       description='Whether to skip check keywords for deployment.'
-                )
+                ).add('allow_internal_network', bool, False, 'ALLOW_INTERNAL_NETWORK',
+                      description='Whether to allow loading images from internal network addresses. '
+                                  'Set to False for security in production environments.')

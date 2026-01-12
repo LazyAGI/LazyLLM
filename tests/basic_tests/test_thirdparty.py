@@ -1,6 +1,7 @@
 import sys
 import pytest
-from lazyllm.thirdparty import faiss
+from lazyllm.thirdparty import faiss, requirements
+from lazyllm import thirdparty
 
 class TestThirdparty(object):
 
@@ -13,7 +14,7 @@ class TestThirdparty(object):
             except ImportError:
                 return False
         third_import_type = type(faiss)
-        monkeypatch.delitem(sys.modules, "faiss", raising=False)
+        monkeypatch.delitem(sys.modules, 'faiss', raising=False)
         assert not check_installed(third_import_type)
 
     def test_lazy_import(self, monkeypatch):
@@ -23,7 +24,7 @@ class TestThirdparty(object):
                 return True
             except (AttributeError, ImportError):
                 return False
-        monkeypatch.delitem(sys.modules, "faiss", raising=False)
+        monkeypatch.delitem(sys.modules, 'faiss', raising=False)
         assert faiss is not None
         assert not check_lazy_import(faiss)
 
@@ -52,3 +53,22 @@ class TestThirdparty(object):
         assert not flag.flag
         _ = path.join
         assert flag.flag
+
+    def test_toml_dependencies_extraction(self):
+        thirdparty.prep_req_dict()
+        assert requirements
+
+    def test_check_package_installed(self):
+        assert thirdparty.check_package_installed('lazyllm')
+        assert thirdparty.check_package_installed(['lazyllm', 'requests'])
+        assert not thirdparty.check_package_installed(['lazyllm', 'requests', 'nonexistent_module_kasduf45123'])
+        assert not thirdparty.check_package_installed('nonexistent_module_kasduf45123')
+
+    def test_load_toml_dep_group(self):
+        assert len(thirdparty.load_toml_dep_group('full')) > 0
+
+    def test_check_dependency_by_group(self):
+        try:
+            assert thirdparty.check_dependency_by_group('standard')
+        except ImportError:
+            assert True, 'Normal exit due to missing dependencies'

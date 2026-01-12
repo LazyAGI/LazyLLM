@@ -1,6 +1,5 @@
 import os
 import time
-import shutil
 import functools
 import threading
 from abc import ABC, abstractmethod
@@ -32,10 +31,15 @@ class _CaseInsensitiveEnumMeta(EnumMeta):
             raise
 
 
+_EQUIVALENT = {'sd': 'text2image'}
+
+
 class LLMType(str, Enum, metaclass=_CaseInsensitiveEnumMeta):
     LLM = 'LLM'
     VLM = 'VLM'
     SD = 'SD'
+    TEXT2IMAGE = 'TEXT2IMAGE'
+    IMAGE_EDITING = 'IMAGE_EDITING'
     TTS = 'TTS'
     STT = 'STT'
     EMBED = 'EMBED'
@@ -44,26 +48,31 @@ class LLMType(str, Enum, metaclass=_CaseInsensitiveEnumMeta):
     OCR = 'OCR'
 
     @classmethod
+    def _normalize(cls, value: str) -> str:
+        v = value.casefold()
+        return _EQUIVALENT.get(v, v)
+
+    @classmethod
     def _missing_(cls, value):
         if isinstance(value, str):
-            v = value.casefold()
+            v = cls._normalize(value)
             for m in cls:
-                if m.value.casefold() == v:
+                if cls._normalize(m.value) == v:
                     return m
             for m in cls:
-                if m.name.casefold() == v:
+                if cls._normalize(m.name) == v:
                     return m
         return None
 
     def __eq__(self, other):
         if isinstance(other, str):
-            return self.value.casefold() == other.casefold()
+            return self._normalize(self.value) == self._normalize(other)
         if isinstance(other, LLMType):
-            return self.value.casefold() == other.value.casefold()
+            return self._normalize(self.value) == self._normalize(other.value)
         return NotImplemented
 
     def __hash__(self):
-        return hash(self.value.casefold())
+        return hash(self._normalize(self.value))
 
 
 class ModelManager():
@@ -225,13 +234,15 @@ class ModelManager():
         # Use `BaseException` to capture `KeyboardInterrupt` and normal `Exceptioin`.
         except BaseException as e:  # noqa B036
             lazyllm.LOG.warning(f'Download encountered an error: {e}')
+            if '401' in str(e) or 'Client Error' in str(e):
+                raise RuntimeError('Authentication failed (401 Error). Please check your access token and '
+                                   'permissions.  And set the token with the environment variable '
+                                   'LAZYLLM_MODEL_SOURCE_TOKEN.')
             if not self.token and 'Permission denied' not in str(e):
                 lazyllm.LOG.warning('Token is empty, which may prevent private models from being downloaded, '
                                     'as indicated by "the model does not exist." Please set the token with the '
                                     'environment variable LAZYLLM_MODEL_SOURCE_TOKEN to download private models.')
-            if os.path.isdir(full_model_dir):
-                shutil.rmtree(full_model_dir)
-                lazyllm.LOG.warning(f'{full_model_dir} removed due to exceptions.')
+            raise RuntimeError(f'Model download failed for model: {model}, with error: {e}')
         return False
 
 class _HubDownloader(ABC):

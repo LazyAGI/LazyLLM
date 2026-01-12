@@ -23,6 +23,7 @@ def reset_env(func):
         'LAZYLLM_DOUBAO_API_KEY',
         'LAZYLLM_SILICONFLOW_API_KEY',
         'LAZYLLM_MINIMAX_API_KEY',
+        'LAZYLLM_AIPING_API_KEY',
     ]
 
     @wraps(func)
@@ -30,12 +31,14 @@ def reset_env(func):
         original_values = {var: os.environ.get(var, None) for var in env_vars_to_reset}
         for var in env_vars_to_reset:
             os.environ.pop(var, None)
-        result = func(*args, **kwargs)
-        for var, value in original_values.items():
-            if value is None:
-                os.environ.pop(var, None)
-            else:
-                os.environ[var] = value
+        try:
+            result = func(*args, **kwargs)
+        finally:
+            for var, value in original_values.items():
+                if value is None:
+                    os.environ.pop(var, None)
+                else:
+                    os.environ[var] = value
         return result
     return wrapper
 
@@ -93,7 +96,8 @@ class TestDeploy(object):
         'lazyllm/components/deploy/lightllm.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_deploy_lightllm(self):
-        m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.lightllm)
+        m = lazyllm.TrainableModule(self.model_path, '', use_model_map=False)\
+            .deploy_method(deploy.lightllm)
         m.evalset(self.inputs)
         m.update_server()
         m.eval()
@@ -107,7 +111,8 @@ class TestDeploy(object):
         'lazyllm/components/auto/autodeploy.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_deploy_auto(self):
-        m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.AutoDeploy)
+        m = lazyllm.TrainableModule(self.model_path, '', use_model_map=False)\
+            .deploy_method(deploy.AutoDeploy)
         assert m._deploy_type != lazyllm.deploy.AutoDeploy
         m.evalset(self.inputs)
         m.update_server()
@@ -119,7 +124,7 @@ class TestDeploy(object):
         'lazyllm/components/auto/auto_helper.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_deploy_auto_without_calling_method(self):
-        m = lazyllm.TrainableModule(self.model_path, '')
+        m = lazyllm.TrainableModule(self.model_path, '', use_model_map=False)
         m.evalset(self.inputs)
         m.update_server()
         m.eval()
@@ -129,7 +134,7 @@ class TestDeploy(object):
         'lazyllm/components/deploy/text_to_speech/bark.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_bark(self):
-        m = lazyllm.TrainableModule('bark')
+        m = lazyllm.TrainableModule('bark', use_model_map=False)
         m.update_server()
         r = m('你好啊，很高兴认识你。')
         res = decode_query_with_filepaths(r)
@@ -139,17 +144,13 @@ class TestDeploy(object):
     @reset_env
     def test_AutoModel(self):
         # No model_name and key
-        chat = lazyllm.AutoModel()
-        assert isinstance(chat, lazyllm.TrainableModule)
-
-        # set framework
-        chat = lazyllm.AutoModel(framework='vllm')
-        assert isinstance(chat, lazyllm.TrainableModule)
+        with pytest.raises(RuntimeError, match='`model` is not provided in AutoModel, and'):
+            chat = lazyllm.AutoModel()
 
         lazyllm.config.add('openai_api_key', str, '123', 'OPENAI_API_KEY')
 
         # set source
-        with pytest.raises(ValueError, match='api_key is required for sensecore'):
+        with pytest.raises(RuntimeError, match='api_key is required for sensecore'):
             chat = lazyllm.AutoModel('sensenova')
         chat = lazyllm.AutoModel(source='openai')
         assert isinstance(chat, lazyllm.OnlineChatModule)

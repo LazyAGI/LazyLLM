@@ -24,7 +24,7 @@ jobs:
         uses: Yikun/hub-mirror-action@master
         with:
           src: github/LazyAGI
-          dst: gitcode/LazyLLM
+          dst: gitcode/LazyAGI
           dst_key: ${{ secrets.GITEE_GITCODE_PRIVATE_KEY }}
           dst_token: ${{ secrets.GITCODE_TOKEN }}
           static_list: "LazyLLM"

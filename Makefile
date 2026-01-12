@@ -15,6 +15,7 @@ lint-flake8:
 
 .ONESHELL:
 lint-flake8-only-diff:
+	@set -e
 	@if [ -n "${CHANGED_FILES}" ]; then \
 		echo "$(CHANGED_FILES)" | xargs flake8; \
 		exit 0; \
@@ -51,3 +52,13 @@ lint-print:
 
 lint: install-flake8 lint-flake8 lint-print
 lint-only-diff: install-flake8 lint-flake8-only-diff lint-print
+poetry-install:
+	cp pyproject.toml pyproject.toml.backup; \
+	python scripts/generate_toml_optional_deps.py; \
+	poetry install; \
+	mv pyproject.toml.backup pyproject.toml
+poetry-lock:
+	cp pyproject.toml pyproject.toml.backup; \
+	python scripts/generate_toml_optional_deps.py; \
+	poetry lock; \
+	mv pyproject.toml.backup pyproject.toml

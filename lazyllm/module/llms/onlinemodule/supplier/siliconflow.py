@@ -2,10 +2,12 @@ import requests
 import lazyllm
 from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
+from lazyllm import LOG
 
 
 class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
@@ -68,48 +70,63 @@ class SiliconFlowReranking(OnlineEmbeddingModuleBase):
 
 class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     MODEL_NAME = 'Qwen/Qwen-Image'
+    IMAGE_EDITING_MODEL_NAME = 'Qwen/Qwen-Image-Edit-2509'
 
-    def __init__(self, api_key: str = None, model_name: str = None,
-                 base_url: str = 'https://api.siliconflow.cn/v1/',
+    def __init__(self, api_key: str = None, model: str = None,
+                 url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
-                                      api_key=api_key or lazyllm.config['siliconflow_api_key'],
-                                      model_name=model_name or SiliconFlowTextToImageModule.MODEL_NAME,
-                                      return_trace=return_trace, **kwargs)
+        OnlineMultiModalBase.__init__(
+            self, model_series='SiliconFlow', api_key=api_key or lazyllm.config['siliconflow_api_key'],
+            model=model or SiliconFlowTextToImageModule.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
-        self._base_url = base_url
 
-    def _make_request(self, endpoint, payload, timeout=180):
-        url = f'{self._base_url}{endpoint}'
+    def _make_request(self, endpoint, payload, base_url=None, timeout=180):
+        url = f'{(base_url or self._base_url)}{endpoint}'
         try:
             response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
             return response.json()
         except Exception as e:
-            lazyllm.LOG.error(f'API request failed: {str(e)}')
+            LOG.error(f'API request failed: {str(e)}')
             raise
 
-    def _forward(self, input: str = None, size: str = '1024x1024', **kwargs):
+    def _forward(self, input: str = None, files: List[str] = None, size: str = '1024x1024', url: str = None,
+                 model: str = None, **kwargs):
+        has_ref_image = files is not None and len(files) > 0
+        reference_image_data = None
+        if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
+            raise ValueError(
+                f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
+                f'Please provide an image file via the "files" parameter.'
+            )
+        if self._type != LLMType.IMAGE_EDITING and has_ref_image:
+            raise ValueError(
+                f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
+                f'Please use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model'
+            )
+
         payload = {
-            'model': self._model_name,
-            'prompt': input
+            'model': model,
+            'prompt': input,
+            **kwargs
         }
-        payload.update(kwargs)
-
+        if has_ref_image:
+            for i, file in enumerate(files):
+                reference_image_base64, _ = self._load_images(file)[0]
+                reference_image_data = f'data:image/png;base64,{reference_image_base64}'
+                if i == 0:
+                    payload['image'] = reference_image_data
+                elif i > 0:
+                    payload[f'image{i+1}'] = reference_image_data
         result = self._make_request(self._endpoint, payload)
-
-        image_urls = [item['url'] for item in result['data']]
-
-        image_files = []
-        for url in image_urls:
-            img_response = requests.get(url, timeout=180)
-            if img_response.status_code == 200:
-                image_files.append(img_response.content)
-            else:
-                raise Exception(f'Failed to download image from {url}')
-
-        file_paths = bytes_to_file(image_files)
-
+        image_urls = [item['url'] for item in result.get('data', [])]
+        if not image_urls:
+            raise Exception('No images returned from API')
+        image_results = self._load_images(image_urls)
+        image_bytes = [data for _, data in image_results]
+        if not image_bytes:
+            raise Exception('Failed to download any images')
+        file_paths = bytes_to_file(image_bytes)
         return encode_query_with_filepaths(None, file_paths)
 
 
@@ -122,36 +139,37 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
         OnlineMultiModalBase.__init__(self, model_series='SiliconFlow',
                                       api_key=api_key or lazyllm.config['siliconflow_api_key'],
                                       model_name=model_name or SiliconFlowTTSModule.MODEL_NAME,
-                                      return_trace=return_trace, **kwargs)
+                                      return_trace=return_trace, base_url=base_url, **kwargs)
         self._endpoint = 'audio/speech'
-        self._base_url = base_url
 
-    def _make_binary_request(self, endpoint, payload, timeout=180):
-        url = f'{self._base_url}{endpoint}'
+    def _make_binary_request(self, endpoint, payload, base_url=None, timeout=180):
+        url = f'{(base_url or self._base_url)}{endpoint}'
         try:
             response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
             return response.content
         except Exception as e:
-            lazyllm.LOG.error(f'API request failed: {str(e)}')
+            LOG.error(f'API request failed: {str(e)}')
             raise
 
     def _forward(self, input: str = None, response_format: str = 'mp3',
                  sample_rate: int = 44100, speed: float = 1.0,
-                 voice: str = None, references=None, out_path: str = None, **kwargs):
+                 voice: str = None, references=None, out_path: str = None,
+                 url: str = None, model: str = None, **kwargs):
 
         if not voice:
-            if self._model_name == 'fnlp/MOSS-TTSD-v0.5':
+            active_model = model
+            if active_model == 'fnlp/MOSS-TTSD-v0.5':
                 voice = 'fnlp/MOSS-TTSD-v0.5:alex'
-            elif self._model_name == 'FunAudioLLM/CosyVoice2-0.5B':
+            elif active_model == 'FunAudioLLM/CosyVoice2-0.5B':
                 voice = 'FunAudioLLM/CosyVoice2-0.5B:alex'
             else:
                 raise ValueError(
                     f'Default voice is only supported for models "fnlp/MOSS-TTSD-v0.5" and '
-                    f'"FunAudioLLM/CosyVoice2-0.5B". For model "{self._model_name}", '
+                    f'"FunAudioLLM/CosyVoice2-0.5B". For model "{active_model}", '
                     f'please provide a valid voice parameter.')
         payload = {
-            'model': self._model_name,
+            'model': model,
             'input': input,
             'response_format': response_format,
             'sample_rate': sample_rate,
@@ -163,7 +181,7 @@ class SiliconFlowTTSModule(OnlineMultiModalBase):
             payload['references'] = references
 
         payload.update(kwargs)
-        audio_content = self._make_binary_request(self._endpoint, payload, timeout=180)
+        audio_content = self._make_binary_request(self._endpoint, payload, base_url=url, timeout=180)
         file_path = bytes_to_file([audio_content])[0]
 
         if out_path:

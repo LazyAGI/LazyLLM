@@ -287,10 +287,17 @@ model_name_mapping = {
         },
         'type': 'tts'
     },
+    'musicgen-small': {
+        'source': {
+            'huggingface': 'facebook/musicgen-small',
+            'modelscope': 'facebook/musicgen-small'
+        },
+        'type': 'tts'
+    },
     'musicgen-stereo-small': {
         'source': {
             'huggingface': 'facebook/musicgen-stereo-small',
-            'modelscope': 'AI-ModelScope/musicgen-small'
+            'modelscope': 'facebook/musicgen-stereo-small'
         },
         'type': 'tts'
     },

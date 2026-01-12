@@ -77,6 +77,10 @@
     members:
     exclude-members:
 
+::: lazyllm.module.llms.onlinemodule.supplier.ppio.PPIOModule
+    members:
+    exclude-members:
+
 ::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultiModal
     members:
     exclude-members:
@@ -221,5 +225,21 @@
       members:
 
 ::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.aiping.AipingModule
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.aiping.AipingEmbedding
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.aiping.AipingReranking
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.aiping.AipingTextToImageModule
     options:
       members:

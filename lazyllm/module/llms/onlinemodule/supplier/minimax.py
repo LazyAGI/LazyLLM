@@ -1,8 +1,10 @@
 import base64
 import requests
 import lazyllm
-from typing import Any, Dict, List
+from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
+
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import OnlineChatModuleBase, OnlineMultiModalBase
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
@@ -69,17 +71,18 @@ class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
 class MinimaxTextToImageModule(OnlineMultiModalBase):
     MODEL_NAME = 'image-01'
 
-    def __init__(self, api_key: str = None, model_name: str = None,
-                 base_url: str = 'https://api.minimaxi.com/v1/',
-                 return_trace: bool = False, **kwargs):
+    def __init__(self, api_key: str = None, model: str = None,
+                 url: str = 'https://api.minimaxi.com/v1/', return_trace: bool = False, **kwargs):
         OnlineMultiModalBase.__init__(self, model_series='MINIMAX', api_key=api_key or lazyllm.config['minimax_api_key'],
-                                      model_name=model_name or MinimaxTextToImageModule.MODEL_NAME,
+                                      model_name=model or MinimaxTextToImageModule.MODEL_NAME, url=url,
                                       return_trace=return_trace, **kwargs)
-        self._base_url = base_url
+        if self._type == LLMType.IMAGE_EDITING:
+            raise ValueError('MINIMAX series models do not support image editing now.')
         self._endpoint = 'image_generation'
 
-    def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
-        url = urljoin(self._base_url, endpoint)
+    def _make_request(self, endpoint: str, payload: Dict[str, Any], base_url: Optional[str] = None,
+                      timeout: int = 180) -> Dict[str, Any]:
+        url = urljoin(base_url or self._base_url, endpoint)
         response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
         response.raise_for_status()
         result = response.json()
@@ -91,9 +94,10 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
     def _forward(self, input: str = None, style: Dict[str, Any] = None,
                  aspect_ratio: str = None, width: int = None, height: int = None,
                  response_format: str = 'url', seed: int = None, n: int = 1,
-                 prompt_optimizer: bool = False, aigc_watermark: bool = False, **kwargs):
+                 prompt_optimizer: bool = False, aigc_watermark: bool = False,
+                 url: str = None, model: str = None, **kwargs):
         payload: Dict[str, Any] = {
-            'model': self._model_name,
+            'model': model,
             'prompt': input,
             'response_format': response_format or 'url',
             'n': n,
@@ -111,7 +115,7 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
             payload['seed'] = seed
         payload.update(kwargs)
 
-        result = self._make_request(self._endpoint, payload)
+        result = self._make_request(self._endpoint, payload, base_url=url)
         data = result.get('data') or {}
 
         image_bytes: List[bytes] = []
@@ -135,9 +139,7 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
 
         file_paths = bytes_to_file(image_bytes)
         response = encode_query_with_filepaths(None, file_paths)
-
         return response
-
 
 class MinimaxTTSModule(OnlineMultiModalBase):
     MODEL_NAME = 'speech-2.6-hd'
@@ -150,12 +152,12 @@ class MinimaxTTSModule(OnlineMultiModalBase):
         OnlineMultiModalBase.__init__(self, model_series='MINIMAX',
                                       api_key=api_key or lazyllm.config['minimax_api_key'],
                                       model_name=model_name or MinimaxTTSModule.MODEL_NAME,
-                                      return_trace=return_trace, **kwargs)
+                                      return_trace=return_trace, base_url=base_url, **kwargs)
         self._endpoint = 't2a_v2'
-        self._base_url = base_url
 
-    def _make_request(self, endpoint: str, payload: Dict[str, Any], timeout: int = 180) -> Dict[str, Any]:
-        url = urljoin(self._base_url, endpoint)
+    def _make_request(self, endpoint: str, payload: Dict[str, Any], base_url: Optional[str] = None,
+                      timeout: int = 180) -> Dict[str, Any]:
+        url = urljoin(base_url or self._base_url, endpoint)
         try:
             response = requests.post(url, headers=self._header, json=payload, timeout=timeout)
             response.raise_for_status()
@@ -173,13 +175,14 @@ class MinimaxTTSModule(OnlineMultiModalBase):
                  pronunciation_dict: Dict[str, Any] = None, timbre_weights: List[Dict[str, Any]] = None,
                  language_boost: str = None, voice_modify: Dict[str, Any] = None,
                  subtitle_enable: bool = False, aigc_watermark: bool = False,
-                 stream_options: Dict[str, Any] = None, out_path: str = None, **kwargs):
+                 stream_options: Dict[str, Any] = None, out_path: str = None,
+                 url: str = None, model: str = None, **kwargs):
         if stream:
             raise ValueError('MinimaxTTSModule does not support streaming output, please set stream to False')
         voice_setting = voice_setting or {}
         voice_setting.setdefault('voice_id', 'male-qn-qingse')
         payload: Dict[str, Any] = {
-            'model': self._model_name,
+            'model': model,
             'text': input,
             'stream': stream,
             'output_format': output_format,
@@ -197,7 +200,7 @@ class MinimaxTTSModule(OnlineMultiModalBase):
         }
         payload.update({k: v for k, v in optional_params.items() if v is not None})
         payload.update(kwargs)
-        result = self._make_request(self._endpoint, payload, timeout=180)
+        result = self._make_request(self._endpoint, payload, base_url=url, timeout=180)
         data = result.get('data') or {}
         audio_data = data.get('audio')
         if not audio_data:
