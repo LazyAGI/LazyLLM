@@ -72,7 +72,7 @@ def deploy(commands):
 
         lazyllm.LOG.info('Starting mineru server')
         lazyllm.LOG.info(f'Current model source: {args.model_source}')
-        from lazyllm.tools.servers.mineru import MineruServer
+        from lazyllm.tools.servers.mineru.mineru_server_module import MineruServer
         server = MineruServer(
             cache_dir=args.cache_dir,
             image_save_dir=args.image_save_dir,

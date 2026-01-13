@@ -8,4 +8,4 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'zhipuai', 'dashscope', ['mineru', 'cli.common'], 'opensearchpy', ['os', 'path'], 'pkg_resources', 'fastapi',
            ['fsspec', 'implementations.local'], 'bs4', 'uvicorn', 'elasticsearch', 'xml', 'deepdiff', 'mem0', 'memu',
            'powermem', ['graphrag', 'api', 'config.load_config', 'config.enums', 'cli.index', 'cli.initialize'],
-           'pyobvector', 'transformers']
+           'pyobvector', 'charset_normalizer', 'transformers']

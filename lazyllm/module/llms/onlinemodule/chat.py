@@ -11,6 +11,8 @@ from .supplier.doubao import DoubaoModule
 from .supplier.deepseek import DeepSeekModule
 from .supplier.siliconflow import SiliconFlowModule
 from .supplier.minimax import MinimaxModule
+from .supplier.ppio import PPIOModule
+from .supplier.aiping import AipingModule
 
 class _ChatModuleMeta(type):
 
@@ -29,7 +31,9 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
               'doubao': DoubaoModule,
               'deepseek': DeepSeekModule,
               'siliconflow': SiliconFlowModule,
-              'minimax': MinimaxModule}
+              'minimax': MinimaxModule,
+              'ppio': PPIOModule,
+              'aiping': AipingModule}
 
     @staticmethod
     def _encapsulate_parameters(base_url: str, model: str, stream: bool, return_trace: bool, **kwargs) -> Dict[str, Any]:
@@ -48,7 +52,7 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
             type = get_model_type(model)
         if type in ['embed', 'rerank', 'cross_modal_embed']:
             raise AssertionError(f'\'{model}\' should use OnlineEmbeddingModule')
-        elif type in ['sst', 'tts', 'sd']:
+        elif type in ['stt', 'tts', 'sd']:
             raise AssertionError(f'\'{model}\' should use OnlineMultiModalModule')
         params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace,
                                                           skip_auth=skip_auth, type=type.upper() if type else None,

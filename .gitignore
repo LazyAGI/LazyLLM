@@ -1,17 +1,62 @@
+# python files
 __pycache__
 *.pyc
+
+# temp files
 test/
 dist/
 tmp/
-.vscode
 build
 *.lock
 *.db
 mkdocs.yml
 .temp
-lazyllm_chroma/
-docs/en/assets
-docs/zh/assets
 infer_log/
 *.log
 log.txt
+save_ckpt/
+
+# dev tools
+.vscode
+
+# docs
+lazyllm_chroma/
+docs/en/assets
+docs/zh/assets
+
+# Prerequisites
+*.d
+
+# Compiled Object files
+*.slo
+*.lo
+*.o
+*.obj
+
+# Precompiled Headers
+*.gch
+*.pch
+
+# Compiled Dynamic libraries
+*.so
+*.dylib
+*.dll
+
+# Fortran module files
+*.mod
+*.smod
+
+# Compiled Static libraries
+*.lai
+*.la
+*.a
+*.lib
+
+# Executables
+*.exe
+*.out
+*.app
+
+# build directories
+build*
+lazyllm_cpp.egg-info/

@@ -28,7 +28,7 @@ class Mindie(LazyLLMDeployBase):
     }
     auto_map = {
         'port': int,
-        'tp': ('world_size', int),
+        'tp': ('worldSize', int),
         'max_input_token_len': ('maxInputTokenLen', int),
         'max_prefill_tokens': ('maxPrefillTokens', int),
         'max_seq_len': ('maxSeqLen', int)

@@ -1,5 +1,6 @@
 import os
 import sys
+import requests
 import ipaddress
 import importlib.abc
 import importlib.util
@@ -22,7 +23,6 @@ os.environ['no_proxy'] = ','.join(list(no_proxies))
 
 
 def request(method, url, **kwargs):
-    import requests
     with requests.sessions.Session() as session:
         if os.environ.get('http_proxy') and _is_ip_address_url(url):
             try:
@@ -43,6 +43,10 @@ def _head(url, **kwargs):
     kwargs.setdefault('allow_redirects', False)
     return request('head', url, **kwargs)
 
+requests.get, requests.options, requests.post = _get, _options, _post
+requests.put, requests.patch, requests.delete, requests.head = _put, _patch, _delete, _head
+
+
 def patch_httpx_func(httpx, fname):
     _old_func = getattr(httpx, fname)
 
@@ -55,13 +59,9 @@ def patch_httpx_func(httpx, fname):
 
     setattr(httpx, fname, new_func)
 
-def patch_requests_and_httpx():  # noqa: C901
-    import requests
+
+def patch_httpx():
     import httpx
-
-    requests.get, requests.options, requests.post = _get, _options, _post
-    requests.put, requests.patch, requests.delete, requests.head = _put, _patch, _delete, _head
-
     _old_httpx_func = httpx.request
 
     def new_httpx_func(method, url, **kwargs):
@@ -96,11 +96,11 @@ class LazyPatchLoader(importlib.abc.Loader):
             module.__path__ = self.original_spec.submodule_search_locations
 
         self.original_spec.loader.exec_module(module)
-        patch_requests_and_httpx()
+        patch_httpx()
 
 class LazyPatchFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path, target=None):
-        if fullname in ['requests', 'httpx']:
+        if fullname == 'httpx':
             if self in sys.meta_path: sys.meta_path.remove(self)
             original_spec = importlib.util.find_spec(fullname)
             if original_spec is None: return None
@@ -108,8 +108,8 @@ class LazyPatchFinder(importlib.abc.MetaPathFinder):
                                                    origin=original_spec.origin)
         return None
 
-if 'httpx' in sys.modules or 'requests' in sys.modules:
-    patch_requests_and_httpx()
+if 'httpx' in sys.modules:
+    patch_httpx()
 else:
     sys.meta_path.insert(0, LazyPatchFinder())
 

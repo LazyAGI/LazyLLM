@@ -39,9 +39,17 @@ cd LazyLLM
 pip3 install -r requirements.txt
 ```
 
-如果您期望使用LazyLLM的所有功能，您可以运行以下命令来安装LazyLLM的全量依赖：
+如果您期望使用LazyLLM的所有功能，您可以运行以下命令来获取并安装LazyLLM的全量依赖：
 
 ```bash
+git submodule update --init LazyLLM-Env
+cp LazyLLM-Env/poetry.lock .
+pip3 install tomlkit poetry==2.2.1
+poetry self add poetry-plugin-export
+python scripts/generate_toml_optional_deps.py
+poetry lock
+poetry export -f requirements.txt --without-hashes -o requirements.full.txt  --extras "optional"
+# flash-attn依赖torch,建议最后装
 pip3 install -r requirements.full.txt
 ```
 
@@ -155,6 +163,7 @@ python3 chat.py
 | [豆包](https://www.volcengine.com/product/doubao)                                    | [获取访问密钥](https://console.volcengine.com/ark/region:ark+cn-beijing/apiKey)                                                                                                   | `LAZYLLM_DOUBAO_API_KEY`                                   |
 | [硅基流动](https://cloud.siliconflow.cn/)                                               | [获取访问密钥](https://cloud.siliconflow.cn/account/ak)                                                                                                                           | `LAZYLLM_SILICONFLOW_API_KEY`                              |
 | [MiniMax](https://platform.minimaxi.com/)                                            | [获取访问密钥](https://platform.minimaxi.com/user-center/basic-information/interface-key)                                                                                        | `LAZYLLM_MINIMAX_API_KEY`                                  |
+| [AI Ping](https://aiping.cn/)                                                           | [获取访问密钥](https://aiping.cn/user/apikey)                                                                                                                                     | `LAZYLLM_AIPING_API_KEY`                                   |
 
 可以通过设置不同的环境变量来使用对应的平台。
 

@@ -9,6 +9,7 @@ from types import GeneratorType
 import lazyllm
 from lazyllm import kwargs, package, load_obj
 from lazyllm import FastapiApp, globals
+from lazyllm.common import _trim_traceback, _register_trim_module
 import time
 import pickle
 import codecs
@@ -38,6 +39,7 @@ parser.add_argument('--after_function')
 parser.add_argument('--pythonpath')
 parser.add_argument('--num_replicas', type=int, default=1, help='num of ray replicas')
 parser.add_argument('--security_key', type=str, default=None, help='security key')
+parser.add_argument('--defined_pos', type=str, default=None, help='user defined positional')
 args = parser.parse_args()
 
 if args.pythonpath:
@@ -48,6 +50,12 @@ if args.before_function:
     before_func = load_obj(args.before_function)
 if args.after_function:
     after_func = load_obj(args.after_function)
+
+
+_register_trim_module({'__main__': ['async_wrapper', 'impl']})
+_err_msg = ('service of ServerModule execuate failed.\n\nThe above exception was the direct cause '
+            'of the following exception in service of ServerModule')
+_err_msg += (f' defined at `{load_obj(args.defined_pos)}`' if args.defined_pos else '') + ':\n'
 
 
 app = FastAPI()
@@ -82,8 +90,10 @@ async def lazyllm_call(request: Request):
         return Response(content=codecs.encode(pickle.dumps(r), 'base64'))
     except requests.RequestException as e:
         return Response(content=f'{str(e)}', status_code=500)
-    except Exception as e:
-        return Response(content=f'{e}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
+    except Exception:
+        exc_type, exc_value, exc_tb = sys.exc_info()
+        formatted = ''.join(traceback.format_exception(exc_type, exc_value, _trim_traceback(exc_tb)))
+        return Response(content=f'{_err_msg}\n{formatted}', status_code=500)
 
 @app.post('/generate')
 @security_check
@@ -141,8 +151,10 @@ async def generate(request: Request): # noqa C901
         return Response(content=impl(output))
     except requests.RequestException as e:
         return Response(content=f'{str(e)}', status_code=500)
-    except Exception as e:
-        return Response(content=f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}', status_code=500)
+    except Exception:
+        exc_type, exc_value, exc_tb = sys.exc_info()
+        formatted = ''.join(traceback.format_exception(exc_type, exc_value, _trim_traceback(exc_tb)))
+        return Response(content=f'{_err_msg}\n{formatted}', status_code=500)
     finally:
         globals.clear()
 

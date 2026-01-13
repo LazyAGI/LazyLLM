@@ -29,6 +29,8 @@ class Infinity(LazyLLMDeployBase):
         })
         self._model_type = model_type
         kw.pop('stream', '')
+        # Infinity (embedding model) doesn't support tensor parallel, ignore 'tp' parameter
+        kw.pop('tp', None)
         self.options_keys = kw.pop('options_keys', [])
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] else True
@@ -51,7 +53,16 @@ class Infinity(LazyLLMDeployBase):
                 available_gpus = self._launcher._get_idle_gpus()
                 required_count = self._launcher.ngpus
                 if required_count <= len(available_gpus):
-                    gpu_ids = ','.join(map(str, available_gpus[:required_count]))
+                    try:
+                        use_cuda_visible = lazyllm.config['cuda_visible']
+                    except (KeyError, AttributeError):
+                        use_cuda_visible = False
+                    if use_cuda_visible:
+                        # Use logical GPU IDs (0, 1, 2...) when CUDA_VISIBLE_DEVICES is set
+                        gpu_ids = ','.join(map(str, range(required_count)))
+                    else:
+                        # Use physical GPU IDs when CUDA_VISIBLE_DEVICES is not set
+                        gpu_ids = ','.join(map(str, available_gpus[:required_count]))
                     cmd += f'--device-id={gpu_ids} '
                 else:
                     raise RuntimeError(
