@@ -50,7 +50,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
             if default_key and not kwargs.get('api_key'):
                 kwargs['api_key'] = default_key
             if source == 'doubao':
-                if embed_model_name.startswith('doubao-embedding-vision'):
+                if embed_model_name and embed_model_name.startswith('doubao-embedding-vision'):
                     return DoubaoMultimodalEmbedding(**params)
                 else:
                     return DoubaoEmbedding(**params)

@@ -39,6 +39,34 @@ class TestOnlineModule(object):
         ]
         assert_cases(lazyllm.module.OnlineMultiModalModule, multimodal_cases)
 
+    def test_OnlineModule_inherit_register(self):
+        from lazyllm.module import OnlineChatModuleBase
+
+        class LazyLLMTestBase:
+            pass
+
+        class TestChat(LazyLLMTestBase, OnlineChatModuleBase):
+            def __init__(self, base_url: str = 'https://test.module',
+                         model: str = 'TestModel', api_key: str = None, stream: bool = True,
+                         return_trace: bool = False, skip_auth: bool = False, **kw):
+                super().__init__(
+                    self,
+                    model_series='Test',
+                    api_key=api_key,
+                    base_url=base_url,
+                    model_name=model,
+                    stream=stream,
+                    return_trace=return_trace,
+                    skip_auth=skip_auth,
+                    **kw
+                )
+
+            def __repr__(self):
+                return lazyllm.make_repr('Module', 'Test', name=self._model_name, url=self._base_url,
+                                         stream=bool(self._stream), return_trace=self._return_trace)
+
+        assert lazyllm.online.chat.test == TestChat
+
     def test_OnlineChat_forward_override(self, monkeypatch):
         class DummyChat(lazyllm.module.OnlineChatModuleBase):
             def __init__(self, base_url: str, model: str, api_key: str, stream: bool = False, **kw):
@@ -54,8 +82,7 @@ class TestOnlineModule(object):
                 runtime_model = model or kw.pop('model_name', None) or self._model_name
                 return runtime_model + ', ' + __input + ', ' + runtime_url
 
-        monkeypatch.setattr(lazyllm.module.OnlineChatModule, 'MODELS',
-                            {**lazyllm.module.OnlineChatModule.MODELS, 'openai': DummyChat})
+        monkeypatch.setitem(lazyllm.online.chat, 'openai', DummyChat)
 
         chat = lazyllm.OnlineModule(source='openai',
                                     url='http://base/v1/',
@@ -83,8 +110,7 @@ class TestOnlineModule(object):
                     or self._embed_model_name
                 return runtime_model + ', ' + input + ', ' + runtime_url
 
-        monkeypatch.setattr(lazyllm.module.OnlineEmbeddingModule, 'EMBED_MODELS',
-                            {**lazyllm.module.OnlineEmbeddingModule.EMBED_MODELS, 'openai': DummyEmbed})
+        monkeypatch.setitem(lazyllm.online.embedding, 'openai', DummyEmbed)
 
         embed = lazyllm.OnlineModule(type='embed',
                                      source='openai',
