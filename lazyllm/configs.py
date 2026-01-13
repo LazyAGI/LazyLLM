@@ -112,6 +112,10 @@ class Config(metaclass=_ConfigMeta):
     def get_all_configs(self):
         return self._impl
 
+    def done(self):
+        ins = _ConfigMeta._instances['lazyllm']
+        assert len(ins._cfgs) == 0, f'Invalid cfgs ({"".join(ins._cfgs.keys())}) are given in {ins._cgf_path}'
+
     @contextmanager
     def temp(self, name, value):
         old_value = self[name]
@@ -176,11 +180,6 @@ class _NamespaceConfig(object):
     @property
     def _impl(self): return self._config._impl
 
-    def done(self):
-        ins = _ConfigMeta._instances['lazyllm']
-        assert len(ins._cfgs) == 0, f'Invalid cfgs ({"".join(ins._cfgs.keys())}) are given in {ins._cgf_path}'
-        return self
-
     def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
             *, options: Optional[List] = None, description: Optional[str] = None):
         if name in Config.__dict__.keys() or name in _NamespaceConfig.__dict__.keys():
@@ -199,6 +198,17 @@ class _NamespaceConfig(object):
 
     def refresh(self, targets: Union[bytes, str, List[str]] = None) -> None:
         return self._config.refresh(targets)
+
+    def get_all_configs(self):
+        return self._config._impl
+
+    @contextmanager
+    def temp(self, name, value):
+        with self._config.temp:
+            yield
+
+    def done(self):
+        return self._config.done()
 
 
 config = _NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug),
