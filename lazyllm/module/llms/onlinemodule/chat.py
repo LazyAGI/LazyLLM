@@ -23,17 +23,9 @@ class _ChatModuleMeta(type):
 
 
 class OnlineChatModule(metaclass=_ChatModuleMeta):
-    MODELS = {'openai': OpenAIModule,
-              'sensenova': SenseNovaModule,
-              'glm': GLMModule,
-              'kimi': KimiModule,
-              'qwen': QwenModule,
-              'doubao': DoubaoModule,
-              'deepseek': DeepSeekModule,
-              'siliconflow': SiliconFlowModule,
-              'minimax': MinimaxModule,
-              'ppio': PPIOModule,
-              'aiping': AipingModule}
+    @staticmethod
+    def _models():
+        return {k: v for k, v in lazyllm.online.chat.items() if k != 'base'}
 
     @staticmethod
     def _encapsulate_parameters(base_url: str, model: str, stream: bool, return_trace: bool, **kwargs) -> Dict[str, Any]:
@@ -47,7 +39,8 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
 
     def __new__(self, model: str = None, source: str = None, base_url: str = None, stream: bool = True,
                 return_trace: bool = False, skip_auth: bool = False, type: Optional[str] = None, **kwargs):
-        if model in OnlineChatModule.MODELS.keys() and source is None: source, model = model, source
+        models = OnlineChatModule._models()
+        if model in models.keys() and source is None: source, model = model, source
         if type is None and model:
             type = get_model_type(model)
         if type in ['embed', 'rerank', 'cross_modal_embed']:
@@ -66,10 +59,10 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
         if source is None:
             if 'api_key' in kwargs and kwargs['api_key']:
                 raise ValueError('No source is given but an api_key is provided.')
-            for source in OnlineChatModule.MODELS.keys():
+            for source in models.keys():
                 if lazyllm.config[f'{source}_api_key']: break
             else:
-                raise KeyError(f'No api_key is configured for any of the models {OnlineChatModule.MODELS.keys()}.')
+                raise KeyError(f'No api_key is configured for any of the models {models.keys()}.')
 
-        assert source in OnlineChatModule.MODELS.keys(), f'Unsupported source: {source}'
-        return OnlineChatModule.MODELS[source](**params)
+        assert source in models.keys(), f'Unsupported source: {source}'
+        return models[source](**params)

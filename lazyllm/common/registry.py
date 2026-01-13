@@ -86,6 +86,7 @@ config.add('use_builtin', bool, False, 'USE_BUILTIN',
 
 class LazyLLMRegisterMetaClass(_MetaBind):
     all_clses = LazyDict()
+    _online_config_keys = set()
 
     def __new__(metas, name, bases, attrs):
         new_cls = type.__new__(metas, name, bases, attrs)
@@ -156,8 +157,9 @@ class LazyLLMRegisterMetaClass(_MetaBind):
 
             if base_group and base_group.startswith('online'):
                 if new_cls.__name__.endswith('Base'):
-                    key_override = new_cls._lazy_llm_group
-                    new_cls._lazy_llm_group = base_group
+                    key_override = 'base'
+                    new_cls._lazy_llm_group = f'{base_group}.{new_cls._lazy_llm_group}'
+                    _get_base_cls_from_registry(new_cls._lazy_llm_group)
                 else:
                     assert '.' not in new_cls._lazy_llm_group, (
                         f'group name \'{new_cls._lazy_llm_group}\' should not contain "."')
@@ -169,6 +171,30 @@ class LazyLLMRegisterMetaClass(_MetaBind):
         assert reg_key not in group, (
             f'duplicate class \'{reg_key}\' in group {new_cls._lazy_llm_group}')
         group[reg_key] = new_cls
+        cls._register_online_config(new_cls._lazy_llm_group, reg_key)
+
+    @classmethod
+    def _register_online_config(cls, group: str, supplier: str):
+        if not group.startswith('online.chat') or supplier == 'base':
+            return
+        supplier = supplier.lower()
+        if supplier in cls._online_config_keys:
+            return
+        cls._online_config_keys.add(supplier)
+        env_prefix = supplier.upper()
+        config.add(f'{supplier}_api_key', str, '', f'{env_prefix}_API_KEY',
+                   description=f'The API key for {supplier}.')
+        config.add(f'{supplier}_model_name', str, '', f'{env_prefix}_MODEL_NAME',
+                   description=f'The default model name for {supplier}.')
+        config.add(f'{supplier}_text2image_model_name', str, '', f'{env_prefix}_TEXT2IMAGE_MODEL_NAME',
+                   description=f'The default text2image model name for {supplier}.')
+        config.add(f'{supplier}_tts_model_name', str, '', f'{env_prefix}_TTS_MODEL_NAME',
+                   description=f'The default tts model name for {supplier}.')
+        config.add(f'{supplier}_stt_model_name', str, '', f'{env_prefix}_STT_MODEL_NAME',
+                   description=f'The default stt model name for {supplier}.')
+        if supplier == 'sensenova':
+            config.add('sensenova_secret_key', str, '', 'SENSENOVA_SECRET_KEY',
+                       description='The secret key for SenseNova.')
 
 
 class LazyLLMRegisterMetaABCClass(LazyLLMRegisterMetaClass, ABCMeta): pass

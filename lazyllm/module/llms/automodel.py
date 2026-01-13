@@ -12,7 +12,8 @@ class AutoModel:
                 type: Optional[str] = None, config: Union[str, bool] = True, **kwargs: Any):
         # check and accomodate user params
         model = model or kwargs.pop('base_model', kwargs.pop('embed_model_name', None))
-        if model in OnlineChatModule.MODELS.keys():
+        chat_models = {k for k in lazyllm.online.chat.keys() if k != 'base'}
+        if model in chat_models:
             source, model = model, None
 
         if not model:

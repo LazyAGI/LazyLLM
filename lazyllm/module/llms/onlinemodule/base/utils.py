@@ -39,7 +39,7 @@ def build_online_group(cls) -> Optional[Union[str, tuple]]:
     type_key = _parse_type(cls, supplier)
     if not type_key:
         return ''
-    return (f'online.{supplier}', type_key)
+    return (f'online.{type_key}', supplier)
 
 
 class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):

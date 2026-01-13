@@ -35,35 +35,24 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         # Create an online text-to-image
         img_gen = OnlineMultiModalModule(source='qwen', function='text2image')
     '''
-    STT_MODELS = {
-        'qwen': QwenSTTModule,
-        'glm': GLMSTTModule
-    }
-    TTS_MODELS = {
-        'qwen': QwenTTSModule,
-        'siliconflow': SiliconFlowTTSModule,
-        'minimax': MinimaxTTSModule
-    }
-    TEXT2IMAGE_MODELS = {
-        'qwen': QwenTextToImageModule,
-        'doubao': DoubaoTextToImageModule,
-        'glm': GLMTextToImageModule,
-        'siliconflow': SiliconFlowTextToImageModule,
-        'minimax': MinimaxTextToImageModule,
-        'aiping': AipingTextToImageModule
-    }
-
-    TYPE_MODEL_MAP = {
-        'stt': STT_MODELS,
-        'tts': TTS_MODELS,
-        'text2image': TEXT2IMAGE_MODELS,
-        'image_editing': TEXT2IMAGE_MODELS,
+    TYPE_GROUP_MAP = {
+        'stt': 'stt',
+        'tts': 'tts',
+        'text2image': 'texttoimage',
+        'image_editing': 'texttoimage',
     }
 
     @staticmethod
+    def _get_group(type: str):
+        group_name = OnlineMultiModalModule.TYPE_GROUP_MAP.get(type)
+        if not group_name:
+            raise AssertionError(f'Invalid type: {type}')
+        group = getattr(lazyllm.online, group_name)
+        return {k: v for k, v in group.items() if k != 'base'}
+
+    @staticmethod
     def _validate_parameters(source: str, model: str, type: str, base_url: str, **kwargs) -> tuple:
-        assert type in OnlineMultiModalModule.TYPE_MODEL_MAP, f'Invalid type: {type}'
-        available_model = OnlineMultiModalModule.TYPE_MODEL_MAP[type]
+        available_model = OnlineMultiModalModule._get_group(type)
         if model in available_model and source is None:
             source, model = model, source
 
@@ -85,7 +74,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         assert source in available_model, f'Unsupported source: {source}'
 
         if type == 'image_editing':
-            default_module_cls = OnlineMultiModalModule.TYPE_MODEL_MAP[type][source]
+            default_module_cls = available_model[source]
             default_editing_model = getattr(default_module_cls, 'IMAGE_EDITING_MODEL_NAME', None)
             if model is None and default_editing_model:
                 model = default_editing_model
@@ -112,5 +101,5 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         if model is not None:
             params['model'] = model
         params.update(kwargs_normalized)
-        available_model = OnlineMultiModalModule.TYPE_MODEL_MAP[type]
+        available_model = OnlineMultiModalModule._get_group(type)
         return available_model[source](**params)

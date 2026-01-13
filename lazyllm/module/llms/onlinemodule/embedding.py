@@ -19,19 +19,10 @@ class __EmbedModuleMeta(type):
 
 
 class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
-    EMBED_MODELS = {'openai': OpenAIEmbedding,
-                    'sensenova': SenseNovaEmbedding,
-                    'glm': GLMEmbedding,
-                    'qwen': QwenEmbedding,
-                    'doubao': DoubaoEmbedding,
-                    'siliconflow': SiliconFlowEmbedding,
-                    'aiping': AipingEmbedding
-                    }
-    RERANK_MODELS = {'qwen': QwenReranking,
-                     'glm': GLMReranking,
-                     'openai': OpenAIReranking,
-                     'siliconflow': SiliconFlowReranking,
-                     'aiping': AipingReranking}
+    @staticmethod
+    def _get_group(name: str):
+        group = getattr(lazyllm.online, name)
+        return {k: v for k, v in group.items() if k != 'base'}
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,
@@ -68,17 +59,19 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         if 'type' in params:
             params.pop('type')
         if kwargs.get('type', 'embed') == 'embed':
+            embed_models = OnlineEmbeddingModule._get_group('embedding')
             if source is None:
-                source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.EMBED_MODELS)
+                source = OnlineEmbeddingModule._check_available_source(embed_models)
             if source == 'doubao':
                 if embed_model_name.startswith('doubao-embedding-vision'):
                     return DoubaoMultimodalEmbedding(**params)
                 else:
                     return DoubaoEmbedding(**params)
-            return OnlineEmbeddingModule.EMBED_MODELS[source](**params)
+            return embed_models[source](**params)
         elif kwargs.get('type') == 'rerank':
+            rerank_models = OnlineEmbeddingModule._get_group('reranking')
             if source is None:
-                source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.RERANK_MODELS)
-            return OnlineEmbeddingModule.RERANK_MODELS[source](**params)
+                source = OnlineEmbeddingModule._check_available_source(rerank_models)
+            return rerank_models[source](**params)
         else:
             raise ValueError('Unknown type of online embedding module.')
