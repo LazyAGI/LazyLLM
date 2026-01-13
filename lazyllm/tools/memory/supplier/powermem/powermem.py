@@ -32,7 +32,7 @@ class LocalPowerMemMemory(LazyLLMMemoryBase):
                     load_dotenv(config_path, override=False)
                     powermemconfig = powermem.config_loader.load_config_from_env()
                     return powermem.Memory(config=powermemconfig)
-                except Exception as e:
+                except Exception:
                     pass
         else:
             config_path = os.path.join(current_dir, '.env.memory')
@@ -40,7 +40,7 @@ class LocalPowerMemMemory(LazyLLMMemoryBase):
                 try:
                     from dotenv import load_dotenv
                     load_dotenv(config_path, override=False)
-                except Exception as e:
+                except Exception:
                     pass
         if 'LAZYLLM_QWEN_API_KEY' in os.environ:
             # value exists in .env.memory but not correct, need to be overwritten
@@ -78,7 +78,7 @@ class LocalPowerMemMemory(LazyLLMMemoryBase):
             else:
                 text_content = str(message)
             return self._client.add(text_content, user_id=user_id)
-        except Exception as e:
+        except Exception:
             return None
 
     def _get(self, query: Optional[str] = None, user_id: Optional[str] = None, agent_id: Optional[str] = None):
@@ -99,5 +99,5 @@ class LocalPowerMemMemory(LazyLLMMemoryBase):
                 memories = []
 
             return '\n'.join([str(m.get('memory', '')) for m in memories])
-        except Exception as e:
+        except Exception:
             return ''

@@ -1,4 +1,4 @@
-from .powermem import PowerMemMemory
+from .powermem import PowerMemMemory  # noqa NID002
 
 __all__ = [
     'PowerMemMemory'
