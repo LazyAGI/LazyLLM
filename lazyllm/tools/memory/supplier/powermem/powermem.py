@@ -99,5 +99,5 @@ class LocalPowerMemMemory(LazyLLMMemoryBase):
 
             return '\n'.join([str(m.get('memory', '')) for m in memories])
         except Exception as e:
-            return ""
+            return ''
 
