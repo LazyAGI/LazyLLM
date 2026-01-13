@@ -3,7 +3,7 @@ import re
 from abc import ABC, abstractmethod
 from enum import IntFlag, auto
 from typing import Optional, List, Union, Set, Dict, Any
-from lazyllm import LazyLLMRegisterMetaABCClass
+from lazyllm.common import LazyLLMRegisterMetaABCClass
 from pydantic import BaseModel, Field
 
 from ..data_type import DataType

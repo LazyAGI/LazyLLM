@@ -73,7 +73,8 @@ class TestDeploy(object):
         'lazyllm/components/deploy/vllm.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_deploy_vllm(self):
-        m = lazyllm.TrainableModule(self.model_path, '').deploy_method(deploy.vllm)
+        m = lazyllm.TrainableModule(self.model_path, '', use_model_map=False)\
+            .deploy_method(deploy.vllm)
         m.evalset(self.inputs)
         m.update_server()
         m.eval()
@@ -88,7 +89,8 @@ class TestDeploy(object):
         'lazyllm/components/auto/autodeploy.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_embedding(self, set_enviroment):
-        m = lazyllm.TrainableModule('bge-large-zh-v1.5').deploy_method(deploy.AutoDeploy)
+        m = lazyllm.TrainableModule('bge-large-zh-v1.5', use_model_map=False)\
+            .deploy_method(deploy.AutoDeploy)
         m.update_server()
         res = m('你好')
         assert len(json.loads(res)) == 1024
@@ -102,7 +104,8 @@ class TestDeploy(object):
         'lazyllm/components/auto/autodeploy.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_sparse_embedding(self):
-        m = lazyllm.TrainableModule('bge-m3').deploy_method((deploy.AutoDeploy, {'embed_type': 'sparse'}))
+        m = lazyllm.TrainableModule('bge-m3', use_model_map=False)\
+            .deploy_method((deploy.AutoDeploy, {'embed_type': 'sparse'}))
         m.update_server()
         res = m('你好')
         assert isinstance(json.loads(res), dict)
@@ -116,7 +119,7 @@ class TestDeploy(object):
         'lazyllm/components/auto/autodeploy.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_cross_modal_embedding(self):
-        m = lazyllm.TrainableModule('siglip')
+        m = lazyllm.TrainableModule('siglip', use_model_map=False)
         m.update_server()
         res = m('你好')
         assert len(json.loads(res)) == 1152
@@ -141,7 +144,7 @@ class TestDeploy(object):
         'lazyllm/components/auto/autodeploy.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_sd3(self):
-        m = lazyllm.TrainableModule('stable-diffusion-3-medium')
+        m = lazyllm.TrainableModule('stable-diffusion-3-medium', use_model_map=False)
         m.update_server()
         r = m('a little cat')
         res = decode_query_with_filepaths(r)
@@ -153,7 +156,7 @@ class TestDeploy(object):
         'lazyllm/components/auto/autodeploy.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_musicgen(self):
-        m = lazyllm.TrainableModule('musicgen-stereo-small')
+        m = lazyllm.TrainableModule('musicgen-stereo-small', use_model_map=False)
         m.update_server()
         r = m('lo-fi music with a soothing melody')
         res = decode_query_with_filepaths(r)
@@ -166,7 +169,7 @@ class TestDeploy(object):
         'lazyllm/components/auto/autodeploy.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_chattts(self):
-        m = lazyllm.TrainableModule('ChatTTS-new')
+        m = lazyllm.TrainableModule('ChatTTS-new', use_model_map=False)
         m.update_server()
         r = m('你好啊，很高兴认识你。')
         res = decode_query_with_filepaths(r)
@@ -178,7 +181,7 @@ class TestDeploy(object):
         'lazyllm/components/auto/autodeploy.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_stt_sensevoice(self):
-        chat = lazyllm.TrainableModule('sensevoicesmall')
+        chat = lazyllm.TrainableModule('sensevoicesmall', use_model_map=False)
         m = lazyllm.ServerModule(chat)
         m.update_server()
         audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
@@ -224,7 +227,8 @@ class TestDeploy(object):
     def test_stt_bind(self):
         audio_path = os.path.join(lazyllm.config['data_path'], 'ci_data/shuidiaogetou.mp3')
         with lazyllm.pipeline() as ppl:
-            ppl.m = lazyllm.TrainableModule('sensevoicesmall') | lazyllm.bind('No use inputs', lazyllm_files=ppl.input)
+            ppl.m = lazyllm.TrainableModule('sensevoicesmall', use_model_map=False) | \
+                lazyllm.bind('No use inputs', lazyllm_files=ppl.input)
         m = lazyllm.ActionModule(ppl)
         m.update_server()
         res = m(audio_path)
@@ -241,7 +245,7 @@ class TestDeploy(object):
         'lazyllm/components/auto/autodeploy.py',
         'lazyllm/module/llms/trainablemodule.py')
     def test_vlm_and_lmdeploy(self):
-        chat = lazyllm.TrainableModule('InternVL3_5-1B')
+        chat = lazyllm.TrainableModule('InternVL3_5-1B', use_model_map=False)
         m = lazyllm.ServerModule(chat)
         m.update_server()
         query = '这是啥？'

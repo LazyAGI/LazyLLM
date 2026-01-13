@@ -1,5 +1,6 @@
 from lazyllm import LOG
 import re
+import functools
 from typing import Optional, Dict
 MODEL_MAPPING = {
     # ===== OpenAI (LLM) =====
@@ -255,6 +256,8 @@ MODEL_MAPPING = {
     'qwen-vl-v1': 'vlm',
     'qwen-vl-chat-v1': 'vlm',
     'Qwen3-Omni-Captioner': 'vlm',
+    'GLM-4.5V': 'vlm',
+    'GLM-4.6V': 'vlm',
 
     # OCR
     'qwen-vl-ocr': 'ocr',
@@ -262,6 +265,7 @@ MODEL_MAPPING = {
     'qwen-vl-ocr-2025-08-28': 'ocr',
     'qwen-vl-ocr-2025-04-13': 'ocr',
     'qwen-vl-ocr-2024-10-28': 'ocr',
+    'DeepSeek-OCR': 'ocr',
 
     # STT
     'qwen-audio-turbo': 'stt',
@@ -296,9 +300,9 @@ MODEL_MAPPING = {
     # SD
     'qwen-image-plus': 'sd',
     'qwen-image': 'sd',
-    'qwen-image-edit-plus': 'sd',
-    'qwen-image-edit-plus-2025-10-30': 'sd',
-    'qwen-image-edit': 'sd',
+    'qwen-image-edit-plus': 'image_editing',
+    'qwen-image-edit-plus-2025-10-30': 'image_editing',
+    'qwen-image-edit': 'image_editing',
     'qwen-mt-image': 'sd',
     'wan2.5-t2i-preview': 'sd',
     'wan2.2-t2i-plus': 'sd',
@@ -422,6 +426,7 @@ MODEL_MAPPING = {
     'doubao-seedance-1-0-pro-fast-251015': 'sd',
     'doubao-seedance-1-0-lite-t2v-250428': 'sd',
     'doubao-seedance-1-0-lite-i2v-250428': 'sd',
+    'doubao-seedream-4-5': 'sd',
     'doubao-seedream-4-0-250828': 'sd',
     'doubao-seedream-3-0-t2i-250415': 'sd',
     'doubao-seededit-3-0-i2i-250628': 'sd',
@@ -434,7 +439,11 @@ MODEL_MAPPING = {
 
     # ===== DeepSeek =====
     'deepseek-chat': 'llm',
-    'deepseek-reasoner': 'llm'
+    'deepseek-reasoner': 'llm',
+
+    # ===== SiliconFlow =====
+    'qwen/qwen-image-edit': 'image_editing',
+    'qwen/qwen-image-edit-2509': 'image_editing',
 }
 _TOKEN_MAP = {
     'embed': ('embedding', 'embed'),
@@ -445,6 +454,7 @@ _TOKEN_MAP = {
     'rerank': ('rerank',),
     'cross_modal_embed': ('cross_modal', 'multimodal-embedding', 'embedding-vision'),
     'sd': ('dall', 'wan', 'sora', 'image', 'video', 't2i', 't2v'),
+    'image_editing': ('image-edit', 'seededit', 'i2i', 'seedream-3', 'seedream-4'),
 }
 _SUFFIX_RE = re.compile(
     r'(?:'
@@ -494,6 +504,7 @@ def special_model_rule(model_name: str) -> Optional[str]:
     '''Determine the model category'''
     return MODEL_MAPPING.get(model_name)
 
+@functools.lru_cache
 def get_model_type(model_name: str) -> str:
     model_name = model_name.lower()
     if not model_name:
