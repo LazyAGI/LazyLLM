@@ -17,8 +17,8 @@ from ...component.bm25 import BM25
 
 
 class MapStore(LazyLLMStoreBase):
-    capability = StoreCapability.SEGMENT
-    need_embedding = False
+    capability = StoreCapability.ALL
+    need_embedding = True
     supports_index_registration = True
 
     def __init__(self, uri: Optional[str] = None, **kwargs):
@@ -282,10 +282,10 @@ class MapStore(LazyLLMStoreBase):
                query_embedding: Optional[Union[dict, List[float]]] = None, topk: int = 10,
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                embed_key: Optional[str] = None, **kwargs) -> List[dict]:
+        if query_embedding is not None or embed_key is not None:
+            LOG.warning('[MapStore - search] Embedding-based search ignored, MapStore only supports BM25 text search')
         segments = self.get(collection_name=collection_name, criteria=None)
         segments = self._apply_filters(segments, filters)
-        if query_embedding is not None:
-            LOG.warning('[MapStore - search] query_embedding ignored, MapStore only supports BM25 text search')
         if not query:
             return []
         language = kwargs.get('language', 'en')
