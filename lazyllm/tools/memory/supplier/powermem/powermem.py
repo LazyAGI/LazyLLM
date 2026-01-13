@@ -8,6 +8,7 @@ from typing import Optional, List, Dict, Any
 config.add('powermem_config_path', str, '', 'POWERMEM_CONFIG_PATH',
            description='Path to powermem config file (.env or JSON). If not set, will use auto_config().')
 
+
 class PowerMemMemory(object):
     def __new__(cls, topk: int = 10) -> LazyLLMMemoryBase:
         return LocalPowerMemMemory(topk=topk)
@@ -100,4 +101,3 @@ class LocalPowerMemMemory(LazyLLMMemoryBase):
             return '\n'.join([str(m.get('memory', '')) for m in memories])
         except Exception as e:
             return ''
-
