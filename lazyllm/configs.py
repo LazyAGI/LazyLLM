@@ -204,7 +204,7 @@ class _NamespaceConfig(object):
 
     @contextmanager
     def temp(self, name, value):
-        with self._config.temp:
+        with self._config.temp(name, value):
             yield
 
     def done(self):
