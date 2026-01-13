@@ -15,6 +15,7 @@ class Mode(Enum):
 class _ConfigMeta(type):
     _registered_cfgs = dict()
     _env_name_map = dict()
+    _homes = dict()
     _doc = ''
     _instances = dict()
     _lock = threading.RLock()
@@ -43,6 +44,21 @@ class _ConfigMeta(type):
                     doc += f'{("    - LAZYLLM_" + k).upper()}: {v}<br>\n'
         return doc
 
+    @staticmethod
+    def add(name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
+            *, options: Optional[List] = None, description: Optional[str] = None):
+        update_params = dict(type=type, default=default, env=env, options=options, description=description)
+        if name not in _ConfigMeta._registered_cfgs or _ConfigMeta._registered_cfgs[name] != update_params:
+            _ConfigMeta._registered_cfgs[name] = update_params
+            if not env: env = name.lower()
+            for k in ([env] if isinstance(env, str) else env.keys() if isinstance(env, dict) else env):
+                _ConfigMeta._env_name_map[k.lower()] = name
+        for v in _ConfigMeta._instances.values():
+            v._update_impl(name, type, default, env)
+
+    def _get_default_home(prefix):
+        return _ConfigMeta._homes[prefix]
+
     @property
     def __doc__(self):
         doc = f'{self._doc}\n**LazyLLM Configurations:**\n\n'
@@ -57,6 +73,8 @@ class _ConfigMeta(type):
         return key.lower() in self._instances or '_' in key and key.split('_')[0].lower() in self._instances
 
 
+_ConfigMeta.add('home', str, None, 'HOME', description='The default home directory for LazyLLM.')
+
 class Config(metaclass=_ConfigMeta):
     def __init__(self, prefix: str = 'LAZYLLM', home: Optional[str] = None, config_file: str = 'config.json'):
         self._prefix = prefix.upper()
@@ -64,16 +82,22 @@ class Config(metaclass=_ConfigMeta):
         if not home:
             home = '.lazyllm' if self._prefix == 'LAZYLLM' else f'.lazyllm_{prefix.lower()}'
             home = os.path.join(os.path.expanduser('~'), home)
-        self.add('home', str, os.path.expanduser(home), 'HOME', description='The default home directory for LazyLLM.')
-        os.makedirs(home, exist_ok=True)
+        _ConfigMeta._homes[self._prefix] = home
+        self._update_impl('home', str, None, 'HOME')
+        os.makedirs(self['home'], exist_ok=True)
         self._cgf_path = os.path.join(self['home'], config_file)
         if os.path.exists(self._cgf_path):
             with open(self._cgf_path, 'r+') as f:
                 self._cfgs = Config.get_config(json.loads(f))
+        for name, cfg in _ConfigMeta._registered_cfgs.items():
+            if name == 'home': continue
+            self._update_impl(name, cfg['type'], cfg['default'], cfg['env'])
 
-    def done(self):
-        assert len(self._cfgs) == 0, f'Invalid cfgs ({"".join(self._cfgs.keys())}) are given in {self._cgf_path}'
-        return self
+    def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
+            *, options: Optional[List] = None, description: Optional[str] = None):
+        if name in Config.__dict__.keys():
+            raise RuntimeError(f'{name} is attribute of Config, please change it!')
+        _ConfigMeta.add(name, type, default, env, options=options, description=description)
 
     def getenv(self, name, type, default=None):
         r = os.getenv(f'{self._prefix}_{name.upper()}', default)
@@ -95,22 +119,10 @@ class Config(metaclass=_ConfigMeta):
         yield
         self._impl[name] = old_value
 
-    def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
-            *, options: Optional[List] = None, description: Optional[str] = None):
-        if name in Config.__dict__.keys():
-            raise RuntimeError(f'{name} is attribute of Config, please change it!')
-        update_params = dict(type=type, default=default, env=env, options=options, description=description)
-        if name not in _ConfigMeta._registered_cfgs or _ConfigMeta._registered_cfgs[name] != update_params:
-            _ConfigMeta._registered_cfgs[name] = update_params
-            if not env: env = name.lower()
-            for k in ([env] if isinstance(env, str) else env.keys() if isinstance(env, dict) else env):
-                _ConfigMeta._env_name_map[k.lower()] = name
-        self._update_impl(name, type, default, env)
-        return self
-
     def _update_impl(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None,
                      env: Union[str, dict, list] = None):
-        self._impl[name] = self._cfgs.pop(name) if name in self._cfgs else default
+        self._impl[name] = self._cfgs.pop(name) if name in self._cfgs else (
+            _ConfigMeta._get_default_home(self._prefix) if name == 'home' else default)
         if isinstance(env, dict):
             for k, v in env.items():
                 if self.getenv(k, bool):
@@ -132,14 +144,8 @@ class Config(metaclass=_ConfigMeta):
             name = name.lower()
             if name.startswith(f'{self._prefix.lower()}_'): name = name[len(self._prefix) + 1:]
             return self._impl[name]
-        except KeyError:
-            raise RuntimeError(f'Key `{name}` is not in lazyllm global config')
-
-    def __getattr__(self, __key: str):
-        try:
-            return self[__key]
-        except (RuntimeError, KeyError):
-            raise AttributeError(f'class {self.__class__.__name__} has no attribute {__key}')
+        except KeyError as e:
+            raise KeyError(f'Error occured when getting key `{name}` from lazyllm global config, msg is: {e}')
 
     def __str__(self):
         return str(self._impl)
@@ -162,26 +168,59 @@ class Config(metaclass=_ConfigMeta):
             cfg = _ConfigMeta._registered_cfgs[name]
             if name in self._impl: self._update_impl(name, cfg['type'], cfg['default'], cfg['env'])
 
-config = Config().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug),
-                      description='The default mode for LazyLLM.'
-                ).add('repr_ml', bool, False, 'REPR_USE_ML', description='Whether to use Markup Language for repr.'
-                ).add('repr_show_child', bool, False, 'REPR_SHOW_CHILD',
-                      description='Whether to show child modules in repr.'
-                ).add('rag_store', str, 'none', 'RAG_STORE', description='The default store for RAG.'
-                ).add('gpu_type', str, 'A100', 'GPU_TYPE', description='The default GPU type for LazyLLM.'
-                ).add('train_target_root', str, os.path.join(os.getcwd(), 'save_ckpt'), 'TRAIN_TARGET_ROOT',
-                      description='The default target root for training.'
-                ).add('infer_log_root', str, os.path.join(os.getcwd(), 'infer_log'), 'INFER_LOG_ROOT',
-                      description='The default log root for inference.'
-                ).add('temp_dir', str, os.path.join(os.getcwd(), '.temp'), 'TEMP_DIR',
-                      description='The default temp directory for LazyLLM.'
-                ).add('thread_pool_worker_num', int, 16, 'THREAD_POOL_WORKER_NUM',
-                      description='The default number of workers for thread pool.'
-                ).add('deploy_skip_check_kw', bool, False, 'DEPLOY_SKIP_CHECK_KW',
-                      description='Whether to skip check keywords for deployment.'
-                ).add('allow_internal_network', bool, False, 'ALLOW_INTERNAL_NETWORK',
-                      description='Whether to allow loading images from internal network addresses. '
-                                  'Set to False for security in production environments.')
+
+class _NamespaceConfig(object):
+    def __init__(self):
+        self._config = Config()
+
+    @property
+    def _impl(self): return self._config._impl
+
+    def done(self):
+        ins = _ConfigMeta._instances['lazyllm']
+        assert len(ins._cfgs) == 0, f'Invalid cfgs ({"".join(ins._cfgs.keys())}) are given in {ins._cgf_path}'
+        return self
+
+    def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
+            *, options: Optional[List] = None, description: Optional[str] = None):
+        if name in Config.__dict__.keys() or name in _NamespaceConfig.__dict__.keys():
+            raise RuntimeError(f'{name} is attribute of Config, please change it!')
+        _ConfigMeta.add(name, type, default, env, options=options, description=description)
+        return self
+
+    def __getitem__(self, __key):
+        return self._config[__key]
+
+    def __getattr__(self, __key: str):
+        try:
+            return self[__key]
+        except KeyError:
+            raise AttributeError(f'Config has no attribute {__key}')
+
+    def refresh(self, targets: Union[bytes, str, List[str]] = None) -> None:
+        return self._config.refresh(targets)
+
+
+config = _NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug),
+                                description='The default mode for LazyLLM.'
+        ).add('repr_ml', bool, False, 'REPR_USE_ML', description='Whether to use Markup Language for repr.'
+        ).add('repr_show_child', bool, False, 'REPR_SHOW_CHILD',
+              description='Whether to show child modules in repr.'
+        ).add('rag_store', str, 'none', 'RAG_STORE', description='The default store for RAG.'
+        ).add('gpu_type', str, 'A100', 'GPU_TYPE', description='The default GPU type for LazyLLM.'
+        ).add('train_target_root', str, os.path.join(os.getcwd(), 'save_ckpt'), 'TRAIN_TARGET_ROOT',
+              description='The default target root for training.'
+        ).add('infer_log_root', str, os.path.join(os.getcwd(), 'infer_log'), 'INFER_LOG_ROOT',
+              description='The default log root for inference.'
+        ).add('temp_dir', str, os.path.join(os.getcwd(), '.temp'), 'TEMP_DIR',
+              description='The default temp directory for LazyLLM.'
+        ).add('thread_pool_worker_num', int, 16, 'THREAD_POOL_WORKER_NUM',
+              description='The default number of workers for thread pool.'
+        ).add('deploy_skip_check_kw', bool, False, 'DEPLOY_SKIP_CHECK_KW',
+              description='Whether to skip check keywords for deployment.'
+        ).add('allow_internal_network', bool, False, 'ALLOW_INTERNAL_NETWORK',
+              description='Whether to allow loading images from internal network addresses. '
+                          'Set to False for security in production environments.')
 
 def refresh_config(key):
     if key in Config:
