@@ -162,3 +162,71 @@ if None, scans all environment-variable-mapped configuration items and updates t
 Args:
     targets (str | list[str] | None): Name of the config key or list of keys to refresh, or None to refresh all environment-backed keys.
 ''')
+
+add_chinese_doc('namespace', '''\
+命名空间包装器，用于在指定的配置命名空间（namespace）中调用 LazyLLM 的模块构造函数。
+
+`Namespace` 既可以作为上下文管理器使用，也可以直接通过属性访问的方式，
+在不显式使用 `with` 的情况下，将某一次模块构造绑定到指定的 namespace 中。
+
+支持的模块包括：
+AutoModel、OnlineModule、OnlineChatModule、OnlineEmbeddingModule、OnlineMultiModalModule。
+
+**用法说明：**\n
+- 作为上下文管理器：在 `with lazyllm.namespace(space)` 块内，所有 LazyLLM 配置和模块构造
+  都会使用对应的 namespace。
+- 作为包装器调用：通过 `lazyllm.namespace(space).OnlineChatModule(...)` 的形式，
+  仅对单次模块构造生效，不影响全局状态。
+
+**注意事项：**\n
+- `Namespace` 实例本身不是线程安全的，多线程环境中应为每个线程创建独立实例。
+''')
+
+add_english_doc('namespace', '''\
+A namespace wrapper used to invoke LazyLLM module constructors under a specified configuration namespace.
+
+`Namespace` can be used either as a context manager or as a lightweight wrapper for single calls.
+It allows binding LazyLLM configuration and module construction to a specific namespace
+without affecting the global configuration.
+
+Supported modules include:
+AutoModel, OnlineModule, OnlineChatModule, OnlineEmbeddingModule, and OnlineMultiModalModule.
+
+**Usage:**\n
+- As a context manager: within a `with lazyllm.namespace(space)` block, all LazyLLM configuration
+  and module construction will use the given namespace.
+- As a wrapper call: using `lazyllm.namespace(space).OnlineChatModule(...)` applies the namespace
+  only to that single constructor call.
+
+**Notes:**\n
+- A `Namespace` instance is not thread-safe. In multi-threaded environments,
+  create a separate instance per thread even if they share the same space name.
+''')
+
+add_example('Namespace', '''\
+>>> import os
+>>> import lazyllm
+>>> from lazyllm import Namespace
+>>>
+>>> with lazyllm.namespace('my'):
+...     assert lazyllm.config['gpu_type'] == 'A100'
+...     os.environ['MY_GPU_TYPE'] = 'H100'
+...     assert lazyllm.config['gpu_type'] == 'H100'
+>>> assert lazyllm.config['gpu_type'] == 'A100'
+>>>
+>>> class DummyChat(object):
+...     def __init__(self, *args, **kw):
+...         self._api = lazyllm.config['gpu_type']
+>>>
+>>> lazyllm.OnlineChatModule = DummyChat
+>>>
+>>> lazyllm.OnlineChatModule()._api
+'A100'
+>>>
+>>> with lazyllm.namespace('my'):
+...     lazyllm.OnlineChatModule()._api
+'H100'
+>>>
+>>> Namespace('my').OnlineChatModule()._api
+'H100'
+''')
