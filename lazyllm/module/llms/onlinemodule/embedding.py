@@ -2,6 +2,7 @@ from typing import Any, Dict
 
 import lazyllm
 from .base import OnlineEmbeddingModuleBase
+from .base.utils import select_source_with_default_key
 from .supplier.openai import OpenAIEmbedding, OpenAIReranking
 from .supplier.glm import GLMEmbedding, GLMReranking
 from .supplier.sensenova import SenseNovaEmbedding
@@ -36,16 +37,6 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         params.update(kwargs)
         return params
 
-    @staticmethod
-    def _check_available_source(available_models):
-        for source in available_models.keys():
-            if lazyllm.config[f'{source}_api_key']: break
-        else:
-            raise KeyError(f'No api_key is configured for any of the models {available_models.keys()}.')
-
-        assert source in available_models.keys(), f'Unsupported source: {source}'
-        return source
-
     def __new__(self,
                 source: str = None,
                 embed_url: str = None,
@@ -60,8 +51,9 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
             params.pop('type')
         if kwargs.get('type', 'embed') == 'embed':
             embed_models = OnlineEmbeddingModule._get_group('embedding')
-            if source is None:
-                source = OnlineEmbeddingModule._check_available_source(embed_models)
+            source, default_key = select_source_with_default_key(embed_models, explicit_source=source)
+            if default_key and not kwargs.get('api_key'):
+                kwargs['api_key'] = default_key
             if source == 'doubao':
                 if embed_model_name.startswith('doubao-embedding-vision'):
                     return DoubaoMultimodalEmbedding(**params)
@@ -70,8 +62,9 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
             return embed_models[source](**params)
         elif kwargs.get('type') == 'rerank':
             rerank_models = OnlineEmbeddingModule._get_group('reranking')
-            if source is None:
-                source = OnlineEmbeddingModule._check_available_source(rerank_models)
+            source, default_key = select_source_with_default_key(rerank_models, explicit_source=source)
+            if default_key and not kwargs.get('api_key'):
+                kwargs['api_key'] = default_key
             return rerank_models[source](**params)
         else:
             raise ValueError('Unknown type of online embedding module.')

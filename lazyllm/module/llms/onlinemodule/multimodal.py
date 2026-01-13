@@ -1,6 +1,7 @@
 import lazyllm
 from typing import Any
 from .base import OnlineMultiModalBase
+from .base.utils import select_source_with_default_key
 from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
 from .supplier.doubao import DoubaoTextToImageModule
 from .supplier.glm import GLMSTTModule, GLMTextToImageModule
@@ -55,23 +56,16 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         available_model = OnlineMultiModalModule._get_group(type)
         if model in available_model and source is None:
             source, model = model, source
+        if source is None and kwargs.get('api_key'):
+            raise ValueError('No source is given but an api_key is provided.')
+        source, default_key = select_source_with_default_key(available_model, explicit_source=source)
+        if default_key and not kwargs.get('api_key'):
+            kwargs['api_key'] = default_key
 
         if kwargs.get('skip_auth', False):
             source = source or 'openai'
             if not base_url:
                 raise KeyError('base_url must be set for local serving.')
-
-        if source is None:
-            if kwargs.get('api_key'):
-                raise ValueError('No source is given but an api_key is provided.')
-            for src in available_model:
-                if lazyllm.config[f'{src}_api_key']:
-                    source = src
-                    break
-            if source is None:
-                raise KeyError(f'No api_key is configured for any of the models {available_model}.')
-
-        assert source in available_model, f'Unsupported source: {source}'
 
         if type == 'image_editing':
             default_module_cls = available_model[source]

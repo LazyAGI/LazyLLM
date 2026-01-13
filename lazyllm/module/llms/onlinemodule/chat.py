@@ -2,6 +2,7 @@ import lazyllm
 from typing import Any, Dict, Optional
 from .map_model_type import get_model_type
 from .base import OnlineChatModuleBase
+from .base.utils import select_source_with_default_key
 from .supplier.openai import OpenAIModule
 from .supplier.glm import GLMModule
 from .supplier.kimi import KimiModule
@@ -41,6 +42,12 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
                 return_trace: bool = False, skip_auth: bool = False, type: Optional[str] = None, **kwargs):
         models = OnlineChatModule._models()
         if model in models.keys() and source is None: source, model = model, source
+        if source is None and 'api_key' in kwargs and kwargs['api_key']:
+            raise ValueError('No source is given but an api_key is provided.')
+        source, default_key = select_source_with_default_key(models, explicit_source=source)
+        if default_key and not kwargs.get('api_key'):
+            kwargs['api_key'] = default_key
+
         if type is None and model:
             type = get_model_type(model)
         if type in ['embed', 'rerank', 'cross_modal_embed']:
@@ -50,19 +57,9 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
         params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace,
                                                           skip_auth=skip_auth, type=type.upper() if type else None,
                                                           **kwargs)
-
         if skip_auth:
             source = source or 'openai'
             if not base_url:
                 raise KeyError('base_url must be set for local serving.')
 
-        if source is None:
-            if 'api_key' in kwargs and kwargs['api_key']:
-                raise ValueError('No source is given but an api_key is provided.')
-            for source in models.keys():
-                if lazyllm.config[f'{source}_api_key']: break
-            else:
-                raise KeyError(f'No api_key is configured for any of the models {models.keys()}.')
-
-        assert source in models.keys(), f'Unsupported source: {source}'
         return models[source](**params)

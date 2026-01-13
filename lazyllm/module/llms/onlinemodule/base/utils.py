@@ -41,6 +41,18 @@ def build_online_group(cls) -> Optional[Union[str, tuple]]:
         return ''
     return (f'online.{type_key}', supplier)
 
+def select_source_with_default_key(available_models, explicit_source: Optional[str] = None):
+    if explicit_source:
+        assert explicit_source in available_models, f'Unsupported source: {explicit_source}'
+        return explicit_source, None
+    default_source = config['default_source']
+    default_key = config['default_key']
+    if default_source and default_key and default_source in available_models:
+        return default_source, default_key
+    for candidate in available_models.keys():
+        if config[f'{candidate}_api_key']:
+            return candidate, None
+    raise KeyError(f'No api_key is configured for any of the models {available_models.keys()}.')
 
 class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     @classmethod
