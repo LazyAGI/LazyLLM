@@ -1,7 +1,7 @@
 from typing import Any, Optional, Union
 import lazyllm
 from lazyllm import LOG
-from .online_module import OnlineModule, OnlineChatModule
+from .online_module import OnlineModule
 from .trainablemodule import TrainableModule
 from .utils import get_candidate_entries, process_trainable_args, process_online_args
 

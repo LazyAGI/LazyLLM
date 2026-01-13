@@ -3,13 +3,8 @@ from typing import Any, Dict
 import lazyllm
 from .base import OnlineEmbeddingModuleBase
 from .base.utils import select_source_with_default_key
-from .supplier.openai import OpenAIEmbedding, OpenAIReranking
-from .supplier.glm import GLMEmbedding, GLMReranking
-from .supplier.sensenova import SenseNovaEmbedding
-from .supplier.qwen import QwenEmbedding, QwenReranking
 from .supplier.doubao import DoubaoEmbedding, DoubaoMultimodalEmbedding
-from .supplier.siliconflow import SiliconFlowEmbedding, SiliconFlowReranking
-from .supplier.aiping import AipingEmbedding, AipingReranking
+
 
 class __EmbedModuleMeta(type):
 

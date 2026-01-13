@@ -3,17 +3,7 @@ from typing import Any, Dict, Optional
 from .map_model_type import get_model_type
 from .base import OnlineChatModuleBase
 from .base.utils import select_source_with_default_key
-from .supplier.openai import OpenAIModule
-from .supplier.glm import GLMModule
-from .supplier.kimi import KimiModule
-from .supplier.sensenova import SenseNovaModule
-from .supplier.qwen import QwenModule
-from .supplier.doubao import DoubaoModule
-from .supplier.deepseek import DeepSeekModule
-from .supplier.siliconflow import SiliconFlowModule
-from .supplier.minimax import MinimaxModule
-from .supplier.ppio import PPIOModule
-from .supplier.aiping import AipingModule
+
 
 class _ChatModuleMeta(type):
 

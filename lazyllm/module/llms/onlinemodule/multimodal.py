@@ -2,12 +2,6 @@ import lazyllm
 from typing import Any
 from .base import OnlineMultiModalBase
 from .base.utils import select_source_with_default_key
-from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
-from .supplier.doubao import DoubaoTextToImageModule
-from .supplier.glm import GLMSTTModule, GLMTextToImageModule
-from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule
-from .supplier.minimax import MinimaxTextToImageModule, MinimaxTTSModule
-from .supplier.aiping import AipingTextToImageModule
 
 
 class _OnlineMultiModalMeta(type):
