@@ -4,8 +4,7 @@ __version__ = '0.7.2'
 
 import importlib
 import builtins
-from .configs import config, refresh_config
-from .configs import * # noqa F401 of Config
+from .configs import config, refresh_config, Mode, Config, Namespace as namespace
 from .common import *  # noqa F403
 from .launcher import LazyLLMLaunchersBase
 from .flow import *  # noqa F403
@@ -63,8 +62,10 @@ __all__ = [
 
     # configs
     'Mode',
+    'Config',
     'config',
     'refresh_config',
+    'namespace',
 
     # module
     'ModuleBase',

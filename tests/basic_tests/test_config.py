@@ -26,7 +26,7 @@ def isolated(func):
         raise TypeError('Decorator "isolated" can only decorate functions.')
 
     fn_code = func.__code__
-    if 'self' not in fn_code.co_varnames or fn_code.co_argcount != 1:
+    if fn_code.co_argcount < 1 or fn_code.co_varnames[0] != 'self':
         raise TypeError('Decorated function should be method and have exactly one argument "self".')
 
     isolate_status = os.getenv(isolate_env)
@@ -57,6 +57,44 @@ class TestConfig(object):
     def test_config_disp(self):
         print(os.environ.get('LAZYLLM_DISPLAY'))
         assert lazyllm.config['mode'] == Mode.Display
+
+    @isolated
+    def test_config_namespace(self):
+        os.environ['MY_GPU_TYPE'] = 'A10000'
+        assert lazyllm.config['gpu_type'] != 'A10000'
+        with lazyllm.config.namespace('my'):
+            assert lazyllm.config['gpu_type'] == 'A10000'
+            os.environ['MY_GPU_TYPE'] = 'H100'
+            assert lazyllm.config['gpu_type'] == 'H100'
+
+        assert lazyllm.config['gpu_type'] == 'A100'
+        with lazyllm.config.namespace('my'):
+            assert lazyllm.config['gpu_type'] == 'H100'
+
+        assert lazyllm.config['gpu_type'] == 'A100'
+        with lazyllm.namespace('my'):
+            assert lazyllm.config['gpu_type'] == 'H100'
+
+    @isolated
+    def test_namespace(self, monkeypatch):
+        with lazyllm.namespace('my'):
+            assert lazyllm.config['gpu_type'] == 'A100'
+            os.environ['MY_GPU_TYPE'] = 'H100'
+            assert lazyllm.config['gpu_type'] == 'H100'
+        assert lazyllm.config['gpu_type'] == 'A100'
+
+        class DummyChat(object):
+            def __init__(self, *args, **kw):
+                self._api = lazyllm.config['gpu_type']  # use gpu_type to avoid leakage of api-key
+
+        monkeypatch.setattr(lazyllm, 'OnlineChatModule', DummyChat)
+        assert lazyllm.OnlineChatModule is DummyChat
+
+        with lazyllm.namespace('my'):
+            assert lazyllm.OnlineChatModule()._api == 'H100'
+        assert lazyllm.OnlineChatModule()._api == 'A100'
+        assert lazyllm.namespace('my').OnlineChatModule()._api == 'H100'
+
 
 @contextlib.contextmanager
 def clear_env():

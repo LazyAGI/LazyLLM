@@ -129,9 +129,7 @@ Args:
 ''')
 
 add_chinese_doc('Config.temp', '''
-临时修改配置项的上下文管理器。
-
-在with语句块内临时修改指定配置项的值，退出语句块后自动恢复原值。
+临时修改配置项的上下文管理器。在with语句块内临时修改指定配置项的值，退出语句块后自动恢复原值。注意，此函数并非线程安全，请勿在多线程或者多协程的环境下使用。
 
 Args:
     name (str): 要临时修改的配置项名称。
@@ -140,8 +138,8 @@ Args:
 
 add_english_doc('Config.temp', '''
 Context manager for temporary configuration modification.
-
 Temporarily modifies the value of the specified configuration item within the with statement block, and automatically restores the original value when exiting the block.
+Attention: this function is not thread-safe, you should not use it in multi-thread or multi-coroutine environment.
 
 Args:
     name (str): The name of the configuration item to temporarily change.

@@ -4,6 +4,9 @@ import json
 import threading
 from typing import List, Union, Optional
 from contextlib import contextmanager
+from contextvars import ContextVar
+from asyncio import events
+import lazyllm
 
 
 class Mode(Enum):
@@ -95,7 +98,7 @@ class Config(metaclass=_ConfigMeta):
 
     def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
             *, options: Optional[List] = None, description: Optional[str] = None):
-        if name in Config.__dict__.keys():
+        if (name := name.lower()) in Config.__dict__.keys():
             raise RuntimeError(f'{name} is attribute of Config, please change it!')
         _ConfigMeta.add(name, type, default, env, options=options, description=description)
 
@@ -175,14 +178,37 @@ class Config(metaclass=_ConfigMeta):
 
 class _NamespaceConfig(object):
     def __init__(self):
-        self._config = Config()
+        self.__config = Config()
+        self.__threading_config = threading.local()
+        self.__context_var_config = ContextVar('lazyllm.Config')
+
+    @property
+    def _config(self):
+        if events._get_running_loop() is not None:
+            config = self.__context_var_config.get(None)
+        else:
+            config = getattr(self.__threading_config, 'config', None)
+        return config or self.__config
+
+    @contextmanager
+    def namespace(self, space: str):
+        if events._get_running_loop() is not None:
+            old_config = self.__context_var_config.get(None)
+            self.__context_var_config.set(Config(space))
+            yield
+            self.__context_var_config.set(old_config)
+        else:
+            old_config = getattr(self.__threading_config, 'config', None)
+            self.__threading_config.config = Config(space)
+            yield
+            self.__threading_config.config = old_config
 
     @property
     def _impl(self): return self._config._impl
 
     def add(self, name: str, type: type, default: Optional[Union[int, str, bool]] = None, env: Union[str, dict] = None,
             *, options: Optional[List] = None, description: Optional[str] = None):
-        if name in Config.__dict__.keys() or name in _NamespaceConfig.__dict__.keys():
+        if (name := name.lower()) in Config.__dict__.keys() or name in _NamespaceConfig.__dict__.keys():
             raise RuntimeError(f'{name} is attribute of Config, please change it!')
         _ConfigMeta.add(name, type, default, env, options=options, description=description)
         return self
@@ -235,3 +261,30 @@ config = _NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Dis
 def refresh_config(key):
     if key in Config:
         Config._instances[key.split('_')[0].lower()].refresh(key)
+
+
+class Namespace(object):
+    supported = ['AutoModel', 'OnlineModule', 'OnlineChatModule', 'OnlineEmbeddingModule', 'OnlineMultiModalModule']
+
+    def __init__(self, space: str):
+        self._space = space
+        self._cm = None
+
+    def __getattr__(self, __key):
+        def wrapper(*args, **kw):
+            with lazyllm.config.namespace(self._space):
+                return getattr(lazyllm, __key)(*args, **kw)
+
+        if __key in Namespace.supported:
+            return wrapper
+        raise AttributeError(f'Namespace has no attribute {__key}, all support attribute are {Namespace.supported}')
+
+    def __enter__(self):
+        if self._cm: raise RuntimeError('Namespace is not thread-safe, please use another Namespace object with '
+                                        'the same space name in multi-thread environment')
+        self._cm = lazyllm.config.namespace(self._space)
+        self._cm.__enter__()
+        return self
+
+    def __exit__(self, exc_type, exc, tb):
+        return self._cm.__exit__(exc_type, exc, tb)
