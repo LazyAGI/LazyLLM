@@ -137,7 +137,7 @@ def install_mineru():
         subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'uv', '-i',
                                'https://mirrors.aliyun.com/pypi/simple/'])
         subprocess.check_call([sys.executable, '-m', 'uv', 'pip', 'install',
-                               'mineru[all]==2.5.4', '-i', 'https://mirrors.aliyun.com/pypi/simple/'])
+                               'mineru[all]==2.7.1', '-i', 'https://mirrors.aliyun.com/pypi/simple/'])
     except subprocess.CalledProcessError as e:
         logging.error(f'Mineru installation failed: {e}')
         sys.exit(1)

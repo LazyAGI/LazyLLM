@@ -71,7 +71,7 @@ class TestMineruServer(unittest.TestCase):
     def post_pdf_parse(
         self,
         files,
-        backend='pipeline',
+        backend='hybrid-auto-engine',
         return_md=True,
         return_content_list=True,
         use_cache=False,
@@ -106,7 +106,7 @@ class TestMineruServer(unittest.TestCase):
 
         status, result = self.post_pdf_parse(
             files=initial_files,
-            backend='pipeline',
+            backend='hybrid-auto-engine',
             return_md=True,
             return_content_list=True,
             use_cache=False,
@@ -160,7 +160,7 @@ class TestMineruServer(unittest.TestCase):
         mixed_files = [str(self.test_files['pdf1']), str(self.test_files['pdf3'])]
         status, result = self.post_pdf_parse(
             files=mixed_files,
-            backend='pipeline',
+            backend='hybrid-auto-engine',
             return_md=True,
             return_content_list=True,
             use_cache=True,  # Use cache
@@ -178,7 +178,7 @@ class TestMineruServer(unittest.TestCase):
         for file_path in office_files:
             status, result = self.post_pdf_parse(
                 files=[file_path],
-                backend='pipeline',
+                backend='hybrid-auto-engine',
                 return_md=True,
                 return_content_list=True,
                 use_cache=False,
@@ -192,7 +192,7 @@ class TestMineruServer(unittest.TestCase):
     @pytest.mark.order(5)
     def test_different_backends(self):
         '''Test 6: Different backend testing'''
-        backends = ['vlm-vllm-async-engine', 'vlm-transformers']
+        backends = ['pipeline', 'vlm-vllm-async-engine', 'vlm-transformers']
         test_file = str(self.test_files['pdf1'])
         for backend in backends:
             status, result = self.post_pdf_parse(
