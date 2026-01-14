@@ -42,9 +42,10 @@ class LocalPowerMemMemory(LazyLLMMemoryBase):
                     load_dotenv(config_path, override=False)
                 except Exception:
                     pass
-        if 'LAZYLLM_QWEN_API_KEY' in os.environ:
+        qwen_key = config['qwen_api_key']
+        openai_key = config['openai_api_key']
+        if qwen_key:
             # value exists in .env.memory but not correct, need to be overwritten
-            qwen_key = os.environ['LAZYLLM_QWEN_API_KEY']
             os.environ['LLM_PROVIDER'] = 'qwen'
             os.environ['LLM_API_KEY'] = qwen_key
             os.environ['LLM_MODEL'] = 'qwen-plus'
@@ -52,8 +53,7 @@ class LocalPowerMemMemory(LazyLLMMemoryBase):
             os.environ['EMBEDDING_API_KEY'] = qwen_key
             os.environ['EMBEDDING_MODEL'] = 'text-embedding-v4'
             os.environ['EMBEDDING_DIMS'] = '1536'
-        elif 'LAZYLLM_OPENAI_API_KEY' in os.environ:
-            openai_key = os.environ['LAZYLLM_OPENAI_API_KEY']
+        elif openai_key:
             os.environ['LLM_PROVIDER'] = 'openai'
             os.environ['LLM_API_KEY'] = openai_key
             os.environ['LLM_MODEL'] = 'gpt-3.5-turbo'

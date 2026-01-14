@@ -1,5 +1,4 @@
-from .supplier import MemUMemory, Mem0Memory
-from .supplier.powermem import PowerMemMemory
+from .supplier import MemUMemory, Mem0Memory, PowerMemMemory
 from .base import LazyLLMMemoryBase
 from typing import Optional
 import lazyllm
