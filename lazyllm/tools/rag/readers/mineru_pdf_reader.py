@@ -33,7 +33,7 @@ class MineruPDFReader(LazyLLMReaderBase):
         self._post_func = post_func
         self._clean_content = clean_content
         self._type_processors = {
-            'common': self._process_base,   # base processor for all content types
+            'base': self._process_base,   # base processor for all content types
             'text': self._process_text,
             'image': self._process_image,
             'table': self._process_table,
@@ -228,7 +228,7 @@ class MineruPDFReader(LazyLLMReaderBase):
         return block
 
     def _process_default(self, content: dict) -> dict:
-        block = self._process_base_block(content)
+        block = self._process_base(content)
         for k, v in content.items():
             if k not in block:
                 block[k] = v
