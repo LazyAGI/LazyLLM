@@ -20,7 +20,13 @@ package_name_map = {
     'opensearchpy': 'opensearch-py',
     'memu': 'memu-py',
     'mem0': 'mem0ai',
+    'pptx': 'python-pptx',
+    'bs4': 'beautifulsoup4',
+    'Stemmer': 'pystemmer',
+    'psycopg2': 'psycopg2-binary',
 }
+
+package_name_map_reverse = {v: k for k, v in package_name_map.items()}
 
 requirements = {}
 
@@ -163,7 +169,7 @@ You cloud report issue to https://github.com/LazyAGI/LazyLLM in case specific de
 def check_dependency_by_group(group_name: str):
     missing_pack = []
     for name in load_toml_dep_group(group_name):
-        if not check_package_installed(name):
+        if not check_package_installed(package_name_map_reverse.get(name, name)):
             missing_pack.append(name)
     if len(missing_pack) > 0:
         msg = f'Missing package(s): {missing_pack}\nYou can install them by:\n    lazyllm install {group_name}'
