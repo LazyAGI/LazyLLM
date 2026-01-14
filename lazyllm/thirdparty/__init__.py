@@ -7,6 +7,7 @@ from typing import List
 from lazyllm.common import LOG
 from .modules import modules
 from pathlib import Path
+from functools import lru_cache
 
 package_name_map = {
     'huggingface_hub': 'huggingface-hub',
@@ -141,6 +142,7 @@ def check_package_installed(package_name: str | List[str]) -> bool:
             return False
     return True
 
+@lru_cache
 def load_toml_dep_group(group_name: str) -> List[str]:
     toml_file_path = Path(__file__).resolve().parents[2] / 'pyproject.toml'
     if not toml_file_path.exists():
@@ -157,13 +159,15 @@ def load_toml_dep_group(group_name: str) -> List[str]:
         raise KeyError(f'''Group {group_name} not found in pyproject.toml.
 You cloud report issue to https://github.com/LazyAGI/LazyLLM in case specific deps group needed.''')
 
+@lru_cache
 def check_dependency_by_group(group_name: str):
     missing_pack = []
     for name in load_toml_dep_group(group_name):
         if not check_package_installed(name):
             missing_pack.append(name)
     if len(missing_pack) > 0:
-        LOG.error(f'Missing package(s): {missing_pack}\nYou can install them by:\n    lazyllm install {group_name}')
-        raise ImportError(f'Missing package(s): {missing_pack}')
+        msg = f'Missing package(s): {missing_pack}\nYou can install them by:\n    lazyllm install {group_name}'
+        LOG.error(msg)
+        raise ImportError(msg)
     else:
         return True
