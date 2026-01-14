@@ -4,7 +4,7 @@ import os
 import threading
 
 from pathlib import Path
-from collections import defaultdict, OrderedDict
+from collections import defaultdict
 from typing import Dict, List, Optional, Union, Set
 
 from lazyllm import LOG
@@ -13,7 +13,7 @@ from lazyllm.common import override
 from ..store_base import LazyLLMStoreBase, StoreCapability, DEFAULT_KB_ID
 from ...global_metadata import RAG_DOC_ID, RAG_KB_ID
 from ...doc_node import DocNode
-from ...component.bm25 import BM25
+from ...similarity import bm25, bm25_chinese
 
 
 class MapStore(LazyLLMStoreBase):
@@ -26,7 +26,6 @@ class MapStore(LazyLLMStoreBase):
         self._sqlite_first = bool(uri)
         self._conn = None
         self._sqlite_has_json = None
-        self._bm25_cache_max = kwargs.get('bm25_cache_max', 128)
 
     def _open_conn(self):
         if not self._uri: return None
@@ -98,8 +97,6 @@ class MapStore(LazyLLMStoreBase):
             lambda: defaultdict(lambda: defaultdict(set)))
         self._col_parent_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
         self._lock = threading.Lock()
-        self._bm25_cache: OrderedDict[tuple, BM25] = OrderedDict()
-        self._bm25_cache_lock = threading.Lock()
         if self._uri:
             db_path = Path(self._uri)
             if not db_path.exists():
@@ -130,7 +127,6 @@ class MapStore(LazyLLMStoreBase):
                 self._col_kb_doc_uids[collection_name][kb_id][doc_id].add(uid)
                 self._col_doc_uids[collection_name][doc_id].add(uid)
                 self._col_parent_uids[collection_name][item.get('parent')].add(uid)
-            self._clear_bm25_cache(collection_name)
             return True
         except Exception as e:
             LOG.error(f'[MapStore - upsert] Error upserting data: {e}')
@@ -158,7 +154,6 @@ class MapStore(LazyLLMStoreBase):
                         self._col_kb_doc_uids[collection_name][kb_id][doc_id].discard(uid)
                         self._col_doc_uids[collection_name][doc_id].discard(uid)
                         self._col_parent_uids[collection_name][parent].discard(uid)
-                self._clear_bm25_cache(collection_name)
                 return True
             else:
                 need_delete = self._get_uids_by_criteria(collection_name, criteria)
@@ -175,7 +170,6 @@ class MapStore(LazyLLMStoreBase):
                     self._col_kb_doc_uids[collection_name][kb_id][doc_id].remove(uid)
                     self._col_doc_uids[collection_name][doc_id].remove(uid)
                     self._col_parent_uids[collection_name][parent].remove(uid)
-            self._clear_bm25_cache(collection_name)
             return True
         except Exception as e:
             LOG.error(f'[MapStore - delete] Error deleting data: {e}')
@@ -414,10 +408,11 @@ class MapStore(LazyLLMStoreBase):
         if not nodes:
             return []
         topk = len(nodes) if topk is None else min(topk, len(nodes))
-        filter_key = self._make_filter_key(filters)
-        cache_key = (collection_name, language, filter_key)
-        bm25 = self._get_bm25(cache_key, nodes, language)
-        results = bm25.retrieve(query, topk=topk)
+        if language == 'zh':
+            results = bm25_chinese(query, nodes)
+        else:
+            results = bm25(query, nodes)
+        results = results[:topk]
         scored = []
         for node, score in results:
             seg = uid2segment.get(node.uid)
@@ -427,32 +422,3 @@ class MapStore(LazyLLMStoreBase):
             item['score'] = float(score)
             scored.append(item)
         return scored
-
-    def _get_bm25(self, cache_key: tuple, nodes: List[DocNode], language: str) -> BM25:
-        with self._bm25_cache_lock:
-            cached = self._bm25_cache.get(cache_key)
-            if cached:
-                self._bm25_cache.move_to_end(cache_key)
-                return cached
-            bm25 = BM25(nodes, language=language, topk=len(nodes))
-            if self._bm25_cache_max and len(self._bm25_cache) >= self._bm25_cache_max:
-                self._bm25_cache.popitem(last=False)
-            self._bm25_cache[cache_key] = bm25
-            return bm25
-
-    def _clear_bm25_cache(self, collection_name: str) -> None:
-        with self._bm25_cache_lock:
-            for key in list(self._bm25_cache.keys()):
-                if key[0] == collection_name:
-                    del self._bm25_cache[key]
-
-    def _make_filter_key(self, filters: Optional[Dict[str, Union[str, int, List, Set]]]) -> Optional[tuple]:
-        if not filters:
-            return None
-        items = []
-        for key in sorted(filters.keys()):
-            value = filters[key]
-            if isinstance(value, (list, set)):
-                value = tuple(sorted(value, key=repr))
-            items.append((key, value))
-        return tuple(items)
