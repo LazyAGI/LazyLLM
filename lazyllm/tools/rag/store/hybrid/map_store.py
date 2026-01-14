@@ -302,7 +302,6 @@ class MapStore(LazyLLMStoreBase):
             for r in rows:
                 item = self._deserialize_data(r)
                 res.append(item)
-                self._cache_segment(collection_name, item)
             return res
 
     def _get_uids_by_criteria(self, collection_name: str, criteria: dict) -> List[str]:
