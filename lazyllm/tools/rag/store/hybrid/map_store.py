@@ -356,9 +356,9 @@ class MapStore(LazyLLMStoreBase):
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                embed_key: Optional[str] = None, **kwargs) -> List[dict]:
         if query_embedding is not None:
-            raise ValueError(f'MapStore only supports BM25 text search, query_embedding is not supported')
+            raise ValueError('MapStore only supports BM25 text search, query_embedding is not supported')
         if embed_key is not None:
-            raise ValueError(f'MapStore only supports BM25 text search, embed_key is not supported')
+            raise ValueError('MapStore only supports BM25 text search, embed_key is not supported')
         segments = None
         if self._sqlite_first and filters:
             segments = self._get_by_filters(collection_name, filters)
