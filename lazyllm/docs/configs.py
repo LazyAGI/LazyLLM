@@ -203,30 +203,20 @@ AutoModel, OnlineModule, OnlineChatModule, OnlineEmbeddingModule, and OnlineMult
   create a separate instance per thread even if they share the same space name.
 ''')
 
-add_example('Namespace', '''\
+add_example('namespace', '''\
 >>> import os
 >>> import lazyllm
->>> from lazyllm import Namespace
->>>
+>>> from lazyllm import namespace
 >>> with lazyllm.namespace('my'):
 ...     assert lazyllm.config['gpu_type'] == 'A100'
 ...     os.environ['MY_GPU_TYPE'] = 'H100'
 ...     assert lazyllm.config['gpu_type'] == 'H100'
+...
+>>>
 >>> assert lazyllm.config['gpu_type'] == 'A100'
 >>>
->>> class DummyChat(object):
-...     def __init__(self, *args, **kw):
-...         self._api = lazyllm.config['gpu_type']
->>>
->>> lazyllm.OnlineChatModule = DummyChat
->>>
->>> lazyllm.OnlineChatModule()._api
-'A100'
->>>
 >>> with lazyllm.namespace('my'):
-...     lazyllm.OnlineChatModule()._api
-'H100'
->>>
->>> Namespace('my').OnlineChatModule()._api
-'H100'
+...     m = lazyllm.OnlineChatModule()
+...
+>>> m = lazyllm.namespace('my').OnlineChatModule()
 ''')
