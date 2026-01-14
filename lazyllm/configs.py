@@ -264,11 +264,18 @@ def refresh_config(key):
 
 
 class Namespace(object):
-    supported = ['AutoModel', 'OnlineModule', 'OnlineChatModule', 'OnlineEmbeddingModule', 'OnlineMultiModalModule']
+    supported = set()
 
     def __init__(self, space: str):
         self._space = space
         self._cm = None
+
+    @staticmethod
+    def register_module(module: Union[str, List[str]]):
+        if isinstance(module, str):
+            Namespace.supported.add(module)
+        else:
+            Namespace.supported.update(module)
 
     def __getattr__(self, __key):
         def wrapper(*args, **kw):

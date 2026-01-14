@@ -50,14 +50,14 @@ class TestConfig(object):
         assert lazyllm.config._impl == origin
 
     def test_config_mode(self):
-        print(os.environ.get('LAZYLLM_DISPLAY'))
         assert lazyllm.config['mode'] == Mode.Normal
 
     @isolated
     def test_config_disp(self):
-        print(os.environ.get('LAZYLLM_DISPLAY'))
+        os.environ['LAZYLLM_DISPLAY'] = '1'
         assert lazyllm.config['mode'] == Mode.Display
 
+class TestConfigNamespace(object):
     @isolated
     def test_config_namespace(self):
         os.environ['MY_GPU_TYPE'] = 'A10000'
@@ -74,6 +74,8 @@ class TestConfig(object):
         assert lazyllm.config['gpu_type'] == 'A100'
         with lazyllm.namespace('my'):
             assert lazyllm.config['gpu_type'] == 'H100'
+        assert lazyllm.config['gpu_type'] == 'A100'
+        os.environ['MY_GPU_TYPE'] = 'A100'
 
     @isolated
     def test_namespace(self, monkeypatch):
@@ -122,7 +124,6 @@ def clear_env():
 def set_env(environ, value):
     assert isinstance(value, str)
     original_value = os.getenv(environ)
-    os.environ['LAZYLLM_DISPLAY'] = '1'
 
     os.environ[environ] = value
     yield
