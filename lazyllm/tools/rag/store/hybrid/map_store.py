@@ -4,7 +4,7 @@ import os
 import threading
 
 from pathlib import Path
-from collections import defaultdict
+from collections import defaultdict, OrderedDict
 from typing import Dict, List, Optional, Union, Set
 
 from lazyllm import LOG
@@ -26,6 +26,7 @@ class MapStore(LazyLLMStoreBase):
         self._sqlite_first = bool(uri)
         self._conn = None
         self._sqlite_has_json = None
+        self._bm25_cache_max = kwargs.get('bm25_cache_max', 128)
 
     def _open_conn(self):
         if not self._uri: return None
@@ -97,7 +98,7 @@ class MapStore(LazyLLMStoreBase):
             lambda: defaultdict(lambda: defaultdict(set)))
         self._col_parent_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
         self._lock = threading.Lock()
-        self._bm25_cache: Dict[tuple, BM25] = {}
+        self._bm25_cache: OrderedDict[tuple, BM25] = OrderedDict()
         self._bm25_cache_lock = threading.Lock()
         if self._uri:
             db_path = Path(self._uri)
@@ -414,9 +415,9 @@ class MapStore(LazyLLMStoreBase):
             return []
         topk = len(nodes) if topk is None else min(topk, len(nodes))
         filter_key = self._make_filter_key(filters)
-        cache_key = (collection_name, language, filter_key, topk)
-        bm25 = self._get_bm25(cache_key, nodes, language, topk)
-        results = bm25.retrieve(query)
+        cache_key = (collection_name, language, filter_key)
+        bm25 = self._get_bm25(cache_key, nodes, language)
+        results = bm25.retrieve(query, topk=topk)
         scored = []
         for node, score in results:
             seg = uid2segment.get(node.uid)
@@ -427,12 +428,15 @@ class MapStore(LazyLLMStoreBase):
             scored.append(item)
         return scored
 
-    def _get_bm25(self, cache_key: tuple, nodes: List[DocNode], language: str, topk: int) -> BM25:
+    def _get_bm25(self, cache_key: tuple, nodes: List[DocNode], language: str) -> BM25:
         with self._bm25_cache_lock:
             cached = self._bm25_cache.get(cache_key)
             if cached:
+                self._bm25_cache.move_to_end(cache_key)
                 return cached
-            bm25 = BM25(nodes, language=language, topk=topk)
+            bm25 = BM25(nodes, language=language, topk=len(nodes))
+            if self._bm25_cache_max and len(self._bm25_cache) >= self._bm25_cache_max:
+                self._bm25_cache.popitem(last=False)
             self._bm25_cache[cache_key] = bm25
             return bm25
 
