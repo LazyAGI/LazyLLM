@@ -35,7 +35,6 @@ MILVUS_INDEX_TYPE_DEFAULTS = {
     'SPARSE_INVERTED_INDEX': {'metric_type': 'IP', 'params': {'inverted_index_algo': 'DAAT_MAXSCORE'}},
     'AUTOINDEX': {'metric_type': 'COSINE', 'params': {'nlist': 128}},
 }
-MILVUS_SPARSE_FLOAT_VECTOR_DEFAULT_VALUE = {0: 0.0}
 
 class _ClientPool:
     def __init__(self, maker, max_size: int = 8):
@@ -421,9 +420,6 @@ class MilvusStore(LazyLLMStoreBase):
             self._primary_key: d.get(self._primary_key, '')
         }
         for embed_key, value in d.get('embedding', {}).items():
-            # set default value for SPARSE_FLOAT_VECTOR type
-            if self._embed_datatypes.get(embed_key) == DataType.SPARSE_FLOAT_VECTOR:
-                value = value or MILVUS_SPARSE_FLOAT_VECTOR_DEFAULT_VALUE
             res[self._gen_embed_key(embed_key)] = value
         global_meta = d.get('global_meta', {})
         for name, desc in self._global_metadata_desc.items():
