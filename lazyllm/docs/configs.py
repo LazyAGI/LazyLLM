@@ -166,7 +166,7 @@ Args:
 add_chinese_doc('namespace', '''\
 命名空间包装器，用于在指定的配置命名空间（namespace）中调用 LazyLLM 的模块构造函数。
 
-`Namespace` 既可以作为上下文管理器使用，也可以直接通过属性访问的方式，
+`namespace` 既可以作为上下文管理器使用，也可以直接通过属性访问的方式，
 在不显式使用 `with` 的情况下，将某一次模块构造绑定到指定的 namespace 中。
 
 支持的模块包括：
@@ -179,13 +179,13 @@ AutoModel、OnlineModule、OnlineChatModule、OnlineEmbeddingModule、OnlineMult
   仅对单次模块构造生效，不影响全局状态。
 
 **注意事项：**\n
-- `Namespace` 实例本身不是线程安全的，多线程环境中应为每个线程创建独立实例。
+- `namespace` 实例本身不是线程安全的，多线程环境中应为每个线程创建独立实例。
 ''')
 
 add_english_doc('namespace', '''\
 A namespace wrapper used to invoke LazyLLM module constructors under a specified configuration namespace.
 
-`Namespace` can be used either as a context manager or as a lightweight wrapper for single calls.
+`namespace` can be used either as a context manager or as a lightweight wrapper for single calls.
 It allows binding LazyLLM configuration and module construction to a specific namespace
 without affecting the global configuration.
 
@@ -199,7 +199,7 @@ AutoModel, OnlineModule, OnlineChatModule, OnlineEmbeddingModule, and OnlineMult
   only to that single constructor call.
 
 **Notes:**\n
-- A `Namespace` instance is not thread-safe. In multi-threaded environments,
+- A `namespace` instance is not thread-safe. In multi-threaded environments,
   create a separate instance per thread even if they share the same space name.
 ''')
 
@@ -220,3 +220,48 @@ add_example('namespace', '''\
 ...
 >>> m = lazyllm.namespace('my').OnlineChatModule()
 ''')
+
+add_chinese_doc('namespace.register_module', """\
+向 `namespace` 注册可被代理调用的 LazyLLM 模块名称。
+
+被注册的模块名将被加入 `namespace.supported` 集合中，
+之后即可通过 `namespace(space).<ModuleName>(...)` 的形式，
+在指定的 namespace 下构造对应模块。
+
+该方法是一个类级别的注册接口，对所有 `namespace` 实例生效。
+
+**Parameters:**\n
+- module (str | List[str]): 需要注册的模块名称。
+  - 当为字符串时，注册单个模块名；
+  - 当为列表时，批量注册多个模块名。
+""")
+
+add_english_doc('namespace.register_module', """\
+Register LazyLLM module names that can be proxied by `namespace`.
+
+Registered module names will be added to the class-level `namespace.supported` set,
+allowing them to be constructed via `namespace(space).<ModuleName>(...)`
+under the specified namespace.
+
+This is a class-level registration method and affects all `namespace` instances.
+
+**Parameters:**\n
+- module (str | List[str]): The module name(s) to register.
+  - A string registers a single module name;
+  - A list of strings registers multiple module names at once.
+""")
+
+add_example('namespace.register_module', """\
+>>> import lazyllm
+>>> from lazyllm import namespace
+>>> namespace.register_module('OnlineChatModule')
+>>> 'OnlineChatModule' in namespace.supported
+True
+>>> namespace.register_module(['AutoModel', 'OnlineEmbeddingModule'])
+>>> 'AutoModel' in namespace.supported
+True
+>>> 'OnlineEmbeddingModule' in namespace.supported
+True
+>>> namespace('my').OnlineChatModule().space
+'my'
+""")
