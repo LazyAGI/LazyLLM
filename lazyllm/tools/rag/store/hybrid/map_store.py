@@ -282,8 +282,10 @@ class MapStore(LazyLLMStoreBase):
                query_embedding: Optional[Union[dict, List[float]]] = None, topk: int = 10,
                filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
                embed_key: Optional[str] = None, **kwargs) -> List[dict]:
-        if query_embedding is not None or embed_key is not None:
-            LOG.warning('[MapStore - search] Embedding-based search ignored, MapStore only supports BM25 text search')
+        if query_embedding is not None:
+            raise ValueError(f'MapStore only supports BM25 text search, query_embedding is not supported')
+        if embed_key is not None:
+            raise ValueError(f'MapStore only supports BM25 text search, embed_key is not supported')
         segments = self.get(collection_name=collection_name, criteria=None)
         segments = self._apply_filters(segments, filters)
         if not query:
