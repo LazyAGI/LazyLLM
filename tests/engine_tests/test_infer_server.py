@@ -23,6 +23,13 @@ class TestInferServer:
         self.infer_server.stop()
         cleanup()
 
+    @pytest.fixture(autouse=True)
+    def run_around_tests(self):
+        yield
+        LightEngine().reset()
+        lazyllm.FileSystemQueue().dequeue()
+        lazyllm.FileSystemQueue(klass='lazy_trace').dequeue()
+
     def deploy_inference_service(self, model_name, deploy_method='auto', num_gpus=1):
         service_name = 'test_engine_infer_' + uuid.uuid4().hex
 
