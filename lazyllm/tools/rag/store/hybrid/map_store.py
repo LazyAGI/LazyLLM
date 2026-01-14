@@ -25,6 +25,7 @@ class MapStore(LazyLLMStoreBase):
         self._uri = uri  # filepath to SQLite .db for persistence
         self._sqlite_first = bool(uri)
         self._conn = None
+        self._sqlite_has_json = None
 
     def _open_conn(self):
         if not self._uri: return None
@@ -195,11 +196,7 @@ class MapStore(LazyLLMStoreBase):
                 for r in rows:
                     item = self._deserialize_data(r)
                     res.append(item)
-                    self._uid2data[item['uid']] = item
-                    self._collection2uids[collection_name].add(item['uid'])
-                    self._col_doc_uids[collection_name][item['doc_id']].add(item['uid'])
-                    self._col_kb_doc_uids[collection_name][item['kb_id']][item['doc_id']].add(item['uid'])
-                    self._col_parent_uids[collection_name][item['parent']].add(item['uid'])
+                    self._cache_segment(collection_name, item)
             return res
         else:
             uids = self._get_uids_by_criteria(collection_name, criteria)
@@ -229,6 +226,89 @@ class MapStore(LazyLLMStoreBase):
             args.extend(parents)
         where = (' WHERE ' + ' AND '.join(clauses)) if clauses else ''
         return where, tuple(args)
+
+    def _cache_segment(self, collection_name: str, item: dict) -> None:
+        uid = item.get('uid')
+        if not uid:
+            return
+        self._uid2data[uid] = item
+        self._collection2uids[collection_name].add(uid)
+        self._col_doc_uids[collection_name][item['doc_id']].add(uid)
+        self._col_kb_doc_uids[collection_name][item['kb_id']][item['doc_id']].add(uid)
+        self._col_parent_uids[collection_name][item.get('parent')].add(uid)
+
+    def _check_sqlite_json(self, cursor: sqlite3.Cursor) -> bool:
+        if self._sqlite_has_json is not None:
+            return self._sqlite_has_json
+        try:
+            cursor.execute("SELECT json_extract('{}', '$')")
+            cursor.fetchone()
+            self._sqlite_has_json = True
+        except sqlite3.OperationalError:
+            self._sqlite_has_json = False
+        return self._sqlite_has_json
+
+    def _json_path(self, key: str) -> str:
+        key = str(key).replace('"', '\\"')
+        return f'$."{key}"'
+
+    def _build_filter_where(self, filters: Dict[str, Union[str, int, List, Set]]):
+        if not filters:
+            return '', ()
+        clauses, args = [], []
+        for name, candidates in filters.items():
+            path = self._json_path(name)
+            if isinstance(candidates, (list, set, tuple)):
+                values = list(candidates)
+                if not values:
+                    return ' WHERE 0', ()
+                non_null = [v for v in values if v is not None]
+                sub_clauses = []
+                if non_null:
+                    placeholders = ','.join('?' for _ in non_null)
+                    sub_clauses.append(f'json_extract(global_meta, ?) IN ({placeholders})')
+                    args.append(path)
+                    args.extend(non_null)
+                if len(non_null) != len(values):
+                    sub_clauses.append('json_extract(global_meta, ?) IS NULL')
+                    args.append(path)
+                clause = sub_clauses[0] if len(sub_clauses) == 1 else '(' + ' OR '.join(sub_clauses) + ')'
+                clauses.append(clause)
+            else:
+                if candidates is None:
+                    clauses.append('json_extract(global_meta, ?) IS NULL')
+                    args.append(path)
+                else:
+                    clauses.append('json_extract(global_meta, ?) = ?')
+                    args.append(path)
+                    args.append(candidates)
+        where = ' WHERE ' + ' AND '.join(clauses) if clauses else ''
+        return where, tuple(args)
+
+    def _get_by_filters(self, collection_name: str,
+                        filters: Dict[str, Union[str, int, List, Set]]) -> Optional[List[dict]]:
+        if not filters:
+            return None
+        with self._lock:
+            conn = self._open_conn()
+            cur = conn.cursor()
+            self._ensure_table(cur, collection_name)
+            if not self._check_sqlite_json(cur):
+                LOG.debug('[MapStore] SQLite JSON1 not available, fallback to in-memory filters')
+                return None
+            where, args = self._build_filter_where(filters)
+            if where == ' WHERE 0':
+                return []
+            cur.execute(f'''SELECT uid, doc_id, "group", content, meta, global_meta, type, number, kb_id,
+                            excluded_embed_metadata_keys, excluded_llm_metadata_keys, parent, answer, image_keys
+                            FROM {collection_name}{where}''', args)
+            rows = cur.fetchall()
+            res = []
+            for r in rows:
+                item = self._deserialize_data(r)
+                res.append(item)
+                self._cache_segment(collection_name, item)
+            return res
 
     def _get_uids_by_criteria(self, collection_name: str, criteria: dict) -> List[str]:
         if not criteria:
@@ -286,8 +366,12 @@ class MapStore(LazyLLMStoreBase):
             raise ValueError(f'MapStore only supports BM25 text search, query_embedding is not supported')
         if embed_key is not None:
             raise ValueError(f'MapStore only supports BM25 text search, embed_key is not supported')
-        segments = self.get(collection_name=collection_name, criteria=None)
-        segments = self._apply_filters(segments, filters)
+        segments = None
+        if self._sqlite_first and filters:
+            segments = self._get_by_filters(collection_name, filters)
+        if segments is None:
+            segments = self.get(collection_name=collection_name, criteria=None)
+            segments = self._apply_filters(segments, filters)
         if not query:
             return []
         language = kwargs.get('language', 'en')
