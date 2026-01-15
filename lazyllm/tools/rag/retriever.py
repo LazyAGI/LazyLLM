@@ -49,36 +49,34 @@ class Retriever(_RetrieverBase, _PostProcess):
         if similarity:
             _, mode, _ = registered_similarities[similarity]
         else:
+            similarity = 'cosine'
             mode = 'embedding'  # TODO FIXME XXX should be removed after similarity args refactor
         group_name, target = str(group_name), (str(target) if target else None)
 
         self._docs: List[Document] = [doc] if isinstance(doc, Document) else doc
-        for doc in self._docs:
-            assert isinstance(doc, (Document, UrlDocument)), 'Only Document or List[Document] are supported'
-            if isinstance(doc, UrlDocument):
-                group_name, embed_keys = self._validate_remote_vec_retr_params(doc, group_name, embed_keys)
-                continue
-            self._submodules.append(doc)
-            if mode == 'embedding' and embed_keys is None:
-                embed_keys = list(doc._impl.embed.keys())
-            doc.activate_group(group_name, embed_keys)
-            if target: doc.activate_group(target)
-
+        # NOTE: multi docs is deprecated and will be removed in the future
+        if len(self._docs) > 1:
+            LOG.warning('[Retriever] Multi docs is deprecated and will be removed in the future,'
+                        ' please use multiple Retrievers instead.')
         self._group_name = group_name
-        self._similarity = similarity  # similarity function str
-        self._similarity_cut_off = similarity_cut_off
         if index == 'smart_embedding_index':
             index = 'default'
             LOG.warning('[Retriever] `smart_embedding_index` is deprecated, converted to `default`')
+        self._mode = mode
         self._index = index
         self._topk = topk
+        self._similarity = similarity  # similarity function str
         self._similarity_kw = kwargs  # kw parameters
+        self._similarity_cut_off = similarity_cut_off
         self._embed_keys = embed_keys
+        self._per_doc_embed_keys = False
         self._target = target
         self._weight, self._priority = weight, priority
         if weight or priority:
             assert not (weight and priority), f'Cannot provide weight({weight}) and priority({priority}) together!'
             assert not output_format or not join, 'shouldn\'t provide output_format/join when weight or priority is set'
+
+        self._init_submodules_and_embed_keys()
         _PostProcess.__init__(self, output_format, join)
 
     weight = property(lambda self: self._weight)
@@ -86,16 +84,52 @@ class Retriever(_RetrieverBase, _PostProcess):
 
     @once_wrapper
     def _lazy_init(self):
-        docs = [doc for doc in self._docs if isinstance(doc, UrlDocument) or self._group_name in doc._impl.node_groups
-                or self._group_name in DocImpl._builtin_node_groups or self._group_name in DocImpl._global_node_groups]
+        docs = []
+        per_doc_embed_keys = [] if self._per_doc_embed_keys else None
+        for idx, doc in enumerate(self._docs):
+            if isinstance(doc, UrlDocument) or self._group_name in doc._impl.node_groups \
+                    or self._group_name in DocImpl._builtin_node_groups \
+                    or self._group_name in DocImpl._global_node_groups:
+                docs.append(doc)
+                if self._per_doc_embed_keys:
+                    per_doc_embed_keys.append(self._embed_keys[idx])
         if not docs: raise RuntimeError(f'Group {self._group_name} not found in document {self._docs}')
         self._docs = docs
+        if self._per_doc_embed_keys:
+            self._embed_keys = per_doc_embed_keys
+
+    def _init_submodules_and_embed_keys(self):
+        group_name = self._group_name
+        embed_keys = self._embed_keys
+        self._per_doc_embed_keys = (not embed_keys and self._mode == 'embedding')
+        if self._per_doc_embed_keys:
+            # NOTE: store per-doc embed keys aligned with self._docs order
+            self._embed_keys = []
+        for doc in self._docs:
+            assert isinstance(doc, (Document, UrlDocument)), 'Only Document or List[Document] are supported'
+            if isinstance(doc, UrlDocument):
+                if embed_keys:
+                    self._validate_remote_vec_retr_params(doc, group_name, embed_keys)
+                else:
+                    group_name, doc_embed_keys = self._validate_remote_vec_retr_params(doc, group_name, None)
+                    if self._per_doc_embed_keys:
+                        self._embed_keys.append(doc_embed_keys)
+                continue
+            self._submodules.append(doc)
+            if self._per_doc_embed_keys:
+                doc_embed_keys = list(doc._impl.embed.keys())
+                self._embed_keys.append(doc_embed_keys)
+            else:
+                doc_embed_keys = embed_keys
+            doc.activate_group(group_name, doc_embed_keys)
+            if self._target: doc.activate_group(self._target)
 
     def __getstate__(self):
         state = {'group_name': self._group_name, 'similarity': self._similarity,
                  'similarity_cut_off': self._similarity_cut_off, 'index': self._index, 'topk': self._topk,
                  'similarity_kw': self._similarity_kw, 'embed_keys': self._embed_keys, 'target': self._target,
-                 'output_format': self._output_format, 'join': self._join}
+                 'output_format': self._output_format, 'join': self._join,
+                 'per_doc_embed_keys': self._per_doc_embed_keys}
         docs = []
         for doc in self._docs:
             if isinstance(doc, UrlDocument):
@@ -116,6 +150,7 @@ class Retriever(_RetrieverBase, _PostProcess):
         self._topk = state['topk']
         self._similarity_kw = state['similarity_kw']
         self._embed_keys = state['embed_keys']
+        self._per_doc_embed_keys = state.get('per_doc_embed_keys', False)
         self._target = state['target']
         self._output_format = state['output_format']
         self._join = state['join']
@@ -129,14 +164,15 @@ class Retriever(_RetrieverBase, _PostProcess):
         if group_name not in active_groups:
             raise RuntimeError(f'Group {group_name} not found or not activated in document {doc._manager._url}')
         if not embed_keys:
-            embed_keys = list(active_groups[group_name])
+            resolved_embed_keys = list(active_groups[group_name])
+            return group_name, resolved_embed_keys
         else:
             for k in embed_keys:
                 if k not in active_groups[group_name]:
                     raise RuntimeError(f'Embedding key {k} not found in group {group_name} '
                                        f'from document {doc._manager._url},'
                                        f'available keys: {list(active_groups[group_name])}')
-        return group_name, embed_keys
+            return group_name, embed_keys
 
     def forward(
             self, query: str, filters: Optional[Dict[str, Union[str, int, List, Set]]] = None,
@@ -144,10 +180,14 @@ class Retriever(_RetrieverBase, _PostProcess):
     ) -> Union[List[DocNode], str]:
         self._lazy_init()
         all_nodes: List[DocNode] = []
-        for doc in self._docs:
+        if self._per_doc_embed_keys:
+            if len(self._embed_keys) != len(self._docs):
+                raise RuntimeError('Per-doc embed_keys misaligned with docs after lazy init')
+        for idx, doc in enumerate(self._docs):
+            embed_keys = self._embed_keys[idx] if self._per_doc_embed_keys else self._embed_keys
             nodes = doc.forward(query=query, group_name=self._group_name, similarity=self._similarity,
                                 similarity_cut_off=self._similarity_cut_off, index=self._index,
-                                topk=self._topk, similarity_kws=self._similarity_kw, embed_keys=self._embed_keys,
+                                topk=self._topk, similarity_kws=self._similarity_kw, embed_keys=embed_keys,
                                 filters=filters, **kwargs)
             if nodes and self._target and self._target != nodes[0]._group:
                 nodes = doc.find(self._target)(nodes)
