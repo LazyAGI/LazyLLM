@@ -1,9 +1,10 @@
 import json
 from .formatterbase import JsonLikeFormatter
 import lazyllm
+import json_repair
 
 class JsonFormatter(JsonLikeFormatter):
-    def _extract_json_from_string(self, mixed_str: str):
+    def _extract_json_from_string(self, mixed_str: str):  # noqa: C901
         json_objects = []
         brace_level = 0
         current_json = ''
@@ -30,7 +31,13 @@ class JsonFormatter(JsonLikeFormatter):
                     json_objects.append(current_json)
                     current_json = ''
                 except json.JSONDecodeError:
-                    continue
+                    try:
+                        repaired_obj = json_repair.loads(current_json)
+                        json.dumps(repaired_obj)
+                        json_objects.append(repaired_obj)
+                        current_json = ''
+                    except (json.JSONDecodeError, TypeError, ValueError, Exception):
+                        continue
 
         return json_objects
 
@@ -43,7 +50,7 @@ class JsonFormatter(JsonLikeFormatter):
                 raise TypeError(f'{msg} is not a valid json string.')
             res = []
             for json_str in json_strs:
-                res.append(json.loads(json_str))
+                res.append(json_str)
             return res if len(res) > 1 else res[0]
         except Exception as e:
             lazyllm.LOG.info(f'Error: {e}')
