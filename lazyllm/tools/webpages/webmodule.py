@@ -43,7 +43,6 @@ def _get_gradio_version() -> Tuple[int, ...]:
         version_str = gr.__version__
         return _parse_version(version_str)
     except (AttributeError, ImportError):
-        # Fallback: default to old version
         return (5, 0, 0)
 
 def _get_blocks_kwargs(css_content: str, title: str, analytics_enabled: bool = False):
@@ -51,11 +50,9 @@ def _get_blocks_kwargs(css_content: str, title: str, analytics_enabled: bool = F
     kwargs = {'title': title, 'analytics_enabled': analytics_enabled}
 
     if gradio_ver < (6, 0, 0):
-        # Old version: use css parameter directly
         kwargs['css'] = css_content
         return kwargs, None
     else:
-        # New version: check if css parameter is still supported
         try:
             import inspect
             sig = inspect.signature(gr.Blocks.__init__)
@@ -64,14 +61,11 @@ def _get_blocks_kwargs(css_content: str, title: str, analytics_enabled: bool = F
                 return kwargs, None
         except Exception:
             pass
-        # If css not supported, return css for manual injection
         return kwargs, css_content
 
 def _convert_to_openai_format(chat_history: List) -> List:
     if not chat_history:
         return chat_history
-
-    # Check if already in openai format
     if chat_history and isinstance(chat_history[0], dict) and 'role' in chat_history[0]:
         return chat_history
 
@@ -88,8 +82,6 @@ def _convert_to_openai_format(chat_history: List) -> List:
 def _convert_from_openai_format(messages: List) -> List:
     if not messages:
         return messages
-
-    # Check if already in tuples format
     if messages and isinstance(messages[0], list):
         return messages
 
@@ -100,7 +92,6 @@ def _convert_from_openai_format(messages: List) -> List:
         if msg.get('role') == 'user':
             user_content = msg.get('content', '')
             assistant_content = None
-            # Check if next message is assistant
             if i + 1 < len(messages) and messages[i + 1].get('role') == 'assistant':
                 assistant_content = messages[i + 1].get('content', '')
                 i += 2
@@ -145,7 +136,8 @@ class WebModule(ModuleBase):
                  encode_files: bool = False, share: bool = False) -> None:
         super().__init__()
         self._gradio_ver = _get_gradio_version()
-        self._use_openai_format = False  # Will be set in init_web based on actual Chatbot support
+        # Will be set in init_web based on actual Chatbot support
+        self._use_openai_format = False
         # Set the static directory of gradio so that gradio can access local resources in the directory
         if isinstance(static_paths, (str, Path)):
             self._static_paths = [static_paths]
