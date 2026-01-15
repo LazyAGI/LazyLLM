@@ -11,11 +11,11 @@ from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
 
 
-class LazyLLMMinimaxBase():
-    pass
+REGISTRY_KEY = 'minimax'
 
 
-class MinimaxChat(LazyLLMMinimaxBase, OnlineChatModuleBase, FileHandlerBase):
+class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, base_url: str = 'https://api.minimaxi.com/v1/', model: str = 'MiniMax-M2',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
@@ -72,8 +72,10 @@ class MinimaxChat(LazyLLMMinimaxBase, OnlineChatModuleBase, FileHandlerBase):
             return False
 
 
-class MinimaxTextToImageModule(LazyLLMMinimaxBase, OnlineMultiModalBase):
+class MinimaxTextToImageModule(OnlineMultiModalBase):
     MODEL_NAME = 'image-01'
+    __lazyllm_registry_group__ = LLMType.TEXT2IMAGE
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, api_key: str = None, model: str = None,
                  url: str = 'https://api.minimaxi.com/v1/', return_trace: bool = False, **kwargs):
@@ -146,8 +148,10 @@ class MinimaxTextToImageModule(LazyLLMMinimaxBase, OnlineMultiModalBase):
         return response
 
 
-class MinimaxTTSModule(LazyLLMMinimaxBase, OnlineMultiModalBase):
+class MinimaxTTSModule(OnlineMultiModalBase):
     MODEL_NAME = 'speech-2.6-hd'
+    __lazyllm_registry_group__ = LLMType.TTS
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.minimaxi.com/v1/',
@@ -227,6 +231,3 @@ class MinimaxTTSModule(LazyLLMMinimaxBase, OnlineMultiModalBase):
             file_path = out_path
         result_encoded = encode_query_with_filepaths(None, [file_path])
         return result_encoded
-
-
-MinimaxModule = MinimaxChat

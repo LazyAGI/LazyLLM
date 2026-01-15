@@ -8,12 +8,12 @@ import uuid
 
 import lazyllm
 from lazyllm.thirdparty import jwt
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
 from ..fileHandler import FileHandlerBase
 
 
-class LazyLLMSenseNovaBase():
-    pass
+REGISTRY_KEY = 'sensenova'
 
 
 class _SenseNovaBase(object):
@@ -26,7 +26,7 @@ class _SenseNovaBase(object):
         if not api_key.startswith('sk-'):
             if ':' in api_key: api_key, secret_key = api_key.split(':', 1)
             assert secret_key, 'secret_key should be provided with sensecore api_key'
-            api_key = SenseNovaChat.encode_jwt_token(api_key, secret_key)
+            api_key = SenseNovaModule.encode_jwt_token(api_key, secret_key)
         return api_key
 
     @staticmethod
@@ -43,10 +43,11 @@ class _SenseNovaBase(object):
         return token
 
 
-class SenseNovaChat(LazyLLMSenseNovaBase, OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
+class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     TRAINABLE_MODEL_LIST = ['nova-ptc-s-v2']
     VLM_MODEL_PREFIX = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
                         'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, base_url: str = 'https://api.sensenova.cn/compatible-mode/v1/', model: str = 'SenseChat-5',
                  api_key: str = None, secret_key: str = None, stream: bool = True,
@@ -207,7 +208,9 @@ class SenseNovaChat(LazyLLMSenseNovaBase, OnlineChatModuleBase, FileHandlerBase,
             return [{'type': 'image_base64', 'image_base64': image_url}]
 
 
-class SenseNovaEmbedding(LazyLLMSenseNovaBase, OnlineEmbeddingModuleBase, _SenseNovaBase):
+class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
+    __lazyllm_registry_group__ = LLMType.EMBED
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self,
                  embed_url: str = 'https://api.sensenova.cn/v1/llm/embeddings',
@@ -228,6 +231,3 @@ class SenseNovaEmbedding(LazyLLMSenseNovaBase, OnlineEmbeddingModuleBase, _Sense
             return embeddings[0].get('embedding', [])
         else:
             return [res.get('embedding', []) for res in embeddings]
-
-
-SenseNovaModule = SenseNovaChat

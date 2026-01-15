@@ -12,7 +12,7 @@ from io import BytesIO
 from lazyllm.thirdparty import PIL
 
 class OnlineMultiModalBase(LazyLLMOnlineBase, LLMBase):
-    _lazy_llm_group = 'multimodal'
+    __lazyllm_group_disable__ = True
 
     def __init__(self, model_series: str, model: str = None, return_trace: bool = False, skip_auth: bool = False,
                  api_key: Optional[Union[str, List[str]]] = None, url: str = None, type: Optional[str] = None, **kwargs):

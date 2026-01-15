@@ -1,4 +1,5 @@
 import lazyllm
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Any
 from .base import OnlineMultiModalBase
 from .base.utils import select_source_with_default_key
@@ -31,17 +32,18 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         img_gen = OnlineMultiModalModule(source='qwen', function='text2image')
     '''
     TYPE_GROUP_MAP = {
-        'stt': 'stt',
-        'tts': 'tts',
-        'text2image': 'texttoimage',
-        'image_editing': 'texttoimage',
+        'stt': LLMType.STT,
+        'tts': LLMType.TTS,
+        'text2image': LLMType.TEXT2IMAGE,
+        'image_editing': LLMType.TEXT2IMAGE,
     }
 
     @staticmethod
     def _get_group(type: str):
         group_name = OnlineMultiModalModule.TYPE_GROUP_MAP.get(type)
         if not group_name:
-            raise AssertionError(f'Invalid type: {type}')
+            raise AssertionError(f'Invalid type: {type}, \
+                                 type must be in {OnlineMultiModalModule.TYPE_GROUP_MAP.keys()}')
         group = getattr(lazyllm.online, group_name)
         return {k: v for k, v in group.items() if k != 'base'}
 

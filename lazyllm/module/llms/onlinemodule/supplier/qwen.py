@@ -15,11 +15,10 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm import LOG
 
 
-class LazyLLMQwenBase():
-    pass
+REGISTRY_KEY = 'qwen'
 
 
-class QwenChat(LazyLLMQwenBase, OnlineChatModuleBase, FileHandlerBase):
+class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     '''
     #TODO: The Qianwen model has been finetuned and deployed successfully,
            but it is not compatible with the OpenAI interface and can only
@@ -28,11 +27,12 @@ class QwenChat(LazyLLMQwenBase, OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ['qwen-turbo', 'qwen-7b-chat', 'qwen-72b-chat']
     VLM_MODEL_PREFIX = ['qwen-vl-plus', 'qwen-vl-max', 'qvq-max', 'qvq-plus']
     MODEL_NAME = 'qwen-plus'
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, base_url: str = 'https://dashscope.aliyuncs.com/', model: str = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         OnlineChatModuleBase.__init__(self, model_series='QWEN', api_key=api_key or lazyllm.config['qwen_api_key'],
-                                      model_name=model or lazyllm.config['qwen_model_name'] or QwenChat.MODEL_NAME,
+                                      model_name=model or lazyllm.config['qwen_model_name'] or QwenModule.MODEL_NAME,
                                       base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = dict()
@@ -273,7 +273,9 @@ class QwenChat(LazyLLMQwenBase, OnlineChatModuleBase, FileHandlerBase):
         return [{'type': 'image_url', 'image_url': {'url': image_url}}]
 
 
-class QwenEmbedding(LazyLLMQwenBase, OnlineEmbeddingModuleBase):
+class QwenEmbedding(OnlineEmbeddingModuleBase):
+    __lazyllm_registry_group__ = LLMType.EMBED
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self,
                  embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
@@ -317,7 +319,9 @@ class QwenEmbedding(LazyLLMQwenBase, OnlineEmbeddingModuleBase):
             return [res.get('embedding', []) for res in embeddings]
 
 
-class QwenReranking(LazyLLMQwenBase, OnlineEmbeddingModuleBase):
+class QwenReranking(OnlineEmbeddingModuleBase):
+    __lazyllm_registry_group__ = LLMType.RERANK
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self,
                  embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
@@ -351,7 +355,9 @@ class QwenReranking(LazyLLMQwenBase, OnlineEmbeddingModuleBase):
         return [(result['index'], result['relevance_score']) for result in results]
 
 
-class QwenMultiModal(LazyLLMQwenBase, OnlineMultiModalBase):
+class QwenMultiModal(OnlineMultiModalBase):
+    __lazyllm_group_disable__ = True
+
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
@@ -367,6 +373,8 @@ class QwenMultiModal(LazyLLMQwenBase, OnlineMultiModalBase):
 
 class QwenSTTModule(QwenMultiModal):
     MODEL_NAME = 'paraformer-v2'
+    __lazyllm_registry_group__ = LLMType.STT
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
         QwenMultiModal.__init__(self, api_key=api_key,
@@ -399,6 +407,8 @@ class QwenSTTModule(QwenMultiModal):
 class QwenTextToImageModule(QwenMultiModal):
     MODEL_NAME = 'wanx2.1-t2i-turbo'
     IMAGE_EDITING_MODEL_NAME = 'qwen-image-edit-plus'
+    __lazyllm_registry_group__ = LLMType.TEXT2IMAGE
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
         QwenMultiModal.__init__(self, api_key=api_key,
@@ -570,6 +580,8 @@ class QwenTTSModule(QwenMultiModal):
         'qwen-tts': (synthesize_qwentts, 'Cherry'),
         'qwen-tts-latest': (synthesize_qwentts, 'Cherry')
     }
+    __lazyllm_registry_group__ = LLMType.TTS
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
         QwenMultiModal.__init__(self, api_key=api_key,
@@ -605,6 +617,3 @@ class QwenTTSModule(QwenMultiModal):
         }
         if self._api_key: call_params['api_key'] = self._api_key
         return encode_query_with_filepaths(None, bytes_to_file(synthesizer_func(**call_params)))
-
-
-QwenModule = QwenChat

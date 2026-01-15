@@ -5,15 +5,15 @@ from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase
 
 
-class LazyLLMPPIOBase():
-    pass
+REGISTRY_KEY = 'ppio'
 
 
 # PPIO (Paiou Cloud) online model module.
 # PPIO provides OpenAI-compatible API interface, supporting both streaming and non-streaming responses.
-class PPIOChat(LazyLLMPPIOBase, OnlineChatModuleBase):
+class PPIOModule(OnlineChatModuleBase):
     TRAINABLE_MODEL_LIST = []
     NO_PROXY = False
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     # Initialize PPIO module.
     # Args:
@@ -73,6 +73,3 @@ class PPIOChat(LazyLLMPPIOBase, OnlineChatModuleBase):
     def __repr__(self):
         return lazyllm.make_repr('Module', 'PPIO', name=self._model_name, url=self._base_url,
                                  stream=bool(self._stream), return_trace=self._return_trace)
-
-
-PPIOModule = PPIOChat

@@ -4,10 +4,11 @@ import requests
 from ..base import OnlineChatModuleBase
 
 
-class LazyLLMKimiBase():
-    pass
+REGISTRY_KEY = 'kimi'
 
-class KimiChat(LazyLLMKimiBase, OnlineChatModuleBase):
+
+class KimiModule(OnlineChatModuleBase):
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, base_url: str = 'https://api.moonshot.cn/', model: str = 'moonshot-v1-8k',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
@@ -43,6 +44,3 @@ class KimiChat(LazyLLMKimiBase, OnlineChatModuleBase):
             return response.status_code == 200
         except Exception:
             return False
-
-
-KimiModule = KimiChat

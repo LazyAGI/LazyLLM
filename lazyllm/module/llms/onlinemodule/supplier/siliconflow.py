@@ -10,13 +10,13 @@ from ..fileHandler import FileHandlerBase
 from lazyllm import LOG
 
 
-class LazyLLMSiliconFlowBase():
-    pass
+REGISTRY_KEY = 'siliconflow'
 
 
-class SiliconFlowChat(LazyLLMSiliconFlowBase, OnlineChatModuleBase, FileHandlerBase):
+class SiliconFlowModule(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = ['Qwen/Qwen2.5-VL-72B-Instruct', 'Qwen/Qwen3-VL-30B-A3B-Instruct', 'deepseek-ai/deepseek-vl2',
                         'Qwen/Qwen3-VL-30B-A3B-Thinking', 'THUDM/GLM-4.1V-9B-Thinking']
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, base_url: str = 'https://api.siliconflow.cn/v1/', model: str = 'Qwen/QwQ-32B',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
@@ -42,7 +42,10 @@ class SiliconFlowChat(LazyLLMSiliconFlowBase, OnlineChatModuleBase, FileHandlerB
             return False
 
 
-class SiliconFlowEmbedding(LazyLLMSiliconFlowBase, OnlineEmbeddingModuleBase):
+class SiliconFlowEmbedding(OnlineEmbeddingModuleBase):
+    __lazyllm_registry_group__ = LLMType.EMBED
+    __lazyllm_registry_key__ = REGISTRY_KEY
+
     def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/embeddings',
                  embed_model_name: str = 'BAAI/bge-large-zh-v1.5', api_key: str = None,
                  batch_size: int = 16, **kw):
@@ -50,7 +53,10 @@ class SiliconFlowEmbedding(LazyLLMSiliconFlowBase, OnlineEmbeddingModuleBase):
                          embed_model_name, batch_size=batch_size, **kw)
 
 
-class SiliconFlowReranking(LazyLLMSiliconFlowBase, OnlineEmbeddingModuleBase):
+class SiliconFlowReranking(OnlineEmbeddingModuleBase):
+    __lazyllm_registry_group__ = LLMType.RERANK
+    __lazyllm_registry_key__ = REGISTRY_KEY
+
     def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/rerank',
                  embed_model_name: str = 'BAAI/bge-reranker-v2-m3', api_key: str = None, **kw):
         super().__init__('SILICONFLOW', embed_url, api_key or lazyllm.config['siliconflow_api_key'],
@@ -72,9 +78,11 @@ class SiliconFlowReranking(LazyLLMSiliconFlowBase, OnlineEmbeddingModuleBase):
         return [(result['index'], result['relevance_score']) for result in results]
 
 
-class SiliconFlowTextToImageModule(LazyLLMSiliconFlowBase, OnlineMultiModalBase):
+class SiliconFlowTextToImageModule(OnlineMultiModalBase):
     MODEL_NAME = 'Qwen/Qwen-Image'
     IMAGE_EDITING_MODEL_NAME = 'Qwen/Qwen-Image-Edit-2509'
+    __lazyllm_registry_group__ = LLMType.TEXT2IMAGE
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, api_key: str = None, model: str = None,
                  url: str = 'https://api.siliconflow.cn/v1/',
@@ -134,8 +142,10 @@ class SiliconFlowTextToImageModule(LazyLLMSiliconFlowBase, OnlineMultiModalBase)
         return encode_query_with_filepaths(None, file_paths)
 
 
-class SiliconFlowTTSModule(LazyLLMSiliconFlowBase, OnlineMultiModalBase):
+class SiliconFlowTTSModule(OnlineMultiModalBase):
     MODEL_NAME = 'fnlp/MOSS-TTSD-v0.5'
+    __lazyllm_registry_group__ = LLMType.TTS
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',
@@ -196,6 +206,3 @@ class SiliconFlowTTSModule(LazyLLMSiliconFlowBase, OnlineMultiModalBase):
         result = encode_query_with_filepaths(None, [file_path])
 
         return result
-
-
-SiliconFlowModule = SiliconFlowChat

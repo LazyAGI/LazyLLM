@@ -9,18 +9,18 @@ from lazyllm.thirdparty import volcenginesdkarkruntime
 from lazyllm import LOG
 
 
-class LazyLLMDoubaoBase():
-    pass
+REGISTRY_KEY = 'doubao'
 
 
-class DoubaoChat(LazyLLMDoubaoBase, OnlineChatModuleBase):
+class DoubaoModule(OnlineChatModuleBase):
     MODEL_NAME = 'doubao-1-5-pro-32k-250115'
     VLM_MODEL_PREFIX = ['doubao-seed-1-6-vision', 'doubao-1-5-ui-tars']
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, model: str = None, base_url: str = 'https://ark.cn-beijing.volces.com/api/v3/',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         super().__init__(model_series='DOUBAO', api_key=api_key or lazyllm.config['doubao_api_key'], base_url=base_url,
-                         model_name=model or lazyllm.config['doubao_model_name'] or DoubaoChat.MODEL_NAME,
+                         model_name=model or lazyllm.config['doubao_model_name'] or DoubaoModule.MODEL_NAME,
                          stream=stream, return_trace=return_trace, **kwargs)
 
     def _get_system_prompt(self):
@@ -42,7 +42,10 @@ class DoubaoChat(LazyLLMDoubaoBase, OnlineChatModuleBase):
             return False
 
 
-class DoubaoEmbedding(LazyLLMDoubaoBase, OnlineEmbeddingModuleBase):
+class DoubaoEmbedding(OnlineEmbeddingModuleBase):
+    __lazyllm_registry_group__ = LLMType.EMBED
+    __lazyllm_registry_key__ = REGISTRY_KEY
+
     def __init__(self,
                  embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings',
                  embed_model_name: str = 'doubao-embedding-text-240715',
@@ -53,7 +56,10 @@ class DoubaoEmbedding(LazyLLMDoubaoBase, OnlineEmbeddingModuleBase):
                          batch_size=batch_size, **kw)
 
 
-class DoubaoMultimodalEmbedding(LazyLLMDoubaoBase, OnlineEmbeddingModuleBase):
+class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
+    __lazyllm_registry_group__ = 'multimodalembed'
+    __lazyllm_registry_key__ = REGISTRY_KEY
+
     def __init__(self,
                  embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal',
                  embed_model_name: str = 'doubao-embedding-vision-241215',
@@ -86,7 +92,9 @@ class DoubaoMultimodalEmbedding(LazyLLMDoubaoBase, OnlineEmbeddingModuleBase):
         return response['data']['embedding']
 
 
-class DoubaoMultiModal(LazyLLMDoubaoBase, OnlineMultiModalBase):
+class DoubaoMultiModal(OnlineMultiModalBase):
+    __lazyllm_group_disable__ = True
+
     def __init__(self, api_key: str = None, model: str = None, url='https://ark.cn-beijing.volces.com/api/v3',
                  return_trace: bool = False, **kwargs):
         api_key = api_key or lazyllm.config['doubao_api_key']
@@ -98,6 +106,8 @@ class DoubaoMultiModal(LazyLLMDoubaoBase, OnlineMultiModalBase):
 class DoubaoTextToImageModule(DoubaoMultiModal):
     MODEL_NAME = 'doubao-seedream-4-0-250828'
     IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'
+    __lazyllm_registry_group__ = LLMType.TEXT2IMAGE
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, api_key: str = None, model: str = None, return_trace: bool = False, **kwargs):
         DoubaoMultiModal.__init__(self, api_key=api_key, model=model or DoubaoTextToImageModule.MODEL_NAME
@@ -138,5 +148,3 @@ class DoubaoTextToImageModule(DoubaoMultiModal):
         imagesResponse = self._client.images.generate(**api_params)
         image_contents = [requests.get(result.url).content for result in imagesResponse.data]
         return encode_query_with_filepaths(None, bytes_to_file(image_contents))
-
-DoubaoModule = DoubaoChat

@@ -1,6 +1,7 @@
 from typing import Any, Dict
 
 import lazyllm
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from .base import OnlineEmbeddingModuleBase
 from .base.utils import select_source_with_default_key
 from .supplier.doubao import DoubaoEmbedding, DoubaoMultimodalEmbedding
@@ -45,7 +46,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         if 'type' in params:
             params.pop('type')
         if kwargs.get('type', 'embed') == 'embed':
-            embed_models = OnlineEmbeddingModule._get_group('embedding')
+            embed_models = OnlineEmbeddingModule._get_group(LLMType.EMBED)
             source, default_key = select_source_with_default_key(embed_models, explicit_source=source)
             if default_key and not kwargs.get('api_key'):
                 kwargs['api_key'] = default_key
@@ -56,7 +57,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                     return DoubaoEmbedding(**params)
             return embed_models[source](**params)
         elif kwargs.get('type') == 'rerank':
-            rerank_models = OnlineEmbeddingModule._get_group('reranking')
+            rerank_models = OnlineEmbeddingModule._get_group(LLMType.RERANK)
             source, default_key = select_source_with_default_key(rerank_models, explicit_source=source)
             if default_key and not kwargs.get('api_key'):
                 kwargs['api_key'] = default_key

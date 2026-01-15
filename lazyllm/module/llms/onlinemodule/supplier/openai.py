@@ -5,18 +5,20 @@ import requests
 from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
 import lazyllm
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
 from ..fileHandler import FileHandlerBase
 
 
-class LazyLLMOpenAIBase():
-    pass
+REGISTRY_KEY = 'openai'
 
-class OpenAIChat(LazyLLMOpenAIBase, OnlineChatModuleBase, FileHandlerBase):
+
+class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ['gpt-3.5-turbo-0125', 'gpt-3.5-turbo-1106',
                             'gpt-3.5-turbo-0613', 'babbage-002',
                             'davinci-002', 'gpt-4-0613']
     NO_PROXY = False
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, base_url: str = 'https://api.openai.com/v1/', model: str = 'gpt-3.5-turbo',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, skip_auth: bool = False, **kw):
@@ -196,8 +198,10 @@ class OpenAIChat(LazyLLMOpenAIBase, OnlineChatModuleBase, FileHandlerBase):
         return 'RUNNING'
 
 
-class OpenAIEmbedding(LazyLLMOpenAIBase, OnlineEmbeddingModuleBase):
+class OpenAIEmbedding(OnlineEmbeddingModuleBase):
     NO_PROXY = True
+    __lazyllm_registry_group__ = LLMType.EMBED
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self,
                  embed_url: str = 'https://api.openai.com/v1/',
@@ -210,8 +214,10 @@ class OpenAIEmbedding(LazyLLMOpenAIBase, OnlineEmbeddingModuleBase):
         self._embed_url = urljoin(self._embed_url, 'embeddings')
 
 
-class OpenAIReranking(LazyLLMOpenAIBase, OnlineEmbeddingModuleBase):
+class OpenAIReranking(OnlineEmbeddingModuleBase):
     NO_PROXY = True
+    __lazyllm_registry_group__ = LLMType.RERANK
+    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self,
                  embed_url: str = 'https://api.openai.com/v1/',
@@ -242,5 +248,3 @@ class OpenAIReranking(LazyLLMOpenAIBase, OnlineEmbeddingModuleBase):
     def _parse_response(self, response: Dict, input: Union[List, str]) -> List[Tuple]:
         results = response['results']
         return [(result['index'], result['relevance_score']) for result in results]
-
-OpenAIModule = OpenAIChat
