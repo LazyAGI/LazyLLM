@@ -61,7 +61,7 @@ class TestOnlineModule(object):
         assert lazyllm.online.chat.test == TestChat
         for key in ['chat', 'embed', 'rerank', 'stt', 'text2image', 'tts']:
             assert 'qwen' in lazyllm.online[key].keys()
-    
+
     def test_OnlineModule_config_register(self):
         for api_key in ['openai_api_key', 'qwen_model_name', 'sensenova_secret_key']:
             assert api_key in lazyllm.config.get_all_configs()
