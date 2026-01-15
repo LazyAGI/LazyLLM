@@ -11,7 +11,7 @@ from datetime import datetime
 from typing import List
 from pydantic import BaseModel, Field
 from fastapi import Body, HTTPException, Header, Query  # noqa NID002
-from async_timeout import timeout
+from lazyllm.thirdparty import async_timeout
 import re
 import shutil
 from fastapi.responses import StreamingResponse  # noqa NID002
@@ -832,7 +832,7 @@ class TrainServer(ServerBase):
         await asyncio.sleep(1)
 
         try:
-            async with timeout(5):
+            async with async_timeout.timeout(5):
                 while m.status(model_id) == Status.Cancelled:
                     await asyncio.sleep(1)
         except asyncio.TimeoutError:
@@ -1228,7 +1228,7 @@ class TrainServer(ServerBase):
         await asyncio.sleep(1)
 
         try:
-            async with timeout(5):
+            async with async_timeout.timeout(5):
                 while m.status(model_id) == Status.Cancelled:
                     await asyncio.sleep(1)
         except asyncio.TimeoutError:

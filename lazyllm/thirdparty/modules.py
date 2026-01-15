@@ -7,5 +7,6 @@ modules = ['redis', 'huggingface_hub', 'jieba', 'modelscope', 'pandas', 'jwt', '
            'zlib', 'struct', 'olefile', 'spacy', 'tarfile', 'boto3', 'botocore', 'paddleocr', 'volcenginesdkarkruntime',
            'zhipuai', 'dashscope', ['mineru', 'cli.common'], 'opensearchpy', ['os', 'path'], 'pkg_resources', 'fastapi',
            ['fsspec', 'implementations.local'], 'bs4', 'uvicorn', 'elasticsearch', 'xml', 'deepdiff', 'mem0', 'memu',
-           'powermem', ['graphrag', 'api', 'config.load_config', 'config.enums', 'cli.index', 'cli.initialize'],
-           'pyobvector', 'charset_normalizer', 'transformers']
+           ['graphrag', 'api', 'config.load_config', 'config.enums', 'cli.index', 'cli.initialize'], 'pyobvector',
+           'charset_normalizer', 'transformers', 'async_timeout', 'openpyxl', 'tiktoken', 'Stemmer', 'sentencepiece',
+           'psycopg2', 'powermem']

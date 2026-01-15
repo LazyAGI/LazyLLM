@@ -5,6 +5,7 @@ import sys
 import re
 import dataclasses
 import enum
+import logging
 from typing import Callable
 
 os.environ['LAZYLLM_INIT_DOC'] = 'True'
@@ -24,7 +25,8 @@ if 'lazyllm' in sys.modules:
 try:
     import lazyllm
     from lazynote.manager import SimpleManager
-except ImportError:
+except ImportError as e:
+    logging.error(f'Error import lazyllm and lazynote: {e}')
     SimpleManager = None
 
 def generate_docs_for_module():
