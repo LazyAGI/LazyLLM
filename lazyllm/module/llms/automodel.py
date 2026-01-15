@@ -12,7 +12,11 @@ class AutoModel:
                 type: Optional[str] = None, config: Union[str, bool] = True, **kwargs: Any):
         # check and accomodate user params
         model = model or kwargs.pop('base_model', kwargs.pop('embed_model_name', None))
-        chat_models = {k for k in lazyllm.online.chat.keys() if k != 'base'}
+        chat_models = {
+            (k[:-4] if k.lower().endswith('chat') else k): v
+            for k, v in lazyllm.online.chat.keys()
+            if k != 'base'
+        }
         if model in chat_models:
             source, model = model, None
 
