@@ -4,13 +4,21 @@ import yaml
 import functools
 from datetime import datetime
 from dataclasses import dataclass, asdict
-from typing import Callable, Dict, Union, Tuple, Any, Optional
+from typing import Callable, Dict, Union, Tuple, Any, Optional, List
+from copy import deepcopy
 
 import lazyllm
 from lazyllm import LOG
 from lazyllm.thirdparty import datasets
 from ...components.utils.file_operate import _delete_old_files
 from lazyllm.common.utils import check_path
+
+
+LOCAL_SOURCES = {'local'}
+lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH',
+                   description='The default path for trainable module config map.')
+lazyllm.config.add('auto_model_config_map_path', str, '', 'AUTO_MODEL_CONFIG_MAP_PATH',
+                   description='The default path for automodel config map.')
 
 
 @dataclass
@@ -241,15 +249,16 @@ def check_config_map_format(config_map: dict):
         for item in v:
             if not isinstance(item, dict):
                 raise ValueError(f'config item for model {k} should be a dict')
-            if not isinstance(item.get('url'), str):
+            if 'url' in item and item['url'] is not None and not isinstance(item['url'], str):
                 raise ValueError(f'url for model {k} should be a string')
-            if not isinstance(item.get('framework'), str):
+            if 'framework' in item and item['framework'] is not None and not isinstance(item['framework'], str):
                 raise ValueError(f'framework for model {k} should be a string')
-            if not isinstance(item.get('deploy_config', {}), dict):
+            if 'deploy_config' in item and not isinstance(item['deploy_config'], dict):
                 raise ValueError(f'deploy_config for model {k} should be a dict')
+            if 'source' in item and item['source'] is not None and not isinstance(item['source'], str):
+                raise ValueError(f'source for model {k} should be a string')
 
-@functools.lru_cache(maxsize=1)
-def get_module_config_map(path):
+def _get_module_config_map(path):
     try:
         cfg = yaml.safe_load(open(path, 'r')) if os.path.exists(path) else {}
         check_config_map_format(cfg)
@@ -257,3 +266,93 @@ def get_module_config_map(path):
         LOG.warning(f'Failed to load trainable module config map from {path}')
         cfg = {}
     return cfg
+
+def _classify_config_entry(entry: Dict[str, Any]) -> str:
+    if entry.get('framework') or entry.get('deploy_config'):
+        return 'trainable'
+    source = (entry.get('source') or '').lower()
+    if source in LOCAL_SOURCES:
+        return 'trainable'
+    return 'online'
+
+@functools.cache
+def _load_and_split_config_map(config_path: str):
+    raw_map = _get_module_config_map(config_path)
+    online_map = {}
+    trainable_map = {}
+    for model, entries in raw_map.items():
+        for entry in entries:
+            mode = _classify_config_entry(entry)
+            target = online_map if mode == 'online' else trainable_map
+            target.setdefault(model, []).append(entry)
+    return online_map, trainable_map
+
+def get_module_config_map(config: Union[str, bool]):
+    if config is False: return {}, {}
+    if config is True:
+        config = lazyllm.config['auto_model_config_map_path'] or lazyllm.config['trainable_module_config_map_path']
+    return _load_and_split_config_map(config)
+
+def _select_config_entry(entries: Optional[List[Dict[str, Any]]], preferred_source: Optional[str],
+                         preferred_id: Optional[str] = None) -> Optional[Dict[str, Any]]:
+    preferred_source = (preferred_source or '').lower()
+    if not entries:
+        return None
+
+    fallback = None
+    source_match = None
+    for entry in entries:
+        if preferred_id and entry.get('id') == preferred_id:
+            return deepcopy(entry)
+        entry_source = (entry.get('source') or '').lower()
+        if preferred_source and entry_source == preferred_source and source_match is None:
+            source_match = entry
+        if fallback is None:
+            fallback = entry
+
+    return deepcopy(source_match) if source_match is not None else deepcopy(fallback)
+
+def get_candidate_entries(model: str,
+                          config_id: Optional[str],
+                          source: Optional[str],
+                          config: Union[str, bool]):
+    online_map, trainable_map = get_module_config_map(config=config)
+    online_entries = online_map.get(model, [])
+    trainable_entries = trainable_map.get(model, [])
+
+    online_entry = _select_config_entry(online_entries, source, config_id)
+    trainable_entry = _select_config_entry(trainable_entries, source, config_id)
+    return trainable_entry, online_entry
+
+def resolve_model_name(model: Optional[str], entry: Optional[Dict[str, Any]]) -> Optional[str]:
+    if not entry:
+        return model
+    override = entry.get('name')
+    return override or model
+
+def process_trainable_args(model: str, type: str, source: str,
+                           config: Union[str, bool],
+                           entry: Optional[Dict[str, Any]]) -> dict:
+    entry = entry or {}
+    return {
+        'base_model': resolve_model_name(model=model, entry=entry),
+        'target_path': entry.get('target_path', ''),
+        'stream': entry.get('stream', False),
+        'return_trace': entry.get('return_trace', False),
+        'trust_remote_code': entry.get('trust_remote_code', True),
+        'type': type or entry.get('type', entry.get('task', None)),
+        'source': source or entry.get('source', None),
+        'use_model_map': config,
+    }
+
+def process_online_args(model: str, source: str, type: str,
+                        entry: Optional[Dict[str, Any]]) -> dict:
+    entry = entry or {}
+    entry['model'] = resolve_model_name(model=model, entry=entry)
+    if source:
+        entry['source'] = source
+    if type:
+        entry['type'] = type
+    entry.pop('name', None)
+    entry.pop('id', None)
+    return entry

@@ -2,7 +2,7 @@ import os
 import re
 import pytest
 
-pytest_plugins = "pytester"
+pytest_plugins = 'pytester'
 
 def pytest_configure(config):
     env_str = os.getenv('CHANGED_FILES')  # Set outside pytest.

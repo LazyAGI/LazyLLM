@@ -1526,3 +1526,116 @@ from lazyllm.common import new_session
 with new_session():
     pass
 ''')
+
+# ========== Temp files
+
+add_chinese_doc('TempPathGenerator', '''
+一个临时文件路径生成器，用于将字符串内容写入临时文件，并返回对应的文件路径列表。
+
+该类实现了上下文管理协议（with 语法），在进入上下文时会为每一段文本创建一个临时文件，
+并将其内容写入文件中；在退出上下文时，如果未设置 persist=True，则会自动清理临时目录。
+
+常用于需要将内存中的文本内容临时转为文件路径，以复用现有基于文件路径的处理逻辑
+（如文档加载、embedding、检索等）的场景。
+
+Args:
+    contents (Iterable[str]): 需要写入临时文件的文本内容，可以是字符串或字符串列表。
+    suffix (str): 临时文件的后缀名，默认为 '.txt'。
+    encoding (str): 写入文件时使用的编码格式，默认为 'utf-8'。
+    persist (bool): 是否在退出上下文后保留临时文件。默认为 False，表示自动清理。
+''')
+
+add_english_doc('TempPathGenerator', '''
+A temporary file path generator that writes text contents into temporary files
+and returns the corresponding file path list.
+
+This class implements the context manager protocol (via the `with` statement).
+When entering the context, it creates a temporary directory and writes each
+text content into a separate file. When exiting the context, the temporary
+files will be automatically cleaned up unless `persist=True` is specified.
+
+It is commonly used in scenarios where in-memory text needs to be temporarily
+converted into file paths in order to reuse existing file-based processing
+pipelines (e.g., document loading, embedding, retrieval).
+
+Args:
+    contents (Iterable[str]): Text contents to be written into temporary files. Can be a single string or a list of strings.
+    suffix (str): Suffix of the temporary files. Defaults to '.txt'.
+    encoding (str): Encoding used when writing files. Defaults to 'utf-8'.
+    persist (bool): Whether to keep temporary files after exiting the context. Defaults to False, meaning files are cleaned up automatically.
+''')
+
+add_example('TempPathGenerator', '''
+from lazyllm import TempPathGenerator
+
+texts = [
+    "This is the first temporary document.",
+    "This is the second temporary document."
+]
+
+with TempPathGenerator(texts, suffix=".txt") as paths:
+    for p in paths:
+        print(p)
+        # p can be passed to any file-based document loader
+''')
+
+add_chinese_doc('retry', '''
+一个简单的重试装饰器，用于在函数执行失败时按指定次数进行重试。
+
+该装饰器会在被装饰函数抛出异常时捕获异常，并在未达到最大重试次数前
+重新执行函数；如果超过最大重试次数仍然失败，则会抛出最后一次异常。
+可选地支持在每次重试之间添加固定延迟。
+
+适用于对不稳定操作（如网络请求、临时资源访问等）进行基础容错处理，
+无需引入额外第三方依赖。
+
+Args:
+    stop_after_attempt (int): 最大重试次数，包含首次执行在内，默认为 3 次。
+    delay (float): 每次重试之间的等待时间（秒），默认为 0，表示不等待。
+''')
+
+add_english_doc('retry', '''
+A simple retry decorator that retries a function execution when an exception occurs.
+
+This decorator catches exceptions raised by the wrapped function and retries
+execution until the maximum number of attempts is reached. If all attempts fail,
+the last exception will be re-raised. An optional fixed delay between retries
+is supported.
+
+It is useful for adding basic fault tolerance to unstable operations such as
+network requests or temporary resource access, without introducing external
+dependencies.
+
+Args:
+    stop_after_attempt (int): Maximum number of attempts, including the initial call.
+        Defaults to 3.
+    delay (float): Delay in seconds between retry attempts. Defaults to 0, meaning
+        no delay.
+''')
+
+add_example('retry', '''
+import random
+from lazyllm import retry
+
+# default stop_after_attempt is 3
+@retry
+def unstable_function():
+    if random.random() < 0.7:
+        raise RuntimeError("Random failure")
+    return "Success!"
+
+@retry(stop_after_attempt=3, delay=1.0)
+def unstable_function():
+    if random.random() < 0.7:
+        raise RuntimeError("Random failure")
+    return "Success!"
+
+@retry(3)
+def unstable_function():
+    if random.random() < 0.7:
+        raise RuntimeError("Random failure")
+    return "Success!"
+
+result = unstable_function()
+print(result)
+''')

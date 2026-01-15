@@ -3211,8 +3211,26 @@ add_example('Retriever', '''
 >>> print(rm("user query"))
 ''')
 
+add_english_doc('rag.retriever.TempRetriever', '''
+TempRetriever Base class. used for `TempDocRetriever` and `ContextRetriever`.
+
+Args:
+    embed: The embedding function.
+    output_format: The format of the output result (e.g., JSON). Optional, defaults to None.
+    join: Whether to merge multiple result segments (set to True or specify a separator like "\n").
+''')
+
+add_chinese_doc('rag.retriever.TempRetriever', '''
+临时文档检索器基类，用于 `TempDocRetriever` 和 `ContextRetriever`。
+
+Args:
+    embed:嵌入函数。
+    output_format:结果输出格式(如json),可选默认为None
+    join:是否合并多段结果(True或用分隔符如"\n")
+''')
+
 add_english_doc('rag.retriever.TempDocRetriever', '''
-A temporary document retriever that inherits from ModuleBase and _PostProcess, used for quickly processing temporary files and performing retrieval tasks.
+A temporary document retriever that inherits from TempRetriever, used for quickly processing temporary files and performing retrieval tasks.
 
 Args:
     embed: The embedding function.
@@ -3221,7 +3239,7 @@ Args:
 ''')
 
 add_chinese_doc('rag.retriever.TempDocRetriever', '''
-临时文档检索器，继承自 ModuleBase 和 _PostProcess，用于快速处理临时文件并执行检索任务。
+临时文档检索器，继承自TempRetriever，用于快速处理临时文件并执行检索任务。
 
 Args:
     embed:嵌入函数。
@@ -3235,12 +3253,12 @@ add_example('rag.retriever.TempDocRetriever', '''
 >>> retriever = TempDocRetriever(output_format="text", join="\n---------------\n")
     retriever.create_node_group(transform=lambda text: [s.strip() for s in text.split("。") if s] )
     retriever.add_subretriever(group=Document.MediumChunk, topk=3)
-    files = ["机器学习是AI的核心领域。深度学习是其重要分支。"]
+    files = ["/path/to/file.txt"]
     results = retriever.forward(files, "什么是机器学习?")
     print(results)
 ''')
 
-add_english_doc('rag.retriever.TempDocRetriever.create_node_group', '''
+add_english_doc('rag.retriever.TempRetriever.create_node_group', '''
 Create document processing node group for configuring document chunking and transformation strategies.
 
 Args:
@@ -3255,7 +3273,41 @@ Args:
 - self: Current instance supporting chained calls
 ''')
 
-add_chinese_doc('rag.retriever.TempDocRetriever.create_node_group', '''
+add_english_doc('rag.retriever.ContextRetriever', '''
+A context-based retriever that inherits from TempRetriever, designed to perform retrieval directly over in-memory text content rather than physical document files.
+
+It internally converts the provided context strings into temporary files using TempPathGenerator, builds retrievers on demand, and caches them for efficient reuse.
+
+Args:
+    embed: The embedding function used for vector-based retrieval. If not provided, a keyword-based method (e.g., BM25) is used.
+    output_format: The format of the output result (e.g., "text", "json"). Optional, defaults to None.
+    join: Whether to merge multiple retrieved segments. Can be True or a custom separator string such as "\\n".
+''')
+
+add_chinese_doc('rag.retriever.ContextRetriever', '''
+基于上下文内容的检索器，继承自 TempRetriever，用于直接对内存中的文本内容进行检索，而非依赖真实存在的文档文件。
+
+该检索器会通过 TempPathGenerator 将传入的上下文字符串临时转换为文件路径，
+在此基础上构建 Retriever，并使用 LRU 缓存以提升重复查询时的性能。
+
+Args:
+    embed: 用于向量检索的嵌入函数；若未提供，则自动退化为关键词检索（如 BM25）。
+    output_format: 结果输出格式（如 "text"、"json"），可选，默认 None。
+    join: 是否合并多段检索结果，可为 True 或自定义分隔符（如 "\\n"）。
+''')
+
+add_example('rag.retriever.ContextRetriever', '''\
+>>> ctx1 = '大学之道，在明明德，\n在亲民，在止于至善。\n知止而后有定，定而后能静，静而后能安。'
+>>> ctx2 = '子曰：学而时习之，不亦说乎？\n有朋自远方来，不亦乐乎？'
+>>> ret = ContextRetriever(output_format='dict')
+>>> ret.create_node_group('block', transform=lambda x: x.split('\n'))
+>>> ret.add_subretriever(Document.CoarseChunk, topk=1)
+>>> ret.add_subretriever('block', topk=3)
+>>> ret([ctx1, ctx2], '大学')
+''')
+
+
+add_chinese_doc('rag.retriever.TempRetriever.create_node_group', '''
 创建文档处理节点组，用于配置文档的分块和转换策略。
 
 Args:
@@ -3270,7 +3322,7 @@ Args:
 - self: 支持链式调用的当前实例
 ''')
 
-add_english_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
+add_english_doc('rag.retriever.TempRetriever.add_subretriever', '''
 Add a sub-retriever with search configuration.
 
 Args:
@@ -3283,7 +3335,7 @@ Args:
 - self: For method chaining.
 ''')
 
-add_chinese_doc('rag.retriever.TempDocRetriever.add_subretriever', '''
+add_chinese_doc('rag.retriever.TempRetriever.add_subretriever', '''
 添加带搜索配置的子检索器。
 
 Args:
@@ -3294,6 +3346,132 @@ Args:
 
 **Returns:**\n
 - self: 支持链式调用。
+''')
+
+add_chinese_doc('rag.retriever.WeightedRetriever', '''
+WeightedRetriever 用于将多个 Retriever 的召回结果按照权重进行融合。
+
+该组合器要求：
+- **禁止使用 priority**：所有子 Retriever 不允许定义 priority 属性；
+- **权重一致性**：一旦任意 Retriever 定义了 weight，则所有 Retriever 都必须定义 weight；
+- **按比例分配 Top-K**：在设置 topk 的情况下，根据各 Retriever 的权重比例分配返回名额，
+  并在部分 Retriever 结果不足时，动态将剩余额度重新分配给其他 Retriever；
+- **支持权重归一化**：内部会自动对权重进行归一化处理，保证比例分配的稳定性。
+
+适用于希望通过权重精细控制不同召回器贡献度的场景，例如：
+BM25 + 向量检索 + 规则检索的加权融合。
+''')
+
+add_english_doc('rag.retriever.WeightedRetriever', '''
+WeightedRetriever combines multiple Retrievers by weighting their retrieval results.
+
+Key characteristics:
+- **Priority is not allowed**: Sub-retrievers must not define a priority attribute.
+- **Weight consistency enforced**: If any retriever defines a weight, all retrievers must define one.
+- **Proportional Top-K allocation**: When topk is specified, results are allocated proportionally
+  according to weights, with dynamic reallocation if some retrievers return fewer results than expected.
+- **Automatic weight normalization**: Weights are normalized internally to ensure stable proportional behavior.
+
+This retriever is suitable for scenarios where fine-grained control over the contribution of
+different retrieval strategies (e.g., BM25, vector search, rule-based retrieval) is required.
+''')
+
+add_chinese_doc('rag.retriever.PriorityRetriever', '''
+PriorityRetriever 用于基于优先级对多个 Retriever 的结果进行组合。
+
+该组合器的设计原则包括：
+- **禁止使用 weight**：子 Retriever 不允许定义 weight 属性；
+- **基于优先级顺序返回结果**：按照 high → normal → low 的顺序依次合并各 Retriever 的结果；
+- **支持 ignore 优先级**：被标记为 ignore 的 Retriever 将在预处理阶段被直接跳过；
+- **Top-K 截断**：在合并过程中一旦达到 topk 数量即停止继续合并。
+
+适用于对结果顺序要求明确、需要“高优先级结果优先返回”的场景，
+例如规则召回优先于语义召回的检索体系。
+''')
+
+add_english_doc('rag.retriever.PriorityRetriever', '''
+PriorityRetriever combines multiple Retrievers based on predefined priority levels.
+
+Design principles:
+- **Weights are not allowed**: Sub-retrievers must not define a weight attribute.
+- **Priority-ordered merging**: Results are merged in the order of
+  high → normal → low priority.
+- **Ignore support**: Retrievers marked with the ignore priority are skipped during preprocessing.
+- **Top-K cutoff**: Merging stops as soon as the accumulated result size reaches topk.
+
+This retriever is suitable for scenarios where strict ordering is required and
+high-priority retrieval results must be returned before others, such as
+rule-based retrieval taking precedence over semantic retrieval.
+''')
+
+add_chinese_doc('rag.retriever.WeightedRetriever.forward', '''
+执行加权检索并融合多个 Retriever 的召回结果。
+
+该方法会：
+- 根据传入或预定义的 weights 对 Retriever 进行加权；
+- 自动过滤权重接近 0 的 Retriever，以减少不必要的召回开销；
+- 在设置 topk 时，按权重比例对各 Retriever 的结果进行名额分配，
+  并在结果不足时进行动态回填；
+- 支持自定义 combine 函数以覆盖默认的融合逻辑。
+
+Args:
+    query (str): 用户查询文本。
+    filters (dict, optional): 检索过滤条件。
+    weights (List[float], optional): 每个 Retriever 对应的权重列表。
+    topk (int, optional): 最终返回的最大结果数量。
+    combine (Callable, optional): 自定义结果融合函数。
+''')
+
+add_english_doc('rag.retriever.WeightedRetriever.forward', '''
+Execute weighted retrieval and combine results from multiple Retrievers.
+
+This method:
+- Applies provided or predefined weights to each Retriever;
+- Filters out retrievers with near-zero weights to reduce unnecessary retrieval cost;
+- Allocates Top-K slots proportionally based on weights, with dynamic redistribution
+  when some retrievers return fewer results than expected;
+- Allows a custom combine function to override the default merging logic.
+
+Args:
+    query (str): User query string.
+    filters (dict, optional): Retrieval filter conditions.
+    weights (List[float], optional): Weight list corresponding to each Retriever.
+    topk (int, optional): Maximum number of results to return.
+    combine (Callable, optional): Custom result combination function.
+''')
+
+add_chinese_doc('rag.retriever.PriorityRetriever.forward', '''
+执行基于优先级的检索并合并多个 Retriever 的结果。
+
+该方法会：
+- 使用传入或 Retriever 自身定义的 priorities；
+- 在预处理阶段直接忽略 priority 为 ignore 的 Retriever；
+- 按 high → normal → low 的顺序合并各 Retriever 的结果；
+- 在达到 topk 数量后立即停止合并，避免不必要的计算。
+
+Args:
+    query (str): 用户查询文本。
+    filters (dict, optional): 检索过滤条件。
+    priorities (List[Retriever.Priority], optional): 每个 Retriever 的优先级列表。
+    topk (int, optional): 最终返回的最大结果数量。
+    combinef (Callable, optional): 自定义优先级融合函数。
+''')
+
+add_english_doc('rag.retriever.PriorityRetriever.forward', '''
+Execute priority-based retrieval and merge results from multiple Retrievers.
+
+This method:
+- Uses provided priorities or those defined on each Retriever;
+- Skips retrievers with the ignore priority during preprocessing;
+- Merges results in the order of high → normal → low priority;
+- Stops merging as soon as the accumulated results reach topk.
+
+Args:
+    query (str): User query string.
+    filters (dict, optional): Retrieval filter conditions.
+    priorities (List[Retriever.Priority], optional): Priority list for each Retriever.
+    topk (int, optional): Maximum number of results to return.
+    combinef (Callable, optional): Custom priority-based combination function.
 ''')
 
 add_chinese_doc('rag.document.UrlDocument', '''\
@@ -3917,6 +4095,93 @@ reader = CustomReader(return_trace=True)
 
 # Load documents
 documents = reader.forward(file_paths=["doc1.txt", "doc2.txt"])
+''')
+
+add_english_doc('rag.readers.readerBase.LazyLLMReaderBase.detect_encoding', '''\
+Detect the encoding of a file.
+
+Args:
+    file_path (str): The path of the file.
+    fs (fsspec.AbstractFileSystem): The file system.
+    sample_size (int): The sample size.
+    use_cache (bool): Whether to use cache.
+    enable_chardet (bool): Whether to enable chardet.
+
+**Returns:**\n
+- str: The encoding of the file.
+''')
+
+add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase.detect_encoding', '''\
+检测文件的编码。
+
+Args:
+    file_path (str): 文件路径。
+    fs (fsspec.AbstractFileSystem): 文件系统。
+    sample_size (int): 样本大小。
+    use_cache (bool): 是否使用缓存。
+    enable_chardet (bool): 是否启用 chardet。
+
+**Returns:**\n
+- str: 文件的编码。
+''')
+
+add_example('rag.readers.readerBase.LazyLLMReaderBase.detect_encoding', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.rag.readers import LazyLLMReaderBase
+>>> reader = LazyLLMReaderBase()
+>>> encoding = reader.detect_encoding("path/to/file.txt")
+>>> print(encoding)
+''')
+
+add_english_doc('rag.readers.readerBase.LazyLLMReaderBase.clear_encoding_cache', '''\
+Clear the encoding cache.
+
+Args:
+    file_path (str): The path of the file.
+    fs (fsspec.AbstractFileSystem): The file system.
+    sample_size (int): The sample size.
+    use_cache (bool): Whether to use cache.
+    enable_chardet (bool): Whether to enable chardet.
+''')
+
+add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase.clear_encoding_cache', '''\
+清空编码缓存。
+
+Args:
+    file_path (str): 文件路径。
+    fs (fsspec.AbstractFileSystem): 文件系统。
+    sample_size (int): 样本大小。
+    use_cache (bool): 是否使用缓存。
+    enable_chardet (bool): 是否启用 chardet。
+''')
+
+add_example('rag.readers.readerBase.LazyLLMReaderBase.clear_encoding_cache', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.rag.readers import LazyLLMReaderBase
+>>> reader = LazyLLMReaderBase()
+>>> reader.clear_encoding_cache()
+''')
+
+add_english_doc('rag.readers.readerBase.LazyLLMReaderBase.get_encoding_cache_stats', '''\
+Get the encoding cache stats.
+
+**Returns:**\n
+- dict: The encoding cache stats.
+''')
+
+add_chinese_doc('rag.readers.readerBase.LazyLLMReaderBase.get_encoding_cache_stats', '''\
+获取编码缓存统计信息。
+
+**Returns:**\n
+- dict: 编码缓存统计信息。
+''')
+
+add_example('rag.readers.readerBase.LazyLLMReaderBase.get_encoding_cache_stats', '''\
+>>> import lazyllm
+>>> from lazyllm.tools.rag.readers import LazyLLMReaderBase
+>>> reader = LazyLLMReaderBase()
+>>> stats = reader.get_encoding_cache_stats()
+>>> print(stats)
 ''')
 
 add_example('rag.readers.MineruPDFReader', '''\

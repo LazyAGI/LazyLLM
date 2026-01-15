@@ -62,7 +62,7 @@ class AutoFinetune(LazyLLMFinetuneBase):
             if check_requirements(requirements[finetune_cls_name]):
                 finetune_cls = getattr(finetune, finetune_cls_name)
                 for key, value in finetune_cls.auto_map.items():
-                    if value:
+                    if value and value not in kw:
                         kw[value] = params[key]
                 LOG.info(f'[AutoFinetune] Use {finetune_cls_name} to finetune.')
                 if finetune_cls_name == 'llamafactory':

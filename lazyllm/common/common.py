@@ -1,16 +1,20 @@
-from abc import ABCMeta
 import re
 import os
-import builtins
-import typing
-from typing import Any, Callable, Optional, List, Dict
-from contextlib import contextmanager
 import copy
-import threading
-import types
 import json
+import time
+import types
+import typing
+import builtins
+import tempfile
+import threading
+import functools
+from abc import ABCMeta
+from pathlib import Path
 from ..configs import config
 from urllib.parse import urlparse
+from contextlib import contextmanager
+from typing import Any, Callable, Optional, List, Dict, Iterable
 
 try:
     from typing import final
@@ -498,3 +502,51 @@ class SingletonMeta(type):
 
 
 class SingletonABCMeta(SingletonMeta, ABCMeta): pass
+
+
+class TempPathGenerator(object):
+    def __init__(self, contents: Iterable[str], *, suffix: str = '.txt', encoding: str = 'utf-8', persist: bool = False):
+        if isinstance(contents, str): contents = [contents]
+        self._contents, self._suffix, self._encoding, self._persist = list(contents), suffix, encoding, persist
+        self._tmpdir = None
+        self._paths: List[str] = []
+
+    def __enter__(self) -> List[str]:
+        if self._tmpdir: raise RuntimeError('TempPathGenerator is not thread-safe, please create a new object.')
+        self._tmpdir = tempfile.TemporaryDirectory()
+        base = Path(self._tmpdir.name)
+
+        self._paths = []
+        for i, text in enumerate(self._contents):
+            p = base / f'{i}{self._suffix}'
+            p.write_text(text, encoding=self._encoding)
+            self._paths.append(str(p))
+        return self._paths
+
+    def __exit__(self, exc_type, exc, tb):
+        if not self._persist:
+            self._tmpdir.cleanup()
+
+
+def retry(func: Optional[Callable] = None, *, stop_after_attempt: Optional[int] = None, delay: float = 0.0):
+    if isinstance(func, int):
+        assert stop_after_attempt is None
+        stop_after_attempt = func
+    stop_after_attempt = stop_after_attempt or 3
+
+    def decorator(fn: Callable):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            last_exc = None
+            for attempt in range(1, stop_after_attempt + 1):
+                try:
+                    return fn(*args, **kwargs)
+                except Exception as e:
+                    last_exc = e
+                    if attempt >= stop_after_attempt:
+                        raise
+                    if delay > 0:
+                        time.sleep(delay)
+            raise last_exc
+        return wrapper
+    return decorator(func) if callable(func) else decorator

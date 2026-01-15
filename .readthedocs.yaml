@@ -4,8 +4,6 @@ build:
   os: "ubuntu-22.04"
   tools:
     python: "3.10"
-  environment:
-    LAZYLLM_INIT_DOC: "True"
   jobs:
     pre_build:
       - pip install -r requirements.txt
@@ -13,7 +11,7 @@ build:
       - git submodule update --init --recursive --remote
       - cp -r docs/assets docs/zh
       - cp -r docs/assets docs/en
-      - python docs/add_docstrings.py
+      - LAZYLLM_INIT_DOC=True python docs/add_docstrings.py
       - python docs/link_assets.py
       - python docs/ipynb2md.py 2>&1 | tee -a build.log
       - python docs/gen_mkdocs_yaml.py

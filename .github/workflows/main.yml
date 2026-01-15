@@ -474,6 +474,7 @@ jobs:
         env:
           CHANGED_FILES: ${{ needs.clone.outputs.changed_files }}
           LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
+          LAZYLLM_AIPING_API_KEY: ${{ secrets.LAZYLLM_AIPING_API_KEY }}
           LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
           LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
           LAZYLLM_QWEN_API_KEY: ${{ secrets.LAZYLLM_QWEN_API_KEY }}
@@ -519,7 +520,7 @@ jobs:
         shell: bash
         run: |
           pip install modelscope pyyaml
-          mkdir C:/Users/runneradmin/.lazyllm
+          mkdir -p C:/Users/runneradmin/.lazyllm
           ls C:/Users/runneradmin/.lazyllm
           mkdir -p C:/Users/runneradmin/.cache/modelscope/hub
           ln -s  C:/Users/runneradmin/.cache/modelscope/hub C:/Users/runneradmin/.lazyllm/model
@@ -602,6 +603,7 @@ jobs:
         env:
           CHANGED_FILES: ${{ needs.clone.outputs.changed_files }}
           LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
+          LAZYLLM_AIPING_API_KEY: ${{ secrets.LAZYLLM_AIPING_API_KEY }}
           LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
           LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
           LAZYLLM_QWEN_API_KEY: ${{ secrets.LAZYLLM_QWEN_API_KEY }}

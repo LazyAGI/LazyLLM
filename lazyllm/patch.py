@@ -121,14 +121,14 @@ def patch_os_env(set_action: Callable[[str, str], None], unset_action: Callable[
     def new_setitem(self, key, value):
         old_setitem(self, key, value)
         if isinstance(key, bytes): key = key.decode('utf-8')
-        if key.lower().startswith('lazyllm_'): set_action(key, value)
+        set_action(key, value)
 
     old_delitem = os._Environ.__delitem__
 
     def new_delitem(self, key):
         old_delitem(self, key)
         if isinstance(key, bytes): key = key.decode('utf-8')
-        if key.lower().startswith('lazyllm_'): unset_action(key)
+        unset_action(key)
 
     os._Environ.__setitem__ = new_setitem
     os._Environ.__delitem__ = new_delitem

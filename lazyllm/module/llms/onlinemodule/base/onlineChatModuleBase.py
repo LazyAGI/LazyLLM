@@ -17,7 +17,6 @@ from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
 from ....servermodule import LLMBase
 from .utils import OnlineModuleBase
-from ..map_model_type import get_model_type
 
 class StaticParams(TypedDict, total=False):
     temperature: float
@@ -141,6 +140,8 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
             if not src: return ''
             if force_join or not all(src[0] == ele for ele in src): return ''.join(src)
         elif isinstance(src[0], list):
+            src = [ele for ele in src if ele]
+            if not src: return []
             assert len(set(map(len, src))) == 1, f'The lists of elements: {src} have different lengths.'
             ret = list(map(self._merge_stream_result, zip(*src)))
             return ret[0] if (len(ret) > 0 and isinstance(ret[0], list)) else ret
@@ -161,8 +162,6 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         runtime_base_url = url or kw.pop('base_url', None)
         runtime_url = self._get_chat_url(runtime_base_url) if runtime_base_url else self._chat_url
         runtime_model = model or kw.pop('model_name', None) or self._model_name
-        if get_model_type(runtime_model) not in ('llm', 'vlm'):
-            raise ValueError(f"Model type must be 'llm' or 'vlm', got model {runtime_model}")
 
         params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
         if tools: params['tools'] = tools

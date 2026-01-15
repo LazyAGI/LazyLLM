@@ -7,7 +7,7 @@ from .prompts import PROMPTS as DOC_KWS_PROMPTS
 import random
 import re
 import json
-import tiktoken
+from lazyllm.thirdparty import tiktoken
 
 
 class DocInfoSchemaItem(TypedDict):

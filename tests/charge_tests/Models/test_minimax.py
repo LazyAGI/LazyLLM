@@ -8,7 +8,6 @@ from lazyllm.components.formatter import decode_query_with_filepaths
 def api_key():
     return lazyllm.config['minimax_api_key']
 
-
 class TestOnlineChat(object):
     def test_online_chat(self, api_key):
         llm = lazyllm.OnlineChatModule(source='minimax', api_key=api_key)
@@ -16,7 +15,6 @@ class TestOnlineChat(object):
         assert response is not None
         assert isinstance(response, str)
         assert len(response) > 0
-
 
 class TestMultiModal(object):
     def setup_method(self):
