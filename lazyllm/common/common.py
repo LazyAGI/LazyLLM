@@ -2,11 +2,13 @@ import re
 import os
 import copy
 import json
+import time
 import types
 import typing
 import builtins
 import tempfile
 import threading
+import functools
 from abc import ABCMeta
 from pathlib import Path
 from ..configs import config
@@ -524,3 +526,27 @@ class TempPathGenerator(object):
     def __exit__(self, exc_type, exc, tb):
         if not self._persist:
             self._tmpdir.cleanup()
+
+
+def retry(func: Optional[Callable] = None, *, stop_after_attempt: Optional[int] = None, delay: float = 0.0):
+    if isinstance(func, int):
+        assert stop_after_attempt is None
+        stop_after_attempt = func
+    stop_after_attempt = stop_after_attempt or 3
+
+    def decorator(fn: Callable):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            last_exc = None
+            for attempt in range(1, stop_after_attempt + 1):
+                try:
+                    return fn(*args, **kwargs)
+                except Exception as e:
+                    last_exc = e
+                    if attempt >= stop_after_attempt:
+                        raise
+                    if delay > 0:
+                        time.sleep(delay)
+            raise last_exc
+        return wrapper
+    return decorator(func) if callable(func) else decorator

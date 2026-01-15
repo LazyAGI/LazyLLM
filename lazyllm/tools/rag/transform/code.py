@@ -399,7 +399,7 @@ class JSONSplitter(_LanguageSplitterBase):
                 for i, node in enumerate(child_nodes):
                     node.metadata['parent_field'] = key
                     if len(child_nodes) > 1:
-                        node.metadata['part'] = f'{i+1}/{len(child_nodes)}'
+                        node.metadata['part'] = f'{i + 1}/{len(child_nodes)}'
                 nodes.extend(child_nodes)
                 continue
 
@@ -450,7 +450,7 @@ class JSONSplitter(_LanguageSplitterBase):
                 for i, node in enumerate(child_nodes):
                     node.metadata['list_index'] = idx
                     if len(child_nodes) > 1:
-                        node.metadata['part'] = f'{i+1}/{len(child_nodes)}'
+                        node.metadata['part'] = f'{i + 1}/{len(child_nodes)}'
 
                 nodes.extend(child_nodes)
                 continue
@@ -508,7 +508,7 @@ class JSONSplitter(_LanguageSplitterBase):
                     type='string',
                     path='/'.join(path) if path else 'root',
                     depth=depth,
-                    part=f'{i+1}/{len(splits)}' if len(splits) > 1 else None,
+                    part=f'{i + 1}/{len(splits)}' if len(splits) > 1 else None,
                     is_complete=(len(splits) == 1)
                 ))
 
@@ -684,7 +684,7 @@ class HTMLSplitter(_LanguageSplitterBase):
 
         return child_sections
 
-    def _extract_sections(self, soup: bs4.BeautifulSoup) -> List[dict]:  # noqa: C901
+    def _extract_sections(self, soup: 'bs4.BeautifulSoup') -> List[dict]:  # noqa: C901
         sections = []
 
         semantic_tags = ['section', 'article', 'main', 'header', 'footer', 'aside', 'nav']
@@ -846,7 +846,7 @@ class HTMLSplitter(_LanguageSplitterBase):
 
         return blocks
 
-    def _extract_content(self, element: bs4.BeautifulSoup) -> str:
+    def _extract_content(self, element: 'bs4.BeautifulSoup') -> str:
         if element is None:
             return ''
 

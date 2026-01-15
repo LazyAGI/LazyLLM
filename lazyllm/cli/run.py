@@ -5,10 +5,7 @@ import json
 import lazyllm
 import logging
 
-from lazyllm import pipeline, parallel, bind, SentenceSplitter, Document, Retriever, Reranker
-from lazyllm.engine.lightengine import LightEngine
-from lazyllm.tools.train_service.serve import TrainServer
-from lazyllm.tools.infer_service.serve import InferServer
+from lazyllm import pipeline, parallel, bind
 
 # lazyllm run xx.json / xx.dsl / xx.lazyml
 # lazyllm run chatbot --model=xx --framework=xx --source=xx
@@ -18,6 +15,7 @@ def chatbot(llm):
     lazyllm.WebModule(llm, port=range(20000, 25000)).start().wait()
 
 def rag(llm, docpath):
+    from lazyllm import SentenceSplitter, Document, Retriever, Reranker
     prompt = ('You will play the role of an AI Q&A assistant and complete a dialogue task. In this '
               'task, you need to provide your answer based on the given context and question.')
 
@@ -37,6 +35,7 @@ def rag(llm, docpath):
     lazyllm.WebModule(ppl, port=range(20000, 25000)).start().wait()
 
 def graph(json_file):
+    from lazyllm.engine.lightengine import LightEngine
     with open(json_file) as fp:
         engine_conf = json.load(fp)
 
@@ -51,6 +50,7 @@ def graph(json_file):
         print(f'answer: {res}')  # noqa print
 
 def training_service():
+    from lazyllm.tools.train_service.serve import TrainServer
     train_server = TrainServer()
     local_server = lazyllm.ServerModule(train_server, launcher=lazyllm.launcher.EmptyLauncher(sync=False))
     local_server.start()
@@ -58,6 +58,7 @@ def training_service():
     local_server.wait()
 
 def infer_service():
+    from lazyllm.tools.infer_service.serve import InferServer
     infer_server = InferServer()
     local_server = lazyllm.ServerModule(infer_server, launcher=lazyllm.launcher.EmptyLauncher(sync=False))
     local_server.start()

@@ -520,7 +520,7 @@ jobs:
         shell: bash
         run: |
           pip install modelscope pyyaml
-          mkdir C:/Users/runneradmin/.lazyllm
+          mkdir -p C:/Users/runneradmin/.lazyllm
           ls C:/Users/runneradmin/.lazyllm
           mkdir -p C:/Users/runneradmin/.cache/modelscope/hub
           ln -s  C:/Users/runneradmin/.cache/modelscope/hub C:/Users/runneradmin/.lazyllm/model
