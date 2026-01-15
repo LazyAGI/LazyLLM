@@ -203,7 +203,8 @@ class WebModule(ModuleBase):
         return cach_path
 
     def init_web(self, component_descs):
-        gr.set_static_paths(self._static_paths)
+        if hasattr(gr, 'set_static_paths'):
+            gr.set_static_paths(self._static_paths)
         blocks_kwargs, css_to_inject = _get_blocks_kwargs(css, self.title, analytics_enabled=False)
         with gr.Blocks(**blocks_kwargs) as demo:
             # Inject CSS via HTML if not supported in Blocks parameter
