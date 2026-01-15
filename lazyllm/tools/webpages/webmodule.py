@@ -120,12 +120,12 @@ def _get_chatbot_kwargs(height: int = 700):
     use_messages_format = False
 
     if gradio_ver >= (6, 0, 0):
+        use_messages_format = True
         try:
             import inspect
             sig = inspect.signature(gr.Chatbot.__init__)
             if 'type' in sig.parameters:
                 kwargs['type'] = 'messages'
-                use_messages_format = True
         except Exception:
             pass
 
