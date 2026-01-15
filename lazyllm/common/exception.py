@@ -8,14 +8,11 @@ _expected_trip_continuous_modules = {}
 def _register_trim_module(expected: dict, continuous: bool = False):
     expected = {k: [v] if isinstance(v, str) else v for k, v in expected.items()}
     if continuous:
-        global _expected_trip_continuous_modules
         _expected_trip_continuous_modules.update(expected)
     else:
-        global _expected_trip_modules
         _expected_trip_modules.update(expected)
 
 def _is_lazyllm_internal_frame(frame, continuous: bool = False):
-    global _expected_trip_modules, _expected_trip_continuous_modules
     expected = _expected_trip_continuous_modules if continuous else _expected_trip_modules
     mod = frame.f_globals.get('__name__', '')
     if not mod.startswith('lazyllm.') and 'lazyllm/components/deploy/relay' not in frame.f_code.co_filename: return False
@@ -24,7 +21,6 @@ def _is_lazyllm_internal_frame(frame, continuous: bool = False):
 
 def _trim_traceback(tb):
     kept, keep_call = [], True
-    global _expected_trip_modules, _expected_trip_continuous_modules
     while tb:
         if not _is_lazyllm_internal_frame(tb.tb_frame):
             if _is_lazyllm_internal_frame(tb.tb_frame, continuous=True):

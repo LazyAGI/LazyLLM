@@ -131,7 +131,7 @@ def rewrite_lines(doc_lines: list[str]) -> list[str]:
             new_doc_lines.append(doc_line)
             continue
         assert_expr, assert_val, err_msg = triples[0]
-        if ast.literal_eval(err_msg) == CODE_CHCHECK_MSG:
+        if err_msg and ast.literal_eval(err_msg) == CODE_CHCHECK_MSG:
             new_doc_lines += [f'{CODE_STARTS}{assert_expr}', f'{assert_val}']
         else:
             new_doc_lines.append(doc_line)

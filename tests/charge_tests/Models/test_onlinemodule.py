@@ -4,7 +4,7 @@ import lazyllm
 class TestOnlineModule(object):
 
     def test_OnlineModule_init(self):
-        
+
         def assert_cases(expected_cls, cases):
             for kwargs in cases:
                 module = lazyllm.OnlineModule(**kwargs)
@@ -57,9 +57,9 @@ class TestOnlineModule(object):
         monkeypatch.setattr(lazyllm.module.OnlineChatModule, 'MODELS',
                             {**lazyllm.module.OnlineChatModule.MODELS, 'openai': DummyChat})
 
-        chat = lazyllm.OnlineModule(source='openai', 
-                                    url='http://base/v1/', 
-                                    model='base_model', 
+        chat = lazyllm.OnlineModule(source='openai',
+                                    url='http://base/v1/',
+                                    model='base_model',
                                     api_key='dummy_key')
 
         res = chat('hello')
@@ -86,10 +86,10 @@ class TestOnlineModule(object):
         monkeypatch.setattr(lazyllm.module.OnlineEmbeddingModule, 'EMBED_MODELS',
                             {**lazyllm.module.OnlineEmbeddingModule.EMBED_MODELS, 'openai': DummyEmbed})
 
-        embed = lazyllm.OnlineModule(type='embed', 
-                                     source='openai', 
-                                     url='http://base-embed/v1/', 
-                                     model='base_embed_model', 
+        embed = lazyllm.OnlineModule(type='embed',
+                                     source='openai',
+                                     url='http://base-embed/v1/',
+                                     model='base_embed_model',
                                      api_key='dummy_key')
 
         res = embed('text')

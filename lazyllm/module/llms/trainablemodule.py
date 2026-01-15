@@ -7,7 +7,6 @@ import copy
 import uuid
 import re
 import requests
-import yaml
 from lazyllm.thirdparty import deepdiff
 
 import lazyllm
@@ -17,24 +16,13 @@ from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from ...components.utils import ModelManager, LLMType
 from ...components.utils.file_operate import _base64_to_file, _is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
-from .utils import map_kw_for_framework, encode_files, check_config_map_format
+from .utils import map_kw_for_framework, encode_files, get_module_config_map
 from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
 
-lazyllm.config.add('trainable_module_config_map_path', str, '', 'TRAINABLE_MODULE_CONFIG_MAP_PATH',
-                   description='The default path for trainable module config map.')
 ignore_config_keys = ['log_path', 'launcher']
 
-@functools.lru_cache(maxsize=1)
-def get_trainable_module_config_map(path):
-    try:
-        cfg = yaml.safe_load(open(path, 'r')) if os.path.exists(path) else {}
-        check_config_map_format(cfg)
-    except Exception:
-        LOG.warning(f'Failed to load trainable module config map from {path}')
-        cfg = {}
-    return cfg
 
 class _UrlTemplateStruct(object):
     def __init__(self, template_message=None, keys_name_handle=None, template_headers=None, stop_words=None,
@@ -79,7 +67,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
                  finetune: Optional[LazyLLMFinetuneBase] = None, deploy: Optional[LazyLLMDeployBase] = None,
                  template: Optional[_UrlTemplateStruct] = None, url_wrapper: Optional[_UrlHelper._Wrapper] = None,
                  trust_remote_code: bool = True, type: Optional[LLMType] = None, source: Optional[str] = None,
-                 use_model_map: bool = True):
+                 use_model_map: Union[str, bool] = True):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
@@ -209,8 +197,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if hasattr(self._deploy, 'auto_map') and self._deploy.auto_map:
             self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
 
-        trainable_module_config_map = get_trainable_module_config_map(
-            lazyllm.config['trainable_module_config_map_path']) if self._use_model_map else {}
+        _, trainable_module_config_map = get_module_config_map(self._use_model_map)
 
         base_model_name = os.path.basename(self._base_model)
         if base_model_name in trainable_module_config_map:
@@ -280,7 +267,7 @@ class TrainableModule(UrlModule):
     def __init__(self, base_model: Option = '', target_path='', *, stream: Union[bool, Dict[str, str]] = False,
                  return_trace: bool = False, trust_remote_code: bool = True,
                  type: Optional[Union[str, LLMType]] = None, source: Optional[str] = None,
-                 use_model_map: bool = True):
+                 use_model_map: Union[str, bool] = True):
         super().__init__(url=None, stream=stream, return_trace=return_trace, init_prompt=False)
         self._template = _UrlTemplateStruct()
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
