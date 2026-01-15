@@ -119,7 +119,6 @@ def _get_chatbot_kwargs(height: int = 700):
                 kwargs['type'] = 'messages'
         except Exception:
             pass
-
     return kwargs, use_messages_format
 
 class WebModule(ModuleBase):
