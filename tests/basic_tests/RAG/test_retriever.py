@@ -1,12 +1,8 @@
-import lazyllm
-from lazyllm.tools.rag.doc_impl import DocImpl
-from lazyllm.tools.rag.store.store_base import LAZY_IMAGE_GROUP
 from lazyllm.tools.rag.transform import SentenceSplitter
 from lazyllm.tools.rag.store import EMBED_DEFAULT_KEY
 from lazyllm.tools.rag.doc_node import DocNode
-from lazyllm.tools.rag.global_metadata import RAG_DOC_PATH, RAG_DOC_ID
-from lazyllm.tools.rag import (Document, Retriever, TransformArgs, AdaptiveTransform,
-                               TempDocRetriever, ContextRetriever, WeightedRetriever, PriorityRetriever)
+from lazyllm.tools.rag import (Document, Retriever, TempDocRetriever, ContextRetriever,
+                               WeightedRetriever, PriorityRetriever)
 from lazyllm.launcher import cleanup
 from lazyllm import config
 from unittest.mock import MagicMock
@@ -30,7 +26,6 @@ class TestRetriever(object):
         assert retriever1._per_doc_embed_keys is True
         assert len(retriever1._docs) == 2
         assert retriever1._embed_keys == [[EMBED_DEFAULT_KEY], [EMBED_DEFAULT_KEY]]
-
 
         retriever1._lazy_init()
         assert len(retriever1._docs) == 1
