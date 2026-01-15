@@ -1,4 +1,8 @@
 toml
+pyyaml
+tqdm
+filelock
+packaging
 fastapi>=0.111.0
 loguru>=0.7.2
 pydantic

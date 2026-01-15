@@ -1578,3 +1578,64 @@ with TempPathGenerator(texts, suffix=".txt") as paths:
         print(p)
         # p can be passed to any file-based document loader
 ''')
+
+add_chinese_doc('retry', '''
+一个简单的重试装饰器，用于在函数执行失败时按指定次数进行重试。
+
+该装饰器会在被装饰函数抛出异常时捕获异常，并在未达到最大重试次数前
+重新执行函数；如果超过最大重试次数仍然失败，则会抛出最后一次异常。
+可选地支持在每次重试之间添加固定延迟。
+
+适用于对不稳定操作（如网络请求、临时资源访问等）进行基础容错处理，
+无需引入额外第三方依赖。
+
+Args:
+    stop_after_attempt (int): 最大重试次数，包含首次执行在内，默认为 3 次。
+    delay (float): 每次重试之间的等待时间（秒），默认为 0，表示不等待。
+''')
+
+add_english_doc('retry', '''
+A simple retry decorator that retries a function execution when an exception occurs.
+
+This decorator catches exceptions raised by the wrapped function and retries
+execution until the maximum number of attempts is reached. If all attempts fail,
+the last exception will be re-raised. An optional fixed delay between retries
+is supported.
+
+It is useful for adding basic fault tolerance to unstable operations such as
+network requests or temporary resource access, without introducing external
+dependencies.
+
+Args:
+    stop_after_attempt (int): Maximum number of attempts, including the initial call.
+        Defaults to 3.
+    delay (float): Delay in seconds between retry attempts. Defaults to 0, meaning
+        no delay.
+''')
+
+add_example('retry', '''
+import random
+from lazyllm import retry
+
+# default stop_after_attempt is 3
+@retry
+def unstable_function():
+    if random.random() < 0.7:
+        raise RuntimeError("Random failure")
+    return "Success!"
+
+@retry(stop_after_attempt=3, delay=1.0)
+def unstable_function():
+    if random.random() < 0.7:
+        raise RuntimeError("Random failure")
+    return "Success!"
+
+@retry(3)
+def unstable_function():
+    if random.random() < 0.7:
+        raise RuntimeError("Random failure")
+    return "Success!"
+
+result = unstable_function()
+print(result)
+''')
