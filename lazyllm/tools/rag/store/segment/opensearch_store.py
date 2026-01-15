@@ -253,7 +253,7 @@ class OpenSearchStore(LazyLLMStoreBase):
             seg['image_keys'] = json.loads(seg.get('image_keys', '[]'))
         return seg
 
-    def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:
+    def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:  # noqa: C901
         criteria = dict(criteria) if criteria else {}
         if not criteria:
             return {}

@@ -113,7 +113,7 @@ class DocImpl:
                 parent_group = self.node_groups[group]['parent']
                 if not parent_group or parent_group in self._activated_groups: break
                 self._activated_groups.add(group := parent_group)
-    
+
     @property
     def store(self) -> _DocumentStore:
         self._lazy_init()
@@ -132,9 +132,9 @@ class DocImpl:
 
         self._store.pop('metadata_store', None)
         self._store = _DocumentStore(algo_name=self._algo_name, store=self._store,
-                                    group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                    embed_dims=embed_dims, embed_datatypes=embed_datatypes,
-                                    global_metadata_desc=self._global_metadata_desc)
+                                     group_embed_keys=self._activated_embeddings, embed=self.embed,
+                                     embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                                     global_metadata_desc=self._global_metadata_desc)
         self._store.activate_group(self._activated_groups)
 
     @once_wrapper(reset_on_pickle=True)
@@ -532,7 +532,7 @@ class DocImpl:
         set_id = self._schema_extractor.register_schema_set_to_kb(algo_id=self._algo_name, schema_set=schema_set,
                                                                   kb_id=kb_id, force_refresh=force_refresh)
         return set_id
-    
+
     def _get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
                    group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
                    ) -> List[DocNode]:

@@ -384,7 +384,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     def register_schema_set(self, schema_set: Type[BaseModel], kb_id: Optional[str] = DEFAULT_KB_ID,
                             force_refresh: bool = False) -> str:
         return self._forward('_register_schema_set', schema_set, kb_id, force_refresh)
-    
+
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
                   group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
                   ) -> List[DocNode]:
