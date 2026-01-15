@@ -42,23 +42,17 @@ class LocalPowerMemMemory(LazyLLMMemoryBase):
                     load_dotenv(config_path, override=False)
                 except Exception:
                     pass
-        qwen_key = config['qwen_api_key']
-        openai_key = config['openai_api_key']
-        if qwen_key:
+        if (qwen_key := config['qwen_api_key']):
             # value exists in .env.memory but not correct, need to be overwritten
-            os.environ['LLM_PROVIDER'] = 'qwen'
-            os.environ['LLM_API_KEY'] = qwen_key
-            os.environ['LLM_MODEL'] = 'qwen-plus'
-            os.environ['EMBEDDING_PROVIDER'] = 'qwen'
-            os.environ['EMBEDDING_API_KEY'] = qwen_key
+            os.environ['LLM_PROVIDER'] = os.environ['EMBEDDING_PROVIDER'] = 'qwen'
+            os.environ['LLM_API_KEY'] = os.environ['EMBEDDING_API_KEY'] = qwen_key
+            os.environ['LLM_MODEL'] = config['qwen_model_name'] or 'qwen-plus'
             os.environ['EMBEDDING_MODEL'] = 'text-embedding-v4'
             os.environ['EMBEDDING_DIMS'] = '1536'
-        elif openai_key:
-            os.environ['LLM_PROVIDER'] = 'openai'
-            os.environ['LLM_API_KEY'] = openai_key
-            os.environ['LLM_MODEL'] = 'gpt-3.5-turbo'
-            os.environ['EMBEDDING_PROVIDER'] = 'openai'
-            os.environ['EMBEDDING_API_KEY'] = openai_key
+        elif (openai_key := config['openai_api_key']):
+            os.environ['LLM_PROVIDER'] = os.environ['EMBEDDING_PROVIDER'] = 'openai'
+            os.environ['LLM_API_KEY'] = os.environ['EMBEDDING_API_KEY'] = openai_key
+            os.environ['LLM_MODEL'] = config['openai_model_name'] or 'gpt-3.5-turbo'
             os.environ['EMBEDDING_MODEL'] = 'text-embedding-3-small'
             os.environ['EMBEDDING_DIMS'] = '1536'
         # can't find .env file, will use sqlite as default
