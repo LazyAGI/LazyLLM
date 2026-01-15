@@ -1,5 +1,6 @@
 import lazyllm
 from lazyllm.components import register as comp_register
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from lazyllm.components.core import ComponentBase
 from lazyllm.tools import fc_register
 
@@ -103,3 +104,64 @@ class TestRegistry:
         registered_func = fc_register('tool')(orig_func, new_func_name)
         assert registered_func != orig_func
         assert registered_func.__name__ == new_func_name
+
+
+class TestRegistryWithKey(object):
+    def test_registry_with_key(self):
+        class LazyLLMOnlineModuleBase(object, metaclass=LazyLLMRegisterMetaClass):
+            __lazyllm_registry_key__ = 'online'
+
+            def __init__(self, *args, **kw):
+                pass
+
+        class OnlineMultiModalBase(LazyLLMOnlineModuleBase):
+            __lazyllm_registry_disable__ = True
+
+        class LazyLLMOnlineSTTModuleBase(OnlineMultiModalBase):
+            __lazyllm_registry_key__ = 'STT'
+
+        class LazyLLMOnlineTTSModuleBase(OnlineMultiModalBase):
+            __lazyllm_registry_key__ = 'TTS'
+
+        class LazyLLMOnlineTextaoImageModuleBase(OnlineMultiModalBase):
+            __lazyllm_registry_key__ = 'TextToImage'
+
+        class LazyLLMOnlineImageEditingBase(OnlineMultiModalBase):
+            __lazyllm_registry_key__ = 'ImageEditing'
+
+        class AbcBase():
+            def __init__(self, api_key: str = None, base_url: str = 'base_url'):
+                self._client = 'abc(api_key=api_key, base_url=base_url'
+
+        class AbcSTT(LazyLLMOnlineSTTModuleBase, AbcBase):
+            def __init__(self, api_key=None, base_url='base_url'):
+                super().__init__(api_key, base_url)
+                AbcBase.__init__(self, api_key=api_key, base_url=base_url)
+
+        class AbcTTS(LazyLLMOnlineTTSModuleBase, AbcBase):
+            def __init__(self, api_key=None, base_url='base_url'):
+                super().__init__(api_key, base_url)
+                AbcBase.__init__(self, api_key=api_key, base_url=base_url)
+
+        class AbcTextToImage(LazyLLMOnlineTextaoImageModuleBase, AbcBase):
+            def __init__(self, api_key=None, base_url='base_url'):
+                super().__init__(api_key, base_url)
+                AbcBase.__init__(self, api_key=api_key, base_url=base_url)
+
+        class AbcImageEditing(LazyLLMOnlineImageEditingBase, AbcBase):
+            def __init__(self, api_key=None, base_url='base_url'):
+                super().__init__(api_key, base_url)
+                AbcBase.__init__(self, api_key=api_key, base_url=base_url)
+
+        assert hasattr(lazyllm, 'online')
+        assert hasattr(lazyllm.online, 'base')
+        assert hasattr(lazyllm.online, 'stt')
+        assert hasattr(lazyllm.online, 'tts')
+        assert hasattr(lazyllm.online, 'TextToImage')
+        assert hasattr(lazyllm.online, 'ImageEditing')
+        assert len(lazyllm.online) == 4
+
+        assert hasattr(lazyllm.online.stt, 'abc')
+        assert hasattr(lazyllm.online.tts, 'abc')
+        assert hasattr(lazyllm.online.TextToImage, 'abc')
+        assert hasattr(lazyllm.online.ImageEditing, 'abc')

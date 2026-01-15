@@ -88,8 +88,9 @@ class LazyLLMRegisterMetaClass(_MetaBind):
 
     def __new__(metas, name, bases, attrs):
         new_cls = type.__new__(metas, name, bases, attrs)
+        if new_cls.__dict__.get('__lazyllm_registry_disable__'): return new_cls
         if name.startswith('LazyLLM') and name.endswith('Base'):
-            ori = re.match('(LazyLLM)(.*)(Base)', name.split('.')[-1])[2]
+            ori = new_cls.__dict__.get('__lazyllm_registry_key__', re.match('(LazyLLM)(.*)(Base)', name)[2])
             group = ori.lower()
             new_cls._lazy_llm_group = f'{getattr(new_cls, "_lazy_llm_group", "")}.{group}'.strip('.')
             ld = LazyDict(group, new_cls)
