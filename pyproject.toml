@@ -27,6 +27,7 @@ dependencies = [
     "tqdm",
     "filelock",
     "pyyaml",
+    "packaging",
     "fastapi >=0.111.0",
     "loguru >=0.7.2",
     "pydantic >=2.11.7,<3.0.0",
