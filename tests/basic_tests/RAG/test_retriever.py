@@ -15,8 +15,8 @@ class TestRetriever(object):
 
     def test_per_doc_embed_keys_align_after_lazy_init(self):
         mock_embed = MagicMock(return_value=[0.4, 0.5, 0.6])
-        doc1 = Document('/Users/chenjiahao/Desktop/codes/LazyLLM/tmp', embed=mock_embed)
-        doc2 = Document('/Users/chenjiahao/Desktop/codes/LazyLLM/tmp', embed=mock_embed)
+        doc1 = Document('rag_master', embed=mock_embed)
+        doc2 = Document('rag_master', embed=mock_embed)
         doc1.create_node_group(
             'local_group',
             parent=Document.CoarseChunk,
