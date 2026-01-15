@@ -22,7 +22,7 @@ def run():
             'vector_store': {
                 'type': 'milvus',
                 'kwargs': {
-                    'uri': os.getenv('MILVUS_URI', 'http://10.119.26.205:19530'),
+                    'uri': os.getenv('MILVUS_URI', 'http://localhost:19530'),
                     'db_name': 'test_doc_123',
                     'index_kwargs': {
                         'index_type': 'IVF_FLAT',
