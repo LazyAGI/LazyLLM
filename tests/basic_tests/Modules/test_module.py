@@ -220,9 +220,8 @@ class TestModule:
         assert prl(dict(a=1, b=2), dict(a=3, b=4)) == 10
 
     def test_onlineEmbeddingModuleBase_batch_size_validity(self):
-        for embedModuleClass in OnlineEmbeddingModule.EMBED_MODELS.items():
-            assert embedModuleClass(batch_size=32).batch_size == 32
+        for embedModuleClass in OnlineEmbeddingModule.EMBED_MODELS.values():
+            assert embedModuleClass(skip_auth=True, batch_size=32).batch_size == 32
 
-        for rerankModuleClass in OnlineEmbeddingModule.RERANK_MODELS.items():
-            assert rerankModuleClass(batch_size=32).batch_size == 1
-
+        for rerankModuleClass in OnlineEmbeddingModule.RERANK_MODELS.values():
+            assert rerankModuleClass(skip_auth=True, batch_size=32).batch_size == 1
