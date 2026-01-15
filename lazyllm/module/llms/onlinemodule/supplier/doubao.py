@@ -1,7 +1,10 @@
 import lazyllm
 from typing import Dict, List, Union
 from lazyllm.components.utils.downloader.model_downloader import LLMType
-from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
+from ..base import (
+    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase,
+    LazyLLMOnlineMultimodalEmbedModuleBase, LazyLLMOnlineText2ImageModuleBase
+)
 import requests
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
@@ -9,18 +12,14 @@ from lazyllm.thirdparty import volcenginesdkarkruntime
 from lazyllm import LOG
 
 
-REGISTRY_KEY = 'doubao'
-
-
-class DoubaoModule(OnlineChatModuleBase):
+class DoubaoChat(OnlineChatModuleBase):
     MODEL_NAME = 'doubao-1-5-pro-32k-250115'
     VLM_MODEL_PREFIX = ['doubao-seed-1-6-vision', 'doubao-1-5-ui-tars']
-    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, model: str = None, base_url: str = 'https://ark.cn-beijing.volces.com/api/v3/',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         super().__init__(model_series='DOUBAO', api_key=api_key or lazyllm.config['doubao_api_key'], base_url=base_url,
-                         model_name=model or lazyllm.config['doubao_model_name'] or DoubaoModule.MODEL_NAME,
+                         model_name=model or lazyllm.config['doubao_model_name'] or DoubaoChat.MODEL_NAME,
                          stream=stream, return_trace=return_trace, **kwargs)
 
     def _get_system_prompt(self):
@@ -42,10 +41,7 @@ class DoubaoModule(OnlineChatModuleBase):
             return False
 
 
-class DoubaoEmbedding(OnlineEmbeddingModuleBase):
-    __lazyllm_registry_group__ = LLMType.EMBED
-    __lazyllm_registry_key__ = REGISTRY_KEY
-
+class DoubaoEmbed(LazyLLMOnlineEmbedModuleBase):
     def __init__(self,
                  embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings',
                  embed_model_name: str = 'doubao-embedding-text-240715',
@@ -56,10 +52,7 @@ class DoubaoEmbedding(OnlineEmbeddingModuleBase):
                          batch_size=batch_size, **kw)
 
 
-class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
-    __lazyllm_registry_group__ = 'multimodalembed'
-    __lazyllm_registry_key__ = REGISTRY_KEY
-
+class DoubaoMultimodal_Embed(LazyLLMOnlineMultimodalEmbedModuleBase):
     def __init__(self,
                  embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal',
                  embed_model_name: str = 'doubao-embedding-vision-241215',
@@ -92,26 +85,21 @@ class DoubaoMultimodalEmbedding(OnlineEmbeddingModuleBase):
         return response['data']['embedding']
 
 
-class DoubaoMultiModal(OnlineMultiModalBase):
-    __lazyllm_group_disable__ = True
-
-    def __init__(self, api_key: str = None, model: str = None, url='https://ark.cn-beijing.volces.com/api/v3',
-                 return_trace: bool = False, **kwargs):
+class DoubaoMultiModal():
+    def __init__(self, api_key: str = None, url: str = ''):
         api_key = api_key or lazyllm.config['doubao_api_key']
-        OnlineMultiModalBase.__init__(self, model_series='DOUBAO', model=model, api_key=api_key,
-                                      return_trace=return_trace, url=url, **kwargs)
         self._client = volcenginesdkarkruntime.Ark(base_url=url, api_key=api_key)
 
 
-class DoubaoTextToImageModule(DoubaoMultiModal):
+class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase, DoubaoMultiModal):
     MODEL_NAME = 'doubao-seedream-4-0-250828'
     IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'
-    __lazyllm_registry_group__ = LLMType.TEXT2IMAGE
-    __lazyllm_registry_key__ = REGISTRY_KEY
 
-    def __init__(self, api_key: str = None, model: str = None, return_trace: bool = False, **kwargs):
-        DoubaoMultiModal.__init__(self, api_key=api_key, model=model or DoubaoTextToImageModule.MODEL_NAME
-                                  or lazyllm.config['doubao_text2image_model_name'], return_trace=return_trace, **kwargs)
+    def __init__(self, api_key: str = None, model: str = None, url='https://ark.cn-beijing.volces.com/api/v3',
+                 return_trace: bool = False, **kwargs):
+        LazyLLMOnlineText2ImageModuleBase.__init__(self, model_series='DOUBAO', model=model, api_key=api_key,
+                                                   return_trace=return_trace, url=url, **kwargs)
+        DoubaoMultiModal.__init__(self, api_key=api_key, url=url)
 
     def _forward(self, input: str = None, files: List[str] = None, n: int = 1, size: str = '1024x1024', seed: int = -1,
                  guidance_scale: float = 2.5, watermark: bool = True, model: str = None, url: str = None, **kwargs):

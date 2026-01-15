@@ -30,12 +30,11 @@ class TestOnlineModule(object):
         assert_cases(lazyllm.module.OnlineEmbeddingModuleBase, embed_cases)
 
         multimodal_cases = [
-            {'type': 'stt'},
-            {'model': 'qwen-audio-turbo'},
-            {'type': 'tts'},
-            {'model': 'qwen-tts'},
-            {'type': 'sd'},
-            {'model': 'qwen-image'},
+            {'source': 'qwen', 'type': 'stt', 'api_key': 'dummy_key'},
+            {'source': 'qwen', 'model': 'qwen-audio-turbo', 'api_key': 'dummy_key'},
+            {'source': 'qwen', 'model': 'qwen-tts', 'api_key': 'dummy_key'},
+            {'source': 'qwen', 'type': 'sd', 'api_key': 'dummy_key'},
+            {'source': 'qwen', 'model': 'qwen-image', 'api_key': 'dummy_key'},
         ]
         assert_cases(lazyllm.module.OnlineMultiModalModule, multimodal_cases)
 
@@ -43,12 +42,10 @@ class TestOnlineModule(object):
         from lazyllm.module import OnlineChatModuleBase
 
         class TestChat(OnlineChatModuleBase):
-            __lazyllm_registry_key__ = 'test'
 
             def __init__(self, base_url, model, api_key, stream, return_trace, skip_auth, **kw):
                 super().__init__(
                     self,
-                    # model_series='Test',
                     api_key=api_key,
                     base_url=base_url,
                     model_name=model,
@@ -60,7 +57,7 @@ class TestOnlineModule(object):
 
         assert lazyllm.online.chat.test == TestChat
         for key in ['chat', 'embed', 'rerank', 'stt', 'text2image', 'tts']:
-            assert 'qwen' in lazyllm.online[key].keys()
+            assert 'qwen' + key in lazyllm.online[key].keys()
 
     def test_OnlineModule_config_register(self):
         for api_key in ['openai_api_key', 'qwen_model_name', 'sensenova_secret_key']:
@@ -98,7 +95,7 @@ class TestOnlineModule(object):
         assert res == 'base_model, again, http://base/v1/chat/completions'
 
     def test_OnlineEmbedding_forward_override(self, monkeypatch):
-        class DummyEmbed(lazyllm.module.OnlineEmbeddingModuleBase):
+        class DummyEmbed(lazyllm.module.llms.onlinemodule.base.LazyLLMOnlineEmbedModuleBase):
             def __init__(self, embed_url: str, embed_model_name: str, api_key: str, **kw):
                 super().__init__(model_series='DUMMY', embed_url=embed_url, api_key=api_key,
                                  embed_model_name=embed_model_name, **kw)
@@ -127,7 +124,7 @@ class TestOnlineModule(object):
         assert res == 'base_embed_model, final, http://base-embed/v1/'
 
     def test_OnlineMultiModal_forward_override(self):
-        class DummyMulti(lazyllm.module.OnlineMultiModalBase):
+        class DummySTT(lazyllm.module.llms.onlinemodule.base.LazyLLMOnlineSTTModuleBase):
             def __init__(self):
                 super().__init__('DUMMY', model_name='whisper-1', api_key='dummy', base_url='http://base')
 
@@ -136,7 +133,7 @@ class TestOnlineModule(object):
                 url = url or self._base_url
                 return model + ', ' + input + ', ' + url
 
-        dummy = DummyMulti()
+        dummy = DummySTT()
         dummy.use_cache(False)
         assert dummy('hello') == 'whisper-1, hello, http://base'
         assert dummy('new', model='glm-asr', url='http://override') == 'glm-asr, new, http://override'

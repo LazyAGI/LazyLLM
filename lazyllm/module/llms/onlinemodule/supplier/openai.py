@@ -5,20 +5,17 @@ import requests
 from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
 import lazyllm
-from lazyllm.components.utils.downloader.model_downloader import LLMType
-from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
+from ..base import (
+    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase
+)
 from ..fileHandler import FileHandlerBase
 
 
-REGISTRY_KEY = 'openai'
-
-
-class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
+class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ['gpt-3.5-turbo-0125', 'gpt-3.5-turbo-1106',
                             'gpt-3.5-turbo-0613', 'babbage-002',
                             'davinci-002', 'gpt-4-0613']
     NO_PROXY = False
-    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, base_url: str = 'https://api.openai.com/v1/', model: str = 'gpt-3.5-turbo',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, skip_auth: bool = False, **kw):
@@ -198,10 +195,8 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
         return 'RUNNING'
 
 
-class OpenAIEmbedding(OnlineEmbeddingModuleBase):
+class OpenAIEmbed(LazyLLMOnlineEmbedModuleBase):
     NO_PROXY = True
-    __lazyllm_registry_group__ = LLMType.EMBED
-    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self,
                  embed_url: str = 'https://api.openai.com/v1/',
@@ -214,10 +209,8 @@ class OpenAIEmbedding(OnlineEmbeddingModuleBase):
         self._embed_url = urljoin(self._embed_url, 'embeddings')
 
 
-class OpenAIReranking(OnlineEmbeddingModuleBase):
+class OpenAIRerank(LazyLLMOnlineRerankModuleBase):
     NO_PROXY = True
-    __lazyllm_registry_group__ = LLMType.RERANK
-    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self,
                  embed_url: str = 'https://api.openai.com/v1/',

@@ -4,12 +4,7 @@ import lazyllm
 from ..base import OnlineChatModuleBase
 
 
-REGISTRY_KEY = 'deepseek'
-
-
-class DeepSeekModule(OnlineChatModuleBase):
-    __lazyllm_registry_key__ = REGISTRY_KEY
-
+class DeepSeekChat(OnlineChatModuleBase):
     def __init__(self, base_url: str = 'https://api.deepseek.com', model: str = 'deepseek-chat',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         super().__init__(model_series='DEEPSEEK', api_key=api_key or lazyllm.config['deepseek_api_key'],

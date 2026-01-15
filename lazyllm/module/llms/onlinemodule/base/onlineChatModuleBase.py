@@ -11,7 +11,7 @@ import time
 from operator import itemgetter as itemget
 
 import lazyllm
-from lazyllm import globals, pipeline, config
+from lazyllm import globals, pipeline
 from lazyllm.components.prompter import PrompterBase
 from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
@@ -26,12 +26,11 @@ class StaticParams(TypedDict, total=False):
     frequency_penalty: float  # Note some online api use 'repetition_penalty'
 
 
-class OnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
+class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     TRAINABLE_MODEL_LIST = []
     VLM_MODEL_PREFIX = []
     NO_PROXY = True
-    __lazyllm_registry_group__ = 'chat'
-    __lazyllm_registry_key__ = 'base'
+    __lazyllm_registry_key__ = 'chat'
 
     def __init__(self, model_series: str, api_key: Union[str, List[str]], base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
@@ -341,24 +340,4 @@ class OnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
         return lazyllm.make_repr('Module', 'OnlineChat', name=self._module_name, url=self._base_url,
                                  stream=bool(self._stream), return_trace=self._return_trace)
 
-    @classmethod
-    def __lazyllm_on_register__(cls, *, group_path: str, registry_key: str | None):
-        if group_path != 'online.chat':
-            return
-        if not registry_key or registry_key == 'base':
-            return
-
-        key = registry_key.lower()
-
-        config.add(f'{key}_api_key', str, '', f'{key.upper()}_API_KEY', description=f'The API key for {key}.')
-        config.add(f'{key}_model_name', str, '', f'{key.upper()}_MODEL_NAME',
-                   description=f'The default model name for {key}.')
-        config.add(f'{key}_text2image_model_name', str, '', f'{key.upper()}_TEXT2IMAGE_MODEL_NAME',
-                   description=f'The default text2image model name for {key}.')
-        config.add(f'{key}_tts_model_name', str, '', f'{key.upper()}_TTS_MODEL_NAME',
-                   description=f'The default tts model name for {key}.')
-        config.add(f'{key}_stt_model_name', str, '', f'{key.upper()}_STT_MODEL_NAME',
-                   description=f'The default stt model name for {key}.')
-        if key == 'sensenova':
-            config.add('sensenova_secret_key', str, '', 'SENSENOVA_SECRET_KEY',
-                       description='The secret key for SenseNova.')
+OnlineChatModuleBase = LazyLLMOnlineChatModuleBase

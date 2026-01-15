@@ -96,7 +96,7 @@ class LazyLLMRegisterMetaClass(_MetaBind):
 
     def __new__(metas, name, bases, attrs):
         new_cls = type.__new__(metas, name, bases, attrs)
-        if new_cls.__dict__.get('__lazyllm_registry_disable__'): return new_cls
+        if attrs.get('__lazyllm_group_disable__', False) is True: return new_cls
         if name.startswith('LazyLLM') and name.endswith('Base'):
             ori = new_cls.__dict__.get('__lazyllm_registry_key__', re.match('(LazyLLM)(.*)(Base)', name)[2])
             group = ori.lower()
@@ -115,101 +115,16 @@ class LazyLLMRegisterMetaClass(_MetaBind):
         elif hasattr(new_cls, '_lazy_llm_group'):
             group = LazyLLMRegisterMetaClass.all_clses[new_cls._lazy_llm_group]
             name = new_cls.__dict__.get('__lazyllm_registry_key__', name)
-            assert name not in group, f'duplicate class \'{name}\' in group {new_cls._lazy_llm_group}'
+            if name in group:
+                old = group[name]
+                assert (
+                    old.__module__ == new_cls.__module__
+                    and old.__qualname__ == new_cls.__qualname__
+                ), f"duplicate class '{name}' in group {new_cls._lazy_llm_group}:"
             group[name] = new_cls
             if (f := getattr(new_cls, '__lazyllm_after_registry_hook__', None)):
                 f(new_cls._lazy_llm_group, name, isleaf=True)
         return new_cls
-
-    @classmethod
-    def _handle_disable_class(cls, new_cls, bases):
-        parent_path = cls._get_registry_parent_path(new_cls, bases)
-        new_cls._lazy_llm_group = parent_path
-
-    @classmethod
-    def _handle_base_class(cls, new_cls, name: str):
-        ori = re.match('(LazyLLM)(.*)(Base)', name.split('.')[-1])[2]
-        group = ori.lower()
-
-        new_cls._lazy_llm_group = f'{getattr(new_cls, "_lazy_llm_group", "")}.{group}'.strip('.')
-        ld = LazyDict(group, new_cls)
-
-        if new_cls._lazy_llm_group == group:
-            for m in (builtins, lazyllm) if config['use_builtin'] else (lazyllm,):
-                assert not (hasattr(m, group) and hasattr(m, ori)), f'group name \'{ori}\' cannot be used'
-            for m in (builtins, lazyllm) if config['use_builtin'] else (lazyllm,):
-                setattr(m, group, ld)
-                setattr(m, ori, ld)
-
-        cls.all_clses[new_cls._lazy_llm_group] = ld
-
-    @classmethod
-    def _handle_impl_class(cls, new_cls, name):
-        group = LazyLLMRegisterMetaClass.all_clses[new_cls._lazy_llm_group]
-        assert new_cls.__name__ not in group, (
-            f'duplicate class \'{name}\' in group {new_cls._lazy_llm_group}')
-        key = new_cls.__name__.lower()
-        group[key] = new_cls
-        return (new_cls._lazy_llm_group, key)
-
-    @classmethod
-    def _get_registry_parent_path(cls, new_cls, bases):
-        parent_path = next(
-            (gp for base in bases
-             if isinstance((gp := getattr(base, '_lazy_llm_group', None)), str) and gp in cls.all_clses),
-            None
-        )
-        assert parent_path is not None, f'No registered parent group found for {new_cls.__name__}'
-        return parent_path
-
-    @classmethod
-    def _get_registry_attr(cls, attrs, registry_attr_name):
-        registry_attr = attrs.get(registry_attr_name, None)
-        if registry_attr is not None:
-            assert isinstance(registry_attr, str) and registry_attr.strip(), \
-                f'{registry_attr_name} must be non-empty str'
-            registry_attr = registry_attr.strip().lower()
-            assert '.' not in registry_attr, \
-                f'Invalid {registry_attr_name}="{registry_attr}". Dot is not allowed.'
-        return registry_attr
-
-    @classmethod
-    def _handle_registry_class(cls, new_cls, name, bases, attrs):
-        parent_path = cls._get_registry_parent_path(new_cls, bases)
-        parent_group = cls.all_clses[parent_path]
-
-        registry_key = cls._get_registry_attr(attrs, '__lazyllm_registry_key__')
-        registry_group = cls._get_registry_attr(attrs, '__lazyllm_registry_group__')
-
-        target_path = parent_path
-        target_group = parent_group
-
-        if registry_group is not None:
-            target_path = f'{parent_path}.{registry_group}'
-            if registry_group in parent_group:
-                target_group = parent_group[registry_group]
-                assert isinstance(target_group, LazyDict), \
-                    f'Group key conflict: "{registry_group}" exists in "{parent_path}" and is not a LazyDict'
-            else:
-                target_group = LazyDict(registry_group)
-                parent_group[registry_group] = target_group
-
-            cls.all_clses[target_path] = target_group
-
-        assert registry_key not in target_group, \
-            f'duplicate registry key "{registry_key}" in group "{target_path}"'
-        target_group[registry_key] = new_cls
-        new_cls._lazy_llm_group = target_path
-
-        return (target_path, registry_key)
-
-    @classmethod
-    def _call_on_register_hook(cls, new_cls, group_path: str, registry_key: str | None):
-        hook = getattr(new_cls, '__lazyllm_on_register__', None)
-        if hook is None:
-            return
-        if callable(hook):
-            hook(group_path=group_path, registry_key=registry_key)
 
 
 class LazyLLMRegisterMetaABCClass(LazyLLMRegisterMetaClass, ABCMeta): pass

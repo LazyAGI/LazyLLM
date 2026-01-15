@@ -2,6 +2,7 @@ from typing import Dict, List, Union
 import requests
 from concurrent.futures import ThreadPoolExecutor, as_completed, wait
 from lazyllm import LOG
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from .utils import LazyLLMOnlineBase
 
 
@@ -136,3 +137,12 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
                                 data = self._encapsulated_data(input, **kwargs)
                                 break
         return ret
+
+class LazyLLMOnlineEmbedModuleBase(OnlineEmbeddingModuleBase):
+    __lazyllm_registry_key__ = LLMType.EMBED
+
+class LazyLLMOnlineMultimodalEmbedModuleBase(OnlineEmbeddingModuleBase):
+    __lazyllm_registry_key__ = LLMType.MULTIMODAL_EMBED
+
+class LazyLLMOnlineRerankModuleBase(OnlineEmbeddingModuleBase):
+    __lazyllm_registry_key__ = LLMType.RERANK

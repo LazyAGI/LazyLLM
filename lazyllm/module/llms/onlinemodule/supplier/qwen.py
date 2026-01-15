@@ -6,7 +6,10 @@ from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
 import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
-from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
+from ..base import (
+    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase,
+    LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineTTSModuleBase
+)
 from ..fileHandler import FileHandlerBase
 from http import HTTPStatus
 from lazyllm.thirdparty import dashscope
@@ -15,10 +18,7 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm import LOG
 
 
-REGISTRY_KEY = 'qwen'
-
-
-class QwenModule(OnlineChatModuleBase, FileHandlerBase):
+class QwenChat(OnlineChatModuleBase, FileHandlerBase):
     '''
     #TODO: The Qianwen model has been finetuned and deployed successfully,
            but it is not compatible with the OpenAI interface and can only
@@ -27,12 +27,11 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ['qwen-turbo', 'qwen-7b-chat', 'qwen-72b-chat']
     VLM_MODEL_PREFIX = ['qwen-vl-plus', 'qwen-vl-max', 'qvq-max', 'qvq-plus']
     MODEL_NAME = 'qwen-plus'
-    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, base_url: str = 'https://dashscope.aliyuncs.com/', model: str = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         OnlineChatModuleBase.__init__(self, model_series='QWEN', api_key=api_key or lazyllm.config['qwen_api_key'],
-                                      model_name=model or lazyllm.config['qwen_model_name'] or QwenModule.MODEL_NAME,
+                                      model_name=model or lazyllm.config['qwen_model_name'] or QwenChat.MODEL_NAME,
                                       base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = dict()
@@ -273,9 +272,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         return [{'type': 'image_url', 'image_url': {'url': image_url}}]
 
 
-class QwenEmbedding(OnlineEmbeddingModuleBase):
-    __lazyllm_registry_group__ = LLMType.EMBED
-    __lazyllm_registry_key__ = REGISTRY_KEY
+class QwenEmbed(LazyLLMOnlineEmbedModuleBase):
 
     def __init__(self,
                  embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
@@ -319,9 +316,7 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
             return [res.get('embedding', []) for res in embeddings]
 
 
-class QwenReranking(OnlineEmbeddingModuleBase):
-    __lazyllm_registry_group__ = LLMType.RERANK
-    __lazyllm_registry_key__ = REGISTRY_KEY
+class QwenRerank(LazyLLMOnlineRerankModuleBase):
 
     def __init__(self,
                  embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
@@ -355,34 +350,28 @@ class QwenReranking(OnlineEmbeddingModuleBase):
         return [(result['index'], result['relevance_score']) for result in results]
 
 
-class QwenMultiModal(OnlineMultiModalBase):
+class QwenMultiModal():
     __lazyllm_group_disable__ = True
 
-    def __init__(self, api_key: str = None, model_name: str = None,
-                 base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
-                 base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
-                 return_trace: bool = False, **kwargs):
+    def __init__(self, api_key: str = None, base_url: str = '', base_websocket_url: str = ''):
         api_key = api_key or lazyllm.config['qwen_api_key']
-        OnlineMultiModalBase.__init__(self, model_series='QWEN', api_key=api_key,
-                                      model_name=model_name, return_trace=return_trace,
-                                      base_url=base_url, **kwargs)
         dashscope.api_key = api_key
         dashscope.base_http_api_url = base_url
         dashscope.base_websocket_api_url = base_websocket_url
 
 
-class QwenSTTModule(QwenMultiModal):
+class QwenSTT(LazyLLMOnlineSTTModuleBase, QwenMultiModal):
     MODEL_NAME = 'paraformer-v2'
-    __lazyllm_registry_group__ = LLMType.STT
-    __lazyllm_registry_key__ = REGISTRY_KEY
 
-    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
-        QwenMultiModal.__init__(self, api_key=api_key,
-                                model_name=model or lazyllm.config['qwen_stt_model_name'] or QwenSTTModule.MODEL_NAME,
-                                return_trace=return_trace, **kwargs)
+    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False,
+                 base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
+                 base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference', **kwargs):
+        LazyLLMOnlineSTTModuleBase.__init__(self, model_series='QWEN', api_key=api_key, model_name=model,
+                                            return_trace=return_trace, base_url=base_url, **kwargs)
+        QwenMultiModal.__init__(self, api_key=api_key, base_url=base_url, base_websocket_url=base_websocket_url)
 
     def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
-        assert any(file.startswith('http') for file in files), 'QwenSTTModule only supports http file urls'
+        assert any(file.startswith('http') for file in files), 'QwenSTT only supports http file urls'
         if url and url != self._base_url:
             raise Exception('Qwen STT forward() does not support overriding the `url` parameter, please remove it.')
 
@@ -404,17 +393,17 @@ class QwenSTTModule(QwenMultiModal):
             raise Exception(f'failed to transcribe: {transcribe_response.output.message}')
 
 
-class QwenTextToImageModule(QwenMultiModal):
+class QwenText2Image(LazyLLMOnlineText2ImageModuleBase, QwenMultiModal):
     MODEL_NAME = 'wanx2.1-t2i-turbo'
     IMAGE_EDITING_MODEL_NAME = 'qwen-image-edit-plus'
-    __lazyllm_registry_group__ = LLMType.TEXT2IMAGE
-    __lazyllm_registry_key__ = REGISTRY_KEY
 
-    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
-        QwenMultiModal.__init__(self, api_key=api_key,
-                                model_name=model or lazyllm.config['qwen_text2image_model_name']
-                                or QwenTextToImageModule.MODEL_NAME,
-                                return_trace=return_trace, **kwargs)
+    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False,
+                 base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
+                 base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+                 **kwargs):
+        LazyLLMOnlineText2ImageModuleBase.__init__(self, model_series='QWEN', api_key=api_key, model_name=model,
+                                                   return_trace=return_trace, base_url=base_url, **kwargs)
+        QwenMultiModal.__init__(self, api_key=api_key, base_url=base_url, base_websocket_url=base_websocket_url)
 
     def _call_sync_text2image(self, call_params):
         task_response = dashscope.MultiModalConversation.call(**call_params)
@@ -571,7 +560,7 @@ def synthesize_v2(input: str, model_name: str, voice: str, speech_rate: float, v
         raise Exception(f'failed to synthesize: {synthesizer.last_response["header"]["error_message"]}')
 
 
-class QwenTTSModule(QwenMultiModal):
+class QwenTTS(LazyLLMOnlineTTSModuleBase, QwenMultiModal):
     MODEL_NAME = 'qwen-tts'
     SYNTHESIZERS = {
         'cosyvoice-v2': (synthesize_v2, 'longxiaochun_v2'),
@@ -580,17 +569,18 @@ class QwenTTSModule(QwenMultiModal):
         'qwen-tts': (synthesize_qwentts, 'Cherry'),
         'qwen-tts-latest': (synthesize_qwentts, 'Cherry')
     }
-    __lazyllm_registry_group__ = LLMType.TTS
-    __lazyllm_registry_key__ = REGISTRY_KEY
 
-    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
-        QwenMultiModal.__init__(self, api_key=api_key,
-                                model_name=model or lazyllm.config['qwen_tts_model_name'] or QwenTTSModule.MODEL_NAME,
-                                return_trace=return_trace, **kwargs)
+    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False,
+                 base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
+                 base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+                 **kwargs):
+        LazyLLMOnlineTTSModuleBase.__init__(self, model_series='QWEN', api_key=api_key, model_name=model,
+                                            return_trace=return_trace, base_url=base_url, **kwargs)
+        QwenMultiModal.__init__(self, api_key=api_key, base_url=base_url, base_websocket_url=base_websocket_url)
         if self._model_name not in self.SYNTHESIZERS:
             raise ValueError(f'unsupported model: {self._model_name}. '
-                             f'supported models: {QwenTTSModule.SYNTHESIZERS.keys()}')
-        self._synthesizer_func, self._voice = QwenTTSModule.SYNTHESIZERS[self._model_name]
+                             f'supported models: {QwenTTS.SYNTHESIZERS.keys()}')
+        self._synthesizer_func, self._voice = QwenTTS.SYNTHESIZERS[self._model_name]
 
     def _forward(self, input: str = None, voice: str = None, speech_rate: float = 1.0, volume: int = 50,
                  pitch: float = 1.0, url: str = None, model: str = None, **kwargs):
@@ -603,8 +593,8 @@ class QwenTTSModule(QwenMultiModal):
         else:
             if model not in self.SYNTHESIZERS:
                 raise ValueError(f'unsupported model: {model}. '
-                                 f'supported models: {QwenTTSModule.SYNTHESIZERS.keys()}')
-            synthesizer_func, default_voice = QwenTTSModule.SYNTHESIZERS[model]
+                                 f'supported models: {QwenTTS.SYNTHESIZERS.keys()}')
+            synthesizer_func, default_voice = QwenTTS.SYNTHESIZERS[model]
 
         call_params = {
             'input': input,

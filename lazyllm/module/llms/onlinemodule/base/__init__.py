@@ -1,8 +1,14 @@
 from lazyllm.common.registry import LazyLLMRegisterMetaClass, LazyDict
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from .onlineChatModuleBase import OnlineChatModuleBase
-from .onlineEmbeddingModuleBase import OnlineEmbeddingModuleBase
-from .onlineMultiModalBase import OnlineMultiModalBase
+from .onlineEmbeddingModuleBase import (
+    OnlineEmbeddingModuleBase, LazyLLMOnlineEmbedModuleBase,
+    LazyLLMOnlineMultimodalEmbedModuleBase, LazyLLMOnlineRerankModuleBase
+)
+from .onlineMultiModalBase import (
+    OnlineMultiModalBase, LazyLLMOnlineSTTModuleBase, LazyLLMOnlineTTSModuleBase,
+    LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineImageEditingModuleBase
+)
 
 
 def _ensure_group(parent: LazyDict, name: str):
@@ -28,5 +34,12 @@ multimodal_group['base'] = OnlineMultiModalBase
 __all__ = [
     'OnlineChatModuleBase',
     'OnlineEmbeddingModuleBase',
-    'OnlineMultiModalBase'
+    'LazyLLMOnlineEmbedModuleBase',
+    'LazyLLMOnlineMultimodalEmbedModuleBase',
+    'LazyLLMOnlineRerankModuleBase',
+    'OnlineMultiModalBase',
+    'LazyLLMOnlineSTTModuleBase',
+    'LazyLLMOnlineTTSModuleBase',
+    'LazyLLMOnlineText2ImageModuleBase',
+    'LazyLLMOnlineImageEditingModuleBase'
 ]

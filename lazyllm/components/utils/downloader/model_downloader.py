@@ -45,6 +45,7 @@ class LLMType(str, Enum, metaclass=_CaseInsensitiveEnumMeta):
     EMBED = 'EMBED'
     RERANK = 'RERANK'
     CROSS_MODAL_EMBED = 'CROSS_MODAL_EMBED'
+    MULTIMODAL_EMBED = 'MULTIMODAL_EMBED'
     OCR = 'OCR'
 
     @classmethod

@@ -10,6 +10,7 @@ import ipaddress
 import socket
 from io import BytesIO
 from lazyllm.thirdparty import PIL
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 
 class OnlineMultiModalBase(LazyLLMOnlineBase, LLMBase):
     __lazyllm_group_disable__ = True
@@ -132,3 +133,15 @@ class OnlineMultiModalBase(LazyLLMOnlineBase, LLMBase):
                 lazyllm.LOG.error(f'Unexpected error loading image from {image_path}: {str(e)}')
                 raise ValueError(f'Failed to load image from {image_path}: {str(e)}')
         return results
+
+class LazyLLMOnlineSTTModuleBase(OnlineMultiModalBase):
+    __lazyllm_registry_key__ = LLMType.STT
+
+class LazyLLMOnlineTTSModuleBase(OnlineMultiModalBase):
+    __lazyllm_registry_key__ = LLMType.TTS
+
+class LazyLLMOnlineText2ImageModuleBase(OnlineMultiModalBase):
+    __lazyllm_registry_key__ = LLMType.TEXT2IMAGE
+
+class LazyLLMOnlineImageEditingModuleBase(OnlineMultiModalBase):
+    __lazyllm_registry_key__ = LLMType.IMAGE_EDITING

@@ -16,7 +16,11 @@ class _ChatModuleMeta(type):
 class OnlineChatModule(metaclass=_ChatModuleMeta):
     @staticmethod
     def _models():
-        return {k: v for k, v in lazyllm.online.chat.items() if k != 'base'}
+        return {
+            (k[:-4] if k.lower().endswith('chat') else k): v
+            for k, v in lazyllm.online.chat.items()
+            if k != 'base'
+        }
 
     @staticmethod
     def _encapsulate_parameters(base_url: str, model: str, stream: bool, return_trace: bool, **kwargs) -> Dict[str, Any]:

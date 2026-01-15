@@ -1568,7 +1568,7 @@ ret: Hello! How can I assist you today?
 >>> print(vlm(inputs))
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoModule', '''\
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoChat', '''\
 豆包（Doubao）在线聊天模块，继承自 OnlineChatModuleBase。  
 封装了对字节跳动 Doubao API 的调用，用于进行多轮问答交互。默认使用模型 `doubao-1-5-pro-32k-250115`，支持流式输出和调用链追踪。
 
@@ -1581,7 +1581,7 @@ Args:
     **kwargs: 其他传递给基类 OnlineChatModuleBase 的参数。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoModule', '''\
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoChat', '''\
 Doubao online chat module, inheriting from OnlineChatModuleBase.  
 Encapsulates the Doubao API (ByteDance) for multi-turn Q&A interactions. Defaults to model `doubao-1-5-pro-32k-250115`, supporting streaming and optional trace return.
 
@@ -1594,7 +1594,7 @@ Args:
     **kwargs: Additional arguments passed to the base class OnlineChatModuleBase.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.ppio.PPIOModule', '''\
+add_chinese_doc('llms.onlinemodule.supplier.ppio.PPIOChat', '''\
 PPIO（派欧云）在线聊天模块，继承自 OnlineChatModuleBase。  
 封装了对 PPIO (Paiou Cloud) API 的调用，用于进行多轮问答交互。默认使用模型 `deepseek/deepseek-v3.2`，支持流式输出和调用链追踪。PPIO 提供 OpenAI 兼容的 API 接口。
 
@@ -1607,7 +1607,7 @@ Args:
     **kwargs: 其他传递给基类 OnlineChatModuleBase 的参数。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.ppio.PPIOModule', '''\
+add_english_doc('llms.onlinemodule.supplier.ppio.PPIOChat', '''\
 PPIO (Paiou Cloud) online chat module, inheriting from OnlineChatModuleBase.  
 Encapsulates the PPIO API for multi-turn Q&A interactions. Defaults to model `deepseek/deepseek-v3.2`, supporting streaming and optional trace return. PPIO provides OpenAI-compatible API interface.
 
@@ -1620,7 +1620,7 @@ Args:
     **kwargs: Additional arguments passed to the base class OnlineChatModuleBase.
 ''')
 
-add_example('llms.onlinemodule.supplier.ppio.PPIOModule', '''\
+add_example('llms.onlinemodule.supplier.ppio.PPIOChat', '''\
 >>> import lazyllm
 >>> # Set environment variable: export LAZYLLM_PPIO_API_KEY=your_api_key
 >>> # Or create config file ~/.lazyllm/config.json: {"ppio_api_key": "your_api_key"}
@@ -1653,7 +1653,7 @@ Args:
     **kwargs: Additional parameters passed to OnlineMultiModalBase.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIEmbedding', '''\
+add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIEmbed', '''\
 OpenAI 在线嵌入模块。
 该类封装了对 OpenAI 嵌入 API 的调用，默认使用模型 `text-embedding-ada-002`，用于将文本编码为向量表示。
 
@@ -1663,7 +1663,7 @@ Args:
     api_key (str, optional): OpenAI 的 API Key。若未提供，则从 lazyllm.config 中读取。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.openai.OpenAIEmbedding', '''\
+add_english_doc('llms.onlinemodule.supplier.openai.OpenAIEmbed', '''\
 Online embedding module using OpenAI.
 This class wraps the OpenAI Embedding API, defaulting to the `text-embedding-ada-002` model, and converts text into vector representations.
 
@@ -1673,21 +1673,21 @@ Args:
     api_key (str, optional): The OpenAI API key. If not provided, it will be read from `lazyllm.config`.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenSTTModule', '''\
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenSTT', '''\
 基于千问多模态接口的语音转文本（STT）模块，默认使用 ``paraformer-v2`` 模型。
 
 Args:
-    model (str): 模型名称。默认为 ``None``，将依次从 ``lazyllm.config['qwen_stt_model_name']`` 或 ``QwenSTTModule.MODEL_NAME`` 获取。
+    model (str): 模型名称。默认为 ``None``，将依次从 ``lazyllm.config['qwen_stt_model_name']`` 或 ``QwenSTT.MODEL_NAME`` 获取。
     api_key (str): 千问 API 的密钥。默认为 ``None``。
     return_trace (bool): 是否返回推理的中间 trace 信息。默认为 ``False``。
     **kwargs: 传递给父类 ``QwenMultiModal`` 的额外参数。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.qwen.QwenSTTModule', '''\
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenSTT', '''\
 Speech-to-Text (STT) module based on Qwen's multimodal API, with ``paraformer-v2`` as the default model.
 
 Args:
-    model (str): Model name. Defaults to ``None``, in which case it will use ``lazyllm.config['qwen_stt_model_name']`` or ``QwenSTTModule.MODEL_NAME``.
+    model (str): Model name. Defaults to ``None``, in which case it will use ``lazyllm.config['qwen_stt_model_name']`` or ``QwenSTT.MODEL_NAME``.
     api_key (str): API key for Qwen service. Defaults to ``None``.
     return_trace (bool): Whether to return intermediate trace information during inference. Defaults to ``False``.
     **kwargs: Additional parameters passed to the parent class ``QwenMultiModal``.
@@ -1965,7 +1965,7 @@ Args:
 - A list of embedding vector lists, each sublist corresponds to an input text's embedding vector
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoEmbedding', '''\
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoEmbed', '''\
 豆包嵌入类，继承自 OnlineEmbeddingModuleBase，封装了调用豆包在线文本嵌入服务的功能。  
 通过指定服务接口 URL、模型名称及 API Key，支持远程获取文本向量表示。
 
@@ -1975,8 +1975,8 @@ Args:
     api_key (Optional[str]): 访问豆包服务的 API Key，若未提供则从 lazyllm 配置中读取。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoEmbedding', '''\
-DoubaoEmbedding class inherits from OnlineEmbeddingModuleBase, encapsulating the functionality to call Doubao's online text embedding service.  
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoEmbed', '''\
+DoubaoEmbed class inherits from OnlineEmbeddingModuleBase, encapsulating the functionality to call Doubao's online text embedding service.  
 It supports remote text vector representation retrieval by specifying the service URL, model name, and API key.
 
 Args:
@@ -1985,7 +1985,7 @@ Args:
     api_key (Optional[str]): API key for accessing the Doubao service. If not provided, it is read from lazyllm config.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoMultimodalEmbedding', '''\
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoMultimodal_Embed', '''\
 豆包多模态嵌入类，继承自 OnlineEmbeddingModuleBase，封装了调用豆包在线多模态（文本+图像）嵌入服务的功能。  
 支持将文本和图像输入转换为统一的向量表示，通过指定服务接口 URL、模型名称及 API Key，实现远程获取多模态向量。
 
@@ -1995,8 +1995,8 @@ Args:
     api_key (Optional[str]): 访问豆包服务的 API Key，若未提供则从 lazyllm 配置中读取。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoMultimodalEmbedding', '''\
-DoubaoMultimodalEmbedding class inherits from OnlineEmbeddingModuleBase, encapsulating the functionality to call Doubao's online multimodal (text + image) embedding service.  
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoMultimodal_Embed', '''\
+DoubaoMultimodal_Embed class inherits from OnlineEmbeddingModuleBase, encapsulating the functionality to call Doubao's online multimodal (text + image) embedding service.  
 It supports converting text and image inputs into a unified vector representation by specifying the service URL, model name, and API key, enabling remote retrieval of multimodal embeddings.
 
 Args:
@@ -2005,8 +2005,8 @@ Args:
     api_key (Optional[str]): API key for accessing the Doubao service. If not provided, it is read from lazyllm config.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.glm.GLMModule', '''\
-GLMModule 类，继承自 OnlineChatModuleBase 和 FileHandlerBase，封装了对智谱 GLM 系列模型的在线调用功能。  
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMChat', '''\
+GLMChat 类，继承自 OnlineChatModuleBase 和 FileHandlerBase，封装了对智谱 GLM 系列模型的在线调用功能。  
 支持对话生成、文件处理以及模型微调等能力。默认使用 GLM-4 模型，也可指定其他训练型模型（如 chatglm3-6b、chatglm_12b 等）。
 
 Args:
@@ -2018,8 +2018,8 @@ Args:
     **kwargs: 其他传递给 OnlineChatModuleBase 的可选参数。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.glm.GLMModule', '''\
-GLMModule class inherits from OnlineChatModuleBase and FileHandlerBase, encapsulating the functionality of accessing Zhipu's GLM series models online.  
+add_english_doc('llms.onlinemodule.supplier.glm.GLMChat', '''\
+GLMChat class inherits from OnlineChatModuleBase and FileHandlerBase, encapsulating the functionality of accessing Zhipu's GLM series models online.  
 It supports chat generation, file handling, and fine-tuning. The default model is GLM-4, but other trainable models (e.g., chatglm3-6b, chatglm_12b) are also supported.
 
 Args:
@@ -2031,7 +2031,7 @@ Args:
     **kwargs: Additional optional parameters passed to OnlineChatModuleBase.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.glm.GLMTextToImageModule', '''\
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMText2Image', '''\
 GLM文本生成图像模块，继承自 GLMMultiModal，封装了调用 GLM CogView-4 模型生成图像的功能。  
 支持根据文本提示（prompt）生成指定数量和分辨率的图像，并可通过 API Key 调用远程服务。
 
@@ -2042,7 +2042,7 @@ Args:
     **kwargs: 其他传递给 GLMMultiModal 的参数。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.glm.GLMTextToImageModule', '''\
+add_english_doc('llms.onlinemodule.supplier.glm.GLMText2Image', '''\
 GLM Text-to-Image module, inheriting from GLMMultiModal, encapsulates the functionality to generate images using the GLM CogView-4 model.  
 It supports generating a specified number of images with given resolution based on a text prompt and can call the remote service via an API key.
 
@@ -2053,7 +2053,7 @@ Args:
     **kwargs: Additional parameters passed to GLMMultiModal.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenTextToImageModule', '''\
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenText2Image', '''\
 Qwen文本生成图像模块和图像编辑模块，继承自 QwenMultiModal，封装了调用 Qwen Wanx2.1-t2i-turbo 模型生成图像的能力和调用Qwen-image-edit-plus模型进行图像编辑的能力。  
 支持根据文本提示生成指定数量和分辨率的图像，支持图像编辑，并可设置负面提示、随机种子及扩展提示功能，通过 DashScope API 远程调用服务。
 
@@ -2064,7 +2064,7 @@ Args:
     **kwargs: 其他传递给 QwenMultiModal 的参数。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.qwen.QwenTextToImageModule', '''\
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenText2Image', '''\
 Qwen Text-to-Image module and Image-Edit module, inheriting from QwenMultiModal, encapsulates the functionality to generate images using the Qwen Wanx2.1-t2i-turbo model.  
 It supports generating a specified number of images with given resolution based on a text prompt, and allows setting negative prompts, random seeds, and prompt extension. The service is called remotely via DashScope API.
 
@@ -2075,8 +2075,8 @@ Args:
     **kwargs: Additional parameters passed to QwenMultiModal.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.kimi.KimiModule', '''\
-KimiModule 类，继承自 OnlineChatModuleBase，封装了调用 Moonshot AI 提供的 Kimi 聊天服务的能力。  
+add_chinese_doc('llms.onlinemodule.supplier.kimi.KimiChat', '''\
+KimiChat 类，继承自 OnlineChatModuleBase，封装了调用 Moonshot AI 提供的 Kimi 聊天服务的能力。  
 可通过指定 API Key、模型名称和服务 URL，支持中文和英文的安全问答交互，并支持图像输入的 base64 格式处理。
 
 Args:
@@ -2088,8 +2088,8 @@ Args:
     **kwargs: 其他传递给 OnlineChatModuleBase 的参数。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.kimi.KimiModule', '''\
-KimiModule class, inheriting from OnlineChatModuleBase, encapsulates the functionality to call Kimi chat service provided by Moonshot AI.  
+add_english_doc('llms.onlinemodule.supplier.kimi.KimiChat', '''\
+KimiChat class, inheriting from OnlineChatModuleBase, encapsulates the functionality to call Kimi chat service provided by Moonshot AI.  
 By specifying the API key, model name, and service URL, it supports safe and accurate Chinese and English Q&A interactions, as well as image input in base64 format.
 
 Args:
@@ -2175,7 +2175,7 @@ Args:
     filepath (str): Path to the fine-tuning data file, must be in .jsonl format
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.glm.GLMReranking', '''\
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMRerank', '''\
 智谱AI的重排序模块，继承自OnlineEmbeddingModuleBase，用于对文档进行相关性重排序。
 
 Args:
@@ -2192,7 +2192,7 @@ Args:
     - 返回每个文档的相关性得分
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.glm.GLMReranking', '''\
+add_english_doc('llms.onlinemodule.supplier.glm.GLMRerank', '''\
 Reranking module for Zhipu AI, inheriting from OnlineEmbeddingModuleBase, used for relevance reranking of documents.
 
 Args:
@@ -2251,7 +2251,7 @@ Note:
     This class serves as the base class for GLM multimodal functionality, typically used as the parent class for specific multimodal implementations (such as speech-to-text, text-to-image, etc.).
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenReranking', '''\
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenRerank', '''\
 通义千问的重排序模块，继承自OnlineEmbeddingModuleBase，用于对文档进行相关性重排序。
 
 Args:
@@ -2269,7 +2269,7 @@ Args:
     - 返回每个文档的索引和相关性得分
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.qwen.QwenReranking', '''\
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenRerank', '''\
 Qwen reranking module, inheriting from OnlineEmbeddingModuleBase, used for relevance reranking of documents.
 
 Args:
@@ -2329,7 +2329,7 @@ Note:
     This class serves as the base class for Qwen's multimodal functionality, typically used as the parent class for other specific multimodal implementations (such as speech-to-text, text-to-image, etc.).
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenTTSModule', '''\
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenTTS', '''\
 通义千问的文本转语音模块，继承自QwenMultiModal，提供多种语音合成模型支持。
 
 Args:
@@ -2356,7 +2356,7 @@ Args:
     - 返回的音频数据会被自动编码为文件格式
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.qwen.QwenTTSModule', '''\
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenTTS', '''\
 Qwen's text-to-speech module, inheriting from QwenMultiModal, providing support for multiple speech synthesis models.
 
 Args:
@@ -2383,8 +2383,8 @@ Note:
     - Returned audio data is automatically encoded into file format
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaModule', '''\
-SenseNovaModule是商汤科技开放平台的LLM接口管理组件，继承自OnlineChatModuleBase和FileHandlerBase，具备对话和文件处理能力。
+add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaChat', '''\
+SenseNovaChat是商汤科技开放平台的LLM接口管理组件，继承自OnlineChatModuleBase和FileHandlerBase，具备对话和文件处理能力。
 
 Args:
     base_url (str): API的基础URL，默认为"https://api.sensenova.cn/compatible-mode/v1/"。
@@ -2396,8 +2396,8 @@ Args:
     **kwargs: 其他传递给基类的参数。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaModule', '''\
-SenseNovaModule is the LLM interface management component for SenseTime's open platform, inheriting from OnlineChatModuleBase and FileHandlerBase, providing both chat and file handling capabilities.
+add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaChat', '''\
+SenseNovaChat is the LLM interface management component for SenseTime's open platform, inheriting from OnlineChatModuleBase and FileHandlerBase, providing both chat and file handling capabilities.
 
 Args:
     base_url (str): Base URL for the API, defaults to "https://api.sensenova.cn/compatible-mode/v1/".
@@ -2409,14 +2409,14 @@ Args:
     **kwargs: Additional arguments passed to the base class.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaModule.set_deploy_parameters', '''\
+add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaChat.set_deploy_parameters', '''\
 设置模型部署的参数。
 
 Args:
     **kw: 部署参数的键值对，这些参数将在创建部署时使用。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaModule.set_deploy_parameters', '''\
+add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaChat.set_deploy_parameters', '''\
 Set parameters for model deployment.
 
 Args:
@@ -2475,7 +2475,7 @@ Notes:
     - A warning log will be generated if model name (model_name) is not specified.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIModule', '''\
+add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIChat', '''\
 OpenAI API集成模块，用于聊天完成和微调操作。
 
 提供与OpenAI聊天模型交互的接口，支持推理和微调功能。继承自OnlineChatModuleBase和FileHandlerBase。
@@ -2489,7 +2489,7 @@ Args:
     **kwargs: 传递给OnlineChatModuleBase的额外参数。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.openai.OpenAIModule', '''\
+add_english_doc('llms.onlinemodule.supplier.openai.OpenAIChat', '''\
 OpenAI API integration module for chat completion and fine-tuning operations.
 
 Provides interface to interact with OpenAI's chat models, supporting both inference
@@ -2504,8 +2504,8 @@ Args:
     **kwargs: Additional arguments passed to OnlineChatModuleBase.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIReranking', '''
-OpenAIReranking 类用于调用 OpenAI 的 Reranking 接口，对文本列表进行重排序（Re-ranking）。
+add_chinese_doc('llms.onlinemodule.supplier.openai.OpenAIRerank', '''
+OpenAIRerank 类用于调用 OpenAI 的 Reranking 接口，对文本列表进行重排序（Re-ranking）。
 
 该类继承自 `OnlineEmbeddingModuleBase`，主要功能包括：
 
@@ -2520,8 +2520,8 @@ Args:
     **kw: 其他可选关键字参数，传递给父类构造函数。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.openai.OpenAIReranking', '''
-The OpenAIReranking class provides functionality to call OpenAI's Reranking API for re-ordering a list of text documents.
+add_english_doc('llms.onlinemodule.supplier.openai.OpenAIRerank', '''
+The OpenAIRerank class provides functionality to call OpenAI's Reranking API for re-ordering a list of text documents.
 
 This class inherits from `OnlineEmbeddingModuleBase` and mainly provides:
 
@@ -2536,7 +2536,7 @@ Args:
     **kw: Additional keyword arguments passed to the parent constructor.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding', '''\
+add_chinese_doc('llms.onlinemodule.supplier.sensenova.SenseNovaEmbed', '''\
 商汤科技SenseNova嵌入模型模块，用于文本向量化操作。提供与商汤科技SenseNova嵌入模型交互的接口，支持文本到向量的转换功能。继承自OnlineEmbeddingModuleBase和_SenseNovaBase。
 
 Args:
@@ -2546,7 +2546,7 @@ Args:
     secret_key (str, optional): API秘密密钥，默认为None。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding', '''\
+add_english_doc('llms.onlinemodule.supplier.sensenova.SenseNovaEmbed', '''\
 SenseTime SenseNova Embedding module for text vectorization operations.Provides interface to interact with SenseTime's SenseNova embedding models, supporting text-to-vector conversion functionality. Inherits from OnlineEmbeddingModuleBase and _SenseNovaBase.
 
 Args:
@@ -2556,7 +2556,7 @@ Args:
     secret_key (str, optional): API secret key, defaults to None.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule', '''\
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoText2Image', '''\
 字节跳动豆包文生图模块，支持纯文本生成图像和图像编辑模型。
 
 基于字节跳动豆包多模态模型的文生图、图像编辑功能，继承自DoubaoMultiModal，
@@ -2569,7 +2569,7 @@ Args:
     **kwargs: 其他传递给父类的参数。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule', '''\
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoText2Image', '''\
 ByteDance Doubao Text-to-Image module supporting text to image generation and image editing.
 
 Based on ByteDance Doubao multimodal model's text-to-image functionality, 
@@ -2582,7 +2582,7 @@ Args:
     **kwargs: Other parameters passed to parent class.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.deepseek.DeepSeekModule', """\
+add_chinese_doc('llms.onlinemodule.supplier.deepseek.DeepSeekChat', """\
 DeepSeek大语言模型接口模块。
 
 Args:
@@ -2594,7 +2594,7 @@ Args:
     **kwargs: 其他传递给基类的参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.deepseek.DeepSeekModule', """\
+add_english_doc('llms.onlinemodule.supplier.deepseek.DeepSeekChat', """\
 DeepSeek large language model interface module.
 
 Args:
@@ -2606,7 +2606,7 @@ Args:
     **kwargs: Other parameters passed to base class
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.glm.GLMEmbedding', """\
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMEmbed', """\
 GLM嵌入模型接口类，用于调用智谱AI的文本嵌入服务。
 
 Args:
@@ -2615,7 +2615,7 @@ Args:
     api_key (str): API密钥
 """)
 
-add_english_doc('llms.onlinemodule.supplier.glm.GLMEmbedding', """\
+add_english_doc('llms.onlinemodule.supplier.glm.GLMEmbed', """\
 GLM embedding model interface class for calling Zhipu AI's text embedding services.
 
 Args:
@@ -2624,7 +2624,7 @@ Args:
     api_key (str): API key
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenEmbedding', """\
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenEmbed', """\
 通义千问在线文本嵌入模块。
 
 该类继承自OnlineEmbeddingModuleBase，提供了与通义千问文本嵌入API的交互能力，支持将文本转换为向量表示。
@@ -2635,7 +2635,7 @@ Args:
     api_key (str, optional): API密钥。默认为从配置中获取的 'qwen_api_key'
 """)
 
-add_english_doc('llms.onlinemodule.supplier.qwen.QwenEmbedding', """\
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenEmbed', """\
 Qwen online text embedding module.
 
 This class inherits from OnlineEmbeddingModuleBase and provides interaction capabilities with the Qwen text embedding API, supporting conversion of text to vector representations.
@@ -2646,7 +2646,7 @@ Args:
     api_key (str, optional): API key. Defaults to 'qwen_api_key' from configuration
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenModule', """\
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenChat', """\
 通义千问模型模块，继承自OnlineChatModuleBase和FileHandlerBase。
 
 提供通义千问大语言模型的API调用、微调训练和部署管理功能，支持阿里云DashScope平台。
@@ -2660,7 +2660,7 @@ Args:
     **kwargs: 其他模型参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.qwen.QwenModule', """\
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenChat', """\
 Qwen (Tongyi Qianwen) model module, inherits from OnlineChatModuleBase and FileHandlerBase.
 
 Provides API calls, fine-tuning training and deployment management for Qwen large language model, supports Alibaba Cloud DashScope platform.
@@ -2674,7 +2674,7 @@ Args:
     **kwargs: Other model parameters
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenModule.set_deploy_parameters', """\
+add_chinese_doc('llms.onlinemodule.supplier.qwen.QwenChat.set_deploy_parameters', """\
 设置模型部署参数。
 
 配置部署任务的相关参数，如容量规格等，用于后续模型部署。
@@ -2683,7 +2683,7 @@ Args:
     **kw: 部署参数键值对。
 """)
 
-add_english_doc('llms.onlinemodule.supplier.qwen.QwenModule.set_deploy_parameters', """\
+add_english_doc('llms.onlinemodule.supplier.qwen.QwenChat.set_deploy_parameters', """\
 Set model deployment parameters.
 
 Configure relevant parameters for deployment tasks, such as capacity specifications, for subsequent model deployment.
@@ -2692,7 +2692,7 @@ Args:
     **kw: Deployment parameter key-value pairs.
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.glm.GLMSTTModule', """\
+add_chinese_doc('llms.onlinemodule.supplier.glm.GLMSTT', """\
 GLM语音识别模块，继承自GLMMultiModal。
 
 提供基于智谱AI的语音转文本(STT)功能，支持音频文件的语音识别。
@@ -2704,7 +2704,7 @@ Args:
     **kwargs: 其他模型参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.glm.GLMSTTModule', """\
+add_english_doc('llms.onlinemodule.supplier.glm.GLMSTT', """\
 GLM Speech-to-Text module, inherits from GLMMultiModal.
 
 Provides speech-to-text (STT) functionality based on Zhipu AI, supports audio file speech recognition.
@@ -2716,7 +2716,7 @@ Args:
     **kwargs: Other model parameters
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTSModule', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS', """\
 SiliconFlow文本转语音模块，继承自OnlineMultiModalBase。
 
 提供基于SiliconFlow的文本转语音(TTS)功能，支持将文本转换为音频文件。
@@ -2729,7 +2729,7 @@ Args:
     **kwargs: 其他模型参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTSModule', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS', """\
 SiliconFlow Text-to-Speech module, inherits from OnlineMultiModalBase.
 
 Provides text-to-speech (TTS) functionality based on SiliconFlow, supports converting text to audio files.
@@ -2910,7 +2910,7 @@ Releases resources occupied by the cache storage strategy, such as closing datab
 - Different cache strategies may have different resource cleanup behaviors.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowModule', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowChat', """\
 SiliconFlow 模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
 
 提供基于 SiliconFlow 平台的大语言模型对话能力，支持多种模型（包括视觉语言模型），并具备文件处理功能。
@@ -2924,7 +2924,7 @@ Args:
     **kwargs: 其他模型参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowModule', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowChat', """\
 SiliconFlow module, inherits from OnlineChatModuleBase and FileHandlerBase.
 
 Provides large language model chat capabilities via the SiliconFlow platform, supports multiple models (including vision-language models), and includes file handling functionality.
@@ -2938,7 +2938,7 @@ Args:
     **kwargs: Other model parameters
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowEmbedding', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowEmbed', """\
 SiliconFlow 向量嵌入模块，继承自 OnlineEmbeddingModuleBase。
 
 提供基于 SiliconFlow 平台的文本嵌入（Embedding）功能，支持将文本转换为向量表示。
@@ -2951,7 +2951,7 @@ Args:
     **kw: 其他嵌入模块参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowEmbedding', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowEmbed', """\
 SiliconFlow embedding module, inherits from OnlineEmbeddingModuleBase.
 
 Provides text embedding functionality via the SiliconFlow platform, converting text into vector representations.
@@ -2964,7 +2964,7 @@ Args:
     **kw: Additional embedding module parameters
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowRerank', """\
 SiliconFlow 重排序模块，继承自 OnlineEmbeddingModuleBase。
 
 提供基于 SiliconFlow 平台的文本重排序（Reranking）功能，用于对文档列表根据查询相关性进行重新排序。
@@ -2979,7 +2979,7 @@ Returns:
     List[Tuple]: 包含排序结果的列表，每个元素为包含 'index'、'relevance_score' 的元组。
 """)
 
-add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowRerank', """\
 SiliconFlow reranking module, inherits from OnlineEmbeddingModuleBase.
 
 Provides text reranking functionality via the SiliconFlow platform, reordering a list of documents based on their relevance to a given query.
@@ -2993,7 +2993,7 @@ Returns:
     List[Tuple]: A list of reranking results, each containing 'index' and 'relevance_score'.
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule', """\
+add_chinese_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowText2Image', """\
 SiliconFlow文生图模块，继承自OnlineMultiModalBase。
 
 提供基于SiliconFlow的文本生成图像功能，支持根据文本描述生成图像，支持纯文本生成图像和图像编辑。
@@ -3006,7 +3006,7 @@ Args:
     **kwargs: 其他模型参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule', """\
+add_english_doc('llms.onlinemodule.supplier.siliconflow.SiliconFlowText2Image', """\
 SiliconFlow Text-to-Image module, inherits from OnlineMultiModalBase.
 
 Provides text-to-image generation functionality based on SiliconFlow, supports generating images from text descriptions and image editing.
@@ -3019,7 +3019,7 @@ Args:
     **kwargs: Other model parameters
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxModule', """\
+add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxChat', """\
 Minimax 模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
 
 提供基于 Minimax 平台的大语言模型对话能力。
@@ -3033,7 +3033,7 @@ Args:
     **kwargs: 其他传递给父类的可选参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxModule', """\
+add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxChat', """\
 Minimax module, inheriting from OnlineChatModuleBase and FileHandlerBase.
 
 Provides large language model chat capabilities based on the Minimax platform.
@@ -3047,7 +3047,7 @@ Args:
     **kwargs: Additional optional parameters passed to the parent classes
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxTextToImageModule', """\
+add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxText2Image', """\
 Minimax 文生图模块，继承自 OnlineMultiModalBase。
 
 提供基于 Minimax 平台的文本生成图像功能，支持根据文本描述生成图像。
@@ -3060,7 +3060,7 @@ Args:
     **kwargs: 其他传递给父类的可选参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxTextToImageModule', """\
+add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxText2Image', """\
 Minimax text-to-image module, inheriting from OnlineMultiModalBase.
 
 Provides text-to-image generation functionality based on Minimax, supports generating images from text descriptions.
@@ -3073,7 +3073,7 @@ Args:
     **kwargs: Additional optional parameters passed to the parent classes
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxTTSModule', """\
+add_chinese_doc('llms.onlinemodule.supplier.minimax.MinimaxTTS', """\
 Minimax 文本转语音模块，继承自 OnlineMultiModalBase。
 
 提供基于 Minimax 平台的文本转语音(TTS)功能，支持将文本转换为音频文件。
@@ -3086,7 +3086,7 @@ Args:
     **kwargs: 其他传递给父类的可选参数
 """)
 
-add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxTTSModule', """\
+add_english_doc('llms.onlinemodule.supplier.minimax.MinimaxTTS', """\
 Minimax text-to-speech module, inheriting from OnlineMultiModalBase.
 
 Provides text-to-speech (TTS) functionality based on Minimax, supports converting text to audio files.
@@ -3099,8 +3099,8 @@ Args:
     **kwargs: Additional optional parameters passed to the parent classes
 """)
 
-add_chinese_doc('llms.onlinemodule.supplier.aiping.AipingModule', '''\
-AipingModule 是 AIPing 的在线聊天模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
+add_chinese_doc('llms.onlinemodule.supplier.aiping.AipingChat', '''\
+AipingChat 是 AIPing 的在线聊天模块，继承自 OnlineChatModuleBase 和 FileHandlerBase。
 
 提供与 AIPing 平台大语言模型交互的接口，支持对话生成、文件处理以及模型微调等功能。支持多种模型，包括视觉语言模型（VLM）如 Qwen2.5-VL、Qwen3-VL、GLM-4.5V、GLM-4.6V 等。
 
@@ -3120,8 +3120,8 @@ Args:
     5. 支持 API Key 验证，确保服务安全性
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.aiping.AipingModule', '''\
-AipingModule is an online chat module for AIPing, inheriting from OnlineChatModuleBase and FileHandlerBase.
+add_english_doc('llms.onlinemodule.supplier.aiping.AipingChat', '''\
+AipingChat is an online chat module for AIPing, inheriting from OnlineChatModuleBase and FileHandlerBase.
 
 Provides an interface to interact with AIPing's large language models, supporting chat generation, file handling, and model fine-tuning. Supports multiple models including Vision-Language Models (VLM) such as Qwen2.5-VL, Qwen3-VL, GLM-4.5V, GLM-4.6V, etc.
 
@@ -3141,7 +3141,7 @@ Features:
     5. Supports API key validation to ensure service security
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.aiping.AipingEmbedding', '''\
+add_chinese_doc('llms.onlinemodule.supplier.aiping.AipingEmbed', '''\
  AIPing 文本嵌入模块，继承自 OnlineEmbeddingModuleBase。
 
 提供与 AIPing 文本嵌入服务交互的接口，支持将文本转换为向量表示，支持批量处理。
@@ -3160,7 +3160,7 @@ Args:
     4. 与 AIPing  API 无缝集成
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.aiping.AipingEmbedding', '''\
+add_english_doc('llms.onlinemodule.supplier.aiping.AipingEmbed', '''\
 Aiping text embedding module, inheriting from OnlineEmbeddingModuleBase.
 
 Provides an interface to interact with AIPing's text embedding service, supporting conversion of text to vector representations with batch processing support.
@@ -3179,7 +3179,7 @@ Features:
     4. Seamless integration with AIPing API
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.aiping.AipingReranking', '''\
+add_chinese_doc('llms.onlinemodule.supplier.aiping.AipingRerank', '''\
  AIPing 重排序模块，继承自 OnlineEmbeddingModuleBase。
 
 提供与 AIPing 重排序服务交互的接口，用于对文档列表根据查询相关性进行重新排序。该模块返回一个包含文档索引和相关性得分的元组列表。
@@ -3200,7 +3200,7 @@ Args:
     4. 适用于搜索结果优化和文档推荐场景
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.aiping.AipingReranking', '''\
+add_english_doc('llms.onlinemodule.supplier.aiping.AipingRerank', '''\
 Aiping reranking module, inheriting from OnlineEmbeddingModuleBase.
 
 Provides an interface to interact with AIPing's reranking service, used for reordering a list of documents based on their relevance to a given query. Returns a list of tuples containing document index and relevance score.
@@ -3221,7 +3221,7 @@ Features:
     4. Suitable for search result optimization and document recommendation scenarios
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.aiping.AipingTextToImageModule', '''\
+add_chinese_doc('llms.onlinemodule.supplier.aiping.AipingText2Image', '''\
  AIPing 文本生成图像模块，继承自 OnlineMultiModalBase。
 
 提供与 AIPing 图像生成服务交互的接口，支持根据文本描述生成图像。支持负面提示、图像数量、尺寸和随机种子等参数。
@@ -3247,7 +3247,7 @@ Args:
     - 返回结果会包含文件路径信息，便于后续处理
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.aiping.AipingTextToImageModule', '''\
+add_english_doc('llms.onlinemodule.supplier.aiping.AipingText2Image', '''\
 Aiping text-to-image module, inheriting from OnlineMultiModalBase.
 
 Provides an interface to interact with AIPing's image generation service, supporting image generation from text descriptions. Supports parameters such as negative prompts, image count, size, and random seeds.

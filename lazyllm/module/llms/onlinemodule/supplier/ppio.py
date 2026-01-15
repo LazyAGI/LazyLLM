@@ -5,15 +5,11 @@ from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase
 
 
-REGISTRY_KEY = 'ppio'
-
-
 # PPIO (Paiou Cloud) online model module.
 # PPIO provides OpenAI-compatible API interface, supporting both streaming and non-streaming responses.
-class PPIOModule(OnlineChatModuleBase):
+class PPIOChat(OnlineChatModuleBase):
     TRAINABLE_MODEL_LIST = []
     NO_PROXY = False
-    __lazyllm_registry_key__ = REGISTRY_KEY
 
     # Initialize PPIO module.
     # Args:

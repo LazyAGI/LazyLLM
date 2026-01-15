@@ -4,7 +4,7 @@ import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from .base import OnlineEmbeddingModuleBase
 from .base.utils import select_source_with_default_key
-from .supplier.doubao import DoubaoEmbedding, DoubaoMultimodalEmbedding
+from .supplier.doubao import DoubaoEmbed, DoubaoMultimodal_Embed
 
 
 class __EmbedModuleMeta(type):
@@ -17,9 +17,12 @@ class __EmbedModuleMeta(type):
 
 class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
     @staticmethod
-    def _get_group(name: str):
+    def _get_group(name: str, type: str):
         group = getattr(lazyllm.online, name)
-        return {k: v for k, v in group.items() if k != 'base'}
+        return {
+            (k[:-len(type)] if k.lower().endswith(type) else k): v
+            for k, v in group.items() if k != 'base'
+        }
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,
@@ -46,18 +49,18 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         if 'type' in params:
             params.pop('type')
         if kwargs.get('type', 'embed') == 'embed':
-            embed_models = OnlineEmbeddingModule._get_group(LLMType.EMBED)
+            embed_models = OnlineEmbeddingModule._get_group(LLMType.EMBED, type='embed')
             source, default_key = select_source_with_default_key(embed_models, explicit_source=source)
             if default_key and not kwargs.get('api_key'):
                 kwargs['api_key'] = default_key
             if source == 'doubao':
                 if embed_model_name and embed_model_name.startswith('doubao-embedding-vision'):
-                    return DoubaoMultimodalEmbedding(**params)
+                    return DoubaoMultimodal_Embed(**params)
                 else:
-                    return DoubaoEmbedding(**params)
+                    return DoubaoEmbed(**params)
             return embed_models[source](**params)
         elif kwargs.get('type') == 'rerank':
-            rerank_models = OnlineEmbeddingModule._get_group(LLMType.RERANK)
+            rerank_models = OnlineEmbeddingModule._get_group(LLMType.RERANK, type='rerank')
             source, default_key = select_source_with_default_key(rerank_models, explicit_source=source)
             if default_key and not kwargs.get('api_key'):
                 kwargs['api_key'] = default_key

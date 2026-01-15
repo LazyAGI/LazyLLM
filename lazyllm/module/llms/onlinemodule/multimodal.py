@@ -45,7 +45,10 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
             raise AssertionError(f'Invalid type: {type}, \
                                  type must be in {OnlineMultiModalModule.TYPE_GROUP_MAP.keys()}')
         group = getattr(lazyllm.online, group_name)
-        return {k: v for k, v in group.items() if k != 'base'}
+        return {
+            (k[:-len(type)] if k.lower().endswith(type) else k): v
+            for k, v in group.items() if k != 'base'
+        }
 
     @staticmethod
     def _validate_parameters(source: str, model: str, type: str, base_url: str, **kwargs) -> tuple:

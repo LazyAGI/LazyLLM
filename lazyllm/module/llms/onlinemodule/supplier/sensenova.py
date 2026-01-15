@@ -8,12 +8,8 @@ import uuid
 
 import lazyllm
 from lazyllm.thirdparty import jwt
-from lazyllm.components.utils.downloader.model_downloader import LLMType
-from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
+from ..base import OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase
 from ..fileHandler import FileHandlerBase
-
-
-REGISTRY_KEY = 'sensenova'
 
 
 class _SenseNovaBase(object):
@@ -26,7 +22,7 @@ class _SenseNovaBase(object):
         if not api_key.startswith('sk-'):
             if ':' in api_key: api_key, secret_key = api_key.split(':', 1)
             assert secret_key, 'secret_key should be provided with sensecore api_key'
-            api_key = SenseNovaModule.encode_jwt_token(api_key, secret_key)
+            api_key = SenseNovaChat.encode_jwt_token(api_key, secret_key)
         return api_key
 
     @staticmethod
@@ -43,11 +39,10 @@ class _SenseNovaBase(object):
         return token
 
 
-class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
+class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     TRAINABLE_MODEL_LIST = ['nova-ptc-s-v2']
     VLM_MODEL_PREFIX = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
                         'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']
-    __lazyllm_registry_key__ = REGISTRY_KEY
 
     def __init__(self, base_url: str = 'https://api.sensenova.cn/compatible-mode/v1/', model: str = 'SenseChat-5',
                  api_key: str = None, secret_key: str = None, stream: bool = True,
@@ -208,9 +203,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
             return [{'type': 'image_base64', 'image_base64': image_url}]
 
 
-class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
-    __lazyllm_registry_group__ = LLMType.EMBED
-    __lazyllm_registry_key__ = REGISTRY_KEY
+class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
 
     def __init__(self,
                  embed_url: str = 'https://api.sensenova.cn/v1/llm/embeddings',
@@ -220,8 +213,8 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
                  batch_size: int = 16,
                  **kw):
         api_key = self._get_api_key(api_key, secret_key)
-        super().__init__('SENSENOVA', embed_url, api_key, embed_model_name,
-                         batch_size=batch_size, **kw)
+        LazyLLMOnlineEmbedModuleBase().__init__('SENSENOVA', embed_url, api_key, embed_model_name,
+                                                batch_size=batch_size, **kw)
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
         embeddings = response.get('embeddings', [])
