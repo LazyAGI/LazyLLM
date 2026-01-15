@@ -4,7 +4,7 @@ from typing import List, Dict
 
 def normalize_text(s: str) -> str:
     s = re.sub(r"[ \t\n，。,.!?！；;：“”\"'（）()《》<>【】|]", '', s)
-    s = re.sub(r'-{2,}', '', s)  # 去除连续的两个以上的 -
+    s = re.sub(r'-{2,}', '', s)
     return s
 
 def partial_match_ratio(a: str, b: str, isjunk=None) -> float:

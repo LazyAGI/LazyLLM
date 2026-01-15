@@ -4,7 +4,6 @@ from ..doc_node import DocNode
 
 
 class RRFFusion(ModuleBase):
-
     def __init__(self, top_k: int = 1) -> None:
         super().__init__()
         self.top_k = top_k
@@ -15,11 +14,21 @@ class RRFFusion(ModuleBase):
         except (IndexError, TypeError):
             return False
 
-    def __call__(self, doc_nodes_lists: list[list[DocNode]]) -> list[DocNode]:
+    def __call__(self, *args) -> list[DocNode]:
         # Reciprocal Rank Fusion on multiple rank lists. https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf
 
         # Associate each doc's content with its RRF score for later sorting by it
         # Duplicated contents across retrievers are collapsed & scored cumulatively
+        # 判断args是否只有一个元素，并且类型是List[List[DocNode]]
+        doc_nodes_lists = []
+        if len(args) == 1 and self._is_nested_docnode_sequence(args[0]):
+            doc_nodes_lists = args[0]
+        else:
+            for arg in args:
+                doc_nodes_lists.append(arg)
+            if not doc_nodes_lists:
+                return []
+
         if not self._is_nested_docnode_sequence(doc_nodes_lists):
             return doc_nodes_lists
 
