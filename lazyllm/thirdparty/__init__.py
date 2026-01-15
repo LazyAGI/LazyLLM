@@ -5,6 +5,7 @@ import os
 import lazyllm
 from typing import List
 from lazyllm.common import LOG
+from lazyllm.configs import config
 from .modules import modules
 from pathlib import Path
 from functools import lru_cache
@@ -24,9 +25,11 @@ package_name_map = {
     'bs4': 'beautifulsoup4',
     'Stemmer': 'pystemmer',
     'psycopg2': 'psycopg2-binary',
+    'yaml': 'pyyaml',
 }
 
 package_name_map_reverse = {v: k for k, v in package_name_map.items()}
+module_names = [m[0] if isinstance(m, list) else m for m in modules]
 
 requirements = {}
 
@@ -169,7 +172,8 @@ You cloud report issue to https://github.com/LazyAGI/LazyLLM in case specific de
 def check_dependency_by_group(group_name: str):
     missing_pack = []
     for name in load_toml_dep_group(group_name):
-        if not check_package_installed(package_name_map_reverse.get(name, name)):
+        real_name = package_name_map_reverse.get(name, name)
+        if not (config['init_doc'] and real_name in module_names or check_package_installed(real_name)):
             missing_pack.append(name)
     if len(missing_pack) > 0:
         msg = f'Missing package(s): {missing_pack}\nYou can install them by:\n    lazyllm install {group_name}'

@@ -21,9 +21,12 @@ description = "A Low-code Development Tool For Building Multi-agent LLMs Applica
 authors = [{name = "wangzhihong", email = "wangzhihong@sensetime.com"}]
 license = "Apache-2.0"
 readme = "README.md"
-requires-python = ">=3.10,<3.13"
+requires-python = ">=3.10,<3.14"
 dependencies = [
     "toml",
+    "tqdm",
+    "filelock",
+    "pyyaml",
     "fastapi >=0.111.0",
     "loguru >=0.7.2",
     "pydantic >=2.11.7,<3.0.0",
@@ -415,7 +418,6 @@ rag = [
     "olefile",
     "openpyxl",
     "python-pptx",
-    "tenacity",
     "beautifulsoup4",
     "tiktoken",
     "spacy",

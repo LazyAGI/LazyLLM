@@ -15,6 +15,8 @@ infer_log/
 *.log
 log.txt
 save_ckpt/
+wget-log
+lazyllm/pyproject.toml
 
 # dev tools
 .vscode
