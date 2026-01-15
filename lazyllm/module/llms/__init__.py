@@ -6,7 +6,7 @@ from .onlinemodule import (
 )
 from .online_module import OnlineModule
 from .trainablemodule import TrainableModule
-from lazyllm import config, namespace
+from lazyllm import namespace
 
 namespace.register_module(['AutoModel', 'OnlineModule', 'OnlineChatModule',
                            'OnlineEmbeddingModule', 'OnlineMultiModalModule'])
