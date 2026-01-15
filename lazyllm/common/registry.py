@@ -92,7 +92,8 @@ class LazyLLMRegisterMetaClass(_MetaBind):
         if name.startswith('LazyLLM') and name.endswith('Base'):
             ori = new_cls.__dict__.get('__lazyllm_registry_key__', re.match('(LazyLLM)(.*)(Base)', name)[2])
             group = ori.lower()
-            new_cls._lazy_llm_group = f'{getattr(new_cls, "_lazy_llm_group", "")}.{group}'.strip('.')
+            ori_group = getattr(new_cls, '_lazy_llm_group', '')
+            new_cls._lazy_llm_group = f'{ori_group}.{group}'.strip('.')
             ld = LazyDict(group, new_cls)
             if new_cls._lazy_llm_group == group:
                 for m in (builtins, lazyllm) if config['use_builtin'] else (lazyllm,):
@@ -101,11 +102,15 @@ class LazyLLMRegisterMetaClass(_MetaBind):
                     setattr(m, group, ld)
                     setattr(m, ori, ld)
             LazyLLMRegisterMetaClass.all_clses[new_cls._lazy_llm_group] = ld
+            if (f := getattr(new_cls, '__lazyllm_after_registry_hook__', None)):
+                f(ori_group, group, isleaf=False)
         elif hasattr(new_cls, '_lazy_llm_group'):
             group = LazyLLMRegisterMetaClass.all_clses[new_cls._lazy_llm_group]
-            assert new_cls.__name__ not in group, (
-                f'duplicate class \'{name}\' in group {new_cls._lazy_llm_group}')
-            group[new_cls.__name__] = new_cls
+            name = new_cls.__dict__.get('__lazyllm_registry_key__', name)
+            assert name not in group, f'duplicate class \'{name}\' in group {new_cls._lazy_llm_group}'
+            group[name] = new_cls
+            if (f := getattr(new_cls, '__lazyllm_after_registry_hook__', None)):
+                f(new_cls._lazy_llm_group, name, isleaf=True)
         return new_cls
 
 
