@@ -7,8 +7,6 @@ import random
 
 config.add('cache_online_module', bool, False, 'CACHE_ONLINE_MODULE',
            description='Whether to cache the online module result. Use for unit test.')
-allowed = {'chat', LLMType.EMBED, LLMType.MULTIMODAL_EMBED, LLMType.RERANK,
-           LLMType.STT, LLMType.TTS, LLMType.TEXT2IMAGE, LLMType.IMAGE_EDITING}
 
 
 def select_source_with_default_key(available_models, explicit_source: Optional[str] = None):
@@ -60,6 +58,8 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     @staticmethod
     def __lazyllm_after_registry_hook__(group_name: str, name: str, isleaf: bool):
 
+        allowed = {'chat', LLMType.EMBED, LLMType.MULTIMODAL_EMBED, LLMType.RERANK,
+                   LLMType.STT, LLMType.TTS, LLMType.TEXT2IMAGE, LLMType.IMAGE_EDITING}
         config_key_dict = [
             ('_api_key', 'The API key for '),
             ('_model_name', 'The default model name for '),
