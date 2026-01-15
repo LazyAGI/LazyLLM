@@ -18,10 +18,16 @@ from typing import Any, Dict, List
 from mathruler.grader import extract_boxed_content, grade_answer
 
 
+# def format_reward(response: str) -> float:
+#     pattern = re.compile(r'<think>.*</think>.*\\boxed\{.*\}.*', re.DOTALL)
+#     format_match = re.fullmatch(pattern, response)
+#     return 1.0 if format_match else 0.0
+
 def format_reward(response: str) -> float:
-    pattern = re.compile(r'<think>.*</think>.*\\boxed\{.*\}.*', re.DOTALL)
-    format_match = re.fullmatch(pattern, response)
-    return 1.0 if format_match else 0.0
+    # 匹配 <think>...</think> 后跟 \boxed{...}
+    pattern = r'<think>.*?</think>.*\\boxed\{[^}]+\}'
+    match = re.search(pattern, response, re.DOTALL)
+    return 1.0 if match else 0.0
 
 
 def accuracy_reward(response: str, ground_truth: str) -> float:
