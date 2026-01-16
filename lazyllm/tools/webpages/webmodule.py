@@ -10,6 +10,7 @@ import traceback
 from lazyllm.thirdparty import gradio as gr, PIL
 import time
 import re
+import inspect
 from pathlib import Path
 from typing import List, Union, Optional, Any, Dict, Tuple
 
@@ -32,8 +33,8 @@ css = '''
 def _parse_version(version_str: str) -> Tuple[int, ...]:
     try:
         # Remove any pre-release suffixes (e.g., '6.0.0rc1' -> '6.0.0')
-        version_str = version_str.split('rc')[0].split('a')[0].split('b')[0]
-        parts = version_str.split('.')
+        version_base_str = re.split(r'[a-zA-Z]', version_str, 1)[0].rstrip('.')
+        parts = version_base_str.split('.')
         return tuple(int(part) for part in parts if part.isdigit())
     except (ValueError, AttributeError):
         return (5, 0, 0)  # Default fallback
@@ -54,13 +55,12 @@ def _get_blocks_kwargs(css_content: str, title: str, analytics_enabled: bool = F
         return kwargs, None
     else:
         try:
-            import inspect
             sig = inspect.signature(gr.Blocks.__init__)
             if 'css' in sig.parameters:
                 kwargs['css'] = css_content
                 return kwargs, None
-        except Exception:
-            pass
+        except Exception as e:
+            LOG.warning(f'Could not inspect gr.Blocks.__init__ signature, falling back. Error: {e}')
         return kwargs, css_content
 
 def _convert_to_openai_format(chat_history: List) -> List:
@@ -113,12 +113,11 @@ def _get_chatbot_kwargs(height: int = 700):
     if gradio_ver >= (6, 0, 0):
         use_messages_format = True
         try:
-            import inspect
             sig = inspect.signature(gr.Chatbot.__init__)
             if 'type' in sig.parameters:
                 kwargs['type'] = 'messages'
-        except Exception:
-            pass
+        except Exception as e:
+            LOG.warning(f'Could not inspect gr.Chatbot.__init__ signature, falling back. Error: {e}')
     return kwargs, use_messages_format
 
 class WebModule(ModuleBase):
