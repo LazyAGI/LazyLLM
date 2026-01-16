@@ -363,6 +363,10 @@ class JsonDocNode(DocNode):
         except Exception as e:
             raise ValueError(f'Cannot convert content to JSON string: {e}')
 
+    @property
+    def json_object(self) -> Union[Dict[str, Any], List[Any]]:
+        return self._content
+
     def get_content(self, metadata_mode=MetadataMode.EMBED) -> str:
         if metadata_mode == MetadataMode.EMBED:
             try:

@@ -1101,8 +1101,8 @@ add_chinese_doc('rag.readers.PDFReader', '''\
 
 Args:
     return_full_document (bool): 是否将整份 PDF 合并为一个文档节点。若为 False，则每页作为一个节点。
-    post_func (Optional[Callable[[List[DocNode]], List[DocNode]]]): 结果后处理函数，
-        需返回 ``List[DocNode]``，并会将 ``extra_info`` 写入每个节点的 ``global_metadata``。
+    post_func (Optional[Callable[[Li    st[DocNode]], List[DocNode]]]): 结果后处理函数，
+        需返回 `List[DocNode]`，并会将 `extra_info` 写入每个节点的 `global_metadata`。
     return_trace (bool): 是否返回处理过程的 trace，默认为 True。
 
 Notes:
