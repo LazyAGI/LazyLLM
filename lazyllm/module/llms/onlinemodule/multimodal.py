@@ -56,7 +56,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                 raise KeyError('base_url must be set for local serving.')
 
         if type == 'image_editing':
-            default_module_cls = lazyllm.online[type][f'{source}{type}']
+            default_module_cls = getattr(lazyllm.online[type], source)
             default_editing_model = getattr(default_module_cls, 'IMAGE_EDITING_MODEL_NAME', None)
             if model is None and default_editing_model:
                 model = default_editing_model
@@ -83,5 +83,4 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         if model is not None:
             params['model'] = model
         params.update(kwargs_normalized)
-        available_model = lazyllm.online[type]
-        return available_model[f'{source}{type}'](**params)
+        return getattr(lazyllm.online[type], source)(**params)

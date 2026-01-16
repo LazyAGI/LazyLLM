@@ -52,13 +52,13 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                     return DoubaoMultimodalEmbed(**params)
                 else:
                     return DoubaoEmbed(**params)
-            return lazyllm.online.embed[f'{source}{LLMType.EMBED}'](**params)
+            return getattr(lazyllm.online.embed, source)(**params)
         elif kwargs.get('type') == 'rerank':
             source, default_key = select_source_with_default_key(lazyllm.online.rerank,
                                                                  explicit_source=source,
                                                                  type=LLMType.RERANK)
             if default_key and not kwargs.get('api_key'):
                 kwargs['api_key'] = default_key
-            return lazyllm.online.rerank[f'{source}{LLMType.RERANK}'](**params)
+            return getattr(lazyllm.online.rerank, source)(**params)
         else:
             raise ValueError('Unknown type of online embedding module.')

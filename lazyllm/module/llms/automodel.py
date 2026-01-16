@@ -1,7 +1,6 @@
 from typing import Any, Optional, Union
 import lazyllm
 from lazyllm import LOG
-from lazyllm.components.utils.downloader.model_downloader import LLMType
 from .online_module import OnlineModule
 from .trainablemodule import TrainableModule
 from .utils import get_candidate_entries, process_trainable_args, process_online_args
@@ -13,9 +12,7 @@ class AutoModel:
                 type: Optional[str] = None, config: Union[str, bool] = True, **kwargs: Any):
         # check and accomodate user params
         model = model or kwargs.pop('base_model', kwargs.pop('embed_model_name', None))
-        chat_models = [(k[:-len(LLMType.CHAT)] if k.lower().endswith(LLMType.CHAT.lower()) else k)
-                       for k in lazyllm.online.chat.keys()]
-        if model in chat_models:
+        if model in lazyllm.online.chat:
             source, model = model, None
 
         if not model:

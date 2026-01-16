@@ -13,6 +13,9 @@ from ..fileHandler import FileHandlerBase
 from ..base.utils import check_and_add_config
 
 
+check_and_add_config(key='sensenova_secret_key', description='The secret key for SenseNova.')
+
+
 class _SenseNovaBase(object):
 
     def _get_api_key(self, api_key: str, secret_key: str):
@@ -202,17 +205,6 @@ class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
             return [{'type': 'image_url', 'image_url': image_url}]
         else:
             return [{'type': 'image_base64', 'image_base64': image_url}]
-
-    @staticmethod
-    def __lazyllm_after_registry_hook__(group_name: str, name: str, isleaf: bool):
-        if not isleaf:
-            return
-        subgroup = group_name.split('.')[-1]          # chat
-        supplier = name[:-len(subgroup)].lower()      # sensenova
-
-        if supplier == 'sensenova':
-            check_and_add_config(key='sensenova_secret_key',
-                                 description='The secret key for SenseNova.')
 
 
 class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):

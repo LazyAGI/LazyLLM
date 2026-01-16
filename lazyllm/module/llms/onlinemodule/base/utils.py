@@ -79,7 +79,7 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         else:
             subgroup = group_name.split('.')[-1]
             assert name.lower().endswith(subgroup), f'Class name {name} must follow \
-                the schema of <SupplierType>, like <QwenChat>'
+                the schema of <SupplierType>, like <Qwen{subgroup.capitalize()}>'
             supplier = name[:-len(subgroup)].lower()
 
             check_and_add_config(key=f'{supplier}_api_key',

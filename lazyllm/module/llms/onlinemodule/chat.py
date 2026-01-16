@@ -52,4 +52,4 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
             if not base_url:
                 raise KeyError('base_url must be set for local serving.')
 
-        return lazyllm.online.chat[f'{source}{LLMType.CHAT}'](**params)
+        return getattr(lazyllm.online.chat, source)(**params)
