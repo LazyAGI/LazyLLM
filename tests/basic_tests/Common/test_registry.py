@@ -112,14 +112,14 @@ class TestRegistryWithKey(object):
         all_configs = []
 
         class LazyLLMOnlineModuleBase(object, metaclass=LazyLLMRegisterMetaClass):
-            __lazyllm_registry_key__ = 'online'
+            __lazyllm_registry_key__ = 'testonline'
 
             @staticmethod
             def __lazyllm_after_registry_hook__(group_name: str, name: str, isleaf: bool):
                 if group_name == '':
-                    assert name == 'online'
+                    assert name == 'testonline'
                 elif not isleaf:
-                    assert group_name == 'online'
+                    assert group_name == 'testonline'
                     assert name.lower() in ('stt', 'tts', 'texttoimage', 'imageediting'), 'group name error'
                 else:
                     subgroup = group_name.split('.')[-1]
@@ -170,18 +170,18 @@ class TestRegistryWithKey(object):
                 super().__init__(api_key, base_url)
                 AbcBase.__init__(self, api_key=api_key, base_url=base_url)
 
-        assert hasattr(lazyllm, 'online')
-        assert hasattr(lazyllm.online, 'base')
-        assert hasattr(lazyllm.online, 'stt')
-        assert hasattr(lazyllm.online, 'tts')
-        assert hasattr(lazyllm.online, 'TextToImage')
-        assert hasattr(lazyllm.online, 'ImageEditing')
-        assert len(lazyllm.online) == 4
+        assert hasattr(lazyllm, 'testonline')
+        assert hasattr(lazyllm.testonline, 'base')
+        assert hasattr(lazyllm.testonline, 'stt')
+        assert hasattr(lazyllm.testonline, 'tts')
+        assert hasattr(lazyllm.testonline, 'TextToImage')
+        assert hasattr(lazyllm.testonline, 'ImageEditing')
+        assert len(lazyllm.testonline) == 4
 
-        assert hasattr(lazyllm.online.stt, 'abc')
-        assert hasattr(lazyllm.online.tts, 'abc')
-        assert hasattr(lazyllm.online.TextToImage, 'abc')
-        assert hasattr(lazyllm.online.ImageEditing, 'abc')
+        assert hasattr(lazyllm.testonline.stt, 'abc')
+        assert hasattr(lazyllm.testonline.tts, 'abc')
+        assert hasattr(lazyllm.testonline.TextToImage, 'abc')
+        assert hasattr(lazyllm.testonline.ImageEditing, 'abc')
 
         assert len(all_configs) == 8
         assert 'config.add(abc_api_key)' in all_configs

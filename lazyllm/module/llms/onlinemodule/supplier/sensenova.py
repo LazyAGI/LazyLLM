@@ -8,8 +8,12 @@ import uuid
 
 import lazyllm
 from lazyllm.thirdparty import jwt
-from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
+from ..base import OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase
 from ..fileHandler import FileHandlerBase
+from ..base.utils import check_and_add_config
+
+
+check_and_add_config(key='sensenova_secret_key', description='The secret key for SenseNova.')
 
 
 class _SenseNovaBase(object):
@@ -22,7 +26,7 @@ class _SenseNovaBase(object):
         if not api_key.startswith('sk-'):
             if ':' in api_key: api_key, secret_key = api_key.split(':', 1)
             assert secret_key, 'secret_key should be provided with sensecore api_key'
-            api_key = SenseNovaModule.encode_jwt_token(api_key, secret_key)
+            api_key = SenseNovaChat.encode_jwt_token(api_key, secret_key)
         return api_key
 
     @staticmethod
@@ -38,7 +42,8 @@ class _SenseNovaBase(object):
         token = jwt.encode(payload, sk, headers=headers)
         return token
 
-class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
+
+class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     TRAINABLE_MODEL_LIST = ['nova-ptc-s-v2']
     VLM_MODEL_PREFIX = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
                         'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']
@@ -49,7 +54,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
         if secret_key and isinstance(api_key, (tuple, list)):
             raise KeyError('multi-key is not support when secret_key is provided, please use single-key mode!')
         api_key = self._get_api_key(api_key, secret_key)
-        OnlineChatModuleBase.__init__(self, model_series='SENSENOVA', api_key=api_key, base_url=base_url,
+        super().__init__(model_series='SENSENOVA', api_key=api_key, base_url=base_url,
                                       model_name=model, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
@@ -202,7 +207,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
             return [{'type': 'image_base64', 'image_base64': image_url}]
 
 
-class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
+class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
 
     def __init__(self,
                  embed_url: str = 'https://api.sensenova.cn/v1/llm/embeddings',

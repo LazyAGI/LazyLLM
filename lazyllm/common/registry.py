@@ -74,6 +74,13 @@ class LazyDict(dict):
         assert isinstance(key, str), 'default key must be str'
         self._default = key.lower()
 
+    def __contains__(self, key):
+        try:
+            _ = self[self._match(key)]
+            return True
+        except (AttributeError, KeyError):
+            return False
+
 
 group_template = '''\
 class LazyLLM{name}Base(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].base):
@@ -83,12 +90,13 @@ class LazyLLM{name}Base(LazyLLMRegisterMetaClass.all_clses[\'{base}\'.lower()].b
 config.add('use_builtin', bool, False, 'USE_BUILTIN',
            description='Whether to use registry modules in python builtin.')
 
+
 class LazyLLMRegisterMetaClass(_MetaBind):
     all_clses = LazyDict()
 
     def __new__(metas, name, bases, attrs):
         new_cls = type.__new__(metas, name, bases, attrs)
-        if new_cls.__dict__.get('__lazyllm_registry_disable__'): return new_cls
+        if attrs.get('__lazyllm_registry_disable__', False) is True: return new_cls
         if name.startswith('LazyLLM') and name.endswith('Base'):
             ori = new_cls.__dict__.get('__lazyllm_registry_key__', re.match('(LazyLLM)(.*)(Base)', name)[2])
             group = ori.lower()

@@ -1,15 +1,17 @@
 import requests
 import lazyllm
 from typing import Tuple, List, Dict, Union
-from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
+from ..base import (
+    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase,
+    LazyLLMOnlineRerankModuleBase, LazyLLMOnlineText2ImageModuleBase
+)
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
 
 TIMEOUT = 300
 
-
-class AipingModule(OnlineChatModuleBase, FileHandlerBase):
+class AipingChat(OnlineChatModuleBase, FileHandlerBase):
     VLM_MODEL_PREFIX = [
         'Qwen2.5-VL-',
         'Qwen3-VL-',
@@ -19,7 +21,7 @@ class AipingModule(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://aiping.cn/api/v1/', model: str = 'DeepSeek-R1',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        OnlineChatModuleBase.__init__(self, model_series='AIPING',
+        super().__init__(model_series='AIPING',
                                       api_key=api_key or lazyllm.config['aiping_api_key'],
                                       base_url=base_url, model_name=model, stream=stream,
                                       return_trace=return_trace, **kwargs)
@@ -43,7 +45,7 @@ class AipingModule(OnlineChatModuleBase, FileHandlerBase):
             return False
 
 
-class AipingEmbedding(OnlineEmbeddingModuleBase):
+class AipingEmbed(LazyLLMOnlineEmbedModuleBase):
     def __init__(self, embed_url: str = 'https://aiping.cn/api/v1/embeddings',
                  embed_model_name: str = 'text-embedding-v1', api_key: str = None,
                  batch_size: int = 16, **kw):
@@ -51,7 +53,7 @@ class AipingEmbedding(OnlineEmbeddingModuleBase):
                          embed_model_name, batch_size=batch_size, **kw)
 
 
-class AipingReranking(OnlineEmbeddingModuleBase):
+class AipingRerank(LazyLLMOnlineRerankModuleBase):
     def __init__(self, embed_url: str = 'https://aiping.cn/api/v1/rerank',
                  embed_model_name: str = 'Qwen3-Reranker-0.6B', api_key: str = None, **kw):
         super().__init__('AIPING', embed_url, api_key or lazyllm.config['aiping_api_key'],
@@ -80,13 +82,14 @@ class AipingReranking(OnlineEmbeddingModuleBase):
         return [(result['index'], result['relevance_score']) for result in results]
 
 
-class AipingTextToImageModule(OnlineMultiModalBase):
+class AipingText2Image(LazyLLMOnlineText2ImageModuleBase):
     def __init__(self, api_key: str = None, model_name: str = 'Qwen-Image',
                  base_url: str = 'https://aiping.cn/api/v1/',
                  return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series='AIPING',
-                                      model_name=model_name, api_key=api_key or lazyllm.config['aiping_api_key'],
-                                      return_trace=return_trace, **kwargs)
+        LazyLLMOnlineText2ImageModuleBase.__init__(self, model_series='AIPING',
+                                                   model_name=model_name,
+                                                   api_key=api_key or lazyllm.config['aiping_api_key'],
+                                                   return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
         self._base_url = base_url
 

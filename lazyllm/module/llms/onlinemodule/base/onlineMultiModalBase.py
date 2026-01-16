@@ -1,7 +1,7 @@
 from typing import List, Dict, Union, Optional
 import lazyllm
 from ....servermodule import LLMBase
-from .utils import OnlineModuleBase
+from .utils import LazyLLMOnlineBase
 import base64
 from pathlib import Path
 import requests
@@ -10,11 +10,14 @@ import ipaddress
 import socket
 from io import BytesIO
 from lazyllm.thirdparty import PIL
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 
-class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
+class OnlineMultiModalBase(LazyLLMOnlineBase, LLMBase):
+    __lazyllm_registry_disable__ = True
+
     def __init__(self, model_series: str, model: str = None, return_trace: bool = False, skip_auth: bool = False,
                  api_key: Optional[Union[str, List[str]]] = None, url: str = None, type: Optional[str] = None, **kwargs):
-        OnlineModuleBase.__init__(self, api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
+        super().__init__(api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
         LLMBase.__init__(self, stream=False, init_prompt=False, type=type)
         self._model_series = model_series
         self._model_name = model if model is not None else kwargs.get('model_name')
@@ -130,3 +133,15 @@ class OnlineMultiModalBase(OnlineModuleBase, LLMBase):
                 lazyllm.LOG.error(f'Unexpected error loading image from {image_path}: {str(e)}')
                 raise ValueError(f'Failed to load image from {image_path}: {str(e)}')
         return results
+
+class LazyLLMOnlineSTTModuleBase(OnlineMultiModalBase):
+    __lazyllm_registry_key__ = LLMType.STT
+
+class LazyLLMOnlineTTSModuleBase(OnlineMultiModalBase):
+    __lazyllm_registry_key__ = LLMType.TTS
+
+class LazyLLMOnlineText2ImageModuleBase(OnlineMultiModalBase):
+    __lazyllm_registry_key__ = LLMType.TEXT2IMAGE
+
+class LazyLLMOnlineImageEditingModuleBase(OnlineMultiModalBase):
+    __lazyllm_registry_key__ = LLMType.IMAGE_EDITING

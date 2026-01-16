@@ -15,8 +15,9 @@ from lazyllm import globals, pipeline
 from lazyllm.components.prompter import PrompterBase
 from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase
-from .utils import OnlineModuleBase
+from .utils import LazyLLMOnlineBase
 
 class StaticParams(TypedDict, total=False):
     temperature: float
@@ -26,10 +27,11 @@ class StaticParams(TypedDict, total=False):
     frequency_penalty: float  # Note some online api use 'repetition_penalty'
 
 
-class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
+class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     TRAINABLE_MODEL_LIST = []
     VLM_MODEL_PREFIX = []
     NO_PROXY = True
+    __lazyllm_registry_key__ = LLMType.CHAT
 
     def __init__(self, model_series: str, api_key: Union[str, List[str]], base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
@@ -37,7 +39,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         if any([model_name.startswith(prefix) for prefix in self.VLM_MODEL_PREFIX]):
             if type is None: type = 'VLM'
             else: assert type == 'VLM', f'model_name {model_name} is a VLM model, but type is {type}'
-        OnlineModuleBase.__init__(self, api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
+        super().__init__(api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
         LLMBase.__init__(self, stream=stream, type=type)
         self._model_series = model_series
         self.__base_url = base_url
@@ -338,3 +340,5 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
     def __repr__(self):
         return lazyllm.make_repr('Module', 'OnlineChat', name=self._module_name, url=self._base_url,
                                  stream=bool(self._stream), return_trace=self._return_trace)
+
+OnlineChatModuleBase = LazyLLMOnlineChatModuleBase
