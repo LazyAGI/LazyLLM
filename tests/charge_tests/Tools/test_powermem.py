@@ -1,6 +1,9 @@
 import time
+import pytest
 
 
+@pytest.mark.skip_on_win
+@pytest.mark.skip_on_mac
 class TestPowerMem(object):
     def test_powermem(self):
         from lazyllm.tools.memory import Memory

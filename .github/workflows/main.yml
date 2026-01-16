@@ -153,6 +153,7 @@ jobs:
           mv $GITHUB_WORKSPACE/* $GITHUB_WORKSPACE/.[!.]* ${{ env.CI_PATH }}/
           cd ${{ env.CI_PATH }}
           pip install -r tests/requirements.txt
+          pip install -r tests/requirements_linux.txt
 
   basic_tests:
     runs-on: tps_sco_nv
