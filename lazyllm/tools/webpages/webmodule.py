@@ -33,7 +33,7 @@ css = '''
 def _parse_version(version_str: str) -> Tuple[int, ...]:
     try:
         # Remove any pre-release suffixes (e.g., '6.0.0rc1' -> '6.0.0')
-        version_base_str = re.split(r'[a-zA-Z]', version_str, 1)[0].rstrip('.')
+        version_base_str = re.split(r'[a-zA-Z]', version_str, maxsplit=1)[0].rstrip('.')
         parts = version_base_str.split('.')
         return tuple(int(part) for part in parts if part.isdigit())
     except (ValueError, AttributeError):
