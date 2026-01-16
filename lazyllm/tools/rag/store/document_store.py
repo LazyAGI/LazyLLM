@@ -249,16 +249,12 @@ class _DocumentStore(object):
             total = len(segments)
             segments = self._slice_segments(segments, limit, offset)
             return (segments, total) if return_total else segments
-            total = len(segments)
-            segments = self._slice_segments(segments, limit, offset)
-            return (segments, total) if return_total else segments
         except Exception as e:
             LOG.error(f'[_DocumentStore - {self._algo_name}] Failed to get segments: {e}')
             raise
 
     def update_doc_meta(self, doc_id: str, metadata: dict, kb_id: str = None) -> None:
         kb_id = metadata.get(RAG_KB_ID, None) if kb_id is None else kb_id
-        segments = self.get_segments(doc_ids=[doc_id], kb_id=kb_id, return_total=False)
         segments = self.get_segments(doc_ids=[doc_id], kb_id=kb_id, return_total=False)
         if not segments:
             LOG.warning(f'[_DocumentStore] No segments found for doc_id: {doc_id} in dataset: {kb_id}')
