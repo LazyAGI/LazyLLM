@@ -13,7 +13,7 @@ from lazyllm.thirdparty import PIL
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 
 class OnlineMultiModalBase(LazyLLMOnlineBase, LLMBase):
-    __lazyllm_group_disable__ = True
+    __lazyllm_registry_disable__ = True
 
     def __init__(self, model_series: str, model: str = None, return_trace: bool = False, skip_auth: bool = False,
                  api_key: Optional[Union[str, List[str]]] = None, url: str = None, type: Optional[str] = None, **kwargs):

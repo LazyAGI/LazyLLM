@@ -15,12 +15,6 @@ class _ChatModuleMeta(type):
 
 
 class OnlineChatModule(metaclass=_ChatModuleMeta):
-    @staticmethod
-    def _models():
-        return {
-            (k[:-len(LLMType.CHAT)] if k.lower().endswith(LLMType.CHAT.lower()) else k): v
-            for k, v in lazyllm.online.chat.items()
-        }
 
     @staticmethod
     def _encapsulate_parameters(base_url: str, model: str, stream: bool, return_trace: bool, **kwargs) -> Dict[str, Any]:
@@ -35,11 +29,12 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
     def __new__(self, model: str = None, source: str = None, base_url: str = None, api_key: str = None,
                 stream: bool = True, return_trace: bool = False, skip_auth: bool = False,
                 type: Optional[str] = None, **kwargs):
-        models = OnlineChatModule._models()
-        if model in models.keys() and source is None: source, model = model, source
+        if model in lazyllm.online.chat and source is None: source, model = model, source
         if source is None and api_key is not None:
             raise ValueError('No source is given but an api_key is provided.')
-        source, default_key = select_source_with_default_key(models, explicit_source=source)
+        source, default_key = select_source_with_default_key(lazyllm.online.chat,
+                                                             explicit_source=source,
+                                                             type=LLMType.CHAT)
         if default_key and not api_key:
             api_key = default_key
 
@@ -57,4 +52,4 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
             if not base_url:
                 raise KeyError('base_url must be set for local serving.')
 
-        return models[source](**params)
+        return lazyllm.online.chat[f'{source}{LLMType.CHAT}'](**params)

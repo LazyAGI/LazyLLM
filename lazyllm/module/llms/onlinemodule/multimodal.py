@@ -39,25 +39,14 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
     }
 
     @staticmethod
-    def _get_group(type: str):
-        group_name = OnlineMultiModalModule.TYPE_GROUP_MAP.get(type)
-        if not group_name:
-            raise AssertionError(f'Invalid type: {type}, \
-                                 type must be in {OnlineMultiModalModule.TYPE_GROUP_MAP.keys()}')
-        group = getattr(lazyllm.online, group_name)
-        return {
-            (k[:-len(type)] if k.lower().endswith(type.lower()) else k): v
-            for k, v in group.items()
-        }
-
-    @staticmethod
     def _validate_parameters(source: str, model: str, type: str, base_url: str, **kwargs) -> tuple:
-        available_model = OnlineMultiModalModule._get_group(type)
-        if model in available_model and source is None:
+        if model in lazyllm.online[type] and source is None:
             source, model = model, source
         if source is None and kwargs.get('api_key'):
             raise ValueError('No source is given but an api_key is provided.')
-        source, default_key = select_source_with_default_key(available_model, explicit_source=source)
+        source, default_key = select_source_with_default_key(lazyllm.online[type],
+                                                             explicit_source=source,
+                                                             type=type)
         if default_key and not kwargs.get('api_key'):
             kwargs['api_key'] = default_key
 
@@ -67,7 +56,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                 raise KeyError('base_url must be set for local serving.')
 
         if type == 'image_editing':
-            default_module_cls = available_model[source]
+            default_module_cls = lazyllm.online[type][f'{source}{type}']
             default_editing_model = getattr(default_module_cls, 'IMAGE_EDITING_MODEL_NAME', None)
             if model is None and default_editing_model:
                 model = default_editing_model
@@ -94,5 +83,5 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         if model is not None:
             params['model'] = model
         params.update(kwargs_normalized)
-        available_model = OnlineMultiModalModule._get_group(type)
-        return available_model[source](**params)
+        available_model = lazyllm.online[type]
+        return available_model[f'{source}{type}'](**params)

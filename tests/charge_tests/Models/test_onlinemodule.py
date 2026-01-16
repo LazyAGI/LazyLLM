@@ -78,7 +78,7 @@ class TestOnlineModule(object):
                 runtime_model = model or kw.pop('model_name', None) or self._model_name
                 return runtime_model + ', ' + __input + ', ' + runtime_url
 
-        monkeypatch.setitem(lazyllm.online.chat, 'openai', DummyChat)
+        monkeypatch.setitem(lazyllm.online.chat, 'openaichat', DummyChat)
 
         chat = lazyllm.OnlineModule(source='openai',
                                     url='http://base/v1/',
@@ -106,7 +106,7 @@ class TestOnlineModule(object):
                     or self._embed_model_name
                 return runtime_model + ', ' + input + ', ' + runtime_url
 
-        monkeypatch.setitem(lazyllm.online.embed, 'openai', DummyEmbed)
+        monkeypatch.setitem(lazyllm.online.embed, 'openaiembed', DummyEmbed)
 
         embed = lazyllm.OnlineModule(type='embed',
                                      source='openai',

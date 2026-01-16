@@ -351,7 +351,7 @@ class QwenRerank(LazyLLMOnlineRerankModuleBase):
 
 
 class QwenMultiModal():
-    __lazyllm_group_disable__ = True
+    __lazyllm_registry_disable__ = True
 
     def __init__(self, api_key: str = None, base_url: str = '', base_websocket_url: str = ''):
         api_key = api_key or lazyllm.config['qwen_api_key']

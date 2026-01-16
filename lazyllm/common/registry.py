@@ -76,9 +76,9 @@ class LazyDict(dict):
 
     def __contains__(self, key):
         try:
-            _ = self[key]
+            _ = self[self._match(key)]
             return True
-        except KeyError:
+        except (AttributeError, KeyError):
             return False
 
 
@@ -96,7 +96,7 @@ class LazyLLMRegisterMetaClass(_MetaBind):
 
     def __new__(metas, name, bases, attrs):
         new_cls = type.__new__(metas, name, bases, attrs)
-        if attrs.get('__lazyllm_group_disable__', False) is True: return new_cls
+        if attrs.get('__lazyllm_registry_disable__', False) is True: return new_cls
         if name.startswith('LazyLLM') and name.endswith('Base'):
             ori = new_cls.__dict__.get('__lazyllm_registry_key__', re.match('(LazyLLM)(.*)(Base)', name)[2])
             group = ori.lower()

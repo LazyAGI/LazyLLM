@@ -9,7 +9,7 @@ from lazyllm.components.utils.downloader import ModelManager
 
 class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
     NO_PROXY = True
-    __lazyllm_group_disable__ = True
+    __lazyllm_registry_disable__ = True
 
     def __init__(self, model_series: str, embed_url: str, api_key: str, embed_model_name: str, skip_auth: bool = False,
                  return_trace: bool = False, batch_size: int = 32, num_worker: int = 1, timeout: int = 10):

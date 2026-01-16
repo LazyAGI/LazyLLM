@@ -6,7 +6,6 @@ import lazyllm
 import multiprocessing
 from lazyllm.launcher import cleanup
 from lazyllm.module.module import ModuleExecutionError
-from lazyllm import OnlineEmbeddingModule
 
 class TestModule:
 
@@ -220,8 +219,8 @@ class TestModule:
         assert prl(dict(a=1, b=2), dict(a=3, b=4)) == 10
 
     def test_onlineEmbeddingModuleBase_batch_size_validity(self):
-        embed_model_groups = OnlineEmbeddingModule._get_group('embed')
-        rerank_model_groups = OnlineEmbeddingModule._get_group('rerank')
+        embed_model_groups = lazyllm.online.embed
+        rerank_model_groups = lazyllm.online.rerank
         for embedModuleClass in embed_model_groups.values():
             assert embedModuleClass(skip_auth=True, batch_size=32).batch_size == 32
 

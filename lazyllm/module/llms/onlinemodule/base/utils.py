@@ -9,7 +9,9 @@ config.add('cache_online_module', bool, False, 'CACHE_ONLINE_MODULE',
            description='Whether to cache the online module result. Use for unit test.')
 
 
-def select_source_with_default_key(available_models, explicit_source: Optional[str] = None):
+def select_source_with_default_key(available_models,
+                                   explicit_source: Optional[str] = None,
+                                   type: str = ''):
     if explicit_source:
         assert explicit_source in available_models, f'Unsupported source: {explicit_source}'
         return explicit_source, None
@@ -18,6 +20,7 @@ def select_source_with_default_key(available_models, explicit_source: Optional[s
     if default_source and default_key and default_source in available_models:
         return default_source, default_key
     for candidate in available_models.keys():
+        candidate = candidate[:-len(type)]
         if config[f'{candidate}_api_key']:
             return candidate, None
     raise KeyError(f'No api_key is configured for any of the models {available_models.keys()}.')
@@ -60,20 +63,23 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         allowed = set(list(LLMType))
         config_type_dict = {
-            'chat': ('_model_name', 'The default model name for '),
-            'stt': ('_stt_model_name', 'The default stt model name for '),
-            'tts': ('_tts_model_name', 'The default tts model name for '),
-            'texttoimage': ('_text2image_model_name', 'The default text2image model name for '),
+            LLMType.CHAT: ('_model_name', 'The default model name for '),
+            LLMType.EMBED: ('_model_name', 'The default embed model name for '),
+            LLMType.RERANK: ('_model_name', 'The default rerank model name for '),
+            LLMType.STT: ('_stt_model_name', 'The default stt model name for '),
+            LLMType.TTS: ('_tts_model_name', 'The default tts model name for '),
+            LLMType.TEXT2IMAGE: ('_text2image_model_name', 'The default text2image model name for '),
         }
 
         if group_name == '':
             assert name == 'online'
         elif not isleaf:
             assert group_name == 'online', 'The group can only be "online" here.'
-            assert name.lower() in allowed, f'group name error: {name}'
+            assert name.lower() in allowed, f'Registry key {name} not in list {allowed}'
         else:
             subgroup = group_name.split('.')[-1]
-            assert name.lower().endswith(subgroup), 'Wrong subclass name schema.'
+            assert name.lower().endswith(subgroup), f'Class name {name} must follow \
+                the schema of <SupplierType>, like <QwenChat>'
             supplier = name[:-len(subgroup)].lower()
 
             check_and_add_config(key=f'{supplier}_api_key',
