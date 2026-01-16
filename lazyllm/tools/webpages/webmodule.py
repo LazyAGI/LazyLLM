@@ -371,7 +371,13 @@ class WebModule(ModuleBase):
                 # When using context, extract all files from entire history
                 for file in chat_history[::-1]:
                     if isinstance(file[0], (tuple, list)):
-                        files.append(file[0][0])
+                        item = file[0][0]
+                        if isinstance(item, dict) and 'text' in item:
+                            text_val = item['text']
+                            if '/' in text_val or '\\' in text_val:
+                                files.append(text_val)
+                        elif isinstance(item, str):
+                            files.append(item)
                     elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):
                         files.append(file[0][13:])
             else:
@@ -379,11 +385,28 @@ class WebModule(ModuleBase):
                 for file in chat_history[::-1]:
                     if file[-1]: break  # not current chat
                     if isinstance(file[0], (tuple, list)):
-                        files.append(file[0][0])
+                        item = file[0][0]
+                        if isinstance(item, dict) and 'text' in item:
+                            text_val = item['text']
+                            if '/' in text_val or '\\' in text_val:
+                                files.append(text_val)
+                        elif isinstance(item, str):
+                            files.append(item)
                     elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):
                         files.append(file[0][13:])
             if isinstance(chat_history[-1][0], str):
                 string = chat_history[-1][0]
+            elif isinstance(chat_history[-1][0], (list, tuple)):
+                string = ''
+                for item in chat_history[-1][0]:
+                    if isinstance(item, dict) and 'text' in item:
+                        text_val = item['text']
+                        if not ('/' in text_val or '\\' in text_val):
+                            string = text_val
+                            break
+                    elif isinstance(item, str):
+                        string = item
+                        break
             else:
                 string = ''
             if self.files_target is None and not self.encode_files:
