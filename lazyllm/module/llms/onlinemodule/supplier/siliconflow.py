@@ -19,7 +19,7 @@ class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://api.siliconflow.cn/v1/', model: str = 'Qwen/QwQ-32B',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        OnlineChatModuleBase.__init__(self, model_series='SILICONFLOW',
+        super().__init__(model_series='SILICONFLOW',
                                       api_key=api_key or lazyllm.config['siliconflow_api_key'],
                                       base_url=base_url, model_name=model, stream=stream,
                                       return_trace=return_trace, **kwargs)

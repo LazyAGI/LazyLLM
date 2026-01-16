@@ -47,7 +47,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         group = getattr(lazyllm.online, group_name)
         return {
             (k[:-len(type)] if k.lower().endswith(type) else k): v
-            for k, v in group.items() if k != 'base'
+            for k, v in group.items()
         }
 
     @staticmethod

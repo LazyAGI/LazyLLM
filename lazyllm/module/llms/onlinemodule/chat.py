@@ -1,4 +1,5 @@
 import lazyllm
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Any, Dict, Optional
 from .map_model_type import get_model_type
 from .base import OnlineChatModuleBase
@@ -17,9 +18,8 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
     @staticmethod
     def _models():
         return {
-            (k[:-4] if k.lower().endswith('chat') else k): v
+            (k[:-len(LLMType.CHAT)] if k.lower().endswith(LLMType.CHAT.lower()) else k): v
             for k, v in lazyllm.online.chat.items()
-            if k != 'base'
         }
 
     @staticmethod
@@ -32,15 +32,16 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
         params.update(kwargs)
         return params
 
-    def __new__(self, model: str = None, source: str = None, base_url: str = None, stream: bool = True,
-                return_trace: bool = False, skip_auth: bool = False, type: Optional[str] = None, **kwargs):
+    def __new__(self, model: str = None, source: str = None, base_url: str = None, api_key: str = None,
+                stream: bool = True, return_trace: bool = False, skip_auth: bool = False,
+                type: Optional[str] = None, **kwargs):
         models = OnlineChatModule._models()
         if model in models.keys() and source is None: source, model = model, source
-        if source is None and 'api_key' in kwargs and kwargs['api_key']:
+        if source is None and api_key is not None:
             raise ValueError('No source is given but an api_key is provided.')
         source, default_key = select_source_with_default_key(models, explicit_source=source)
-        if default_key and not kwargs.get('api_key'):
-            kwargs['api_key'] = default_key
+        if default_key and not api_key:
+            api_key = default_key
 
         if type is None and model:
             type = get_model_type(model)
@@ -48,7 +49,7 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
             raise AssertionError(f'\'{model}\' should use OnlineEmbeddingModule')
         elif type in ['stt', 'tts', 'sd']:
             raise AssertionError(f'\'{model}\' should use OnlineMultiModalModule')
-        params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace,
+        params = OnlineChatModule._encapsulate_parameters(base_url, model, stream, return_trace, api_key=api_key,
                                                           skip_auth=skip_auth, type=type.upper() if type else None,
                                                           **kwargs)
         if skip_auth:

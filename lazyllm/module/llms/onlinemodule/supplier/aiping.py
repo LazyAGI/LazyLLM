@@ -21,7 +21,7 @@ class AipingChat(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://aiping.cn/api/v1/', model: str = 'DeepSeek-R1',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        OnlineChatModuleBase.__init__(self, model_series='AIPING',
+        super().__init__(model_series='AIPING',
                                       api_key=api_key or lazyllm.config['aiping_api_key'],
                                       base_url=base_url, model_name=model, stream=stream,
                                       return_trace=return_trace, **kwargs)

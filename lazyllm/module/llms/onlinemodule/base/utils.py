@@ -23,6 +23,11 @@ def select_source_with_default_key(available_models, explicit_source: Optional[s
     raise KeyError(f'No api_key is configured for any of the models {available_models.keys()}.')
 
 
+def check_and_add_config(key, description):
+    if key.lower() not in config.get_all_configs():
+        config.add(key, str, '', f'{key.upper()}', description=description)
+
+
 class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
     def __init__(self, api_key: Optional[Union[str, List[str]]],
@@ -51,37 +56,30 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return random.choice(self.__headers)
 
     @staticmethod
-    def _check_and_add_config(key, description):
-        if key.lower() not in config.get_all_configs():
-            config.add(key, str, '', f'{key.upper()}', description=description)
-
-    @staticmethod
     def __lazyllm_after_registry_hook__(group_name: str, name: str, isleaf: bool):
 
-        allowed = {'chat', LLMType.EMBED, LLMType.MULTIMODAL_EMBED, LLMType.RERANK,
-                   LLMType.STT, LLMType.TTS, LLMType.TEXT2IMAGE, LLMType.IMAGE_EDITING}
-        config_key_dict = [
-            ('_api_key', 'The API key for '),
-            ('_model_name', 'The default model name for '),
-            ('_text2image_model_name', 'The default text2image model name for '),
-            ('_tts_model_name', 'The default tts model name for '),
-            ('_stt_model_name', 'The default stt model name for '),
-        ]
+        allowed = set(list(LLMType))
+        config_type_dict = {
+            'chat': ('_model_name', 'The default model name for '),
+            'stt': ('_stt_model_name', 'The default stt model name for '),
+            'tts': ('_tts_model_name', 'The default tts model name for '),
+            'texttoimage': ('_text2image_model_name', 'The default text2image model name for '),
+        }
 
         if group_name == '':
             assert name == 'online'
         elif not isleaf:
             assert group_name == 'online', 'The group can only be "online" here.'
-            assert name.lower() in allowed, 'group name error'
+            assert name.lower() in allowed, f'group name error: {name}'
         else:
             subgroup = group_name.split('.')[-1]
             assert name.lower().endswith(subgroup), 'Wrong subclass name schema.'
             supplier = name[:-len(subgroup)].lower()
 
-            for key, description in config_key_dict:
-                LazyLLMOnlineBase._check_and_add_config(key=supplier + key,
-                                                        description=description + supplier)
+            check_and_add_config(key=f'{supplier}_api_key',
+                                 description=f'The API key for {supplier}')
 
-            if supplier == 'sensenova':
-                LazyLLMOnlineBase._check_and_add_config(key='sensenova_secret_key',
-                                                        description='The secret key for SenseNova.')
+            if subgroup in config_type_dict:
+                key_suffix, description = config_type_dict[subgroup]
+                check_and_add_config(key=f'{supplier}{key_suffix}',
+                                     description=f'{description}{supplier}')

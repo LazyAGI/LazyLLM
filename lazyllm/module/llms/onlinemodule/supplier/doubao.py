@@ -52,7 +52,7 @@ class DoubaoEmbed(LazyLLMOnlineEmbedModuleBase):
                          batch_size=batch_size, **kw)
 
 
-class DoubaoMultimodal_Embed(LazyLLMOnlineMultimodalEmbedModuleBase):
+class DoubaoMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
     def __init__(self,
                  embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal',
                  embed_model_name: str = 'doubao-embedding-vision-241215',
@@ -97,8 +97,8 @@ class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase, DoubaoMultiModal):
 
     def __init__(self, api_key: str = None, model: str = None, url='https://ark.cn-beijing.volces.com/api/v3',
                  return_trace: bool = False, **kwargs):
-        LazyLLMOnlineText2ImageModuleBase.__init__(self, model_series='DOUBAO', model=model, api_key=api_key,
-                                                   return_trace=return_trace, url=url, **kwargs)
+        super().__init__(model_series='DOUBAO', model=model, api_key=api_key,
+                         return_trace=return_trace, url=url, **kwargs)
         DoubaoMultiModal.__init__(self, api_key=api_key, url=url)
 
     def _forward(self, input: str = None, files: List[str] = None, n: int = 1, size: str = '1024x1024', seed: int = -1,

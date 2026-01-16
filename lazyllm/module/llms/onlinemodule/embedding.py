@@ -4,7 +4,7 @@ import lazyllm
 from lazyllm.components.utils.downloader.model_downloader import LLMType
 from .base import OnlineEmbeddingModuleBase
 from .base.utils import select_source_with_default_key
-from .supplier.doubao import DoubaoEmbed, DoubaoMultimodal_Embed
+from .supplier.doubao import DoubaoEmbed, DoubaoMultimodalEmbed
 
 
 class __EmbedModuleMeta(type):
@@ -21,7 +21,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         group = getattr(lazyllm.online, name)
         return {
             (k[:-len(type)] if k.lower().endswith(type) else k): v
-            for k, v in group.items() if k != 'base'
+            for k, v in group.items()
         }
 
     @staticmethod
@@ -55,7 +55,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                 kwargs['api_key'] = default_key
             if source == 'doubao':
                 if embed_model_name and embed_model_name.startswith('doubao-embedding-vision'):
-                    return DoubaoMultimodal_Embed(**params)
+                    return DoubaoMultimodalEmbed(**params)
                 else:
                     return DoubaoEmbed(**params)
             return embed_models[source](**params)

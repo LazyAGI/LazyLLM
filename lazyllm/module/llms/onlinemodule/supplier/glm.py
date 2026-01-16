@@ -24,7 +24,7 @@ class GLMChat(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://open.bigmodel.cn/api/paas/v4/', model: str = None,
                  api_key: str = None, stream: str = True, return_trace: bool = False, **kwargs):
-        OnlineChatModuleBase.__init__(self, model_series='GLM', api_key=api_key or lazyllm.config['glm_api_key'],
+        super().__init__(model_series='GLM', api_key=api_key or lazyllm.config['glm_api_key'],
                                       model_name=model or lazyllm.config['glm_model_name'] or GLMChat.MODEL_NAME,
                                       base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
@@ -262,9 +262,9 @@ class GLMSTT(LazyLLMOnlineSTTModuleBase, GLMMultiModal):
     def __init__(self, model_name: str = None, api_key: str = None,
                  base_url: str = 'https://open.bigmodel.cn/api/paas/v4',
                  return_trace: bool = False, **kwargs):
-        LazyLLMOnlineSTTModuleBase.__init__(self, model_series='GLM', model_name=model_name,
-                                            api_key=api_key, return_trace=return_trace,
-                                            base_url=base_url, **kwargs)
+        super().__init__(model_series='GLM', model_name=model_name,
+                         api_key=api_key, return_trace=return_trace,
+                         base_url=base_url, **kwargs)
         GLMMultiModal.__init__(self, api_key=api_key, base_url=base_url)
 
     def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
@@ -285,9 +285,9 @@ class GLMText2Image(LazyLLMOnlineText2ImageModuleBase, GLMMultiModal):
 
     def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False,
                  base_url: str = 'https://open.bigmodel.cn/api/paas/v4', **kwargs):
-        LazyLLMOnlineText2ImageModuleBase.__init__(self, model_series='GLM', model_name=model_name,
-                                                   api_key=api_key, return_trace=return_trace,
-                                                   base_url=base_url, **kwargs)
+        super().__init__(model_series='GLM', model_name=model_name,
+                         api_key=api_key, return_trace=return_trace,
+                         base_url=base_url, **kwargs)
         GLMMultiModal.__init__(self, api_key=api_key, base_url=base_url)
         if self._type == LLMType.IMAGE_EDITING:
             raise ValueError('GLM series models do not support image editing now.')

@@ -15,7 +15,7 @@ class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://api.minimaxi.com/v1/', model: str = 'MiniMax-M2',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        OnlineChatModuleBase.__init__(self, model_series='MINIMAX',
+        super().__init__(model_series='MINIMAX',
                                       api_key=api_key or lazyllm.config['minimax_api_key'],
                                       base_url=base_url, model_name=model, stream=stream,
                                       return_trace=return_trace, **kwargs)

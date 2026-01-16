@@ -10,6 +10,7 @@ import lazyllm
 from lazyllm.thirdparty import jwt
 from ..base import OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase
 from ..fileHandler import FileHandlerBase
+from ..base.utils import check_and_add_config
 
 
 class _SenseNovaBase(object):
@@ -50,7 +51,7 @@ class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
         if secret_key and isinstance(api_key, (tuple, list)):
             raise KeyError('multi-key is not support when secret_key is provided, please use single-key mode!')
         api_key = self._get_api_key(api_key, secret_key)
-        OnlineChatModuleBase.__init__(self, model_series='SENSENOVA', api_key=api_key, base_url=base_url,
+        super().__init__(model_series='SENSENOVA', api_key=api_key, base_url=base_url,
                                       model_name=model, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
@@ -201,6 +202,17 @@ class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
             return [{'type': 'image_url', 'image_url': image_url}]
         else:
             return [{'type': 'image_base64', 'image_base64': image_url}]
+
+    @staticmethod
+    def __lazyllm_after_registry_hook__(group_name: str, name: str, isleaf: bool):
+        if not isleaf:
+            return
+        subgroup = group_name.split('.')[-1]          # chat
+        supplier = name[:-len(subgroup)].lower()      # sensenova
+
+        if supplier == 'sensenova':
+            check_and_add_config(key='sensenova_secret_key',
+                                 description='The secret key for SenseNova.')
 
 
 class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
