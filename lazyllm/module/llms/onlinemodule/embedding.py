@@ -17,10 +17,10 @@ class __EmbedModuleMeta(type):
 
 class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
     @staticmethod
-    def _get_group(name: str, type: str):
+    def _get_group(name: str):
         group = getattr(lazyllm.online, name)
         return {
-            (k[:-len(type)] if k.lower().endswith(type) else k): v
+            (k[:-len(name)] if k.lower().endswith(name.lower()) else k): v
             for k, v in group.items()
         }
 
@@ -49,7 +49,8 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         if 'type' in params:
             params.pop('type')
         if kwargs.get('type', 'embed') == 'embed':
-            embed_models = OnlineEmbeddingModule._get_group(LLMType.EMBED, type='embed')
+            embed_models = OnlineEmbeddingModule._get_group(LLMType.EMBED)
+            print(f"embed_models={embed_models}")
             source, default_key = select_source_with_default_key(embed_models, explicit_source=source)
             if default_key and not kwargs.get('api_key'):
                 kwargs['api_key'] = default_key
@@ -60,7 +61,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                     return DoubaoEmbed(**params)
             return embed_models[source](**params)
         elif kwargs.get('type') == 'rerank':
-            rerank_models = OnlineEmbeddingModule._get_group(LLMType.RERANK, type='rerank')
+            rerank_models = OnlineEmbeddingModule._get_group(LLMType.RERANK)
             source, default_key = select_source_with_default_key(rerank_models, explicit_source=source)
             if default_key and not kwargs.get('api_key'):
                 kwargs['api_key'] = default_key

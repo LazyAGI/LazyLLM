@@ -18,7 +18,7 @@ special_models = {
     'sd': {'step1x-edit-v1p2-preview', 'idm-vton', 'mochi-1-preview', 'instruct-pix2pix'},
     'ocr': {},
     'embed': {'embeddinggemma-300m', 'all-roberta-large-v1'},
-    'rerank': {'gte-multilingual-reranker-base'},
+    'rerank': {'gte-multilingual-reranker-base', 'gte-rerank-v2'},
     'cross_modal_embed': {'vlm2vec-full', 'siglip-base-patch16-224'},
 }
 

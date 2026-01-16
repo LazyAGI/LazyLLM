@@ -46,7 +46,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                                  type must be in {OnlineMultiModalModule.TYPE_GROUP_MAP.keys()}')
         group = getattr(lazyllm.online, group_name)
         return {
-            (k[:-len(type)] if k.lower().endswith(type) else k): v
+            (k[:-len(type)] if k.lower().endswith(type.lower()) else k): v
             for k, v in group.items()
         }
 

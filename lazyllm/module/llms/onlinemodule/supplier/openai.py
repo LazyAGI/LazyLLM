@@ -214,7 +214,7 @@ class OpenAIRerank(LazyLLMOnlineRerankModuleBase):
 
     def __init__(self,
                  embed_url: str = 'https://api.openai.com/v1/',
-                 embed_model_name: str = '',
+                 embed_model_name: str = 'rerank-multilingual-v3.0',
                  api_key: str = None,
                  **kw):
         super().__init__('OPENAI', embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name, **kw)
