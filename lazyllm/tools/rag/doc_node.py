@@ -2,7 +2,7 @@ from typing import Optional, Dict, Any, Union, Callable, List
 from enum import Enum, auto
 from collections import defaultdict
 from lazyllm.thirdparty import PIL
-from lazyllm import config, reset_on_pickle, Mode
+from lazyllm import JsonFormatter, config, reset_on_pickle, Mode, LOG
 from lazyllm.components.utils.file_operate import _image_to_base64
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 import uuid
@@ -10,6 +10,7 @@ import threading
 import time
 import hashlib
 import copy
+import json
 
 _pickle_blacklist = {'_store', '_node_groups'}
 
@@ -346,3 +347,36 @@ class ImageDocNode(DocNode):
     @property
     def text(self) -> str:  # Disable access to self._content
         return self._image_path
+
+class JsonDocNode(DocNode):
+    def __init__(self, uid: Optional[str] = None, content: Optional[Union[Dict[str, Any], List[Any]]] = None,
+                 group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
+                 parent: Optional['DocNode'] = None, metadata: Optional[Dict[str, Any]] = None,
+                 global_metadata: Optional[Dict[str, Any]] = None, *, formatter: JsonFormatter = None):
+        super().__init__(uid, content, group, embedding, parent, metadata, global_metadata=global_metadata)
+        self._formatter = formatter
+
+    @property
+    def text(self) -> str:
+        try:
+            return json.dumps(self._content, ensure_ascii=False)
+        except Exception as e:
+            raise ValueError(f'Cannot convert content to JSON string: {e}')
+
+    def get_content(self, metadata_mode=MetadataMode.EMBED) -> str:
+        if metadata_mode == MetadataMode.EMBED:
+            try:
+                if self._formatter:
+                    return '\n'.join([json.dumps(item, ensure_ascii=False) for item in self._formatter(self._content)])
+            except Exception as e:
+                LOG.warning(f'Cannot convert content to JSON string: {e}')
+        return self.text
+
+class RichDocNode(DocNode):
+    def __init__(self, nodes: List[DocNode], uid: Optional[str] = None,
+                 group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
+                 parent: Optional['DocNode'] = None, metadata: Optional[Dict[str, Any]] = None,
+                 global_metadata: Optional[Dict[str, Any]] = None):
+        content = [n.text for n in nodes]
+        super().__init__(uid, content, group, embedding, parent, metadata, global_metadata=global_metadata)
+        self._nodes: List[DocNode] = nodes
