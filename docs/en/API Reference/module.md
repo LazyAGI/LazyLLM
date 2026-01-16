@@ -112,7 +112,7 @@
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultimodal_Embed
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultimodalEmbed
     options:
       members:
 

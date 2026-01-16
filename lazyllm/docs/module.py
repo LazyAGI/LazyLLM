@@ -1985,7 +1985,7 @@ Args:
     api_key (Optional[str]): API key for accessing the Doubao service. If not provided, it is read from lazyllm config.
 ''')
 
-add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoMultimodal_Embed', '''\
+add_chinese_doc('llms.onlinemodule.supplier.doubao.DoubaoMultimodalEmbed', '''\
 豆包多模态嵌入类，继承自 OnlineEmbeddingModuleBase，封装了调用豆包在线多模态（文本+图像）嵌入服务的功能。  
 支持将文本和图像输入转换为统一的向量表示，通过指定服务接口 URL、模型名称及 API Key，实现远程获取多模态向量。
 
@@ -1995,8 +1995,8 @@ Args:
     api_key (Optional[str]): 访问豆包服务的 API Key，若未提供则从 lazyllm 配置中读取。
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoMultimodal_Embed', '''\
-DoubaoMultimodal_Embed class inherits from OnlineEmbeddingModuleBase, encapsulating the functionality to call Doubao's online multimodal (text + image) embedding service.  
+add_english_doc('llms.onlinemodule.supplier.doubao.DoubaoMultimodalEmbed', '''\
+DoubaoMultimodalEmbed class inherits from OnlineEmbeddingModuleBase, encapsulating the functionality to call Doubao's online multimodal (text + image) embedding service.  
 It supports converting text and image inputs into a unified vector representation by specifying the service URL, model name, and API key, enabling remote retrieval of multimodal embeddings.
 
 Args:
