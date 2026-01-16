@@ -368,7 +368,7 @@ class JsonDocNode(DocNode):
             try:
                 if self._formatter:
                     return '\n'.join([json.dumps(item, ensure_ascii=False) for item in self._formatter(self._content)])
-            except Exception as e:
+            except (TypeError, ValueError) as e:
                 LOG.warning(f'Cannot convert content to JSON string: {e}')
         return self.text
 
@@ -380,3 +380,7 @@ class RichDocNode(DocNode):
         content = [n.text for n in nodes]
         super().__init__(uid, content, group, embedding, parent, metadata, global_metadata=global_metadata)
         self._nodes: List[DocNode] = nodes
+
+    @property
+    def nodes(self) -> List[DocNode]:
+        return self._nodes

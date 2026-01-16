@@ -9,11 +9,11 @@ from typing import Dict, List, Optional, Callable, Union
 import lazyllm
 from lazyllm import LOG
 from ..doc_node import DocNode
-from .pdfReader import RichPDFReader
+from .pdfReader import _RichPDFReader
 
 lazyllm.config.add('paddleocr_api_key', str, None, 'PADDLEOCR_API_KEY', description='The API key for PaddleOCR')
 
-class PaddleOCRPDFReader(RichPDFReader):
+class PaddleOCRPDFReader(_RichPDFReader):
     def __init__(self, url: str = None, api_key: str = None,
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  format_block_content: bool = True,

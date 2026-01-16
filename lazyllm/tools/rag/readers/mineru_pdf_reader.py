@@ -8,10 +8,10 @@ import unicodedata
 
 from lazyllm import LOG
 from ..doc_node import DocNode
-from .pdfReader import RichPDFReader
+from .pdfReader import _RichPDFReader
 
 
-class MineruPDFReader(RichPDFReader):
+class MineruPDFReader(_RichPDFReader):
     def __init__(self, url, backend='pipeline',
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  upload_mode: bool = False,

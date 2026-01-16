@@ -10,7 +10,7 @@ from ..doc_node import DocNode, RichDocNode
 RETRY_TIMES = 3
 
 
-class RichPDFReader(LazyLLMReaderBase):
+class _RichPDFReader(LazyLLMReaderBase):
     def __init__(self, post_func: Optional[Callable] = None,
                  return_trace: bool = True):
         super().__init__(return_trace=return_trace)
@@ -27,11 +27,11 @@ class RichPDFReader(LazyLLMReaderBase):
                 n.global_metadata = kwargs.get('extra_info')
         return [RichDocNode(r)] if len(r) > 1 else r
 
-class PDFReader(RichPDFReader):
+class PDFReader(_RichPDFReader):
     def __init__(self, return_full_document: bool = False,
-                 post_function: Optional[Callable[[List[DocNode]], List[DocNode]]] = None,
+                 post_func: Optional[Callable[[List[DocNode]], List[DocNode]]] = None,
                  return_trace: bool = True) -> None:
-        super().__init__(post_function=post_function, return_trace=return_trace)
+        super().__init__(post_func=post_func, return_trace=return_trace)
         self._return_full_document = return_full_document
 
     @retry(stop_after_attempt=3)
