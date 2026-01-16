@@ -174,3 +174,34 @@ class TestStoreWithMapAndMilvus(unittest.TestCase):
                                           topk=2, filters={RAG_DOC_ID: ['doc2']})
         self.assertEqual(len(nodes), 1)
         self.assertEqual(nodes[0].uid, node2.uid)
+
+    def test_get_nodes_pagination_limit(self):
+        nodes = self.document_store.get_nodes(limit=2)
+        self.assertEqual(len(nodes), 2)
+
+    def test_get_nodes_pagination_offset(self):
+        _, total = self.document_store.get_nodes(return_total=True)
+        nodes_offset = self.document_store.get_nodes(limit=2, offset=total)
+        self.assertEqual(len(nodes_offset), 0)
+
+    def test_get_nodes_pagination_return_total(self):
+        nodes, total = self.document_store.get_nodes(limit=2, return_total=True)
+        self.assertEqual(len(nodes), 2)
+        self.assertEqual(total, 5)  # 2 in group1, 1 in group2, 1 in qa, 1 in image
+
+    def test_get_nodes_pagination_with_group(self):
+        nodes = self.document_store.get_nodes(group='group1', limit=1)
+        self.assertEqual(len(nodes), 1)
+
+    def test_get_segments_pagination_limit(self):
+        segments = self.document_store.get_segments(limit=2)
+        self.assertEqual(len(segments), 2)
+
+    def test_get_segments_pagination_return_total(self):
+        segments, total = self.document_store.get_segments(limit=3, return_total=True)
+        self.assertEqual(len(segments), 3)
+        self.assertEqual(total, 5)
+
+    def test_get_segments_pagination_with_doc_id(self):
+        segments = self.document_store.get_segments(doc_ids={node1.global_metadata.get(RAG_DOC_ID)}, limit=1)
+        self.assertEqual(len(segments), 1)
