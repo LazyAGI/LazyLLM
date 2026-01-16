@@ -740,6 +740,62 @@ Returns:
     str: The generated ``schema_set_id``.
 ''')
 
+add_chinese_doc('Document.get_nodes', '''\
+按条件获取节点列表。
+
+Args:
+    uids (Optional[List[str]]): 指定节点 uid 列表。
+    doc_ids (Optional[Set]): 指定文档 id 集合。
+    group (Optional[str]): 节点组名。
+    kb_id (Optional[str]): 知识库 id。
+    numbers (Optional[Set]): 节点编号集合。
+
+**Returns:**\n
+- List[DocNode]: 命中的节点列表。
+''')
+
+add_english_doc('Document.get_nodes', '''\
+Get nodes by criteria.
+
+Args:
+    uids (Optional[List[str]]): List of node uids to fetch.
+    doc_ids (Optional[Set]): Set of document ids to filter by.
+    group (Optional[str]): Node group name.
+    kb_id (Optional[str]): Knowledge base id.
+    numbers (Optional[Set]): Set of node numbers.
+
+**Returns:**\n
+- List[DocNode]: Matched nodes.
+''')
+
+add_chinese_doc('Document.get_window_nodes', '''\
+获取指定节点在同一文档内的窗口节点。
+
+Args:
+    node (DocNode): 目标节点。
+    span (tuple[int, int]): 窗口范围，基于 node.number 的相对偏移。
+    merge (bool): 是否将窗口节点合并为一个节点返回。
+    include_self (bool): 是否包含目标节点本身。
+
+**Returns:**\n
+- Union[List[DocNode], DocNode]: 窗口节点列表，或合并后的单节点。
+''')
+
+add_english_doc('Document.get_window_nodes', '''\
+Get window nodes around a target node within the same document.
+
+Args:
+    node (DocNode): Target node.
+    span (tuple[int, int]): Window range based on relative offsets of node.number.
+    merge (bool): Whether to merge window nodes into a single node.
+    include_self (bool): Whether to include the target node itself.
+
+**Returns:**\n
+- Union[List[DocNode], DocNode]: Window nodes list or a merged node.
+''')
+
+
+
 # rag/graph_document.py
 
 add_english_doc('GraphDocument', '''\
@@ -3510,6 +3566,60 @@ Args:
 
 **Returns:**\n
 - Callable: A partially applied function that executes the find operation when called.
+''')
+
+add_chinese_doc('rag.document.UrlDocument.get_nodes', '''\
+按条件获取远程文档节点列表。
+
+Args:
+    uids (Optional[List[str]]): 指定节点 uid 列表。
+    doc_ids (Optional[Set]): 指定文档 id 集合。
+    group (Optional[str]): 节点组名。
+    kb_id (Optional[str]): 知识库 id。
+    numbers (Optional[Set]): 节点编号集合。
+
+**Returns:**\n
+- List[DocNode]: 命中的节点列表。
+''')
+
+add_english_doc('rag.document.UrlDocument.get_nodes', '''\
+Get remote document nodes by criteria.
+
+Args:
+    uids (Optional[List[str]]): List of node uids to fetch.
+    doc_ids (Optional[Set]): Set of document ids to filter by.
+    group (Optional[str]): Node group name.
+    kb_id (Optional[str]): Knowledge base id.
+    numbers (Optional[Set]): Set of node numbers.
+
+**Returns:**\n
+- List[DocNode]: Matched nodes.
+''')
+
+add_chinese_doc('rag.document.UrlDocument.get_window_nodes', '''\
+获取远程文档中指定节点的窗口节点。
+
+Args:
+    node (DocNode): 目标节点。
+    span (tuple[int, int]): 窗口范围，基于 node.number 的相对偏移。
+    merge (bool): 是否将窗口节点合并为一个节点返回。
+    include_self (bool): 是否包含目标节点本身。
+
+**Returns:**\n
+- Union[List[DocNode], DocNode]: 窗口节点列表，或合并后的单节点。
+''')
+
+add_english_doc('rag.document.UrlDocument.get_window_nodes', '''\
+Get window nodes around a target node in a remote document.
+
+Args:
+    node (DocNode): Target node.
+    span (tuple[int, int]): Window range based on relative offsets of node.number.
+    merge (bool): Whether to merge window nodes into a single node.
+    include_self (bool): Whether to include the target node itself.
+
+**Returns:**\n
+- Union[List[DocNode], DocNode]: Window nodes list or a merged node.
 ''')
 
 add_english_doc('rag.doc_node.DocNode', '''
