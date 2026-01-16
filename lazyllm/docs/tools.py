@@ -1106,7 +1106,7 @@ Args:
     return_trace (bool): 是否返回处理过程的 trace，默认为 True。
 
 Notes:
-    当返回的节点数量大于 1 时，``PDFReader`` 会返回 ``RichDocNode``，否则返回单元素列表。
+    当`return_full_document`为 True 且返回的节点数量大于 1 时，`PDFReader` 会返回 `RichDocNode`，否则返回单元素列表。
 ''')
 
 add_english_doc('rag.readers.PDFReader', '''\
@@ -1119,7 +1119,7 @@ Args:
     return_trace (bool): Whether to return the processing trace. Default is True.
 
 Notes:
-    If multiple nodes are produced, ``PDFReader`` returns a ``RichDocNode``; otherwise it returns a single-element list.
+    If `return_full_document` is True and multiple nodes are produced, `PDFReader` returns a `RichDocNode`; otherwise it returns a single-element list.
 ''')
 
 add_chinese_doc('rag.readers.PPTXReader', '''\
