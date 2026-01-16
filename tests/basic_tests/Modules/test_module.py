@@ -222,8 +222,6 @@ class TestModule:
     def test_onlineEmbeddingModuleBase_batch_size_validity(self):
         embed_model_groups = OnlineEmbeddingModule._get_group('embed')
         rerank_model_groups = OnlineEmbeddingModule._get_group('rerank')
-        print('-'*30)
-        print(embed_model_groups.values())
         for embedModuleClass in embed_model_groups.values():
             assert embedModuleClass(skip_auth=True, batch_size=32).batch_size == 32
 

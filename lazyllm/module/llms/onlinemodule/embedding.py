@@ -50,7 +50,6 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
             params.pop('type')
         if kwargs.get('type', 'embed') == 'embed':
             embed_models = OnlineEmbeddingModule._get_group(LLMType.EMBED)
-            print(f"embed_models={embed_models}")
             source, default_key = select_source_with_default_key(embed_models, explicit_source=source)
             if default_key and not kwargs.get('api_key'):
                 kwargs['api_key'] = default_key
