@@ -38,11 +38,17 @@ class HttpRequest(ModuleBase):
             pattern = r'\{\{([^}]+)\}\}'
             matches = re.findall(pattern, target_str)
             for match in matches:
-                replacement = replacements.get(match)
-                if replacement is not None:
-                    if '{{' + match + '}}' == target_str:
-                        return replacement
-                    target_str = re.sub(r'\{\{' + re.escape(match) + r'\}\}', replacement, target_str)
+                if match not in replacements:
+                    continue
+                replacement = replacements[match]
+                if '{{' + match + '}}' == target_str:
+                    return replacement
+                replacement_str = (
+                    json.dumps(replacement, ensure_ascii=False)
+                    if isinstance(replacement, (dict, list))
+                    else str(replacement)
+                )
+                target_str = re.sub(r'\{\{' + re.escape(match) + r'\}\}', replacement_str, target_str)
 
             return target_str
 
