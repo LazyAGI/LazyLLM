@@ -65,10 +65,14 @@ def patch_httpx():
     _old_httpx_func = httpx.request
 
     def new_httpx_func(method, url, **kwargs):
+        proxies = kwargs.pop('proxies', None)
         if os.environ.get('http_proxy') and _is_ip_address_url(url):
             try:
                 return _old_httpx_func(method, url, **{**kwargs, **dict(trust_env=False)})
             except Exception: pass
+        if proxies:
+            with httpx.Client(proxies=proxies) as client:
+                client.post(method, url, **kwargs)
         return _old_httpx_func(method, url, **kwargs)
 
     httpx.request = new_httpx_func
