@@ -1101,7 +1101,7 @@ add_chinese_doc('rag.readers.PDFReader', '''\
 
 Args:
     return_full_document (bool): 是否将整份 PDF 合并为一个文档节点。若为 False，则每页作为一个节点。
-    post_function (Optional[Callable[[List[DocNode]], List[DocNode]]]): 结果后处理函数，
+    post_func (Optional[Callable[[List[DocNode]], List[DocNode]]]): 结果后处理函数，
         需返回 ``List[DocNode]``，并会将 ``extra_info`` 写入每个节点的 ``global_metadata``。
     return_trace (bool): 是否返回处理过程的 trace，默认为 True。
 
@@ -1114,7 +1114,7 @@ Reader for extracting text content from PDF files.
 
 Args:
     return_full_document (bool): Whether to merge the entire PDF into a single document node. If False, each page becomes a separate node.
-    post_function (Optional[Callable[[List[DocNode]], List[DocNode]]]): Post-processing function.
+    post_func (Optional[Callable[[List[DocNode]], List[DocNode]]]): Post-processing function.
         Must return a ``List[DocNode]`` and will write ``extra_info`` into each node's ``global_metadata``.
     return_trace (bool): Whether to return the processing trace. Default is True.
 
