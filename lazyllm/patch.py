@@ -1,5 +1,6 @@
 import os
 import sys
+import inspect
 import requests
 import ipaddress
 import importlib.abc
@@ -62,9 +63,12 @@ def patch_httpx_func(httpx, fname):
 
 def patch_httpx():
     import httpx
-    _old_httpx_func = httpx.request
+    sig = inspect.signature(_old_httpx_func := httpx.request)
+    proxy_name = 'proxy' if 'proxy' in sig.parameters else 'proxies'
 
     def new_httpx_func(method, url, **kwargs):
+        if (proxies := kwargs.pop('proxies', kwargs.pop('proxy', None))):
+            kwargs[proxy_name] = proxies
         if os.environ.get('http_proxy') and _is_ip_address_url(url):
             try:
                 return _old_httpx_func(method, url, **{**kwargs, **dict(trust_env=False)})

@@ -1,0 +1,28 @@
+# Default
+* @LazyAGI/core-maintainers
+tests/ @LazyAGI/core-maintainers @LazyAGI/core-maintainers @LazyAGI/tools-maintainers @LazyAGI/rag-maintainers @LazyAGI/agent-maintainers @LazyAGI/engine-maintainers @LazyAGI/llm-maintainers
+
+# Docs
+docs/ @LazyAGI/doc-maintainers
+
+# Tools (default)
+lazyllm/tools/ @LazyAGI/tools-maintainers
+tests/**/Tools/ @LazyAGI/tools-maintainers
+
+# RAG
+lazyllm/tools/rag/ @LazyAGI/rag-maintainers
+tests/**/RAG/ @LazyAGI/rag-maintainers
+
+# Agent
+lazyllm/tools/agent/ @LazyAGI/agent-maintainers
+
+# Engine
+lazyllm/engine/ @LazyAGI/engine-maintainers
+tests/engine_tests/ @LazyAGI/engine-maintainers
+
+# LLM / Module
+lazyllm/module/ @LazyAGI/llm-maintainers
+tests/**/Deploy/ @LazyAGI/llm-maintainers
+tests/**/Finetune/ @LazyAGI/llm-maintainers
+tests/**/Models/ @LazyAGI/llm-maintainers
+tests/**/Modules/ @LazyAGI/llm-maintainers
