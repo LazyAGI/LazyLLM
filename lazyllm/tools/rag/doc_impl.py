@@ -15,7 +15,7 @@ from .store.document_store import _DocumentStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
 from .utils import DocListManager, is_sparse, _get_default_db_config
-from .global_metadata import GlobalMetadataDesc, RAG_KB_ID
+from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 from .data_type import DataType
 from .parsing_service import _Processor, DocumentProcessor
 from .embed_wrapper import _EmbedWrapper
@@ -537,7 +537,59 @@ class DocImpl:
                    group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
                    ) -> List[DocNode]:
         self._lazy_init()
-        return self._store.get_nodes(uids=uids, doc_ids=doc_ids, group=group, kb_id=kb_id, numbers=numbers)
+        return self._store.get_nodes(uids=uids, doc_ids=doc_ids, group=group,
+                                     kb_id=kb_id, numbers=numbers, display=True)
+
+    def _get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
+                          merge: bool = False, include_self: bool = True) -> Union[List[DocNode], DocNode]:
+        if node is None:
+            return []
+        self._lazy_init()
+
+        if not isinstance(span, tuple) or len(span) != 2:
+            raise ValueError('span must be a tuple of (start, end)')
+
+        group = node.group
+        if not group:
+            LOG.warning('Window nodes query failed: node has no group')
+            return []
+
+        doc_id = node.global_metadata.get(RAG_DOC_ID)
+        if not doc_id:
+            LOG.warning('Window nodes query failed: node has no doc id')
+            return []
+
+        kb_id = node.global_metadata.get(RAG_KB_ID, DEFAULT_KB_ID)
+        start, end = span
+        if start > end:
+            start, end = end, start
+
+        node_number = node.number
+        numbers = set(range(node_number + start, node_number + end + 1))
+        if include_self:
+            numbers.add(node_number)
+        else:
+            numbers.discard(node_number)
+        numbers = {n for n in numbers if n > 0}
+
+        if not numbers:
+            return []
+
+        nodes = self._store.get_nodes(group=group, kb_id=kb_id, doc_ids=[doc_id], numbers=numbers)
+        nodes = sorted(nodes, key=lambda n: n.number)
+
+        if not merge:
+            return nodes
+
+        if any(type(n) is not DocNode for n in nodes):
+            # NOTE: QADocNode, ImageDocNode is not supported merge
+            LOG.warning('Merge window nodes only supports DocNode, returning list instead')
+            return nodes
+
+        merged_text = '\n'.join([n.text for n in nodes]) if nodes else ''
+        merged_node = DocNode(content=merged_text, group=group, embedding=node.embedding, parent=node._parent,
+                              metadata=dict(node.metadata), global_metadata=dict(node.global_metadata))
+        return merged_node
 
     def __call__(self, func_name: str, *args, **kwargs):
         return getattr(self, func_name)(*args, **kwargs)

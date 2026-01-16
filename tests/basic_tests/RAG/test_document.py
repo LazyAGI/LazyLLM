@@ -199,6 +199,28 @@ class TestDocument(unittest.TestCase):
         for n in nodes:
             assert n.number == 2
 
+    def test_get_window_nodes(self):
+        doc = Document('rag_master')
+        doc.create_node_group('chunk1', parent=Document.CoarseChunk,
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
+        doc.activate_groups(groups=['chunk1'])
+
+        nodes = doc.get_nodes(group='chunk1', numbers=[1])
+        node = nodes[0]
+        assert node.number == 1
+
+        window = doc.get_window_nodes(node, span=(-1, 3))
+        assert len(window) == 4
+        assert window == sorted(window, key=lambda n: n.number)
+        assert all(n.number in [1, 2, 3, 4] for n in window)
+
+        window_no_self = doc.get_window_nodes(node, span=(-1, 1), include_self=False)
+        assert all(n.number != node.number for n in window_no_self)
+
+        merged = doc.get_window_nodes(node, span=(-1, 3), merge=True)
+        assert isinstance(merged, DocNode)
+        assert merged.group == node.group
+        assert merged.text == '\n'.join([n.text for n in window])
 
 class TestTempRetriever():
     def test_temp_retriever(self):
