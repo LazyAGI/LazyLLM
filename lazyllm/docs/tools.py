@@ -5606,6 +5606,118 @@ Args:
 **Returns:**\n
 - Union[List[DocNode], Tuple[List[DocNode], List[ImageDocNode]]]: 如果split_nodes_by_type为False，返回所有文档节点的列表。如果为True，返回包含文本节点和图像节点的元组。
 ''')
+# ---------------------------------------------------------------------------- #
+
+# rag/embedding_registry.py
+add_english_doc('rag.embedding_registry.EmbeddingModelRegistry', '''\
+A registry for database and corresponding embedding models.
+
+This class provides functionality to manage and register database and corresponding embedding models.
+It supports persistence to a SQLite database and automatic saving of the registry.
+
+Args:
+    persistence_path (Optional[str]): The path to the persistence file. If not provided, the default path will be used.
+    auto_save (bool): Whether to automatically save the registry to the persistence file. Default is True.
+''')
+
+add_chinese_doc('rag.embedding_registry.EmbeddingModelRegistry', '''\
+一个用于记录数据库及对应嵌入模型的映射关系的注册表。
+
+这个类提供了记录数据库及对应嵌入模型的映射关系的注册表的功能。
+它支持将注册表持久化到SQLite数据库，并自动保存注册表。
+
+Args:
+    persistence_path (Optional[str]): 持久化文件的路径。如果未提供，将使用默认路径。
+    auto_save (bool): 是否自动保存注册表到持久化文件。默认为True。如果为False，则需要手动调用save方法来保存注册表。
+''')
+
+add_english_doc('rag.embedding_registry.EmbeddingModelRegistry.validate_and_register', '''\
+Validate and register a database and corresponding embedding model.
+
+Args:
+    store (Any): The store to validate and register.
+    embed (Dict[str, Callable]): The embedding model to register.
+    embed_dims (Dict[str, int]): The dimensions of the embedding model.
+    embed_datatypes (Dict[str, Any]): The datatypes of the embedding model.
+    algo_name (str): The name of the algorithm.
+    kb_group_name (str): The name of the knowledge base group.
+''')
+
+add_chinese_doc('rag.embedding_registry.EmbeddingModelRegistry.validate_and_register', '''\
+验证并注册一个数据库及对应的嵌入模型。
+
+Args:
+    store (Any): 要验证和注册的存储。
+    embed (Dict[str, Callable]): 要注册的嵌入模型。
+    embed_dims (Dict[str, int]): 嵌入模型的维度。
+    embed_datatypes (Dict[str, Any]): 嵌入模型的数据类型。
+    algo_name (str): 算法名称。
+    kb_group_name (str): 知识库组名称。
+''')
+
+add_example('rag.embedding_registry.EmbeddingModelRegistry.validate_and_register', '''\
+>>> from lazyllm.tools.rag.embedding_registry import EmbeddingModelRegistry
+>>> registry = EmbeddingModelRegistry()
+>>> registry.validate_and_register(store, embed, embed_dims, embed_datatypes, algo_name, kb_group_name)
+''')
+
+add_english_doc('rag.embedding_registry.EmbeddingModelRegistry.get', '''\
+Get the embedding model for a specific database.
+
+Args:
+    embed_key (str): The key of the embedding model.
+''')
+
+add_chinese_doc('rag.embedding_registry.EmbeddingModelRegistry.get', '''\
+获取特定数据库的嵌入模型。
+
+Args:
+    collection_name (str): The name of the collection.
+''')
+
+add_english_doc('rag.embedding_registry.EmbeddingModelRegistry.get_all', '''\
+Get all embedding models.
+
+**Returns:**\n
+- Dict[str, EmbeddingModelInfo]: A dictionary of collection names and their corresponding embedding model information.
+''')
+
+add_chinese_doc('rag.embedding_registry.EmbeddingModelRegistry.get_all', '''\
+获取所有嵌入模型。
+
+**Returns:**\n
+- Dict[str, EmbeddingModelInfo]: A dictionary of collection names and their corresponding embedding model information.
+''')
+
+add_english_doc('rag.embedding_registry.EmbeddingModelRegistry.unregister', '''\
+Unregister an embedding model.
+
+Args:
+    collection_name (str): The name of the collection.
+''')
+
+add_chinese_doc('rag.embedding_registry.EmbeddingModelRegistry.unregister', '''\
+删除特定数据库的嵌入模型。
+
+Args:
+    collection_name (str): The name of the collection.
+''')
+
+add_english_doc('rag.embedding_registry.EmbeddingModelRegistry.clear', '''\
+Clear all embedding models.
+''')
+
+add_chinese_doc('rag.embedding_registry.EmbeddingModelRegistry.clear', '''\
+清除所有嵌入模型。
+''')
+
+add_english_doc('rag.embedding_registry.EmbeddingModelRegistry.save', '''\
+Save the registry to the persistence file.
+''')
+
+add_chinese_doc('rag.embedding_registry.EmbeddingModelRegistry.save', '''\
+保存注册表到持久化文件。
+''')
 
 # ---------------------------------------------------------------------------- #
 
