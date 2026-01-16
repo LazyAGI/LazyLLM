@@ -1,6 +1,6 @@
 from .base import NodeTransform
 from ..doc_node import RichDocNode, DocNode
-from typing import List, Union
+from typing import List
 
 
 class RichTransform(NodeTransform):
