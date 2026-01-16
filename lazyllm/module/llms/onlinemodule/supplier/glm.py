@@ -262,7 +262,7 @@ class GLMSTT(LazyLLMOnlineSTTModuleBase, GLMMultiModal):
     def __init__(self, model_name: str = None, api_key: str = None,
                  base_url: str = 'https://open.bigmodel.cn/api/paas/v4',
                  return_trace: bool = False, **kwargs):
-        super().__init__(model_series='GLM', model_name=model_name,
+        super().__init__(model_series='GLM', model_name=model_name or GLMSTT.MODEL_NAME,
                          api_key=api_key, return_trace=return_trace,
                          base_url=base_url, **kwargs)
         GLMMultiModal.__init__(self, api_key=api_key, base_url=base_url)
@@ -285,7 +285,7 @@ class GLMText2Image(LazyLLMOnlineText2ImageModuleBase, GLMMultiModal):
 
     def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False,
                  base_url: str = 'https://open.bigmodel.cn/api/paas/v4', **kwargs):
-        super().__init__(model_series='GLM', model_name=model_name,
+        super().__init__(model_series='GLM', model_name=model_name or GLMText2Image.MODEL_NAME,
                          api_key=api_key, return_trace=return_trace,
                          base_url=base_url, **kwargs)
         GLMMultiModal.__init__(self, api_key=api_key, base_url=base_url)
