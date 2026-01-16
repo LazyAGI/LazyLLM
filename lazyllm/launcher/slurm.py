@@ -9,7 +9,7 @@ from lazyllm.common import RecentQueue as Queue
 from .base import LazyLLMLaunchersBase, Job, Status
 
 lazyllm.config.add('partition', str, 'your_part', 'SLURM_PART',
-                   description='The default Slurm partition to use if no partition is specified.')
+                   description='The default slurm partition to use if no partition is specified.')
 
 
 @final
