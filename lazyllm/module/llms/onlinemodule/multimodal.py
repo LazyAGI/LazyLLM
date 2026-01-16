@@ -40,11 +40,13 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
 
     @staticmethod
     def _validate_parameters(source: str, model: str, type: str, base_url: str, **kwargs) -> tuple:
+        assert type in OnlineMultiModalModule.TYPE_GROUP_MAP, f'Invalid type: {type}'
         if model in lazyllm.online[type] and source is None:
             source, model = model, source
         if source is None and kwargs.get('api_key'):
             raise ValueError('No source is given but an api_key is provided.')
-        source, default_key = select_source_with_default_key(lazyllm.online[type],
+        register_type = OnlineMultiModalModule.TYPE_GROUP_MAP.get(type).lower()
+        source, default_key = select_source_with_default_key(lazyllm.online[register_type],
                                                              explicit_source=source,
                                                              type=type)
         if default_key and not kwargs.get('api_key'):
@@ -56,7 +58,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                 raise KeyError('base_url must be set for local serving.')
 
         if type == 'image_editing':
-            default_module_cls = getattr(lazyllm.online[type], source)
+            default_module_cls = getattr(lazyllm.online[register_type], source)
             default_editing_model = getattr(default_module_cls, 'IMAGE_EDITING_MODEL_NAME', None)
             if model is None and default_editing_model:
                 model = default_editing_model
@@ -83,4 +85,5 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         if model is not None:
             params['model'] = model
         params.update(kwargs_normalized)
-        return getattr(lazyllm.online[type], source)(**params)
+        register_type = OnlineMultiModalModule.TYPE_GROUP_MAP.get(type).lower()
+        return getattr(lazyllm.online[register_type], source)(**params)
