@@ -10,8 +10,9 @@ import traceback
 from lazyllm.thirdparty import gradio as gr, PIL
 import time
 import re
+import inspect
 from pathlib import Path
-from typing import List, Union, Optional, Any, Dict
+from typing import List, Union, Optional, Any, Dict, Tuple
 
 import lazyllm
 from lazyllm import LOG, globals, FileSystemQueue, OnlineChatModule, TrainableModule
@@ -29,6 +30,96 @@ css = '''
 }
 '''
 
+def _parse_version(version_str: str) -> Tuple[int, ...]:
+    try:
+        # Remove any pre-release suffixes (e.g., '6.0.0rc1' -> '6.0.0')
+        version_base_str = re.split(r'[a-zA-Z]', version_str, maxsplit=1)[0].rstrip('.')
+        parts = version_base_str.split('.')
+        return tuple(int(part) for part in parts if part.isdigit())
+    except (ValueError, AttributeError):
+        return (5, 0, 0)  # Default fallback
+
+def _get_gradio_version() -> Tuple[int, ...]:
+    try:
+        version_str = gr.__version__
+        return _parse_version(version_str)
+    except (AttributeError, ImportError):
+        return (5, 0, 0)
+
+def _get_blocks_kwargs(css_content: str, title: str, analytics_enabled: bool = False):
+    gradio_ver = _get_gradio_version()
+    kwargs = {'title': title, 'analytics_enabled': analytics_enabled}
+
+    if gradio_ver < (6, 0, 0):
+        kwargs['css'] = css_content
+        return kwargs, None
+    else:
+        try:
+            sig = inspect.signature(gr.Blocks.__init__)
+            if 'css' in sig.parameters:
+                kwargs['css'] = css_content
+                return kwargs, None
+        except Exception as e:
+            LOG.warning(f'Could not inspect gr.Blocks.__init__ signature, falling back. Error: {e}')
+        return kwargs, css_content
+
+def _convert_to_openai_format(chat_history: List) -> List:
+    if not chat_history:
+        return chat_history
+    if chat_history and isinstance(chat_history[0], dict) and 'role' in chat_history[0]:
+        return chat_history
+
+    messages = []
+    for item in chat_history:
+        if isinstance(item, list) and len(item) >= 2:
+            user_msg, assistant_msg = item[0], item[1]
+            if user_msg is not None:
+                messages.append({'role': 'user', 'content': user_msg})
+            if assistant_msg is not None:
+                messages.append({'role': 'assistant', 'content': assistant_msg})
+    return messages
+
+def _convert_from_openai_format(messages: List) -> List:
+    if not messages:
+        return messages
+    if messages and isinstance(messages[0], list):
+        return messages
+
+    tuples = []
+    i = 0
+    while i < len(messages):
+        msg = messages[i]
+        if msg.get('role') == 'user':
+            user_content = msg.get('content', '')
+            assistant_content = None
+            if i + 1 < len(messages) and messages[i + 1].get('role') == 'assistant':
+                assistant_content = messages[i + 1].get('content', '')
+                i += 2
+            else:
+                i += 1
+            tuples.append([user_content, assistant_content])
+        elif msg.get('role') == 'assistant':
+            tuples.append([None, msg.get('content', '')])
+            i += 1
+        else:
+            i += 1
+    return tuples
+
+def _get_chatbot_kwargs(height: int = 700):
+    gradio_ver = _get_gradio_version()
+    kwargs = {'height': height}
+    use_messages_format = False
+
+    if gradio_ver >= (6, 0, 0):
+        use_messages_format = True
+        try:
+            sig = inspect.signature(gr.Chatbot.__init__)
+            if 'type' in sig.parameters:
+                kwargs['type'] = 'messages'
+        except Exception as e:
+            LOG.warning(f'Could not inspect gr.Chatbot.__init__ signature, falling back. Error: {e}')
+    return kwargs, use_messages_format
+
 class WebModule(ModuleBase):
     class Mode:
         Dynamic = 0
@@ -42,6 +133,9 @@ class WebModule(ModuleBase):
                  static_paths: Optional[Union[str, Path, List[Union[str, Path]]]] = None,
                  encode_files: bool = False, share: bool = False) -> None:
         super().__init__()
+        self._gradio_ver = _get_gradio_version()
+        # Will be set in init_web based on actual Chatbot support
+        self._use_openai_format = False
         # Set the static directory of gradio so that gradio can access local resources in the directory
         if isinstance(static_paths, (str, Path)):
             self._static_paths = [static_paths]
@@ -99,8 +193,13 @@ class WebModule(ModuleBase):
         return cach_path
 
     def init_web(self, component_descs):
-        gr.set_static_paths(self._static_paths)
-        with gr.Blocks(css=css, title=self.title, analytics_enabled=False) as demo:
+        if hasattr(gr, 'set_static_paths'):
+            gr.set_static_paths(self._static_paths)
+        blocks_kwargs, css_to_inject = _get_blocks_kwargs(css, self.title, analytics_enabled=False)
+        with gr.Blocks(**blocks_kwargs) as demo:
+            # Inject CSS via HTML if not supported in Blocks parameter
+            if css_to_inject:
+                gr.HTML(f'<style>{css_to_inject}</style>')
             sess_data = gr.State(value={
                 'sess_titles': [''],
                 'sess_logs': {},
@@ -139,7 +238,9 @@ class WebModule(ModuleBase):
                         add_sess_btn = gr.Button('添加新会话')
                         sess_drpdn = gr.Dropdown(choices=sess_data.value['sess_titles'], label='选择会话：', value='')
                         del_sess_btn = gr.Button('删除当前会话')
-                    chatbot = gr.Chatbot(height=700)
+                    chatbot_kwargs, use_messages_format = _get_chatbot_kwargs(height=700)
+                    self._use_openai_format = use_messages_format
+                    chatbot = gr.Chatbot(**chatbot_kwargs)
                     query_box = gr.MultimodalTextbox(show_label=False, placeholder='输入内容并回车!!!', interactive=True)
                     recordor = gr.Audio(sources=['microphone'], type='filepath', visible=self.audio)
 
@@ -248,14 +349,20 @@ class WebModule(ModuleBase):
             query = session['frozen_query']
         if chat_history is None:
             chat_history = []
+        if self._use_openai_format and chat_history:
+            chat_history = _convert_from_openai_format(chat_history)
         for x in query['files']:
             chat_history.append([[x,], None])
         if 'text' in query and query['text']:
             chat_history.append([query['text'], None])
+        if self._use_openai_format:
+            chat_history = _convert_to_openai_format(chat_history)
         return {}, chat_history
 
     def _respond_stream(self, use_context, chat_history, stream_output, append_text, *args):  # noqa C901
         try:
+            if self._use_openai_format and chat_history:
+                chat_history = _convert_from_openai_format(chat_history)
             # TODO: move context to trainable module
             files = []
             chat_history[-1][1], log_history = '', []
@@ -264,7 +371,13 @@ class WebModule(ModuleBase):
                 # When using context, extract all files from entire history
                 for file in chat_history[::-1]:
                     if isinstance(file[0], (tuple, list)):
-                        files.append(file[0][0])
+                        item = file[0][0]
+                        if isinstance(item, dict) and 'text' in item:
+                            text_val = item['text']
+                            if '/' in text_val or '\\' in text_val:
+                                files.append(text_val)
+                        elif isinstance(item, str):
+                            files.append(item)
                     elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):
                         files.append(file[0][13:])
             else:
@@ -272,11 +385,28 @@ class WebModule(ModuleBase):
                 for file in chat_history[::-1]:
                     if file[-1]: break  # not current chat
                     if isinstance(file[0], (tuple, list)):
-                        files.append(file[0][0])
+                        item = file[0][0]
+                        if isinstance(item, dict) and 'text' in item:
+                            text_val = item['text']
+                            if '/' in text_val or '\\' in text_val:
+                                files.append(text_val)
+                        elif isinstance(item, str):
+                            files.append(item)
                     elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):
                         files.append(file[0][13:])
             if isinstance(chat_history[-1][0], str):
                 string = chat_history[-1][0]
+            elif isinstance(chat_history[-1][0], (list, tuple)):
+                string = ''
+                for item in chat_history[-1][0]:
+                    if isinstance(item, dict) and 'text' in item:
+                        text_val = item['text']
+                        if not ('/' in text_val or '\\' in text_val):
+                            string = text_val
+                            break
+                    elif isinstance(item, str):
+                        string = item
+                        break
             else:
                 string = ''
             if self.files_target is None and not self.encode_files:
@@ -326,7 +456,10 @@ class WebModule(ModuleBase):
             while True:
                 if value := FileSystemQueue().dequeue():
                     chat_history[-1][1] += ''.join(value) if append_text else ''.join(value)
-                    if stream_output: yield chat_history, ''
+                    if stream_output:
+                        display_history = (_convert_to_openai_format(chat_history)
+                                           if self._use_openai_format else chat_history)
+                        yield display_history, ''
                 elif value := FileSystemQueue.get_instance('lazy_error').dequeue():
                     log_history.append(''.join(value))
                 elif value := FileSystemQueue.get_instance('lazy_trace').dequeue():
@@ -434,6 +567,8 @@ class WebModule(ModuleBase):
             log = f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}'
             LOG.error(log)
         globals['chat_history'].clear()
+        if chat_history and self._use_openai_format:
+            chat_history = _convert_to_openai_format(chat_history)
         yield chat_history, log
 
     def _clear_history(self, session):
