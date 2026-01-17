@@ -14,7 +14,9 @@ def select_source_with_default_key(available_models,
                                    type: str = ''):
     if explicit_source:
         assert explicit_source in available_models, f'Unsupported source: {explicit_source}'
-        return explicit_source, None
+        key_name = f'{explicit_source}_api_key'
+        default_key = config[key_name] if key_name in config.get_all_configs() else None
+        return explicit_source, default_key or None
     default_source = config['default_source'] if 'default_source' in config.get_all_configs() else None
     default_key = config['default_key'] if 'default_key' in config.get_all_configs() else None
     if default_source and default_key and default_source in available_models:
