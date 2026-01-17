@@ -96,6 +96,8 @@ class TestOnlineModule(object):
 
     def test_OnlineEmbedding_forward_override(self, monkeypatch):
         class DummyEmbed(lazyllm.module.llms.onlinemodule.base.LazyLLMOnlineEmbedModuleBase):
+            __lazyllm_registry_disable__ = True
+
             def __init__(self, embed_url: str, embed_model_name: str, api_key: str, **kw):
                 super().__init__(model_series='DUMMY', embed_url=embed_url, api_key=api_key,
                                  embed_model_name=embed_model_name, **kw)
@@ -108,11 +110,8 @@ class TestOnlineModule(object):
 
         monkeypatch.setitem(lazyllm.online.embed, 'openaiembed', DummyEmbed)
 
-        embed = lazyllm.OnlineModule(type='embed',
-                                     source='openai',
-                                     url='http://base-embed/v1/',
-                                     model='base_embed_model',
-                                     api_key='dummy_key')
+        embed = lazyllm.OnlineModule(type='embed', source='openai', url='http://base-embed/v1/',
+                                     model='base_embed_model', api_key='dummy_key')
 
         res = embed('text')
         assert res == 'base_embed_model, text, http://base-embed/v1/'

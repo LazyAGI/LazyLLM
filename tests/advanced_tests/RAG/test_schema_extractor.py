@@ -2,7 +2,7 @@ import os
 import shutil
 import unittest
 import tempfile
-from lazyllm import TrainableModule, Document, deploy
+from lazyllm import TrainableModule, Document
 from lazyllm.launcher import cleanup
 from lazyllm.tools.rag import SchemaExtractor
 from lazyllm.tools.rag.doc_to_db.model import SchemaSetInfo, ExtractResult
@@ -29,7 +29,7 @@ class TestSchemaExtractor(unittest.TestCase):
             'port': None,
             'db_name': cls.db_dir,
         }
-        cls.llm = TrainableModule('internlm2-chat-7b').deploy_method(deploy.vllm).start()
+        cls.llm = TrainableModule('Qwen2.5-32B-Instruct')
         cls.extractor = SchemaExtractor(db_config=cls.db_config, llm=cls.llm)
 
     @classmethod

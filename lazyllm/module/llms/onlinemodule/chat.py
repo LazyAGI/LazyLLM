@@ -26,9 +26,9 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
         params.update(kwargs)
         return params
 
-    def __new__(self, model: str = None, source: str = None, base_url: str = None, api_key: str = None,
-                stream: bool = True, return_trace: bool = False, skip_auth: bool = False,
-                type: Optional[str] = None, **kwargs):
+    def __new__(self, model: str = None, source: str = None, base_url: str = None, stream: bool = True,
+                return_trace: bool = False, skip_auth: bool = False, type: Optional[str] = None,
+                api_key: str = None, **kwargs):
         if model in lazyllm.online.chat and source is None: source, model = model, source
         if source is None and api_key is not None:
             raise ValueError('No source is given but an api_key is provided.')
