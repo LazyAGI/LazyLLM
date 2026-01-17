@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 from ..doc_node import DocNode
 from lazyllm.thirdparty import jieba, bm25s, Stemmer
 from .stopwords import STOPWORDS_CHINESE
@@ -34,11 +34,15 @@ class BM25:
         self.bm25 = bm25s.BM25()
         self.bm25.index(corpus_tokens)
 
-    def retrieve(self, query: str) -> List[Tuple[DocNode, float]]:
+    def retrieve(self, query: str, topk: Optional[int] = None) -> List[Tuple[DocNode, float]]:
+        if topk is None:
+            topk = self.topk
+        else:
+            topk = min(topk, len(self.nodes))
         tokenized_query = bm25s.tokenize(
             self._tokenizer(query), stopwords=self._stopwords, stemmer=self._stemmer
         )
-        indexs, scores = self.bm25.retrieve(tokenized_query, k=self.topk)
+        indexs, scores = self.bm25.retrieve(tokenized_query, k=topk)
         results = []
         for idx, score in zip(indexs[0], scores[0]):
             results.append((self.nodes[idx], score))

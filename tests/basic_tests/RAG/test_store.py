@@ -171,6 +171,23 @@ class TestMapStore(unittest.TestCase):
         self.assertEqual(len(res), 1)
         self.assertEqual(res[0].get('uid'), data[2].get('uid'))
 
+    def test_search_by_group_without_filters(self):
+        self.store1.upsert(self.collections[0], [data[0], data[2]])
+        self.store1.upsert(self.collections[1], [data[1]])
+        res = self.store1.search(collection_name=self.collections[0], query='test1', topk=1)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[0].get('uid'))
+        res = self.store1.search(collection_name=self.collections[1], query='test2', topk=1)
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[1].get('uid'))
+
+    def test_search_by_group_with_filters(self):
+        self.store1.upsert(self.collections[0], [data[0], data[2]])
+        res = self.store1.search(collection_name=self.collections[0], query='test', topk=2,
+                                 filters={RAG_DOC_ID: ['doc3']})
+        self.assertEqual(len(res), 1)
+        self.assertEqual(res[0].get('uid'), data[2].get('uid'))
+
 
 @pytest.mark.skip_on_win
 @pytest.mark.skip_on_mac
