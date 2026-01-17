@@ -7,6 +7,8 @@ import requests
 import lazyllm
 from lazyllm.tools.rag.readers.paddleocr_pdf_reader import PaddleOCRPDFReader
 from lazyllm.tools.rag import DocNode
+from lazyllm.tools.rag.doc_node import RichDocNode
+from lazyllm.tools.rag.transform import RichTransform
 
 lazyllm.config.add('PADDLEOCRVL_URL', str, '', 'PADDLEOCRVL_URL')
 
@@ -42,34 +44,39 @@ class TestPaddleOCRPDFReader(object):
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    def test_load_data_without_images_dir(self):
+    def _skip_if_pdf_not_exist(self):
         if not os.path.exists(self.test_pdf):
             pytest.skip(f'Test file does not exist: {self.test_pdf}')
+
+    def test_load_data_without_images_dir(self):
+        self._skip_if_pdf_not_exist()
         reader = PaddleOCRPDFReader(url=self.url)
         docs = reader(self.test_pdf)
         assert isinstance(docs, list)
         assert len(docs) > 0, 'Return result should not be empty'
 
     def test_load_data_with_images_dir(self):
-        if not os.path.exists(self.test_pdf):
-            pytest.skip(f'Test file does not exist: {self.test_pdf}')
+        self._skip_if_pdf_not_exist()
         images_dir = os.path.join(self.temp_dir, 'images')
         reader = PaddleOCRPDFReader(
             url=self.url,
             images_dir=images_dir
         )
-        docs = reader(self.test_pdf)
-        assert isinstance(docs, list)
-        assert len(docs) > 0, 'Return result should not be empty'
+        root_docs = reader(self.test_pdf)
+        assert isinstance(root_docs, list)
+        assert len(root_docs) > 0, 'Return result should not be empty'
+        assert len(root_docs) == 1, 'Return result should be a single RichDocNode'
+        assert isinstance(root_docs[0], RichDocNode), 'Return result should be a RichDocNode'
         # Check if image_path in image node metadata actually exists
+        docs = RichTransform().transform(root_docs[0])
         image_nodes = [doc for doc in docs if doc.metadata.get('type') == 'image']
+        assert len(image_nodes) > 0, 'Return result should contain image nodes'
         for image_node in image_nodes:
             image_path = image_node.metadata.get('image_path')
             assert os.path.exists(image_path), f'Image path does not exist: {image_path}'
 
     def test_load_data_with_split_doc_false(self):
-        if not os.path.exists(self.test_pdf):
-            pytest.skip(f'Test file does not exist: {self.test_pdf}')
+        self._skip_if_pdf_not_exist()
         reader = PaddleOCRPDFReader(url=self.url, split_doc=False)
         docs = reader(self.test_pdf)
         assert isinstance(docs, list)
@@ -78,8 +85,7 @@ class TestPaddleOCRPDFReader(object):
         assert isinstance(docs[0], DocNode)
 
     def test_load_data_with_different_init_parameters(self):
-        if not os.path.exists(self.test_pdf):
-            pytest.skip(f'Test file does not exist: {self.test_pdf}')
+        self._skip_if_pdf_not_exist()
 
         # Test format_block_content=False
         reader1 = PaddleOCRPDFReader(

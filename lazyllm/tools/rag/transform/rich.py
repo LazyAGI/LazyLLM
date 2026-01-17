@@ -1,0 +1,9 @@
+from .base import NodeTransform
+from ..doc_node import RichDocNode, DocNode
+from typing import List
+
+
+class RichTransform(NodeTransform):
+    def transform(self, node: RichDocNode, **kwargs) -> List[DocNode]:
+        assert isinstance(node, RichDocNode), f'Expected RichDocNode, got {type(node)}'
+        return node.nodes
