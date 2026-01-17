@@ -333,6 +333,11 @@ class SenseCoreStore(LazyLLMStoreBase):
                 payload['segment_ids'] = uids
             else:
                 payload['page_size'] = 100
+            # TODO(chenjiahao): sensecore store itself does not support parent/number index yet
+            if criteria.get('parent'):
+                payload['parent'] = criteria.get('parent')
+            if criteria.get('number'):
+                payload['number'] = criteria.get('number')
             segments = []
             while True:
                 response = requests.post(url, headers=headers, json=payload)

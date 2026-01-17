@@ -440,6 +440,10 @@ class OceanBaseStore(LazyLLMStoreBase):
 
     def _create_table_and_index(self, client: 'pyobvector.ObVecClient', collection_name: str, embed_kwargs: Dict, partitions: Optional['pyobvector.RangeListPartInfo'] = None) -> bool:  # noqa: C901 E501
         columns = copy.deepcopy(self._constant_columns)
+        indexes = [
+            sqlalchemy.Index(f'idx_{collection_name}_parent', 'parent'),
+            sqlalchemy.Index(f'idx_{collection_name}_number', 'number'),
+        ]
 
         idx_params = client.prepare_index_params()
         original_index_kwargs = copy.deepcopy(self._index_kwargs)
@@ -531,7 +535,7 @@ class OceanBaseStore(LazyLLMStoreBase):
             client.create_table_with_index_params(
                 table_name=collection_name,
                 columns=columns,
-                indexes=None,
+                indexes=indexes,
                 vidxs=idx_params,
                 fts_idxs=fts_idxs if fts_idxs else None,
                 partitions=partitions,
@@ -827,10 +831,12 @@ class OceanBaseStore(LazyLLMStoreBase):
             if key == self._primary_key:
                 continue
 
-            if key not in self._global_metadata_desc:
+            if key in self._global_metadata_desc:
+                field_name = self._gen_global_meta_key(key)
+            elif key in self._builtin_keys:
+                field_name = key
+            else:
                 continue
-
-            field_name = self._gen_global_meta_key(key)
 
             if isinstance(value, list):
                 if not value:
