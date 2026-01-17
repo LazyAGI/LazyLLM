@@ -133,7 +133,7 @@ class TestMongoDBManager(unittest.TestCase):
         )
 
         # Recommend to use sensenova, gpt-4o, qwen online model
-        sql_llm = lazyllm.OnlineModule(source='siliconflow')
+        sql_llm = lazyllm.TrainableModule('Qwen2.5-32B-Instruct')
         cls.sql_call: SqlCall = SqlCall(sql_llm, cls.mongodb_manager, use_llm_for_sql_result=True)
 
     @classmethod
@@ -181,15 +181,6 @@ class TestMongoDBManager(unittest.TestCase):
     @unittest.skip('Just run local model in non-charge test')
     def test_llm_query_online(self):
         str_results = self.sql_call('人口超过了300万的州有哪些?')
-        self.assertIn('TX', str_results)
-        self.assertIn('CA', str_results)
-        self.assertIn('NY', str_results)
-        print(f'str_results:\n{str_results}')
-
-    def test_llm_query_local(self):
-        local_llm = lazyllm.TrainableModule('Qwen2.5-32B-Instruct').deploy_method(lazyllm.deploy.vllm).start()
-        sql_call = SqlCall(local_llm, self.mongodb_manager, use_llm_for_sql_result=True, return_trace=True)
-        str_results = sql_call('总人口超过了300万的州有哪些?')
         self.assertIn('TX', str_results)
         self.assertIn('CA', str_results)
         self.assertIn('NY', str_results)

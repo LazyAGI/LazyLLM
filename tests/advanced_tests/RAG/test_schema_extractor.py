@@ -2,7 +2,7 @@ import os
 import shutil
 import unittest
 import tempfile
-from lazyllm import Document, OnlineChatModule
+from lazyllm import TrainableModule, Document
 from lazyllm.launcher import cleanup
 from lazyllm.tools.rag import SchemaExtractor
 from lazyllm.tools.rag.doc_to_db.model import SchemaSetInfo, ExtractResult
@@ -29,7 +29,7 @@ class TestSchemaExtractor(unittest.TestCase):
             'port': None,
             'db_name': cls.db_dir,
         }
-        cls.llm = OnlineChatModule(source='siliconflow')
+        cls.llm = TrainableModule('Qwen2.5-32B-Instruct')
         cls.extractor = SchemaExtractor(db_config=cls.db_config, llm=cls.llm)
 
     @classmethod
