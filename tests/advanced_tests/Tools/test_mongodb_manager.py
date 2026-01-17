@@ -133,7 +133,7 @@ class TestMongoDBManager(unittest.TestCase):
         )
 
         # Recommend to use sensenova, gpt-4o, qwen online model
-        sql_llm = lazyllm.OnlineChatModule(source='sensenova')
+        sql_llm = lazyllm.OnlineModule(source='siliconflow')
         cls.sql_call: SqlCall = SqlCall(sql_llm, cls.mongodb_manager, use_llm_for_sql_result=True)
 
     @classmethod

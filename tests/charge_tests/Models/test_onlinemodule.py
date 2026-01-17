@@ -96,7 +96,8 @@ class TestOnlineModule(object):
 
     def test_OnlineEmbedding_forward_override(self, monkeypatch):
         class DummyEmbed(lazyllm.module.llms.onlinemodule.base.LazyLLMOnlineEmbedModuleBase):
-            def __init__(self, embed_url: str, embed_model_name: str, api_key: str, **kw):
+            def __init__(self, embed_url: str = 'http://dummy', embed_model_name: str = 'dummy',
+                         api_key: str = 'dummy', **kw):
                 super().__init__(model_series='DUMMY', embed_url=embed_url, api_key=api_key,
                                  embed_model_name=embed_model_name, **kw)
 
@@ -106,22 +107,29 @@ class TestOnlineModule(object):
                     or self._embed_model_name
                 return runtime_model + ', ' + input + ', ' + runtime_url
 
+        original = lazyllm.online.embed.get('openaiembed')
         monkeypatch.setitem(lazyllm.online.embed, 'openaiembed', DummyEmbed)
 
-        embed = lazyllm.OnlineModule(type='embed',
-                                     source='openai',
-                                     url='http://base-embed/v1/',
-                                     model='base_embed_model',
-                                     api_key='dummy_key')
+        try:
+            embed = lazyllm.OnlineModule(type='embed',
+                                         source='openai',
+                                         url='http://base-embed/v1/',
+                                         model='base_embed_model',
+                                         api_key='dummy_key')
 
-        res = embed('text')
-        assert res == 'base_embed_model, text, http://base-embed/v1/'
+            res = embed('text')
+            assert res == 'base_embed_model, text, http://base-embed/v1/'
 
-        res = embed('runtime', model='embed_override', url='http://runtime-embed/v1/')
-        assert res == 'embed_override, runtime, http://runtime-embed/v1/'
+            res = embed('runtime', model='embed_override', url='http://runtime-embed/v1/')
+            assert res == 'embed_override, runtime, http://runtime-embed/v1/'
 
-        res = embed('final')
-        assert res == 'base_embed_model, final, http://base-embed/v1/'
+            res = embed('final')
+            assert res == 'base_embed_model, final, http://base-embed/v1/'
+        finally:
+            if original is None:
+                lazyllm.online.embed.pop('openaiembed', None)
+            else:
+                lazyllm.online.embed['openaiembed'] = original
 
     def test_OnlineMultiModal_forward_override(self):
         class DummySTT(lazyllm.module.llms.onlinemodule.base.LazyLLMOnlineSTTModuleBase):
