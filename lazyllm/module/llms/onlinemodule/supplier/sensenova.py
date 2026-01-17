@@ -20,14 +20,27 @@ class _SenseNovaBase(object):
 
     def _get_api_key(self, api_key: str, secret_key: str):
         if not api_key and not secret_key:
-            api_key, secret_key = lazyllm.config['sensenova_api_key'], lazyllm.config['sensenova_secret_key']
-        if secret_key and secret_key.startswith('sk-'): api_key, secret_key = secret_key, None
-        if not api_key: raise ValueError('api_key is required for sensecore')
-        if not api_key.startswith('sk-'):
-            if ':' in api_key: api_key, secret_key = api_key.split(':', 1)
-            assert secret_key, 'secret_key should be provided with sensecore api_key'
-            api_key = SenseNovaChat.encode_jwt_token(api_key, secret_key)
-        return api_key
+            api_key = lazyllm.config['sensenova_api_key']
+            secret_key = lazyllm.config['sensenova_secret_key']
+
+        if secret_key and secret_key.startswith('sk-'):
+            if not api_key:
+                api_key = secret_key
+            secret_key = None
+
+        if not api_key:
+            raise ValueError('api_key is required for sensecore')
+
+        if api_key.startswith('sk-'):
+            return api_key
+
+        if ':' in api_key:
+            api_key, secret_key = api_key.split(':', 1)
+        elif not secret_key:
+            secret_key = lazyllm.config['sensenova_secret_key']
+
+        assert secret_key, 'secret_key should be provided with sensecore api_key'
+        return SenseNovaChat.encode_jwt_token(api_key, secret_key)
 
     @staticmethod
     def encode_jwt_token(ak: str, sk: str) -> str:
