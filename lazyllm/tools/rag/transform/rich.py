@@ -6,4 +6,10 @@ from typing import List
 class RichTransform(NodeTransform):
     def transform(self, node: RichDocNode, **kwargs) -> List[DocNode]:
         assert isinstance(node, RichDocNode), f'Expected RichDocNode, got {type(node)}'
-        return node.nodes
+        splitted_nodes = []
+        for node in node.nodes:
+            new_node = DocNode(content=node.text, metadata=node.metadata, global_metadata=node.global_metadata)
+            new_node.excluded_embed_metadata_keys = node.excluded_embed_metadata_keys
+            new_node.excluded_llm_metadata_keys = node.excluded_llm_metadata_keys
+            splitted_nodes.append(new_node)
+        return splitted_nodes

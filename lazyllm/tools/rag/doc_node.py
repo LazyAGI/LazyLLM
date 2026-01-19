@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, Union, Callable, List
+from typing import Optional, Dict, Any, Tuple, Union, Callable, List
 from enum import Enum, auto
 from collections import defaultdict
 from lazyllm.thirdparty import PIL
@@ -352,9 +352,10 @@ class JsonDocNode(DocNode):
     def __init__(self, uid: Optional[str] = None, content: Optional[Union[Dict[str, Any], List[Any]]] = None,
                  group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
                  parent: Optional['DocNode'] = None, metadata: Optional[Dict[str, Any]] = None,
-                 global_metadata: Optional[Dict[str, Any]] = None, *, formatter: JsonFormatter = None):
+                 global_metadata: Optional[Dict[str, Any]] = None, *, formatter_str: str = ''):
         super().__init__(uid, content, group, embedding, parent, metadata, global_metadata=global_metadata)
-        self._formatter = formatter
+        self._formatter_str = formatter_str
+        self._formatter = JsonFormatter(formatter_str)
 
     @property
     def text(self) -> str:
@@ -370,11 +371,19 @@ class JsonDocNode(DocNode):
     def get_content(self, metadata_mode=MetadataMode.EMBED) -> str:
         if metadata_mode == MetadataMode.EMBED:
             try:
-                if self._formatter:
-                    return '\n'.join([json.dumps(item, ensure_ascii=False) for item in self._formatter(self._content)])
+                return json.dumps(self._formatter(self._content), ensure_ascii=False)
             except (TypeError, ValueError) as e:
                 LOG.warning(f'Cannot convert content to JSON string: {e}')
         return self.text
+
+    def _serialize_content(self) -> str:
+        return "<json_doc_node>".join([self.text, self._formatter_str])
+
+    @staticmethod
+    def _deserialize_content(content: str) -> Tuple[str, str]:
+        assert '<json_doc_node>' in content, 'Storage has beed destroyed, get invalid json content'
+        object_text, formatter_str = content.split('<json_doc_node>')
+        return object_text, formatter_str
 
 class RichDocNode(DocNode):
     def __init__(self, nodes: List[DocNode], uid: Optional[str] = None,
@@ -388,3 +397,31 @@ class RichDocNode(DocNode):
     @property
     def nodes(self) -> List[DocNode]:
         return self._nodes
+
+    def _serialize_nodes(self) -> str:
+
+        def _serialize_node(node: DocNode) -> str:
+            formatted_node = {
+                'content': node.text,
+                'metadata': node.metadata,
+                'global_metadata': node.global_metadata,
+                'excluded_embed_metadata_keys': node.excluded_embed_metadata_keys,
+                'excluded_llm_metadata_keys': node.excluded_llm_metadata_keys,
+            }
+            return json.dumps(formatted_node, ensure_ascii=False)
+
+        return '<rich_doc_node>'.join([_serialize_node(n) for n in self.nodes])
+
+    @staticmethod
+    def _deserialize_nodes(nodes_content: str) -> List[DocNode]:
+        assert '<rich_doc_node>' in nodes_content, 'Storage has beed destroyed, get invalid nodes content'
+
+        def _deserialize_node(content: str) -> DocNode:
+            formatted_node = json.loads(content)
+            node = DocNode(content=formatted_node['content'], metadata=formatted_node['metadata'],
+                           global_metadata=formatted_node['global_metadata'])
+            node.excluded_embed_metadata_keys = formatted_node['excluded_embed_metadata_keys']
+            node.excluded_llm_metadata_keys = formatted_node['excluded_llm_metadata_keys']
+            return node
+
+        return [_deserialize_node(content) for content in nodes_content.split('<rich_doc_node>')]
