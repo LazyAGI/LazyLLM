@@ -48,7 +48,7 @@ def _check_libreoffice():
                 LOG.info(f'[MINERU SERVER] LibreOffice is installed: {version}')
                 libreoffice_installed = True
                 break
-        except (fastapi.FileNotFoundError, subprocess.TimeoutExpired):
+        except (FileNotFoundError, subprocess.TimeoutExpired):
             continue
 
     if not libreoffice_installed:
@@ -180,7 +180,7 @@ class LibreOfficeHelper:
         try:
             os.killpg(pgid, signal.SIGTERM)
         except ProcessLookupError:
-            Pass
+            pass
 
         if proc.poll() is None:
             try:
@@ -238,7 +238,7 @@ class LibreOfficeHelper:
         if not self.available:
             raise RuntimeError('LibreOffice unavailable')
         if not input_path.is_file():
-            raise fastapi.FileNotFoundError(f'Input not found: {input_path}')
+            raise FileNotFoundError(f'Input not found: {input_path}')
         output_dir.mkdir(parents=True, exist_ok=True)
 
         timeout = int(timeout or self.default_timeout)
@@ -354,7 +354,7 @@ class LibreOfficeHelper:
 
         async with self._sem:
             if not input_path.is_file():
-                raise fastapi.FileNotFoundError(f'Input not found: {input_path}')
+                raise FileNotFoundError(f'Input not found: {input_path}')
             await asyncio.to_thread(output_dir.mkdir, parents=True, exist_ok=True)
 
             timeout = int(timeout or self.default_timeout)
@@ -940,8 +940,10 @@ class MineruServerBase:
                 f_dump_orig_pdf=False,
                 f_dump_content_list=True,
             )
-
-            await mineru.cli.common.aio_do_parse(**params)
+            if effective_backend == 'pipeline':  # pipeline backend is sync
+                await asyncio.to_thread(mineru.cli.common.do_parse, **params)
+            else:
+                await mineru.cli.common.aio_do_parse(**params)
             LOG.info(f'[{req_id}] Parse completed for {len(pdf_paths)} files.')
 
             # 3) Collect outputs
@@ -950,7 +952,7 @@ class MineruServerBase:
                 if effective_backend.startswith('vlm'):
                     parse_dir = os.path.join(unique_dir, pdf_name, 'vlm')
                 elif effective_backend.startswith('hybrid'):
-                    parse_dir = os.path.join(unique_dir, pdf_name, 'hybrid_auto')
+                    parse_dir = os.path.join(unique_dir, pdf_name, f'hybrid_{parse_method}')
                 else:
                     parse_dir = os.path.join(unique_dir, pdf_name, parse_method)
 

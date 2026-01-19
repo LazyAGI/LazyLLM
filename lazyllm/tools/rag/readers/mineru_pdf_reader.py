@@ -16,7 +16,7 @@ class MineruPDFReader(LazyLLMReaderBase):
                  extract_formula: bool = True,
                  split_doc: bool = True,
                  clean_content: bool = True,
-                 process_blocks_func: Optional[Callable] = None,
+                 timeout: Optional[int] = None,
                  post_func: Optional[Callable] = None,
                  return_trace: bool = True):
         super().__init__(return_trace=return_trace)
@@ -32,6 +32,7 @@ class MineruPDFReader(LazyLLMReaderBase):
         self._split_doc = split_doc
         self._post_func = post_func
         self._clean_content = clean_content
+        self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._type_processors = {
             'base': self._process_base,   # base processor for all content types
             'text': self._process_text,
@@ -44,9 +45,6 @@ class MineruPDFReader(LazyLLMReaderBase):
         }
 
     def set_type_processor(self, content_type: str, processor: Callable):
-        # set custom processor for a specific content type, output should be a dict with the following keys:
-        # - text: will be set to content of DocNode
-        # - other keys: will be added to metadata of DocNode
         self._type_processors[content_type] = processor
 
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
@@ -80,11 +78,11 @@ class MineruPDFReader(LazyLLMReaderBase):
         try:
             if not self._upload_mode:
                 payload['files'] = [str(pdf_path)]
-                response = requests.post(self._url, data=payload, timeout=3600)
+                response = requests.post(self._url, data=payload, timeout=self._timeout)
             else:
                 with open(pdf_path, 'rb') as f:
                     files = {'upload_files': (os.path.basename(pdf_path), f)}
-                    response = requests.post(self._url, data=payload, files=files, timeout=3600)
+                    response = requests.post(self._url, data=payload, files=files, timeout=self._timeout)
             if response.status_code != 200:
                 LOG.error(f'[MineruPDFReader] POST request failed with status '
                           f'{response.status_code}: {response.text}')
@@ -110,11 +108,12 @@ class MineruPDFReader(LazyLLMReaderBase):
 
             content_type = content.get('type', 'default')
             processor = self._type_processors.get(content_type)
-            processed_block = processor(content)
-
-            if processed_block is not None:
-                blocks.append(processed_block)
-
+            if processor:
+                processed_block = processor(content)
+                if processed_block is not None:
+                    blocks.append(processed_block)
+            else:
+                LOG.error(f'[MineruPDFReader] No processor found for content type: {content_type}')
         return blocks
 
     def _process_base(self, content: dict) -> dict:
@@ -258,13 +257,11 @@ class MineruPDFReader(LazyLLMReaderBase):
                 metadata.update({k: v for k, v in e.items() if k != 'text'})
                 metadata.update({'file_path': str(file)})
                 node = DocNode(text=e.get('text', ''), metadata=metadata, global_metadata=extra_info)
-                node.excluded_embed_metadata_keys = [type for type in e.keys() if type not in ['file_name', 'text']]
-                node.excluded_llm_metadata_keys = [type for type in e.keys() if type not in ['file_name', 'text']]
+                node.excluded_embed_metadata_keys = [k for k in e.keys() if k not in ['file_name', 'text']]
+                node.excluded_llm_metadata_keys = [k for k in e.keys() if k not in ['file_name', 'text']]
                 docs.append(node)
         else:
             text_chunks = [el['text'] for el in elements if 'text' in el]
             node = DocNode(text='\n'.join(text_chunks), metadata={'file_name': file.name})
-            node.excluded_embed_metadata_keys = [type for type in e.keys() if type not in ['file_name', 'text']]
-            node.excluded_llm_metadata_keys = [type for type in e.keys() if type not in ['file_name', 'text']]
             docs.append(node)
         return docs
