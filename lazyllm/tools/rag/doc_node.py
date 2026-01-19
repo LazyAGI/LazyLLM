@@ -377,12 +377,13 @@ class JsonDocNode(DocNode):
         return self.text
 
     def _serialize_content(self) -> str:
-        return '<json_doc_node>'.join([self.text, self._formatter_str])
+        return json.dumps([self.text, self._formatter_str])
 
     @staticmethod
     def _deserialize_content(content: str) -> Tuple[str, str]:
-        assert '<json_doc_node>' in content, 'Storage has been destroyed, get invalid json content'
-        object_text, formatter_str = content.split('<json_doc_node>')
+        parts = json.loads(content)
+        assert isinstance(parts, list) and len(parts) == 2, "Storage has been destroyed, get invalid json content"
+        object_text, formatter_str = parts
         return json.loads(object_text), formatter_str
 
 class RichDocNode(DocNode):
@@ -410,12 +411,11 @@ class RichDocNode(DocNode):
             }
             return json.dumps(formatted_node, ensure_ascii=False)
 
-        return '<rich_doc_node>'.join([_serialize_node(n) for n in self.nodes])
+        return json.dumps([_serialize_node(n) for n in self.nodes])
 
     @staticmethod
     def _deserialize_nodes(nodes_content: str) -> List[DocNode]:
-        assert '<rich_doc_node>' in nodes_content, 'Storage has been destroyed, get invalid nodes content'
-
+    
         def _deserialize_node(content: str) -> DocNode:
             formatted_node = json.loads(content)
             node = DocNode(content=formatted_node['content'], metadata=formatted_node['metadata'],
@@ -424,4 +424,4 @@ class RichDocNode(DocNode):
             node.excluded_llm_metadata_keys = formatted_node['excluded_llm_metadata_keys']
             return node
 
-        return [_deserialize_node(content) for content in nodes_content.split('<rich_doc_node>')]
+        return [_deserialize_node(content) for content in json.loads(nodes_content)]
