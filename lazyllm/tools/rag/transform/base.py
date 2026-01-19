@@ -435,3 +435,14 @@ class _TokenTextSplitter(_TextSplitterBase):
 
     def _merge(self, splits: List[_Split], chunk_size: int) -> List[str]:
         return [split.text for split in splits]
+
+
+class ReaderParserBase(NodeTransform):
+    def __init__(self, return_trace: bool = False, **kwargs):
+        super().__init__(return_trace=return_trace, **kwargs)
+
+    def _parse_nodes(self, nodes: List[DocNode]) -> List[DocNode]:
+        pass
+
+    def forward(self, nodes: List[DocNode], **kwargs) -> List[DocNode]:
+        return self._parse_nodes(nodes)
