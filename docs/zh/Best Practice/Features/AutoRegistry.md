@@ -36,7 +36,7 @@
     根据模块能力与供应商信息，自动声明所需的配置项（如 API Key、模型名等），比如：
 
     - `<supplier>_model_name`
-    
+
     - `<supplier>_stt_model_name`
 
 ## 2. 扩展 LazyLLM 的 Online 类
@@ -98,7 +98,7 @@ LazyLLM 通过 Base 类层级区分模块能力类型。扩展模块时，必须
 
 - 供应商类：具体服务的实现类，遵循 [2.2 章节](#22-类命名规范强约束) 中的类命名要求。
 
-![auto_registry.png](../../assets/auto_registry.png)
+![auto_registry.png](../../../assets/auto_registry.png)
 
 ### 3.2 注册结果与访问方式
 

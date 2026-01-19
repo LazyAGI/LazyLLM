@@ -36,7 +36,7 @@ When a module class meets the registration conditions, LazyLLM automatically per
     Based on module capability and supplier information, automatically declare required configuration keys (such as API key, model name, etc.), for example:
 
     - `<supplier>_model_name`
-    
+
     - `<supplier>_stt_model_name`
 
 ## 2. Extending LazyLLM Online Classes
@@ -98,7 +98,7 @@ As shown in the figure, LazyLLM Online modules adopt a layered inheritance struc
 
 - Supplier classes: concrete service implementation classes, following the class naming requirements in [Section 2.2](#22-class-naming-convention-strict).
 
-![auto_registry.png](../../assets/auto_registry.png)
+![auto_registry.png](../../../assets/auto_registry.png)
 
 ### 3.2 Registration Results and Access
 
