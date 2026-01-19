@@ -1,6 +1,5 @@
 from unittest.mock import MagicMock
 from lazyllm.tools.rag.doc_node import DocNode, MetadataMode, JsonDocNode
-from lazyllm import JsonFormatter
 
 
 class TestDocNode:
