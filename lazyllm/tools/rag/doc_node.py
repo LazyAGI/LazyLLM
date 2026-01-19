@@ -382,7 +382,7 @@ class JsonDocNode(DocNode):
     @staticmethod
     def _deserialize_content(content: str) -> Tuple[str, str]:
         parts = json.loads(content)
-        assert isinstance(parts, list) and len(parts) == 2, "Storage has been destroyed, get invalid json content"
+        assert isinstance(parts, list) and len(parts) == 2, 'Storage has been destroyed, get invalid json content'
         object_text, formatter_str = parts
         return json.loads(object_text), formatter_str
 
@@ -415,7 +415,7 @@ class RichDocNode(DocNode):
 
     @staticmethod
     def _deserialize_nodes(nodes_content: str) -> List[DocNode]:
-    
+
         def _deserialize_node(content: str) -> DocNode:
             formatted_node = json.loads(content)
             node = DocNode(content=formatted_node['content'], metadata=formatted_node['metadata'],
