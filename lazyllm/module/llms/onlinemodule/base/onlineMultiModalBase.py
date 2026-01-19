@@ -15,25 +15,14 @@ from lazyllm.components.utils.downloader.model_downloader import LLMType
 class OnlineMultiModalBase(LazyLLMOnlineBase, LLMBase):
     __lazyllm_registry_disable__ = True
 
-    def __init__(self, model_series: str, model: str = None, return_trace: bool = False, skip_auth: bool = False,
+    def __init__(self, model: str = None, return_trace: bool = False, skip_auth: bool = False,
                  api_key: Optional[Union[str, List[str]]] = None, url: str = None, type: Optional[str] = None, **kwargs):
         super().__init__(api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
         LLMBase.__init__(self, stream=False, init_prompt=False, type=type)
-        self._model_series = model_series
         self._model_name = model if model is not None else kwargs.get('model_name')
         self._base_url = url if url is not None else kwargs.get('base_url')
-        self._validate_model_config()
-
-    def _validate_model_config(self):
-        '''Validate model configuration'''
-        if not self._model_series:
-            raise ValueError('model_series cannot be empty')
         if not self._model_name:
-            lazyllm.LOG.warning(f'model_name not specified for {self._model_series}')
-
-    @property
-    def series(self):
-        return self._model_series
+            lazyllm.LOG.warning(f'model_name not specified for {self.series}')
 
     @property
     def type(self):
@@ -60,7 +49,7 @@ class OnlineMultiModalBase(LazyLLMOnlineBase, LLMBase):
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'OnlineMultiModalModule',
-                                 series=self._model_series,
+                                 series=self.series,
                                  name=self._model_name,
                                  return_trace=self._return_trace)
 

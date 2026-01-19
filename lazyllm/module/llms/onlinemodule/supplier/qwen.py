@@ -30,9 +30,9 @@ class QwenChat(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://dashscope.aliyuncs.com/', model: str = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        super().__init__(model_series='QWEN', api_key=api_key or lazyllm.config['qwen_api_key'],
-                                      model_name=model or lazyllm.config['qwen_model_name'] or QwenChat.MODEL_NAME,
-                                      base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
+        super().__init__(api_key=api_key or lazyllm.config['qwen_api_key'],
+                         model_name=model or lazyllm.config['qwen_model_name'] or QwenChat.MODEL_NAME,
+                         base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = dict()
         if stream:
@@ -281,7 +281,7 @@ class QwenEmbed(LazyLLMOnlineEmbedModuleBase):
                  api_key: str = None,
                  batch_size: int = 16,
                  **kw):
-        super().__init__('QWEN', embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name,
+        super().__init__(embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name,
                          batch_size=batch_size, **kw)
 
     def _encapsulated_data(self, text: Union[List, str], **kwargs):
@@ -323,7 +323,7 @@ class QwenRerank(LazyLLMOnlineRerankModuleBase):
                                    'rerank/text-rerank/text-rerank'),
                  embed_model_name: str = 'gte-rerank-v2',
                  api_key: str = None, **kw):
-        super().__init__('QWEN', embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name, **kw)
+        super().__init__(embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name, **kw)
 
     @property
     def type(self):
@@ -366,8 +366,7 @@ class QwenSTT(LazyLLMOnlineSTTModuleBase, QwenMultiModal):
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False,
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference', **kwargs):
-        super().__init__(model_series='QWEN', api_key=api_key, model_name=model,
-                         return_trace=return_trace, base_url=base_url, **kwargs)
+        super().__init__(api_key=api_key, model_name=model, return_trace=return_trace, base_url=base_url, **kwargs)
         QwenMultiModal.__init__(self, api_key=api_key, base_url=base_url, base_websocket_url=base_websocket_url)
 
     def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
@@ -401,7 +400,7 @@ class QwenText2Image(LazyLLMOnlineText2ImageModuleBase, QwenMultiModal):
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
                  **kwargs):
-        super().__init__(model_series='QWEN', api_key=api_key, model_name=model,
+        super().__init__(api_key=api_key, model_name=model,
                          return_trace=return_trace, base_url=base_url, **kwargs)
         QwenMultiModal.__init__(self, api_key=api_key, base_url=base_url, base_websocket_url=base_websocket_url)
 
@@ -574,8 +573,7 @@ class QwenTTS(LazyLLMOnlineTTSModuleBase, QwenMultiModal):
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
                  **kwargs):
-        super().__init__(model_series='QWEN', api_key=api_key, model_name=model,
-                         return_trace=return_trace, base_url=base_url, **kwargs)
+        super().__init__(api_key=api_key, model_name=model, return_trace=return_trace, base_url=base_url, **kwargs)
         QwenMultiModal.__init__(self, api_key=api_key, base_url=base_url, base_websocket_url=base_websocket_url)
         if self._model_name not in self.SYNTHESIZERS:
             raise ValueError(f'unsupported model: {self._model_name}. '
