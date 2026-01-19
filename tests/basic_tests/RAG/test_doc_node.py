@@ -109,17 +109,14 @@ class TestJsonDocNode:
 
     def test_get_content_with_formatter(self):
         '''Test get_content method with formatter extracts specified fields.'''
-        formatter = JsonFormatter('[key,nested]')
-        node = JsonDocNode(content=self.dict_content, formatter=formatter)
+        node = JsonDocNode(content=self.dict_content, formatter_str='[key,nested]')
         content = node.get_content(metadata_mode=MetadataMode.EMBED)
-        expected = '"value"\n{"a": 1, "b": 2}'
+        expected = '["value", {"a": 1, "b": 2}]'
         assert content == expected
 
     def test_get_content_non_embed_mode(self):
         '''Test get_content with non-EMBED mode returns text property.'''
-        formatter = JsonFormatter('[key,nested]')
-        node = JsonDocNode(content=self.dict_content, formatter=formatter)
-        # 非 EMBED 模式应该返回原始 JSON 字符串
+        node = JsonDocNode(content=self.dict_content, formatter_str='[key,nested]')
         content = node.get_content(metadata_mode=MetadataMode.LLM)
         expected = '{"key": "value", "nested": {"a": 1, "b": 2}}'
         assert content == expected

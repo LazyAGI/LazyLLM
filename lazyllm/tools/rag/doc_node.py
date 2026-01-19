@@ -377,13 +377,13 @@ class JsonDocNode(DocNode):
         return self.text
 
     def _serialize_content(self) -> str:
-        return "<json_doc_node>".join([self.text, self._formatter_str])
+        return '<json_doc_node>'.join([self.text, self._formatter_str])
 
     @staticmethod
     def _deserialize_content(content: str) -> Tuple[str, str]:
-        assert '<json_doc_node>' in content, 'Storage has beed destroyed, get invalid json content'
+        assert '<json_doc_node>' in content, 'Storage has been destroyed, get invalid json content'
         object_text, formatter_str = content.split('<json_doc_node>')
-        return object_text, formatter_str
+        return json.loads(object_text), formatter_str
 
 class RichDocNode(DocNode):
     def __init__(self, nodes: List[DocNode], uid: Optional[str] = None,
@@ -414,7 +414,7 @@ class RichDocNode(DocNode):
 
     @staticmethod
     def _deserialize_nodes(nodes_content: str) -> List[DocNode]:
-        assert '<rich_doc_node>' in nodes_content, 'Storage has beed destroyed, get invalid nodes content'
+        assert '<rich_doc_node>' in nodes_content, 'Storage has been destroyed, get invalid nodes content'
 
         def _deserialize_node(content: str) -> DocNode:
             formatted_node = json.loads(content)
