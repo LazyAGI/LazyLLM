@@ -21,11 +21,15 @@ def select_source_with_default_key(available_models,
     default_key = config['default_key'] if 'default_key' in config.get_all_configs() else None
     if default_source and default_key and default_source in available_models:
         return default_source, default_key
+
     for candidate in available_models.keys():
         candidate = candidate[:-len(type)]
         if config[f'{candidate}_api_key']:
             return candidate, None
-    raise KeyError(f'No api_key is configured for any of the models {available_models.keys()}.')
+
+    excepted = [f'{config.prefix}_{k[:-len(type)]}_api_key'.upper() for k in available_models.keys()]
+    raise KeyError(f'No api_key is configured for any of the models {available_models.keys()}. '
+                   f'You can set one of those environment: {excepted}')
 
 
 def check_and_add_config(key, description):
