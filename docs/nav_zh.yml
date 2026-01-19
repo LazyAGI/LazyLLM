@@ -37,7 +37,7 @@
   - 检索增强: Best Practice/rag.md
   - 函数调用: Best Practice/functionCall.md
   - 流式处理: Best Practice/stream.md
-
+  - 继承即注册: Best Practice/Features/AutoRegistry.md
 - 高级主题:
   - 贡献指南: Advanced Topics/contribution.md
   - 更新日志: Advanced Topics/changelog.md
