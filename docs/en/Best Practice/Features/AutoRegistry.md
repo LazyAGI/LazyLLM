@@ -92,7 +92,7 @@ As shown in the figure, LazyLLM Online modules adopt a layered inheritance struc
 - Top-level Base class: LazyLLMOnlineBase class, used to define the unified Online namespace (`lazyllm.online`)
 
 - Capability Base classes
-    - Capability families such as LazyLLMOnlineChatModuleBase, OnlineEmbeddingModuleBase, and OnlineMultiModalBase, used to define major capability groups. Among them, `LazyLLMOnlineChatModuleBase` defines the `lazyllm.online.chat` group, while the other two classes skip group registration, letting capability subclasses register specific capability tags.
+    - Capability families such as `LazyLLMOnlineChatModuleBase`, `OnlineEmbeddingModuleBase`, and `OnlineMultiModalBase`, serve as bases for major capability groups. Among them, `LazyLLMOnlineChatModuleBase` defines the `lazyllm.online.chat` group, while the other two classes skip group registration, letting capability subclasses register specific capability tags.
 
     - Capability subclasses such as `LazyLLMOnlineRerankModuleBase`, `LazyLLMOnlineTTSModuleBase`, and `LazyLLMOnlineText2ImageModuleBase`. These define specific capability groups such as `lazyllm.online.rerank`, `lazyllm.online.tts`, etc.
 
