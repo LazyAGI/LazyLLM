@@ -1,15 +1,25 @@
-from pydantic import BaseModel, Field
-from typing import Dict, List, Optional, Any
+from pydantic import BaseModel, Field, BeforeValidator
+from typing import Dict, List, Optional, Any, Annotated
 from enum import Enum
 from uuid import uuid4
 from datetime import datetime
 
+class TransferParams(BaseModel):
+    mode: Optional[str] = 'cp'  # cp or mv
+    target_algo_id: str
+    target_doc_id: str
+    target_kb_id: str
+
+
+EmptyTransfer = Annotated[TransferParams | None, BeforeValidator(lambda v: None if v == {} else v)]
 
 class FileInfo(BaseModel):
     file_path: Optional[str] = None
     doc_id: Optional[str] = None
-    metadata: Optional[Dict[str, Any]] = {}
+    metadata: Optional[Dict[str, Any]] = Field(default_factory=dict)
     reparse_group: Optional[str] = None
+    transformed_file_path: Optional[str] = None
+    transfer_params: EmptyTransfer = None
 
 
 class DBInfo(BaseModel):
@@ -72,6 +82,7 @@ class TaskType(str, Enum):
     DOC_DELETE = 'DOC_DELETE'
     DOC_UPDATE_META = 'DOC_UPDATE_META'
     DOC_REPARSE = 'DOC_REPARSE'
+    DOC_TRANSFER = 'DOC_TRANSFER'
 
 
 def _get_task_type_weight(task_type: str) -> int:
@@ -81,6 +92,7 @@ def _get_task_type_weight(task_type: str) -> int:
         TaskType.DOC_UPDATE_META.value: 30,
         TaskType.DOC_ADD.value: 100,
         TaskType.DOC_REPARSE.value: 100,
+        TaskType.DOC_TRANSFER.value: 100,
     }
     return weight_map.get(task_type, 100)
 

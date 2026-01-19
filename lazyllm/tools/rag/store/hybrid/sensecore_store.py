@@ -2,7 +2,6 @@ import os
 import json
 import uuid
 import time
-import random
 import requests
 
 from pydantic import BaseModel, Field
@@ -11,14 +10,16 @@ from typing import Optional, List, Dict, Any, Union, Set
 
 from ..store_base import (LazyLLMStoreBase, StoreCapability, LAZY_ROOT_NAME, IMAGE_PATTERN, INSERT_BATCH_SIZE,
                           DEFAULT_KB_ID, SegmentType)
-from ..utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path
+from ..utils import upload_data_to_s3, download_data_from_s3, fibonacci_backoff, create_file_path, presign_obj_from_s3
 
 from ...data_type import DataType
 from ...global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 
-from lazyllm import warp, pipeline, LOG, config
+from lazyllm import warp, pipeline, LOG, config, package
 from lazyllm.common import override
 from lazyllm.thirdparty import boto3
+
+PRESIGN_EXPIRE_TIME = 3600 * 24 * 7
 
 
 class Segment(BaseModel):
@@ -37,6 +38,7 @@ class Segment(BaseModel):
     answer: Optional[str] = ''
     image_keys: Optional[List[str]] = Field(default_factory=list)
     number: Optional[int] = 0
+    copy_source: Optional[Dict[str, str]] = Field(default_factory=dict)
 
 
 class SenseCoreStore(LazyLLMStoreBase):
@@ -48,6 +50,7 @@ class SenseCoreStore(LazyLLMStoreBase):
         self._uri = uri
         self._s3_config = kwargs.get('s3_config')
         self._image_url_config = kwargs.get('image_url_config')
+        self._uploaded_image_keys = set()
 
     @property
     def dir(self):
@@ -68,38 +71,75 @@ class SenseCoreStore(LazyLLMStoreBase):
         LOG.info(f'[SenseCore Store - check_s3] uploaded warmup.txt to {self._s3_config["bucket_name"]}')
         return
 
+    def _upload_image_if_needed(self, file_path: str, obj_key: str):
+        if obj_key in self._uploaded_image_keys:
+            return
+
+        with open(file_path, 'rb') as f:
+            upload_data_to_s3(
+                f.read(),
+                bucket_name=self._s3_config['bucket_name'],
+                object_key=obj_key,
+                aws_access_key_id=self._s3_config['access_key'],
+                aws_secret_access_key=self._s3_config['secret_access_key'],
+                use_minio=self._s3_config['use_minio'],
+                endpoint_url=self._s3_config['endpoint_url']
+            )
+
+        self._uploaded_image_keys.add(obj_key)
+
     def _serialize_data(self, data: dict) -> Dict:  # noqa: C901
         data = dict(data)
         content = json.dumps(data.get('content', ''), ensure_ascii=False)
         matches = IMAGE_PATTERN.findall(content)
+        doc_id = data.get('doc_id', '')
+        kb_id = data.get(RAG_KB_ID, DEFAULT_KB_ID)
         for _, image_path in matches:
             if image_path.startswith('lazyllm'):
                 continue
             image_file_name = os.path.basename(image_path)
-            obj_key = f'lazyllm/images/{image_file_name}'
+            obj_key = f'lazyllm/images/{kb_id}/{doc_id}/{image_file_name}'
             try:
                 prefix = config['image_path_prefix']
             except Exception:
                 prefix = os.getenv('RAG_IMAGE_PATH_PREFIX', '')
             file_path = create_file_path(path=image_path, prefix=prefix)
             try:
-                with open(file_path, 'rb') as f:
-                    upload_data_to_s3(f.read(), bucket_name=self._s3_config['bucket_name'], object_key=obj_key,
-                                      aws_access_key_id=self._s3_config['access_key'],
-                                      aws_secret_access_key=self._s3_config['secret_access_key'],
-                                      use_minio=self._s3_config['use_minio'],
-                                      endpoint_url=self._s3_config['endpoint_url'])
-                    content = content.replace(image_path, obj_key)
+                self._upload_image_if_needed(file_path, obj_key)
+                content = content.replace(image_path, obj_key)
             except FileNotFoundError:
                 LOG.error(f'Cannot find image path: {image_path} (local path {file_path}), skip...')
             except Exception as e:
                 LOG.error(f'Error when uploading `{image_path}` {e!r}')
-            finally:
-                time.sleep(0.1 + random.random() * 0.4)
         data['content'] = json.loads(content)
 
+        # special requirement: item called `table_image_map` in metadata, need to upload to s3
+        if data.get('meta', {}).get('table_image_map', {}):
+            for k, md_info in data['meta']['table_image_map'].items():
+                matches = IMAGE_PATTERN.findall(md_info)
+                if not matches:
+                    continue
+                image_path = matches[0][1]
+                if image_path.startswith('lazyllm'):
+                    continue
+                image_name = os.path.basename(image_path)
+                obj_key = f'lazyllm/images/{kb_id}/{doc_id}/{image_name}'
+                try:
+                    prefix = config['image_path_prefix']
+                except Exception:
+                    prefix = os.getenv('RAG_IMAGE_PATH_PREFIX', '')
+                file_path = create_file_path(path=image_path, prefix=prefix)
+                try:
+                    self._upload_image_if_needed(file_path, obj_key)
+                    md_info = md_info.replace(image_path, obj_key)
+                    data['meta']['table_image_map'][k] = md_info
+                except FileNotFoundError:
+                    LOG.error(f'Cannot find image: {image_path} (local path {file_path}, obj key {obj_key}), skip...')
+                except Exception as e:
+                    LOG.error(f'Error when uploading `{image_path}` (local path {file_path}, obj key {obj_key}) {e!r}')
+
         if data.get('group') == LAZY_ROOT_NAME:
-            obj_key = f'lazyllm/lazyllm_root/{data.get("uid")}.json'
+            obj_key = f"lazyllm/lazyllm_root/{kb_id}/{doc_id}/{data.get('uid')}.json"
             upload_data_to_s3(content.encode('utf-8'), bucket_name=self._s3_config['bucket_name'], object_key=obj_key,
                               aws_access_key_id=self._s3_config['access_key'],
                               aws_secret_access_key=self._s3_config['secret_access_key'],
@@ -114,6 +154,12 @@ class SenseCoreStore(LazyLLMStoreBase):
                           parent=data.get('parent', ''),
                           global_meta=json.dumps(data.get('global_meta', {}), ensure_ascii=False),
                           answer=data.get('answer', ''), number=data.get('number', 0))
+        if len(data.get('copy_source', {})):
+            segment.copy_source = {
+                'dataset_id': data.get('copy_source', {}).get(RAG_KB_ID, DEFAULT_KB_ID),
+                'document_id': data.get('copy_source', {}).get(RAG_DOC_ID, ''),
+                'segment_id': data.get('copy_source', {}).get('uid', '')
+            }
         # image extract
         if isinstance(segment.content, str):
             target = segment.content
@@ -126,14 +172,9 @@ class SenseCoreStore(LazyLLMStoreBase):
         if data.get('type') == SegmentType.IMAGE.value and data.get('image_keys'):
             image_path = data.get('image_keys', [])[0]
             image_file_name = os.path.basename(image_path)
-            obj_key = f'lazyllm/images/{image_file_name}'
+            obj_key = f'lazyllm/images/{kb_id}/{doc_id}/{image_file_name}'
             try:
-                with open(image_path, 'rb') as f:
-                    upload_data_to_s3(f.read(), bucket_name=self._s3_config['bucket_name'], object_key=obj_key,
-                                      aws_access_key_id=self._s3_config['access_key'],
-                                      aws_secret_access_key=self._s3_config['secret_access_key'],
-                                      use_minio=self._s3_config['use_minio'],
-                                      endpoint_url=self._s3_config['endpoint_url'])
+                self._upload_image_if_needed(image_path, obj_key)
                 segment.image_keys = [obj_key]
             except FileNotFoundError:
                 LOG.error(f'Cannot find image path: {image_path} (local path {image_path}), skip...')
@@ -146,20 +187,15 @@ class SenseCoreStore(LazyLLMStoreBase):
                 if image_path.startswith('lazyllm'):
                     continue
                 image_file_name = os.path.basename(image_path)
-                obj_key = f'lazyllm/images/{image_file_name}'
+                obj_key = f'lazyllm/images/{kb_id}/{doc_id}/{image_file_name}'
                 try:
                     prefix = config['image_path_prefix']
                 except Exception:
                     prefix = os.getenv('RAG_IMAGE_PATH_PREFIX', '')
                 file_path = create_file_path(path=image_path, prefix=prefix)
                 try:
-                    with open(file_path, 'rb') as f:
-                        upload_data_to_s3(f.read(), bucket_name=self._s3_config['bucket_name'], object_key=obj_key,
-                                          aws_access_key_id=self._s3_config['access_key'],
-                                          aws_secret_access_key=self._s3_config['secret_access_key'],
-                                          use_minio=self._s3_config['use_minio'],
-                                          endpoint_url=self._s3_config['endpoint_url'])
-                        answer = answer.replace(image_path, obj_key)
+                    self._upload_image_if_needed(file_path, obj_key)
+                    answer = answer.replace(image_path, obj_key)
                 except FileNotFoundError:
                     LOG.error(f'Cannot find image path: {image_path} (local path {file_path}), skip...')
                 except Exception as e:
@@ -171,12 +207,12 @@ class SenseCoreStore(LazyLLMStoreBase):
             segment.answer = data['answer']
         return segment.model_dump()
 
-    def _deserialize_data(self, segment: Dict) -> Dict:
+    def _deserialize_data(self, segment: Dict, display: bool = False) -> Dict:
         data = {
             'uid': segment.get('segment_id', ''),
             'doc_id': segment.get('document_id', ''),
             'group': segment.get('group', ''),
-            'content': segment.get('content', ''),
+            'content': segment.get('content', '') if not display else segment.get('display_content'),
             'meta': json.loads(segment.get('meta', '{}')),
             'global_meta': json.loads(segment.get('global_meta', '{}')),
             'number': segment.get('number', 0),
@@ -199,6 +235,27 @@ class SenseCoreStore(LazyLLMStoreBase):
                                             use_minio=self._s3_config['use_minio'],
                                             endpoint_url=self._s3_config['endpoint_url'], encoding='utf-8')
             data['content'] = json.loads(content)
+
+        if display and data.get('meta', {}).get('table_image_map', {}):
+            for k, v in data['meta']['table_image_map'].items():
+                matches = IMAGE_PATTERN.findall(v)
+                if not matches:
+                    continue
+                image_path = matches[0][1]
+                if not image_path.startswith('lazyllm'):
+                    LOG.warning(f'[SenseCore Store]: table_image value must start with lazyllm, value: {image_path}')
+                    continue
+                url = presign_obj_from_s3(
+                    bucket_name=self._s3_config['bucket_name'],
+                    object_key=image_path,
+                    aws_access_key_id=self._s3_config['access_key'],
+                    aws_secret_access_key=self._s3_config['secret_access_key'],
+                    endpoint_url=self._s3_config.get('external_endpoint_url', self._s3_config['endpoint_url']),
+                    region_name=self._s3_config.get('region_name', 'us-east-1'),
+                    client_method='get_object',
+                    expires_in=PRESIGN_EXPIRE_TIME,
+                )
+                data['meta']['table_image_map'][k] = v.replace(image_path, url)
         return data
 
     def _create_filters_str(self, filters: Dict[str, Union[str, int, List, Set]]) -> str:
@@ -221,7 +278,7 @@ class SenseCoreStore(LazyLLMStoreBase):
             return ret_str[:-5]  # truncate the last ' and '
         return ret_str
 
-    def _upload_data_and_insert(self, data: List[dict]) -> str:
+    def _upload_data_and_insert(self, data: List[dict], job_type: str = 'insert') -> str:
         try:
             job_id = str(uuid.uuid4())
             groups = set()
@@ -245,11 +302,12 @@ class SenseCoreStore(LazyLLMStoreBase):
             url = urljoin(self._uri, 'v1/writerSegmentJob:submit')
             params = {'writer_segment_job_id': job_id}
             headers = {'Accept': 'application/json', 'Content-Type': 'application/json'}
-            payload = {'dataset_id': dataset_id or self._kb_id, 'file_key': obj_key, 'groups': groups}
+            payload = {'dataset_id': dataset_id or self._kb_id, 'file_key': obj_key,
+                       'groups': groups, 'job_type': job_type}
 
             response = requests.post(url, params=params, headers=headers, json=payload)
             response.raise_for_status()
-            LOG.info(f'SenseCore Store: insert task {job_id} submitted')
+            LOG.info(f'SenseCore Store: insert task {job_id} submitted, payload:{payload}')
         except Exception as e:
             LOG.error(f'SenseCore Store: insert task {job_id} failed: {e}')
             raise e
@@ -258,18 +316,25 @@ class SenseCoreStore(LazyLLMStoreBase):
     def _check_insert_job_status(self, job_id: str) -> None:
         url = urljoin(self._uri, f'v1/writerSegmentJobs/{job_id}')
         headers = {'Accept': 'application/json'}
-        for wait_time in fibonacci_backoff(max_retries=15):
+        check_start_time = time.time()
+        flag = False
+        for wait_time in fibonacci_backoff(max_retries=16):
             response = requests.get(url, headers=headers)
             response.raise_for_status()
             status = response.json()['state']
             if status == 2:
-                LOG.info(f'SenseCore Store: insert task {job_id} finished')
-                return
+                flag = True
+                break
             elif status == 3:
-                raise Exception(f'Insert task {job_id} failed')
+                break
             else:
                 time.sleep(wait_time)
-        raise Exception(f'Insert task {job_id} failed after seconds')
+        check_end_time = time.time()
+        if not flag:
+            LOG.error(f'SenseCore Store: insert task {job_id} failed after {check_end_time - check_start_time}s')
+            raise Exception(f'Insert task {job_id} failed after {check_end_time - check_start_time}s')
+        LOG.info(f'SenseCore Store: insert task {job_id} finished after {check_end_time - check_start_time}s')
+        return
 
     def _get_group_name(self, collection_name: str) -> str:
         return collection_name.split('_')[-1] if 'lazyllm_root' not in collection_name else 'lazyllm_root'
@@ -278,12 +343,19 @@ class SenseCoreStore(LazyLLMStoreBase):
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         if not data: return True
         try:
+            upsert_start_time = time.time()
+            job_type = 'insert' if not len(data[0].get('copy_source', {})) else 'copy'
             with pipeline() as insert_ppl:
                 insert_ppl.get_ids = warp(self._upload_data_and_insert).aslist
                 insert_ppl.check_status = warp(self._check_insert_job_status)
 
-            batched_data = [data[i:i + INSERT_BATCH_SIZE] for i in range(0, len(data), INSERT_BATCH_SIZE)]
+            batched_data = [
+                package(data[i:i + INSERT_BATCH_SIZE], job_type) for i in range(0, len(data), INSERT_BATCH_SIZE)
+            ]
             insert_ppl(batched_data)
+            upsert_end_time = time.time()
+            LOG.info(f'[SenseCore Store - upsert] Upsert done! collection_name:{collection_name}, '
+                     f'Time:{upsert_end_time - upsert_start_time}s')
             return True
         except Exception as e:
             LOG.error(f'[SenseCore Store - upsert] insert task failed: {e}')
@@ -332,7 +404,7 @@ class SenseCoreStore(LazyLLMStoreBase):
             if uids:
                 payload['segment_ids'] = uids
             else:
-                payload['page_size'] = 100
+                payload['page_size'] = 1000
             segments = []
             while True:
                 response = requests.post(url, headers=headers, json=payload)
@@ -350,22 +422,10 @@ class SenseCoreStore(LazyLLMStoreBase):
                 payload['page_token'] = next_page_token
             if doc_ids:
                 segments = [segment for segment in segments if segment['document_id'] in doc_ids]
-            if kwargs.get('display'):
-                segments = self._apply_display(segments)
-            return [self._deserialize_data(s) for s in segments]
+            return [self._deserialize_data(s, display=kwargs.get('display', False)) for s in segments]
         except Exception as e:
             LOG.error(f'[SenseCore Store - get]:task failed: {e}')
             return []
-
-    def _apply_display(self, segments: List[dict]) -> List[dict]:
-        out = []
-        for s in segments:
-            if not s.get('is_active', True):
-                continue
-            if s.get('display_content'):
-                s['content'] = s['display_content']
-            out.append(s)
-        return out
 
     def _multi_modal_process(self, query: str, images: List[str]):
         urls = []
@@ -417,14 +477,11 @@ class SenseCoreStore(LazyLLMStoreBase):
             payload = {'query': query, 'hybrid_search_datasets': hybrid_search_datasets, 'hybrid_search_type': 2,
                        'top_k': topk, 'filters': filter_str, 'group': self._get_group_name(collection_name),
                        'embedding_model': embed_key, 'images': images}
-            response = requests.post(url, headers=headers, json=payload)
+            response = requests.post(url, headers=headers, json=payload, timeout=60)
             response.raise_for_status()
             segments = response.json()['segments']
-            segments = [s for s in segments if s['is_active']]
-            for s in segments:
-                if len(s.get('display_content', '')):
-                    s['content'] = s['display_content']
-            return [self._deserialize_data(s) for s in segments]
+            segments = [s for s in segments if s.get('is_active', True)]
+            return [self._deserialize_data(s, display=True) for s in segments]
         except Exception as e:
             LOG.error(f'SenseCore Store: query task failed: {e}')
             raise e

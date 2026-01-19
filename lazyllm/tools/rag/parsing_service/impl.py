@@ -41,9 +41,12 @@ class _Processor:
         return self._reader
 
     def add_doc(self, input_files: List[str], ids: Optional[List[str]] = None,  # noqa: C901
-                metadatas: Optional[List[Dict[str, Any]]] = None, kb_id: Optional[str] = None):
+                metadatas: Optional[List[Dict[str, Any]]] = None, kb_id: Optional[str] = None,
+                transfer_mode: Optional[str] = None, target_kb_id: Optional[str] = None,
+                target_doc_ids: Optional[List[str]] = None):
         try:
             if not input_files: return
+            add_start = time.time()
             if not ids: ids = [gen_docid(path) for path in input_files]
             if metadatas is None:
                 metadatas = [{} for _ in input_files]
@@ -52,24 +55,76 @@ class _Processor:
                 metadata.setdefault(RAG_DOC_PATH, path)
                 metadata.setdefault(RAG_KB_ID, kb_id or DEFAULT_KB_ID)
             kb_id = metadatas[0].get(RAG_KB_ID, DEFAULT_KB_ID) if kb_id is None else kb_id
-            root_nodes = self._reader.load_data(input_files, metadatas, split_nodes_by_type=True)
+
+            load_start = time.time()
+            if transfer_mode is None:
+                root_nodes = self._reader.load_data(input_files, metadatas, split_nodes_by_type=True)
+            else:
+                if transfer_mode not in ('cp', 'mv'):
+                    raise ValueError(f'Invalid transfer mode: {transfer_mode}')
+                if len(ids) != len(target_doc_ids):
+                    raise ValueError(f'The length of doc_ids and target_doc_ids must be the same. '
+                                    f'doc_ids:{ids}, target_doc_ids:{target_doc_ids}')
+                doc_id_map = {ids[i]: (target_doc_ids[i], metadatas[i]) for i in range(len(ids))}
+
+                root_nodes: List[DocNode] = self._store.get_nodes(doc_ids=ids, group=LAZY_ROOT_NAME, kb_id=kb_id)
+                root_nodes = [
+                    n.copy(
+                        global_metadata={
+                            RAG_KB_ID: target_kb_id, RAG_DOC_ID: doc_id_map[n.global_metadata[RAG_DOC_ID]][0]
+                        },
+                        metadata=doc_id_map[n.global_metadata[RAG_DOC_ID]][1]
+                    ) for n in root_nodes
+                ]
+            load_time = time.time() - load_start
+
             schema_futures = []
             schema_errors: List[Exception] = []
-            if self._schema_extractor:
+            # run schema extraction in parallel
+            if self._schema_extractor and not transfer_mode:
                 doc_to_root_nodes = defaultdict(list)
                 for n in root_nodes[LAZY_ROOT_NAME]:
                     doc_to_root_nodes[n.global_metadata.get(RAG_DOC_ID)].append(n)
-
+ 
                 if doc_to_root_nodes:
                     for nodes in doc_to_root_nodes.values():
                         schema_futures.append(
                             self._thread_pool.submit(self._schema_extractor, nodes, algo_id=self._algo_id)
                         )
 
-            for k, v in root_nodes.items():
-                if not v: continue
-                self._store.update_nodes(self._set_nodes_number(v))
-                self._create_nodes_recursive(v, k)
+            if transfer_mode is None:
+                for k, v in root_nodes.items():
+                    if not v: continue
+                    self._store.update_nodes(self._set_nodes_number(v))
+                    self._create_nodes_recursive(v, k)
+            else:
+                self._store.update_nodes(root_nodes, copy=True)
+                root_uid_map = {n._copy_source.get('uid'): n.uid for n in root_nodes}
+                def _copy_segments_recursive(p_uid_map: dict, p_name: str, **kwargs):
+                    for group_name in self._store.activated_groups():
+                        group = self._node_groups.get(group_name)
+                        if group is None:
+                            raise ValueError(f'Node group {group_name} does not exist. Please check the group name '
+                                            'or add a new one through `create_node_group`.')
+                        if group['parent'] == p_name:
+                            nodes = self._store.get_nodes(doc_ids=ids, group=LAZY_ROOT_NAME, kb_id=kb_id)
+                            nodes = [
+                                n.copy(
+                                    global_metadata={
+                                        RAG_KB_ID: target_kb_id, RAG_DOC_ID: doc_id_map[
+                                            n.global_metadata[RAG_DOC_ID]
+                                        ][0]
+                                    },
+                                    metadata=doc_id_map[n.global_metadata[RAG_DOC_ID]][1]
+                                ) for n in nodes
+                            ]
+                            uid_map = {}
+                            for n in nodes:
+                                uid_map[n._copy_source.get('uid')] = n.uid
+                                n.parent = p_uid_map.get(n.parent, None) if n.parent else None
+                            self._store.update_nodes(nodes, copy=True)
+                            if nodes: _copy_segments_recursive(uid_map, group_name)
+                _copy_segments_recursive(p_uid_map=root_uid_map, p_name=LAZY_ROOT_NAME)
 
             for future in schema_futures:
                 try:
@@ -79,7 +134,9 @@ class _Processor:
                     schema_errors.append(exc)
             if schema_errors:
                 raise schema_errors[0]
-            LOG.info('Add documents done!')
+            add_time = time.time() - add_start
+            LOG.info(f'[_Processor - add_doc] Add documents done! files:{input_files}, '
+                     f'Total Time: {load_time}s, Load Time: {add_time}s')
         except Exception as e:
             LOG.error(f'Add documents failed: {e}, {traceback.format_exc()}')
             raise e

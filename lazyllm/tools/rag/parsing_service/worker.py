@@ -35,6 +35,8 @@ class DocumentProcessorWorker(ModuleBase):
                 table_name=WAITING_TASK_QUEUE_TABLE_INFO['name'],
                 columns=WAITING_TASK_QUEUE_TABLE_INFO['columns'],
                 db_config=self._db_config,
+                order_by='task_score',
+                order_desc=False,
             )
             self._finished_task_queue = Queue(
                 table_name=FINISHED_TASK_QUEUE_TABLE_INFO['name'],
@@ -147,6 +149,34 @@ class DocumentProcessorWorker(ModuleBase):
             except Exception as e:
                 LOG.error(f'[DocumentProcessorWorker._Impl] Task-{task_id}: execute reparse task failed, error: {e}')
                 raise e
+        
+        def _exec_transfer_task(self, processor: _Processor, task_id: str, payload: dict):
+            try:
+                file_infos = payload.get('file_infos')
+                kb_id = payload.get('kb_id', None)
+                input_files = []
+                ids = []
+                metadatas = []
+
+                transfer_mode = None
+                target_kb_id = None
+                target_doc_ids = []
+
+                for file_info in file_infos:
+                    input_files.append(file_info.get('file_path'))
+                    ids.append(file_info.get('doc_id'))
+                    metadatas.append(file_info.get('metadata'))
+                    if transfer_mode is None:
+                        transfer_mode = file_info.get('transfer_params', {}).get('mode')
+                    if target_kb_id is None:
+                        target_kb_id = file_info.get('transfer_params', {}).get('target_kb_id')
+                    target_doc_ids.append(file_info.get('transfer_params', {}).get('target_doc_id'))
+                processor.add_doc(input_files=input_files, ids=ids, metadatas=metadatas, kb_id=kb_id,
+                                  transfer_mode=transfer_mode, target_kb_id=target_kb_id, target_doc_ids=target_doc_ids)
+
+            except Exception as e:
+                LOG.error(f'[DocumentProcessorWorker._Impl] Task-{task_id}: execute transfer task failed, error: {e}')
+                raise e
 
         def _exec_delete_task(self, processor: _Processor, task_id: str, payload: dict):
             try:
@@ -220,6 +250,8 @@ class DocumentProcessorWorker(ModuleBase):
                         self._exec_delete_task(processor, task_id, payload)
                     elif task_type == TaskType.DOC_UPDATE_META.value:
                         self._exec_update_meta_task(processor, task_id, payload)
+                    elif task_type == TaskType.DOC_TRANSFER.value:
+                        self._exec_transfer_task(processor, task_id, payload)
                     else:
                         raise ValueError(f'[DocumentProcessorWorker._Impl] Unknown task type: {task_type}')
 

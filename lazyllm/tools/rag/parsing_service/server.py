@@ -14,7 +14,8 @@ from lazyllm.thirdparty import fastapi
 
 from .base import (
     ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
-    TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest, _calculate_task_score
+    TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest, TransferParams,
+    _calculate_task_score
 )
 from .worker import DocumentProcessorWorker as Worker
 from .queue import _SQLBasedQueue as Queue
@@ -260,8 +261,7 @@ class DocumentProcessor(ModuleBase):
             self._lazy_init()
             if self._shutdown:
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
-            payload = request.model_dump()
-            LOG.info(f'[DocumentProcessor] Received add doc request: {payload}')
+            LOG.info(f'[DocumentProcessor] Received add doc request (raw): {request.model_dump()}')
             task_id = request.task_id
             algo_id = request.algo_id
             file_infos = request.file_infos
@@ -273,24 +273,65 @@ class DocumentProcessor(ModuleBase):
             # NOTE: No idempotency key check, should be handled by the caller!
             new_file_ids = []
             reparse_file_ids = []
+
+            transfer_mode = None
+            target_algo_id = None
+            target_kb_id = None
+
             for file_info in file_infos:
-                if self._path_prefix:
-                    file_info.file_path = create_file_path(path=file_info.file_path, prefix=self._path_prefix)
+                parse_file_path = file_info.transformed_file_path if \
+                    file_info.transformed_file_path else file_info.file_path
+                file_info.file_path = create_file_path(parse_file_path, prefix=self._path_prefix)
                 if file_info.reparse_group is not None:
                     reparse_file_ids.append(file_info.doc_id)
                 else:
                     new_file_ids.append(file_info.doc_id)
+                    if file_info.transfer_params:
+                        if target_algo_id is not None and target_algo_id != file_info.transfer_params.target_algo_id:
+                            raise fastapi.HTTPException(
+                                status_code=400,
+                                detail='transfer_params.target_algo_id must be the same for all files'
+                            )
+                        if target_kb_id is not None and target_kb_id != file_info.transfer_params.target_kb_id:
+                            raise fastapi.HTTPException(
+                                status_code=400,
+                                detail='transfer_params.target_kb_id must be the same for all files'
+                            )
+                        if transfer_mode is not None and transfer_mode != file_info.transfer_params.mode:
+                            raise fastapi.HTTPException(
+                                status_code=400,
+                                detail='transfer_params.mode must be the same for all files'
+                            )
+                        # NOTE: currently we only support file transfer in the same algorithm
+                        if file_info.transfer_params.target_algo_id != algo_id:
+                            raise fastapi.HTTPException(
+                                status_code=400,
+                                detail='transfer_params.target_algo_id must be the same for all files'
+                            )
+                        target_algo_id = file_info.transfer_params.target_algo_id
+                        target_kb_id = file_info.transfer_params.target_kb_id
+                        transfer_mode = file_info.transfer_params.mode
+                        if transfer_mode not in ['cp', 'mv']:
+                            raise fastapi.HTTPException(
+                                status_code=400,
+                                detail='transfer_params.mode must be one of [cp, mv]'
+                            )
+
             if new_file_ids and reparse_file_ids:
                 raise fastapi.HTTPException(
                     status_code=400,
                     detail='new_file_ids and reparse_file_ids cannot be specified at the same time'
                 )
-            if new_file_ids:
+            if transfer_mode:
+                task_type = TaskType.DOC_TRANSFER.value
+            elif new_file_ids:
                 task_type = TaskType.DOC_ADD.value
             elif reparse_file_ids:
                 task_type = TaskType.DOC_REPARSE.value
             else:
                 raise fastapi.HTTPException(status_code=400, detail='no input files or reparse group specified')
+            payload = request.model_dump()
+            LOG.info(f'[DocumentProcessor] Received add doc request: {payload}')
             payload_json = json.dumps(payload, ensure_ascii=False)
 
             try:
@@ -321,8 +362,7 @@ class DocumentProcessor(ModuleBase):
             self._lazy_init()
             if self._shutdown:
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
-            payload = request.model_dump()
-            LOG.info(f'update doc meta for {payload}')
+            LOG.info(f'[DocumentProcessor] Received update meta request (raw): {request.model_dump()}')
             task_id = request.task_id
             algo_id = request.algo_id
             file_infos = request.file_infos
@@ -332,6 +372,8 @@ class DocumentProcessor(ModuleBase):
             algorithm = self._get_algo(algo_id)
             if algorithm is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
+            payload = request.model_dump()
+            LOG.info(f'[DocumentProcessor] Received update meta request: {payload}')
             payload_json = json.dumps(payload, ensure_ascii=False)
             try:
                 task_type = TaskType.DOC_UPDATE_META.value
@@ -362,9 +404,7 @@ class DocumentProcessor(ModuleBase):
             self._lazy_init()
             if self._shutdown:
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
-            payload = request.model_dump()
-            LOG.info(f'[DocumentProcessor] Received delete doc request: {payload}')
-
+            LOG.info(f'[DocumentProcessor] Received delete doc request (raw): {request.model_dump()}')
             task_id = request.task_id
             algo_id = request.algo_id
             doc_ids = request.doc_ids
@@ -373,7 +413,8 @@ class DocumentProcessor(ModuleBase):
             algorithm = self._get_algo(algo_id)
             if algorithm is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
-
+            payload = request.model_dump()
+            LOG.info(f'[DocumentProcessor] Received delete doc request: {payload}')
             payload_json = json.dumps(payload, ensure_ascii=False)
             try:
                 task_type = TaskType.DOC_DELETE.value
@@ -404,8 +445,7 @@ class DocumentProcessor(ModuleBase):
             self._lazy_init()
             if self._shutdown:
                 raise fastapi.HTTPException(status_code=503, detail='Server is shutting down...')
-            payload = request.model_dump()
-            LOG.info(f'[DocumentProcessor] Received cancel task request: {payload}')
+            LOG.info(f'[DocumentProcessor] Received cancel task request (raw): {request.model_dump()}')
             task_id = request.task_id
             try:
                 # NOTE: only the task in waiting state can be canceled

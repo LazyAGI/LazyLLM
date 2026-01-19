@@ -54,6 +54,7 @@ class DocNode:
         self.relevance_score = None
         self.similarity_score = None
         self._content_hash: Optional[str] = None
+        self._copy_source: Optional[dict] = None
 
     @property
     def uid(self) -> str:
@@ -280,13 +281,24 @@ class DocNode:
     def to_dict(self) -> Dict:
         return dict(content=self._content, embedding=self.embedding, metadata=self.metadata)
 
-    def with_score(self, score):
+    def copy(self, global_metadata: dict=None, metadata: dict=None) -> 'DocNode':
         node = copy.copy(self)
+        node._copy_source = {'uid': self.uid, RAG_KB_ID: self.global_metadata.get(RAG_KB_ID),
+                             RAG_DOC_ID: self.global_metadata.get(RAG_DOC_ID)}
+        node._uid = str(uuid.uuid4())
+        if metadata:
+            node.metadata = node.metadata.update(metadata)
+        if global_metadata:
+            node.global_metadata = node.global_metadata.update(global_metadata)
+        return node
+
+    def with_score(self, score):
+        node = self.copy()
         node.relevance_score = score
         return node
 
     def with_sim_score(self, score):
-        node = copy.copy(self)
+        node = self.copy()
         node.similarity_score = score
         return node
 
