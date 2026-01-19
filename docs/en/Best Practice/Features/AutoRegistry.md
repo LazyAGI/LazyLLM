@@ -123,13 +123,13 @@ LazyLLM distinguishes two types of configuration keys:
 
     - e.g., `{supplier}_api_key`
 
-    - Independent of capability type; when first registered, LazyLLM adds the corresponding api key configuration for all suppliers
+    - Independent of capability type. When a class for a supplier is first registered, LazyLLM adds the corresponding API key configuration for that supplier.
 
 2. Capability-level configuration
 
     - e.g., `{supplier}_stt_model_name`
 
-    - Only present for the corresponding capability type; provides model name configuration for a supplier class of that capability
+    - Only present for the corresponding capability type; provides model name configuration for a supplier class of that capability.
 
 > Note: configuration key declaration is automatically handled by LazyLLM during registration. When extending a supplier class, you typically do not need to declare configuration explicitly unless the supplier has extra, specific requirements.
 
