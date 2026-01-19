@@ -67,8 +67,8 @@ class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
         if secret_key and isinstance(api_key, (tuple, list)):
             raise KeyError('multi-key is not support when secret_key is provided, please use single-key mode!')
         api_key = self._get_api_key(api_key, secret_key)
-        super().__init__(model_series='SENSENOVA', api_key=api_key, base_url=base_url,
-                                      model_name=model, stream=stream, return_trace=return_trace, **kwargs)
+        super().__init__(api_key=api_key, base_url=base_url, model_name=model,
+                         stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
         self._vlm_force_format_input_with_files = True
@@ -230,8 +230,7 @@ class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
                  batch_size: int = 16,
                  **kw):
         api_key = self._get_api_key(api_key, secret_key)
-        super().__init__('SENSENOVA', embed_url, api_key, embed_model_name,
-                         batch_size=batch_size, **kw)
+        super().__init__(embed_url, api_key, embed_model_name, batch_size=batch_size, **kw)
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
         embeddings = response.get('embeddings', [])

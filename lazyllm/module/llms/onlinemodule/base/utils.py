@@ -34,7 +34,7 @@ def check_and_add_config(key, description):
 
 
 class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
-
+    _model_series = None
     def __init__(self, api_key: Optional[Union[str, List[str]]],
                  skip_auth: Optional[bool] = False, return_trace: bool = False):
         super().__init__(return_trace=return_trace)
@@ -43,6 +43,10 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self.__headers = [self._get_header(key) for key in (api_key if isinstance(api_key, list) else [api_key])]
         if config['cache_online_module']:
             self.use_cache()
+
+    @property
+    def series(self):
+        return self.__class__._model_series
 
     @property
     def _api_key(self):
@@ -61,7 +65,7 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return random.choice(self.__headers)
 
     @staticmethod
-    def __lazyllm_after_registry_hook__(group_name: str, name: str, isleaf: bool):
+    def __lazyllm_after_registry_hook__(cls, group_name: str, name: str, isleaf: bool):
 
         allowed = set(list(LLMType))
         config_type_dict = {
@@ -82,7 +86,7 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             subgroup = group_name.split('.')[-1]
             assert name.lower().endswith(subgroup), f'Class name {name} must follow \
                 the schema of <SupplierType>, like <Qwen{subgroup.capitalize()}>'
-            supplier = name[:-len(subgroup)].lower()
+            cls._model_series = supplier = name[:-len(subgroup)].lower()
 
             check_and_add_config(key=f'{supplier}_api_key',
                                  description=f'The API key for {supplier}')

@@ -15,10 +15,8 @@ class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://api.minimaxi.com/v1/', model: str = 'MiniMax-M2',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        super().__init__(model_series='MINIMAX',
-                                      api_key=api_key or lazyllm.config['minimax_api_key'],
-                                      base_url=base_url, model_name=model, stream=stream,
-                                      return_trace=return_trace, **kwargs)
+        super().__init__(api_key=api_key or lazyllm.config['minimax_api_key'], base_url=base_url, model_name=model,
+                         stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         if stream:
             self._model_optional_params['stream'] = True
@@ -73,10 +71,8 @@ class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):
 
     def __init__(self, api_key: str = None, model: str = None,
                  url: str = 'https://api.minimaxi.com/v1/', return_trace: bool = False, **kwargs):
-        LazyLLMOnlineTTSModuleBase.__init__(self, model_series='MINIMAX',
-                                            api_key=api_key or lazyllm.config['minimax_api_key'],
-                                            model_name=model or MinimaxText2Image.MODEL_NAME, url=url,
-                                            return_trace=return_trace, **kwargs)
+        super.__init__(self, api_key=api_key or lazyllm.config['minimax_api_key'],
+                       model_name=model or MinimaxText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         if self._type == LLMType.IMAGE_EDITING:
             raise ValueError('MINIMAX series models do not support image editing now.')
         self._endpoint = 'image_generation'
@@ -151,10 +147,9 @@ class MinimaxTTS(LazyLLMOnlineTTSModuleBase):
                  return_trace: bool = False, **kwargs):
         if kwargs.pop('stream', False):
             raise ValueError('MinimaxTTS does not support streaming output, please set stream to False')
-        LazyLLMOnlineTTSModuleBase.__init__(self, model_series='MINIMAX',
-                                            api_key=api_key or lazyllm.config['minimax_api_key'],
-                                            model_name=model_name or MinimaxTTS.MODEL_NAME,
-                                            return_trace=return_trace, base_url=base_url, **kwargs)
+        super().__init__(api_key=api_key or lazyllm.config['minimax_api_key'],
+                         model_name=model_name or MinimaxTTS.MODEL_NAME,
+                         return_trace=return_trace, base_url=base_url, **kwargs)
         self._endpoint = 't2a_v2'
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any], base_url: Optional[str] = None,
