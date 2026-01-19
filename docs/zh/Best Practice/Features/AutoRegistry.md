@@ -92,7 +92,7 @@ LazyLLM 通过 Base 类层级区分模块能力类型。扩展模块时，必须
 - 顶层 Base 类：LazyLLMOnlineBase 类，用来定义 Online 模块的统一命名空间（`lazyllm.online`）
 
 - 能力 Base 类
-    - 能力大类，如 LazyLLMOnlineChatModuleBase, OnlineEmbeddingModuleBase 以及 OnlineMultiModalBase 类，用来定义能力大分组。其中 `LazyLLMOnlineChatModuleBase` 类定义 `lazyllm.online.chat` 分组，其他两个类则会跳过分组注册，由能力子类注册具体的能力标签。
+    - 能力大类，如 `LazyLLMOnlineChatModuleBase`, `OnlineEmbeddingModuleBase` 以及 `OnlineMultiModalBase` 类，作为主要能力分组的基类。其中 `LazyLLMOnlineChatModuleBase` 类定义 `lazyllm.online.chat` 分组，其他两个类则会跳过分组注册，由能力子类注册具体的能力标签。
 
     - 能力子类，如 `LazyLLMOnlineRerankModuleBase`, `LazyLLMOnlineTTSModuleBase` 以及 `LazyLLMOnlineText2ImageModuleBase`。用来定义具体的能力分组，比如 `lazyllm.online.rerank`, `lazyllm.online.tts` 等。
 
