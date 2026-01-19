@@ -64,7 +64,6 @@ class ChineseCorrector:
             base_llm = llm
         else:
             base_llm = AutoModel(source=source, model=model)
-            # base_llm = configs.get_llm_model(source=source, model=model, system_prompt=system_prompt)
         self.base_llm = base_llm.prompt(lazyllm.AlpacaPrompter(DEFAULT_INSTRUCTION))
 
     def _predict(self, sentences: List[str], max_tokens: Optional[int] = None,
@@ -157,32 +156,3 @@ class ChineseCorrector:
         elif not origin_ending and response_ending:
             response = response[:-1]
         return response
-
-if __name__ == '__main__':
-    '''
-    简单验证脚本：
-    - 构造 ChineseCorrector
-    - 对几条示例句子做纠错
-    - 打印 source/target/errors
-    '''
-    examples = [
-        '今天天去公园玩儿真得很高心。',
-        '这个问题我己经解决了，不需要再帮忙了。',
-        '我喜欢吃苹果和香蕉，他们都很好吃。',
-        '今天天气真好',
-    ]
-
-    print('=== ChineseCorrector quick test ===')
-    print('Input sentences:')
-    for s in examples:
-        print(' -', s)
-    # llm = OnlineModule(model='deepseek-chat', source='deepseek')
-    corrector = ChineseCorrector(model='deepseek-chat', source='deepseek')
-    results = corrector.correct_batch(examples)
-
-    print('\nCorrection results:')
-    for i, item in enumerate(results):
-        print(f'\n#{i + 1}')
-        print('source:', item.get('source'))
-        print('target:', item.get('target'))
-        print('errors:', item.get('errors'))
