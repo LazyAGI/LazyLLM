@@ -63,7 +63,7 @@ LazyLLM 通过 Base 类层级区分模块能力类型。扩展模块时，必须
 
 模块类名必须遵循以下命名规则：
 
-```html
+```
 <SupplierName><TypeSuffix>
 ```
 
@@ -156,7 +156,7 @@ LazyLLM 区分两类配置项：
 
     如[2.2 章节](#22-类命名规范强约束)所述，类名必须满足：
 
-    ```html
+    ```
     <SupplierName><TypeSuffix>
     ```
 

@@ -63,7 +63,7 @@ Typical capability types include (examples):
 
 Module class names must follow the naming rule below:
 
-```html
+```
 <SupplierName><TypeSuffix>
 ```
 
@@ -156,7 +156,7 @@ In most cases, extending a new Online supplier class requires only three steps:
 
     As stated in [Section 2.2](#22-class-naming-convention-strict), the class name must follow:
 
-    ```html
+    ```
     <SupplierName><TypeSuffix>
     ```
 
