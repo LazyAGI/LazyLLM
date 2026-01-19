@@ -91,7 +91,7 @@ As shown in the figure, LazyLLM Online modules adopt a layered inheritance struc
 
 - Supplier classes: concrete service implementation classes, following the class naming requirements in [Section 2.2](#22-class-naming-convention-strict).
 
-![auto_registry.png](../assets/auto_registry.png)
+![auto_registry.png](../../assets/auto_registry.png)
 
 ### 3.2 Registration Results and Access
 
