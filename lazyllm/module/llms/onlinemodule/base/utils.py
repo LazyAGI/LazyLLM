@@ -35,6 +35,7 @@ def check_and_add_config(key, description):
 
 class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     _model_series = None
+
     def __init__(self, api_key: Optional[Union[str, List[str]]],
                  skip_auth: Optional[bool] = False, return_trace: bool = False):
         super().__init__(return_trace=return_trace)

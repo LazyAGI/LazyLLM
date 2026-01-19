@@ -71,8 +71,8 @@ class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):
 
     def __init__(self, api_key: str = None, model: str = None,
                  url: str = 'https://api.minimaxi.com/v1/', return_trace: bool = False, **kwargs):
-        super().__init__(self, api_key=api_key or lazyllm.config['minimax_api_key'],
-                       model_name=model or MinimaxText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
+        super().__init__(api_key=api_key or lazyllm.config['minimax_api_key'],
+                         model_name=model or MinimaxText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         if self._type == LLMType.IMAGE_EDITING:
             raise ValueError('MINIMAX series models do not support image editing now.')
         self._endpoint = 'image_generation'
