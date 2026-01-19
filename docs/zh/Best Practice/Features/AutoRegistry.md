@@ -16,20 +16,27 @@
 1. 能力分组（Group / Type）注册
 
     在 lazyllm 命名空间下创建或扩展对应的能力分组节点，例如：
+
     - `lazyllm.online.chat`
+
     - `lazyllm.online.stt`
+
     - `lazyllm.online.tts`
 
 2. 供应商类（Supplier Class）注册
 
     将具体实现类挂载到对应分组下，并提供统一的访问入口，例如：
+
     - `lazyllm.online.chat.doubao`
+
     - `lazyllm.online.stt.sensenova`
 
 3. 配置项声明（Configuration Keys）
 
     根据模块能力与供应商信息，自动声明所需的配置项（如 API Key、模型名等），比如：
+
     - `<supplier>_model_name`
+    
     - `<supplier>_stt_model_name`
 
 ## 2. 扩展 LazyLLM 的 Online 类

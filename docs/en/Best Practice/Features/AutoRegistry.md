@@ -16,20 +16,27 @@ When a module class meets the registration conditions, LazyLLM automatically per
 1. Capability group (Group / Type) registration
 
     Create or extend the corresponding capability group node under the lazyllm namespace, for example:
+
     - `lazyllm.online.chat`
+
     - `lazyllm.online.stt`
+
     - `lazyllm.online.tts`
 
 2. Supplier class registration
 
     Attach the concrete implementation class to the corresponding group and provide a unified access entry, for example:
+
     - `lazyllm.online.chat.doubao`
+
     - `lazyllm.online.stt.sensenova`
 
 3. Configuration key declaration
 
     Based on module capability and supplier information, automatically declare required configuration keys (such as API key, model name, etc.), for example:
+
     - `<supplier>_model_name`
+    
     - `<supplier>_stt_model_name`
 
 ## 2. Extending LazyLLM Online Classes
