@@ -107,8 +107,8 @@ After registration, modules can be accessed as follows:
 ```python
 import lazyllm
 
-doubao_chat_cls = lazyllm.online.chat.doubao(**kwargs)
-sensenova_stt_cls = lazyllm.online.stt.sensenova(**kwargs)
+doubao_chat = lazyllm.online.chat.doubao(**kwargs)
+sensenova_stt = lazyllm.online.stt.sensenova(**kwargs)
 ```
 
 The access path remains stable for users and does not depend on the module’s implementation path.
