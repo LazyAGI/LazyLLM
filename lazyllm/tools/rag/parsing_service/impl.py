@@ -64,7 +64,7 @@ class _Processor:
                     raise ValueError(f'Invalid transfer mode: {transfer_mode}')
                 if len(ids) != len(target_doc_ids):
                     raise ValueError(f'The length of doc_ids and target_doc_ids must be the same. '
-                                    f'doc_ids:{ids}, target_doc_ids:{target_doc_ids}')
+                                     f'doc_ids:{ids}, target_doc_ids:{target_doc_ids}')
                 doc_id_map = {ids[i]: (target_doc_ids[i], metadatas[i]) for i in range(len(ids))}
 
                 root_nodes: List[DocNode] = self._store.get_nodes(doc_ids=ids, group=LAZY_ROOT_NAME, kb_id=kb_id)
@@ -85,7 +85,7 @@ class _Processor:
                 doc_to_root_nodes = defaultdict(list)
                 for n in root_nodes[LAZY_ROOT_NAME]:
                     doc_to_root_nodes[n.global_metadata.get(RAG_DOC_ID)].append(n)
- 
+
                 if doc_to_root_nodes:
                     for nodes in doc_to_root_nodes.values():
                         schema_futures.append(
@@ -100,12 +100,13 @@ class _Processor:
             else:
                 self._store.update_nodes(root_nodes, copy=True)
                 root_uid_map = {n._copy_source.get('uid'): n.uid for n in root_nodes}
-                def _copy_segments_recursive(p_uid_map: dict, p_name: str, **kwargs):
+
+                def _copy_segments_recursive(p_uid_map: dict, p_name: str):
                     for group_name in self._store.activated_groups():
                         group = self._node_groups.get(group_name)
                         if group is None:
                             raise ValueError(f'Node group {group_name} does not exist. Please check the group name '
-                                            'or add a new one through `create_node_group`.')
+                                             'or add a new one through `create_node_group`.')
                         if group['parent'] == p_name:
                             nodes = self._store.get_nodes(doc_ids=ids, group=LAZY_ROOT_NAME, kb_id=kb_id)
                             nodes = [

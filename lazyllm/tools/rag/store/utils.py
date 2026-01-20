@@ -190,36 +190,36 @@ def presign_obj_from_s3(
     aws_access_key_id: Optional[str] = None,
     aws_secret_access_key: Optional[str] = None,
     endpoint_url: Optional[str] = None,
-    region_name: str = "us-east-1",
-    client_method: str = "get_object",
+    region_name: str = 'us-east-1',
+    client_method: str = 'get_object',
     expires_in: int = 3600,
     extra_params: Optional[Dict[str, Any]] = None,
 ) -> str:
 
-    spec = importlib.util.find_spec("botocore.client")
+    spec = importlib.util.find_spec('botocore.client')
     if spec is None:
         raise ImportError(
-            "Please install boto3 to use botocore module. "
-            "You can install it with `pip install boto3`"
+            'Please install boto3 to use botocore module. '
+            'You can install it with `pip install boto3`'
         )
     m = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(m)
     Config = m.Config
 
     s3_client = boto3.client(
-        "s3",
+        's3',
         region_name=region_name,
         endpoint_url=endpoint_url,
         aws_access_key_id=aws_access_key_id,
         aws_secret_access_key=aws_secret_access_key,
         config=Config(
-            signature_version="s3v4",
+            signature_version='s3v4',
         ),
     )
 
     params = {
-        "Bucket": bucket_name,
-        "Key": object_key,
+        'Bucket': bucket_name,
+        'Key': object_key,
     }
 
     if extra_params:
@@ -233,7 +233,7 @@ def presign_obj_from_s3(
         )
         return url
     except Exception as e:
-        LOG.error(f"Generate presigned url failed: {e}")
+        LOG.error(f'Generate presigned url failed: {e}')
         raise e
 
 def fibonacci_backoff(max_retries: int = INSERT_MAX_RETRIES):

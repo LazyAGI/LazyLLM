@@ -281,7 +281,7 @@ class DocNode:
     def to_dict(self) -> Dict:
         return dict(content=self._content, embedding=self.embedding, metadata=self.metadata)
 
-    def copy(self, global_metadata: dict=None, metadata: dict=None) -> 'DocNode':
+    def copy(self, global_metadata: dict = None, metadata: dict = None) -> 'DocNode':
         node = copy.copy(self)
         node._copy_source = {'uid': self.uid, RAG_KB_ID: self.global_metadata.get(RAG_KB_ID),
                              RAG_DOC_ID: self.global_metadata.get(RAG_DOC_ID)}

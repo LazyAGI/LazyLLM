@@ -120,8 +120,16 @@ WAITING_TASK_QUEUE_TABLE_INFO = {
          'comment': 'Calculated task score (for sorting, lower score is higher priority)'},
         {'name': 'message', 'data_type': 'string', 'nullable': False,
          'comment': 'Task message (json string, serialized from request body)'},
+        {'name': 'status', 'data_type': 'string', 'nullable': False, 'default': TaskStatus.WAITING.value,
+         'comment': 'Task status: WAITING, WORKING'},
+        {'name': 'worker_id', 'data_type': 'string', 'nullable': True,
+         'comment': 'Worker ID holding the lease'},
+        {'name': 'lease_expires_at', 'data_type': 'datetime', 'nullable': True,
+         'comment': 'Lease expiration time for in-progress task'},
         {'name': 'created_at', 'data_type': 'datetime', 'nullable': False,
-         'comment': 'Creation time (auto-generated)', 'default': datetime.now()},
+         'comment': 'Creation time (auto-generated)', 'default': datetime.now},
+        {'name': 'updated_at', 'data_type': 'datetime', 'nullable': False,
+         'comment': 'Last update time (auto-generated)', 'default': datetime.now},
     ]
 }
 
