@@ -1,7 +1,9 @@
 #include "lazyllm.hpp"
 #include <iostream>
 
-void addDocStr(pybind11::object obj, std::string docs) {
+namespace py = pybind11;
+
+void addDocStr(py::object obj, std::string docs) {
     PyObject* ptr = obj.ptr();
     if (Py_TYPE(ptr) == &PyCFunction_Type) {
         auto f = reinterpret_cast<PyCFunctionObject*>(ptr);
@@ -26,6 +28,6 @@ void addDocStr(pybind11::object obj, std::string docs) {
     }
 }
 
-void exportDoc(pybind11::module& m) {
-    m.def("add_doc", &addDocStr, "Add docstring to a function or method", pybind11::arg("obj"), pybind11::arg("docs"));
+void exportDoc(py::module& m) {
+    m.def("add_doc", &addDocStr, "Add docstring to a function or method", py::arg("obj"), py::arg("docs"));
 }
