@@ -119,15 +119,20 @@ def process_package(package_name_with_version, dependencies):
             version_spec = parse_caret_to_tilde_version(version_spec)
         return f'{package_name}{version_spec}'
     else:
-        logging.error(f'Error: Package "{package_name}" is not listed in the "dependencies" section of pyproject.toml.')
-        sys.exit(1)
+        raise RuntimeError(f'Package "{package_name}" is not listed in the "dependencies" section of pyproject.toml.')
 
 def install_multiple_packages(package_names_with_versions):
     dependencies = load_dependencies()
-    packages_to_install = []
+    packages_to_install, failed_msgs = [], []
     for package in package_names_with_versions:
-        package_with_version = process_package(package, dependencies)
-        packages_to_install.append(package_with_version)
+        try:
+            package_with_version = process_package(package, dependencies)
+            packages_to_install.append(package_with_version)
+        except RuntimeError as e:
+            failed_msgs.append(str(e))
+    if failed_msgs:
+        logging.error('\n'.join(failed_msgs))
+        exit(1)
     install_packages(packages_to_install)
 
 def install_mineru():

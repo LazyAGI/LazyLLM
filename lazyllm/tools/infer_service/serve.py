@@ -5,7 +5,7 @@ import threading
 from datetime import datetime
 from pydantic import BaseModel, Field
 from fastapi import HTTPException, Header  # noqa NID002
-from async_timeout import timeout
+from lazyllm.thirdparty import async_timeout
 
 import lazyllm
 from lazyllm.launcher import Status
@@ -156,7 +156,7 @@ class InferServer(ServerBase):
 
         # Sleep 5s for launch cmd.
         try:
-            async with timeout(5):
+            async with async_timeout.timeout(5):
                 while m.status() == Status.Cancelled:
                     await asyncio.sleep(1)
         except asyncio.TimeoutError:

@@ -10,7 +10,7 @@ import re
 from functools import partial
 import os
 import threading
-import tiktoken
+from lazyllm.thirdparty import tiktoken
 from lazyllm import config
 from pathlib import Path
 from lazyllm.thirdparty import nltk

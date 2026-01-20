@@ -1,5 +1,6 @@
 import os
 import sys
+import inspect
 import requests
 import ipaddress
 import importlib.abc
@@ -62,9 +63,12 @@ def patch_httpx_func(httpx, fname):
 
 def patch_httpx():
     import httpx
-    _old_httpx_func = httpx.request
+    sig = inspect.signature(_old_httpx_func := httpx.request)
+    proxy_name = 'proxy' if 'proxy' in sig.parameters else 'proxies'
 
     def new_httpx_func(method, url, **kwargs):
+        if (proxies := kwargs.pop('proxies', kwargs.pop('proxy', None))):
+            kwargs[proxy_name] = proxies
         if os.environ.get('http_proxy') and _is_ip_address_url(url):
             try:
                 return _old_httpx_func(method, url, **{**kwargs, **dict(trust_env=False)})
@@ -121,14 +125,14 @@ def patch_os_env(set_action: Callable[[str, str], None], unset_action: Callable[
     def new_setitem(self, key, value):
         old_setitem(self, key, value)
         if isinstance(key, bytes): key = key.decode('utf-8')
-        if key.lower().startswith('lazyllm_'): set_action(key, value)
+        set_action(key, value)
 
     old_delitem = os._Environ.__delitem__
 
     def new_delitem(self, key):
         old_delitem(self, key)
         if isinstance(key, bytes): key = key.decode('utf-8')
-        if key.lower().startswith('lazyllm_'): unset_action(key)
+        unset_action(key)
 
     os._Environ.__setitem__ = new_setitem
     os._Environ.__delitem__ = new_delitem
