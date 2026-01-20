@@ -2,8 +2,8 @@ name: C++ Extension Test
 on:
   workflow_dispatch:
   push:
-    branches:
-      - main
+    # branches:
+    #   - main
     paths-ignore:
       - "**.md"
       - ".git*"
