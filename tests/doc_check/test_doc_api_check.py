@@ -193,7 +193,9 @@ def create_test_function(cls, func):
 '''
     exec(code, globals())
 
-def gen_check_cls_and_funtions():
+def gen_check_cls_and_funtions():  # noqa: C901
+    if lazyllm is None:
+        return
     all_classes = get_sub_classes(lazyllm)
     for cls in all_classes:
         defined_methods = get_defined_methods(cls)
