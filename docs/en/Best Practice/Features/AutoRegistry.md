@@ -2,7 +2,7 @@
 
 ## 1. Design Background: Why LazyLLM Needs a Registration Mechanism
 
-LazyLLM’s positioning requires it to be a highly extensible framework.
+LazyLLM's positioning requires it to be a highly extensible framework.
 As the system evolves, multiple categories of extensible components have gradually formed inside the framework, for example:
 
 - Flow and Node for orchestration
@@ -16,12 +16,12 @@ First, **there are many components and the count keeps growing**.
 LazyLLM is not a closed system; both the framework itself and third-party developers continuously introduce new implementations. If every new component required changes to a centralized registry, the maintenance cost would grow rapidly.
 
 Second, **a unified, stable access entry is required**.
-From the user’s perspective, components should be accessed as lazyllm.xxx.yyy, without relying on specific module paths or file structure. This access pattern must remain stable even after implementation changes or refactors.
+From the user's perspective, components should be accessed as lazyllm.xxx.yyy, without relying on specific module paths or file structure. This access pattern must remain stable even after implementation changes or refactors.
 
 Third, **the extension threshold must be low**.
-Ideally, developers only need to “add a class” to integrate new capabilities into LazyLLM, without understanding or modifying complex registration procedures.
+Ideally, developers only need to "add a class" to integrate new capabilities into LazyLLM, without understanding or modifying complex registration procedures.
 
-Against this background, LazyLLM introduced and systematized the **inheritance-as-registration mechanism** to unify “component discovery, capability grouping, and access entry generation.”
+Against this background, LazyLLM introduced and systematized the **inheritance-as-registration mechanism** to unify "component discovery, capability grouping, and access entry generation."
 
 ## 2. Design Approach: Principles of the LazyLLM Registration Mechanism
 
@@ -33,13 +33,13 @@ Registration logic executes automatically at component definition time. By parsi
 
 The design philosophy of the LazyLLM registration mechanism can be summarized in one sentence:
 
-> Make “writing a class / function” itself complete registration.
+> Make "writing a class / function" itself complete registration.
 
 Around this goal, LazyLLM follows several explicit design principles.
 
-- Inheritance expresses semantics, not just code reuse
+- Inheritance determines which group path an implementation class should be registered under, not just for sharing implementation logic
 
-    In LazyLLM, inheriting a Base class does not merely “reuse parent logic”; it explicitly declares which capability system the class belongs to.
+    In LazyLLM, inheriting a Base class does not merely "reuse parent logic"; it explicitly declares which capability system the class belongs to.
 
 - Avoid explicit, centralized registration calls
 
@@ -52,9 +52,11 @@ Around this goal, LazyLLM follows several explicit design principles.
 
 - Expose a unified, callable entry to end users
 
-    The final result of registration is not a “class list” or “mapping table,” but a call experience like:
+    The final result of registration is not a "class list" or "mapping table," but a call experience like:
     ```python
     lazyllm.xxx.yyy(...)
+    # Example
+    lazyllm.online.chat(...)
     ```
 
 Under these principles, the registration mechanism is not a single utility class, but a structured system.
@@ -65,15 +67,15 @@ From the perspective of implementation and responsibility separation, the LazyLL
 
 1. LazyDict: the presentation layer of registration results
 
-    Solves “how users access and call after registration.”
+    Solves "how users access and call after registration."
 
 2. LazyLLMRegisterMetaClass: the core control layer of registration logic
 
-    Decides “whether a class is registered at definition time, where it is registered, and how it is exposed.”
+    Decides "whether a class is registered at definition time, where it is registered, and how it is exposed."
 
 3. Register decorator: the adaptation layer from functions to classes
 
-    Unifies “function-form capabilities” into the class-based registration system.
+    Unifies "function-form capabilities" into the class-based registration system.
 
 Each layer has clear responsibilities, but only through collaboration do they form the final effect seen in LazyLLM.
 
@@ -134,7 +136,22 @@ lazyllm.embed.OpenAI
 
 This rule applies only at the access layer and does not affect registration keys or class definitions.
 
-#### 2.3.4 Functional Calls and Default Implementations
+#### 2.3.4 Dynamic Default Key (default)
+
+LazyDict supports setting a dynamic default key for the current group to specify which implementation should be selected when the key is omitted.
+
+Example:
+
+```
+ld = LazyDict(name="ld", ALd=int, BLd=str)
+
+ld.set_default("ALd")
+ld.default      # -> int (illustrative)
+```
+
+After setting the default key, LazyDict will prioritize that entry in scenarios that require a default implementation (e.g., `lazyllm.<group>(...)`). The default key only affects resolution during access and invocation; it does not change actual registration entries.
+
+#### 2.3.5 Functional Calls and Default Implementations
 
 When a group contains only one implementation or a default implementation is explicitly set, LazyDict allows direct functional calls on the group:
 
@@ -150,7 +167,7 @@ lazyllm.embed.openai(...)
 
 Default implementation is maintained at runtime by the group registration container and is decoupled from specific implementation classes.
 
-#### 2.3.5 LazyDict Responsibility Boundaries
+#### 2.3.6 LazyDict Responsibility Boundaries
 
 It is important to clarify that LazyDict **does not participate in registration decisions** and does not determine implementation ownership.
 Its responsibilities are limited to:
@@ -171,7 +188,7 @@ It is then directly bound to `lazyllm.<group>` as the unified access entry for t
 
 ### 2.4 LazyLLMRegisterMetaClass: The Core Mechanism for Class Registration
 
-LazyLLM’s class registration behavior is controlled by a unified metaclass mechanism.
+LazyLLM's class registration behavior is controlled by a unified metaclass mechanism.
 All classes participating in registration are processed by this metaclass at definition time, which determines whether they enter the registry, which capability group they belong to, and whether to expose an access entry.
 
 This design binds registration behavior to the class lifecycle, rather than relying on explicit registration calls.
@@ -179,7 +196,7 @@ Developers only need to express semantics via inheritance relationships and nami
 
 Within the overall architecture, LazyLLMRegisterMetaClass is responsible for:
 
-- Parsing capability ownership information expressed by class structure
+- Parsing a class's inheritance structure to determine its group path and access entry
 - Organizing registrable implementation classes into corresponding capability groups
 - Producing necessary registration metadata for unified access entries
 
@@ -187,7 +204,7 @@ Rules for registration decisions, grouping logic, and boundary behaviors are exp
 
 ### 2.5 Register Decorator: Unified Entry for Function Registration
 
-LazyLLM’s registration system is built around “classes,” but in practice some capabilities are better expressed as functions.
+LazyLLM's registration system is built around "classes," but in practice some capabilities are better expressed as functions.
 To unify these two development styles, LazyLLM provides the Register decorator, which integrates function-form capabilities into the same registration mechanism.
 
 The Register decorator:
@@ -236,13 +253,13 @@ When the registration system detects a class name that matches the pattern above
 - **Bind the registration container to the `lazyllm.<group>` namespace**  
   For example, the `LazyDict` above is directly bound as `lazyllm.embed`, serving as the unified access entry for that group.
 
-- **Record the group’s path information in the registration system (supports hierarchical structures)**  
+- **Record the group's path information in the registration system (supports hierarchical structures)**  
   For example, in multi-level structures it can form group paths like `lazyllm.tool.search`.
 
-- **Write the group’s registration container into the global registry**  
+- **Write the group's registration container into the global registry**  
   All implementation classes inheriting from `LazyLLMEmbedBase` will be registered into this `LazyDict`.
 
-In this way, LazyLLM binds “capability group” definition to class structure rather than explicit configuration.
+In this way, LazyLLM binds "capability group" definition to class structure rather than explicit configuration.
 Group creation order follows module load order, and once created, a group can be reused by subsequent implementation classes.
 
 ### 3.2 Registration Decision and the disable Mechanism
@@ -271,13 +288,13 @@ When the registration system detects a disable marker in a class, it performs th
 - **Skip the registration process for the class**  
   For example, `_EmbedHTTPMixin` will not appear in lazyllm.embed.
 
-- **Do not write the class into the group’s registration container**  
+- **Do not write the class into the group's registration container**  
   It will not exist as a `lazyllm.<group>.<key>` accessible object.
 
 - **Do not affect inheritance or reuse**  
   Concrete Embed implementations can still inherit the mixin as an internal detail.
 
-The disable mechanism clearly separates the “internal structural layer” from the “external API layer,” preventing intermediate abstract classes from polluting the group namespace.
+The disable mechanism clearly separates the "internal structural layer" from the "external API layer," preventing intermediate abstract classes from polluting the group namespace.
 
 ### 3.3 Registration Key Generation and Control
 
@@ -319,7 +336,7 @@ In this example:
 - **Inheritance and internal logic are unaffected**  
   The registration key is only for the access layer and does not participate in capability or inheritance decisions.
 
-By separating “class name” and “access key,” LazyLLM supports adjusting implementation structure or naming without breaking user code.
+By separating "class name" and "access key," LazyLLM supports adjusting implementation structure or naming without breaking user code.
 
 ### 3.4 Access and Retrieval Rules for Registration Results
 
@@ -351,12 +368,28 @@ embed3 = lazyllm.embed(...)
 ```
 
 The three access forms above may point to the same implementation; the exact retrieval behavior is unified by `LazyDict`.
-Users do not need to understand the registry’s internal storage structure and can simply follow the unified access conventions.
+Users do not need to understand the registry's internal storage structure and can simply follow the unified access conventions.
 
 ### 3.5 Hierarchical Grouping and Path Resolution
 
-LazyLLM capability groups support hierarchical structures.
-When group Base classes have inheritance relationships, the registration system maps them to multi-level group paths and resolves access step by step.
+In the current implementation, LazyLLM includes multi-level capability groups to organize different types of components and capabilities. These groups are automatically established at load time via Base class inheritance and are mounted to corresponding paths as LazyDict instances.
+
+Typical group structures include:
+
+- `lazyllm.online`  
+Online model and service group, used to organize Online capabilities.
+The group and its subgroup structure will be explained in later sections with the Online module.
+
+- `lazyllm.tool ` 
+Tool capability group, used to organize tool components that can be called by models or flows.
+
+- `lazyllm.flow ` 
+Flow and orchestration group, used to organize flow nodes and control structures.
+
+- `lazyllm.launcher ` 
+Startup and runtime group, used to organize runtime entrypoints and execution control components.
+
+These groups together form LazyLLM's current main capability hierarchy. As modules are introduced and extended, groups and subgroups will gradually expand while keeping unified registration rules.
 
 Under this structure:
 
@@ -378,6 +411,27 @@ Corresponds to the structure:
 
 Hierarchical grouping expresses capability semantics, enabling clear capability organization while maintaining a unified access pattern.
 
+---
+
+In the current implementation, LazyLLM includes multi-level capability groups to organize different types of components and capabilities. These groups are automatically established at load time via Base class inheritance and are mounted to corresponding paths as LazyDict instances.
+
+Typical group structures include:
+
+lazyllm.online
+Online model and service group, used to organize Online capabilities.
+The group and its subgroup structure will be explained in later sections with the Online module.
+
+lazyllm.tool
+Tool capability group, used to organize tool components that can be called by models or flows.
+
+lazyllm.flow
+Flow and orchestration group, used to organize flow nodes and control structures.
+
+lazyllm.launcher
+Startup and runtime group, used to organize runtime entrypoints and execution control components.
+
+These groups together form LazyLLM's current main capability hierarchy. As modules are introduced and extended, groups and subgroups will gradually expand while keeping unified registration rules.
+
 ## 4. Application of the Registration Mechanism in Online Modules
 
 ![auto_registry.png](../../../assets/auto_registry.png)
@@ -392,11 +446,11 @@ From the overall structure, Online Modules consist of **three layers**, which ar
 #### 4.1.1 Registration Entry Layer: LazyLLMOnlineBase
 
 At the top of the figure is `LazyLLMOnlineBase`.
-This class is the **unified entry Base** for all Online modules and connects to LazyLLM’s registration system via `LazyLLMRegisterMetaClass`.
+This class is the **unified entry Base** for all Online modules and connects to LazyLLM's registration system via `LazyLLMRegisterMetaClass`.
 
 This layer is responsible for:
 
-- Bringing Online modules into LazyLLM’s registration system as a whole
+- Bringing Online modules into LazyLLM's registration system as a whole
 - Defining the top-level group `lazyllm.online`
 - Completing Online-related configuration registration and integration at module load time
 
@@ -433,16 +487,16 @@ Below the capability Base classes are concrete supplier implementation classes, 
 This layer has the following characteristics:
 
 - Each class corresponds to a real, usable online service implementation
-- Class names serve both as “implementation identifiers” and as the source of registration keys
+- Class names serve both as "implementation identifiers" and as the source of registration keys
 - By inheriting the capability Base, they are automatically registered into the corresponding capability group
 
 For example:
 
-- `GLMChat` → `lazyllm.online.chat.glm`
-- `GLMEmbed` → `lazyllm.online.embed.glm`
-- `GLMSTT` → `lazyllm.online.stt.glm`
+- `GLMChat` -> `lazyllm.online.chat.glm`
+- `GLMEmbed` -> `lazyllm.online.embed.glm`
+- `GLMSTT` -> `lazyllm.online.stt.glm`
 
-These mappings are fully automatic and independent of the implementation class’s file path.
+These mappings are fully automatic and independent of the implementation class's file path.
 
 ### 4.2 Usage and Access Patterns for Online Modules
 
@@ -506,7 +560,7 @@ Online modules automatically generate and manage a set of common configuration k
 #### 4.3.1 Organization of Common Configuration Keys
 
 Online module configuration is divided into two categories by scope: **supplier-level configuration** and **capability-level configuration**.
-Both are declared automatically at class load time by the registration mechanism and are integrated into LazyLLM’s configuration system.
+Both are declared automatically at class load time by the registration mechanism and are integrated into LazyLLM's configuration system.
 
 - **Supplier-level configuration**  
     Describes capability-agnostic information, most commonly authentication and access details, for example:
@@ -553,7 +607,7 @@ By following this convention, implementation classes can achieve consistent conf
 #### 4.3.3 How to Extend Online Capabilities
 
 Online module extension takes the form of **adding new capability implementation classes**.
-Whether adding a supplier for a capability or extending multiple capabilities for the same supplier, the core principle is the same: express capability ownership through inheritance, and generate access entries via naming and registration mechanisms.
+Whether adding a supplier for a capability or extending multiple capabilities for the same supplier, the core principle is the same: determine registration paths through inheritance, and generate access entries via naming and registration mechanisms.
 
 ##### Extending a Single Capability
 
