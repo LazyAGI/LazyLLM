@@ -1,271 +1,544 @@
-# Inheritance-as-Registration Specification
+# LazyLLM Registration Mechanism
 
-## 1. What Is the Inheritance-as-Registration Mechanism
+## 1. Design Background: Why LazyLLM Needs a Registration Mechanism
 
-### 1.1 Mechanism Definition
+LazyLLM’s positioning requires it to be a highly extensible framework.
+As the system evolves, multiple categories of extensible components have gradually formed inside the framework, for example:
 
-LazyLLM widely adopts the **inheritance-based auto-registration** mechanism, which follows two core rules:
+- Flow and Node for orchestration
+- Various composable Tools
+- Models and services from different sources and capabilities (e.g., Online Modules)
+- Launcher components for startup and runtime
 
-- **Inheritance determines capability ownership**
-    The Base class you inherit determines the capability group you belong to.
+These components share several notable characteristics by design:
 
-- **Naming conventions determine access entry**
-    When the class name meets the convention, the system parses a key from the class name and generates a stable access path.
+First, **there are many components and the count keeps growing**.
+LazyLLM is not a closed system; both the framework itself and third-party developers continuously introduce new implementations. If every new component required changes to a centralized registry, the maintenance cost would grow rapidly.
 
-Therefore, modules are automatically incorporated into LazyLLM’s capability system at the **class definition stage**.
-Developers do not need to call `register()` explicitly, nor maintain a centralized registry.
+Second, **a unified, stable access entry is required**.
+From the user’s perspective, components should be accessed as lazyllm.xxx.yyy, without relying on specific module paths or file structure. This access pattern must remain stable even after implementation changes or refactors.
 
-### 1.2 What Registration Automatically Completes
+Third, **the extension threshold must be low**.
+Ideally, developers only need to “add a class” to integrate new capabilities into LazyLLM, without understanding or modifying complex registration procedures.
 
-When a class meets the registration conditions, LazyLLM automatically completes three categories of work:
+Against this background, LazyLLM introduced and systematized the **inheritance-as-registration mechanism** to unify “component discovery, capability grouping, and access entry generation.”
 
-1. **Capability group registration (Group / Type)**
-    Create or extend the corresponding capability namespace node.
+## 2. Design Approach: Principles of the LazyLLM Registration Mechanism
 
-2. **Implementation binding**
-    Attach the implementation class to the group and provide a unified access entry.
+The LazyLLM registration mechanism unifies management of extensible components across the framework and generates stable, predictable access entries. It runs through multiple subsystems of LazyLLM and serves as a foundational architectural design.
 
-3. **Configuration key declaration (Configuration Keys)**
-    Based on capability and supplier information, automatically declare common configuration keys (such as API keys, model names, etc.).
+Registration logic executes automatically at component definition time. By parsing class inheritance relationships and naming conventions, the system organizes components into a hierarchical capability structure and exposes them through a unified calling interface.
 
-## 2. How the Mechanism Is Used in LazyLLM
+### 2.1 Core Design Principles
 
-LazyLLM widely adopts the **inheritance-based auto-registration** mechanism to manage and extend core components.
-As one of LazyLLM’s foundational design patterns, it runs through the following module systems:
+The design philosophy of the LazyLLM registration mechanism can be summarized in one sentence:
 
-- Launcher (startup and runners)
+> Make “writing a class / function” itself complete registration.
 
-- Flow (pipelines and orchestration nodes)
+Around this goal, LazyLLM follows several explicit design principles.
 
-- Tools (tools and capability components)
+- Inheritance expresses semantics, not just code reuse
 
-- Module (model and service modules, such as Online LLM)
+    In LazyLLM, inheriting a Base class does not merely “reuse parent logic”; it explicitly declares which capability system the class belongs to.
 
-In LazyLLM, these modules share the following characteristics:
+- Avoid explicit, centralized registration calls
 
-- Many types, frequent extensions
+    The framework deliberately avoids explicit APIs like registry.register(...).
+    Registration should happen at class definition time, not be manually triggered by developers.
 
-- Need for a unified access entry
+- Support hierarchical capability organization
 
-- No desire for developers to manually maintain a registry
+    The registration mechanism natively supports multi-level capability structures like group.subgroup.xxx, rather than flattening all implementations into a single level.
 
-Therefore, LazyLLM consistently adopts:
+- Expose a unified, callable entry to end users
 
-> Auto-registration at class definition time via class inheritance + naming conventions
+    The final result of registration is not a “class list” or “mapping table,” but a call experience like:
+    ```python
+    lazyllm.xxx.yyy(...)
+    ```
 
-Developers only need to define the class itself, without calling `register()` or modifying central configuration files.
+Under these principles, the registration mechanism is not a single utility class, but a structured system.
 
-## 3. Inheritance-as-Registration in Online Modules
+### 2.2 Three-Layer Architecture Overview
 
-Among the various modules in LazyLLM, Online Modules are a typical application scenario of inheritance-based auto-registration.
+From the perspective of implementation and responsibility separation, the LazyLLM registration system has three layers:
 
-Their characteristics include:
+1. LazyDict: the presentation layer of registration results
 
-- Many capability types (Chat / STT / TTS / Embed / Rerank / Image, etc.)
+    Solves “how users access and call after registration.”
 
-- Many suppliers (OpenAI / Qwen / Doubao / SenseNova / ...)
+2. LazyLLMRegisterMetaClass: the core control layer of registration logic
 
-- Highly repetitive configuration keys (API Key / Model Name, etc.)
+    Decides “whether a class is registered at definition time, where it is registered, and how it is exposed.”
 
-To reduce extension cost and unify access, LazyLLM fully implements inheritance-based auto-registration in Online modules.
-The following sections use Online modules as an example to illustrate how the mechanism works.
+3. Register decorator: the adaptation layer from functions to classes
 
-### 3.1 What “Registration” Means in Online Modules
+    Unifies “function-form capabilities” into the class-based registration system.
 
-In the context of Online modules, “registration” not only means the class is recognized by the system, but also completes the following:
+Each layer has clear responsibilities, but only through collaboration do they form the final effect seen in LazyLLM.
 
-1. Capability group (Group / Type) registration
+### 2.3 LazyDict: How Registration Results Are “Used”
 
-    Based on the inherited Online Base class, the module is registered under the corresponding capability group, for example:
+LazyDict is the **only part that faces end users directly** in the registration mechanism.
 
-    - `lazyllm.online.chat`
+From the user experience perspective, LazyDict is not a normal dict, but a specially designed container whose goal is to make registration results feel “module-like, object-like, and function-like.”
 
-    - `lazyllm.online.stt`
+LazyDict focuses on the following:
 
-    - `lazyllm.online.tts`
+- Unified access
 
-    This grouping is determined by the Base class hierarchy rather than explicit declarations in the implementation class.
+    Users do not need to know which file defines the implementation class; they can access it through
+    ```
+    lazyllm.<group>.<key>
+    ```
 
-2. Supplier class registration
+- Loose naming, reduced memory burden
 
-    Based on class naming rules, the supplier identifier is parsed from the class name and the implementation class is attached to the corresponding capability group, for example:
+    Within reasonable bounds, LazyDict automatically matches case and naming variants to reduce friction.
 
-    - `lazyllm.online.chat.doubao`
+- Functional call experience
 
-    - `lazyllm.online.stt.sensenova`
+    When a default implementation or a single implementation exists, it allows direct calls via
+    ```
+    lazyllm.<group>(...)
+    ```
+    without explicitly specifying a key.
 
-    This provides a unified and stable access entry for users.
+It should be emphasized:
+> LazyDict does not decide “what to register”; it only handles “how to expose registered results.”
 
-3. Configuration key declaration (Configuration Keys)
+Internally, LazyDict is essentially a “subclass registry” for a Base class, for example:
 
-    During registration, LazyLLM automatically declares common configuration keys based on supplier and capability type, for example:
-
-    - `{supplier}_api_key`
-
-    - `{supplier}_model_name`
-
-    - `{supplier}_{capability}_model_name`
-
-    Developers typically do not need to declare these configuration keys explicitly; just read them in the implementation class according to the convention.
-
-## 4. Extending LazyLLM Online Classes
-
-### 4.1 Capability Types and Base Class Selection
-
-LazyLLM differentiates module capability types via the Base class hierarchy. When extending a module, you must inherit the Base class corresponding to the capability type.
-
-Typical capability types include (examples):
-
-| Capability Type  | Corresponding Base Class             |
-|------------------|--------------------------------------|
-| Chat             | OnlineChatModuleBase                 |
-| Embed            | LazyLLMOnlineEmbedModuleBase         |
-| Rerank           | LazyLLMOnlineRerankModuleBase        |
-| STT              | LazyLLMOnlineSTTModuleBase           |
-| TTS              | LazyLLMOnlineTTSModuleBase           |
-| Text-to-Image    | LazyLLMOnlineText2ImageModuleBase    |
-| Image Editing    | LazyLLMOnlineImageEditingModuleBase  |
-
-> 💡 Rule: the Base class a module inherits determines which capability group it is registered to.
-
-### 4.2 Class Naming Convention (Strict)
-
-Module class names must follow the naming rule below:
-
-```
-<SupplierName><TypeSuffix>
+```python
+LazyDict(
+  impl_a -> ClassA,
+  impl_b -> ClassB,
+)
 ```
 
-Where:
+It is then attached to `lazyllm.<group>`, forming a unified, visible access entry.
 
-- SupplierName: supplier name (e.g., Doubao, SenseNova)
-- TypeSuffix: capability type suffix, consistent with the inherited Base class (e.g., Chat, STT, TTS)
+### 2.4 LazyLLMRegisterMetaClass: The Core Mechanism for Class Registration
 
-Correct examples:
+LazyLLM’s class registration behavior is controlled by a unified metaclass mechanism.
+All classes participating in registration are processed by this metaclass at definition time, which determines whether they enter the registry, which capability group they belong to, and whether to expose an access entry.
 
-- DoubaoChat
-- SenseNovaSTT
-- QwenTextToImage
+This design binds registration behavior to the class lifecycle, rather than relying on explicit registration calls.
+Developers only need to express semantics via inheritance relationships and naming conventions; the framework completes the registration process automatically.
 
-Incorrect examples (will cause registration to fail):
+Within the overall architecture, LazyLLMRegisterMetaClass is responsible for:
 
-- Class name does not end with a capability suffix, e.g., `DoubaoModule`
-- Class name is inconsistent with the inherited Base type
+- Parsing capability ownership information expressed by class structure
+- Organizing registrable implementation classes into corresponding capability groups
+- Producing necessary registration metadata for unified access entries
 
-## 5. Existing Online Module Architecture
+Rules for registration decisions, grouping logic, and boundary behaviors are explained in the next chapter.
 
-### 5.1 Online Module Inheritance Hierarchy
+### 2.5 Register Decorator: Unified Entry for Function Registration
 
-As shown in the figure, LazyLLM Online modules adopt a layered inheritance structure:
+LazyLLM’s registration system is built around “classes,” but in practice some capabilities are better expressed as functions.
+To unify these two development styles, LazyLLM provides the Register decorator, which integrates function-form capabilities into the same registration mechanism.
 
-- Top-level Base class: LazyLLMOnlineBase class, used to define the unified Online namespace (`lazyllm.online`)
+The Register decorator:
 
-- Capability Base classes
-    - Capability families such as `LazyLLMOnlineChatModuleBase`, `OnlineEmbeddingModuleBase`, and `OnlineMultiModalBase`, which serve as base classes for major capability groups. Among them, `LazyLLMOnlineChatModuleBase` defines the `lazyllm.online.chat` group, while the other two classes skip group registration, letting capability subclasses register specific capability tags.
+- Constructs an equivalent, registrable class representation for a function
+- Enables function capabilities to reuse metaclass-based registration flow
+- Ensures consistency between functions and classes in registration results and access methods
 
-    - Capability subclasses such as `LazyLLMOnlineRerankModuleBase`, `LazyLLMOnlineTTSModuleBase`, and `LazyLLMOnlineText2ImageModuleBase`. These define specific capability groups such as `lazyllm.online.rerank`, `lazyllm.online.tts`, etc.
+Through this adaptation layer, LazyLLM realizes a registration model where classes and functions enter in parallel and are managed uniformly.
+The specific behavior and rules for function registration are explained in later chapters with examples.
 
-- Supplier classes: concrete service implementation classes, following the class naming requirements in [Section 2.2](#22-class-naming-convention-strict).
+## 3. Detailed Analysis of the LazyLLM Registration Mechanism
 
-![auto_registry.png](../../../assets/auto_registry.png)
+This chapter describes key rules and behaviors in the LazyLLM registration mechanism, focusing on capability grouping definitions, registration decision conditions, registration key generation rules, and access/value conventions for registration results. These rules apply to all component types in LazyLLM and serve as the framework-level constraints on registration behavior.
 
-### 5.2 Registration Results and Access
+The following sections expand on these rules.
 
-After registration, modules can be accessed as follows:
+### 3.1 Rules for Defining Capability Groups
+
+LazyLLM defines capability groups through **Base classes**.
+A capability group is the foundational structure in the registration mechanism, used to organize all implementations under the same capability.
+
+A group Base class must satisfy the following naming convention:
+
+```
+LazyLLM + <GroupName> + Base
+```
+
+Example:
+
+```python
+# Define group: embed
+# Naming form: LazyLLM + Embed + Base
+class LazyLLMEmbedBase(metaclass=LazyLLMRegisterMetaClass):
+    pass
+
+# After importing/loading this module, the framework produces the corresponding entry (illustrative):
+# lazyllm.embed  -> LazyDict(...)
+```
+
+When the registration system detects a class name that matches the pattern above, it treats it as a group definition class and performs the following:
+
+- **Create a registration container (LazyDict) for the group**  
+  For example, defining `LazyLLMEmbedBase` creates a `LazyDict` instance to store Embed implementations.
+
+- **Bind the registration container to the `lazyllm.<group>` namespace**  
+  For example, the `LazyDict` above is directly bound as `lazyllm.embed`, serving as the unified access entry for that group.
+
+- **Record the group’s path information in the registration system (supports hierarchical structures)**  
+  For example, in multi-level structures it can form group paths like `lazyllm.tool.search`.
+
+- **Write the group’s registration container into the global registry**  
+  All implementation classes inheriting from `LazyLLMEmbedBase` will be registered into this `LazyDict`.
+
+In this way, LazyLLM binds “capability group” definition to class structure rather than explicit configuration.
+Group creation order follows module load order, and once created, a group can be reused by subsequent implementation classes.
+
+### 3.2 Registration Decision and the disable Mechanism
+
+Not all classes participating in the inheritance structure should be registered as externally accessible implementations.
+LazyLLM performs registration decisions at class definition time to distinguish:
+
+- **Structural classes**: used to organize inheritance or reuse shared logic
+- **Implementation classes**: should be registered into a group and exposed for access
+
+For classes that should explicitly skip registration, LazyLLM provides the `disable mechanism`.
+
+Example:
+
+```python
+# Intermediate base class used only to reuse HTTP request logic
+class _EmbedHTTPMixin(metaclass=LazyLLMRegisterMetaClass):
+    __lazyllm_group_disable__ = True
+
+    def _request(self, payload: dict):
+        ...
+```
+
+When the registration system detects a disable marker in a class, it performs the following:
+
+- **Skip the registration process for the class**  
+  For example, `_EmbedHTTPMixin` will not appear in lazyllm.embed.
+
+- **Do not write the class into the group’s registration container**  
+  It will not exist as a `lazyllm.<group>.<key>` accessible object.
+
+- **Do not affect inheritance or reuse**  
+  Concrete Embed implementations can still inherit the mixin as an internal detail.
+
+The disable mechanism clearly separates the “internal structural layer” from the “external API layer,” preventing intermediate abstract classes from polluting the group namespace.
+
+### 3.3 Registration Key Generation and Control
+
+Once a class is determined to be a registrable implementation, the registration system generates a **group-level registration key** to form the final access path:
+
+```
+lazyllm.<group>.<key>
+```
+
+Key generation follows these rules:
+
+- **By default, derive and normalize from the class name**  
+  For example, derive openai from OpenAIEmbed.
+
+- **Registration keys must be unique within the same group**  
+  Different implementation classes cannot map to the same key.
+
+- **Allow explicit registration keys via class attributes**  
+  For external renaming or backward compatibility.
+
+Example:
+
+```python
+class OpenAIEmbed(LazyLLMEmbedBase):
+    __lazyllm_registry_key__ = "openai"
+
+    def __init__(self, api_key: str, model: str):
+        ...
+```
+
+In this example:
+
+- **openai is the external access key**  
+  The access path is `lazyllm.embed.openai`.
+
+- **Class name and access key are decoupled**  
+  The class remains named OpenAIEmbed, while the external API uses openai.
+
+- **Inheritance and internal logic are unaffected**  
+  The registration key is only for the access layer and does not participate in capability or inheritance decisions.
+
+By separating “class name” and “access key,” LazyLLM supports adjusting implementation structure or naming without breaking user code.
+
+### 3.4 Access and Retrieval Rules for Registration Results
+
+After registration, each group and its implementations are exposed through a unified namespace.
+The registration container for a group is `lazyllm.<group>`, whose type is `LazyDict.`
+
+Access and retrieval follow these conventions:
+
+- Group names and registration keys are case-insensitive  
+  For example, `lazyllm.embed.openai` and `lazyllm.Embed.OpenAI` are semantically equivalent.
+
+- The implementation class name can be used as an access alias  
+  For example, `OpenAIEmbed` can be accessed by class name.
+
+- When a default or unique implementation exists, the group can be called directly  
+  Omit the key and call `lazyllm.<group>(...)`.
+
+Example:
 
 ```python
 import lazyllm
 
-doubao_chat_cls = lazyllm.online.chat.doubao(**kwargs)
-sensenova_stt_cls = lazyllm.online.stt.sensenova(**kwargs)
+# Access by registration key
+embed1 = lazyllm.embed.openai(...)
+# Access by class name alias
+embed2 = lazyllm.embed.OpenAIEmbed(...)
+# Direct group call (when a default or single implementation exists)
+embed3 = lazyllm.embed(...)
 ```
 
-The access path remains stable for users and does not depend on the module’s implementation path.
+The three access forms above may point to the same implementation; the exact retrieval behavior is unified by `LazyDict`.
+Users do not need to understand the registry’s internal storage structure and can simply follow the unified access conventions.
 
-## 6. Extension and Customization Rules
+### 3.5 Hierarchical Grouping and Path Resolution
 
-### 6.1 General Configuration and Capability Configuration
+LazyLLM capability groups support hierarchical structures.
+When group Base classes have inheritance relationships, the registration system maps them to multi-level group paths and resolves access step by step.
 
-LazyLLM distinguishes two types of configuration keys:
+Under this structure:
 
-1. Supplier-level configuration
+- Each group level corresponds to a registration container (`LazyDict`)
+- Group paths are exposed via dot notation
+- Access resolution proceeds through outer groups to inner groups, finally locating the implementation
 
-    - e.g., `{supplier}_api_key`
+For example, the access path:
 
-    - Independent of capability type. When a supplier’s class is registered for the first time, LazyLLM adds the corresponding API Key configuration for that supplier.
+```
+lazyllm.online.chat.glm(...)
+```
 
-2. Capability-level configuration
+Corresponds to the structure:
 
-    - e.g., `{supplier}_stt_model_name`
+- online: top-level group
+- chat: subgroup under online
+- glm: implementation key under chat
 
-    - Only present for the corresponding capability type; provides a model name configuration for a supplier class of that capability
+Hierarchical grouping expresses capability semantics, enabling clear capability organization while maintaining a unified access pattern.
 
-> Note: configuration key declaration is automatically handled by LazyLLM during registration. When extending a supplier class, you typically do not need to declare configuration explicitly unless the supplier has extra, specific requirements.
+## 4. Application of the Registration Mechanism in Online Modules
 
-### 6.2 Basic Rules for Extending Supplier Classes
+![auto_registry.png](../../../assets/auto_registry.png)
 
-In most cases, extending a new Online supplier class requires only three steps:
+Online Modules are a subsystem in LazyLLM where the registration mechanism is fully applied and clearly layered.
+Their design goal is not to provide a single capability wrapper, but to build an online service system that is **grouped by capability**, **extensible by supplier**, and **uniformly schedulable**.
 
-- Step 1: choose the capability type and inherit the corresponding Base class
+From the overall structure, Online Modules consist of **three layers**, which are shown top to bottom in the figure and connected by inheritance and the registration mechanism.
 
-    Choose and inherit the Online Base class based on the capability implemented, for example:
+### 4.1 Overall Structure of Online Modules
 
-    ```python
-    class MyProviderChat(OnlineChatModuleBase):
-        ...
-    ```
+#### 4.1.1 Registration Entry Layer: LazyLLMOnlineBase
 
-    This inheritance determines that the class is registered to:
+At the top of the figure is `LazyLLMOnlineBase`.
+This class is the **unified entry Base** for all Online modules and connects to LazyLLM’s registration system via `LazyLLMRegisterMetaClass`.
 
-    ```bash
-    lazyllm.online.chat
-    ```
+This layer is responsible for:
 
-- Step 2: define the class name according to the naming convention
+- Bringing Online modules into LazyLLM’s registration system as a whole
+- Defining the top-level group `lazyllm.online`
+- Completing Online-related configuration registration and integration at module load time
 
-    As stated in [Section 2.2](#22-class-naming-convention-strict), the class name must follow:
+In other words:
+As long as a class ultimately inherits from LazyLLMOnlineBase, it has the prerequisite to be recognized as part of Online modules by LazyLLM.
 
-    ```
-    <SupplierName><TypeSuffix>
-    ```
+#### 4.1.2 Capability Layer: Online Bases by Capability Type
 
-    For example:
-    - `MyProviderChat`
-    - `MyProviderSTT`
+Below `LazyLLMOnlineBase`, Online modules are first divided by capability type, corresponding to the second and third layers of Base classes in the figure, for example:
 
-    LazyLLM will automatically parse the supplier identifier from the class name and generate the corresponding access entry:
+- `LazyLLMOnlineChatModuleBase`
+- `OnlineEmbeddingModuleBase`
+- `LazyLLMOnlineRerankModuleBase`
+- `LazyLLMOnlineSTTModuleBase`
 
-    ```bash
-    lazyllm.online.chat.myprovider(...)
-    ```
+These Base classes:
 
-- Step 3: implement the supplier’s own logic
+- Define specific capability groups (such as `online.chat`, `online.embed`, `online.stt`, etc.)
+- Constrain the interfaces and behaviors that implementations under the capability should satisfy
+- Provide stable inheritance anchors for subsequent supplier implementations
 
-    Implement initialization and call logic in the class, such as client creation and request wrapping.
+At the registration level, this layer **directly corresponds to capability group (group) formation**.
 
-    ```python
-    class MyProviderChat(OnlineChatModuleBase):
-        def __init__(self, api_key: str, base_url: str = "..."):
-            ...
-    ```
+### 4.1.3 Supplier Implementation Layer: Concrete Online Service Implementations
 
-    After completing the steps above, the supplier class will participate in auto-registration with no extra operations required.
+Below the capability Base classes are concrete supplier implementation classes, such as:
 
-### 6.3 Extending Supplier Subclasses for Multiple Capabilities
+- `GLMChat`
+- `GLMEmbed`
+- `GLMRerank`
+- `GLMSTT`
+- `GLMTextToImage`
 
-When the same supplier needs to support multiple capabilities (such as Chat, STT, Embedding), it is recommended to organize shared logic via a supplier-specific Base class.
+This layer has the following characteristics:
+
+- Each class corresponds to a real, usable online service implementation
+- Class names serve both as “implementation identifiers” and as the source of registration keys
+- By inheriting the capability Base, they are automatically registered into the corresponding capability group
+
+For example:
+
+- `GLMChat` → `lazyllm.online.chat.glm`
+- `GLMEmbed` → `lazyllm.online.embed.glm`
+- `GLMSTT` → `lazyllm.online.stt.glm`
+
+These mappings are fully automatic and independent of the implementation class’s file path.
+
+### 4.2 Usage and Access Patterns for Online Modules
+
+After the registration mechanism completes capability grouping and implementation attachment for Online modules, all Online capabilities are exposed through a unified namespace.
+Users and higher-level scheduling logic do not directly depend on specific implementation classes; they instantiate and call via the access entry provided by `lazyllm.online`.
+
+#### 4.2.1 Direct Access by Capability and Supplier
+
+The most direct way to use Online modules is to access the implementation via **capability group + supplier key**.
 
 For example:
 
 ```python
-class _MyProviderBase:
-    def __init__(self, api_key: str, base_url: str):
+import lazyllm
+
+chat = lazyllm.online.chat.glm(...)
+embed = lazyllm.online.embed.glm(...)
+stt = lazyllm.online.stt.glm(...)
+```
+
+In the examples above:
+
+- `online` is the top-level group for Online modules
+- `chat / embed / stt` are capability types
+- `glm` is a supplier implementation under that capability
+
+These access paths are generated automatically by the registration mechanism and do not depend on module path or file structure.
+
+#### 4.2.2 Access via Class Name Alias
+
+In addition to registration keys, Online modules support access by **implementation class name as an alias**.
+This is generated automatically at registration time to improve readability and debugging.
+
+For example:
+
+```python
+chat = lazyllm.online.chat.GLMChat(...)
+embed = lazyllm.online.embed.GLMEmbed(...)
+```
+
+Class-name access is semantically equivalent to key-based access and points to the same implementation class.
+In practice, the **key form** is recommended as the stable interface, while the class-name form is more suitable for development and debugging.
+
+#### 4.2.3 Default Implementations and Direct Capability Calls
+
+For some capability groups, if only one implementation exists or a default is explicitly set, Online modules allow omitting the supplier key and calling the capability group directly.
+
+Example:
+
+```python
+chat = lazyllm.online.chat(...)
+```
+
+This call resolves to the default implementation under that capability group.
+Whether this form is allowed and how the default implementation is chosen are managed uniformly by the group registration container (`LazyDict`).
+
+### 4.3 Configuration and Extension Rules for Online Modules
+
+During registration, Online modules automatically generate and manage a set of common configuration keys to unify initialization and invocation across suppliers and capability types. This section describes how these configuration keys are organized and the customization rules to follow when extending Online capabilities or suppliers.
+
+#### 4.3.1 Organization of Common Configuration Keys
+
+Online module configuration is divided into two categories by scope: **supplier-level configuration** and **capability-level configuration**.
+Both are declared automatically at class load time by the registration mechanism and are integrated into LazyLLM’s configuration system.
+
+- **Supplier-level configuration**  
+    Describes capability-agnostic information, most commonly authentication and access details, for example:
+
+    ```
+    {supplier}_api_key
+    {supplier}_base_url
+    ```
+
+    These configurations are created when any Online implementation class for a supplier is first registered, and they are shared across all capabilities of that supplier.
+
+- **Capability-level configuration**  
+    Describes capability-specific parameters, usually related to model names or behavior, for example:
+
+    ```
+    {supplier}_model_name
+    {supplier}_{capability}_model_name
+    ```
+
+    Capability-level configuration is generated only when the corresponding capability exists and does not affect other capabilities of the same supplier.
+
+This layered approach prevents configuration interference across capabilities while keeping naming conventions consistent.
+
+#### 4.3.2 Conventions for Using Configuration in Implementation Classes
+
+Online implementation classes generally do not need to declare configuration keys explicitly; instead they read required values at initialization according to convention.
+Recommended practice:
+
+- Centralize configuration reads in __init__
+- Clearly distinguish supplier-level and capability-level configuration usage
+- Avoid configuration declaration logic coupled to the registration mechanism in implementation classes
+
+Example (illustrative):
+
+```python
+class MyProviderChat(OnlineChatModuleBase):
+    def __init__(self, api_key: str = None, model: str = None, **kw):
+        self.api_key = api_key or lazyllm.config.get("myprovider_api_key")
+        self.model = model or lazyllm.config.get("myprovider_chat_model_name")
+```
+
+By following this convention, implementation classes can achieve consistent configuration behavior without caring about configuration sources.
+
+#### 4.3.3 How to Extend Online Capabilities
+
+Online module extension takes the form of **adding new capability implementation classes**.
+Whether adding a supplier for a capability or extending multiple capabilities for the same supplier, the core principle is the same: express capability ownership through inheritance, and generate access entries via naming and registration mechanisms.
+
+##### Extending a Single Capability
+
+In the most common scenario, a supplier implements only one Online capability.
+In this case, simply inherit the Online Base class for that capability and implement the specific logic.
+
+Example:
+
+```python
+class MyProviderChat(OnlineChatModuleBase):
+    def __init__(self, api_key: str, base_url: str = "..."):
         ...
 ```
 
-Each capability implementation class inherits both the corresponding Online Base and the supplier Base:
+After loading, the implementation class is automatically registered to the corresponding capability group and generates a stable access path, for example:
+
+```
+lazyllm.online.chat.myprovider
+```
+
+No explicit registration or additional configuration declaration is required.
+
+---
+
+##### Organizing Multi-Capability Suppliers
+
+When the same supplier needs to support multiple Online capabilities, it is recommended to reuse shared logic through a **supplier-private base class**, rather than duplicating code in capability classes.
+
+Recommended structure:
 
 ```python
+class _MyProviderBase:
+    def __init__(self, api_key: str, base_url: str):
+        self.api_key = api_key
+        self.base_url = base_url
+
 class MyProviderChat(OnlineChatModuleBase, _MyProviderBase):
     ...
 
@@ -273,10 +546,21 @@ class MyProviderSTT(LazyLLMOnlineSTTModuleBase, _MyProviderBase):
     ...
 ```
 
-During registration, LazyLLM will automatically generate common configuration keys based on supplier and capability type, including but not limited to:
+Under this organization:
+
+- Each capability implementation registers to its corresponding group
+- Shared logic is centralized in the supplier-private base class
+- Access paths and configuration rules remain consistent across capabilities
+
+---
+
+##### Automatic Initialization of Inheritance and Configuration Keys
+
+In Online modules, inheritance not only triggers implementation registration, but also automatically initializes related configuration keys.
+When an implementation class is registered, the framework generates and integrates configuration keys based on supplier and capability type, for example:
 
 - `{supplier}_api_key`
 - `{supplier}_model_name`
 - `{supplier}_{capability}_model_name`
 
-When extending a supplier class, you typically do not need to declare these configuration keys explicitly; just read them during initialization according to the convention.
+Implementation classes typically only need to read these configuration keys during initialization, without explicit declaration or registration.
