@@ -63,61 +63,12 @@ def _get_blocks_kwargs(css_content: str, title: str, analytics_enabled: bool = F
             LOG.warning(f'Could not inspect gr.Blocks.__init__ signature, falling back. Error: {e}')
         return kwargs, css_content
 
-def _convert_to_openai_format(chat_history: List) -> List:
-    if not chat_history:
-        return chat_history
-    if chat_history and isinstance(chat_history[0], dict) and 'role' in chat_history[0]:
-        return chat_history
-
-    messages = []
-    for item in chat_history:
-        if isinstance(item, list) and len(item) >= 2:
-            user_msg, assistant_msg = item[0], item[1]
-            if user_msg is not None:
-                messages.append({'role': 'user', 'content': user_msg})
-            if assistant_msg is not None:
-                messages.append({'role': 'assistant', 'content': assistant_msg})
-    return messages
-
-def _convert_from_openai_format(messages: List) -> List:
-    if not messages:
-        return messages
-    if messages and isinstance(messages[0], list):
-        return messages
-
-    tuples = []
-    i = 0
-    while i < len(messages):
-        msg = messages[i]
-        if msg.get('role') == 'user':
-            user_content = msg.get('content', '')
-            assistant_content = None
-            if i + 1 < len(messages) and messages[i + 1].get('role') == 'assistant':
-                assistant_content = messages[i + 1].get('content', '')
-                i += 2
-            else:
-                i += 1
-            tuples.append([user_content, assistant_content])
-        elif msg.get('role') == 'assistant':
-            tuples.append([None, msg.get('content', '')])
-            i += 1
-        else:
-            i += 1
-    return tuples
-
-def _get_chatbot_kwargs(height: int = 700):
-    gradio_ver = _get_gradio_version()
+def _get_chatbot_kwargs(height: int = 700 , gradio_ver: Tuple[int, ...] = (5, 0, 0)):
     kwargs = {'height': height}
     use_messages_format = False
 
     if gradio_ver >= (6, 0, 0):
         use_messages_format = True
-        try:
-            sig = inspect.signature(gr.Chatbot.__init__)
-            if 'type' in sig.parameters:
-                kwargs['type'] = 'messages'
-        except Exception as e:
-            LOG.warning(f'Could not inspect gr.Chatbot.__init__ signature, falling back. Error: {e}')
     return kwargs, use_messages_format
 
 class WebModule(ModuleBase):
@@ -238,7 +189,7 @@ class WebModule(ModuleBase):
                         add_sess_btn = gr.Button('添加新会话')
                         sess_drpdn = gr.Dropdown(choices=sess_data.value['sess_titles'], label='选择会话：', value='')
                         del_sess_btn = gr.Button('删除当前会话')
-                    chatbot_kwargs, use_messages_format = _get_chatbot_kwargs(height=700)
+                    chatbot_kwargs, use_messages_format = _get_chatbot_kwargs(height=700, gradio_ver=self._gradio_ver)
                     self._use_openai_format = use_messages_format
                     chatbot = gr.Chatbot(**chatbot_kwargs)
                     query_box = gr.MultimodalTextbox(show_label=False, placeholder='输入内容并回车!!!', interactive=True)
@@ -283,7 +234,7 @@ class WebModule(ModuleBase):
         if 'text' in query and query['text'] is not None:
             id_name = query['text']
         else:
-            id_name = id(id_name)
+            id_name = id(query)
         session['curr_sess'] = f'({session["sess_num"]})  {id_name}'
         session['sess_num'] += 1
         session['sess_titles'][0] = session['curr_sess']
@@ -345,74 +296,127 @@ class WebModule(ModuleBase):
             return self._change_session(session['sess_titles'][0], None, {}, session)
 
     def _prepare(self, query, chat_history, session):
-        if not query.get('text', '') and not query.get('files', []):
+        is_empty = False
+        if isinstance(query, dict):
+            is_empty = not query.get('text', '') and not query.get('files', [])
+        elif isinstance(query, list):
+            is_empty = len(query) == 0
+
+        if is_empty:
             query = session['frozen_query']
+
         if chat_history is None:
             chat_history = []
-        if self._use_openai_format and chat_history:
-            chat_history = _convert_from_openai_format(chat_history)
-        for x in query['files']:
-            chat_history.append([[x,], None])
-        if 'text' in query and query['text']:
-            chat_history.append([query['text'], None])
+
         if self._use_openai_format:
-            chat_history = _convert_to_openai_format(chat_history)
+            # --- Gradio 6.0+ ---
+            content = []
+            if isinstance(query, dict) and 'text' in query:
+                for x in query.get('files', []):
+                    content.append({'type': 'file', 'path': x})
+                if query.get('text'):
+                    content.append({'type': 'text', 'text': query['text']})
+            elif isinstance(query, list):
+                content = query
+
+            if content:
+                chat_history.append({'role': 'user', 'content': content})
+        else:
+            # --- Gradio 5.0- ---
+            for x in query.get('files', []):
+                if isinstance(x, dict):
+                    file_path = x.get('path') or x.get('name')
+                elif isinstance(x, str):
+                    file_path = x
+                else:
+                    file_path = str(x)
+                if file_path:
+                    chat_history.append([[file_path], None])
+            if query.get('text'):
+                chat_history.append([query['text'], None])
+
         return {}, chat_history
 
     def _respond_stream(self, use_context, chat_history, stream_output, append_text, *args):  # noqa C901
         try:
-            if self._use_openai_format and chat_history:
-                chat_history = _convert_from_openai_format(chat_history)
             # TODO: move context to trainable module
             files = []
-            chat_history[-1][1], log_history = '', []
-            # Extract files based on context mode
-            if use_context:
-                # When using context, extract all files from entire history
-                for file in chat_history[::-1]:
-                    if isinstance(file[0], (tuple, list)):
-                        item = file[0][0]
-                        if isinstance(item, dict) and 'text' in item:
-                            text_val = item['text']
-                            if '/' in text_val or '\\' in text_val:
-                                files.append(text_val)
-                        elif isinstance(item, str):
-                            files.append(item)
-                    elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):
-                        files.append(file[0][13:])
+            log_history = []
+            # Initialize current answer based on format
+            if self._use_openai_format:
+                if not chat_history or chat_history[-1]['role'] != 'assistant':
+                    chat_history.append({'role': 'assistant', 'content': ''})
+                curr_ans = chat_history[-1]
             else:
-                # When not using context, only extract files from current conversation turn
-                for file in chat_history[::-1]:
-                    if file[-1]: break  # not current chat
-                    if isinstance(file[0], (tuple, list)):
-                        item = file[0][0]
-                        if isinstance(item, dict) and 'text' in item:
-                            text_val = item['text']
-                            if '/' in text_val or '\\' in text_val:
-                                files.append(text_val)
-                        elif isinstance(item, str):
-                            files.append(item)
-                    elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):
-                        files.append(file[0][13:])
-            if isinstance(chat_history[-1][0], str):
-                string = chat_history[-1][0]
-            elif isinstance(chat_history[-1][0], (list, tuple)):
-                string = ''
-                for item in chat_history[-1][0]:
-                    if isinstance(item, dict) and 'text' in item:
-                        text_val = item['text']
-                        if not ('/' in text_val or '\\' in text_val):
-                            string = text_val
+                chat_history[-1][1] = ''
+                curr_ans = chat_history[-1]
+
+            # Extract files based on context mode and format
+            if self._use_openai_format:
+                # Gradio 6.0+ OpenAI format
+                search_history = chat_history[::-1] if use_context else []
+                if not use_context:
+                    for h in chat_history[::-1]:
+                        search_history.append(h)
+                        if h.get('role') == 'user':
                             break
-                    elif isinstance(item, str):
-                        string = item
-                        break
+                for h in search_history:
+                    if isinstance(h, dict) and h.get('role') == 'user':
+                        content = h.get('content', [])
+                        if isinstance(content, list):
+                            for item in content:
+                                if isinstance(item, dict) and item.get('type') in ['file', 'image']:
+                                    path = None
+                                    if 'file' in item and isinstance(item['file'], dict):
+                                        path = item['file'].get('path')
+                                    elif 'path' in item:
+                                        path = item.get('path')
+                                    elif 'value' in item:
+                                        path = item.get('value')
+                                    if isinstance(path, dict):
+                                        path = path.get('path')
+                                    if path:
+                                        files.append(path)
             else:
-                string = ''
+                # Gradio 5.x tuple format
+                if use_context:
+                    for file in chat_history[::-1]:
+                        if isinstance(file[0], (tuple, list)):
+                            files.append(file[0][0])
+                        elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):
+                            files.append(file[0][13:])
+                else:
+                    for file in chat_history[::-1]:
+                        if file[-1]:
+                            break
+                        if isinstance(file[0], (tuple, list)):
+                            files.append(file[0][0])
+                        elif isinstance(file[0], str) and file[0].startswith('lazyllm_img::'):
+                            files.append(file[0][13:])
+            files = [f for f in files if f is not None]
+
+            # Extract current input string
+            if self._use_openai_format:
+                last_user = next((h for h in chat_history[::-1] if isinstance(h, dict) and h.get('role') == 'user'), None)
+                if last_user:
+                    content = last_user['content']
+                    string = next((c['text'] for c in content if isinstance(c, dict) and c.get('type') == 'text'), '') if isinstance(content, list) else content
+                else:
+                    string = ''
+            else:
+                if isinstance(chat_history[-1][0], str):
+                    string = chat_history[-1][0]
+                else:
+                    string = ''
+            input = string
+
             if self.files_target is None and not self.encode_files:
                 self._get_all_file_submodule()
+
             if self.encode_files and files:
-                string = encode_query_with_filepaths(string, files)
+                input = encode_query_with_filepaths(string, files)
+                string = input
+
             if files and self.files_target:
                 for module in self.files_target:
                     assert isinstance(module, ModuleBase)
@@ -420,22 +424,32 @@ class WebModule(ModuleBase):
                         globals['lazyllm_files'][module._module_id].extend(files)
                     else:
                         globals['lazyllm_files'][module._module_id] = files
-                string += f' ## Get attachments: {os.path.basename(files[-1])}'
+
+                attachment_msg = f' ## Get attachments: {os.path.basename(files[-1])}'
+                input += attachment_msg
+
             elif self.files_target:
                 for module in self.files_target:
                     assert isinstance(module, ModuleBase)
                     globals['lazyllm_files'][module._module_id] = []
-            input = string
+
             # Filter out file-only entries from history and ensure all user messages are strings
             if use_context and len(chat_history) > 1:
                 history = []
                 for h in chat_history[:-1]:
-                    # Skip entries where user message is a file (list/tuple format)
-                    if isinstance(h[0], (list, tuple)):
-                        continue
-                    # Only include entries with both user and assistant messages
-                    if h[0] and h[1]:
-                        history.append([h[0], h[1]])
+                    if isinstance(h, (list, tuple)):
+                        if isinstance(h[0], (list, tuple)): continue
+                        if h[0] and h[1]:
+                            # Remove <think>...</think> tags from assistant response
+                            clean_response = re.sub(r'<think>.*?</think>\n*', '', h[1], flags=re.DOTALL)
+                            history.append([h[0], clean_response])
+                    elif isinstance(h, dict):
+                        # Gradio 6.0+ format
+                        if h.get('role') == 'user' and isinstance(h.get('content'), str):
+                            history.append([h['content'], ''])
+                        elif h.get('role') == 'assistant' and history:
+                            clean_response = re.sub(r'<think>.*?</think>\n*', '', h.get('content', ''), flags=re.DOTALL)
+                            history[-1][1] = clean_response
             else:
                 history = list()
 
@@ -455,11 +469,12 @@ class WebModule(ModuleBase):
             func_future = self.pool.submit(self.m, input, **kw)
             while True:
                 if value := FileSystemQueue().dequeue():
-                    chat_history[-1][1] += ''.join(value) if append_text else ''.join(value)
-                    if stream_output:
-                        display_history = (_convert_to_openai_format(chat_history)
-                                           if self._use_openai_format else chat_history)
-                        yield display_history, ''
+                    delta = ''.join(value)
+                    if self._use_openai_format:
+                        curr_ans['content'] += delta
+                    else:
+                        curr_ans[1] += delta
+                    if stream_output: yield chat_history, ''
                 elif value := FileSystemQueue.get_instance('lazy_error').dequeue():
                     log_history.append(''.join(value))
                 elif value := FileSystemQueue.get_instance('lazy_trace').dequeue():
@@ -475,34 +490,24 @@ class WebModule(ModuleBase):
                 else:
                     try:
                         r = decode_query_with_filepaths(s)
-                        if isinstance(r, str):
-                            r = json.loads(r)
+                        if isinstance(r, str): r = json.loads(r)
                         if 'choices' in r:
                             if 'type' not in r['choices'][0] or (
                                     'type' in r['choices'][0] and r['choices'][0]['type'] != 'tool_calls'):
                                 delta = r['choices'][0]['delta']
-                                if 'content' in delta:
-                                    s = delta['content']
-                                else:
-                                    s = ''
+                                s = delta.get('content', '')
                         elif isinstance(r, dict) and 'files' in r and 'query' in r:
                             return r['query'], ''.join(log_history), r['files'] if len(r['files']) > 0 else None
-                        else:
-                            s = s
-                    except (ValueError, KeyError, TypeError):
-                        s = s
+                    except (ValueError, KeyError, TypeError): pass
                     except Exception as e:
-                        LOG.error(f'Uncaptured error `{e}` when parsing `{s}`, please contact us if you see this.')
+                        LOG.error(f'Uncaptured error `{e}` when parsing `{s}`')
                 return s, ''.join(log_history), None
 
             def contains_markdown_image(text: str):
-                pattern = r'!\[.*?\]\((.*?)\)'
-                return bool(re.search(pattern, text))
+                return bool(re.search(r'!\[.*?\]\((.*?)\)', text))
 
             def extract_img_path(text: str):
-                pattern = r'!\[.*?\]\((.*?)\)'
-                urls = re.findall(pattern, text)
-                return urls
+                return re.findall(r'!\[.*?\]\((.*?)\)', text)
 
             file_paths = None
             if isinstance(result, (str, dict)):
@@ -510,65 +515,65 @@ class WebModule(ModuleBase):
             if file_paths:
                 for i, file_path in enumerate(file_paths):
                     suffix = os.path.splitext(file_path)[-1].lower()
-                    file = None
-                    if suffix in PIL.Image.registered_extensions().keys():
-                        file = gr.Image(file_path)
-                    elif suffix in ('.mp3', '.wav'):
-                        file = gr.Audio(file_path)
-                    elif suffix in ('.mp4'):
-                        file = gr.Video(file_path)
-                    else:
-                        LOG.error(f'Not supported typr: {suffix}, for file: {file}')
                     if i == 0:
-                        chat_history[-1][1] = file
+                        if self._use_openai_format:
+                            curr_ans['content'] = [{'type': 'file', 'path': file_path}]
+                        else:
+                            curr_ans[1] = gr.Image(file_path) if suffix in PIL.Image.registered_extensions() else file_path
                     else:
-                        chat_history.append([None, file])
+                        if self._use_openai_format:
+                            chat_history.append({'role': 'assistant', 'content': [{'type': 'file', 'path': file_path}]})
+                        else:
+                            chat_history.append([None, file_path])
                 if result:
-                    chat_history.append([None, result])
+                    if self._use_openai_format:
+                        chat_history.append({'role': 'assistant', 'content': result})
+                    else:
+                        chat_history.append([None, result])
             else:
                 assert isinstance(result, str), f'Result should only be str, but got {type(result)}'
                 show_result = result
                 if contains_markdown_image(show_result):
-                    urls = extract_img_path(show_result)
-                    for url in urls:
+                    for url in extract_img_path(show_result):
                         b64_encoded = None
                         suffix = os.path.splitext(url)[-1].lower()
-                        if suffix and suffix not in PIL.Image.registered_extensions():
-                            continue
+                        if suffix and suffix not in PIL.Image.registered_extensions(): continue
                         suffix = suffix.lstrip('.') if suffix else 'jpeg'
-                        if url.startswith('http://') or url.startswith('https://'):
-                            try:
-                                response = requests.get(url, timeout=5)
-                                if response.status_code == 200:
-                                    b64_encoded = base64.b64encode(response.content).decode('utf-8')
-                            except Exception: pass
-                        elif os.path.exists(url):
-                            try:
-                                with open(url, 'rb') as image_file:
-                                    b64_encoded = base64.b64encode(image_file.read()).decode('utf-8')
-                            except Exception: pass
-
-                        if b64_encoded:
-                            show_result = show_result.replace(url, f'data:image/{suffix};base64,{b64_encoded}')
+                        try:
+                            if url.startswith(('http://', 'https://')):
+                                resp = requests.get(url, timeout=5)
+                                if resp.status_code == 200:
+                                    b64_encoded = base64.b64encode(resp.content).decode('utf-8')
+                            elif os.path.exists(url):
+                                with open(url, 'rb') as f:
+                                    b64_encoded = base64.b64encode(f.read()).decode('utf-8')
+                            if b64_encoded:
+                                show_result = show_result.replace(url, f'data:image/{suffix};base64,{b64_encoded}')
+                        except Exception: pass
 
                 if result:
-                    count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
-                    if not chat_history[-1][1]:
-                        chat_history[-1][1] = show_result
-                    elif not (result in chat_history[-1][1][-count:]):
-                        chat_history[-1][1] += '\n\n' + show_result
-                    elif show_result != result:
-                        chat_history[-1][1] = chat_history[-1][1].replace(result, show_result)
-        except requests.RequestException as e:
-            chat_history = None
-            log = str(e)
+                    if self._use_openai_format:
+                        if isinstance(curr_ans['content'], list):
+                            curr_ans['content'].append({'type': 'text', 'text': show_result})
+                        else:
+                            curr_ans['content'] = show_result
+                    else:
+                        if stream_output and curr_ans[1]:
+                            if show_result != result:
+                                curr_ans[1] = curr_ans[1].replace(result, show_result)
+                        else:
+                            count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
+                            if not curr_ans[1]:
+                                curr_ans[1] = show_result
+                            elif not (result in curr_ans[1][-count:]):
+                                curr_ans[1] += '\n\n' + show_result
+                            elif show_result != result:
+                                curr_ans[1] = curr_ans[1].replace(result, show_result)
         except Exception as e:
             chat_history = None
             log = f'{str(e)}\n--- traceback ---\n{traceback.format_exc()}'
             LOG.error(log)
         globals['chat_history'].clear()
-        if chat_history and self._use_openai_format:
-            chat_history = _convert_to_openai_format(chat_history)
         yield chat_history, log
 
     def _clear_history(self, session):
