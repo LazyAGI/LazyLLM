@@ -27,3 +27,10 @@ class TestToolsCommon(object):
         res = ppl()
         new_id_sorts = [ele._uid for ele in res]
         assert new_id_sorts == ["101", "198", "175", "203", "150", "110", "250"]
+
+        rrf = RRFFusion(top_k=10)
+        nodes1 = retrieve_a()
+        nodes2 = retrieve_b()
+        res = rrf(nodes1, nodes2)
+        new_id_sorts = [ele._uid for ele in res]
+        assert new_id_sorts == ["101", "198", "175", "203", "150", "110", "250"]

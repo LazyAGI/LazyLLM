@@ -49,7 +49,7 @@ class TestRagReader(object):
         docs = []
         for doc in reader():
             docs.append(doc)
-        assert len(docs) == 3
+        assert len(docs) == 7
 
     # TODO: remove *.pptx and *.jpg, *.png in mac and win
     @pytest.mark.skip_on_mac

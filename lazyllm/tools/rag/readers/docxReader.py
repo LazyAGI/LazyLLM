@@ -1,16 +1,9 @@
 from pathlib import Path
 import tempfile
-from lazyllm.thirdparty import fsspec, docx2txt
+from lazyllm.thirdparty import fsspec, docx2txt, docx
 from typing import Callable, Optional, List, Dict
 from lazyllm import LOG, pipeline, _0
 from lazyllm.common import bind
-from lxml import etree
-from docx import Document as Docx
-from docx.styles.style import ParagraphStyle
-from docx.table import Table
-from docx.oxml.ns import qn
-from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.text import paragraph
 import copy
 import subprocess
 import os
@@ -27,9 +20,9 @@ def doc_to_docx(doc_path: str) -> str:
     if os.path.exists(docx_path):
         return docx_path
 
-    cmd = f'soffice --headless --convert-to docx "{doc_path}" --outdir "{dir_path}"'
+    cmd = ['soffice', '--headless', '--convert-to', 'docx', doc_path, '--outdir', dir_path]
     try:
-        result = subprocess.run(cmd, shell=True, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
         LOG.info(f'Command output: {result.stdout}')
     except subprocess.CalledProcessError as e:
         LOG.error(f'Command failed with error code {e.returncode}: {e.stderr}')
@@ -74,7 +67,7 @@ class DocxReader(LazyLLMReaderBase):
 
         return nodes
 
-    def _read_file(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> Docx:
+    def _read_file(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> docx.Document:
         fs = fs or get_default_fs()
 
         try:
@@ -115,7 +108,7 @@ class DocxReader(LazyLLMReaderBase):
 
         try:
             if is_default_fs(fs):
-                doc = Docx(docx=str(file))
+                doc = docx.Document(docx=str(file))
             else:
                 with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as tmp_file:
                     temp_path = tmp_file.name
@@ -123,7 +116,7 @@ class DocxReader(LazyLLMReaderBase):
                 with fs.open(file, 'rb') as remote_file:
                     tmp_file.write(remote_file.read())
 
-                doc = Docx(docx=temp_path)
+                doc = docx.Document(docx=temp_path)
             return doc
 
         except Exception as e:
@@ -165,11 +158,10 @@ class DocxReader(LazyLLMReaderBase):
                     has_imagedata = run.element.xpath('.//*[local-name()="imagedata"]')
                     if has_drawing or has_imagedata:
                         has_image = True
-                        break
 
                     if has_image:
                         image_nodes = self._extract_images_from_paragraph(
-                            para, doc, base_metadata, self.extra_info
+                            para, base_metadata, self.extra_info
                         )
                         if image_nodes:
                             doc_list.extend(image_nodes)
@@ -208,29 +200,26 @@ class DocxReader(LazyLLMReaderBase):
         content = element.text.replace('\u3000', ' ').strip('\n') if element.text else ''
         content_clean = content.replace(' ', '').replace('\n', '')
 
-        return content_clean is None
+        return not content_clean
 
-    def _get_aligned_type(self, para: paragraph) -> str:
+    def _get_aligned_type(self, para: docx.text.paragraph) -> str:
         aligned_type = {
-            WD_ALIGN_PARAGRAPH.LEFT: 'left',
-            WD_ALIGN_PARAGRAPH.CENTER: 'center',
-            WD_ALIGN_PARAGRAPH.RIGHT: 'right',
-            WD_ALIGN_PARAGRAPH.JUSTIFY: 'both_ends',
-            WD_ALIGN_PARAGRAPH.DISTRIBUTE: 'distribute',
+            docx.enum.text.WD_ALIGN_PARAGRAPH.LEFT: 'left',
+            docx.enum.text.WD_ALIGN_PARAGRAPH.CENTER: 'center',
+            docx.enum.text.WD_ALIGN_PARAGRAPH.RIGHT: 'right',
+            docx.enum.text.WD_ALIGN_PARAGRAPH.JUSTIFY: 'both_ends',
+            docx.enum.text.WD_ALIGN_PARAGRAPH.DISTRIBUTE: 'distribute',
             None: '',
         }
 
         try:
             alignment = para.alignment
-        except Exception:
-            try:
-                alignment = para._p.get(qn('w:align'))  # noqa: SLF001
-            except Exception:
-                alignment = None
+        except (AttributeError, TypeError):
+            alignment = None
 
         return aligned_type.get(alignment, '')
 
-    def _get_style_info(self, style: ParagraphStyle) -> dict:
+    def _get_style_info(self, style: docx.styles.style.ParagraphStyle) -> dict:
         try:
             font = style.font
             style_dict = {
@@ -250,8 +239,7 @@ class DocxReader(LazyLLMReaderBase):
             }
         return style_dict
 
-    def _extract_images_from_paragraph(self, para, doc: Docx, base_metadata: dict,
-                                       extra_info: Optional[Dict]) -> List[DocNode]:
+    def _extract_images_from_paragraph(self, para, base_metadata: dict, extra_info: Optional[Dict]) -> List[DocNode]:
         image_nodes = []
 
         for run in para.runs:
@@ -261,7 +249,7 @@ class DocxReader(LazyLLMReaderBase):
             if not (has_drawing or has_imagedata):
                 continue
 
-            for shape in run._element.findall('.//{http://schemas.openxmlformats.org/drawingml/2006/main}blip'):  # noqa: SLF001, E501
+            for shape in run.element.findall('.//{http://schemas.openxmlformats.org/drawingml/2006/main}blip'):
                 embed_id = shape.get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}embed')
                 if not embed_id:
                     continue
@@ -295,24 +283,23 @@ class DocxReader(LazyLLMReaderBase):
             return None
 
     def _math_to_text(self, math_node) -> str:
-        texts = []
-
-        def recurse(n):
-            tag = etree.QName(n).localname
-            if tag == 't':
-                texts.append(n.text if n.text else '')
-            else:
-                for child in n:
-                    recurse(child)
-
         try:
-            recurse(math_node)
-            return ''.join(texts)
+            def text_generator(node):
+                if node.text:
+                    yield node.text
+
+                for child in node:
+                    yield from text_generator(child)
+
+                if node.tail:
+                    yield node.tail
+
+            return ''.join(text_generator(math_node))
         except Exception as e:
             LOG.error(f'[Docx Reader] Failed to convert math to text: {e}')
             return ''
 
-    def _table_to_markdown(self, table: Table) -> str:
+    def _table_to_markdown(self, table: docx.table.Table) -> str:
         if not table.rows:
             return '\n[empty table]\n'
 
@@ -341,7 +328,7 @@ class DocxReader(LazyLLMReaderBase):
         except Exception:
             return '\n[Table parse failed]\n'
 
-    def _process_table(self, table: Table, base_metadata: dict,
+    def _process_table(self, table: docx.table.Table, base_metadata: dict,
                        extra_info: Optional[Dict] = None) -> DocNode:
         metadata = copy.deepcopy(base_metadata)
         metadata['type'] = 'table'

@@ -157,6 +157,12 @@ class TestFormatter(object):
         assert f(dict(a=[1, 2, 3, 4, 5], b=[2, 3, 4, 5, 6]), dict(a=[3, 4, 5, 6, 7], b=[4, 5, 6, 7, 8]),
                  dict(a=[5, 6, 7, 8, 9], b=[6, 7, 8, 9, 10])) == [dict(a=[2, 3]), dict(a=[6, 7])]
 
+    def test_json_repair(self):
+        jsf = formatter.JsonFormatter()
+        origin = '{"name": "Bob"}后面还有{name: "Charlie"}'
+        result = jsf(origin)
+        assert result == [{"name": "Bob"}, {'name': 'Charlie'}]
+
 
 class TestModuleFormatter(object):
     def test_module_formatter(self):
