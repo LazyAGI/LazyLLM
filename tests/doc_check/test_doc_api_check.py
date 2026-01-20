@@ -31,7 +31,7 @@ except ImportError as e:
     SimpleManager = None
 
 def generate_docs_for_module():
-    if SimpleManager is None:
+    if SimpleManager is None or lazyllm is None:
         return False
 
     try:
