@@ -25,7 +25,7 @@ sentencepiece
 psycopg2-binary
 sqlalchemy
 psutil
-pypdf
+pypdf<=6.5.0
 numpy==1.26.4
 async-timeout
 httpx<0.28.0
