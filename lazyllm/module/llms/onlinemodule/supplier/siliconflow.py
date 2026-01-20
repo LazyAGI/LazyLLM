@@ -19,10 +19,8 @@ class SiliconFlowChat(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://api.siliconflow.cn/v1/', model: str = 'Qwen/QwQ-32B',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        super().__init__(model_series='SILICONFLOW',
-                                      api_key=api_key or lazyllm.config['siliconflow_api_key'],
-                                      base_url=base_url, model_name=model, stream=stream,
-                                      return_trace=return_trace, **kwargs)
+        super().__init__(api_key=api_key or lazyllm.config['siliconflow_api_key'], base_url=base_url, model_name=model,
+                         stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         if stream:
             self._model_optional_params['stream'] = True
@@ -45,15 +43,14 @@ class SiliconFlowEmbed(LazyLLMOnlineEmbedModuleBase):
     def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/embeddings',
                  embed_model_name: str = 'BAAI/bge-large-zh-v1.5', api_key: str = None,
                  batch_size: int = 16, **kw):
-        super().__init__('SILICONFLOW', embed_url, api_key or lazyllm.config['siliconflow_api_key'],
+        super().__init__(embed_url, api_key or lazyllm.config['siliconflow_api_key'],
                          embed_model_name, batch_size=batch_size, **kw)
 
 
 class SiliconFlowRerank(LazyLLMOnlineRerankModuleBase):
     def __init__(self, embed_url: str = 'https://api.siliconflow.cn/v1/rerank',
                  embed_model_name: str = 'BAAI/bge-reranker-v2-m3', api_key: str = None, **kw):
-        super().__init__('SILICONFLOW', embed_url, api_key or lazyllm.config['siliconflow_api_key'],
-                         embed_model_name, **kw)
+        super().__init__(embed_url, api_key or lazyllm.config['siliconflow_api_key'], embed_model_name, **kw)
 
     def _encapsulated_data(self, query: str, documents: List[str], top_n: int, **kwargs) -> Dict:
         json_data = {
@@ -78,9 +75,8 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
     def __init__(self, api_key: str = None, model: str = None,
                  url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
-        LazyLLMOnlineText2ImageModuleBase.__init__(
-            self, model_series='SiliconFlow', api_key=api_key or lazyllm.config['siliconflow_api_key'],
-            model=model or SiliconFlowText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
+        super().__init__(api_key=api_key or lazyllm.config['siliconflow_api_key'],
+                         model=model or SiliconFlowText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
 
     def _make_request(self, endpoint, payload, base_url=None, timeout=180):
@@ -139,10 +135,9 @@ class SiliconFlowTTS(LazyLLMOnlineTTSModuleBase):
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.siliconflow.cn/v1/',
                  return_trace: bool = False, **kwargs):
-        LazyLLMOnlineText2ImageModuleBase.__init__(self, model_series='SiliconFlow',
-                                                   api_key=api_key or lazyllm.config['siliconflow_api_key'],
-                                                   model_name=model_name or SiliconFlowTTS.MODEL_NAME,
-                                                   return_trace=return_trace, base_url=base_url, **kwargs)
+        super().__init__(api_key=api_key or lazyllm.config['siliconflow_api_key'],
+                         model_name=model_name or SiliconFlowTTS.MODEL_NAME,
+                         return_trace=return_trace, base_url=base_url, **kwargs)
         self._endpoint = 'audio/speech'
 
     def _make_binary_request(self, endpoint, payload, base_url=None, timeout=180):
