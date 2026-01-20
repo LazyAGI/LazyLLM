@@ -63,7 +63,7 @@ def _get_blocks_kwargs(css_content: str, title: str, analytics_enabled: bool = F
             LOG.warning(f'Could not inspect gr.Blocks.__init__ signature, falling back. Error: {e}')
         return kwargs, css_content
 
-def _get_chatbot_kwargs(height: int = 700 , gradio_ver: Tuple[int, ...] = (5, 0, 0)):
+def _get_chatbot_kwargs(height: int = 700, gradio_ver: Tuple[int, ...] = (5, 0, 0)):
     kwargs = {'height': height}
     use_messages_format = False
 
@@ -295,7 +295,7 @@ class WebModule(ModuleBase):
         else:
             return self._change_session(session['sess_titles'][0], None, {}, session)
 
-    def _prepare(self, query, chat_history, session):
+    def _prepare(self, query, chat_history, session):  # noqa: C901
         is_empty = False
         if isinstance(query, dict):
             is_empty = not query.get('text', '') and not query.get('files', [])
@@ -397,10 +397,15 @@ class WebModule(ModuleBase):
 
             # Extract current input string
             if self._use_openai_format:
-                last_user = next((h for h in chat_history[::-1] if isinstance(h, dict) and h.get('role') == 'user'), None)
+                last_user = next((h for h in chat_history[::-1]
+                                 if isinstance(h, dict) and h.get('role') == 'user'), None)
                 if last_user:
                     content = last_user['content']
-                    string = next((c['text'] for c in content if isinstance(c, dict) and c.get('type') == 'text'), '') if isinstance(content, list) else content
+                    if isinstance(content, list):
+                        string = next((c['text'] for c in content
+                                      if isinstance(c, dict) and c.get('type') == 'text'), '')
+                    else:
+                        string = content
                 else:
                     string = ''
             else:
@@ -519,7 +524,8 @@ class WebModule(ModuleBase):
                         if self._use_openai_format:
                             curr_ans['content'] = [{'type': 'file', 'path': file_path}]
                         else:
-                            curr_ans[1] = gr.Image(file_path) if suffix in PIL.Image.registered_extensions() else file_path
+                            is_image = suffix in PIL.Image.registered_extensions()
+                            curr_ans[1] = gr.Image(file_path) if is_image else file_path
                     else:
                         if self._use_openai_format:
                             chat_history.append({'role': 'assistant', 'content': [{'type': 'file', 'path': file_path}]})
@@ -562,7 +568,8 @@ class WebModule(ModuleBase):
                             if show_result != result:
                                 curr_ans[1] = curr_ans[1].replace(result, show_result)
                         else:
-                            count = (len(match.group(1)) if (match := re.search(r'(\n+)$', result)) else 0) + len(result) + 1
+                            match = re.search(r'(\n+)$', result)
+                            count = (len(match.group(1)) if match else 0) + len(result) + 1
                             if not curr_ans[1]:
                                 curr_ans[1] = show_result
                             elif not (result in curr_ans[1][-count:]):
