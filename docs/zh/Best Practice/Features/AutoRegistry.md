@@ -79,47 +79,112 @@ LazyLLM 的注册机制可以用一句话概括其设计哲学：
 
 这三层各自职责明确，但只有协同工作，才能形成 LazyLLM 中看到的最终效果。
 
-### 2.3 LazyDict：注册结果如何被“使用”
+### 2.3 LazyDict：注册结果的使用方式
 
-LazyDict 是注册机制中**唯一直接面向使用者的部分**。
+LazyDict 是注册机制中**直接面向使用者的访问层**。
+所有通过注册机制生成的分组与实现，最终都会以 LazyDict 的形式对外暴露。
 
-从使用体验上看，LazyDict 并不是一个普通的 dict，而是一个经过特殊设计的容器，其目标是让注册结果“像模块、像对象、又像函数”。
+从使用行为上看，LazyDict 是一个**支持多种访问语义的注册容器**，其设计目标是：
+在不暴露内部注册结构的前提下，提供统一、宽松且可读性良好的访问方式。
 
-LazyDict 重点解决的是以下问题：
+#### 2.3.1 基于属性的访问（dot access）
 
-- 访问方式统一
+LazyDict 支持使用属性访问代替字典索引：
 
-    用户不需要知道实现类定义在哪个文件，只需通过
-    ```
-    lazyllm.<group>.<key>
-    ```
-    即可访问对应能力。
+```
+lazyllm.embed.openai
+```
 
-- 命名宽松、降低记忆成本
+等价于：
 
-    在合理范围内，LazyDict 对大小写、命名形式做了自动匹配，减少使用时的摩擦。
+```
+lazyllm.embed["openai"]
+```
 
-- 函数式调用体验
+这一行为用于保持访问形式的一致性，使注册结果在使用上更接近模块属性。
 
-    在存在默认实现或单一实现的情况下，允许直接
-    ```
-    lazyllm.<group>(...)
-    ```
-    而无需显式指定具体 key。
+#### 2.3.2 大小写不敏感的 key 匹配
 
-需要强调的是：
-> LazyDict 并不决定“注册什么”，它只负责“如何暴露注册结果”。
+在访问注册结果时，LazyDict 对 key 的大小写不敏感，并支持自动匹配常见命名形式。
 
-在系统内部，LazyDict 本质上是某个 Base 类对应的“子类注册表”，例如：
+例如，下列访问在语义上等价：
 
-```python
+```
+lazyllm.embed.openai
+lazyllm.embed.OpenAI
+lazyllm.embed.oPenAi
+```
+
+该机制用于降低对 key 精确拼写的依赖，提升交互与调试体验。
+注册时使用的规范化 key 仍作为内部唯一标识，不受访问形式影响。
+
+#### 2.3.3 类名与后缀的省略规则
+
+对于以能力后缀结尾的实现类（如 `OpenAIEmbed`），`LazyDict` 允许在访问时省略能力后缀，仅使用类名前缀。
+
+例如：
+
+```
+lazyllm.embed.OpenAIEmbed
+```
+
+可简写为：
+
+```
+lazyllm.embed.OpenAI
+```
+
+该规则仅作用于访问层，不影响注册 key 或类定义本身。
+
+#### 2.3.4 动态默认 key（default）
+
+LazyDict 支持为当前分组设置动态默认 key，用于指定该分组在省略 key 时应当选择的实现。
+
+示例：
+
+```
+ld = LazyDict(name="ld", ALd=int, BLd=str)
+
+ld.set_default("ALd")
+ld.default      # -> int（示意）
+```
+
+设置默认 key 后，LazyDict 在需要使用默认实现的场景下（例如 `lazyllm.<group>(...)`）将优先解析为该默认项。默认 key 仅影响访问与调用阶段的解析结果，不改变实际注册条目。
+
+#### 2.3.5 函数式调用与默认实现
+
+当某个分组下仅存在一个实现，或显式设置了默认实现时，LazyDict 允许直接以函数形式调用该分组：
+
+```
+lazyllm.embed(...)
+```
+
+等价于调用该分组下的默认实现：
+
+```
+lazyllm.embed.openai(...)
+```
+
+默认实现由分组注册容器在运行时维护，与具体实现类解耦。
+
+#### 2.3.6 LazyDict 的职责边界
+
+需要明确的是，LazyDict **不参与注册决策**，也不决定实现类的归属关系。
+其职责仅限于：
+
+- 作为某个 Base 类对应的注册容器
+- 维护注册结果与访问行为之间的映射关系
+
+在系统内部，LazyDict 的结构可抽象表示为：
+
+```
 LazyDict(
-  impl_a -> ClassA,
-  impl_b -> ClassB,
+    impl_a -> ClassA,
+    impl_b -> ClassB,
 )
 ```
 
-随后被挂载到 `lazyllm.<group>`，形成对外可见的统一入口。
+该对象随后被直接绑定到 `lazyllm.<group>`，作为该分组的统一访问入口。
 
 ### 2.4 LazyLLMRegisterMetaClass：类注册的核心机制
 
@@ -212,7 +277,7 @@ LazyLLM 在类定义阶段会对每个类进行注册判定，用于区分：
 ```python
 # 仅用于复用 HTTP 请求逻辑的中间基类
 class _EmbedHTTPMixin(metaclass=LazyLLMRegisterMetaClass):
-    __lazyllm_group_disable__ = True
+    __lazyllm_registry_disable__ = True
 
     def _request(self, payload: dict):
         ...

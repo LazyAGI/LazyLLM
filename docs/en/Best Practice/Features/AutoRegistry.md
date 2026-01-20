@@ -77,46 +77,97 @@ From the perspective of implementation and responsibility separation, the LazyLL
 
 Each layer has clear responsibilities, but only through collaboration do they form the final effect seen in LazyLLM.
 
-### 2.3 LazyDict: How Registration Results Are “Used”
+### 2.3 LazyDict: How Registration Results Are Used
 
-LazyDict is the **only part that faces end users directly** in the registration mechanism.
+LazyDict is the **user-facing access layer** of the registration mechanism.
+All groups and implementations generated through the registration mechanism are ultimately exposed as LazyDict instances.
 
-From the user experience perspective, LazyDict is not a normal dict, but a specially designed container whose goal is to make registration results feel “module-like, object-like, and function-like.”
+From the usage perspective, LazyDict is a **registration container that supports multiple access semantics**. Its design goal is:
+Provide unified, tolerant, and readable access without exposing internal registry structure.
 
-LazyDict focuses on the following:
+#### 2.3.1 Dot Access via Attributes
 
-- Unified access
+LazyDict supports attribute access as a replacement for dict indexing:
 
-    Users do not need to know which file defines the implementation class; they can access it through
-    ```
-    lazyllm.<group>.<key>
-    ```
+```
+lazyllm.embed.openai
+```
 
-- Loose naming, reduced memory burden
+Equivalent to:
 
-    Within reasonable bounds, LazyDict automatically matches case and naming variants to reduce friction.
+```
+lazyllm.embed["openai"]
+```
 
-- Functional call experience
+This behavior keeps access consistent and makes registration results feel more like module attributes.
 
-    When a default implementation or a single implementation exists, it allows direct calls via
-    ```
-    lazyllm.<group>(...)
-    ```
-    without explicitly specifying a key.
+#### 2.3.2 Case-Insensitive Key Matching
 
-It should be emphasized:
-> LazyDict does not decide “what to register”; it only handles “how to expose registered results.”
+When accessing registration results, LazyDict is case-insensitive and supports automatic matching of common naming variants.
 
-Internally, LazyDict is essentially a “subclass registry” for a Base class, for example:
+For example, the following accesses are semantically equivalent:
 
-```python
+```
+lazyllm.embed.openai
+lazyllm.embed.OpenAI
+lazyllm.embed.oPenAi
+```
+
+This mechanism reduces reliance on exact key spelling and improves interaction and debugging experience.
+The normalized key used at registration time remains the internal unique identifier and is unaffected by access form.
+
+#### 2.3.3 Class Name and Suffix Omission Rules
+
+For implementation classes ending with capability suffixes (such as `OpenAIEmbed`), LazyDict allows omitting the capability suffix and using only the class name prefix.
+
+For example:
+
+```
+lazyllm.embed.OpenAIEmbed
+```
+
+Can be abbreviated as:
+
+```
+lazyllm.embed.OpenAI
+```
+
+This rule applies only at the access layer and does not affect registration keys or class definitions.
+
+#### 2.3.4 Functional Calls and Default Implementations
+
+When a group contains only one implementation or a default implementation is explicitly set, LazyDict allows direct functional calls on the group:
+
+```
+lazyllm.embed(...)
+```
+
+Equivalent to calling the default implementation under that group:
+
+```
+lazyllm.embed.openai(...)
+```
+
+Default implementation is maintained at runtime by the group registration container and is decoupled from specific implementation classes.
+
+#### 2.3.5 LazyDict Responsibility Boundaries
+
+It is important to clarify that LazyDict **does not participate in registration decisions** and does not determine implementation ownership.
+Its responsibilities are limited to:
+
+- Serving as the registration container for a Base class
+- Mapping between registration results and access behavior
+
+Internally, LazyDict can be abstracted as:
+
+```
 LazyDict(
-  impl_a -> ClassA,
-  impl_b -> ClassB,
+    impl_a -> ClassA,
+    impl_b -> ClassB,
 )
 ```
 
-It is then attached to `lazyllm.<group>`, forming a unified, visible access entry.
+It is then directly bound to `lazyllm.<group>` as the unified access entry for that group.
 
 ### 2.4 LazyLLMRegisterMetaClass: The Core Mechanism for Class Registration
 
@@ -209,7 +260,7 @@ Example:
 ```python
 # Intermediate base class used only to reuse HTTP request logic
 class _EmbedHTTPMixin(metaclass=LazyLLMRegisterMetaClass):
-    __lazyllm_group_disable__ = True
+    __lazyllm_registry_disable__ = True
 
     def _request(self, payload: dict):
         ...
@@ -450,7 +501,7 @@ Whether this form is allowed and how the default implementation is chosen are ma
 
 ### 4.3 Configuration and Extension Rules for Online Modules
 
-During registration, Online modules automatically generate and manage a set of common configuration keys to unify initialization and invocation across suppliers and capability types. This section describes how these configuration keys are organized and the customization rules to follow when extending Online capabilities or suppliers.
+Online modules automatically generate and manage a set of common configuration keys during registration to unify initialization and invocation across suppliers and capability types. This section explains how these configuration keys are organized and the customization rules to follow when extending Online capabilities or suppliers.
 
 #### 4.3.1 Organization of Common Configuration Keys
 
