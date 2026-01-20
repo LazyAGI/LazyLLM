@@ -27,6 +27,7 @@ try:
     from lazynote.manager import SimpleManager
 except ImportError as e:
     logging.error(f'Error import lazyllm and lazynote: {e}')
+    lazyllm = None
     SimpleManager = None
 
 def generate_docs_for_module():
@@ -114,6 +115,9 @@ def find_highest_ancestor_with_method(cls, method_name: str):
     return highest
 
 def check_method_has_doc(cls, func: Callable) -> tuple[bool, bool]:
+    if lazyllm is None:
+        return False, False
+
     has_chinese_doc = False
     has_english_doc = False
 
