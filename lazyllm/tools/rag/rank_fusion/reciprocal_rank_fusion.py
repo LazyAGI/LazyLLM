@@ -19,16 +19,9 @@ class RRFFusion(ModuleBase):
 
         # Associate each doc's content with its RRF score for later sorting by it
         # Duplicated contents across retrievers are collapsed & scored cumulatively
-        doc_nodes_lists = []
-        if len(args) == 1 and self._is_nested_docnode_sequence(args[0]):
-            doc_nodes_lists = args[0]
-        else:
-            for arg in args:
-                doc_nodes_lists.append(arg)
-            if not doc_nodes_lists:
-                return []
-
-        if not self._is_nested_docnode_sequence(doc_nodes_lists):
+        doc_nodes_lists = args[0] if len(args) == 1 and isinstance(args[0], (tuple, list)) else list(args)
+        if not doc_nodes_lists: return []
+        elif not self._is_nested_docnode_sequence(doc_nodes_lists):
             return doc_nodes_lists
 
         K = 60

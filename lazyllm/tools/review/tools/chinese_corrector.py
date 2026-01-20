@@ -1,12 +1,13 @@
 import re
 import difflib
-from typing import List, Optional, Dict, Any, Union
+from typing import List, Optional, Dict, Any
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import lazyllm
 
-from ....review import configs
-from lazyllm import AutoModel, OnlineModule, TrainableModule
+from ...review import configs
+from lazyllm import AutoModel
+from ....module import LLMBase
 
 DEFAULT_SYSTEM_PROMPT = '你是一个中文纠错专家。请根据用户提供的原始文本，生成纠正后的文本。'
 DEFAULT_INSTRUCTION = '纠正输入句子中的语法错误，并输出正确的句子，输入句子为：{sentence}'
@@ -55,8 +56,7 @@ def get_errors(corrected_text, origin_text):  # noqa: C901
 
 
 class ChineseCorrector:
-    def __init__(self, llm: Optional[Union[TrainableModule, OnlineModule]] = None,
-                 base_url: Optional[str] = configs.CORRECTOR_URL,
+    def __init__(self, llm: Optional[LLMBase] = None, base_url: Optional[str] = configs.CORRECTOR_URL,
                  model: Optional[str] = configs.CORRECTOR_MODEL_NAME, api_key: Optional[str] = 'null',
                  source: str = 'openai', system_prompt: Optional[str] = DEFAULT_SYSTEM_PROMPT,
                  **_: Any):

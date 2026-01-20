@@ -5,35 +5,74 @@ from typing import Callable, Optional, List, Dict
 from lazyllm import LOG, pipeline, _0
 from lazyllm.common import bind
 import copy
+import glob
 import subprocess
 import os
 import re
+import shutil
 
 from ..doc_node import DocNode
 from .readerBase import LazyLLMReaderBase, get_default_fs, is_default_fs
 
-def doc_to_docx(doc_path: str) -> str:
-    fname = str(Path(doc_path).stem)
-    dir_path = str(Path(doc_path).parent)
-    docx_path = os.path.join(os.path.dirname(doc_path), f'{fname}.docx')
+def doc_to_docx(doc_path: str) -> str:  # noqa: C901
+    with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as temp_file:
+        temp_docx_path = temp_file.name
 
-    if os.path.exists(docx_path):
-        return docx_path
-
-    cmd = ['soffice', '--headless', '--convert-to', 'docx', doc_path, '--outdir', dir_path]
     try:
-        result = subprocess.run(cmd, check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
-        LOG.info(f'Command output: {result.stdout}')
-    except subprocess.CalledProcessError as e:
-        LOG.error(f'Command failed with error code {e.returncode}: {e.stderr}')
-    except Exception as e:
-        LOG.error(f'Unexpected error: {e}')
+        temp_dir = os.path.dirname(temp_docx_path)
+        temp_basename = os.path.basename(temp_docx_path)
 
-    if not os.path.exists(docx_path):
-        LOG.error(f'> !!! File conversion failed {doc_path} ==> {docx_path}')
+        conversion_commands = [
+            ['soffice', '--headless', '--convert-to', 'docx', doc_path, '--outdir', temp_dir],
+            ['libreoffice', '--headless', '--convert-to', 'docx', doc_path, '--outdir', temp_dir],
+            ['unoconv', '-f', 'docx', '-o', temp_dir, doc_path],
+        ]
+
+        success = False
+        for cmd in conversion_commands:
+            if shutil.which(cmd[0]):
+                try:
+                    subprocess.run(cmd, check=True, stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, text=True, timeout=60)
+                    success = True
+                    break
+                except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
+                    continue
+
+        if not success:
+            LOG.error('Please install LibreOffice (soffice/libreoffice) or unoconv for .doc convert.')
+            os.unlink(temp_docx_path)
+            return None
+
+        docx_files = glob.glob(os.path.join(temp_dir, '*.docx'))
+
+        if not docx_files:
+            LOG.error(f'> !!! File conversion failed {doc_path} ==> no docx file found in {temp_dir}')
+            os.unlink(temp_docx_path)
+            return None
+
+        actual_docx_path = None
+        for docx_file in docx_files:
+            if os.path.basename(docx_file) == temp_basename:
+                actual_docx_path = docx_file
+                break
+        if not actual_docx_path and docx_files:
+            actual_docx_path = docx_files[0]
+            os.rename(actual_docx_path, temp_docx_path)
+            actual_docx_path = temp_docx_path
+
+        return actual_docx_path
+
+    except subprocess.CalledProcessError as e:
+        LOG.error(f'Conversion command failed with error code {e.returncode}: {e.stderr}')
+        if os.path.exists(temp_docx_path):
+            os.unlink(temp_docx_path)
         return None
-    else:
-        return Path(docx_path)
+    except Exception as e:
+        LOG.error(f'Unexpected error during .doc to .docx conversion: {e}')
+        if os.path.exists(temp_docx_path):
+            os.unlink(temp_docx_path)
+        return None
 
 class DocxReader(LazyLLMReaderBase):
     def __init__(self, extra_info: Optional[Dict] = None, post_func: Optional[Callable] = None,
@@ -48,14 +87,19 @@ class DocxReader(LazyLLMReaderBase):
         try:
             return self._enhanced_load(file, fs, **kwargs)
 
-        except Exception:
-            if fs:
-                with fs.open(file) as f:
-                    text = docx2txt.process(f)
-            else:
-                text = docx2txt.process(file)
-
-            return [DocNode(text=text)]
+        except Exception as e:
+            if file.name.endswith('.doc'):
+                raise e
+            try:
+                if fs:
+                    with fs.open(file) as f:
+                        text = docx2txt.process(f)
+                else:
+                    text = docx2txt.process(file)
+                return [DocNode(text=text)]
+            except Exception as docx2txt_error:
+                LOG.error(f'Failed for {file}: {str(e)}, {str(docx2txt_error)}')
+                raise
 
     def _enhanced_load(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None, **kwargs) -> List[DocNode]:
         with pipeline() as p:
@@ -79,6 +123,8 @@ class DocxReader(LazyLLMReaderBase):
             LOG.error(f'Fail to load file for {file}: {e}')
             return []
 
+        temp_files_to_cleanup = []
+
         if file.name.endswith('.doc'):
             if not is_default_fs(fs):
                 with tempfile.NamedTemporaryFile(suffix='.doc', delete=False) as tmp_file:
@@ -90,19 +136,20 @@ class DocxReader(LazyLLMReaderBase):
 
                     converted_file = doc_to_docx(temp_docx_path)
                     if converted_file is None:
-                        LOG.error(f'Failed to convert .doc file: {file}')
-                        return None
+                        raise Exception(f'Failed to convert .doc file: {file}')
 
                     file = Path(converted_file)
                     fs = get_default_fs()
+                    temp_files_to_cleanup.append(str(converted_file))
                 finally:
                     os.unlink(temp_docx_path)
 
             else:
-                file = doc_to_docx(file)
-                if file is None:
-                    LOG.error(f'Failed to convert .doc file: {file}')
-                    return None
+                converted_file = doc_to_docx(str(file))
+                if converted_file is None:
+                    raise Exception(f'Failed to convert .doc file: {file}')
+                file = Path(converted_file)
+                temp_files_to_cleanup.append(converted_file)
 
         temp_path = None
 
@@ -122,6 +169,13 @@ class DocxReader(LazyLLMReaderBase):
         except Exception as e:
             LOG.error(f'[ERROR] file--{file.name}--Wrong file, failed to read file: {e}')
             raise
+        finally:
+            for temp_file in temp_files_to_cleanup:
+                try:
+                    if os.path.exists(temp_file):
+                        os.unlink(temp_file)
+                except Exception as e:
+                    LOG.warning(f'Failed to clean up temporary file {temp_file}: {e}')
 
     def _default_extract(self, file, doc) -> List[DocNode]:  # noqa: C901
         base_metadata = {'file_name': file.name}
