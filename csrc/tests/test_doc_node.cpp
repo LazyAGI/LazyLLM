@@ -1,6 +1,6 @@
 #include <gtest/gtest.h>
 
-#include "docnode.h"
+#include "doc_node.h"
 
 TEST(DocNode, DefaultEmpty) {
     lazyllm::DocNode node;
