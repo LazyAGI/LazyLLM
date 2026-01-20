@@ -411,27 +411,6 @@ Corresponds to the structure:
 
 Hierarchical grouping expresses capability semantics, enabling clear capability organization while maintaining a unified access pattern.
 
----
-
-In the current implementation, LazyLLM includes multi-level capability groups to organize different types of components and capabilities. These groups are automatically established at load time via Base class inheritance and are mounted to corresponding paths as LazyDict instances.
-
-Typical group structures include:
-
-lazyllm.online
-Online model and service group, used to organize Online capabilities.
-The group and its subgroup structure will be explained in later sections with the Online module.
-
-lazyllm.tool
-Tool capability group, used to organize tool components that can be called by models or flows.
-
-lazyllm.flow
-Flow and orchestration group, used to organize flow nodes and control structures.
-
-lazyllm.launcher
-Startup and runtime group, used to organize runtime entrypoints and execution control components.
-
-These groups together form LazyLLM's current main capability hierarchy. As modules are introduced and extended, groups and subgroups will gradually expand while keeping unified registration rules.
-
 ## 4. Application of the Registration Mechanism in Online Modules
 
 ![auto_registry.png](../../../assets/auto_registry.png)
