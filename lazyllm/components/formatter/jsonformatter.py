@@ -27,14 +27,14 @@ class JsonFormatter(JsonLikeFormatter):
 
             if brace_level == 0 and current_json:
                 try:
-                    json.loads(current_json)
-                    json_objects.append(current_json)
+
+                    parsed_obj = json.loads(current_json)
+                    json_objects.append(parsed_obj)
                     current_json = ''
                 except json.JSONDecodeError:
                     try:
                         repaired_obj = json_repair.loads(current_json)
-                        json.dumps(repaired_obj)
-                        json_objects.append(json.dumps(repaired_obj))
+                        json_objects.append(repaired_obj)
                         current_json = ''
                     except (json.JSONDecodeError, Exception):
                         continue
@@ -45,21 +45,10 @@ class JsonFormatter(JsonLikeFormatter):
         # Convert str to json format
         assert msg.count('{') == msg.count('}'), f'{msg} is not a valid json string.'
         try:
-            json_strs = self._extract_json_from_string(msg)
-            if len(json_strs) == 0:
+            json_objects = self._extract_json_from_string(msg)
+            if len(json_objects) == 0:
                 raise TypeError(f'{msg} is not a valid json string.')
-            res = []
-            for json_str in json_strs:
-                try:
-                    parsed_obj = json.loads(json_str)
-                    res.append(parsed_obj)
-                except json.JSONDecodeError:
-                    try:
-                        repaired_obj = json_repair.loads(json_str)
-                        res.append(repaired_obj)
-                    except Exception:
-                        res.append(json_str)
-            return res if len(res) > 1 else res[0]
+            return json_objects if len(json_objects) > 1 else json_objects[0]
         except Exception as e:
             lazyllm.LOG.info(f'Error: {e}')
             return ''

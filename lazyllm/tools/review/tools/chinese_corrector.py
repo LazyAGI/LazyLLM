@@ -1,13 +1,13 @@
 import re
 import difflib
 from typing import List, Optional, Dict, Any
-from concurrent.futures import ThreadPoolExecutor, as_completed
 
 import lazyllm
 
-from ...review import configs
 from lazyllm import AutoModel
 from ....module import LLMBase
+from lazyllm.flow import Warp
+from lazyllm.common import package
 
 DEFAULT_SYSTEM_PROMPT = '你是一个中文纠错专家。请根据用户提供的原始文本，生成纠正后的文本。'
 DEFAULT_INSTRUCTION = '纠正输入句子中的语法错误，并输出正确的句子，输入句子为：{sentence}'
@@ -18,46 +18,39 @@ DEFAULT_TEMPERATURE = 0.6
 
 def get_errors(corrected_text, origin_text):  # noqa: C901
     errors = []
-    unk_tokens = [' ', '“', '”', '‘', '’', '琊', '\n', '…', '擤', '\t', '玕', '']
+    unk_tokens = set([' ', '“', '”', '‘', '’', '琊', '\n', '…', '擤', '\t', '玕', ''])
 
-    s = difflib.SequenceMatcher(None, origin_text, corrected_text)
+    def add_error(orig_char, corr_char, pos):
+        if orig_char not in unk_tokens and corr_char not in unk_tokens:
+            errors.append((orig_char, corr_char, pos))
 
-    for tag, i1, i2, j1, j2 in s.get_opcodes():
-        if tag == 'replace':
-            origin_part = origin_text[i1:i2]
-            corrected_part = corrected_text[j1:j2]
+    matcher = difflib.SequenceMatcher(None, origin_text, corrected_text)
 
-            for idx, (orig_char, corr_char) in enumerate(zip(origin_part, corrected_part)):
-                if orig_char not in unk_tokens and corr_char not in unk_tokens:
-                    errors.append((orig_char, corr_char, i1 + idx))
+    for tag, i1, i2, j1, j2 in matcher.get_opcodes():
+        if tag == 'equal':
+            continue
 
-            for idx in range(len(corrected_part), len(origin_part)):
-                orig_char = origin_part[idx]
-                if orig_char not in unk_tokens:
-                    errors.append((orig_char, '', i1 + idx))
+        origin_part = origin_text[i1:i2]
+        corrected_part = corrected_text[j1:j2]
 
-            for idx in range(len(origin_part), len(corrected_part)):
-                corr_char = corrected_part[idx]
-                if corr_char not in unk_tokens:
-                    errors.append(('', corr_char, i1 + len(origin_part)))
+        min_len = min(len(origin_part), len(corrected_part))
 
-        elif tag == 'delete':
-            for idx, char in enumerate(origin_text[i1:i2]):
-                if char not in unk_tokens:
-                    errors.append((char, '', i1 + idx))
+        for idx in range(min_len):
+            add_error(origin_part[idx], corrected_part[idx], i1 + idx)
 
-        elif tag == 'insert':
-            for _, char in enumerate(corrected_text[j1:j2]):
-                if char not in unk_tokens:
-                    errors.append(('', char, i1))
+        for idx in range(min_len, len(origin_part)):
+            add_error(origin_part[idx], '', i1 + idx)
 
-    errors = sorted(errors, key=lambda x: x[2])
-    return errors
+        insert_pos = i1 + len(origin_part) if tag == 'replace' else i1
+        for idx in range(min_len, len(corrected_part)):
+            add_error('', corrected_part[idx], insert_pos)
+
+    return sorted(errors, key=lambda x: x[2])
 
 
 class ChineseCorrector:
-    def __init__(self, llm: Optional[LLMBase] = None, base_url: Optional[str] = configs.CORRECTOR_URL,
-                 model: Optional[str] = configs.CORRECTOR_MODEL_NAME, api_key: Optional[str] = 'null',
+    def __init__(self, llm: Optional[LLMBase] = None, base_url: Optional[str] = None,
+                 model: Optional[str] = None, api_key: Optional[str] = 'null',
                  source: str = 'openai', system_prompt: Optional[str] = DEFAULT_SYSTEM_PROMPT,
                  **_: Any):
         if llm:
@@ -87,6 +80,7 @@ class ChineseCorrector:
                     **llm_kwargs,
                 )
                 response = self._post_process(response, sentence)
+                errors = get_errors(response, sentence)
             except Exception as e:
                 lazyllm.LOG.error(
                     f'Error predicting sentence (length={len(sentence)}): '
@@ -94,8 +88,7 @@ class ChineseCorrector:
                     f'Error: {e}'
                 )
                 response = ''
-
-            errors = get_errors(response, sentence)
+                errors = []
             results.append(
                 {
                     'source': sentence,
@@ -115,30 +108,24 @@ class ChineseCorrector:
         if not sentences:
             return []
 
-        concurrency = concurrency or batch_size
-        results: List[Optional[Dict[str, Any]]] = [None] * len(sentences)
-
-        def _worker(idx: int, sent: str) -> None:
+        def process_sentence(sent: str) -> Dict[str, Any]:
             try:
                 res = self._predict([sent], **kwargs)
-                results[idx] = res[0] if res else {'source': sent, 'target': sent, 'errors': []}
+                return res[0] if res else {'source': sent, 'target': sent, 'errors': []}
             except Exception as e:
-                lazyllm.LOG.error(f'Error in correct_batch for index {idx}: {e}')
-                results[idx] = {'source': sent, 'target': sent, 'errors': []}
+                lazyllm.LOG.error(f'Error processing sentence: {e}')
+                return {'source': sent, 'target': sent, 'errors': []}
 
-        with ThreadPoolExecutor(max_workers=concurrency) as executor:
-            futures = {
-                executor.submit(_worker, idx, sent): idx
-                for idx, sent in enumerate(sentences)
-            }
-            for future in as_completed(futures):
-                try:
-                    future.result()
-                except Exception as e:
-                    idx = futures[future]
-                    lazyllm.LOG.error(f'Unhandled exception in correct_batch at index {idx}: {e}')
+        warp_processor = Warp(process_sentence, _concurrent=concurrency or batch_size)
+        input_package = package(sentences)
 
-        return [r for r in results if r is not None]
+        try:
+            results_package = warp_processor(input_package)
+            results = list(results_package)
+            return results
+        except Exception as e:
+            lazyllm.LOG.error(f'Error in warp processing: {e}')
+            return [{'source': sent, 'target': sent, 'errors': []} for sent in sentences]
 
     def _post_process(self, response: str, origin: str) -> str:
         response = response.strip()
