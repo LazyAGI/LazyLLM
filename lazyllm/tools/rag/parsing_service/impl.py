@@ -197,7 +197,7 @@ class _Processor:
         try:
             self._store.remove_nodes(kb_id=kb_id, doc_ids=doc_ids)
             if self._schema_extractor:
-                self._schema_extractor._delete_extract_data(kb_id=kb_id, doc_ids=doc_ids)
+                self._schema_extractor._delete_extract_data(algo_id=self._algo_id, kb_id=kb_id, doc_ids=doc_ids)
         except Exception as e:
             LOG.error(f'Failed to delete doc: {e}, {traceback.format_exc()}')
             raise e

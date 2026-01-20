@@ -1,4 +1,4 @@
-from .supplier import MemUMemory, Mem0Memory
+from .supplier import MemUMemory, Mem0Memory, PowerMemMemory
 from .base import LazyLLMMemoryBase
 from typing import Optional
 import lazyllm
@@ -6,7 +6,8 @@ import lazyllm
 
 class Memory():
     SUPPLIERS = {'memu': MemUMemory,
-                 'mem0': Mem0Memory}
+                 'mem0': Mem0Memory,
+                 'powermem': PowerMemMemory}
 
     def __new__(cls, source: Optional[str] = None, *args, **kwargs) -> LazyLLMMemoryBase:
         if source is None:
