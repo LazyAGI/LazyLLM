@@ -16,6 +16,10 @@ on:
       - ".git*"
       - "docs/**"
 
+defaults:
+  run:
+    shell: bash
+
 env:
   PYTHON_VERSION: "3.10.9"
 
