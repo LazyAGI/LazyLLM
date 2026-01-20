@@ -1,7 +1,7 @@
 from pathlib import Path
 import tempfile
 from lazyllm.thirdparty import fsspec, docx2txt, docx
-from typing import Callable, Optional, List, Dict
+from typing import Callable, Optional, List, Dict, Any
 from lazyllm import LOG, pipeline, _0
 from lazyllm.common import bind
 import copy
@@ -75,31 +75,79 @@ def doc_to_docx(doc_path: str) -> str:  # noqa: C901
         return None
 
 class DocxReader(LazyLLMReaderBase):
-    def __init__(self, extra_info: Optional[Dict] = None, post_func: Optional[Callable] = None,
-                 extract_process: Optional[Callable] = None, return_trace: bool = True):
+    def __init__(self, enhanced: Optional[bool] = False, post_func: Optional[Callable] = None,
+                 extract_process: Optional[Callable] = None, return_trace: bool = True,
+                 extract_global_info: bool = True, extra_info: Optional[Dict] = None):
         super().__init__(return_trace=return_trace)
-        self.extra_info = extra_info
+        self.enhanced = enhanced
         self.extract_process = extract_process or self._default_extract
         self.post_func = post_func or self._default_post
+        self.extract_global_info = extract_global_info
+        self.extra_info = extra_info or {}
+
+    def _extract_global_info(self, doc: docx.Document, file_path: Path) -> Dict[str, Any]:
+        global_info = dict(self.extra_info)
+
+        if self.extract_global_info and self.enhanced:
+            try:
+                props = doc.core_properties
+
+                str_props = ['author', 'title', 'subject', 'keywords', 'comments']
+
+                special_props = {
+                    'created': lambda x: x.isoformat(),
+                    'modified': lambda x: x.isoformat(),
+                    'revision': lambda x: x,
+                }
+
+                for prop_name in str_props:
+                    prop_value = getattr(props, prop_name, None)
+                    if prop_value:
+                        global_info[prop_name] = str(prop_value)
+
+                for prop_name, converter in special_props.items():
+                    prop_value = getattr(props, prop_name, None)
+                    if prop_value is not None:
+                        try:
+                            global_info[prop_name] = converter(prop_value)
+                        except (AttributeError, ValueError) as e:
+                            LOG.debug(f'Failed to convert {prop_name}: {e}')
+
+                global_info['file_path'] = str(file_path)
+                global_info['file_name'] = file_path.name
+                global_info['file_size'] = file_path.stat().st_size if file_path.exists() else 0
+
+            except Exception as e:
+                LOG.warning(f'Failed to extract global info from {file_path}: {e}')
+
+        return global_info
 
     def _load_data(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None,
                    **kwargs) -> List[DocNode]:
-        try:
-            return self._enhanced_load(file, fs, **kwargs)
+        if not isinstance(file, Path):
+            file = Path(file)
 
-        except Exception as e:
-            if file.name.endswith('.doc'):
-                raise e
+        if self.enhanced:
             try:
-                if fs:
-                    with fs.open(file) as f:
-                        text = docx2txt.process(f)
-                else:
-                    text = docx2txt.process(file)
-                return [DocNode(text=text)]
-            except Exception as docx2txt_error:
-                LOG.error(f'Failed for {file}: {str(e)}, {str(docx2txt_error)}')
-                raise
+                return self._enhanced_load(file, fs, **kwargs)
+
+            except Exception as e:
+                if file.name.endswith('.doc'):
+                    raise e
+                return self._load(file, fs, **kwargs)
+        return self._load(file, fs, **kwargs)
+
+    def _load(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None, **kwargs) -> List[DocNode]:
+        try:
+            if fs:
+                with fs.open(file) as f:
+                    text = docx2txt.process(f)
+            else:
+                text = docx2txt.process(file)
+            return [DocNode(text=text)]
+        except Exception as docx2txt_error:
+            LOG.error(f'Failed for {file}: {str(docx2txt_error)}')
+            raise
 
     def _enhanced_load(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None, **kwargs) -> List[DocNode]:
         with pipeline() as p:
@@ -178,9 +226,9 @@ class DocxReader(LazyLLMReaderBase):
                     LOG.warning(f'Failed to clean up temporary file {temp_file}: {e}')
 
     def _default_extract(self, file, doc) -> List[DocNode]:  # noqa: C901
+        global_info = self._extract_global_info(doc, file)
+
         base_metadata = {'file_name': file.name}
-        if self.extra_info is not None:
-            base_metadata.update(self.extra_info)
 
         doc_list = []
 
@@ -196,7 +244,7 @@ class DocxReader(LazyLLMReaderBase):
                     table = tables[table_idx]
                     table_idx += 1
 
-                    table_node = self._process_table(table, base_metadata, self.extra_info)
+                    table_node = self._process_table(table, base_metadata, global_info)
                     doc_list.append(table_node)
 
             elif element.tag.endswith('p'):
@@ -215,7 +263,7 @@ class DocxReader(LazyLLMReaderBase):
 
                     if has_image:
                         image_nodes = self._extract_images_from_paragraph(
-                            para, base_metadata, self.extra_info
+                            para, base_metadata, global_info
                         )
                         if image_nodes:
                             doc_list.extend(image_nodes)
@@ -225,7 +273,7 @@ class DocxReader(LazyLLMReaderBase):
 
                     math_text = self._extract_math_from_element(element)
                     if math_text:
-                        math_node = self._process_math(math_text, base_metadata, self.extra_info)
+                        math_node = self._process_math(math_text, base_metadata, global_info)
                         doc_list.append(math_node)
                         if self._content_clean(element):
                             continue
@@ -235,7 +283,7 @@ class DocxReader(LazyLLMReaderBase):
 
                     content = element.text.replace('\u3000', ' ').strip('\n') if element.text else ''
 
-                    para_node = self._process_paragraph(para, content, base_metadata, self.extra_info)
+                    para_node = self._process_paragraph(para, content, base_metadata, global_info)
                     doc_list.append(para_node)
 
         return doc_list
