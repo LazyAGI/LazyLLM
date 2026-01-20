@@ -11,10 +11,9 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
     NO_PROXY = True
     __lazyllm_registry_disable__ = True
 
-    def __init__(self, model_series: str, embed_url: str, api_key: str, embed_model_name: str, skip_auth: bool = False,
+    def __init__(self, embed_url: str, api_key: str, embed_model_name: str, skip_auth: bool = False,
                  return_trace: bool = False, batch_size: int = 32, num_worker: int = 1, timeout: int = 10):
         super().__init__(api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
-        self._model_series = model_series
         self._embed_url = embed_url
         self._embed_model_name = embed_model_name
         self._batch_size = batch_size
@@ -27,10 +26,6 @@ class OnlineEmbeddingModuleBase(LazyLLMOnlineBase):
             self._batch_size = batch_size
 
         if hasattr(self, '_set_embed_url'): self._set_embed_url()
-
-    @property
-    def series(self):
-        return self._model_series
 
     @property
     def type(self):

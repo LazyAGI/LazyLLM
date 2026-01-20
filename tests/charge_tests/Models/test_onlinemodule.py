@@ -66,7 +66,7 @@ class TestOnlineModule(object):
     def test_OnlineChat_forward_override(self, monkeypatch):
         class DummyChat(lazyllm.module.OnlineChatModuleBase):
             def __init__(self, base_url: str, model: str, api_key: str, stream: bool = False, **kw):
-                super().__init__(model_series='DUMMY', api_key=api_key, base_url=base_url,
+                super().__init__(api_key=api_key, base_url=base_url,
                                  model_name=model, stream=stream, **kw)
 
             def _get_system_prompt(self):
@@ -99,7 +99,7 @@ class TestOnlineModule(object):
             __lazyllm_registry_disable__ = True
 
             def __init__(self, embed_url: str, embed_model_name: str, api_key: str, **kw):
-                super().__init__(model_series='DUMMY', embed_url=embed_url, api_key=api_key,
+                super().__init__(embed_url=embed_url, api_key=api_key,
                                  embed_model_name=embed_model_name, **kw)
 
             def forward(self, input, url: str = None, model: str = None, **kwargs):

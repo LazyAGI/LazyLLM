@@ -115,7 +115,7 @@ class TestRegistryWithKey(object):
             __lazyllm_registry_key__ = 'testonline'
 
             @staticmethod
-            def __lazyllm_after_registry_hook__(group_name: str, name: str, isleaf: bool):
+            def __lazyllm_after_registry_hook__(cls, group_name: str, name: str, isleaf: bool):
                 if group_name == '':
                     assert name == 'testonline'
                 elif not isleaf:
