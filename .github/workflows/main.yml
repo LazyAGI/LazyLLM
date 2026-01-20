@@ -672,6 +672,7 @@ jobs:
   cpp_ext_test:
     name: C++ Extension Test (${{ matrix.os }})
     needs: [ clone ]
+    if:  always()
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
