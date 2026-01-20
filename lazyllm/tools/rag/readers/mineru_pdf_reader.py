@@ -44,7 +44,7 @@ class MineruPDFReader(LazyLLMReaderBase):
             'default': self._process_default,   # default processor for unknown content types
         }
 
-    def set_type_processor(self, content_type: str, processor: Callable):
+    def set_type_processor(self, content_type: str, processor: Callable[[Dict], Optional[Dict]]):
         self._type_processors[content_type] = processor
 
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
