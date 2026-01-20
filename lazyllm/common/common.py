@@ -242,12 +242,8 @@ class ResultCollector(object):
     def __call__(self, name): return ResultCollector.Impl(name, self._value)
     def __getitem__(self, name): return self._value[name]
     def __repr__(self): return repr(self._value)
-
-    def keys(self):
-        return self._value.keys()
-
-    def items(self):
-        return self._value.items()
+    def keys(self): return self._value.keys()
+    def items(self): return self._value.items()
 
 
 class ReprRule(object):
