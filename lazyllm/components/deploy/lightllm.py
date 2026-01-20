@@ -5,7 +5,7 @@ import random
 import lazyllm
 from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_fastapi_func
-from .utils import make_log_dir, get_log_path
+from .utils import make_log_dir, get_log_path, parse_options_keys
 from typing import Optional
 
 
@@ -19,22 +19,22 @@ class Lightllm(LazyLLMDeployBase):
         'inputs': 'Who are you ?',
         'parameters': {
             'do_sample': False,
-            "presence_penalty": 0.0,
-            "frequency_penalty": 0.0,
-            "repetition_penalty": 1.0,
+            'presence_penalty': 0.0,
+            'frequency_penalty': 0.0,
+            'repetition_penalty': 1.0,
             'temperature': 1.0,
-            "top_p": 1,
-            "top_k": -1,  # -1 is for all
-            "ignore_eos": False,
+            'top_p': 1,
+            'top_k': -1,  # -1 is for all
+            'ignore_eos': False,
             'max_new_tokens': 8192,
-            "stop_sequences": None,
+            'stop_sequences': None,
         }
     }
     auto_map = {}
     stream_url_suffix = '_stream'
-    stream_parse_parameters = {"delimiter": b"\n\n"}
+    stream_parse_parameters = {'delimiter': b'\n\n'}
 
-    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None,  # noqa B008
+    def __init__(self, trust_remote_code=True, launcher=launchers.remote(ngpus=1), log_path=None, # noqa B008
                  openai_api: Optional[bool] = None, **kw):
         super().__init__(launcher=launcher)
         self.kw = ArgsDict({
@@ -45,13 +45,15 @@ class Lightllm(LazyLLMDeployBase):
             'host': '0.0.0.0',
             'nccl_port': None,
             'tokenizer_mode': 'auto',
-            "running_max_req_size": 256,
-            "data_type": 'float16',
-            "max_req_total_len": 64000,
-            "max_req_input_len": 4096,
-            "long_truncation_mode": "head",
+            'running_max_req_size': 256,
+            'data_type': 'float16',
+            'max_req_total_len': 64000,
+            'max_req_input_len': 4096,
+            'long_truncation_mode': 'head',
         })
-        self.trust_remote_code = trust_remote_code
+        self.options_keys = kw.pop('options_keys', [])
+        if trust_remote_code and 'trust_remote_code' not in self.options_keys:
+            self.options_keys.append('trust_remote_code')
         self.kw.check_and_update(kw)
         self.random_port = False if 'port' in kw and kw['port'] else True
         self.random_nccl_port = False if 'nccl_port' in kw and kw['nccl_port'] else True
@@ -62,8 +64,8 @@ class Lightllm(LazyLLMDeployBase):
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
             if not finetuned_model:
-                LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                            f"base_model({base_model}) will be used")
+                LOG.warning(f'Note! That finetuned_model({finetuned_model}) is an invalid path, '
+                            f'base_model({base_model}) will be used')
             finetuned_model = base_model
 
         def impl():
@@ -73,8 +75,7 @@ class Lightllm(LazyLLMDeployBase):
                 self.kw['nccl_port'] = random.randint(20000, 30000)
             cmd = f'python -m lightllm.server.api_server --model_dir {finetuned_model} '
             cmd += self.kw.parse_kwargs()
-            if self.trust_remote_code:
-                cmd += ' --trust_remote_code '
+            cmd += ' ' + parse_options_keys(self.options_keys)
             if self.temp_folder: cmd += f' 2>&1 | tee {get_log_path(self.temp_folder)}'
             return cmd
 
@@ -91,7 +92,7 @@ class Lightllm(LazyLLMDeployBase):
     @staticmethod
     def extract_result(x, inputs):
         try:
-            if x.startswith("data:"): return json.loads(x[len("data:"):])['token']['text']
+            if x.startswith('data:'): return json.loads(x[len('data:'):])['token']['text']
             else: return json.loads(x)['generated_text'][0]
         except Exception as e:
             LOG.warning(f'JSONDecodeError on load {x}')

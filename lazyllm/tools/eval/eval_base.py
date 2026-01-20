@@ -10,8 +10,8 @@ from lazyllm.module import ModuleBase
 from lazyllm import warp
 
 
-lazyllm.config.add('eval_result_dir', str, os.path.join(os.path.expanduser('~'), '.lazyllm', 'eval_res'),
-                   'EVAL_RESULT_DIR')
+lazyllm.config.add('eval_result_dir', str, os.path.join(os.path.expanduser(lazyllm.config['home']), 'eval_res'),
+                   'EVAL_RESULT_DIR', description='The default result directory for eval.')
 
 class BaseEvaluator(ModuleBase):
     def __init__(self, concurrency=1, retry=3, log_base_name=None):
@@ -30,15 +30,15 @@ class BaseEvaluator(ModuleBase):
                     result = post_processor(result)
                 if result_validator is None or result_validator(result):
                     return result
-                lazyllm.LOG.warning(f"Validation failed on attempt {attempt}/{self._retry}")
+                lazyllm.LOG.warning(f'Validation failed on attempt {attempt}/{self._retry}')
             except Exception as e:
-                lazyllm.LOG.error(f"Attempt {attempt}/{self._retry} failed: {str(e)}")
-        lazyllm.LOG.error(f"All {self._retry} attempts exhausted")
+                lazyllm.LOG.error(f'Attempt {attempt}/{self._retry} failed: {str(e)}')
+        lazyllm.LOG.error(f'All {self._retry} attempts exhausted')
         return ''
 
     def forward(self, data):
         if not data:
-            lazyllm.LOG.warning("Empty input data received")
+            lazyllm.LOG.warning('Empty input data received')
             return 0.0
 
         with tqdm(total=len(data), desc=self.__class__.__name__.title()) as progress_bar:
@@ -63,15 +63,15 @@ class BaseEvaluator(ModuleBase):
 
     def validate_inputs_key(self, data):
         if not isinstance(data, list):
-            raise RuntimeError(f"The data should be a list, but got {type(data)}")
+            raise RuntimeError(f'The data should be a list, but got {type(data)}')
         for i, item in enumerate(data):
             if not isinstance(item, dict):
-                raise RuntimeError(f"The item at index {i} should be a dict, but got {type(item)}")
+                raise RuntimeError(f'The item at index {i} should be a dict, but got {type(item)}')
             missing_keys = [key for key in self._necessary_keys if key not in item]
             if missing_keys:
                 raise RuntimeError(
-                    f"The dict at index {i} should contain "
-                    f"keys: {self._necessary_keys}, but cannot find: {missing_keys}")
+                    f'The dict at index {i} should contain '
+                    f'keys: {self._necessary_keys}, but cannot find: {missing_keys}')
 
     def batch_process(self, data, progress_bar):
         self.validate_inputs_key(data)
@@ -84,10 +84,10 @@ class BaseEvaluator(ModuleBase):
         os.makedirs(save_dir, exist_ok=True)
 
         filename = eval_res_save_name or self.__class__.__name__
-        timestamp = datetime.now().strftime("%Y%m%d%H%M%S")
-        save_path = os.path.join(save_dir, f"{filename}_{timestamp}.json")
+        timestamp = datetime.now().strftime('%Y%m%d%H%M%S')
+        save_path = os.path.join(save_dir, f'{filename}_{timestamp}.json')
         try:
             with open(save_path, 'w') as file:
                 json.dump(data, file, ensure_ascii=False, indent=4)
         except Exception as e:
-            lazyllm.LOG.error(f"Dump Json error: {e}")
+            lazyllm.LOG.error(f'Dump Json error: {e}')

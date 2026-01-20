@@ -1,11 +1,15 @@
 toml
+pyyaml
+tqdm
+filelock
+packaging
 fastapi>=0.111.0
 loguru>=0.7.2
-pydantic<=2.10.6
+pydantic
 requests>=2.32.2
 uvicorn
 cloudpickle>=3.0.0
-gradio<5.0.0
+gradio==5.49.1
 gradio-client>=0.6.1
 protobuf>=3.20.1
 docstring-parser
@@ -21,7 +25,7 @@ sentencepiece
 psycopg2-binary
 sqlalchemy
 psutil
-pypdf
+pypdf<=6.5.0
 numpy==1.26.4
 async-timeout
 httpx<0.28.0
@@ -33,3 +37,4 @@ openpyxl
 python-pptx
 tenacity
 beautifulsoup4
+deepdiff>=8.6.1

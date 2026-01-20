@@ -1,58 +1,29 @@
 import json
-import ast
 import threading
 import time
 from enum import Enum
-from functools import wraps
-from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any
+from pydantic import BaseModel
+from typing import Callable, Dict, List, Optional, Set, Union, Tuple, Any, Type
 from lazyllm import LOG, once_wrapper
+from lazyllm.module import LLMBase
 from .transform import (NodeTransform, FuncNodeTransform, SentenceSplitter, LLMParser,
                         TransformArgs, TransformArgs as TArgs)
 from .index_base import IndexBase
 from .store import (LAZY_ROOT_NAME, LAZY_IMAGE_GROUP, LazyLLMStoreBase)
+from .store.store_base import DEFAULT_KB_ID
 from .store.document_store import _DocumentStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
-from .utils import DocListManager, is_sparse
+from .utils import DocListManager, is_sparse, _get_default_db_config
 from .global_metadata import GlobalMetadataDesc, RAG_KB_ID
 from .data_type import DataType
-from .doc_processor import _Processor, DocumentProcessor
+from .parsing_service import _Processor, DocumentProcessor
+from .embed_wrapper import _EmbedWrapper
+from .doc_to_db import SchemaExtractor
 from dataclasses import dataclass
 from itertools import repeat
 
 _transmap = dict(function=FuncNodeTransform, sentencesplitter=SentenceSplitter, llm=LLMParser)
-
-def embed_wrapper(func: Optional[Callable[..., Any]]) -> Optional[Callable[..., List[float]]]:
-    if not func:
-        return None
-
-    @wraps(func)
-    def wrapper(*args, **kwargs) -> List[float]:
-        result = func(*args, **kwargs)
-        if isinstance(result, str):
-            try:
-                # Use json.loads as it's generally more robust for list-like strings
-                return json.loads(result)
-            except json.JSONDecodeError:
-                # Fallback or raise error if json.loads also fails
-                # For example, if ast.literal_eval was truly necessary for some non-JSON compatible Python literal
-                try:
-                    LOG.warning("json.loads failed, attempting ast.literal_eval as a "
-                                "fallback (might hit recursion limit).")
-                    return ast.literal_eval(result)
-                except Exception as e:
-                    LOG.error(f"Both json.loads and ast.literal_eval failed. Error: {e}")
-                    raise  # Re-raise the original or a new error
-        # Explicitly check if it's already a list for dense embedding or dict for sparse embedding
-        elif isinstance(result, (list, dict)):
-            return result
-        else:
-            # Handle unexpected types by raising an error
-            error_message = f"Expected List[float] or str (convertible to List[float]), but got {type(result)}"
-            LOG.error(f"{error_message}")
-            raise TypeError(error_message)
-
-    return wrapper
 
 class StorePlaceholder:
     pass
@@ -81,6 +52,7 @@ class BuiltinGroups(object):
         trans_node: bool = None
 
         def __str__(self): return self.name
+        def __hash__(self): return hash(self.name)
 
     CoarseChunk = Struct('CoarseChunk', '1024 Tokens Chunk', NodeGroupType.CHUNK,
                          TArgs(f=SentenceSplitter, kwargs=dict(chunk_size=1024, chunk_overlap=100)))
@@ -102,7 +74,8 @@ class DocImpl:
                  global_metadata_desc: Dict[str, GlobalMetadataDesc] = None,
                  store: Optional[Union[Dict, LazyLLMStoreBase]] = None,
                  processor: Optional[DocumentProcessor] = None, algo_name: Optional[str] = None,
-                 display_name: Optional[str] = None, description: Optional[str] = None):
+                 display_name: Optional[str] = None, description: Optional[str] = None,
+                 schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
         super().__init__()
         self._local_file_reader: Dict[str, Callable] = {}
         self._kb_group_name = kb_group_name or DocListManager.DEFAULT_GROUP_NAME
@@ -112,7 +85,7 @@ class DocImpl:
             LAZY_ROOT_NAME: dict(parent=None, display_name='Original Source', group_type=NodeGroupType.ORIGINAL),
             LAZY_IMAGE_GROUP: dict(parent=None, display_name='Image Node', group_type=NodeGroupType.OTHER)
         }
-        self.embed = {k: embed_wrapper(e) for k, e in embed.items()}
+        self.embed = {k: _EmbedWrapper(e) for k, e in embed.items()}
         self._global_metadata_desc = global_metadata_desc
         self.store = store  # NOTE: will be initialized in _lazy_init()
         self._activated_groups = set([LAZY_ROOT_NAME, LAZY_IMAGE_GROUP])
@@ -123,6 +96,7 @@ class DocImpl:
         self._algo_name = algo_name
         self._display_name = display_name
         self._description = description
+        self._schema_extractor = schema_extractor
 
     def _init_node_groups(self):
         node_groups = DocImpl._builtin_node_groups.copy()
@@ -141,7 +115,7 @@ class DocImpl:
                 self._activated_groups.add(group := parent_group)
 
     def _create_store(self):
-        if self.store is None: self.store = {'type': 'map'}
+        self.store = self.store or {'type': 'map'}
         embed_dims, embed_datatypes = {}, {}
         for k, e in self.embed.items():
             embedding = e('a')
@@ -151,6 +125,7 @@ class DocImpl:
                 embed_dims[k] = len(embedding)
                 embed_datatypes[k] = DataType.FLOAT_VECTOR
 
+        self.store.pop('metadata_store', None)
         self.store = _DocumentStore(algo_name=self._algo_name, store=self.store,
                                     group_embed_keys=self._activated_embeddings, embed=self.embed,
                                     embed_dims=embed_dims, embed_datatypes=embed_datatypes,
@@ -158,8 +133,23 @@ class DocImpl:
         self.store.activate_group(self._activated_groups)
 
     @once_wrapper(reset_on_pickle=True)
+    def _create_schema_extractor(self):
+        if self._schema_extractor is None or isinstance(self._schema_extractor, SchemaExtractor):
+            return
+        elif isinstance(self._schema_extractor, LLMBase):
+            metadata_store_config = (
+                (self.store.pop('metadata_store', None) if self.store else None)
+                or _get_default_db_config(db_name=f'{self._algo_name}_metadata')
+            )
+            self._schema_extractor = SchemaExtractor(db_config=metadata_store_config, llm=self._schema_extractor)
+            return
+        else:
+            raise ValueError(f'Invalid type for schema extractor: {type(self._schema_extractor)}')
+
+    @once_wrapper(reset_on_pickle=True)
     def _lazy_init(self) -> None:
         self._init_node_groups()
+        self._create_schema_extractor()
         self._create_store()
         cloud = not (self._dlm or self._doc_files is not None)
 
@@ -167,10 +157,10 @@ class DocImpl:
         if self._processor:
             assert cloud and isinstance(self._processor, DocumentProcessor)
             self._processor.register_algorithm(self._algo_name, self.store, self._reader, self.node_groups,
-                                               self._display_name, self._description)
+                                               self._schema_extractor, self._display_name, self._description)
         else:
-            self._processor = _Processor(self.store, self._reader, self.node_groups, self._display_name,
-                                         self._description)
+            self._processor = _Processor(self._algo_name, self.store, self._reader, self.node_groups,
+                                         self._schema_extractor, self._display_name, self._description)
 
         # init files when `cloud` is False
         if not cloud and self.store.is_group_empty(LAZY_ROOT_NAME):
@@ -215,7 +205,7 @@ class DocImpl:
                                        num_workers=num_workers, kwargs=kwargs)
 
         if name in groups:
-            LOG.warning(f"Duplicate group name: {name}")
+            LOG.warning(f'Duplicate group name: {name}')
         for t in (transforms if isinstance(transform, list) else [transforms]):
             if isinstance(t.f, str):
                 t.f = _transmap[t.f.lower()]
@@ -226,7 +216,7 @@ class DocImpl:
                     'between nodes may become unreliable, `Document.get_parent/get_child` functions and the '
                     'target parameter of Retriever may have strange anomalies. Please use it at your own risk.')
             else:
-                assert callable(t.f), f"transform should be callable, but get {t.f}"
+                assert callable(t.f), f'transform should be callable, but get {t.f}'
         groups[name] = dict(transform=transforms, parent=parent, display_name=display_name or name,
                             group_type=group_type)
 
@@ -264,7 +254,7 @@ class DocImpl:
 
         def decorator(klass):
             if callable(klass): cls._registered_file_reader[pattern] = klass
-            else: raise TypeError(f"The registered object {klass} is not a callable object.")
+            else: raise TypeError(f'The registered object {klass} is not a callable object.')
             return klass
         return decorator
 
@@ -284,6 +274,7 @@ class DocImpl:
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
         assert callable(func), 'func for reader should be callable'
         self._local_file_reader[pattern] = func
+        self._reader._lazy_init.flag.reset()
 
     def _add_doc_to_store_with_status(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]],
                                       cond_status_list: Optional[List[str]] = None):
@@ -294,7 +285,7 @@ class DocImpl:
                                        metadatas=[metadata] if metadata is not None else None)
                 success_ids.append(doc_id)
             except Exception as e:
-                LOG.error(f"Error adding document {doc_id} ({filepath}) to store: {e}")
+                LOG.error(f'Error adding document {doc_id} ({filepath}) to store: {e}')
                 failed_ids.append(doc_id)
 
         if success_ids:
@@ -376,9 +367,11 @@ class DocImpl:
     def _delete_doc_from_store(self, doc_ids: List[str] = None) -> None:
         self._processor.delete_doc(doc_ids=doc_ids)
 
-    def activate_group(self, group_name: str, embed_keys: List[str]):
+    def activate_group(self, group_name: str, embed_keys: Optional[List[str]] = None, enable_embed: bool = True):
         group_name = str(group_name)
         self._activated_groups.add(group_name)
+        if embed_keys is None and enable_embed:
+            embed_keys = self.embed.keys()
         if embed_keys:
             activated_embeddings = self._activated_embeddings.setdefault(group_name, set())
             if len(set(embed_keys) - activated_embeddings) == 0: return
@@ -406,7 +399,7 @@ class DocImpl:
         if index and index != 'default':
             query_instance = self.store.get_index(type=index)
             if query_instance is None:
-                raise NotImplementedError(f"Index type '{index}' is not registered in the store.")
+                raise NotImplementedError(f'Index type "{index}" is not registered in the store.')
         else:
             query_instance = self.store.get_index(type='default') or self.store
         try:
@@ -455,7 +448,7 @@ class DocImpl:
             nodes = self.find_children(nodes, next_group)
 
         if not nodes:
-            LOG.warning(f"We can not find any nodes for group `{group}`, please check your input")
+            LOG.warning(f'We can not find any nodes for group `{group}`, please check your input')
             return []
         return nodes
 
@@ -466,9 +459,9 @@ class DocImpl:
             result = self._find_parent_with_uid(nodes, group)
         if not result:
             LOG.warning(
-                f"We can not find any nodes for group `{group}`, please check your input"
+                f'We can not find any nodes for group `{group}`, please check your input'
             )
-        LOG.debug(f"Found parent node for {group}: {result}")
+        LOG.debug(f'Found parent node for {group}: {result}')
         return result
 
     def _find_parent_with_node(self, nodes: list[DocNode], group: str):
@@ -503,12 +496,37 @@ class DocImpl:
         kb_id = nodes[0].global_metadata.get(RAG_KB_ID, None)
         result = self.store.get_nodes(group=group, kb_id=kb_id, parent=[n._uid for n in nodes], display=True)
         if not result:
-            LOG.warning(f"We cannot find any nodes for group `{group}`, please check your input.")
-        LOG.debug(f"Found children nodes for {group}: {result}")
+            LOG.warning(f'We cannot find any nodes for group `{group}`, please check your input.')
+        LOG.debug(f'Found children nodes for {group}: {result}')
         return list(result)
 
     def clear_cache(self, group_names: Optional[List[str]] = None):
         self.store.clear_cache(group_names)
+
+    def drop_algorithm(self):
+        if isinstance(self._processor, DocumentProcessor):
+            self._processor.drop_algorithm(self._algo_name)
+        else:
+            raise ValueError('This method is only available when the Document has a DocumentProcessor')
+
+    def _analyze_schema_by_llm(self, kb_id: Optional[str] = None, doc_ids: Optional[List[str]] = None):
+        if not self._schema_extractor:
+            raise AttributeError('No schema extractor for this Document.')
+        self._create_schema_extractor()
+        data = self.store.get_nodes(group=LAZY_ROOT_NAME, kb_id=kb_id, doc_ids=doc_ids)
+        if not data:
+            LOG.error(f'No data from store for kb_id: {kb_id}, doc_ids: {doc_ids}')
+            return None
+        return self._schema_extractor.analyze_schema_and_register(data=data)
+
+    def _register_schema_set(self, schema_set: Type[BaseModel], kb_id: Optional[str] = DEFAULT_KB_ID,
+                             force_refresh: bool = False) -> str:
+        if not self._schema_extractor:
+            raise AttributeError('No schema extractor for this Document.')
+        self._create_schema_extractor()
+        set_id = self._schema_extractor.register_schema_set_to_kb(algo_id=self._algo_name, schema_set=schema_set,
+                                                                  kb_id=kb_id, force_refresh=force_refresh)
+        return set_id
 
     def __call__(self, func_name: str, *args, **kwargs):
         return getattr(self, func_name)(*args, **kwargs)

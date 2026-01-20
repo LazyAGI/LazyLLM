@@ -15,11 +15,12 @@ class TTSDeploy:
         if name == 'bark':
             return BarkDeploy
         elif name in ('chattts', 'chattts-new'):
+            raise RuntimeError('ChatTTS is deprecated and no longer supported.')
             return ChatTTSDeploy
         elif name.startswith('musicgen'):
             return MusicGenDeploy
         else:
-            raise RuntimeError(f"Not support model: {name}")
+            raise RuntimeError(f'Not support model: {name}')
 
 __all__ = [
     'TTSDeploy',

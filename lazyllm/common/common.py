@@ -1,19 +1,25 @@
 import re
 import os
-import builtins
-import typing
-from typing import Any, Callable, Optional, List, Dict
-from contextlib import contextmanager
 import copy
-import threading
+import json
+import time
 import types
+import typing
+import builtins
+import tempfile
+import threading
+import functools
+from abc import ABCMeta
+from pathlib import Path
 from ..configs import config
 from urllib.parse import urlparse
+from contextlib import contextmanager
+from typing import Any, Callable, Optional, List, Dict, Iterable
 
 try:
     from typing import final
 except ImportError:
-    _F = typing.TypeVar("_F", bound=Callable[..., Any])
+    _F = typing.TypeVar('_F', bound=Callable[..., Any])
     def final(f: _F) -> _F: return f
 
 try:
@@ -32,15 +38,25 @@ class FlatList(list):
 
 
 class ArgsDict(dict):
-    def __init__(self, *args, **kwargs):
+    def __init__(self, *args, with_line=True, **kwargs):
         super(ArgsDict, self).__init__(*args, **kwargs)
+        self._with_line = with_line
 
     def check_and_update(self, kw):
-        assert set(kw.keys()).issubset(set(self)), f'unexpected keys: {set(kw.keys()) - set(self)}'
+        if not kw.pop('skip_check', config['deploy_skip_check_kw']):
+            assert set(kw.keys()).issubset(set(self)), f'unexpected keys: {set(kw.keys()) - set(self)}'
         self.update(kw)
 
     def parse_kwargs(self):
-        string = ' '.join(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"' for k, v in self.items())
+        string = []
+        for k, v in self.items():
+            if type(v) is dict:
+                v = json.dumps(v).replace('\"', '\\\"')
+            if self._with_line:
+                string.append(f'--{k}={v}' if type(v) is not str else f'--{k}=\"{v}\"')
+            else:
+                string.append(f'{k}={v}' if type(v) is not str else f'{k}=\"{v}\"')
+        string = ' '.join(string)
         return string
 
 class CaseInsensitiveDict(dict):
@@ -132,7 +148,7 @@ class LazyLLMCMD(object):
         if self.no_displays:
             for item in self.no_displays:
                 pattern = r'(-{1,2}' + re.escape(item) + r')(\s|=|)(\S+|)'
-                cmd = re.sub(pattern, "", cmd)
+                cmd = re.sub(pattern, '', cmd)
             return cmd
         else:
             return cmd
@@ -300,16 +316,19 @@ class once_flag(object):
         self._exc = None
         self._reset_on_pickle = reset_on_pickle
         self._lock = threading.RLock()
+        self._ignore_reset = False
 
-    def set(self, flag=True):
+    def set(self, flag=True, ignore_reset=False):
         with self._lock:
             self._flag = flag
+            self._ignore_reset = ignore_reset
 
     def set_exception(self, exc):
         self._exc = exc
 
     def reset(self):
-        self.set(False)
+        if not self._ignore_reset:
+            self.set(False)
 
     def __bool__(self):
         return self._flag
@@ -469,3 +488,65 @@ class Finalizer(object):
         if self._func:
             if self._condition(): self._func()
             self._func = None
+
+class SingletonMeta(type):
+    _instances = {}
+    _lock = threading.RLock()
+
+    def __call__(cls, *args, **kwargs):
+        if cls not in cls._instances:
+            with cls._lock:
+                if cls not in cls._instances:
+                    cls._instances[cls] = super().__call__(*args, **kwargs)
+        return cls._instances[cls]
+
+
+class SingletonABCMeta(SingletonMeta, ABCMeta): pass
+
+
+class TempPathGenerator(object):
+    def __init__(self, contents: Iterable[str], *, suffix: str = '.txt', encoding: str = 'utf-8', persist: bool = False):
+        if isinstance(contents, str): contents = [contents]
+        self._contents, self._suffix, self._encoding, self._persist = list(contents), suffix, encoding, persist
+        self._tmpdir = None
+        self._paths: List[str] = []
+
+    def __enter__(self) -> List[str]:
+        if self._tmpdir: raise RuntimeError('TempPathGenerator is not thread-safe, please create a new object.')
+        self._tmpdir = tempfile.TemporaryDirectory()
+        base = Path(self._tmpdir.name)
+
+        self._paths = []
+        for i, text in enumerate(self._contents):
+            p = base / f'{i}{self._suffix}'
+            p.write_text(text, encoding=self._encoding)
+            self._paths.append(str(p))
+        return self._paths
+
+    def __exit__(self, exc_type, exc, tb):
+        if not self._persist:
+            self._tmpdir.cleanup()
+
+
+def retry(func: Optional[Callable] = None, *, stop_after_attempt: Optional[int] = None, delay: float = 0.0):
+    if isinstance(func, int):
+        assert stop_after_attempt is None
+        stop_after_attempt = func
+    stop_after_attempt = stop_after_attempt or 3
+
+    def decorator(fn: Callable):
+        @functools.wraps(fn)
+        def wrapper(*args, **kwargs):
+            last_exc = None
+            for attempt in range(1, stop_after_attempt + 1):
+                try:
+                    return fn(*args, **kwargs)
+                except Exception as e:
+                    last_exc = e
+                    if attempt >= stop_after_attempt:
+                        raise
+                    if delay > 0:
+                        time.sleep(delay)
+            raise last_exc
+        return wrapper
+    return decorator(func) if callable(func) else decorator

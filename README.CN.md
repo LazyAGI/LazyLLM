@@ -29,9 +29,9 @@ LazyLLM致力于敏捷与效率的统一，开发者可以高效的迭代算法�
 
 **复杂应用一键部署**：我们提供一键部署所有模块的能力。具体就是：在POC阶段，LazyLLM通过一套轻量的网关机制，简化了多Agent应用的部署流程，解决了依次启动各个子模块（如LLM、Embedding等）服务并配置URL的问题，使整个过程更加顺畅高效。而在应用的发布阶段，LazyLLM则提供了一键封装镜像的能力，使得应用可以方便地利用k8s的网关、负载均衡、容错等能力。<br>
 
-**跨平台兼容**：无需修改代码，即可一键切换IaaS平台，目前兼容裸金属服务器、开发机、Slurm集群、公有云等。这使得开发中的应用可以无缝迁移到其他IaaS平台，大大减少了代码修改的工作量。<br>
+**跨平台兼容**：无需修改代码，即可一键切换操作系统和IaaS平台，目前兼容裸金属服务器、开发机、Slurm集群、公有云等。这使得开发中的应用可以无缝迁移到其他IaaS平台，大大减少了代码修改的工作量。<br>
 
-**支持网格搜索参数优化**：根据用户配置，自动尝试不同的基模型、召回策略和微调参数，对应用进行评测和优化。这使得超参数调优过程无需对应用代码进行大量侵入式修改，提高了调优效率，帮助用户快速找到最佳配置。<br>
+**为不同的技术选型提供了统一的使用体验**：我们统一了不同服务商的线上模型和本地部署模型的使用体验，使得开发者可以随意的切换和升级自己的模型进行尝试。此外，我们还统一了主流的推理框架、微调框架、关系型数据库、向量数据库、文档数据库的使用体验。 <br>
 
 **高效的模型微调**：支持对应用中的模型进行微调，持续提升应用效果。根据微调场景，自动选择最佳的微调框架和模型切分策略。这不仅简化了模型迭代的维护工作，还让算法研究员能够将更多精力集中在算法和数据迭代上，而无需处理繁琐的工程化任务。<br>
 
@@ -83,7 +83,7 @@ base = TrainableModule('internlm2-chat-7b')
 with IntentClassifier(base) as ic:
     ic.case['聊天', base]
     ic.case['语音识别', TrainableModule('SenseVoiceSmall')]
-    ic.case['图片问答', TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)]
+    ic.case['图片问答', TrainableModule('InternVL3_5-1B').deploy_method(deploy.LMDeploy)]
     ic.case['画图', pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-diffusion-3-medium'))]
     ic.case['生成音乐', pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))]
     ic.case['文字转语音', TrainableModule('ChatTTS')]
@@ -146,95 +146,15 @@ https://github.com/LazyAGI/LazyLLM/assets/12124621/77267adc-6e40-47b8-96a8-895df
 
 如果你是使用 `pip` 安装的 `lazyllm` ，并且保证python环境的`bin`目录已经在`$PATH`中，则你可以通过执行 `lazyllm run rag --documents=/file/to/yourpath` 来快速启动一个检索增强机器人。如果你想使用本地模型，则需要用`--model`参数指定模型名称，例如你可以用`lazyllm run rag --documents=/file/to/yourpath --model=internlm2-chat-7b` 来启动基于本地模型的检索增强机器人。
 
-### 3.3 故事创作
+### 3.3 更多例子
 
-<details>
-<summary>点击查看import和prompt</summary>
-
-```python
-import lazyllm
-from lazyllm import pipeline, warp, bind
-from lazyllm.components.formatter import JsonFormatter
-
-toc_prompt=""" 你现在是一个智能助手。你的任务是理解用户的输入，将大纲以列表嵌套字典的列表。每个字典包含一个 `title` 和 `describe`，其中 `title` 中需要用Markdown格式标清层级，`describe` `describe` 是对该段的描述和写作指导。
-
-请根据以下用户输入生成相应的列表嵌套字典：
-
-输出示例:
-[
-    {
-        "title": "# 一级标题",
-        "describe": "请详细描述此标题的内容，提供背景信息和核心观点。"
-    },
-    {
-        "title": "## 二级标题",
-        "describe": "请详细描述标题的内容，提供具体的细节和例子来支持一级标题的观点。"
-    },
-    {
-        "title": "### 三级标题",
-        "describe": "请详细描述标题的内容，深入分析并提供更多的细节和数据支持。"
-    }
-]
-用户输入如下：
-"""
-
-completion_prompt="""
-你现在是一个智能助手。你的任务是接收一个包含 `title` 和 `describe` 的字典，并根据 `describe` 中的指导展开写作
-输入示例:
-{
-    "title": "# 一级标题",
-    "describe": "这是写作的描述。"
-}
-
-输出:
-这是展开写作写的内容
-接收如下：
-
-"""
-
-writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "describe": {describe}}'}
-```
-</details>
-
-这是一个在线部署示例：
-
-```python
-with pipeline() as ppl:
-    ppl.outline_writer = lazyllm.OnlineChatModule(stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
-    ppl.story_generater = warp(lazyllm.OnlineChatModule(stream=False).prompt(writer_prompt))
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
-lazyllm.WebModule(ppl, port=23466).start().wait()
-```
-
-这是一个本地部署示例：
-
-```python
-with pipeline() as ppl:
-    ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
-    ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
-lazyllm.WebModule(ppl, port=23466).start().wait()
-```
-
-### 3.4 AI绘画助手
-
-<details>
-<summary>点击获取import和prompt</summary>
-
-```python
-import lazyllm
-from lazyllm import pipeline
-
-prompt = 'You are a drawing prompt word master who can convert any Chinese content entered by the user into English drawing prompt words. In this task, you need to convert any input content into English drawing prompt words, and you can enrich and expand the prompt word content.'
-```
-</details>
-
-```python
-with pipeline() as ppl:
-    ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt))
-    ppl.sd3 = lazyllm.TrainableModule('stable-diffusion-3-medium')
-lazyllm.WebModule(ppl, port=23466).start().wait()
-```
+更多例子可以参考我们官方文档的[使用示例](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/robot/)
+* [绘画大师](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/painting_master/)
+* [多模态聊天机器人](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/multimodal_robot/)
+* [知识库](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/rag/)
+* [智能搜索代理](https://docs.lazyllm.ai/zh-cn/latest/Cookbook/bocha_search/)
+* [API交互代理](https://docs.lazyllm.ai/zh-cn/latest/Cookbook/API_Interaction_Agent_demo/)
+* [自适应工具调用智能体](https://docs.lazyllm.ai/zh-cn/latest/Cookbook/flex_agent/)
 
 ## 四、功能点
 
@@ -255,17 +175,7 @@ lazyllm.WebModule(ppl, port=23466).start().wait()
 
 ## 五、安装
 
-### 源码安装
-
-```bash
-git clone git@github.com:LazyAGI/LazyLLM.git
-cd LazyLLM
-pip install -r requirements.txt
-```
-
-如果想进行微调、推理部署或搭建rag应用等，则需使用 `pip install -r requirements.full.txt`
-
-### pip安装
+### pip安装(建议)
 
 仅安装lazyllm及必要的依赖，可以使用
 ```bash
@@ -277,6 +187,17 @@ pip3 install lazyllm
 pip3 install lazyllm
 lazyllm install full
 ```
+### 源码安装
+
+```bash
+git clone git@github.com:LazyAGI/LazyLLM.git
+cd LazyLLM
+pip install -r requirements.txt
+```
+
+### 在Windows或MacOS上安装
+
+在Windows或MacOS上安装请参考我们的[教程](https://docs.lazyllm.ai/zh-cn/stable/Home/environment)
 
 ## 六、设计理念
 
@@ -346,57 +267,61 @@ Flow 是LazyLLM中定义的数据流，描述了数据如何从一个可调用�
 ## 九、 后续计划
 
 ### 9.1 时间线
-V0.6 预计从9.1日开始，历时3个月，中间会不间断发布小版本，如v0.6.1, v0.6.2
-V0.7 预计从12.1日开始，历时3个月，中间会不间断发布小版本，如v0.7.1, v0.7.2
+- V0.7 预计从25年1月15日开始，历时3个月，中间会不间断发布小版本，如v0.7.1, v0.7.2
+- v0.8 预计从26年3月15日开始，历时3个月，重点会放在提升系统的可观测性，降低用户的调试成本上
+- v0.9 预计从26年6月15日开始，历时3个月，重点会放提升整个系统的运行速度上
 
 ### 9.2 功能模块
 9.2.1 RAG
   - 9.2.1.1 工程
-    - 沉淀LazyRAG中的能力到LazyLLM  （V0.6 ）
-    - RAG的宏观问答能力扩展到多知识库 （V0.6 ）
-    - RAG模块完全支持横向扩容，支持多机部署RAG的算法协同工作 （V0.6 ）
-    - 知识图谱接入至少1个开源框架 （V0.6 ）
-    - 支持常用的数据切分策略，不少于20种，覆盖各种类型的文档 （V0.6 ）
+    - 沉淀LazyRAG中的能力到LazyLLM  （V0.7 ）
+    - ✅ RAG的宏观问答能力扩展到多知识库 （V0.6 ）
+    - ✅ RAG模块完全支持横向扩容，支持多机部署RAG的算法协同工作 （V0.6 ）
+    - ✅ 知识图谱接入至少1个开源框架 （V0.6 ）
+    - 支持常用的数据切分策略，不少于20种，覆盖各种类型的文档 （V0.6 - v0.7）
   - 9.2.1.2 数据能力
     - 表格解析（V0.6 - 0.7 ）
     - CAD图片解析（V0.7 -  ）
+    - 预训练数据处理支持 (V0.8)
   - 9.2.1.3 算法能力
-    - 支持对CSV等相对结构化的文本的处理 （V0.6 ）
-    - 多跳检索（文档中的链接，参考文献等）  （V0.6 ）
+    - 支持对CSV等相对结构化的文本的处理 （V0.7 ）
+    - 多跳检索（文档中的链接，参考文献等）  （V0.7 ）
     - 信息冲突处理 （V0.7 ）
     - AgenticRL & 写代码解问题能力（V0.7 ）
+    - (新增) AI写作能力 （V0.7 ）
+    - (新增) AI审核能力 （V0.7 - 0.8）
 
 9.2.2 功能模块
-  - 支持记忆的能力 （V0.6 ）
+  - ✅支持记忆的能力 （V0.6 ）
   - 分布式Launcher的支持 （V0.7）
-  - 基于数据库的Globals支持 （V0.6 ）
+  - ✅基于数据库的Globals支持 （V0.6 ）
   - ServerModule可以发布成mcp服务（v0.7）
   - 线上沙箱服务的集成（v0.7）
 
 9.2.3 模型训推
-  - 支持OpenAI接口的部署和推理 （V0.6 ）
+  - ✅支持OpenAI接口的部署和推理 （V0.6 ）
   - 统一微调和推理的提示词 （V0.7 ）
   - Example中给出微调示例 （V0.7 ）
-  - 集成2-3个提示词仓库，可以直接选择提示词仓库中的提示词 （V0.6 ）
-  - 支持更智能的模型类型判断和推理框架选择，重构和简化auto-finetune选框架的逻辑 （V0.6 ）
+  - 集成2-3个提示词仓库，可以直接选择提示词仓库中的提示词 （V0.7 ）
+  - ✅支持更智能的模型类型判断和推理框架选择，重构和简化auto-finetune选框架的逻辑 （V0.6 ）
   - GRPO全链路支持 （V0.7 ）
 
 9.2.4 文档
-  - 完善API文档，确保每个公开接口都有API文档，文档参数和函数参数一致，且有可执行的样例代码 （V0.6 ）
-  - 完善CookBook文档，案例增加至50个，并有和LangChain / Llamaindex的对比 （代码量，速度，扩展性） （V0.6 ）
-  - 完善Environment文档，补充在win/linux/macos的安装方式，补充对包的切分策略 （V0.6 ）
-  - 完善Learn文档，先教大家用大模型；然后教大家构建agent；然后教大家用workflow；再教大家搭建rag； （V0.6 ）
+  - ✅完善API文档，确保每个公开接口都有API文档，文档参数和函数参数一致，且有可执行的样例代码 （V0.6 ）
+  - 完善CookBook文档，案例增加至50个，并有和LangChain / Llamaindex的对比 （代码量，速度，扩展性） （V0.6 - v0.8）
+  - ✅完善Environment文档，补充在win/linux/macos的安装方式，补充对包的切分策略 （V0.6 ）
+  - ✅完善Learn文档，先教大家用大模型；然后教大家构建agent；然后教大家用workflow；再教大家搭建rag； （V0.6 ）
 
 9.2.5 质量
-  - 通过对大部分模块进行Mock，将CI的时间降低到10分钟以内 （V0.6 ）
-  - 增加每日构建，高耗时 / token的任务放到每日构建中执行 （V0.6 ）
+  - ✅通过对大部分模块进行Mock，将CI的时间降低到10分钟以内 （V0.6 ）
+  - 增加每日构建，高耗时 / token的任务放到每日构建中执行 （V0.7 ）
 
 9.2.6 开发、部署与发布
   - Debug优化（v0.7）
-  - 过程监控  [输出 + 性能]（v0.7）
-  - 依赖的训推框架的环境隔离和环境的自动建设（V0.6 ）
+  - 过程监控  [输出 + 性能]（v0.7 - 0.8）
+  - 依赖的训推框架的环境隔离和环境的自动建设（V0.7 ）
 
 9.2.7 生态
-  - 推动LazyCraft的开源 （V0.6 ）
+  - ✅推动LazyCraft的开源 （V0.6 ）
   - 推动LazyRAG的开源 （V0.7 ）
-  - 将代码传至Github以外的2个代码托管网站，并争取取得社区合作（V0.6 ）
+  - ✅将代码传至Github以外的2个代码托管网站，并争取取得社区合作（V0.6 ）

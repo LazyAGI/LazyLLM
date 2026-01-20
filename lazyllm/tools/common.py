@@ -2,7 +2,7 @@ import lazyllm
 from typing import Callable
 import time
 
-g_thread_pool = lazyllm.ThreadPoolExecutor(max_workers=lazyllm.config["thread_pool_worker_num"])
+g_thread_pool = lazyllm.ThreadPoolExecutor(max_workers=lazyllm.config['thread_pool_worker_num'])
 
 class StreamCallHelper:
     def __init__(self, impl: Callable, interval: float = 0.1):
@@ -14,7 +14,7 @@ class StreamCallHelper:
         lazyllm.FileSystemQueue().clear()
         func_future = g_thread_pool.submit(self._impl, *args, **kwargs)
         need_continue = True
-        str_total = ""
+        str_total = ''
         while need_continue:
             if func_future.done():
                 need_continue = False

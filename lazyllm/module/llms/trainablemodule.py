@@ -7,18 +7,21 @@ import copy
 import uuid
 import re
 import requests
+from lazyllm.thirdparty import deepdiff
 
 import lazyllm
-from lazyllm import globals, LOG, launchers, Option, package, LazyLLMDeployBase, LazyLLMFinetuneBase
-from ...components.formatter import decode_query_with_filepaths, encode_query_with_filepaths
+from lazyllm import globals, LOG, launchers, Option, package, LazyLLMDeployBase, LazyLLMFinetuneBase, config
+from ...components.formatter import decode_query_with_filepaths, encode_query_with_filepaths, FormatterBase
 from ...components.formatter.formatterbase import LAZYLLM_QUERY_PREFIX
 from ...components.utils import ModelManager, LLMType
 from ...components.utils.file_operate import _base64_to_file, _is_base64_with_mime
 from ...launcher import LazyLLMLaunchersBase as Launcher
-from .utils import map_kw_for_framework, encode_files
+from .utils import map_kw_for_framework, encode_files, get_module_config_map
 from ...flow import Pipeline
 from ..servermodule import ModuleBase, _UrlHelper, UrlModule
 from ..utils import light_reduce
+
+ignore_config_keys = ['log_path', 'launcher']
 
 
 class _UrlTemplateStruct(object):
@@ -49,6 +52,13 @@ class _UrlTemplateStruct(object):
         self.stream_url_suffix = stream_url_suffix or ''
 
 
+lazyllm.config.add(
+    'trainable_magic_mock', bool, False, 'TRAINABLE_MAGIC_MOCK',
+    description='Whether to use magic mock for trainable module(used for unit test).')
+# used for unit test
+fake_url = 'dummy.url/generate'
+
+
 @light_reduce
 class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     builder_keys = ['trainset', 'train_method', 'finetune_method', 'deploy_method', 'mode']
@@ -56,13 +66,15 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     def __init__(self, base_model: str = '', target_path: str = '', stream: bool = False, train: Optional[type] = None,
                  finetune: Optional[LazyLLMFinetuneBase] = None, deploy: Optional[LazyLLMDeployBase] = None,
                  template: Optional[_UrlTemplateStruct] = None, url_wrapper: Optional[_UrlHelper._Wrapper] = None,
-                 trust_remote_code: bool = True, type: Optional[LLMType] = None):
+                 trust_remote_code: bool = True, type: Optional[LLMType] = None, source: Optional[str] = None,
+                 use_model_map: Union[str, bool] = True):
         super().__init__()
         # TODO(wangzhihong): Update ModelDownloader to support async download, and move it to deploy.
         #                    Then support Option for base_model
         base_model = base_model.rstrip('/\\')
         self._type = LLMType(type) if type else type
-        self._base_model = (ModelManager(lazyllm.config['model_source']).download(base_model) or ''
+        model_source = source or lazyllm.config['model_source']
+        self._base_model = (ModelManager(model_source).download(base_model) or ''
                             if trust_remote_code else base_model)
         if not self._base_model:
             LOG.warning(f'Cannot get a valid model from {base_model} by ModelManager.')
@@ -75,6 +87,7 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         self._specific_target_path = target_path or None
         self._train, self._finetune = train, finetune
         self._template = template
+        self._use_model_map = use_model_map
         _UrlHelper.__init__(self, url=url_wrapper)
         if base_model and deploy: self.deploy_method(deploy)
         self._prepare_deploy = lambda target_path, base_model: lazyllm.package(target_path, base_model)
@@ -103,7 +116,10 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if not os.path.exists(target_path):
             os.makedirs(target_path, exist_ok=True)
 
-        kw = kw or self._get_train_or_deploy_args(mode, disable=['base_model', 'target_path'])
+        # Get default args and merge with user-provided kw, with kw taking precedence
+        default_args = self._get_train_or_deploy_args(mode, disable=['base_model', 'target_path'])
+        kw = {**default_args, **kw} if kw else default_args
+
         task = getattr(self, f'_{mode}')(base_model=self._base_model, target_path=target_path, **kw)
         return [trainset_getf, task]
 
@@ -153,8 +169,11 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
     @lazyllm.once_wrapper
     def _get_deploy_tasks(self):
         if self._deploy is None: return None
+        if lazyllm.config['trainable_magic_mock']:
+            return Pipeline(lambda *args, **kwargs: fake_url, self._set_url)
         if self._deploy is lazyllm.deploy.AutoDeploy:
             raise RuntimeError('No appropriate inference framework was selected, specify it with `.deploy_method()`.')
+
         kwargs = {'stream': self._stream} if self._deploy is lazyllm.deploy.dummy else {}
         self._deployer = self._deploy(**kwargs, **self._deploy_args)
 
@@ -178,6 +197,23 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if hasattr(self._deploy, 'auto_map') and self._deploy.auto_map:
             self._deploy_args = map_kw_for_framework(self._deploy_args, self._deploy.auto_map)
 
+        _, trainable_module_config_map = get_module_config_map(self._use_model_map)
+
+        base_model_name = os.path.basename(self._base_model)
+        if base_model_name in trainable_module_config_map:
+            deploy_args_for_check = {k: v for k, v in self._deploy_args.items() if k not in ignore_config_keys}
+            for module_config in trainable_module_config_map[base_model_name]:
+                if (not deploy_args_for_check and not module_config.get('strict')) \
+                        or not deepdiff.DeepDiff(module_config.get('deploy_config', {}), deploy_args_for_check):
+                    try:
+                        url = module_config.get('url')
+                        requests.get(url, timeout=3)
+                        self._deploy_args = {'url': url}
+                        self._deploy = getattr(lazyllm.deploy, module_config.get('framework'))
+                        break
+                    except Exception:
+                        continue
+
         stop_words = ModelManager.get_model_prompt_keys(self._base_model).get('stop_words')
 
         self._template.update(self._deploy.message_format, self._deploy.keys_name_handle,
@@ -188,14 +224,20 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         if url := self._deploy_args.get('url'):
             assert len(self._deploy_args) == 1, 'Cannot provide other arguments together with url'
             self._set_url(re.sub(r'v1(?:/chat/completions)?/?$', 'v1/', url))
-            self._get_deploy_tasks.flag.set()
+            self._get_deploy_tasks.flag.set(ignore_reset=True)
         self._deploy_args.pop('url', None)
 
     def __del__(self):
         if hasattr(self, '_launchers'):
             [[launcher.cleanup() for launcher in group.values()] for group in self._launchers.values()]
 
+    def __deepcopy__(self, memo):
+        return self
+
     def _generate_target_path(self):
+        if self._specific_target_path and os.path.exists(self._specific_target_path):
+            return self._specific_target_path
+
         base_model_name = os.path.basename(self._base_model)
         train_set_name = os.path.basename(self._trainset) if isinstance(self._trainset, str) else ''
 
@@ -208,26 +250,33 @@ class _TrainableModuleImpl(ModuleBase, _UrlHelper):
         train_set_name = optimize_name(train_set_name)
 
         target_path = os.path.join(self._target_path, base_model_name,
-                                   f"{file_name}{self._delimiter}{train_set_name}{self._delimiter}"
-                                   f"{datetime.now().strftime('%y%m%d%H%M%S%f')[:14]}")
+                                   f'{file_name}{self._delimiter}{train_set_name}{self._delimiter}'
+                                   f'{datetime.now().strftime("%y%m%d%H%M%S%f")[:14]}')
         return target_path
 
     def _set_file_name(self, name):
         self._file_name = name
+
+config.add('cache_local_module', bool, False, 'CACHE_LOCAL_MODULE',
+           description='Whether to cache the local module result. Use for unit test.')
 
 
 class TrainableModule(UrlModule):
     builder_keys = _TrainableModuleImpl.builder_keys
 
     def __init__(self, base_model: Option = '', target_path='', *, stream: Union[bool, Dict[str, str]] = False,
-                 return_trace: bool = False, trust_remote_code: bool = True, type: Optional[Union[str, LLMType]] = None):
+                 return_trace: bool = False, trust_remote_code: bool = True,
+                 type: Optional[Union[str, LLMType]] = None, source: Optional[str] = None,
+                 use_model_map: Union[str, bool] = True):
         super().__init__(url=None, stream=stream, return_trace=return_trace, init_prompt=False)
         self._template = _UrlTemplateStruct()
         self._impl = _TrainableModuleImpl(base_model, target_path, stream, None, lazyllm.finetune.auto,
                                           lazyllm.deploy.auto, self._template, self._url_wrapper,
-                                          trust_remote_code, type)
+                                          trust_remote_code, type, source=source, use_model_map=use_model_map)
         self._stream = stream
         self.prompt()
+        if config['cache_local_module']:
+            self.use_cache()
 
     template_message = property(lambda self: self._template.template_message)
     keys_name_handle = property(lambda self: self._template.keys_name_handle)
@@ -291,43 +340,57 @@ class TrainableModule(UrlModule):
             prompt = None
         clear_system = isinstance(prompt, dict) and prompt.get('drop_builtin_system')
         prompter = super(__class__, self).prompt(prompt, history)._prompt
-        self._tools = getattr(prompter, "_tools", None)
+        self._tools = getattr(prompter, '_tools', None)
         keys = ModelManager.get_model_prompt_keys(self.base_model).copy()
         if keys:
             if clear_system: keys['system'] = ''
             prompter._set_model_configs(**keys)
-            for key in ["tool_start_token", "tool_args_token", "tool_end_token"]:
-                if key in keys: setattr(self, f"_{key}", keys[key])
+            for key in ['tool_start_token', 'tool_args_token', 'tool_end_token']:
+                if key in keys: setattr(self, f'_{key}', keys[key])
+        if hasattr(self, '_openai_module'):
+            self._openai_module.prompt(prompt, history=history)
         return self
+
+    def formatter(self, format: Optional[FormatterBase] = None):
+        super(__class__, self).formatter(format)
+        if hasattr(self, '_openai_module'):
+            self._openai_module.formatter(format)
+        return self
+
+    def share(self, *args, **kwargs):
+        new = super(__class__, self).share(*args, **kwargs)
+        if hasattr(self, '_openai_module'):
+            new._openai_module = self._openai_module.share(*args, **kwargs)
+        return new
 
     def _loads_str(self, text: str) -> Union[str, Dict]:
         try:
             ret = json.loads(text)
             return self._loads_str(ret) if isinstance(ret, str) else ret
         except Exception:
-            LOG.error(f"{text} is not a valid json string.")
+            LOG.error(f'{text} is not a valid json string.')
             return text
 
     def _parse_arguments_with_args_token(self, output: str) -> tuple[str, dict]:
         items = output.split(self._tool_args_token)
         func_name = items[0].strip()
         if len(items) == 1:
-            return func_name.split(self._tool_end_token)[0].strip() if getattr(self, "_tool_end_token", None)\
+            return func_name.split(self._tool_end_token)[0].strip() if getattr(self, '_tool_end_token', None)\
                 else func_name, {}
-        args = (items[1].split(self._tool_end_token)[0].strip() if getattr(self, "_tool_end_token", None)
+        args = (items[1].split(self._tool_end_token)[0].strip() if getattr(self, '_tool_end_token', None)
                 else items[1].strip())
         return func_name, self._loads_str(args) if isinstance(args, str) else args
 
     def _parse_arguments_without_args_token(self, output: str) -> tuple[str, dict]:
-        items = output.split(self._tool_end_token)[0] if getattr(self, "_tool_end_token", None) else output
-        func_name = ""
+        items = output.split(self._tool_end_token)[0] if getattr(self, '_tool_end_token', None) else output
+        func_name = ''
         args = {}
         try:
             items = json.loads(items.strip())
             func_name = items.get('name', '')
-            args = items.get("parameters", items.get("arguments", {}))
+            args = items.get('parameters', items.get('arguments', {}))
         except Exception:
-            LOG.error(f"tool calls info {items} parse error")
+            LOG.error(f'tool calls info {items} parse error')
 
         return func_name, self._loads_str(args) if isinstance(args, str) else args
 
@@ -339,7 +402,7 @@ class TrainableModule(UrlModule):
         if output.get('name', '') in tools:
             is_tc = True
             func_name = output.get('name', '')
-            args = output.get("parameters", output.get("arguments", {}))
+            args = output.get('parameters', output.get('arguments', {}))
             tc = {'name': func_name, 'arguments': self._loads_str(args) if isinstance(args, str) else args}
             return is_tc, tc
         return is_tc, tc
@@ -350,30 +413,30 @@ class TrainableModule(UrlModule):
         content = segs[0]
         for seg in segs[1:]:
             func_name, arguments = self._parse_arguments_with_args_token(seg.strip())\
-                if getattr(self, "_tool_args_token", None)\
+                if getattr(self, '_tool_args_token', None)\
                 else self._parse_arguments_without_args_token(seg.strip())
             if func_name:
-                tool_calls.append({"name": func_name, "arguments": arguments})
+                tool_calls.append({'name': func_name, 'arguments': arguments})
 
         return content, tool_calls
 
     def _parse_tools(self, output: str) -> tuple[str, List[Dict]]:
         tool_calls = []
         tools = {tool['function']['name'] for tool in self._tools}
-        lines = output.strip().split("\n")
+        lines = output.strip().split('\n')
         content = []
         is_tool_call = False
         for idx, line in enumerate(lines):
-            if line.startswith("{") and idx > 0:
+            if line.startswith('{') and idx > 0:
                 func_name = lines[idx - 1].strip()
                 if func_name in tools:
                     is_tool_call = True
                     if func_name == content[-1].strip():
                         content.pop()
-                    arguments = "\n".join(lines[idx:]).strip()
-                    tool_calls.append({'name': func_name, "arguments": arguments})
+                    arguments = '\n'.join(lines[idx:]).strip()
+                    tool_calls.append({'name': func_name, 'arguments': arguments})
                     continue
-            if "{" in line and 'name' in line:
+            if '{' in line and 'name' in line:
                 try:
                     items = json.loads(line.strip())
                     items = [items] if isinstance(items, dict) else items
@@ -383,16 +446,16 @@ class TrainableModule(UrlModule):
                             if is_tool_call:
                                 tool_calls.append(tc)
                 except Exception:
-                    LOG.error(f"tool calls info {line} parse error")
+                    LOG.error(f'tool calls info {line} parse error')
             if not is_tool_call:
                 content.append(line)
-        content = "\n".join(content) if len(content) > 0 else ''
+        content = '\n'.join(content) if len(content) > 0 else ''
         return content, tool_calls
 
     def _extract_tool_calls(self, output: str) -> tuple[str, List[Dict]]:
         tool_calls = []
         content = ''
-        if getattr(self, "_tool_start_token", None) and self._tool_start_token in output:
+        if getattr(self, '_tool_start_token', None) and self._tool_start_token in output:
             content, tool_calls = self._parse_tool_start_token(output)
         elif self._tools:
             content, tool_calls = self._parse_tools(output)
@@ -404,31 +467,23 @@ class TrainableModule(UrlModule):
     def _decode_base64_to_file(self, content: str) -> str:
         decontent = decode_query_with_filepaths(content)
         files = [_base64_to_file(file_content) if _is_base64_with_mime(file_content) else file_content
-                 for file_content in decontent["files"]]
-        return encode_query_with_filepaths(query=decontent["query"], files=files)
-
-    def _build_response(self, content: str, tool_calls: List[Dict[str, str]]) -> str:
-        tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
-        if content and tc:
-            return globals["tool_delimiter"].join([content, json.dumps(tc, ensure_ascii=False)])
-        elif not content and tc:
-            return globals["tool_delimiter"] + json.dumps(tc, ensure_ascii=False)
-        else:
-            return content
+                 for file_content in decontent['files']]
+        return encode_query_with_filepaths(query=decontent['query'], files=files)
 
     def _extract_and_format(self, output: str) -> str:
-        """
+        '''
         1.extract tool calls information;
             a. If 'tool_start_token' exists, the boundary of tool_calls can be found according to 'tool_start_token',
                and then the function name and arguments of tool_calls can be extracted according to 'tool_args_token'
                and 'tool_end_token'.
             b. If 'tool_start_token' does not exist, the text is segmented using '\n' according to the incoming tools
                information, and then processed according to the rules.
-        """
+        '''
         content, tool_calls = self._extract_tool_calls(output)
         if isinstance(content, str) and content.startswith(LAZYLLM_QUERY_PREFIX):
             content = self._decode_base64_to_file(content)
-        return self._build_response(content, tool_calls)
+        tc = [{'id': str(uuid.uuid4().hex), 'type': 'function', 'function': tool_call} for tool_call in tool_calls]
+        return dict(role='assistant', content=content, tool_calls=tc)
 
     def __repr__(self):
         return lazyllm.make_repr('Module', 'Trainable', mode=self._impl._mode, basemodel=self.base_model,
@@ -441,24 +496,24 @@ class TrainableModule(UrlModule):
         raise AttributeError(f'{__class__} object has no attribute {key}')
 
     def _record_usage(self, text_input_for_token_usage: str, temp_output: str):
-        usage = {"prompt_tokens": self._estimate_token_usage(text_input_for_token_usage)}
-        usage["completion_tokens"] = self._estimate_token_usage(temp_output)
+        usage = {'prompt_tokens': self._estimate_token_usage(text_input_for_token_usage)}
+        usage['completion_tokens'] = self._estimate_token_usage(temp_output)
         self._record_usage_impl(usage)
 
     def _record_usage_impl(self, usage: dict):
-        globals["usage"][self._module_id] = usage
+        globals['usage'][self._module_id] = usage
         par_muduleid = self._used_by_moduleid
         if par_muduleid is None:
             return
-        if par_muduleid not in globals["usage"]:
-            globals["usage"][par_muduleid] = usage
+        if par_muduleid not in globals['usage']:
+            globals['usage'][par_muduleid] = usage
             return
-        existing_usage = globals["usage"][par_muduleid]
-        if existing_usage["prompt_tokens"] == -1 or usage["prompt_tokens"] == -1:
-            globals["usage"][par_muduleid] = {"prompt_tokens": -1, "completion_tokens": -1}
+        existing_usage = globals['usage'][par_muduleid]
+        if existing_usage['prompt_tokens'] == -1 or usage['prompt_tokens'] == -1:
+            globals['usage'][par_muduleid] = {'prompt_tokens': -1, 'completion_tokens': -1}
         else:
-            for k in globals["usage"][par_muduleid]:
-                globals["usage"][par_muduleid][k] += usage[k]
+            for k in globals['usage'][par_muduleid]:
+                globals['usage'][par_muduleid][k] += usage[k]
 
     def forward(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
                 *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
@@ -472,8 +527,19 @@ class TrainableModule(UrlModule):
     def forward_openai(self, __input: Union[Tuple[Union[str, Dict], str], str, Dict] = package(),  # noqa B008
                        *, llm_chat_history=None, lazyllm_files=None, tools=None, stream_output=False, **kw):
         if not getattr(self, '_openai_module', None):
-            self._openai_module = lazyllm.OnlineChatModule(
-                source='openai', model='lazyllm', base_url=self._url, skip_auth=True)
+            model_type = self.type.lower()
+            if model_type in ['llm', 'vlm']:
+                self._openai_module = lazyllm.OnlineChatModule(
+                    source='openai', model='lazyllm', base_url=self._url, skip_auth=True, type=model_type,
+                    stream=self._stream).share(prompt=self._prompt, format=self._formatter)
+                self._openai_module._prompt._set_model_configs(
+                    system='You are LazyLLM, a large language model developed by SenseTime.'
+                )
+            elif model_type in ['embed', 'rerank']:
+                self._openai_module = lazyllm.OnlineEmbeddingModule(
+                    source='openai', embed_model_name='lazyllm', embed_url=self._url, type=model_type)
+            else:
+                raise ValueError(f'Unsupported type: {model_type} for openai compatible module')
             self._openai_module.used_by(self._module_id)
         return self._openai_module.forward(__input, llm_chat_history=llm_chat_history, lazyllm_files=lazyllm_files,
                                            tools=tools, stream_output=stream_output, **kw)
@@ -494,11 +560,15 @@ class TrainableModule(UrlModule):
             if stream_output:
                 if self.stream_url_suffix and not url.endswith(self.stream_url_suffix):
                     url += self.stream_url_suffix
-                if "stream" in data: data['stream'] = stream_output
+                if 'stream' in data: data['stream'] = stream_output
         else:
             data = __input
             if stream_output: LOG.warning('stream_output is not supported when template_message is not set, ignore it')
             assert not kw, 'kw is not supported when template_message is not set'
+
+        if tools or self._tools:
+            stop_key = next((k for k in data if k.startswith('stop')), 'stop')
+            data[stop_key] = (data.get(stop_key) or []) + [self._tool_end_token]
 
         with self.stream_output((stream_output := (stream_output or self._stream))):
             return self._forward_impl(data, stream_output=stream_output, url=url, text_input=text_input_for_token_usage)
@@ -509,7 +579,7 @@ class TrainableModule(UrlModule):
     def _forward_impl(self, data: Union[Tuple[Union[str, Dict], str], str, Dict] = package(), *,  # noqa B008
                       url: str, stream_output: Optional[Union[bool, Dict]] = None, text_input: Optional[str] = None):
         headers = self.template_headers or {'Content-Type': 'application/json'}
-        parse_parameters = self.stream_parse_parameters if stream_output else {"delimiter": b"<|lazyllm_delimiter|>"}
+        parse_parameters = self.stream_parse_parameters if stream_output else {'delimiter': b'<|lazyllm_delimiter|>'}
 
         # context bug with httpx, so we use requests
         with requests.post(url, json=data, stream=True, headers=headers, proxies={'http': None, 'https': None}) as r:
@@ -517,7 +587,7 @@ class TrainableModule(UrlModule):
                 raise requests.RequestException('\n'.join([c.decode('utf-8') for c in r.iter_content(None)]))
 
             messages, cache = '', ''
-            token = getattr(self, "_tool_start_token", '')
+            token = getattr(self, '_tool_start_token', '')
             color = stream_output.get('color') if isinstance(stream_output, dict) else None
 
             for line in r.iter_lines(**parse_parameters):
@@ -537,8 +607,8 @@ class TrainableModule(UrlModule):
                     cache += chunk
                     if not self._maybe_has_fc(token, cache): cache = self._stream_output(cache, color)
 
+            if text_input: self._record_usage(text_input, messages)
             temp_output = self._extract_and_format(messages)
-            if text_input: self._record_usage(text_input, temp_output)
             return self._formatter(temp_output)
 
     def _modify_parameters(self, paras: dict, kw: dict, *, optional_keys: Union[List[str], str] = None):
@@ -558,3 +628,16 @@ class TrainableModule(UrlModule):
 
     def set_default_parameters(self, *, optional_keys: Optional[List[str]] = None, **kw):
         self._modify_parameters(self.template_message, kw, optional_keys=optional_keys or [])
+
+    def _cache_miss_handler(self):
+        if not self._url or self._url == fake_url:
+            raise RuntimeError('Cache miss, please use `start()` to deploy the module first')
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        state['base_model'] = self._impl._base_model
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        self._impl._base_model = state['base_model']

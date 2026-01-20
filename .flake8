@@ -2,6 +2,10 @@
 exclude = tests/legacy,venv
 per-file-ignores =
     ./docs/add_docstrings.py: E402
+    docs/scripts/lazynote/*: Q000, Q001, Q002
+    examples/*: Q000, Q001, Q002, NID001, NID002
+    lazyllm/components/deploy/mineru/mineru_patches.py: NID002
+    lazyllm/components/deploy/mineru/mineru_server_module.py: NID002
 max-line-length = 121
 # E701: multiple statements on one line (colon)
 # E702: multiple statements on one line (semicolon)
@@ -10,5 +14,13 @@ max-line-length = 121
 # E305: expected 2 blank lines after class or function definition, found 1
 # E124: closing bracket does not match visual indentation
 # W503: line break before binary operator
-ignore = E701, E702, E704, E302, E305, E124, W503
+ignore = E701, E702, E704, E302, E305, E124, W503, Q003
 max-complexity = 12
+docstring-quotes = single
+multiline-quotes = single
+
+[flake8:local-plugins]
+extension =
+    NID = flake8_no_direct_imports:NoDirectImportChecker
+paths =
+    scripts

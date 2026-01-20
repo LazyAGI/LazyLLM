@@ -8,10 +8,10 @@ class _MusicGen(_TTSInfer):
         super().__init__(base_path, source, save_path, init, trust_remote_code, 'musicgen')
 
     def _load_model(self):
-        self.model = transformers.pipeline("text-to-speech", self.base_path, device=0)
+        self.model = transformers.pipeline('text-to-speech', self.base_path, device=0)
 
     def _infer(self, string):
-        speech = self.model(string, forward_params={"do_sample": True})
+        speech = self.model(string, forward_params={'do_sample': True})
         return [speech['audio'].flatten()], speech['sampling_rate']
 
 class MusicGenDeploy(TTSBase):

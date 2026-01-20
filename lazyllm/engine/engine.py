@@ -28,7 +28,7 @@ import sys
 # Each session will have a separate engine
 class Engine(ABC):
     __default_engine__ = None
-    REPORT_URL = ""
+    REPORT_URL = ''
 
     class DefaultLockedDict(dict):
         def __init__(self, default_data, *args, **kwargs):
@@ -107,8 +107,8 @@ class Engine(ABC):
             key_db_connect_message = json.loads(key_db_connect_message)
 
         if not isinstance(key_db_connect_message, dict):
-            raise TypeError("The database connection information only supports dict and str, "
-                            f"not {type(key_db_connect_message)}.")
+            raise TypeError('The database connection information only supports dict and str, '
+                            f'not {type(key_db_connect_message)}.')
 
         self._key_db_connect_message = key_db_connect_message
 
@@ -228,6 +228,9 @@ class ServerGraph(lazyllm.ModuleBase):
     def __repr__(self):
         return repr(self._g)
 
+    def __deepcopy__(self, memo):
+        return self
+
 
 class ServerResource(object):
     def __init__(self, graph: ServerGraph, kind: str, args: Dict):
@@ -302,7 +305,7 @@ def make_code(code: str, vars_for_code: Optional[Dict[str, Any]] = None):
     def cls_method(self, *args, **kwargs):
         return ori_func(*args, **kwargs)
 
-    CodeBlock = type("CodeBlock", (lazyllm.ModuleBase,), {"forward": cls_method})
+    CodeBlock = type('CodeBlock', (lazyllm.ModuleBase,), {'forward': cls_method})
     code_block = CodeBlock()
     code_block.__doc__ = ori_func.__doc__
     code_block.__name__ = ori_func.__name__
@@ -408,7 +411,7 @@ def make_document(dataset_path: str, _node_id: str, embed: Node = None, create_u
 
 
 @NodeConstructor.register('Retriever')
-def make_retriever(doc: str, group_name: str, similarity: str = 'cosine', similarity_cut_off: float = float("-inf"),
+def make_retriever(doc: str, group_name: str, similarity: str = 'cosine', similarity_cut_off: float = float('-inf'),
                    index: str = 'default', topk: int = 6, target: str = None, output_format: str = None,
                    join: bool = False):
     return lazyllm.tools.Retriever(Engine().build_node(doc).func, group_name=group_name, similarity=similarity,
@@ -474,7 +477,7 @@ def _get_tools(tools):
     callable_list = []
     for rid in tools:  # `tools` is a list of ids in engine's resources
         node = Engine().build_node(rid)
-        if type(node.func).__name__ == "CodeBlock":
+        if type(node.func).__name__ == 'CodeBlock':
             wrapper_func = return_a_wrapper_func(node.func._ori_func)
         else:
             wrapper_func = return_a_wrapper_func(node.func)
@@ -491,35 +494,35 @@ def make_mcp_tool(command_or_url: str, tool_name: str, args: Optional[List[str]]
                   headers: Dict[str, str] = None, timeout: float = 5):
     client = MCPClient(command_or_url, args or [], env, headers, timeout)
     tools = client.get_tools([tool_name])
-    assert len(tools) == 1, f"Current MCP client does not support tool '{tool_name}'. \
-        Please check if the tool name is correct."
+    assert len(tools) == 1, f'Current MCP client does not support tool "{tool_name}". \
+        Please check if the tool name is correct.'
     return tools[0]
 
 @NodeConstructor.register('FunctionCall', subitems=['tools'])
 def make_fc(base_model: str, tools: List[str], algorithm: Optional[str] = None):
     f = lazyllm.tools.PlanAndSolveAgent if algorithm == 'PlanAndSolve' else \
         lazyllm.tools.ReWOOAgent if algorithm == 'ReWOO' else \
-        lazyllm.tools.ReactAgent if algorithm == 'React' else lazyllm.tools.FunctionCallAgent
+        lazyllm.tools.ReactAgent
     return f(Engine().build_node(base_model).func.func, _get_tools(tools))
 
 
 class AuthenticationFailedError(Exception):
-    def __init__(self, message="Authentication failed for the given user and tool."):
+    def __init__(self, message='Authentication failed for the given user and tool.'):
         self._message = message
         super().__init__(self._message)
 
 class TokenExpiredError(Exception):
-    """Access token expired"""
+    '''Access token expired'''
     pass
 
 class TokenRefreshError(Exception):
-    """Access key request failed"""
+    '''Access key request failed'''
     pass
 
 class AuthType(Enum):
-    SERVICE_API = "service_api"
-    OAUTH = "oauth"
-    OIDC = "oidc"
+    SERVICE_API = 'service_api'
+    OAUTH = 'oauth'
+    OIDC = 'oidc'
 
 class SharedHttpTool(lazyllm.tools.HttpTool):
     def __init__(self,
@@ -562,20 +565,20 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
         if not self._token_type:
             return headers, params
         if self._token_type == AuthType.SERVICE_API.value:
-            if self._location == "header":
-                headers[self._param_name] = self._token if self._token.startswith("Bearer") \
-                    else "Bearer " + self._token
-            elif self._location == "query":
+            if self._location == 'header':
+                headers[self._param_name] = self._token if self._token.startswith('Bearer') \
+                    else 'Bearer ' + self._token
+            elif self._location == 'query':
                 params = params or {}
                 params[self._param_name] = self._token
             else:
-                raise TypeError("The Service API authentication type only supports ['header', 'query'], "
-                                f"not {self._location}.")
+                raise TypeError('The Service API authentication type only supports ["header", "query"], '
+                                f'not {self._location}.')
         elif self._token_type == AuthType.OAUTH.value:
-            headers['Authorization'] = f"Bearer {self._token}"
+            headers['Authorization'] = f'Bearer {self._token}'
         else:
-            raise TypeError("Currently, tool authentication only supports ['service_api', 'oauth'] types, "
-                            f"and does not support {self._token_type} type.")
+            raise TypeError('Currently, tool authentication only supports ["service_api", "oauth"] types, '
+                            f'and does not support {self._token_type} type.')
         return headers, params
 
     def valid_key(self):
@@ -583,20 +586,20 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
             return True
         table_name = self._key_db_connect_message.get('tables_info_dict', {}).get('tables', [])[0]['name']
         SQL_SELECT = (
-            f"SELECT id, tool_api_id, endpoint_url, client_id, client_secret, user_id, location, param_name, token, "
-            f"refresh_token, token_type, expires_at FROM {table_name} "
-            f"WHERE tool_api_id = {self._tool_api_id} AND is_auth_success = True AND token_type = '{self._token_type}'"
+            f'SELECT id, tool_api_id, endpoint_url, client_id, client_secret, user_id, location, param_name, token, '
+            f'refresh_token, token_type, expires_at FROM {table_name} '
+            f'WHERE tool_api_id = {self._tool_api_id} AND is_auth_success = True AND token_type = "{self._token_type}"'
         )
         if self._share_key:
-            ret = self._fetch_valid_key(SQL_SELECT + " AND is_share = True")
+            ret = self._fetch_valid_key(SQL_SELECT + ' AND is_share = True')
             if not ret:
-                raise AuthenticationFailedError(f"Authentication failed for share_key=True and "
-                                                f"tool_api_id='{self._tool_api_id}'")
+                raise AuthenticationFailedError(f'Authentication failed for share_key=True and '
+                                                f'tool_api_id="{self._tool_api_id}"')
         else:
-            ret = self._fetch_valid_key(SQL_SELECT + f" AND user_id = '{self._user_id}'")
+            ret = self._fetch_valid_key(SQL_SELECT + f' AND user_id = "{self._user_id}"')
             if not ret:
-                raise AuthenticationFailedError(f"Authentication failed for user_id='{self._user_id}' and "
-                                                f"tool_api_id='{self._tool_api_id}'")
+                raise AuthenticationFailedError(f'Authentication failed for user_id="{self._user_id}" and '
+                                                f'tool_api_id="{self._tool_api_id}"')
 
         if self._token_type == AuthType.SERVICE_API.value:
             self._token = ret['token']
@@ -604,9 +607,9 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
             self._param_name = ret['param_name']
         elif self._token_type == AuthType.OAUTH.value:
             try:
-                expires_at = datetime.strptime(ret['expires_at'], "%Y-%m-%d %H:%M:%S")
+                expires_at = datetime.strptime(ret['expires_at'], '%Y-%m-%d %H:%M:%S')
             except ValueError:
-                expires_at = datetime.strptime(ret['expires_at'], "%Y-%m-%d %H:%M:%S.%f")
+                expires_at = datetime.strptime(ret['expires_at'], '%Y-%m-%d %H:%M:%S.%f')
             self._token = self._validate_and_refresh_token(
                 id=ret['id'],
                 client_id=ret['client_id'],
@@ -617,10 +620,10 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
                 expires_at=expires_at,
                 table_name=table_name)
         elif self._token_type == AuthType.OIDC.value:
-            raise TypeError("OIDC authentication is not currently supported.")
+            raise TypeError('OIDC authentication is not currently supported.')
         else:
-            raise TypeError("The authentication type only supports ['no authentication', 'service_api', "
-                            f"'oauth', 'oidc'], and does not support type {self._token_type}.")
+            raise TypeError('The authentication type only supports ["no authentication", "service_api", '
+                            f'"oauth", "oidc"], and does not support type {self._token_type}.')
 
     def _fetch_valid_key(self, query: str):
         ret = self._sql_manager.execute_query(query)
@@ -635,30 +638,30 @@ class SharedHttpTool(lazyllm.tools.HttpTool):
             if not refresh_token:
                 # Update only the expiration time
                 new_expires_at = now + timedelta(days=self._default_expired_days)
-                self._sql_manager.execute_commit(f"UPDATE {table_name} SET expires_at = "
-                                                 f"'{new_expires_at}' WHERE id = {id}")
+                self._sql_manager.execute_commit(f'UPDATE {table_name} SET expires_at = '
+                                                 f'"{new_expires_at}" WHERE id = {id}')
             return token
 
         # 2、Access token expired
         if not refresh_token:
-            raise TokenExpiredError("Access key has expired, and no refresh key was provided.")
+            raise TokenExpiredError('Access key has expired, and no refresh key was provided.')
 
         # 3、Request a new access token with the refresh_token
-        headers = {"Content-Type": "application/json", "Authorization": f"Bearer {client_secret}"}
-        data = {"client_id": client_id, "grant_type": "refresh_token", "refresh_token": refresh_token}
+        headers = {'Content-Type': 'application/json', 'Authorization': f'Bearer {client_secret}'}
+        data = {'client_id': client_id, 'grant_type': 'refresh_token', 'refresh_token': refresh_token}
         with requests.post(endpoint_url, json=data, headers=headers) as r:
             if r.status_code != 200:
-                raise TokenRefreshError(f"Request failed, status code: {r.status_code}, message: {r.text}")
+                raise TokenRefreshError(f'Request failed, status code: {r.status_code}, message: {r.text}')
 
             data = r.json()
-            new_token = data.get("access_token")
-            new_refresh_token = data.get("refresh_token")
-            new_expires_at = data.get("expires_in")
+            new_token = data.get('access_token')
+            new_refresh_token = data.get('refresh_token')
+            new_expires_at = data.get('expires_in')
 
             # update db
             self._sql_manager.execute_commit(
-                f"UPDATE {table_name} SET token = '{new_token}', refresh_token = '{new_refresh_token}', "
-                f"expires_at = '{datetime.fromtimestamp(new_expires_at)}' where id = {id}")
+                f'UPDATE {table_name} SET token = "{new_token}", refresh_token = "{new_refresh_token}", '
+                f'expires_at = "{datetime.fromtimestamp(new_expires_at)}" where id = {id}')
             return new_token
 
 @NodeConstructor.register('HttpTool')
@@ -731,7 +734,7 @@ def make_vqa(kw: dict):
 
 @NodeConstructor.register('LocalVQA')
 def make_local_vqa(base_model: str, file_resource_id: Optional[str] = None, prompt: Optional[str] = None,
-                   deploy_method: str = "auto", url: Optional[str] = None):
+                   deploy_method: str = 'auto', url: Optional[str] = None):
     model = lazyllm.TrainableModule(base_model)
     setup_deploy_method(model, deploy_method, url)
     return VQA(model, file_resource_id, prompt)
@@ -742,21 +745,21 @@ def make_online_vqa(source: str = None, base_model: Optional[str] = None, prompt
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
                     history: Optional[List[List[str]]] = None):
     if source: source = source.lower()
-    return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
+    return lazyllm.OnlineChatModule(model=base_model, source=source, base_url=base_url, stream=stream,
                                     api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
 
 
 @NodeConstructor.register('SharedModel')
 def make_shared_model(llm: str, prompt: Optional[str] = None,
                       stream: Optional[bool] = None, file_resource_id: Optional[str] = None,
-                      history: Optional[List[List[str]]] = None, cls: str = "llm"):
+                      history: Optional[List[List[str]]] = None, cls: str = 'llm'):
     if file_resource_id: assert cls == 'vqa', 'file_resource_id is only supported in VQA'
     model = Engine().build_node(llm).func
     if stream is not None: model.stream = stream
-    if cls == "vqa": return VQA(model, file_resource_id).share(prompt=prompt, history=history)
-    elif cls == "tts": return TTS(model)
-    elif cls == "stt": return STT(model)
-    elif cls == "sd": return SD(model)
+    if cls == 'vqa': return VQA(model, file_resource_id).share(prompt=prompt, history=history)
+    elif cls == 'tts': return TTS(model)
+    elif cls == 'stt': return STT(model)
+    elif cls == 'sd': return SD(model)
     else: return model.share(prompt=prompt, history=history)
 
 
@@ -766,8 +769,9 @@ def make_online_llm(source: str = None, base_model: Optional[str] = None, prompt
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
                     history: Optional[List[List[str]]] = None, static_params: Optional[Dict[str, Any]] = None):
     if source: source = source.lower()
-    return lazyllm.OnlineChatModule(base_model, source, base_url, stream, api_key=api_key, secret_key=secret_key,
-                                    static_params=static_params or {}).prompt(prompt, history=history)
+    return lazyllm.OnlineChatModule(model=base_model, source=source, base_url=base_url, stream=stream, api_key=api_key,
+                                    secret_key=secret_key, static_params=static_params or {}
+                                    ).prompt(prompt, history=history)
 
 
 class LLM(lazyllm.ModuleBase):
@@ -842,7 +846,7 @@ def make_stt(kw: dict):
     else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalSTT')
-def make_local_stt(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+def make_local_stt(base_model: str, deploy_method: str = 'auto', url: Optional[str] = None):
     model = lazyllm.TrainableModule(base_model)
     setup_deploy_method(model, deploy_method, url)
     return STT(model)
@@ -867,10 +871,10 @@ class TTS(lazyllm.Module):
         result = self._m(query)
         if isinstance(result, str) and result.startswith(LAZYLLM_QUERY_PREFIX):
             decoded_result = decode_query_with_filepaths(result)
-            sound_list = decoded_result["files"]
+            sound_list = decoded_result['files']
             if self._target_dir and sound_list:
                 sound_list = move_files_to_target_dir(sound_list, self._target_dir)
-            result = encode_query_with_filepaths(query=decoded_result["query"], files=sound_list)
+            result = encode_query_with_filepaths(query=decoded_result['query'], files=sound_list)
         return result
 
     def share(self):
@@ -889,7 +893,7 @@ def make_tts(kw: dict):
     else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalTTS')
-def make_local_tts(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+def make_local_tts(base_model: str, deploy_method: str = 'auto', url: Optional[str] = None):
     model = lazyllm.TrainableModule(base_model)
     setup_deploy_method(model, deploy_method, url)
     return model
@@ -911,7 +915,7 @@ def make_embedding(kw: dict):
     else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalEmbedding')
-def make_local_embedding(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+def make_local_embedding(base_model: str, deploy_method: str = 'auto', url: Optional[str] = None):
     m = lazyllm.TrainableModule(base_model)
     return setup_deploy_method(m, deploy_method, url)
 
@@ -928,7 +932,7 @@ def make_constant(value: Any):
 
 
 @NodeConstructor.register('SqlCall')
-def make_sql_call(sql_manager: Node, base_model: str, sql_examples: str = "", use_llm_for_sql_result: bool = True,
+def make_sql_call(sql_manager: Node, base_model: str, sql_examples: str = '', use_llm_for_sql_result: bool = True,
                   return_trace: bool = True):
     llm = Engine().build_node(base_model).func
     sql_manager = Engine().build_node(sql_manager).func
@@ -937,7 +941,7 @@ def make_sql_call(sql_manager: Node, base_model: str, sql_examples: str = "", us
 
 @NodeConstructor.register('SqlManager')
 def make_sql_manager(db_type: str = None, user: str = None, password: str = None, host: str = None,
-                     port: str = None, db_name: str = None, options_str: str = "", tables_info_dict: dict = None):
+                     port: str = None, db_name: str = None, options_str: str = '', tables_info_dict: dict = None):
     return lazyllm.tools.SqlManager(db_type=db_type, user=user, password=password, host=host, port=port,
                                     db_name=db_name, options_str=options_str, tables_info_dict=tables_info_dict)
 
@@ -957,10 +961,10 @@ class SD(lazyllm.Module):
         result = self._m(prompt)
         if isinstance(result, str) and result.startswith(LAZYLLM_QUERY_PREFIX):
             decoded_result = decode_query_with_filepaths(result)
-            image_list = decoded_result["files"]
+            image_list = decoded_result['files']
             if self._target_dir and image_list:
                 image_list = move_files_to_target_dir(image_list, self._target_dir)
-            result = encode_query_with_filepaths(query=decoded_result["query"], files=image_list)
+            result = encode_query_with_filepaths(query=decoded_result['query'], files=image_list)
         return result
 
     def share(self):
@@ -975,7 +979,7 @@ def make_sd(kw: dict):
     else: raise ValueError(f'Invalid type {type} given')
 
 @NodeConstructor.register('LocalSD')
-def make_local_sd(base_model: str, deploy_method: str = "auto", url: Optional[str] = None):
+def make_local_sd(base_model: str, deploy_method: str = 'auto', url: Optional[str] = None):
     model = lazyllm.TrainableModule(base_model)
     setup_deploy_method(model, deploy_method, url)
     return model
@@ -1001,7 +1005,7 @@ class FileResource(object):
 def make_file(id: str):
     return FileResource(id)
 
-@NodeConstructor.register("Reader")
+@NodeConstructor.register('Reader')
 def make_simple_reader(file_resource_id: Optional[str] = None):
     if file_resource_id:
         def merge_input(input, extra_file: Union[str, List[str]]):
@@ -1023,44 +1027,44 @@ def make_simple_reader(file_resource_id: Optional[str] = None):
         return lazyllm.tools.rag.FileReader()
 
 
-@NodeConstructor.register("OCR")
-def make_ocr(base_model: Optional[str] = "PP-OCRv5_mobile", deploy_method: str = "auto", url: Optional[str] = None):
+@NodeConstructor.register('OCR')
+def make_ocr(base_model: Optional[str] = 'PP-OCRv5_mobile', deploy_method: str = 'auto', url: Optional[str] = None):
     if base_model is None:
-        base_model = "PP-OCRv5_mobile"
-    assert base_model in ["PP-OCRv5_server", "PP-OCRv5_mobile", "PP-OCRv4_server", "PP-OCRv4_mobile"]
+        base_model = 'PP-OCRv5_mobile'
+    assert base_model in ['PP-OCRv5_server', 'PP-OCRv5_mobile', 'PP-OCRv4_server', 'PP-OCRv4_mobile']
     model = lazyllm.TrainableModule(base_model)
     setup_deploy_method(model, deploy_method, url)
     return model
 
 
-@NodeConstructor.register("ParameterExtractor")
+@NodeConstructor.register('ParameterExtractor')
 def make_parameter_extractor(base_model: str, param: list[str], type: list[str],
                              description: list[str], require: list[bool]):
     base_model = Engine().build_node(base_model).func
     return lazyllm.tools.ParameterExtractor(base_model, param, type, description, require)
 
 
-@NodeConstructor.register("QustionRewrite")
-def make_qustion_rewrite(base_model: str, rewrite_prompt: str = "", formatter: str = "str"):
+@NodeConstructor.register('QustionRewrite')
+def make_qustion_rewrite(base_model: str, rewrite_prompt: str = '', formatter: str = 'str'):
     base_model = Engine().build_node(base_model).func
     return lazyllm.tools.QustionRewrite(base_model, rewrite_prompt, formatter)
 
 
-@NodeConstructor.register("CodeGenerator")
-def make_code_generator(base_model: str, prompt: str = ""):
+@NodeConstructor.register('CodeGenerator')
+def make_code_generator(base_model: str, prompt: str = ''):
     base_model = Engine().build_node(base_model).func
     return lazyllm.tools.CodeGenerator(base_model, prompt)
 
 def setup_deploy_method(model: lazyllm.TrainableModule, deploy_method: str, url: Optional[str] = None):
-    """Set the deployment method for the module
+    '''Set the deployment method for the module
 
     Args:
         module: The module to set deployment method for
         deploy_method: Name of the deployment method
         url: Optional deployment URL
-    """
+    '''
     deploy_method = getattr(lazyllm.deploy, deploy_method)
-    if deploy_method is lazyllm.deploy.AutoDeploy:
+    if not url or url == '':
         model.deploy_method(deploy_method)
     else:
         model.deploy_method(deploy_method, url=url)

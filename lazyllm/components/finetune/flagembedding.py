@@ -66,7 +66,7 @@ class FlagembeddingFinetune(LazyLLMFinetuneBase):
         **kw
     ):
         model_type = ModelManager.get_model_type(base_model.split('/')[-1])
-        if model_type not in ('embed', 'reranker'):
+        if model_type not in ('embed', 'rerank'):
             raise RuntimeError(f'Not supported {model_type} type to finetune.')
         if not os.path.exists(base_model):
             defatult_path = os.path.join(lazyllm.config['model_path'], base_model)
@@ -80,7 +80,7 @@ class FlagembeddingFinetune(LazyLLMFinetuneBase):
             target_path,
             launcher=launcher,
         )
-        if model_type == 'reranker':
+        if model_type == 'rerank':
             self.kw = copy.deepcopy(self.defatult_rerank_kw)
             self.store_true_kw = copy.deepcopy(self.store_true_rerank_kw)
             self.module_run_path = 'FlagEmbedding.finetune.reranker.encoder_only.base'
@@ -99,11 +99,11 @@ class FlagembeddingFinetune(LazyLLMFinetuneBase):
         thirdparty.check_packages(['flagembedding'])
         self.kw['train_data'] = trainset
 
-        formatted_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        formatted_date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
         self.log_file_path = f'{self.target_path}/train_log_{formatted_date}_{random.randint(1000, 9999)}.log'
-        cache_path = os.path.join(os.path.expanduser('~'), '.lazyllm', 'fintune', 'embeding')
-        cache_model_path = os.path.join(cache_path, "model")
-        cache_data_path = os.path.join(cache_path, "data")
+        cache_path = os.path.join(os.path.expanduser(lazyllm.config['home']), 'fintune', 'embeding')
+        cache_model_path = os.path.join(cache_path, 'model')
+        cache_data_path = os.path.join(cache_path, 'data')
         os.system(f'mkdir -p {cache_model_path} {cache_data_path}')
 
         cmds = (f'export WANDB_MODE=disabled && torchrun --nproc_per_node {self.nproc_per_node} '

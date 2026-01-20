@@ -6,7 +6,8 @@ from lazyllm import launchers, LazyLLMCMD
 from .base import LazyLLMDeployBase
 
 
-lazyllm.config.add('num_gpus_per_node', int, 8, 'NUM_GPUS_PER_NODE')
+lazyllm.config.add('num_gpus_per_node', int, 8, 'NUM_GPUS_PER_NODE',
+                   description='The number of GPUs per node for Ray launcher when deploy models.')
 
 def sleep_moment(finetuned_model=None, base_model=None, master_ip=None):
     sleep_time = random.uniform(1, 3)
@@ -26,7 +27,7 @@ def reallocate_launcher(launcher):
     else:
         erro_info = (
             f'At least 1 node is required. The number of GPUs({ngpus}) in a single node exceeds the upper '
-            f"limit{(lazyllm.config['num_gpus_per_node'])}. Please check the actual "
+            f'limit{(lazyllm.config["num_gpus_per_node"])}. Please check the actual '
             'number of GPUs in a single node and set the environment variable: LAZYLLM_NUM_GPUS_PER_NODE.')
         lazyllm.LOG.error(erro_info)
         raise RuntimeError(erro_info)

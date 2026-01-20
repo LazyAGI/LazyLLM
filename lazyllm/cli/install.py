@@ -11,7 +11,7 @@ import logging
 from collections import OrderedDict
 
 _PYPROJECT_CACHE = None
-PYPROJECT_TOML_URL = "https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/pyproject.toml"
+PYPROJECT_TOML_URL = 'https://raw.githubusercontent.com/LazyAGI/LazyLLM/main/pyproject.toml'
 UNSUPPORTED_ON_DARWIN_WIN = [
     'full', 'standard', 'fintune-all', 'alpaca-lora', 'colie', 'llama-factory', 'deploy-all', 'vllm',
     'lmdeploy', 'lightllm', 'infinity'
@@ -28,7 +28,7 @@ def load_pyproject_from_lazyllm_path():
         else:
             return None
     except (FileNotFoundError, toml.TomlDecodeError):
-        logging.error("Could not find or parse pyproject.toml in lazyllm path.")
+        logging.error('Could not find or parse pyproject.toml in lazyllm path.')
         return None
 
 def load_local_pyproject():
@@ -36,7 +36,7 @@ def load_local_pyproject():
         with open('pyproject.toml', 'r') as f:
             return toml.load(f)
     except (FileNotFoundError, toml.TomlDecodeError):
-        logging.error("Could not find or parse the local pyproject.toml file.")
+        logging.error('Could not find or parse the local pyproject.toml file.')
         sys.exit(1)
 
 def load_remote_pyproject():
@@ -45,7 +45,7 @@ def load_remote_pyproject():
         response.raise_for_status()
         return toml.loads(response.text)
     except (requests.RequestException, toml.TomlDecodeError) as e:
-        logging.error(f"Failed to download or parse remote pyproject.toml file: {e}")
+        logging.error(f'Failed to download or parse remote pyproject.toml file: {e}')
         sys.exit(1)
 
 def load_pyproject():
@@ -64,7 +64,7 @@ def load_extras():
     try:
         return config['tool']['poetry']['extras']
     except KeyError:
-        logging.error("No 'extras' information found in the pyproject.toml file.")
+        logging.error('No "extras" information found in the pyproject.toml file.')
         sys.exit(1)
 
 def load_dependencies():
@@ -72,7 +72,7 @@ def load_dependencies():
     try:
         return config['tool']['poetry']['dependencies']
     except KeyError:
-        logging.error("No 'dependencies' information found in the pyproject.toml file.")
+        logging.error('No "dependencies" information found in the pyproject.toml file.')
         sys.exit(1)
 
 def load_extras_descriptions():
@@ -80,7 +80,7 @@ def load_extras_descriptions():
     try:
         return config['tool']['lazyllm']['extras_descriptions']
     except KeyError:
-        logging.error("No 'extras_descriptions' information found in the pyproject.toml file.")
+        logging.error('No "extras_descriptions" information found in the pyproject.toml file.')
         sys.exit(1)
 
 def install_packages(packages):
@@ -89,16 +89,16 @@ def install_packages(packages):
     try:
         subprocess.check_call([sys.executable, '-m', 'pip', 'install'] + packages)
     except subprocess.CalledProcessError as e:
-        logging.error(f"安装失败: {e}")
+        logging.error(f'安装失败: {e}')
         sys.exit(1)
 
 def parse_caret_to_tilde_version(version):
-    if version.startswith("^"):
-        version_parts = version[1:].split(".")
+    if version.startswith('^'):
+        version_parts = version[1:].split('.')
         if len(version_parts) > 1:
-            return f"~={version_parts[0]}.{version_parts[1]}"
+            return f'~={version_parts[0]}.{version_parts[1]}'
         else:
-            return f"~={version_parts[0]}"
+            return f'~={version_parts[0]}'
     return version
 
 def process_package(package_name_with_version, dependencies):
@@ -115,19 +115,24 @@ def process_package(package_name_with_version, dependencies):
             version_spec = version_spec.strip()
         if version_spec == '*' or version_spec == '':
             return package_name
-        elif version_spec.startswith("^"):
+        elif version_spec.startswith('^'):
             version_spec = parse_caret_to_tilde_version(version_spec)
-        return f"{package_name}{version_spec}"
+        return f'{package_name}{version_spec}'
     else:
-        logging.error(f"Error: Package '{package_name}' is not listed in the 'dependencies' section of pyproject.toml.")
-        sys.exit(1)
+        raise RuntimeError(f'Package "{package_name}" is not listed in the "dependencies" section of pyproject.toml.')
 
 def install_multiple_packages(package_names_with_versions):
     dependencies = load_dependencies()
-    packages_to_install = []
+    packages_to_install, failed_msgs = [], []
     for package in package_names_with_versions:
-        package_with_version = process_package(package, dependencies)
-        packages_to_install.append(package_with_version)
+        try:
+            package_with_version = process_package(package, dependencies)
+            packages_to_install.append(package_with_version)
+        except RuntimeError as e:
+            failed_msgs.append(str(e))
+    if failed_msgs:
+        logging.error('\n'.join(failed_msgs))
+        exit(1)
     install_packages(packages_to_install)
 
 def install_mineru():
@@ -137,45 +142,45 @@ def install_mineru():
         subprocess.check_call([sys.executable, '-m', 'pip', 'install', 'uv', '-i',
                                'https://mirrors.aliyun.com/pypi/simple/'])
         subprocess.check_call([sys.executable, '-m', 'uv', 'pip', 'install',
-                               'mineru[all]==2.1.10', '-i', 'https://mirrors.aliyun.com/pypi/simple/'])
+                               'mineru[all]==2.5.4', '-i', 'https://mirrors.aliyun.com/pypi/simple/'])
     except subprocess.CalledProcessError as e:
-        logging.error(f"Mineru installation failed: {e}")
+        logging.error(f'Mineru installation failed: {e}')
         sys.exit(1)
 
 def install(commands):  # noqa C901
     extras_desc = load_extras_descriptions()
-    epilog_lines = ["Supported extras groups:"]
+    epilog_lines = ['Supported extras groups:']
     for name, desc in extras_desc.items():
-        epilog_lines.append(f"  {name:<15}  {desc}")
-    epilog = "\n".join(epilog_lines)
+        epilog_lines.append(f'  {name:<15}  {desc}')
+    epilog = '\n'.join(epilog_lines)
 
     parser = argparse.ArgumentParser(
-        prog="lazyllm install",
-        description="Install one or more extras groups or individual packages",
+        prog='lazyllm install',
+        description='Install one or more extras groups or individual packages',
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=epilog
     )
     parser.add_argument(
-        "items",
-        nargs="+",
-        metavar="ITEM",
-        help="Extras group(s) or package name(s) to install"
+        'items',
+        nargs='+',
+        metavar='ITEM',
+        help='Extras group(s) or package name(s) to install'
     )
     args = parser.parse_args(commands)
     items = args.items
 
-    if platform.system() in ["Darwin", "Windows"] and \
+    if platform.system() in ['Darwin', 'Windows'] and \
        any(i in UNSUPPORTED_ON_DARWIN_WIN for i in items):
-        logging.error("Extras for finetune/local inference are not supported on macOS/Windows.")
+        logging.error('Extras for finetune/local inference are not supported on macOS/Windows.')
         sys.exit(1)
 
     extras = load_extras()  # dict of extras
     deps = load_dependencies()  # dict of dependencies
     to_install = OrderedDict()
 
-    if "mineru" in items:
+    if 'mineru' in items:
         install_mineru()
-        items.remove("mineru")
+        items.remove('mineru')
 
     for cmd in items:
         if cmd in extras:
@@ -187,11 +192,11 @@ def install(commands):  # noqa C901
             to_install[spec] = None
 
     if not to_install:
-        logging.error("No packages to install, please check your command.")
+        logging.error('No packages to install, please check your command.')
         sys.exit(1)
 
     pkgs = list(to_install.keys())
-    filtered_pkgs = [p for p in pkgs if not p.startswith("flash-attn")]
+    filtered_pkgs = [p for p in pkgs if not p.startswith('flash-attn')]
 
     if filtered_pkgs:
         install_packages(filtered_pkgs)
@@ -199,14 +204,14 @@ def install(commands):  # noqa C901
     extra_pkgs = set()
 
     for p in pkgs:
-        if p.startswith("flash-attn"):
+        if p.startswith('flash-attn'):
             try:
-                tc_ver = importlib.metadata.version("torch")
+                tc_ver = importlib.metadata.version('torch')
             except importlib.metadata.PackageNotFoundError:
                 pass
             else:
-                if tc_ver == "2.5.1":
-                    extra_pkgs.add("flash-attn==2.7.0.post2")
+                if tc_ver == '2.7.1':
+                    extra_pkgs.add('flash-attn==2.8.0.post2')
                 else:
                     extra_pkgs.add(p)
 

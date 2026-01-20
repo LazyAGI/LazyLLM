@@ -1,21 +1,19 @@
 import lazyllm
-from typing import Any, Dict
+from lazyllm.components.utils.downloader.model_downloader import LLMType
+from typing import Any
 from .base import OnlineMultiModalBase
-from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
-from .supplier.doubao import DoubaoTextToImageModule
-from .supplier.glm import GLMSTTModule, GLMTextToImageModule
+from .base.utils import select_source_with_default_key
 
 
 class _OnlineMultiModalMeta(type):
-    """Metaclass for OnlineMultiModalModule to support isinstance checks"""
+    '''Metaclass for OnlineMultiModalModule to support isinstance checks'''
     def __instancecheck__(self, __instance: Any) -> bool:
         if isinstance(__instance, OnlineMultiModalBase):
             return True
         return super().__instancecheck__(__instance)
 
-
 class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
-    """
+    '''
     Factory class for creating online multimodal models.
 
     Supports various multimodal functions including:
@@ -32,89 +30,62 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
 
         # Create an online text-to-image
         img_gen = OnlineMultiModalModule(source='qwen', function='text2image')
-    """
-    STT_MODELS = {
-        'qwen': QwenSTTModule,
-        'glm': GLMSTTModule
-    }
-    TTS_MODELS = {
-        'qwen': QwenTTSModule,
-    }
-    TEXT2IMAGE_MODELS = {
-        'qwen': QwenTextToImageModule,
-        'doubao': DoubaoTextToImageModule,
-        'glm': GLMTextToImageModule
+    '''
+    TYPE_GROUP_MAP = {
+        'stt': LLMType.STT,
+        'tts': LLMType.TTS,
+        'text2image': LLMType.TEXT2IMAGE,
+        'image_editing': LLMType.TEXT2IMAGE,
     }
 
     @staticmethod
-    def _encapsulate_parameters(base_url: str,
-                                model: str,
-                                return_trace: bool,
-                                **kwargs) -> Dict[str, Any]:
-        """Encapsulate parameters for module initialization"""
-        params = {"return_trace": return_trace}
+    def _validate_parameters(source: str, model: str, type: str, base_url: str, **kwargs) -> tuple:
+        assert type in OnlineMultiModalModule.TYPE_GROUP_MAP, f'Invalid type: {type}'
+        if model in lazyllm.online[type] and source is None:
+            source, model = model, source
+        if source is None and kwargs.get('api_key'):
+            raise ValueError('No source is given but an api_key is provided.')
+        register_type = OnlineMultiModalModule.TYPE_GROUP_MAP.get(type).lower()
+        source, default_key = select_source_with_default_key(lazyllm.online[register_type],
+                                                             explicit_source=source,
+                                                             type=type)
+        if default_key and not kwargs.get('api_key'):
+            kwargs['api_key'] = default_key
+
+        if kwargs.get('skip_auth', False):
+            source = source or 'openai'
+            if not base_url:
+                raise KeyError('base_url must be set for local serving.')
+
+        default_module_cls = getattr(lazyllm.online[register_type], source)
+        if type == 'image_editing':
+            default_model_name = getattr(default_module_cls, 'IMAGE_EDITING_MODEL_NAME', None)
+        else:
+            default_model_name = getattr(default_module_cls, 'MODEL_NAME', None)
+        if model is None and default_model_name:
+            model = default_model_name
+            lazyllm.LOG.info(f'For type {type}, source {source}. Automatically selected default model: {model}')
+
         if base_url is not None:
-            params['base_url'] = base_url
-        if model is not None:
-            params['model'] = model
-        params.update(kwargs)
-        return params
+            kwargs['base_url'] = base_url
+        return source, model, kwargs
 
     def __new__(self,
                 model: str = None,
                 source: str = None,
+                type: str = None,
                 base_url: str = None,
                 return_trace: bool = False,
-                function: str = "stt",
                 **kwargs):
-        """
-        Create a new OnlineMultiModalModule instance.
-
-        Args:
-            model: Model name to use
-            source: Model provider (e.g., 'qwen', 'openai', 'glm')
-            base_url: Base URL for the model API
-            return_trace: Whether to return trace information
-            function: Function type ('stt', 'tts', 'text2image')
-            **kwargs: Additional parameters for the specific module
-
-        Returns:
-            Instance of the appropriate module class
-
-        Raises:
-            ValueError: If function is not supported
-            KeyError: If no API key is configured
-        """
-        # Define function to model mapping
-        FUNCTION_MODEL_MAP = {
-            "stt": OnlineMultiModalModule.STT_MODELS,
-            "tts": OnlineMultiModalModule.TTS_MODELS,
-            "text2image": OnlineMultiModalModule.TEXT2IMAGE_MODELS,
-        }
-
-        if function not in FUNCTION_MODEL_MAP:
-            raise ValueError(f"Invalid function: {function}")
-
-        available_model = FUNCTION_MODEL_MAP[function]
-
-        if model in available_model and source is None:
-            source, model = model, source
-
-        params = OnlineMultiModalModule._encapsulate_parameters(base_url, model, return_trace, **kwargs)
-
-        if kwargs.get("skip_auth", False):
-            source = source or "openai"
-            if not base_url:
-                raise KeyError("base_url must be set for local serving.")
-
-        if source is None:
-            if "api_key" in kwargs and kwargs["api_key"]:
-                raise ValueError("No source is given but an api_key is provided.")
-            for source in available_model:
-                if lazyllm.config[f'{source}_api_key']:
-                    break
-            else:
-                raise KeyError(f"No api_key is configured for any of the models {available_model}.")
-
-        assert source in available_model, f"Unsupported source: {source}"
-        return available_model[source](**params)
+        if type is None:
+            type = kwargs.pop('function', None)
+        source, model, kwargs_normalized = OnlineMultiModalModule._validate_parameters(
+            source=source, model=model, type=type, base_url=base_url, **kwargs
+        )
+        params = {'return_trace': return_trace,
+                  'type': type}
+        if model is not None:
+            params['model'] = model
+        params.update(kwargs_normalized)
+        register_type = OnlineMultiModalModule.TYPE_GROUP_MAP.get(type).lower()
+        return getattr(lazyllm.online[register_type], source)(**params)

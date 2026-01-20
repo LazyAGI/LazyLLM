@@ -8,5 +8,5 @@ class YamlFormatter(JsonLikeFormatter):
         try:
             return yaml.load(msg, Loader=yaml.SafeLoader)
         except Exception as e:
-            lazyllm.LOG.info(f"Error: {e}")
-            return ""
+            lazyllm.LOG.info(f'Error: {e}')
+            return ''

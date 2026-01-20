@@ -6,38 +6,42 @@ import random
 import asyncio
 import json
 import threading
+import glob
 from datetime import datetime
 from typing import List
 from pydantic import BaseModel, Field
-from fastapi import Body, HTTPException, Header, Query
-from async_timeout import timeout
+from fastapi import Body, HTTPException, Header, Query  # noqa NID002
+from lazyllm.thirdparty import async_timeout
 import re
 import shutil
-from fastapi.responses import StreamingResponse
+from fastapi.responses import StreamingResponse  # noqa NID002
 import requests
 from urllib.parse import unquote
 
 import lazyllm
 from lazyllm.launcher import Status
 from lazyllm.module.llms.utils import uniform_sft_dataset
-from lazyllm import FastapiApp as app
-from ..services import ServerBase
+from lazyllm import FastapiApp as app, LOG as logger
+from lazyllm.tools.services import ServerBase
 
 DEFAULT_TOKEN = 'default_token'
+_DEFAULT_BODY_EMBED = Body(embed=True)
+_DEFAULT_BODY_OPTIONAL = Body(None, embed=True)
+_DEFAULT_HEADER_TOKEN = Header(DEFAULT_TOKEN)
 
 def is_url(path):
     return bool(re.match(r'^https?://', path))
 
 def get_filename_from_url(url: str, timeout: int = 10) -> str:
-    """
+    '''
     Get filename from URL Content-Disposition header
-    """
+    '''
     try:
         resp = requests.get(url, stream=True, timeout=timeout)
         resp.raise_for_status()
 
-        cd = resp.headers.get("Content-Disposition", "")
-        for pattern in [r"filename\*=UTF-8''(.+)", r'filename="?([^"]+)"?']:
+        cd = resp.headers.get('Content-Disposition', '')
+        for pattern in [r'filename\*=UTF-8\'\'(.+)', r'filename=\'?([^\']+)\'?']:
             match = re.search(pattern, cd)
             if match:
                 return unquote(match.group(1))
@@ -66,16 +70,16 @@ class TrainingArgs(BaseModel):
     ngpus: int = 1
 
     class Config:
-        extra = "allow"  # extra fields are allowed
+        extra = 'allow'  # extra fields are allowed
 
-class JobDescription(BaseModel):
+class _JobDescription(BaseModel):
     name: str
     model: str
     training_args: TrainingArgs = Field(default_factory=TrainingArgs)
     training_dataset: List[Dataset] = []
     validation_dataset: List[Dataset] = []
     validate_dataset_split_percent: float = Field(default=0.0)
-    stage: str = ""
+    stage: str = ''
 
 class ModelExport(BaseModel):
     name: str
@@ -83,61 +87,357 @@ class ModelExport(BaseModel):
     model_id: str
 
 
-class TrainServer(ServerBase):
+def _verify_final_model_files(fine_tuned_model_path, finetuning_type='lora'):
+    '''
+    Verify that final model files are complete and valid.
+    Returns True if model files are complete, False otherwise.
+    '''
+    if not fine_tuned_model_path or not os.path.exists(fine_tuned_model_path):
+        return False
 
-    def _update_status(self, token, job_id):
+    try:
+        # Check if merge_path exists (merged model is preferred)
+        if 'lazyllm_lora' in fine_tuned_model_path:
+            merge_path = fine_tuned_model_path.replace('lazyllm_lora', 'lazyllm_merge')
+            if os.path.exists(merge_path):
+                fine_tuned_model_path = merge_path
+
+        if finetuning_type == 'full':
+            # For full finetuning, check for config.json and model files
+            config_path = os.path.join(fine_tuned_model_path, 'config.json')
+            if not os.path.exists(config_path):
+                return False
+
+            # Check for model files (safetensors, bin, or index.json for sharded models)
+            model_files = [
+                'model.safetensors',
+                'pytorch_model.bin',
+                'model.safetensors.index.json'
+            ]
+            has_model = any(
+                os.path.exists(os.path.join(fine_tuned_model_path, f))
+                for f in model_files
+            )
+            return has_model
+        else:
+            # For LoRA/QLoRA, check for adapter files
+            adapter_config = os.path.join(fine_tuned_model_path, 'adapter_config.json')
+            if not os.path.exists(adapter_config):
+                return False
+
+            # Check for adapter weight files
+            adapter_files = [
+                'adapter_model.safetensors',
+                'adapter_model.bin'
+            ]
+            has_adapter = any(
+                os.path.exists(os.path.join(fine_tuned_model_path, f))
+                for f in adapter_files
+            )
+            return has_adapter
+    except Exception:
+        return False
+
+
+def _check_log_for_errors(log_path, job_id, info=None):
+    # Priority 1: Verify model files first (most reliable indicator)
+    if info:
+        fine_tuned_model = info.get('fine_tuned_model')
+        if fine_tuned_model:
+            finetuning_type = info.get('hyperparameters', {}).get('finetuning_type', 'lora')
+            if _verify_final_model_files(fine_tuned_model, finetuning_type):
+                # Model files are complete, training succeeded regardless of log content
+                logger.info(
+                    f'[_check_log_for_errors] Job {job_id} model files are complete, '
+                    f'training succeeded')
+                return False
+
+    # Priority 2: If model files are incomplete, use original log check logic (conservative approach)
+    if not log_path or not os.path.exists(log_path):
+        return False
+
+    try:
+        with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+            log_content = f.read()
+            # Check for common failure indicators (original logic - conservative)
+            error_indicators = [
+                # Memory errors
+                'OutOfMemoryError', 'CUDA out of memory', 'torch.OutOfMemoryError',
+                # Process/Subprocess errors
+                'CalledProcessError', 'returned non-zero exit status',
+                'ChildFailedError', 'FAILED',
+                # File system errors
+                'FileNotFoundError', 'OSError', 'PermissionError',
+                'No space left', 'Disk quota exceeded',
+                # Python standard exceptions
+                'RuntimeError', 'ValueError', 'TypeError',
+                'KeyError', 'AttributeError', 'ImportError',
+                'AssertionError', 'IndexError',
+                # CUDA/NCCL errors
+                'CUDA error', 'NCCL error', 'cuda runtime error',
+                'NCCL initialization', 'NCCL communicator',
+                # Training framework errors
+                'Training failed', 'Trainer crashed', 'Training crashed',
+                # System/Connection errors
+                'Broken pipe', 'Connection refused', 'Connection reset',
+                'TimeoutError', 'ConnectionError',
+                # Traceback indicates serious errors
+                'Traceback (most recent call last)'
+            ]
+            if any(error in log_content for error in error_indicators):
+                logger.info(
+                    f'[_check_log_for_errors] Job {job_id} marked as Done but found '
+                    f'errors in log, changing to Failed')
+                return True
+    except Exception:
+        pass
+
+    return False
+
+
+class TrainServer(ServerBase):
+    # Compiled regex patterns for performance optimization
+    _re_progress_bar = re.compile(r'(\d+)%\s*\|\s*[█▉▊▋▌▍▎▏\s]+\s*\|\s*(\d+)/(\d+)')
+    _re_non_training_patterns = [
+        re.compile(r'Loading checkpoint shards', re.IGNORECASE),
+        re.compile(r'Converting format of dataset', re.IGNORECASE),
+        re.compile(r'Running tokenizer on dataset', re.IGNORECASE),
+    ]
+    _re_time_format = re.compile(r'\[\d+:\d+<\d+:\d+,\s*[\d.]+\s*(?:s/it|it/s)\]')
+    _re_loss = re.compile(r"'loss':\s*([\d.]+)")
+    _re_epoch = re.compile(r"'epoch':\s*([\d.]+)")
+    _re_metrics = re.compile(r"\{'loss':\s*([\d.]+).*'epoch':\s*([\d.]+)")
+    _re_total_steps = re.compile(r'Total optimization steps\s*=\s*(\d+)')
+    _re_step_ratio = re.compile(r'(\d+)/(\d+)')
+
+    def _calculate_final_cost(self, info):
+        '''
+        Calculate final cost for a job when it's completed (Failed or Done).
+        '''
+        previous_cost = info.get('cost', 0) or 0
+        if info.get('last_cost_update_time') and info.get('started_at'):
+            # Use incremental calculation to avoid double counting
+            last_update_time = datetime.strptime(info['last_cost_update_time'], self._time_format)
+            current_segment_cost = (datetime.now() - last_update_time).total_seconds()
+            total_cost = previous_cost + current_segment_cost
+        elif info.get('started_at'):
+            # If no last_cost_update_time, use started_at for calculation (backward compatible)
+            started_at = datetime.strptime(info['started_at'], self._time_format)
+            total_cost = (datetime.now() - started_at).total_seconds()
+        else:
+            # If no started_at, use existing cost
+            total_cost = previous_cost
+        return total_cost
+
+    def _get_job_status_and_model(self, token, job_id, info):
+        try:
+            m, thread = self._read_active_job(token, job_id)
+            try:
+                status = m.status(info['model_id']).name
+                return status, m
+            except Exception:
+                if thread and not thread.is_alive():
+                    logger.info(
+                        f'[_get_job_status_and_model] Job {job_id} thread is dead, '
+                        f'marking as Failed')
+                    update = {'status': 'Failed'}
+                    self._update_user_job_info(token, job_id, update)
+                    try:
+                        m, _ = self._pop_active_job(token, job_id)
+                    except Exception:
+                        pass
+                    return None
+                return None
+        except Exception:
+            return None
+
+    def _update_progress_percent(self, info, update):  # noqa C901
+        progress_info = self._extract_training_progress(info.get('log_path'))
+        if progress_info:
+            if 'percent' in progress_info:
+                update['progress_percent'] = progress_info['percent']
+            total_steps = progress_info.get('total_steps')
+        else:
+            total_steps = None
+
+        if 'progress_percent' not in update:
+            checkpoint_step = info.get('checkpoint_step')
+            if checkpoint_step is not None and isinstance(checkpoint_step, int):
+                if total_steps is None:
+                    log_path = info.get('log_path')
+                    if log_path and os.path.exists(log_path):
+                        try:
+                            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                                lines = f.readlines()
+                                for line in reversed(lines):
+                                    if 'Total optimization steps' in line:
+                                        total_steps_match = self._re_total_steps.search(line)
+                                        if total_steps_match:
+                                            total_steps = int(total_steps_match.group(1))
+                                            break
+
+                                if total_steps is None:
+                                    for line in reversed(lines[-100:]):
+                                        is_non_training = any(
+                                            pattern.search(line)
+                                            for pattern in self._re_non_training_patterns)
+                                        if is_non_training:
+                                            continue
+
+                                        progress_match = self._re_step_ratio.search(line)
+                                        if progress_match:
+                                            potential_total = int(progress_match.group(2))
+                                            if (potential_total >= checkpoint_step
+                                                    and potential_total <= 50000):
+                                                total_steps = potential_total
+                                                break
+                        except Exception:
+                            pass
+
+                if total_steps and total_steps > 0:
+                    base_percent = int((checkpoint_step / total_steps) * 100)
+                    update['progress_percent'] = max(0, min(100, base_percent))
+
+            if 'progress_percent' not in update and 'progress_percent' in info:
+                update['progress_percent'] = None
+
+    def _handle_running_status(self, info, update):
+        if not info.get('started_at'):
+            update['started_at'] = datetime.now().strftime(self._time_format)
+
+        now = datetime.now()
+        started_at_str = update.get('started_at') or info.get('started_at')
+        started_at = datetime.strptime(started_at_str, self._time_format)
+
+        last_update_time_str = info.get('last_cost_update_time')
+        if last_update_time_str:
+            last_update_time = datetime.strptime(last_update_time_str, self._time_format)
+            current_segment_cost = (now - last_update_time).total_seconds()
+        else:
+            current_segment_cost = (now - started_at).total_seconds()
+
+        previous_cost = info.get('cost', 0) or 0
+        total_cost = previous_cost + current_segment_cost
+        update['cost'] = total_cost
+        update['last_cost_update_time'] = now.strftime(self._time_format)
+
+        self._update_progress_percent(info, update)
+
+    def _handle_failed_status(self, token, job_id, info, update, m):
+        update['progress_percent'] = None
+        if 'cost' not in update:
+            total_cost = self._calculate_final_cost(info)
+            self._update_user_job_info(
+                token, job_id, {'cost': total_cost, 'progress_percent': None})
+            logger.info(
+                f'[_update_status] Job {job_id} failed, '
+                f'final cost: {total_cost}s')
+        else:
+            logger.info(
+                f'[_update_status] Job {job_id} failed, '
+                f'cost: {update["cost"]}s')
+
+        try:
+            m, _ = self._pop_active_job(token, job_id)
+            m.stop(info['model_id'])
+        except Exception as e:
+            logger.info(f'[_update_status] Failed to stop job {job_id} after Failed status: {e}')
+
+    def _handle_done_status(self, token, job_id, info, update, m):
+        logger.info(f'[_handle_done_status] [NEW_CODE] Handling Done status for job {job_id}')
+        log_path = info.get('log_path') or update.get('log_path')
+        should_mark_failed = _check_log_for_errors(log_path, job_id, info)
+
+        if should_mark_failed:
+            update['status'] = 'Failed'
+            self._update_user_job_info(token, job_id, update)
+            if 'cost' not in update:
+                total_cost = self._calculate_final_cost(info)
+                self._update_user_job_info(
+                    token, job_id, {'cost': total_cost, 'progress_percent': None})
+
+            try:
+                m, _ = self._pop_active_job(token, job_id)
+                m.stop(info['model_id'])
+            except Exception as e:
+                logger.info(f'[_update_status] Failed to stop job {job_id} after Failed status: {e}')
+            return True, 'Failed'
+
+        update['progress_percent'] = None
+        if 'cost' not in update:
+            total_cost = self._calculate_final_cost(info)
+            self._update_user_job_info(
+                token, job_id, {'cost': total_cost, 'progress_percent': None})
+            logger.info(
+                f'[_update_status] Job {job_id} completed, '
+                f'final cost: {total_cost}s')
+        else:
+            update['progress_percent'] = None
+
+        try:
+            m, _ = self._pop_active_job(token, job_id)
+        except Exception as e:
+            logger.info(f'[_update_status] Failed to pop job {job_id} after Done status: {e}')
+        return True, None
+
+    def _handle_cancelled_status(self, token, job_id, info, m):
+        if info.get('started_at') and not info.get('cost'):
+            cost = (datetime.now() - datetime.strptime(info['started_at'], self._time_format)).total_seconds()
+            self._update_user_job_info(token, job_id, {'cost': cost})
+
+    def _update_status(self, token, job_id):  # noqa C901
         if not self._in_active_jobs(token, job_id):
             return
-        # Get basic info
-        info = self._read_user_job_info(token, job_id)
-        save_path = info['fine_tuned_model']
-        log_path = info['log_path']
 
-        # Get status
-        m, _ = self._read_active_job(token, job_id)
-        status = m.status(info['model_id']).name
+        info = self._read_user_job_info(token, job_id)
+        # Suspended status is manually paused, should not be auto-updated
+        if info.get('status') == 'Suspended':
+            return
+
+        result = self._get_job_status_and_model(token, job_id, info)
+        if result is None:
+            return
+        status, m = result
 
         update = {'status': status}
 
-        # Some tasks not run when they are just created
-        if Status[status] == Status.Running and not info['started_at']:
-            update = {
-                'status': status,
-                'started_at': datetime.now().strftime(self._time_format),
-            }
-
         # Some tasks cannot obtain the storage path when they are just started
-        if not save_path:
-            update['fine_tuned_model'] = self._get_save_path(m)
-        if not log_path:
-            update['log_path'] = m.log_path(info['model_id'])
+        if not info.get('fine_tuned_model'):
+            try:
+                update['fine_tuned_model'] = self._get_save_path(m)
+            except Exception:
+                pass
+        if not info.get('log_path'):
+            try:
+                update['log_path'] = m.log_path(info['model_id'])
+            except Exception:
+                pass
 
-        # Update Status
+        if Status[status] == Status.Running:
+            self._handle_running_status(info, update)
+
         self._update_user_job_info(token, job_id, update)
 
-        # Pop and kill jobs with status: Failed
         if Status[status] == Status.Failed:
-            m, _ = self._pop_active_job(token, job_id)
-            m.stop(info['model_id'])
-            if info['started_at'] and not info['cost']:
-                cost = (datetime.now() - datetime.strptime(info['started_at'], self._time_format)).total_seconds()
-                self._update_user_job_info(token, job_id, {'cost': cost})
+            self._handle_failed_status(token, job_id, info, update, m)
             return
+
+        if Status[status] == Status.Done:
+            should_return, new_status = self._handle_done_status(token, job_id, info, update, m)
+            if new_status:
+                status = new_status
+            if should_return:
+                return
 
         create_time = datetime.strptime(info['created_at'], self._time_format)
         delta_time = (datetime.now() - create_time).total_seconds()
 
-        # More than 5 min pop and kill jobs with status: Cancelled. Because of
-        # some tasks have just been started and their status cannot be checked.
         if delta_time > 300 and Status[status] == Status.Cancelled:
             m, _ = self._pop_active_job(token, job_id)
             m.stop(info['model_id'])
-            if info['started_at'] and not info['cost']:
-                cost = (datetime.now() - datetime.strptime(info['started_at'], self._time_format)).total_seconds()
-                self._update_user_job_info(token, job_id, {'cost': cost})
+            self._handle_cancelled_status(token, job_id, info, m)
             return
 
-        # More than 50 min pop and kill jobs with status: TBSubmitted, InQueue, Pending
         if delta_time > 3000 and Status[status] in (Status.TBSubmitted, Status.InQueue, Status.Pending):
             m, _ = self._pop_active_job(token, job_id)
             m.stop(info['model_id'])
@@ -148,11 +448,271 @@ class TrainServer(ServerBase):
             return None
         return model._impl._temp_finetuned_model_path
 
+    def _extract_training_progress(self, log_path):  # noqa C901
+        if not log_path or not os.path.exists(log_path):
+            return None
+
+        try:
+            # Read the last few lines of the log file (progress info is usually at the end)
+            with open(log_path, 'r', encoding='utf-8', errors='ignore') as f:
+                lines = f.readlines()
+
+                # Find the LAST 'Running training' or 'Continuing training' line to handle resume
+                # This ensures we get progress from the most recent training session
+                training_start_idx = None
+                last_500_lines = lines[-500:]  # Search in last 500 lines to handle resume cases
+                for idx in range(len(last_500_lines) - 1, -1, -1):  # Search backwards
+                    line = last_500_lines[idx]
+                    if (('Running training' in line
+                         or 'Continuing training from checkpoint' in line
+                         or 'Total optimization steps' in line)):
+                        training_start_idx = idx
+                        break
+
+                # Only search in lines after the LAST 'Running training' (if found)
+                if training_start_idx is not None:
+                    search_lines = last_500_lines[training_start_idx + 1:]
+                else:
+                    search_lines = lines[-200:]
+
+                # Also search for total_steps from 'Total optimization steps' line
+                # This avoids duplicate file reading in _update_status
+                total_steps = None
+                for line in reversed(lines):
+                    if 'Total optimization steps' in line:
+                        total_steps_match = self._re_total_steps.search(line)
+                        if total_steps_match:
+                            total_steps = int(total_steps_match.group(1))
+                            break
+
+                # Search backwards for progress information
+                for line in reversed(search_lines):
+                    original_line = line
+                    line = line.strip()
+                    if not line:
+                        continue
+
+                    # Match progress bar format: ' 75%|███████▌  | 90/120 [08:11<00:33,  1.11s/it]'
+                    progress_match = self._re_progress_bar.search(line)
+                    if progress_match:
+                        # Exclude non-training progress bars with descriptive prefixes
+                        is_non_training = any(
+                            pattern.search(original_line)
+                            for pattern in self._re_non_training_patterns)
+
+                        # Only extract training progress (has time format and
+                        # no descriptive prefix)
+                        if not is_non_training:
+                            # Check if has time format (training progress bar has
+                            # [HH:MM<HH:MM, X.XXs/it] or [HH:MM<HH:MM, X.XXit/s])
+                            # Support both 's/it' and 'it/s' formats
+                            if self._re_time_format.search(original_line):
+                                percent = int(progress_match.group(1))
+                                current_step = int(progress_match.group(2))
+                                progress_total_steps = int(progress_match.group(3))
+
+                                # Use total_steps from 'Total optimization steps' if available,
+                                # otherwise use progress_total_steps from progress bar
+                                final_total_steps = total_steps if total_steps is not None else progress_total_steps
+
+                                # Try to extract loss information
+                                loss_match = self._re_loss.search(line)
+                                loss = float(loss_match.group(1)) if loss_match else None
+
+                                # Try to extract epoch information
+                                epoch_match = self._re_epoch.search(line)
+                                epoch = float(epoch_match.group(1)) if epoch_match else None
+
+                                result = {
+                                    'percent': percent,
+                                    'step': f'{current_step}/{final_total_steps}',
+                                    'loss': loss,
+                                    'epoch': epoch
+                                }
+                                # Add total_steps to result if found, to avoid duplicate file reading
+                                if total_steps is not None:
+                                    result['total_steps'] = total_steps
+                                return result
+
+                    # Match training metrics format: '{'loss': 0.6341, 'epoch': 20.0, ...}'
+                    metrics_match = self._re_metrics.search(line)
+                    if metrics_match:
+                        loss = float(metrics_match.group(1))
+                        epoch = float(metrics_match.group(2))
+                        result = {
+                            'loss': loss,
+                            'epoch': epoch
+                        }
+                        # Add total_steps to result if found, to avoid duplicate file reading
+                        if total_steps is not None:
+                            result['total_steps'] = total_steps
+                        return result
+
+                # If no progress found but total_steps was found, return it
+                if total_steps is not None:
+                    return {'total_steps': total_steps}
+        except Exception as e:
+            logger.debug(f'[_extract_training_progress] Failed to extract progress from {log_path}: {e}')
+
+        return None
+
+    def _extract_checkpoint_step(self, checkpoint_path):
+        '''Extract step number from checkpoint path (e.g., checkpoint-40 -> 40)'''
+        if not checkpoint_path:
+            return None
+
+        checkpoint_name = os.path.basename(checkpoint_path)
+        if not checkpoint_name.startswith('checkpoint-'):
+            return None
+
+        step_str = checkpoint_name.split('-')[1]
+        if step_str.isdigit():
+            step = int(step_str)
+            logger.info(f'[NEW_CODE] Extracted checkpoint step: {step} from {checkpoint_path}')
+            return step
+        return None
+
+    def _is_checkpoint_complete(self, checkpoint_path, finetuning_type='lora'):
+        if not checkpoint_path or not os.path.exists(checkpoint_path):
+            return False
+
+        if finetuning_type == 'full':
+            # For full finetuning, trainer_state.json is required for resume
+            trainer_state_path = os.path.join(checkpoint_path, 'trainer_state.json')
+            if not os.path.exists(trainer_state_path):
+                return False
+            # Also check for model files
+            if not os.path.exists(os.path.join(checkpoint_path, 'config.json')) and \
+               not os.path.exists(os.path.join(checkpoint_path, 'model.safetensors.index.json')):
+                return False
+            return True
+        else:
+            # For LoRA/QLoRA, adapter_config.json and trainer_state.json are required for resume
+            adapter_config_path = os.path.join(checkpoint_path, 'adapter_config.json')
+            trainer_state_path = os.path.join(checkpoint_path, 'trainer_state.json')
+            if os.path.exists(adapter_config_path) and os.path.exists(trainer_state_path):
+                return True
+            return False
+
+    def _get_complete_checkpoint(self, lora_dir, finetuning_type='lora'):
+        if not lora_dir or not os.path.exists(lora_dir):
+            return None, None
+
+        try:
+            checkpoint_dirs = [
+                d for d in os.listdir(lora_dir)
+                if d.startswith('checkpoint-') and os.path.isdir(os.path.join(lora_dir, d))
+            ]
+            if not checkpoint_dirs:
+                return None, None
+
+            checkpoint_dirs.sort(
+                key=lambda d: int(d.split('-')[1]) if d.split('-')[1].isdigit() else 0,
+                reverse=True)
+
+            latest_path = os.path.join(lora_dir, checkpoint_dirs[0])
+            if self._is_checkpoint_complete(latest_path, finetuning_type):
+                return latest_path, None
+
+            for checkpoint_dir in checkpoint_dirs[1:]:
+                checkpoint_path = os.path.join(lora_dir, checkpoint_dir)
+                if self._is_checkpoint_complete(checkpoint_path, finetuning_type):
+                    return checkpoint_path, latest_path
+
+            return None, latest_path
+        except Exception as e:
+            logger.info(f'[_get_complete_checkpoint] Error: {e}')
+            return None, None
+
+    def _get_lora_dir(self, fine_tuned_model):
+        if not fine_tuned_model:
+            return None
+        if 'lazyllm_lora' in fine_tuned_model:
+            if fine_tuned_model.endswith('lazyllm_lora'):
+                return fine_tuned_model
+            else:
+                return fine_tuned_model[:fine_tuned_model.find('lazyllm_lora') + len('lazyllm_lora')]
+        elif 'lazyllm_merge' in fine_tuned_model:
+            return fine_tuned_model.replace('lazyllm_merge', 'lazyllm_lora')
+        else:
+            return os.path.join(os.path.dirname(fine_tuned_model), 'lazyllm_lora')
+
+    def _start_periodic_checkpoint_cleanup(self, token, job_id):
+        '''
+        Start a daemon thread to periodically clean up old checkpoints.
+        The thread will run every 60 seconds and clean up checkpoints while the job is active.
+        '''
+        def periodic_cleanup():
+            time.sleep(30)  # Initial delay before first cleanup
+            while True:
+                try:
+                    time.sleep(60)  # Run cleanup every 60 seconds
+                    if not self._in_active_jobs(token, job_id):
+                        break
+                    info = self._read_user_job_info(token, job_id)
+                    if not info:
+                        break
+                    lora_dir = self._get_lora_dir(info.get('fine_tuned_model'))
+                    if lora_dir and os.path.exists(lora_dir):
+                        # Get protected checkpoint path from hyperparameters (if resume is in progress)
+                        protected_checkpoint = None
+                        hyperparameters = info.get('hyperparameters', {})
+                        if hyperparameters and 'resume_from_checkpoint' in hyperparameters:
+                            protected_checkpoint = hyperparameters['resume_from_checkpoint']
+                        self._cleanup_old_checkpoints(
+                            lora_dir, keep_count=3,
+                            protected_checkpoint_path=protected_checkpoint)
+                except Exception:
+                    pass
+
+        cleanup_thread = threading.Thread(target=periodic_cleanup, daemon=True)
+        cleanup_thread.start()
+
+    def _cleanup_old_checkpoints(self, lora_dir, keep_count=3, protected_checkpoint_path=None):
+        if not lora_dir or not os.path.exists(lora_dir):
+            return
+
+        try:
+            checkpoint_dirs = [
+                d for d in os.listdir(lora_dir)
+                if d.startswith('checkpoint-') and os.path.isdir(os.path.join(lora_dir, d))
+            ]
+            if len(checkpoint_dirs) <= keep_count:
+                logger.debug(f'[checkpoint cleanup] Only {len(checkpoint_dirs)} checkpoints, no cleanup needed')
+                return
+
+            checkpoint_dirs.sort(
+                key=lambda d: int(d.split('-')[1]) if d.split('-')[1].isdigit() else 0,
+                reverse=True)
+
+            if protected_checkpoint_path:
+                protected_dir = os.path.basename(protected_checkpoint_path)
+                if protected_dir in checkpoint_dirs and protected_dir in checkpoint_dirs[keep_count:]:
+                    checkpoint_dirs.remove(protected_dir)
+
+            to_delete = checkpoint_dirs[keep_count:]
+            for checkpoint_dir in to_delete:
+                checkpoint_path = os.path.join(lora_dir, checkpoint_dir)
+                try:
+                    shutil.rmtree(checkpoint_path)
+                    pass
+                except Exception:
+                    pass
+        except Exception:
+            pass
+
     @app.post('/v1/finetuneTasks')
-    async def create_job(self, job: JobDescription, finetune_task_id: str = Query(None),  # noqa B008
+    async def create_job(self, job: _JobDescription, finetune_task_id: str = Query(None),  # noqa B008
                          token: str = Header(DEFAULT_TOKEN)):  # noqa B008
         if not self._in_user_job_info(token):
             self._update_user_job_info(token)
+
+        if finetune_task_id:
+            user_jobs = self._read_user_job_info(token)
+            for existing_job_id, existing_job_info in user_jobs.items():
+                if existing_job_info.get('finetune_task_id') == finetune_task_id:
+                    return {'finetune_task_id': existing_job_id, 'status': existing_job_info.get('status', 'Unknown')}
+
         # Build Job-ID:
         create_time = datetime.now().strftime(self._time_format)
         job_id = '-'.join(['ft', create_time, str(uuid.uuid4())[:5]])
@@ -168,49 +728,119 @@ class TrainServer(ServerBase):
         save_root = os.path.join(lazyllm.config['train_target_root'], token, job_id)
         os.makedirs(save_root, exist_ok=True)
 
-        # Add launcher into hyperparameters:
         hypram = job.training_args.model_dump()
 
-        # Uniform Training DataSet:
-        assert len(job.training_dataset) == 1, "just support one train dataset"
+        stage = None
+        if job.stage and job.stage.strip():
+            stage = job.stage.lower().strip()
+            supported_stages = ['sft', 'pt', 'dpo']
+            if stage not in supported_stages:
+                raise HTTPException(
+                    status_code=400,
+                    detail=(
+                        f'Unsupported training stage: {stage}. '
+                        f'Only supported stages are: {", ".join(supported_stages)}')
+                )
+            hypram['stage'] = stage
+
+        assert len(job.training_dataset) == 1, 'just support one train dataset'
         data_path = job.training_dataset[0].dataset_download_uri
         if is_url(data_path):
-            response = requests.get(data_path, stream=True)
-            if response.status_code == 200:
+            try:
                 file_name = get_filename_from_url(data_path)
                 target_path = os.path.join(save_root, file_name)
-                with open(target_path, "wb") as f:
-                    for chunk in response.iter_content(chunk_size=8192):
-                        f.write(chunk)
-                data_path = target_path
-            else:
-                raise HTTPException(status_code=404, detail='dataset download failed')
+                response = requests.get(data_path, stream=True, timeout=300)
+                if response.status_code == 200:
+                    with open(target_path, 'wb') as f:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            f.write(chunk)
+                    data_path = target_path
+                else:
+                    raise HTTPException(status_code=404, detail='dataset download failed')
+            except Exception as e:
+                raise HTTPException(status_code=404, detail=f'dataset download failed: {str(e)}')
 
-        data_path = uniform_sft_dataset(data_path, target='alpaca')
+        if not stage or stage == 'sft':
+            data_path = uniform_sft_dataset(data_path, target='alpaca')
 
-        # Set params for TrainableModule:
+        ngpus = 1
+        if 'ngpus' in hypram:
+            num_gpus = hypram['ngpus']
+            if isinstance(num_gpus, str):
+                try:
+                    ngpus = int(num_gpus)
+                except (ValueError, TypeError):
+                    pass
+            elif isinstance(num_gpus, int):
+                ngpus = num_gpus
+            hypram.pop('ngpus', None)
+
+        if 'quantization_bit' in hypram:
+            qbit = hypram['quantization_bit']
+            if isinstance(qbit, str) and qbit.lower() not in ['null', 'none', '']:
+                try:
+                    hypram['quantization_bit'] = int(qbit)
+                except (ValueError, TypeError):
+                    pass
+        if 'double_quantization' in hypram:
+            dq = hypram['double_quantization']
+            if isinstance(dq, str):
+                if dq.lower() in ['true', '1', 'yes']:
+                    hypram['double_quantization'] = True
+                elif dq.lower() in ['false', '0', 'no', 'null', 'none']:
+                    hypram['double_quantization'] = False
+
+        if 'ref_model' in hypram:
+            if not os.path.exists(hypram['ref_model']):
+                default_path = os.path.join(lazyllm.config['model_path'], hypram['ref_model'])
+                if os.path.exists(default_path):
+                    hypram['ref_model'] = default_path
+                else:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f'ref_model {hypram["ref_model"]} not found')
+        if 'reward_model' in hypram:
+            if not os.path.exists(hypram['reward_model']):
+                default_path = os.path.join(lazyllm.config['model_path'], hypram['reward_model'])
+                if os.path.exists(default_path):
+                    hypram['reward_model'] = default_path
+                else:
+                    raise HTTPException(
+                        status_code=404,
+                        detail=f'reward_model {hypram["reward_model"]} not found')
+
+        if 'save_steps' not in hypram:
+            hypram['save_steps'] = 500
+        else:
+            try:
+                hypram['save_steps'] = int(hypram['save_steps'])
+            except (ValueError, TypeError):
+                hypram['save_steps'] = 500
+
+        if 'save_steps' in hypram and hypram['save_steps'] > 0:
+            self._start_periodic_checkpoint_cleanup(token, job_id)
+
         m = lazyllm.TrainableModule(job.model, save_root)\
             .trainset(data_path)\
-            .finetune_method(lazyllm.finetune.llamafactory)
+            .finetune_method(lazyllm.finetune.auto)
 
-        # Launch Training:
-        thread = threading.Thread(target=m._impl._async_finetune, args=(model_id,), kwargs=hypram)
+        logger.info(
+            f'[create_job] hypram: {hypram}, ngpus: {ngpus}, '
+            f'model_id: {model_id}, data_path: {data_path}, save_root: {save_root}')
+        thread = threading.Thread(target=m._impl._async_finetune, args=(model_id, ngpus), kwargs=hypram)
         thread.start()
         await asyncio.sleep(1)
 
-        # Sleep 5s for launch cmd.
         try:
-            async with timeout(5):
+            async with async_timeout.timeout(5):
                 while m.status(model_id) == Status.Cancelled:
                     await asyncio.sleep(1)
         except asyncio.TimeoutError:
             pass
 
-        # The first getting the path may be invalid, and it will be getted with each update.
         save_path = self._get_save_path(m)
         log_path = m.log_path(model_id)
 
-        # Save status
         status = m.status(model_id).name
         if Status[status] == Status.Running:
             started_time = datetime.now().strftime(self._time_format)
@@ -219,7 +849,7 @@ class TrainServer(ServerBase):
         self._update_active_jobs(token, job_id, (m, thread))
         self._update_user_job_info(token, job_id, {
             'model_id': model_id,
-            'finetune_task_id': job_id,
+            'finetune_task_id': finetune_task_id or job_id,
             'base_model': job.model,
             'created_at': create_time,
             'fine_tuned_model': save_path,
@@ -229,35 +859,42 @@ class TrainServer(ServerBase):
             'log_path': log_path,
             'started_at': started_time,
             'cost': None,
+            'ngpus': ngpus,  # Store ngpus in job_info for resume_job to use
         })
 
         return {'finetune_task_id': job_id, 'status': status}
 
     @app.delete('/v1/finetuneTasks/{job_id}')
     async def cancel_job(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
+        if not self._in_user_job_info(token):
+            self._update_user_job_info(token)
         await self.authorize_current_user(token)
-        if not self._in_active_jobs(token, job_id):
-            raise HTTPException(status_code=404, detail='Job not found')
 
-        m, _ = self._pop_active_job(token, job_id)
-        info = self._read_user_job_info(token, job_id)
-        m.stop(info['model_id'])
+        if self._in_active_jobs(token, job_id):
+            try:
+                await self.pause_job(job_id, token=token, _pop_job=False)
+            except Exception as e:
+                raise HTTPException(status_code=400, detail=f'Task {job_id}, cancelled failed, {e}')
+            m, _ = self._pop_active_job(token, job_id)
+            info = self._read_user_job_info(token, job_id)
+            return {'status': m.status(info['model_id']).name}
 
-        total_sleep = 0
-        while m.status(info['model_id']) != Status.Cancelled:
-            time.sleep(1)
-            total_sleep += 1
-            if total_sleep > 10:
-                raise HTTPException(status_code=404, detail=f'Task {job_id}, ccancelled timed out.')
+        if self._in_user_job_info(token, job_id):
+            info = self._read_user_job_info(token, job_id)
+            status = info.get('status', '')
 
-        status = m.status(info['model_id']).name
-        update_dict = {'status': status}
-        if info['started_at'] and not info['cost']:
-            update_dict['cost'] = (datetime.now() - datetime.strptime(info['started_at'],
-                                                                      self._time_format)).total_seconds()
-        self._update_user_job_info(token, job_id, update_dict)
+            if status in ('Done', 'Failed', 'Cancelled', 'Suspended'):
+                try:
+                    self._pop_user_job_info(token, job_id)
+                    return {'status': status}
+                except Exception as e:
+                    logger.info(f'[cancel_job] Failed to remove job {job_id}: {e}')
+                    raise HTTPException(
+                        status_code=500, detail=f'Failed to remove job {job_id}: {e}')
+            else:
+                raise HTTPException(status_code=400, detail=f'Job {job_id} is in unexpected status: {status}')
 
-        return {'status': status}
+        raise HTTPException(status_code=404, detail='Job not found')
 
     @app.get('/v1/finetuneTasks/jobs')
     async def list_jobs(self, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
@@ -268,38 +905,83 @@ class TrainServer(ServerBase):
         server_running_dict = self._read_user_job_info(token)
         m = lazyllm.TrainableModule('', save_root)
         valid_models, invalid_models = m.get_all_models()
+        updated_jobs = {}
+
+        # Collect all completed fine-tuning tasks from file system
+        # (only process valid_models, i.e., completed fine-tuning)
+        file_system_job_ids = set()
         for model_id, model_path in valid_models:
             job_id = model_path[len(save_root):].lstrip(os.sep).split(os.sep)[0]
-            if job_id in server_running_dict and server_running_dict[job_id]['status'] != 'Done':
-                server_running_dict[job_id]['status'] = 'Done'
-                server_running_dict[job_id]['fine_tuned_model'] = model_path
-            elif job_id not in server_running_dict:
+            file_system_job_ids.add(job_id)
+
+            if job_id in server_running_dict:
+                # If the job in server_running_dict is not completed, mark it as Done
+                if server_running_dict[job_id]['status'] != 'Done':
+                    server_running_dict[job_id]['status'] = 'Done'
+                    server_running_dict[job_id]['fine_tuned_model'] = model_path
+                    updated_jobs[job_id] = server_running_dict[job_id]
+                else:
+                    server_running_dict[job_id]['fine_tuned_model'] = model_path
+                    updated_jobs[job_id] = server_running_dict[job_id]
+            else:
                 server_running_dict[job_id] = {
                     'status': 'Done',
                     'model_id': model_id,
                     'fine_tuned_model': model_path,
                 }
+                updated_jobs[job_id] = server_running_dict[job_id]
+
+        # Handle invalid_models (lazyllm_merge directory exists but no model files)
         for model_id, model_path in invalid_models:
             job_id = model_path[len(save_root):].lstrip(os.sep).split(os.sep)[0]
-            if job_id in server_running_dict and server_running_dict[job_id]['status'] == 'Done':
-                server_running_dict[job_id]['status'] = 'Failed'
-                server_running_dict[job_id]['fine_tuned_model'] = model_path
-            elif job_id not in server_running_dict:
+            file_system_job_ids.add(job_id)
+
+            if job_id in server_running_dict:
+                current_status = server_running_dict[job_id].get('status', '')
+                if current_status == 'Done':
+                    server_running_dict[job_id]['status'] = 'Failed'
+                    server_running_dict[job_id]['fine_tuned_model'] = model_path
+                    updated_jobs[job_id] = server_running_dict[job_id]
+            else:
                 server_running_dict[job_id] = {
                     'status': 'Failed',
                     'model_id': model_id,
                     'fine_tuned_model': model_path,
                 }
+                updated_jobs[job_id] = server_running_dict[job_id]
+
+        jobs_to_remove = []
+        for job_id, job_info in server_running_dict.items():
+            if job_id not in file_system_job_ids:
+                status = job_info.get('status', '')
+                if status in ('Done', 'Failed', 'Cancelled'):
+                    jobs_to_remove.append(job_id)
+
+        for job_id in jobs_to_remove:
+            try:
+                await self.cancel_job(job_id, token)
+            except Exception:
+                try:
+                    self._pop_user_job_info(token, job_id)
+                except Exception:
+                    pass
+            finally:
+                if job_id in server_running_dict:
+                    del server_running_dict[job_id]
+
+        for job_id, job_info in updated_jobs.items():
+            self._update_user_job_info(token, job_id, job_info)
+
         return server_running_dict
 
     @app.get('/v1/finetuneTasks/{job_id}')
     async def get_job_info(self, job_id: str, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
+        if not self._in_user_job_info(token):
+            self._update_user_job_info(token)
         await self.authorize_current_user(token)
         if not self._in_user_job_info(token, job_id):
             raise HTTPException(status_code=404, detail='Job not found')
-
         self._update_status(token, job_id)
-
         return self._read_user_job_info(token, job_id)
 
     @app.get('/v1/finetuneTasks/{job_id}/log')
@@ -319,10 +1001,10 @@ class TrainServer(ServerBase):
                 for line in f:
                     if line.strip():
                         res = json.dumps({'result': {'log_data': line.strip()}})
-                        yield f"data: {res}\n\n"
-            yield "data: [DONE]"
+                        yield f'data: {res}\n\n'
+            yield 'data: [DONE]'
 
-        return StreamingResponse(generate_log_stream(), media_type="text/event-stream")
+        return StreamingResponse(generate_log_stream(), media_type='text/event-stream')
 
     @app.post('/v1/finetuneTasks/{job_id}/model:export')
     async def export_model(self, job_id: str, model: ModelExport, token: str = Header(DEFAULT_TOKEN)):  # noqa B008
@@ -333,13 +1015,29 @@ class TrainServer(ServerBase):
         info = self._read_user_job_info(token, job_id)
 
         model_path = info['fine_tuned_model']
+
+        if model_path and 'lazyllm_lora' in model_path:
+            merge_path = model_path.replace('lazyllm_lora', 'lazyllm_merge')
+            if os.path.exists(merge_path):
+                model_path = merge_path
+
         if not model_path or not os.path.exists(model_path):
-            raise HTTPException(status_code=404, detail='model file not found')
+            raise HTTPException(status_code=404, detail=f'model file not found: {model_path}')
+
         target_dir = os.path.join(lazyllm.config['model_path'], model.model_display_name)
         if os.path.exists(target_dir):
-            raise HTTPException(status_code=404, detail='target dir already exists')
-        shutil.copytree(model_path, target_dir)
-        shutil.rmtree(model_path)
+            raise HTTPException(status_code=409, detail='target dir already exists')
+
+        try:
+            shutil.copytree(model_path, target_dir)
+            logger.info(
+                f'[export_model] Job {job_id} exported model to '
+                f'{model.model_display_name}')
+        except OSError as e:
+            if 'No space left on device' in str(e):
+                raise HTTPException(status_code=507, detail='Insufficient storage space for export')
+            raise HTTPException(status_code=500, detail=f'Failed to copy model: {str(e)}')
+
         return
 
     @app.get('/v1/finetuneTasks/{job_id}/runningMetrics')
@@ -347,9 +1045,242 @@ class TrainServer(ServerBase):
         raise HTTPException(status_code=404, detail='not implemented')
 
     @app.post('/v1/finetuneTasks/{job_id}:pause')
-    async def pause_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN)):  # noqa B008
-        raise HTTPException(status_code=404, detail='not implemented')
+    async def pause_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN),  # noqa C901, B008
+                        *, _pop_job: bool = True):
+        await self.authorize_current_user(token)
+        self._update_status(token, job_id)
+        if not self._in_active_jobs(token, job_id):
+            raise HTTPException(status_code=404, detail='Job is ended or not found')
+
+        m, _ = self._read_active_job(token, job_id)
+        info = self._read_user_job_info(token, job_id)
+        m.stop(info['model_id'])
+        total_sleep = 0
+        while m.status(info['model_id']) != Status.Cancelled:
+            time.sleep(1)
+            total_sleep += 1
+            if total_sleep > 10:
+                logger.info(f'[pause_job] Job {job_id} pause timed out')
+                raise HTTPException(status_code=500, detail=f'Task {job_id}, pause timed out.')
+
+        checkpoint_path = None
+        lora_dir = self._get_lora_dir(info.get('fine_tuned_model'))
+        if lora_dir and os.path.exists(lora_dir):
+            finetuning_type = info.get('hyperparameters', {}).get('finetuning_type', 'lora')
+
+            checkpoint_path, latest_incomplete_path = self._get_complete_checkpoint(
+                lora_dir, finetuning_type=finetuning_type)
+
+            # Delete incomplete latest checkpoint if:
+            # 1. We found an older complete checkpoint (use it instead), OR
+            # 2. No complete checkpoint found at all (delete to save space, will restart from scratch on resume)
+            if latest_incomplete_path:
+                try:
+                    shutil.rmtree(latest_incomplete_path)
+                except Exception:
+                    pass
+
+            # Only handle adapter_config.json for LoRA/QLoRA finetuning
+            # Full finetuning doesn't use adapter, so skip this logic
+            if finetuning_type in ('lora', 'qlora'):
+                adapter_config_path = os.path.join(lora_dir, 'adapter_config.json')
+                checkpoint_adapter = (os.path.join(checkpoint_path, 'adapter_config.json')
+                                      if checkpoint_path else None)
+                if (not os.path.exists(adapter_config_path) and checkpoint_adapter
+                        and os.path.exists(checkpoint_adapter)):
+                    shutil.copy(checkpoint_adapter, adapter_config_path)
+
+            self._cleanup_old_checkpoints(lora_dir, keep_count=3, protected_checkpoint_path=checkpoint_path)
+
+        cost = info.get('cost')
+        if cost is None and info.get('started_at'):
+            started_at = datetime.strptime(info['started_at'], self._time_format)
+            current_segment_cost = (datetime.now() - started_at).total_seconds()
+            cost = current_segment_cost
+
+        # Extract checkpoint step before saving
+        checkpoint_step = None
+        if checkpoint_path:
+            checkpoint_step = self._extract_checkpoint_step(checkpoint_path)
+            if checkpoint_step is not None:
+                logger.info(f'[pause_job] Job {job_id} extracted checkpoint step: {checkpoint_step}')
+
+        self._update_user_job_info(token, job_id, {
+            'status': 'Suspended' if _pop_job else 'Cancelled',
+            'checkpoint_path': checkpoint_path,
+            'checkpoint_step': checkpoint_step,
+            'cost': cost,
+            'started_at': None,
+            'last_cost_update_time': None,
+        })
+
+        if _pop_job:
+            try:
+                self._pop_active_job(token, job_id)
+            except Exception:
+                pass
+        return {'status': 'Suspended', 'checkpoint_path': checkpoint_path or '', 'cost': cost}
 
     @app.post('/v1/finetuneTasks/{job_id}:resume')
-    async def resume_job(self, job_id: str, name: str = Body(embed=True), token: str = Header(DEFAULT_TOKEN)):  # noqa B008
-        raise HTTPException(status_code=404, detail='not implemented')
+    async def resume_job(self, job_id: str, name: str = _DEFAULT_BODY_EMBED,  # noqa C901
+                         checkpoint_path: str = _DEFAULT_BODY_OPTIONAL,
+                         token: str = _DEFAULT_HEADER_TOKEN):
+        await self.authorize_current_user(token)
+        if not self._in_user_job_info(token, job_id):
+            raise HTTPException(status_code=404, detail='Job not found')
+
+        info = self._read_user_job_info(token, job_id)
+        if info.get('status') != 'Suspended':
+            raise HTTPException(
+                status_code=400,
+                detail=f'Job is not suspended (current status: {info.get("status")})')
+
+        if not checkpoint_path:
+            checkpoint_path = info.get('checkpoint_path')
+
+        has_checkpoint = checkpoint_path and os.path.exists(checkpoint_path)
+        # Track whether this is a resume or restart
+        resume_type = 'resume'  # Default to resume
+
+        base_model = info.get('base_model')
+        hyperparameters = info.get('hyperparameters', {}).copy()
+        data_path = info.get('data_path')
+        if not base_model or not data_path:
+            raise HTTPException(status_code=400, detail='Missing required information for resume')
+
+        if has_checkpoint:
+            lora_dir = self._get_lora_dir(info.get('fine_tuned_model'))
+            if lora_dir and os.path.exists(lora_dir):
+                save_root = os.path.dirname(lora_dir)
+            else:
+                save_root = os.path.join(lazyllm.config['train_target_root'], token, job_id)
+        else:
+            # No checkpoint: start fresh with new save_root (similar to create_job)
+            logger.info(f'[resume_job] Job {job_id} no checkpoint found, starting fresh training')
+            resume_type = 'restart'
+            save_root = os.path.join(lazyllm.config['train_target_root'], token, job_id)
+
+        os.makedirs(save_root, exist_ok=True)
+
+        m = lazyllm.TrainableModule(base_model, save_root)\
+            .trainset(data_path)\
+            .finetune_method(lazyllm.finetune.auto)
+
+        if has_checkpoint:
+            lora_dir = self._get_lora_dir(info.get('fine_tuned_model'))
+            if lora_dir and os.path.exists(lora_dir):
+                m._impl._specific_target_path = lora_dir
+
+        model_id = info.get('model_id')
+        if not model_id:
+            characters = string.ascii_letters + string.digits
+            random_string = ''.join(random.choices(characters, k=7))
+            model_id = job_id + '_' + random_string
+
+        if has_checkpoint:
+            finetuning_type = hyperparameters.get('finetuning_type', 'lora')
+            if not self._is_checkpoint_complete(checkpoint_path, finetuning_type):
+                logger.info(f'[resume_job] Job {job_id} checkpoint incomplete, starting fresh training')
+                resume_type = 'restart'
+                has_checkpoint = False
+                checkpoint_path = None
+                # Remove resume_from_checkpoint from hyperparameters
+                hyperparameters.pop('resume_from_checkpoint', None)
+            else:
+                removed_files = []
+
+                # Delete rng_state.pth (single GPU training)
+                rng_state_file = os.path.join(checkpoint_path, 'rng_state.pth')
+                if os.path.exists(rng_state_file):
+                    try:
+                        os.remove(rng_state_file)
+                        removed_files.append(os.path.basename(rng_state_file))
+                    except Exception:
+                        pass
+
+                # Delete rng_state_*.pth files (multi-GPU training)
+                rng_state_pattern = os.path.join(checkpoint_path, 'rng_state_*.pth')
+                for rng_state_file in glob.glob(rng_state_pattern):
+                    try:
+                        os.remove(rng_state_file)
+                        removed_files.append(os.path.basename(rng_state_file))
+                    except Exception:
+                        pass
+
+                hyperparameters['resume_from_checkpoint'] = checkpoint_path
+        else:
+            hyperparameters.pop('resume_from_checkpoint', None)
+
+        if 'save_steps' in hyperparameters and hyperparameters['save_steps'] > 0:
+            self._start_periodic_checkpoint_cleanup(token, job_id)
+
+        ngpus = info.get('ngpus', 1)
+        if isinstance(ngpus, str):
+            try:
+                ngpus = int(ngpus)
+            except (ValueError, TypeError):
+                ngpus = 1
+        elif not isinstance(ngpus, int):
+            ngpus = 1
+
+        thread = threading.Thread(target=m._impl._async_finetune, args=(model_id, ngpus), kwargs=hyperparameters)
+        thread.start()
+        await asyncio.sleep(1)
+
+        try:
+            async with async_timeout.timeout(5):
+                while m.status(model_id) == Status.Cancelled:
+                    await asyncio.sleep(1)
+        except asyncio.TimeoutError:
+            pass
+
+        # The first getting the path may be invalid, and it will be getted with each update.
+        save_path = self._get_save_path(m)
+        log_path = m.log_path(model_id)
+        # Save status
+        status = m.status(model_id).name
+        if Status[status] == Status.Running:
+            started_time = datetime.now().strftime(self._time_format)
+        else:
+            started_time = None
+
+        previous_cost = info.get('cost', 0) or 0
+
+        if self._in_active_jobs(token, job_id):
+            try:
+                old_m, old_thread = self._read_active_job(token, job_id)
+                try:
+                    old_m.stop(info.get('model_id', ''))
+                except Exception as e:
+                    logger.info(f'[resume_job] Failed to stop old training for job {job_id}: {e}')
+                self._pop_active_job(token, job_id)
+            except Exception as e:
+                logger.info(f'[resume_job] Failed to clean up old active_job entry for {job_id}: {e}')
+
+        self._update_active_jobs(token, job_id, (m, thread))
+        # Extract checkpoint step before clearing checkpoint_path
+        checkpoint_step = None
+        if has_checkpoint and checkpoint_path:
+            checkpoint_step = self._extract_checkpoint_step(checkpoint_path)
+            if checkpoint_step is not None:
+                logger.info(f'[resume_job] Job {job_id} extracted checkpoint step: {checkpoint_step}')
+
+        update_data = {
+            'status': status,
+            'model_id': model_id,
+            'fine_tuned_model': save_path,
+            'log_path': log_path,
+            'started_at': started_time,
+            'checkpoint_path': None,
+            'cost': previous_cost,
+            'last_cost_update_time': None,
+            'checkpoint_step': checkpoint_step,
+            'ngpus': ngpus,
+            'hyperparameters': hyperparameters,
+        }
+
+        self._update_user_job_info(token, job_id, update_data)
+        logger.info(
+            f'[resume_job] Job {job_id} resumed successfully, '
+            f'status: {status}, checkpoint: {has_checkpoint}, resume_type: {resume_type}')
+        return {'status': status, 'resume_type': resume_type}

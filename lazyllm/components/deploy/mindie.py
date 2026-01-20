@@ -8,7 +8,7 @@ from lazyllm import launchers, LazyLLMCMD, ArgsDict, LOG
 from .base import LazyLLMDeployBase, verify_func_factory
 from .utils import get_log_path, make_log_dir
 
-lazyllm.config.add('mindie_home', str, '', 'MINDIE_HOME')
+lazyllm.config.add('mindie_home', str, '', 'MINDIE_HOME', description='The home directory of MindIE.')
 
 verify_fastapi_func = verify_func_factory(error_message='Service Startup Failed',
                                           running_message='Daemon start success')
@@ -28,7 +28,7 @@ class Mindie(LazyLLMDeployBase):
     }
     auto_map = {
         'port': int,
-        'tp': ('world_size', int),
+        'tp': ('worldSize', int),
         'max_input_token_len': ('maxInputTokenLen', int),
         'max_prefill_tokens': ('maxPrefillTokens', int),
         'max_seq_len': ('maxSeqLen', int)
@@ -52,6 +52,9 @@ class Mindie(LazyLLMDeployBase):
             'maxPrefillTokens': 8192,
         })
         self.trust_remote_code = trust_remote_code
+        self.options_keys = kw.pop('options_keys', [])
+        assert len(self.options_keys) == 0, 'options_keys is not supported'
+        kw.update({'skip_check': False})
         self.kw.check_and_update(kw)
         self.kw['npuDeviceIds'] = [[i for i in range(self.kw.get('worldSize', 1))]]
         self.random_port = False if 'port' in kw and kw['port'] and kw['port'] != 'auto' else True
@@ -60,8 +63,8 @@ class Mindie(LazyLLMDeployBase):
         if self.custom_config:
             self.config_dict = (ArgsDict(self.load_config(self.custom_config))
                                 if isinstance(self.custom_config, str) else ArgsDict(self.custom_config))
-            self.kw['host'] = self.config_dict["ServerConfig"]["ipAddress"]
-            self.kw['port'] = self.config_dict["ServerConfig"]["port"]
+            self.kw['host'] = self.config_dict['ServerConfig']['ipAddress']
+            self.kw['port'] = self.config_dict['ServerConfig']['port']
         else:
             default_config_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'mindie', 'config.json')
             self.config_dict = ArgsDict(self.load_config(default_config_path))
@@ -83,22 +86,22 @@ class Mindie(LazyLLMDeployBase):
             json.dump(self.config_dict, file)
 
     def update_config(self):
-        backend_config = self.config_dict["BackendConfig"]
-        backend_config["npuDeviceIds"] = self.kw["npuDeviceIds"]
+        backend_config = self.config_dict['BackendConfig']
+        backend_config['npuDeviceIds'] = self.kw['npuDeviceIds']
         model_config = {
-            "modelName": self.finetuned_model.split('/')[-1],
-            "modelWeightPath": self.finetuned_model,
-            "worldSize": self.kw["worldSize"],
-            "trust_remote_code": self.trust_remote_code
+            'modelName': self.finetuned_model.split('/')[-1],
+            'modelWeightPath': self.finetuned_model,
+            'worldSize': self.kw['worldSize'],
+            'trust_remote_code': self.trust_remote_code
         }
-        backend_config["ModelDeployConfig"]["ModelConfig"][0].update(model_config)
-        backend_config["ModelDeployConfig"]["maxSeqLen"] = self.kw["maxSeqLen"]
-        backend_config["ModelDeployConfig"]["maxInputTokenLen"] = self.kw["maxInputTokenLen"]
-        backend_config["ScheduleConfig"]["maxPrefillTokens"] = self.kw["maxPrefillTokens"]
-        self.config_dict["BackendConfig"] = backend_config
-        if self.kw["host"] != '0.0.0.0':
-            self.config_dict["ServerConfig"]["ipAddress"] = self.kw["host"]
-        self.config_dict["ServerConfig"]["port"] = self.kw["port"]
+        backend_config['ModelDeployConfig']['ModelConfig'][0].update(model_config)
+        backend_config['ModelDeployConfig']['maxSeqLen'] = self.kw['maxSeqLen']
+        backend_config['ModelDeployConfig']['maxInputTokenLen'] = self.kw['maxInputTokenLen']
+        backend_config['ScheduleConfig']['maxPrefillTokens'] = self.kw['maxPrefillTokens']
+        self.config_dict['BackendConfig'] = backend_config
+        if self.kw['host'] != '0.0.0.0':
+            self.config_dict['ServerConfig']['ipAddress'] = self.kw['host']
+        self.config_dict['ServerConfig']['port'] = self.kw['port']
 
     def cmd(self, finetuned_model=None, base_model=None, master_ip=None):
         if self.custom_config is None:
@@ -108,8 +111,8 @@ class Mindie(LazyLLMDeployBase):
                     not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                             for filename in os.listdir(finetuned_model)):
                     if not finetuned_model:
-                        LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                                    f"base_model({base_model}) will be used")
+                        LOG.warning(f'Note! That finetuned_model({finetuned_model}) is an invalid path, '
+                                    f'base_model({base_model}) will be used')
                     self.finetuned_model = base_model
 
             if self.random_port:
@@ -132,7 +135,7 @@ class Mindie(LazyLLMDeployBase):
         if lazyllm.config['mode'] == lazyllm.Mode.Display:
             return f'http://{job.get_jobip()}:{self.kw["port"]}/generate'
         else:
-            LOG.info(f"MindIE Server running on http://{job.get_jobip()}:{self.kw['port']}")
+            LOG.info(f'MindIE Server running on http://{job.get_jobip()}:{self.kw["port"]}')
             return f'http://{job.get_jobip()}:{self.kw["port"]}/generate'
 
     @staticmethod

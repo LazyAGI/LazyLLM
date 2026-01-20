@@ -38,7 +38,7 @@ class AbstractEmbedding(ABC):
 class LazyHuggingFaceDefaultEmbedding(AbstractEmbedding):
 
     def load_embed(self):
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self._tokenizer = tf.AutoTokenizer.from_pretrained(self._base_embed, trust_remote_code=True)
         self._embed = tf.AutoModel.from_pretrained(self._base_embed, trust_remote_code=True).to(self._device)
         self._embed.eval()
@@ -83,7 +83,7 @@ class HuggingFaceEmbedding:
             args[0]['images'] = [_base64_to_file(image) if _is_base64_with_mime(image) else image
                                  for image in args[0]['images']]
         except Exception as e:
-            LOG.error(f"Error converting base64 to image: {e}")
+            LOG.error(f'Error converting base64 to image: {e}')
         return self._embed(*args, **kwargs)
 
 class LazyFlagEmbedding(object):
@@ -92,14 +92,14 @@ class LazyFlagEmbedding(object):
         source = lazyllm.config['model_source'] if not source else source
         self.base_embed = ModelManager(source).download(base_embed) or ''
         self.embed = None
-        self.device = "cpu"
+        self.device = 'cpu'
         self.sparse = sparse
         self.init_flag = lazyllm.once_flag()
         if init:
             lazyllm.call_once(self.init_flag, self.load_embed)
 
     def load_embed(self):
-        self.device = "cuda" if torch.cuda.is_available() else "cpu"
+        self.device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self.embed = fe.FlagAutoModel.from_finetuned(self.base_embed, use_fp16=False, devices=[self.device])
 
     def __call__(self, data: Dict[str, Union[str, List[str]]]):
@@ -172,7 +172,7 @@ class EmbeddingDeploy(LazyLLMDeployBase):
     default_headers = {'Content-Type': 'application/json'}
 
     def __init__(self, launcher: LazyLLMLaunchersBase = None, model_type: str = 'embed', log_path: Optional[str] = None,
-                 embed_type: Optional[str] = 'dense', trust_remote_code: bool = True, port: Optional[int] = None):
+                 embed_type: Optional[str] = 'dense', trust_remote_code: bool = True, port: Optional[int] = None, **kw):
         super().__init__(launcher=launcher)
         self._launcher = launcher
         self._port = port
@@ -187,8 +187,8 @@ class EmbeddingDeploy(LazyLLMDeployBase):
             not any(filename.endswith('.bin') or filename.endswith('.safetensors')
                     for filename in os.listdir(finetuned_model)):
             if not finetuned_model:
-                LOG.warning(f"Note! That finetuned_model({finetuned_model}) is an invalid path, "
-                            f"base_model({base_model}) will be used")
+                LOG.warning(f'Note! That finetuned_model({finetuned_model}) is an invalid path, '
+                            f'base_model({base_model}) will be used')
             finetuned_model = base_model
         return finetuned_model
 
@@ -203,14 +203,14 @@ class EmbeddingDeploy(LazyLLMDeployBase):
                                               launcher=self._launcher, log_path=self._log_path, cls='embedding')()
 
 
-@HuggingFaceEmbedding.register(model_ids=["BGE-VL-v1.5-mmeb"])
+@HuggingFaceEmbedding.register(model_ids=['BGE-VL-v1.5-mmeb'])
 class _BGEVLEmbedding(AbstractEmbedding):
 
     def __init__(self, base_embed, source=None, init=False):
         super().__init__(base_embed, source, init)
 
     def load_embed(self):
-        self._device = "cuda" if torch.cuda.is_available() else "cpu"
+        self._device = 'cuda' if torch.cuda.is_available() else 'cpu'
         self._embed = tf.AutoModel.from_pretrained(self._base_embed, trust_remote_code=True).to(self._device)
         self._embed.set_processor(self._base_embed)
         self._embed.processor.patch_size = self._embed.config.vision_config.patch_size
@@ -218,17 +218,17 @@ class _BGEVLEmbedding(AbstractEmbedding):
         self._embed.eval()
 
     def _call(self, data: Dict[str, Union[str, List[str]]]):
-        DEFAULT_INSTRUCTION = "Retrieve the target image that best meets the combined criteria by " \
-            "using both the provided image and the image retrieval instructions: "
+        DEFAULT_INSTRUCTION = 'Retrieve the target image that best meets the combined criteria by ' \
+            'using both the provided image and the image retrieval instructions: '
         with torch.no_grad():
-            # text="Make the background dark, as if the camera has taken the photo at night"
-            # images="./cir_query.png"
+            # text='Make the background dark, as if the camera has taken the photo at night'
+            # images='./cir_query.png'
             text, images = data['text'], data['images'][0] if isinstance(data['images'], list) else data['images']
 
             query_inputs = self._embed.data_process(
                 text=text,
                 images=images,
-                q_or_c="q",
+                q_or_c='q',
                 task_instruction=DEFAULT_INSTRUCTION
             )
             query_embs = self._embed(**query_inputs, output_hidden_states=True)[:, -1, :]

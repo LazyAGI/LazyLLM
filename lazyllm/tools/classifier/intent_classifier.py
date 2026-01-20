@@ -6,7 +6,7 @@ from typing import Dict, Union, Any, List, Optional
 import json
 
 
-en_prompt_classifier_template = """
+en_prompt_classifier_template = '''
 ## role：Intent Classifier
 You are an intent classification engine responsible for analyzing user input text based on dialogue information and determining a unique intent category.{user_prompt}
 
@@ -17,10 +17,10 @@ You only need to reply with the name of the intent. Do not output any additional
 {attention}
 
 ## Text Format
-The input text is in JSON format, where "human_input" contains the user's raw input and "intent_list" contains a list of all intent names.
+The input text is in JSON format, where 'human_input' contains the user's raw input and 'intent_list' contains a list of all intent names.
 
 ## Example
-User: {{"human_input": "What’s the weather like in Beijing tomorrow?", "intent_list": ["Check Weather", "Search Engine Query", "View Surveillance", "Report Summary", "Chat"]}}
+User: {{'human_input': 'What’s the weather like in Beijing tomorrow?', 'intent_list': ['Check Weather', 'Search Engine Query', 'View Surveillance', 'Report Summary', 'Chat']}}
 Assistant: Check Weather
 {user_examples}
 
@@ -31,9 +31,9 @@ The chat history between the human and the assistant is stored within the <histo
 </histories>
 
 Input text is as follows:
-"""  # noqa E501
+'''  # noqa E501
 
-ch_prompt_classifier_template = """
+ch_prompt_classifier_template = '''
 ## role：意图分类器
 你是一个意图分类引擎，负责根据对话信息分析用户输入文本并确定唯一的意图类别。{user_prompt}
 
@@ -44,10 +44,10 @@ ch_prompt_classifier_template = """
 {attention}
 
 ## 文本格式
-输入文本为JSON格式，"human_input"中内容为用户的原始输入，"intent_list"为所有意图名列表
+输入文本为JSON格式，'human_input'中内容为用户的原始输入，'intent_list'为所有意图名列表
 
 ## 示例
-User: {{"human_input": "北京明天天气怎么样？", "intent_list": ["查看天气", "搜索引擎检索", "查看监控", "周报总结", "聊天"]}}
+User: {{'human_input': '北京明天天气怎么样？', 'intent_list': ['查看天气', '搜索引擎检索', '查看监控', '周报总结', '聊天']}}
 Assistant:  查看天气
 {user_examples}
 
@@ -58,7 +58,7 @@ Assistant:  查看天气
 </histories>
 
 输入文本如下:
-"""  # noqa E501
+'''  # noqa E501
 
 
 class IntentClassifier(ModuleBase):
@@ -78,7 +78,7 @@ class IntentClassifier(ModuleBase):
             for ele in self._intent_list:
                 for ch in ele:
                     # chinese unicode range
-                    if "\u4e00" <= ch <= "\u9fff":
+                    if '\u4e00' <= ch <= '\u9fff':
                         return ch_prompt_classifier_template
             return en_prompt_classifier_template
 
@@ -101,9 +101,9 @@ class IntentClassifier(ModuleBase):
     ):
         input_json = {}
         if isinstance(input, str):
-            input_json = {"human_input": input, "intent_list": self._intent_list}
+            input_json = {'human_input': input, 'intent_list': self._intent_list}
         else:
-            raise ValueError(f"Unexpected type for input: {type(input)}")
+            raise ValueError(f'Unexpected type for input: {type(input)}')
 
         history_info = chat_history_to_str(history)
         history = []
@@ -115,8 +115,8 @@ class IntentClassifier(ModuleBase):
         return input if input in self._intent_list else self._intent_list[0]
 
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
-        if llm_chat_history is not None and self._llm._module_id not in globals["chat_history"]:
-            globals["chat_history"][self._llm._module_id] = llm_chat_history
+        if llm_chat_history is not None and self._llm._module_id not in globals['chat_history']:
+            globals['chat_history'][self._llm._module_id] = llm_chat_history
         return self._impl(input)
 
     def __enter__(self):

@@ -1,9 +1,12 @@
-import requests
-import httpx
-from urllib.parse import urlparse
-import ipaddress
 import os
+import sys
+import inspect
+import requests
+import ipaddress
+import importlib.abc
+import importlib.util
 from typing import Callable
+from urllib.parse import urlparse
 
 def _is_ip_address_url(url: str) -> bool:
     try:
@@ -30,35 +33,22 @@ def request(method, url, **kwargs):
         session.trust_env = True
         return session.request(method=method, url=url, **kwargs)
 
+def _get(url, params=None, **kwargs): return request('get', url, params=params, **kwargs)
+def _options(url, **kwargs): return request('options', url, **kwargs)
+def _post(url, data=None, json=None, **kwargs): return request('post', url, data=data, json=json, **kwargs)
+def _put(url, data=None, **kwargs): return request('put', url, data=data, **kwargs)
+def _patch(url, data=None, **kwargs): return request('patch', url, data=data, **kwargs)
+def _delete(url, **kwargs): return request('delete', url, **kwargs)
 
-def _get(url, params=None, **kwargs): return request("get", url, params=params, **kwargs)
-def _options(url, **kwargs): return request("options", url, **kwargs)
-def _post(url, data=None, json=None, **kwargs): return request("post", url, data=data, json=json, **kwargs)
-def _put(url, data=None, **kwargs): return request("put", url, data=data, **kwargs)
-def _patch(url, data=None, **kwargs): return request("patch", url, data=data, **kwargs)
-def _delete(url, **kwargs): return request("delete", url, **kwargs)
 def _head(url, **kwargs):
-    kwargs.setdefault("allow_redirects", False)
-    return request("head", url, **kwargs)
-
+    kwargs.setdefault('allow_redirects', False)
+    return request('head', url, **kwargs)
 
 requests.get, requests.options, requests.post = _get, _options, _post
 requests.put, requests.patch, requests.delete, requests.head = _put, _patch, _delete, _head
 
 
-_old_httpx_func = httpx.request
-
-def new_httpx_func(method, url, **kwargs):
-    if os.environ.get('http_proxy') and _is_ip_address_url(url):
-        try:
-            return _old_httpx_func(method, url, **{**kwargs, **dict(trust_env=False)})
-        except Exception: pass
-    return _old_httpx_func(method, url, **kwargs)
-
-httpx.request = new_httpx_func
-
-
-def patch_httpx_func(fname):
+def patch_httpx_func(httpx, fname):
     _old_func = getattr(httpx, fname)
 
     def new_func(url, **kwargs):
@@ -70,8 +60,62 @@ def patch_httpx_func(fname):
 
     setattr(httpx, fname, new_func)
 
-for fname in ['get', 'options', 'post', 'delete', 'put', 'patch', 'head']:
-    patch_httpx_func(fname)
+
+def patch_httpx():
+    import httpx
+    sig = inspect.signature(_old_httpx_func := httpx.request)
+    proxy_name = 'proxy' if 'proxy' in sig.parameters else 'proxies'
+
+    def new_httpx_func(method, url, **kwargs):
+        if (proxies := kwargs.pop('proxies', kwargs.pop('proxy', None))):
+            kwargs[proxy_name] = proxies
+        if os.environ.get('http_proxy') and _is_ip_address_url(url):
+            try:
+                return _old_httpx_func(method, url, **{**kwargs, **dict(trust_env=False)})
+            except Exception: pass
+        return _old_httpx_func(method, url, **kwargs)
+
+    httpx.request = new_httpx_func
+
+    for fname in ['get', 'options', 'post', 'delete', 'put', 'patch', 'head']:
+        patch_httpx_func(httpx, fname)
+
+
+class LazyPatchLoader(importlib.abc.Loader):
+    def __init__(self, original_spec):
+        self.original_spec = original_spec
+
+    def create_module(self, spec):
+        return None
+
+    def exec_module(self, module):
+        if self.original_spec.submodule_search_locations is not None:
+            module.__package__ = self.original_spec.name
+        elif '.' in self.original_spec.name:
+            module.__package__ = self.original_spec.name.rpartition('.')[0]
+        else:
+            module.__package__ = ''
+
+        if self.original_spec.submodule_search_locations is not None:
+            module.__path__ = self.original_spec.submodule_search_locations
+
+        self.original_spec.loader.exec_module(module)
+        patch_httpx()
+
+class LazyPatchFinder(importlib.abc.MetaPathFinder):
+    def find_spec(self, fullname, path, target=None):
+        if fullname == 'httpx':
+            if self in sys.meta_path: sys.meta_path.remove(self)
+            original_spec = importlib.util.find_spec(fullname)
+            if original_spec is None: return None
+            return importlib.util.spec_from_loader(fullname, LazyPatchLoader(original_spec),
+                                                   origin=original_spec.origin)
+        return None
+
+if 'httpx' in sys.modules:
+    patch_httpx()
+else:
+    sys.meta_path.insert(0, LazyPatchFinder())
 
 
 def patch_os_env(set_action: Callable[[str, str], None], unset_action: Callable[[str], None]):
@@ -81,14 +125,14 @@ def patch_os_env(set_action: Callable[[str, str], None], unset_action: Callable[
     def new_setitem(self, key, value):
         old_setitem(self, key, value)
         if isinstance(key, bytes): key = key.decode('utf-8')
-        if key.lower().startswith('lazyllm_'): set_action(key, value)
+        set_action(key, value)
 
     old_delitem = os._Environ.__delitem__
 
     def new_delitem(self, key):
         old_delitem(self, key)
         if isinstance(key, bytes): key = key.decode('utf-8')
-        if key.lower().startswith('lazyllm_'): unset_action(key)
+        unset_action(key)
 
     os._Environ.__setitem__ = new_setitem
     os._Environ.__delitem__ = new_delitem

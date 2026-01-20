@@ -3,13 +3,31 @@
   - 常见问题: Home/FAQ.md
   - 环境配置: Home/environment.md
   - 支持模型: Home/model_list.md
+- 入门教程:
+  - 新手入门教程: Learn/learn.md
 - 使用示例:
-  - 聊天机器人: Cookbook/robot.md
+  - 聊天机器人: Cookbook/chatbot.md
   - 绘画大师: Cookbook/painting_master.md
   - 多模态聊天: Cookbook/multimodal_robot.md
   - 写作大师: Cookbook/great_writer.md
   - 检索增强: Cookbook/rag.md
   - 流式输出: Cookbook/streaming.md
+  - 代码代理: Cookbook/code_agent.md
+  - Google 搜索: Cookbook/google_search.md
+  - Bocha 搜索代理: Cookbook/bocha_search.md
+  - 语音助手: Cookbook/voice_assistant.md
+  - API 交互: Cookbook/API_Interaction_Agent_demo.md
+  - 自适应工具调用: Cookbook/flex_agent.md
+  - 历史聊天: Cookbook/rag_nloop.md
+  - 多模态输出: Cookbook/multi_modal_output_agent.md
+  - AI 销售助手: Cookbook/sales_assistant.md
+  - 多源数据 SQL 查询: Cookbook/tabular.md
+  - 多智能体主持演讲: Cookbook/multi-agent_authoritarian_speaker.md
+  - 维基搜索: Cookbook/WikiAgent.md
+  - 多轮对话: Cookbook/camel_agent.md
+  - SQL 代理: Cookbook/sql_agent.md
+  - 环境交互: Cookbook/gym_v1.md
+  - 多智能体分散式演讲者选择: Cookbook/decentralized.md
 - 最佳实践:
   - 工作流: Best Practice/flow.md
   - 流程应用: Best Practice/flowapp.md
@@ -19,6 +37,7 @@
   - 检索增强: Best Practice/rag.md
   - 函数调用: Best Practice/functionCall.md
   - 流式处理: Best Practice/stream.md
+
 - 高级主题:
   - 贡献指南: Advanced Topics/contribution.md
   - 更新日志: Advanced Topics/changelog.md
@@ -32,7 +51,9 @@
   - 配置: API Reference/configs.md
   - 启动器: API Reference/launcher.md
   - 钩子: API Reference/hook.md
-- 教程:
+  - 补丁: API Reference/patch.md
+  - 提示词: API Reference/prompt_template.md
+- 课程体系:
   - 概述: Tutorial/index.md
   - 1. RAG原理解读: Tutorial/1.md
   - 2. 快速上手RAG: Tutorial/2.md

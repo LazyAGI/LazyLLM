@@ -1,12 +1,11 @@
 from typing import Any, Dict
 
 import lazyllm
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from .base import OnlineEmbeddingModuleBase
-from .supplier.openai import OpenAIEmbedding
-from .supplier.glm import GLMEmbedding, GLMReranking
-from .supplier.sensenova import SenseNovaEmbedding
-from .supplier.qwen import QwenEmbedding, QwenReranking
-from .supplier.doubao import DoubaoEmbedding, DoubaoMultimodalEmbedding
+from .base.utils import select_source_with_default_key
+from .supplier.doubao import DoubaoEmbed, DoubaoMultimodalEmbed
+
 
 class __EmbedModuleMeta(type):
 
@@ -17,13 +16,6 @@ class __EmbedModuleMeta(type):
 
 
 class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
-    EMBED_MODELS = {'openai': OpenAIEmbedding,
-                    'sensenova': SenseNovaEmbedding,
-                    'glm': GLMEmbedding,
-                    'qwen': QwenEmbedding,
-                    'doubao': DoubaoEmbedding}
-    RERANK_MODELS = {'qwen': QwenReranking,
-                     'glm': GLMReranking}
 
     @staticmethod
     def _encapsulate_parameters(embed_url: str,
@@ -31,21 +23,11 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                                 **kwargs) -> Dict[str, Any]:
         params = {}
         if embed_url is not None:
-            params["embed_url"] = embed_url
+            params['embed_url'] = embed_url
         if embed_model_name is not None:
-            params["embed_model_name"] = embed_model_name
+            params['embed_model_name'] = embed_model_name
         params.update(kwargs)
         return params
-
-    @staticmethod
-    def _check_available_source(available_models):
-        for source in available_models.keys():
-            if lazyllm.config[f'{source}_api_key']: break
-        else:
-            raise KeyError(f"No api_key is configured for any of the models {available_models.keys()}.")
-
-        assert source in available_models.keys(), f"Unsupported source: {source}"
-        return source
 
     def __new__(self,
                 source: str = None,
@@ -54,23 +36,29 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                 **kwargs):
         params = OnlineEmbeddingModule._encapsulate_parameters(embed_url, embed_model_name, **kwargs)
 
-        if source is None and "api_key" in kwargs and kwargs["api_key"]:
-            raise ValueError("No source is given but an api_key is provided.")
+        if source is None and 'api_key' in kwargs and kwargs['api_key']:
+            raise ValueError('No source is given but an api_key is provided.')
 
-        if "type" in params:
-            params.pop("type")
-        if kwargs.get("type", "embed") == "embed":
-            if source is None:
-                source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.EMBED_MODELS)
-            if source == "doubao":
-                if embed_model_name.startswith("doubao-embedding-vision"):
-                    return DoubaoMultimodalEmbedding(**params)
+        if 'type' in params:
+            params.pop('type')
+        if kwargs.get('type', 'embed') == 'embed':
+            source, default_key = select_source_with_default_key(lazyllm.online.embed,
+                                                                 explicit_source=source,
+                                                                 type=LLMType.EMBED)
+            if default_key and not kwargs.get('api_key'):
+                kwargs['api_key'] = default_key
+            if source == 'doubao':
+                if embed_model_name and embed_model_name.startswith('doubao-embedding-vision'):
+                    return DoubaoMultimodalEmbed(**params)
                 else:
-                    return DoubaoEmbedding(**params)
-            return OnlineEmbeddingModule.EMBED_MODELS[source](**params)
-        elif kwargs.get("type") == "rerank":
-            if source is None:
-                source = OnlineEmbeddingModule._check_available_source(OnlineEmbeddingModule.RERANK_MODELS)
-            return OnlineEmbeddingModule.RERANK_MODELS[source](**params)
+                    return DoubaoEmbed(**params)
+            return getattr(lazyllm.online.embed, source)(**params)
+        elif kwargs.get('type') == 'rerank':
+            source, default_key = select_source_with_default_key(lazyllm.online.rerank,
+                                                                 explicit_source=source,
+                                                                 type=LLMType.RERANK)
+            if default_key and not kwargs.get('api_key'):
+                kwargs['api_key'] = default_key
+            return getattr(lazyllm.online.rerank, source)(**params)
         else:
-            raise ValueError("Unknown type of online embedding module.")
+            raise ValueError('Unknown type of online embedding module.')

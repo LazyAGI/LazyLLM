@@ -1,7 +1,7 @@
 import copy
 import time
 import threading
-from fastapi import HTTPException
+from lazyllm.thirdparty import fastapi
 
 class ServerBase(object):
     def __init__(self):
@@ -123,8 +123,5 @@ class ServerBase(object):
 
     async def authorize_current_user(self, Bearer: str = None):
         if not self._in_user_job_info(Bearer):
-            raise HTTPException(
-                status_code=401,
-                detail='Invalid token',
-            )
+            raise fastapi.HTTPException(status_code=401, detail='Invalid token')
         return Bearer

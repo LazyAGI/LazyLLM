@@ -1,5 +1,5 @@
 import json
-import httpx
+from lazyllm.thirdparty import httpx
 from lazyllm.tools.tools import HttpTool
 from functools import lru_cache
 from typing import Dict, Optional

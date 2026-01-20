@@ -12,12 +12,11 @@
 
 ## What is LazyLLM?
 
-LazyLLM is a low-code development tool for building multi-agent LLMs(large language models) applications. It assists developers in creating complex AI applications at very low costs and enables continuous iterative optimization. LazyLLM offers a convenient workflow for application building and provides numerous standard processes and tools for various stages of the application development process.<br>
-
-The AI application development process based on LazyLLM follows the **prototype building -> data feedback -> iterative optimization** workflow. This means you can quickly build a prototype application using LazyLLM, then analyze bad cases using task-specific data, and subsequently iterate on algorithms and fine-tune models at critical stages of the application to gradually enhance the overall performance.<br>
-
-**Tutorials**： https://docs.lazyllm.ai/ <br>
-Scan the QR code below with WeChat to join the group chat(left) or learn more with a video(right)<br>
+LazyLLM is a low-code development tool for building **multi-agent** large language model applications. It assists developers in creating complex AI applications at very low costs and enables continuous iterative optimization. LazyLLM offers a convenient workflow for application building and provides numerous standard processes and tools for various stages of the application development process.<br>
+The AI application development process based on LazyLLM follows **prototype building -> data feedback -> iterative optimization**, which means you can quickly build a prototype application using LazyLLM, then analyze bad cases using task-specific data, and subsequently iterate on algorithms and fine-tune models at critical stages of the application to gradually improve the overall application performance.<br>
+LazyLLM is committed to the unity of agility and efficiency. Developers can efficiently iterate algorithms and then apply the iterated algorithms to industrial production, supporting multiple users, fault tolerance, and high concurrency.
+**User Documentation**： https://docs.lazyllm.ai/ <br>
+Scan the QR code below with WeChat to join the group chat(left) or learn more by watching a video(right)<br>
 <p align="center">
 <img src="https://github.com/user-attachments/assets/8ad8fd14-b218-48b3-80a4-7334b2a32c5a" width=250/>
 <img src="https://github.com/user-attachments/assets/7a042a97-1339-459e-a451-4bcd6cf64c12" width=250/>
@@ -32,7 +31,7 @@ Scan the QR code below with WeChat to join the group chat(left) or learn more wi
 
 **Cross-Platform Compatibility**: Switch IaaS platforms with one click without modifying code, compatible with bare-metal servers, development machines, Slurm clusters, public clouds, etc. This allows developed applications to be seamlessly migrated to other IaaS platforms, greatly reducing the workload of code modification.<br>
 
-**Support for Grid Search Parameter Optimization**: Automatically try different base models, retrieval strategies, and fine-tuning parameters based on user configurations to evaluate and optimize applications. This makes hyperparameter tuning efficient without requiring extensive intrusive modifications to application code, helping users quickly find the best configuration.<br>
+**Unified User Experience for Different Technical Choices**: We provide a unified user experience for online models from different service providers and locally deployed models, allowing developers to freely switch and upgrade their models for experimentation. In addition, we also unify the user experience for mainstream inference frameworks, fine-tuning frameworks, relational databases, vector databases, and document databases.<br>
 
 **Efficient Model Fine-Tuning**: Support fine-tuning models within applications to continuously improve application performance. Automatically select the best fine-tuning framework and model splitting strategy based on the fine-tuning scenario. This not only simplifies the maintenance of model iterations but also allows algorithm researchers to focus more on algorithm and data iteration, without handling tedious engineering tasks.<br>
 
@@ -41,7 +40,7 @@ Scan the QR code below with WeChat to join the group chat(left) or learn more wi
 
 LazyLLM can be used to build common artificial intelligence applications. Here are some examples.
 
-### ChatBots
+### 3.1 ChatBots
 
 **This is a simple example of a chat bot.**
 
@@ -85,19 +84,19 @@ base = TrainableModule('internlm2-chat-7b')
 with IntentClassifier(base) as ic:
     ic.case['Chat', base]
     ic.case['Speech Recognition', TrainableModule('SenseVoiceSmall')]
-    ic.case['Image QA', TrainableModule('Mini-InternVL-Chat-2B-V1-5').deploy_method(deploy.LMDeploy)]
+    ic.case['Image QA', TrainableModule('InternVL3_5-1B').deploy_method(deploy.LMDeploy)]
     ic.case['Drawing', pipeline(base.share().prompt(painter_prompt), TrainableModule('stable-diffusion-3-medium'))]
     ic.case['Generate Music', pipeline(base.share().prompt(musician_prompt), TrainableModule('musicgen-small'))]
     ic.case['Text to Speech', TrainableModule('ChatTTS')]
 WebModule(ic, history=[base], audio=True, port=8847).start().wait()
 ```
 
-### RAG
+### 3.2 Retrieval-Augmented Generation
 
 ![Demo RAG](docs/assets/demo_rag.svg)
 
 <details>
-<summary>click to look up prompts and imports</summary>
+<summary>Click to view imports and prompt</summary>
 
 ```python
 
@@ -109,7 +108,7 @@ prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue 
 ```
 </details>
 
-Here is an online deployment example:
+This is an online deployment example:
 
 ```python
 documents = Document(dataset_path="your data path", embed=lazyllm.OnlineEmbeddingModule(), manager=False)
@@ -148,98 +147,15 @@ https://github.com/LazyAGI/LazyLLM/assets/12124621/77267adc-6e40-47b8-96a8-895df
 
 If you installed `lazyllm` using `pip` and ensured that the `bin` directory of your Python environment is in your `$PATH`, you can quickly start a retrieval-augmented bot by executing `lazyllm run rag --documents=/file/to/yourpath`. If you want to use a local model, you need to specify the model name with the `--model` parameter. For example, you can start a retrieval-augmented bot based on a local model by using `lazyllm run rag --documents=/file/to/yourpath --model=internlm2-chat-7b`.
 
-### Stories Creator
+### 3.3 More Examples
 
-<details>
-<summary>click to look up prompts and imports</summary>
-
-```python
-import lazyllm
-from lazyllm import pipeline, warp, bind
-from lazyllm.components.formatter import JsonFormatter
-
-toc_prompt="""
-You are now an intelligent assistant. Your task is to understand the user's input and convert the outline into a list of nested dictionaries. Each dictionary contains a `title` and a `describe`, where the `title` should clearly indicate the level using Markdown format, and the `describe` is a description and writing guide for that section.
-
-Please generate the corresponding list of nested dictionaries based on the following user input:
-
-Example output:
-[
-    {
-        "title": "# Level 1 Title",
-        "describe": "Please provide a detailed description of the content under this title, offering background information and core viewpoints."
-    },
-    {
-        "title": "## Level 2 Title",
-        "describe": "Please provide a detailed description of the content under this title, giving specific details and examples to support the viewpoints of the Level 1 title."
-    },
-    {
-        "title": "### Level 3 Title",
-        "describe": "Please provide a detailed description of the content under this title, deeply analyzing and providing more details and data support."
-    }
-]
-User input is as follows:
-"""
-
-completion_prompt="""
-You are now an intelligent assistant. Your task is to receive a dictionary containing `title` and `describe`, and expand the writing according to the guidance in `describe`.
-
-Input example:
-{
-    "title": "# Level 1 Title",
-    "describe": "This is the description for writing."
-}
-
-Output:
-This is the expanded content for writing.
-Receive as follows:
-
-"""
-
-writer_prompt = {"system": completion_prompt, "user": '{"title": {title}, "describe": {describe}}'}
-```
-</details>
-
-Here is an online deployment example:
-
-```python
-with pipeline() as ppl:
-    ppl.outline_writer = lazyllm.OnlineChatModule(stream=False).formatter(JsonFormatter()).prompt(toc_prompt)
-    ppl.story_generater = warp(lazyllm.OnlineChatModule(stream=False).prompt(writer_prompt))
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
-lazyllm.WebModule(ppl, port=23466).start().wait()
-```
-
-Here is an example of a local deployment:
-
-```python
-with pipeline() as ppl:
-    ppl.outline_writer = lazyllm.TrainableModule('internlm2-chat-7b').formatter(JsonFormatter()).prompt(toc_prompt)
-    ppl.story_generater = warp(ppl.outline_writer.share(prompt=writer_prompt).formatter())
-    ppl.synthesizer = (lambda *storys, outlines: "\n".join([f"{o['title']}\n{s}" for s, o in zip(storys, outlines)])) | bind(outlines=ppl.output('outline_writer'))
-lazyllm.WebModule(ppl, port=23466).start().wait()
-```
-
-### AI Painting Assistant
-
-<details>
-<summary>click to look up prompts and imports</summary>
-
-```python
-import lazyllm
-from lazyllm import pipeline
-
-prompt = 'You are a drawing prompt word master who can convert any Chinese content entered by the user into English drawing prompt words. In this task, you need to convert any input content into English drawing prompt words, and you can enrich and expand the prompt word content.'
-```
-</details>
-
-```python
-with pipeline() as ppl:
-    ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(lazyllm.ChatPrompter(prompt))
-    ppl.sd3 = lazyllm.TrainableModule('stable-diffusion-3-medium')
-lazyllm.WebModule(ppl, port=23466).start().wait()
-```
-
+For more examples, please refer to our official documentation [Usage Examples](https://docs.lazyllm.ai/zh-cn/stable/Cookbook/robot/)
+* [Painting Master](https://docs.lazyllm.ai/en/stable/Cookbook/painting_master/)
+* [Multimodal Chatbot](https://docs.lazyllm.ai/en/stable/Cookbook/multimodal_robot/)
+* [Knowledge Base](https://docs.lazyllm.ai/en/stable/Cookbook/rag/)
+* [Search Agent](https://docs.lazyllm.ai/en/latest/Cookbook/bocha_search/)
+* [API Interaction Agent](https://docs.lazyllm.ai/en/latest/Cookbook/API_Interaction_Agent_demo/)
+* [Tool-Calling Intelligent Agent](https://docs.lazyllm.ai/en/latest/Cookbook/flex_agent/)
 
 ## What can LazyLLM do
 
@@ -260,7 +176,20 @@ lazyllm.WebModule(ppl, port=23466).start().wait()
 
 ## Installation
 
-### from source-code
+### pip installation (recommended)
+
+To install only lazyllm and necessary dependencies, you can use:
+```bash
+pip3 install lazyllm
+```
+
+To install lazyllm and all dependencies, you can use:
+```bash
+pip3 install lazyllm
+lazyllm install full
+```
+
+### Installation from source
 
 ```bash
 git clone git@github.com:LazyAGI/LazyLLM.git
@@ -268,22 +197,11 @@ cd LazyLLM
 pip install -r requirements.txt
 ```
 
-`pip install -r requirements.full.txt` is used when you want to finetune, deploy or build your rag application.
+### Installation on Windows or macOS
 
-### from pip
+For installation on Windows or macOS, please refer to our [tutorial](https://docs.lazyllm.ai/zh-cn/stable/Home/environment)
 
-Only install lazyllm and necessary dependencies, you can use:
-```bash
-pip3 install lazyllm
-```
-
-Install lazyllm and all dependencies, you can use:
-```bash
-pip3 install lazyllm
-lazyllm install full
-```
-
-## Design concept
+## Design Philosophy
 
 The design philosophy of LazyLLM stems from a deep understanding of the current limitations of large models in production environments. We recognize that at this stage, large models cannot yet fully solve all practical problems end-to-end. Therefore, the AI application development process based on LazyLLM emphasizes "rapid prototyping, bad-case analysis using scenario-specific data, algorithmic experimentation, and model fine-tuning on key aspects to improve the overall application performance." LazyLLM handles the tedious engineering work involved in this process, offering convenient interfaces that allow users to focus on enhancing algorithmic effectiveness and creating outstanding AI applications.<br>
 
@@ -299,7 +217,7 @@ Finally, LazyLLM is a user-centric tool. If you have any ideas or feedback, feel
 
 ![Architecture](docs/assets/Architecture.en.png)
 
-## Basic concept
+## Basic Concepts
 
 ### Component
 
@@ -352,57 +270,61 @@ Flow in LazyLLM defines the data stream, describing how data is passed from one 
 ## Future Plans
 
 ### Timeline
-V0.6 Expected to start from September 1st, lasting 3 months, with continuous small version releases in between, such as v0.6.1, v0.6.2
-V0.7 Expected to start from December 1st, lasting 3 months, with continuous small version releases in between, such as v0.7.1, v0.7.2
+- V0.7 Expected to start from December 15, lasting 3 months, with continuous small version releases in between, such as v0.7.1, v0.7.2
+- v0.8 Expected to start from March 15, 2026, lasting 3 months, focusing on improving system observability and reducing user debugging costs
+- v0.9 Expected to start from June 15, 2026, lasting 3 months, focusing on improving the overall system running speed
 
 ### Feature Modules
-RAG
-  - Engineering
-    - Integrate LazyRAG capabilities into LazyLLM (V0.6)
-    - Extend RAG's macro Q&A capabilities to multiple knowledge bases (V0.6)
-    - RAG modules fully support horizontal scaling, supporting multi-machine deployment of RAG algorithm collaboration (V0.6)
-    - Integrate at least 1 open-source knowledge graph framework (V0.6)
-    - Support common data splitting strategies, no less than 20 types, covering various document types (V0.6)
-  - Data Capabilities
+9.2.1 RAG
+  - 9.2.1.1 Engineering
+    - Integrate LazyRAG capabilities into LazyLLM (V0.7)
+    - ✅ Extend RAG's macro Q&A capabilities to multiple knowledge bases (V0.6)
+    - ✅ RAG modules fully support horizontal scaling, supporting multi-machine deployment of RAG algorithm collaboration (V0.6)
+    - ✅ Integrate at least 1 open-source knowledge graph framework (V0.6)
+    - Support common data splitting strategies, no less than 20 types, covering various document types (V0.6 - v0.8)
+  - 9.2.1.2 Data Capabilities
     - Table parsing (V0.6 - 0.7)
     - CAD image parsing (V0.7 -)
-  - Algorithm Capabilities
-    - Support processing of relatively structured texts like CSV (V0.6)
-    - Multi-hop retrieval (links in documents, references, etc.) (V0.6)
+    - pretrain data processing (V0.8)
+  - 9.2.1.3 Algorithm Capabilities
+    - Support processing of relatively structured texts like CSV (V0.7)
+    - Multi-hop retrieval (links in documents, references, etc.) (V0.7)
     - Information conflict handling (V0.7)
     - AgenticRL & code-writing problem-solving capabilities (V0.7)
+    - (new) AI Writter （V0.7 ）
+    - (new) AI Review （V0.7 - 0.8 ）
 
-Functional Modules
-  - Support memory capabilities (V0.6)
+9.2.2 Functional Modules
+  - ✅ Support memory capabilities (V0.6)
   - Support for distributed Launcher (V0.7)
-  - Database-based Globals support (V0.6)
+  - ✅ Database-based Globals support (V0.6)
   - ServerModule can be published as MCP service (v0.7)
   - Integration of online sandbox services (v0.7)
 
-Model Training and Inference
-  - Support OpenAI interface deployment and inference (V0.6)
+9.2.3 Model Training and Inference
+  - ✅ Support OpenAI interface deployment and inference (V0.6)
   - Unify fine-tuning and inference prompts (V0.7)
   - Provide fine-tuning examples in Examples (V0.7)
-  - Integrate 2-3 prompt repositories, allowing direct selection of prompts from prompt repositories (V0.6)
-  - Support more intelligent model type judgment and inference framework selection, refactor and simplify auto-finetune framework selection logic (V0.6)
+  - Integrate 2-3 prompt repositories, allowing direct selection of prompts from prompt repositories (V0.7)
+  - ✅ Support more intelligent model type judgment and inference framework selection, refactor and simplify auto-finetune framework selection logic (V0.6)
   - Full-chain GRPO support (V0.7)
 
-Documentation
-  - Complete API documentation, ensure every public interface has API documentation, with consistent documentation parameters and function parameters, and executable sample code (V0.6)
-  - Complete CookBook documentation, increase cases to 50, with comparisons to LangChain/LlamaIndex (code volume, speed, extensibility) (V0.6)
-  - Complete Environment documentation, supplement installation methods on win/linux/macos, supplement package splitting strategies (V0.6)
-  - Complete Learn documentation, first teach how to use large models; then teach how to build agents; then teach how to use workflows; finally teach how to build RAG (V0.6)
+9.2.4 Documentation
+  - ✅ Complete API documentation, ensure every public interface has API documentation, with consistent documentation parameters and function parameters, and executable sample code (V0.6)
+  - Complete CookBook documentation, increase cases to 50, with comparisons to LangChain/LlamaIndex (code volume, speed, extensibility) (V0.6 - v0.7)
+  - ✅ Complete Environment documentation, supplement installation methods on win/linux/macos, supplement package splitting strategies (V0.6)
+  - ✅ Complete Learn documentation, first teach how to use large models; then teach how to build agents; then teach how to use workflows; finally teach how to build RAG (V0.6)
 
-Quality
-  - Reduce CI time to within 10 minutes by mocking most modules (V0.6)
-  - Add daily builds, put high-time-consuming/token tasks in daily builds (V0.6)
+9.2.5 Quality
+  - ✅ Reduce CI time to within 10 minutes by mocking most modules (V0.6)
+  - Add daily builds, put high-time-consuming/token tasks in daily builds (V0.7)
 
-Development, Deployment and Release
+9.2.6 Development, Deployment and Release
   - Debug optimization (v0.7)
-  - Process monitoring [output + performance] (v0.7)
-  - Environment isolation and automatic environment setup for dependent training and inference frameworks (V0.6)
+  - Process monitoring [output + performance] (v0.7 - 0.8)
+  - Environment isolation and automatic environment setup for dependent training and inference frameworks (V0.7)
 
-Ecosystem
-  - Promote LazyCraft open source (V0.6)
+9.2.7 Ecosystem
+  - ✅ Promote LazyCraft open source (V0.6)
   - Promote LazyRAG open source (V0.7)
-  - Upload code to 2 code hosting websites other than Github and strive for community collaboration (V0.6)
+  - ✅ Upload code to 2 code hosting websites other than Github and strive for community collaboration (V0.6)

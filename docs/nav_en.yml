@@ -3,13 +3,31 @@
   - FAQ: Home/FAQ.md
   - Environment: Home/environment.md
   - Supported Models: Home/model_list.md
+- Learn:
+  - Getting Started: Learn/learn.md
 - Cookbook:
-  - Chatbot: Cookbook/robot.md
+  - Chatbot: Cookbook/chatbot.md
   - Painting Master: Cookbook/painting_master.md
   - Multimodal Chatbot: Cookbook/multimodal_robot.md
   - Great Writer: Cookbook/great_writer.md
   - RAG: Cookbook/rag.md
   - Streaming: Cookbook/streaming.md
+  - Code Agent: Cookbook/code_agent.md
+  - Google Search: Cookbook/google_search.md
+  - Bocha Search Agent: Cookbook/bocha_search.md
+  - Voice Assistant: Cookbook/voice_assistant.md
+  - API Interaction: Cookbook/API_Interaction_Agent_demo.md
+  - Adaptive Tool-Calling: Cookbook/flex_agent.md
+  - Chat With History: Cookbook/rag_nloop.md
+  - Multi-modal Output Agent: Cookbook/multi_modal_output_agent.md
+  - Sales Assistant: Cookbook/sales_assistant.md
+  - Multi Source SQL: Cookbook/tabular.md
+  - Multi-Agent Speaker Selection: Cookbook/multi-agent_authoritarian_speaker.md
+  - Wiki Agent: Cookbook/WikiAgent.md
+  - Multi-turn dialogue: Cookbook/camel_agent.md
+  - SQL Agent: Cookbook/sql_agent.md
+  - Environment Interaction: Cookbook/gym_v1.md
+  - Multi-Agent Decentralized Speaker Selection: Cookbook/decentralized.md
 - Best Practice:
   - Flow: Best Practice/flow.md
   - Flowapp: Best Practice/flowapp.md
@@ -32,26 +50,28 @@
   - Configs: API Reference/configs.md
   - Launcher: API Reference/launcher.md
   - Hook: API Reference/hook.md
+  - patch: API Reference/patch.md
+  - Prompt: API Reference/prompt_template.md
 - Tutorials:
   - Overview: Tutorial/index.md
-  # - 1. RAG Fundamentals: Tutorial/1.md
-  # - 2. Quickstart with RAG: Tutorial/2.md
-  # - 3. Mastering LLM with LazyLLM: Tutorial/3.md
-  # - 4. Engineering Basics: Tutorial/4.md
-  # - 5. Custom Document Readers: Tutorial/5.md
-  # - 6. Retrieval Optimization: Tutorial/6.md
-  # - 7. Hands-on Retrieval Tuning: Tutorial/7.md
-  # - 8. Custom Retrieval Strategies: Tutorial/8.md
-  # - 9. Domain-Specific Fine-Tuning: Tutorial/9.md
-  # - 10. Deepseek Integration: Tutorial/10.md
-  # - 11. Performance Optimization: Tutorial/11.md
-  # - 12. Speed-Up Techniques: Tutorial/12.md
-  # - 13. Multimodal RAG: Tutorial/13.md
-  # - 14. Academic Paper QA: Tutorial/14.md
-  # - 15. Statistical RAG: Tutorial/15.md
-  # - 16. Advanced Paper QA: Tutorial/16.md
-  # - 17. Enterprise RAG Solutions: Tutorial/17.md
-  # - 18. Agentic RAG: Tutorial/18.md
-  # - 19. Knowledge Graph RAG: Tutorial/19.md
+  - 1. RAG Fundamentals: Tutorial/1.en.md
+  - 2. Quickstart with RAG: Tutorial/2.en.md
+  - 3. Mastering LLM with LazyLLM: Tutorial/3.en.md
+  - 4. Engineering Basics: Tutorial/4.en.md
+  - 5. Custom Document Readers: Tutorial/5.en.md
+  - 6. Retrieval Optimization: Tutorial/6.en.md
+  - 7. Hands-on Retrieval Tuning: Tutorial/7.en.md
+  - 8. Custom Retrieval Strategies: Tutorial/8.en.md
+  - 9. Domain-Specific Fine-Tuning: Tutorial/9.en.md
+  - 10. Deepseek Integration: Tutorial/10.en.md
+  - 11. Performance Optimization: Tutorial/11.en.md
+  - 12. Speed-Up Techniques: Tutorial/12.en.md
+  - 13. Multimodal RAG: Tutorial/13.en.md
+  - 14. Academic Paper QA: Tutorial/14.en.md
+  - 15. Statistical RAG: Tutorial/15.en.md
+  - 16. Advanced Paper QA: Tutorial/16.en.md
+  - 17. Enterprise RAG Solutions: Tutorial/17.en.md
+  - 18. Agentic RAG: Tutorial/18.en.md
+  - 19. Knowledge Graph RAG: Tutorial/19.en.md
 - RoadMap:
   - 0.6 & 0.7: RoadMap/0_6and0_7.md

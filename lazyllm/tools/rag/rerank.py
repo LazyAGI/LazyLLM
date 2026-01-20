@@ -15,15 +15,15 @@ from .retriever import _PostProcess
 class Reranker(ModuleBase, _PostProcess):
     registered_reranker = dict()
 
-    def __new__(cls, name: str = "ModuleReranker", *args, **kwargs):
-        assert name in cls.registered_reranker, f"Reranker: {name} is not registered, please register first."
+    def __new__(cls, name: str = 'ModuleReranker', *args, **kwargs):
+        assert name in cls.registered_reranker, f'Reranker: {name} is not registered, please register first.'
         item = cls.registered_reranker[name]
         if isinstance(item, type) and issubclass(item, Reranker):
             return super(Reranker, cls).__new__(item)
         else:
             return super(Reranker, cls).__new__(cls)
 
-    def __init__(self, name: str = "ModuleReranker", target: Optional[str] = None,
+    def __init__(self, name: str = 'ModuleReranker', target: Optional[str] = None,
                  output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs) -> None:
         super().__init__()
         self._name = name
@@ -31,14 +31,14 @@ class Reranker(ModuleBase, _PostProcess):
         lazyllm.deprecated(bool(target), '`target` parameter of reranker')
         _PostProcess.__init__(self, output_format, join)
 
-    def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
+    def forward(self, nodes: List[DocNode], query: str = '') -> List[DocNode]:
         results = self.registered_reranker[self._name](nodes, query=query, **self._kwargs)
-        LOG.debug(f"Rerank use `{self._name}` and get nodes: {results}")
+        LOG.debug(f'Rerank use `{self._name}` and get nodes: {results}')
         return self._post_process(results)
 
     @classmethod
     def register_reranker(
-        cls: "Reranker", func: Optional[Callable] = None, batch: bool = False
+        cls: 'Reranker', func: Optional[Callable] = None, batch: bool = False
     ):
         def decorator(f):
             if isinstance(f, type):
@@ -62,11 +62,11 @@ class Reranker(ModuleBase, _PostProcess):
 def get_nlp_and_matchers(language):
     nlp = spacy.blank(language)
 
-    spec = importlib.util.find_spec("spacy.matcher")
+    spec = importlib.util.find_spec('spacy.matcher')
     if spec is None:
         raise ImportError(
-            "Please install spacy to use spacy module. "
-            "You can install it with `pip install spacy==3.7.5`"
+            'Please install spacy to use spacy module. '
+            'You can install it with `pip install spacy==3.7.5`'
         )
     matcher_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(matcher_module)
@@ -78,13 +78,13 @@ def get_nlp_and_matchers(language):
 
 @Reranker.register_reranker
 def KeywordFilter(node: DocNode, required_keys: Optional[List[str]] = None, exclude_keys: Optional[List[str]] = None,
-                  language: str = "en", **kwargs) -> Optional[DocNode]:
+                  language: str = 'en', **kwargs) -> Optional[DocNode]:
     assert required_keys or exclude_keys, 'One of required_keys or exclude_keys should be provided'
     nlp, required_matcher, exclude_matcher = get_nlp_and_matchers(language)
     if required_keys:
-        required_matcher.add("RequiredKeywords", list(nlp.pipe(required_keys)))
+        required_matcher.add('RequiredKeywords', list(nlp.pipe(required_keys)))
     if exclude_keys:
-        exclude_matcher.add("ExcludeKeywords", list(nlp.pipe(exclude_keys)))
+        exclude_matcher.add('ExcludeKeywords', list(nlp.pipe(exclude_keys)))
 
     doc = nlp(node.get_text())
     if required_keys and not required_matcher(doc):
@@ -97,16 +97,16 @@ def KeywordFilter(node: DocNode, required_keys: Optional[List[str]] = None, excl
 @Reranker.register_reranker()
 class ModuleReranker(Reranker):
 
-    def __init__(self, name: str = "ModuleReranker", model: Union[Callable, str] = None, target: Optional[str] = None,
+    def __init__(self, name: str = 'ModuleReranker', model: Union[Callable, str] = None, target: Optional[str] = None,
                  output_format: Optional[str] = None, join: Union[bool, str] = False, **kwargs) -> None:
         super().__init__(name, target, output_format, join, **kwargs)
-        assert model is not None, "Reranker model must be specified as a model name or a callable."
+        assert model is not None, 'Reranker model must be specified as a model name or a callable.'
         if isinstance(model, str):
             self._reranker = lazyllm.TrainableModule(model)
         else:
             self._reranker = model
 
-    def forward(self, nodes: List[DocNode], query: str = "") -> List[DocNode]:
+    def forward(self, nodes: List[DocNode], query: str = '') -> List[DocNode]:
         if not nodes:
             return self._post_process([])
 
@@ -116,7 +116,7 @@ class ModuleReranker(Reranker):
         results = []
         for index, relevance_score in sorted_indices:
             results.append(nodes[index].with_score(relevance_score))
-        LOG.debug(f"Rerank use `{self._name}` and get nodes: {results}")
+        LOG.debug(f'Rerank use `{self._name}` and get nodes: {results}')
         return self._post_process(results)
 
 

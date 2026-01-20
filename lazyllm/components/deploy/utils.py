@@ -11,6 +11,9 @@ def make_log_dir(log_path, framework):
 
 
 def get_log_path(folder_path):
-    formatted_date = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    formatted_date = datetime.now().strftime('%Y-%m-%d_%H-%M-%S')
     random_value = random.randint(1000, 9999)
     return f'{folder_path}/infer_{formatted_date}_{random_value}.log'
+
+def parse_options_keys(options_keys):
+    return ' '.join([f'--{key}' for key in options_keys])

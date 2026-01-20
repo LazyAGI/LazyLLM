@@ -14,7 +14,7 @@ def _sound_to_base64(sound: 'np.array', mime_type: str = 'audio/wav', sample_rat
     scipy.io.wavfile.write(buffer, sample_rate, scaled_audio)
     buffer.seek(0)
     base64_str = base64.b64encode(buffer.getvalue()).decode('utf-8')
-    return f"data:{mime_type};base64,{base64_str}"
+    return f'data:{mime_type};base64,{base64_str}'
 
 def _sounds_to_base64_list(sounds: list, mime_type: str = 'audio/wav', sample_rate: int = 24000) -> list:
     base64_list = []

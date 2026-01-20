@@ -10,8 +10,17 @@ add_example = functools.partial(utils.add_example, module=lazyllm.common)
 utils.add_doc.__doc__ = 'Add document for lazyllm functions'
 
 add_chinese_doc('Register', '''\
-LazyLLM提供的Component的注册机制，可以将任意函数注册成LazyLLM的Component。被注册的函数无需显式的import，即可通过注册器提供的分组机制，在任一位置被索引到。
+LazyLLM提供了一套组件注册机制，允许将任意函数注册为LazyLLM的Component。通过注册器提供的分组机制，注册后的函数可在任意位置通过分组索引进行调用，无需显式导入。
 
+<span style="font-size: 18px;">&ensp;**`lazyllm.components.register(cls, *, rewrite_func)→ 装饰器`**</span>
+
+该函数调用后返回一个装饰器，将被装饰函数包装为Component并注册到名为cls的分组中。
+
+Args:
+    base (type): 基类
+    fnames (Union[str, List[str]]): 要重写的函数名或函数名列表
+    template (str, optional): 注册模板字符串，默认为标准注册模板
+    default_group (str, optional): 默认组名，默认为None
 ''')
 
 add_english_doc('Register', '''\
@@ -22,11 +31,13 @@ LazyLLM provides a registration mechanism for Components, allowing any function 
 After the function is called, it returns a decorator which wraps the decorated function into a Component and registers it in a group named cls.
 
 Args:
-    cls (str) :The name of the group to which the function will be registered. The group must exist. Default groups include ``finetune`` and ``deploy``. Users can create new groups by calling the ``new_group`` function.
-    rewrite_func (str) :The name of the function to be rewritten after registration. Default is ``apply``. When registering a bash command, you need to pass ``cmd`` as the argument.
+    base (type): Base class
+    fnames (Union[str, List[str]]): Function name or function name list to rewrite
+    template (str, optional): Registration template string, defaults to standard registration template
+    default_group (str, optional): Default group name, defaults to None
+''')
 
-**Examples:**\n
-```python
+add_example('Register', '''\
 >>> import lazyllm
 >>> @lazyllm.component_register('mygroup')
 ... def myfunc(input):
@@ -34,18 +45,6 @@ Args:
 ...
 >>> lazyllm.mygroup.myfunc()(1)
 1
-```
-
-<span style="font-size: 20px;">&ensp;**`register.cmd(cls)→ Decorator `**</span>
-
-After the function is called, it returns a decorator that wraps the decorated function into a Component and registers it in a group named cls. The wrapped function needs to return an executable bash command.
-
-Args:
-    cls (str) :The name of the group to which the function will be registered. The group must exist. Default groups include ``finetune`` and ``deploy``. Users can create new groups by calling the ``new_group`` function.
-
-**Examples:**\n
-```python
->>> import lazyllm
 >>> @lazyllm.component_register.cmd('mygroup')
 ... def mycmdfunc(input):
 ...     return f'echo {input}'
@@ -53,7 +52,6 @@ Args:
 >>> lazyllm.mygroup.mycmdfunc()(1)
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) Command: echo 1
 PID: 2024-06-01 00:00:00 lazyllm INFO: (lazyllm.launcher) PID: 1
-```
 ''')
 
 add_english_doc('Register.new_group', '''\
@@ -63,6 +61,15 @@ Creates a new ComponentGroup. The newly created group will be automatically adde
 Args:
     group_name (str): The name of the group to be created.
 ''')
+
+
+add_chinese_doc('Register.new_group', '''\
+创建一个新的ComponentGroup。新建的group会自动加入到__builtin__中，无需import即可在任一位置访问到该group。
+
+Args:
+    group_name (str): 待创建的group的名字
+''')
+
 
 # add_example('Register', '''\
 # >>> import lazyllm
@@ -75,13 +82,14 @@ add_chinese_doc('registry.LazyDict', '''\
 一个为懒惰的程序员设计的特殊字典类。支持多种便捷的访问和操作方式。
 
 特性：
-1. 使用点号代替['str']访问字典元素
+
+1. 使用点号代替['str']访问字典元素 
 2. 支持首字母小写来使语句更像函数调用
 3. 当字典只有一个元素时支持直接调用
 4. 支持动态默认键
 5. 如果组名出现在名称中，允许省略组名
 
-参数:
+Args:
     name (str): 字典的名称，默认为空字符串。
     base: 基类引用，默认为None。
     *args: 位置参数，传递给dict父类。
@@ -92,6 +100,7 @@ add_english_doc('registry.LazyDict', '''\
 A special dictionary class designed for lazy programmers. Supports various convenient access and operation methods.
 
 Features:
+
 1. Use dot notation instead of ['str'] to access dictionary elements
 2. Support lowercase first character to make statements more like function calls
 3. Support direct calls when dictionary has only one element
@@ -108,7 +117,7 @@ Args:
 add_chinese_doc('registry.LazyDict.remove', '''\
 从字典中移除指定的键值对。
 
-参数:
+Args:
     key (str): 要移除的键。支持与__getattr__相同的键匹配规则，包括首字母小写和组名省略等特性。
 
 注意:
@@ -129,7 +138,7 @@ Note:
 add_chinese_doc('registry.LazyDict.set_default', '''\
 设置字典的默认键。设置后可以通过.default属性访问该键对应的值。
 
-参数:
+Args:
     key (str): 要设置为默认的键名。
 
 注意:
@@ -279,6 +288,7 @@ Method to retrieve the thread execution result. This method blocks until the thr
 
 **Note**: This method should be used after calling `thread.start()` to retrieve the thread execution result.
 ''')
+
 # ============= Bind/bind
 add_chinese_doc('bind', '''\
 Bind 类用于函数绑定与延迟调用，支持动态参数传入和上下文参数解析，实现灵活的函数组合与流水线式调用。
@@ -434,6 +444,113 @@ True
 (1, 2, 3, 4, 5)
 ''')
 
+# ============= queue
+
+add_chinese_doc('RecentQueue', """\
+最近元素队列（RecentQueue）是对标准 Queue 的扩展实现，在不改变原有队列语义的前提下，额外维护一份「最近放入队列的 K 个元素」缓存。
+
+该类常用于：
+- 最近上下文记录（如 Prompt / 消息历史）
+- 调试与问题定位时追踪最近输入
+- 轻量级时间窗口缓存或回溯分析
+
+参数说明：
+- maxsize (int)：
+    队列最大容量，语义与 queue.Queue 一致
+
+- recent_k (Optional[int])：
+    需要保留的最近元素数量：
+    - None 或 0：不启用 recent 功能
+    - 大于 0：最多保留 recent_k 个最近 put 进队列的元素
+""")
+
+add_english_doc('RecentQueue', """\
+RecentQueue
+
+RecentQueue is an extension of the standard Queue that maintains
+an additional cache of the most recently put K items, without
+altering the original queue semantics.
+
+Typical use cases include:
+- Tracking recent context (e.g. prompt or message history)
+- Debugging and tracing recent inputs
+- Lightweight sliding-window or rollback-style analysis
+
+Parameters:
+- maxsize (int):
+    Maximum size of the queue, same semantics as queue.Queue
+
+- recent_k (Optional[int]):
+    Number of recent items to retain:
+    - None or 0: disable recent tracking
+    - > 0: keep at most recent_k most recently put items
+""")
+
+add_example('RecentQueue', """\
+>>> from queue import Queue
+>>> from collections import deque
+>>> import threading
+
+>>> q = RecentQueue(maxsize=10, recent_k=3)
+>>> q.put("msg-1")
+>>> q.put("msg-2")
+>>> q.put("msg-3")
+
+>>> print(q.get_recent())
+['msg-1', 'msg-2', 'msg-3']
+
+>>> q.put("msg-4")
+>>> print(q.get_recent())
+输出: ['msg-2', 'msg-3', 'msg-4']
+""")
+
+add_chinese_doc('RecentQueue.get_recent', """\
+获取最近放入队列的元素。返回最近放入队列的元素列表或拼接后的字符串，不会消费（remove）队列中的任何元素。
+
+重要说明：
+- recent 是队列的旁路缓存（side-channel）
+- 返回结果按时间顺序排列（从旧到新）
+
+参数说明：
+- join (Optional[str])：如果提供该参数，将 recent 列表中的元素使用 join 作为分隔符拼接为一个字符串。要求 recent 中的所有元素均为字符串类型。
+- join_prefix (Optional[str])：当 join 生效且拼接结果非空时，在结果字符串前追加前缀，常用于上下文提示头。
+
+返回值：
+- List[Any]：当 join 为 None 时，返回 recent 元素的列表副本
+- str：当 join 提供时，返回拼接后的字符串（可能带前缀）
+""")
+
+add_english_doc('RecentQueue.get_recent', """\
+Retrieve recently put items
+
+Returns the most recently put items in the queue, either as a list
+or as a joined string. This method does NOT consume items from
+the queue.
+
+Notes:
+- The recent buffer is a side-channel cache
+- Items are ordered from oldest to newest
+
+Parameters:
+- join (Optional[str]): If provided, recent items will be joined into a single string using this value as the separator. All items in the recent buffer must be strings.
+- join_prefix (Optional[str]): If join is used and the result is non-empty, this prefix will be prepended to the joined string.
+
+Returns:
+- List[Any]: When join is None, returns a copy of the recent items list
+- str: When join is provided, returns the joined string (with optional prefix)
+""")
+
+add_example('RecentQueue.get_recent', """\
+>>> q = RecentQueue(recent_k=3)
+>>> q.put("a").put("b").put("c").put("d")
+>>> q.get_recent()
+['b', 'c', 'd']
+
+>>> q.get_recent(join="\\n", join_prefix="Recent:\\n")
+'Recent:\\nb\\nc\\nd'
+""")
+
+
 add_chinese_doc('FileSystemQueue', """\
 基于文件系统的队列抽象基类。
 
@@ -523,21 +640,17 @@ add_example('FileSystemQueue.dequeue', """\
 """)
 
 add_chinese_doc('FileSystemQueue.peek', """\
-查看队列头部的消息但不移除。
-
-此方法允许查看队列中最早的消息，但不会将其从队列中移除。
+获取队列中的下一个消息，但不移除。
 
 **Returns:**\n
-- 队列头部的消息，如果队列为空则返回None。
+- Any: 队列中下一个可用的消息；如果队列为空，返回 ``None``。
 """)
 
 add_english_doc('FileSystemQueue.peek', """\
-View the message at the head of the queue without removing it.
-
-This method allows viewing the earliest message in the queue without removing it from the queue.
+Retrieve the next message in the queue without removing it.
 
 **Returns:**\n
-- The message at the head of the queue, or None if the queue is empty.
+- Any: The next available message in the queue, or ``None`` if the queue is empty.
 """)
 
 add_example('FileSystemQueue.peek', """\
@@ -553,21 +666,17 @@ add_example('FileSystemQueue.peek', """\
 """)
 
 add_chinese_doc('FileSystemQueue.size', """\
-获取队列大小。
-
-此方法返回当前队列中的消息数量。
+获取队列中的消息数量。
 
 **Returns:**\n
-- int: 队列中的消息数量。
+- int: 队列中当前消息的数量。
 """)
 
 add_english_doc('FileSystemQueue.size', """\
-Get the queue size.
-
-This method returns the current number of messages in the queue.
+Get the number of messages in the queue.
 
 **Returns:**\n
-- int: Number of messages in the queue.
+- int: The current number of messages in the queue.
 """)
 
 add_example('FileSystemQueue.size', """\
@@ -590,13 +699,13 @@ add_example('FileSystemQueue.size', """\
 add_chinese_doc('FileSystemQueue.clear', """\
 清空队列。
 
-此方法移除队列中的所有消息，将队列重置为空状态。
+移除队列中的所有消息，使其恢复为空状态。
 """)
 
 add_english_doc('FileSystemQueue.clear', """\
 Clear the queue.
 
-This method removes all messages from the queue, resetting it to an empty state.
+Removes all messages from the queue, resetting it to an empty state.
 """)
 
 add_example('FileSystemQueue.clear', """\
@@ -613,6 +722,59 @@ add_example('FileSystemQueue.clear', """\
 True
 """)
 
+add_chinese_doc('FileSystemQueue.init', """\
+初始化队列。
+
+该方法会清空当前队列中的所有消息，相当于调用 ``clear()``。
+""")
+
+add_english_doc('FileSystemQueue.init', """\
+Initialize the queue.
+
+This method clears all messages in the current queue, equivalent to calling ``clear()``.
+""")
+
+add_chinese_doc('FileSystemQueue.get_instance', """\
+获取指定类名对应的队列实例。
+
+此方法会根据类名标识符返回对应的队列对象。如果该类名尚未注册，会触发自动初始化。
+
+Args:
+    klass (str): 队列类名标识符，不能为 ``'__default__'``。
+
+**Returns:**\n
+- FileSystemQueue: 与指定类名绑定的队列实例。
+""")
+
+add_english_doc('FileSystemQueue.get_instance', """\
+Get the queue instance for the specified class name.
+
+This method returns the queue object bound to the given class name. If the class name has not been registered, it will be initialized automatically.
+
+Args:
+    klass (str): Queue class name identifier, must not be ``'__default__'``.
+
+**Returns:**\n
+- FileSystemQueue: Queue instance bound to the specified class name.
+""")
+
+add_chinese_doc('FileSystemQueue.set_default', """\
+设置默认的队列实现。
+
+此方法用于指定默认的队列类，作为未传入 `klass` 参数时的后端实现。
+
+Args:
+    queue (Type): 默认队列类。
+""")
+
+add_english_doc('FileSystemQueue.set_default', """\
+Set the default queue implementation.
+
+This method specifies the default queue class, used as the backend implementation when `klass` is not provided.
+
+Args:
+    queue (Type): Default queue class.
+""")
 
 add_chinese_doc('common.ResultCollector', '''\
 结果收集器，用于在流程或任务执行过程中按名称存储和访问结果。  
@@ -625,6 +787,7 @@ A result collector used to store and access results by name during the execution
 Calling the instance with a name returns a callable Impl object that collects results for that name.  
 Useful for scenarios where intermediate results need to be shared across steps.
 ''')
+
 add_chinese_doc('common.ResultCollector.Impl', '''\
 ResultCollector 的内部实现类，负责为指定名称收集结果。  
 不应直接实例化，需通过 ResultCollector(name) 获取。
@@ -647,28 +810,28 @@ Args:
 add_chinese_doc('common.ResultCollector.keys', '''\
 获取所有已存储结果的名称。
 
-**Returns**\n
+**Returns:**\n
 - KeysView[str]: 结果名称集合。
 ''')
 
 add_english_doc('common.ResultCollector.keys', '''\
 Get all stored result names.
 
-**Returns**\n
+**Returns:**\n
 - KeysView[str]: A set-like object containing result names.
 ''')
 
 add_chinese_doc('common.ResultCollector.items', '''\
 获取所有已存储的 (名称, 值) 对。
 
-**Returns**\n
+**Returns:**\n
 - ItemsView[str, Any]: 结果的键值对集合。
 ''')
 
 add_english_doc('common.ResultCollector.items', '''\
 Get all stored (name, value) pairs.
 
-**Returns**\n
+**Returns:**\n
 - ItemsView[str, Any]: A set-like object containing name-value pairs of results.
 ''')
 
@@ -686,60 +849,226 @@ Args:
     env_vars_dict (dict): Dictionary of environment variables to temporarily set; variables with None values are ignored.
 ''')
 
-add_chinese_doc('ReadOnlyWrapper', '''\ 
+add_chinese_doc('utils.SecurityVisitor', '''\
+基于AST的Python代码安全分析器，用于检测不安全的操作。
+
+属性：
+    DANGEROUS_BUILTINS (set): 危险的内置函数集合，包括exec、eval、open等。
+    DANGEROUS_OS_CALLS (set): 危险的os操作集合，包括system、popen、remove等。
+    DANGEROUS_SYS_CALLS (set): 危险的sys操作集合，包括exit、modules等。
+    DANGEROUS_MODULES (set): 危险的模块集合，包括pickle、subprocess、socket等。
+
+注意：
+    此类继承自ast.NodeVisitor，用于遍历和检查Python代码的抽象语法树。
+''')
+
+add_english_doc('utils.SecurityVisitor', '''\
+AST-based Python code security analyzer for detecting unsafe operations.
+
+Attributes:
+    DANGEROUS_BUILTINS (set): Set of dangerous built-in functions like exec, eval, open.
+    DANGEROUS_OS_CALLS (set): Set of dangerous os operations like system, popen, remove.
+    DANGEROUS_SYS_CALLS (set): Set of dangerous sys operations like exit, modules.
+    DANGEROUS_MODULES (set): Set of dangerous modules like pickle, subprocess, socket.
+
+Note:
+    This class inherits from ast.NodeVisitor for traversing and checking Python code's abstract syntax tree.
+''')
+
+add_chinese_doc('utils.SecurityVisitor.visit_Call', '''\
+检查函数调用的安全性。
+
+检查内容：
+1. 危险的内置函数调用
+2. 危险的os模块调用
+3. 危险的sys模块调用
+
+Args:
+    node (ast.Call): AST函数调用节点。
+
+Raises:
+    ValueError: 当检测到危险的函数调用时抛出。
+''')
+
+add_english_doc('utils.SecurityVisitor.visit_Call', '''\
+Check security of function calls.
+
+Checks:
+1. Dangerous built-in function calls
+2. Dangerous os module calls
+3. Dangerous sys module calls
+
+Args:
+    node (ast.Call): AST function call node.
+
+Raises:
+    ValueError: When dangerous function calls are detected.
+''')
+
+add_chinese_doc('utils.SecurityVisitor.visit_Import', '''\
+检查import语句的安全性。
+
+Args:
+    node (ast.Import): AST导入节点。
+
+Raises:
+    ValueError: 当检测到危险模块的导入时抛出。
+''')
+
+add_english_doc('utils.SecurityVisitor.visit_Import', '''\
+Check security of import statements.
+
+Args:
+    node (ast.Import): AST import node.
+
+Raises:
+    ValueError: When dangerous module imports are detected.
+''')
+
+add_chinese_doc('utils.SecurityVisitor.visit_ImportFrom', '''\
+检查from...import语句的安全性。
+
+Args:
+    node (ast.ImportFrom): AST from-import节点。
+
+Raises:
+    ValueError: 当检测到危险模块的导入时抛出。
+''')
+
+add_english_doc('utils.SecurityVisitor.visit_ImportFrom', '''\
+Check security of from...import statements.
+
+Args:
+    node (ast.ImportFrom): AST from-import node.
+
+Raises:
+    ValueError: When dangerous module imports are detected.
+''')
+
+add_chinese_doc('utils.SecurityVisitor.visit_Attribute', '''\
+检查属性访问的安全性。
+
+检查内容：
+1. os.environ的访问
+2. tempfile模块的使用
+
+Args:
+    node (ast.Attribute): AST属性访问节点。
+
+Raises:
+    ValueError: 当检测到危险的属性访问时抛出。
+''')
+
+add_english_doc('utils.SecurityVisitor.visit_Attribute', '''\
+Check security of attribute access.
+
+Checks:
+1. Access to os.environ
+2. Usage of tempfile module
+
+Args:
+    node (ast.Attribute): AST attribute access node.
+
+Raises:
+    ValueError: When dangerous attribute access is detected.
+''')
+
+add_chinese_doc('common.Finalizer', '''\
+终结器类，用于管理资源的清理和释放操作。可以作为上下文管理器使用，或通过对象销毁时自动触发清理。
+
+Args:
+    func1 (Callable): 主要的清理函数。如果提供了func2，则func1会立即执行，func2作为清理函数。
+    func2 (Optional[Callable]): 可选的清理函数，默认为None。
+    condition (Callable): 条件函数，返回True时才执行清理函数，默认总是返回True。
+
+用途：
+1. 可以作为上下文管理器使用（with语句）
+2. 可以通过对象销毁时自动触发清理
+3. 支持条件性清理
+4. 支持两阶段初始化和清理
+
+注意：
+    - 当提供func2时，func1会在初始化时立即执行
+    - 清理函数只会执行一次
+    - 清理操作会在对象销毁或退出上下文时执行
+''')
+
+add_english_doc('common.Finalizer', '''\
+Finalizer class for managing resource cleanup and release operations. Can be used as a context manager or trigger cleanup automatically when object is destroyed.
+
+Args:
+    func1 (Callable): Primary cleanup function. If func2 is provided, func1 is executed immediately and func2 becomes the cleanup function.
+    func2 (Optional[Callable]): Optional cleanup function, defaults to None.
+    condition (Callable): Condition function, cleanup is executed only when it returns True, defaults to always returning True.
+
+Uses:
+1. Can be used as a context manager (with statement)
+2. Can trigger cleanup automatically when object is destroyed
+3. Supports conditional cleanup
+4. Supports two-phase initialization and cleanup
+
+Note:
+    - When func2 is provided, func1 is executed immediately during initialization
+    - Cleanup function is executed only once
+    - Cleanup occurs when object is destroyed or context is exited
+''')
+
+add_chinese_doc('ReadOnlyWrapper', '''
 一个轻量级只读包装器，用于包裹任意对象并对外提供只读访问（实际并未完全禁止修改，但复制时不会携带原始对象）。包装器可以动态替换内部对象，并提供判断对象是否为空的辅助方法。
+
 Args:
     obj (Optional[Any]): 初始被包装的对象，默认为 None。
 ''')
 
-add_english_doc('ReadOnlyWrapper', '''\
+add_english_doc('ReadOnlyWrapper', '''
 A lightweight read-only wrapper that holds an arbitrary object and exposes its attributes. It supports swapping the internal object dynamically and provides utility for checking emptiness. Note: it does not enforce deep immutability, but deepcopy drops the wrapped object.
+
 Args:
     obj (Optional[Any]): The initial wrapped object, defaults to None.
 ''')
 
-add_chinese_doc('ReadOnlyWrapper.set', '''\ 
+add_chinese_doc('ReadOnlyWrapper.set', '''
 替换当前包装的内部对象。
 
 Args:
     obj (Any): 新的内部对象。
 ''')
 
-add_english_doc('ReadOnlyWrapper.set', '''\
+add_english_doc('ReadOnlyWrapper.set', '''
 Replace the currently wrapped internal object.
 
 Args:
     obj (Any): New object to wrap.
 ''')
 
-add_chinese_doc('ReadOnlyWrapper.isNone', '''\ 
+add_chinese_doc('ReadOnlyWrapper.isNone', '''
 检查当前包装器是否未持有任何对象。
 
 Args:
     None.
 
-**Returns**\n
+**Returns:**\n
 - bool: 如果内部对象为 None 返回 True，否则 False。
 ''')
 
-add_english_doc('ReadOnlyWrapper.isNone', '''\
+add_english_doc('ReadOnlyWrapper.isNone', '''
 Check whether the wrapper currently holds no object.
 
 Args:
     None.
 
-**Returns**\n
+**Returns:**\n
 - bool: True if the internal object is None, otherwise False.
 ''')
 
-add_chinese_doc('queue.RedisQueue', '''\ 
+add_chinese_doc('queue.RedisQueue', '''
 基于 Redis 实现的文件系统队列（继承自 FileSystemQueue），用于跨进程/节点的消息传递与队列管理。内部使用指定的 redis_url 初始化并管理底层存储，同时提供线程安全的初始化逻辑。
 
 Args:
     klass (str): 队列的分类名称，用于区分不同队列实例，默认值为 '__default__'。
 ''')
 
-add_english_doc('queue.RedisQueue', '''\
+add_english_doc('queue.RedisQueue', '''
 Redis-backed file system queue (inherits from FileSystemQueue) for cross-process/node message passing and queue management. It initializes its underlying storage using a configured Redis URL and employs thread-safe setup logic.
 
 Args:
@@ -747,7 +1076,7 @@ Args:
 ''')
 
 
-add_chinese_doc('Identity', '''\
+add_chinese_doc('Identity', '''
 恒等模块，用于直接返回输入值。
 
 该模块常用于模块拼接结构中占位，无实际处理逻辑。若输入为多个参数，将自动打包为一个整体结构输出。
@@ -757,7 +1086,7 @@ Args:
     **kw: 可选的关键字参数，占位用。
 ''')
 
-add_english_doc('Identity', '''\
+add_english_doc('Identity', '''
 Identity module that directly returns the input as output.
 
 This module serves as a no-op placeholder in composition pipelines. If multiple inputs are provided, they are packed together before returning.
@@ -769,7 +1098,7 @@ Args:
 
 
 
-add_chinese_doc('ProcessPoolExecutor.submit', '''\
+add_chinese_doc('ProcessPoolExecutor.submit', '''
 将任务提交到进程池中执行。
 
 此方法将一个函数及其参数序列化后提交到进程池中执行，返回一个 `Future` 对象，用于获取任务执行结果或状态。
@@ -779,11 +1108,11 @@ Args:
     *args: 传递给函数的位置参数。
     **kwargs: 传递给函数的关键字参数。
 
-Returns:
-    concurrent.futures.Future: 表示任务执行状态的 `Future` 对象。
+**Returns:**\n
+- concurrent.futures.Future: 表示任务执行状态的 `Future` 对象。
 ''')
 
-add_english_doc('ProcessPoolExecutor.submit', '''\
+add_english_doc('ProcessPoolExecutor.submit', '''
 Submit a task to the process pool for execution.
 
 This method serializes a function and its arguments, then submits them to the process pool for execution. It returns a `Future` object to track the task's status or result.
@@ -793,11 +1122,11 @@ Args:
     *args: Positional arguments passed to the function.
     **kwargs: Keyword arguments passed to the function.
 
-Returns:
-    concurrent.futures.Future: A `Future` object representing the task's execution status.
+**Returns:**\n
+- concurrent.futures.Future: A `Future` object representing the task's execution status.
 ''')
 
-add_example('ProcessPoolExecutor.submit', '''\
+add_example('ProcessPoolExecutor.submit', '''
 >>> from lazyllm.common.multiprocessing import ProcessPoolExecutor
 >>> import time
 >>> 
@@ -830,7 +1159,7 @@ Args:
 **注意**: 此类主要用于 LazyLLM 内部的进程管理，特别是在需要长期运行的服务器进程中。
 ''')
 
-add_english_doc('ForkProcess', '''\
+add_english_doc('ForkProcess', '''
 Enhanced process class provided by LazyLLM, inheriting from Python's standard library `multiprocessing.Process`. This class specifically uses the fork start method to create child processes and provides support for synchronous/asynchronous execution modes.
 
 Args:
@@ -845,7 +1174,7 @@ Args:
 **Note**: This class is primarily used for LazyLLM's internal process management, especially in long-running server processes.
 ''')
 
-add_example('ForkProcess', '''\
+add_example('ForkProcess', '''
 >>> import lazyllm
 >>> from lazyllm.common import ForkProcess
 >>> import time
@@ -860,7 +1189,7 @@ Process 12345 executing task 1
 ''')
 
 # ForkProcess.work
-add_chinese_doc('ForkProcess.work', '''\
+add_chinese_doc('ForkProcess.work', '''
 ForkProcess 的核心工作方法，负责包装目标函数并处理同步/异步执行逻辑。
 
 Args:
@@ -868,7 +1197,7 @@ Args:
     sync: 是否为同步模式。在同步模式下，执行完目标函数后进程会退出；在异步模式下，进程会持续运行。
 ''')
 
-add_english_doc('ForkProcess.work', '''\
+add_english_doc('ForkProcess.work', '''
 Core working method of ForkProcess, responsible for wrapping the target function and handling synchronous/asynchronous execution logic.
 
 Args:
@@ -877,7 +1206,7 @@ Args:
 ''')
 
 # ForkProcess.start
-add_chinese_doc('ForkProcess.start', '''\
+add_chinese_doc('ForkProcess.start', '''
 启动 ForkProcess 进程。此方法会使用 fork 启动方法来创建子进程，并开始执行目标函数。
 
 此方法的特点：
@@ -890,7 +1219,7 @@ add_chinese_doc('ForkProcess.start', '''\
 
 ''')
 
-add_english_doc('ForkProcess.start', '''\
+add_english_doc('ForkProcess.start', '''
 Start the ForkProcess. This method uses the fork start method to create a child process and begin executing the target function.
 
 Features of this method:
@@ -905,40 +1234,38 @@ Features of this method:
 
 # ============= Options
 # Option
-add_chinese_doc('Option', '''\
+add_chinese_doc('Option', '''
 LazyLLM 提供的选项管理类，用于管理多个选项值并在它们之间进行迭代。此类主要用于参数网格搜索和超参数调优场景。
 
 Args:
-    *obj: 一个或多个选项值，可以是任意类型的对象。如果传入单个列表或元组，会自动展开。
+    *obj: 一个或多个选项值，可以是任意类型的对象。如果传入单个列表或元组，会自动展开。至少需要提供两个选项。
 
-此类的主要特性：
+主要特性：
 
-- **多选项管理**: 可以管理多个不同的选项值
-- **迭代支持**: 支持标准的 Python 迭代协议，可以遍历所有选项
-- **当前值访问**: 始终可以访问当前选中的选项值
-- **深度复制**: 支持深度复制当前选中的选项值
-- **多进程兼容**: 支持在多进程环境中使用
+- **多选项管理**: 可以管理多个不同的选项值。
+- **迭代支持**: 支持标准 Python 迭代协议，可以遍历所有选项。
+- **当前值访问**: 可直接访问当前选中的选项值。
+- **深度复制**: 支持获取当前选中选项值的深拷贝。
+- **循环迭代**: 可在所有选项之间循环迭代。
 
-**注意**: 此类主要用于 LazyLLM 内部的参数搜索和试验管理，特别是在 TrialModule 中进行参数网格搜索时。
-
+**注意**: 此类主要用于 LazyLLM 内部的参数搜索和实验管理，尤其在 `TrialModule` 中进行参数网格搜索时。
 ''')
 
-add_english_doc('Option', '''\
+add_english_doc('Option', '''
 Option management class provided by LazyLLM, used for managing multiple option values and iterating between them. This class is primarily used for parameter grid search and hyperparameter tuning scenarios.
 
 Args:
-    *obj: One or more option values, which can be objects of any type. If a single list or tuple is passed, it will be automatically expanded.
+    *obj: One or more option values, which can be objects of any type. If a single list or tuple is passed, it will be automatically expanded. At least two options must be provided.
 
-Key features of this class:
+Key features:
 
-- **Multi-option Management**: Can manage multiple different option values
-- **Iteration Support**: Supports standard Python iteration protocol, can iterate through all options
-- **Current Value Access**: Always can access the currently selected option value
-- **Deep Copy**: Supports deep copying of the currently selected option value
-- **Multi-process Compatibility**: Supports usage in multi-process environments
+- **Multi-option Management**: Can manage multiple different option values.
+- **Iteration Support**: Supports standard Python iteration protocol, allowing traversal of all options.
+- **Current Value Access**: Provides access to the currently selected option.
+- **Deep Copy**: Supports obtaining a deep copy of the currently selected option.
+- **Cyclic Iteration**: Options can be iterated over in a cyclic manner.
 
-**Note**: This class is primarily used for LazyLLM's internal parameter search and trial management, especially in TrialModule for parameter grid search.
-
+**Note**: This class is mainly used for LazyLLM's internal parameter search and trial management, especially in `TrialModule` for parameter grid search.
 ''')
 
 add_example('Option', '''\
@@ -1023,7 +1350,7 @@ add_example('LazyLLMCMD', '''\
 add_chinese_doc('LazyLLMCMD.with_cmd', '''\
 创建新命令对象并继承当前配置。
 
-参数:
+Args:
     cmd: 新的命令内容（类型需与原始命令一致）
 
 ''')
@@ -1039,7 +1366,7 @@ Args:
 add_chinese_doc('LazyLLMCMD.get_args', '''\
 从命令字符串中提取指定参数的值。
 
-参数:
+Args:
     key: 要提取的参数名
 ''')
 
@@ -1054,6 +1381,7 @@ add_chinese_doc('queue.SQLiteQueue', '''\
 基于 SQLite 的持久化文件系统队列。
 该类扩展自 FileSystemQueue，使用 SQLite 数据库存储队列数据，通过 position 字段保证先进先出顺序，并支持并发安全的消息入队、出队、查看队头、队列大小查询和清空操作。
 队列数据库默认存储在 ~/.lazyllm_filesystem_queue.db，通过文件锁机制确保多进程安全访问。
+
 Args:
     klass (str): 队列分类名，用于逻辑隔离不同的队列，默认为 '__default__'。
 ''')
@@ -1062,6 +1390,252 @@ add_english_doc('queue.SQLiteQueue', '''\
 Persistent file system queue backed by SQLite.
 This class extends FileSystemQueue and stores queue data in an SQLite database. Messages are ordered by a position field to preserve FIFO behavior. The class supports concurrent-safe operations including enqueue, dequeue, peek, size checking, and clearing the queue.
 The queue database is saved at ~/.lazyllm_filesystem_queue.db, with a file lock mechanism ensuring safe access in multi-process environments.
+
 Args:
     klass (str): Name of the queue category used to logically separate queues. Default is '__default__'.
+''')
+
+add_chinese_doc('common.FlatList.absorb', """\
+添加元素到列表中。
+
+Args:
+    item: 要添加的元素，可以是单个元素或列表
+""")
+
+add_english_doc('common.FlatList.absorb', """\
+Absorb elements into the list.
+
+Args:
+    item: Element to add, can be a single element or a list
+""")
+
+add_chinese_doc('common.ArgsDict', """\
+参数字典类，用于管理和验证命令行参数。
+
+Args:
+    *args: 传递给父类dict的 positional arguments
+    **kwargs: 传递给父类dict的 keyword arguments
+
+**Returns:**\n
+- ArgsDict实例，提供参数检查和格式化功能
+""")
+
+add_english_doc('common.ArgsDict', """\
+Parameter dictionary class for managing and validating command line arguments.
+
+Args:
+    *args: Positional arguments passed to parent dict class
+    **kwargs: Keyword arguments passed to parent dict class
+
+**Returns:**\n
+- ArgsDict instance providing parameter checking and formatting functionality
+""")
+
+add_chinese_doc('common.ArgsDict.check_and_update', """\
+检查并更新参数字典。
+
+Args:
+    kw (dict): 要更新的参数字典
+""")
+
+add_english_doc('common.ArgsDict.check_and_update', """\
+Check and update parameter dictionary.
+
+Args:
+    kw (dict): Parameter dictionary to update
+""")
+
+add_chinese_doc('common.ArgsDict.parse_kwargs', """\
+将参数字典解析为命令行参数字符串。
+""")
+
+add_english_doc('common.ArgsDict.parse_kwargs', """\
+Parse parameter dictionary into command line argument string.
+""")
+
+add_chinese_doc('common.DynamicDescriptor', """\
+动态描述符类，用于创建支持实例和类级别调用的描述符。
+
+Args:
+    func (callable): 要包装的函数或方法
+""")
+
+add_english_doc('common.DynamicDescriptor', """\
+Dynamic descriptor class for creating descriptors that support both instance and class level calls.
+
+Args:
+    func (callable): Function or method to be wrapped
+""")
+
+# ============= Globals
+
+add_chinese_doc('init_session', '''
+初始化一个新的会话环境。
+
+该函数会为当前上下文初始化全局与局部的 session id，通常用于隔离不同执行流程中的状态，避免相互污染。
+''')
+
+add_english_doc('init_session', '''
+Initialize a new session environment.
+
+This function initializes session IDs for both global and local contexts, and is typically used to isolate states across different execution flows.
+''')
+
+add_example('init_session', '''
+from lazyllm.common import init_session
+
+init_session()
+''')
+
+add_chinese_doc('teardown_session', '''
+销毁当前会话环境。
+
+该函数会清空当前会话中保存的全局和局部状态，通常与 init_session 成对使用，用于释放资源和避免状态泄漏。
+''')
+
+add_english_doc('teardown_session', '''
+Tear down the current session environment.
+
+This function clears all global and local states associated with the current session. It is usually paired with init_session to release resources and prevent state leakage.
+''')
+
+add_example('teardown_session', '''
+from lazyllm.common import init_session, teardown_session
+
+init_session()
+# ...
+teardown_session()
+''')
+
+
+add_chinese_doc('new_session', '''
+创建一个新的会话上下文（上下文管理器）。
+
+进入上下文时会自动初始化 session，退出上下文时会自动清理 session。适合用于临时、隔离的执行场景。
+''')
+
+add_english_doc('new_session', '''
+Create a new session context (context manager).
+
+A session is automatically initialized when entering the context and automatically torn down when exiting. This is suitable for temporary and isolated execution scenarios.
+''')
+
+add_example('new_session', '''
+from lazyllm.common import new_session
+
+with new_session():
+    pass
+''')
+
+# ========== Temp files
+
+add_chinese_doc('TempPathGenerator', '''
+一个临时文件路径生成器，用于将字符串内容写入临时文件，并返回对应的文件路径列表。
+
+该类实现了上下文管理协议（with 语法），在进入上下文时会为每一段文本创建一个临时文件，
+并将其内容写入文件中；在退出上下文时，如果未设置 persist=True，则会自动清理临时目录。
+
+常用于需要将内存中的文本内容临时转为文件路径，以复用现有基于文件路径的处理逻辑
+（如文档加载、embedding、检索等）的场景。
+
+Args:
+    contents (Iterable[str]): 需要写入临时文件的文本内容，可以是字符串或字符串列表。
+    suffix (str): 临时文件的后缀名，默认为 '.txt'。
+    encoding (str): 写入文件时使用的编码格式，默认为 'utf-8'。
+    persist (bool): 是否在退出上下文后保留临时文件。默认为 False，表示自动清理。
+''')
+
+add_english_doc('TempPathGenerator', '''
+A temporary file path generator that writes text contents into temporary files
+and returns the corresponding file path list.
+
+This class implements the context manager protocol (via the `with` statement).
+When entering the context, it creates a temporary directory and writes each
+text content into a separate file. When exiting the context, the temporary
+files will be automatically cleaned up unless `persist=True` is specified.
+
+It is commonly used in scenarios where in-memory text needs to be temporarily
+converted into file paths in order to reuse existing file-based processing
+pipelines (e.g., document loading, embedding, retrieval).
+
+Args:
+    contents (Iterable[str]): Text contents to be written into temporary files. Can be a single string or a list of strings.
+    suffix (str): Suffix of the temporary files. Defaults to '.txt'.
+    encoding (str): Encoding used when writing files. Defaults to 'utf-8'.
+    persist (bool): Whether to keep temporary files after exiting the context. Defaults to False, meaning files are cleaned up automatically.
+''')
+
+add_example('TempPathGenerator', '''
+from lazyllm import TempPathGenerator
+
+texts = [
+    "This is the first temporary document.",
+    "This is the second temporary document."
+]
+
+with TempPathGenerator(texts, suffix=".txt") as paths:
+    for p in paths:
+        print(p)
+        # p can be passed to any file-based document loader
+''')
+
+add_chinese_doc('retry', '''
+一个简单的重试装饰器，用于在函数执行失败时按指定次数进行重试。
+
+该装饰器会在被装饰函数抛出异常时捕获异常，并在未达到最大重试次数前
+重新执行函数；如果超过最大重试次数仍然失败，则会抛出最后一次异常。
+可选地支持在每次重试之间添加固定延迟。
+
+适用于对不稳定操作（如网络请求、临时资源访问等）进行基础容错处理，
+无需引入额外第三方依赖。
+
+Args:
+    stop_after_attempt (int): 最大重试次数，包含首次执行在内，默认为 3 次。
+    delay (float): 每次重试之间的等待时间（秒），默认为 0，表示不等待。
+''')
+
+add_english_doc('retry', '''
+A simple retry decorator that retries a function execution when an exception occurs.
+
+This decorator catches exceptions raised by the wrapped function and retries
+execution until the maximum number of attempts is reached. If all attempts fail,
+the last exception will be re-raised. An optional fixed delay between retries
+is supported.
+
+It is useful for adding basic fault tolerance to unstable operations such as
+network requests or temporary resource access, without introducing external
+dependencies.
+
+Args:
+    stop_after_attempt (int): Maximum number of attempts, including the initial call.
+        Defaults to 3.
+    delay (float): Delay in seconds between retry attempts. Defaults to 0, meaning
+        no delay.
+''')
+
+add_example('retry', '''
+import random
+from lazyllm import retry
+
+# default stop_after_attempt is 3
+@retry
+def unstable_function():
+    if random.random() < 0.7:
+        raise RuntimeError("Random failure")
+    return "Success!"
+
+@retry(stop_after_attempt=3, delay=1.0)
+def unstable_function():
+    if random.random() < 0.7:
+        raise RuntimeError("Random failure")
+    return "Success!"
+
+@retry(3)
+def unstable_function():
+    if random.random() < 0.7:
+        raise RuntimeError("Random failure")
+    return "Success!"
+
+result = unstable_function()
+print(result)
 ''')

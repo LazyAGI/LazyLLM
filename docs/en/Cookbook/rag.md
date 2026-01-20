@@ -34,6 +34,7 @@ documents = lazyllm.Document(dataset_path="/path/to/your/doc/dir",
 retriever = lazyllm.Retriever(doc=documents,
                               group_name="CoarseChunk",
                               similarity="bm25_chinese",
+                              similarity_cut_off=0.003,
                               topk=3)
 
 # Part3
@@ -69,7 +70,7 @@ Let's briefly explain the code in each part.
 
 1. Part0 imports `lazyllm`.
 
-2. Part1 loads the local knowledge base directory and uses the built-in `OnlineEmbeddingModule` as the embedding function.
+2. Part1 loads the local knowledge base directory and uses the built-in `OnlineEmbeddingModule` as the embedding model.
 
 3. Part2 creates a `Retriever` for document retrieval, and uses the built-in `CoarseChunk` (refer to [definition of CoarseChunk][llm.tools.Retriever]) to chunk the documents into specified sizes, then uses the built-in `bm25_chinese` as the similarity calculation function, discards results with a similarity less than 0.003, and finally takes the closest 3 documents.
 
@@ -96,7 +97,135 @@ Enter the content you want to query and wait for the large model to return the r
 
 In this example, we only used the built-in algorithm `CoarseChunk` for retrieving similar documents, which chunks the document into fixed lengths and calculates the similarity for each chunk. This method may have decent results in some scenarios; however, in most cases, this simple and rough chunking may split important information into two segments, causing information loss, and the resulting documents may not be relevant to the user's input query.
 
-## Version-2: Adding Recall Strategy and Sorting
+## Version-2: Choosing Splitting Methods
+
+When creating a knowledge base, we need to split the document content. In Part2 of Version-1, we split documents into fixed-size chunks using the built-in CoarseChunk configuration. However, in practice, we encounter various document formats and content types. To achieve better retrieval results, we need more refined splitting operations. LazyLLM provides many built-in splitter classes with very flexible usage.
+
+In LazyLLM, for common splitting methods and file types, there are currently built-in splitters including CharacterSplitter, RecursiveSplitter, SentenceSplitter, MarkdownSplitter, XMLSplitter, HTMLSplitter, JSONSplitter, YAMLSplitter, GeneralCodeSplitter, and CodeSplitter.
+
+Based on Part1, we can specify a splitting method to split documents into a `Node Group` named `character` based on specified symbols. Let's take the simplest CharacterSplitter as an example:
+
+```python
+document.create_node_group(name='character',
+                           transform=CharacterSplitter)
+```
+
+This will invoke CharacterSplitter for splitting when creating the node group, using the default separator ' ' (space).
+Of course, we can also customize the separator using the separator parameter:
+
+```python
+document.create_node_group(name='character',
+                           transform=CharacterSplitter,
+                           separator='.')
+```
+
+For more flexibility, we can use regular expressions for splitting and use keep_separator to decide whether to keep the separator (defaults to keeping it on the right side):
+
+```python
+document.create_node_group(name='character',
+                           transform=CharacterSplitter,
+                           separator=r"[,;。；]",
+                           is_separator_regex=True,
+                           keep_separator=True)
+```
+
+Sometimes we need to create many node groups, all using CharacterSplitter for splitting. Configuring each one separately can be tedious. For this reason, all splitter classes have built-in set_default(), get_default(), and reset_default() methods for globally setting default parameters.
+
+Let's continue with CharacterSplitter as an example:
+
+```python
+from lazyllm.tools.rag import CharacterSplitter
+
+# Override CharacterSplitter's default values using set_default, 
+# so these settings will be used wherever it's called
+CharacterSplitter.set_default(
+    chunk_size=2048,
+    overlap=200,
+    separator='.',
+    is_separator_regex=False,
+    keep_separator=True,
+)
+
+# You can also use reset_default to clear custom settings 
+# and restore CharacterSplitter's original defaults
+CharacterSplitter.reset_default()
+```
+
+LazyLLM's built-in splitters use the tiktoken library by default to load the tokenizer for calculating chunk_size. For users accustomed to huggingface, LazyLLM also provides the from_huggingface_tokenizer() method:
+
+```python
+from lazyllm.tools.rag import CharacterSplitter
+
+tokenizer = AutoTokenizer.from_pretrained('gpt2')
+charactersplitter = CharacterSplitter()
+charactersplitter = charactersplitter.from_huggingface_tokenizer(tokenizer)
+
+document.create_node_group(name='character',
+                           transform=charactersplitter,
+                           separator='.')
+```
+
+Now CharacterSplitter will use the huggingface tokenizer when splitting documents.
+
+For CharacterSplitter and RecursiveSplitter, we can also define custom splitting functions. Taking CharacterSplitter as an example, when a separator is provided, CharacterSplitter calls the built-in default_split() function for splitting.
+
+We can also define custom splitting functions to specify how to use the separator we provide. Among different splitting methods, CharacterSplitter and RecursiveSplitter provide set_split_fns(), add_split_fn(), and clear_split_fns() methods to manage custom splitting functions. SentenceSplitter will provide similar methods in the future. Let's use CharacterSplitter as an example (RecursiveSplitter usage is similar):
+
+```python
+def custom_paragraph_split(text, separator):
+    chunks = text.split(separator)
+    result = []
+    for chunk in chunks:
+        chunk = chunk.strip()
+        if len(chunk) > 10:
+            result.append(chunk)
+    return result
+
+def filter_empty_split(text, separator):
+    chunks = text.split(separator)
+    return [chunk.strip() for chunk in chunks if chunk.strip()]
+
+charactersplitter = CharacterSplitter()
+# Customize splitting function or pipeline (pass a List[Callable])
+charactersplitter.set_split_fns(custom_paragraph_split)
+document.create_node_group(name='character1',
+                           transform=charactersplitter,
+                           separator='.')
+
+# Add a splitting function at a specified position in the custom splitting pipeline
+charactersplitter.add_split_fn(filter_empty_split, 0)
+document.create_node_group(name='character2',
+                           transform=charactersplitter,
+                           separator='.')
+
+# Clear custom splitting functions and use the default splitting pipeline
+charactersplitter.clear_split_fns()
+document.create_node_group(name='character3',
+                           transform=charactersplitter,
+                           separator='.')
+```
+
+For different document types, LazyLLM's built-in MarkdownSplitter, XMLSplitter, HTMLSplitter, JSONSplitter, YAMLSplitter, GeneralCodeSplitter, and CodeSplitter can achieve different splitting requirements by configuring different parameters. Please refer to the documentation for each splitter class.
+
+Among them, CodeSplitter is more accurately described as a router class. It doesn't implement specific splitting but selects the appropriate splitter class based on input parameters. Let's use XML files as an example:
+
+```python
+from lazyllm.tools.rag import CodeSplitter
+
+# This actually uses the XMLSplitter class
+document.create_node_group(name='xmlsplitter',
+                           transform=CodeSplitter,
+                           filetype='xml')
+
+# You can also use CodeSplitter's from_language() method to specify
+splitter = CodeSplitter()
+splitter.from_language('xml')
+document.create_node_group(name='xmlsplitter',
+                           transform=splitter)
+```
+
+
+## Version-3: Adding Recall Strategy and Sorting
 
 To measure the relevance between documents and queries from different dimensions, we add a `Node Group` named `sentences` in Part1 that splits the document at the sentence level:
 
@@ -169,6 +298,7 @@ documents.create_node_group(name="sentences",
 retriever1 = lazyllm.Retriever(doc=documents,
                                group_name="CoarseChunk",
                                similarity="bm25_chinese",
+                               similarity_cut_off=0.003,
                                topk=3)
 
 retriever2 = lazyllm.Retriever(doc=documents,
@@ -216,9 +346,9 @@ print(f"answer: {res}")
 
 </details>
 
-## Version-3: using the Flow
+## Version-4: using the Flow
 
-From the flowchart of version-2, it can be seen that the entire process is already quite complex. We noticed that the retrieval processes of two (or more) `Retriever`s do not affect each other; they can be executed in parallel. At the same time, there are clear dependencies between the upstream and downstream processes, which require the upstream to be completed before the next step can proceed.
+From the flowchart of version-3, it can be seen that the entire process is already quite complex. We noticed that the retrieval processes of two (or more) `Retriever`s do not affect each other; they can be executed in parallel. At the same time, there are clear dependencies between the upstream and downstream processes, which require the upstream to be completed before the next step can proceed.
 
 `LazyLLM` provides a set of auxiliary tools to simplify the writing of the execution flow. We can use [parallel](../Best%20Practice/flow.md#parallel) to encapsulate the two retrieval processes, allowing them to execute in parallel; and use [pipeline](../Best%20Practice/flow.md#pipeline) to encapsulate the entire process. The entire rewritten program is as follows:
 
@@ -285,7 +415,7 @@ The illustration is as follows:
 
 `pipeline` and `parallel` are merely convenient for process setup and may offer some performance optimizations, but they do not alter the logic of the program. Additionally, the user query is an important prompt content that is essentially used by every intermediate module. Here, we also utilize the [bind()](../Best%20Practice/flow.md#use-bind) function provided by `LazyLLM` to pass the user query `query` as a parameter to `ppl.reranker` and `ppl.formatter`.
 
-## Version-4: Customizing Retrieval and Sorting Strategies
+## Version-5: Customizing Retrieval and Sorting Strategies
 
 The examples above all use components built into `LazyLLM`. However, in reality, there are always user needs that we cannot cover. To meet these needs, `Retriever` and `Reranker` provide a plugin mechanism that allows users to define their own retrieval and sorting strategies, adding them to the framework through the registration interface provided by `LazyLLM`.
 
@@ -325,17 +455,17 @@ Certainly, the results returned might be a little wired :)
 
 Here, we've simply introduced how to use the `LazyLLM` extension registration mechanism. You can refer to the documentation for [Retriever](../Best%20Practice/rag.md#Retriever) and [Reranker](../Best%20Practice/rag.md#Reranker) for more information. When you encounter scenarios where the built-in functionalities do not meet your needs, you can implement your own applications by writing custom similarity calculation and sorting strategies.
 
-## Version-5: Customizing Storage Backend
+## Version-6: Customizing Storage Backend
 
 After defining the transformation rules for the Node Group, `LazyLLM` will save the content of the Node Group obtained during the retrieval process, so as to avoid repeating the transformation operation when it is used subsequently. To facilitate users’ access to different types of data, `LazyLLM` supports custom storage backends.
 
-If not specified, `LazyLLM` uses a dict-based key/value as the default storage backend. Users can specify other storage backends through the `Document` parameter `store_conf`. For example, if you want to use Milvus as the storage backend, you can configure it like this:
+If not specified, `LazyLLM` uses `MapStore` (based on dict key/value storage) as the default storage backend. Users can specify other storage backends through the `Document` parameter `store_conf`. For example, if you want to use Milvus as the storage backend, you can configure it like this:
 
 ```python
 milvus_store_conf = {
     'type': 'milvus',
     'kwargs': {
-        'uri': store_file,
+        'uri': '/path/to/milvus/dir/milvus.db',
         'index_kwargs': {
             'index_type': 'HNSW',
             'metric_type': 'COSINE',
@@ -344,17 +474,34 @@ milvus_store_conf = {
 }
 ```
 
-The `type` parameter is the backend type, and `kwargs` are the parameters that need to be passed to the backend. The meanings of each field are as follows:
+The `type` parameter is the backend type, and `kwargs` are the parameters that need to be passed to the backend. The meanings of each field are as follows [RAG Best Practices](../Best%20Practice/rag.md#store-and-index):
 
-* `type`: The backend type to be used. Currently supported:
-    - `map`: In-memory key/value storage;
-    - `chroma`: Use Chroma to store data;
-        - `dir` (required): The directory where data is stored.
-    - `milvus`: Use Milvus to store data.
-        - `uri` (required): The Milvus storage address, which can be a file path or a URL in the format of `ip:port`;
-        - `index_kwargs` (optional): Milvus index configuration, which can be a dict or a list. If it is a dict, it means all embedding indexes use the same configuration; if it is a list, the elements in the list are dict, indicating the configuration used by the embedding specified by `embed_key`. Currently, only `floating point embedding` and `sparse embedding` are supported for embedding types, with the following supported parameters respectively:
-            - `floating point embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=floating](https://milvus.io/docs/index-vector-fields.md?tab=floating)
-            - `sparse embedding`: [https://milvus.io/docs/index-vector-fields.md?tab=sparse](https://milvus.io/docs/index-vector-fields.md?tab=sparse)
+!!! Note
+
+    In the latest version of `LazyLLM`, it is recommended to pass in `segment_store` and `vector_store` two fields, respectively specifying the configuration of slice storage and vector storage. For the case of passing in the `type` field, `LazyLLM` will automatically map the `type` field, if it is for vector storage, the default slice storage will be `MapStore`.
+
+If users expect to store slice data locally, they can pass in the `segment_store` field, specifying `type` as `map` and passing in the `uri` field, specifying the directory of the slice storage.
+
+```python
+store_conf = {
+    'segment_store': {
+        'type': 'map',
+        'kwargs': {
+            'uri': '/path/to/segment/dir/sqlite3.db',
+        },
+    },
+    'vector_store': {
+        'type': 'milvus',
+        'kwargs': {
+            'uri': '/path/to/milvus/dir/milvus.db',
+            'index_kwargs': {
+                'index_type': 'HNSW',
+                'metric_type': 'COSINE',
+            }
+        },
+    },
+}
+```
 
 If using Milvus, we also need to pass the `doc_fields` parameter to `Document`, which is used to specify the fields and types of information that need to be stored. For example, the following configuration:
 
@@ -449,109 +596,39 @@ if __name__ == '__main__':
 
 </details>
 
-## Version-6: Customizing Index Backend
+## Version-7: Separating Online and Offline, Accessing the Remote `Document`
 
-To accelerate data retrieval and meet various retrieval needs, `LazyLLM` also supports specifying index backends for different storage backends. This can be done through the indices field in the `store_conf` parameter of `Document`. The index types configured in `indices` can be used in `Retriever` (by specifying the `index` parameter).
+RAG systems often include document parsing and online Q&A phases, where the document parsing phase is time-consuming, but can be executed offline, while the Q&A phase needs to respond quickly. To meet this need, `LazyLLM` provides the function of remote deployment and access of `Document`, allowing users to deploy `Document` on a remote server and use it through url.
 
-For instance, if you want to use a key/value store based on dict and use Milvus as the retrieval backend for this storage, you can configure it as follows:
-
-```python
-milvus_store_conf = {
-    'type': 'map',
-    'indices': {
-        'smart_embedding_index': {
-            'backend': 'milvus',
-            'kwargs': {
-                'uri': store_file,
-                'index_kwargs': {
-                    'index_type': 'HNSW',
-                    'metric_type': 'COSINE',
-                }
-            },
-        },
-    },
-}
-```
-
-The parameter `type` has been introduced in Version-5 and will not be repeated here. `indices` is a dict where the key is the index type, and the value is a dict whose content varies depending on the different index types.
-
-Currently, indices only supports `smart_embedding_index`, with the following parameters:
-
-* `backend`: Specifies the type of index backend used for embedding retrieval. Only milvus is supported at the moment;
-* `kwargs`: The parameters that need to be passed to the index backend. In this case, the parameters passed to the milvus backend are the same as those introduced for the milvus storage backend in the section of Version-5.
-
-Here is a complete example using milvus as the index backend:
-
-<details>
-
-<summary>Here is the complete code (click to expand):</summary>
+### Using Service Mode to Start `Document`
 
 ```python
-# -*- coding: utf-8 -*-
+docs = lazyllm.Document(dataset_path="rag_master",
+                        name="doc_server",
+                        embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
+                        server=9200,
+                        store_conf=milvus_store_conf,
+                        doc_fields=doc_fields)
+docs.create_node_group(name="sentences", transform=lambda s: '。'.split(s))
+docs.activate_groups(["sentences", "CoarseChunk"]) # Use docs.activate_group('sentences', embed_keys=['xxx']) to activate a single node group
 
-import os
-import lazyllm
-from lazyllm import bind
-import tempfile
-
-def run(query):
-    _, store_file = tempfile.mkstemp(suffix=".db")
-
-    milvus_store_conf = {
-        'type': 'map',
-        'indices': {
-            'smart_embedding_index': {
-                'backend': 'milvus',
-                'kwargs': {
-                    'uri': store_file,
-                    'index_kwargs': {
-                        'index_type': 'HNSW',
-                        'metric_type': 'COSINE',
-                    }
-                },
-            },
-        },
-    }
-
-    documents = lazyllm.Document(dataset_path="rag_master",
-                                 embed=lazyllm.TrainableModule("bge-large-zh-v1.5"),
-                                 manager=False,
-                                 store_conf=milvus_store_conf)
-
-    documents.create_node_group(name="sentences",
-                                transform=lambda s: '。'.split(s))
-
-    prompt = 'You will play the role of an AI Q&A assistant and complete a dialogue task.'\
-        ' In this task, you need to provide your answer based on the given context and question.'
-
-    with lazyllm.pipeline() as ppl:
-        ppl.retriever = lazyllm.Retriever(doc=documents, group_name="sentences", topk=3,
-                                          index='smart_embedding_index')
-
-        ppl.reranker = lazyllm.Reranker(name='ModuleReranker',
-                                        model="bge-reranker-large",
-                                        topk=1,
-                                        output_format='content',
-                                        join=True) | bind(query=ppl.input)
-
-        ppl.formatter = (
-            lambda nodes, query: dict(context_str=nodes, query=query)
-        ) | bind(query=ppl.input)
-
-        ppl.llm = lazyllm.TrainableModule('internlm2-chat-7b').prompt(
-            lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
-
-        rag = lazyllm.ActionModule(ppl)
-        rag.start()
-        res = rag(query)
-
-    os.remove(store_file)
-
-    return res
-
-if __name__ == '__main__':
-    res = run('What is the way of heaven?')
-    print(f'answer: {res}')
+docs.start()
 ```
 
-</details>
+The `server` parameter is specified as `9200`, indicating that the `Document` is started in service mode, and after calling `docs.start()`, the `Document` will start a service and specify the port as `9200`. (It can also be specified as `True`, indicating that a random port is assigned)
+
+Before starting, ensure that the document service has created all the necessary node groups, and executes `docs.activate_groups()` according to the needs to activate the corresponding node groups, only the activated node groups will be discovered by the service, and used in the subsequent document parsing and retrieval. Here, we activate the `sentences` and `CoarseChunk` two node groups, defaulting to activate all vector models, if `docs` passes in a dictionary format of multiple vector models, the parameter when passing in only needs to pass the key of the corresponding vector model.
+
+### Using url to Access `Document`
+
+After starting, assuming that the document service is deployed on port `9200` of `127.0.0.1`, it can be accessed through `http://127.0.0.1:9200/`. We use `lazyllm.UrlDocument` to access the document service, and specify the name of the document service as `doc_server`.
+
+```python
+docs2 = lazyllm.Document(url="http://127.0.0.1:9200/", name="doc_server")
+retriever = lazyllm.Retriever(doc=docs2, group_name="sentences", topk=3)
+
+query = "What is the way of heaven?"
+res = retriever(query=query)
+print(f"answer: {res}")
+
+By this way, the `url` parameter of `docs2` points to the address of the document service, and the `name` parameter specifies the name of the document service. Users can directly use `docs2` for retrieval without worrying about where the document service is deployed.

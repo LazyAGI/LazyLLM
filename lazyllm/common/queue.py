@@ -4,12 +4,47 @@ from abc import ABC, abstractmethod
 from .globals import globals
 from ..configs import config
 import os
-from typing import Type
+from typing import Type, Optional
 from lazyllm.thirdparty import redis
+from queue import Queue
+from collections import deque
 from filelock import FileLock
 
-config.add("default_fsqueue", str, "sqlite", "DEFAULT_FSQUEUE")
-config.add("fsqredis_url", str, "", "FSQREDIS_URL")
+config.add('default_fsqueue', str, 'sqlite', 'DEFAULT_FSQUEUE',
+           description='The default file system queue to use.')
+config.add('fsqredis_url', str, '', 'FSQREDIS_URL',
+           description='The URL of the Redis server for the file system queue.')
+config.add('default_recent_k', int, 0, 'DEFAULT_RECENT_K',
+           description='The number of recent inputs that RecentQueue keeps track of.')
+
+
+class RecentQueue(Queue):
+    def __init__(self, maxsize=0, recent_k=None):
+        super().__init__(maxsize)
+        self._recent_k = recent_k or config['default_recent_k']
+        if self._recent_k:
+            self._recent = deque(maxlen=self._recent_k)
+            self._recent_lock = threading.Lock()
+
+    def put(self, item, block=True, timeout=None):
+        super().put(item, block, timeout)
+        if self._recent_k:
+            with self._recent_lock:
+                self._recent.append(item)
+        return self
+
+    def get_recent(self, join: Optional[str] = None, join_prefix: Optional[str] = None):
+        r = []
+        if self._recent_k:
+            with self._recent_lock:
+                r = list(self._recent)
+        if join:
+            assert isinstance(join, str), 'join symbol must be str'
+            assert all([isinstance(s, str) for s in r]), 'all items of list to join must be str'
+            r = join.join(r)
+            if join_prefix and r: r = join_prefix + r
+        return r
+
 
 class FileSystemQueue(ABC):
 
@@ -68,11 +103,11 @@ class FileSystemQueue(ABC):
 # true means one connection can be used in multiple thread
 # refer to: https://sqlite.org/compile.html#threadsafe
 def sqlite3_check_threadsafety() -> bool:
-    conn = sqlite3.connect(":memory:")
-    res = conn.execute("""
+    conn = sqlite3.connect(':memory:')
+    res = conn.execute('''
         select * from pragma_compile_options
         where compile_options like 'THREADSAFE=%'
-    """).fetchall()
+    ''').fetchall()
     conn.close()
     return True if res[0][0] == 'THREADSAFE=1' else False
 
@@ -113,7 +148,7 @@ class SQLiteQueue(FileSystemQueue):
                 conn.commit()
 
     def _dequeue(self, id, limit=None):
-        """Retrieve and remove all messages from the queue."""
+        '''Retrieve and remove all messages from the queue.'''
         with self._lock:
             with sqlite3.connect(self.db_path, check_same_thread=self._check_same_thread) as conn:
                 cursor = conn.cursor()
@@ -167,7 +202,7 @@ class SQLiteQueue(FileSystemQueue):
 class RedisQueue(FileSystemQueue):
     def __init__(self, klass='__default__'):
         super(__class__, self).__init__(klass=klass)
-        self.redis_url = config["fsqredis_url"]
+        self.redis_url = config['fsqredis_url']
         self._lock = threading.Lock()
         self._initialize_db()
 
@@ -176,7 +211,7 @@ class RedisQueue(FileSystemQueue):
             conn = redis.Redis.from_url(self.redis_url)
             assert (
                 conn.ping()
-            ), "Found fsque reids config but can not connect, please check your config `LAZYLLM_FSQREDIS_URL`."
+            ), 'Found fsque reids config but can not connect, please check your config `LAZYLLM_FSQREDIS_URL`.'
             if not conn.exists(self.sid):
                 conn.rpush(self.sid, '<start>')
 

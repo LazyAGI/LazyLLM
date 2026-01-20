@@ -29,9 +29,9 @@ class AutoDeploy(LazyLLMDeployBase):
         kw['model_type'] = type
         if lazyllm.config['default_embedding_engine'].lower() in ('transformers', 'flagembedding') \
             or kw.get('embed_type')=='sparse' or not check_requirements('infinity_emb'):
-            return deploy.Rerank if type == 'reranker' else deploy.Embedding, launcher, kw
+            return deploy.Rerank if type == 'rerank' else deploy.Embedding, launcher, kw
         else:
-            return deploy.InfinityRerank if type == 'reranker' else deploy.Infinity, launcher, kw
+            return deploy.InfinityRerank if type == 'rerank' else deploy.Infinity, launcher, kw
 
     @classmethod
     def get_deployer(cls, base_model: str, source: Optional[str] = None, trust_remote_code: bool = True,
@@ -42,7 +42,7 @@ class AutoDeploy(LazyLLMDeployBase):
         if not type:
             type = ModelManager.get_model_type(model_name)
 
-        if type in ('embed', 'cross_modal_embed', 'reranker'):
+        if type in ('embed', 'cross_modal_embed', 'rerank'):
             return AutoDeploy._get_embed_deployer(launcher, type, kw)
         elif type == 'sd':
             return StableDiffusionDeploy, launcher or launchers.remote(ngpus=1), kw
@@ -59,7 +59,7 @@ class AutoDeploy(LazyLLMDeployBase):
             match = re.search(r'(\d+)[bB]', model_name)
             size = int(match.group(1)) if match else 0
             size = (size * 2) if 'awq' not in model_name.lower() else (size / 1.5)
-            ngpus = (1 << (math.ceil(size * 2 / config['gpu_memory']) - 1).bit_length())
+            ngpus = (1 << (math.ceil(size * 2 * 0.6 / config['gpu_memory']) - 1).bit_length())
             launcher = launchers.remote(ngpus = ngpus)
 
         for deploy_cls in ['vllm', 'lightllm', 'lmdeploy', 'mindie']:
@@ -76,4 +76,4 @@ class AutoDeploy(LazyLLMDeployBase):
         return deploy_cls(launcher=launcher, **kw)
 
 
-config.add('gpu_memory', int, 80, 'GPU_MEMORY')
+config.add('gpu_memory', int, 80, 'GPU_MEMORY', description='The memory of the GPU.')

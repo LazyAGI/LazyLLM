@@ -1,5 +1,5 @@
 def match_longest_prefix(model_name):
-    """
+    '''
     Find the longest key in the dictionary that is a prefix of the model_name string.
     The keys in the dictionary are case-insensitive.
 
@@ -8,7 +8,7 @@ def match_longest_prefix(model_name):
 
     Returns:
         str: The value corresponding to the longest matched key, or '' if no match found.
-    """
+    '''
     keys_sorted = sorted(llamafactory_mapping_dict.keys(), key=lambda k: (-len(k), k))
     model_name_lower = model_name.lower()
     for key in keys_sorted:
@@ -44,6 +44,9 @@ llamafactory_mapping_dict = {
     'llama-2': 'llama2',
     'llama-3': 'llama3',
     'llama-3.2': 'mllama',
+    'meta-llama-3.1': 'llama3',
+    'meta-llama-3': 'llama3',
+    'meta-llama': 'llama3',
     'llava': 'llava',
     'llava-next': 'llava_next',
     'llava-next-mistral': 'llava_next_mistral',

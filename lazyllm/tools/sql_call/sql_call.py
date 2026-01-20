@@ -7,16 +7,18 @@ import datetime
 import re
 from lazyllm.tools.sql import DBManager
 
-sql_query_instruct_template = """
+from ..rag import Document
+
+sql_query_instruct_template = '''
 Given the following SQL tables and current date {current_date}, your job is to write sql queries in {db_type} given a user’s request.
 
 {desc}
 
-Alert: Just reply the sql query in a code block start with triple-backticks and keyword "sql"
-"""  # noqa E501
+Alert: Just reply the sql query in a code block start with triple-backticks and keyword 'sql'
+'''  # noqa E501
 
 
-mongodb_query_instruct_template = """
+mongodb_query_instruct_template = '''
 Current date is {current_date}.
 You are a seasoned expert with 10 years of experience in crafting NoSQL queries for {db_type}. 
 I will provide a collection description in a specified format. 
@@ -24,10 +26,10 @@ Your task is to analyze the user_question, which follows certain guidelines, and
 
 {desc}
 
-Note: Please return the json pipeline in a code block start with triple-backticks and keyword "json".
-"""  # noqa E501
+Note: Please return the json pipeline in a code block start with triple-backticks and keyword 'json'.
+'''  # noqa E501
 
-db_explain_instruct_template = """
+db_explain_instruct_template = '''
 According to chat history
 ```
 {{history_info}}
@@ -47,39 +49,32 @@ the result is
 ```
 {{result}}
 ```
-"""
+'''
 
 
 class SqlCall(ModuleBase):
-    EXAMPLE_TITLE = "Here are some example: "
+    EXAMPLE_TITLE = 'Here are some example: '
 
-    def __init__(
-        self,
-        llm,
-        sql_manager: DBManager,
-        sql_examples: str = "",
-        sql_post_func: Callable = None,
-        use_llm_for_sql_result=True,
-        return_trace: bool = False,
-    ) -> None:
+    def __init__(self, llm, sql_manager: DBManager, sql_examples: str = '', sql_post_func: Callable = None,
+                 use_llm_for_sql_result=True, return_trace: bool = False) -> None:
         super().__init__(return_trace=return_trace)
         if not sql_manager.desc:
-            raise ValueError("Error: sql_manager found empty description.")
+            raise ValueError('Error: sql_manager found empty description.')
         self._sql_tool = sql_manager
         self.sql_post_func = sql_post_func
 
-        if sql_manager.db_type == "mongodb":
+        if sql_manager.db_type == 'mongodb':
             self._query_prompter = ChatPrompter(instruction=mongodb_query_instruct_template).pre_hook(
                 self.sql_query_promt_hook
             )
-            statement_type = "mongodb json pipeline"
-            self._pattern = re.compile(r"```json(.+?)```", re.DOTALL)
+            statement_type = 'mongodb json pipeline'
+            self._pattern = re.compile(r'```json(.+?)```', re.DOTALL)
         else:
             self._query_prompter = ChatPrompter(instruction=sql_query_instruct_template).pre_hook(
                 self.sql_query_promt_hook
             )
-            statement_type = "sql query"
-            self._pattern = re.compile(r"```sql(.+?)```", re.DOTALL)
+            statement_type = 'sql query'
+            self._pattern = re.compile(r'```sql(.+?)```', re.DOTALL)
 
         self._llm_query = llm.share(prompt=self._query_prompter).used_by(self._module_id)
         self._answer_prompter = ChatPrompter(
@@ -107,12 +102,12 @@ class SqlCall(ModuleBase):
         tools: Union[List[Dict[str, Any]], None] = None,
         label: Union[str, None] = None,
     ):
-        current_date = datetime.datetime.now().strftime("%Y-%m-%d")
+        current_date = datetime.datetime.now().strftime('%Y-%m-%d')
         schema_desc = self._sql_tool.desc
         if self.example:
-            schema_desc += f"\n{self.EXAMPLE_TITLE}\n{self.example}\n"
+            schema_desc += f'\n{self.EXAMPLE_TITLE}\n{self.example}\n'
         if not isinstance(input, str):
-            raise ValueError(f"Unexpected type for input: {type(input)}")
+            raise ValueError(f'Unexpected type for input: {type(input)}')
         return (
             dict(current_date=current_date, db_type=self._sql_tool.db_type, desc=schema_desc, user_query=input),
             history or [],
@@ -127,13 +122,13 @@ class SqlCall(ModuleBase):
         tools: Union[List[Dict[str, Any]], None] = None,
         label: Union[str, None] = None,
     ):
-        explain_query = "Tell the user based on the execution results, making sure to keep the language consistent \
-            with the user's input and don't translate original result."
+        explain_query = 'Tell the user based on the execution results, making sure to keep the language consistent \
+            with the user\'s input and don\'t translate original result.'
         if not isinstance(input, list) and len(input) != 2:
-            raise ValueError(f"Unexpected type for input: {type(input)}")
-        assert "root_input" in globals and self._llm_answer._module_id in globals["root_input"]
-        user_query = globals["root_input"][self._llm_answer._module_id]
-        globals.pop("root_input")
+            raise ValueError(f'Unexpected type for input: {type(input)}')
+        assert 'root_input' in globals and self._llm_answer._module_id in globals['root_input']
+        user_query = globals['root_input'][self._llm_answer._module_id]
+        globals.pop('root_input')
         history_info = chat_history_to_str(history, user_query)
         return (
             dict(
@@ -154,12 +149,32 @@ class SqlCall(ModuleBase):
         if matches:
             # Return the first match
             extracted_content = matches[0].strip()
+            if self._sql_tool.db_type != 'mongodb':
+                stmts = [s.strip() for s in extracted_content.split(';') if s.strip()]
+                if stmts:
+                    extracted_content = stmts[0]
             return True, extracted_content if not self.sql_post_func else self.sql_post_func(extracted_content)
         else:
             return False, str_response
 
+    @classmethod
+    def create_from_document(cls, document: Document, llm=None, sql_examples: str = '',
+                             sql_post_func: Callable = None, use_llm_for_sql_result=True,
+                             return_trace: bool = False) -> 'SqlCall':
+        if not document._schema_extractor:
+            raise ValueError('Only document with schema extractor can be used to create SqlCall.')
+        sql_manager = document._impl._schema_extractor.sql_manager_for_nl2sql(algo_id=document._curr_group)
+        llm = document._schema_extractor._llm if not llm else llm
+        if not sql_manager:
+            raise ValueError('Sql manager is not initialized in schema extractor.')
+        if not llm:
+            raise ValueError('LLM is not initialized in schema extractor.')
+        return cls(llm=llm, sql_manager=sql_manager, sql_examples=sql_examples,
+                   sql_post_func=sql_post_func, use_llm_for_sql_result=use_llm_for_sql_result,
+                   return_trace=return_trace)
+
     def forward(self, input: str, llm_chat_history: List[Dict[str, Any]] = None):
-        globals["root_input"] = {self._llm_answer._module_id: input}
-        if self._module_id in globals["chat_history"]:
-            globals["chat_history"][self._llm_query._module_id] = globals["chat_history"][self._module_id]
+        globals['root_input'] = {self._llm_answer._module_id: input}
+        if self._module_id in globals['chat_history']:
+            globals['chat_history'][self._llm_query._module_id] = globals['chat_history'][self._module_id]
         return self._impl(input)

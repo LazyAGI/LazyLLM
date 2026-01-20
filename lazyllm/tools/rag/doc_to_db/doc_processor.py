@@ -22,7 +22,7 @@ class TableBase(DeclarativeBase):
 
 
 class LazyllmDocTableDesc(TableBase):
-    __tablename__ = "lazyllm_doc_table_desc"
+    __tablename__ = 'lazyllm_doc_table_desc'
     id = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True, default=1)
     desc = sqlalchemy.Column(sqlalchemy.String, nullable=False, unique=True)
 
@@ -30,15 +30,15 @@ class LazyllmDocTableDesc(TableBase):
 class DocToDbProcessor:
 
     DB_TYPE_MAP = {
-        "int": sqlalchemy.Integer,
-        "text": sqlalchemy.Text,
-        "float": sqlalchemy.Float,
+        'int': sqlalchemy.Integer,
+        'text': sqlalchemy.Text,
+        'float': sqlalchemy.Float,
     }
-    UUID_COL_NAME = "lazyllm_uuid"
-    CREATED_AT_COL_NAME = "lazyllm_created_at"
-    DOC_PATH_COL_NAME = "lazyllm_doc_path"
+    UUID_COL_NAME = 'lazyllm_uuid'
+    CREATED_AT_COL_NAME = 'lazyllm_created_at'
+    DOC_PATH_COL_NAME = 'lazyllm_doc_path'
 
-    def __init__(self, sql_manager: SqlManager, doc_table_name="lazyllm_doc_elements"):
+    def __init__(self, sql_manager: SqlManager, doc_table_name='lazyllm_doc_elements'):
         self._doc_genre_analyser = DocGenreAnalyser()
         self._doc_info_schema_analyser = DocInfoSchemaAnalyser(maximum_doc_num=2)
         self._doc_info_extractor = DocInfoExtractor()
@@ -51,7 +51,7 @@ class DocToDbProcessor:
         if self._doc_table_name in all_table_names:
             assert (
                 LazyllmDocTableDesc.__tablename__ in all_table_names
-            ), "LazyllmDocTableDesc table not found in database"
+            ), 'LazyllmDocTableDesc table not found in database'
         # Create desc table for totally new database
         if sql_manager and LazyllmDocTableDesc.__tablename__ not in all_table_names:
             self._sql_manager.create_table(LazyllmDocTableDesc)
@@ -66,7 +66,7 @@ class DocToDbProcessor:
 
     @doc_table_name.setter
     def doc_table_name(self, doc_table_name: str):
-        raise NotImplementedError("Invalid to change table name")
+        raise NotImplementedError('Invalid to change table name')
 
     @property
     def sql_manager(self):
@@ -78,10 +78,10 @@ class DocToDbProcessor:
 
     @doc_info_schema.setter
     def doc_info_schema(self, doc_info_schema: DocInfoSchema):
-        raise NotImplementedError("As it'a dangerous operation, please use reset_doc_info_schema instead")
+        raise NotImplementedError('As it\'s a dangerous operation, please use reset_doc_info_schema instead')
 
     def _save_description_to_db(self, doc_info_schema: DocInfoSchema):
-        assert self._sql_manager is not None, "sqlManager is not initialized"
+        assert self._sql_manager is not None, 'sqlManager is not initialized'
         json_data = json.dumps(doc_info_schema)  # 直接存储为 JSON（如果数据库支持）
         with self._sql_manager.get_session() as session:
             existing = session.query(LazyllmDocTableDesc).filter_by(id=1).first()
@@ -117,7 +117,7 @@ class DocToDbProcessor:
             is_success, err_msg = validate_schema_item(schema_item, DocInfoSchemaItem)
             assert is_success, err_msg
         self._doc_info_schema = doc_info_schema
-        attrs = {"__tablename__": self._doc_table_name, "__table_args__": {"extend_existing": True}}
+        attrs = {'__tablename__': self._doc_table_name, '__table_args__': {'extend_existing': True}}
         # use uuid as primary key
         attrs[self.UUID_COL_NAME] = sqlalchemy.Column(sqlalchemy.String(36), primary_key=True)
         attrs[self.CREATED_AT_COL_NAME] = sqlalchemy.Column(sqlalchemy.DateTime, nullable=False)
@@ -125,28 +125,28 @@ class DocToDbProcessor:
             sqlalchemy.Text, nullable=False, primary_key=False, index=True
         )
         for schema_item in doc_info_schema:
-            real_type = self.DB_TYPE_MAP.get(schema_item["type"].lower(), sqlalchemy.Text)
-            attrs[schema_item["key"]] = sqlalchemy.Column(real_type, nullable=True, primary_key=False)
+            real_type = self.DB_TYPE_MAP.get(schema_item['type'].lower(), sqlalchemy.Text)
+            attrs[schema_item['key']] = sqlalchemy.Column(real_type, nullable=True, primary_key=False)
         self._table_class = type(self._doc_table_name.capitalize(), (TableBase,), attrs)
         if recreate_doc_table:
             # After drop_table, create table in db
             db_result = self._sql_manager.create_table(self._table_class)
             if db_result.status != DBStatus.SUCCESS:
-                lazyllm.LOG.warning(f"Create table failed: {db_result.detail}")
+                lazyllm.LOG.warning(f'Create table failed: {db_result.detail}')
                 self.clear()
 
     def analyze_info_schema_by_llm(
-        self, llm: Union[OnlineChatModule, TrainableModule], doc_paths: List[str], doc_topic: str = ""
+        self, llm: Union[OnlineChatModule, TrainableModule], doc_paths: List[str], doc_topic: str = ''
     ) -> DocInfoSchema:
-        assert len(doc_paths) > 0, "doc_paths should not be empty"
+        assert len(doc_paths) > 0, 'doc_paths should not be empty'
         if not doc_topic:
             doc_topic = self._doc_genre_analyser.analyse_doc_genre(llm, doc_paths[0])
-            if doc_topic == "":
-                raise ValueError("Failed to detect doc type")
+            if doc_topic == '':
+                raise ValueError('Failed to detect doc type')
         return self._doc_info_schema_analyser.analyse_info_schema(llm, doc_topic, doc_paths)
 
     def extract_info_from_docs(
-        self, llm: Union[OnlineChatModule, TrainableModule], doc_paths: List[str], extra_desc: str = ""
+        self, llm: Union[OnlineChatModule, TrainableModule], doc_paths: List[str], extra_desc: str = ''
     ) -> List[dict]:
         existent_doc_paths = self._list_existent_doc_paths_in_db(doc_paths)
         # skip docs already in db
@@ -158,7 +158,7 @@ class DocToDbProcessor:
                 kws_value[self.DOC_PATH_COL_NAME] = str(doc_path)
                 info_dicts.append(kws_value)
             else:
-                lazyllm.LOG.warning(f"Extract kws value failed for {doc_path}")
+                lazyllm.LOG.warning(f'Extract kws value failed for {doc_path}')
         return info_dicts
 
     def export_info_to_db(self, info_dicts: List[dict]):
@@ -171,7 +171,7 @@ class DocToDbProcessor:
                 new_values.append(kws_value)
         db_result = self._sql_manager.insert_values(self._doc_table_name, new_values)
         if db_result.status != DBStatus.SUCCESS:
-            raise ValueError(f"Insert values failed: {db_result.detail}")
+            raise ValueError(f'Insert values failed: {db_result.detail}')
 
     def _list_existent_doc_paths_in_db(self, doc_paths: list[str]) -> List[str]:
         doc_paths = [str(ele) for ele in doc_paths]

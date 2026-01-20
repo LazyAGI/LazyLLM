@@ -8,26 +8,33 @@ add_english_doc = functools.partial(utils.add_english_doc, module=lazyllm.flow)
 add_example = functools.partial(utils.add_example, module=lazyllm.flow)
 
 add_chinese_doc('FlowBase', """\
-一个用于创建可以包含各种项目的流式结构的基类。
-这个类提供了一种组织项目的方式，这些项目可以是 ``FlowBase`` 的实例或其他类型，组织成一个层次结构。每个项目都可以有一个名称，结构可以动态地遍历或修改。
+用于构建流式结构的基类，可以容纳多个项目并组织成层次化结构。
+
+该类允许将不同的对象（包括 ``FlowBase`` 实例或其他类型对象）组合在一起，
+并为其分配可选的名称，从而支持按名称或索引访问。结构中的项目可以动态添加或遍历。
 
 Args:
-    items (iterable): 要包含在流中的项目的可迭代对象。这些可以是 ``FlowBase`` 的实例或其他对象。
-    item_names (list of str, optional): 对应于项目的名称列表。这允许通过名称访问项目。如果未提供，则只能通过索引访问项目。
-    auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
-
-    auto_capture: 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 False。
+    *items: 要包含在流中的项目，可以是 ``FlowBase`` 的实例或其他对象。
+    item_names (list of str, optional): 对应于每个项目的名称列表，会与 ``items`` 按顺序配对。
+        如果未提供，所有项目的名称默认为 ``None``。
+    auto_capture (bool, optional): 是否启用自动捕获。如果为 ``True``，在上下文管理器模式下，
+        将自动捕获当前作用域中新定义的变量并加入流。默认为 ``False``。
 """)
 
 add_english_doc('FlowBase', """\
-A base class for creating flow-like structures that can contain various items.
+Base class for constructing flow-like structures that can hold multiple items and organize them hierarchically.
 
-This class provides a way to organize items, which can be instances of ``FlowBase`` or other types, into a hierarchical structure. Each item can have a name and the structure can be traversed or modified dynamically.
+This class allows combining different objects (including ``FlowBase`` instances or other types)
+into a structured flow, with optional names for each item, enabling both name-based and index-based access.
+Items in the structure can be added or traversed dynamically.
 
 Args:
-    items (iterable): An iterable of items to be included in the flow. These can be instances of ``FlowBase`` or other objects.
-    item_names (list of str, optional): A list of names corresponding to the items. This allows items to be accessed by name. If not provided, items can only be accessed by index.
-    auto_capture: If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
+    *items: Items to be included in the flow, which can be instances of ``FlowBase`` or other objects.
+    item_names (list of str, optional): A list of names corresponding to the items, paired with ``items`` in order.
+        If not provided, all items will be assigned ``None`` as their name.
+    auto_capture (bool, optional): Whether to enable automatic variable capture. If ``True``, when used
+        as a context manager, newly defined variables in the current scope will be automatically added to the flow.
+        Defaults to ``False``.
 """)
 
 add_chinese_doc('FlowBase.id', """\
@@ -127,6 +134,7 @@ Args:
 **Returns:**\n
 - None
 """)
+
 add_example('FlowBase.for_each', """\
 >>> import lazyllm
 >>> def test1(): print('1')
@@ -154,11 +162,12 @@ add_chinese_doc('LazyLLMFlowsBase', """\
                    ↑             ↓
                pre_hook       post_hook
 ```
+
 Args:
     args: 可变长度参数列表。
     post_action: 在主流程结束后对输出进行进一步处理的可调用对象。默认为 ``None``。
     auto_capture: 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 False。
-
+    **kw: 命名组件的键值对。
 """)
 
 add_english_doc('LazyLLMFlowsBase', """\
@@ -171,11 +180,12 @@ input --> [Flow module1 -> Flow module2 -> ... -> Flow moduleN] --> output
                    ↑             ↓
                pre_hook       post_hook
 ```
+
 Args:
     args: A sequence of callables representing the flow modules.
     post_action: An optional callable applied to the output after main flow execution. Defaults to ``None``。
     auto_capture: If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
-
+    **kw: Key-value pairs for named components.
 """)
 
 add_chinese_doc('LazyLLMFlowsBase.register_hook', '''\
@@ -205,7 +215,37 @@ Unregister a previously registered hook.
 Args:
     hook_type (LazyLLMHook): The hook type or instance to remove.
 ''')
+add_chinese_doc('LazyLLMFlowsBase.start', """\
+启动流处理执行（已弃用）。
 
+此方法已弃用，建议直接将流实例作为函数调用。执行流处理并返回结果。
+
+Args:
+    *args: 传递给流处理的可变位置参数。
+    **kw: 传递给流处理的命名参数。
+
+**Returns:**\n
+- 流处理的结果。
+
+**Note:**\n
+- 此方法已标记为弃用，请使用流实例的直接调用方式代替。
+""")
+
+add_english_doc('LazyLLMFlowsBase.start', """\
+Start flow processing execution (deprecated).
+
+This method is deprecated, it is recommended to directly call the flow instance as a function. Executes the flow processing and returns the result.
+
+Args:
+    *args: Variable positional arguments passed to the flow processing.
+    **kw: Named arguments passed to the flow processing.
+
+**Returns:**\n
+- The result of flow processing.
+
+**Note:**\n
+- This method is marked as deprecated, please use direct invocation of the flow instance instead.
+""")
 add_chinese_doc('LazyLLMFlowsBase.clear_hooks', '''\
 清空所有已注册的 Hook。
 ''')
@@ -220,7 +260,7 @@ add_chinese_doc('LazyLLMFlowsBase.set_sync', '''\
 Args:
     sync (bool): 是否同步执行，默认为 True。
 
-**Returns**\n
+**Returns:**\n
 - LazyLLMFlowsBase: 当前实例。
 ''')
 
@@ -230,21 +270,21 @@ Set whether the flow executes synchronously.
 Args:
     sync (bool): Whether to execute synchronously. Default is True.
 
-**Returns**\n
+**Returns:**\n
 - LazyLLMFlowsBase: The current instance.
 ''')
 
 add_chinese_doc('LazyLLMFlowsBase.wait', '''\
 等待流程中所有异步任务完成。
 
-**Returns**\n
+**Returns:**\n
 - LazyLLMFlowsBase: 当前实例。
 ''')
 
 add_english_doc('LazyLLMFlowsBase.wait', '''\
 Wait for all asynchronous tasks in the flow to complete.
 
-**Returns**\n
+**Returns:**\n
 - LazyLLMFlowsBase: The current instance.
 ''')
 
@@ -277,7 +317,7 @@ Args:
     *args: 位置参数。
     **kw: 关键字参数。
 
-**Returns**\n
+**Returns:**\n
 - bind: 绑定后的 bind 对象。
 ''')
 
@@ -288,7 +328,7 @@ Args:
     *args: Positional arguments.
     **kw: Keyword arguments.
 
-**Returns**\n
+**Returns:**\n
 - bind: The bound bind object.
 ''')
 
@@ -324,11 +364,11 @@ Args:
 
 标记Parellel，使得Parallel每次调用时的返回值由package变为dict。当使用 ``asdict`` 时，请务必保证parallel的元素被取了名字，例如:  ``parallel(name=value)`` 。
 
-<span style="font-size: 20px;">&ensp;**`tuple property`**</span>
+<span style="font-size: 20px;">&ensp;**`astuple property`**</span>
 
 标记Parellel，使得Parallel每次调用时的返回值由package变为tuple。
 
-<span style="font-size: 20px;">&ensp;**`list property`**</span>
+<span style="font-size: 20px;">&ensp;**`aslist property`**</span>
 
 标记Parellel，使得Parallel每次调用时的返回值由package变为list。
 
@@ -373,11 +413,11 @@ Args:
 
 Tag ``Parallel`` so that the return value of each call to ``Parallel`` is changed from a tuple to a dict. When using ``asdict``, make sure that the elements of ``parallel`` are named, for example: ``parallel(name=value)``.
 
-`tuple property`
+`astuple property`
 
 Mark Parallel so that the return value of Parallel changes from package to tuple each time it is called.
 
-`list property`
+`aslist property`
 
 Mark Parallel so that the return value of Parallel changes from package to list each time it is called.
 
@@ -508,7 +548,6 @@ Args:
 
 **Returns:**\n
 - 管道的最后一个阶段的输出。
-
 """)
 
 add_english_doc('Pipeline', """\
@@ -541,12 +580,12 @@ add_example('Pipeline', """\
 add_chinese_doc('Pipeline.output', '''\
 获取流水线中指定模块的输出结果。
 
-参数:
+Args:
     module: 要获取输出的模块。可以是模块对象或模块名称。
     unpack (bool): 是否解包输出结果。默认为False。
 
-返回值:
-    bind.Args: 一个绑定参数对象，用于在流水线中传递数据。
+**Returns:**\n
+- bind.Args: 一个绑定参数对象，用于在流水线中传递数据。
 ''')
 
 add_english_doc('Pipeline.output', '''\
@@ -556,8 +595,8 @@ Args:
     module: The module to get output from. Can be a module object or module name.
     unpack (bool): Whether to unpack the output result. Defaults to False.
 
-Returns:
-    bind.Args: A bound argument object for data passing in the pipeline.
+**Returns:**\n
+- bind.Args: A bound argument object for data passing in the pipeline.
 ''')
 
 add_chinese_doc('save_pipeline_result', """\
@@ -596,35 +635,35 @@ add_example('save_pipeline_result', '''\
 add_chinese_doc('Loop', '''\
 初始化一个循环流结构，该结构将一系列函数重复应用于输入，直到满足停止条件或达到指定的迭代次数。
 
-Loop结构允许定义一个简单的控制流，其中一系列步骤在循环中应用，可以使用可选的停止条件来根据步骤的输出退出循环。
+Loop结构允许定义一个简单的控制流，其中一系列步骤在循环中应用，可以使用可选的停止条件来根据步骤的输出提前退出循环。
 
 Args:
     item (callable or list of callables): 将在循环中应用的函数或可调用对象。
     stop_condition (callable, optional): 一个函数，它接受循环中最后一个项目的输出作为输入并返回一个布尔值。如果返回 ``True``，循环将停止。如果为 ``None``，循环将继续直到达到 ``count``。默认为 ``None``。
-    count (int, optional): 运行循环的最大迭代次数。如果为 ``None``，循环将无限期地继续或直到 ``stop_condition`` 返回 ``True``。默认为 ``None``。
+    count (int, optional): 运行循环的最大迭代次数。默认为 ``sys.maxsize``。
     post_action (callable, optional): 循环结束后调用的函数。默认为 ``None``。
     auto_capture (bool, optional): 如果为 True，在上下文管理器模式下将自动捕获当前作用域中新定义的变量加入流中。默认为 ``False``。
-    judge_on_full_input(bool): 如果设置为 ``True`` ， 则通过 ``stop_condition`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
+    judge_on_full_input (bool): 如果设置为 ``True`` ，则通过 ``stop_condition`` 的输入进行条件判断；否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
 
-抛出:
-    AssertionError: 如果同时提供了 ``stop_condition`` 和 ``count``，或者当提供的 ``count``不是一个整数。
+Raises:
+    AssertionError: 如果提供的 ``stop_condition`` 既不是 ``callable`` 也不是 ``None``。
 ''')
 
 add_english_doc('Loop', '''\
 Initializes a Loop flow structure which repeatedly applies a sequence of functions to an input until a stop condition is met or a specified count of iterations is reached.
 
-The Loop structure allows for the definition of a simple control flow where a series of steps are applied in a loop, with an optional stop condition that can be used to exit the loop based on the output of the steps.
+The Loop structure allows for the definition of a simple control flow where a series of steps are applied in a loop, with an optional stop condition that can be used to exit the loop early based on the output of the steps.
 
 Args:
     *item (callable or list of callables): The function(s) or callable object(s) that will be applied in the loop.
     stop_condition (callable, optional): A function that takes the output of the last item in the loop as input and returns a boolean. If it returns ``True``, the loop will stop. If ``None``, the loop will continue until ``count`` is reached. Defaults to ``None``.
-    count (int, optional): The maximum number of iterations to run the loop for. If ``None``, the loop will continue indefinitely or until ``stop_condition`` returns ``True``. Defaults to ``None``.
+    count (int, optional): The maximum number of iterations to run the loop for. Defaults to ``sys.maxsize``.
     post_action (callable, optional): A function to be called with the final output after the loop ends. Defaults to ``None``.
     auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
-    judge_on_full_input(bool): If set to ``True``, the conditional judgment will be performed through the input of ``stop_condition``, otherwise the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
+    judge_on_full_input (bool): If set to ``True``, the conditional judgment will be performed through the input of ``stop_condition``; otherwise, the input will be split into two parts: the judgment condition and the actual input, and only the judgment condition will be judged.
 
 Raises:
-    AssertionError: If both ``stop_condition`` and ``count`` are provided or if ``count`` is not an integer when provided.
+    AssertionError: If the provided ``stop_condition`` is neither callable nor ``None``.
 ''')
 
 add_example('Loop', '''\
@@ -709,7 +748,7 @@ Args:
     post_action (callable, optional): 在执行选定流后要调用的函数。默认为 ``None``。
     judge_on_full_input(bool): 如果设置为 ``True`` ， 则通过 ``switch`` 的输入进行条件判断，否则会将输入拆成判定条件和真实的输入两部分，仅对判定条件进行判断。
 
-抛出:
+Raises:
     TypeError: 如果提供的参数数量为奇数，或者如果第一个参数不是字典且条件没有成对提供。
 """)
 
@@ -798,7 +837,6 @@ Args:
     asdict
 
     和 ``parallel.asdict`` 一样
-
 """)
 
 add_english_doc('Diverter', """\
@@ -819,7 +857,6 @@ Args:
     _concurrent (bool, optional): A flag to control whether the modules should be run concurrently. Defaults to ``True``. You can use ``Diverter.sequential`` instead of ``Diverter`` to set this variable.
     auto_capture (bool, optional): If True, variables newly defined within the ``with`` block will be automatically added to the flow. Defaults to ``False``.
     kwargs : Arbitrary keyword arguments representing additional modules, where the key is the name of the module.
-
 """)
 
 add_example('Diverter', """\
@@ -844,6 +881,7 @@ Warp类设计用于将同一个处理模块应用于一组输入。它有效地�
 # (in1, in2, in3) -> in2 -> module1 -> ... -> moduleN -> out2 -> (out1, out2, out3)
 #                 \> in3 /                            \> out3 /
 ```
+
 Args:
     args: 可变长度参数列表，代表要应用于所有输入的单个模块。
     _scatter (bool): 是否以分片方式拆分输入，默认 False。
@@ -1120,7 +1158,7 @@ add_chinese_doc('Graph.topological_sort', """\
 **Returns:**\n
 - List[Node]: 按拓扑顺序排列的节点列表。
 
-**抛出:**\n
+Raises:
 - ValueError: 如果图中存在循环依赖。
 """)
 
@@ -1132,7 +1170,7 @@ This method uses Kahn's algorithm to perform topological sorting on the directed
 **Returns:**\n
 - List[Node]: List of nodes arranged in topological order.
 
-**Raises:**\n
+Raises:
 - ValueError: If there are circular dependencies in the graph.
 """)
 

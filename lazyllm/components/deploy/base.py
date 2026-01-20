@@ -1,12 +1,14 @@
 import time
+import random
+from queue import Empty
+from typing import Callable
+
 from ..core import ComponentBase
 import lazyllm
 from lazyllm import launchers, flows, LOG
 from ...components.utils.file_operate import _image_to_base64, _audio_to_base64, ocr_to_base64
-import random
 
-
-lazyllm.config.add('openai_api', bool, False, 'OPENAI_API')
+lazyllm.config.add('openai_api', bool, False, 'OPENAI_API', description='Whether to use OpenAI API for vllm deployer.')
 
 
 class LazyLLMDeployBase(ComponentBase):
@@ -62,21 +64,40 @@ class DummyDeploy(LazyLLMDeployBase, flows.Pipeline):
     def __repr__(self):
         return flows.Pipeline.__repr__(self)
 
-def verify_func_factory(error_message='ERROR:',
-                        running_message='Uvicorn running on'):
+def verify_func_factory(error_message: str, running_message: str,  # noqa: C901
+                        err_judge: Callable = lambda syb, msg: msg.lstrip().startswith(syb),
+                        run_judge: Callable = lambda syb, msg: syb in msg):
+    def _hit(symbols, msg, judge):
+        return judge(symbols, msg) if isinstance(symbols, str) else any([judge(s, msg) for s in symbols])
+
     def verify_func(job):
+        begin_time = time.time()
         while True:
-            line = job.queue.get()
-            if line.startswith(error_message):
-                LOG.error(f"Capture error message: {line} \n\n")
+            try:
+                line = job.queue.get(timeout=3)
+            except Empty:
+                line = ''
+                status = job.status
+                if status == lazyllm.launchers.status.Failed:
+                    LOG.error('[Verify] Service Startup Failed, '
+                              'use `export LAZYLLM_EXPECTED_LOG_MODULES=all` for more logs')
+                    return False
+                LOG.debug(f'[Verify] Timeout when getting log line and current service status: {status}.')
+            if _hit(error_message, line, err_judge):
+                LOG.error(f'[Verify] Capture error message: {line} \n\n '
+                          ', use `export LAZYLLM_EXPECTED_LOG_MODULES=all` for more logs')
                 return False
-            elif running_message in line:
-                LOG.info(f"Capture startup message: {line}")
+            elif _hit(running_message, line, run_judge):
+                LOG.info(f'[Verify] Capture startup message: {line}', name='launcher')
+                LOG.success(f'job `{str(job._fixed_cmd).strip()}` executed successfully!')
                 break
-            if job.status == lazyllm.launchers.status.Failed:
-                LOG.error("Service Startup Failed.")
+            if time.time() - begin_time > 600:
+                LOG.error('[Verify] Service Startup Timeout, '
+                          'use `export LAZYLLM_EXPECTED_LOG_MODULES=all` for more logs')
                 return False
         return True
     return verify_func
 
-verify_fastapi_func = verify_func_factory()
+verify_fastapi_func = verify_func_factory('ERROR:', 'Uvicorn running on')
+verify_ray_func = verify_func_factory(['ray.exceptions.RayTaskError', 'Traceback (most recent call last)'],
+                                      'Deployed app \'default\' successfully', err_judge=lambda syb, msg: syb in msg)

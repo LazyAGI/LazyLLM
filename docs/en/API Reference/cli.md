@@ -32,15 +32,15 @@ Args:
 
 - `mcp_server`: run in MCP server mode.
 - `-e GITHUB_TOKEN your_token`: set environment variables (can be used multiple times); here setting `GITHUB_TOKEN`.
-- `--sse-port 8080`: specify the SSE server listening port as `8080`.
+- `sse-port 8080`: specify the SSE server listening port as `8080`.
 - `--`: passes subsequent parameters to the external command (like npx).
 - `-y @modelcontextprotocol/server-github`: the actual MCP server module and its parameters.
 
 Optional parameters:
 
-- `--sse-host`: SSE server listening address, default is `127.0.0.1`.
-- `--allow-origin`: list of allowed origins for CORS; can specify multiple.
-- `--pass-environment`: whether to pass all local environment variables (default is false).
+- `sse-host`: SSE server listening address, default is `127.0.0.1`.
+- `allow-origin`: list of allowed origins for CORS; can specify multiple.
+- `pass-environment`: whether to pass all local environment variables (default is false).
 
 ### Function 2: Model Deployment
 
@@ -55,23 +55,22 @@ Args:
 
 - `llama3-chat`: the model name to deploy.
 
-- `--framework=vllm`: specifies the deployment framework; supports:
+- `framework=vllm`: specifies the deployment framework; supports:
+    - `vllm`: high-performance inference engine.
+    - `lightllm`: lightweight model deployment.
+    - `lmdeploy`, `infinity`, `embedding`, `mindie`: other specialized frameworks.
+    - `auto`: automatically detect and recommend framework.
 
-  - `vllm`: high-performance inference engine.
-  - `lightllm`: lightweight model deployment.
-  - `lmdeploy`, `infinity`, `embedding`, `mindie`: other specialized frameworks.
-  - `auto`: automatically detect and recommend framework.
+- `chat=true`: enable web chat service. Equivalent forms include `chat=1`, `chat=on`.
 
-- `--chat=true`: enable web chat service. Equivalent forms include `--chat=1`, `--chat=on`.
+- `top_p=0.9`: nucleus sampling truncation probability during inference.
 
-- `--top_p=0.9`: nucleus sampling truncation probability during inference.
-
-- `--max_tokens=2048`: maximum number of tokens generated.
+- `max_tokens=2048`: maximum number of tokens generated.
 
 Additional notes:
 
-- Other parameters can be passed as `--key=value` to customize framework-supported inference configurations.
-- If `--chat=true` is not enabled, the deployment runs as a background service.
+- Other parameters can be passed as `key=value` to customize framework-supported inference configurations.
+- If `chat=true` is not enabled, the deployment runs as a background service.
 
 ---
 
@@ -123,8 +122,8 @@ lazyllm run chatbot --model chatglm3-6b --framework vllm
 Args:
 
 - `chatbot`: starts the chatbot service.
-- `--model`: specifies the model name to use, e.g., `chatglm3-6b`.
-- `--framework`: backend inference framework, supporting `lightllm`, `vllm`, `lmdeploy`.
+- `model`: specifies the model name to use, e.g., `chatglm3-6b`.
+- `framework`: backend inference framework, supporting `lightllm`, `vllm`, `lmdeploy`.
 
 ### Function 2: Start RAG QA Service
 
@@ -135,9 +134,9 @@ lazyllm run rag --model bge-base --framework lightllm --documents /path/to/docs
 Args:
 
 - `rag`: starts a retrieval-augmented generation (RAG) question answering system.
-- `--model`: specifies the model name, e.g., `bge-base`.
-- `--framework`: backend inference framework.
-- `--documents`: required; absolute path to knowledge documents.
+- `model`: specifies the model name, e.g., `bge-base`.
+- `framework`: backend inference framework.
+- `documents`: required; absolute path to knowledge documents.
 
 ### Function 3: Run JSON-based Workflow
 
@@ -169,4 +168,4 @@ Args:
 
 - `infer_service`: starts the model inference service; no additional parameters required.
 
-> ❗ Note: For `chatbot` and `rag`, `--source` and `--framework` are mutually exclusive and must be chosen from predefined options. Invalid commands or parameters will result in error messages.
+> ❗ Note: For `chatbot` and `rag`, `source` and `framework` are mutually exclusive and must be chosen from predefined options. Invalid commands or parameters will result in error messages.

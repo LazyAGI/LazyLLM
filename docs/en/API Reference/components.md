@@ -3,6 +3,7 @@
 ::: lazyllm.components.finetune.AlpacaloraFinetune
     options:
       heading_level: 3
+      members: [cmd]
 
 ::: lazyllm.components.finetune.CollieFinetune
     options:
@@ -30,6 +31,11 @@
 ::: lazyllm.components.finetune.base.DummyFinetune
     options:
       heading_level: 3
+
+::: lazyllm.components.finetune.LazyLLMFinetuneBase
+    options:
+      heading_level: 3
+
 ---
 
 ## Deploy
@@ -42,6 +48,7 @@
 ::: lazyllm.components.deploy.Vllm
     options:
       heading_level: 3
+      members: [cmd, geturl, extract_result]
 
 ::: lazyllm.components.deploy.LMDeploy
     options:
@@ -73,10 +80,24 @@
       heading_level: 3
       members: [load_reranker, rebuild]
 
+::: lazyllm.components.deploy.embed.HuggingFaceEmbedding
+    options:
+      heading_level: 3
+      members: [get_emb_cls, register, load_embed]
+
+::: lazyllm.components.deploy.embed.LazyFlagEmbedding
+    options:
+      heading_level: 3
+      members: [load_embed, rebuild]
+
 ::: lazyllm.components.deploy.Mindie
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.Infinity
+    options:
+      heading_level: 3
+      members: [extract_result, geturl]
       
 ::: lazyllm.components.deploy.OCRDeploy
     options:
@@ -92,6 +113,9 @@
     options:
       heading_level: 3
 
+::: lazyllm.components.deploy.text_to_speech.utils.TTSBase
+    options:
+      heading_level: 3
 ---
 
 ## Prompter
@@ -187,6 +211,7 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
 ::: lazyllm.components.deploy.speech_to_text.sense_voice.SenseVoice
     options:
       heading_level: 4
+      members: [load_stt, rebuild]
 
 ---
 
@@ -195,6 +220,7 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
 ::: lazyllm.components.ModelManager
     options:
       heading_level: 3
+      members: [get_model_type, get_model_prompt_keys, validate_model_path, download]
 
 ---
 
@@ -268,6 +294,13 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
     options:
       heading_level: 3
 
+::: lazyllm.components.FunctionCallFormatter
+    options:
+      heading_level: 3
+
+::: lazyllm.components.formatter.formatterbase.PipelineFormatter
+    options:
+      heading_level: 3
 ---
 
 ## ComponentBase
@@ -276,3 +309,8 @@ Reference [LMDeploy][lazyllm.components.deploy.LMDeploy], which supports the Vis
     options:
       heading_level: 3
       members: [apply, cmd]
+
+::: lazyllm.components.deploy.ray.Distributed
+    options:
+      heading_level: 3
+      members: [cmd, get_url]

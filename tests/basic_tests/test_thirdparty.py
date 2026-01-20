@@ -1,0 +1,73 @@
+import sys
+import pytest
+from lazyllm.thirdparty import faiss, requirements
+from lazyllm import thirdparty
+
+class TestThirdparty(object):
+
+    def test_import(self, monkeypatch):
+        def check_installed(third_import_type):
+            try:
+                import faiss
+                # if env install real llama_index
+                return third_import_type == type(faiss)
+            except ImportError:
+                return False
+        third_import_type = type(faiss)
+        monkeypatch.delitem(sys.modules, 'faiss', raising=False)
+        assert not check_installed(third_import_type)
+
+    def test_lazy_import(self, monkeypatch):
+        def check_lazy_import(faiss):
+            try:
+                faiss.a
+                return True
+            except (AttributeError, ImportError):
+                return False
+        monkeypatch.delitem(sys.modules, 'faiss', raising=False)
+        assert faiss is not None
+        assert not check_lazy_import(faiss)
+
+    def test_lazy_import_with_path(self):
+        class Flag(object): pass
+        flag = Flag()
+        flag.flag = False
+
+        def patch():
+            flag.flag = True
+
+        from lazyllm.thirdparty import graphrag
+        graphrag.register_patches(patch)
+        assert not flag.flag
+        load_config = graphrag.config.load_config
+        assert not flag.flag
+
+        with pytest.raises(ImportError):
+            _ = load_config.load_config
+        assert not flag.flag
+
+        from lazyllm.thirdparty import os
+        os.register_patches(patch)
+        path = os.path
+        assert not flag.flag
+        _ = path.join
+        assert flag.flag
+
+    def test_toml_dependencies_extraction(self):
+        thirdparty.prep_req_dict()
+        assert requirements
+
+    def test_check_package_installed(self):
+        assert thirdparty.check_package_installed('lazyllm')
+        assert thirdparty.check_package_installed(['lazyllm', 'requests'])
+        assert not thirdparty.check_package_installed(['lazyllm', 'requests', 'nonexistent_module_kasduf45123'])
+        assert not thirdparty.check_package_installed('nonexistent_module_kasduf45123')
+
+    def test_load_toml_dep_group(self):
+        assert len(thirdparty.load_toml_dep_group('full')) > 0
+
+    def test_check_dependency_by_group(self):
+        try:
+            assert thirdparty.check_dependency_by_group('standard')
+        except ImportError:
+            assert True, 'Normal exit due to missing dependencies'

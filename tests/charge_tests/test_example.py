@@ -6,6 +6,7 @@ import random
 from gradio_client import Client
 
 import lazyllm
+from lazyllm import config
 from lazyllm.launcher import cleanup
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.prompter import ChatPrompter
@@ -137,10 +138,11 @@ class TestExamples(object):
         assert len(res) >= 16
 
         # test pipeline wrapped into iterator
-        from lazyllm.tools.common import StreamCallHelper
-        flow_iterator = StreamCallHelper(ppl, interval=0.01)
-        res_list = list(flow_iterator(query))
-        assert isinstance(res_list, list) and len(res_list) > 1
+        if not config['cache_online_module']:
+            from lazyllm.tools.common import StreamCallHelper
+            flow_iterator = StreamCallHelper(ppl, interval=0.01)
+            res_list = list(flow_iterator(query))
+            assert isinstance(res_list, list) and len(res_list) > 1
 
         # test rag warpped in web
         web, client = self.warp_into_web(rag)

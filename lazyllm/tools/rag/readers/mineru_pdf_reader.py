@@ -1,7 +1,8 @@
 import os
 import requests
 from pathlib import Path
-from bs4 import BeautifulSoup
+from lazyllm.thirdparty import bs4
+import copy
 from typing import Dict, List, Optional, Callable
 import unicodedata
 
@@ -17,16 +18,19 @@ class MineruPDFReader(LazyLLMReaderBase):
                  extract_table: bool = True,
                  extract_formula: bool = True,
                  split_doc: bool = True,
+                 clean_content: bool = True,
                  post_func: Optional[Callable] = None,
                  return_trace: bool = True):
         super().__init__(return_trace=return_trace)
         self._url = url + '/api/v1/pdf_parse'
+        self._drop_types = ['header', 'footer', 'page_number', 'aside_text', 'page_footnote']
         self._upload_mode = upload_mode
         self._backend = backend
         self._extract_table = extract_table
         self._extract_formula = extract_formula
         self._split_doc = split_doc
         self._post_func = post_func
+        self._clean_content = clean_content
 
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None,
                    use_cache: bool = True, **kwargs) -> List[DocNode]:
@@ -43,6 +47,8 @@ class MineruPDFReader(LazyLLMReaderBase):
                     assert isinstance(node, DocNode), f'Expected DocNode, got {type(node)}, \
                         please check your post function'
                     node.global_metadata = extra_info
+            if not docs:
+                LOG.warning(f'[MineruPDFReader] No elements found in PDF: {file}')
             return docs
         except Exception as e:
             LOG.error(f'[MineruPDFReader] Error loading data from {file}: {e}')
@@ -57,11 +63,14 @@ class MineruPDFReader(LazyLLMReaderBase):
         try:
             if not self._upload_mode:
                 payload['files'] = [str(pdf_path)]
-                response = requests.post(self._url, data=payload)
+                response = requests.post(self._url, data=payload, timeout=600)
             else:
                 with open(pdf_path, 'rb') as f:
                     files = {'upload_files': (os.path.basename(pdf_path), f)}
-                    response = requests.post(self._url, data=payload, files=files)
+                    response = requests.post(self._url, data=payload, files=files, timeout=600)
+            if response.status_code != 200:
+                LOG.error(f'[MineruPDFReader] POST request failed with status '
+                          f'{response.status_code}: {response.text}')
             response.raise_for_status()
             res = response.json()
             if not isinstance(res, dict) or not res.get('result'):
@@ -82,6 +91,8 @@ class MineruPDFReader(LazyLLMReaderBase):
         cur_title = ''
         cur_level = -1
         for content in content_list:
+            if self._clean_content and content.get('type') in self._drop_types:
+                continue
             block = {}
             block['bbox'] = content.get('bbox', [])
             block['type'] = content.get('type', 'text')
@@ -92,7 +103,7 @@ class MineruPDFReader(LazyLLMReaderBase):
                     line['content'] = self._normalize_content_recursively(line['content'])
             if content['type'] == 'text':
                 block['text'] = self._normalize_content_recursively(content['text']).strip()
-                if not content['text'].strip():
+                if not block['text']:
                     continue
                 if 'text_level' in content:
                     if cur_title and content['text_level'] > cur_level:
@@ -143,12 +154,39 @@ class MineruPDFReader(LazyLLMReaderBase):
                 if cur_title:
                     block['title'] = cur_title
                 blocks.append(block)
+            elif content['type'] == 'code':
+                block['text'] = content['code_body']
+                if not block['text']:
+                    continue
+                if content.get('code_caption', None):
+                    code_caption = '\n'.join(self._normalize_content_recursively(content['code_caption']))
+                    block['text'] = f"{code_caption}\n{block['text']}"
+                block['code_type'] = content.get('sub_type', '')
+                if cur_title:
+                    block['title'] = cur_title
+                blocks.append(block)
+                LOG.info(f'[MineruPDFReader] Found code block: {block["text"][:100]}...')
+            elif content['type'] == 'list':
+                block['list_type'] = content.get('sub_type', '')
+                block['text'] = '\n'.join(self._normalize_content_recursively(content.get('list_items', [])))
+                if cur_title:
+                    block['title'] = cur_title
+                blocks.append(block)
+            else:
+                block = copy.deepcopy(content)
+                block['type'] = content['type']
+                if 'content' in block:
+                    block['text'] = block['content']
+                    del block['content']
+                if cur_title:
+                    block['title'] = cur_title
+                blocks.append(block)
         return blocks
 
     def _normalize_content_recursively(self, content) -> str:
         if isinstance(content, str):
-            content = content.encode("utf-8", "replace").decode("utf-8")
-            return unicodedata.normalize("NFKC", content)
+            content = content.encode('utf-8', 'replace').decode('utf-8')
+            return unicodedata.normalize('NFKC', content)
         if isinstance(content, list):
             return [self._normalize_content_recursively(t) for t in content]
         return content
@@ -157,7 +195,7 @@ class MineruPDFReader(LazyLLMReaderBase):
         if not html_table:
             return ''
         try:
-            soup = BeautifulSoup(html_table.strip(), 'html.parser')
+            soup = bs4.BeautifulSoup(html_table.strip(), 'html.parser')
             table = soup.find('table')
             if not table:
                 raise ValueError('No <table> found in the HTML.')

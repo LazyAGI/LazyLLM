@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 from typing import Optional, Tuple, Union
 
-from lazyllm import LOG
+from lazyllm import LOG, config
 
 try:
     import magic
@@ -63,18 +63,18 @@ def _delete_old_files(directory):
                 creation_time = datetime.datetime.fromtimestamp(os.path.getctime(file_path))
                 if (now - creation_time).days > 1:
                     os.remove(file_path)
-                    LOG.info(f"Deleted: {file_path}")
+                    LOG.info(f'Deleted: {file_path}')
             except Exception as e:
-                LOG.error(f"Error deleting file {file_path}: {e}")
+                LOG.error(f'Error deleting file {file_path}: {e}')
         for name in dirs:
             dir_path = os.path.join(root, name)
             try:
                 creation_time = datetime.datetime.fromtimestamp(os.path.getctime(dir_path))
                 if (now - creation_time).days > 1:
                     os.rmdir(dir_path)
-                    LOG.info(f"Deleted: {dir_path}")
+                    LOG.info(f'Deleted: {dir_path}')
             except Exception as e:
-                LOG.error(f"Error deleting directory {dir_path}: {e}")
+                LOG.error(f'Error deleting directory {dir_path}: {e}')
 
 def _is_base64_with_mime(input_str: str):
     pattern = r'^data:([^;]+);base64,(.+)$'
@@ -83,7 +83,7 @@ def _is_base64_with_mime(input_str: str):
     return False
 
 def _split_base64_with_mime(input_str: str):
-    """
+    '''
     Split base64 string with MIME type
 
     Args:
@@ -91,7 +91,7 @@ def _split_base64_with_mime(input_str: str):
 
     Returns:
         Tuple of (base64_str, mime_type) or (input_str, None) if invalid format
-    """
+    '''
     pattern = r'^data:([^;]+);base64,(.+)$'
     if match := re.match(pattern, input_str):
         return match.group(2), match.group(1)
@@ -99,7 +99,7 @@ def _split_base64_with_mime(input_str: str):
 
 
 def _file_to_base64(file_path: str, mime_types: dict) -> Optional[Tuple[str, Optional[str]]]:
-    """
+    '''
     Convert file to base64 string with MIME type
 
     Args:
@@ -108,7 +108,7 @@ def _file_to_base64(file_path: str, mime_types: dict) -> Optional[Tuple[str, Opt
 
     Returns:
         Tuple of (base64_str, mime_type) or None if error
-    """
+    '''
     try:
         with open(file_path, 'rb') as f:
             file_base64 = base64.b64encode(f.read()).decode('utf-8')
@@ -116,7 +116,7 @@ def _file_to_base64(file_path: str, mime_types: dict) -> Optional[Tuple[str, Opt
             mime = mime_types.get(ext)
             return file_base64, mime
     except Exception as e:
-        LOG.error(f"Error encoding file {file_path} to base64: {e}")
+        LOG.error(f'Error encoding file {file_path} to base64: {e}')
         return None
 
 
@@ -132,7 +132,7 @@ def ocr_to_base64(file_path: str) -> Optional[Tuple[str, Optional[str]]]:
 
 
 def _base64_to_file(base64_str: Union[str, list[str]], target_dir: Optional[str] = None) -> Union[str, list[str]]:
-    """
+    '''
     Convert base64 string to file
 
     Args:
@@ -144,22 +144,23 @@ def _base64_to_file(base64_str: Union[str, list[str]], target_dir: Optional[str]
 
     Raises:
         ValueError: If base64 format is invalid or MIME type is unsupported
-    """
+    '''
     if isinstance(base64_str, list):
         return [_base64_to_file(item, target_dir) for item in base64_str]
     base64_data, mime_type = _split_base64_with_mime(base64_str)
 
     if mime_type is None:
-        raise ValueError("Invalid base64 format")
+        raise ValueError('Invalid base64 format')
 
     if suffix := MIME_TO_EXT.get(mime_type):
         suffix = f'.{suffix}'
     else:
-        raise ValueError(f"Unsupported MIME type: {mime_type}")
+        raise ValueError(f'Unsupported MIME type: {mime_type}')
 
-    target_dir = target_dir if target_dir and os.path.isdir(target_dir) else None
+    target_dir = target_dir if target_dir and os.path.isdir(target_dir) else config['temp_dir']
+    os.makedirs(target_dir, exist_ok=True)
 
-    file_path = tempfile.NamedTemporaryFile(prefix="base64_to_file_", suffix=suffix, dir=target_dir, delete=False).name
+    file_path = tempfile.NamedTemporaryFile(prefix='base64_to_file_', suffix=suffix, dir=target_dir, delete=False).name
 
     with open(file_path, 'wb') as f:
         f.write(base64.b64decode(base64_data))
@@ -173,7 +174,7 @@ def infer_file_extension(data: bytes) -> str:
             file_type = magic.from_buffer(data, mime=True)
             return MIME_TO_EXT.get(file_type, '.bin')
         except Exception:
-            LOG.warning("Magic detection failed, using simple magic detection")
+            LOG.warning('Magic detection failed, using simple magic detection')
     return simple_magic_detection(data)
 
 def simple_magic_detection(data: bytes) -> str:
@@ -187,14 +188,15 @@ def simple_magic_detection(data: bytes) -> str:
     return '.bin'
 
 def bytes_to_file(bytes_str: Union[bytes, list[bytes]], target_dir: Optional[str] = None) -> Union[str, list[str]]:
-    """
+    '''
     Convert byte string to file
-    """
-    assert isinstance(bytes_str, (bytes, list)), "bytes_str must be a bytes or list of bytes"
+    '''
+    assert isinstance(bytes_str, (bytes, list)), 'bytes_str must be a bytes or list of bytes'
     if isinstance(bytes_str, list):
         return [bytes_to_file(item, target_dir) for item in bytes_str]
     elif isinstance(bytes_str, bytes):
-        output_dir = target_dir if target_dir and os.path.isdir(target_dir) else None
+        output_dir = target_dir if target_dir and os.path.isdir(target_dir) else config['temp_dir']
+        os.makedirs(output_dir, exist_ok=True)
         file_extension = infer_file_extension(bytes_str)
         temp_file = tempfile.NamedTemporaryFile(mode='wb', suffix=file_extension, delete=False, dir=output_dir)
         temp_file.write(bytes_str)

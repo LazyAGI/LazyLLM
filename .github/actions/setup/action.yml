@@ -1,0 +1,39 @@
+name: 'Test env setup'
+description: 'Composite Action of setting up test environment'
+inputs:
+  tests_dir:
+    description: 'tests directory'
+    required: false
+    default: ""
+
+runs:
+  using: "composite"
+  steps:
+    - name: Set up python ${{ env.PYTHON_VERSION }}
+      uses: actions/setup-python@v5
+      with:
+        python-version: ${{ env.PYTHON_VERSION }}
+      env:
+        PYTHON_VERSION: "3.10.9"
+
+    - name: Build project
+      shell: bash
+      run: |
+        pip install build
+        cp pyproject.toml ./lazyllm
+        python -m build --config-setting=skbuild.wheel.cmake=false
+
+    - name: Install the built package
+      shell: bash
+      run: |
+        ls dist && pip install dist/lazyllm*.whl
+        lazyllm install rag
+        lazyllm install test
+
+    - name: Restore pytest cache
+      if: inputs.tests_dir != ''
+      uses: actions/cache/restore@v4
+      with:
+        path: ${{ inputs.tests_dir }}/.pytest_cache
+        key: ${{ github.job }}-${{ github.event_name == 'pull_request_target' &&
+          github.event.pull_request.head.sha || github.sha }}

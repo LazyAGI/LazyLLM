@@ -6,13 +6,13 @@ from lazyllm import globals, LazyLLMHook
 
 
 class MetaKeys:
-    ID: str = "id"
-    SESSIONID: str = "sessionid"
-    TIMECOST: str = "timecost"
-    PROMPT_TOKENS: str = "prompt_tokens"
-    COMPLETION_TOKENS: str = "completion_tokens"
-    INPUT: str = "input"
-    OUTPUT: str = "output"
+    ID: str = 'id'
+    SESSIONID: str = 'sessionid'
+    TIMECOST: str = 'timecost'
+    PROMPT_TOKENS: str = 'prompt_tokens'
+    COMPLETION_TOKENS: str = 'completion_tokens'
+    INPUT: str = 'input'
+    OUTPUT: str = 'output'
 
 
 class NodeMetaHook(LazyLLMHook):
@@ -23,14 +23,14 @@ class NodeMetaHook(LazyLLMHook):
         elif isinstance(obj, lazyllm.FlowBase):
             self._uniqueid = obj._flow_id
         else:
-            raise TypeError(f"Expected 'obj' to be type of ModuleBase or FlowBase, but got {type(obj)}")
+            raise TypeError(f'Expected "obj" to be type of ModuleBase or FlowBase, but got {type(obj)}')
         self._meta_info = {
             MetaKeys.ID: str(self._uniqueid),
             MetaKeys.TIMECOST: 0.0,
             MetaKeys.PROMPT_TOKENS: 0,
             MetaKeys.COMPLETION_TOKENS: 0,
-            MetaKeys.INPUT: "",
-            MetaKeys.OUTPUT: "",
+            MetaKeys.INPUT: '',
+            MetaKeys.OUTPUT: '',
         }
         self._front_id = front_id
         self._url = url
@@ -45,7 +45,7 @@ class NodeMetaHook(LazyLLMHook):
                 self._meta_info[MetaKeys.INPUT] = str(args[0])
         else:
             for index, value in enumerate(args):
-                arguments[f"arg_{index}"] = value
+                arguments[f'arg_{index}'] = value
             arguments.update(kwargs)
             self._meta_info[MetaKeys.INPUT] = str(arguments)
         self._meta_info[MetaKeys.TIMECOST] = time.time()
@@ -53,15 +53,15 @@ class NodeMetaHook(LazyLLMHook):
     def post_hook(self, output):
         self._meta_info[MetaKeys.OUTPUT] = str(output)
 
-        if self._uniqueid in globals["usage"]:
-            self._meta_info.update(globals["usage"][self._uniqueid])
+        if self._uniqueid in globals['usage']:
+            self._meta_info.update(globals['usage'][self._uniqueid])
         self._meta_info[MetaKeys.ID] = self._front_id
         self._meta_info[MetaKeys.TIMECOST] = time.time() - self._meta_info[MetaKeys.TIMECOST]
 
     def report(self):
-        headers = {"Content-Type": "application/json; charset=utf-8"}
+        headers = {'Content-Type': 'application/json; charset=utf-8'}
         json_data = json.dumps(self._meta_info, ensure_ascii=False)
         try:
             requests.post(self._url, data=json_data, headers=headers)
         except Exception as e:
-            lazyllm.LOG.warning(f"Error sending collected data: {e}. URL: {self._url}")
+            lazyllm.LOG.warning(f'Error sending collected data: {e}. URL: {self._url}')
