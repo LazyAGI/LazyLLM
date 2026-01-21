@@ -113,14 +113,12 @@ class LazyPatchFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path, target=None):
         if fullname in LazyPatchLoader.PATCHS and fullname not in LazyPatchLoader.PATCHED:
             if self in sys.meta_path: sys.meta_path.remove(self)
-            try:
-                original_spec = importlib.util.find_spec(fullname)
-                if original_spec is None: return None
-                return importlib.util.spec_from_loader(fullname, LazyPatchLoader(original_spec, fullname),
-                                                       origin=original_spec.origin)
-            finally:
-                if len(LazyPatchLoader.PATCHS) != len(LazyPatchLoader.PATCHED):
-                    sys.meta_path.insert(0, self)
+            original_spec = importlib.util.find_spec(fullname)
+            if len(LazyPatchLoader.PATCHS) > len(LazyPatchLoader.PATCHED) + 1:
+                sys.meta_path.insert(0, self)
+            if original_spec is None: return None
+            return importlib.util.spec_from_loader(fullname, LazyPatchLoader(original_spec, fullname),
+                                                   origin=original_spec.origin)
         return None
 
 for name, fn in LazyPatchLoader.PATCHS.items():
