@@ -36,15 +36,23 @@ class HttpRequest(ModuleBase):
                 return target_str
 
             pattern = r'\{\{([^}]+)\}\}'
-            matches = re.findall(pattern, target_str)
-            for match in matches:
-                replacement = replacements.get(match)
-                if replacement is not None:
-                    if '{{' + match + '}}' == target_str:
-                        return replacement
-                    target_str = re.sub(r'\{\{' + re.escape(match) + r'\}\}', replacement, target_str)
 
-            return target_str
+            full_match = re.fullmatch(pattern, target_str)
+            if full_match:
+                key = full_match.group(1)
+                if key in replacements:
+                    return replacements[key]
+
+            def replacer(m):
+                key = m.group(1)
+                if key not in replacements:
+                    return m.group(0)  # Keep original if no replacement found
+                replacement = replacements[key]
+                if isinstance(replacement, (dict, list, bool)) or replacement is None:
+                    return json.dumps(replacement, ensure_ascii=False)
+                return str(replacement)
+
+            return re.sub(pattern, replacer, target_str)
 
         url = _map_input(self._url)
         params = {key: _map_input(value) for key, value in self._params.items()} if self._params else None
