@@ -101,7 +101,15 @@ class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase, DoubaoMultiModal):
                          return_trace=return_trace, url=url, **kwargs)
         DoubaoMultiModal.__init__(self, api_key=api_key, url=url)
 
+    def forward(self, input: str = None, model_name: str = None, base_url: str = None, **kwargs):
+        return super().forward(input, model=model_name, url=base_url, **kwargs)
+
     def _forward(self, input: str = None, files: List[str] = None, n: int = 1, size: str = '1024x1024', seed: int = -1,
+                 guidance_scale: float = 2.5, watermark: bool = True, model: str = None, url: str = None, **kwargs):
+        return self._forward_impl(input=input, files=files, n=n, size=size, seed=seed,
+                                  guidance_scale=guidance_scale, watermark=watermark, model=model, url=url, **kwargs)
+
+    def _forward_impl(self, input: str = None, files: List[str] = None, n: int = 1, size: str = '1024x1024', seed: int = -1,
                  guidance_scale: float = 2.5, watermark: bool = True, model: str = None, url: str = None, **kwargs):
         has_ref_image = files is not None and len(files) > 0
         if self._type == LLMType.IMAGE_EDITING and not has_ref_image:

@@ -32,13 +32,12 @@ class OnlineMultiModalBase(LazyLLMOnlineBase, LLMBase):
         '''Forward method to be implemented by subclasses'''
         raise NotImplementedError(f'Subclass {self.__class__.__name__} must implement this method')
 
-    def forward(self, input: Union[Dict, str] = None, *, lazyllm_files=None,
-                url: str = None, model: str = None, **kwargs):
+    def forward(self, input: Union[Dict, str] = None, *, lazyllm_files=None, **kwargs):
         '''Main forward method with file handling'''
         try:
             input, files = self._get_files(input, lazyllm_files)
-            runtime_url = url or kwargs.pop('base_url', None) or self._base_url
-            runtime_model = model or kwargs.pop('model_name', None) or self._model_name
+            runtime_url = kwargs.pop('base_url', None) or self._base_url
+            runtime_model = kwargs.pop('model_name', None) or self._model_name
             call_params = {'input': input, **kwargs}
             if files: call_params['files'] = files
             return self._forward(**call_params, model=runtime_model, url=runtime_url)

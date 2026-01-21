@@ -503,23 +503,23 @@ class Parallel(LazyLLMFlowsBase):
             else:
                 barrier, executor = threading.Barrier(len(items)), concurrent.futures.ThreadPoolExecutor
 
-            with executor(max_workers=self._concurrent) as e:
-                futures = [e.submit(partial(self._worker, self.invoke, barrier, lazyllm.globals._sid,
-                                            lazyllm.locals._data, it, inp, **kw))
-                           for it, inp in zip(items, inputs)]
-                if (not_done := concurrent.futures.wait(futures).not_done):
-                    error_msgs = []
-                    for future in not_done:
-                        if (exc := future.exception()) is not None:
-                            if (tb := getattr(future, '_traceback', None)):
-                                tb_str = ''.join(traceback.format_exception(type(exc), exc, tb))
-                            else:
-                                tb_str = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
-                            error_msgs.append(f'Future: {future}\n{tb_str}')
+            e = executor(max_workers=self._concurrent)
+            futures = [e.submit(partial(self._worker, self.invoke, barrier, lazyllm.globals._sid,
+                                        lazyllm.locals._data, it, inp, **kw))
+                       for it, inp in zip(items, inputs)]
+            if (not_done := concurrent.futures.wait(futures).not_done):
+                error_msgs = []
+                for future in not_done:
+                    if (exc := future.exception()) is not None:
+                        if (tb := getattr(future, '_traceback', None)):
+                            tb_str = ''.join(traceback.format_exception(type(exc), exc, tb))
                         else:
-                            error_msgs.append(f'Future: {future} not complete without exception。')
-                    raise RuntimeError('Parallel execute failed!\n' + '\n'.join(error_msgs))
-                return package([future.result() for future in futures])
+                            tb_str = ''.join(traceback.format_exception(type(exc), exc, exc.__traceback__))
+                        error_msgs.append(f'Future: {future}\n{tb_str}')
+                    else:
+                        error_msgs.append(f'Future: {future} not complete without exception。')
+                raise RuntimeError('Parallel execute failed!\n' + '\n'.join(error_msgs))
+            return package([future.result() for future in futures])
         else:
             return package(self.invoke(it, inp, **kw) for it, inp in zip(items, inputs))
 
