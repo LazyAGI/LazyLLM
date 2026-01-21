@@ -33,7 +33,8 @@ class TestMultiModal(object):
             result = tts(self.test_text)
 
     def test_online_stt(self):
-        stt = lazyllm.OnlineMultiModalModule(source='glm', function='stt')
+        api_key = lazyllm.config['glm_api_key']
+        stt = lazyllm.OnlineMultiModalModule(source='glm', function='stt', api_key=api_key)
         result = stt(lazyllm_files=self.test_audio_file)
         assert '地铁站' in result
 
