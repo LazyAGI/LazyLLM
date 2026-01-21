@@ -134,12 +134,7 @@ class MapStore(LazyLLMStoreBase):
                 kb_id = item.get(RAG_KB_ID, DEFAULT_KB_ID)
                 item['kb_id'] = kb_id
                 assert uid and doc_id, '[MapStore - upsert] uid and doc_id are required'
-                self._uid2data[uid] = item
-                self._collection2uids[collection_name].add(uid)
-                self._col_kb_doc_uids[collection_name][kb_id][doc_id].add(uid)
-                self._col_doc_uids[collection_name][doc_id].add(uid)
-                self._col_parent_uids[collection_name][item.get('parent')].add(uid)
-                self._col_number_uids[collection_name][item.get('number')].add(uid)
+                self._cache_segment(collection_name, item)
             return True
         except Exception as e:
             LOG.error(f'[MapStore - upsert] Error upserting data: {e}')
@@ -199,7 +194,6 @@ class MapStore(LazyLLMStoreBase):
                 for r in rows:
                     item = self._deserialize_data(r)
                     res.append(item)
-                    self._col_number_uids[collection_name][item['number']].add(item['uid'])
             return res
         else:
             uids = self._get_uids_by_criteria(collection_name, criteria)
@@ -244,6 +238,7 @@ class MapStore(LazyLLMStoreBase):
         self._col_doc_uids[collection_name][item['doc_id']].add(uid)
         self._col_kb_doc_uids[collection_name][item['kb_id']][item['doc_id']].add(uid)
         self._col_parent_uids[collection_name][item.get('parent')].add(uid)
+        self._col_number_uids[collection_name][item['number']].add(item['uid'])
 
     def _check_sqlite_json(self, cursor: sqlite3.Cursor) -> bool:
         if self._sqlite_has_json is not None:
