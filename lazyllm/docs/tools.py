@@ -10221,7 +10221,7 @@ Get the node's content text with metadata in LLM mode.
 add_chinese_doc('rag.store.hybrid.MapStore', """\
 基于SQLite的Map存储类，继承自LazyLLMStoreBase。
 
-提供基于SQLite数据库的向量存储功能，支持数据持久化、多集合管理和复杂查询。
+提供基于SQLite的数据持久化与BM25全文检索，支持多集合管理和简单查询。
 
 Args:
     uri (Optional[str]): SQLite数据库文件路径，默认为None（内存模式）
@@ -10237,7 +10237,7 @@ Attributes:
 add_english_doc('rag.store.hybrid.MapStore', """\
 SQLite-based Map storage class, inherits from LazyLLMStoreBase.
 
-Provides vector storage functionality based on SQLite database, supports data persistence, multi-collection management and complex queries.
+Provides data persistence and BM25 full-text search via SQLite for lightweight use cases.
 
 Args:
     uri (Optional[str]): SQLite database file path, defaults to None (in-memory mode)
@@ -10245,7 +10245,7 @@ Args:
 
 Attributes:
     capability: Storage capability flag, supports all operations
-    need_embedding: Whether embedding is needed
+    need_embedding: Whether embedding is required
     supports_index_registration: Whether index registration is supported
 """)
 
