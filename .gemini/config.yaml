@@ -1,0 +1,100 @@
+memory_config:
+  disabled: false
+code_review:
+  disable: false
+  comment_severity_threshold: MEDIUM
+  max_review_comments: 64
+  pull_request_opened:
+    help: false
+    summary: true
+    code_review: true
+    include_drafts: false
+# ignore_patterns: []
+ignore_patterns:
+  # --------------------
+  # Python files
+  # --------------------
+  - "**/__pycache__/**"
+  - "**/*.pyc"
+
+  # --------------------
+  # Temp / runtime files
+  # --------------------
+  - "test/**"
+  - "dist/**"
+  - "tmp/**"
+  - "build/**"
+  - "build*/**"
+  - "**/*.lock"
+  - "**/*.db"
+  - "mkdocs.yml"
+  - ".temp/**"
+  - "infer_log/**"
+  - "**/*.log"
+  - "log.txt"
+  - "save_ckpt/**"
+  - "wget-log"
+
+  # --------------------
+  # Dev tools
+  # --------------------
+  - ".vscode/**"
+
+  # --------------------
+  # Docs generated assets
+  # --------------------
+  - "lazyllm_chroma/**"
+  - "docs/en/assets/**"
+  - "docs/zh/assets/**"
+
+  # --------------------
+  # Prerequisites
+  # --------------------
+  - "**/*.d"
+
+  # --------------------
+  # Compiled object files
+  # --------------------
+  - "**/*.slo"
+  - "**/*.lo"
+  - "**/*.o"
+  - "**/*.obj"
+
+  # --------------------
+  # Precompiled headers
+  # --------------------
+  - "**/*.gch"
+  - "**/*.pch"
+
+  # --------------------
+  # Dynamic libraries
+  # --------------------
+  - "**/*.so"
+  - "**/*.dylib"
+  - "**/*.dll"
+
+  # --------------------
+  # Fortran modules
+  # --------------------
+  - "**/*.mod"
+  - "**/*.smod"
+
+  # --------------------
+  # Static libraries
+  # --------------------
+  - "**/*.lai"
+  - "**/*.la"
+  - "**/*.a"
+  - "**/*.lib"
+
+  # --------------------
+  # Executables
+  # --------------------
+  - "**/*.exe"
+  - "**/*.out"
+  - "**/*.app"
+
+  # --------------------
+  # Python packaging
+  # --------------------
+  - "lazyllm_cpp.egg-info/**"
