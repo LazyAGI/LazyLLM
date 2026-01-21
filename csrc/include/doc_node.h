@@ -110,27 +110,27 @@ public:
 protected:
     void invalidate_content_hash();
 
-    std::string uid_;
-    std::string group_;
-    std::string text_;
-    bool content_is_list_;
-    std::vector<std::string> content_list_;
-    Embedding embedding_;
-    Metadata metadata_;
-    Metadata global_metadata_;
-    std::vector<std::string> excluded_embed_metadata_keys_;
-    std::vector<std::string> excluded_llm_metadata_keys_;
-    DocNode* parent_;
-    Children children_;
-    bool children_loaded_;
-    mutable std::mutex embedding_mutex_;
-    mutable std::set<std::string> embedding_state_;
-    mutable std::string content_hash_;
-    mutable bool content_hash_dirty_;
-    double relevance_score_;
-    bool has_relevance_score_;
-    double similarity_score_;
-    bool has_similarity_score_;
+    std::string _uid;
+    std::string _group;
+    std::string _text;
+    bool _content_is_list;
+    std::vector<std::string> _content_list;
+    Embedding _embedding;
+    Metadata _metadata;
+    Metadata _global_metadata;
+    std::vector<std::string> _excluded_embed_metadata_keys;
+    std::vector<std::string> _excluded_llm_metadata_keys;
+    DocNode* _parent;
+    Children _children;
+    bool _children_loaded;
+    mutable std::mutex _embedding_mutex;
+    mutable std::set<std::string> _embedding_state;
+    mutable std::string _content_hash;
+    mutable bool _content_hash_dirty;
+    double _relevance_score;
+    bool _has_relevance_score;
+    double _similarity_score;
+    bool _has_similarity_score;
 };
 
 class QADocNode : public DocNode {
@@ -142,7 +142,7 @@ public:
     std::string get_text_with_metadata(MetadataMode mode) const override;
 
 private:
-    std::string answer_;
+    std::string _answer;
 };
 
 class ImageDocNode : public DocNode {
@@ -157,8 +157,8 @@ public:
     std::string get_text_with_metadata(MetadataMode mode) const override;
 
 private:
-    std::string image_path_;
-    std::string modality_;
+    std::string _image_path;
+    std::string _modality;
 };
 
 } // namespace lazyllm

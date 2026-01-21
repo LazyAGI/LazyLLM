@@ -229,94 +229,94 @@ std::string Sha256Hex(const std::string& input) {
 } // namespace
 
 DocNode::DocNode()
-    : uid_(GenerateUUID()),
-      group_(),
-      text_(),
-      content_is_list_(false),
-      parent_(nullptr),
-      children_loaded_(false),
-      content_hash_(),
-      content_hash_dirty_(true),
-      relevance_score_(0.0),
-      has_relevance_score_(false),
-      similarity_score_(0.0),
-      has_similarity_score_(false) {}
+    : _uid(GenerateUUID()),
+      _group(),
+      _text(),
+      _content_is_list(false),
+      _parent(nullptr),
+      _children_loaded(false),
+      _content_hash(),
+      _content_hash_dirty(true),
+      _relevance_score(0.0),
+      _has_relevance_score(false),
+      _similarity_score(0.0),
+      _has_similarity_score(false) {}
 
 DocNode::DocNode(const std::string& text) : DocNode() {
     set_text(text);
 }
 
 DocNode::DocNode(const DocNode& other)
-    : uid_(other.uid_),
-      group_(other.group_),
-      text_(other.text_),
-      content_is_list_(other.content_is_list_),
-      content_list_(other.content_list_),
-      embedding_(other.embedding_),
-      metadata_(other.metadata_),
-      global_metadata_(other.global_metadata_),
-      excluded_embed_metadata_keys_(other.excluded_embed_metadata_keys_),
-      excluded_llm_metadata_keys_(other.excluded_llm_metadata_keys_),
-      parent_(other.parent_),
-      children_(other.children_),
-      children_loaded_(other.children_loaded_),
-      embedding_state_(other.embedding_state_),
-      content_hash_(other.content_hash_),
-      content_hash_dirty_(other.content_hash_dirty_),
-      relevance_score_(other.relevance_score_),
-      has_relevance_score_(other.has_relevance_score_),
-      similarity_score_(other.similarity_score_),
-      has_similarity_score_(other.has_similarity_score_) {}
+    : _uid(other._uid),
+      _group(other._group),
+      _text(other._text),
+      _content_is_list(other._content_is_list),
+      _content_list(other._content_list),
+      _embedding(other._embedding),
+      _metadata(other._metadata),
+      _global_metadata(other._global_metadata),
+      _excluded_embed_metadata_keys(other._excluded_embed_metadata_keys),
+      _excluded_llm_metadata_keys(other._excluded_llm_metadata_keys),
+      _parent(other._parent),
+      _children(other._children),
+      _children_loaded(other._children_loaded),
+      _embedding_state(other._embedding_state),
+      _content_hash(other._content_hash),
+      _content_hash_dirty(other._content_hash_dirty),
+      _relevance_score(other._relevance_score),
+      _has_relevance_score(other._has_relevance_score),
+      _similarity_score(other._similarity_score),
+      _has_similarity_score(other._has_similarity_score) {}
 
 DocNode& DocNode::operator=(const DocNode& other) {
     if (this == &other) {
         return *this;
     }
-    uid_ = other.uid_;
-    group_ = other.group_;
-    text_ = other.text_;
-    content_is_list_ = other.content_is_list_;
-    content_list_ = other.content_list_;
-    embedding_ = other.embedding_;
-    metadata_ = other.metadata_;
-    global_metadata_ = other.global_metadata_;
-    excluded_embed_metadata_keys_ = other.excluded_embed_metadata_keys_;
-    excluded_llm_metadata_keys_ = other.excluded_llm_metadata_keys_;
-    parent_ = other.parent_;
-    children_ = other.children_;
-    children_loaded_ = other.children_loaded_;
-    embedding_state_ = other.embedding_state_;
-    content_hash_ = other.content_hash_;
-    content_hash_dirty_ = other.content_hash_dirty_;
-    relevance_score_ = other.relevance_score_;
-    has_relevance_score_ = other.has_relevance_score_;
-    similarity_score_ = other.similarity_score_;
-    has_similarity_score_ = other.has_similarity_score_;
+    _uid = other._uid;
+    _group = other._group;
+    _text = other._text;
+    _content_is_list = other._content_is_list;
+    _content_list = other._content_list;
+    _embedding = other._embedding;
+    _metadata = other._metadata;
+    _global_metadata = other._global_metadata;
+    _excluded_embed_metadata_keys = other._excluded_embed_metadata_keys;
+    _excluded_llm_metadata_keys = other._excluded_llm_metadata_keys;
+    _parent = other._parent;
+    _children = other._children;
+    _children_loaded = other._children_loaded;
+    _embedding_state = other._embedding_state;
+    _content_hash = other._content_hash;
+    _content_hash_dirty = other._content_hash_dirty;
+    _relevance_score = other._relevance_score;
+    _has_relevance_score = other._has_relevance_score;
+    _similarity_score = other._similarity_score;
+    _has_similarity_score = other._has_similarity_score;
     return *this;
 }
 
 const std::string& DocNode::uid() const {
-    return uid_;
+    return _uid;
 }
 
 const std::string& DocNode::group() const {
-    return group_;
+    return _group;
 }
 
 void DocNode::set_group(const std::string& group) {
-    group_ = group;
+    _group = group;
 }
 
 bool DocNode::content_is_list() const {
-    return content_is_list_;
+    return _content_is_list;
 }
 
 const std::vector<std::string>& DocNode::content_list() const {
-    return content_list_;
+    return _content_list;
 }
 
 const std::string& DocNode::content_text() const {
-    return text_;
+    return _text;
 }
 
 void DocNode::set_content(const std::string& text) {
@@ -324,53 +324,53 @@ void DocNode::set_content(const std::string& text) {
 }
 
 void DocNode::set_content(const std::vector<std::string>& lines) {
-    content_is_list_ = true;
-    content_list_ = lines;
-    text_ = JoinLines(lines);
+    _content_is_list = true;
+    _content_list = lines;
+    _text = JoinLines(lines);
     invalidate_content_hash();
 }
 
 void DocNode::set_text(const std::string& text) {
-    text_ = text;
-    content_is_list_ = false;
-    content_list_.clear();
+    _text = text;
+    _content_is_list = false;
+    _content_list.clear();
     invalidate_content_hash();
 }
 
 const std::string& DocNode::get_text() const {
-    return text_;
+    return _text;
 }
 
 std::string DocNode::get_text_with_metadata(MetadataMode mode) const {
     const std::string metadata_str = get_metadata_str(mode);
     if (metadata_str.empty()) {
-        return text_;
+        return _text;
     }
-    if (text_.empty()) {
+    if (_text.empty()) {
         return metadata_str;
     }
-    return metadata_str + "\n\n" + text_;
+    return metadata_str + "\n\n" + _text;
 }
 
 std::string DocNode::content_hash() const {
-    if (content_hash_dirty_) {
-        content_hash_ = Sha256Hex(text_);
-        content_hash_dirty_ = false;
+    if (_content_hash_dirty) {
+        _content_hash = Sha256Hex(_text);
+        _content_hash_dirty = false;
     }
-    return content_hash_;
+    return _content_hash;
 }
 
 DocNode::Embedding& DocNode::embedding() {
-    return embedding_;
+    return _embedding;
 }
 
 const DocNode::Embedding& DocNode::embedding() const {
-    return embedding_;
+    return _embedding;
 }
 
 void DocNode::set_embedding(const Embedding& embed) {
-    std::lock_guard<std::mutex> lock(embedding_mutex_);
-    embedding_ = embed;
+    std::lock_guard<std::mutex> lock(_embedding_mutex);
+    _embedding = embed;
 }
 
 std::vector<std::string> DocNode::has_missing_embedding(const std::vector<std::string>& embed_keys) const {
@@ -378,9 +378,9 @@ std::vector<std::string> DocNode::has_missing_embedding(const std::vector<std::s
     if (embed_keys.empty()) {
         return missing;
     }
-    std::lock_guard<std::mutex> lock(embedding_mutex_);
+    std::lock_guard<std::mutex> lock(_embedding_mutex);
     for (const auto& key : embed_keys) {
-        if (embedding_.find(key) == embedding_.end()) {
+        if (_embedding.find(key) == _embedding.end()) {
             missing.push_back(key);
         }
     }
@@ -393,23 +393,23 @@ void DocNode::do_embedding(const std::unordered_map<std::string, EmbeddingFn>& e
     for (const auto& item : embed) {
         generated[item.first] = item.second(input, "");
     }
-    std::lock_guard<std::mutex> lock(embedding_mutex_);
+    std::lock_guard<std::mutex> lock(_embedding_mutex);
     for (const auto& item : generated) {
-        embedding_[item.first] = item.second;
+        _embedding[item.first] = item.second;
     }
 }
 
 void DocNode::set_embedding_value(const std::string& key, const std::vector<float>& value) {
-    std::lock_guard<std::mutex> lock(embedding_mutex_);
-    embedding_[key] = value;
+    std::lock_guard<std::mutex> lock(_embedding_mutex);
+    _embedding[key] = value;
 }
 
 void DocNode::check_embedding_state(const std::string& embed_key) const {
     while (true) {
         {
-            std::lock_guard<std::mutex> lock(embedding_mutex_);
-            if (embedding_.find(embed_key) != embedding_.end()) {
-                embedding_state_.erase(embed_key);
+            std::lock_guard<std::mutex> lock(_embedding_mutex);
+            if (_embedding.find(embed_key) != _embedding.end()) {
+                _embedding_state.erase(embed_key);
                 break;
             }
         }
@@ -418,95 +418,95 @@ void DocNode::check_embedding_state(const std::string& embed_key) const {
 }
 
 DocNode* DocNode::parent() {
-    return parent_;
+    return _parent;
 }
 
 const DocNode* DocNode::parent() const {
-    return parent_;
+    return _parent;
 }
 
 void DocNode::set_parent(DocNode* parent) {
-    parent_ = parent;
+    _parent = parent;
 }
 
 DocNode::Children& DocNode::children() {
-    return children_;
+    return _children;
 }
 
 const DocNode::Children& DocNode::children() const {
-    return children_;
+    return _children;
 }
 
 void DocNode::set_children(const Children& children) {
-    children_ = children;
+    _children = children;
 }
 
 DocNode* DocNode::root_node() {
     DocNode* node = this;
-    while (node->parent_ != nullptr) {
-        node = node->parent_;
+    while (node->_parent != nullptr) {
+        node = node->_parent;
     }
     return node;
 }
 
 const DocNode* DocNode::root_node() const {
     const DocNode* node = this;
-    while (node->parent_ != nullptr) {
-        node = node->parent_;
+    while (node->_parent != nullptr) {
+        node = node->_parent;
     }
     return node;
 }
 
 bool DocNode::is_root_node() const {
-    return parent_ == nullptr;
+    return _parent == nullptr;
 }
 
 DocNode::Metadata& DocNode::metadata() {
-    return metadata_;
+    return _metadata;
 }
 
 const DocNode::Metadata& DocNode::metadata() const {
-    return metadata_;
+    return _metadata;
 }
 
 void DocNode::set_metadata(const Metadata& metadata) {
-    metadata_ = metadata;
+    _metadata = metadata;
 }
 
 DocNode::Metadata& DocNode::global_metadata() {
-    return root_node()->global_metadata_;
+    return root_node()->_global_metadata;
 }
 
 const DocNode::Metadata& DocNode::global_metadata() const {
-    return root_node()->global_metadata_;
+    return root_node()->_global_metadata;
 }
 
 void DocNode::set_global_metadata(const Metadata& global_metadata) {
-    global_metadata_ = global_metadata;
+    _global_metadata = global_metadata;
 }
 
 std::vector<std::string> DocNode::excluded_embed_metadata_keys() const {
     std::set<std::string> keys;
     const DocNode* root = root_node();
-    keys.insert(root->excluded_embed_metadata_keys_.begin(), root->excluded_embed_metadata_keys_.end());
-    keys.insert(excluded_embed_metadata_keys_.begin(), excluded_embed_metadata_keys_.end());
+    keys.insert(root->_excluded_embed_metadata_keys.begin(), root->_excluded_embed_metadata_keys.end());
+    keys.insert(_excluded_embed_metadata_keys.begin(), _excluded_embed_metadata_keys.end());
     return std::vector<std::string>(keys.begin(), keys.end());
 }
 
 void DocNode::set_excluded_embed_metadata_keys(const std::vector<std::string>& keys) {
-    excluded_embed_metadata_keys_ = keys;
+    _excluded_embed_metadata_keys = keys;
 }
 
 std::vector<std::string> DocNode::excluded_llm_metadata_keys() const {
     std::set<std::string> keys;
     const DocNode* root = root_node();
-    keys.insert(root->excluded_llm_metadata_keys_.begin(), root->excluded_llm_metadata_keys_.end());
-    keys.insert(excluded_llm_metadata_keys_.begin(), excluded_llm_metadata_keys_.end());
+    keys.insert(root->_excluded_llm_metadata_keys.begin(), root->_excluded_llm_metadata_keys.end());
+    keys.insert(_excluded_llm_metadata_keys.begin(), _excluded_llm_metadata_keys.end());
     return std::vector<std::string>(keys.begin(), keys.end());
 }
 
 void DocNode::set_excluded_llm_metadata_keys(const std::vector<std::string>& keys) {
-    excluded_llm_metadata_keys_ = keys;
+    _excluded_llm_metadata_keys = keys;
 }
 
 std::string DocNode::docpath() const {
@@ -529,7 +529,7 @@ std::string DocNode::get_children_str() const {
     std::ostringstream oss;
     oss << "{";
     bool first_group = true;
-    for (const auto& item : children_) {
+    for (const auto& item : _children) {
         if (!first_group) {
             oss << ", ";
         }
@@ -553,18 +553,18 @@ std::string DocNode::get_children_str() const {
 }
 
 std::string DocNode::get_parent_id() const {
-    return parent_ ? parent_->uid() : "";
+    return _parent ? _parent->uid() : "";
 }
 
 std::string DocNode::to_string() const {
     std::ostringstream oss;
-    oss << "DocNode(id: " << uid_ << ", group: " << group_ << ", content: " << text_ << ") parent: "
+    oss << "DocNode(id: " << _uid << ", group: " << _group << ", content: " << _text << ") parent: "
         << get_parent_id() << ", children: " << get_children_str();
     return oss.str();
 }
 
 bool DocNode::operator==(const DocNode& other) const {
-    return uid_ == other.uid_;
+    return _uid == other._uid;
 }
 
 bool DocNode::operator!=(const DocNode& other) const {
@@ -572,7 +572,7 @@ bool DocNode::operator!=(const DocNode& other) const {
 }
 
 std::size_t DocNode::hash() const {
-    return std::hash<std::string>()(uid_);
+    return std::hash<std::string>()(_uid);
 }
 
 std::string DocNode::get_metadata_str(MetadataMode mode) const {
@@ -580,7 +580,7 @@ std::string DocNode::get_metadata_str(MetadataMode mode) const {
         return "";
     }
     std::set<std::string> keys;
-    for (const auto& item : metadata_) {
+    for (const auto& item : _metadata) {
         keys.insert(item.first);
     }
     if (mode == MetadataMode::Llm) {
@@ -597,8 +597,8 @@ std::string DocNode::get_metadata_str(MetadataMode mode) const {
     std::ostringstream oss;
     bool first = true;
     for (const auto& key : keys) {
-        const auto it = metadata_.find(key);
-        if (it == metadata_.end()) {
+        const auto it = _metadata.find(key);
+        if (it == _metadata.end()) {
             continue;
         }
         if (!first) {
@@ -619,112 +619,112 @@ std::string DocNode::get_content(MetadataMode mode) const {
 
 DocNode DocNode::with_score(double score) const {
     DocNode node(*this);
-    node.relevance_score_ = score;
-    node.has_relevance_score_ = true;
+    node._relevance_score = score;
+    node._has_relevance_score = true;
     return node;
 }
 
 DocNode DocNode::with_sim_score(double score) const {
     DocNode node(*this);
-    node.similarity_score_ = score;
-    node.has_similarity_score_ = true;
+    node._similarity_score = score;
+    node._has_similarity_score = true;
     return node;
 }
 
 bool DocNode::has_relevance_score() const {
-    return has_relevance_score_;
+    return _has_relevance_score;
 }
 
 bool DocNode::has_similarity_score() const {
-    return has_similarity_score_;
+    return _has_similarity_score;
 }
 
 double DocNode::relevance_score() const {
-    return relevance_score_;
+    return _relevance_score;
 }
 
 double DocNode::similarity_score() const {
-    return similarity_score_;
+    return _similarity_score;
 }
 
 void DocNode::invalidate_content_hash() {
-    content_hash_dirty_ = true;
+    _content_hash_dirty = true;
 }
 
 QADocNode::QADocNode(const std::string& query, const std::string& answer)
-    : DocNode(query), answer_(Trim(answer)) {}
+    : DocNode(query), _answer(Trim(answer)) {}
 
 QADocNode::QADocNode(const std::string& query, const std::string& answer, const std::string& uid,
                      const std::string& group)
-    : DocNode(query), answer_(Trim(answer)) {
+    : DocNode(query), _answer(Trim(answer)) {
     if (!uid.empty()) {
-        uid_ = uid;
+        _uid = uid;
     }
-    group_ = group;
+    _group = group;
 }
 
 const std::string& QADocNode::answer() const {
-    return answer_;
+    return _answer;
 }
 
 std::string QADocNode::get_text_with_metadata(MetadataMode mode) const {
     if (mode == MetadataMode::Llm) {
         std::ostringstream oss;
-        oss << "query:\n" << text_ << "\nanswer\n" << answer_;
+        oss << "query:\n" << _text << "\nanswer\n" << _answer;
         return oss.str();
     }
     return DocNode::get_text_with_metadata(mode);
 }
 
 ImageDocNode::ImageDocNode(const std::string& image_path)
-    : DocNode(image_path), image_path_(Trim(image_path)), modality_("image") {
-    set_text(image_path_);
+    : DocNode(image_path), _image_path(Trim(image_path)), _modality("image") {
+    set_text(_image_path);
 }
 
 ImageDocNode::ImageDocNode(const std::string& image_path, const std::string& uid, const std::string& group)
-    : DocNode(image_path), image_path_(Trim(image_path)), modality_("image") {
+    : DocNode(image_path), _image_path(Trim(image_path)), _modality("image") {
     if (!uid.empty()) {
-        uid_ = uid;
+        _uid = uid;
     }
-    group_ = group;
-    set_text(image_path_);
+    _group = group;
+    set_text(_image_path);
 }
 
 const std::string& ImageDocNode::image_path() const {
-    return image_path_;
+    return _image_path;
 }
 
 std::string ImageDocNode::get_content(MetadataMode mode) const {
     if (mode == MetadataMode::Embed) {
         std::string file_bytes;
-        if (!ReadFileBinary(image_path_, &file_bytes)) {
+        if (!ReadFileBinary(_image_path, &file_bytes)) {
             return "";
         }
-        const std::string mime = ImageMimeType(image_path_);
+        const std::string mime = ImageMimeType(_image_path);
         const std::string base64 = Base64Encode(file_bytes);
         if (mime.empty()) {
             return base64;
         }
         return "data:" + mime + ";base64," + base64;
     }
-    return image_path_;
+    return _image_path;
 }
 
 void ImageDocNode::do_embedding(const std::unordered_map<std::string, EmbeddingFn>& embed) {
     Embedding generated;
     const std::string input = get_content(MetadataMode::Embed);
     for (const auto& item : embed) {
-        generated[item.first] = item.second(input, modality_);
+        generated[item.first] = item.second(input, _modality);
     }
-    std::lock_guard<std::mutex> lock(embedding_mutex_);
+    std::lock_guard<std::mutex> lock(_embedding_mutex);
     for (const auto& item : generated) {
-        embedding_[item.first] = item.second;
+        _embedding[item.first] = item.second;
     }
 }
 
 std::string ImageDocNode::get_text_with_metadata(MetadataMode mode) const {
     (void)mode;
-    return image_path_;
+    return _image_path;
 }
 
 } // namespace lazyllm
