@@ -73,11 +73,11 @@
     members:
     exclude-members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoModule
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoChat
     members:
     exclude-members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.ppio.PPIOModule
+::: lazyllm.module.llms.onlinemodule.supplier.ppio.PPIOChat
     members:
     exclude-members:
 
@@ -89,11 +89,11 @@
     members:
     exclude-members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIEmbedding
+::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIEmbed
     members:
     exclude-members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenSTTModule
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenSTT
     members:
     exclude-members:
 
@@ -108,27 +108,27 @@
         - forward
         - run_embed_batch
 
-::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoEmbedding
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoEmbed
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultimodalEmbedding
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoMultimodalEmbed
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMModule
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMChat
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMTextToImageModule
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMText2Image
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenTextToImageModule
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenText2Image
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.kimi.KimiModule
+::: lazyllm.module.llms.onlinemodule.supplier.kimi.KimiChat
     options:
       members:
 
@@ -136,11 +136,11 @@
     members: get_finetune_data
     exclude-members: 
 
-::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMModule
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMChat
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMReranking
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMRerank
     options:
       members:
 
@@ -148,15 +148,15 @@
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenReranking
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenRerank
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenTTSModule
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenTTS
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaModule
+::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaChat
     members: set_deploy_parameters
     exclude-members:
 
@@ -167,7 +167,7 @@
       members:
         - get_finetune_data 
 
-::: lazyllm.module.llms.onlinemodule.base.utils.OnlineModuleBase
+::: lazyllm.module.llms.onlinemodule.base.utils.LazyLLMOnlineBase
     members:
     exclude-members:
 
@@ -175,55 +175,71 @@
     members: [get, set, close]
     exclude-members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenModule
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenChat
     options:
       members:
         - set_deploy_parameters
 
-::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenEmbedding
+::: lazyllm.module.llms.onlinemodule.supplier.qwen.QwenEmbed
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMEmbedding
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMEmbed
     options:
       members: 
 
-::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMSTTModule
+::: lazyllm.module.llms.onlinemodule.supplier.glm.GLMSTT
     options:
       members: 
 
-::: lazyllm.module.llms.onlinemodule.supplier.deepseek.DeepSeekModule
+::: lazyllm.module.llms.onlinemodule.supplier.deepseek.DeepSeekChat
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoTextToImageModule
+::: lazyllm.module.llms.onlinemodule.supplier.doubao.DoubaoText2Image
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIModule
+::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIChat
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIReranking
+::: lazyllm.module.llms.onlinemodule.supplier.openai.OpenAIRerank
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaEmbedding
+::: lazyllm.module.llms.onlinemodule.supplier.sensenova.SenseNovaEmbed
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowTTSModule
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowTTS
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowModule
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowChat
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowReranking
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowRerank
     options:
       members:
 
-::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowTextToImageModule
+::: lazyllm.module.llms.onlinemodule.supplier.siliconflow.SiliconFlowText2Image
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.aiping.AipingChat
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.aiping.AipingEmbed
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.aiping.AipingRerank
+    options:
+      members:
+
+::: lazyllm.module.llms.onlinemodule.supplier.aiping.AipingText2Image
     options:
       members:

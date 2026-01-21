@@ -8,7 +8,7 @@ from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
 
 
-class IntelModule(OnlineChatModuleBase, FileHandlerBase):
+class IntelChat(OnlineChatModuleBase, FileHandlerBase):
     def __init__(self, base_url: str = 'http://aidemo.intel.cn/v1/', model: str = 'Qwen3-235B-A22B',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         OnlineChatModuleBase.__init__(self, model_series='INTEL',

@@ -25,7 +25,10 @@ runs:
 
     - name: Install the built package
       shell: bash
-      run: ls dist && pip install dist/lazyllm*.whl
+      run: |
+        ls dist && pip install dist/lazyllm*.whl
+        lazyllm install rag
+        lazyllm install test
 
     - name: Restore pytest cache
       if: inputs.tests_dir != ''

@@ -118,7 +118,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             temp_file.write(updated_template_str)
         return temp_yaml_file
 
-    def _build_temp_dataset_info(self, datapaths, stage=None):
+    def _build_temp_dataset_info(self, datapaths, stage=None):  # noqa C901
         '''
         Build dataset_info.json based on training stage and dataset format.
         '''
@@ -241,7 +241,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
             json.dump(temp_dataset_dict, json_file, indent=4)
         return self.temp_dataset_info_path, ','.join(temp_dataset_dict.keys())
 
-    def _build_alpaca_dataset_info(self, dataset_dict, file_name, first_item, stage):
+    def _build_alpaca_dataset_info(self, dataset_dict, file_name, first_item, stage):  # noqa C901
         '''
         Build dataset info for Alpaca format based on training stage.
         '''
@@ -307,7 +307,7 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
 
         dataset_dict[file_name].update(update_dict)
 
-    def _build_sharegpt_dataset_info(self, dataset_dict, file_name, first_item, stage):
+    def _build_sharegpt_dataset_info(self, dataset_dict, file_name, first_item, stage):  # noqa C901
         '''
         Build dataset info for ShareGPT format based on training stage.
         '''
@@ -396,8 +396,8 @@ class LlamafactoryFinetune(LazyLLMFinetuneBase):
         # Use bash instead of sh to support pipefail
         # This ensures export only runs if training succeeds
         cmds = (f'export DISABLE_VERSION_CHECK=1 && bash -c "set -o pipefail && '
-                     f'llamafactory-cli train {self.temp_yaml_file} 2>&1 | '
-                     f'tee {self.log_file_path}"')
+                f'llamafactory-cli train {self.temp_yaml_file} 2>&1 | '
+                f'tee {self.log_file_path}"')
         if self.temp_export_yaml_file:
             # For LoRA/QLoRA: merge adapter with base model
             # Only run export if training succeeds (exit code 0)

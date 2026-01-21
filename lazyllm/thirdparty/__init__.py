@@ -1,11 +1,14 @@
 import importlib
 import toml
 import re
+import os
 import lazyllm
 from typing import List
 from lazyllm.common import LOG
+from lazyllm.configs import config
 from .modules import modules
 from pathlib import Path
+from functools import lru_cache
 
 package_name_map = {
     'huggingface_hub': 'huggingface-hub',
@@ -18,7 +21,15 @@ package_name_map = {
     'opensearchpy': 'opensearch-py',
     'memu': 'memu-py',
     'mem0': 'mem0ai',
+    'pptx': 'python-pptx',
+    'bs4': 'beautifulsoup4',
+    'Stemmer': 'pystemmer',
+    'psycopg2': 'psycopg2-binary',
+    'yaml': 'pyyaml',
 }
+
+package_name_map_reverse = {v: k for k, v in package_name_map.items()}
+module_names = [m[0] if isinstance(m, list) else m for m in modules]
 
 requirements = {}
 
@@ -140,6 +151,7 @@ def check_package_installed(package_name: str | List[str]) -> bool:
             return False
     return True
 
+@lru_cache
 def load_toml_dep_group(group_name: str) -> List[str]:
     toml_file_path = Path(__file__).resolve().parents[2] / 'pyproject.toml'
     if not toml_file_path.exists():
@@ -156,13 +168,16 @@ def load_toml_dep_group(group_name: str) -> List[str]:
         raise KeyError(f'''Group {group_name} not found in pyproject.toml.
 You cloud report issue to https://github.com/LazyAGI/LazyLLM in case specific deps group needed.''')
 
+@lru_cache
 def check_dependency_by_group(group_name: str):
     missing_pack = []
     for name in load_toml_dep_group(group_name):
-        if not check_package_installed(name):
+        real_name = package_name_map_reverse.get(name, name)
+        if not (config['init_doc'] and real_name in module_names or check_package_installed(real_name)):
             missing_pack.append(name)
     if len(missing_pack) > 0:
-        LOG.error(f'Missing package(s): {missing_pack}\nYou can install them by:\n    lazyllm install {group_name}')
-        raise ImportError(f'Missing package(s): {missing_pack}')
+        msg = f'Missing package(s): {missing_pack}\nYou can install them by:\n    lazyllm install {group_name}'
+        LOG.error(msg)
+        raise ImportError(msg)
     else:
         return True

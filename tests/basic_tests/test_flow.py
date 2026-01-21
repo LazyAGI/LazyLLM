@@ -6,6 +6,7 @@ import pytest
 import random
 
 def add_one(x): return x + 1
+def add_n(n): return lambda x: x + n
 def xy2z(x, y, z=0): return x + y + 2 * z
 def is_1(x): return True if x == 1 else False
 def is_2(x): return True if x == 2 else False
@@ -65,6 +66,29 @@ class TestFlow(object):
         fl = parallel(add_one, add_one)(1)
         assert fl == (2, 2)
 
+    def test_parallel_with_skip(self):
+        p = parallel(add_n(1), add_n(2), add_n(3), add_n(4))
+        assert p(0) == (1, 2, 3, 4)
+        assert p(0, _skip_items=[0, 2]) == (2, 4)
+        assert p(0, _kept_items=[0, 2]) == (1, 3)
+
+        with parallel() as p:
+            p.a = add_n(1)
+            p.b = add_n(2)
+            p.c = add_n(3)
+            p.d = add_n(4)
+
+        assert p(0, _skip_items=[0, 2]) == (2, 4)
+        assert p(0, _kept_items=[0, 2]) == (1, 3)
+        assert p(0, _skip_items=['a', 'c']) == (2, 4)
+        assert p(0, _kept_items=['a', 'c']) == (1, 3)
+
+        with pytest.raises(RuntimeError, match='Cannot provide `_kept_items` and `_skip_items` at the same time!'):
+            p(0, _kept_items=['a', 'c'], _skip_items=['b', 'd'])
+
+        with pytest.raises(RuntimeError, match='Cannot provide `_kept_items` and `_skip_items` at the same time!'):
+            p(0, _kept_items=['a', 'c'], _skip_items=['b', 'd'])
+
     def test_parallel_single_output(self):
         p1 = parallel(add_one)
         p2 = parallel(add_one)
@@ -86,6 +110,45 @@ class TestFlow(object):
         div = diverter(a=lambda x: x + 1, b=lambda x: x * 2, c=lambda x: -x).asdict
         assert div(1, 2, 3) == {'a': 2, 'b': 4, 'c': -3}
         assert div(dict(c=3, b=2, a=1)) == {'a': 2, 'b': 4, 'c': -3}
+
+    def test_diverter_with_skip(self):
+        p = diverter(add_n(1), add_n(2), add_n(3), add_n(4))
+        assert p(0, 10, 20, 30) == (1, 12, 23, 34)
+        assert p(0, 10, 20, 30, _skip_items=[0, 2]) == (12, 34)
+        assert p(0, 10, 20, 30, _kept_items=[0, 2]) == (1, 23)
+        assert p([0, 10, 20, 30], _skip_items=[0, 2]) == (12, 34)
+        assert p([0, 10, 20, 30], _kept_items=[0, 2]) == (1, 23)
+        assert p((0, 10, 20, 30), _skip_items=[0, 2]) == (12, 34)
+        assert p((0, 10, 20, 30), _kept_items=[0, 2]) == (1, 23)
+
+        assert p(10, 30, _skip_items=[0, 2]) == (12, 34)
+        assert p([10, 30], _skip_items=[0, 2]) == (12, 34)
+        assert p(0, 20, _kept_items=[0, 2]) == (1, 23)
+        assert p([0, 20], _kept_items=[0, 2]) == (1, 23)
+
+        with diverter() as p:
+            p.a = add_n(1)
+            p.b = add_n(2)
+            p.c = add_n(3)
+            p.d = add_n(4)
+
+        assert p(0, 10, 20, 30, _skip_items=[0, 2]) == (12, 34)
+        assert p(0, 10, 20, 30, _kept_items=[0, 2]) == (1, 23)
+        assert p(0, 10, 20, 30, _skip_items=['a', 'c']) == (12, 34)
+        assert p(0, 10, 20, 30, _kept_items=['a', 'c']) == (1, 23)
+        assert p([0, 10, 20, 30], _skip_items=['a', 'c']) == (12, 34)
+        assert p([0, 10, 20, 30], _kept_items=['a', 'c']) == (1, 23)
+        assert p((0, 10, 20, 30), _skip_items=['a', 'c']) == (12, 34)
+        assert p((0, 10, 20, 30), _kept_items=['a', 'c']) == (1, 23)
+
+        assert p(10, 30, _skip_items=[0, 2]) == (12, 34)
+        assert p([10, 30], _skip_items=[0, 2]) == (12, 34)
+        assert p(10, 30, _skip_items=['a', 'c']) == (12, 34)
+        assert p([10, 30], _skip_items=['a', 'c']) == (12, 34)
+        assert p(0, 20, _kept_items=[0, 2]) == (1, 23)
+        assert p([0, 20], _kept_items=[0, 2]) == (1, 23)
+        assert p(0, 20, _kept_items=['a', 'c']) == (1, 23)
+        assert p([0, 20], _kept_items=['a', 'c']) == (1, 23)
 
     def test_warp(self):
 

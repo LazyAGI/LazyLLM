@@ -36,14 +36,17 @@ _EQUIVALENT = {'sd': 'text2image'}
 
 class LLMType(str, Enum, metaclass=_CaseInsensitiveEnumMeta):
     LLM = 'LLM'
+    CHAT = 'CHAT'
     VLM = 'VLM'
     SD = 'SD'
     TEXT2IMAGE = 'TEXT2IMAGE'
+    IMAGE_EDITING = 'IMAGE_EDITING'
     TTS = 'TTS'
     STT = 'STT'
     EMBED = 'EMBED'
     RERANK = 'RERANK'
     CROSS_MODAL_EMBED = 'CROSS_MODAL_EMBED'
+    MULTIMODAL_EMBED = 'MULTIMODALEMBED'
     OCR = 'OCR'
 
     @classmethod

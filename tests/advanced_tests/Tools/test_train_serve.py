@@ -64,7 +64,7 @@ class TestTrainServe:
         time.sleep(20)
 
         response = requests.delete(f'{train_server_url}/v1/finetuneTasks/{job_id}', headers=headers)
-        assert response.status_code == 200
+        assert response.status_code == 200, response.text
 
         response = requests.get(f'{train_server_url}/v1/finetuneTasks/{job_id}', headers=headers)
         status = response.json()['status']
@@ -73,10 +73,10 @@ class TestTrainServe:
         assert cost > 15
 
         response = requests.get(f'{train_server_url}/v1/finetuneTasks/{job_id}/log', headers=headers)
-        assert response.status_code == 200
+        assert response.status_code == 200, response.text
 
         response = requests.get(f'{train_server_url}/v1/finetuneTasks/jobs', headers=headers)
-        assert response.status_code == 200
+        assert response.status_code == 200, response.text
         assert job_id in response.json().keys()
 
         train_server.stop()

@@ -2,18 +2,23 @@ import json
 import os
 import re
 import requests
-from typing import Tuple, List, Dict, Union, Optional
+from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
 import lazyllm
-from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase, OnlineMultiModalBase
+from lazyllm.components.utils.downloader.model_downloader import LLMType
+from ..base import (
+    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase,
+    LazyLLMOnlineSTTModuleBase, LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineTTSModuleBase
+)
 from ..fileHandler import FileHandlerBase
 from http import HTTPStatus
 from lazyllm.thirdparty import dashscope
 from lazyllm.components.utils.file_operate import bytes_to_file
 from lazyllm.components.formatter import encode_query_with_filepaths
+from lazyllm import LOG
 
 
-class QwenModule(OnlineChatModuleBase, FileHandlerBase):
+class QwenChat(OnlineChatModuleBase, FileHandlerBase):
     '''
     #TODO: The Qianwen model has been finetuned and deployed successfully,
            but it is not compatible with the OpenAI interface and can only
@@ -25,9 +30,9 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://dashscope.aliyuncs.com/', model: str = None,
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        OnlineChatModuleBase.__init__(self, model_series='QWEN', api_key=api_key or lazyllm.config['qwen_api_key'],
-                                      model_name=model or lazyllm.config['qwen_model_name'] or QwenModule.MODEL_NAME,
-                                      base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
+        super().__init__(api_key=api_key or lazyllm.config['qwen_api_key'],
+                         model_name=model or lazyllm.config['qwen_model_name'] or QwenChat.MODEL_NAME,
+                         base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = dict()
         if stream:
@@ -56,7 +61,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
     def _get_system_prompt(self):
         return ('You are a large-scale language model from Alibaba Cloud, '
                 'your name is Tongyi Qianwen, and you are a useful assistant.')
-    
+
     def _get_chat_url(self, url):
         if url.rstrip('/').endswith('compatible-mode/v1/chat/completions'):
             return url
@@ -267,7 +272,7 @@ class QwenModule(OnlineChatModuleBase, FileHandlerBase):
         return [{'type': 'image_url', 'image_url': {'url': image_url}}]
 
 
-class QwenEmbedding(OnlineEmbeddingModuleBase):
+class QwenEmbed(LazyLLMOnlineEmbedModuleBase):
 
     def __init__(self,
                  embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
@@ -276,7 +281,7 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
                  api_key: str = None,
                  batch_size: int = 16,
                  **kw):
-        super().__init__('QWEN', embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name,
+        super().__init__(embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name,
                          batch_size=batch_size, **kw)
 
     def _encapsulated_data(self, text: Union[List, str], **kwargs):
@@ -311,14 +316,14 @@ class QwenEmbedding(OnlineEmbeddingModuleBase):
             return [res.get('embedding', []) for res in embeddings]
 
 
-class QwenReranking(OnlineEmbeddingModuleBase):
+class QwenRerank(LazyLLMOnlineRerankModuleBase):
 
     def __init__(self,
                  embed_url: str = ('https://dashscope.aliyuncs.com/api/v1/services/'
                                    'rerank/text-rerank/text-rerank'),
                  embed_model_name: str = 'gte-rerank-v2',
                  api_key: str = None, **kw):
-        super().__init__('QWEN', embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name, **kw)
+        super().__init__(embed_url, api_key or lazyllm.config['qwen_api_key'], embed_model_name, **kw)
 
     @property
     def type(self):
@@ -345,38 +350,35 @@ class QwenReranking(OnlineEmbeddingModuleBase):
         return [(result['index'], result['relevance_score']) for result in results]
 
 
-class QwenMultiModal(OnlineMultiModalBase):
-    def __init__(self, api_key: str = None, model_name: str = None,
-                 base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
-                 base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
-                 return_trace: bool = False, **kwargs):
+class QwenMultiModal():
+    __lazyllm_registry_disable__ = True
+
+    def __init__(self, api_key: str = None, base_url: str = '', base_websocket_url: str = ''):
         api_key = api_key or lazyllm.config['qwen_api_key']
-        OnlineMultiModalBase.__init__(self, model_series='QWEN', api_key=api_key,
-                                      model_name=model_name, return_trace=return_trace,
-                                      base_url=base_url, **kwargs)
         dashscope.api_key = api_key
         dashscope.base_http_api_url = base_url
         dashscope.base_websocket_api_url = base_websocket_url
 
 
-class QwenSTTModule(QwenMultiModal):
+class QwenSTT(LazyLLMOnlineSTTModuleBase, QwenMultiModal):
     MODEL_NAME = 'paraformer-v2'
 
-    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
-        QwenMultiModal.__init__(self, api_key=api_key,
-                                model_name=model or lazyllm.config['qwen_stt_model_name'] or QwenSTTModule.MODEL_NAME,
-                                return_trace=return_trace, **kwargs)
+    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False,
+                 base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
+                 base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference', **kwargs):
+        super().__init__(api_key=api_key, model_name=model, return_trace=return_trace, base_url=base_url, **kwargs)
+        QwenMultiModal.__init__(self, api_key=api_key, base_url=base_url, base_websocket_url=base_websocket_url)
 
     def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006
-        assert any(file.startswith('http') for file in files), 'QwenSTTModule only supports http file urls'
+        assert any(file.startswith('http') for file in files), 'QwenSTT only supports http file urls'
         if url and url != self._base_url:
             raise Exception('Qwen STT forward() does not support overriding the `url` parameter, please remove it.')
-        
+
         call_params = {'model': model, 'file_urls': files, **kwargs}
         if self._api_key: call_params['api_key'] = self._api_key
         task_response = dashscope.audio.asr.Transcription.async_call(**call_params)
         transcribe_response = dashscope.audio.asr.Transcription.wait(task=task_response.output.task_id,
-                                                                        api_key=self._api_key)
+                                                                     api_key=self._api_key)
         if transcribe_response.status_code == HTTPStatus.OK:
             result_text = ''
             for task in transcribe_response.output.results:
@@ -386,26 +388,112 @@ class QwenSTTModule(QwenMultiModal):
                     result_text += re.sub(r'<[^>]+>', '', transcript['text'])
             return result_text
         else:
-            lazyllm.LOG.error(f'failed to transcribe: {transcribe_response.output}')
+            LOG.error(f'failed to transcribe: {transcribe_response.output}')
             raise Exception(f'failed to transcribe: {transcribe_response.output.message}')
 
 
-class QwenTextToImageModule(QwenMultiModal):
+class QwenText2Image(LazyLLMOnlineText2ImageModuleBase, QwenMultiModal):
     MODEL_NAME = 'wanx2.1-t2i-turbo'
+    IMAGE_EDITING_MODEL_NAME = 'qwen-image-edit-plus'
 
-    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
-        QwenMultiModal.__init__(self, api_key=api_key,
-                                model_name=model or lazyllm.config['qwen_text2image_model_name']
-                                or QwenTextToImageModule.MODEL_NAME, return_trace=return_trace, **kwargs)
+    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False,
+                 base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
+                 base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+                 **kwargs):
+        super().__init__(api_key=api_key, model_name=model,
+                         return_trace=return_trace, base_url=base_url, **kwargs)
+        QwenMultiModal.__init__(self, api_key=api_key, base_url=base_url, base_websocket_url=base_websocket_url)
 
-    def _forward(self, input: str = None, negative_prompt: str = None, n: int = 1, prompt_extend: bool = True,
-                 size: str = '1024*1024', seed: int = None, url: str = None, model: str = None, **kwargs):
+    def _call_sync_text2image(self, call_params):
+        task_response = dashscope.MultiModalConversation.call(**call_params)
+        if task_response.status_code != HTTPStatus.OK:
+            raise RuntimeError(
+                f'Failed to create image synthesis task, '
+                f'status: {task_response.status_code}, message: {task_response.message}'
+            )
+        return task_response
+
+    def _call_async_text2image(self, call_params):
+        task_response = dashscope.ImageSynthesis.async_call(**call_params)
+        if task_response.status_code != HTTPStatus.OK:
+            raise RuntimeError(
+                f'Failed to create image synthesis task, '
+                f'status: {task_response.status_code}, message: {task_response.message}'
+            )
+        task_id = getattr(task_response.output, 'task_id', None)
+        if not task_id:
+            raise RuntimeError('No task_id returned from async image synthesis call')
+        response = dashscope.ImageSynthesis.wait(task=task_id, api_key=self._api_key)
+        return response
+
+    def _extract_sync_image_urls(self, response):
+        try:
+            image_urls = []
+            for idx, content in enumerate(response.output.choices[0].message.content):
+                try:
+                    image_url = content['image']
+                    if image_url:
+                        image_urls.append(image_url)
+                except Exception as e:
+                    LOG.warning(f'Failed to extract image URL from item {idx}: {str(e)}')
+                    continue
+            if not image_urls:
+                LOG.warning('No image URLs found in content')
+            return image_urls
+        except Exception as e:
+            LOG.error(f'Failed to extract sync image URLs: {str(e)}')
+            return []
+
+    def _extract_async_image_urls(self, response):
+        try:
+            output = getattr(response, 'output', None)
+            if not output:
+                return []
+            results = getattr(output, 'results', [])
+            if not results:
+                LOG.warning('No results in async response output')
+                return []
+            return [getattr(result, 'url', None) for result in results if getattr(result, 'url', None)]
+        except Exception as e:
+            LOG.error(f'Failed to extract async image URLs: {str(e)}')
+            return []
+
+    def _forward(self, input: str = None, files: List[str] = None, negative_prompt: str = None, n: int = 1,
+                 prompt_extend: bool = True, size: str = '1024*1024', seed: int = None,
+                 url: str = None, model: str = None, **kwargs):
+        has_ref_image = files is not None and len(files) > 0
+        reference_image_data = None
+        messages = []
+
         if url and url != self._base_url:
-            raise Exception('Qwen TextToImage forward() does not support overriding the `url` parameter, please remove it.')
-        
+            raise Exception('Qwen TextToImage forward() does not support overriding the `url` parameter,'
+                            'please remove it.')
+        if self._type == LLMType.IMAGE_EDITING and not has_ref_image:
+            raise ValueError(
+                f'Image editing is enabled for model {self._model_name}, but no image file was provided. '
+                f'Please provide an image file via the "files" parameter.'
+            )
+        if self._type != LLMType.IMAGE_EDITING and has_ref_image:
+            raise ValueError(
+                f'Image file was provided, but image editing is not enabled for model {self._model_name}. '
+                f'Please use default image-editing model {self.IMAGE_EDITING_MODEL_NAME} or other image-editing model'
+            )
+        if has_ref_image:
+            image_results = self._load_images(files)
+            content = []
+            for base64_str, _ in image_results:
+                reference_image_data = f'data:image/png;base64,{base64_str}'
+                content.append({'image': reference_image_data})
+            content.append({'text': input})
+            messages = [
+                {
+                    'role': 'user',
+                    'content': content
+                }
+            ]
+
         call_params = {
             'model': model,
-            'prompt': input,
             'negative_prompt': negative_prompt,
             'n': n,
             'prompt_extend': prompt_extend,
@@ -414,18 +502,20 @@ class QwenTextToImageModule(QwenMultiModal):
         }
         if self._api_key: call_params['api_key'] = self._api_key
         if seed: call_params['seed'] = seed
-        task_response = dashscope.ImageSynthesis.async_call(**call_params)
-        if task_response.status_code != HTTPStatus.OK:
-            raise RuntimeError(f'Failed to create image synthesis task, {task_response.message}')
-        response = dashscope.ImageSynthesis.wait(task=task_response.output.task_id, api_key=self._api_key)
-        if response.status_code == HTTPStatus.OK:
-            return encode_query_with_filepaths(
-                None,
-                bytes_to_file([requests.get(result.url).content for result in response.output.results])
-            )
+        if has_ref_image:
+            call_params['messages'] = messages
+            response = self._call_sync_text2image(call_params)
+            image_urls = self._extract_sync_image_urls(response)
         else:
-            lazyllm.LOG.error(f'failed to generate image: {response.output}')
-            raise Exception(f'failed to generate image: {response.output.message}')
+            call_params['prompt'] = input
+            response = self._call_async_text2image(call_params)
+            image_urls = self._extract_async_image_urls(response)
+        if response.status_code != HTTPStatus.OK:
+            error_msg = getattr(response.output, 'message', 'Unknown error')
+            raise Exception(f'Image generation failed: {error_msg}')
+        image_results = self._load_images(image_urls)
+        image_bytes = [data for _, data in image_results]
+        return encode_query_with_filepaths(None, bytes_to_file(image_bytes))
 
 
 def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
@@ -441,7 +531,7 @@ def synthesize_qwentts(input: str, model_name: str, voice: str, speech_rate: flo
     if response.status_code == HTTPStatus.OK:
         return requests.get(response.output['audio']['url']).content
     else:
-        lazyllm.LOG.error(f'failed to synthesize: {response}')
+        LOG.error(f'failed to synthesize: {response}')
         raise Exception(f'failed to synthesize: {response.message}')
 
 def synthesize(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
@@ -453,7 +543,7 @@ def synthesize(input: str, model_name: str, voice: str, speech_rate: float, volu
     if response.get_response().status_code == HTTPStatus.OK:
         return response.get_audio_data()
     else:
-        lazyllm.LOG.error(f'failed to synthesize: {response.get_response()}')
+        LOG.error(f'failed to synthesize: {response.get_response()}')
         raise Exception(f'failed to synthesize: {response.get_response().message}')
 
 def synthesize_v2(input: str, model_name: str, voice: str, speech_rate: float, volume: int, pitch: float,
@@ -465,11 +555,11 @@ def synthesize_v2(input: str, model_name: str, voice: str, speech_rate: float, v
     if synthesizer.last_response['header']['event'] == 'task-finished':
         return audio
     else:
-        lazyllm.LOG.error(f'failed to synthesize: {synthesizer.last_response}')
+        LOG.error(f'failed to synthesize: {synthesizer.last_response}')
         raise Exception(f'failed to synthesize: {synthesizer.last_response["header"]["error_message"]}')
 
 
-class QwenTTSModule(QwenMultiModal):
+class QwenTTS(LazyLLMOnlineTTSModuleBase, QwenMultiModal):
     MODEL_NAME = 'qwen-tts'
     SYNTHESIZERS = {
         'cosyvoice-v2': (synthesize_v2, 'longxiaochun_v2'),
@@ -479,28 +569,30 @@ class QwenTTSModule(QwenMultiModal):
         'qwen-tts-latest': (synthesize_qwentts, 'Cherry')
     }
 
-    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False, **kwargs):
-        QwenMultiModal.__init__(self, api_key=api_key,
-                                model_name=model or lazyllm.config['qwen_tts_model_name'] or QwenTTSModule.MODEL_NAME,
-                                return_trace=return_trace, **kwargs)
+    def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False,
+                 base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
+                 base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference',
+                 **kwargs):
+        super().__init__(api_key=api_key, model_name=model, return_trace=return_trace, base_url=base_url, **kwargs)
+        QwenMultiModal.__init__(self, api_key=api_key, base_url=base_url, base_websocket_url=base_websocket_url)
         if self._model_name not in self.SYNTHESIZERS:
             raise ValueError(f'unsupported model: {self._model_name}. '
-                             f'supported models: {QwenTTSModule.SYNTHESIZERS.keys()}')
-        self._synthesizer_func, self._voice = QwenTTSModule.SYNTHESIZERS[self._model_name]
+                             f'supported models: {QwenTTS.SYNTHESIZERS.keys()}')
+        self._synthesizer_func, self._voice = QwenTTS.SYNTHESIZERS[self._model_name]
 
     def _forward(self, input: str = None, voice: str = None, speech_rate: float = 1.0, volume: int = 50,
                  pitch: float = 1.0, url: str = None, model: str = None, **kwargs):
         if url and url != self._base_url:
             raise Exception('Qwen TTS forward() does not support overriding the `url` parameter, please remove it.')
-        
+
         # double check for the forward model name
         if model == self._model_name:
             synthesizer_func, default_voice = self._synthesizer_func, self._voice
         else:
             if model not in self.SYNTHESIZERS:
                 raise ValueError(f'unsupported model: {model}. '
-                                 f'supported models: {QwenTTSModule.SYNTHESIZERS.keys()}')
-            synthesizer_func, default_voice = QwenTTSModule.SYNTHESIZERS[model]
+                                 f'supported models: {QwenTTS.SYNTHESIZERS.keys()}')
+            synthesizer_func, default_voice = QwenTTS.SYNTHESIZERS[model]
 
         call_params = {
             'input': input,
@@ -513,4 +605,3 @@ class QwenTTSModule(QwenMultiModal):
         }
         if self._api_key: call_params['api_key'] = self._api_key
         return encode_query_with_filepaths(None, bytes_to_file(synthesizer_func(**call_params)))
-

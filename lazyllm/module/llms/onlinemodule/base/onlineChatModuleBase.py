@@ -15,8 +15,9 @@ from lazyllm import globals, pipeline
 from lazyllm.components.prompter import PrompterBase
 from lazyllm.components.formatter import FormatterBase
 from lazyllm.components.utils.file_operate import _delete_old_files, _image_to_base64
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from ....servermodule import LLMBase
-from .utils import OnlineModuleBase
+from .utils import LazyLLMOnlineBase
 
 class StaticParams(TypedDict, total=False):
     temperature: float
@@ -26,20 +27,20 @@ class StaticParams(TypedDict, total=False):
     frequency_penalty: float  # Note some online api use 'repetition_penalty'
 
 
-class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
+class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
     TRAINABLE_MODEL_LIST = []
     VLM_MODEL_PREFIX = []
     NO_PROXY = True
+    __lazyllm_registry_key__ = LLMType.CHAT
 
-    def __init__(self, model_series: str, api_key: Union[str, List[str]], base_url: str, model_name: str,
+    def __init__(self, api_key: Union[str, List[str]], base_url: str, model_name: str,
                  stream: Union[bool, Dict[str, str]], return_trace: bool = False, skip_auth: bool = False,
                  static_params: Optional[StaticParams] = None, type: Optional[str] = None, **kwargs):
         if any([model_name.startswith(prefix) for prefix in self.VLM_MODEL_PREFIX]):
             if type is None: type = 'VLM'
             else: assert type == 'VLM', f'model_name {model_name} is a VLM model, but type is {type}'
-        OnlineModuleBase.__init__(self, api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
+        super().__init__(api_key=api_key, skip_auth=skip_auth, return_trace=return_trace)
         LLMBase.__init__(self, stream=stream, type=type)
-        self._model_series = model_series
         self.__base_url = base_url
         self._model_name = model_name
         self.trainable_models = self.TRAINABLE_MODEL_LIST
@@ -47,10 +48,6 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         self._model_optional_params = {}
         self._vlm_force_format_input_with_files = False
         self._static_params = static_params or {}
-
-    @property
-    def series(self):
-        return self._model_series
 
     @property
     def static_params(self) -> StaticParams:
@@ -141,6 +138,7 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
             if force_join or not all(src[0] == ele for ele in src): return ''.join(src)
         elif isinstance(src[0], list):
             src = [ele for ele in src if len(ele) > 0]
+            if not src: return []
             assert len(set(map(len, src))) == 1, f'The lists of elements: {src} have different lengths.'
             ret = list(map(self._merge_stream_result, zip(*src)))
             return ret[0] if (len(ret) > 0 and isinstance(ret[0], list)) else ret
@@ -208,19 +206,19 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
                 globals['usage'][par_muduleid][k] += usage[k]
 
     def _upload_train_file(self, train_file) -> str:
-        raise NotImplementedError(f'{self._model_series} not implemented _upload_train_file method in subclass')
+        raise NotImplementedError(f'{self.series} not implemented _upload_train_file method in subclass')
 
     def _create_finetuning_job(self, train_model, train_file_id, **kw) -> Tuple[str, str]:
-        raise NotImplementedError(f'{self._model_series} not implemented _create_finetuning_job method in subclass')
+        raise NotImplementedError(f'{self.series} not implemented _create_finetuning_job method in subclass')
 
     def _query_finetuning_job(self, fine_tuning_job_id) -> Tuple[str, str]:
-        raise NotImplementedError(f'{self._model_series} not implemented _query_finetuning_job method in subclass')
+        raise NotImplementedError(f'{self.series} not implemented _query_finetuning_job method in subclass')
 
     def _query_finetuned_jobs(self) -> dict:
-        raise NotImplementedError(f'{self._model_series} not implemented _query_finetuned_jobs method in subclass')
+        raise NotImplementedError(f'{self.series} not implemented _query_finetuned_jobs method in subclass')
 
     def _get_finetuned_model_names(self) -> Tuple[List[str], List[str]]:
-        raise NotImplementedError(f'{self._model_series} not implemented _get_finetuned_model_names method in subclass')
+        raise NotImplementedError(f'{self.series} not implemented _get_finetuned_model_names method in subclass')
 
     def set_train_tasks(self, train_file, **kw):
         self._train_file = train_file
@@ -290,10 +288,10 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
         return pipeline(_create_for_finetuning_job)
 
     def _create_deployment(self) -> Tuple[str, str]:
-        raise NotImplementedError(f'{self._model_series} not implemented _create_deployment method in subclass')
+        raise NotImplementedError(f'{self.series} not implemented _create_deployment method in subclass')
 
     def _query_deployment(self, deployment_id) -> str:
-        raise NotImplementedError(f'{self._model_series} not implemented _query_deployment method in subclass')
+        raise NotImplementedError(f'{self.series} not implemented _query_deployment method in subclass')
 
     def _get_deploy_tasks(self):
         if not self._is_trained: return None
@@ -337,3 +335,5 @@ class OnlineChatModuleBase(OnlineModuleBase, LLMBase):
     def __repr__(self):
         return lazyllm.make_repr('Module', 'OnlineChat', name=self._module_name, url=self._base_url,
                                  stream=bool(self._stream), return_trace=self._return_trace)
+
+OnlineChatModuleBase = LazyLLMOnlineChatModuleBase

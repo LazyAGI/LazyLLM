@@ -8,7 +8,7 @@ from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
 
 
-class MoarkModule(OnlineChatModuleBase, FileHandlerBase):
+class MoarkChat(OnlineChatModuleBase, FileHandlerBase):
     def __init__(self, base_url: str = 'https://api.moark.com/v1/', model: str = 'Qwen3-32B',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
         OnlineChatModuleBase.__init__(self, model_series='MOARK',

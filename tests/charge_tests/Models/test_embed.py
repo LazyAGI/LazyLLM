@@ -20,3 +20,12 @@ class TestEmbed(object):
                                                     num_worker=4, batch_size=20)
         vec2 = embed_model(['床前明月光' for _ in range(0, 20)])
         assert len(vec2) == 20
+
+    def test_onlineEmbeddingModuleBase_batch_size_validity(self):
+        embed_model_groups = lazyllm.online.embed
+        rerank_model_groups = lazyllm.online.rerank
+        for embedModuleClass in embed_model_groups.values():
+            assert embedModuleClass(skip_auth=True, batch_size=32).batch_size == 32
+
+        for rerankModuleClass in rerank_model_groups.values():
+            assert rerankModuleClass(skip_auth=True, batch_size=32).batch_size == 1

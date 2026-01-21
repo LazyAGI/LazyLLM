@@ -4,9 +4,10 @@ import lazyllm
 from urllib.parse import urljoin
 from ..base import OnlineChatModuleBase
 
+
 # PPIO (Paiou Cloud) online model module.
 # PPIO provides OpenAI-compatible API interface, supporting both streaming and non-streaming responses.
-class PPIOModule(OnlineChatModuleBase):
+class PPIOChat(OnlineChatModuleBase):
     TRAINABLE_MODEL_LIST = []
     NO_PROXY = False
 
@@ -23,17 +24,8 @@ class PPIOModule(OnlineChatModuleBase):
                  model: str = 'deepseek/deepseek-v3.2',
                  api_key: str = None, stream: bool = True,
                  return_trace: bool = False, skip_auth: bool = False, **kw):
-        OnlineChatModuleBase.__init__(
-            self,
-            model_series='PPIO',
-            api_key=api_key or lazyllm.config['ppio_api_key'],
-            base_url=base_url,
-            model_name=model,
-            stream=stream,
-            return_trace=return_trace,
-            skip_auth=skip_auth,
-            **kw
-        )
+        super().__init__(api_key=api_key or lazyllm.config['ppio_api_key'], base_url=base_url,
+                         model_name=model, stream=stream, return_trace=return_trace, skip_auth=skip_auth, **kw)
 
     # Return PPIO system prompt.
     def _get_system_prompt(self):

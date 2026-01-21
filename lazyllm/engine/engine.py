@@ -745,7 +745,7 @@ def make_online_vqa(source: str = None, base_model: Optional[str] = None, prompt
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
                     history: Optional[List[List[str]]] = None):
     if source: source = source.lower()
-    return lazyllm.OnlineChatModule(base_model, source, base_url, stream,
+    return lazyllm.OnlineChatModule(model=base_model, source=source, base_url=base_url, stream=stream,
                                     api_key=api_key, secret_key=secret_key).prompt(prompt, history=history)
 
 
@@ -769,8 +769,9 @@ def make_online_llm(source: str = None, base_model: Optional[str] = None, prompt
                     stream: bool = False, token: Optional[str] = None, base_url: Optional[str] = None,
                     history: Optional[List[List[str]]] = None, static_params: Optional[Dict[str, Any]] = None):
     if source: source = source.lower()
-    return lazyllm.OnlineChatModule(base_model, source, base_url, stream, api_key=api_key, secret_key=secret_key,
-                                    static_params=static_params or {}).prompt(prompt, history=history)
+    return lazyllm.OnlineChatModule(model=base_model, source=source, base_url=base_url, stream=stream, api_key=api_key,
+                                    secret_key=secret_key, static_params=static_params or {}
+                                    ).prompt(prompt, history=history)
 
 
 class LLM(lazyllm.ModuleBase):
