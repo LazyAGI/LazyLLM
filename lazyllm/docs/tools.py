@@ -512,6 +512,7 @@ Args:
     trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`.
     num_workers (int): number of new threads used for transform. default: 0
     parent (str): The node that needs further transformation. The series of new nodes obtained after transformation will be child nodes of this parent node. If not specified, the transformation starts from the root node.
+    ref (str): The name of another node group to reference. The referenced node group must be a descendant of the parent. During transformation, nodes from the referenced node group are passed to the transform function as the `ref` parameter (if the transform function supports it).
     kwargs: Parameters related to the specific implementation.
 ''')
 
@@ -524,6 +525,7 @@ Args:
     trans_node (bool): 决定了transform的输入和输出是 `DocNode` 还是 `str` ，默认为None。只有在 `transform` 为 `Callable` 时才可以设置为true。
     num_workers (int): Transform时所用的新线程数量，默认为0
     parent (str): 需要进一步转换的节点。转换之后得到的一系列新的节点将会作为该父节点的子节点。如果不指定则从根节点开始转换。
+    ref (str): 当前节点组引用的其他节点组名称。引用的节点组必须是父节点组的后代。在转换时，ref 指定的节点组中的相关节点会作为参数传递给 transform 函数（如果 transform 函数支持 ref 参数）。
     kwargs: 和具体实现相关的参数。
 ''')
 
@@ -533,6 +535,14 @@ add_example('Document.create_node_group', '''
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+>>> # Example with ref parameter: create a node group that references another group
+>>> documents.create_node_group(name="fine_chunks", parent="sentences",
+...                             transform=SentenceSplitter, chunk_size=128, chunk_overlap=12)
+>>> def transform_with_ref(text, ref):
+...     # ref contains nodes from the referenced group
+...     return "\n".join(ref)
+>>> documents.create_node_group(name="summary_chunks", parent="sentences",
+...                             transform=transform_with_ref, ref="fine_chunks")
 ''')
 
 add_chinese_doc('Document.find_parent', """\

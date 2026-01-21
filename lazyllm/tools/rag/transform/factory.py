@@ -87,10 +87,10 @@ class FuncNodeTransform(NodeTransform):
         self._func, self._trans_node = func, trans_node
 
     def transform(self, node: DocNode, **kwargs) -> List[Union[str, DocNode]]:
-        if not kwargs.get('ref'):
-            kwargs.pop('ref')
-        else:
-            assert 'ref' in inspect.signature(self._func).parameters, 'ref is not in the function signature'
+        if ref := kwargs.pop('ref', None):
+            assert 'ref' in inspect.signature(self._func).parameters, \
+                'if node group has ref, the transform function must support ref parameter'
+            kwargs['ref'] = ref if self._trans_node else [r.get_text() for r in ref]
         result = self._func(node if self._trans_node else node.get_text(), **kwargs)
         return result if isinstance(result, list) else [result]
 
