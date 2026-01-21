@@ -394,8 +394,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         return self._forward('_get_nodes', uids, doc_ids, group, kb_id, numbers)
 
     def get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
-                         merge: bool = False, include_self: bool = True) -> Union[List[DocNode], DocNode]:
-        return self._forward('_get_window_nodes', node, span, merge, include_self)
+                         merge: bool = False) -> Union[List[DocNode], DocNode]:
+        return self._forward('_get_window_nodes', node, span, merge)
 
     def _get_post_process_tasks(self):
         return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))
@@ -427,8 +427,8 @@ class UrlDocument(ModuleBase):
         return self._forward('_get_nodes', uids, doc_ids, group, kb_id, numbers)
 
     def get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
-                         merge: bool = False, include_self: bool = True) -> Union[List[DocNode], DocNode]:
-        return self._forward('_get_window_nodes', node, span, merge, include_self)
+                         merge: bool = False) -> Union[List[DocNode], DocNode]:
+        return self._forward('_get_window_nodes', node, span, merge)
 
     @cached_property
     def active_node_groups(self):

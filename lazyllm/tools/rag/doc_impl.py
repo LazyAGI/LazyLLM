@@ -541,7 +541,7 @@ class DocImpl:
                                      kb_id=kb_id, numbers=numbers, display=True)
 
     def _get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
-                          merge: bool = False, include_self: bool = True) -> Union[List[DocNode], DocNode]:
+                          merge: bool = False) -> Union[List[DocNode], DocNode]:
         if node is None:
             return []
         self._lazy_init()
@@ -566,10 +566,6 @@ class DocImpl:
 
         node_number = node.number
         numbers = set(range(node_number + start, node_number + end + 1))
-        if include_self:
-            numbers.add(node_number)
-        else:
-            numbers.discard(node_number)
         numbers = {n for n in numbers if n > 0}
 
         if not numbers:
@@ -587,8 +583,11 @@ class DocImpl:
             return nodes
 
         merged_text = '\n'.join([n.text for n in nodes]) if nodes else ''
+        metadata = dict(node.metadata)
+        metadata.pop('lazyllm_store_num', None)
+        metadata.pop('number', None)
         merged_node = DocNode(content=merged_text, group=group, embedding=node.embedding, parent=node._parent,
-                              metadata=dict(node.metadata), global_metadata=dict(node.global_metadata))
+                              metadata=metadata, global_metadata=dict(node.global_metadata))
         return merged_node
 
     def __call__(self, func_name: str, *args, **kwargs):

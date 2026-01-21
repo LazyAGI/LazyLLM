@@ -156,11 +156,11 @@ class MapStore(LazyLLMStoreBase):
                     self._col_parent_uids[collection_name][data.get('parent')].discard(uid)
                     self._col_number_uids[collection_name][data.get('number')].discard(uid)
                 else:
-                    self._collection2uids[collection_name].remove(uid)
-                    self._col_kb_doc_uids[collection_name][kb_id][doc_id].remove(uid)
-                    self._col_doc_uids[collection_name][doc_id].remove(uid)
-                    self._col_parent_uids[collection_name][data.get('parent')].remove(uid)
-                    self._col_number_uids[collection_name][data.get('number')].remove(uid)
+                    self._collection2uids[collection_name].discard(uid)
+                    self._col_kb_doc_uids[collection_name][kb_id][doc_id].discard(uid)
+                    self._col_doc_uids[collection_name][doc_id].discard(uid)
+                    self._col_parent_uids[collection_name][data.get('parent')].discard(uid)
+                    self._col_number_uids[collection_name][data.get('number')].discard(uid)
 
             if self._sqlite_first:
                 with self._lock:

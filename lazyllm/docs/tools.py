@@ -768,6 +768,13 @@ Args:
 - List[DocNode]: Matched nodes.
 ''')
 
+add_example('Document.get_nodes', '''\
+>>> import lazyllm
+>>> from lazyllm.tools import Document
+>>> doc = Document()
+>>> nodes = doc.get_nodes(doc_ids={'doc_1'}, group='CoarseChunk', kb_id='kb_1', numbers={1, 2})
+''')
+
 add_chinese_doc('Document.get_window_nodes', '''\
 获取指定节点在同一文档内的窗口节点。
 
@@ -775,7 +782,6 @@ Args:
     node (DocNode): 目标节点。
     span (tuple[int, int]): 窗口范围，基于 node.number 的相对偏移。
     merge (bool): 是否将窗口节点合并为一个节点返回。
-    include_self (bool): 是否包含目标节点本身。
 
 **Returns:**\n
 - Union[List[DocNode], DocNode]: 窗口节点列表，或合并后的单节点。
@@ -788,10 +794,17 @@ Args:
     node (DocNode): Target node.
     span (tuple[int, int]): Window range based on relative offsets of node.number.
     merge (bool): Whether to merge window nodes into a single node.
-    include_self (bool): Whether to include the target node itself.
 
 **Returns:**\n
 - Union[List[DocNode], DocNode]: Window nodes list or a merged node.
+''')
+
+add_example('Document.get_window_nodes', '''\
+>>> import lazyllm
+>>> from lazyllm.tools import Document
+>>> doc = Document()
+>>> node = doc.get_nodes(doc_ids={'doc_1'}, group='CoarseChunk', kb_id='kb_1', numbers={10})[0]
+>>> window_nodes = doc.get_window_nodes(node, span=(-2, 2), merge=False)
 ''')
 
 
@@ -3622,7 +3635,6 @@ Args:
     node (DocNode): 目标节点。
     span (tuple[int, int]): 窗口范围，基于 node.number 的相对偏移。
     merge (bool): 是否将窗口节点合并为一个节点返回。
-    include_self (bool): 是否包含目标节点本身。
 
 **Returns:**\n
 - Union[List[DocNode], DocNode]: 窗口节点列表，或合并后的单节点。
@@ -3635,7 +3647,6 @@ Args:
     node (DocNode): Target node.
     span (tuple[int, int]): Window range based on relative offsets of node.number.
     merge (bool): Whether to merge window nodes into a single node.
-    include_self (bool): Whether to include the target node itself.
 
 **Returns:**\n
 - Union[List[DocNode], DocNode]: Window nodes list or a merged node.

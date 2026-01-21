@@ -207,19 +207,25 @@ class TestDocument(unittest.TestCase):
         nodes = doc.get_nodes(group='chunk1', numbers=[1])
         node = nodes[0]
         assert node.number == 1
-
-        window = doc.get_window_nodes(node, span=(-1, 3))
+        # node.number is 1, so the window is [1, 2, 3, 4]
+        window = doc.get_window_nodes(node, span=(-1, 3), merge=False)
         assert len(window) == 4
         assert window == sorted(window, key=lambda n: n.number)
         assert all(n.number in [1, 2, 3, 4] for n in window)
-
-        window_no_self = doc.get_window_nodes(node, span=(-1, 1), include_self=False)
-        assert all(n.number != node.number for n in window_no_self)
 
         merged = doc.get_window_nodes(node, span=(-1, 3), merge=True)
         assert isinstance(merged, DocNode)
         assert merged.group == node.group
         assert merged.text == '\n'.join([n.text for n in window])
+
+        nodes = doc.get_nodes(group='chunk1', numbers=[2])
+        node = nodes[0]
+        assert node.number == 2
+        # node.number is 2, so the window is [1, 2, 3, 4, 5]
+        window = doc.get_window_nodes(node, span=(-1, 3), merge=False)
+        assert len(window) == 5
+        assert window == sorted(window, key=lambda n: n.number)
+        assert all(n.number in [1, 2, 3, 4, 5] for n in window)
 
 class TmpDir:
     def __init__(self):
