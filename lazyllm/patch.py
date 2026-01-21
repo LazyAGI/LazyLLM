@@ -82,8 +82,14 @@ def patch_httpx():
 
 
 class LazyPatchLoader(importlib.abc.Loader):
-    def __init__(self, original_spec):
+    PATCHS = {
+        'httpx': patch_httpx,
+    }
+    PATCHED = set()
+
+    def __init__(self, original_spec, package_name):
         self.original_spec = original_spec
+        self._package_name = package_name
 
     def create_module(self, spec):
         return None
@@ -100,21 +106,29 @@ class LazyPatchLoader(importlib.abc.Loader):
             module.__path__ = self.original_spec.submodule_search_locations
 
         self.original_spec.loader.exec_module(module)
-        patch_httpx()
+        LazyPatchLoader.PATCHS[self._package_name]()
+        LazyPatchLoader.PATCHED.add(self._package_name)
 
 class LazyPatchFinder(importlib.abc.MetaPathFinder):
     def find_spec(self, fullname, path, target=None):
-        if fullname == 'httpx':
+        if fullname in LazyPatchLoader.PATCHS and fullname not in LazyPatchLoader.PATCHED:
             if self in sys.meta_path: sys.meta_path.remove(self)
-            original_spec = importlib.util.find_spec(fullname)
-            if original_spec is None: return None
-            return importlib.util.spec_from_loader(fullname, LazyPatchLoader(original_spec),
-                                                   origin=original_spec.origin)
+            try:
+                original_spec = importlib.util.find_spec(fullname)
+                if original_spec is None: return None
+                return importlib.util.spec_from_loader(fullname, LazyPatchLoader(original_spec, fullname),
+                                                       origin=original_spec.origin)
+            finally:
+                if len(LazyPatchLoader.PATCHS) != len(LazyPatchLoader.PATCHED):
+                    sys.meta_path.insert(0, self)
         return None
 
-if 'httpx' in sys.modules:
-    patch_httpx()
-else:
+for name, fn in LazyPatchLoader.PATCHS.items():
+    if name in sys.modules:
+        fn()
+        LazyPatchLoader.PATCHED.add(name)
+
+if len(LazyPatchLoader.PATCHS) != len(LazyPatchLoader.PATCHED):
     sys.meta_path.insert(0, LazyPatchFinder())
 
 
