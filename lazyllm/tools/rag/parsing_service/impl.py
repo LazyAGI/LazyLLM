@@ -1,6 +1,7 @@
 import time
 import traceback
 from typing import Any, Dict, List, Optional
+from graphlib import TopologicalSorter
 from collections import defaultdict
 from concurrent.futures import ThreadPoolExecutor
 
@@ -101,23 +102,34 @@ class _Processor:
             doc_group_number[doc_id][group_name] += 1
         return nodes
 
-    def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
-        for group_name in self._store.activated_groups():
-            group = self._node_groups.get(group_name)
-            if group is None:
-                raise ValueError(f'Node group "{group_name}" does not exist. Please check the group name '
+    def _get_sorted_groups(self) -> List[str]:
+        active = set(self._store.activated_groups())
+        if not active:
+            return []
+
+        def deps(g):
+            cfg = self._node_groups.get(g)
+            if cfg is None:
+                raise ValueError(f'Node group "{g}" does not exist. Please check the group name '
                                  'or add a new one through `create_node_group`.')
+            return {d for d in (cfg.get('parent'), cfg.get('ref')) if d in active}
+
+        return list(TopologicalSorter({g: deps(g) for g in active}).static_order())
+
+    def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
+        for group_name in self._get_sorted_groups():
+            group = self._node_groups.get(group_name)
 
             if group['parent'] == p_name:
-                nodes = self._create_nodes_impl(p_nodes, group_name)
+                nodes = self._create_nodes_impl(p_nodes, group_name, ref=group['ref'])
                 if nodes: self._create_nodes_recursive(nodes, group_name)
 
-    def _create_nodes_impl(self, p_nodes, group_name):
+    def _create_nodes_impl(self, p_nodes, group_name, ref=None):
         # NOTE transform.batch_forward will set children for p_nodes, but when calling
         # transform.batch_forward, p_nodes has been upsert in the store.
         t = self._node_groups[group_name]['transform']
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, group_name)
-        nodes = transform.batch_forward(p_nodes, group_name)
+        nodes = transform.batch_forward(p_nodes, group_name, ref=ref)
         self._store.update_nodes(self._set_nodes_number(nodes))
         return nodes
 

@@ -32,6 +32,7 @@ class Segment(BaseModel):
     excluded_embed_metadata_keys: Optional[List[str]] = Field(default_factory=list)
     excluded_llm_metadata_keys: Optional[List[str]] = Field(default_factory=list)
     parent: Optional[str] = ''
+    ref: Optional[List[str]] = Field(default_factory=list)
     children: Optional[Dict[str, Any]] = Field(default_factory=dict)
     embedding_state: Optional[List[str]] = Field(default_factory=list)
     answer: Optional[str] = ''
@@ -112,6 +113,7 @@ class SenseCoreStore(LazyLLMStoreBase):
                           excluded_embed_metadata_keys=data.get('excluded_embed_metadata_keys', []),
                           excluded_llm_metadata_keys=data.get('excluded_llm_metadata_keys', []),
                           parent=data.get('parent', ''),
+                          ref=data.get('ref', []),
                           global_meta=json.dumps(data.get('global_meta', {}), ensure_ascii=False),
                           answer=data.get('answer', ''), number=data.get('number', 0))
         # image extract
@@ -184,6 +186,7 @@ class SenseCoreStore(LazyLLMStoreBase):
             'excluded_embed_metadata_keys': segment.get('excluded_embed_metadata_keys', []),
             'excluded_llm_metadata_keys': segment.get('excluded_llm_metadata_keys', []),
             'parent': segment.get('parent', ''),
+            'ref': segment.get('ref', []),
             'answer': segment.get('answer', ''),
             'image_keys': segment.get('image_keys', []),
         }

@@ -62,17 +62,25 @@ class NodeTransform(ABC):
         self._name = None
 
     def batch_forward(
-        self, documents: Union[DocNode, List[DocNode]], node_group: str, **kwargs
+        self, documents: Union[DocNode, List[DocNode]], node_group: str, ref: str = None, **kwargs
     ) -> List[DocNode]:
         documents: List[DocNode] = documents if isinstance(documents, (tuple, list)) else [documents]
 
         def impl(node: DocNode):
+            def find_ref(node: DocNode):
+                result = node.children.get(ref, [])
+                for child_nodes in node.children.values():
+                    for child_node in child_nodes:
+                        result.extend(find_ref(child_node))
+                return result
+            ref_nodes = find_ref(node)
             with node._lock:
                 if node_group in node.children: return []
-                splits = self(node, **kwargs)
+                splits = self(node, ref=ref_nodes, **kwargs)
                 for s in splits:
                     s.parent = node
                     s._group = node_group
+                    s.ref = ref_nodes
                 node.children[node_group] = splits
                 return splits
 

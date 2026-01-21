@@ -45,6 +45,7 @@ class DocNode:
         self._excluded_llm_metadata_keys: List[str] = []
         # NOTE: node in parent should be id when stored in db (use store to recover): parent: 'uid'
         self._parent: Optional[Union[str, 'DocNode']] = parent
+        self._ref: List[Union[str, 'DocNode']] = []
         self._children: Dict[str, List['DocNode']] = defaultdict(list)
         self._children_loaded = False
         self._store = store
@@ -102,7 +103,7 @@ class DocNode:
             return []
         if isinstance(uids, str):
             uids = [uids]
-        nodes = self._store.get_nodes(group_name=group_name, uids=uids,
+        nodes = self._store.get_nodes(group=group_name, uids=uids,
                                       kb_id=self.global_metadata.get(RAG_KB_ID), display=True)
         for n in nodes:
             n._store = self._store
@@ -122,6 +123,23 @@ class DocNode:
         self._parent = v
 
     @property
+    def ref(self) -> List['DocNode']:
+        def load_ref(ref: Union[str, 'DocNode']):
+            if isinstance(ref, str) and self._node_groups:
+                ref_group = self._node_groups[self._group]['ref']
+                loaded = self._load_from_store(ref_group, ref)
+                return loaded[0] if loaded else None
+            elif isinstance(ref, DocNode):
+                return ref
+        self._ref = [load_ref(ref) for ref in self._ref]
+        return self._ref
+
+    @ref.setter
+    def ref(self, v: List[Union[str, 'DocNode']]):
+        assert isinstance(v, list), 'ref must be a list of uids or DocNodes'
+        self._ref = v
+
+    @property
     def children(self) -> Dict[str, List['DocNode']]:
         if not self._children_loaded and self._store and self._node_groups:
             self._children_loaded = True
@@ -131,7 +149,7 @@ class DocNode:
             for grp in c_groups:
                 if not self._store.is_group_active(grp):
                     continue
-                nodes = self._store.get_nodes(group_name=grp, kb_id=kb_id, doc_ids=[doc_id])
+                nodes = self._store.get_nodes(group=grp, kb_id=kb_id, doc_ids=[doc_id])
                 c_nodes = [n for n in nodes if n._parent in {self, self._uid}]
                 self._children[grp] = c_nodes
                 for n in self._children[grp]:
