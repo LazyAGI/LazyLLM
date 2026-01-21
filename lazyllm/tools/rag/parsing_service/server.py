@@ -15,7 +15,7 @@ from lazyllm.thirdparty import fastapi
 from .base import (
     ALGORITHM_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO, FINISHED_TASK_QUEUE_TABLE_INFO,
     TaskStatus, TaskType, UpdateMetaRequest, AddDocRequest, CancelTaskRequest, DeleteDocRequest,
-    _calculate_task_score
+    _calculate_task_score, _resolve_add_doc_task_type
 )
 from .worker import DocumentProcessorWorker as Worker
 from .queue import _SQLBasedQueue as Queue
@@ -311,65 +311,15 @@ class DocumentProcessor(ModuleBase):
             if algorithm is None:
                 raise fastapi.HTTPException(status_code=404, detail=f'Invalid algo_id {algo_id}')
             # NOTE: No idempotency key check, should be handled by the caller!
-            new_file_ids = []
-            reparse_file_ids = []
-
-            transfer_mode = None
-            target_algo_id = None
-            target_kb_id = None
-
             for file_info in file_infos:
                 parse_file_path = file_info.transformed_file_path if \
                     file_info.transformed_file_path else file_info.file_path
                 file_info.file_path = create_file_path(parse_file_path, prefix=self._path_prefix)
-                if file_info.reparse_group is not None:
-                    reparse_file_ids.append(file_info.doc_id)
-                else:
-                    new_file_ids.append(file_info.doc_id)
-                    if file_info.transfer_params:
-                        if target_algo_id is not None and target_algo_id != file_info.transfer_params.target_algo_id:
-                            raise fastapi.HTTPException(
-                                status_code=400,
-                                detail='transfer_params.target_algo_id must be the same for all files'
-                            )
-                        if target_kb_id is not None and target_kb_id != file_info.transfer_params.target_kb_id:
-                            raise fastapi.HTTPException(
-                                status_code=400,
-                                detail='transfer_params.target_kb_id must be the same for all files'
-                            )
-                        if transfer_mode is not None and transfer_mode != file_info.transfer_params.mode:
-                            raise fastapi.HTTPException(
-                                status_code=400,
-                                detail='transfer_params.mode must be the same for all files'
-                            )
-                        # NOTE: currently we only support file transfer in the same algorithm
-                        if file_info.transfer_params.target_algo_id != algo_id:
-                            raise fastapi.HTTPException(
-                                status_code=400,
-                                detail='transfer_params.target_algo_id must be the same for all files'
-                            )
-                        target_algo_id = file_info.transfer_params.target_algo_id
-                        target_kb_id = file_info.transfer_params.target_kb_id
-                        transfer_mode = file_info.transfer_params.mode
-                        if transfer_mode not in ['cp', 'mv']:
-                            raise fastapi.HTTPException(
-                                status_code=400,
-                                detail='transfer_params.mode must be one of [cp, mv]'
-                            )
 
-            if new_file_ids and reparse_file_ids:
-                raise fastapi.HTTPException(
-                    status_code=400,
-                    detail='new_file_ids and reparse_file_ids cannot be specified at the same time'
-                )
-            if transfer_mode:
-                task_type = TaskType.DOC_TRANSFER.value
-            elif new_file_ids:
-                task_type = TaskType.DOC_ADD.value
-            elif reparse_file_ids:
-                task_type = TaskType.DOC_REPARSE.value
-            else:
-                raise fastapi.HTTPException(status_code=400, detail='no input files or reparse group specified')
+            try:
+                task_type = _resolve_add_doc_task_type(request)
+            except ValueError as e:
+                raise fastapi.HTTPException(status_code=400, detail=str(e))
             payload = request.model_dump()
             LOG.info(f'[DocumentProcessor] Received add doc request: {payload}')
             payload_json = json.dumps(payload, ensure_ascii=False)

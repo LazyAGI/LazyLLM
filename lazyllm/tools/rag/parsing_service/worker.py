@@ -13,7 +13,7 @@ from ..utils import BaseResponse, _get_default_db_config
 from .base import (
     FINISHED_TASK_QUEUE_TABLE_INFO, WAITING_TASK_QUEUE_TABLE_INFO,
     TaskStatus, TaskType, ALGORITHM_TABLE_INFO, AddDocRequest, UpdateMetaRequest,
-    DeleteDocRequest, _calculate_task_score
+    DeleteDocRequest, _calculate_task_score, _resolve_add_doc_task_type
 )
 from .impl import _Processor
 from .queue import _SQLBasedQueue as Queue
@@ -295,42 +295,8 @@ class DocumentProcessorWorker(ModuleBase):
                 LOG.error(f'{self._log_prefix(task_id)} Execute update meta task failed: {e}')
                 raise e
 
-        def _resolve_task_type(self, request: AddDocRequest) -> str:  # noqa C901
-            new_file_ids = []
-            reparse_file_ids = []
-            transfer_mode = None
-            target_algo_id = None
-            target_kb_id = None
-
-            for file_info in request.file_infos:
-                if file_info.reparse_group is not None:
-                    reparse_file_ids.append(file_info.doc_id)
-                else:
-                    new_file_ids.append(file_info.doc_id)
-                    if file_info.transfer_params:
-                        if target_algo_id is not None and target_algo_id != file_info.transfer_params.target_algo_id:
-                            raise ValueError('transfer_params.target_algo_id must be the same for all files')
-                        if target_kb_id is not None and target_kb_id != file_info.transfer_params.target_kb_id:
-                            raise ValueError('transfer_params.target_kb_id must be the same for all files')
-                        if transfer_mode is not None and transfer_mode != file_info.transfer_params.mode:
-                            raise ValueError('transfer_params.mode must be the same for all files')
-                        if file_info.transfer_params.target_algo_id != request.algo_id:
-                            raise ValueError('transfer_params.target_algo_id must be the same for all files')
-                        target_algo_id = file_info.transfer_params.target_algo_id
-                        target_kb_id = file_info.transfer_params.target_kb_id
-                        transfer_mode = file_info.transfer_params.mode
-                        if transfer_mode not in ['cp', 'mv']:
-                            raise ValueError('transfer_params.mode must be one of [cp, mv]')
-
-            if new_file_ids and reparse_file_ids:
-                raise ValueError('new_file_ids and reparse_file_ids cannot be specified at the same time')
-            if transfer_mode:
-                return TaskType.DOC_TRANSFER.value
-            if new_file_ids:
-                return TaskType.DOC_ADD.value
-            if reparse_file_ids:
-                return TaskType.DOC_REPARSE.value
-            raise ValueError('no input files or reparse group specified')
+        def _resolve_task_type(self, request: AddDocRequest) -> str:
+            return _resolve_add_doc_task_type(request)
 
         def _validate_task_payload(self, task_type: str, payload: dict):
             if not isinstance(payload, dict):

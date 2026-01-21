@@ -100,32 +100,9 @@ class _Processor:
             else:
                 self._store.update_nodes(root_nodes, copy=True)
                 root_uid_map = {n._copy_source.get('uid'): n.uid for n in root_nodes}
-
-                def _copy_segments_recursive(p_uid_map: dict, p_name: str):
-                    for group_name in self._store.activated_groups():
-                        group = self._node_groups.get(group_name)
-                        if group is None:
-                            raise ValueError(f'Node group {group_name} does not exist. Please check the group name '
-                                             'or add a new one through `create_node_group`.')
-                        if group['parent'] == p_name:
-                            nodes = self._store.get_nodes(doc_ids=ids, group=LAZY_ROOT_NAME, kb_id=kb_id)
-                            nodes = [
-                                n.copy(
-                                    global_metadata={
-                                        RAG_KB_ID: target_kb_id, RAG_DOC_ID: doc_id_map[
-                                            n.global_metadata[RAG_DOC_ID]
-                                        ][0]
-                                    },
-                                    metadata=doc_id_map[n.global_metadata[RAG_DOC_ID]][1]
-                                ) for n in nodes
-                            ]
-                            uid_map = {}
-                            for n in nodes:
-                                uid_map[n._copy_source.get('uid')] = n.uid
-                                n.parent = p_uid_map.get(n.parent, None) if n.parent else None
-                            self._store.update_nodes(nodes, copy=True)
-                            if nodes: _copy_segments_recursive(uid_map, group_name)
-                _copy_segments_recursive(p_uid_map=root_uid_map, p_name=LAZY_ROOT_NAME)
+                self._copy_segments_recursive(ids=ids, kb_id=kb_id, target_kb_id=target_kb_id,
+                                              doc_id_map=doc_id_map, p_uid_map=root_uid_map,
+                                              p_name=LAZY_ROOT_NAME)
 
             for future in schema_futures:
                 try:
@@ -137,7 +114,7 @@ class _Processor:
                 raise schema_errors[0]
             add_time = time.time() - add_start
             LOG.info(f'[_Processor - add_doc] Add documents done! files:{input_files}, '
-                     f'Total Time: {load_time}s, Load Time: {add_time}s')
+                     f'Total Time: {add_time}s, Data Loading Time: {load_time}s')
         except Exception as e:
             LOG.error(f'Add documents failed: {e}, {traceback.format_exc()}')
             raise e
@@ -169,6 +146,33 @@ class _Processor:
             if group['parent'] == p_name:
                 nodes = self._create_nodes_impl(p_nodes, group_name)
                 if nodes: self._create_nodes_recursive(nodes, group_name)
+
+    def _copy_segments_recursive(self, ids: List[str], kb_id: str, target_kb_id: str, doc_id_map: Dict[str, tuple],
+                                 p_uid_map: dict, p_name: str):
+        for group_name in self._store.activated_groups():
+            group = self._node_groups.get(group_name)
+            if group is None:
+                raise ValueError(f'Node group {group_name} does not exist. Please check the group name '
+                                 'or add a new one through `create_node_group`.')
+            if group['parent'] == p_name:
+                nodes = self._store.get_nodes(doc_ids=ids, group=group_name, kb_id=kb_id)
+                nodes = [
+                    n.copy(
+                        global_metadata={
+                            RAG_KB_ID: target_kb_id, RAG_DOC_ID: doc_id_map[n.global_metadata[RAG_DOC_ID]][0]
+                        },
+                        metadata=doc_id_map[n.global_metadata[RAG_DOC_ID]][1]
+                    ) for n in nodes
+                ]
+                uid_map = {}
+                for n in nodes:
+                    uid_map[n._copy_source.get('uid')] = n.uid
+                    n.parent = p_uid_map.get(n.parent, None) if n.parent else None
+                self._store.update_nodes(nodes, copy=True)
+                if nodes:
+                    self._copy_segments_recursive(ids=ids, kb_id=kb_id, target_kb_id=target_kb_id,
+                                                  doc_id_map=doc_id_map, p_uid_map=uid_map,
+                                                  p_name=group_name)
 
     def _create_nodes_impl(self, p_nodes, group_name):
         # NOTE transform.batch_forward will set children for p_nodes, but when calling
