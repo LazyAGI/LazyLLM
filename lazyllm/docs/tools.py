@@ -10209,8 +10209,8 @@ Args:
     **kwargs: 其他关键字参数
 
 Attributes:
-    capability: 存储能力标志，仅支持文本段检索
-    need_embedding: 不需要嵌入向量
+    capability: 存储能力标志，支持所有操作
+    need_embedding: 是否需要嵌入向量
     supports_index_registration: 是否支持索引注册
 
 """)
@@ -10225,8 +10225,8 @@ Args:
     **kwargs: Other keyword arguments
 
 Attributes:
-    capability: Storage capability flag, segment-only retrieval
-    need_embedding: Embedding not required
+    capability: Storage capability flag, supports all operations
+    need_embedding: Whether embedding is required
     supports_index_registration: Whether index registration is supported
 """)
 
