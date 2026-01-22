@@ -125,7 +125,7 @@ class TestOnlineModule(object):
     def test_OnlineMultiModal_forward_override(self):
         class DummySTT(lazyllm.module.llms.onlinemodule.base.LazyLLMOnlineSTTModuleBase):
             def __init__(self):
-                super().__init__('DUMMY', model_name='whisper-1', api_key='dummy', base_url='http://base')
+                super().__init__(model_name='whisper-1', api_key='dummy', base_url='http://base')
 
             def _forward(self, input: str = None, model: str = None, url: str = None, **kwargs):
                 model = model or self._model_name
