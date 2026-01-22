@@ -13,8 +13,7 @@ def partial_match_ratio(a: str, b: str, isjunk=None) -> float:
     match_len = sum(block.size for block in matches if block.size > 1)
     return match_len / len(a) if len(a) > 0 else 0.0
 
-def find_fuzzy_lines(lines: List[Dict], sentence: str) -> List[int]:
-    threshold = 0.08
+def find_fuzzy_lines(lines: List[Dict], sentence: str, threshold: float = 0.08) -> List[int]:
     if not lines:
         return []
 

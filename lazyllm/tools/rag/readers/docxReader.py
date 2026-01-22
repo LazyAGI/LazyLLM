@@ -5,75 +5,13 @@ from typing import Callable, Optional, List, Dict, Any
 from lazyllm import LOG, pipeline, _0
 from lazyllm.common import bind
 import copy
-import glob
-import subprocess
 import os
 import re
-import shutil
 import uuid
 
 from ..doc_node import DocNode
 from .readerBase import LazyLLMReaderBase, get_default_fs, is_default_fs
 
-def doc_to_docx(doc_path: str) -> str:  # noqa: C901
-    with tempfile.NamedTemporaryFile(suffix='.docx', delete=False) as temp_file:
-        temp_docx_path = temp_file.name
-
-    try:
-        temp_dir = os.path.dirname(temp_docx_path)
-        temp_basename = os.path.basename(temp_docx_path)
-
-        conversion_commands = [
-            ['soffice', '--headless', '--convert-to', 'docx', doc_path, '--outdir', temp_dir],
-            ['libreoffice', '--headless', '--convert-to', 'docx', doc_path, '--outdir', temp_dir],
-            ['unoconv', '-f', 'docx', '-o', temp_dir, doc_path],
-        ]
-
-        success = False
-        for cmd in conversion_commands:
-            if shutil.which(cmd[0]):
-                try:
-                    subprocess.run(cmd, check=True, stdout=subprocess.PIPE,
-                                   stderr=subprocess.PIPE, text=True, timeout=60)
-                    success = True
-                    break
-                except (subprocess.CalledProcessError, subprocess.TimeoutExpired, FileNotFoundError):
-                    continue
-
-        if not success:
-            LOG.error('Please install LibreOffice (soffice/libreoffice) or unoconv for .doc convert.')
-            os.unlink(temp_docx_path)
-            return None
-
-        docx_files = glob.glob(os.path.join(temp_dir, '*.docx'))
-
-        if not docx_files:
-            LOG.error(f'> !!! File conversion failed {doc_path} ==> no docx file found in {temp_dir}')
-            os.unlink(temp_docx_path)
-            return None
-
-        actual_docx_path = None
-        for docx_file in docx_files:
-            if os.path.basename(docx_file) == temp_basename:
-                actual_docx_path = docx_file
-                break
-        if not actual_docx_path and docx_files:
-            actual_docx_path = docx_files[0]
-            os.rename(actual_docx_path, temp_docx_path)
-            actual_docx_path = temp_docx_path
-
-        return actual_docx_path
-
-    except subprocess.CalledProcessError as e:
-        LOG.error(f'Conversion command failed with error code {e.returncode}: {e.stderr}')
-        if os.path.exists(temp_docx_path):
-            os.unlink(temp_docx_path)
-        return None
-    except Exception as e:
-        LOG.error(f'Unexpected error during .doc to .docx conversion: {e}')
-        if os.path.exists(temp_docx_path):
-            os.unlink(temp_docx_path)
-        return None
 
 class DocxReader(LazyLLMReaderBase):
     def __init__(self, enhanced: Optional[bool] = False, extra_info: Optional[Dict] = None,
@@ -135,10 +73,11 @@ class DocxReader(LazyLLMReaderBase):
             try:
                 return self._enhanced_load(file, fs, **kwargs)
 
-            except Exception as e:
-                if file.name.endswith('.doc'):
+            except Exception:
+                try:
+                    return self._load(file, fs, **kwargs)
+                except Exception as e:
                     raise e
-                return self._load(file, fs, **kwargs)
         return self._load(file, fs, **kwargs)
 
     def _load(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None, **kwargs) -> List[DocNode]:
@@ -165,6 +104,8 @@ class DocxReader(LazyLLMReaderBase):
 
     def _read_file(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> docx.Document:
         fs = fs or get_default_fs()
+        if file.name.endswith('.doc'):
+            raise ValueError(f'Only expected docx file, but got {file.name}')
 
         try:
             file_size = fs.size(file)
@@ -176,33 +117,6 @@ class DocxReader(LazyLLMReaderBase):
             raise e
 
         temp_files_to_cleanup = []
-
-        if file.name.endswith('.doc'):
-            if not is_default_fs(fs):
-                with tempfile.NamedTemporaryFile(suffix='.doc', delete=False) as tmp_file:
-                    temp_docx_path = tmp_file.name
-
-                try:
-                    with fs.open(file, 'rb') as remote_file:
-                        tmp_file.write(remote_file.read())
-
-                    converted_file = doc_to_docx(temp_docx_path)
-                    if converted_file is None:
-                        raise Exception(f'Failed to convert .doc file: {file}')
-
-                    file = Path(converted_file)
-                    fs = get_default_fs()
-                    temp_files_to_cleanup.append(str(converted_file))
-                finally:
-                    os.unlink(temp_docx_path)
-
-            else:
-                converted_file = doc_to_docx(str(file))
-                if converted_file is None:
-                    raise Exception(f'Failed to convert .doc file: {file}')
-                file = Path(converted_file)
-                temp_files_to_cleanup.append(converted_file)
-
         temp_path = None
 
         try:

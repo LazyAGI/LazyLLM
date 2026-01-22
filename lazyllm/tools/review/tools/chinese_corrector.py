@@ -7,10 +7,9 @@ import lazyllm
 from lazyllm import AutoModel, warp, package
 from ....module import LLMBase
 
-DEFAULT_SYSTEM_PROMPT = '你是一个中文纠错专家。请根据用户提供的原始文本，生成纠正后的文本。'
 DEFAULT_INSTRUCTION = '纠正输入句子中的语法错误，并输出正确的句子，输入句子为：{sentence}'
-DEFAULT_MAX_LENGTH = 512
-DEFAULT_BATCH_SIZE = 16
+DEFAULT_MAX_TOKENS = 512
+DEFAULT_BATCH_SIZE = 4
 DEFAULT_TEMPERATURE = 0.6
 
 
@@ -49,8 +48,7 @@ def get_errors(corrected_text, origin_text):  # noqa: C901
 class ChineseCorrector:
     def __init__(self, llm: Optional[LLMBase] = None, base_url: Optional[str] = None,
                  model: Optional[str] = None, api_key: Optional[str] = 'null',
-                 source: str = 'openai', system_prompt: Optional[str] = DEFAULT_SYSTEM_PROMPT,
-                 **_: Any):
+                 source: str = 'openai', **_: Any):
         if llm:
             base_llm = llm
         else:
@@ -63,7 +61,7 @@ class ChineseCorrector:
             return []
 
         llm_kwargs = {
-            'max_tokens': max_tokens or DEFAULT_MAX_LENGTH,
+            'max_tokens': max_tokens or DEFAULT_MAX_TOKENS,
             'temperature': temperature if temperature is not None else DEFAULT_TEMPERATURE
         }
 
@@ -81,8 +79,8 @@ class ChineseCorrector:
                 errors = get_errors(response, sentence)
             except Exception as e:
                 lazyllm.LOG.error(
-                    f'Error predicting sentence (length={len(sentence)}): '
-                    f'{sentence[:50]}{"..." if len(sentence) > 50 else ""}. '
+                    f'Error predicting sentence {sentence[:50]}{"..." if len(sentence) > 50 else ""}. '
+                    f'with max_tokens: {max_tokens}, temperature: {temperature}'
                     f'Error: {e}'
                 )
                 response = ''
@@ -102,7 +100,7 @@ class ChineseCorrector:
         return results[0] if results else {'source': sentence, 'target': sentence, 'errors': []}
 
     def correct_batch(self, sentences: List[str], batch_size: int = DEFAULT_BATCH_SIZE,
-                      concurrency: Optional[int] = None, **kwargs) -> List[Dict[str, Any]]:
+                      concurrency: Optional[int] = 2, **kwargs) -> List[Dict[str, Any]]:
         if not sentences:
             return []
 
@@ -114,7 +112,7 @@ class ChineseCorrector:
                 lazyllm.LOG.error(f'Error processing sentence: {e}')
                 return {'source': sent, 'target': sent, 'errors': []}
 
-        warp_processor = warp(process_sentence, _concurrent=concurrency or batch_size)
+        warp_processor = warp(process_sentence, _concurrent=concurrency)
         input_package = package(sentences)
 
         try:
