@@ -71,33 +71,31 @@ class MapStore(LazyLLMStoreBase):
         cursor.execute(f'CREATE INDEX IF NOT EXISTS idx_{table}_number ON {table}(number)')
 
     def _save_to_uri(self, collection_name: str, data: List[dict]):
-        with self._lock:
-            conn = self._open_conn()
-            cur = conn.cursor()
-            self._ensure_table(cur, collection_name)
-            sql = f'''INSERT OR REPLACE INTO {collection_name} (
-                    uid, doc_id, \'group\', content,
-                    meta, global_meta, type, number, kb_id,\
-                    excluded_embed_metadata_keys, excluded_llm_metadata_keys,\
-                    parent, answer, image_keys)\
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
-            params = []
-            for item in data:
-                params.append(self._serialize_data(item))
-            cur.executemany(sql, params)
-            conn.commit()
-            affected_rows = cur.rowcount
-            LOG.debug(f'[MapStore - _save_to_uri] Inserted {affected_rows} rows into {collection_name}')
+        conn = self._open_conn()
+        cur = conn.cursor()
+        self._ensure_table(cur, collection_name)
+        sql = f'''INSERT OR REPLACE INTO {collection_name} (
+                uid, doc_id, \'group\', content,
+                meta, global_meta, type, number, kb_id,\
+                excluded_embed_metadata_keys, excluded_llm_metadata_keys,\
+                parent, answer, image_keys)\
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+        params = []
+        for item in data:
+            params.append(self._serialize_data(item))
+        cur.executemany(sql, params)
+        conn.commit()
+        affected_rows = cur.rowcount
+        LOG.debug(f'[MapStore - _save_to_uri] Inserted {affected_rows} rows into {collection_name}')
 
     def _del_from_uri(self, collection_name: str, criteria: Optional[dict] = None):
-        with self._lock:
-            conn = self._open_conn()
-            cur = conn.cursor()
-            where, args = self._build_where(criteria)
-            cur.execute(f'DELETE FROM {collection_name} {where}', args)
-            conn.commit()
-            affected_rows = cur.rowcount
-            LOG.debug(f'[MapStore - delete] Deleted {affected_rows} rows from {collection_name}')
+        conn = self._open_conn()
+        cur = conn.cursor()
+        where, args = self._build_where(criteria)
+        cur.execute(f'DELETE FROM {collection_name} {where}', args)
+        conn.commit()
+        affected_rows = cur.rowcount
+        LOG.debug(f'[MapStore - delete] Deleted {affected_rows} rows from {collection_name}')
 
     @override
     def connect(self, collections: Optional[List[str]] = None, **kwargs):
@@ -127,7 +125,8 @@ class MapStore(LazyLLMStoreBase):
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         try:
             if self._sqlite_first:
-                self._save_to_uri(collection_name, data)
+                with self._lock:
+                    self._save_to_uri(collection_name, data)
             for item in data:
                 uid = item.get('uid')
                 doc_id = item.get('doc_id')
