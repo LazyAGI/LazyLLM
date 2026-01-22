@@ -55,8 +55,9 @@ class DoubaoEmbed(LazyLLMOnlineEmbedModuleBase):
 class DoubaoMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
     def __init__(self,
                  embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal',
-                 embed_model_name: str = 'doubao-embedding-vision-241215',
+                 embed_model_name: str = None,
                  api_key: str = None):
+        embed_model_name = embed_model_name or lazyllm.config['doubao_multimodal_embed_model_name'] or 'doubao-embedding-vision-241215'
         super().__init__(embed_url, api_key or lazyllm.config['doubao_api_key'], embed_model_name)
 
     def _encapsulated_data(self, input: Union[List, str], **kwargs) -> Dict[str, str]:
