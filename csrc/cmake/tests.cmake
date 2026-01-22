@@ -2,7 +2,7 @@ include(FetchContent)
 
 FetchContent_Declare(
     googletest
-    URL https://codeload.github.com/google/googletest/zip/refs/tags/release-1.12.1
+    URL https://codeload.github.com/google/googletest/zip/refs/tags/release-1.17.0
 ) # Fix gtest version to maintain C++11 compatibility.
 
 set(gtest_force_shared_crt ON CACHE BOOL "" FORCE)
