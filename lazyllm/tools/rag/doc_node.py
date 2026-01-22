@@ -1,4 +1,4 @@
-from typing import Optional, Dict, Any, Tuple, Union, Callable, List
+from typing import Optional, Dict, Any, Union, Callable, List
 from enum import Enum, auto
 from collections import defaultdict
 from lazyllm.thirdparty import PIL
@@ -297,7 +297,8 @@ class QADocNode(DocNode):
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional['DocNode'] = None,
                  metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None,
                  *, text: Optional[str] = None):
-        super().__init__(uid, query, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
+        super().__init__(uid, query, group, embedding, parent, metadata=metadata,
+                         global_metadata=global_metadata, text=text)
         self._answer = answer.strip()
 
     @property
@@ -315,7 +316,8 @@ class ImageDocNode(DocNode):
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional['DocNode'] = None,
                  metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None,
                  *, text: Optional[str] = None):
-        super().__init__(uid, None, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
+        super().__init__(uid, None, group, embedding, parent, metadata=metadata,
+                         global_metadata=global_metadata, text=text)
         self._image_path = image_path.strip()
         self._modality = 'image'
 
@@ -352,9 +354,12 @@ class JsonDocNode(DocNode):
     def __init__(self, uid: Optional[str] = None, content: Optional[Union[Dict[str, Any], List[Any]]] = None,
                  group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
                  parent: Optional['DocNode'] = None, metadata: Optional[Dict[str, Any]] = None,
-                 global_metadata: Optional[Dict[str, Any]] = None, *, formatter_str: str = ''):
-        super().__init__(uid, content, group, embedding, parent, metadata, global_metadata=global_metadata)
-        self._formatter_str = formatter_str
+                 global_metadata: Optional[Dict[str, Any]] = None, *, formatter_str: Optional[str] = None):
+        super().__init__(uid, content, group, embedding, parent, metadata=metadata, global_metadata=global_metadata)
+        if formatter_str is not None:
+            self.metadata['formatter_str'] = formatter_str
+        else:
+            formatter_str = self.metadata.get('formatter_str', '')
         self._formatter = JsonFormatter(formatter_str)
 
     @property
@@ -377,14 +382,11 @@ class JsonDocNode(DocNode):
         return self.text
 
     def _serialize_content(self) -> str:
-        return json.dumps([self.text, self._formatter_str])
+        return self.text
 
     @staticmethod
-    def _deserialize_content(content: str) -> Tuple[str, str]:
-        parts = json.loads(content)
-        assert isinstance(parts, list) and len(parts) == 2, 'Storage has been destroyed, get invalid json content'
-        object_text, formatter_str = parts
-        return json.loads(object_text), formatter_str
+    def _deserialize_content(content: str) -> Union[Dict[str, Any], List[Any]]:
+        return json.loads(content)
 
 class RichDocNode(DocNode):
     def __init__(self, nodes: List[DocNode], uid: Optional[str] = None,
@@ -392,7 +394,7 @@ class RichDocNode(DocNode):
                  parent: Optional['DocNode'] = None, metadata: Optional[Dict[str, Any]] = None,
                  global_metadata: Optional[Dict[str, Any]] = None):
         content = [n.text for n in nodes]
-        super().__init__(uid, content, group, embedding, parent, metadata, global_metadata=global_metadata)
+        super().__init__(uid, content, group, embedding, parent, metadata=metadata, global_metadata=global_metadata)
         self._nodes: List[DocNode] = nodes
 
     @property

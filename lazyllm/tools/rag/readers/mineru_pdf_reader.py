@@ -21,14 +21,13 @@ class MineruPDFReader(_RichPDFReader):
                  clean_content: bool = True,
                  post_func: Optional[Callable] = None,
                  return_trace: bool = True):
-        super().__init__(post_func=post_func, return_trace=return_trace)
+        super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace)
         self._url = url + '/api/v1/pdf_parse'
         self._drop_types = ['header', 'footer', 'page_number', 'aside_text', 'page_footnote']
         self._upload_mode = upload_mode
         self._backend = backend
         self._extract_table = extract_table
         self._extract_formula = extract_formula
-        self._split_doc = split_doc
         self._clean_content = clean_content
 
     def _load_data(self, file: Path, extra_info: Optional[Dict] = None,

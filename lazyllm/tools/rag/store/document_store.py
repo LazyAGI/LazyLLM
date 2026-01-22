@@ -421,10 +421,10 @@ class _DocumentStore(object):
                                 metadata=data.get('meta', {}),
                                 global_metadata=data.get('global_meta', {}))
         elif segment_type == SegmentType.JSON.value:
-            json_content, formatter_str = JsonDocNode._deserialize_content(data.get('content', ''))
+            json_content = JsonDocNode._deserialize_content(data.get('content', ''))
             node = JsonDocNode(uid=data['uid'], content=json_content, group=data['group'],
                                parent=data.get('parent', ''), metadata=data.get('meta', {}),
-                               global_metadata=data.get('global_meta', {}), formatter_str=formatter_str)
+                               global_metadata=data.get('global_meta', {}))
         elif segment_type == SegmentType.RICH.value:
             node = RichDocNode(nodes=RichDocNode._deserialize_nodes(data.get('content', '')), uid=data['uid'],
                                group=data['group'], parent=data.get('parent', ''),

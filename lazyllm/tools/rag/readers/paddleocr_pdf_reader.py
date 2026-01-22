@@ -24,7 +24,7 @@ class PaddleOCRPDFReader(_RichPDFReader):
                  post_func: Optional[Callable] = None,
                  return_trace: bool = True,
                  images_dir: str = None):
-        super().__init__(post_func=post_func, return_trace=return_trace)
+        super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace)
         api_key = api_key or lazyllm.config['paddleocr_api_key']
         if not url and not api_key:
             raise ValueError('Either url or api_key must be provided')
@@ -44,7 +44,6 @@ class PaddleOCRPDFReader(_RichPDFReader):
         self._format_block_content = format_block_content
         self._use_layout_detection = use_layout_detection
         self._use_chart_recognition = use_chart_recognition
-        self._split_doc = split_doc
         if images_dir:
             self._images_dir = Path(images_dir)
             self._images_dir.mkdir(exist_ok=True)
