@@ -79,7 +79,7 @@ class TestDocImpl(unittest.TestCase):
         assert node.text == 'dummy text'
 
     def test_add_files(self):
-        assert self.doc_impl.store is None
+        assert self.doc_impl._store is None
         self.doc_impl._lazy_init()
         assert len(self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text='new dummy text', group=LAZY_ROOT_NAME)
