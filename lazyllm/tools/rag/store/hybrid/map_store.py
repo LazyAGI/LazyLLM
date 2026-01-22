@@ -68,25 +68,34 @@ class MapStore(LazyLLMStoreBase):
         cursor.execute(f'CREATE INDEX IF NOT EXISTS idx_{table}_parent ON {table}(parent)')
         cursor.execute(f'CREATE INDEX IF NOT EXISTS idx_{table}_docid ON {table}(doc_id)')
         cursor.execute(f'CREATE INDEX IF NOT EXISTS idx_{table}_kbid ON {table}(kb_id)')
+        cursor.execute(f'CREATE INDEX IF NOT EXISTS idx_{table}_number ON {table}(number)')
 
     def _save_to_uri(self, collection_name: str, data: List[dict]):
-        with self._lock:
-            conn = self._open_conn()
-            cur = conn.cursor()
-            self._ensure_table(cur, collection_name)
-            sql = f'''INSERT OR REPLACE INTO {collection_name} (
-                    uid, doc_id, \'group\', content,
-                    meta, global_meta, type, number, kb_id,\
-                    excluded_embed_metadata_keys, excluded_llm_metadata_keys,\
-                    parent, answer, image_keys)\
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
-            params = []
-            for item in data:
-                params.append(self._serialize_data(item))
-            cur.executemany(sql, params)
-            conn.commit()
-            affected_rows = cur.rowcount
-            LOG.debug(f'[MapStore - _save_to_uri] Inserted {affected_rows} rows into {collection_name}')
+        conn = self._open_conn()
+        cur = conn.cursor()
+        self._ensure_table(cur, collection_name)
+        sql = f'''INSERT OR REPLACE INTO {collection_name} (
+                uid, doc_id, \'group\', content,
+                meta, global_meta, type, number, kb_id,\
+                excluded_embed_metadata_keys, excluded_llm_metadata_keys,\
+                parent, answer, image_keys)\
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'''
+        params = []
+        for item in data:
+            params.append(self._serialize_data(item))
+        cur.executemany(sql, params)
+        conn.commit()
+        affected_rows = cur.rowcount
+        LOG.debug(f'[MapStore - _save_to_uri] Inserted {affected_rows} rows into {collection_name}')
+
+    def _del_from_uri(self, collection_name: str, criteria: Optional[dict] = None):
+        conn = self._open_conn()
+        cur = conn.cursor()
+        where, args = self._build_where(criteria)
+        cur.execute(f'DELETE FROM {collection_name} {where}', args)
+        conn.commit()
+        affected_rows = cur.rowcount
+        LOG.debug(f'[MapStore - delete] Deleted {affected_rows} rows from {collection_name}')
 
     @override
     def connect(self, collections: Optional[List[str]] = None, **kwargs):
@@ -96,6 +105,7 @@ class MapStore(LazyLLMStoreBase):
         self._col_kb_doc_uids: Dict[str, Dict[str, Dict[str, Set[str]]]] = defaultdict(
             lambda: defaultdict(lambda: defaultdict(set)))
         self._col_parent_uids: Dict[str, Dict[str, Set[str]]] = defaultdict(lambda: defaultdict(set))
+        self._col_number_uids: Dict[str, Dict[int, Set[str]]] = defaultdict(lambda: defaultdict(set))
         self._lock = threading.Lock()
         if self._uri:
             db_path = Path(self._uri)
@@ -115,18 +125,15 @@ class MapStore(LazyLLMStoreBase):
     def upsert(self, collection_name: str, data: List[dict]) -> bool:
         try:
             if self._sqlite_first:
-                self._save_to_uri(collection_name, data)
+                with self._lock:
+                    self._save_to_uri(collection_name, data)
             for item in data:
                 uid = item.get('uid')
                 doc_id = item.get('doc_id')
                 kb_id = item.get(RAG_KB_ID, DEFAULT_KB_ID)
                 item['kb_id'] = kb_id
                 assert uid and doc_id, '[MapStore - upsert] uid and doc_id are required'
-                self._uid2data[uid] = item
-                self._collection2uids[collection_name].add(uid)
-                self._col_kb_doc_uids[collection_name][kb_id][doc_id].add(uid)
-                self._col_doc_uids[collection_name][doc_id].add(uid)
-                self._col_parent_uids[collection_name][item.get('parent')].add(uid)
+                self._cache_segment(collection_name, item)
             return True
         except Exception as e:
             LOG.error(f'[MapStore - upsert] Error upserting data: {e}')
@@ -135,41 +142,36 @@ class MapStore(LazyLLMStoreBase):
     @override
     def delete(self, collection_name: str, criteria: Optional[dict] = None, **kwargs) -> bool:
         try:
+            def _remove_uid(uid: str, use_discard: bool) -> None:
+                data = self._uid2data.pop(uid, None)
+                if not data:
+                    return
+                kb_id = data.get(RAG_KB_ID, DEFAULT_KB_ID)
+                doc_id = data.get('doc_id')
+                if use_discard:
+                    self._collection2uids[collection_name].discard(uid)
+                    self._col_kb_doc_uids[collection_name][kb_id][doc_id].discard(uid)
+                    self._col_doc_uids[collection_name][doc_id].discard(uid)
+                    self._col_parent_uids[collection_name][data.get('parent')].discard(uid)
+                    self._col_number_uids[collection_name][data.get('number')].discard(uid)
+                else:
+                    self._collection2uids[collection_name].discard(uid)
+                    self._col_kb_doc_uids[collection_name][kb_id][doc_id].discard(uid)
+                    self._col_doc_uids[collection_name][doc_id].discard(uid)
+                    self._col_parent_uids[collection_name][data.get('parent')].discard(uid)
+                    self._col_number_uids[collection_name][data.get('number')].discard(uid)
+
             if self._sqlite_first:
                 with self._lock:
-                    conn = self._open_conn()
-                    cur = conn.cursor()
-                    where, args = self._build_where(collection_name, criteria)
-                    cur.execute(f'DELETE FROM {collection_name} {where}', args)
-                    conn.commit()
-                    affected_rows = cur.rowcount
-                    LOG.debug(f'[MapStore - delete] Deleted {affected_rows} rows from {collection_name}')
-                    uids = self._get_uids_by_criteria(collection_name, criteria)
-                    for uid in uids:
-                        data = self._uid2data.pop(uid, None)
-                        if not data: continue
-                        kb_id = data.get(RAG_KB_ID, DEFAULT_KB_ID)
-                        doc_id = data.get('doc_id'); parent = data.get('parent')
-                        self._collection2uids[collection_name].discard(uid)
-                        self._col_kb_doc_uids[collection_name][kb_id][doc_id].discard(uid)
-                        self._col_doc_uids[collection_name][doc_id].discard(uid)
-                        self._col_parent_uids[collection_name][parent].discard(uid)
+                    self._del_from_uri(collection_name, criteria)
+                    need_delete = self._get_uids_by_criteria(collection_name, criteria)
+                    for uid in need_delete:
+                        _remove_uid(uid, use_discard=True)
                 return True
-            else:
-                need_delete = self._get_uids_by_criteria(collection_name, criteria)
-                if not need_delete:
-                    return False
-                for uid in need_delete:
-                    data = self._uid2data.pop(uid, None)
-                    if not data:
-                        continue
-                    kb_id = data.get(RAG_KB_ID, DEFAULT_KB_ID)
-                    doc_id = data.get('doc_id')
-                    parent = data.get('parent')
-                    self._collection2uids[collection_name].remove(uid)
-                    self._col_kb_doc_uids[collection_name][kb_id][doc_id].remove(uid)
-                    self._col_doc_uids[collection_name][doc_id].remove(uid)
-                    self._col_parent_uids[collection_name][parent].remove(uid)
+
+            need_delete = self._get_uids_by_criteria(collection_name, criteria)
+            for uid in need_delete:
+                _remove_uid(uid, use_discard=False)
             return True
         except Exception as e:
             LOG.error(f'[MapStore - delete] Error deleting data: {e}')
@@ -182,7 +184,7 @@ class MapStore(LazyLLMStoreBase):
                 conn = self._open_conn()
                 cur = conn.cursor()
                 self._ensure_table(cur, collection_name)
-                where, args = self._build_where(collection_name, criteria)
+                where, args = self._build_where(criteria)
                 cur.execute(f'''SELECT uid, doc_id, "group", content, meta, global_meta, type, number, kb_id,
                                 excluded_embed_metadata_keys, excluded_llm_metadata_keys, parent, answer, image_keys
                                 FROM {collection_name}{where}''', args)
@@ -196,7 +198,7 @@ class MapStore(LazyLLMStoreBase):
             uids = self._get_uids_by_criteria(collection_name, criteria)
             return [self._uid2data[uid] for uid in uids if uid in self._uid2data]
 
-    def _build_where(self, collection_name: str, criteria: dict):
+    def _build_where(self, criteria: dict):
         if not criteria:
             return '', ()
         clauses, args = [], []
@@ -204,6 +206,7 @@ class MapStore(LazyLLMStoreBase):
         kb_id = criteria.get(RAG_KB_ID)
         doc_ids = criteria.get(RAG_DOC_ID)
         parents = criteria.get('parent')
+        numbers = criteria.get('number')
         if uids:
             placeholders = ','.join('?' for _ in uids)
             clauses.append(f'uid IN ({placeholders})')
@@ -218,6 +221,10 @@ class MapStore(LazyLLMStoreBase):
             placeholders = ','.join('?' for _ in parents)
             clauses.append(f'parent IN ({placeholders})')
             args.extend(parents)
+        if numbers:
+            placeholders = ','.join('?' for _ in numbers)
+            clauses.append(f'number IN ({placeholders})')
+            args.extend(numbers)
         where = (' WHERE ' + ' AND '.join(clauses)) if clauses else ''
         return where, tuple(args)
 
@@ -230,6 +237,7 @@ class MapStore(LazyLLMStoreBase):
         self._col_doc_uids[collection_name][item['doc_id']].add(uid)
         self._col_kb_doc_uids[collection_name][item['kb_id']][item['doc_id']].add(uid)
         self._col_parent_uids[collection_name][item.get('parent')].add(uid)
+        self._col_number_uids[collection_name][item['number']].add(item['uid'])
 
     def _check_sqlite_json(self, cursor: sqlite3.Cursor) -> bool:
         if self._sqlite_has_json is not None:
@@ -311,22 +319,50 @@ class MapStore(LazyLLMStoreBase):
             kb_id = criteria.get(RAG_KB_ID)
             doc_ids = criteria.get(RAG_DOC_ID, [])
             parents = criteria.get('parent', [])
+            numbers = criteria.get('number', [])
+
+            base_uids = set(self._collection2uids.get(collection_name, set()))
             if uids:
-                return [uid for uid in uids if uid in self._collection2uids.get(collection_name, set())]
-            elif kb_id and doc_ids:
-                return [uid for doc_id in doc_ids
-                        for uid in self._col_kb_doc_uids.get(collection_name, {}).get(kb_id, {}).get(doc_id, ())]
+                base_uids &= set(uids)
+
+            if kb_id and doc_ids:
+                kb_doc_uids = {
+                    uid for doc_id in doc_ids
+                    for uid in self._col_kb_doc_uids.get(collection_name, {}).get(kb_id, {}).get(doc_id, ())
+                }
+                base_uids &= kb_doc_uids
             elif kb_id:
-                doc_ids = self._col_kb_doc_uids.get(collection_name, {}).get(kb_id, {}).keys()
-                return [uid for doc_id in doc_ids
-                        for uid in self._col_kb_doc_uids.get(collection_name, {}).get(kb_id, {}).get(doc_id, ())]
+                kb_doc_uids = {
+                    uid for doc_id in self._col_kb_doc_uids.get(collection_name, {}).get(kb_id, {}).keys()
+                    for uid in self._col_kb_doc_uids.get(collection_name, {}).get(kb_id, {}).get(doc_id, ())
+                }
+                base_uids &= kb_doc_uids
             elif doc_ids:
-                return [uid for doc_id in doc_ids for uid in self._col_doc_uids.get(collection_name, {}).get(doc_id, ())]
-            elif parents:
-                return [uid for parent in parents for uid in
-                        self._col_parent_uids.get(collection_name, {}).get(parent, ())]
-            else:
+                doc_uids = {
+                    uid for doc_id in doc_ids
+                    for uid in self._col_doc_uids.get(collection_name, {}).get(doc_id, ())
+                }
+                base_uids &= doc_uids
+
+            if parents:
+                parent_uids = {
+                    uid for parent in parents
+                    for uid in self._col_parent_uids.get(collection_name, {}).get(parent, ())
+                }
+                base_uids &= parent_uids
+
+            if numbers:
+                number_uids = {
+                    uid for number in numbers
+                    for uid in self._col_number_uids.get(collection_name, {}).get(number, ())
+                }
+                base_uids &= number_uids
+
+            if not base_uids and any([uids, kb_id, doc_ids, parents, numbers]):
+                return []
+            if not base_uids:
                 raise ValueError(f'[MapStore - get] Invalid criteria: {criteria}')
+            return list(base_uids)
 
     def _serialize_data(self, item: dict) -> tuple:
         kb_id = item.get(RAG_KB_ID, DEFAULT_KB_ID)

@@ -213,10 +213,11 @@ class _DocumentStore(object):
     def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
                   group: Optional[str] = None, kb_id: Optional[str] = None,
                   limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
-                  **kwargs) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
+                  numbers: Optional[Set] = None, **kwargs) -> Union[List[DocNode], Tuple[List[DocNode], int]]:
         try:
-            result = self.get_segments(uids, doc_ids, group, kb_id,
-                                       limit=limit, offset=offset, return_total=return_total, **kwargs)
+            result = self.get_segments(uids=uids, doc_ids=doc_ids, group=group,
+                                       kb_id=kb_id, numbers=numbers, limit=limit,
+                                       offset=offset, return_total=return_total, **kwargs)
             if return_total:
                 segments, total = result
                 return [self._deserialize_node(segment) for segment in segments], total
@@ -228,7 +229,7 @@ class _DocumentStore(object):
     def get_segments(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
                      group: Optional[str] = None, kb_id: Optional[str] = None,
                      limit: Optional[int] = None, offset: int = 0, return_total: bool = False,
-                     **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
+                     numbers: Optional[Set] = None, **kwargs) -> Union[List[dict], Tuple[List[dict], int]]:
         # get a set of segments by uids
         # get the segments of the whole file -- doc ids only
         # get the segments of a certain group for one file -- doc ids and group (kb_id is optional)
@@ -237,7 +238,7 @@ class _DocumentStore(object):
         # return_total triggers a full scan to count all matching segments
         try:
             limit, offset = self._normalize_pagination(limit, offset)
-            criteria = self._build_get_criteria(uids, doc_ids, kb_id, kwargs.get('parent'))
+            criteria = self._build_get_criteria(uids, doc_ids, kb_id, numbers, kwargs.get('parent'))
             groups = self._resolve_groups(group)
             segments = []
             for group in groups:
@@ -288,14 +289,17 @@ class _DocumentStore(object):
         return [group]
 
     def _build_get_criteria(self, uids: Optional[List[str]], doc_ids: Optional[Set],
-                            kb_id: Optional[str], parent: Optional[Union[str, List[str]]]) -> Dict[str, Any]:
+                            kb_id: Optional[str], numbers: Optional[Set] = None,
+                            parent: Optional[Union[str, List[str]]] = None) -> Dict[str, Any]:
         criteria: Dict[str, Any] = {}
         if uids:
             criteria = {'uid': uids}
         if doc_ids:
-            criteria[RAG_DOC_ID] = doc_ids
+            criteria[RAG_DOC_ID] = list(set(doc_ids))
         if kb_id:
             criteria[RAG_KB_ID] = kb_id
+        if numbers:
+            criteria['number'] = list(set(numbers))
         if parent:
             criteria['parent'] = parent
         return criteria
