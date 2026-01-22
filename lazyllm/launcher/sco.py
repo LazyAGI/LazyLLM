@@ -3,11 +3,11 @@ import re
 import time
 import json
 import subprocess
-from queue import Queue
 from collections import defaultdict
 
 import lazyllm
 from lazyllm import final, LOG
+from lazyllm.common import RecentQueue as Queue
 from .base import LazyLLMLaunchersBase, Job, Status
 
 lazyllm.config.add('sco.workspace', str, 'your_workspace', 'SCO_WORKSPACE',

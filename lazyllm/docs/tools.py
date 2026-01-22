@@ -2026,6 +2026,25 @@ Notes:
     without `RichTransform`, the parsed nodes will fall back to plain text nodes.
 ''')
 
+add_chinese_doc('rag.readers.MineruPDFReader.set_type_processor', '''\
+为特定的内容类型设置自定义处理器函数，用于处理从 Mineru 服务返回的原始内容数据。
+返回结果中 'text' 键值将作为 DocNode 的文本内容，其他键值对将作为 DocNode 的元数据（metadata）存储。
+
+Args:
+    content_type (str): 内容类型，例如 'text', 'image', 'table', 'equation', 'code', 'list' 等。
+    processor (Callable): 处理器函数，接收内容字典作为参数，返回处理后的字典。
+''')
+
+add_english_doc('rag.readers.MineruPDFReader.set_type_processor', '''\
+Set a custom processor function for a specific content type to process raw content data returned from the Mineru Server.
+The 'text' key in the returned dictionary will be used as the DocNode text content, 
+while other key-value pairs will be stored as DocNode metadata.
+
+Args:
+    content_type (str): Content type, such as 'text', 'image', 'table', 'equation', 'code', 'list' etc.
+    processor (Callable): Processor function that takes a dictionary as input and returns a processed dictionary.
+''')
+
 add_chinese_doc('rag.readers.PaddleOCRPDFReader', '''\
 基于PaddleOCR服务的PDF解析器，通过调用PaddleOCR服务的API来解析PDF文件，支持丰富的文档结构识别。
 服务接入方式：
@@ -10351,7 +10370,7 @@ Get the node's content text with metadata in LLM mode.
 add_chinese_doc('rag.store.hybrid.MapStore', """\
 基于SQLite的Map存储类，继承自LazyLLMStoreBase。
 
-提供基于SQLite数据库的向量存储功能，支持数据持久化、多集合管理和复杂查询。
+提供基于SQLite的数据持久化与BM25全文检索，支持多集合管理和简单查询。
 
 Args:
     uri (Optional[str]): SQLite数据库文件路径，默认为None（内存模式）
@@ -10367,7 +10386,7 @@ Attributes:
 add_english_doc('rag.store.hybrid.MapStore', """\
 SQLite-based Map storage class, inherits from LazyLLMStoreBase.
 
-Provides vector storage functionality based on SQLite database, supports data persistence, multi-collection management and complex queries.
+Provides data persistence and BM25 full-text search via SQLite for lightweight use cases.
 
 Args:
     uri (Optional[str]): SQLite database file path, defaults to None (in-memory mode)
@@ -10375,7 +10394,7 @@ Args:
 
 Attributes:
     capability: Storage capability flag, supports all operations
-    need_embedding: Whether embedding is needed
+    need_embedding: Whether embedding is required
     supports_index_registration: Whether index registration is supported
 """)
 
