@@ -10,7 +10,7 @@ from lazyllm.tools.rag.store.document_store import _DocumentStore
 from lazyllm.tools.rag.store import MapStore, MilvusStore, BUILDIN_GLOBAL_META_DESC, HybridStore
 from lazyllm.tools.rag.data_type import DataType
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_KB_ID
-from lazyllm.tools.rag.doc_node import DocNode, QADocNode, ImageDocNode, JsonDocNode, MetadataMode
+from lazyllm.tools.rag.doc_node import DocNode, QADocNode, ImageDocNode, JsonDocNode, RichDocNode, MetadataMode
 
 node1 = DocNode(uid='1', text='text1', group='group1', parent=None,
                 global_metadata={RAG_KB_ID: 'kb1', RAG_DOC_ID: 'doc1', 'tags': ['tag1']})
@@ -26,6 +26,8 @@ json_node1 = JsonDocNode(uid='6', content={'key': 'value', 'nested': {'a': 1, 'b
                          group='json', parent=node1, formatter_str='[key,nested]',
                          metadata={'custom_meta': 'test'},
                          global_metadata={RAG_KB_ID: 'kb1', RAG_DOC_ID: 'doc5', 'tags': ['tag6']})
+rich_node1 = RichDocNode(uid='7', nodes=[node1, node2], group='rich', parent=None,
+                         global_metadata={RAG_KB_ID: 'kb1', RAG_DOC_ID: 'doc6', 'tags': ['tag7']})
 
 
 @pytest.mark.skip_on_win
@@ -73,15 +75,15 @@ class TestStoreWithMapAndMilvus(unittest.TestCase):
                                              embed_dims=self.embed_dims, embed_datatypes=self.embed_datatypes,
                                              embed=self.mock_embed,
                                              global_metadata_desc=self.global_metadata_desc)
-        self.document_store.activate_group(['group1', 'group2', 'qa', 'image', 'json'])
-        self.document_store.update_nodes([node1, node2, node3, qa_node1, image_node1, json_node1])
+        self.document_store.activate_group(['group1', 'group2', 'qa', 'image', 'json', 'rich'])
+        self.document_store.update_nodes([node1, node2, node3, qa_node1, image_node1, json_node1, rich_node1])
 
     def tearDown(self):
         os.remove(self.store_dir)
 
     def test_initialization(self):
         self.assertEqual(set(self.document_store.activated_groups()),
-                         set(['group1', 'group2', 'qa', 'image', 'json']))
+                         set(['group1', 'group2', 'qa', 'image', 'json', 'rich']))
 
     def test_get_nodes_by_group(self):
         nodes = self.document_store.get_nodes(group='group1')
@@ -98,6 +100,9 @@ class TestStoreWithMapAndMilvus(unittest.TestCase):
         nodes = self.document_store.get_nodes(group='json')
         self.assertEqual(set([node.uid for node in nodes]), set([json_node1.uid]))
         self.assertEqual(isinstance(nodes[0], JsonDocNode), True)
+        nodes = self.document_store.get_nodes(group='rich')
+        self.assertEqual(set([node.uid for node in nodes]), set([rich_node1.uid]))
+        self.assertEqual(isinstance(nodes[0], RichDocNode), True)
 
     def test_get_nodes_by_doc_id(self):
         nodes = self.document_store.get_nodes(group='group1', doc_ids=[node1.global_metadata.get(RAG_DOC_ID)])
@@ -195,7 +200,7 @@ class TestStoreWithMapAndMilvus(unittest.TestCase):
     def test_get_nodes_pagination_return_total(self):
         nodes, total = self.document_store.get_nodes(limit=2, return_total=True)
         self.assertEqual(len(nodes), 2)
-        self.assertEqual(total, 6)  # 2 in group1, 1 in group2, 1 in qa, 1 in image, 1 in json
+        self.assertEqual(total, 7)  # 2 in group1, 1 in group2, 1 in qa, 1 in image, 1 in json, 1 in rich
 
     def test_get_nodes_pagination_with_group(self):
         nodes = self.document_store.get_nodes(group='group1', limit=1)
@@ -208,7 +213,7 @@ class TestStoreWithMapAndMilvus(unittest.TestCase):
     def test_get_segments_pagination_return_total(self):
         segments, total = self.document_store.get_segments(limit=3, return_total=True)
         self.assertEqual(len(segments), 3)
-        self.assertEqual(total, 6)  # 2 in group1, 1 in group2, 1 in qa, 1 in image, 1 in json
+        self.assertEqual(total, 7)  # 2 in group1, 1 in group2, 1 in qa, 1 in image, 1 in json, 1 in rich
 
     def test_get_segments_pagination_with_doc_id(self):
         segments = self.document_store.get_segments(doc_ids={node1.global_metadata.get(RAG_DOC_ID)}, limit=1)
@@ -245,3 +250,31 @@ class TestStoreWithMapAndMilvus(unittest.TestCase):
         text = retrieved_node.text
         parsed_text = json.loads(text)
         self.assertEqual(parsed_text, {'key': 'value', 'nested': {'a': 1, 'b': 2}})
+
+    def test_rich_node_store_and_retrieve(self):
+        '''Test that RichDocNode can be stored and correctly reconstructed from store.'''
+        # Retrieve the node from store
+        nodes = self.document_store.get_nodes(group='rich', uids=[rich_node1.uid])
+        self.assertEqual(len(nodes), 1)
+        retrieved_node = nodes[0]
+
+        # Verify it's a RichDocNode
+        self.assertIsInstance(retrieved_node, RichDocNode)
+
+        # Verify sub-nodes are correctly reconstructed
+        self.assertEqual(len(retrieved_node.nodes), 2)
+        self.assertEqual(retrieved_node.nodes[0].text, 'text1')
+        self.assertEqual(retrieved_node.nodes[1].text, 'text2')
+
+        # Verify content is correctly reconstructed
+        doc_nodes = self.document_store.get_nodes(group='group1')
+        self.assertEqual(sorted(retrieved_node.content), sorted([doc_nodes[0].text, doc_nodes[1].text]))
+        self.assertEqual(retrieved_node.text, '\n'.join(sorted([doc_nodes[0].text, doc_nodes[1].text])))
+
+        # Verify metadata of sub-nodes (partially)
+        self.assertEqual(retrieved_node.nodes[0].global_metadata.get(RAG_DOC_ID), 'doc1')
+        self.assertEqual(retrieved_node.nodes[1].global_metadata.get(RAG_DOC_ID), 'doc2')
+
+        # Verify global_metadata of RichDocNode itself
+        self.assertEqual(retrieved_node.global_metadata.get(RAG_DOC_ID), 'doc6')
+        self.assertEqual(retrieved_node.global_metadata.get('tags'), ['tag7'])

@@ -93,6 +93,7 @@ class TestPaddleOCRPDFReader(object):
             format_block_content=False
         )
         docs1 = reader1(self.test_pdf)
+        docs1 = RichTransform().transform(docs1[0])
         assert isinstance(docs1, list)
         assert len(docs1) > 0, 'Return result should not be empty when format_block_content=False'
 
@@ -102,6 +103,7 @@ class TestPaddleOCRPDFReader(object):
             use_layout_detection=False
         )
         docs2 = reader2(self.test_pdf)
+        docs2 = RichTransform().transform(docs2[0])
         assert isinstance(docs2, list)
         assert len(docs2) > 0 and len(docs2) < 15, 'Return result should not be empty when use_layout_detection=False'
 
@@ -111,6 +113,7 @@ class TestPaddleOCRPDFReader(object):
             use_chart_recognition=False
         )
         docs3 = reader3(self.test_pdf)
+        docs3 = RichTransform().transform(docs3[0])
         assert isinstance(docs3, list)
         assert len(docs3) > 0, 'Return result should not be empty when use_chart_recognition=False'
 
@@ -120,6 +123,7 @@ class TestPaddleOCRPDFReader(object):
             drop_types=['header', 'footer', 'aside_text']
         )
         docs4 = reader4(self.test_pdf)
+        docs4 = RichTransform().transform(docs4[0])
         assert isinstance(docs4, list)
         assert len(docs4) > 0, 'Return result should not be empty when using drop_types'
         # Check that metadata should not contain filtered types
