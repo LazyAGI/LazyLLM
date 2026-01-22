@@ -1,34 +1,37 @@
 #pragma once
 
-#include <cstddef>
 #include <functional>
-#include <mutex>
 #include <set>
 #include <string>
 #include <unordered_map>
 #include <vector>
+#include <variant>
+#include <optional>
 
 namespace lazyllm {
 
-constexpr const char kRagKbId[] = "kb_id";
-constexpr const char kRagDocId[] = "docid";
-constexpr const char kRagDocPath[] = "lazyllm_doc_path";
-
-enum class MetadataMode {
-    All,
-    Embed,
-    Llm,
-    None,
-};
+enum class MetadataMode { ALL, EMBED, LLM, NONE };
 
 class DocNode {
-public:
-    using Embedding = std::unordered_map<std::string, std::vector<float>>;
+protected:
     using Metadata = std::unordered_map<std::string, std::string>;
     using Children = std::unordered_map<std::string, std::vector<DocNode*>>;
-    using EmbeddingFn = std::function<std::vector<float>(const std::string&, const std::string&)>;
+    using EmbeddingFun = std::function<std::vector<float>(const std::string&, const std::string&)>;
+    using EmbeddingVec = std::unordered_map<std::string, std::vector<float>>;
 
-    DocNode();
+public:
+    DocNode(
+        uid: Optional[str] = None,
+        content: Optional[Union[str, List[Any]]] = None,
+        group: Optional[str] = None,
+        embedding: Optional[Dict[str,List[float]]] = None,
+        parent: Optional[Union[str, 'DocNode']] = None,
+        store=None,
+        node_groups: Optional[Dict[str, Dict]] = None,
+        metadata: Optional[Dict[str, Any]] = None,
+        global_metadata: Optional[Dict[str, Any]] = None,
+        text: Optional[str] = None
+    );
     explicit DocNode(const std::string& text);
     DocNode(const DocNode& other);
     DocNode& operator=(const DocNode& other);
@@ -51,12 +54,12 @@ public:
 
     std::string content_hash() const;
 
-    Embedding& embedding();
-    const Embedding& embedding() const;
-    void set_embedding(const Embedding& embed);
+    EmbeddingVec& embedding();
+    const EmbeddingVec& embedding() const;
+    void set_embedding(const EmbeddingVec& embed);
 
     std::vector<std::string> has_missing_embedding(const std::vector<std::string>& embed_keys) const;
-    virtual void do_embedding(const std::unordered_map<std::string, EmbeddingFn>& embed);
+    virtual void do_embedding(const std::unordered_map<std::string, EmbeddingFun>& embed);
     void set_embedding_value(const std::string& key, const std::vector<float>& value);
     void check_embedding_state(const std::string& embed_key) const;
 
@@ -96,8 +99,8 @@ public:
     bool operator!=(const DocNode& other) const;
     std::size_t hash() const;
 
-    std::string get_metadata_str(MetadataMode mode = MetadataMode::All) const;
-    virtual std::string get_content(MetadataMode mode = MetadataMode::Llm) const;
+    std::string get_metadata_str(MetadataMode mode = MetadataMode::ALL) const;
+    virtual std::string get_content(MetadataMode mode = MetadataMode::LLM) const;
 
     DocNode with_score(double score) const;
     DocNode with_sim_score(double score) const;
@@ -115,7 +118,7 @@ protected:
     std::string _text;
     bool _content_is_list;
     std::vector<std::string> _content_list;
-    Embedding _embedding;
+    EmbeddingVec _embedding;
     Metadata _metadata;
     Metadata _global_metadata;
     std::vector<std::string> _excluded_embed_metadata_keys;
@@ -123,7 +126,6 @@ protected:
     DocNode* _parent;
     Children _children;
     bool _children_loaded;
-    mutable std::mutex _embedding_mutex;
     mutable std::set<std::string> _embedding_state;
     mutable std::string _content_hash;
     mutable bool _content_hash_dirty;
@@ -152,8 +154,8 @@ public:
                  const std::string& group = std::string());
 
     const std::string& image_path() const;
-    std::string get_content(MetadataMode mode = MetadataMode::Llm) const override;
-    void do_embedding(const std::unordered_map<std::string, EmbeddingFn>& embed) override;
+    std::string get_content(MetadataMode mode = MetadataMode::LLM) const override;
+    void do_embedding(const std::unordered_map<std::string, EmbeddingFun>& embed) override;
     std::string get_text_with_metadata(MetadataMode mode) const override;
 
 private:
