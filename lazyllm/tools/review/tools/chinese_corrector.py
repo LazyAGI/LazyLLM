@@ -4,10 +4,8 @@ from typing import List, Optional, Dict, Any
 
 import lazyllm
 
-from lazyllm import AutoModel
+from lazyllm import AutoModel, warp, package
 from ....module import LLMBase
-from lazyllm.flow import Warp
-from lazyllm.common import package
 
 DEFAULT_SYSTEM_PROMPT = '你是一个中文纠错专家。请根据用户提供的原始文本，生成纠正后的文本。'
 DEFAULT_INSTRUCTION = '纠正输入句子中的语法错误，并输出正确的句子，输入句子为：{sentence}'
@@ -116,7 +114,7 @@ class ChineseCorrector:
                 lazyllm.LOG.error(f'Error processing sentence: {e}')
                 return {'source': sent, 'target': sent, 'errors': []}
 
-        warp_processor = Warp(process_sentence, _concurrent=concurrency or batch_size)
+        warp_processor = warp(process_sentence, _concurrent=concurrency or batch_size)
         input_package = package(sentences)
 
         try:

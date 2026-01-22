@@ -163,6 +163,30 @@ class TestFormatter(object):
         result = jsf(origin)
         assert result == [{'name': 'Bob'}, {'name': 'Charlie'}]
 
+    def test_json_repair_nested(self):
+        jsf = formatter.JsonFormatter()
+        origin = '{"outer": {"inner": "value"}, "arr": [1, 2, 3]}其他文本{"simple": "obj"}'
+        result = jsf(origin)
+        assert result == [{'outer': {'inner': 'value'}, 'arr': [1, 2, 3]}, {'simple': 'obj'}]
+
+        origin2 = '{"level1": {"level2": {"level3": [{"nested": "array"}]}}}后面{"flat": "obj"}'
+        result2 = jsf(origin2)
+        assert result2 == [{'level1': {'level2': {'level3': [{'nested': 'array'}]}}}, {'flat': 'obj'}]
+
+    def test_json_repair_string_with_braces(self):
+        jsf = formatter.JsonFormatter()
+        origin = '{"message": "This is {not} a brace"}后面{"code": "function() { return 1; }"}'
+        result = jsf(origin)
+        assert result == [{'message': 'This is {not} a brace'}, {'code': 'function() { return 1; }'}]
+
+        origin2 = '{"pattern": "match {x} and [y]"}其他{"text": "nested {inner {braces}}"}'
+        result2 = jsf(origin2)
+        assert result2 == [{'pattern': 'match {x} and [y]'}, {'text': 'nested {inner {braces}}'}]
+
+        origin3 = '{"escaped": "quote \\"with {braces}\\""}'
+        result3 = jsf(origin3)
+        assert result3 == {'escaped': 'quote "with {braces}"'}
+
 
 class TestModuleFormatter(object):
     def test_module_formatter(self):

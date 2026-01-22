@@ -36,7 +36,7 @@ class JsonFormatter(JsonLikeFormatter):
                         repaired_obj = json_repair.loads(current_json)
                         json_objects.append(repaired_obj)
                         current_json = ''
-                    except (json.JSONDecodeError, Exception):
+                    except (json.JSONDecodeError, ValueError):
                         continue
 
         return json_objects

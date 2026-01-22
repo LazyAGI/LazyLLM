@@ -10,6 +10,7 @@ import subprocess
 import os
 import re
 import shutil
+import uuid
 
 from ..doc_node import DocNode
 from .readerBase import LazyLLMReaderBase, get_default_fs, is_default_fs
@@ -75,20 +76,23 @@ def doc_to_docx(doc_path: str) -> str:  # noqa: C901
         return None
 
 class DocxReader(LazyLLMReaderBase):
-    def __init__(self, enhanced: Optional[bool] = False, post_func: Optional[Callable] = None,
-                 extract_process: Optional[Callable] = None, return_trace: bool = True,
-                 extract_global_info: bool = True, extra_info: Optional[Dict] = None):
+    def __init__(self, enhanced: Optional[bool] = False, extra_info: Optional[Dict] = None,
+                 extract_process: Optional[Callable] = None, post_func: Optional[Callable] = None,
+                 extract_global_info: bool = True, image_save_path: Optional[str] = None,
+                 save_image: bool = True, return_trace: bool = True):
         super().__init__(return_trace=return_trace)
-        self.enhanced = enhanced
+        self._enhanced = enhanced
         self.extract_process = extract_process or self._default_extract
         self.post_func = post_func or self._default_post
         self.extract_global_info = extract_global_info
         self.extra_info = extra_info or {}
+        self.image_save_path = image_save_path
+        self.save_image = save_image
 
     def _extract_global_info(self, doc: docx.Document, file_path: Path) -> Dict[str, Any]:
         global_info = dict(self.extra_info)
 
-        if self.extract_global_info and self.enhanced:
+        if self.extract_global_info and self._enhanced:
             try:
                 props = doc.core_properties
 
@@ -127,7 +131,7 @@ class DocxReader(LazyLLMReaderBase):
         if not isinstance(file, Path):
             file = Path(file)
 
-        if self.enhanced:
+        if self._enhanced:
             try:
                 return self._enhanced_load(file, fs, **kwargs)
 
@@ -169,7 +173,7 @@ class DocxReader(LazyLLMReaderBase):
 
         except Exception as e:
             LOG.error(f'Fail to load file for {file}: {e}')
-            return []
+            raise e
 
         temp_files_to_cleanup = []
 
@@ -263,7 +267,7 @@ class DocxReader(LazyLLMReaderBase):
 
                     if has_image:
                         image_nodes = self._extract_images_from_paragraph(
-                            para, base_metadata, global_info
+                            para, doc, base_metadata, global_info
                         )
                         if image_nodes:
                             doc_list.extend(image_nodes)
@@ -341,7 +345,8 @@ class DocxReader(LazyLLMReaderBase):
             }
         return style_dict
 
-    def _extract_images_from_paragraph(self, para, base_metadata: dict, extra_info: Optional[Dict]) -> List[DocNode]:
+    def _extract_images_from_paragraph(self, para, doc: docx.Document, base_metadata: dict,
+                                       extra_info: Optional[Dict]) -> List[DocNode]:
         image_nodes = []
 
         for run in para.runs:
@@ -357,7 +362,35 @@ class DocxReader(LazyLLMReaderBase):
                     continue
 
                 try:
-                    image_text = ''
+                    image_part = doc.part.related_parts[embed_id]
+
+                    if self.save_image:
+                        image_data = image_part.blob
+                        original_filename = os.path.basename(image_part.partname)
+                        file_extension = os.path.splitext(original_filename)[1] or '.png'
+                        image_filename = f'{uuid.uuid4()}{file_extension}'
+
+                        try:
+                            os.makedirs(self.image_save_path, exist_ok=True)
+                        except Exception as e:
+                            LOG.error(f'[Docx Reader] Failed to create directory: {self.image_save_path}: {e}')
+                            LOG.info('use default image save path ~/.lazyllm/image')
+                            image_path = os.path.join(os.path.expanduser('~'), '.lazyllm')
+                            self.image_save_path = Path(image_path) / 'image'
+                            continue
+
+                        image_save_path = os.path.join(self.image_save_path, image_filename)
+                        with open(image_save_path, 'wb') as img_file:
+                            img_file.write(image_data)
+                    else:
+                        original_filename = os.path.basename(image_part.partname)
+                        file_extension = os.path.splitext(original_filename)[1] or '.png'
+                        image_filename = f'image_{uuid.uuid4()}{file_extension}'
+
+                    if self.save_image:
+                        image_text = f'![]({image_filename})'
+                    else:
+                        image_text = ''
 
                     metadata = copy.deepcopy(base_metadata)
                     metadata['type'] = 'image'
