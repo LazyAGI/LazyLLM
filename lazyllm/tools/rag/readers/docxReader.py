@@ -23,12 +23,12 @@ class DocxReader(LazyLLMReaderBase):
         self.extract_process = extract_process or self._default_extract
         self.post_func = post_func or self._default_post
         self.extract_global_info = extract_global_info
-        self.extra_info = extra_info or {}
-        self.image_save_path = image_save_path
-        self.save_image = save_image
+        self._extra_info = extra_info or {}
+        self._image_save_path = image_save_path
+        self._save_image = save_image
 
     def _extract_global_info(self, doc: docx.Document, file_path: Path) -> Dict[str, Any]:
-        global_info = dict(self.extra_info)
+        global_info = dict(self._extra_info)
 
         if self.extract_global_info and self._enhanced:
             try:
@@ -87,6 +87,8 @@ class DocxReader(LazyLLMReaderBase):
                     text = docx2txt.process(f)
             else:
                 text = docx2txt.process(file)
+            if not text:
+                raise ValueError('File load failed')
             return [DocNode(text=text)]
         except Exception as docx2txt_error:
             LOG.error(f'Failed for {file}: {str(docx2txt_error)}')
@@ -99,7 +101,6 @@ class DocxReader(LazyLLMReaderBase):
             p.f3 = bind(self.post_func, _0, **kwargs)
 
         nodes = p(file, fs)
-
         return nodes
 
     def _read_file(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> docx.Document:
@@ -110,7 +111,7 @@ class DocxReader(LazyLLMReaderBase):
         try:
             file_size = fs.size(file)
             if file_size == 0:
-                return []
+                raise ValueError(f'Input file {file.name} is empty')
 
         except Exception as e:
             LOG.error(f'Fail to load file for {file}: {e}')
@@ -203,7 +204,8 @@ class DocxReader(LazyLLMReaderBase):
 
                     para_node = self._process_paragraph(para, content, base_metadata, global_info)
                     doc_list.append(para_node)
-
+        if not doc_list:
+            raise ValueError('file Extraction failed')
         return doc_list
 
     def _default_post(self, doc_list, **kwargs) -> List[DocNode]:
@@ -278,22 +280,22 @@ class DocxReader(LazyLLMReaderBase):
                 try:
                     image_part = doc.part.related_parts[embed_id]
 
-                    if self.save_image:
+                    if self._save_image:
                         image_data = image_part.blob
                         original_filename = os.path.basename(image_part.partname)
                         file_extension = os.path.splitext(original_filename)[1] or '.png'
                         image_filename = f'{uuid.uuid4()}{file_extension}'
 
                         try:
-                            os.makedirs(self.image_save_path, exist_ok=True)
+                            os.makedirs(self._image_save_path, exist_ok=True)
                         except Exception as e:
-                            LOG.error(f'[Docx Reader] Failed to create directory: {self.image_save_path}: {e}')
+                            LOG.error(f'[Docx Reader] Failed to create directory: {self._image_save_path}: {e}')
                             LOG.info('use default image save path ~/.lazyllm/image')
                             image_path = os.path.join(os.path.expanduser('~'), '.lazyllm')
-                            self.image_save_path = Path(image_path) / 'image'
+                            self._image_save_path = Path(image_path) / 'image'
                             continue
 
-                        image_save_path = os.path.join(self.image_save_path, image_filename)
+                        image_save_path = os.path.join(self._image_save_path, image_filename)
                         with open(image_save_path, 'wb') as img_file:
                             img_file.write(image_data)
                     else:
@@ -301,7 +303,7 @@ class DocxReader(LazyLLMReaderBase):
                         file_extension = os.path.splitext(original_filename)[1] or '.png'
                         image_filename = f'image_{uuid.uuid4()}{file_extension}'
 
-                    if self.save_image:
+                    if self._save_image:
                         image_text = f'![]({image_filename})'
                     else:
                         image_text = ''
