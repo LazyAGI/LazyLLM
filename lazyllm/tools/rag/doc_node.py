@@ -74,6 +74,14 @@ class DocNode:
         self._content_hash = None
 
     @property
+    def number(self) -> int:
+        return self._metadata.get('lazyllm_store_num', 0)
+
+    @number.setter
+    def number(self, value: int) -> None:
+        self._metadata['lazyllm_store_num'] = value
+
+    @property
     def text(self) -> str:
         if isinstance(self._content, str):
             return self._content

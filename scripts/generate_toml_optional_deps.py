@@ -52,6 +52,9 @@ def main():
 
     doc = tomlkit.parse(path.read_text())
 
+    project = doc.setdefault('project', tomlkit.table())
+    project['requires-python'] = '>=3.10,<3.13'
+
     poetry_optional_deps = doc['tool']['poetry']['dependencies']
 
     proj_optional_deps = []
