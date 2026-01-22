@@ -393,8 +393,8 @@ class RichDocNode(DocNode):
                  group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
                  parent: Optional['DocNode'] = None, metadata: Optional[Dict[str, Any]] = None,
                  global_metadata: Optional[Dict[str, Any]] = None):
-        content = [n.text for n in nodes]
-        super().__init__(uid, content, group, embedding, parent, metadata=metadata, global_metadata=global_metadata)
+        super().__init__(uid, [n.text for n in nodes], group, embedding, parent, metadata=metadata,
+                         global_metadata=global_metadata)
         self._nodes: List[DocNode] = nodes
 
     @property
