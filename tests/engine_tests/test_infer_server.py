@@ -24,7 +24,7 @@ class TestInferServer(unittest.TestCase):
         lazyllm.FileSystemQueue().dequeue()
         lazyllm.FileSystemQueue(klass='lazy_trace').dequeue()
 
-     @classmethod
+    @classmethod
     def tearDownClass(cls):
         cls.infer_server.stop()
         cleanup()
