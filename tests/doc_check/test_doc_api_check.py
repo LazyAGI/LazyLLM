@@ -27,6 +27,7 @@ try:
     from lazynote.manager import SimpleManager
 except ImportError as e:
     logging.error(f'Error import lazyllm and lazynote: {e}')
+    SimpleManager = None
 
 def generate_docs_for_module():
     if SimpleManager is None:
