@@ -6,7 +6,6 @@ pytest-order
 pytest-xdist
 openpyxl
 nbconvert
-python-pptx
 EbookLib
 html2text
 pytesseract

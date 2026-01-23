@@ -10986,3 +10986,159 @@ Returns:
 Raises:
     HTTPException: 401 exception when token is invalid
 """)
+
+# review/tools/chinese_corrector.py
+
+add_chinese_doc('review.tools.chinese_corrector.get_errors', '''\
+比较修正文本和原始文本，找出其中的错误位置和内容。
+
+使用序列匹配算法比较两个文本的差异，返回错误列表，每个错误包含原始字符、修正字符和位置信息。
+
+Args:
+    corrected_text (str): 修正后的文本。
+    origin_text (str): 原始文本。
+
+Returns:
+    list: 错误列表，每个元素为 (orig_char, corr_char, pos) 的元组，其中：
+        - orig_char (str): 原始字符，如果是插入错误则为空字符串。
+        - corr_char (str): 修正字符，如果是删除错误则为空字符串。
+        - pos (int): 错误在原始文本中的位置。
+''')
+
+add_english_doc('review.tools.chinese_corrector.get_errors', '''\
+Compare corrected text with original text to find error locations and contents.
+
+Uses sequence matching algorithm to compare differences between two texts, returns a list of errors,
+each containing original character, corrected character, and position information.
+
+Args:
+    corrected_text (str): The corrected text.
+    origin_text (str): The original text.
+
+Returns:
+    list: List of errors, each element is a tuple (orig_char, corr_char, pos) where:
+        - orig_char (str): Original character, empty string if insertion error.
+        - corr_char (str): Corrected character, empty string if deletion error.
+        - pos (int): Position of error in original text.
+''')
+
+add_example(
+    'review.tools.chinese_corrector.get_errors',
+    """\
+    >>> from lazyllm.tools.review.tools.chinese_corrector import get_errors
+    >>> errors = get_errors("我喜欢编程", "我喜欢编程成")
+    >>> print(errors)
+    [('', '成', 6)]
+""")
+
+add_chinese_doc('review.tools.chinese_corrector.ChineseCorrector', '''\
+中文文本纠错器，使用大语言模型对中文句子进行语法和拼写纠错。
+
+通过配置不同的语言模型，可以对单个句子或批量句子进行纠错，并返回纠错结果和错误详情。
+
+Args:
+    llm: 可选，大语言模型实例。如果为None，则使用默认模型。
+    base_url (str): 可选，模型服务的基础URL。
+    model (str): 可选，使用的模型名称。
+    api_key (str): 可选，API密钥，默认为'null'。
+    source (str): 模型来源，默认为'openai'。
+''')
+
+add_english_doc('review.tools.chinese_corrector.ChineseCorrector', '''\
+Chinese text corrector that uses large language models to correct grammar and spelling errors in Chinese sentences.
+
+Can correct single sentences or batches of sentences by configuring different language models,
+and returns correction results with error details.
+
+Args:
+    llm: Optional, large language model instance. Uses default model if None.
+    base_url (str): Optional, base URL for model service.
+    model (str): Optional, model name to use.
+    api_key (str): Optional, API key, defaults to 'null'.
+    source (str): Model source, defaults to 'openai'.
+''')
+
+add_chinese_doc('review.tools.chinese_corrector.ChineseCorrector.correct', '''\
+对单个中文句子进行语法和拼写纠错。
+
+使用配置的语言模型对输入句子进行纠错，并返回包含原始文本、纠错文本和错误详情的结果字典。
+
+Args:
+    sentence (str): 需要纠错的中文句子。
+    **kwargs: 其他传递给语言模型的参数，如max_tokens、temperature等。
+
+Returns:
+    dict: 包含以下键的字典：
+        - source (str): 原始输入句子。
+        - target (str): 纠错后的句子。
+        - errors (list): 错误列表，每个元素为 (orig_char, corr_char, pos) 的元组。
+''')
+
+add_english_doc('review.tools.chinese_corrector.ChineseCorrector.correct', '''\
+Correct grammar and spelling errors in a single Chinese sentence.
+
+Uses the configured language model to correct the input sentence and returns a dictionary
+containing the original text, corrected text, and error details.
+
+Args:
+    sentence (str): The Chinese sentence to correct.
+    **kwargs: Additional parameters passed to the language model, such as max_tokens, temperature, etc.
+
+Returns:
+    dict: Dictionary containing the following keys:
+        - source (str): The original input sentence.
+        - target (str): The corrected sentence.
+        - errors (list): List of errors, each element is a tuple (orig_char, corr_char, pos).
+''')
+
+add_chinese_doc('review.tools.chinese_corrector.ChineseCorrector.correct_batch', '''\
+批量对中文句子进行语法和拼写纠错。
+
+使用并行处理对多个句子进行纠错，提高处理效率。返回包含每个句子纠错结果的列表。
+
+Args:
+    sentences (list): 需要纠错的中文句子列表。
+    batch_size (int): 可选，批处理大小，默认为4。
+    concurrency (int): 可选，并发数，默认为2。
+    **kwargs: 其他传递给语言模型的参数，如max_tokens、temperature等。
+
+Returns:
+    list: 每个元素为包含纠错结果的字典列表，每个字典包含：
+        - source (str): 原始输入句子。
+        - target (str): 纠错后的句子。
+        - errors (list): 错误列表，每个元素为 (orig_char, corr_char, pos) 的元组。
+''')
+
+add_english_doc('review.tools.chinese_corrector.ChineseCorrector.correct_batch', '''\
+Batch correct grammar and spelling errors in multiple Chinese sentences.
+
+Uses parallel processing to correct multiple sentences efficiently. Returns a list of dictionaries
+containing correction results for each sentence.
+
+Args:
+    sentences (list): List of Chinese sentences to correct.
+    batch_size (int): Optional, batch size, defaults to 4.
+    concurrency (int): Optional, concurrency level, defaults to 2.
+    **kwargs: Additional parameters passed to the language model, such as max_tokens, temperature, etc.
+
+Returns:
+    list: List of dictionaries, each containing correction results with keys:
+        - source (str): The original input sentence.
+        - target (str): The corrected sentence.
+        - errors (list): List of errors, each element is a tuple (orig_char, corr_char, pos).
+''')
+
+add_example(
+    "review.tools.chinese_corrector.ChineseCorrector",
+    """\
+    >>> import lazyllm
+    >>> from lazyllm.tools.review.tools.chinese_corrector import ChineseCorrector
+    >>> corrector = ChineseCorrector()
+    >>> result = corrector.correct("我喜欢编程成")
+    >>> print(result)
+    {'source': '我喜欢编程成', 'target': '我喜欢编程', 'errors': [('成', '', 6)]}
+    >>>
+    >>> results = corrector.correct_batch(["句子1", "句子2"])
+    >>> print(results)
+    [{'source': '句子1', 'target': '修正后句子1', 'errors': [...]}, ...]
+""")
