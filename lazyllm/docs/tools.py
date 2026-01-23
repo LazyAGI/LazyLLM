@@ -11058,6 +11058,75 @@ Args:
     source (str): Model source, defaults to 'openai'.
 ''')
 
+add_chinese_doc('review.tools.chinese_corrector.ChineseCorrector.correct', '''\
+对单个中文句子进行语法和拼写纠错。
+
+使用配置的语言模型对输入句子进行纠错，并返回包含原始文本、纠错文本和错误详情的结果字典。
+
+Args:
+    sentence (str): 需要纠错的中文句子。
+    **kwargs: 其他传递给语言模型的参数，如max_tokens、temperature等。
+
+Returns:
+    dict: 包含以下键的字典：
+        - source (str): 原始输入句子。
+        - target (str): 纠错后的句子。
+        - errors (list): 错误列表，每个元素为 (orig_char, corr_char, pos) 的元组。
+''')
+
+add_english_doc('review.tools.chinese_corrector.ChineseCorrector.correct', '''\
+Correct grammar and spelling errors in a single Chinese sentence.
+
+Uses the configured language model to correct the input sentence and returns a dictionary
+containing the original text, corrected text, and error details.
+
+Args:
+    sentence (str): The Chinese sentence to correct.
+    **kwargs: Additional parameters passed to the language model, such as max_tokens, temperature, etc.
+
+Returns:
+    dict: Dictionary containing the following keys:
+        - source (str): The original input sentence.
+        - target (str): The corrected sentence.
+        - errors (list): List of errors, each element is a tuple (orig_char, corr_char, pos).
+''')
+
+add_chinese_doc('review.tools.chinese_corrector.ChineseCorrector.correct_batch', '''\
+批量对中文句子进行语法和拼写纠错。
+
+使用并行处理对多个句子进行纠错，提高处理效率。返回包含每个句子纠错结果的列表。
+
+Args:
+    sentences (list): 需要纠错的中文句子列表。
+    batch_size (int): 可选，批处理大小，默认为4。
+    concurrency (int): 可选，并发数，默认为2。
+    **kwargs: 其他传递给语言模型的参数，如max_tokens、temperature等。
+
+Returns:
+    list: 每个元素为包含纠错结果的字典列表，每个字典包含：
+        - source (str): 原始输入句子。
+        - target (str): 纠错后的句子。
+        - errors (list): 错误列表，每个元素为 (orig_char, corr_char, pos) 的元组。
+''')
+
+add_english_doc('review.tools.chinese_corrector.ChineseCorrector.correct_batch', '''\
+Batch correct grammar and spelling errors in multiple Chinese sentences.
+
+Uses parallel processing to correct multiple sentences efficiently. Returns a list of dictionaries
+containing correction results for each sentence.
+
+Args:
+    sentences (list): List of Chinese sentences to correct.
+    batch_size (int): Optional, batch size, defaults to 4.
+    concurrency (int): Optional, concurrency level, defaults to 2.
+    **kwargs: Additional parameters passed to the language model, such as max_tokens, temperature, etc.
+
+Returns:
+    list: List of dictionaries, each containing correction results with keys:
+        - source (str): The original input sentence.
+        - target (str): The corrected sentence.
+        - errors (list): List of errors, each element is a tuple (orig_char, corr_char, pos).
+''')
 
 add_example(
     "review.tools.chinese_corrector.ChineseCorrector",
