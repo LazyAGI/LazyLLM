@@ -1,6 +1,7 @@
 from pathlib import Path
 import tempfile
 from lazyllm.thirdparty import fsspec, docx2txt, docx
+from lazyllm import thirdparty
 from typing import Callable, Optional, List, Dict, Any
 from lazyllm import LOG, pipeline, _0
 from lazyllm.common import bind
@@ -18,6 +19,12 @@ class DocxReader(_RichReader):
                  extract_process: Optional[Callable] = None, post_func: Optional[Callable] = None,
                  extract_global_info: bool = True, image_save_path: Optional[str] = None,
                  save_image: bool = True, return_trace: bool = True):
+        try:
+            thirdparty.check_packages(['python-docx', 'docx2txt'])
+        except ImportError:
+            raise ImportError('Please install extra dependencies that are required for the '
+                              'PPTXReader: `pip install torch transformers python-pptx Pillow`')
+
         super().__init__(split_doc=split_doc, return_trace=return_trace, post_func=None)
         self._post_func = post_func or self._default_post
         self.extract_process = extract_process or self._default_extract
