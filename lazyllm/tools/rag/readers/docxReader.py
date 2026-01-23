@@ -10,18 +10,18 @@ import re
 import uuid
 
 from ..doc_node import DocNode
-from .readerBase import LazyLLMReaderBase, get_default_fs, is_default_fs
+from .pdfReader import _RichPDFReader
+from .readerBase import get_default_fs, is_default_fs
 
 
-class DocxReader(LazyLLMReaderBase):
-    def __init__(self, enhanced: Optional[bool] = False, extra_info: Optional[Dict] = None,
+class DocxReader(_RichPDFReader):
+    def __init__(self, split_doc: Optional[bool] = False, extra_info: Optional[Dict] = None,
                  extract_process: Optional[Callable] = None, post_func: Optional[Callable] = None,
                  extract_global_info: bool = True, image_save_path: Optional[str] = None,
                  save_image: bool = True, return_trace: bool = True):
-        super().__init__(return_trace=return_trace)
-        self._enhanced = enhanced
+        super().__init__(split_doc=split_doc, return_trace=return_trace, post_func=None)
+        self._post_func = post_func or self._default_post
         self.extract_process = extract_process or self._default_extract
-        self.post_func = post_func or self._default_post
         self.extract_global_info = extract_global_info
         self._extra_info = extra_info or {}
         self._image_save_path = image_save_path
@@ -30,7 +30,7 @@ class DocxReader(LazyLLMReaderBase):
     def _extract_global_info(self, doc: docx.Document, file_path: Path) -> Dict[str, Any]:
         global_info = dict(self._extra_info)
 
-        if self.extract_global_info and self._enhanced:
+        if self.extract_global_info and self._split_doc:
             try:
                 props = doc.core_properties
 
@@ -69,7 +69,10 @@ class DocxReader(LazyLLMReaderBase):
         if not isinstance(file, Path):
             file = Path(file)
 
-        if self._enhanced:
+        if file.name.endswith('.doc'):
+            raise ValueError(f'Only expected docx file, but got {file.name}')
+
+        if self._split_doc:
             try:
                 return self._enhanced_load(file, fs, **kwargs)
 
@@ -88,7 +91,7 @@ class DocxReader(LazyLLMReaderBase):
             else:
                 text = docx2txt.process(file)
             if not text:
-                raise ValueError('File load failed')
+                raise ValueError(f"Fail loading file {file.name}, maybe it's empty")
             return [DocNode(text=text)]
         except Exception as docx2txt_error:
             LOG.error(f'Failed for {file}: {str(docx2txt_error)}')
@@ -98,15 +101,13 @@ class DocxReader(LazyLLMReaderBase):
         with pipeline() as p:
             p.f1 = self._read_file
             p.f2 = bind(self.extract_process, file, _0)
-            p.f3 = bind(self.post_func, _0, **kwargs)
+            p.f3 = bind(self._post_func, _0, **kwargs)
 
         nodes = p(file, fs)
         return nodes
 
     def _read_file(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> docx.Document:
         fs = fs or get_default_fs()
-        if file.name.endswith('.doc'):
-            raise ValueError(f'Only expected docx file, but got {file.name}')
 
         try:
             file_size = fs.size(file)
@@ -288,9 +289,8 @@ class DocxReader(LazyLLMReaderBase):
 
                         try:
                             os.makedirs(self._image_save_path, exist_ok=True)
-                        except Exception as e:
-                            LOG.error(f'[Docx Reader] Failed to create directory: {self._image_save_path}: {e}')
-                            LOG.info('use default image save path ~/.lazyllm/image')
+                        except Exception:
+                            LOG.warning('use default image save path ~/.lazyllm/image')
                             image_path = os.path.join(os.path.expanduser('~'), '.lazyllm')
                             self._image_save_path = Path(image_path) / 'image'
                             continue
