@@ -7,6 +7,7 @@ from lazyllm.tools.rag.readers import ReaderBase
 from lazyllm.tools.rag.readers.readerBase import TxtReader
 from lazyllm.tools.rag.readers.docxReader import DocxReader
 from lazyllm.tools.rag import SimpleDirectoryReader, DocNode, Document
+from lazyllm.tools.rag.doc_node import RichDocNode
 from lazyllm.tools.rag.dataReader import RAG_DOC_CREATION_DATE
 import tempfile
 import shutil
@@ -50,7 +51,8 @@ class TestRagReader(object):
         docs = []
         for doc in reader():
             docs.append(doc)
-        assert len(docs) == 3
+        assert len(docs) == 2
+        assert isinstance(docs[0], RichDocNode)
 
     def test_enhanced_docxreader(self):
         files = os.path.join(self.datasets, '说明文档测试.docx')

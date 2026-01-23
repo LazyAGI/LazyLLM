@@ -79,7 +79,7 @@ class TestDocImpl(unittest.TestCase):
         assert node.text == 'dummy text'
 
     def test_add_files(self):
-        assert self.doc_impl.store is None
+        assert self.doc_impl._store is None
         self.doc_impl._lazy_init()
         assert len(self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text='new dummy text', group=LAZY_ROOT_NAME)
@@ -187,6 +187,45 @@ class TestDocument(unittest.TestCase):
         assert doc2._curr_group == 'test_group2'
         assert doc2.manager == doc.manager
         doc.stop()
+
+    def test_get_nodes(self):
+        doc = Document('rag_master')
+        doc.create_node_group('chunk1', parent=Document.CoarseChunk,
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
+        doc.activate_groups(groups=['chunk1'])
+        nodes = doc.get_nodes(group='chunk1', numbers=[2])
+        assert len(nodes) > 0
+        for n in nodes:
+            assert n.number == 2
+
+    def test_get_window_nodes(self):
+        doc = Document('rag_master')
+        doc.create_node_group('chunk1', parent=Document.CoarseChunk,
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
+        doc.activate_groups(groups=['chunk1'])
+
+        nodes = doc.get_nodes(group='chunk1', numbers=[1])
+        node = nodes[0]
+        assert node.number == 1
+        # node.number is 1, so the window is [1, 2, 3, 4]
+        window = doc.get_window_nodes(node, span=(-1, 3), merge=False)
+        assert len(window) == 4
+        assert window == sorted(window, key=lambda n: n.number)
+        assert all(n.number in [1, 2, 3, 4] for n in window)
+
+        merged = doc.get_window_nodes(node, span=(-1, 3), merge=True)
+        assert isinstance(merged, DocNode)
+        assert merged.group == node.group
+        assert merged.text == '\n'.join([n.text for n in window])
+
+        nodes = doc.get_nodes(group='chunk1', numbers=[2])
+        node = nodes[0]
+        assert node.number == 2
+        # node.number is 2, so the window is [1, 2, 3, 4, 5]
+        window = doc.get_window_nodes(node, span=(-1, 3), merge=False)
+        assert len(window) == 5
+        assert window == sorted(window, key=lambda n: n.number)
+        assert all(n.number in [1, 2, 3, 4, 5] for n in window)
 
 class TmpDir:
     def __init__(self):

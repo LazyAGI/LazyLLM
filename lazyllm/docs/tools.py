@@ -740,6 +740,75 @@ Returns:
     str: The generated ``schema_set_id``.
 ''')
 
+add_chinese_doc('Document.get_nodes', '''\
+按条件获取节点列表。
+
+Args:
+    uids (Optional[List[str]]): 指定节点 uid 列表。
+    doc_ids (Optional[Set]): 指定文档 id 集合。
+    group (Optional[str]): 节点组名。
+    kb_id (Optional[str]): 知识库 id。
+    numbers (Optional[Set]): 节点编号集合。
+
+**Returns:**\n
+- List[DocNode]: 命中的节点列表。
+''')
+
+add_english_doc('Document.get_nodes', '''\
+Get nodes by criteria.
+
+Args:
+    uids (Optional[List[str]]): List of node uids to fetch.
+    doc_ids (Optional[Set]): Set of document ids to filter by.
+    group (Optional[str]): Node group name.
+    kb_id (Optional[str]): Knowledge base id.
+    numbers (Optional[Set]): Set of node numbers.
+
+**Returns:**\n
+- List[DocNode]: Matched nodes.
+''')
+
+add_example('Document.get_nodes', '''\
+>>> import lazyllm
+>>> from lazyllm.tools import Document
+>>> doc = Document()
+>>> nodes = doc.get_nodes(doc_ids={'doc_1'}, group='CoarseChunk', kb_id='kb_1', numbers={1, 2})
+''')
+
+add_chinese_doc('Document.get_window_nodes', '''\
+获取指定节点在同一文档内的窗口节点。
+
+Args:
+    node (DocNode): 目标节点。
+    span (tuple[int, int]): 窗口范围，基于 node.number 的相对偏移。
+    merge (bool): 是否将窗口节点合并为一个节点返回。
+
+**Returns:**\n
+- Union[List[DocNode], DocNode]: 窗口节点列表，或合并后的单节点。
+''')
+
+add_english_doc('Document.get_window_nodes', '''\
+Get window nodes around a target node within the same document.
+
+Args:
+    node (DocNode): Target node.
+    span (tuple[int, int]): Window range based on relative offsets of node.number.
+    merge (bool): Whether to merge window nodes into a single node.
+
+**Returns:**\n
+- Union[List[DocNode], DocNode]: Window nodes list or a merged node.
+''')
+
+add_example('Document.get_window_nodes', '''\
+>>> import lazyllm
+>>> from lazyllm.tools import Document
+>>> doc = Document()
+>>> node = doc.get_nodes(doc_ids={'doc_1'}, group='CoarseChunk', kb_id='kb_1', numbers={10})[0]
+>>> window_nodes = doc.get_window_nodes(node, span=(-2, 2), merge=False)
+''')
+
+
+
 # rag/graph_document.py
 
 add_english_doc('GraphDocument', '''\
@@ -1058,6 +1127,7 @@ Args:
     col_joiner (str): 列之间的连接符。
     row_joiner (str): 行之间的连接符。
     pandas_config (Optional[Dict]): pandas.read_csv 的可选配置项。
+    fill_method (Optional[str]): 缺失值填充策略，可选 'fillna'(默认) / 'ffill' / 'bfill'。
     return_trace (bool): 是否返回处理过程的 trace。
 ''')
 
@@ -1069,6 +1139,7 @@ Args:
     col_joiner (str): String used to join column values.
     row_joiner (str): String used to join rows.
     pandas_config (Optional[Dict]): Optional config for pandas.read_csv.
+    fill_method (Optional[str]): Missing value fill strategy: 'fillna'(default) / 'ffill' / 'bfill'.
     return_trace (bool): Whether to return the processing trace.
 ''')
 
@@ -1079,6 +1150,7 @@ Args:
     concat_rows (bool): 是否将所有行拼接为一个文本块。
     sheet_name (Optional[str]): 要读取的工作表名称。若为 None，则读取所有工作表。
     pandas_config (Optional[Dict]): pandas.read_excel 的可选配置项。
+    fill_method (Optional[str]): 缺失值填充策略，可选 'fillna'(default) / 'ffill' / 'bfill'。
     return_trace (bool): 是否返回处理过程的 trace。
 ''')
 
@@ -1089,6 +1161,7 @@ Args:
     concat_rows (bool): Whether to concatenate all rows into a single block.
     sheet_name (Optional[str]): Name of the sheet to read. If None, all sheets will be read.
     pandas_config (Optional[Dict]): Optional config for pandas.read_excel.
+    fill_method (Optional[str]): Missing value fill strategy: 'fillna'(default) / 'ffill' / 'bfill'.
     return_trace (bool): Whether to return the processing trace.
 ''')
 
@@ -1096,16 +1169,34 @@ add_chinese_doc('rag.readers.PDFReader', '''\
 用于读取 PDF 文件并提取其中的文本内容。
 
 Args:
-    return_full_document (bool): 是否将整份 PDF 合并为一个文档节点。若为 False，则每页作为一个节点。
+    split_doc (bool): 若为 True（默认），则解析为一个 `RichDocNode`，可以搭配 `RichTransform` 解析出带有页信息的节点；
+        若为 False，则解析为一个纯文本的 `DocNode`。
+    post_func (Optional[Callable[[List[DocNode]], List[DocNode]]]): 结果后处理函数，
+        需返回 `List[DocNode]`，并会将 `extra_info` 写入每个节点的 `global_metadata`。
     return_trace (bool): 是否返回处理过程的 trace，默认为 True。
+    return_full_document (bool, 已弃用): 此参数将在未来版本中删除，请使用 `split_doc` 替代。
+
+Notes:
+    当 `split_doc=True` 时返回 `RichDocNode`，否则返回 `DocNode`，两种情况都只返回一个节点。
+    当 `split_doc=True` 时，强烈建议搭配 `RichTransform` 使用，可以解析出带有页信息等 metadata 的节点；
+    如不使用 `RichTransform`，则解析出的节点会回退为纯文本节点。
 ''')
 
 add_english_doc('rag.readers.PDFReader', '''\
 Reader for extracting text content from PDF files.
 
 Args:
-    return_full_document (bool): Whether to merge the entire PDF into a single document node. If False, each page becomes a separate node.
+    split_doc (bool): If True (default), parses into a `RichDocNode` which can be used with `RichTransform` to extract nodes with page information;
+        if False, parses into a plain text `DocNode`.
+    post_func (Optional[Callable[[List[DocNode]], List[DocNode]]]): Post-processing function.
+        Must return a ``List[DocNode]`` and will write ``extra_info`` into each node's ``global_metadata``.
     return_trace (bool): Whether to return the processing trace. Default is True.
+    return_full_document (bool, deprecated): This parameter will be removed in a future version. Please use `split_doc` instead.
+
+Notes:
+    When `split_doc=True`, returns a `RichDocNode`; otherwise returns a `DocNode`. Both cases return a single node.
+    When `split_doc=True`, it is strongly recommended to use it with `RichTransform`, which can extract nodes with page information and other metadata;
+    without `RichTransform`, the parsed nodes will fall back to plain text nodes.
 ''')
 
 add_chinese_doc('rag.readers.PPTXReader', '''\
@@ -1958,10 +2049,16 @@ Args:
         - True: 提取为LaTeX等文本格式
         - False: 将公式保留为图片
         默认为 True。
-    split_doc (bool, optional): 是否将文档分割为多个DocNode节点。默认为 True。
+    split_doc (bool, optional): 若为 True（默认），则解析为一个 `RichDocNode`，可以搭配 `RichTransform` 解析出带有结构信息的节点；
+        若为 False，则解析为一个纯文本的 `DocNode`。
     clean_content (bool, optional): 是否清理冗余内容（页眉、页脚、页码等）。默认为 True。
     post_func (Optional[Callable[[List[DocNode]], Any]], optional): 后处理函数，
         接收DocNode列表作为参数，用于自定义结果处理。默认为 None。
+
+Notes:
+    当 `split_doc=True` 时返回 `RichDocNode`，否则返回 `DocNode`，两种情况都只返回一个节点。
+    当 `split_doc=True` 时，强烈建议搭配 `RichTransform` 使用，可以解析出带有结构信息等 metadata 的节点；
+    如不使用 `RichTransform`，则解析出的节点会回退为纯文本节点。
 ''')
 
 add_english_doc('rag.readers.MineruPDFReader', '''\
@@ -1984,13 +2081,37 @@ Args:
         - True: Extract as text format (e.g., LaTeX)
         - False: Keep formulas as images
         Defaults to True.
-    split_doc (bool, optional): Whether to split the document into multiple
-        DocNode nodes. Defaults to True.
+    split_doc (bool, optional): If True (default), parses into a `RichDocNode` which can be used with `RichTransform` to extract nodes with structural information;
+        if False, parses into a plain text `DocNode`.
     clean_content (bool, optional): Whether to clean redundant content
         (headers, footers, page numbers, etc.). Defaults to True.
     post_func (Optional[Callable[[List[DocNode]], Any]], optional): Post-processing
         function that takes a list of DocNodes as input for custom result handling.
         Defaults to None.
+
+Notes:
+    When `split_doc=True`, returns a `RichDocNode`; otherwise returns a `DocNode`. Both cases return a single node.
+    When `split_doc=True`, it is strongly recommended to use it with `RichTransform`, which can extract nodes with structural information and other metadata;
+    without `RichTransform`, the parsed nodes will fall back to plain text nodes.
+''')
+
+add_chinese_doc('rag.readers.MineruPDFReader.set_type_processor', '''\
+为特定的内容类型设置自定义处理器函数，用于处理从 Mineru 服务返回的原始内容数据。
+返回结果中 'text' 键值将作为 DocNode 的文本内容，其他键值对将作为 DocNode 的元数据（metadata）存储。
+
+Args:
+    content_type (str): 内容类型，例如 'text', 'image', 'table', 'equation', 'code', 'list' 等。
+    processor (Callable): 处理器函数，接收内容字典作为参数，返回处理后的字典。
+''')
+
+add_english_doc('rag.readers.MineruPDFReader.set_type_processor', '''\
+Set a custom processor function for a specific content type to process raw content data returned from the Mineru Server.
+The 'text' key in the returned dictionary will be used as the DocNode text content, 
+while other key-value pairs will be stored as DocNode metadata.
+
+Args:
+    content_type (str): Content type, such as 'text', 'image', 'table', 'equation', 'code', 'list' etc.
+    processor (Callable): Processor function that takes a dictionary as input and returns a processed dictionary.
 ''')
 
 add_chinese_doc('rag.readers.PaddleOCRPDFReader', '''\
@@ -2015,14 +2136,19 @@ Args:
     use_chart_recognition (bool, 默认 True): 是否启用图表识别。
         若为 True，图表将被解析为结构化表格；
         若为 False，图表仅作为普通图片处理。
-    split_doc (bool, 默认 True): 是否按内容块将文档拆分为多个 `DocNode`。
-        若为 False，则整个文档内容将合并为一个单独的节点返回(markdown 内容)。
+    split_doc (bool, 默认 True): 若为 True（默认），则解析为一个 `RichDocNode`，可以搭配 `RichTransform` 解析出带有结构信息的节点；
+        若为 False，则解析为一个纯文本的 `DocNode`（markdown 内容）。
     drop_types (List[str], 可选): 需要在解析结果中过滤掉的版面块类型列表，
         默认为页眉、页脚、页码、印章等非正文内容。
     post_func (Callable, 可选): 解析完成后对 `DocNode` 列表进行二次处理的后置函数。
         该函数必须接收并返回 `List[DocNode]`。
     images_dir (str, 可选):图片结果的保存目录。
         若提供该参数，解析过程中提取的图片将写入该目录。
+
+Notes:
+    当 `split_doc=True` 时返回 `RichDocNode`，否则返回 `DocNode`，两种情况都只返回一个节点。
+    当 `split_doc=True` 时，强烈建议搭配 `RichTransform` 使用，可以解析出带有结构信息等 metadata 的节点；
+    如不使用 `RichTransform`，则解析出的节点会回退为纯文本节点。
 ''')
 
 add_english_doc('rag.readers.PaddleOCRPDFReader', '''\
@@ -2050,9 +2176,8 @@ Args:
     use_chart_recognition (bool, default=True): Whether to enable chart recognition.
         If True, charts are parsed into structured table representations;
         if False, charts are treated as regular images.
-    split_doc (bool, default=True): Whether to split the document into multiple `DocNode` objects based on content blocks.
-        If False, the entire document content is returned as a single node
-        containing the full Markdown text.
+    split_doc (bool, default=True): If True (default), parses into a `RichDocNode` which can be used with `RichTransform` to extract nodes with structural information;
+        if False, parses into a plain text `DocNode` (containing Markdown text).
     drop_types (List[str], optional): List of layout block types to be excluded from parsing results.
         By default, this includes non-body elements such as headers, footers, page numbers, and seals.
     post_func (Callable, optional): Optional post-processing function applied to the list of `DocNode`
@@ -2060,6 +2185,11 @@ Args:
         The function must accept and return a `List[DocNode]`.
     images_dir (str, optional): Directory used to save extracted image results.
         If provided, images extracted during parsing will be written to this directory.
+
+Notes:
+    When `split_doc=True`, returns a `RichDocNode`; otherwise returns a `DocNode`. Both cases return a single node.
+    When `split_doc=True`, it is strongly recommended to use it with `RichTransform`, which can extract nodes with structural information and other metadata;
+    without `RichTransform`, the parsed nodes will fall back to plain text nodes.
 ''')
 
 add_example('rag.readers.PaddleOCRPDFReader', '''\
@@ -3512,6 +3642,58 @@ Args:
 - Callable: A partially applied function that executes the find operation when called.
 ''')
 
+add_chinese_doc('rag.document.UrlDocument.get_nodes', '''\
+按条件获取远程文档节点列表。
+
+Args:
+    uids (Optional[List[str]]): 指定节点 uid 列表。
+    doc_ids (Optional[Set]): 指定文档 id 集合。
+    group (Optional[str]): 节点组名。
+    kb_id (Optional[str]): 知识库 id。
+    numbers (Optional[Set]): 节点编号集合。
+
+**Returns:**\n
+- List[DocNode]: 命中的节点列表。
+''')
+
+add_english_doc('rag.document.UrlDocument.get_nodes', '''\
+Get remote document nodes by criteria.
+
+Args:
+    uids (Optional[List[str]]): List of node uids to fetch.
+    doc_ids (Optional[Set]): Set of document ids to filter by.
+    group (Optional[str]): Node group name.
+    kb_id (Optional[str]): Knowledge base id.
+    numbers (Optional[Set]): Set of node numbers.
+
+**Returns:**\n
+- List[DocNode]: Matched nodes.
+''')
+
+add_chinese_doc('rag.document.UrlDocument.get_window_nodes', '''\
+获取远程文档中指定节点的窗口节点。
+
+Args:
+    node (DocNode): 目标节点。
+    span (tuple[int, int]): 窗口范围，基于 node.number 的相对偏移。
+    merge (bool): 是否将窗口节点合并为一个节点返回。
+
+**Returns:**\n
+- Union[List[DocNode], DocNode]: 窗口节点列表，或合并后的单节点。
+''')
+
+add_english_doc('rag.document.UrlDocument.get_window_nodes', '''\
+Get window nodes around a target node in a remote document.
+
+Args:
+    node (DocNode): Target node.
+    span (tuple[int, int]): Window range based on relative offsets of node.number.
+    merge (bool): Whether to merge window nodes into a single node.
+
+**Returns:**\n
+- Union[List[DocNode], DocNode]: Window nodes list or a merged node.
+''')
+
 add_english_doc('rag.doc_node.DocNode', '''
 Execute assigned tasks on the specified document.
 
@@ -4272,6 +4454,33 @@ Args:
 # ---------------------------------------------------------------------------- #
 
 # rag/transform
+
+add_english_doc('rag.transform.RichTransform', '''
+Transform a `RichDocNode` into a list of `DocNode` objects, and preserve the metadata of each `DocNode`.
+The input must be a `RichDocNode` instance.
+
+Args:
+    node (RichDocNode): Rich document node to unwrap.
+
+Returns:
+    List[DocNode]: The underlying node list.
+''')
+
+add_chinese_doc('rag.transform.RichTransform', '''
+将 `RichDocNode` 拆分为 `DocNode` 列表，并保留每个 `DocNode` 的元数据。
+输入必须是 `RichDocNode` 实例。
+
+Args:
+    node (RichDocNode): 需要拆分的富文档节点。
+
+Returns:
+    List[DocNode]: 拆分后的节点列表。
+''')
+
+add_example('rag.transform.RichTransform', '''
+>>> from lazyllm.tools.rag.transform import RichTransform
+>>> nodes = RichTransform().transform(rich_node)
+''')
 
 add_english_doc('rag.transform.sentence.SentenceSplitter', '''
 Split sentences into chunks of a specified size. You can specify the size of the overlap between adjacent chunks.
@@ -9068,6 +9277,86 @@ add_chinese_doc('rag.doc_node.ImageDocNode.get_text', '''\
 - str: 图像文件路径。
 ''')
 
+add_english_doc('rag.doc_node.RichDocNode', '''\
+A specialized document node for aggregating multiple paragraph nodes with individual metadata, to keep each document with only one root node.
+
+RichDocNode extends DocNode to wrap multiple child nodes (typically paragraphs) returned by readers. It preserves the full document text content while allowing each child node to maintain its own metadata. When combined with RichTransform, the original DocNode instances (with their metadata) can be recovered.
+
+Args:
+    nodes (List[DocNode]): The list of paragraph nodes to aggregate. Each node's text is combined into the content.
+    uid (Optional[str]): Unique identifier for the document node. If not provided, a UUID will be automatically generated.
+    group (Optional[str]): The group name this node belongs to. Used for organizing and filtering nodes.
+    embedding (Optional[Dict[str, List[float]]]): Pre-computed embeddings. Keys are embedding model names, values are embedding vectors.
+    parent (Optional[DocNode]): Parent node in the document hierarchy. Used for building document trees.
+    metadata (Optional[Dict[str, Any]]): Additional metadata associated with the node.
+    global_metadata (Optional[Dict[str, Any]]): Global metadata that applies to all nodes in the document.
+
+Notes:
+    - Commonly returned by PDF readers when multiple nodes are produced from a single document, as root node.
+    - The original paragraph nodes are stored internally and can be accessed via RichTransform.
+    - Preserves the entire document text as a list of paragraph texts in the content field.
+''')
+
+add_chinese_doc('rag.doc_node.RichDocNode', '''\
+用于聚合多个带有独立元数据的段落节点的专用文档节点，以保持每个文档进有一个root node。
+
+RichDocNode继承自DocNode，用于封装reader返回的多个子节点（通常是段落）。它保留完整的文档文本内容，同时允许每个子节点维护自己的元数据。结合RichTransform使用时，可以恢复出原始的DocNode实例（带有元信息）。
+
+Args:
+    nodes (List[DocNode]): 要聚合的段落节点列表。每个节点的文本会被合并到content中。
+    uid (Optional[str]): 文档节点的唯一标识符。如果未提供，将自动生成UUID。
+    group (Optional[str]): 此节点所属的组名。用于组织和过滤节点。
+    embedding (Optional[Dict[str, List[float]]]): 预计算的嵌入。键是嵌入模型名称，值是嵌入向量。
+    parent (Optional[DocNode]): 文档层次结构中的父节点。用于构建文档树。
+    metadata (Optional[Dict[str, Any]]): 与节点关联的附加元数据。
+    global_metadata (Optional[Dict[str, Any]]): 适用于文档中所有节点的全局元数据。
+
+Notes:
+    - 通常由PDF reader在单个文档产生多个节点时返回，作为root node。
+    - 原始段落节点存储在内部，可通过RichTransform访问恢复。
+    - 以段落文本列表的形式在content字段中保留整篇文档文本。
+''')
+
+add_english_doc('rag.doc_node.JsonDocNode', '''\
+A specialized document node for handling JSON content in RAG systems.
+
+JsonDocNode extends DocNode to provide functionality for storing and processing JSON data (dictionaries or lists). It automatically serializes JSON content to string format and supports custom formatting through a JsonFormatter.
+
+Args:
+    uid (Optional[str]): Unique identifier for the document node. If not provided, a UUID will be automatically generated.
+    content (Optional[Union[Dict[str, Any], List[Any]]]): The JSON content to store. Can be a dictionary or a list.
+    group (Optional[str]): The group name this node belongs to. Used for organizing and filtering nodes.
+    embedding (Optional[Dict[str, List[float]]]): Pre-computed embeddings. Keys are embedding model names, values are embedding vectors.
+    parent (Optional[DocNode]): Parent node in the document hierarchy. Used for building document trees.
+    metadata (Optional[Dict[str, Any]]): Additional metadata associated with the node.
+    global_metadata (Optional[Dict[str, Any]]): Global metadata that applies to all nodes in the document.
+    formatter (JsonFormatter, optional): A formatter for custom JSON content representation. Used when retrieving content for embedding.
+
+Notes:
+    - The text property returns the JSON content serialized as a string.
+    - When a formatter is provided, get_content() uses it for embedding-mode output, only vectorize the specified fields, joined by newline.
+''')
+
+add_chinese_doc('rag.doc_node.JsonDocNode', '''\
+用于处理RAG系统中JSON内容的专用文档节点。
+
+JsonDocNode继承自DocNode，提供存储和处理JSON数据（字典或列表）的功能。它自动将JSON内容序列化为字符串格式，并支持通过JsonFormatter进行自定义格式化。
+
+Args:
+    uid (Optional[str]): 文档节点的唯一标识符。如果未提供，将自动生成UUID。
+    content (Optional[Union[Dict[str, Any], List[Any]]]): 要存储的JSON内容。可以是字典或列表。
+    group (Optional[str]): 此节点所属的组名。用于组织和过滤节点。
+    embedding (Optional[Dict[str, List[float]]]): 预计算的嵌入。键是嵌入模型名称，值是嵌入向量。
+    parent (Optional[DocNode]): 文档层次结构中的父节点。用于构建文档树。
+    metadata (Optional[Dict[str, Any]]): 与节点关联的附加元数据。
+    global_metadata (Optional[Dict[str, Any]]): 适用于文档中所有节点的全局元数据。
+    formatter (JsonFormatter, optional): 用于自定义JSON内容表示的格式化器。在获取用于嵌入的内容时使用。
+
+Notes:
+    - text属性返回序列化为字符串的JSON内容。
+    - 当提供formatter时，get_content()在向量化模式下使用它进行输出格式化，仅向量化指定的字段，使用换行符连接。
+''')
+
 add_english_doc('rag.rerank.ModuleReranker', '''\
 A reranker that uses trainable modules to reorder documents based on relevance to a query.
 
@@ -10202,7 +10491,7 @@ Get the node's content text with metadata in LLM mode.
 add_chinese_doc('rag.store.hybrid.MapStore', """\
 基于SQLite的Map存储类，继承自LazyLLMStoreBase。
 
-提供基于SQLite数据库的向量存储功能，支持数据持久化、多集合管理和复杂查询。
+提供基于SQLite的数据持久化与BM25全文检索，支持多集合管理和简单查询。
 
 Args:
     uri (Optional[str]): SQLite数据库文件路径，默认为None（内存模式）
@@ -10218,7 +10507,7 @@ Attributes:
 add_english_doc('rag.store.hybrid.MapStore', """\
 SQLite-based Map storage class, inherits from LazyLLMStoreBase.
 
-Provides vector storage functionality based on SQLite database, supports data persistence, multi-collection management and complex queries.
+Provides data persistence and BM25 full-text search via SQLite for lightweight use cases.
 
 Args:
     uri (Optional[str]): SQLite database file path, defaults to None (in-memory mode)
@@ -10226,7 +10515,7 @@ Args:
 
 Attributes:
     capability: Storage capability flag, supports all operations
-    need_embedding: Whether embedding is needed
+    need_embedding: Whether embedding is required
     supports_index_registration: Whether index registration is supported
 """)
 
