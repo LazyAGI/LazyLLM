@@ -9,6 +9,8 @@ from lazyllm.tools.rag.readers.paddleocr_pdf_reader import PaddleOCRPDFReader
 from lazyllm.tools.rag import DocNode
 from lazyllm.tools.rag.doc_node import RichDocNode
 from lazyllm.tools.rag.transform import RichTransform
+from lazyllm.tools.rag.transform.sentence import SentenceSplitter
+
 
 lazyllm.config.add('PADDLEOCRVL_URL', str, '', 'PADDLEOCRVL_URL')
 
@@ -83,6 +85,33 @@ class TestPaddleOCRPDFReader(object):
         assert len(docs) > 0, 'Return result should not be empty'
         assert len(docs) == 1, 'When split_doc=False, should return only one node'
         assert isinstance(docs[0], DocNode)
+
+    def test_richdocnode_compatible(self):
+        self._skip_if_pdf_not_exist()
+        split_reader = PaddleOCRPDFReader(url=self.url, split_doc=True)
+        docs = split_reader(self.test_pdf)
+        assert isinstance(docs, list)
+        assert len(docs) > 0, 'Return result should not be empty'
+        assert len(docs) == 1, 'When split_doc=True, should return only one node'
+        assert isinstance(docs[0], RichDocNode), 'Return result should be a RichDocNode'
+
+        splitted_nodes = SentenceSplitter(chunk_size=100, chunk_overlap=10).transform(docs[0])
+        assert isinstance(splitted_nodes, list)
+        assert len(splitted_nodes) > 0, 'Return result should not be empty'
+        assert isinstance(splitted_nodes[0], str), 'Return result should be a string'
+
+        rich_nodes = RichTransform().transform(docs[0])
+        assert isinstance(rich_nodes, list)
+        assert len(rich_nodes) > 0, 'Return result should not be empty'
+        assert isinstance(rich_nodes[0], DocNode), 'Return result should be a DocNode'
+        assert rich_nodes[0].text == docs[0].nodes[0].text, 'Return result should be the same as the original node'
+
+        reader = PaddleOCRPDFReader(url=self.url, split_doc=False)
+        docs = reader(self.test_pdf)
+        assert isinstance(docs, list)
+        assert len(docs) > 0, 'Return result should not be empty'
+        assert len(docs) == 1, 'When split_doc=False, should return only one node'
+        assert isinstance(docs[0], DocNode), 'Return result should be a DocNode'
 
     def test_load_data_with_different_init_parameters(self):
         self._skip_if_pdf_not_exist()
