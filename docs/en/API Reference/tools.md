@@ -488,5 +488,5 @@
     exclude-members:
 
 ::: lazyllm.tools.review.tools.chinese_corrector
-    members: [get_errors, ChineseCorrector]
+    members: get_errors, ChineseCorrector
     exclude-members:
