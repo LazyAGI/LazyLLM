@@ -7,50 +7,87 @@
 #include <vector>
 #include <variant>
 #include <optional>
+#include <any>
+#include <memory>
+
+#include "utils.hpp"
+#include "document_store.hpp"
 
 namespace lazyllm {
 
 enum class MetadataMode { ALL, EMBED, LLM, NONE };
 
 class DocNode {
-protected:
-    using Metadata = std::unordered_map<std::string, std::string>;
-    using Children = std::unordered_map<std::string, std::vector<DocNode*>>;
-    using EmbeddingFun = std::function<std::vector<float>(const std::string&, const std::string&)>;
-    using EmbeddingVec = std::unordered_map<std::string, std::vector<float>>;
+public:
+    using Metadata = std::unordered_map<std::string, std::any>;
+    using Children = std::unordered_map<std::string, std::vector<const DocNode*>>;
+    using EmbeddingFun = std::function<std::vector<double>(const std::string&, const std::string&)>;
+    using EmbeddingVec = std::unordered_map<std::string, std::vector<double>>;
+
+    mutable std::set<std::string> embedding_state = {};
+    double relevance_score = .0;
+    double similarity_score = .0;
+
+private:
+    std::string _text = "";
+    std::string _uid = "";
+    std::string _group_name = "";
+    std::string _parent_group_name = "";
+    std::vector<std::string> _content;
+    mutable std::string _content_hash = "";
+    EmbeddingVec _embedding;
+    Metadata _metadata;
+    Metadata _global_metadata;
+    std::shared_ptr<DocumentStore> _store;
+    std::vector<std::string> _excluded_embed_metadata_keys;
+    std::vector<std::string> _excluded_llm_metadata_keys;
+    DocNode* _p_parent_node = nullptr;
+    Children _children;
+    bool _children_loaded = false;
 
 public:
-    DocNode(
-        uid: Optional[str] = None,
-        content: Optional[Union[str, List[Any]]] = None,
-        group: Optional[str] = None,
-        embedding: Optional[Dict[str,List[float]]] = None,
-        parent: Optional[Union[str, 'DocNode']] = None,
-        store=None,
-        node_groups: Optional[Dict[str, Dict]] = None,
-        metadata: Optional[Dict[str, Any]] = None,
-        global_metadata: Optional[Dict[str, Any]] = None,
-        text: Optional[str] = None
-    );
-    explicit DocNode(const std::string& text);
-    DocNode(const DocNode& other);
-    DocNode& operator=(const DocNode& other);
+    DocNode() = default;
+    explicit DocNode(
+        const std::string &text = "",
+        const std::vector<std::string> &content = {},
+        const std::string &group_name = "",
+        const std::string &parent_group_name = "",
+        const DocNode *p_parent_node = nullptr,
+        const std::shared_ptr<DocumentStore> p_store = nullptr,
+        const EmbeddingVec &embedding_vec = {},
+        const Metadata &metadata = {},
+        const Metadata &global_metadata = {},
+        const std::string &uid = ""
+    ) :
+        _text(text),
+        _content(content),
+        _uid(uid),
+        _group_name(group_name),
+        _parent_group_name(parent_group_name),
+        _embedding(embedding_vec),
+        _metadata(metadata),
+        _global_metadata(global_metadata),
+        _store(p_store),
+        _parent_node(p_parent_node) {}
+    DocNode(const DocNode&) = default;
+    DocNode& operator=(const DocNode&) = default;
     virtual ~DocNode() = default;
 
-    const std::string& uid() const;
-    const std::string& group() const;
-    void set_group(const std::string& group);
-
-    bool content_is_list() const;
-    const std::vector<std::string>& content_list() const;
-    const std::string& content_text() const;
-
-    void set_content(const std::string& text);
-    void set_content(const std::vector<std::string>& lines);
-
-    void set_text(const std::string& text);
+    // Getter and Setter
+    const std::string& uid() const { return _uid; }
+    void set_uid(const std::string& uid) { _uid = uid; }
+    const std::string& group() const { return _group; }
+    void set_group(const std::string& group) { _group = group; }
+    void set_text(const std::string& text){
+        _text = text;
+        _content.clear();
+        _content_hash = "";
+    }
+    void set_content(const std::vector<std::any>& content);
     const std::string& get_text() const;
     virtual std::string get_text_with_metadata(MetadataMode mode) const;
+    void set_store(std::shared_ptr<DocumentStore> store);
+    const std::shared_ptr<DocumentStore>& store() const;
 
     std::string content_hash() const;
 
@@ -63,9 +100,9 @@ public:
     void set_embedding_value(const std::string& key, const std::vector<float>& value);
     void check_embedding_state(const std::string& embed_key) const;
 
-    DocNode* parent();
-    const DocNode* parent() const;
-    void set_parent(DocNode* parent);
+    std::shared_ptr<DocNode> parent();
+    const std::shared_ptr<DocNode> parent() const;
+    void set_parent(std::shared_ptr<DocNode> parent);
 
     Children& children();
     const Children& children() const;
@@ -110,29 +147,9 @@ public:
     double relevance_score() const;
     double similarity_score() const;
 
-protected:
-    void invalidate_content_hash();
+    void generateUUID() { _uid = GenerateUUID(); }
 
-    std::string _uid;
-    std::string _group;
-    std::string _text;
-    bool _content_is_list;
-    std::vector<std::string> _content_list;
-    EmbeddingVec _embedding;
-    Metadata _metadata;
-    Metadata _global_metadata;
-    std::vector<std::string> _excluded_embed_metadata_keys;
-    std::vector<std::string> _excluded_llm_metadata_keys;
-    DocNode* _parent;
-    Children _children;
-    bool _children_loaded;
-    mutable std::set<std::string> _embedding_state;
-    mutable std::string _content_hash;
-    mutable bool _content_hash_dirty;
-    double _relevance_score;
-    bool _has_relevance_score;
-    double _similarity_score;
-    bool _has_similarity_score;
+
 };
 
 class QADocNode : public DocNode {

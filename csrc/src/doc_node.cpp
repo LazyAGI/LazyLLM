@@ -1,6 +1,3 @@
-#include "doc_node.hpp"
-#include "utils.hpp"
-
 #include <algorithm>
 #include <cctype>
 #include <chrono>
@@ -10,116 +7,23 @@
 #include <stdexcept>
 #include <thread>
 
+#include "doc_node.hpp"
+#include "utils.hpp"
+
 namespace lazyllm {
-
-DocNode::DocNode()
-    : _uid(GenerateUUID()),
-      _group(),
-      _text(),
-      _content_is_list(false),
-      _parent(nullptr),
-      _children_loaded(false),
-      _content_hash(),
-      _content_hash_dirty(true),
-      _relevance_score(0.0),
-      _has_relevance_score(false),
-      _similarity_score(0.0),
-      _has_similarity_score(false) {}
-
-DocNode::DocNode(const std::string& text) : DocNode() {
-    set_text(text);
-}
-
-DocNode::DocNode(const DocNode& other)
-    : _uid(other._uid),
-      _group(other._group),
-      _text(other._text),
-      _content_is_list(other._content_is_list),
-      _content_list(other._content_list),
-      _embedding(other._embedding),
-      _metadata(other._metadata),
-      _global_metadata(other._global_metadata),
-      _excluded_embed_metadata_keys(other._excluded_embed_metadata_keys),
-      _excluded_llm_metadata_keys(other._excluded_llm_metadata_keys),
-      _parent(other._parent),
-      _children(other._children),
-      _children_loaded(other._children_loaded),
-      _embedding_state(other._embedding_state),
-      _content_hash(other._content_hash),
-      _content_hash_dirty(other._content_hash_dirty),
-      _relevance_score(other._relevance_score),
-      _has_relevance_score(other._has_relevance_score),
-      _similarity_score(other._similarity_score),
-      _has_similarity_score(other._has_similarity_score) {}
-
-DocNode& DocNode::operator=(const DocNode& other) {
-    if (this == &other) {
-        return *this;
-    }
-    _uid = other._uid;
-    _group = other._group;
-    _text = other._text;
-    _content_is_list = other._content_is_list;
-    _content_list = other._content_list;
-    _embedding = other._embedding;
-    _metadata = other._metadata;
-    _global_metadata = other._global_metadata;
-    _excluded_embed_metadata_keys = other._excluded_embed_metadata_keys;
-    _excluded_llm_metadata_keys = other._excluded_llm_metadata_keys;
-    _parent = other._parent;
-    _children = other._children;
-    _children_loaded = other._children_loaded;
-    _embedding_state = other._embedding_state;
-    _content_hash = other._content_hash;
-    _content_hash_dirty = other._content_hash_dirty;
-    _relevance_score = other._relevance_score;
-    _has_relevance_score = other._has_relevance_score;
-    _similarity_score = other._similarity_score;
-    _has_similarity_score = other._has_similarity_score;
-    return *this;
-}
-
-const std::string& DocNode::uid() const {
-    return _uid;
-}
-
-const std::string& DocNode::group() const {
-    return _group;
-}
-
-void DocNode::set_group(const std::string& group) {
-    _group = group;
-}
-
-bool DocNode::content_is_list() const {
-    return _content_is_list;
-}
-
-const std::vector<std::string>& DocNode::content_list() const {
-    return _content_list;
-}
 
 const std::string& DocNode::content_text() const {
     return _text;
 }
 
-void DocNode::set_content(const std::string& text) {
-    set_text(text);
-}
-
 void DocNode::set_content(const std::vector<std::string>& lines) {
     _content_is_list = true;
-    _content_list = lines;
+    _content = lines;
     _text = JoinLines(lines);
-    invalidate_content_hash();
+    content_hash();
 }
 
-void DocNode::set_text(const std::string& text) {
-    _text = text;
-    _content_is_list = false;
-    _content_list.clear();
-    invalidate_content_hash();
-}
+
 
 const std::string& DocNode::get_text() const {
     return _text;
@@ -136,11 +40,16 @@ std::string DocNode::get_text_with_metadata(MetadataMode mode) const {
     return metadata_str + "\n\n" + _text;
 }
 
+void DocNode::set_store(std::shared_ptr<DocumentStore> store) {
+    _store = std::move(store);
+}
+
+const std::shared_ptr<DocumentStore>& DocNode::store() const {
+    return _store;
+}
+
 std::string DocNode::content_hash() const {
-    if (_content_hash_dirty) {
-        _content_hash = Sha256Hex(_text);
-        _content_hash_dirty = false;
-    }
+    _content_hash = Sha256Hex(_text);
     return _content_hash;
 }
 
@@ -191,7 +100,6 @@ void DocNode::set_embedding_value(const std::string& key, const std::vector<floa
 void DocNode::check_embedding_state(const std::string& embed_key) const {
     while (true) {
         {
-            std::lock_guard<std::mutex> lock(_embedding_mutex);
             if (_embedding.find(embed_key) != _embedding.end()) {
                 _embedding_state.erase(embed_key);
                 break;
@@ -404,23 +312,13 @@ std::string DocNode::get_content(MetadataMode mode) const {
 DocNode DocNode::with_score(double score) const {
     DocNode node(*this);
     node._relevance_score = score;
-    node._has_relevance_score = true;
     return node;
 }
 
 DocNode DocNode::with_sim_score(double score) const {
     DocNode node(*this);
     node._similarity_score = score;
-    node._has_similarity_score = true;
     return node;
-}
-
-bool DocNode::has_relevance_score() const {
-    return _has_relevance_score;
-}
-
-bool DocNode::has_similarity_score() const {
-    return _has_similarity_score;
 }
 
 double DocNode::relevance_score() const {
@@ -429,10 +327,6 @@ double DocNode::relevance_score() const {
 
 double DocNode::similarity_score() const {
     return _similarity_score;
-}
-
-void DocNode::invalidate_content_hash() {
-    _content_hash_dirty = true;
 }
 
 QADocNode::QADocNode(const std::string& query, const std::string& answer)
