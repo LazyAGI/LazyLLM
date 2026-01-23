@@ -24,9 +24,9 @@ class GLMChat(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://open.bigmodel.cn/api/paas/v4/', model: str = None,
                  api_key: str = None, stream: str = True, return_trace: bool = False, **kwargs):
-        super().__init__(model_series='GLM', api_key=api_key or lazyllm.config['glm_api_key'],
-                                      model_name=model or lazyllm.config['glm_model_name'] or GLMChat.MODEL_NAME,
-                                      base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
+        super().__init__(api_key=api_key or lazyllm.config['glm_api_key'],
+                         model_name=model or lazyllm.config['glm_model_name'] or GLMChat.MODEL_NAME,
+                         base_url=base_url, stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self.default_train_data = {
             'model': None,
@@ -218,7 +218,7 @@ class GLMEmbed(LazyLLMOnlineEmbedModuleBase):
                  api_key: str = None,
                  batch_size: int = 16,
                  **kw):
-        super().__init__('GLM', embed_url, api_key or lazyllm.config['glm_api_key'], embed_model_name,
+        super().__init__(embed_url, api_key or lazyllm.config['glm_api_key'], embed_model_name,
                          batch_size=batch_size, **kw)
 
 
@@ -227,7 +227,7 @@ class GLMRerank(LazyLLMOnlineRerankModuleBase):
                  embed_url: str = 'https://open.bigmodel.cn/api/paas/v4/rerank',
                  embed_model_name: str = 'rerank',
                  api_key: str = None, **kw):
-        super().__init__('GLM', embed_url, api_key or lazyllm.config['glm_api_key'], embed_model_name, **kw)
+        super().__init__(embed_url, api_key or lazyllm.config['glm_api_key'], embed_model_name, **kw)
 
     @property
     def type(self):
@@ -262,8 +262,7 @@ class GLMSTT(LazyLLMOnlineSTTModuleBase, GLMMultiModal):
     def __init__(self, model_name: str = None, api_key: str = None,
                  base_url: str = 'https://open.bigmodel.cn/api/paas/v4',
                  return_trace: bool = False, **kwargs):
-        super().__init__(model_series='GLM', model_name=model_name or GLMSTT.MODEL_NAME,
-                         api_key=api_key, return_trace=return_trace,
+        super().__init__(model_name=model_name or GLMSTT.MODEL_NAME, api_key=api_key, return_trace=return_trace,
                          base_url=base_url, **kwargs)
         GLMMultiModal.__init__(self, api_key=api_key, base_url=base_url)
 
@@ -285,9 +284,8 @@ class GLMText2Image(LazyLLMOnlineText2ImageModuleBase, GLMMultiModal):
 
     def __init__(self, model_name: str = None, api_key: str = None, return_trace: bool = False,
                  base_url: str = 'https://open.bigmodel.cn/api/paas/v4', **kwargs):
-        super().__init__(model_series='GLM', model_name=model_name or GLMText2Image.MODEL_NAME,
-                         api_key=api_key, return_trace=return_trace,
-                         base_url=base_url, **kwargs)
+        super().__init__(model_name=model_name or GLMText2Image.MODEL_NAME, api_key=api_key,
+                         return_trace=return_trace, base_url=base_url, **kwargs)
         GLMMultiModal.__init__(self, api_key=api_key, base_url=base_url)
         if self._type == LLMType.IMAGE_EDITING:
             raise ValueError('GLM series models do not support image editing now.')

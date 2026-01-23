@@ -740,6 +740,75 @@ Returns:
     str: The generated ``schema_set_id``.
 ''')
 
+add_chinese_doc('Document.get_nodes', '''\
+按条件获取节点列表。
+
+Args:
+    uids (Optional[List[str]]): 指定节点 uid 列表。
+    doc_ids (Optional[Set]): 指定文档 id 集合。
+    group (Optional[str]): 节点组名。
+    kb_id (Optional[str]): 知识库 id。
+    numbers (Optional[Set]): 节点编号集合。
+
+**Returns:**\n
+- List[DocNode]: 命中的节点列表。
+''')
+
+add_english_doc('Document.get_nodes', '''\
+Get nodes by criteria.
+
+Args:
+    uids (Optional[List[str]]): List of node uids to fetch.
+    doc_ids (Optional[Set]): Set of document ids to filter by.
+    group (Optional[str]): Node group name.
+    kb_id (Optional[str]): Knowledge base id.
+    numbers (Optional[Set]): Set of node numbers.
+
+**Returns:**\n
+- List[DocNode]: Matched nodes.
+''')
+
+add_example('Document.get_nodes', '''\
+>>> import lazyllm
+>>> from lazyllm.tools import Document
+>>> doc = Document()
+>>> nodes = doc.get_nodes(doc_ids={'doc_1'}, group='CoarseChunk', kb_id='kb_1', numbers={1, 2})
+''')
+
+add_chinese_doc('Document.get_window_nodes', '''\
+获取指定节点在同一文档内的窗口节点。
+
+Args:
+    node (DocNode): 目标节点。
+    span (tuple[int, int]): 窗口范围，基于 node.number 的相对偏移。
+    merge (bool): 是否将窗口节点合并为一个节点返回。
+
+**Returns:**\n
+- Union[List[DocNode], DocNode]: 窗口节点列表，或合并后的单节点。
+''')
+
+add_english_doc('Document.get_window_nodes', '''\
+Get window nodes around a target node within the same document.
+
+Args:
+    node (DocNode): Target node.
+    span (tuple[int, int]): Window range based on relative offsets of node.number.
+    merge (bool): Whether to merge window nodes into a single node.
+
+**Returns:**\n
+- Union[List[DocNode], DocNode]: Window nodes list or a merged node.
+''')
+
+add_example('Document.get_window_nodes', '''\
+>>> import lazyllm
+>>> from lazyllm.tools import Document
+>>> doc = Document()
+>>> node = doc.get_nodes(doc_ids={'doc_1'}, group='CoarseChunk', kb_id='kb_1', numbers={10})[0]
+>>> window_nodes = doc.get_window_nodes(node, span=(-2, 2), merge=False)
+''')
+
+
+
 # rag/graph_document.py
 
 add_english_doc('GraphDocument', '''\
@@ -1991,6 +2060,25 @@ Args:
     post_func (Optional[Callable[[List[DocNode]], Any]], optional): Post-processing
         function that takes a list of DocNodes as input for custom result handling.
         Defaults to None.
+''')
+
+add_chinese_doc('rag.readers.MineruPDFReader.set_type_processor', '''\
+为特定的内容类型设置自定义处理器函数，用于处理从 Mineru 服务返回的原始内容数据。
+返回结果中 'text' 键值将作为 DocNode 的文本内容，其他键值对将作为 DocNode 的元数据（metadata）存储。
+
+Args:
+    content_type (str): 内容类型，例如 'text', 'image', 'table', 'equation', 'code', 'list' 等。
+    processor (Callable): 处理器函数，接收内容字典作为参数，返回处理后的字典。
+''')
+
+add_english_doc('rag.readers.MineruPDFReader.set_type_processor', '''\
+Set a custom processor function for a specific content type to process raw content data returned from the Mineru Server.
+The 'text' key in the returned dictionary will be used as the DocNode text content, 
+while other key-value pairs will be stored as DocNode metadata.
+
+Args:
+    content_type (str): Content type, such as 'text', 'image', 'table', 'equation', 'code', 'list' etc.
+    processor (Callable): Processor function that takes a dictionary as input and returns a processed dictionary.
 ''')
 
 add_chinese_doc('rag.readers.PaddleOCRPDFReader', '''\
@@ -3510,6 +3598,58 @@ Args:
 
 **Returns:**\n
 - Callable: A partially applied function that executes the find operation when called.
+''')
+
+add_chinese_doc('rag.document.UrlDocument.get_nodes', '''\
+按条件获取远程文档节点列表。
+
+Args:
+    uids (Optional[List[str]]): 指定节点 uid 列表。
+    doc_ids (Optional[Set]): 指定文档 id 集合。
+    group (Optional[str]): 节点组名。
+    kb_id (Optional[str]): 知识库 id。
+    numbers (Optional[Set]): 节点编号集合。
+
+**Returns:**\n
+- List[DocNode]: 命中的节点列表。
+''')
+
+add_english_doc('rag.document.UrlDocument.get_nodes', '''\
+Get remote document nodes by criteria.
+
+Args:
+    uids (Optional[List[str]]): List of node uids to fetch.
+    doc_ids (Optional[Set]): Set of document ids to filter by.
+    group (Optional[str]): Node group name.
+    kb_id (Optional[str]): Knowledge base id.
+    numbers (Optional[Set]): Set of node numbers.
+
+**Returns:**\n
+- List[DocNode]: Matched nodes.
+''')
+
+add_chinese_doc('rag.document.UrlDocument.get_window_nodes', '''\
+获取远程文档中指定节点的窗口节点。
+
+Args:
+    node (DocNode): 目标节点。
+    span (tuple[int, int]): 窗口范围，基于 node.number 的相对偏移。
+    merge (bool): 是否将窗口节点合并为一个节点返回。
+
+**Returns:**\n
+- Union[List[DocNode], DocNode]: 窗口节点列表，或合并后的单节点。
+''')
+
+add_english_doc('rag.document.UrlDocument.get_window_nodes', '''\
+Get window nodes around a target node in a remote document.
+
+Args:
+    node (DocNode): Target node.
+    span (tuple[int, int]): Window range based on relative offsets of node.number.
+    merge (bool): Whether to merge window nodes into a single node.
+
+**Returns:**\n
+- Union[List[DocNode], DocNode]: Window nodes list or a merged node.
 ''')
 
 add_english_doc('rag.doc_node.DocNode', '''
@@ -10202,7 +10342,7 @@ Get the node's content text with metadata in LLM mode.
 add_chinese_doc('rag.store.hybrid.MapStore', """\
 基于SQLite的Map存储类，继承自LazyLLMStoreBase。
 
-提供基于SQLite数据库的向量存储功能，支持数据持久化、多集合管理和复杂查询。
+提供基于SQLite的数据持久化与BM25全文检索，支持多集合管理和简单查询。
 
 Args:
     uri (Optional[str]): SQLite数据库文件路径，默认为None（内存模式）
@@ -10218,7 +10358,7 @@ Attributes:
 add_english_doc('rag.store.hybrid.MapStore', """\
 SQLite-based Map storage class, inherits from LazyLLMStoreBase.
 
-Provides vector storage functionality based on SQLite database, supports data persistence, multi-collection management and complex queries.
+Provides data persistence and BM25 full-text search via SQLite for lightweight use cases.
 
 Args:
     uri (Optional[str]): SQLite database file path, defaults to None (in-memory mode)
@@ -10226,7 +10366,7 @@ Args:
 
 Attributes:
     capability: Storage capability flag, supports all operations
-    need_embedding: Whether embedding is needed
+    need_embedding: Whether embedding is required
     supports_index_registration: Whether index registration is supported
 """)
 

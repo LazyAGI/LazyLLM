@@ -236,6 +236,10 @@ class _NamespaceConfig(object):
     def done(self):
         return self._config.done()
 
+    @property
+    def prefix(self):
+        return self._config._prefix
+
 
 config = _NamespaceConfig().add('mode', Mode, Mode.Normal, dict(DISPLAY=Mode.Display, DEBUG=Mode.Debug),
                                 description='The default mode for LazyLLM.'

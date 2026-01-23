@@ -21,11 +21,15 @@ def select_source_with_default_key(available_models,
     default_key = config['default_key'] if 'default_key' in config.get_all_configs() else None
     if default_source and default_key and default_source in available_models:
         return default_source, default_key
+
     for candidate in available_models.keys():
         candidate = candidate[:-len(type)]
         if config[f'{candidate}_api_key']:
             return candidate, None
-    raise KeyError(f'No api_key is configured for any of the models {available_models.keys()}.')
+
+    excepted = [f'{config.prefix}_{k[:-len(type)]}_api_key'.upper() for k in available_models.keys()]
+    raise KeyError(f'No api_key is configured for any of the models {available_models.keys()}. '
+                   f'You can set one of those environment: {excepted}')
 
 
 def check_and_add_config(key, description):
@@ -34,6 +38,7 @@ def check_and_add_config(key, description):
 
 
 class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
+    _model_series = None
 
     def __init__(self, api_key: Optional[Union[str, List[str]]],
                  skip_auth: Optional[bool] = False, return_trace: bool = False):
@@ -43,6 +48,10 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self.__headers = [self._get_header(key) for key in (api_key if isinstance(api_key, list) else [api_key])]
         if config['cache_online_module']:
             self.use_cache()
+
+    @property
+    def series(self):
+        return self.__class__._model_series
 
     @property
     def _api_key(self):
@@ -61,7 +70,7 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         return random.choice(self.__headers)
 
     @staticmethod
-    def __lazyllm_after_registry_hook__(group_name: str, name: str, isleaf: bool):
+    def __lazyllm_after_registry_hook__(cls, group_name: str, name: str, isleaf: bool):
 
         allowed = set(list(LLMType))
         config_type_dict = {
@@ -82,7 +91,7 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             subgroup = group_name.split('.')[-1]
             assert name.lower().endswith(subgroup), f'Class name {name} must follow \
                 the schema of <SupplierType>, like <Qwen{subgroup.capitalize()}>'
-            supplier = name[:-len(subgroup)].lower()
+            cls._model_series = supplier = name[:-len(subgroup)].lower()
 
             check_and_add_config(key=f'{supplier}_api_key',
                                  description=f'The API key for {supplier}')

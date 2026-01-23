@@ -111,14 +111,14 @@ class LazyLLMRegisterMetaClass(_MetaBind):
                     setattr(m, ori, ld)
             LazyLLMRegisterMetaClass.all_clses[new_cls._lazy_llm_group] = ld
             if (f := getattr(new_cls, '__lazyllm_after_registry_hook__', None)):
-                f(ori_group, group, isleaf=False)
+                f(new_cls, ori_group, group, isleaf=False)
         elif hasattr(new_cls, '_lazy_llm_group'):
             group = LazyLLMRegisterMetaClass.all_clses[new_cls._lazy_llm_group]
             name = new_cls.__dict__.get('__lazyllm_registry_key__', name)
             assert name not in group, f'duplicate class \'{name}\' in group {new_cls._lazy_llm_group}'
             group[name] = new_cls
             if (f := getattr(new_cls, '__lazyllm_after_registry_hook__', None)):
-                f(new_cls._lazy_llm_group, name, isleaf=True)
+                f(new_cls, new_cls._lazy_llm_group, name, isleaf=True)
         return new_cls
 
 
