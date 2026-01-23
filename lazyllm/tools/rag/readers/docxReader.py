@@ -19,12 +19,6 @@ class DocxReader(_RichReader):
                  extract_process: Optional[Callable] = None, post_func: Optional[Callable] = None,
                  extract_global_info: bool = True, image_save_path: Optional[str] = None,
                  save_image: bool = True, return_trace: bool = True):
-        try:
-            thirdparty.check_packages(['python-docx', 'docx2txt'])
-        except ImportError:
-            raise ImportError('Please install extra dependencies that are required for the '
-                              'DocxReader: `pip install python-docx docx2txt`')
-
         super().__init__(split_doc=split_doc, return_trace=return_trace, post_func=None)
         self._post_func = post_func or self._default_post
         self.extract_process = extract_process or self._default_extract
@@ -33,7 +27,7 @@ class DocxReader(_RichReader):
         self._image_save_path = image_save_path
         self._save_image = save_image
 
-    def _extract_global_info(self, doc: docx.Document, file_path: Path) -> Dict[str, Any]:
+    def _extract_global_info(self, doc: 'docx.Document', file_path: Path) -> Dict[str, Any]:
         global_info = dict(self._extra_info)
 
         if self.extract_global_info and self._split_doc:
@@ -112,7 +106,7 @@ class DocxReader(_RichReader):
         nodes = p(file, fs)
         return nodes
 
-    def _read_file(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> docx.Document:
+    def _read_file(self, file: Path, fs: Optional['fsspec.AbstractFileSystem'] = None) -> 'docx.Document':
         fs = fs or get_default_fs()
 
         try:
@@ -231,7 +225,7 @@ class DocxReader(_RichReader):
 
         return not content_clean
 
-    def _get_aligned_type(self, para: docx.text.paragraph) -> str:
+    def _get_aligned_type(self, para: 'docx.text.paragraph') -> str:
         aligned_type = {
             docx.enum.text.WD_ALIGN_PARAGRAPH.LEFT: 'left',
             docx.enum.text.WD_ALIGN_PARAGRAPH.CENTER: 'center',
@@ -248,7 +242,7 @@ class DocxReader(_RichReader):
 
         return aligned_type.get(alignment, '')
 
-    def _get_style_info(self, style: docx.styles.style.ParagraphStyle) -> dict:
+    def _get_style_info(self, style: 'docx.styles.style.ParagraphStyle') -> dict:
         try:
             font = style.font
             style_dict = {
@@ -268,7 +262,7 @@ class DocxReader(_RichReader):
             }
         return style_dict
 
-    def _extract_images_from_paragraph(self, para, doc: docx.Document, base_metadata: dict,
+    def _extract_images_from_paragraph(self, para, doc: 'docx.Document', base_metadata: dict,
                                        extra_info: Optional[Dict]) -> List[DocNode]:
         image_nodes = []
 
@@ -356,7 +350,7 @@ class DocxReader(_RichReader):
             LOG.error(f'[Docx Reader] Failed to convert math to text: {e}')
             return ''
 
-    def _table_to_markdown(self, table: docx.table.Table) -> str:
+    def _table_to_markdown(self, table: 'docx.table.Table') -> str:
         if not table.rows:
             return '\n[empty table]\n'
 
@@ -385,7 +379,7 @@ class DocxReader(_RichReader):
         except Exception:
             return '\n[Table parse failed]\n'
 
-    def _process_table(self, table: docx.table.Table, base_metadata: dict,
+    def _process_table(self, table: 'docx.table.Table', base_metadata: dict,
                        extra_info: Optional[Dict] = None) -> DocNode:
         metadata = copy.deepcopy(base_metadata)
         metadata['type'] = 'table'
