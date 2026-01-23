@@ -27,9 +27,7 @@ class JsonFormatter(JsonLikeFormatter):
 
             if brace_level == 0 and current_json:
                 try:
-
-                    parsed_obj = json.loads(current_json)
-                    json_objects.append(parsed_obj)
+                    json_objects.append(json.loads(current_json))
                     current_json = ''
                 except json.JSONDecodeError:
                     try:

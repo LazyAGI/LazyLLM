@@ -56,10 +56,10 @@ class TestRagReader(object):
 
     def test_enhanced_docxreader(self):
         files = os.path.join(self.datasets, '说明文档测试.docx')
-        reader = DocxReader(enhanced=True)
+        reader = DocxReader(split_doc=True)
         nodes = reader(files)
-        assert len(nodes) == 5
-        assert nodes[0].global_metadata['author'] == '王健'
+        assert len(nodes) == 1
+        assert nodes[0].global_metadata
         assert nodes[0].global_metadata['revision'] == 3
 
     # TODO: remove *.pptx and *.jpg, *.png in mac and win

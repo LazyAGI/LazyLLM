@@ -112,11 +112,8 @@ class ChineseCorrector:
                 lazyllm.LOG.error(f'Error processing sentence: {e}')
                 return {'source': sent, 'target': sent, 'errors': []}
 
-        warp_processor = warp(process_sentence, _concurrent=concurrency)
-        input_package = package(sentences)
-
         try:
-            results_package = warp_processor(input_package)
+            results_package = warp(process_sentence, _concurrent=concurrency)(package(sentences))
             results = list(results_package)
             return results
         except Exception as e:

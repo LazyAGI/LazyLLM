@@ -26,8 +26,8 @@ class _RichPDFReader(LazyLLMReaderBase):
             for n in r:
                 assert isinstance(n, DocNode), f'Expected DocNode, got {type(n)}, \
                     please check your post function'
-                if 'extra_info' in kwargs:
-                    n.global_metadata = n.global_metadata.update(kwargs['extra_info'])
+                if kwargs.get('extra_info'):
+                    n.global_metadata.update(kwargs['extra_info'])
         return [RichDocNode(r, global_metadata=r[0].global_metadata if r else None)] if self._split_doc else r
 
 class PDFReader(_RichPDFReader):
