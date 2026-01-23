@@ -1,7 +1,6 @@
 from pathlib import Path
 import tempfile
 from lazyllm.thirdparty import fsspec, docx2txt, docx
-from lazyllm import thirdparty
 from typing import Callable, Optional, List, Dict, Any
 from lazyllm import LOG, pipeline, _0
 from lazyllm.common import bind
