@@ -8,9 +8,11 @@ from lazyllm.launcher import cleanup
 from lazyllm.tools.infer_service.serve import InferServer
 from urllib.parse import urlparse
 import pytest
+import unittest
 
 
-class TestInferServer:
+class TestInferServer(unittest.TestCase):
+    @classmethod
     def setUpClass(cls):
         cls.infer_server = lazyllm.ServerModule(InferServer(), launcher=lazyllm.launcher.EmptyLauncher(sync=False))
         cls.infer_server.start()()
@@ -22,6 +24,7 @@ class TestInferServer:
         lazyllm.FileSystemQueue().dequeue()
         lazyllm.FileSystemQueue(klass='lazy_trace').dequeue()
 
+     @classmethod
     def tearDownClass(cls):
         cls.infer_server.stop()
         cleanup()
