@@ -34,6 +34,8 @@ ebooklib
 html2text
 olefile
 openpyxl
+json_repair
+python-pptx
 python-docx
 tenacity
 beautifulsoup4

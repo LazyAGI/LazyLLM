@@ -75,6 +75,7 @@ order_group_scope = "class"
 [tool.poetry.dependencies]
 appdirs = { version = "*", optional = true }
 loralib = { version = "*", optional = true }
+json_repair = { version = "*", optional = true }
 flake8 = { version = ">=7.0.0", optional = true }
 chromadb = {version = ">=1.0.6", optional = true}
 sentence-transformers = { version = "^3.0.1", optional = true }
@@ -233,7 +234,8 @@ standard = [
     "numpy",
     "httpx",
     "async-timeout",
-    "protobuf"
+    "protobuf",
+    "json_repair"
 ]
 full = [
     "appdirs",
@@ -309,7 +311,8 @@ full = [
     "numpy",
     "httpx",
     "async-timeout",
-    "protobuf"
+    "protobuf",
+    "json_repair"
 ]
 alpaca-lora = [
     "appdirs",
@@ -431,7 +434,8 @@ rag = [
     "jieba",
     "sentencepiece",
     "psycopg2-binary",
-    "sqlalchemy"
+    "sqlalchemy",
+    "json_repair"
 ]
 rag-advanced = [
     "fsspec",
