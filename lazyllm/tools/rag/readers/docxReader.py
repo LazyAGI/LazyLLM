@@ -23,7 +23,7 @@ class DocxReader(_RichReader):
             thirdparty.check_packages(['python-docx', 'docx2txt'])
         except ImportError:
             raise ImportError('Please install extra dependencies that are required for the '
-                              'PPTXReader: `pip install torch transformers python-pptx Pillow`')
+                              'DocxReader: `pip install python-docx docx2txt`')
 
         super().__init__(split_doc=split_doc, return_trace=return_trace, post_func=None)
         self._post_func = post_func or self._default_post
