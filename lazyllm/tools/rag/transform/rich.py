@@ -4,6 +4,8 @@ from typing import List
 
 
 class RichTransform(NodeTransform):
+    __support_rich__ = True
+
     def _clone_node(self, n: DocNode) -> DocNode:
         new_node = DocNode(content=n.text, metadata=n.metadata,
                            global_metadata=n.global_metadata)
