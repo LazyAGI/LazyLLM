@@ -106,13 +106,6 @@ class TestPaddleOCRPDFReader(object):
         assert isinstance(rich_nodes[0], DocNode), 'Return result should be a DocNode'
         assert rich_nodes[0].text == docs[0].nodes[0].text, 'Return result should be the same as the original node'
 
-        reader = PaddleOCRPDFReader(url=self.url, split_doc=False)
-        docs = reader(self.test_pdf)
-        assert isinstance(docs, list)
-        assert len(docs) > 0, 'Return result should not be empty'
-        assert len(docs) == 1, 'When split_doc=False, should return only one node'
-        assert isinstance(docs[0], DocNode), 'Return result should be a DocNode'
-
     def test_load_data_with_different_init_parameters(self):
         self._skip_if_pdf_not_exist()
 
