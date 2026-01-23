@@ -5,32 +5,14 @@ from lazyllm.common import retry
 from lazyllm.thirdparty import fsspec, pypdf
 from lazyllm import LOG
 
-from .readerBase import LazyLLMReaderBase, get_default_fs, is_default_fs
-from ..doc_node import DocNode, RichDocNode
+from .readerBase import get_default_fs, is_default_fs
+from ..doc_node import DocNode
+from .readerBase import _RichReader
 
 RETRY_TIMES = 3
 
 
-class _RichPDFReader(LazyLLMReaderBase):
-    def __init__(self, post_func: Optional[Callable] = None, split_doc: bool = True,
-                 return_trace: bool = True):
-        super().__init__(return_trace=return_trace)
-        self._post_func = post_func
-        self._split_doc = split_doc
-
-    def forward(self, *args, **kwargs) -> List[DocNode]:
-        r = super().forward(*args, **kwargs)
-        if self._post_func:
-            r = self._post_func(r)
-            assert isinstance(r, list), f'Expected list, got {type(r)}, please check your post function'
-            for n in r:
-                assert isinstance(n, DocNode), f'Expected DocNode, got {type(n)}, \
-                    please check your post function'
-                if kwargs.get('extra_info'):
-                    n.global_metadata.update(kwargs['extra_info'])
-        return [RichDocNode(r, global_metadata=r[0].global_metadata if r else None)] if self._split_doc else r
-
-class PDFReader(_RichPDFReader):
+class PDFReader(_RichReader):
     def __init__(self, split_doc: bool = True,
                  post_func: Optional[Callable[[List[DocNode]], List[DocNode]]] = None,
                  return_trace: bool = True, *, return_full_document=None) -> None:

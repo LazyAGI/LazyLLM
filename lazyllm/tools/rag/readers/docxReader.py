@@ -10,11 +10,10 @@ import re
 import uuid
 
 from ..doc_node import DocNode
-from .pdfReader import _RichPDFReader
-from .readerBase import get_default_fs, is_default_fs
+from .readerBase import get_default_fs, is_default_fs, _RichReader
 
 
-class DocxReader(_RichPDFReader):
+class DocxReader(_RichReader):
     def __init__(self, split_doc: Optional[bool] = False, extra_info: Optional[Dict] = None,
                  extract_process: Optional[Callable] = None, post_func: Optional[Callable] = None,
                  extract_global_info: bool = True, image_save_path: Optional[str] = None,
