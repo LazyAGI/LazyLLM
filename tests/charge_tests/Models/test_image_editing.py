@@ -67,7 +67,7 @@ class TestImageEditing:
     @staticmethod
     def _test_image_file():
         data_path = lazyllm.config['data_path']
-        return [os.path.join(data_path, 'ci_data/ji.jpg')]
+        return [os.path.join(data_path, 'ci_data/dog.png')]
 
     def common_image_editing(self, source, **kwargs):
         api_key = lazyllm.config[f'{source}_api_key']

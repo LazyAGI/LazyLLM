@@ -57,7 +57,8 @@ class DoubaoMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
                  embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal',
                  embed_model_name: str = None,
                  api_key: str = None):
-        embed_model_name = embed_model_name or lazyllm.config['doubao_multimodal_embed_model_name'] or 'doubao-embedding-vision-241215'
+        embed_model_name = (embed_model_name or lazyllm.config['doubao_multimodal_embed_model_name']
+                            or 'doubao-embedding-vision-241215')
         super().__init__(embed_url, api_key or lazyllm.config['doubao_api_key'], embed_model_name)
 
     def _encapsulated_data(self, input: Union[List, str], **kwargs) -> Dict[str, str]:
@@ -93,13 +94,13 @@ class DoubaoMultiModal():
 
 
 class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase, DoubaoMultiModal):
-    MODEL_NAME = 'doubao-seedream-4-0-250828'
-    IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-4-0-250828'
+    MODEL_NAME = 'doubao-seedream-3-0-t2i-250415'
+    IMAGE_EDITING_MODEL_NAME = 'doubao-seedream-3-0-t2i-250415'
 
     def __init__(self, api_key: str = None, model: str = None, url='https://ark.cn-beijing.volces.com/api/v3',
                  return_trace: bool = False, **kwargs):
-        super().__init__(model=model, api_key=api_key,
-                         return_trace=return_trace, url=url, **kwargs)
+        resolved_model = model or lazyllm.config['doubao_text2image_model_name'] or DoubaoText2Image.MODEL_NAME
+        super().__init__(model=resolved_model, api_key=api_key, return_trace=return_trace, url=url, **kwargs)
         DoubaoMultiModal.__init__(self, api_key=api_key, url=url)
 
     def _forward(self, input: str = None, files: List[str] = None, n: int = 1, size: str = '1024x1024', seed: int = -1,
