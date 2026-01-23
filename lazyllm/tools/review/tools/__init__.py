@@ -1,4 +1,4 @@
-from chinese_corrector import ChineseCorrector, get_errors
+from .chinese_corrector import ChineseCorrector, get_errors
 
 __all__ = [
     ChineseCorrector,
