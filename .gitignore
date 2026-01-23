@@ -19,6 +19,8 @@ wget-log
 
 # dev tools
 .vscode
+.claude
+.cursor
 
 # docs
 lazyllm_chroma/

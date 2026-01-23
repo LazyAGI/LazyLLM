@@ -8,19 +8,25 @@ from lazyllm.launcher import cleanup
 from lazyllm.tools.infer_service.serve import InferServer
 from urllib.parse import urlparse
 import pytest
+import unittest
 
 
-class TestInferServer:
-    def setup_method(self):
-        self.infer_server = lazyllm.ServerModule(InferServer(), launcher=lazyllm.launcher.EmptyLauncher(sync=False))
-        self.infer_server.start()()
-        parsed_url = urlparse(self.infer_server._url)
-        self.infer_server_url = f'{parsed_url.scheme}://{parsed_url.netloc}'
+class TestInferServer(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.infer_server = lazyllm.ServerModule(InferServer(), launcher=lazyllm.launcher.EmptyLauncher(sync=False))
+        cls.infer_server.start()()
+        parsed_url = urlparse(cls.infer_server._url)
+        cls.infer_server_url = f'{parsed_url.scheme}://{parsed_url.netloc}'
         token = '123'
-        self.headers = {'token': token}
+        cls.headers = {'token': token}
+        LightEngine().reset()
+        lazyllm.FileSystemQueue().dequeue()
+        lazyllm.FileSystemQueue(klass='lazy_trace').dequeue()
 
-    def teardown_method(self):
-        self.infer_server.stop()
+    @classmethod
+    def tearDownClass(cls):
+        cls.infer_server.stop()
         cleanup()
 
     @pytest.fixture(autouse=True)
@@ -92,7 +98,7 @@ class TestInferServer:
         model = lazyllm.TrainableModule(model_name).deploy_method(getattr(lazyllm.deploy, deploy_method), url=url)
         assert model._impl._get_deploy_tasks.flag
         r = model('这张图片描述的是什么？', lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
-        assert '鸡' in r or 'chicken' in r
+        assert '鸡' in r or 'chicken' in r or 'rooster' in r
 
         engine = LightEngine()
         nodes = [dict(id='0', kind='VQA', name='vqa',
@@ -100,7 +106,7 @@ class TestInferServer:
         gid = engine.start(nodes)
 
         r = engine.run(gid, '这张图片描述的是什么？', _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
-        assert '鸡' in r or 'chicken' in r
+        assert '鸡' in r or 'chicken' in r or 'rooster' in r
 
         self.delete_inference_service(service_name)
 

@@ -819,12 +819,12 @@ class MineruServerBase:
             first_file_name = Path(files[0]).name
             req_id = f'{first_file_name}'
             if len(files) > 1:
-                req_id += f'+{len(files)-1}'
+                req_id += f'+{len(files) - 1}'
         elif upload_files:
             first_file_name = upload_files[0].filename
             req_id = f'{first_file_name}'
             if len(upload_files) > 1:
-                req_id += f'+{len(upload_files)-1}'
+                req_id += f'+{len(upload_files) - 1}'
 
         for f in files:
             suf = Path(f).suffix.lower()
