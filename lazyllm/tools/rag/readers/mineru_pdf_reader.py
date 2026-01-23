@@ -5,10 +5,10 @@ from typing import Dict, List, Optional, Callable
 
 from lazyllm import LOG
 from ..doc_node import DocNode
-from .readerBase import LazyLLMReaderBase
+from .pdfReader import _RichPDFReader
 
 
-class MineruPDFReader(LazyLLMReaderBase):
+class MineruPDFReader(_RichPDFReader):
     def __init__(self, url, backend='hybrid-auto-engine',
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  upload_mode: bool = False,
@@ -19,7 +19,7 @@ class MineruPDFReader(LazyLLMReaderBase):
                  timeout: Optional[int] = None,
                  post_func: Optional[Callable] = None,
                  return_trace: bool = True):
-        super().__init__(return_trace=return_trace)
+        super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace)
         if backend not in ['pipeline', 'vlm-transformers', 'vlm-vllm-async-engine', 'hybrid-auto-engine']:
             raise ValueError(f'Invalid backend: {backend}, \
                              only support pipeline, vlm-transformers, vlm-vllm-async-engine, hybrid-auto-engine')
@@ -29,8 +29,6 @@ class MineruPDFReader(LazyLLMReaderBase):
         self._backend = backend
         self._extract_table = extract_table
         self._extract_formula = extract_formula
-        self._split_doc = split_doc
-        self._post_func = post_func
         self._clean_content = clean_content
         self._timeout = timeout if (timeout is not None and timeout > 0) else None
         self._type_processors = {
@@ -55,13 +53,6 @@ class MineruPDFReader(LazyLLMReaderBase):
             elements = self._parse_pdf_elements(file, use_cache=use_cache)
             docs = self._build_nodes(elements, file, extra_info)
 
-            if self._post_func:
-                docs = self._post_func(docs)
-                assert isinstance(docs, list), f'Expected list, got {type(docs)}, please check your post function'
-                for node in docs:
-                    assert isinstance(node, DocNode), f'Expected DocNode, got {type(node)}, \
-                        please check your post function'
-                    node.global_metadata = extra_info
             if not docs:
                 LOG.warning(f'[MineruPDFReader] No elements found in PDF: {file}')
             return docs

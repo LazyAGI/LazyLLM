@@ -12,7 +12,7 @@ from .hybrid import HybridStore, MapStore
 from ..default_index import DefaultIndex
 from ..utils import parallel_do_embedding
 
-from ..doc_node import DocNode, QADocNode, ImageDocNode
+from ..doc_node import DocNode, QADocNode, ImageDocNode, JsonDocNode, RichDocNode
 from ..index_base import IndexBase
 from ..data_type import DataType
 from ..global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
@@ -398,6 +398,12 @@ class _DocumentStore(object):
         elif isinstance(node, ImageDocNode):
             segment.type = SegmentType.IMAGE.value
             segment.image_keys = [node.image_path] if node.image_path else []
+        elif isinstance(node, JsonDocNode):
+            segment.type = SegmentType.JSON.value
+            segment.content = node._serialize_content()
+        elif isinstance(node, RichDocNode):
+            segment.type = SegmentType.RICH.value
+            segment.content = node._serialize_nodes()
         res = segment.model_dump()
         # For speed up, add embedding after serialization
         if node.embedding:
@@ -418,6 +424,16 @@ class _DocumentStore(object):
                                 uid=data['uid'], group=data['group'], parent=data.get('parent', ''),
                                 metadata=data.get('meta', {}),
                                 global_metadata=data.get('global_meta', {}))
+        elif segment_type == SegmentType.JSON.value:
+            json_content = JsonDocNode._deserialize_content(data.get('content', ''))
+            node = JsonDocNode(uid=data['uid'], content=json_content, group=data['group'],
+                               parent=data.get('parent', ''), metadata=data.get('meta', {}),
+                               global_metadata=data.get('global_meta', {}))
+        elif segment_type == SegmentType.RICH.value:
+            node = RichDocNode(nodes=RichDocNode._deserialize_nodes(data.get('content', '')), uid=data['uid'],
+                               group=data['group'], parent=data.get('parent', ''),
+                               metadata=data.get('meta', {}),
+                               global_metadata=data.get('global_meta', {}))
         else:
             node = DocNode(uid=data['uid'], group=data['group'], content=data.get('content', ''),
                            parent=data.get('parent', ''), metadata=data.get('meta', {}),
