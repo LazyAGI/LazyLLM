@@ -6,6 +6,7 @@ from typing import Any, List, Union, Optional, Tuple, AbstractSet, Collection, L
 from lazyllm import LOG
 from ..doc_node import DocNode, RichDocNode
 from lazyllm import ThreadPoolExecutor
+from itertools import chain
 import re
 from functools import partial
 import os
@@ -72,7 +73,7 @@ class NodeTransform(ABC):
             with node._lock:
                 if node_group in node.children: return []
                 if isinstance(node, RichDocNode) and not self.__support_rich__:
-                    splits = sum([self(n, **kwargs) for n in node.nodes], [])
+                    splits = list(chain.from_iterable(self(n, **kwargs) for n in node.nodes))
                 else:
                     splits = self(node, **kwargs)
                 for s in splits:
