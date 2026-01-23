@@ -148,7 +148,7 @@ html2text = { version = ">=2025.4.15,<2026.0.0", optional = true }
 olefile = { version = ">=0.47,<0.48", optional = true }
 openpyxl = { version = ">=3.1.5,<4.0.0", optional = true }
 python-pptx = { version = ">=1.0.2,<2.0.0", optional = true }
-python-docx = { version = ">=1.0.2,<2.0.0", optional = true }
+python-docx = { version = ">=1.2.0,<2.0.0", optional = true }
 tenacity = { version = ">=9.1.2,<10.0.0", optional = true }
 beautifulsoup4 = { version = ">=4.13.4,<5.0.0", optional = true }
 tiktoken = { version = ">=0.7.0,<0.8.0", optional = true }
