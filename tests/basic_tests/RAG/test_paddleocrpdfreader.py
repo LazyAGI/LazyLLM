@@ -91,7 +91,7 @@ class TestPaddleOCRPDFReader(object):
         split_reader = PaddleOCRPDFReader(url=self.url, split_doc=True)
         docs = split_reader(self.test_pdf)
         assert isinstance(docs, list)
-        assert len(docs) == 1, 'When split_doc=True, should return only one RichDocNode'
+        assert len(docs) == 1, 'When split_doc=True, should return only one node'
         assert isinstance(docs[0], RichDocNode), 'Return result should be a RichDocNode'
 
         splitted_nodes = SentenceSplitter(chunk_size=100, chunk_overlap=10).transform(docs[0])
