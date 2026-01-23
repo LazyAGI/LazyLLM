@@ -8,22 +8,39 @@ import uuid
 
 import lazyllm
 from lazyllm.thirdparty import jwt
-from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
+from ..base import OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase
 from ..fileHandler import FileHandlerBase
+from ..base.utils import check_and_add_config
+
+
+check_and_add_config(key='sensenova_secret_key', description='The secret key for SenseNova.')
 
 
 class _SenseNovaBase(object):
 
     def _get_api_key(self, api_key: str, secret_key: str):
         if not api_key and not secret_key:
-            api_key, secret_key = lazyllm.config['sensenova_api_key'], lazyllm.config['sensenova_secret_key']
-        if secret_key and secret_key.startswith('sk-'): api_key, secret_key = secret_key, None
-        if not api_key: raise ValueError('api_key is required for sensecore')
-        if not api_key.startswith('sk-'):
-            if ':' in api_key: api_key, secret_key = api_key.split(':', 1)
-            assert secret_key, 'secret_key should be provided with sensecore api_key'
-            api_key = SenseNovaModule.encode_jwt_token(api_key, secret_key)
-        return api_key
+            api_key = lazyllm.config['sensenova_api_key']
+            secret_key = lazyllm.config['sensenova_secret_key']
+
+        if secret_key and secret_key.startswith('sk-'):
+            if not api_key:
+                api_key = secret_key
+            secret_key = None
+
+        if not api_key:
+            raise ValueError('api_key is required for sensecore')
+
+        if api_key.startswith('sk-'):
+            return api_key
+
+        if ':' in api_key:
+            api_key, secret_key = api_key.split(':', 1)
+        elif not secret_key:
+            secret_key = lazyllm.config['sensenova_secret_key']
+
+        assert secret_key, 'secret_key should be provided with sensecore api_key'
+        return SenseNovaChat.encode_jwt_token(api_key, secret_key)
 
     @staticmethod
     def encode_jwt_token(ak: str, sk: str) -> str:
@@ -38,7 +55,8 @@ class _SenseNovaBase(object):
         token = jwt.encode(payload, sk, headers=headers)
         return token
 
-class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
+
+class SenseNovaChat(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
     TRAINABLE_MODEL_LIST = ['nova-ptc-s-v2']
     VLM_MODEL_PREFIX = ['SenseNova-V6-Turbo', 'SenseChat-Vision', 'SenseNova-V6-Pro', 'SenseNova-V6-Reasoner',
                         'SenseNova-V6-5-Pro', 'SenseNova-V6-5-Turbo']
@@ -49,8 +67,8 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
         if secret_key and isinstance(api_key, (tuple, list)):
             raise KeyError('multi-key is not support when secret_key is provided, please use single-key mode!')
         api_key = self._get_api_key(api_key, secret_key)
-        OnlineChatModuleBase.__init__(self, model_series='SENSENOVA', api_key=api_key, base_url=base_url,
-                                      model_name=model, stream=stream, return_trace=return_trace, **kwargs)
+        super().__init__(api_key=api_key, base_url=base_url, model_name=model,
+                         stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         self._deploy_paramters = None
         self._vlm_force_format_input_with_files = True
@@ -202,7 +220,7 @@ class SenseNovaModule(OnlineChatModuleBase, FileHandlerBase, _SenseNovaBase):
             return [{'type': 'image_base64', 'image_base64': image_url}]
 
 
-class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
+class SenseNovaEmbed(LazyLLMOnlineEmbedModuleBase, _SenseNovaBase):
 
     def __init__(self,
                  embed_url: str = 'https://api.sensenova.cn/v1/llm/embeddings',
@@ -212,8 +230,7 @@ class SenseNovaEmbedding(OnlineEmbeddingModuleBase, _SenseNovaBase):
                  batch_size: int = 16,
                  **kw):
         api_key = self._get_api_key(api_key, secret_key)
-        super().__init__('SENSENOVA', embed_url, api_key, embed_model_name,
-                         batch_size=batch_size, **kw)
+        super().__init__(embed_url, api_key, embed_model_name, batch_size=batch_size, **kw)
 
     def _parse_response(self, response: Dict, input: Union[List, str]) -> Union[List[List[float]], List[float]]:
         embeddings = response.get('embeddings', [])

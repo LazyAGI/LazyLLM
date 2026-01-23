@@ -1,12 +1,8 @@
 import lazyllm
+from lazyllm.components.utils.downloader.model_downloader import LLMType
 from typing import Any
 from .base import OnlineMultiModalBase
-from .supplier.qwen import QwenSTTModule, QwenTTSModule, QwenTextToImageModule
-from .supplier.doubao import DoubaoTextToImageModule
-from .supplier.glm import GLMSTTModule, GLMTextToImageModule
-from .supplier.siliconflow import SiliconFlowTextToImageModule, SiliconFlowTTSModule
-from .supplier.minimax import MinimaxTextToImageModule, MinimaxTTSModule
-from .supplier.aiping import AipingTextToImageModule
+from .base.utils import select_source_with_default_key
 
 
 class _OnlineMultiModalMeta(type):
@@ -35,61 +31,40 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         # Create an online text-to-image
         img_gen = OnlineMultiModalModule(source='qwen', function='text2image')
     '''
-    STT_MODELS = {
-        'qwen': QwenSTTModule,
-        'glm': GLMSTTModule
-    }
-    TTS_MODELS = {
-        'qwen': QwenTTSModule,
-        'siliconflow': SiliconFlowTTSModule,
-        'minimax': MinimaxTTSModule
-    }
-    TEXT2IMAGE_MODELS = {
-        'qwen': QwenTextToImageModule,
-        'doubao': DoubaoTextToImageModule,
-        'glm': GLMTextToImageModule,
-        'siliconflow': SiliconFlowTextToImageModule,
-        'minimax': MinimaxTextToImageModule,
-        'aiping': AipingTextToImageModule
-    }
-
-    TYPE_MODEL_MAP = {
-        'stt': STT_MODELS,
-        'tts': TTS_MODELS,
-        'text2image': TEXT2IMAGE_MODELS,
-        'image_editing': TEXT2IMAGE_MODELS,
+    TYPE_GROUP_MAP = {
+        'stt': LLMType.STT,
+        'tts': LLMType.TTS,
+        'text2image': LLMType.TEXT2IMAGE,
+        'image_editing': LLMType.TEXT2IMAGE,
     }
 
     @staticmethod
     def _validate_parameters(source: str, model: str, type: str, base_url: str, **kwargs) -> tuple:
-        assert type in OnlineMultiModalModule.TYPE_MODEL_MAP, f'Invalid type: {type}'
-        available_model = OnlineMultiModalModule.TYPE_MODEL_MAP[type]
-        if model in available_model and source is None:
+        assert type in OnlineMultiModalModule.TYPE_GROUP_MAP, f'Invalid type: {type}'
+        if model in lazyllm.online[type] and source is None:
             source, model = model, source
+        if source is None and kwargs.get('api_key'):
+            raise ValueError('No source is given but an api_key is provided.')
+        register_type = OnlineMultiModalModule.TYPE_GROUP_MAP.get(type).lower()
+        source, default_key = select_source_with_default_key(lazyllm.online[register_type],
+                                                             explicit_source=source,
+                                                             type=type)
+        if default_key and not kwargs.get('api_key'):
+            kwargs['api_key'] = default_key
 
         if kwargs.get('skip_auth', False):
             source = source or 'openai'
             if not base_url:
                 raise KeyError('base_url must be set for local serving.')
 
-        if source is None:
-            if kwargs.get('api_key'):
-                raise ValueError('No source is given but an api_key is provided.')
-            for src in available_model:
-                if lazyllm.config[f'{src}_api_key']:
-                    source = src
-                    break
-            if source is None:
-                raise KeyError(f'No api_key is configured for any of the models {available_model}.')
-
-        assert source in available_model, f'Unsupported source: {source}'
-
+        default_module_cls = getattr(lazyllm.online[register_type], source)
         if type == 'image_editing':
-            default_module_cls = OnlineMultiModalModule.TYPE_MODEL_MAP[type][source]
-            default_editing_model = getattr(default_module_cls, 'IMAGE_EDITING_MODEL_NAME', None)
-            if model is None and default_editing_model:
-                model = default_editing_model
-                lazyllm.LOG.info(f'Image editing enabled for {source}. Automatically selected default model: {model}')
+            default_model_name = getattr(default_module_cls, 'IMAGE_EDITING_MODEL_NAME', None)
+        else:
+            default_model_name = getattr(default_module_cls, 'MODEL_NAME', None)
+        if model is None and default_model_name:
+            model = default_model_name
+            lazyllm.LOG.info(f'For type {type}, source {source}. Automatically selected default model: {model}')
 
         if base_url is not None:
             kwargs['base_url'] = base_url
@@ -112,5 +87,5 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         if model is not None:
             params['model'] = model
         params.update(kwargs_normalized)
-        available_model = OnlineMultiModalModule.TYPE_MODEL_MAP[type]
-        return available_model[source](**params)
+        register_type = OnlineMultiModalModule.TYPE_GROUP_MAP.get(type).lower()
+        return getattr(lazyllm.online[register_type], source)(**params)
