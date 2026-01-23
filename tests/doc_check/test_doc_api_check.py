@@ -5,6 +5,7 @@ import sys
 import re
 import dataclasses
 import enum
+import logging
 from typing import Callable
 
 os.environ['LAZYLLM_INIT_DOC'] = 'True'
@@ -21,9 +22,12 @@ if DOCS_SCRIPTS_PATH not in sys.path:
 if 'lazyllm' in sys.modules:
     del sys.modules['lazyllm']
 
-
-import lazyllm  # noqa: E402
-from lazynote.manager import SimpleManager  # noqa: E402
+try:
+    import lazyllm
+    from lazynote.manager import SimpleManager
+except ImportError as e:
+    logging.error(f'Error import lazyllm and lazynote: {e}')
+    SimpleManager = None
 
 def generate_docs_for_module():
     if SimpleManager is None:
