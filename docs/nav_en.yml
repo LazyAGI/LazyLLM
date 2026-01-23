@@ -37,6 +37,7 @@
   - Rag: Best Practice/rag.md
   - FunctionCall: Best Practice/functionCall.md
   - Stream: Best Practice/stream.md
+  - AutoRegistry: Best Practice/Features/AutoRegistry.md
 - Advanced Topics:
   - Contribution: Advanced Topics/contribution.md
   - Changelog: Advanced Topics/changelog.md

@@ -5,10 +5,13 @@ import requests
 from typing import Tuple, List, Dict, Union
 from urllib.parse import urljoin
 import lazyllm
-from ..base import OnlineChatModuleBase, OnlineEmbeddingModuleBase
+from ..base import (
+    OnlineChatModuleBase, LazyLLMOnlineEmbedModuleBase, LazyLLMOnlineRerankModuleBase
+)
 from ..fileHandler import FileHandlerBase
 
-class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
+
+class OpenAIChat(OnlineChatModuleBase, FileHandlerBase):
     TRAINABLE_MODEL_LIST = ['gpt-3.5-turbo-0125', 'gpt-3.5-turbo-1106',
                             'gpt-3.5-turbo-0613', 'babbage-002',
                             'davinci-002', 'gpt-4-0613']
@@ -16,9 +19,9 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://api.openai.com/v1/', model: str = 'gpt-3.5-turbo',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, skip_auth: bool = False, **kw):
-        OnlineChatModuleBase.__init__(self, model_series='OPENAI', api_key=api_key or lazyllm.config['openai_api_key'],
-                                      base_url=base_url, model_name=model, stream=stream, return_trace=return_trace,
-                                      skip_auth=skip_auth, **kw)
+        super().__init__(api_key=api_key or lazyllm.config['openai_api_key'],
+                         base_url=base_url, model_name=model, stream=stream, return_trace=return_trace,
+                         skip_auth=skip_auth, **kw)
         FileHandlerBase.__init__(self)
         self.default_train_data = {
             'model': 'gpt-3.5-turbo-0613',
@@ -192,29 +195,24 @@ class OpenAIModule(OnlineChatModuleBase, FileHandlerBase):
         return 'RUNNING'
 
 
-class OpenAIEmbedding(OnlineEmbeddingModuleBase):
+class OpenAIEmbed(LazyLLMOnlineEmbedModuleBase):
     NO_PROXY = True
 
-    def __init__(self,
-                 embed_url: str = 'https://api.openai.com/v1/',
-                 embed_model_name: str = 'text-embedding-ada-002',
+    def __init__(self, embed_url: str = 'https://api.openai.com/v1/', embed_model_name: str = 'text-embedding-ada-002',
                  api_key: str = None, batch_size: int = 16, **kw):
-        super().__init__('OPENAI', embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name,
-                         batch_size=batch_size, **kw)
+        super().__init__(embed_url, api_key or lazyllm.config['openai_api_key'],
+                         embed_model_name, batch_size=batch_size, **kw)
 
     def _set_embed_url(self):
         self._embed_url = urljoin(self._embed_url, 'embeddings')
 
 
-class OpenAIReranking(OnlineEmbeddingModuleBase):
+class OpenAIRerank(LazyLLMOnlineRerankModuleBase):
     NO_PROXY = True
 
-    def __init__(self,
-                 embed_url: str = 'https://api.openai.com/v1/',
-                 embed_model_name: str = '',
-                 api_key: str = None,
-                 **kw):
-        super().__init__('OPENAI', embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name, **kw)
+    def __init__(self, embed_url: str = 'https://api.openai.com/v1/', embed_model_name: str = 'rerank-multilingual-v3.0',
+                 api_key: str = None, **kw):
+        super().__init__(embed_url, api_key or lazyllm.config['openai_api_key'], embed_model_name, **kw)
 
     def _set_embed_url(self):
         self._embed_url = urljoin(self._embed_url, 'rerank')
