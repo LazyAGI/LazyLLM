@@ -83,8 +83,12 @@ def prepare_requirements_dict():
         name, version = split_package_version(dep, pattern)
         requirements[name] = version
 
-    # Optional dependencies are now checked individually by components when needed
-    # They are no longer automatically included in the base requirements.txt
+    optional_dependencies = toml_config['tool']['poetry']['dependencies']
+    for name, spec in optional_dependencies.items():
+        version = spec.get('version', '')
+        if version == '*':
+            version = ''
+        requirements[name] = version
 
 class PackageWrapper(object):
     def __init__(self, key, *sub_package, package=None, register_patches=None) -> None:
