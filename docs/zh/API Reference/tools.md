@@ -474,3 +474,11 @@
 ::: lazyllm.tools.rag.store.hybrid.sensecore_store.SenseCoreStore
     members:
     exclude-members:
+
+::: lazyllm.tools.review.tools.chinese_corrector.get_errors
+    members:
+    exclude-members:
+
+::: lazyllm.tools.review.tools.chinese_corrector.ChineseCorrector
+    members:
+    exclude-members:
