@@ -487,10 +487,6 @@
     members:
     exclude-members:
 
-::: lazyllm.tools.review.tools.chinese_corrector.get_errors
-    members:
-    exclude-members:
-
-::: lazyllm.tools.review.tools.chinese_corrector.ChineseCorrector
-    members:
+::: lazyllm.tools.review.tools.chinese_corrector
+    members: [get_errors, ChineseCorrector]
     exclude-members:
