@@ -216,6 +216,7 @@ standard = [
     "olefile",
     "openpyxl",
     "python-pptx",
+    "python-docx",
     "tenacity",
     "beautifulsoup4",
     "tiktoken",
