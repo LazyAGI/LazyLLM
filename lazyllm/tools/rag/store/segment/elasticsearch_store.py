@@ -289,33 +289,14 @@ class ElasticSearchStore(LazyLLMStoreBase):
             LOG.error(f'[ElasticSearchStore - search] Error searching {collection_name}: {e}')
             return []
 
-    def _flatten_dict_to_string(self, data: Dict, separator: str = '.', prefix: str = '') -> str:
-        # flatten the dictionary to a string toavoid the exception: Limit of mapping depth [20] has been exceeded
-        items = []
-        for key, value in data.items():
-            full_key = f'{prefix}{separator}{key}' if prefix else key
-
-            if isinstance(value, dict):
-                # recursive processing of nested dictionary
-                nested_str = self._flatten_dict_to_string(value, separator, full_key)
-                items.append(nested_str)
-            elif isinstance(value, list):
-                items.append(f'{full_key}: {json.dumps(value, ensure_ascii=False)}')
-            else:
-                items.append(f'{full_key}: {value}')
-
-        return ', '.join(items)
-
     def _serialize_node(self, segment: Dict) -> Dict:
         seg = dict(segment)
         seg.pop('embedding', None)
 
-        # Fix exception: Limit of mapping depth [20] has been exceeded
-        if isinstance(seg.get('meta'), dict):
-            seg['meta'] = {'info': self._flatten_dict_to_string(seg['meta'])}
-
+        # Note: Insertion will fail if a dictionary(meta) has an excessively deep nesting level or overly long keys.
         if self._global_metadata_desc and self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
             seg['global_meta'] = json.dumps(seg.get('global_meta', {}), ensure_ascii=False)
+            seg['meta'] = json.dumps(seg.get('meta', {}), ensure_ascii=False)
             seg['image_keys'] = json.dumps(seg.get('image_keys', []), ensure_ascii=False)
         return seg
 
