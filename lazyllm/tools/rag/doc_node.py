@@ -2,7 +2,7 @@ from typing import Optional, Dict, Any, Union, Callable, List
 from enum import Enum, auto
 from collections import defaultdict
 from lazyllm.thirdparty import PIL
-from lazyllm import config, reset_on_pickle, Mode
+from lazyllm import JsonFormatter, config, reset_on_pickle, Mode, LOG
 from lazyllm.components.utils.file_operate import _image_to_base64
 from .global_metadata import RAG_DOC_ID, RAG_DOC_PATH, RAG_KB_ID
 import uuid
@@ -10,6 +10,7 @@ import threading
 import time
 import hashlib
 import copy
+import json
 
 _pickle_blacklist = {'_store', '_node_groups'}
 
@@ -71,6 +72,14 @@ class DocNode:
     def content(self, value: Union[str, List[Any]]) -> None:
         self._content = value
         self._content_hash = None
+
+    @property
+    def number(self) -> int:
+        return self._metadata.get('lazyllm_store_num', 0)
+
+    @number.setter
+    def number(self, value: int) -> None:
+        self._metadata['lazyllm_store_num'] = value
 
     @property
     def text(self) -> str:
@@ -296,7 +305,8 @@ class QADocNode(DocNode):
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional['DocNode'] = None,
                  metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None,
                  *, text: Optional[str] = None):
-        super().__init__(uid, query, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
+        super().__init__(uid, query, group, embedding, parent, metadata=metadata,
+                         global_metadata=global_metadata, text=text)
         self._answer = answer.strip()
 
     @property
@@ -314,7 +324,8 @@ class ImageDocNode(DocNode):
                  embedding: Optional[Dict[str, List[float]]] = None, parent: Optional['DocNode'] = None,
                  metadata: Optional[Dict[str, Any]] = None, global_metadata: Optional[Dict[str, Any]] = None,
                  *, text: Optional[str] = None):
-        super().__init__(uid, None, group, embedding, parent, metadata, global_metadata=global_metadata, text=text)
+        super().__init__(uid, None, group, embedding, parent, metadata=metadata,
+                         global_metadata=global_metadata, text=text)
         self._image_path = image_path.strip()
         self._modality = 'image'
 
@@ -346,3 +357,81 @@ class ImageDocNode(DocNode):
     @property
     def text(self) -> str:  # Disable access to self._content
         return self._image_path
+
+class JsonDocNode(DocNode):
+    def __init__(self, uid: Optional[str] = None, content: Optional[Union[Dict[str, Any], List[Any]]] = None,
+                 group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
+                 parent: Optional['DocNode'] = None, metadata: Optional[Dict[str, Any]] = None,
+                 global_metadata: Optional[Dict[str, Any]] = None, *, formatter_str: Optional[str] = None):
+        super().__init__(uid, content, group, embedding, parent, metadata=metadata, global_metadata=global_metadata)
+        if formatter_str is not None:
+            self.metadata['formatter_str'] = formatter_str
+        else:
+            formatter_str = self.metadata.get('formatter_str', '')
+        self._formatter = JsonFormatter(formatter_str)
+
+    @property
+    def text(self) -> str:
+        try:
+            return json.dumps(self._content, ensure_ascii=False)
+        except Exception as e:
+            raise ValueError(f'Cannot convert content to JSON string: {e}')
+
+    @property
+    def json_object(self) -> Union[Dict[str, Any], List[Any]]:
+        return self._content
+
+    def get_content(self, metadata_mode=MetadataMode.EMBED) -> str:
+        if metadata_mode == MetadataMode.EMBED:
+            try:
+                return json.dumps(self._formatter(self._content), ensure_ascii=False)
+            except (TypeError, ValueError) as e:
+                LOG.warning(f'Cannot convert content to JSON string: {e}')
+        return self.text
+
+    def _serialize_content(self) -> str:
+        return self.text
+
+    @staticmethod
+    def _deserialize_content(content: str) -> Union[Dict[str, Any], List[Any]]:
+        return json.loads(content)
+
+class RichDocNode(DocNode):
+    def __init__(self, nodes: List[DocNode], uid: Optional[str] = None,
+                 group: Optional[str] = None, embedding: Optional[Dict[str, List[float]]] = None,
+                 parent: Optional['DocNode'] = None, metadata: Optional[Dict[str, Any]] = None,
+                 global_metadata: Optional[Dict[str, Any]] = None):
+        super().__init__(uid, [n.text for n in nodes], group, embedding, parent, metadata=metadata,
+                         global_metadata=global_metadata)
+        self._nodes: List[DocNode] = nodes
+
+    @property
+    def nodes(self) -> List[DocNode]:
+        return self._nodes
+
+    def _serialize_nodes(self) -> str:
+
+        def _serialize_node(node: DocNode) -> str:
+            formatted_node = {
+                'content': node.text,
+                'metadata': node.metadata,
+                'global_metadata': node.global_metadata,
+                'excluded_embed_metadata_keys': node.excluded_embed_metadata_keys,
+                'excluded_llm_metadata_keys': node.excluded_llm_metadata_keys,
+            }
+            return json.dumps(formatted_node, ensure_ascii=False)
+
+        return json.dumps([_serialize_node(n) for n in self.nodes])
+
+    @staticmethod
+    def _deserialize_nodes(nodes_content: str) -> List[DocNode]:
+
+        def _deserialize_node(content: str) -> DocNode:
+            formatted_node = json.loads(content)
+            node = DocNode(content=formatted_node['content'], metadata=formatted_node['metadata'],
+                           global_metadata=formatted_node['global_metadata'])
+            node.excluded_embed_metadata_keys = formatted_node['excluded_embed_metadata_keys']
+            node.excluded_llm_metadata_keys = formatted_node['excluded_llm_metadata_keys']
+            return node
+
+        return [_deserialize_node(content) for content in json.loads(nodes_content)]

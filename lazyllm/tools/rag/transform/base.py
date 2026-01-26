@@ -4,8 +4,9 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Any, List, Union, Optional, Tuple, AbstractSet, Collection, Literal, Callable
 from lazyllm import LOG
-from ..doc_node import DocNode
+from ..doc_node import DocNode, RichDocNode
 from lazyllm import ThreadPoolExecutor
+from itertools import chain
 import re
 from functools import partial
 import os
@@ -57,6 +58,8 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
 
 
 class NodeTransform(ABC):
+    __support_rich__ = False
+
     def __init__(self, num_workers: int = 0):
         self._number_workers = num_workers
         self._name = None
@@ -78,11 +81,13 @@ class NodeTransform(ABC):
             self._get_ref_nodes(node, ref_path, ref_nodes)
             with node._lock:
                 if node_group in node.children: return []
-                splits = self(node, ref=ref_nodes, **kwargs)
+                if isinstance(node, RichDocNode) and not self.__support_rich__:
+                    splits = list(chain.from_iterable(self(n, ref=ref_nodes, **kwargs) for n in node.nodes))
+                else:
+                    splits = self(node, ref=ref_nodes, **kwargs)
                 for s in splits:
                     s.parent = node
                     s._group = node_group
-                    s.ref = ref_nodes
                 node.children[node_group] = splits
                 return splits
 

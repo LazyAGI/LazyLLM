@@ -18,7 +18,7 @@ class DoubaoChat(OnlineChatModuleBase):
 
     def __init__(self, model: str = None, base_url: str = 'https://ark.cn-beijing.volces.com/api/v3/',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        super().__init__(model_series='DOUBAO', api_key=api_key or lazyllm.config['doubao_api_key'], base_url=base_url,
+        super().__init__(api_key=api_key or lazyllm.config['doubao_api_key'], base_url=base_url,
                          model_name=model or lazyllm.config['doubao_model_name'] or DoubaoChat.MODEL_NAME,
                          stream=stream, return_trace=return_trace, **kwargs)
 
@@ -48,7 +48,7 @@ class DoubaoEmbed(LazyLLMOnlineEmbedModuleBase):
                  api_key: str = None,
                  batch_size: int = 16,
                  **kw):
-        super().__init__('DOUBAO', embed_url, api_key or lazyllm.config['doubao_api_key'], embed_model_name,
+        super().__init__(embed_url, api_key or lazyllm.config['doubao_api_key'], embed_model_name,
                          batch_size=batch_size, **kw)
 
 
@@ -57,7 +57,7 @@ class DoubaoMultimodalEmbed(LazyLLMOnlineMultimodalEmbedModuleBase):
                  embed_url: str = 'https://ark.cn-beijing.volces.com/api/v3/embeddings/multimodal',
                  embed_model_name: str = 'doubao-embedding-vision-241215',
                  api_key: str = None):
-        super().__init__('DOUBAO', embed_url, api_key or lazyllm.config['doubao_api_key'], embed_model_name)
+        super().__init__(embed_url, api_key or lazyllm.config['doubao_api_key'], embed_model_name)
 
     def _encapsulated_data(self, input: Union[List, str], **kwargs) -> Dict[str, str]:
         if isinstance(input, str):
@@ -97,7 +97,7 @@ class DoubaoText2Image(LazyLLMOnlineText2ImageModuleBase, DoubaoMultiModal):
 
     def __init__(self, api_key: str = None, model: str = None, url='https://ark.cn-beijing.volces.com/api/v3',
                  return_trace: bool = False, **kwargs):
-        super().__init__(model_series='DOUBAO', model=model, api_key=api_key,
+        super().__init__(model=model, api_key=api_key,
                          return_trace=return_trace, url=url, **kwargs)
         DoubaoMultiModal.__init__(self, api_key=api_key, url=url)
 

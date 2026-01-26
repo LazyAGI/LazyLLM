@@ -1,7 +1,6 @@
 import json
 import urllib3
 import threading
-import importlib.util
 import copy
 
 from typing import Dict, Union, List, Optional
@@ -164,7 +163,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                 response = self._client.bulk(index=collection_name, body=bulk_data, refresh='wait_for')
                 if response.get('errors'):
                     raise ValueError(
-                        f'Error upserting data to Elasticsearch: {response.get("errors")}'
+                        f'Error upserting data to Elasticsearch: {response}'
                     )
             return True
 
@@ -227,9 +226,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
                             results.append(seg)
 
             else:
-                spec = importlib.util.find_spec('elasticsearch.helpers')
-                helpers = importlib.util.module_from_spec(spec)
-                spec.loader.exec_module(helpers)
+                helpers = elasticsearch.helpers
                 query = self._construct_criteria(criteria)
                 for hit in helpers.scan(
                     client=self._client,
@@ -295,6 +292,8 @@ class ElasticSearchStore(LazyLLMStoreBase):
     def _serialize_node(self, segment: Dict) -> Dict:
         seg = dict(segment)
         seg.pop('embedding', None)
+
+        # Note: Insertion will fail if a dictionary(meta) has an excessively deep nesting level or overly long keys.
         if self._global_metadata_desc and self._global_metadata_desc == BUILDIN_GLOBAL_META_DESC:
             seg['global_meta'] = json.dumps(seg.get('global_meta', {}), ensure_ascii=False)
             seg['meta'] = json.dumps(seg.get('meta', {}), ensure_ascii=False)
@@ -309,7 +308,7 @@ class ElasticSearchStore(LazyLLMStoreBase):
             seg['image_keys'] = json.loads(seg.get('image_keys', '[]'))
         return seg
 
-    def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:
+    def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:  # noqa: C901
         criteria = dict(criteria) if criteria else {}
         if not criteria:
             return {}
@@ -332,6 +331,8 @@ class ElasticSearchStore(LazyLLMStoreBase):
             _add_clause('kb_id', criteria.pop(RAG_KB_ID))
         if 'parent' in criteria:
             must_clauses.append({'term': {'parent': criteria.pop('parent')}})
+        if 'number' in criteria:
+            must_clauses.append({'term': {'number': criteria.pop('number')}})
 
         for k, v in criteria.items():
             field_key = k

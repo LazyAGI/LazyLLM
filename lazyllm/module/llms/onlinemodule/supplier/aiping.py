@@ -21,10 +21,8 @@ class AipingChat(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://aiping.cn/api/v1/', model: str = 'DeepSeek-R1',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        super().__init__(model_series='AIPING',
-                                      api_key=api_key or lazyllm.config['aiping_api_key'],
-                                      base_url=base_url, model_name=model, stream=stream,
-                                      return_trace=return_trace, **kwargs)
+        super().__init__(api_key=api_key or lazyllm.config['aiping_api_key'], base_url=base_url, model_name=model,
+                         stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         if stream:
             self._model_optional_params['stream'] = True
@@ -49,14 +47,14 @@ class AipingEmbed(LazyLLMOnlineEmbedModuleBase):
     def __init__(self, embed_url: str = 'https://aiping.cn/api/v1/embeddings',
                  embed_model_name: str = 'text-embedding-v1', api_key: str = None,
                  batch_size: int = 16, **kw):
-        super().__init__('AIPING', embed_url, api_key or lazyllm.config['aiping_api_key'],
+        super().__init__(embed_url, api_key or lazyllm.config['aiping_api_key'],
                          embed_model_name, batch_size=batch_size, **kw)
 
 
 class AipingRerank(LazyLLMOnlineRerankModuleBase):
     def __init__(self, embed_url: str = 'https://aiping.cn/api/v1/rerank',
                  embed_model_name: str = 'Qwen3-Reranker-0.6B', api_key: str = None, **kw):
-        super().__init__('AIPING', embed_url, api_key or lazyllm.config['aiping_api_key'],
+        super().__init__(embed_url, api_key or lazyllm.config['aiping_api_key'],
                          embed_model_name, **kw)
 
     @property
@@ -86,10 +84,8 @@ class AipingText2Image(LazyLLMOnlineText2ImageModuleBase):
     def __init__(self, api_key: str = None, model_name: str = 'Qwen-Image',
                  base_url: str = 'https://aiping.cn/api/v1/',
                  return_trace: bool = False, **kwargs):
-        LazyLLMOnlineText2ImageModuleBase.__init__(self, model_series='AIPING',
-                                                   model_name=model_name,
-                                                   api_key=api_key or lazyllm.config['aiping_api_key'],
-                                                   return_trace=return_trace, **kwargs)
+        super().__init__(model_name=model_name, api_key=api_key or lazyllm.config['aiping_api_key'],
+                         return_trace=return_trace, **kwargs)
         self._endpoint = 'images/generations'
         self._base_url = base_url
 
