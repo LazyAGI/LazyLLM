@@ -371,8 +371,7 @@ class MapStore(LazyLLMStoreBase):
                 item['type'], item['number'], kb_id,
                 json.dumps(item.get('excluded_embed_metadata_keys', [])),
                 json.dumps(item.get('excluded_llm_metadata_keys', [])),
-                item.get('parent'),
-                item.get('answer', ''), json.dumps(item.get('image_keys', [])))
+                item.get('parent'), item.get('answer', ''), json.dumps(item.get('image_keys', [])))
 
     def _deserialize_data(self, row: tuple) -> dict:
         (uid, doc_id, group, content, meta_str, global_meta_str, type_, number, kb_id,
@@ -381,8 +380,7 @@ class MapStore(LazyLLMStoreBase):
             'uid': uid, 'doc_id': doc_id, 'group': group, 'content': content,
             'meta': json.loads(meta_str) if meta_str else {},
             'global_meta': json.loads(global_meta_str) if global_meta_str else {},
-            'type': type_, 'number': number, 'kb_id': kb_id, 'parent': parent,
-            'answer': answer,
+            'type': type_, 'number': number, 'kb_id': kb_id, 'parent': parent, 'answer': answer,
             'excluded_embed_metadata_keys': json.loads(excl_emb_str) if excl_emb_str else [],
             'excluded_llm_metadata_keys': json.loads(excl_llm_str) if excl_llm_str else [],
             'image_keys': json.loads(image_keys_str) if image_keys_str else []

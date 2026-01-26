@@ -64,12 +64,15 @@ class NodeTransform(ABC):
         self._number_workers = num_workers
         self._name = None
 
-    def _get_ref_nodes(self, node: DocNode, ref_path: List[str], result: List) -> List[DocNode]:
-        if len(ref_path) == 1:
-            result.extend(node.children[ref_path[0]])
-        elif len(ref_path) > 1:
-            for child_node in node.children[ref_path[0]]:
-                self._get_ref_nodes(child_node, ref_path[1:], result)
+    def _get_ref_nodes(self, node, ref_path):
+        current = [node]
+        for key in ref_path:
+            current = list(
+                chain.from_iterable(
+                    n.children.get(key, []) for n in current
+                )
+            )
+        return current
 
     def batch_forward(
         self, documents: Union[DocNode, List[DocNode]], node_group: str, ref_path: List[str] = None, **kwargs
@@ -77,8 +80,7 @@ class NodeTransform(ABC):
         documents: List[DocNode] = documents if isinstance(documents, (tuple, list)) else [documents]
 
         def impl(node: DocNode):
-            ref_nodes = []
-            self._get_ref_nodes(node, ref_path, ref_nodes)
+            ref_nodes = self._get_ref_nodes(node, ref_path) if ref_path else []
             with node._lock:
                 if node_group in node.children: return []
                 if isinstance(node, RichDocNode) and not self.__support_rich__:

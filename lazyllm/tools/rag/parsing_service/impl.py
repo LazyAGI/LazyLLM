@@ -1,6 +1,6 @@
 import time
 import traceback
-from typing import Any, Dict, List, Optional, Set
+from typing import Any, Dict, List, Optional
 from graphlib import CycleError, TopologicalSorter
 from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
@@ -20,8 +20,8 @@ from ..utils import gen_docid
 from ..doc_to_db import SchemaExtractor
 
 
-class NodeGroupDependencyGraph:
-    def __init__(self, node_groups: Dict[str, Dict], active: Set[str]):
+class _NodeGroupDependencyGraph:
+    def __init__(self, node_groups: Dict[str, Dict], active: List[str]):
         self._active = active
         self._forward_graph = defaultdict(set)
         self._dep_graph = {node: set() for node in active}
@@ -73,8 +73,7 @@ class _Processor:
         self._description = description
         self._max_workers = max_workers
         self._thread_pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=f'{self._algo_id}_processor')
-        self._dependency_graph: Optional[NodeGroupDependencyGraph] = None
-        self._cached_active_groups: Optional[Set[str]] = None
+        self._dependency_graph: Optional[_NodeGroupDependencyGraph] = None
 
     @property
     def store(self) -> _DocumentStore:
@@ -145,11 +144,9 @@ class _Processor:
             doc_group_number[doc_id][group_name] += 1
         return nodes
 
-    def _get_dependency_graph(self) -> NodeGroupDependencyGraph:
-        active = set(self._store.activated_groups())
-        if self._dependency_graph is None or self._cached_active_groups != active:
-            self._dependency_graph = NodeGroupDependencyGraph(self._node_groups, active)
-            self._cached_active_groups = active
+    def _get_dependency_graph(self) -> _NodeGroupDependencyGraph:
+        if self._dependency_graph is None:
+            self._dependency_graph = _NodeGroupDependencyGraph(self._node_groups, self._store.activated_groups())
         return self._dependency_graph
 
     def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
