@@ -64,9 +64,12 @@ class HybridStore(LazyLLMStoreBase):
             uid2score = {item['uid']: item['score'] for item in res}
             uids = list(uid2score.keys())
             segments = self.segment_store.get(collection_name=collection_name, criteria={'uid': uids})
+            uid2segment = {}
             for segment in segments:
                 segment['score'] = uid2score.get(segment['uid'], 0)
-            return segments
+                uid2segment[segment.get('uid')] = segment
+            ordered = [uid2segment[uid] for uid in uids if uid in uid2segment]
+            return ordered
         else:
             res = self.segment_store.search(collection_name=collection_name, query=query,
                                             topk=topk, filters=filters, **kwargs)
