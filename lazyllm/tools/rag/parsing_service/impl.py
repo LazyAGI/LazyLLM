@@ -25,7 +25,7 @@ class NodeGroupDependencyGraph:
         self._active = active
         self._forward_graph = defaultdict(set)
         self._dep_graph = {node: set() for node in active}
-        
+
         for group in active:
             cfg = node_groups.get(group)
             if not cfg:
@@ -34,7 +34,7 @@ class NodeGroupDependencyGraph:
 
             if parent := cfg['parent']:
                 self._forward_graph[parent].add(group)
-                self._dep_graph[group].add(parent) 
+                self._dep_graph[group].add(parent)
             if ref := cfg.get('ref'):
                 self._dep_graph[group].add(ref)
 
@@ -44,7 +44,7 @@ class NodeGroupDependencyGraph:
             topo_order = list(TopologicalSorter(self._dep_graph).static_order())
             return list(topo_order)
         except CycleError as e:
-            raise ValueError(f"Detected node group cycle dependency: {e}")
+            raise ValueError(f'Detected node group cycle dependency: {e}')
 
     def get_shortest_path(self, start: str, end: str) -> Optional[List[str]]:
         queue = deque([(start, [])])
