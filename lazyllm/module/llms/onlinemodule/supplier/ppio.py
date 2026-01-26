@@ -45,12 +45,10 @@ class PPIOChat(OnlineChatModuleBase):
         base = (url or '').rstrip('/')
         if base.endswith('/chat/completions'):
             return url
-        if base.endswith('/openai'):
-            base = f'{base}/'
-        elif base.endswith('/v1'):
-            base = f'{base}/'
-        else:
+        if not base.endswith(('/openai', '/v1')):
             base = f'{base}/openai/'
+        else:
+            base = f'{base}/'
         return urljoin(base, 'chat/completions')
 
     # PPIO does not support deployment, return model name and running status.

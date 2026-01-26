@@ -46,6 +46,7 @@ class SqlEgsData:
             },
         ]
     }
+
     TEST_INSERT_SCRIPTS = [
         f"INSERT INTO {TEST_TABLES[0]} VALUES (1, '张三', '销售一部');",
         f"INSERT INTO {TEST_TABLES[0]} VALUES (2, '李四', '销售二部');",
@@ -150,3 +151,6 @@ def get_db_init_keywords(db_type: str):
     port = match.group("port")
     database = match.group("database")
     return username, password, host, port, database
+
+def get_path(supplier):
+    return f'lazyllm/module/llms/onlinemodule/supplier/{supplier}.py'

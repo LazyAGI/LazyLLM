@@ -5,10 +5,10 @@ import pytest
 import lazyllm
 from lazyllm.components.formatter import decode_query_with_filepaths
 
+from tests.utils import get_path
+
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'
-QWEN_PATH = 'lazyllm/module/llms/onlinemodule/supplier/qwen.py'
-SILICONFLOW_PATH = 'lazyllm/module/llms/onlinemodule/supplier/siliconflow.py'
 
 pytestmark = pytest.mark.model_connectivity_test
 
@@ -16,13 +16,13 @@ IMAGES_FUSION_CASES = [
     pytest.param(
         'qwen',
         {'model': 'qwen-image-edit-plus'},
-        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, QWEN_PATH),
+        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen')),
         id='qwen',
     ),
     pytest.param(
         'siliconflow',
         {'model': 'Qwen/Qwen-Image-Edit-2509'},
-        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, SILICONFLOW_PATH),
+        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow')),
         id='siliconflow',
     ),
 ]

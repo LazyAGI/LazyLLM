@@ -19,8 +19,6 @@ def exe_onlinechat_chat(request):
     query = params.get('query', '')
     if not query:
         raise ValueError(f'query: {query} cannot be empty.')
-    if source != DEFAULT_SOURCE:
-        raise ValueError(f'The source {source} field must be {DEFAULT_SOURCE}')
     if model:
         llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream)
     else:
@@ -34,8 +32,6 @@ def exe_onlinechat_chat(request):
 def exe_onlinechat_single_function_call(source, model, tools, query):
     if not query or not tools:
         raise ValueError(f'query: {query} and tools cannot be empty.')
-    if source != DEFAULT_SOURCE:
-        raise ValueError(f'The source {source} field must be {DEFAULT_SOURCE}')
     if model:
         llm = lazyllm.OnlineChatModule(source=source, model=model)
     else:
@@ -57,8 +53,6 @@ def exe_onlinechat_parallel_function_call(request):
     query = params.get('query', '')
     if not query or not tools:
         raise ValueError(f'query: {query} and tools: {tools} cannot be empty.')
-    if source != DEFAULT_SOURCE:
-        raise ValueError(f'The source {source} field must be {DEFAULT_SOURCE}')
     if model:
         llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream)
     else:
@@ -83,8 +77,6 @@ def exe_onlinechat_advance_agent(request):
         raise ValueError(f'query: {query} and tools: {tools} cannot be empty.')
     if Agent is None:
         raise ValueError(f'Agent: {Agent} must be a valid value.')
-    if source != DEFAULT_SOURCE:
-        raise ValueError(f'The source {source} field must be {DEFAULT_SOURCE}')
     if model:
         llm = lazyllm.OnlineChatModule(source=source, model=model, stream=stream)
     else:

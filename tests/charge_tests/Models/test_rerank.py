@@ -2,23 +2,20 @@ import pytest
 
 import lazyllm
 
+from tests.utils import get_path
+
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineEmbeddingModuleBase.py'
-SILICONFLOW_PATH = 'lazyllm/module/llms/onlinemodule/supplier/siliconflow.py'
-AIPING_PATH = 'lazyllm/module/llms/onlinemodule/supplier/aiping.py'
-QWEN_PATH = 'lazyllm/module/llms/onlinemodule/supplier/qwen.py'
-GLM_PATH = 'lazyllm/module/llms/onlinemodule/supplier/glm.py'
-OPENAI_PATH = 'lazyllm/module/llms/onlinemodule/supplier/openai.py'
 
 pytestmark = pytest.mark.model_connectivity_test
 
 RERANK_CASES = [
     pytest.param('siliconflow', {}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, SILICONFLOW_PATH), id='siliconflow'),
-    pytest.param('aiping', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, AIPING_PATH), id='aiping'),
-    pytest.param('qwen', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, QWEN_PATH), id='qwen'),
-    pytest.param('glm', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, GLM_PATH), id='glm'),
-    pytest.param('openai', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, OPENAI_PATH), id='openai'),
+        BASE_PATH, get_path('siliconflow')), id='siliconflow'),
+    pytest.param('aiping', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('aiping')), id='aiping'),
+    pytest.param('qwen', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen')), id='qwen'),
+    pytest.param('glm', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('glm')), id='glm'),
+    pytest.param('openai', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('openai')), id='openai'),
 ]
 
 

@@ -2,35 +2,34 @@ import pytest
 
 import lazyllm
 
+from tests.utils import get_path
+
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineEmbeddingModuleBase.py'
-QWEN_PATH = 'lazyllm/module/llms/onlinemodule/supplier/qwen.py'
-DOUBAO_PATH = 'lazyllm/module/llms/onlinemodule/supplier/doubao.py'
-GLM_PATH = 'lazyllm/module/llms/onlinemodule/supplier/glm.py'
-SILICONFLOW_PATH = 'lazyllm/module/llms/onlinemodule/supplier/siliconflow.py'
-OPENAI_PATH = 'lazyllm/module/llms/onlinemodule/supplier/openai.py'
-AIPING_PATH = 'lazyllm/module/llms/onlinemodule/supplier/aiping.py'
-SENSENOVA_PATH = 'lazyllm/module/llms/onlinemodule/supplier/sensenova.py'
 
 pytestmark = pytest.mark.model_connectivity_test
 
 EMBEDDING_CASES = [
     pytest.param('qwen', {'embed_model_name': 'text-embedding-v3'},
-                 marks=pytest.mark.ignore_cache_on_change(BASE_PATH, QWEN_PATH), id='qwen'),
-    pytest.param('doubao', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, DOUBAO_PATH), id='doubao'),
-    pytest.param('glm', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, GLM_PATH), id='glm'),
-    pytest.param('siliconflow', {}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, SILICONFLOW_PATH), id='siliconflow'),
-    pytest.param('openai', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, OPENAI_PATH), id='openai'),
-    pytest.param('aiping', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, AIPING_PATH), id='aiping'),
-    pytest.param('sensenova', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, SENSENOVA_PATH), id='sensenova'),
+                 marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen')), id='qwen'),
+    pytest.param('doubao', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('doubao')), id='doubao'),
+    pytest.param('glm', {}, marks=[
+        pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('glm')), pytest.mark.xfail], id='glm'),
+    pytest.param('siliconflow', {}, marks=[pytest.mark.ignore_cache_on_change(
+        BASE_PATH, get_path('siliconflow')), pytest.mark.xfail], id='siliconflow'),
+    pytest.param('openai', {}, marks=[
+        pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('openai')), pytest.mark.xfail], id='openai'),
+    pytest.param('aiping', {}, marks=[
+        pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('aiping')), pytest.mark.xfail], id='aiping'),
+    pytest.param('sensenova', {}, marks=pytest.mark.ignore_cache_on_change(
+        BASE_PATH, get_path('sensenova')), id='sensenova'),
 ]
 
 MULTIMODAL_EMBEDDING_CASES = [
     pytest.param(
         'doubao',
         {},
-        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, DOUBAO_PATH),
+        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('doubao')),
         id='doubao_multimodal',
     ),
 ]

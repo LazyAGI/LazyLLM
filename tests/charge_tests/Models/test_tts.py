@@ -6,21 +6,21 @@ import lazyllm
 from lazyllm import config
 from lazyllm.components.formatter import decode_query_with_filepaths
 
+from tests.utils import get_path
+
+
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'
-QWEN_PATH = 'lazyllm/module/llms/onlinemodule/supplier/qwen.py'
-MINIMAX_PATH = 'lazyllm/module/llms/onlinemodule/supplier/minimax.py'
-SILICONFLOW_PATH = 'lazyllm/module/llms/onlinemodule/supplier/siliconflow.py'
 
 pytestmark = pytest.mark.model_connectivity_test
 
 TTS_CASES = [
     pytest.param('qwen', {'model': 'qwen-tts'}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, QWEN_PATH), id='qwen'),
-    pytest.param('minimax', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, MINIMAX_PATH), id='minimax'),
+        BASE_PATH, get_path('qwen')), id='qwen'),
+    pytest.param('minimax', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('minimax')), id='minimax'),
     pytest.param(
         'siliconflow',
         {'call_kwargs': {'voice': 'fnlp/MOSS-TTSD-v0.5:anna'}},
-        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, SILICONFLOW_PATH),
+        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow')),
         id='siliconflow',
     ),
 ]
@@ -54,7 +54,7 @@ class TestTTS:
     def test_tts(self, source, init_kwargs):
         self.common_tts(source=source, **init_kwargs)
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, QWEN_PATH)
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen'))
     def test_qwen_tts_cosyvoice_multi_user_raises(self):
         if config['cache_online_module']:
             return

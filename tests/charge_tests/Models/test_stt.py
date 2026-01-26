@@ -4,16 +4,16 @@ import pytest
 
 import lazyllm
 
+from tests.utils import get_path
+
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'
-GLM_PATH = 'lazyllm/module/llms/onlinemodule/supplier/glm.py'
-QWEN_PATH = 'lazyllm/module/llms/onlinemodule/supplier/qwen.py'
 
 pytestmark = pytest.mark.model_connectivity_test
 
 STT_CASES = [
-    pytest.param('glm', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, GLM_PATH), id='glm'),
-    pytest.param('qwen', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, QWEN_PATH), id='qwen'),
+    pytest.param('glm', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('glm')), id='glm'),
+    pytest.param('qwen', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen')), id='qwen'),
 ]
 
 

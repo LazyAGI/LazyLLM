@@ -5,28 +5,26 @@ import pytest
 import lazyllm
 from lazyllm.components.formatter import decode_query_with_filepaths
 
+from tests.utils import get_path
+
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'
-QWEN_PATH = 'lazyllm/module/llms/onlinemodule/supplier/qwen.py'
-DOUBAO_PATH = 'lazyllm/module/llms/onlinemodule/supplier/doubao.py'
-GLM_PATH = 'lazyllm/module/llms/onlinemodule/supplier/glm.py'
-SILICONFLOW_PATH = 'lazyllm/module/llms/onlinemodule/supplier/siliconflow.py'
-MINIMAX_PATH = 'lazyllm/module/llms/onlinemodule/supplier/minimax.py'
-AIPING_PATH = 'lazyllm/module/llms/onlinemodule/supplier/aiping.py'
 
 pytestmark = pytest.mark.model_connectivity_test
 
 TEXT2IMAGE_CASES = [
-    pytest.param('qwen', {'type': 'sd'}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, QWEN_PATH), id='qwen'),
+    pytest.param('qwen', {'type': 'sd'}, marks=pytest.mark.ignore_cache_on_change(
+        BASE_PATH, get_path('qwen')), id='qwen'),
     pytest.param('doubao', {'type': 'text2image'}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, DOUBAO_PATH), id='doubao'),
+        BASE_PATH, get_path('doubao')), id='doubao'),
     pytest.param('siliconflow', {'type': 'text2image', 'model': 'Qwen/Qwen-Image'},
-                 marks=pytest.mark.ignore_cache_on_change(BASE_PATH, SILICONFLOW_PATH), id='siliconflow'),
-    pytest.param('glm', {'type': 'text2image'}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, GLM_PATH), id='glm'),
+                 marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow')), id='siliconflow'),
+    pytest.param('glm', {'type': 'text2image'}, marks=pytest.mark.ignore_cache_on_change(
+        BASE_PATH, get_path('glm')), id='glm'),
     pytest.param('minimax', {'function': 'text2image'}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, MINIMAX_PATH), id='minimax'),
+        BASE_PATH, get_path('minimax')), id='minimax'),
     pytest.param('aiping', {'type': 'text2image'}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, AIPING_PATH), id='aiping'),
+        BASE_PATH, get_path('aiping')), id='aiping'),
 ]
 
 
