@@ -58,7 +58,6 @@ class Segment(BaseModel):
     excluded_embed_metadata_keys: Optional[List[str]] = Field(default_factory=list)
     excluded_llm_metadata_keys: Optional[List[str]] = Field(default_factory=list)
     parent: Optional[str] = None    # uid of parent node
-    ref: Optional[List[str]] = Field(default_factory=list)   # uid of ref nodes
     answer: Optional[str] = ''
     image_keys: Optional[List[str]] = Field(default_factory=list)
 

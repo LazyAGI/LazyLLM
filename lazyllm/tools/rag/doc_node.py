@@ -45,7 +45,6 @@ class DocNode:
         self._excluded_llm_metadata_keys: List[str] = []
         # NOTE: node in parent should be id when stored in db (use store to recover): parent: 'uid'
         self._parent: Optional[Union[str, 'DocNode']] = parent
-        self._ref: List[Union[str, 'DocNode']] = []
         self._children: Dict[str, List['DocNode']] = defaultdict(list)
         self._children_loaded = False
         self._store = store
@@ -121,23 +120,6 @@ class DocNode:
     @parent.setter
     def parent(self, v: Optional['DocNode']):
         self._parent = v
-
-    @property
-    def ref(self) -> List['DocNode']:
-        def load_ref(ref: Union[str, 'DocNode']):
-            if isinstance(ref, str) and self._node_groups:
-                ref_group = self._node_groups[self._group]['ref']
-                loaded = self._load_from_store(ref_group, ref)
-                return loaded[0] if loaded else None
-            elif isinstance(ref, DocNode):
-                return ref
-        self._ref = [load_ref(ref) for ref in self._ref]
-        return self._ref
-
-    @ref.setter
-    def ref(self, v: List[Union[str, 'DocNode']]):
-        assert isinstance(v, list), 'ref must be a list of uids or DocNodes'
-        self._ref = v
 
     @property
     def children(self) -> Dict[str, List['DocNode']]:

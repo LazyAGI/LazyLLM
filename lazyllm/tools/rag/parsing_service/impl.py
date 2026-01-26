@@ -1,9 +1,10 @@
 import time
 import traceback
-from typing import Any, Dict, List, Optional
-from graphlib import TopologicalSorter
-from collections import defaultdict
+from typing import Any, Dict, List, Optional, Set
+from graphlib import CycleError, TopologicalSorter
+from collections import defaultdict, deque
 from concurrent.futures import ThreadPoolExecutor
+from functools import cached_property
 
 from lazyllm import LOG
 
@@ -19,6 +20,46 @@ from ..utils import gen_docid
 from ..doc_to_db import SchemaExtractor
 
 
+class NodeGroupDependencyGraph:
+    def __init__(self, node_groups: Dict[str, Dict], active: Set[str]):
+        self._active = active
+        self._forward_graph = defaultdict(set)
+        self._dep_graph = {node: set() for node in active}
+        
+        for group in active:
+            cfg = node_groups.get(group)
+            if not cfg:
+                raise ValueError(f'Node group "{group}" does not exist. Please check the group name '
+                                 'or add a new one through `create_node_group`.')
+
+            if parent := cfg['parent']:
+                self._forward_graph[parent].add(group)
+                self._dep_graph[group].add(parent) 
+            if ref := cfg.get('ref'):
+                self._dep_graph[group].add(ref)
+
+    @cached_property
+    def topological_order(self) -> List[str]:
+        try:
+            topo_order = list(TopologicalSorter(self._dep_graph).static_order())
+            return list(topo_order)
+        except CycleError as e:
+            raise ValueError(f"Detected node group cycle dependency: {e}")
+
+    def get_shortest_path(self, start: str, end: str) -> Optional[List[str]]:
+        queue = deque([(start, [])])
+        visited = {start}
+
+        while queue:
+            current, path = queue.popleft()
+            for neighbor in self._forward_graph.get(current, []):
+                if neighbor == end:
+                    return path + [end]
+                if neighbor not in visited:
+                    visited.add(neighbor)
+                    queue.append((neighbor, path + [neighbor]))
+        return []
+
 class _Processor:
     def __init__(self, algo_id: str, store: _DocumentStore, reader: DirectoryReader, node_groups: Dict[str, Dict],
                  schema_extractor: Optional[SchemaExtractor] = None, display_name: Optional[str] = None,
@@ -32,6 +73,8 @@ class _Processor:
         self._description = description
         self._max_workers = max_workers
         self._thread_pool = ThreadPoolExecutor(max_workers=max_workers, thread_name_prefix=f'{self._algo_id}_processor')
+        self._dependency_graph: Optional[NodeGroupDependencyGraph] = None
+        self._cached_active_groups: Optional[Set[str]] = None
 
     @property
     def store(self) -> _DocumentStore:
@@ -102,34 +145,29 @@ class _Processor:
             doc_group_number[doc_id][group_name] += 1
         return nodes
 
-    def _get_sorted_groups(self) -> List[str]:
+    def _get_dependency_graph(self) -> NodeGroupDependencyGraph:
         active = set(self._store.activated_groups())
-        if not active:
-            return []
-
-        def deps(g):
-            cfg = self._node_groups.get(g)
-            if cfg is None:
-                raise ValueError(f'Node group "{g}" does not exist. Please check the group name '
-                                 'or add a new one through `create_node_group`.')
-            return {d for d in (cfg.get('parent'), cfg.get('ref')) if d in active}
-
-        return list(TopologicalSorter({g: deps(g) for g in active}).static_order())
+        if self._dependency_graph is None or self._cached_active_groups != active:
+            self._dependency_graph = NodeGroupDependencyGraph(self._node_groups, active)
+            self._cached_active_groups = active
+        return self._dependency_graph
 
     def _create_nodes_recursive(self, p_nodes: List[DocNode], p_name: str):
-        for group_name in self._get_sorted_groups():
+        graph = self._get_dependency_graph()
+        for group_name in graph.topological_order:
             group = self._node_groups.get(group_name)
 
             if group['parent'] == p_name:
-                nodes = self._create_nodes_impl(p_nodes, group_name, ref=group['ref'])
+                ref_path = graph.get_shortest_path(group['parent'], group.get('ref')) if group.get('ref') else []
+                nodes = self._create_nodes_impl(p_nodes, group_name, ref_path=ref_path)
                 if nodes: self._create_nodes_recursive(nodes, group_name)
 
-    def _create_nodes_impl(self, p_nodes, group_name, ref=None):
+    def _create_nodes_impl(self, p_nodes, group_name, ref_path=None):
         # NOTE transform.batch_forward will set children for p_nodes, but when calling
         # transform.batch_forward, p_nodes has been upsert in the store.
         t = self._node_groups[group_name]['transform']
         transform = AdaptiveTransform(t) if isinstance(t, list) or t.pattern else make_transform(t, group_name)
-        nodes = transform.batch_forward(p_nodes, group_name, ref=ref)
+        nodes = transform.batch_forward(p_nodes, group_name, ref_path=ref_path)
         self._store.update_nodes(self._set_nodes_number(nodes))
         return nodes
 

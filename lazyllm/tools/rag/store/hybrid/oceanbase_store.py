@@ -627,7 +627,6 @@ class OceanBaseStore(LazyLLMStoreBase):
             'number': d.get('number', 0),
             'kb_id': d.get('kb_id', ''),
             'parent': d.get('parent', ''),
-            'ref': json.dumps(d.get('ref', []), ensure_ascii=False),
             'answer': d.get('answer', ''),
             'image_keys': image_keys_str,
             'excluded_embed_metadata_keys': excluded_embed_str,
@@ -662,7 +661,6 @@ class OceanBaseStore(LazyLLMStoreBase):
             'number': d.get('number', 0),
             'kb_id': d.get('kb_id', ''),
             'parent': d.get('parent', ''),
-            'ref': json.loads(d.get('ref', '[]')) if isinstance(d.get('ref'), str) else (d.get('ref') or []),
             'answer': d.get('answer', ''),
             'image_keys': (
                 json.loads(d.get('image_keys', '[]')) if isinstance(d.get('image_keys'), str)
@@ -766,7 +764,6 @@ class OceanBaseStore(LazyLLMStoreBase):
             'number': {'dtype': sqlalchemy.Integer},
             'kb_id': {'dtype': sqlalchemy.String(512)},
             'parent': {'dtype': sqlalchemy.String(512)},
-            'ref': {'dtype': sqlalchemy.dialects.mysql.LONGTEXT},
             'answer': {'dtype': sqlalchemy.dialects.mysql.LONGTEXT},
             'image_keys': {'dtype': sqlalchemy.dialects.mysql.LONGTEXT},
             'excluded_embed_metadata_keys': {'dtype': sqlalchemy.dialects.mysql.LONGTEXT},

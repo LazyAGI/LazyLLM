@@ -388,7 +388,6 @@ class _DocumentStore(object):
         )
         if node.parent:
             segment.parent = node.parent._uid if isinstance(node.parent, DocNode) else node.parent
-        segment.ref = [ref._uid if isinstance(ref, DocNode) else ref for ref in node.ref]
         if isinstance(node, QADocNode):
             segment.type = SegmentType.QA.value
             segment.answer = node.answer
@@ -418,7 +417,6 @@ class _DocumentStore(object):
             node = ImageDocNode(**common_parm, image_path=data.get('image_keys')[0])
         else:
             node = DocNode(**common_parm, content=data.get('content', ''))
-        node.ref = data.get('ref', [])
         node.excluded_embed_metadata_keys = data.get('excluded_embed_metadata_keys', [])
         node.excluded_llm_metadata_keys = data.get('excluded_llm_metadata_keys', [])
         if 'embedding' in data:

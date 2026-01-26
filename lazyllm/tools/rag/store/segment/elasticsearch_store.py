@@ -62,7 +62,6 @@ DEFAULT_MAPPING_BODY = {
             'excluded_embed_metadata_keys': {'type': 'keyword', 'store': True},
             'excluded_llm_metadata_keys': {'type': 'keyword', 'store': True},
             'parent': {'type': 'keyword', 'store': True},
-            'ref': {'type': 'keyword', 'store': True},
             'image_keys': {'type': 'keyword', 'store': True},
         },
     },
@@ -300,7 +299,6 @@ class ElasticSearchStore(LazyLLMStoreBase):
             seg['global_meta'] = json.dumps(seg.get('global_meta', {}), ensure_ascii=False)
             seg['meta'] = json.dumps(seg.get('meta', {}), ensure_ascii=False)
             seg['image_keys'] = json.dumps(seg.get('image_keys', []), ensure_ascii=False)
-            seg['ref'] = json.dumps(seg.get('ref', []), ensure_ascii=False)
         return seg
 
     def _deserialize_node(self, segment: Dict) -> Dict:
@@ -309,7 +307,6 @@ class ElasticSearchStore(LazyLLMStoreBase):
             seg['meta'] = json.loads(seg.get('meta', '{}'))
             seg['global_meta'] = json.loads(seg.get('global_meta', '{}'))
             seg['image_keys'] = json.loads(seg.get('image_keys', '[]'))
-            seg['ref'] = json.loads(seg.get('ref', '[]'))
         return seg
 
     def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:
