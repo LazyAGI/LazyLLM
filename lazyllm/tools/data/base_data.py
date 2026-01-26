@@ -1,10 +1,11 @@
-import functools
 import os
 import json
 import pickle
 from tqdm import tqdm
 
 from lazyllm import warp, LOG, config
+import lazyllm
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
 
 config.add(
     'data_process_path', str, '', 'DATA_PROCESS_PATH',
@@ -12,33 +13,6 @@ config.add(
 config.add(
     'data_process_resume', bool, False, 'DATA_PROCESS_RESUME',
     description='Whether to resume data processing from saved state.')
-
-class RegistryFactory:
-    def __init__(self, wrapper=None):
-        self._registry = {}
-        self._tags = {}
-        self._wrapper = wrapper
-
-    def __getattr__(self, name):
-        if name in self._registry:
-            return self._registry[name]
-        raise AttributeError(f'"{self.__class__.__name__}" has no attribute "{name}"')
-
-    def register(self, obj=None, tag='default', **kwargs):
-        if obj is None:
-            # Support @register and @register(param=value) usages
-            return functools.partial(self.register, tag=tag, **kwargs)
-
-        if obj.__name__ in self._registry:
-            raise ValueError(f'{obj.__name__} is already registered.')
-
-        if self._wrapper:
-            Wrapper = self._wrapper(obj, **kwargs)
-        else:
-            Wrapper = obj
-        self._registry[obj.__name__] = Wrapper
-        self._tags.setdefault(tag, []).append(obj.__name__)
-        return Wrapper
 
 class DataStateStore:
     def __init__(self, func_name, save_data=True):
@@ -99,92 +73,100 @@ class DataStateStore:
                         pass
         return results
 
-def data_op_wrapper(func, one_item=True):  # noqa: C901
-    @functools.wraps(func, updated=())
-    class DataOpWrapper:
-        def __init__(
-                self, *args, _max_workers=32, _batch_size=None, _concurrency_mode='warp',
-                _ignore_errors=False, _save_data=True, **kwargs):
-            self._obj = func(*args, **kwargs) if isinstance(func, type) else None
-            self._args = args
-            self._kwargs = kwargs
-            self._max_workers = _max_workers
-            self._batch_size = _batch_size or self._max_workers
-            self._concurrency_mode = _concurrency_mode
-            self._ignore_errors = _ignore_errors
-            self._store = DataStateStore(func.__name__, _save_data)
+class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
+    def __init__(self, _max_workers=32, _batch_size=None, _concurrency_mode='warp',
+                 _ignore_errors=False, _save_data=True, **kwargs):
+        self._max_workers = _max_workers
+        self._batch_size = _batch_size or self._max_workers
+        self._concurrency_mode = _concurrency_mode
+        self._ignore_errors = _ignore_errors
+        self._store = DataStateStore(self.__class__.__name__, _save_data)
+        self._lazyllm_kwargs = kwargs
 
-            if one_item and self._concurrency_mode == 'warp':
-                self._run = warp(self._run_one, _concurrent=self._max_workers).aslist
+    def _overwrote(self, f):
+        return getattr(self.__class__, f) is not getattr(__class__, f) or \
+            getattr(self.__class__, '__reg_overwrite__', None) == f
 
-        def _run_one(self, data):
-            try:
-                if self._obj:
-                    return self._obj(data)
-                return func(data, *self._args, **self._kwargs)
-            except Exception as e:
-                if self._ignore_errors:
-                    LOG.error(f'Error processing data in {func.__name__}: {e}')
-                    return None
-                raise e
+    def forward(self, input, **kwargs):
+        raise NotImplementedError()
 
-        def _process_common(self, data, batch_size, process_func):
-            processed_indices = self._store.load_progress()
-            results = []
-            pbar = tqdm(total=len(data), desc=f'Processing {func.__name__}', unit='item')
+    def forward_batch_input(self, inputs, **kwargs):
+        raise NotImplementedError()
 
-            for i in range(0, len(data), batch_size):
-                batch_indices = list(range(i, min(i + batch_size, len(data))))
-                pending_indices = [idx for idx in batch_indices if idx not in processed_indices]
+    def _run_one(self, data):
+        try:
+            kwargs = getattr(self, '_lazyllm_kwargs', {})
+            return self.forward(data, **kwargs)
+        except Exception as e:
+            if self._ignore_errors:
+                LOG.error(f'Error processing data in {self.__class__.__name__}: {e}')
+                return None
+            raise e
 
-                if not pending_indices:
-                    pbar.update(len(batch_indices))
-                    continue
+    def _process_common(self, data, batch_size, process_func):
+        processed_indices = self._store.load_progress()
+        results = []
+        pbar = tqdm(total=len(data), desc=f'Processing {self.__class__.__name__}', unit='item')
 
-                batch_data = [data[idx] for idx in pending_indices]
-                batch_res = process_func(batch_data)
+        for i in range(0, len(data), batch_size):
+            batch_indices = list(range(i, min(i + batch_size, len(data))))
+            pending_indices = [idx for idx in batch_indices if idx not in processed_indices]
 
-                filtered_batch_res = []
-                for res in batch_res:
-                    if res is None:
-                        continue
-                    if isinstance(res, list):
-                        filtered_batch_res.extend(res)
-                    else:
-                        filtered_batch_res.append(res)
-
-                if self._store.save_data:
-                    self._store.save_results(filtered_batch_res)
-                    processed_indices.update(pending_indices)
-                    self._store.save_progress(processed_indices)
-                else:
-                    results.extend(filtered_batch_res)
-
+            if not pending_indices:
                 pbar.update(len(batch_indices))
+                continue
 
-            pbar.close()
+            batch_data = [data[idx] for idx in pending_indices]
+            batch_res = process_func(batch_data)
+
+            filtered_batch_res = []
+            for res in batch_res:
+                if res is None:
+                    continue
+                if isinstance(res, list):
+                    filtered_batch_res.extend(res)
+                else:
+                    filtered_batch_res.append(res)
+
             if self._store.save_data:
+                self._store.save_results(filtered_batch_res)
+                processed_indices.update(pending_indices)
+                self._store.save_progress(processed_indices)
+            else:
+                results.extend(filtered_batch_res)
+
+            pbar.update(len(batch_indices))
+
+        pbar.close()
+        if self._store.save_data:
+            return self._store.load_results()
+        return results
+
+    def __call__(self, inputs):
+        if not isinstance(inputs, (tuple, list)):
+            inputs = [inputs]
+
+        kwargs = getattr(self, '_lazyllm_kwargs', {})
+
+        if self._overwrote('forward_batch_input'):
+            if self._store.save_data and self._store.resume and 'Done' in self._store.load_progress():
+                LOG.warning(f'skip {self.__class__.__name__} and load data from {self._store.save_path}')
                 return self._store.load_results()
-            return results
 
-        def __call__(self, data):
-            if not one_item:
-                if self._store.save_data and self._store.resume and 'Done' in self._store.load_progress():
-                    LOG.warning(f'skip {func.__name__} and load data from {self._store.save_path}')
-                    return self._store.load_results()
-                res = self._run_one(data)
-                if self._store.save_data and res is not None:
-                    self._store.save_results(res if isinstance(res, list) else [res])
-                    self._store.save_progress('Done')
-                return res
-            assert isinstance(data, list)
+            res = self.forward_batch_input(inputs, **kwargs)
+
+            if self._store.save_data and res is not None:
+                self._store.save_results(res if isinstance(res, list) else [res])
+                self._store.save_progress('Done')
+            return res
+
+        elif self._overwrote('forward'):
             if self._concurrency_mode == 'warp':
-                return self._process_common(data, self._batch_size, self._run)
-            # Fallback to single-threaded processing
-            return self._process_common(data, 1, lambda batch: [self._run_one(item) for item in batch])
+                _run = warp(self._run_one, _concurrent=self._max_workers).aslist
+                return self._process_common(inputs, self._batch_size, _run)
+            else:
+                return self._process_common(inputs, 1, lambda batch: [self._run_one(item) for item in batch])
+        else:
+            raise RuntimeError('Must implement forward or forward_batch_input')
 
-        def __repr__(self):
-            return f'<DataOpWrapper for {func.__name__}>'
-    return DataOpWrapper
-
-DataOperatorRegistry = RegistryFactory(data_op_wrapper)
+DataOperatorRegistry = lazyllm.Register(LazyLLMDataBase, ['forward', 'forward_batch_input'])

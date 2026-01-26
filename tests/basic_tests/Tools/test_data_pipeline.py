@@ -1,4 +1,4 @@
-from lazyllm.tools.data import build_demo_pipeline
+from lazyllm.tools.data.pipelines.demo_pipelines import build_demo_pipeline
 
 class TestDataPipeline:
     def test_demo_pipeline(self):

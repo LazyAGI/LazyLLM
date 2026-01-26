@@ -1,31 +1,33 @@
-from ..base_data import DataOperatorRegistry
+from ..base_data import DataOperatorRegistry as register
 
 
-@DataOperatorRegistry.register(one_item=False, tag='all')
+demo2 = register.new_group('demo2')
+
+@register('data.demo1', rewrite_func='forward_batch_input')
 def build_pre_suffix(data, input_key='content', prefix='', suffix=''):
     assert isinstance(data, list)
     for item in data:
         item[input_key] = f'{prefix}{item.get(input_key, "")}{suffix}'
     return data
 
-@DataOperatorRegistry.register
+@register('data.demo1', rewrite_func='forward')
 def process_uppercase(data, input_key='content'):
     assert isinstance(data, dict)
     data[input_key] = data.get(input_key, '').upper()
     return data
 
-@DataOperatorRegistry.register
-class AddSuffix:
-    def __init__(self, suffix, input_key='content'):
+class AddSuffix(demo2):
+    def __init__(self, suffix, input_key='content', **kwargs):
+        super().__init__(**kwargs)
         self.suffix = suffix
         self.input_key = input_key
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
         data[self.input_key] = f'{data.get(self.input_key, "")}{self.suffix}'
         return data
 
-@DataOperatorRegistry.register
+@register('data.demo2', rewrite_func='forward')
 def rich_content(data, input_key='content'):
     assert isinstance(data, dict)
     content = data.get(input_key, '')

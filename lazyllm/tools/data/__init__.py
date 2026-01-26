@@ -1,8 +1,13 @@
+import importlib
+import lazyllm
 from .base_data import DataOperatorRegistry
-from .operator.basic_op import *  # noqa: F401, F403
-from .pipeline.basic_pipeline import *  # noqa: F401, F403
+from .operators import demo_ops  # noqa: F401
 
+def __getattr__(name):
+    if name == 'pipelines':
+        return importlib.import_module('.pipelines', __package__)
+    if name in lazyllm.data:
+        return lazyllm.data[name]
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
-keys = DataOperatorRegistry._registry.keys()
 __all__ = ['DataOperatorRegistry']
-__all__.extend(keys)
