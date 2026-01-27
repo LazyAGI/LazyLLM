@@ -170,6 +170,10 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
 
         if self.type == 'VLM' and (files or self._vlm_force_format_input_with_files):
             data['messages'][-1]['content'] = self._format_input_with_files(data['messages'][-1]['content'], files)
+            if llm_chat_history and len(data['messages']) > 1:
+                for msg in data['messages'][:-1]:
+                    if msg.get('role') == 'user' and isinstance(msg.get('content'), str):
+                        msg['content'] = self._format_vl_chat_query(msg['content'])
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         with requests.post(runtime_url, json=data, headers=self._header, stream=stream_output,

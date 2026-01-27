@@ -450,11 +450,36 @@ class WebModule(ModuleBase):
                             history.append([h[0], clean_response])
                     elif isinstance(h, dict):
                         # Gradio 6.0+ format
-                        if h.get('role') == 'user' and isinstance(h.get('content'), str):
-                            history.append([h['content'], ''])
+                        if h.get('role') == 'user':
+                            content = h.get('content', '')
+                            if isinstance(content, str):
+                                user_text = content
+                            elif isinstance(content, list):
+                                user_text = ' '.join([
+                                    item.get('text', '') for item in content
+                                    if isinstance(item, dict) and item.get('type') == 'text'
+                                ])
+                            else:
+                                user_text = ''
+                            if user_text:
+                                history.append([user_text, ''])
                         elif h.get('role') == 'assistant' and history:
-                            clean_response = re.sub(r'<think>.*?</think>\n*', '', h.get('content', ''), flags=re.DOTALL)
-                            history[-1][1] = clean_response
+                            content = h.get('content', '')
+                            if isinstance(content, str):
+                                clean_response = re.sub(r'<think>.*?</think>\n*', '', content, flags=re.DOTALL)
+                                if clean_response:
+                                    history[-1][1] = clean_response
+                                else:
+                                    history.pop()
+                            elif isinstance(content, list):
+                                text_parts = [item.get('text', '') for item in content
+                                              if isinstance(item, dict) and item.get('type') == 'text']
+                                response_text = ' '.join(text_parts)
+                                clean_response = re.sub(r'<think>.*?</think>\n*', '', response_text, flags=re.DOTALL)
+                                if clean_response:
+                                    history[-1][1] = clean_response
+                                else:
+                                    history.pop()
             else:
                 history = list()
 
@@ -465,7 +490,8 @@ class WebModule(ModuleBase):
             if use_context:
                 for h in self.history:
                     if h not in globals['chat_history']: globals['chat_history'][h] = list()
-                    globals['chat_history'][h] = history
+                    valid_history = [item for item in history if len(item) == 2 and item[1]]
+                    globals['chat_history'][h] = valid_history
 
             if FileSystemQueue().size() > 0: FileSystemQueue().clear()
             kw = dict(stream_output=stream_output, lazyllm_files=files)\
