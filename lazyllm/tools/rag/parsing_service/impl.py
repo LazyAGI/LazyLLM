@@ -22,7 +22,7 @@ from ..doc_to_db import SchemaExtractor
 
 class _NodeGroupDependencyGraph:
     def __init__(self, node_groups: Dict[str, Dict], active: List[str]):
-        self._active = active
+        self._shortest_path_cache: Dict[tuple[str, str], List[str]] = {}
         self._forward_graph = defaultdict(set)
         self._dep_graph = {node: set() for node in active}
 
@@ -41,12 +41,15 @@ class _NodeGroupDependencyGraph:
     @cached_property
     def topological_order(self) -> List[str]:
         try:
-            topo_order = list(TopologicalSorter(self._dep_graph).static_order())
-            return list(topo_order)
+            return list(TopologicalSorter(self._dep_graph).static_order())
         except CycleError as e:
             raise ValueError(f'Detected node group cycle dependency: {e}')
 
     def get_shortest_path(self, start: str, end: str) -> Optional[List[str]]:
+        key = (start, end)
+        if key in self._shortest_path_cache:
+            return self._shortest_path_cache[key]
+
         queue = deque([(start, [])])
         visited = {start}
 
@@ -54,10 +57,13 @@ class _NodeGroupDependencyGraph:
             current, path = queue.popleft()
             for neighbor in self._forward_graph.get(current, []):
                 if neighbor == end:
-                    return path + [end]
+                    result = path + [end]
+                    self._shortest_path_cache[key] = result
+                    return result
                 if neighbor not in visited:
                     visited.add(neighbor)
                     queue.append((neighbor, path + [neighbor]))
+        self._shortest_path_cache[key] = []
         return []
 
 class _Processor:
