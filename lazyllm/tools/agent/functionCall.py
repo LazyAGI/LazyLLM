@@ -3,6 +3,7 @@ from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable
+from .base import LazyLLMAgentBase
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
 import re
@@ -108,19 +109,29 @@ class FunctionCall(ModuleBase):
         return result
 
 @deprecated('ReactAgent')
-class FunctionCallAgent(ModuleBase):
+class FunctionCallAgent(LazyLLMAgentBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False,
                  return_last_tool_calls: bool = False):
-        super().__init__(return_trace=return_trace)
-        self._max_retries = max_retries
-        self._return_last_tool_calls = return_last_tool_calls
-        self._fc = FunctionCall(llm, tools, return_trace=return_trace, stream=stream)
-        self._agent = loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        super().__init__(llm=llm, tools=tools, max_retries=max_retries,
+                         return_trace=return_trace, stream=stream,
+                         return_last_tool_calls=return_last_tool_calls)
+        self._fc = FunctionCall(self._llm, self._tools, return_trace=return_trace, stream=stream)
+        self._agent = self.build_agent()
         self._fc._llm.used_by(self._module_id)
 
-    def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
-        ret = self._agent(query, llm_chat_history) if llm_chat_history is not None else self._agent(query)
-        if isinstance(ret, str) and self._return_last_tool_calls and locals['_lazyllm_agent'].get('completed'):
-            return locals['_lazyllm_agent'].pop('completed')
-        return ret if isinstance(ret, str) else (_ for _ in ()).throw(ValueError(f'After retrying \
-            {self._max_retries} times, the function call agent still fails to call successfully.'))
+    def build_agent(self):
+        return loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+
+    def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
+        if llm_chat_history is not None:
+            return (query, llm_chat_history)
+        return query
+
+    def _post_process(self, ret):
+        if isinstance(ret, str):
+            completed = self._pop_completed_tool_calls()
+            if completed is not None:
+                return completed
+            return ret
+        raise ValueError(f'After retrying {self._max_retries} times, the function call agent still fails to call '
+                         f'successfully.')

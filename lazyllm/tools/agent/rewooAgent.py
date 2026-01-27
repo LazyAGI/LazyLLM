@@ -1,4 +1,5 @@
 from lazyllm.module import ModuleBase
+from .base import LazyLLMAgentBase
 from lazyllm import pipeline, LOG, bind, Color, locals, ifs
 from .toolsManager import ToolManager
 from typing import List, Dict, Union, Callable
@@ -30,27 +31,41 @@ S_PROMPT_PREFIX = ('Solve the following task or problem. To assist you, we provi
 S_PROMPT_SUFFIX = ('\nNow begin to solve the task or problem. Respond with '
                    'the answer directly with no extra words.\n\n')
 
-class ReWOOAgent(ModuleBase):
+class ReWOOAgent(LazyLLMAgentBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[Union[str, Callable]] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False):
-        super().__init__(return_trace=return_trace)
-        self._return_last_tool_calls = return_last_tool_calls
-        assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), 'Either specify only llm \
-               without specify plan and solve, or specify only plan and solve without specifying llm, or specify \
-               both llm and solve. Other situations are not allowed.'
+        super().__init__(llm=llm, tools=tools,
+                         return_trace=return_trace, stream=stream,
+                         return_last_tool_calls=return_last_tool_calls)
+        if llm is None and plan_llm is None and solve_llm is None:
+            raise ValueError('Either specify llm, or provide plan_llm/solve_llm.')
+        if llm is None:
+            if plan_llm is None:
+                plan_llm = solve_llm
+            if solve_llm is None:
+                solve_llm = plan_llm
+        else:
+            if plan_llm is None:
+                plan_llm = llm
+            if solve_llm is None:
+                solve_llm = llm
         assert tools, 'tools cannot be empty.'
-        self._planner = (plan_llm or llm).share(stream=dict(
+        self._planner = plan_llm.share(stream=dict(
             prefix='\nI will give a plan first:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
-        self._solver = (solve_llm or llm).share(stream=dict(
+        self._solver = solve_llm.share(stream=dict(
             prefix='\nI will solve the problem:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
-        self._tools_manager = ToolManager(tools, return_trace=return_trace)
-        with pipeline() as self._agent:
-            self._agent.planner_pre_action = self._build_planner_prompt
-            self._agent.planner = self._planner
-            self._agent.worker_evidences = self._get_worker_evidences
-            self._agent.solver_pre_action = self._build_solver_prompt | bind(input=self._agent.input)
-            self._agent.solver = ifs(self._return_last_tool_calls, lambda x: 'ok', self._solver)
+        self._tools_manager = ToolManager(self._tools, return_trace=return_trace)
+        self._agent = self.build_agent()
+
+    def build_agent(self):
+        with pipeline() as agent:
+            agent.planner_pre_action = self._build_planner_prompt
+            agent.planner = self._planner
+            agent.worker_evidences = self._get_worker_evidences
+            agent.solver_pre_action = self._build_solver_prompt | bind(input=agent.input)
+            agent.solver = ifs(self._return_last_tool_calls, lambda x: 'ok', self._solver)
+        return agent
 
     def _build_planner_prompt(self, input: str):
         prompt = P_PROMPT_PREFIX + 'Tools can be one of the following:\n'
@@ -93,9 +108,12 @@ class ReWOOAgent(ModuleBase):
         locals['chat_history'][self._solver._module_id] = []
         return prompt
 
-    def forward(self, query: str):
+    def _pre_process(self, query: str):
         locals['_lazyllm_agent']['workspace'] = {'tool_call_trace': []}
-        result = self._agent(query)
-        if self._return_last_tool_calls and locals['_lazyllm_agent']['workspace']['tool_call_trace']:
-            return locals['_lazyllm_agent'].pop('workspace').pop('tool_call_trace')
+        return query
+
+    def _post_process(self, result):
+        trace = self._pop_workspace_tool_calls()
+        if trace is not None:
+            return trace
         return result

@@ -1,7 +1,8 @@
 import re
 from lazyllm.module import ModuleBase
+from .base import LazyLLMAgentBase
 from lazyllm.components import ChatPrompter
-from lazyllm import loop, pipeline, _0, package, bind, LOG, Color, locals
+from lazyllm import loop, pipeline, _0, package, bind, LOG, Color
 from .functionCall import FunctionCall
 from typing import List, Union
 
@@ -25,39 +26,49 @@ SOLVER_PROMPT = (
     'Just solve the current objective, don\'t overdo it.'
 )
 
-class PlanAndSolveAgent(ModuleBase):
+class PlanAndSolveAgent(LazyLLMAgentBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[str] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  max_retries: int = 5, return_trace: bool = False, stream: bool = False,
                  return_last_tool_calls: bool = False):
-        super().__init__(return_trace=return_trace)
-        self._max_retries = max_retries
-        self._return_last_tool_calls = return_last_tool_calls
-        assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), (
-            'Either specify only llm '
-            'without specify plan and solve, or specify only plan and solve without specifying llm, or specify '
-            'both llm and solve. Other situations are not allowed.'
-        )
+        super().__init__(llm=llm, tools=tools, max_retries=max_retries,
+                         return_trace=return_trace, stream=stream,
+                         return_last_tool_calls=return_last_tool_calls)
+        if llm is None and plan_llm is None and solve_llm is None:
+            raise ValueError('Either specify llm, or provide plan_llm/solve_llm.')
+        if llm is None:
+            if plan_llm is None:
+                plan_llm = solve_llm
+            if solve_llm is None:
+                solve_llm = plan_llm
+        else:
+            if plan_llm is None:
+                plan_llm = llm
+            if solve_llm is None:
+                solve_llm = llm
         assert tools, 'tools cannot be empty.'
         s = dict(prefix='I will give a plan first:\n', prefix_color=Color.blue, color=Color.green) if stream else False
-        self._plan_llm = ((plan_llm or llm).share(prompt=ChatPrompter(instruction=PLANNER_PROMPT),
-                                                  stream=s).used_by(self._module_id))
-        self._solve_llm = (solve_llm or llm).share().used_by(self._module_id)
-        self._tools = tools
+        self._plan_llm = (plan_llm.share(prompt=ChatPrompter(instruction=PLANNER_PROMPT),
+                                         stream=s).used_by(self._module_id))
+        self._solve_llm = solve_llm.share().used_by(self._module_id)
         self._fc = FunctionCall(self._solve_llm, tools=self._tools, return_trace=return_trace, stream=stream)
-        with pipeline() as self._agent:
-            self._agent.plan = self._plan_llm
-            self._agent.parse = (lambda text, query: package([], '', [v for v in re.split('\n\\s*\\d+\\. ', text)[1:]],
-                                 query)) | bind(query=self._agent.input)
-            with loop(stop_condition=lambda pre, res, steps, query: len(steps) == 0) as self._agent.lp:
-                self._agent.lp.pre_action = self._pre_action
-                self._agent.lp.solve = loop(self._fc, stop_condition=lambda x: isinstance(x, str),
-                                            count=self._max_retries)
-                self._agent.lp.post_action = self._post_action | bind(self._agent.lp.input[0][0], _0,
-                                                                      self._agent.lp.input[0][2],
-                                                                      self._agent.lp.input[0][3])
+        self._agent = self.build_agent()
 
-            self._agent.final_action = lambda pre, res, steps, query: res
+    def build_agent(self):
+        with pipeline() as agent:
+            agent.plan = self._plan_llm
+            agent.parse = (lambda text, query: package([], '', [v for v in re.split('\n\\s*\\d+\\. ', text)[1:]],
+                          query)) | bind(query=agent.input)
+            with loop(stop_condition=lambda pre, res, steps, query: len(steps) == 0) as agent.lp:
+                agent.lp.pre_action = self._pre_action
+                agent.lp.solve = loop(self._fc, stop_condition=lambda x: isinstance(x, str),
+                                      count=self._max_retries)
+                agent.lp.post_action = self._post_action | bind(agent.lp.input[0][0], _0,
+                                                                agent.lp.input[0][2],
+                                                                agent.lp.input[0][3])
+
+            agent.final_action = lambda pre, res, steps, query: res
+        return agent
 
     def _pre_action(self, pre_steps, response, steps, query):
         solver_prompt = SOLVER_PROMPT.format(
@@ -76,8 +87,8 @@ class PlanAndSolveAgent(ModuleBase):
         pre_steps.append(steps.pop(0) + 'response: ' + response)
         return package(pre_steps, response, steps, query)
 
-    def forward(self, query: str):
-        result = self._agent(query)
-        if self._return_last_tool_calls and locals['_lazyllm_agent'].get('completed'):
-            return locals['_lazyllm_agent'].pop('completed')
+    def _post_process(self, result):
+        completed = self._pop_completed_tool_calls()
+        if completed is not None:
+            return completed
         return result
