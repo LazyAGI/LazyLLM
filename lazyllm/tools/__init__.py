@@ -26,7 +26,7 @@ if TYPE_CHECKING:
     from .eval import (BaseEvaluator, ResponseRelevancy, Faithfulness, LLMContextRecall,
                     NonLLMContextRecall, ContextRelevance)
     from .http_request import HttpRequest, HttpExecutorResponse
-    from .data import DataOperatorRegistry
+    from .review import get_errors, ChineseCorrector
 
 
 def __getattr__(name: str):
@@ -98,9 +98,10 @@ _SUBMOD_MAP = {
         'HttpRequest',
         'HttpExecutorResponse'
     ],
-    'data': [
-        'DataOperatorRegistry'
-    ]
+    'review': [
+        'get_errors',
+        'ChineseCorrector'
+    ],
 }
 _SUBMOD_MAP_REVERSE = {v: k for k, vs in _SUBMOD_MAP.items() for v in vs}
 __all__ = sum(_SUBMOD_MAP.values(), [])

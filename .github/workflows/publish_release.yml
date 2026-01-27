@@ -107,7 +107,7 @@ jobs:
         run: |
           pip cache purge
           pip freeze | grep -v "^-e" | xargs pip uninstall -y
-      
+
       - name: Tar repo with docs
         run: |
           touch repo-with-docs.tar.gz
@@ -187,6 +187,12 @@ jobs:
         with:
           name: repo-with-docs
           path: ./repo_artifact
+
+      - name: Install Python dev headers (Ubuntu only)
+        if: startsWith(matrix.os, 'ubuntu')
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y python3-dev
 
       - name: Extract repo-with-docs
         run: |

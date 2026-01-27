@@ -56,7 +56,7 @@ class TestFormatter(object):
         assert filef(normal_output) == normal_output
         assert filef(other_output) == other_output
         decode_output = filef(encode_output)
-        assert decode_output == {"query": "aha", "files": ["path/to/file"]}
+        assert decode_output == {'query': 'aha', 'files': ['path/to/file']}
 
         # Encode
         filef = formatter.FileFormatter(formatter='encode')
@@ -156,6 +156,36 @@ class TestFormatter(object):
         f | (jsf | formatter.JsonFormatter('[:]{a}'))
         assert f(dict(a=[1, 2, 3, 4, 5], b=[2, 3, 4, 5, 6]), dict(a=[3, 4, 5, 6, 7], b=[4, 5, 6, 7, 8]),
                  dict(a=[5, 6, 7, 8, 9], b=[6, 7, 8, 9, 10])) == [dict(a=[2, 3]), dict(a=[6, 7])]
+
+    def test_json_repair(self):
+        jsf = formatter.JsonFormatter()
+        origin = '{"name": "Bob"}后面还有{name: "Charlie"}'
+        result = jsf(origin)
+        assert result == [{'name': 'Bob'}, {'name': 'Charlie'}]
+
+    def test_json_repair_nested(self):
+        jsf = formatter.JsonFormatter()
+        origin = '{"outer": {"inner": "value"}, "arr": [1, 2, 3]}其他文本{"simple": "obj"}'
+        result = jsf(origin)
+        assert result == [{'outer': {'inner': 'value'}, 'arr': [1, 2, 3]}, {'simple': 'obj'}]
+
+        origin2 = '{"level1": {"level2": {"level3": [{"nested": "array"}]}}}后面{"flat": "obj"}'
+        result2 = jsf(origin2)
+        assert result2 == [{'level1': {'level2': {'level3': [{'nested': 'array'}]}}}, {'flat': 'obj'}]
+
+    def test_json_repair_string_with_braces(self):
+        jsf = formatter.JsonFormatter()
+        origin = '{"message": "This is {not} a brace"}后面{"code": "function() { return 1; }"}'
+        result = jsf(origin)
+        assert result == [{'message': 'This is {not} a brace'}, {'code': 'function() { return 1; }'}]
+
+        origin2 = '{"pattern": "match {x} and [y]"}其他{"text": "nested {inner {braces}}"}'
+        result2 = jsf(origin2)
+        assert result2 == [{'pattern': 'match {x} and [y]'}, {'text': 'nested {inner {braces}}'}]
+
+        origin3 = '{"escaped": "quote \\"with {braces}\\""}'
+        result3 = jsf(origin3)
+        assert result3 == {'escaped': 'quote "with {braces}"'}
 
 
 class TestModuleFormatter(object):
