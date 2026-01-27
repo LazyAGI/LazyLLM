@@ -45,7 +45,9 @@ class _NodeGroupDependencyGraph:
         except CycleError as e:
             raise ValueError(f'Detected node group cycle dependency: {e}')
 
-    def get_shortest_path(self, start: str, end: str) -> Optional[List[str]]:
+    def get_shortest_path(self, start: str, end: str) -> List[str]:
+        # NOTE: The path from start to end is guaranteed to exist.
+        # The returned list does not contain `start` itself, only intermediate nodes and `end`.
         key = (start, end)
         if key in self._shortest_path_cache:
             return self._shortest_path_cache[key]
@@ -63,8 +65,7 @@ class _NodeGroupDependencyGraph:
                 if neighbor not in visited:
                     visited.add(neighbor)
                     queue.append((neighbor, path + [neighbor]))
-        self._shortest_path_cache[key] = []
-        return []
+        raise AssertionError(f'No path found from {start} to {end}, the dependency graph is not valid')
 
 class _Processor:
     def __init__(self, algo_id: str, store: _DocumentStore, reader: DirectoryReader, node_groups: Dict[str, Dict],
