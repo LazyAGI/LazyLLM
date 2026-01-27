@@ -169,4 +169,4 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
         else:
             raise RuntimeError('Must implement forward or forward_batch_input')
 
-DataOperatorRegistry = lazyllm.Register(LazyLLMDataBase, ['forward', 'forward_batch_input'])
+data_register = lazyllm.Register(LazyLLMDataBase, ['forward', 'forward_batch_input'])

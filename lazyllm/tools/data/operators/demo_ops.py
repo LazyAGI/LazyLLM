@@ -1,16 +1,17 @@
-from ..base_data import DataOperatorRegistry as register
+from ..base_data import data_register
 
 
-demo2 = register.new_group('demo2')
+demo1 = data_register.new_group('demo1')
+demo2 = data_register.new_group('demo2')
 
-@register('data.demo1', rewrite_func='forward_batch_input')
+@data_register('data.demo1', rewrite_func='forward_batch_input')
 def build_pre_suffix(data, input_key='content', prefix='', suffix=''):
     assert isinstance(data, list)
     for item in data:
         item[input_key] = f'{prefix}{item.get(input_key, "")}{suffix}'
     return data
 
-@register('data.demo1', rewrite_func='forward')
+@data_register('data.demo1', rewrite_func='forward')
 def process_uppercase(data, input_key='content'):
     assert isinstance(data, dict)
     data[input_key] = data.get(input_key, '').upper()
@@ -27,7 +28,7 @@ class AddSuffix(demo2):
         data[self.input_key] = f'{data.get(self.input_key, "")}{self.suffix}'
         return data
 
-@register('data.demo2', rewrite_func='forward')
+@data_register('data.demo2', rewrite_func='forward')
 def rich_content(data, input_key='content'):
     assert isinstance(data, dict)
     content = data.get(input_key, '')
