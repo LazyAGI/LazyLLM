@@ -1,11 +1,12 @@
 # -*- coding: utf-8 -*-
 
-__version__ = '0.7.2'
+__version__ = '0.7.3'
 
 import importlib
 import builtins
 from .configs import config, refresh_config, Mode, Config, Namespace as namespace
 from .common import *  # noqa F403
+from . import common, flow
 from .launcher import LazyLLMLaunchersBase
 from .flow import *  # noqa F403
 from .components import (LazyLLMDataprocBase, LazyLLMFinetuneBase, LazyLLMDeployBase,

@@ -27,6 +27,7 @@ if TYPE_CHECKING:
                     NonLLMContextRecall, ContextRelevance)
     from .http_request import HttpRequest, HttpExecutorResponse
     from .data import data_register
+    from .review import get_errors, ChineseCorrector
 
 
 def __getattr__(name: str):
@@ -100,7 +101,11 @@ _SUBMOD_MAP = {
     ],
     'data': [
         'data_register'
-    ]
+    ],
+    'review': [
+        'get_errors',
+        'ChineseCorrector'
+    ],
 }
 _SUBMOD_MAP_REVERSE = {v: k for k, vs in _SUBMOD_MAP.items() for v in vs}
 __all__ = sum(_SUBMOD_MAP.values(), [])

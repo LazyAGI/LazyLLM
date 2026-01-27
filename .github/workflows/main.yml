@@ -179,6 +179,23 @@ jobs:
     runs-on: tps_sco_nv
     needs: [ clone ]
     if: always() && needs.clone.result == 'success'
+    env:
+      LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
+      LAZYLLM_AIPING_API_KEY: ${{ secrets.LAZYLLM_AIPING_API_KEY }}
+      LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
+      LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
+      LAZYLLM_QWEN_API_KEY: ${{ secrets.LAZYLLM_QWEN_API_KEY }}
+      LAZYLLM_QWEN_MODEL_NAME: ${{ secrets.LAZYLLM_QWEN_MODEL_NAME }}
+      LAZYLLM_QWEN_TEXT2IMAGE_MODEL_NAME: ${{ secrets.LAZYLLM_QWEN_TEXT2IMAGE_MODEL_NAME }}
+      LAZYLLM_SENSENOVA_API_KEY: ${{ secrets.LAZYLLM_SENSENOVA_API_KEY }}
+      LAZYLLM_SENSENOVA_SECRET_KEY: ${{ secrets.LAZYLLM_SENSENOVA_SECRET_KEY }}
+      LAZYLLM_DOUBAO_API_KEY: ${{ secrets.LAZYLLM_DOUBAO_API_KEY }}
+      LAZYLLM_DOUBAO_MODEL_NAME: ${{ secrets.LAZYLLM_DOUBAO_MODEL_NAME }}
+      LAZYLLM_SILICONFLOW_API_KEY: ${{ secrets.LAZYLLM_SILICONFLOW_API_KEY }}
+      LAZYLLM_SILICONFLOW_MODEL_NAME: ${{ secrets.LAZYLLM_SILICONFLOW_MODEL_NAME }}
+      LAZYLLM_MINIMAX_API_KEY: ${{ secrets.LAZYLLM_MINIMAX_API_KEY }}
+      LAZYLLM_MINIMAX_MODEL_NAME: ${{ secrets.LAZYLLM_MINIMAX_MODEL_NAME }}
+      LAZYLLM_PPOP_API_KEY: ${{ secrets.LAZYLLM_PPOP_API_KEY }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -200,6 +217,23 @@ jobs:
       always()
       && needs.clone.result == 'success'
       && (contains(needs.clone.outputs.changed_files, 'lazyllm/engine/') || github.ref_type == 'tag')
+    env:
+      LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
+      LAZYLLM_AIPING_API_KEY: ${{ secrets.LAZYLLM_AIPING_API_KEY }}
+      LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
+      LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
+      LAZYLLM_QWEN_API_KEY: ${{ secrets.LAZYLLM_QWEN_API_KEY }}
+      LAZYLLM_QWEN_MODEL_NAME: ${{ secrets.LAZYLLM_QWEN_MODEL_NAME }}
+      LAZYLLM_QWEN_TEXT2IMAGE_MODEL_NAME: ${{ secrets.LAZYLLM_QWEN_TEXT2IMAGE_MODEL_NAME }}
+      LAZYLLM_SENSENOVA_API_KEY: ${{ secrets.LAZYLLM_SENSENOVA_API_KEY }}
+      LAZYLLM_SENSENOVA_SECRET_KEY: ${{ secrets.LAZYLLM_SENSENOVA_SECRET_KEY }}
+      LAZYLLM_DOUBAO_API_KEY: ${{ secrets.LAZYLLM_DOUBAO_API_KEY }}
+      LAZYLLM_DOUBAO_MODEL_NAME: ${{ secrets.LAZYLLM_DOUBAO_MODEL_NAME }}
+      LAZYLLM_SILICONFLOW_API_KEY: ${{ secrets.LAZYLLM_SILICONFLOW_API_KEY }}
+      LAZYLLM_SILICONFLOW_MODEL_NAME: ${{ secrets.LAZYLLM_SILICONFLOW_MODEL_NAME }}
+      LAZYLLM_MINIMAX_API_KEY: ${{ secrets.LAZYLLM_MINIMAX_API_KEY }}
+      LAZYLLM_MINIMAX_MODEL_NAME: ${{ secrets.LAZYLLM_MINIMAX_MODEL_NAME }}
+      LAZYLLM_PPOP_API_KEY: ${{ secrets.LAZYLLM_PPOP_API_KEY }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -218,6 +252,23 @@ jobs:
     runs-on: tps_sco_nv
     needs: [ clone ]
     if: always() && needs.clone.result == 'success'
+    env:
+      LAZYLLM_KIMI_API_KEY: ${{ secrets.LAZYLLM_KIMI_API_KEY }}
+      LAZYLLM_AIPING_API_KEY: ${{ secrets.LAZYLLM_AIPING_API_KEY }}
+      LAZYLLM_GLM_API_KEY: ${{ secrets.LAZYLLM_GLM_API_KEY }}
+      LAZYLLM_GLM_MODEL_NAME: ${{ secrets.LAZYLLM_GLM_MODEL_NAME }}
+      LAZYLLM_QWEN_API_KEY: ${{ secrets.LAZYLLM_QWEN_API_KEY }}
+      LAZYLLM_QWEN_MODEL_NAME: ${{ secrets.LAZYLLM_QWEN_MODEL_NAME }}
+      LAZYLLM_QWEN_TEXT2IMAGE_MODEL_NAME: ${{ secrets.LAZYLLM_QWEN_TEXT2IMAGE_MODEL_NAME }}
+      LAZYLLM_SENSENOVA_API_KEY: ${{ secrets.LAZYLLM_SENSENOVA_API_KEY }}
+      LAZYLLM_SENSENOVA_SECRET_KEY: ${{ secrets.LAZYLLM_SENSENOVA_SECRET_KEY }}
+      LAZYLLM_DOUBAO_API_KEY: ${{ secrets.LAZYLLM_DOUBAO_API_KEY }}
+      LAZYLLM_DOUBAO_MODEL_NAME: ${{ secrets.LAZYLLM_DOUBAO_MODEL_NAME }}
+      LAZYLLM_SILICONFLOW_API_KEY: ${{ secrets.LAZYLLM_SILICONFLOW_API_KEY }}
+      LAZYLLM_SILICONFLOW_MODEL_NAME: ${{ secrets.LAZYLLM_SILICONFLOW_MODEL_NAME }}
+      LAZYLLM_MINIMAX_API_KEY: ${{ secrets.LAZYLLM_MINIMAX_API_KEY }}
+      LAZYLLM_MINIMAX_MODEL_NAME: ${{ secrets.LAZYLLM_MINIMAX_MODEL_NAME }}
+      LAZYLLM_PPOP_API_KEY: ${{ secrets.LAZYLLM_PPOP_API_KEY }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4 # For run_tests afterwards.
@@ -492,7 +543,6 @@ jobs:
           LAZYLLM_SILICONFLOW_MODEL_NAME: ${{ secrets.LAZYLLM_SILICONFLOW_MODEL_NAME }}
           LAZYLLM_MINIMAX_API_KEY: ${{ secrets.LAZYLLM_MINIMAX_API_KEY }}
           LAZYLLM_MINIMAX_MODEL_NAME: ${{ secrets.LAZYLLM_MINIMAX_MODEL_NAME }}
-          LAZYLLM_PostgreSQL_URL: ${{ secrets.LAZYLLM_PostgreSQL_URL }}
           GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         timeout-minutes: 25
 
@@ -621,7 +671,6 @@ jobs:
           LAZYLLM_SILICONFLOW_MODEL_NAME: ${{ secrets.LAZYLLM_SILICONFLOW_MODEL_NAME }}
           LAZYLLM_MINIMAX_API_KEY: ${{ secrets.LAZYLLM_MINIMAX_API_KEY }}
           LAZYLLM_MINIMAX_MODEL_NAME: ${{ secrets.LAZYLLM_MINIMAX_MODEL_NAME }}
-          LAZYLLM_PostgreSQL_URL: ${{ secrets.LAZYLLM_PostgreSQL_URL }}
           GITHUB_TOKEN: ${{ secrets.PERSONAL_GITHUB_TOKEN }}
         timeout-minutes: 30
 
@@ -668,3 +717,28 @@ jobs:
           mkdir -p $LAZYLLM_HOME
           source /mnt/nfs_share/env.sh 
           pytest --lf --last-failed-no-failures=all --durations=0 --reruns=2 -v tests/k8s_tests
+
+  cpp_ext_test:
+    name: C++ Extension Test (${{ matrix.os }})
+    needs: [ clone ]
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+            submodules: false
+
+      - name: Set up python ${{ env.PYTHON_VERSION }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ env.PYTHON_VERSION }}
+
+      - name: Test
+        run: |
+          pip install pybind11
+          bash csrc/scripts/build_test.sh

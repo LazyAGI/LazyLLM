@@ -1,8 +1,6 @@
 cmake_minimum_required(VERSION 3.16)
 project(LazyLLMCPP LANGUAGES CXX)
 
-option(SHOW_SYMBOL "Whether to hide symbols" OFF)
-
 set(CMAKE_CXX_STANDARD 11)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
@@ -10,28 +8,29 @@ set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
 
-set(LAZYLLM lazyllm_cpp)
+# Config lazyllm_core lib with pure cpp code.
+file(GLOB_RECURSE LAZYLLM_CORE_SOURCES CONFIGURE_DEPENDS "${CMAKE_CURRENT_SOURCE_DIR}/src/*.cpp")
+add_library(lazyllm_core STATIC ${LAZYLLM_CORE_SOURCES})
+target_include_directories(lazyllm_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
 
-set(LAZYLLM_SOURCE_FILES
-    binding/lazyllm.cpp
-    binding/doc.cpp
-)
+# Config lazyllm_cpp lib with binding infomations.
+set(LAZYLLM_BINDING_SOURCES binding/lazyllm.cpp binding/doc.cpp)
+set(INTERFACE_TARGET_NAME lazyllm_cpp)
+pybind11_add_module(${INTERFACE_TARGET_NAME} ${LAZYLLM_BINDING_SOURCES})
+target_link_libraries(${INTERFACE_TARGET_NAME} PRIVATE lazyllm_core)
 
-pybind11_add_module(${LAZYLLM} ${LAZYLLM_SOURCE_FILES})
-
-if (SHOW_SYMBOL)
-    set_target_properties(${LAZYLLM} PROPERTIES CXX_VISIBILITY_PRESET default)
-    set_target_properties(${LAZYLLM} PROPERTIES CUDA_VISIBILITY_PRESET default)
-    add_definitions(-DPYBIND11_NAMESPACE=pybind11)
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    # SHOW_SYMBOL
+    set_target_properties(${INTERFACE_TARGET_NAME} PROPERTIES CXX_VISIBILITY_PRESET default)
+    set_target_properties(${INTERFACE_TARGET_NAME} PROPERTIES CUDA_VISIBILITY_PRESET default)
 endif()
 
-# for test executables
-# set(LAZYLLM_EXE_FILES)
+# Install
+install(TARGETS ${INTERFACE_TARGET_NAME} LIBRARY DESTINATION lazyllm)
 
-# foreach (tname ${LAZYLLM_EXE_FILES})
-#     add_executable(${tname} ${tname}.cpp)
-#     target_link_libraries(${tname} ${LAZYLLM} pybind11::module Python::Python)
-# endforeach (tname)
 
-install(TARGETS ${LAZYLLM}
-        LIBRARY DESTINATION lazyllm)
+# TESTS
+option(BUILD_TESTS "Build C++ tests" OFF)
+if (BUILD_TESTS)
+    include(cmake/tests.cmake)
+endif ()

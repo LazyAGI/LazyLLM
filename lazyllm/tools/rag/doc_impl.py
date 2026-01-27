@@ -15,7 +15,7 @@ from .store.document_store import _DocumentStore
 from .doc_node import DocNode
 from .data_loaders import DirectoryReader
 from .utils import DocListManager, is_sparse, _get_default_db_config
-from .global_metadata import GlobalMetadataDesc, RAG_KB_ID
+from .global_metadata import GlobalMetadataDesc, RAG_DOC_ID, RAG_KB_ID
 from .data_type import DataType
 from .parsing_service import _Processor, DocumentProcessor
 from .embed_wrapper import _EmbedWrapper
@@ -87,7 +87,7 @@ class DocImpl:
         }
         self.embed = {k: _EmbedWrapper(e) for k, e in embed.items()}
         self._global_metadata_desc = global_metadata_desc
-        self.store = store  # NOTE: will be initialized in _lazy_init()
+        self._store = store  # NOTE: will be initialized in _lazy_init()
         self._activated_groups = set([LAZY_ROOT_NAME, LAZY_IMAGE_GROUP])
         # activated_embeddings maintains all node_groups and active embeddings
         self._activated_embeddings = {LAZY_ROOT_NAME: set(), LAZY_IMAGE_GROUP: set()}  # {group_name: {em1, em2, ...}}
@@ -114,8 +114,13 @@ class DocImpl:
                 if not parent_group or parent_group in self._activated_groups: break
                 self._activated_groups.add(group := parent_group)
 
+    @property
+    def store(self) -> _DocumentStore:
+        self._lazy_init()
+        return self._store
+
     def _create_store(self):
-        self.store = self.store or {'type': 'map'}
+        self._store = self._store or {'type': 'map'}
         embed_dims, embed_datatypes = {}, {}
         for k, e in self.embed.items():
             embedding = e('a')
@@ -125,12 +130,12 @@ class DocImpl:
                 embed_dims[k] = len(embedding)
                 embed_datatypes[k] = DataType.FLOAT_VECTOR
 
-        self.store.pop('metadata_store', None)
-        self.store = _DocumentStore(algo_name=self._algo_name, store=self.store,
-                                    group_embed_keys=self._activated_embeddings, embed=self.embed,
-                                    embed_dims=embed_dims, embed_datatypes=embed_datatypes,
-                                    global_metadata_desc=self._global_metadata_desc)
-        self.store.activate_group(self._activated_groups)
+        self._store.pop('metadata_store', None)
+        self._store = _DocumentStore(algo_name=self._algo_name, store=self._store,
+                                     group_embed_keys=self._activated_embeddings, embed=self.embed,
+                                     embed_dims=embed_dims, embed_datatypes=embed_datatypes,
+                                     global_metadata_desc=self._global_metadata_desc)
+        self._store.activate_group(self._activated_groups)
 
     @once_wrapper(reset_on_pickle=True)
     def _create_schema_extractor(self):
@@ -138,7 +143,7 @@ class DocImpl:
             return
         elif isinstance(self._schema_extractor, LLMBase):
             metadata_store_config = (
-                (self.store.pop('metadata_store', None) if self.store else None)
+                (self._store.pop('metadata_store', None) if self._store else None)
                 or _get_default_db_config(db_name=f'{self._algo_name}_metadata')
             )
             self._schema_extractor = SchemaExtractor(db_config=metadata_store_config, llm=self._schema_extractor)
@@ -156,14 +161,14 @@ class DocImpl:
         self._resolve_index_pending_registrations()
         if self._processor:
             assert cloud and isinstance(self._processor, DocumentProcessor)
-            self._processor.register_algorithm(self._algo_name, self.store, self._reader, self.node_groups,
+            self._processor.register_algorithm(self._algo_name, self._store, self._reader, self.node_groups,
                                                self._schema_extractor, self._display_name, self._description)
         else:
-            self._processor = _Processor(self._algo_name, self.store, self._reader, self.node_groups,
+            self._processor = _Processor(self._algo_name, self._store, self._reader, self.node_groups,
                                          self._schema_extractor, self._display_name, self._description)
 
         # init files when `cloud` is False
-        if not cloud and self.store.is_group_empty(LAZY_ROOT_NAME):
+        if not cloud and self._store.is_group_empty(LAZY_ROOT_NAME):
             ids, pathes, metadatas = self._list_files(upload_status=DocListManager.Status.success)
             self._processor.add_doc(pathes, ids, metadatas)
             if pathes and self._dlm:
@@ -180,7 +185,7 @@ class DocImpl:
         for index_type, index_cls, index_args, index_kwargs in self._index_pending_registrations:
             args = [self._resolve_index_placeholder(arg) for arg in index_args]
             kwargs = {k: self._resolve_index_placeholder(v) for k, v in index_kwargs.items()}
-            self.store.register_index(index_type, index_cls(*args, **kwargs))
+            self._store.register_index(index_type, index_cls(*args, **kwargs))
         self._index_pending_registrations.clear()
 
     @staticmethod
@@ -259,7 +264,7 @@ class DocImpl:
         return decorator
 
     def _resolve_index_placeholder(self, value):
-        if isinstance(value, StorePlaceholder): return self.store
+        if isinstance(value, StorePlaceholder): return self._store
         elif isinstance(value, EmbedPlaceholder): return self.embed
         return value
 
@@ -267,7 +272,7 @@ class DocImpl:
         if bool(self._lazy_init.flag):
             args = [self._resolve_index_placeholder(arg) for arg in args]
             kwargs = {k: self._resolve_index_placeholder(v) for k, v in kwargs.items()}
-            self.store.register_index(index_type, index_cls(*args, **kwargs))
+            self._store.register_index(index_type, index_cls(*args, **kwargs))
         else:
             self._index_pending_registrations.append((index_type, index_cls, args, kwargs))
 
@@ -380,13 +385,13 @@ class DocImpl:
         if self._lazy_init.flag:
             if group_name not in self.node_groups: return
             assert not embed_keys, 'Cannot add new embed_keys for node_group when Document is inited'
-            self.store.activate_group(parent := group_name)
+            self._store.activate_group(parent := group_name)
             while True:
                 parent = self.node_groups[parent]['parent']
                 if parent in self._activated_groups: break
-                self.store.activate_group(parent)
+                self._store.activate_group(parent)
                 self._activated_groups.add(parent)
-            if self.store.is_group_empty(group_name): self._processor.reparse(group_name)
+            if self._store.is_group_empty(group_name): self._processor.reparse(group_name)
 
     def active_node_groups(self):
         return {k: v for k, v in self._activated_embeddings.items() if k in self._activated_groups}
@@ -397,20 +402,20 @@ class DocImpl:
         self._lazy_init()
 
         if index and index != 'default':
-            query_instance = self.store.get_index(type=index)
+            query_instance = self._store.get_index(type=index)
             if query_instance is None:
                 raise NotImplementedError(f'Index type "{index}" is not registered in the store.')
         else:
-            query_instance = self.store.get_index(type='default') or self.store
+            query_instance = self._store.get_index(type='default') or self._store
         try:
             nodes = query_instance.query(query=query, group_name=group_name, similarity_name=similarity,
                                          similarity_cut_off=similarity_cut_off, topk=topk, embed_keys=embed_keys,
                                          filters=filters, **similarity_kws, **kwargs)
         except Exception as e:
-            raise RuntimeError(f'index type `{index}` of store `{type(self.store.impl)}` query failed: {e}')
+            raise RuntimeError(f'index type `{index}` of store `{type(self._store.impl)}` query failed: {e}')
 
         for n in nodes:
-            n._store = self.store
+            n._store = self._store
             n._node_groups = self.node_groups
             n._children_loaded = False
         return nodes
@@ -485,7 +490,7 @@ class DocImpl:
             name = self.node_groups[cur_group]['parent']
             parent_uids = {n.parent for n in cur_nodes}
             kb_id = cur_nodes[0].global_metadata.get(RAG_KB_ID)
-            parents = self.store.get_nodes(group=name, kb_id=kb_id, uids=list(parent_uids), display=True)
+            parents = self._store.get_nodes(group=name, kb_id=kb_id, uids=list(parent_uids), display=True)
             if not parents: break
             cur_group = parents[0]._group
             cur_nodes = parents
@@ -494,14 +499,14 @@ class DocImpl:
     def find_children(self, nodes: List[DocNode], group: str) -> List[DocNode]:
         if not nodes: return []
         kb_id = nodes[0].global_metadata.get(RAG_KB_ID, None)
-        result = self.store.get_nodes(group=group, kb_id=kb_id, parent=[n._uid for n in nodes], display=True)
+        result = self._store.get_nodes(group=group, kb_id=kb_id, parent=[n._uid for n in nodes], display=True)
         if not result:
             LOG.warning(f'We cannot find any nodes for group `{group}`, please check your input.')
         LOG.debug(f'Found children nodes for {group}: {result}')
         return list(result)
 
     def clear_cache(self, group_names: Optional[List[str]] = None):
-        self.store.clear_cache(group_names)
+        self._store.clear_cache(group_names)
 
     def drop_algorithm(self):
         if isinstance(self._processor, DocumentProcessor):
@@ -513,7 +518,7 @@ class DocImpl:
         if not self._schema_extractor:
             raise AttributeError('No schema extractor for this Document.')
         self._create_schema_extractor()
-        data = self.store.get_nodes(group=LAZY_ROOT_NAME, kb_id=kb_id, doc_ids=doc_ids)
+        data = self._store.get_nodes(group=LAZY_ROOT_NAME, kb_id=kb_id, doc_ids=doc_ids)
         if not data:
             LOG.error(f'No data from store for kb_id: {kb_id}, doc_ids: {doc_ids}')
             return None
@@ -527,6 +532,63 @@ class DocImpl:
         set_id = self._schema_extractor.register_schema_set_to_kb(algo_id=self._algo_name, schema_set=schema_set,
                                                                   kb_id=kb_id, force_refresh=force_refresh)
         return set_id
+
+    def _get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
+                   group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
+                   ) -> List[DocNode]:
+        self._lazy_init()
+        return self._store.get_nodes(uids=uids, doc_ids=doc_ids, group=group,
+                                     kb_id=kb_id, numbers=numbers, display=True)
+
+    def _get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
+                          merge: bool = False) -> Union[List[DocNode], DocNode]:
+        if node is None:
+            return []
+        self._lazy_init()
+
+        if not isinstance(span, tuple) or len(span) != 2:
+            raise ValueError('span must be a tuple of (start, end)')
+
+        group = node.group
+        if not group:
+            LOG.warning('Window nodes query failed: node has no group')
+            return []
+
+        doc_id = node.global_metadata.get(RAG_DOC_ID)
+        if not doc_id:
+            LOG.warning('Window nodes query failed: node has no doc id')
+            return []
+
+        kb_id = node.global_metadata.get(RAG_KB_ID, DEFAULT_KB_ID)
+        start, end = span
+        if start > end:
+            start, end = end, start
+
+        node_number = node.number
+        numbers = set(range(node_number + start, node_number + end + 1))
+        numbers = {n for n in numbers if n > 0}
+
+        if not numbers:
+            return []
+
+        nodes = self._store.get_nodes(group=group, kb_id=kb_id, doc_ids=[doc_id], numbers=numbers)
+        nodes = sorted(nodes, key=lambda n: n.number)
+
+        if not merge:
+            return nodes
+
+        if any(type(n) is not DocNode for n in nodes):
+            # NOTE: QADocNode, ImageDocNode is not supported merge
+            LOG.warning('Merge window nodes only supports DocNode, returning list instead')
+            return nodes
+
+        merged_text = '\n'.join([n.text for n in nodes]) if nodes else ''
+        metadata = dict(node.metadata)
+        metadata.pop('lazyllm_store_num', None)
+        metadata.pop('number', None)
+        merged_node = DocNode(content=merged_text, group=group, embedding=node.embedding, parent=node._parent,
+                              metadata=metadata, global_metadata=dict(node.global_metadata))
+        return merged_node
 
     def __call__(self, func_name: str, *args, **kwargs):
         return getattr(self, func_name)(*args, **kwargs)

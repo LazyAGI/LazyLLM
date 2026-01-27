@@ -5,20 +5,18 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import urljoin
 
 from lazyllm.components.utils.downloader.model_downloader import LLMType
-from ..base import OnlineChatModuleBase, OnlineMultiModalBase
+from ..base import OnlineChatModuleBase, LazyLLMOnlineText2ImageModuleBase, LazyLLMOnlineTTSModuleBase
 from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.utils.file_operate import bytes_to_file
 from ..fileHandler import FileHandlerBase
 
 
-class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
+class MinimaxChat(OnlineChatModuleBase, FileHandlerBase):
 
     def __init__(self, base_url: str = 'https://api.minimaxi.com/v1/', model: str = 'MiniMax-M2',
                  api_key: str = None, stream: bool = True, return_trace: bool = False, **kwargs):
-        OnlineChatModuleBase.__init__(self, model_series='MINIMAX',
-                                      api_key=api_key or lazyllm.config['minimax_api_key'],
-                                      base_url=base_url, model_name=model, stream=stream,
-                                      return_trace=return_trace, **kwargs)
+        super().__init__(api_key=api_key or lazyllm.config['minimax_api_key'], base_url=base_url, model_name=model,
+                         stream=stream, return_trace=return_trace, **kwargs)
         FileHandlerBase.__init__(self)
         if stream:
             self._model_optional_params['stream'] = True
@@ -68,14 +66,13 @@ class MinimaxModule(OnlineChatModuleBase, FileHandlerBase):
             return False
 
 
-class MinimaxTextToImageModule(OnlineMultiModalBase):
+class MinimaxText2Image(LazyLLMOnlineText2ImageModuleBase):
     MODEL_NAME = 'image-01'
 
     def __init__(self, api_key: str = None, model: str = None,
                  url: str = 'https://api.minimaxi.com/v1/', return_trace: bool = False, **kwargs):
-        OnlineMultiModalBase.__init__(self, model_series='MINIMAX', api_key=api_key or lazyllm.config['minimax_api_key'],
-                                      model_name=model or MinimaxTextToImageModule.MODEL_NAME, url=url,
-                                      return_trace=return_trace, **kwargs)
+        super().__init__(api_key=api_key or lazyllm.config['minimax_api_key'],
+                         model_name=model or MinimaxText2Image.MODEL_NAME, url=url, return_trace=return_trace, **kwargs)
         if self._type == LLMType.IMAGE_EDITING:
             raise ValueError('MINIMAX series models do not support image editing now.')
         self._endpoint = 'image_generation'
@@ -141,18 +138,18 @@ class MinimaxTextToImageModule(OnlineMultiModalBase):
         response = encode_query_with_filepaths(None, file_paths)
         return response
 
-class MinimaxTTSModule(OnlineMultiModalBase):
+
+class MinimaxTTS(LazyLLMOnlineTTSModuleBase):
     MODEL_NAME = 'speech-2.6-hd'
 
     def __init__(self, api_key: str = None, model_name: str = None,
                  base_url: str = 'https://api.minimaxi.com/v1/',
                  return_trace: bool = False, **kwargs):
         if kwargs.pop('stream', False):
-            raise ValueError('MinimaxTTSModule does not support streaming output, please set stream to False')
-        OnlineMultiModalBase.__init__(self, model_series='MINIMAX',
-                                      api_key=api_key or lazyllm.config['minimax_api_key'],
-                                      model_name=model_name or MinimaxTTSModule.MODEL_NAME,
-                                      return_trace=return_trace, base_url=base_url, **kwargs)
+            raise ValueError('MinimaxTTS does not support streaming output, please set stream to False')
+        super().__init__(api_key=api_key or lazyllm.config['minimax_api_key'],
+                         model_name=model_name or MinimaxTTS.MODEL_NAME,
+                         return_trace=return_trace, base_url=base_url, **kwargs)
         self._endpoint = 't2a_v2'
 
     def _make_request(self, endpoint: str, payload: Dict[str, Any], base_url: Optional[str] = None,
@@ -178,7 +175,7 @@ class MinimaxTTSModule(OnlineMultiModalBase):
                  stream_options: Dict[str, Any] = None, out_path: str = None,
                  url: str = None, model: str = None, **kwargs):
         if stream:
-            raise ValueError('MinimaxTTSModule does not support streaming output, please set stream to False')
+            raise ValueError('MinimaxTTS does not support streaming output, please set stream to False')
         voice_setting = voice_setting or {}
         voice_setting.setdefault('voice_id', 'male-qn-qingse')
         payload: Dict[str, Any] = {

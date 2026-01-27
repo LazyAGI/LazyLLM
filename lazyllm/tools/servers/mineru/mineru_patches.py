@@ -1,23 +1,37 @@
 import copy
-from mineru.backend.pipeline import pipeline_middle_json_mkcontent
-from mineru.backend.pipeline.pipeline_middle_json_mkcontent import merge_para_with_text as pipeline_merge_para_with_text
-from mineru.backend.pipeline.pipeline_middle_json_mkcontent import get_title_level
-from mineru.backend.vlm import vlm_middle_json_mkcontent
-from mineru.backend.vlm.vlm_middle_json_mkcontent import merge_para_with_text as vlm_merge_para_with_text
-from mineru.utils.enum_class import BlockType, ContentType
+from mineru.backend.pipeline import (  # noqa: NID002
+    pipeline_middle_json_mkcontent,
+)
+from mineru.backend.pipeline.pipeline_middle_json_mkcontent import (  # noqa: NID002
+    merge_para_with_text as pipeline_merge_para_with_text,
+    get_title_level,
+)
+from mineru.backend.vlm import (  # noqa: NID002
+    vlm_middle_json_mkcontent,
+)
+from mineru.backend.vlm.vlm_middle_json_mkcontent import (  # noqa: NID002
+    merge_para_with_text as vlm_merge_para_with_text,
+)
+from mineru.utils.enum_class import (  # noqa: NID002
+    BlockType,
+    ContentType,
+)
+
 
 # patches to mineru (to output bbox)
 def _parse_line_spans(para_block, page_idx):
     lines_metas = []
     if 'lines' in para_block:
         for line_info in para_block['lines']:
-            if not line_info['spans']:
+            spans = line_info.get('spans')
+            if not spans:
                 continue
-            line_meta = copy.deepcopy(line_info['spans'][0])
-            line_meta.pop('score', None)
-            cross_page = line_meta.pop('cross_page', None)
-            line_meta['page'] = page_idx + 1 if cross_page is True else page_idx
-            lines_metas.append(line_meta)
+            for span in spans:
+                line_meta = copy.deepcopy(span)
+                line_meta.pop('score', None)
+                cross_page = line_meta.pop('cross_page', None)
+                line_meta['page'] = page_idx + 1 if cross_page is True else page_idx
+                lines_metas.append(line_meta)
     return lines_metas
 
 
@@ -26,9 +40,19 @@ def _parse_line_spans(para_block, page_idx):
 def pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_size):  # noqa: C901
     para_type = para_block['type']
     para_content = {}
-    if para_type in [BlockType.TEXT, BlockType.LIST, BlockType.INDEX]:
+    if para_type in [
+        BlockType.TEXT,
+        BlockType.LIST,
+        BlockType.INDEX,
+    ]:
         para_content = {
             'type': ContentType.TEXT,
+            'text': pipeline_merge_para_with_text(para_block),
+            'lines': _parse_line_spans(para_block, page_idx)
+        }
+    elif para_type == BlockType.DISCARDED:
+        para_content = {
+            'type': para_type,
             'text': pipeline_merge_para_with_text(para_block),
             'lines': _parse_line_spans(para_block, page_idx)
         }
@@ -94,15 +118,13 @@ def pipeline_make_blocks_to_content_list(para_block, img_buket_path, page_idx, p
     page_width, page_height = page_size
     para_bbox = para_block.get('bbox')
     if para_bbox:
-        x0, y0, x1, y1 = para_bbox
-        para_content['bbox'] = [
-            int(x0 * 1000 / page_width),
-            int(y0 * 1000 / page_height),
-            int(x1 * 1000 / page_width),
-            int(y1 * 1000 / page_height),
-        ]
+        para_content['bbox'] = para_bbox
+    else:
+        para_content['bbox'] = [0, 0, 0, 0]
 
     para_content['page_idx'] = page_idx
+    para_content['page_width'] = page_width
+    para_content['page_height'] = page_height
 
     return para_content
 
@@ -131,6 +153,7 @@ def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_s
             'lines': _parse_line_spans(para_block, page_idx)
         }
     elif para_type == BlockType.LIST:
+        lines = []
         para_content = {
             'type': para_type,
             'sub_type': para_block.get('sub_type', ''),
@@ -140,6 +163,8 @@ def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_s
             item_text = vlm_merge_para_with_text(block)
             if item_text.strip():
                 para_content['list_items'].append(item_text)
+                lines.extend(_parse_line_spans(block, page_idx))
+        para_content['lines'] = lines
     elif para_type == BlockType.TITLE:
         title_level = get_title_level(para_block)
         para_content = {
@@ -158,8 +183,8 @@ def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_s
         }
     elif para_type == BlockType.IMAGE:
         image_lines_metas = []
-        para_content = {'type': ContentType.IMAGE, 'img_path': '',
-                        BlockType.IMAGE_CAPTION: [], BlockType.IMAGE_FOOTNOTE: []}
+        para_content = {'type': ContentType.IMAGE, 'img_path': '', BlockType.IMAGE_CAPTION: [],
+                        BlockType.IMAGE_FOOTNOTE: []}
         for block in para_block['blocks']:
             image_lines_metas.extend(_parse_line_spans(block, page_idx))
             if block['type'] == BlockType.IMAGE_BODY:
@@ -210,15 +235,12 @@ def vlm_make_blocks_to_content_list(para_block, img_buket_path, page_idx, page_s
     page_width, page_height = page_size
     para_bbox = para_block.get('bbox')
     if para_bbox:
-        x0, y0, x1, y1 = para_bbox
-        para_content['bbox'] = [
-            int(x0 * 1000 / page_width),
-            int(y0 * 1000 / page_height),
-            int(x1 * 1000 / page_width),
-            int(y1 * 1000 / page_height),
-        ]
-
+        para_content['bbox'] = para_bbox
+    else:
+        para_content['bbox'] = [0, 0, 0, 0]
     para_content['page_idx'] = page_idx
+    para_content['page_width'] = page_width
+    para_content['page_height'] = page_height
     return para_content
 
 vlm_middle_json_mkcontent.make_blocks_to_content_list = vlm_make_blocks_to_content_list
