@@ -2,7 +2,6 @@ import os
 import sys
 import json
 import time
-import pickle
 import threading
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait, FIRST_COMPLETED
@@ -39,7 +38,7 @@ class DataStateStore:
             os.makedirs(save_folder, exist_ok=True)
             self.save_path = os.path.join(save_folder, f'{func_name}_results.jsonl')
             self.error_path = os.path.join(save_folder, f'{func_name}_error.jsonl')
-            self.progress_path = f'{self.save_path}.pkl'
+            self.progress_path = f'{self.save_path}.json'
             self._init_files()
 
     def __getstate__(self):
@@ -68,8 +67,12 @@ class DataStateStore:
         with self.lock:
             if self.save_path and self.resume and os.path.exists(self.progress_path):
                 try:
-                    with open(self.progress_path, 'rb') as f:
-                        self.processed_indices = pickle.load(f)
+                    with open(self.progress_path, 'r', encoding='utf-8') as f:
+                        data = json.load(f)
+                        if data == 'Done':
+                            self.processed_indices = 'Done'
+                        else:
+                            self.processed_indices = set(data)
                         return self.processed_indices
                 except Exception:
                     LOG.warning(f'Failed to load progress from {self.progress_path}')
@@ -127,9 +130,11 @@ class DataStateStore:
                         for res in self.buffer:
                             try:
                                 line = json.dumps(res, ensure_ascii=False)
-                            except Exception:
-                                line = str(res)
-                            f.write(line + '\n')
+                                f.write(line + '\n')
+                            except Exception as e:
+                                LOG.warning(
+                                    f'Could not serialize item to JSON in {self.save_path}. '
+                                    f'Skipping. Item: {res}. Error: {e}')
                     self.buffer = []
 
                 if self.error_buffer:
@@ -137,9 +142,11 @@ class DataStateStore:
                         for res in self.error_buffer:
                             try:
                                 line = json.dumps(res, ensure_ascii=False)
-                            except Exception:
-                                line = str(res)
-                            f.write(line + '\n')
+                                f.write(line + '\n')
+                            except Exception as e:
+                                LOG.warning(
+                                    f'Could not serialize item to JSON in {self.error_path}. '
+                                    f'Skipping. Item: {res}. Error: {e}')
                     self.error_buffer = []
 
                 if self.indices_buffer and isinstance(self.processed_indices, set):
@@ -147,8 +154,11 @@ class DataStateStore:
                     self.indices_buffer = []
 
                 if self.processed_indices:
-                    with open(self.progress_path, 'wb') as f:
-                        pickle.dump(self.processed_indices, f)
+                    with open(self.progress_path, 'w', encoding='utf-8') as f:
+                        if self.processed_indices == 'Done':
+                            json.dump('Done', f)
+                        else:
+                            json.dump(list(self.processed_indices), f)
         except Exception as e:
             LOG.error(f'Failed to save results to {self.save_path}: {e}')
 
@@ -162,8 +172,8 @@ class DataStateStore:
                     for line in f:
                         try:
                             results.append(json.loads(line))
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            LOG.warning(f'Failed to parse line in {self.save_path}: {line.strip()}. Error: {e}')
         return results
 
 class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
@@ -200,10 +210,16 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
         processed_indices = self._store.load_progress()
         results = []
         pbar = tqdm(total=len(data), desc=f'Processing {self.__class__.__name__}', unit='item')
-        if len(processed_indices) > 0:
-            pbar.update(len(processed_indices))
 
-        pending_indices = [idx for idx in range(len(data)) if idx not in processed_indices]
+        if processed_indices == 'Done':
+            pbar.update(len(data))
+            pending_indices = []
+        else:
+            if len(processed_indices) > 0:
+                pbar.update(len(processed_indices))
+
+            pending_indices = [idx for idx in range(len(data)) if idx not in processed_indices]
+
         if not pending_indices:
             pbar.close()
             return self._store.load_results()
