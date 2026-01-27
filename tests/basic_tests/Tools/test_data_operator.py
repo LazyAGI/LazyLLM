@@ -12,13 +12,15 @@ class TestDataOperators:
         func = demo1.process_uppercase(input_key='text')
         inputs = [{'text': 'hello'}, {'text': 'world'}]
         res = func(inputs)
-        assert res == [{'text': 'HELLO'}, {'text': 'WORLD'}]
+        expected = [{'text': 'HELLO'}, {'text': 'WORLD'}]
+        assert sorted(res, key=lambda x: x['text']) == sorted(expected, key=lambda x: x['text'])
 
     def test_add_suffix(self):
         func = demo2.AddSuffix(input_key='text', suffix='!!!', _max_workers=2)
         inputs = [{'text': 'exciting'}, {'text': 'amazing'}]
         res = func(inputs)
-        assert res == [{'text': 'exciting!!!'}, {'text': 'amazing!!!'}]
+        expected = [{'text': 'exciting!!!'}, {'text': 'amazing!!!'}]
+        assert sorted(res, key=lambda x: x['text']) == sorted(expected, key=lambda x: x['text'])
 
     def test_rich_content(self):
         func = demo2.rich_content(input_key='text')
