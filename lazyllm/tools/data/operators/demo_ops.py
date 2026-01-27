@@ -38,3 +38,12 @@ def rich_content(data, input_key='content'):
         new_data[input_key] = f'{content} - part {i+1}'
         new_res.append(new_data)
     return new_res
+
+@data_register('data.demo2', rewrite_func='forward')
+def error_prone_op(data, input_key='content'):
+    assert isinstance(data, dict)
+    content = data.get(input_key, '')
+    if content == 'fail':
+        raise ValueError('Intentional error for testing.')
+    data[input_key] = f'Processed: {content}'
+    return data
