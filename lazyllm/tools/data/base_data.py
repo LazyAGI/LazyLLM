@@ -3,6 +3,7 @@ import sys
 import json
 import time
 import pickle
+import threading
 from tqdm import tqdm
 from concurrent.futures import ThreadPoolExecutor, ProcessPoolExecutor, wait, FIRST_COMPLETED
 
@@ -22,97 +23,154 @@ class DataStateStore:
         self.save_data = save_data
         self.resume = config['data_process_resume']
         self.save_path = None
+        self.error_path = None
         self.progress_path = None
         self.buffer = []
+        self.error_buffer = []
+        self.indices_buffer = []
+        self.processed_indices = set()
         self.buffer_size_limit = 100
         self.last_save_time = time.time()
+        self.lock = threading.RLock()
 
         if self.save_data:
             root = config['data_process_path'] or os.path.join(os.getcwd(), 'data_pipeline_res')
             save_folder = os.path.join(root, func_name)
             os.makedirs(save_folder, exist_ok=True)
             self.save_path = os.path.join(save_folder, f'{func_name}_results.jsonl')
+            self.error_path = os.path.join(save_folder, f'{func_name}_error.jsonl')
             self.progress_path = f'{self.save_path}.pkl'
             self._init_files()
 
+    def __getstate__(self):
+        # Prevent pickling of the lock object
+        state = self.__dict__.copy()
+        if 'lock' in state:
+            del state['lock']
+        return state
+
+    def __setstate__(self, state):
+        # Restore state and re-initialize lock
+        self.__dict__.update(state)
+        self.lock = threading.RLock()
+
     def _init_files(self):
-        if self.save_path and not self.resume:
-            if os.path.exists(self.save_path):
-                os.remove(self.save_path)
-            if os.path.exists(self.progress_path):
-                os.remove(self.progress_path)
+        with self.lock:
+            if self.save_path and not self.resume:
+                if os.path.exists(self.save_path):
+                    os.remove(self.save_path)
+                if os.path.exists(self.error_path):
+                    os.remove(self.error_path)
+                if os.path.exists(self.progress_path):
+                    os.remove(self.progress_path)
 
     def load_progress(self):
-        if self.save_path and self.resume and os.path.exists(self.progress_path):
-            try:
-                with open(self.progress_path, 'rb') as f:
-                    return pickle.load(f)
-            except Exception:
-                LOG.warning(f'Failed to load progress from {self.progress_path}')
-        return set()
+        with self.lock:
+            if self.save_path and self.resume and os.path.exists(self.progress_path):
+                try:
+                    with open(self.progress_path, 'rb') as f:
+                        self.processed_indices = pickle.load(f)
+                        return self.processed_indices
+                except Exception:
+                    LOG.warning(f'Failed to load progress from {self.progress_path}')
+            self.processed_indices = set()
+            return self.processed_indices
 
-    def save_results(self, results, force=False):
+    def save_results(self, results, indices=None, force=False):
         if not self.save_path:
             return
 
-        if results:
-            if isinstance(results, list):
-                self.buffer.extend(results)
+        with self.lock:
+            if results:
+                if isinstance(results, list):
+                    self.buffer.extend(results)
+                else:
+                    self.buffer.append(results)
+
+            if indices is not None:
+                if indices == 'Done':
+                    self.processed_indices = 'Done'
+                    self.indices_buffer = []
+                    force = True
+                elif isinstance(indices, list):
+                    self.indices_buffer.extend(indices)
+                else:
+                    self.indices_buffer.append(indices)
+
+            current_time = time.time()
+            time_diff = current_time - self.last_save_time
+
+            # Intelligent storage: Adjust frequency based on buffer size and time
+            if time_diff < 1.0:
+                self.buffer_size_limit = min(self.buffer_size_limit * 2, 10000)
+            elif time_diff > 10.0 and self.buffer_size_limit > 100:
+                self.buffer_size_limit = max(self.buffer_size_limit // 2, 100)
+
+            if force or (len(self.buffer) >= self.buffer_size_limit) or (time_diff > 5):
+                self._flush()
+                self.last_save_time = current_time
+
+    def save_errors(self, errors):
+        if not self.error_path:
+            return
+        with self.lock:
+            if isinstance(errors, list):
+                self.error_buffer.extend(errors)
             else:
-                self.buffer.append(results)
+                self.error_buffer.append(errors)
 
-        current_time = time.time()
-        time_diff = current_time - self.last_save_time
-
-        # Intelligent storage: Adjust frequency based on buffer size and time
-        if time_diff < 1.0:
-            self.buffer_size_limit = min(self.buffer_size_limit * 2, 10000)
-        elif time_diff > 10.0 and self.buffer_size_limit > 100:
-            self.buffer_size_limit = max(self.buffer_size_limit // 2, 100)
-
-        if force or (len(self.buffer) >= self.buffer_size_limit) or (time_diff > 5):
-            self._flush()
-            self.last_save_time = current_time
-
-    def _flush(self):
-        if not self.buffer: return
+    def _flush(self):  # noqa: C901
         try:
-            with open(self.save_path, 'a', encoding='utf-8') as f:
-                for res in self.buffer:
-                    try:
-                        line = json.dumps(res, ensure_ascii=False)
-                    except Exception:
-                        line = str(res)
-                    f.write(line + '\n')
-            self.buffer = []
+            with self.lock:
+                if self.buffer:
+                    with open(self.save_path, 'a', encoding='utf-8') as f:
+                        for res in self.buffer:
+                            try:
+                                line = json.dumps(res, ensure_ascii=False)
+                            except Exception:
+                                line = str(res)
+                            f.write(line + '\n')
+                    self.buffer = []
+
+                if self.error_buffer:
+                    with open(self.error_path, 'a', encoding='utf-8') as f:
+                        for res in self.error_buffer:
+                            try:
+                                line = json.dumps(res, ensure_ascii=False)
+                            except Exception:
+                                line = str(res)
+                            f.write(line + '\n')
+                    self.error_buffer = []
+
+                if self.indices_buffer and isinstance(self.processed_indices, set):
+                    self.processed_indices.update(self.indices_buffer)
+                    self.indices_buffer = []
+
+                if self.processed_indices:
+                    with open(self.progress_path, 'wb') as f:
+                        pickle.dump(self.processed_indices, f)
         except Exception as e:
             LOG.error(f'Failed to save results to {self.save_path}: {e}')
-
-    def save_progress(self, indices):
-        if not self.save_path:
-            return
-        with open(self.progress_path, 'wb') as f:
-            pickle.dump(indices, f)
 
     def load_results(self):
         # Ensure any remaining buffer is flushed before loading
         self._flush()
         results = []
-        if self.save_path and os.path.exists(self.save_path):
-            with open(self.save_path, 'r', encoding='utf-8') as f:
-                for line in f:
-                    try:
-                        results.append(json.loads(line))
-                    except Exception:
-                        pass
+        with self.lock:
+            if self.save_path and os.path.exists(self.save_path):
+                with open(self.save_path, 'r', encoding='utf-8') as f:
+                    for line in f:
+                        try:
+                            results.append(json.loads(line))
+                        except Exception:
+                            pass
         return results
 
 class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, _max_workers=None, _batch_size=None, _concurrency_mode='process',
-                 _ignore_errors=False, _save_data=True, **kwargs):
+    def __init__(self, _concurrency_mode='process', _save_data=True, _max_workers=None,
+                 _ignore_errors=True, **kwargs):
         self._concurrency_mode = _concurrency_mode
         self._max_workers = _max_workers or (os.cpu_count() if _concurrency_mode == 'process' else 32)
-        self._batch_size = _batch_size or self._max_workers
         self._ignore_errors = _ignore_errors
         self._store = DataStateStore(self.__class__.__name__, _save_data)
         self._lazyllm_kwargs = kwargs
@@ -132,12 +190,13 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
             kwargs = getattr(self, '_lazyllm_kwargs', {})
             return self.forward(data, **kwargs)
         except Exception as e:
-            if self._ignore_errors:
-                LOG.error(f'Error processing data in {self.__class__.__name__}: {e}')
-                return None
-            raise e
+            err_msg = str(e)
+            if isinstance(data, dict):
+                data['infer_error'] = err_msg
+                return data
+            return {'input': data, 'infer_error': err_msg}
 
-    def _process_common(self, data):
+    def _process_forward_common(self, data):
         processed_indices = self._store.load_progress()
         results = []
         pbar = tqdm(total=len(data), desc=f'Processing {self.__class__.__name__}', unit='item')
@@ -152,16 +211,15 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
         if self._concurrency_mode == 'single':
             for idx in pending_indices:
                 res = self._run_one(data[idx])
-                self._handle_result(res, data[idx], results, processed_indices, [idx])
+                self._handle_result(res, data[idx], results, [idx])
                 pbar.update(1)
         else:
-            self._process_parallel(data, pending_indices, results, processed_indices, pbar)
+            self._process_parallel(data, pending_indices, results, pbar)
 
         pbar.close()
         # Flush remaining
         if self._store.save_data:
             self._store.save_results([], force=True)  # Flush
-            self._store.save_progress(processed_indices)
             return self._store.load_results()
         return results
 
@@ -180,7 +238,7 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
                 if not hasattr(mod, cls.__qualname__):
                     setattr(mod, cls.__qualname__, cls)
 
-    def _process_parallel(self, data, pending_indices, results, processed_indices, pbar):
+    def _process_parallel(self, data, pending_indices, results, pbar):
         if self._concurrency_mode == 'process':
             self._ensure_picklable()
 
@@ -206,7 +264,7 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
                     idx = futures.pop(fut)
                     try:
                         res = fut.result()
-                        self._handle_result(res, data[idx], results, processed_indices, [idx])
+                        self._handle_result(res, data[idx], results, [idx])
                     except Exception as e:
                         if not self._ignore_errors:
                             raise e
@@ -222,7 +280,13 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
                     except StopIteration:
                         pass
 
-    def _handle_result(self, res, original_data, results, processed_indices, indices):
+    def _handle_result(self, res, original_data, results, indices):
+        if isinstance(res, dict) and 'infer_error' in res:
+            if self._store.save_data:
+                self._store.save_errors(res)
+                self._store.save_results([], indices)
+            return
+
         # Logic to interpret return value
         final_res = []
         if res is None:
@@ -234,27 +298,27 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
         elif isinstance(res, dict):
             final_res.append(res)
         else:
-            # Fallback or error? Assuming dict return for safety, but maybe primitive?
-            # Doc says dict or List[dict].
-            pass
+            # Treat unexpected return types as errors
+            err_msg = f'Invalid return type {type(res)} from {self.__class__.__name__}, expect dict or list or None'
+            LOG.error(err_msg)
+            if isinstance(original_data, dict):
+                error_res = original_data.copy()
+                error_res['infer_error'] = err_msg
+            else:
+                error_res = {'input': original_data, 'infer_error': err_msg}
+
+            if self._store.save_data:
+                self._store.save_errors(error_res)
+                self._store.save_results([], indices)
+            return
 
         if self._store.save_data:
-            self._store.save_results(final_res)
-            processed_indices.update(indices)
-            # Optimize progress saving frequency?
-            # We can save progress periodically or just relies on memory set update
-            # and save once at end? Or periodically?
-            # To be safe for resume, we should save periodically.
-            # Let's trust save_results handles data flush, we should handle progress flush.
-            # But here we update the set. The set is in memory.
-            # We can save pickle every X items.
-            if len(processed_indices) % 100 == 0:
-                self._store.save_progress(processed_indices)
+            self._store.save_results(final_res, indices)
         else:
             results.extend(final_res)
 
     def __call__(self, inputs):
-        if not isinstance(inputs, (tuple, list)):
+        if not isinstance(inputs, list):
             inputs = [inputs]
 
         kwargs = getattr(self, '_lazyllm_kwargs', {})
@@ -267,12 +331,11 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
             res = self.forward_batch_input(inputs, **kwargs)
 
             if self._store.save_data and res is not None:
-                self._store.save_results(res if isinstance(res, list) else [res], force=True)
-                self._store.save_progress('Done')
+                self._store.save_results(res if isinstance(res, list) else [res], indices='Done', force=True)
             return res
 
         elif self._overwrote('forward'):
-            return self._process_common(inputs)
+            return self._process_forward_common(inputs)
         else:
             raise RuntimeError('Must implement forward or forward_batch_input')
 
