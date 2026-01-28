@@ -67,11 +67,11 @@ add_chinese_doc('data.LazyLLMDataBase', """\
 
 构造函数参数:
 
-    _concurrency_mode (str): 并发模式，'process'|'thread'|'single'。
-    _save_data (bool): 是否保存中间结果到磁盘以便 Resume。
-    _max_workers (int|None): 最大并发工作进程/线程数，None 表示使用默认。
-    _ignore_errors (bool): 是否忽略任务异常。
-    **kwargs (dict): 其它传递给算子的参数。
+- _concurrency_mode (str): 并发模式，'process'|'thread'|'single'。
+- _save_data (bool): 是否保存中间结果到磁盘以便 Resume。
+- _max_workers (int|None): 最大并发工作进程/线程数，None 表示使用默认。
+- _ignore_errors (bool): 是否忽略任务异常。
+- **kwargs (dict): 其它传递给算子的参数。
 
 配置项（通过 lazyllm.config）:
 
@@ -124,7 +124,8 @@ add_chinese_doc('data.LazyLLMDataBase.set_output', """\
 Args:
     output_path (str): 文件夹路径或具体 .jsonl 文件路径。若为文件夹，则在该文件夹下创建以类名命名的 jsonl 文件。
 
-行为:
+行为：
+
 - 如果传入的是文件夹路径，则在该文件夹下创建以类名命名的 jsonl 文件。
 - 如果传入的是以 .jsonl 结尾的路径，则直接写入该文件（必要时会创建目录）。
 - 返回写入的绝对路径字符串。
