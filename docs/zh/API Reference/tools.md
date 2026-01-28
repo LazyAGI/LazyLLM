@@ -482,3 +482,11 @@
 ::: lazyllm.tools.review.tools.chinese_corrector.ChineseCorrector
     members: correct, correct_batch
     exclude-members:
+
+::: lazyllm.tools.data.data_register
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.LazyLLMDataBase
+    members:
+    exclude-members:
