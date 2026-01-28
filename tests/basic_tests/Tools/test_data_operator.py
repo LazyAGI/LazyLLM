@@ -48,6 +48,14 @@ class TestDataOperators:
             {'text': 'This is a test. - part 1'},
             {'text': 'This is a test. - part 2'}]
 
+    def test_output_file(self):
+        func = demo2.rich_content(input_key='text').set_output(self.root_dir)
+        inputs = [{'text': 'This is a test.'}]
+        res = func(inputs)
+        assert isinstance(res, str)
+        assert os.path.exists(res)
+        assert res.endswith('.jsonl')
+
     def test_error_handling(self):
         op = demo2.error_prone_op(input_key='text', _save_data=True, _concurrency_mode='single')
         inputs = [{'text': 'ok1'}, {'text': 'fail'}, {'text': 'ok2'}]

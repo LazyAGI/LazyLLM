@@ -184,6 +184,11 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
         self._ignore_errors = _ignore_errors
         self._store = DataStateStore(self.__class__.__name__, _save_data)
         self._lazyllm_kwargs = kwargs
+        self._export_path = None
+
+    def set_output(self, output_path):
+        self._export_path = output_path
+        return self
 
     def _overwrote(self, f):
         return getattr(self.__class__, f) is not getattr(__class__, f) or \
@@ -333,26 +338,47 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
         else:
             results.extend(final_res)
 
+    def _export_file(self, result):
+        if not self._export_path or result is None:
+            return result
+
+        path = self._export_path
+        if not path.endswith('.jsonl'):
+            os.makedirs(path, exist_ok=True)
+            path = os.path.join(path, f'{self.__class__.__name__}.jsonl')
+        else:
+            dir_name = os.path.dirname(path)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
+
+        abs_path = os.path.abspath(path)
+        with open(abs_path, 'w', encoding='utf-8') as f:
+            for item in result:
+                f.write(json.dumps(item, ensure_ascii=False) + '\n')
+        return abs_path
+
     def __call__(self, inputs):
         if not isinstance(inputs, list):
             inputs = [inputs]
 
         kwargs = getattr(self, '_lazyllm_kwargs', {})
+        res = []
 
         if self._overwrote('forward_batch_input'):
             if self._store.save_data and self._store.resume and 'Done' in self._store.load_progress():
                 LOG.warning(f'skip {self.__class__.__name__} and load data from {self._store.save_path}')
-                return self._store.load_results()
+                res = self._store.load_results()
+            else:
+                res = self.forward_batch_input(inputs, **kwargs)
 
-            res = self.forward_batch_input(inputs, **kwargs)
-
-            if self._store.save_data and res is not None:
-                self._store.save_results(res if isinstance(res, list) else [res], indices='Done', force=True)
-            return res
+                if self._store.save_data and res is not None:
+                    self._store.save_results(res if isinstance(res, list) else [res], indices='Done', force=True)
 
         elif self._overwrote('forward'):
-            return self._process_forward_common(inputs)
+            res = self._process_forward_common(inputs)
         else:
             raise RuntimeError('Must implement forward or forward_batch_input')
+
+        return self._export_file(res)
 
 data_register = lazyllm.Register(LazyLLMDataBase, ['forward', 'forward_batch_input'])
