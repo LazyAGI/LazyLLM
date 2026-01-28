@@ -8,7 +8,7 @@
 """
 
 import lazyllm
-
+from lazyllm.tools import finetune
 # 创建可训练模型
 model = lazyllm.TrainableModule('internlm2-chat-7b')
 
@@ -24,22 +24,17 @@ print(f"训练数据量: {len(train_data)}")
 print()
 
 # 开始微调
-model.finetune(
-    data=train_data,
-    finetune_type='llama_factory',  # 使用 LLaMA-Factory
-    finetune_args={
-        'lora_target': ['q_proj', 'v_proj'],
-        'lora_r': 64,
-        'lora_alpha': 32,
-        'learning_rate': 5e-5,
-        'num_train_epochs': 3,
-        'per_device_train_batch_size': 4,
-        'gradient_accumulation_steps': 8,
-        'save_steps': 100,
-        'logging_steps': 10,
-    }
-)
+model.finetune_method(
+    finetune.llamafactory,
+    learning_rate=1e-4,      # 学习率
+    num_train_epochs=3,      # 训练轮数
+    per_device_train_batch_size=4,  # 批次大小
+    max_samples=1000,        # 最大样本数
+    val_size=0.1)\
+    .trainset(train_data)\
+    .mode('finetune')
 
+model.update()
 print("\n微调完成！")
 
 # 保存模型

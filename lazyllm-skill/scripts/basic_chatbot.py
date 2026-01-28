@@ -9,7 +9,7 @@
 import lazyllm
 
 # 创建对话模块
-chat = lazyllm.OnlineChatModule()
+chat = lazyllm.OnlineModule()
 
 # 设置提示词（可选）
 prompt = '你是一个友好的助手，请用简洁明了的语言回答用户问题。'

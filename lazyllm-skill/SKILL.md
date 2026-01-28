@@ -1,8 +1,7 @@
 ---
 name: lazyllm-skill
 description: >
-  LazyLLM framework for building multi-agent AI applications. Use when task needs LazyLLM or develop AI
-  program for:
+  LazyLLM framework for building multi-agent AI applications. Use when task mentioned LazyLLM or AI program for:
   (1) Flow orchestration - linear, branching, parallel, loop workflows for complex data pipelines,
   (2) Model fine-tuning and acceleration - finetuning LLMs with LLaMA-Factory/Alpaca-LoRA/Collie and acceleration with vLLM/LMDeploy/LightLLM. Includes comprehensive code examples for all components,
   (3) RAG systems - knowledge-based QA with document retrieval, vectorization, and generation,
@@ -235,12 +234,29 @@ if __name__ == '__main__':
 
 ## 最佳实践
 
-1. **从简单开始** - 先运行基础示例，再逐步添加复杂性
-2. **使用参考文档** - 每个组件都有详细的参考文档
-3. **正确配置** - 设置 API Key 和模型配置
-4. **增量测试** - 测试每个组件后再集成
-5. **使用 Flow** - 利用 pipeline 和 parallel 简化流程
-6. **选择合适的框架** - 根据需求选择微调框架和推理引擎
+1. 先使用 Basic 能力构建模块: 优先使用 ModuleBase / ActionModule 封装能力，所有模型、工具、Flow 都应以 Module 形式存在。 参考文档[references/basic.md](references/basic.md)
+
+2. 模型统一通过 AutoModel 或 OnlineModule 创建: 不直接实例化具体模型实现类，便于后续切换在线/本地与部署方式。 参考文档[Model使用示例](./assets/basic/model.md)
+
+3. Prompt 必须通过 Prompter 注入: 不在代码中硬编码 prompt，使提示词与逻辑解耦、可复用、可配置。 参考文档[Prompter使用示例](./assets/basic/prompter.md)
+
+4. 能力暴露统一走 AutoRegistry: 新能力通过继承 Base 类或 Register 装饰器注册，通过 lazyllm.<group>.<key> 访问。 参考文档[AutoRegistry使用示例](./assets/basic/registry.md)
+
+5. 配置与代码解耦: API Key(需提醒用户配置)、模型名、参数等放入 Config 或环境变量，不写死在代码中。参考文档[Config使用示例](./assets/basic/config.md)
+
+6. 先搭建最小可运行版本（MVP）: 先保证单模型/单流程跑通，再逐步增加并行、分支、重排等能力。
+
+7. 复杂控制逻辑统一使用 Flow: 多阶段、并行、条件、循环、DAG 依赖场景下使用 pipeline / parallel / diverter / loop 等组件。参考文档[references/flow.md](references/flow.md)
+
+8. RAG 优先保证检索质量: 先优化切分、Embedding、Retriever、Reranker，再调整 Prompt。参考文档[references/rag.md](references/rag.md)
+
+9. Agent 中规划与执行分离: Agent 负责规划，具体执行逻辑放在 Tool / Module 中。参考文档[references/agent.md](references/agent.md)
+
+10. 增量调试: 先测单 Module，再测子 Flow，最后测试完整系统。
+
+11. 优先使用 Auto 系列能力: 如 AutoModel、AutoFinetune、AutoDeploy，在必要时再指定具体实现。
+
+12. 第三方依赖通过 lazyllm.thirdparty 引入: 避免直接 import，保证懒加载与可选依赖管理。参考文档[Thirdparty使用示例](./assets/basic/thirdparty.md)
 
 使用示例合集:
 [示例合集](./scripts/README.md)

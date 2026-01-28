@@ -7,7 +7,7 @@
 """
 
 from lazyllm import OnlineChatModule, WebModule
-from lazyllm.tools import FunctionCallAgent, fc_register
+from lazyllm.tools import ReactAgent, fc_register
 
 # 定义工具
 @fc_register('tool')
@@ -45,7 +45,7 @@ def calculate_tool(expression: str) -> str:
 llm = OnlineChatModule()
 
 # 创建智能体
-agent = FunctionCallAgent(llm, tools=['search_tool', 'calculate_tool'])
+agent = ReactAgent(llm, tools=['search_tool', 'calculate_tool'])
 
 # 启动 Web 界面
 print("启动智能体 Web 界面...")
