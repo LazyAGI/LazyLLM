@@ -9,52 +9,51 @@ from datasketch import MinHash, MinHashLSH
 
 @DataOperatorRegistry.register
 class LanguageFilter:
-    _model_cache = None
-
-    def __init__(self, input_key='content', target_language='zh', model_cache_dir=None):
+    def __init__(self, input_key='content', target_language='zh', threshold=0.6, model_path=None, model_cache_dir=None):
         self.input_key = input_key
         if isinstance(target_language, str):
-            self.allowed_languages = [target_language]
+            self.allowed_languages = {target_language}
         else:
-            self.allowed_languages = target_language
+            self.allowed_languages = set(target_language)
+        self.threshold = threshold
+        self.model_path = model_path
         self.model_cache_dir = model_cache_dir or config['model_cache_dir']
         self.model = self._load_model()
 
     def _load_model(self):
-        if LanguageFilter._model_cache is not None:
-            return LanguageFilter._model_cache
-
         try:
-            LOG.info('Downloading FastText language identification model from Hugging Face Hub...')
-            model_path = hf_hub_download(
-                repo_id='facebook/fasttext-language-identification',
-                filename='model.bin',
-                cache_dir=self.model_cache_dir
-            )
-            LanguageFilter._model_cache = fasttext.load_model(model_path)
+            if self.model_path:
+                # Use provided model path directly if available
+                LOG.info(f'Loading FastText language model from {self.model_path}...')
+                model = fasttext.load_model(self.model_path)
+            else:
+                # Download model to cache directory
+                LOG.info('Downloading FastText language identification model from Hugging Face Hub...')
+                model_path = hf_hub_download(
+                    repo_id='facebook/fasttext-language-identification',
+                    filename='model.bin',
+                    cache_dir=self.model_cache_dir
+                )
+                model = fasttext.load_model(model_path)
             LOG.info('FastText language model loaded successfully.')
-            return LanguageFilter._model_cache
+            return model
         except Exception as e:
-            LOG.error(f'Error downloading or loading FastText model: {e}')
+            LOG.error(f'Error loading FastText model: {e}')
             raise
 
     def __call__(self, data):
         assert isinstance(data, dict)
 
-        if self.input_key not in data:
-            return None
-
-        text = data[self.input_key]
+        text = data.get(self.input_key)
         if not isinstance(text, str) or not text.strip():
             return None
 
-        labels, scores = self.model.predict(text.replace('\n', ' '), k=5)
-        label_score_pairs = list(zip(labels, scores))
-        label_score_pairs.sort(key=lambda x: x[1], reverse=True)
-
-        top_labels = [label.replace('__label__', '') for label, _ in label_score_pairs]
-        if any(label in self.allowed_languages for label in top_labels):
-            return data
+        labels, scores = self.model.predict(text.replace('\n', ' ').strip(), k=1)
+        if labels and scores:
+            print(labels, scores)
+            pred_label, pred_score = labels[0].replace('__label__', ''), scores[0]
+            if pred_label in self.allowed_languages and pred_score >= self.threshold:
+                return data
 
         return None
 
