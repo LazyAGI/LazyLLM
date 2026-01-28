@@ -11142,23 +11142,3 @@ add_example(
     >>> print(results)
     [{'source': '句子1', 'target': '修正后句子1', 'errors': [...]}, ...]
 """)
-
-add_chinese_doc('data.data_register', """\
-数据处理算子注册器。用于把类或者函数注册为数据处理算子，方便在数据处理流程中调用。
-""")
-
-add_chinese_doc('data.LazyLLMDataBase', """\
-数据处理算子的基类。为所有注册的数据处理算子提供统一的接口和基础功能。支持并发、Resume和进度打印等功能。
-""")
-
-add_chinese_doc('data.LazyLLMDataBase.set_output', """\
-将处理的结果存储到指定路径，并把路径返回。
-""")
-
-add_chinese_doc('data.LazyLLMDataBase.forward', """\
-需要被重写的方法。实现具体的单个数据处理逻辑。和 `forward_batch_input` 方法互斥。
-""")
-
-add_chinese_doc('data.LazyLLMDataBase.forward_batch_input', """\
-需要被重写的方法。实现具体的批量数据处理逻辑。和 `forward` 方法互斥。
-""")
