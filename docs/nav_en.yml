@@ -38,6 +38,7 @@
   - FunctionCall: Best Practice/functionCall.md
   - Stream: Best Practice/stream.md
   - AutoRegistry: Best Practice/Features/AutoRegistry.md
+  - Data Processing: Best Practice/data_proccess.md
 - Advanced Topics:
   - Contribution: Advanced Topics/contribution.md
   - Changelog: Advanced Topics/changelog.md

@@ -11142,3 +11142,11 @@ add_example(
     >>> print(results)
     [{'source': '句子1', 'target': '修正后句子1', 'errors': [...]}, ...]
 """)
+
+add_chinese_doc('data.data_register', """\
+test.    
+""")
+
+add_chinese_doc('data.LazyLLMDataBase', """\
+test.   
+""")
