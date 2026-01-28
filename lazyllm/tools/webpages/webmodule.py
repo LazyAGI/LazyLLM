@@ -466,20 +466,19 @@ class WebModule(ModuleBase):
                         elif h.get('role') == 'assistant' and history:
                             content = h.get('content', '')
                             if isinstance(content, str):
-                                clean_response = re.sub(r'<think>.*?</think>\n*', '', content, flags=re.DOTALL)
-                                if clean_response:
-                                    history[-1][1] = clean_response
-                                else:
-                                    history.pop()
+                                response_text = content
                             elif isinstance(content, list):
                                 text_parts = [item.get('text', '') for item in content
                                               if isinstance(item, dict) and item.get('type') == 'text']
                                 response_text = ' '.join(text_parts)
-                                clean_response = re.sub(r'<think>.*?</think>\n*', '', response_text, flags=re.DOTALL)
-                                if clean_response:
-                                    history[-1][1] = clean_response
-                                else:
-                                    history.pop()
+                            else:
+                                response_text = ''
+
+                            clean_response = re.sub(r'<think>.*?</think>\n*', '', response_text, flags=re.DOTALL)
+                            if clean_response:
+                                history[-1][1] = clean_response
+                            else:
+                                history.pop()
             else:
                 history = list()
 
