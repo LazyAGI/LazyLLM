@@ -222,7 +222,6 @@ while LLM_JUDGE is not True:
 print('\n最终回复: ', res)
 ```
 
-
 ## 召回评测指标
 
 LazyLLM提供了上下文召回率，上下文相关性两种评测算法

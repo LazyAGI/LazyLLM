@@ -11,7 +11,7 @@ description: >
 
 # LazyLLM 框架
 
-LazyLLM 是构建和优化多 Agent 应用的一站式开发工具，为应用开发、数据准备、模型部署、模型微调、评测等提供了大量工具。
+LazyLLM 是构建和优化多 Agent 应用的一站式开发工具，为应用开发、数据准备、模型部署、模型微调、评测和可视化提供了大量工具。
 其基础能力的使用参考文档: [references/basic.md](references/basic.md)
 
 ## 组件选择指南
@@ -52,7 +52,8 @@ Flow 是 LazyLLM 中用于编排复杂数据处理流程的核心组件体系。
 
 ### Flow组件
 
-- Flow 由多种可组合的流程组件构成，不同组件对应不同控制结构：
+Flow 由多种可组合的流程组件构成，不同组件对应不同控制结构:
+
 - Pipeline：顺序执行
 - Parallel：并行执行多个任务
 - Diverter：多分支并行路由
@@ -232,23 +233,6 @@ if __name__ == '__main__':
 
 [references/agent.md](references/agent.md)
 
-## 支持的平台
-
-设置 API Key：
-
-```bash
-export LAZYLLM_<PLATFORM>_API_KEY=<key>
-```
-
-| 平台 | 环境变量 |
-|------|---------|
-| 日日新 | LAZYLLM_SENSENOVA_API_KEY |
-| OpenAI | LAZYLLM_OPENAI_API_KEY |
-| 智谱 | LAZYLLM_GLM_API_KEY |
-| Kimi | LAZYLLM_KIMI_API_KEY |
-| 通义千问 | LAZYLLM_QWEN_API_KEY |
-| 豆包 | LAZYLLM_DOUBAO_API_KEY |
-
 ## 最佳实践
 
 1. **从简单开始** - 先运行基础示例，再逐步添加复杂性
@@ -259,7 +243,7 @@ export LAZYLLM_<PLATFORM>_API_KEY=<key>
 6. **选择合适的框架** - 根据需求选择微调框架和推理引擎
 
 使用示例合集:
-[示例合集](./assets/templates/)
+[示例合集](./scripts/README.md)
 
 ## 官方文档
 
