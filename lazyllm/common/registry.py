@@ -2,6 +2,7 @@ import builtins
 import functools
 import lazyllm
 import re
+from typing import Union, List
 from .bind import _MetaBind
 from ..configs import config
 from typing import Optional
@@ -146,14 +147,24 @@ def bind_to_instance(func):
     return wrapper
 
 class Register(object):
-    def __init__(self, base, fnames, template: str = reg_template, default_group: Optional[str] = None):
+    def __init__(self, base, fnames, template: str = reg_template, default_group: Optional[str] = None,
+                 allowed_parameter: Optional[Union[str, List[str]]] = None):
         self.basecls = base
         self.fnames = [fnames] if isinstance(fnames, str) else fnames
         self.template = template
         self._default_group = default_group
+        if isinstance(allowed_parameter, str):
+            self._allowed_parameter = {allowed_parameter}
+        elif isinstance(allowed_parameter, list):
+            assert all(isinstance(p, str) for p in allowed_parameter), 'allowed_parameter must be list of str'
+            self._allowed_parameter = set(allowed_parameter)
+        elif allowed_parameter is None:
+            self._allowed_parameter = set()
+        else:
+            raise TypeError('allowed_parameter must be str or list[str]')
         assert len(self.fnames) > 0, 'At least one function should be given for overwrite.'
 
-    def _wrap(self, cls, *, rewrite_func=None):
+    def _wrap(self, cls, *, rewrite_func=None, **kwargs):
         cls = cls.__name__ if isinstance(cls, type) else cls
         cls = re.match('(LazyLLM)(.*)(Base)', cls.split('.')[-1])[2] \
             if (cls.startswith('LazyLLM') and cls.endswith('Base')) else cls
@@ -181,14 +192,17 @@ class Register(object):
             f = LazyLLMRegisterMetaClass.all_clses[cls.lower()].__getattr__(func_name)
             f.__name__ = func_name
             setattr(f, rewrite_func, bind_to_instance(func))
+            [setattr(f, k, v) for k, v in kwargs.items()]
             return func
         return impl
 
-    def __call__(self, f, *, rewrite_func=None):
+    def __call__(self, f, *, rewrite_func=None, **kwargs):
         if not isinstance(f, (str, type)):
             assert self._default_group, 'default_group is not set, please set it by your register decorator'
             return self._wrap(self._default_group)(f)
-        return self._wrap(f, rewrite_func=rewrite_func)
+        assert all(k in self._allowed_parameter for k in kwargs.keys()), \
+            f'Only allowed parameters: {self._allowed_parameter}, but got {kwargs.keys()}'
+        return self._wrap(f, rewrite_func=rewrite_func, **kwargs)
 
     def __getattr__(self, name):
         if name not in self.fnames:

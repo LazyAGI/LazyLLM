@@ -177,10 +177,10 @@ class DataStateStore:
         return results
 
 class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, _concurrency_mode='process', _save_data=True, _max_workers=None,
+    def __init__(self, _concurrency_mode=None, _save_data=True, _max_workers=None,
                  _ignore_errors=True, **kwargs):
-        self._concurrency_mode = _concurrency_mode
-        self._max_workers = _max_workers or (os.cpu_count() if _concurrency_mode == 'process' else 32)
+        self._concurrency_mode = _concurrency_mode or getattr(self, '_concurrency_mode', 'process')
+        self._max_workers = _max_workers or (os.cpu_count() if self._concurrency_mode == 'process' else 32)
         self._ignore_errors = _ignore_errors
         self._store = DataStateStore(self.__class__.__name__, _save_data)
         self._lazyllm_kwargs = kwargs
@@ -381,4 +381,6 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
 
         return self._export_file(res)
 
-data_register = lazyllm.Register(LazyLLMDataBase, ['forward', 'forward_batch_input'])
+data_register = lazyllm.Register(
+    LazyLLMDataBase, ['forward', 'forward_batch_input'],
+    allowed_parameter=['_concurrency_mode'])
