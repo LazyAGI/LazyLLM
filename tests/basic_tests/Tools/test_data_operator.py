@@ -2,7 +2,7 @@ import os
 import shutil
 import json
 from lazyllm import config
-from lazyllm.tools.data import demo1, demo2
+from lazyllm.tools.data import Demo1, Demo2
 
 
 class TestDataOperators:
@@ -20,27 +20,27 @@ class TestDataOperators:
             shutil.rmtree(self.root_dir)
 
     def test_build_pre_suffix(self):
-        func = demo1.build_pre_suffix(input_key='text', prefix='Hello, ', suffix='!')
+        func = Demo1.build_pre_suffix(input_key='text', prefix='Hello, ', suffix='!')
         inputs = [{'text': 'world'}, {'text': 'lazyLLM'}]
         res = func(inputs)
         assert res == [{'text': 'Hello, world!'}, {'text': 'Hello, lazyLLM!'}]
 
     def test_process_uppercase(self):
-        func = demo1.process_uppercase(input_key='text', _concurrency_mode='thread')
+        func = Demo1.process_uppercase(input_key='text', _concurrency_mode='thread')
         inputs = [{'text': text} for text in (['hello', 'world'] * 60)]
         res = func(inputs)
         expected = [{'text': text.upper()} for text in (['hello', 'world'] * 60)]
         assert sorted(res, key=lambda x: x['text']) == sorted(expected, key=lambda x: x['text'])
 
     def test_add_suffix(self):
-        func = demo2.AddSuffix(input_key='text', suffix='!!!', _max_workers=2, _concurrency_mode='process')
+        func = Demo2.AddSuffix(input_key='text', suffix='!!!', _max_workers=2, _concurrency_mode='process')
         inputs = [{'text': text} for text in (['exciting', 'amazing'] * 60)]
         res = func(inputs)
         expected = [{'text': text + '!!!'} for text in (['exciting', 'amazing'] * 60)]
         assert sorted(res, key=lambda x: x['text']) == sorted(expected, key=lambda x: x['text'])
 
     def test_rich_content(self):
-        func = demo2.rich_content(input_key='text')
+        func = Demo2.rich_content(input_key='text')
         inputs = [{'text': 'This is a test.'}]
         res = func(inputs)
         assert res == [
@@ -49,7 +49,7 @@ class TestDataOperators:
             {'text': 'This is a test. - part 2'}]
 
     def test_output_file(self):
-        func = demo2.rich_content(input_key='text').set_output(self.root_dir)
+        func = Demo2.rich_content(input_key='text').set_output(self.root_dir)
         inputs = [{'text': 'This is a test.'}]
         res = func(inputs)
         assert isinstance(res, str)
@@ -57,7 +57,7 @@ class TestDataOperators:
         assert res.endswith('.jsonl')
 
     def test_error_handling(self):
-        op = demo2.error_prone_op(input_key='text', _save_data=True, _concurrency_mode='single')
+        op = Demo2.error_prone_op(input_key='text', _save_data=True, _concurrency_mode='single')
         inputs = [{'text': 'ok1'}, {'text': 'fail'}, {'text': 'ok2'}]
         res = op(inputs)
 
