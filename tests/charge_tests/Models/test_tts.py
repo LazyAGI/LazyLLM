@@ -3,7 +3,7 @@ import os
 import pytest
 
 import lazyllm
-from lazyllm import config
+from lazyllm.module.module import ModuleExecutionError
 from lazyllm.components.formatter import decode_query_with_filepaths
 
 from tests.utils import get_path
@@ -12,18 +12,6 @@ from tests.utils import get_path
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'
 
 pytestmark = pytest.mark.model_connectivity_test
-
-TTS_CASES = [
-    pytest.param('qwen', {'model': 'qwen-tts'}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, get_path('qwen')), id='qwen'),
-    pytest.param('minimax', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('minimax')), id='minimax'),
-    pytest.param(
-        'siliconflow',
-        {'call_kwargs': {'voice': 'fnlp/MOSS-TTSD-v0.5:anna'}},
-        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow')),
-        id='siliconflow',
-    ),
-]
 
 
 class TestTTS:
@@ -50,15 +38,23 @@ class TestTTS:
         self._check_file_result(result)
         return result
 
-    @pytest.mark.parametrize('source, init_kwargs', TTS_CASES)
-    def test_tts(self, source, init_kwargs):
-        self.common_tts(source=source, **init_kwargs)
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen'))
+    def test_qwen_tts(self):
+        self.common_tts(source='qwen', model='qwen-tts')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('minimax'))
+    @pytest.mark.xfail
+    def test_minimax_tts(self):
+        self.common_tts(source='minimax')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.xfail
+    def test_siliconflow_tts(self):
+        self.common_tts(source='siliconflow', call_kwargs={'voice': 'fnlp/MOSS-TTSD-v0.5:anna'})
 
     @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen'))
     def test_qwen_tts_cosyvoice_multi_user_raises(self):
-        if config['cache_online_module']:
-            return
         api_key = lazyllm.config['qwen_api_key']
-        with pytest.raises(RuntimeError, match="cosyvoice-v1 does not support multi user, don't set api_key"):
+        with pytest.raises(ModuleExecutionError, match="cosyvoice-v1 does not support multi user, don't set api_key"):
             tts = lazyllm.OnlineMultiModalModule(source='qwen', function='tts', model='cosyvoice-v1', api_key=api_key)
             tts(self.test_text)

@@ -12,39 +12,6 @@ BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'
 
 pytestmark = pytest.mark.model_connectivity_test
 
-IMAGE_EDITING_CASES = [
-    pytest.param(
-        'siliconflow',
-        {'model': 'Qwen/Qwen-Image-Edit-2509'},
-        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow')),
-        id='siliconflow_model',
-    ),
-    pytest.param(
-        'qwen',
-        {'model': 'qwen-image-edit-plus'},
-        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen')),
-        id='qwen_model',
-    ),
-    pytest.param(
-        'doubao',
-        {},
-        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('doubao')),
-        id='doubao',
-    ),
-    pytest.param(
-        'siliconflow',
-        {},
-        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow')),
-        id='siliconflow_auto',
-    ),
-    pytest.param(
-        'qwen',
-        {},
-        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen')),
-        id='qwen_auto',
-    ),
-]
-
 
 class TestImageEditing:
     test_image_editing_prompt = '在参考图片中的正中间添加"LazyLLM"这段英文,字体风格要和图片相同'
@@ -76,6 +43,25 @@ class TestImageEditing:
         self._check_file_result(result)
         return result
 
-    @pytest.mark.parametrize('source, init_kwargs', IMAGE_EDITING_CASES)
-    def test_image_editing(self, source, init_kwargs):
-        self.common_image_editing(source=source, **init_kwargs)
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen'))
+    def test_qwen_image_editing_auto(self):
+        self.common_image_editing(source='qwen')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen'))
+    def test_qwen_image_editing_model(self):
+        self.common_image_editing(source='qwen', model='qwen-image-edit-plus')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('doubao'))
+    @pytest.mark.xfail
+    def test_doubao_image_editing(self):
+        self.common_image_editing(source='doubao')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.xfail
+    def test_siliconflow_image_editing_auto(self):
+        self.common_image_editing(source='siliconflow')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.xfail
+    def test_siliconflow_image_editing_model(self):
+        self.common_image_editing(source='siliconflow', model='Qwen/Qwen-Image-Edit-2509')

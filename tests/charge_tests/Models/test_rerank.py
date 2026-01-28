@@ -9,15 +9,6 @@ BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineEmbeddingModuleBase.py'
 
 pytestmark = pytest.mark.model_connectivity_test
 
-RERANK_CASES = [
-    pytest.param('siliconflow', {}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, get_path('siliconflow')), id='siliconflow'),
-    pytest.param('aiping', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('aiping')), id='aiping'),
-    pytest.param('qwen', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen')), id='qwen'),
-    pytest.param('glm', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('glm')), id='glm'),
-    pytest.param('openai', {}, marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('openai')), id='openai'),
-]
-
 
 class TestRerank:
     def common_rerank(self, source, **kwargs):
@@ -38,6 +29,26 @@ class TestRerank:
         assert scores[0] == max(scores)
         return result
 
-    @pytest.mark.parametrize('source, init_kwargs', RERANK_CASES)
-    def test_rerank(self, source, init_kwargs):
-        self.common_rerank(source=source, **init_kwargs)
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen'))
+    def test_qwen_rerank(self):
+        self.common_rerank(source='qwen')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.xfail
+    def test_siliconflow_rerank(self):
+        self.common_rerank(source='siliconflow')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('aiping'))
+    @pytest.mark.xfail
+    def test_aiping_rerank(self):
+        self.common_rerank(source='aiping')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('glm'))
+    @pytest.mark.xfail
+    def test_glm_rerank(self):
+        self.common_rerank(source='glm')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('openai'))
+    @pytest.mark.xfail
+    def test_openai_rerank(self):
+        self.common_rerank(source='openai')

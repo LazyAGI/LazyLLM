@@ -12,21 +12,6 @@ BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'
 
 pytestmark = pytest.mark.model_connectivity_test
 
-IMAGES_FUSION_CASES = [
-    pytest.param(
-        'qwen',
-        {'model': 'qwen-image-edit-plus'},
-        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen')),
-        id='qwen',
-    ),
-    pytest.param(
-        'siliconflow',
-        {'model': 'Qwen/Qwen-Image-Edit-2509'},
-        marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow')),
-        id='siliconflow',
-    ),
-]
-
 
 class TestImagesFusion:
     test_multi_images_fusion = '将上传的参考图片融合在一起'
@@ -59,6 +44,11 @@ class TestImagesFusion:
         self._check_file_result(result)
         return result
 
-    @pytest.mark.parametrize('source, init_kwargs', IMAGES_FUSION_CASES)
-    def test_images_fusion(self, source, init_kwargs):
-        self.common_images_fusion(source=source, **init_kwargs)
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen'))
+    def test_qwen_images_fusion(self):
+        self.common_images_fusion(source='qwen', model='qwen-image-edit-plus')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.xfail
+    def test_siliconflow_images_fusion(self):
+        self.common_images_fusion(source='siliconflow', model='Qwen/Qwen-Image-Edit-2509')

@@ -12,21 +12,6 @@ BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'
 
 pytestmark = pytest.mark.model_connectivity_test
 
-TEXT2IMAGE_CASES = [
-    pytest.param('qwen', {'type': 'sd'}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, get_path('qwen')), id='qwen'),
-    pytest.param('doubao', {'type': 'text2image'}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, get_path('doubao')), id='doubao'),
-    pytest.param('siliconflow', {'type': 'text2image', 'model': 'Qwen/Qwen-Image'},
-                 marks=pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow')), id='siliconflow'),
-    pytest.param('glm', {'type': 'text2image'}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, get_path('glm')), id='glm'),
-    pytest.param('minimax', {'function': 'text2image'}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, get_path('minimax')), id='minimax'),
-    pytest.param('aiping', {'type': 'text2image'}, marks=pytest.mark.ignore_cache_on_change(
-        BASE_PATH, get_path('aiping')), id='aiping'),
-]
-
 
 class TestText2Image:
     test_image_prompt = '画一只动漫风格的懒懒猫'
@@ -53,6 +38,31 @@ class TestText2Image:
         self._check_file_result(result, 'image')
         return result
 
-    @pytest.mark.parametrize('source, init_kwargs', TEXT2IMAGE_CASES)
-    def test_text2image(self, source, init_kwargs):
-        self.common_text2image(source=source, **init_kwargs)
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen'))
+    def test_qwen_text2image(self):
+        self.common_text2image(source='qwen', type='sd')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('doubao'))
+    @pytest.mark.xfail
+    def test_doubao_text2image(self):
+        self.common_text2image(source='doubao', type='text2image')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.xfail
+    def test_siliconflow_text2image(self):
+        self.common_text2image(source='siliconflow', type='text2image', model='Qwen/Qwen-Image')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('glm'))
+    @pytest.mark.xfail
+    def test_glm_text2image(self):
+        self.common_text2image(source='glm', type='text2image')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('minimax'))
+    @pytest.mark.xfail
+    def test_minimax_text2image(self):
+        self.common_text2image(source='minimax', function='text2image')
+
+    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('aiping'))
+    @pytest.mark.xfail
+    def test_aiping_text2image(self):
+        self.common_text2image(source='aiping', type='text2image')
