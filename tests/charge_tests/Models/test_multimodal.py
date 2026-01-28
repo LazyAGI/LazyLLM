@@ -20,6 +20,8 @@ class TestMultiModal(object):
             os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'),
             os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'),
         ]
+        self.test_image_query = '图中有什么？'
+        self.test_followup_query = '详细描述一下图中的内容'
 
     def test_online_tts(self):
         api_key = lazyllm.config['qwen_api_key']
@@ -97,3 +99,17 @@ class TestMultiModal(object):
                                                   type='image_editing', api_key=api_key)
         result = text2image_editing(self.test_multi_images_fusion, files=self.test_images_files)
         self._check_file_result(result, format='image')
+
+    def test_online_sensenova(self):
+        api_key = lazyllm.config['sensenova_api_key']
+        vlm = lazyllm.OnlineChatModule(model='SenseNova-V6-5-Pro', source='sensenova', api_key=api_key)
+        first_result = vlm(self.test_image_query, lazyllm_files=self.test_image_file)
+        assert first_result is not None
+        assert isinstance(first_result, str)
+        assert len(first_result) > 0
+
+        history = [[self.test_image_query, first_result]]
+        second_result = vlm(self.test_followup_query, llm_chat_history=history, lazyllm_files=[])
+        assert second_result is not None
+        assert isinstance(second_result, str)
+        assert len(second_result) > 0
