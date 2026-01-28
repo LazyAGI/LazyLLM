@@ -89,6 +89,9 @@ class Bind(object):
             if self._unpack and isinstance(result, package): result = Bind.Args.Unpack(result)
             return result
 
+        def __repr__(self):
+            return f'<class \'lazyllm.common.bind.Bind.Args\' source={self._source_id}>'
+
     def __init__(self, __bind_func=_None, *args, **kw):
         self._f = __bind_func() if isinstance(__bind_func, type) and __bind_func is not Bind._None else __bind_func
         self._args = args

@@ -6,6 +6,7 @@ import uuid
 import inspect
 import builtins
 from .common import package, kwargs, SingletonABCMeta
+from .logger import LOG
 from .redis_client import redis_client
 from .deprecated import deprecated
 from contextlib import contextmanager
@@ -280,19 +281,27 @@ class Locals(MemoryGlobals):
 locals = Locals()
 
 
-def init_session():
-    globals._init_sid()
-    locals._init_sid()
+def init_session(sid: Optional[str] = None):
+    sid = globals._init_sid(sid)
+    locals._init_sid(sid)
+    LOG.info(f'Session {sid} inited!')
+    return sid
 
 def teardown_session():
+    sid = globals._sid
     globals.clear()
     locals.clear()
+    LOG.info(f'Session {sid} teardown!')
 
 @contextmanager
-def new_session():
-    init_session()
-    yield
-    teardown_session()
+def new_session(sid: Optional[str] = None):
+    sid = init_session(sid)
+    try:
+        yield
+    finally:
+        if globals._sid != sid:
+            raise RuntimeError(f'Something wrong occured, session id mismatch, expected {sid}, but got {globals._sid}')
+        teardown_session()
 
 
 @deprecated

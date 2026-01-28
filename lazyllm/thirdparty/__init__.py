@@ -22,6 +22,7 @@ package_name_map = {
     'memu': 'memu-py',
     'mem0': 'mem0ai',
     'pptx': 'python-pptx',
+    'docx': 'python-docx',
     'bs4': 'beautifulsoup4',
     'Stemmer': 'pystemmer',
     'psycopg2': 'psycopg2-binary',

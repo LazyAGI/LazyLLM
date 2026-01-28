@@ -5,10 +5,10 @@ from typing import Dict, List, Optional, Callable
 
 from lazyllm import LOG
 from ..doc_node import DocNode
-from .pdfReader import _RichPDFReader
+from .readerBase import _RichReader
 
 
-class MineruPDFReader(_RichPDFReader):
+class MineruPDFReader(_RichReader):
     def __init__(self, url, backend='hybrid-auto-engine',
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  upload_mode: bool = False,

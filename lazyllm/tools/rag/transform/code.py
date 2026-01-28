@@ -92,7 +92,7 @@ class XMLSplitter(_LanguageSplitterBase):
 
             return f'{tag_name} {" ".join(attr_strs)}'
 
-        def _parse_element(element: xml.etree.ElementTree.Element, trace: List[str] = None) -> List[DocNode]:
+        def _parse_element(element: 'xml.etree.ElementTree.Element', trace: List[str] = None) -> List[DocNode]:
             if trace is None:
                 trace = []
             tag_name = element.tag
