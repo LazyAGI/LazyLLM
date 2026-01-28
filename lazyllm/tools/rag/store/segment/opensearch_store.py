@@ -253,7 +253,7 @@ class OpenSearchStore(LazyLLMStoreBase):
             seg['image_keys'] = json.loads(seg.get('image_keys', '[]'))
         return seg
 
-    def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:
+    def _construct_criteria(self, criteria: Optional[dict] = None) -> dict:  # noqa: C901
         criteria = dict(criteria) if criteria else {}
         if not criteria:
             return {}
@@ -277,6 +277,8 @@ class OpenSearchStore(LazyLLMStoreBase):
             _add_clause('kb_id', val)
         if 'parent' in criteria:
             must_clauses.append({'term': {'parent': criteria.pop('parent')}})
+        if 'number' in criteria:
+            must_clauses.append({'term': {'number': criteria.pop('number')}})
 
         for k, v in criteria.items():
             field_key = k

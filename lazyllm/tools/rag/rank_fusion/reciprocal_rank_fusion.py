@@ -1,10 +1,9 @@
-from typing import Sequence
+from typing import Sequence, List, Union
 from lazyllm import ModuleBase
 from ..doc_node import DocNode
 
 
 class RRFFusion(ModuleBase):
-
     def __init__(self, top_k: int = 1) -> None:
         super().__init__()
         self.top_k = top_k
@@ -15,12 +14,39 @@ class RRFFusion(ModuleBase):
         except (IndexError, TypeError):
             return False
 
-    def __call__(self, doc_nodes_lists: list[list[DocNode]]) -> list[DocNode]:
+    def _normalize_mixed_input(self, *args: Union[List[DocNode], List[List[DocNode]]]) -> List[List[DocNode]]:
+        normalized_lists = []
+        for arg in args:
+            if not arg:
+                continue
+            try:
+                if self._is_nested_docnode_sequence(arg):
+                    normalized_lists.extend(arg)
+                elif isinstance(arg, Sequence) and len(arg) > 0 and isinstance(arg[0], DocNode):
+                    normalized_lists.append(list(arg))
+                else:
+                    continue
+            except (IndexError, TypeError):
+                continue
+        return normalized_lists
+
+    def __call__(self, *args: Union[List[DocNode], List[List[DocNode]]]) -> list[DocNode]:
         # Reciprocal Rank Fusion on multiple rank lists. https://plg.uwaterloo.ca/~gvcormac/cormacksigir09-rrf.pdf
 
         # Associate each doc's content with its RRF score for later sorting by it
         # Duplicated contents across retrievers are collapsed & scored cumulatively
-        if not self._is_nested_docnode_sequence(doc_nodes_lists):
+
+        if len(args) == 1 and isinstance(args[0], (tuple, list)):
+            single_arg = args[0]
+            if self._is_nested_docnode_sequence(single_arg):
+                doc_nodes_lists = single_arg
+            else:
+                doc_nodes_lists = self._normalize_mixed_input(single_arg)
+        else:
+            doc_nodes_lists = self._normalize_mixed_input(*args)
+
+        if not doc_nodes_lists: return []
+        elif not self._is_nested_docnode_sequence(doc_nodes_lists):
             return doc_nodes_lists
 
         K = 60

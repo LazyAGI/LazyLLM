@@ -360,7 +360,7 @@ lazyllm 内置了一套默认的文档解析算法。如果需要更高定制化
 ```bash
 lazyllm install mineru
 ```
-> **提示**：为确保解析结果稳定，当前固定 MinerU 版本为2.5.4。服务运行所需资源请参考 [MinerU](https://github.com/opendatalab/MinerU)  官方文档。
+> **提示**：为确保解析结果稳定，当前固定 MinerU 版本为2.7.1。服务运行所需资源请参考 [MinerU](https://github.com/opendatalab/MinerU)  官方文档。
 
 环境准备完毕后，通过以下命令一键部署服务：
 

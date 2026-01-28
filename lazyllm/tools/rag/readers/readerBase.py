@@ -1,11 +1,11 @@
 from lazyllm.thirdparty import fsspec
-from typing import Iterable, List, Optional, Union
+from typing import Iterable, List, Optional, Union, Callable
 
 from lazyllm.thirdparty import torch
 from lazyllm import LOG, config
 
 from ....common import LazyLLMRegisterMetaClass
-from ..doc_node import DocNode
+from ..doc_node import DocNode, RichDocNode
 from lazyllm.module import ModuleBase
 from pathlib import Path
 import locale
@@ -246,3 +246,22 @@ class DefaultReader(TxtReader):
             encoding_info = self._encoding if self._encoding else 'auto-detected encoding'
             LOG.error(f'Failed to read {file} with {encoding_info}: {e}. Skipping file.')
             return []
+
+class _RichReader(LazyLLMReaderBase):
+    def __init__(self, post_func: Optional[Callable] = None, split_doc: bool = True,
+                 return_trace: bool = True):
+        super().__init__(return_trace=return_trace)
+        self._post_func = post_func
+        self._split_doc = split_doc
+
+    def forward(self, *args, **kwargs) -> List[DocNode]:
+        r = super().forward(*args, **kwargs)
+        if self._post_func:
+            r = self._post_func(r)
+            assert isinstance(r, list), f'Expected list, got {type(r)}, please check your post function'
+            for n in r:
+                assert isinstance(n, DocNode), f'Expected DocNode, got {type(n)}, \
+                    please check your post function'
+                if kwargs.get('extra_info'):
+                    n.global_metadata.update(kwargs['extra_info'])
+        return [RichDocNode(r, global_metadata=r[0].global_metadata if r else None)] if self._split_doc else r

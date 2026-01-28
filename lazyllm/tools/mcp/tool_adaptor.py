@@ -42,8 +42,8 @@ def _handle_tool_result(result, tool_name: str) -> str:
     if not result.content or len(result.content) == 0:
         return 'No data available for this request.'
     try:
-        text_contents: List[mcp.types.TextContent] = []
-        image_contents: List[mcp.types.ImageContent] = []
+        text_contents: List[mcp.types.TextContent] = []  # noqa NID003
+        image_contents: List[mcp.types.ImageContent] = []  # noqa NID003
         for content in result.content:
             if isinstance(content, mcp.types.TextContent):
                 text_contents.append(content.text)

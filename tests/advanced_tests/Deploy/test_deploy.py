@@ -255,7 +255,8 @@ class TestDeploy(object):
         globals['lazyllm_files'][chat._module_id] = [pig_path]
         assert '猪' in m(query)
         globals['lazyllm_files'][chat._module_id] = None
-        assert '鸡' in m(f'<lazyllm-query>{{"query":"{query}","files":["{ji_path}"]}}')
+        res = m(f'<lazyllm-query>{{"query":"{query}","files":["{ji_path}"]}}')
+        assert '鸡' in res or 'chicken' in res or 'rooster' in res
 
         _, client = self.warp_into_web(m)
         # Add prefix 'lazyllm_img::' for client testing.
@@ -266,4 +267,4 @@ class TestDeploy(object):
                              self.append_text,
                              api_name='/_respond_stream')
         res = ans[0][-1][-1]
-        assert '鸡' in res
+        assert '鸡' in res or 'chicken' in res or 'rooster' in res

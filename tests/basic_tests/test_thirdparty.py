@@ -54,7 +54,7 @@ class TestThirdparty(object):
         assert flag.flag
 
     def test_toml_dependencies_extraction(self):
-        thirdparty.prep_req_dict()
+        thirdparty.prepare_requirements_dict()
         assert requirements
 
     def test_check_package_installed(self):
