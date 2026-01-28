@@ -412,32 +412,26 @@ class _DocumentStore(object):
 
     def _deserialize_node(self, data: dict, score: Optional[float] = None) -> DocNode:
         segment_type = data.get('type', SegmentType.TEXT.value)
+        common_parm = {
+            'uid': data['uid'],
+            'group': data['group'],
+            'parent': data.get('parent', ''),
+            'metadata': data.get('meta', {}),
+            'global_metadata': data.get('global_meta', {}),
+        }
         if segment_type == SegmentType.QA.value:
-            node = QADocNode(query=data.get('content', ''), answer=data.get('answer', ''), uid=data['uid'],
-                             group=data['group'], parent=data.get('parent', ''),
-                             metadata=data.get('meta', {}),
-                             global_metadata=data.get('global_meta', {}))
+            node = QADocNode(**common_parm, query=data.get('content', ''), answer=data.get('answer', ''))
         elif segment_type == SegmentType.IMAGE.value:
             if not data.get('image_keys', []):
                 raise ValueError('ImageDocNode does have any image_keys')
-            node = ImageDocNode(image_path=data.get('image_keys')[0],
-                                uid=data['uid'], group=data['group'], parent=data.get('parent', ''),
-                                metadata=data.get('meta', {}),
-                                global_metadata=data.get('global_meta', {}))
+            node = ImageDocNode(**common_parm, image_path=data.get('image_keys')[0])
         elif segment_type == SegmentType.JSON.value:
             json_content = JsonDocNode._deserialize_content(data.get('content', ''))
-            node = JsonDocNode(uid=data['uid'], content=json_content, group=data['group'],
-                               parent=data.get('parent', ''), metadata=data.get('meta', {}),
-                               global_metadata=data.get('global_meta', {}))
+            node = JsonDocNode(**common_parm, content=json_content)
         elif segment_type == SegmentType.RICH.value:
-            node = RichDocNode(nodes=RichDocNode._deserialize_nodes(data.get('content', '')), uid=data['uid'],
-                               group=data['group'], parent=data.get('parent', ''),
-                               metadata=data.get('meta', {}),
-                               global_metadata=data.get('global_meta', {}))
+            node = RichDocNode(**common_parm, nodes=RichDocNode._deserialize_nodes(data.get('content', '')))
         else:
-            node = DocNode(uid=data['uid'], group=data['group'], content=data.get('content', ''),
-                           parent=data.get('parent', ''), metadata=data.get('meta', {}),
-                           global_metadata=data.get('global_meta', {}))
+            node = DocNode(**common_parm, content=data.get('content', ''))
         node.excluded_embed_metadata_keys = data.get('excluded_embed_metadata_keys', [])
         node.excluded_llm_metadata_keys = data.get('excluded_llm_metadata_keys', [])
         if 'embedding' in data:
