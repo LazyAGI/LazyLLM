@@ -1,10 +1,3 @@
-"""
-数据流编排 - Pipeline 和 Parallel 示例
-
-使用方法:
-运行: python basic_flow.py
-"""
-
 from lazyllm import pipeline, parallel, bind
 
 # 示例 1: 基础 Pipeline
