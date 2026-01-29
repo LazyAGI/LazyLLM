@@ -13,7 +13,7 @@ def generate_code_from_query(query: str) -> str:
 
     Args:
         query (str): The natural language instruction from the user,
-                     for example: "Draw a temperature change chart of Beijing in the past month".
+                     for example: 'Draw a temperature change chart of Beijing in the past month'.
 
     Returns:
         str: The execution result of the generated function (e.g., image path or computed value).

@@ -28,7 +28,7 @@ Flow 通过以下组件实现灵活的数据流编排：
 一个形成处理阶段管道的顺序执行模型。
 Pipeline类是一个处理阶段的线性序列，其中一个阶段的输出成为下一个阶段的输入。它支持在最后一个阶段之后添加后续操作。它是 LazyLLMFlowsBase的子类，提供了一个延迟执行模型，并允许以延迟方式包装和注册函数。
 
-具体使用示例：[pipeline使用示例](../assets/flow/pipeline.py)
+具体使用示例：[pipeline使用示例](../assets/flow/pipeline.md)
 
 ## Parallel (并行流程)
 

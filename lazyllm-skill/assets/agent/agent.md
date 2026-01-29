@@ -167,10 +167,12 @@ import lazyllm
 from lazyllm.tools import fc_register, FunctionCall, FunctionCallAgent
 @fc_register("tool")
 def get_current_weather(location: str, unit: Literal["fahrenheit", "celsius"] = "fahrenheit"):
-    ...
+    ...
+
 @fc_register("tool")
 def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["celsius", "fahrenheit"] = 'fahrenheit'):
-    ...
+    ...
+
 llm = lazyllm.TrainableModule("internlm2-chat-20b").start()  # or llm = lazyllm.OnlineChatModule()
 tools = ["get_current_weather", "get_n_day_weather_forecast"]
 fc = FunctionCall(llm, tools)

@@ -196,7 +196,7 @@ from lazyllm.tools.rag import CharacterSplitter
 
 tokenizer = AutoTokenizer.from_pretrained('gpt2')
 charactersplitter = CharacterSplitter()
-charactersplitter = charactersplitter.from_huggingface_tokenizer(tokenzier)
+charactersplitter = charactersplitter.from_huggingface_tokenizer(tokenizer)
 
 document.create_node_group(name='character',
                            transform=charactersplitter,

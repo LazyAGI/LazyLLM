@@ -6,9 +6,9 @@ Agent 是 LazyLLM 的核心功能之一，用于构建能够自主规划、调�
 
 | 内容名称 | 内容功能 | 参考文档 |
 |---------|---------|---------|
-| 基础组件 | 工具注册, 提示词模版，FunctionCallAgent, MCP | [基础组件使用](../assets/agent/basic.md) |
+| 基础组件 | 工具注册，提示词模版, FunctionCallAgent, MCP | [基础组件使用](../assets/agent/basic.md) |
 | 内置Agent | 内置的Agent: ReactAgent, PlanAndSolveAgent, ReWOOAgent, FunctionCallAgent | [内置Agent使用](../assets/agent/agent.md) |
-| 工具 | 内置的工具: Googlesearch, Tencentsearch | [内置工具的使用](../assets/agent/tools.md) |
+| 工具 | 内置的工具: GoogleSearch, TencentSearch | [内置工具的使用](../assets/agent/tools.md) |
 
 ## 基础组件
 

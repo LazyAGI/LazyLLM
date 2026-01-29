@@ -237,6 +237,7 @@ def install_skill(commands):
 
     if not args.agent:
         logging.error('Unkown agent, please check your command.')
+        sys.exit(1)
     cmd += ['--agent', args.agent]
     if args.project:
         cmd.append('--project')

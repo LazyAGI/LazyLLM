@@ -1,6 +1,6 @@
 from lazyllm import TrainableModule, WebModule, deploy, pipeline, switch, _0, IntentClassifier
 
-chatflow_intent_list = ["聊天", "语音识别", "图片问答", "画图", "生成音乐", "文字转语音"]
+chatflow_intent_list = ['聊天', '语音识别', '图片问答', '画图', '生成音乐', '文字转语音']
 agent_prompt = f'''
 现在你是一个意图分类引擎，负责根据对话信息分析用户输入文本并确定唯一的意图类别。\n
 你只需要回复意图的名字即可，不要额外输出其他字段，也不要进行翻译。"intent_list"为所有意图名列表。\n

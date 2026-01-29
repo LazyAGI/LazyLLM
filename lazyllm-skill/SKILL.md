@@ -71,7 +71,7 @@ Flow 由多种可组合的流程组件构成，不同组件对应不同控制结
 
 ## Finetune(微调加速和部署)
 
-模型微调和推理加速，并且快速将模型进行部署，支持Apacalora, Collie, LlamaFactory, Flagembedding, Dummy, Auto多种微调框架。LazyLLM支持Lightllm, VLLM, LMDeploy, Dummy, Auto多种推理方式。
+模型微调和推理加速，并且快速将模型进行部署，支持Alpacalora, Collie, LlamaFactory, Flagembedding, Dummy, Auto多种微调框架。LazyLLM支持Lightllm, VLLM, LMDeploy, Dummy, Auto多种推理方式。
 
 ### 内置的微调方法
 
@@ -194,34 +194,27 @@ res = rag("用户问题")
 
 ```python
 from lazyllm.tools import ReactAgent
-from lazyllm import OnlineChatModule
+from lazyllm import OnlineModule
 @fc_register('tool')
-def query_db(user_query: str, db_name: str = DB_NAME, tables_info: dict = TABLE_INFO) -> str:
+def query_rewrite(query: str) -> str:
     '''
-    General SQL Query Tool for any database and tables.
+    Rewrite the user's query to make it more clear and effective for search.
 
     Args:
-        user_query (str): User's natural language query.
-        db_name (str, optional): SQLite database file. Defaults to DB_NAME.
-        tables_info (dict, optional): Table structure info. Defaults to TABLE_INFO.
+        query (str): The original user query.
 
     Returns:
-        str: SQL query result.
+        str: The rewritten query.
     '''
-    sql_manager = SqlManager(
-        'sqlite', None, None, None, None,
-        db_name=db_name, tables_info_dict=tables_info
-    )
-    sql_call = SqlCall(sql_llm, sql_manager, use_llm_for_sql_result=False)
+    rewrite_prompt = '你是一个查询改写助手，将用户的查询改写的更加清晰和具体，便于后续检索。注意，你只需要对原问题进行改写，不需要回答。用户输入为：'
+    rewrite_llm = llm.share()
+    rewrite_llm.prompt(lazyllm.ChatPrompter(instruction=rewrite_prompt))
+    return rewrite_llm(query)
 
-    return sql_call(user_query)
-
-llm = OnlineChatModule()
+llm = OnlineModule(source='deepseek', model='deepseek-chat')
 tools = ['query_db']
 
 if __name__ == '__main__':
-    init_db(DB_NAME, SAMPLE_DATA)
-
     user_input = 'Show the total profit for each product category, sorted from highest to lowest.'
     agent = ReactAgent(llm, tools)
     answer = agent(user_input)

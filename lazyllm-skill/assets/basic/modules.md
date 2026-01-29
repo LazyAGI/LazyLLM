@@ -184,7 +184,7 @@ Mode: 模式枚举类，包含:
 ```python
 import lazyllm
 from lazyllm.tools.rag.web import DocWebModule
-from lazyllm import
+from lazyllm import ServerModule
 doc_server = ServerModule(url="your_url")
 doc_web = DocWebModule(
   doc_server=doc_server,

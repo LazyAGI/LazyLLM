@@ -35,7 +35,7 @@ llm.prompt(lazyllm.ChatPrompter(instruction=prompt, extra_keys=['context_str']))
 # Part5
 # 打印提示信息，等待用户输入要查询的内容。
 query = input("query(enter 'quit' to exit): ")
-if query == "quit":
+if query == 'quit':
     exit(0)
 
 # Part6
