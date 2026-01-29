@@ -5,10 +5,20 @@ from lazyllm import LOG, config
 import fasttext
 from huggingface_hub import hf_hub_download
 from datasketch import MinHash, MinHashLSH
+import nltk
+from nltk.tokenize import word_tokenize
+import jieba
 
 
 @DataOperatorRegistry.register
 class LanguageFilter:
+    COMMON_LANGUAGES = {
+        'zho_Hans', 'zho_Hant', 'eng_Latn', 'spa_Latn', 'fra_Latn',
+        'deu_Latn', 'jpn', 'kor', 'rus_Cyrl', 'ara', 'por_Latn',
+        'ita_Latn', 'nld_Latn', 'pol_Latn', 'tur_Latn', 'vie',
+        'tha', 'hin', 'ind_Latn', 'msa_Latn'
+    }
+
     def __init__(self, input_key='content', target_language='zh', threshold=0.6, model_path=None, model_cache_dir=None):
         self.input_key = input_key
         if isinstance(target_language, str):
@@ -18,7 +28,23 @@ class LanguageFilter:
         self.threshold = threshold
         self.model_path = model_path
         self.model_cache_dir = model_cache_dir or config['model_cache_dir']
+        self._validate_languages()
         self.model = self._load_model()
+
+    def _validate_languages(self):
+        invalid_langs = self.allowed_languages - self.COMMON_LANGUAGES
+        if invalid_langs:
+            LOG.warning(
+                f'LanguageFilter: Invalid language codes: {invalid_langs}\n'
+                f'Common language codes:\n'
+                f'  - zho_Hans (Simplified Chinese), zho_Hant (Traditional Chinese)\n'
+                f'  - eng_Latn (English)\n'
+                f'  - spa_Latn (Spanish), fra_Latn (French), deu_Latn (German)\n'
+                f'  - jpn (Japanese), kor (Korean)\n'
+                f'  - rus_Cyrl (Russian), ara (Arabic)\n'
+                f'  - por_Latn (Portuguese), ita_Latn (Italian)\n'
+                f'Full list: {sorted(self.COMMON_LANGUAGES)}'
+            )
 
     def _load_model(self):
         try:
@@ -48,17 +74,18 @@ class LanguageFilter:
         if not isinstance(text, str) or not text.strip():
             return None
 
-        labels, scores = self.model.predict(text.replace('\n', ' ').strip(), k=1)
-        if labels and scores:
-            print(labels, scores)
-            pred_label, pred_score = labels[0].replace('__label__', ''), scores[0]
-            if pred_label in self.allowed_languages and pred_score >= self.threshold:
-                return data
+        k = max(5, len(self.allowed_languages))
+        labels, scores = self.model.predict(text.replace('\n', ' ').strip(), k=k)
+        if len(labels) > 0 and len(scores) > 0:
+            for label, score in zip(labels, scores):
+                pred_label = label.replace('__label__', '')
+                if pred_label in self.allowed_languages and score >= self.threshold:
+                    return data
 
         return None
 
 
-@DataOperatorRegistry.register
+@DataOperatorRegistry.register(one_item=False)
 class MinHashDeduplicateFilter:
     def __init__(self, input_key='content', threshold=0.85, num_perm=128, use_n_gram=True, ngram=5):
         self.input_key = input_key
@@ -81,34 +108,86 @@ class MinHashDeduplicateFilter:
         return minhash
 
     def __call__(self, data):
-        assert isinstance(data, dict)
+        assert isinstance(data, list)
 
-        if self.input_key not in data:
-            return None
+        kept_items = []
+        for item in data:
+            if not isinstance(item, dict) or self.input_key not in item:
+                continue
 
-        text = data[self.input_key]
-        if not isinstance(text, str) or not text.strip():
-            return None
+            text = item[self.input_key]
+            if not isinstance(text, str) or not text.strip():
+                continue
 
-        minhash = self._create_minhash(text)
-        result = self.lsh.query(minhash)
+            minhash = self._create_minhash(text)
+            result = self.lsh.query(minhash)
 
-        if len(result) == 0:
-            # New unique item, insert into LSH
-            self.lsh.insert(self._item_counter, minhash)
-            self._minhash_map[self._item_counter] = minhash
-            self._item_counter += 1
-            return data
+            if len(result) == 0:
+                self.lsh.insert(self._item_counter, minhash)
+                self._minhash_map[self._item_counter] = minhash
+                self._item_counter += 1
+                kept_items.append(item)
 
-        # Duplicate item, filter out
-        return None
+        return kept_items
 
 
 @DataOperatorRegistry.register
-def filter_blocklist(data, input_key='content', blocklist=None):
-    assert isinstance(data, dict)
-    # TODO: Implement blocklist filtering
-    return data
+class BlocklistFilter:
+    def __init__(self, input_key='content', blocklist=None, blocklist_path=None,
+                 language='en', threshold=1, use_tokenizer=False):
+        self.input_key = input_key
+        self.threshold = threshold
+        self.use_tokenizer = use_tokenizer
+        self.language = language.lower()
+
+        if self.use_tokenizer and self.language in ['en', 'english']:
+            try:
+                nltk.data.find('tokenizers/punkt_tab')
+            except LookupError:
+                LOG.info('Downloading NLTK punkt_tab tokenizer...')
+                nltk.download('punkt_tab')
+
+        if blocklist is not None:
+            self.blocklist = set(word.strip().lower() for word in blocklist)
+        elif blocklist_path is not None:
+            self.blocklist = self._load_blocklist_from_file(blocklist_path)
+        else:
+            raise ValueError('Either blocklist or blocklist_path must be provided')
+
+        LOG.info(f'BlocklistFilter initialized with {len(self.blocklist)} blocked words, '
+                 f'language={self.language}, use_tokenizer={self.use_tokenizer}')
+
+    def _load_blocklist_from_file(self, file_path):
+        LOG.info(f'Loading blocklist from {file_path}...')
+        with open(file_path, 'r', encoding='utf-8') as f:
+            blocklist = set(line.strip().lower() for line in f if line.strip())
+        LOG.info(f'Loaded {len(blocklist)} words from blocklist')
+        return blocklist
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return data
+
+        if self.use_tokenizer:
+            if self.language in ['zh', 'cn', 'chinese']:
+                words = list(jieba.cut(text.lower()))
+            elif self.language in ['en', 'english']:
+                words = word_tokenize(text.lower())
+            else:
+                LOG.warning(f'Unsupported language: {self.language}, using simple split')
+                words = text.lower().split()
+        else:
+            words = text.lower().split()
+
+        blocklist_count = sum(1 for word in words if word in self.blocklist)
+
+        if blocklist_count <= self.threshold:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
