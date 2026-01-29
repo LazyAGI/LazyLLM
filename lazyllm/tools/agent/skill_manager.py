@@ -1,5 +1,6 @@
 import os
 import shlex
+from contextvars import ContextVar
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import yaml
@@ -24,7 +25,7 @@ config.add(
     description='The maximum size of SKILL.md that can be loaded by default'
 )
 
-_ACTIVE_SKILL_MANAGER = None
+_ACTIVE_SKILL_MANAGER: ContextVar = ContextVar('lazyllm_active_skill_manager', default=None)
 
 SKILLS_PROMPT = '''
 ## Skills Guide
@@ -79,8 +80,6 @@ class SkillManager(ModuleBase):
         self._max_skill_md_bytes = max_skill_md_bytes or config['max_skill_md_bytes']
         self._skills_index: Dict[str, Dict] = {}
         self._skills_selected: List[str] = []
-        global _ACTIVE_SKILL_MANAGER
-        _ACTIVE_SKILL_MANAGER = self
 
     @staticmethod
     def _parse_dirs(dir_value: Optional[str]) -> List[str]:
@@ -376,9 +375,10 @@ class SkillManager(ModuleBase):
 
 
 def _get_active_manager():
-    if _ACTIVE_SKILL_MANAGER is None:
+    manager = _ACTIVE_SKILL_MANAGER.get()
+    if manager is None:
         raise RuntimeError('SkillManager is not initialized.')
-    return _ACTIVE_SKILL_MANAGER
+    return manager
 
 
 @register('tool')
