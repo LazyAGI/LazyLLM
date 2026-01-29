@@ -137,7 +137,7 @@ class LazyLLMOnlineChatModuleBase(LazyLLMOnlineBase, LLMBase):
             if not src: return ''
             if force_join or not all(src[0] == ele for ele in src): return ''.join(src)
         elif isinstance(src[0], list):
-            src = [ele for ele in src if ele]
+            src = [ele for ele in src if len(ele) > 0]
             if not src: return []
             assert len(set(map(len, src))) == 1, f'The lists of elements: {src} have different lengths.'
             ret = list(map(self._merge_stream_result, zip(*src)))

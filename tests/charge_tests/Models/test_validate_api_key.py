@@ -9,6 +9,8 @@ from lazyllm.module.llms.onlinemodule.supplier.qwen import QwenChat
 from lazyllm.module.llms.onlinemodule.supplier.sensenova import SenseNovaChat
 from lazyllm.module.llms.onlinemodule.supplier.siliconflow import SiliconFlowChat
 from lazyllm.module.llms.onlinemodule.supplier.ppio import PPIOChat
+from lazyllm.module.llms.onlinemodule.supplier.intel import IntelChat
+from lazyllm.module.llms.onlinemodule.supplier.moark import MoarkChat
 from lazyllm.module.llms.onlinemodule.supplier.aiping import AipingChat
 
 
@@ -27,6 +29,8 @@ class TestValidateApiKey:
             'sensenova': os.getenv('LAZYLLM_SENSENOVA_API_KEY'),
             'siliconflow': os.getenv('LAZYLLM_SILICONFLOW_API_KEY'),
             'ppio': os.getenv('LAZYLLM_PPIO_API_KEY'),
+            'intel': os.getenv('LAZYLLM_INTEL_API_KEY'),
+            'moark': os.getenv('LAZYLLM_MOARK_API_KEY'),
             'aiping': os.getenv('LAZYLLM_AIPING_API_KEY'),
         }
         # Get sensenova secret key
@@ -182,6 +186,34 @@ class TestValidateApiKey:
         module = PPIOChat(api_key='invalid_api_key_12345')
         result = module._validate_api_key()
         assert result is False, 'PPIO invalid API Key should fail validation'
+
+    def test_intel_validate_valid_api_key(self):
+        '''Test Intel valid API Key validation'''
+        if not self.api_keys['intel']:
+            pytest.skip('LAZYLLM_INTEL_API_KEY environment variable is not set')
+
+        module = IntelModule(api_key=self.api_keys['intel'])
+        result = module._validate_api_key()
+        assert result is True, 'Intel valid API Key should pass validation'
+    def test_intel_validate_invalid_api_key(self):
+        '''Test Intel invalid API Key validation'''
+        module = IntelModule(api_key='invalid_api_key_12345')
+        result = module._validate_api_key()
+        assert result is False, 'Intel invalid API Key should fail validation'
+
+    def test_moark_validate_valid_api_key(self):
+        '''Test Moark valid API Key validation'''
+        if not self.api_keys['moark']:
+            pytest.skip('LAZYLLM_MOARK_API_KEY environment variable is not set')
+
+        module = MoarkModule(api_key=self.api_keys['moark'])
+        result = module._validate_api_key()
+        assert result is True, 'Moark valid API Key should pass validation'
+    def test_moark_validate_invalid_api_key(self):
+        '''Test Moark invalid API Key validation'''
+        module = MoarkModule(api_key='invalid_api_key_12345')
+        result = module._validate_api_key()
+        assert result is False, 'Moark invalid API Key should fail validation'
 
     def test_aiping_validate_valid_api_key(self):
         '''Test Aiping valid API Key validation'''
