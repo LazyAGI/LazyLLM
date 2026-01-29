@@ -171,6 +171,18 @@ class WordTableFilter(demo):
     ... # Omitted class implementation logic
 ```
 
+Set the operator's concurrency mode via the registrar:
+```python
+@data_register('data.demo', _concurrency_mode='thread')
+def process_uppercase(data:dict, input_key='content'):
+    ... # omitted processing logic
+```
+
+Note that there are three types of concurrency here:
+
+- `thread`: Multi-thread concurrency (using the streaming concurrency processing algorithm mentioned above), suitable for I/O-intensive tasks, such as data processing based on LLM.
+- `process`: Multi-process concurrency (default concurrency number calculated based on CPU resources), suitable for compute-intensive tasks, such as regular expression matching, etc.
+- `single`: Single-thread sequential processing, suitable for debugging in Debug mode.
 
 ## Using Registered Operators for Data Processing
 
@@ -216,11 +228,8 @@ process_add_suffix(
     _max_workers=48,             # Max concurrency number
 )
 ```
-Note that there are three types of concurrency here:
 
-- `thread`: Multi-thread concurrency (using the streaming concurrency processing algorithm mentioned above), suitable for I/O-intensive tasks, such as data processing based on LLM.
-- `process`: Multi-process concurrency (default concurrency number calculated based on CPU resources), suitable for compute-intensive tasks, such as regular expression matching, etc.
-- `single`: Single-thread sequential processing, suitable for debugging in Debug mode.
+Note that the precedence for concurrency settings is: parameters provided during operator initialization > parameters provided to the registrar > default values.
 
 #### 2. Storage and Resume Control:
 ```python

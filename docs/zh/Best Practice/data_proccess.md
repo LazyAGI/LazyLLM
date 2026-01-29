@@ -172,6 +172,19 @@ class WordTableFilter(demo):
     ... # 省略类实现逻辑
 ```
 
+通过注册器设置算子的并发方式：
+```python
+@data_register('data.demo', _concurrency_mode='thread')
+def process_uppercase(data:dict, input_key='content'):
+    ... # 省略处理逻辑
+```
+
+注意，这里的并发类型有三种：
+
+- `thread`: 多线程并发（使用上文提到的流式并发处理算法），适用于I/O密集型任务，比如基于LLM的数据处理；
+- `process`: 多进程并发（默认根据CPU资源计算并发数），适用于计算密集型任务，比如正则匹配等；
+- `single`: 单线程顺序处理，适用于Debug模式下的调试。
+
 
 ## 使用注册的算子进行数据处理
 
@@ -219,11 +232,7 @@ process_add_suffix(
 )
 ```
 
-注意，这里的并发类型有三种：
-
-- `thread`: 多线程并发（使用上文提到的流式并发处理算法），适用于I/O密集型任务，比如基于LLM的数据处理；
-- `process`: 多进程并发（默认根据CPU资源计算并发数），适用于计算密集型任务，比如正则匹配等；
-- `single`: 单线程顺序处理，适用于Debug模式下的调试。
+注意，这里的并发优先级顺序为：算子初始化时传入的参数 > 注册器中传入的参数 > 默认值。
 
 
 #### 2. 存储和Resume控制
