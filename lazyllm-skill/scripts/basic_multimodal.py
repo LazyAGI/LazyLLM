@@ -1,14 +1,14 @@
 from lazyllm import TrainableModule, WebModule, deploy, pipeline, switch, _0, IntentClassifier
 
 chatflow_intent_list = ["聊天", "语音识别", "图片问答", "画图", "生成音乐", "文字转语音"]
-agent_prompt = f"""
+agent_prompt = f'''
 现在你是一个意图分类引擎，负责根据对话信息分析用户输入文本并确定唯一的意图类别。\n
 你只需要回复意图的名字即可，不要额外输出其他字段，也不要进行翻译。"intent_list"为所有意图名列表。\n
 如果输入中带有attachments，根据attachments的后缀类型以最高优先级确定意图：如果是图像后缀如.jpg、.png等，则输出：图片问答；\n
 如果是音频后缀如.mp3、.wav等，则输出：语音识别。\n
 ## intent_list:\n{chatflow_intent_list}\n\n
 # ## 示例\nUser: 你好啊\nAssistant:  聊天\n
-"""
+'''
 painter_prompt = '现在你是一位绘图提示词大师，能够将用户输入的任意中文内容转换成英文绘图提示词，'\
                  '在本任务中你需要将任意输入内容转换成英文绘图提示词，并且你可以丰富和扩充提示词内容。'
 musician_prompt = '现在你是一位作曲提示词大师，能够将用户输入的任意中文内容转换成英文作曲提示词，'\

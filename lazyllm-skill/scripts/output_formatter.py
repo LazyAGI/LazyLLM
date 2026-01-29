@@ -7,7 +7,7 @@ model = lazyllm.TrainableModule('qwen2-1.5b')\
 
 # 使用自定义函数作为格式化器
 def my_formatter(text):
-    return f"处理后的结果: {text.strip()}"
+    return f'处理后的结果: {text.strip()}'
 
 model = lazyllm.TrainableModule('qwen2-1.5b').formatter(my_formatter)
 

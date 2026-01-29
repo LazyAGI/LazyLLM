@@ -4,7 +4,7 @@ import lazyllm
 
 # Part1
 # 从本地加载知识库目录，并使用内置的 OnlineEmbeddingModule 作为向量模型。
-documents = lazyllm.Document(dataset_path="/path/to/your/doc/dir",
+documents = lazyllm.Document(dataset_path='/path/to/your/doc/dir',
                              embed=lazyllm.OnlineEmbeddingModule(),
                              manager=False)
 
@@ -14,8 +14,8 @@ documents = lazyllm.Document(dataset_path="/path/to/your/doc/dir",
 # 然后使用内置的 bm25_chinese 作为相似度计算函数，并且丢弃相似度小于 0.003 的结果
 # 最后取最相近的 3 篇文档。
 retriever = lazyllm.Retriever(doc=documents,
-                              group_name="CoarseChunk",
-                              similarity="bm25_chinese",
+                              group_name='CoarseChunk',
+                              similarity='bm25_chinese',
                               similarity_cut_off=0.003,
                               topk=3)
 
@@ -43,10 +43,10 @@ if query == "quit":
 # 然后把 query 和参考资料 context_str 打包成一个 dict 传给大模型，并等待结果返回。
 doc_node_list = retriever(query=query)
 res = llm({
-    "query": query,
-    "context_str": "".join([node.get_content() for node in doc_node_list]),
+    'query': query,
+    'context_str': ''.join([node.get_content() for node in doc_node_list]),
 })
 
 # Part7
 # 结果打印到屏幕上。
-print(f"answer: {res}")
+print(f'answer: {res}')
