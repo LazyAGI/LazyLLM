@@ -114,7 +114,7 @@ __all__.extend([
 ])
 import importlib
 import lazyllm
-from .base_data import data_register
+from .base_data import LazyLLMDataBase, data_register
 from .operators import demo_ops  # noqa: F401
 
 def __getattr__(name):
@@ -124,4 +124,4 @@ def __getattr__(name):
         return lazyllm.data[name]
     raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
-__all__ = ['data_register']
+__all__ = ['LazyLLMDataBase', 'data_register']
