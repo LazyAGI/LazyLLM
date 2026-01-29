@@ -106,7 +106,7 @@ def skills(commands):  # noqa: C901
     parser.add_argument('-n', '--name', dest='folder_name', default=None,
                         help='Target skill folder name (default: source folder name).')
     parser.add_argument('--names', action='append', default=None,
-                        help='Comma-separated skill names to import (filter). Can be used multiple times.')
+                        help='Comma-separated skill names (from SKILL.md) to import. Can be used multiple times.')
     parser.add_argument('--overwrite', action='store_true', default=False,
                         help='Overwrite existing skill folder when importing.')
 
@@ -220,7 +220,7 @@ def skills(commands):  # noqa: C901
                 continue
             meta_name = meta.get('name')
             folder_name = os.path.basename(folder.rstrip(os.sep))
-            if name_filter and folder_name not in name_filter:
+            if name_filter and meta_name not in name_filter:
                 skipped += 1
                 continue
             if meta_name in existing_names:

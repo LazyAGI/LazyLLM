@@ -1,5 +1,5 @@
 from lazyllm.module import ModuleBase
-from lazyllm import locals
+from lazyllm import locals, LOG
 from .toolsManager import ToolManager
 from .skill_manager import SkillManager
 from .file_tool import (  # noqa: F401
@@ -20,8 +20,9 @@ class LazyLLMAgentBase(ModuleBase):
                  stream: bool = False, return_last_tool_calls: bool = False, use_skills: bool = False,
                  skills: list[str] = None, memory=None, desc: str = '', sub_agents=None):
         super().__init__(return_trace=return_trace)
-        if skills:
-            use_skills = True
+        if skills and not use_skills:
+            LOG.warning('use_skills is False but skills provided; enabling skills.')
+        use_skills = use_skills or bool(skills)
         self._llm = llm
         self._tools = list(tools) if tools else []
         self._memory = memory
