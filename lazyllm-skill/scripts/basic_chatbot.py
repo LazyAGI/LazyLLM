@@ -1,13 +1,6 @@
-"""
-基础对话机器人 - LazyLLM 基础示例
-
-使用方法:
-1. 设置环境变量: export LAZYLLM_QWEN_API_KEY=your_key
-2. 运行: python basic_chatbot.py
-"""
-
 import lazyllm
 
+# 基础对话chatbot
 # 创建对话模块
 chat = lazyllm.OnlineModule()
 
@@ -23,3 +16,21 @@ while True:
 
     res = chat.forward(query)
     print(f"answer: {res}")
+
+# 添加对话历史
+history = []
+print("多轮对话机器人（输入 'quit' 退出）")
+while True:
+    query = input("query: ")
+    if query == "quit":
+        break
+
+    # 传递对话历史
+    res = chat(query, llm_chat_history=history)
+    print(f"answer: {res}\n")
+    # 保存到历史
+    history.append([query, res])
+
+# 优化历史对话添加
+chat = lazyllm.TrainableModule('internlm2-chat-7b')
+lazyllm.WebModule(chat, port=23466, history=[chat]).start().wait()
