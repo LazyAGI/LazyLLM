@@ -1,4 +1,5 @@
 import os
+import re
 from ..base_data import DataOperatorRegistry
 from lazyllm import LOG, config
 
@@ -6,7 +7,7 @@ import fasttext
 from huggingface_hub import hf_hub_download
 from datasketch import MinHash, MinHashLSH
 import nltk
-from nltk.tokenize import word_tokenize
+from nltk.tokenize import word_tokenize, sent_tokenize, WordPunctTokenizer
 import jieba
 
 
@@ -191,52 +192,189 @@ class BlocklistFilter:
 
 
 @DataOperatorRegistry.register
-def filter_word_count(data, input_key='content', min_words=10, max_words=10000):
-    assert isinstance(data, dict)
-    # TODO: Implement word count filtering
-    return data
+class WordCountFilter:
+    def __init__(self, input_key='content', min_words=10, max_words=10000, language='zh'):
+        self.input_key = input_key
+        self.min_words = min_words
+        self.max_words = max_words
+        self.language = language.lower()
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        if self.language in ['zh', 'cn', 'chinese']:
+            count = len(text.replace(' ', '').replace('\n', '').replace('\t', ''))
+        elif self.language in ['en', 'english']:
+            count = len(text.split())
+        else:
+            LOG.warning(f'Unsupported language: {self.language}, using character count')
+            count = len(text.replace(' ', '').replace('\n', '').replace('\t', ''))
+
+        if self.min_words <= count < self.max_words:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_colon_end(data, input_key='content'):
-    assert isinstance(data, dict)
-    # TODO: Implement colon-ending line filtering
-    return data
+class ColonEndFilter:
+    def __init__(self, input_key='content'):
+        self.input_key = input_key
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return data
+
+        if text.rstrip().endswith(':') or text.rstrip().endswith('：'):
+            return None
+        else:
+            return data
 
 
 @DataOperatorRegistry.register
-def filter_sentence_count(data, input_key='content', min_sentences=3, max_sentences=1000):
-    assert isinstance(data, dict)
-    # TODO: Implement sentence count filtering
-    return data
+class SentenceCountFilter:
+    def __init__(self, input_key='content', min_sentences=3, max_sentences=1000, language='zh'):
+        self.input_key = input_key
+        self.min_sentences = min_sentences
+        self.max_sentences = max_sentences
+        self.language = language.lower()
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        if self.language in ['zh', 'cn', 'chinese']:
+            sentences = re.split(r'[。！？]+', text)
+            sentences = [s.strip() for s in sentences if s.strip()]
+            num_sentences = len(sentences)
+        elif self.language in ['en', 'english']:
+            sentences = sent_tokenize(text)
+            num_sentences = len(sentences)
+        else:
+            LOG.warning(f'Unsupported language: {self.language}, using Chinese punctuation')
+            sentences = re.split(r'[。！？]+', text)
+            sentences = [s.strip() for s in sentences if s.strip()]
+            num_sentences = len(sentences)
+
+        if self.min_sentences <= num_sentences <= self.max_sentences:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_ellipsis_end(data, input_key='content', max_ratio=0.3):
-    assert isinstance(data, dict)
-    # TODO: Implement ellipsis-ending line filtering
-    return data
+class EllipsisEndFilter:
+    def __init__(self, input_key='content', max_ratio=0.3):
+        self.input_key = input_key
+        self.max_ratio = max_ratio
+        self.ellipsis = ['...', '…', '……']
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return data
+
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        num_lines = len(lines)
+
+        if num_lines == 0:
+            return data
+
+        num_occurrences = sum(
+            1 for line in lines
+            if any(line.endswith(ellipsis) for ellipsis in self.ellipsis)
+        )
+        ratio = num_occurrences / num_lines
+
+        if ratio < self.max_ratio:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_null_content(data, input_key='content'):
-    assert isinstance(data, dict)
-    # TODO: Implement null/empty content filtering
-    return data
+class NullContentFilter:
+    def __init__(self, input_key='content'):
+        self.input_key = input_key
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        
+        if text is not None and isinstance(text, str) and text.strip() != '':
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_word_length(data, input_key='content', min_length=3, max_length=15):
-    assert isinstance(data, dict)
-    # TODO: Implement mean word length filtering
-    return data
+class WordLengthFilter:
+    def __init__(self, input_key='content', min_length=3, max_length=20):
+        self.input_key = input_key
+        self.min_length = min_length
+        self.max_length = max_length
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        words = text.split()
+        num_words = len(words)
+        if num_words == 0:
+            return None
+
+        num_chars = sum(len(word) for word in words)
+        mean_length = num_chars / num_words
+        if self.min_length <= mean_length < self.max_length:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_symbol_ratio(data, input_key='content', max_ratio=0.3):
-    assert isinstance(data, dict)
-    # TODO: Implement symbol-to-word ratio filtering
-    return data
+class SymbolRatioFilter:
+    def __init__(self, input_key='content', max_ratio=0.3, symbols=None):
+        self.input_key = input_key
+        self.max_ratio = max_ratio
+        self.symbols = symbols or ['#', '...', '…']
+        self.tokenizer = WordPunctTokenizer()
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        tokens = self.tokenizer.tokenize(text)
+        word_tokens = [t for t in tokens if t not in self.symbols]
+        num_words = len(word_tokens)
+
+        if num_words == 0:
+            return None
+
+        num_symbols = sum(text.count(symbol) for symbol in self.symbols)
+        ratio = num_symbols / num_words
+        if ratio < self.max_ratio:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register

@@ -47,38 +47,54 @@ HTML_ENTITY_PATTERN = re.compile('|'.join(entity_patterns))
 
 
 @DataOperatorRegistry.register
-def remove_extra_spaces(data, input_key='content'):
-    assert isinstance(data, dict)
-    text = data.get(input_key, '')
-    if text:
-        data[input_key] = ' '.join(text.split())
-    return data
+class RemoveExtraSpaces:
+    def __init__(self, input_key='content'):
+        self.input_key = input_key
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+        text = data.get(self.input_key, '')
+        if text:
+            data[self.input_key] = ' '.join(text.split())
+        return data
 
 
 @DataOperatorRegistry.register
-def remove_emoji(data, input_key='content'):
-    assert isinstance(data, dict)
-    text = data.get(input_key, '')
-    if text:
-        data[input_key] = EMOJI_PATTERN.sub('', text)
-    return data
+class RemoveEmoji:
+    def __init__(self, input_key='content'):
+        self.input_key = input_key
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+        text = data.get(self.input_key, '')
+        if text:
+            data[self.input_key] = EMOJI_PATTERN.sub('', text)
+        return data
 
 
 @DataOperatorRegistry.register
-def remove_html_url(data, input_key='content'):
-    assert isinstance(data, dict)
-    text = data.get(input_key, '')
-    if text:
-        text = URL_PATTERN.sub('', text)
-        text = HTML_PATTERN.sub('', text)
-        data[input_key] = text
-    return data
+class RemoveHtmlUrl:
+    def __init__(self, input_key='content'):
+        self.input_key = input_key
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+        text = data.get(self.input_key, '')
+        if text:
+            text = URL_PATTERN.sub('', text)
+            text = HTML_PATTERN.sub('', text)
+            data[self.input_key] = text
+        return data
 
 
 @DataOperatorRegistry.register
-def remove_html_entity(data, input_key='content'):
-    assert isinstance(data, dict)
-    text = data.get(input_key, '')
-    if text:
-        data[input_key] = HTML_ENTITY_PATTERN.sub('', text)
-    return data
+class RemoveHtmlEntity:
+    def __init__(self, input_key='content'):
+        self.input_key = input_key
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+        text = data.get(self.input_key, '')
+        if text:
+            data[self.input_key] = HTML_ENTITY_PATTERN.sub('', text)
+        return data
