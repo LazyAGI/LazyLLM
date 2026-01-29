@@ -258,8 +258,8 @@ if __name__ == '__main__':
 
 12. 第三方依赖通过 lazyllm.thirdparty 引入: 避免直接 import，保证懒加载与可选依赖管理。参考文档[Thirdparty使用示例](./assets/basic/thirdparty.md)
 
-使用示例合集:
-[示例合集](./scripts/README.md)
+代码示例合集:
+[基础使用代码合集](./scripts/README.md)
 
 ## 官方文档
 
