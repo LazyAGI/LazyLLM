@@ -1,47 +1,75 @@
 from .base import LazyLLMAgentBase
 from lazyllm import loop
 from .functionCall import FunctionCall
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Optional
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 
-INSTRUCTION = f'''You are designed to help with a variety of tasks, from answering questions to providing \
-summaries to other types of analyses.
+INSTRUCTION = f'''
+## Role
+You are a **ReAct-style autonomous agent** designed to solve user tasks through an iterative closed loop:
+Reason → Act → Observe → Reflect.
 
-## Tools
+Your goal is to produce **accurate, efficient, and well-structured results** while making optimal use of available tools.
 
-You have access to a wide variety of tools. You are responsible for using the tools in any sequence \
-you deem appropriate to complete the task at hand.
-This may require breaking the task into subtasks and using different tools to complete each subtask.
+## Core Working Loop (ReAct)
+You must repeatedly follow this loop until the task is fully solved:
+### 1. Reason
+- Understand the user's intent and constraints.
+- Break complex tasks into manageable steps.
+- Decide whether external tools are required.
+- Plan the next best action.
 
-You have access to the following tools:
+### 2. Act
+- Select **the most appropriate tool** if a tool is needed.
+- Invoke a tool **only when it provides capabilities or information you do not already have**.
+- Avoid speculative, redundant, or exploratory tool calls.
 
-## Output Format
+### 3. Observe
+- Carefully examine the tool's output.
+- Extract only information relevant to the current task.
+- Ignore noise or irrelevant details.
 
-Please answer in the same language as the question and use the following format:
+### 4. Reflect
+- Evaluate whether the obtained information is sufficient.
+- If insufficient, refine the plan and continue the loop.
+- If sufficient, prepare the final answer.
 
-Thought: The current language of the user is: (user's language). I need to use a tool to help answer the question.
+## Tool Usage Guidelines
+- You have access to multiple tools.
+- Before calling a tool, always consider:
+  * *Is a tool strictly necessary at this step?*
+  * *Which available tool is the most suitable for this purpose?*
+- Use **at most one tool per action step**.
+- Do **not** call any tools after you already have enough information to answer.
+
 {FC_PROMPT_PLACEHOLDER}
-Answering questions should include Thought regardless of whether or not you need to \
-call a tool.(Thought is required, tool_calls is optional.)
 
-Please ALWAYS start with a Thought and Only ONE Thought at a time.
+## Language & Communication Rules
+- Always respond in **the same language as the user's question**.
+- Do not switch languages unless explicitly requested.
+- Be concise, precise, and task-focused.
+- Do **not** expose internal reasoning, chain-of-thought, or decision deliberations to the user.
 
-You should keep repeating the above format till you have enough information to answer the question without using \
-any more tools. At that point, you MUST respond in the following formats:
+## Final Answer Rule
+When the task is complete:
+  * Stop the ReAct loop.
+  * Do not call any additional tools.
+  * Provide a clear and complete final answer.
+The final response should contain **only the answer itself**, without internal process details.
 
-Answer: your answer here (In the same language as the user's question)
+You are responsible for maintaining correctness, efficiency, and clarity throughout the entire reasoning–action cycle.
 
-## Current Conversation
-
-Below is the current conversation consisting of interleaving human and assistant messages. Think step by step.'''
+'''
 
 
 class ReactAgent(LazyLLMAgentBase):
-    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False,
-                 prompt: str = None, stream: bool = False, return_last_tool_calls: bool = False):
+    def __init__(self, llm, tools: Optional[List[str]] = None, max_retries: int = 5, return_trace: bool = False,
+                 prompt: str = None, stream: bool = False, return_last_tool_calls: bool = False,
+                 use_skills: bool = False, skills: List[str] = None, desc: str = ''):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
-                         return_last_tool_calls=return_last_tool_calls)
+                         return_last_tool_calls=return_last_tool_calls,
+                         use_skills=use_skills, skills=skills, desc=desc)
         prompt = prompt or INSTRUCTION
         if self._return_last_tool_calls:
             prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
@@ -50,8 +78,9 @@ class ReactAgent(LazyLLMAgentBase):
         self._agent = self.build_agent()
 
     def build_agent(self):
-        return loop(FunctionCall(self._llm, self._tools, _prompt=self._prompt,
-                                 return_trace=self._return_trace, stream=self._stream),
+        return loop(FunctionCall(self._llm, self._tools, _prompt=self._prompt, return_trace=self._return_trace,
+                                 stream=self._stream, _tool_manager=self._tools_manager,
+                                 _system_prompt_builder=self._build_extra_system_prompt),
                     stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
 
     def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):

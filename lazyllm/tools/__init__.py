@@ -14,6 +14,7 @@ if TYPE_CHECKING:
         PlanAndSolveAgent,
         ReWOOAgent,
         ModuleTool,
+        SkillManager,
     )
     from .classifier import IntentClassifier
     from .sql import SqlManager, MongoDBManager, DBResult, DBStatus, DBManager
@@ -64,7 +65,8 @@ _SUBMOD_MAP = {
         'fc_register',
         'ReactAgent',
         'PlanAndSolveAgent',
-        'ReWOOAgent'
+        'ReWOOAgent',
+        'SkillManager',
     ],
     'classifier': ['IntentClassifier'],
     'sql': [

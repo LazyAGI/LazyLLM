@@ -1,7 +1,6 @@
 from lazyllm.module import ModuleBase
 from .base import LazyLLMAgentBase
 from lazyllm import pipeline, LOG, bind, Color, locals, ifs
-from .toolsManager import ToolManager
 from typing import List, Dict, Union, Callable
 import re
 import json
@@ -34,10 +33,11 @@ S_PROMPT_SUFFIX = ('\nNow begin to solve the task or problem. Respond with '
 class ReWOOAgent(LazyLLMAgentBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[Union[str, Callable]] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
-                 return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False):
-        super().__init__(llm=llm, tools=tools,
-                         return_trace=return_trace, stream=stream,
-                         return_last_tool_calls=return_last_tool_calls)
+                 return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False,
+                 use_skills: bool = False, skills: List[str] = None, desc: str = ''):
+        super().__init__(llm=llm, tools=tools, return_trace=return_trace, stream=stream,
+                         return_last_tool_calls=return_last_tool_calls, use_skills=use_skills,
+                         skills=skills, desc=desc)
         if llm is None and plan_llm is None and solve_llm is None:
             raise ValueError('Either specify llm, or provide plan_llm/solve_llm.')
         if llm is None:
@@ -50,12 +50,11 @@ class ReWOOAgent(LazyLLMAgentBase):
                 plan_llm = llm
             if solve_llm is None:
                 solve_llm = llm
-        assert tools, 'tools cannot be empty.'
+        assert self._tools, 'tools cannot be empty.'
         self._planner = plan_llm.share(stream=dict(
             prefix='\nI will give a plan first:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
         self._solver = solve_llm.share(stream=dict(
             prefix='\nI will solve the problem:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
-        self._tools_manager = ToolManager(self._tools, return_trace=return_trace)
         self._agent = self.build_agent()
 
     def build_agent(self):
@@ -71,6 +70,9 @@ class ReWOOAgent(LazyLLMAgentBase):
         prompt = P_PROMPT_PREFIX + 'Tools can be one of the following:\n'
         for name, tool in self._tools_manager.tools_info.items():
             prompt += f'{name}[params_dict]: {tool.description}\n'
+        extra_prompt = self._build_extra_system_prompt(input)
+        if extra_prompt:
+            prompt = f'{prompt}\n\n{extra_prompt}'
         prompt += P_FEWSHOT + '\n' + P_PROMPT_SUFFIX + input + '\n'
         locals['chat_history'][self._planner._module_id] = []
         return prompt
@@ -104,7 +106,10 @@ class ReWOOAgent(LazyLLMAgentBase):
         return worker_evidences
 
     def _build_solver_prompt(self, worker_evidences, input):
+        skills_prompt = self._build_extra_system_prompt(input)
         prompt = S_PROMPT_PREFIX + input + '\n' + worker_evidences + S_PROMPT_SUFFIX + input + '\n'
+        if skills_prompt:
+            prompt = f'{skills_prompt}\n\n{prompt}'
         locals['chat_history'][self._solver._module_id] = []
         return prompt
 

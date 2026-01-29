@@ -2,7 +2,7 @@ from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text
 from .toolsManager import ToolManager
-from typing import List, Any, Dict, Union, Callable
+from typing import List, Any, Dict, Union, Callable, Optional
 from .base import LazyLLMAgentBase
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
@@ -39,12 +39,31 @@ class StreamResponse():
 
 class FunctionCall(ModuleBase):
 
-    def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False,
-                 stream: bool = False, _prompt: str = None):
+    def __init__(self, llm, tools: Optional[List[Union[str, Callable]]] = None, *, return_trace: bool = False,
+                 stream: bool = False, _prompt: str = None, _tool_manager: Optional[ToolManager] = None,
+                 _system_prompt_builder: Optional[Callable[[str], str]] = None):
         super().__init__(return_trace=return_trace)
-
-        self._tools_manager = ToolManager(tools, return_trace=return_trace)
+        if _tool_manager is None:
+            assert tools, 'tools cannot be empty.'
+            self._tools_manager = ToolManager(tools, return_trace=return_trace)
+        else:
+            self._tools_manager = _tool_manager
         self._prompter = ChatPrompter(instruction=_prompt or FC_PROMPT, tools=self._tools_manager.tools_description)
+        self._base_instruction_template = self._prompter._instruction_template
+        if _system_prompt_builder:
+            def _hook(input, history, tools, label):
+                query = ''
+                if isinstance(input, str):
+                    query = input
+                elif isinstance(input, dict):
+                    query = input.get('content', '')
+                extra_prompt = _system_prompt_builder(query)
+                if extra_prompt:
+                    self._prompter._instruction_template = f'{self._base_instruction_template}\n\n{extra_prompt}\n'
+                else:
+                    self._prompter._instruction_template = self._base_instruction_template
+                return input, history, tools, label
+            self._prompter.pre_hook(_hook)
         self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
         with pipeline() as self._impl:
             self._impl.ins = StreamResponse('Received instruction:', prefix_color=Color.yellow,
@@ -111,11 +130,15 @@ class FunctionCall(ModuleBase):
 @deprecated('ReactAgent')
 class FunctionCallAgent(LazyLLMAgentBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False,
-                 return_last_tool_calls: bool = False):
+                 return_last_tool_calls: bool = False, use_skills: bool = False, skills: List[str] = None,
+                 desc: str = ''):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
-                         return_last_tool_calls=return_last_tool_calls)
-        self._fc = FunctionCall(self._llm, self._tools, return_trace=return_trace, stream=stream)
+                         return_last_tool_calls=return_last_tool_calls,
+                         use_skills=use_skills, skills=skills, desc=desc)
+        self._fc = FunctionCall(self._llm, self._tools, return_trace=return_trace, stream=stream,
+                                _tool_manager=self._tools_manager,
+                                _system_prompt_builder=self._build_extra_system_prompt)
         self._agent = self.build_agent()
         self._fc._llm.used_by(self._module_id)
 

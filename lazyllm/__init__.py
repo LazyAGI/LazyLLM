@@ -19,7 +19,7 @@ from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModul
 from .hook import LazyLLMHook, LazyLLMFuncHook
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
+    from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, SkillManager,
                         FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
                         LLMParser)
 from .patch import patch_os_env
@@ -93,6 +93,7 @@ __all__ = [
     'Retriever',
     'Reranker',
     'ToolManager',
+    'SkillManager',
     'FunctionCall',
     'FunctionCallAgent',
     'fc_register',
