@@ -7806,6 +7806,22 @@ Return the tool names exposed by SkillManager.
 - List[str]: Skill tool names.
 ''')
 
+add_chinese_doc('LazyLLMAgentBase.build_agent', '''\
+构建内部执行流程的工厂方法。
+
+说明：
+    该方法由子类实现，用于构建该 Agent 的内部工作流。
+    基类会在首次执行时调用它完成初始化。
+''')
+
+add_english_doc('LazyLLMAgentBase.build_agent', '''\
+Factory method for constructing the internal execution workflow.
+
+Notes:
+    This method should be implemented by subclasses to build the agent workflow.
+    The base class invokes it lazily on first use.
+''')
+
 add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
 
@@ -7837,6 +7853,14 @@ Args:
     skills (List[str]): List of skill names to enable.
     desc (str): Optional agent capability description.
 
+''')
+
+add_chinese_doc('ReactAgent.build_agent', '''\
+构建 ReactAgent 的内部推理与工具调用闭环。
+''')
+
+add_english_doc('ReactAgent.build_agent', '''\
+Build the internal reasoning and tool-calling loop for ReactAgent.
 ''')
 
 add_example('ReactAgent', """\
@@ -7907,6 +7931,14 @@ Args:
     desc (str): Optional agent capability description.
 ''')
 
+add_chinese_doc('PlanAndSolveAgent.build_agent', '''\
+构建 PlanAndSolveAgent 的规划与求解执行流程。
+''')
+
+add_english_doc('PlanAndSolveAgent.build_agent', '''\
+Build the planning and solving execution workflow for PlanAndSolveAgent.
+''')
+
 add_example('PlanAndSolveAgent', """\
 >>> import lazyllm
 >>> from lazyllm.tools import fc_register, PlanAndSolveAgent
@@ -7972,6 +8004,22 @@ Args:
     use_skills (bool): Whether to enable Skills support.
     skills (List[str]): List of skill names to enable.
     desc (str): Optional agent capability description.
+''')
+
+add_chinese_doc('ReWOOAgent.build_agent', '''\
+构建 ReWOOAgent 的 Planner/Worker/Solver 执行流程。
+''')
+
+add_english_doc('ReWOOAgent.build_agent', '''\
+Build the Planner/Worker/Solver workflow for ReWOOAgent.
+''')
+
+add_chinese_doc('FunctionCallAgent.build_agent', '''\
+构建 FunctionCallAgent 的工具调用迭代流程。
+''')
+
+add_english_doc('FunctionCallAgent.build_agent', '''\
+Build the tool-calling iteration workflow for FunctionCallAgent.
 ''')
 
 add_example(
