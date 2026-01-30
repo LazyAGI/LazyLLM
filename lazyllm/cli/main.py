@@ -3,10 +3,13 @@ try:
     from install import install
     from deploy import deploy
     from run import run
+    from install_skill import install_skill
+
 except ImportError:
     from .install import install
     from .deploy import deploy
     from .run import run
+    from .install_skill import install_skill
 import logging
 
 def main():
@@ -25,6 +28,8 @@ def main():
         deploy(commands)
     elif sys.argv[1] == 'run':
         run(commands)
+    elif sys.argv[1] == 'install-skill':
+        install_skill(commands)
     else:
         exit()
 

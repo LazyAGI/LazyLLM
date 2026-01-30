@@ -16,7 +16,6 @@ UNSUPPORTED_ON_DARWIN_WIN = [
     'full', 'standard', 'fintune-all', 'alpaca-lora', 'colie', 'llama-factory', 'deploy-all', 'vllm',
     'lmdeploy', 'lightllm', 'infinity'
 ]
-DEFAULT_SKILL_REPO = 'https://github.com/LazyAGI/LazyLLM'
 
 def load_pyproject_from_lazyllm_path():
     try:
@@ -149,9 +148,6 @@ def install_mineru():
         sys.exit(1)
 
 def install(commands):  # noqa C901
-    if install_skill(commands):
-        return
-
     extras_desc = load_extras_descriptions()
     epilog_lines = ['Supported extras groups:']
     for name, desc in extras_desc.items():
@@ -221,26 +217,3 @@ def install(commands):  # noqa C901
 
     if extra_pkgs:
         install_packages(list(extra_pkgs))
-
-def install_skill(commands):
-    parser = argparse.ArgumentParser(add_help=False)
-    parser.add_argument('--skill', nargs='?', const=DEFAULT_SKILL_REPO)
-    parser.add_argument('--agent')
-    parser.add_argument('--project', action='store_true')
-
-    args, _ = parser.parse_known_args(commands)
-
-    if not args.skill:
-        return False
-
-    cmd = ['skilz', 'install', args.skill]
-
-    if not args.agent:
-        logging.error('Unkown agent, please check your command.')
-        sys.exit(1)
-    cmd += ['--agent', args.agent]
-    if args.project:
-        cmd.append('--project')
-
-    subprocess.run(cmd, check=True)
-    return True
