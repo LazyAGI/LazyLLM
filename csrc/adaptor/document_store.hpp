@@ -1,13 +1,15 @@
 #pragma once
 
 #include <memory>
-#include <mutex>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+
+#include "adaptor_base_wrapper.hpp"
+#include "doc_node.hpp"
 
 namespace lazyllm {
 
@@ -25,7 +27,7 @@ struct NodeGroup {
             parent(parent), display_name(display_name), type(type) {}
 };
 
-class DocumentStore {
+class DocumentStore : public AdaptorBaseWrapper {
 public:
     // RAG system metadata keys
     static constexpr std::string_view RAG_KB_ID_KEY = "kb_id";
@@ -33,13 +35,13 @@ public:
 
     DocumentStore() = delete;
     explicit DocumentStore(
-        const pybind11::object &store,
+        const pybind11::object& store,
         const std::unordered_map<std::string, NodeGroup> &map) :
-            _py_store(store), _node_groups_map(map) {}
+            AdaptorBaseWrapper(store), _node_groups_map(map) {}
 
-    // Cache-aware factory to avoid rebuilding wrappers for the same Python store.
+    // Cache-aware factory to avoid rebuilding adaptor for the same Python store.
     static std::shared_ptr<DocumentStore> from_store(
-        const pybind11::object &store, const std::unordered_map<std::string, NodeGroup> &map) {
+        const pybind11::object& store, const std::unordered_map<std::string, NodeGroup>& map) {
         if (store.is_none()) return nullptr;
 
         pybind11::gil_scoped_acquire gil;
@@ -50,49 +52,39 @@ public:
             if (auto existing = it->second.lock())
                 return existing;
         }
-        auto created = std::shared_ptr<DocumentStore>(new DocumentStore(store, map));
+        auto created = std::make_shared<DocumentStore>(store, map);
         cache[key] = created;
         return created;
     }
 
-    bool is_group_active(const std::string& grp) const {
-        pybind11::gil_scoped_acquire gil;
-        pybind11::object fn = _py_store.attr("is_group_active");
-        return fn(grp).cast<bool>();
-    }
+    std::any call_impl(
+        const std::string& func_name,
+        const pybind11::object& func,
+        const std::unordered_map<std::string, std::any>& args) const override
+    {
+        if (func_name == "is_group_active") {
+            return func(args.at("group")).cast<bool>();
+        }
+        else if (func_name == "get_node") {
+            return func(
+                pybind11::arg("group_name") = std::any_cast<std::string>(args.at("group_name")),
+                pybind11::arg("uids") = std::vector<std::string>({std::any_cast<std::string>(args.at("uid"))}),
+                pybind11::arg("kb_id") = std::any_cast<std::string>(args.at("kb_id")),
+                pybind11::arg("display") = true
+            ).cast<pybind11::list>()[0].cast<DocNode*>();
+        }
+        else if (func_name == "get_nodes") {
+            return func(
+                pybind11::arg("group_name") = std::any_cast<std::string>(args.at("group_name")),
+                pybind11::arg("kb_id") = std::any_cast<std::string>(args.at("kb_id")),
+                pybind11::arg("doc_ids") = std::vector<std::string>({std::any_cast<std::string>(args.at("doc_id"))})
+            ).cast<std::vector<DocNode*>>();
+        }
 
-    pybind11::object get_node(
-        const std::string& group_name,
-        const std::string& uid,
-        const std::string& kb_id
-    ) const {
-        pybind11::gil_scoped_acquire gil;
-        pybind11::object fn = _py_store.attr("get_nodes");
-        pybind11::object result = fn(
-            pybind11::arg("group_name") = group_name,
-            pybind11::arg("uids") = std::vector<std::string>({uid}),
-            pybind11::arg("kb_id") = kb_id,
-            pybind11::arg("display") = true);
-        return result.cast<pybind11::list>()[0];
-    }
-
-    std::vector<pybind11::object> get_nodes(
-        const std::string& group_name,
-        const std::string& kb_id,
-        const std::string& doc_id
-    ) const {
-        pybind11::gil_scoped_acquire gil;
-        pybind11::object fn = _py_store.attr("get_nodes");
-        pybind11::object result = fn(
-            pybind11::arg("group_name") = group_name,
-            pybind11::arg("kb_id") = kb_id,
-            pybind11::arg("doc_ids") = std::vector<std::string>({doc_id}));
-        return result.cast<std::vector<pybind11::object>>();
+        throw std::runtime_error("Unknown DocumentStore function: " + func_name);
     }
 
 private:
-    // Keep the underlying Python store object alive for callback invocations.
-    pybind11::object _py_store;
     std::unordered_map<std::string, NodeGroup> _node_groups_map;
 
     // Cache by Python object identity to ensure one wrapper per store instance.

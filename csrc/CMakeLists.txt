@@ -9,6 +9,7 @@ add_compile_options(
     -Wshadow
 )
 
+# Third party libs
 include(FetchContent)
 find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
@@ -28,7 +29,7 @@ endif()
 file(GLOB_RECURSE LAZYLLM_CORE_SOURCES CONFIGURE_DEPENDS
     "${CMAKE_CURRENT_SOURCE_DIR}/core/src/*.cpp")
 add_library(lazyllm_core STATIC ${LAZYLLM_CORE_SOURCES})
-target_include_directories(lazyllm_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_include_directories(lazyllm_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/core/include)
 target_link_libraries(lazyllm_core PUBLIC xxhash)
 
 # Config lazyllm_adaptor lib which maintains callback invocations.
