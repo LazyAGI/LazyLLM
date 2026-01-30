@@ -27,7 +27,7 @@ class DocumentProcessorWorker(ModuleBase):
     class _Impl():
         def __init__(self, db_config: dict = None, task_poller=None, lease_duration: float = 300.0,
                      lease_renew_interval: float = 60.0, high_priority_task_types: list[str] = None,
-                     high_priority_only: bool = False):
+                     high_priority_only: bool = False, poll_mode: str = 'direct'):
             self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
             self._shutdown = False
             self._processors: dict[str, _Processor] = {}  # algo_id -> _Processor
@@ -39,6 +39,9 @@ class DocumentProcessorWorker(ModuleBase):
                 raise TypeError('task_poller is not callable')
             self._task_poller = task_poller
             self._task_poller_impl = self._wrap_task_poller(task_poller) if task_poller else None
+            if poll_mode not in ('direct', 'thread'):
+                raise ValueError('poll_mode must be one of ["direct", "thread"]')
+            self._poll_mode = poll_mode
             self._worker_id = f'{self._get_worker_identity()}-{uuid4()}'
             self._in_progress_task = None
             self._lease_thread = None
@@ -352,6 +355,71 @@ class DocumentProcessorWorker(ModuleBase):
                 LOG.warning(f'{self._log_prefix()} [Poller] Skip invalid task payload: {e}. '
                             f'payload={task}')
 
+        def _parse_task_payload(self, task: dict):
+            task_type = task.get('task_type')
+            if task_type == TaskType.DOC_DELETE.value:
+                task_info = DeleteDocRequest(**task)
+            elif task_type == TaskType.DOC_UPDATE_META.value:
+                task_info = UpdateMetaRequest(**task)
+            else:
+                task_info = AddDocRequest(**task)
+                task_type = task_type or self._resolve_task_type(task_info)
+            task_id = task_info.task_id
+            payload = task_info.model_dump()
+            self._validate_task_payload(task_type, payload)
+            return task_id, task_type, payload
+
+        def _run_task(self, task_id: str, task_type: str, payload: dict, from_queue: bool):
+            try:
+                self._in_progress_task = {'task_id': task_id, 'task_type': task_type}
+                if from_queue:
+                    self._start_lease_renewal(task_id)
+                algo_id = payload.get('algo_id')
+                if not algo_id:
+                    raise ValueError(f'{self._log_prefix(task_id)} task_id is missing algo_id in payload: {payload}')
+
+                LOG.info(f'{self._log_prefix(task_id)} Start processing task, type: {task_type}, '
+                         f'algo_id: {algo_id}')
+
+                processor = self._get_or_create_processor(algo_id)
+                if task_type == TaskType.DOC_ADD.value:
+                    self._exec_add_task(processor, task_id, payload)
+                elif task_type == TaskType.DOC_REPARSE.value:
+                    self._exec_reparse_task(processor, task_id, payload)
+                elif task_type == TaskType.DOC_DELETE.value:
+                    self._exec_delete_task(processor, task_id, payload)
+                elif task_type == TaskType.DOC_UPDATE_META.value:
+                    self._exec_update_meta_task(processor, task_id, payload)
+                elif task_type == TaskType.DOC_TRANSFER.value:
+                    self._exec_transfer_task(processor, task_id, payload)
+                else:
+                    raise ValueError(f'{self._log_prefix(task_id)} Unknown task type: {task_type}')
+
+                self._enqueue_finished_task(task_id=task_id, task_type=task_type, task_status=TaskStatus.FINISHED,
+                                            error_code='200', error_msg='success')
+                if from_queue:
+                    deleted = self._waiting_task_queue.delete(
+                        filter_by={'task_id': task_id, 'worker_id': self._worker_id}
+                    )
+                    if deleted == 0:
+                        LOG.warning(f'{self._log_prefix(task_id)} Failed to delete finished task')
+            except Exception as e:
+                LOG.error(f'{self._log_prefix(task_id)} Failed to run task: {e}, {traceback.format_exc()}')
+                if task_id and task_type:
+                    self._enqueue_finished_task(task_id=task_id, task_type=task_type, task_status=TaskStatus.FAILED,
+                                                error_code=type(e).__name__, error_msg=str(e))
+                    if from_queue:
+                        deleted = self._waiting_task_queue.delete(
+                            filter_by={'task_id': task_id, 'worker_id': self._worker_id}
+                        )
+                        if deleted == 0:
+                            LOG.warning(f'{self._log_prefix(task_id)} Failed to delete failed task')
+                time.sleep(WORKER_ERROR_RETRY_INTERVAL)
+            finally:
+                if from_queue:
+                    self._stop_lease_renewal()
+                self._in_progress_task = None
+
         def _poller(self):  # noqa: C901
             while not self._shutdown:
                 try:
@@ -401,62 +469,62 @@ class DocumentProcessorWorker(ModuleBase):
 
         def _worker_impl(self):  # noqa: C901
             while not self._shutdown:
-                task_id = None
-                task_type = None
                 try:
                     task_data = self._poll_task()
-                    if not task_data:
-                        time.sleep(0.1)
-                        continue
-
-                    task_id = task_data['task_id']
-                    task_type = task_data['task_type']
-                    self._in_progress_task = {'task_id': task_id, 'task_type': task_type}
-                    self._start_lease_renewal(task_id)
-                    payload = json.loads(task_data.get('message'))
-                    algo_id = payload.get('algo_id')
-                    if not algo_id:
-                        raise ValueError(f'{self._log_prefix(task_id)} task_id is missing algo_id in payload: {payload}')
-
-                    LOG.info(f'{self._log_prefix(task_id)} Start processing task, type: {task_type}, '
-                             f'algo_id: {algo_id}')
-
-                    processor = self._get_or_create_processor(algo_id)
-                    if task_type == TaskType.DOC_ADD.value:
-                        self._exec_add_task(processor, task_id, payload)
-                    elif task_type == TaskType.DOC_REPARSE.value:
-                        self._exec_reparse_task(processor, task_id, payload)
-                    elif task_type == TaskType.DOC_DELETE.value:
-                        self._exec_delete_task(processor, task_id, payload)
-                    elif task_type == TaskType.DOC_UPDATE_META.value:
-                        self._exec_update_meta_task(processor, task_id, payload)
-                    elif task_type == TaskType.DOC_TRANSFER.value:
-                        self._exec_transfer_task(processor, task_id, payload)
-                    else:
-                        raise ValueError(f'{self._log_prefix(task_id)} Unknown task type: {task_type}')
-
-                    self._enqueue_finished_task(task_id=task_id, task_type=task_type, task_status=TaskStatus.FINISHED,
-                                                error_code='200', error_msg='success')
-                    deleted = self._waiting_task_queue.delete(
-                        filter_by={'task_id': task_id, 'worker_id': self._worker_id}
-                    )
-                    if deleted == 0:
-                        LOG.warning(f'{self._log_prefix(task_id)} Failed to delete finished task')
                 except Exception as e:
-                    LOG.error(f'{self._log_prefix(task_id)} Failed to run task: {e}, {traceback.format_exc()}')
-                    if task_id and task_type:
-                        self._enqueue_finished_task(task_id=task_id, task_type=task_type, task_status=TaskStatus.FAILED,
-                                                    error_code=type(e).__name__, error_msg=str(e))
-                        deleted = self._waiting_task_queue.delete(
-                            filter_by={'task_id': task_id, 'worker_id': self._worker_id}
-                        )
-                        if deleted == 0:
-                            LOG.warning(f'{self._log_prefix(task_id)} Failed to delete failed task')
+                    LOG.error(f'{self._log_prefix()} [Worker] poll_task failed: {e}, {traceback.format_exc()}')
                     time.sleep(WORKER_ERROR_RETRY_INTERVAL)
                     continue
-                finally:
-                    self._stop_lease_renewal()
-                    self._in_progress_task = None
+                if task_data:
+                    try:
+                        payload = json.loads(task_data.get('message'))
+                    except Exception as e:
+                        task_id = task_data.get('task_id')
+                        task_type = task_data.get('task_type')
+                        LOG.error(f'{self._log_prefix(task_id)} [Worker] Failed to parse task payload: {e}, '
+                                  f'{traceback.format_exc()}')
+                        if task_id and task_type:
+                            try:
+                                self._enqueue_finished_task(
+                                    task_id=task_id,
+                                    task_type=task_type,
+                                    task_status=TaskStatus.FAILED,
+                                    error_code=type(e).__name__,
+                                    error_msg=str(e),
+                                )
+                                deleted = self._waiting_task_queue.delete(
+                                    filter_by={'task_id': task_id, 'worker_id': self._worker_id}
+                                )
+                                if deleted == 0:
+                                    LOG.warning(f'{self._log_prefix(task_id)} Failed to delete invalid task')
+                            except Exception as inner_e:
+                                LOG.error(f'{self._log_prefix(task_id)} Failed to cleanup invalid task: {inner_e}, '
+                                          f'{traceback.format_exc()}')
+                        time.sleep(WORKER_ERROR_RETRY_INTERVAL)
+                        continue
+                    self._run_task(task_data['task_id'], task_data['task_type'], payload, from_queue=True)
+                    continue
+
+                if self._task_poller_impl is not None and self._poll_mode == 'direct':
+                    try:
+                        tasks = self._task_poller_impl()
+                        if not tasks:
+                            time.sleep(0.1)
+                            continue
+                        for task in tasks:
+                            try:
+                                task_id, task_type, payload = self._parse_task_payload(task)
+                            except Exception as e:
+                                LOG.warning(f'{self._log_prefix()} [Poller] Skip invalid task payload: {e}. '
+                                            f'payload={task}')
+                                continue
+                            self._run_task(task_id, task_type, payload, from_queue=False)
+                    except Exception as e:
+                        LOG.error(f'{self._log_prefix()} [Poller] fetch failed: {e}')
+                        time.sleep(WORKER_ERROR_RETRY_INTERVAL)
+                    continue
+
+                time.sleep(0.1)
 
         def start(self):
             LOG.info(f'{self._log_prefix()} Starting worker...')
@@ -465,7 +533,7 @@ class DocumentProcessorWorker(ModuleBase):
                 LOG.warning(f'{self._log_prefix()} Worker thread is already running')
                 return
             self._shutdown = False
-            if self._task_poller_impl is not None:
+            if self._task_poller_impl is not None and self._poll_mode == 'thread':
                 if self._poller_thread is None or not self._poller_thread.is_alive():
                     self._poller_thread = threading.Thread(target=self._poller, daemon=True)
                     self._poller_thread.start()
@@ -492,7 +560,8 @@ class DocumentProcessorWorker(ModuleBase):
 
     def __init__(self, db_config: dict = None, num_workers: int = 1, port: int = None,
                  task_poller=None, lease_duration: float = 300.0, lease_renew_interval: float = 60.0,
-                 high_priority_task_types: list[str] = None, high_priority_only: bool = False):
+                 high_priority_task_types: list[str] = None, high_priority_only: bool = False,
+                 poll_mode: str = 'direct'):
         super().__init__()
         self._db_config = db_config if db_config else _get_default_db_config('doc_task_management')
         self._num_workers = num_workers
@@ -504,6 +573,7 @@ class DocumentProcessorWorker(ModuleBase):
             lease_renew_interval=lease_renew_interval,
             high_priority_task_types=high_priority_task_types,
             high_priority_only=high_priority_only,
+            poll_mode=poll_mode,
         )
         self._worker_impl = ServerModule(worker_impl, port=self._port, num_replicas=self._num_workers)
         LOG.info(f'[DocumentProcessorWorker] Worker initialized with {num_workers} workers')

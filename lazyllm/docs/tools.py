@@ -4025,6 +4025,9 @@ Args:
     num_workers (int): 工作线程数，默认为1， 当大于1时，内部基于ray集群启动多个工作线程，否则仅启动一个工作线程。
     port (Optional[int]): 服务端口号。默认为None，当为None时，将自动分配端口。
     task_poller (Optional[Callable]): 外部任务拉取函数，可选。
+    poll_mode (str): 任务拉取模式，可选值为 "direct" 或 "thread"。
+        - "direct": 不启动独立 poller 线程，worker 空闲时直接拉取并立即处理任务（默认）。
+        - "thread": 启动独立 poller 线程，持续拉取任务并入队。
     lease_duration (float): 任务租约时长（秒），默认为300。
     lease_renew_interval (float): 租约续租间隔（秒），默认为60。
     high_priority_task_types (Optional[List[str]]): 高优任务类型列表，可选。
@@ -4040,6 +4043,9 @@ Args:
     num_workers (int): Number of worker threads, defaults to 1, when it is greater than 1, multiple worker threads are started internally based on the ray cluster, otherwise only one worker thread is started.
     port (Optional[int]): Service port number. Defaults to None, when it is None, a random port will be assigned.
     task_poller (Optional[Callable]): External task poller callback, optional.
+    poll_mode (str): Task polling mode, either "direct" or "thread".
+        - "direct": No dedicated poller thread; the worker pulls and processes tasks when idle (default).
+        - "thread": Run a dedicated poller thread to continuously fetch tasks and enqueue them.
     lease_duration (float): Task lease duration in seconds, defaults to 300.
     lease_renew_interval (float): Lease renewal interval in seconds, defaults to 60.
     high_priority_task_types (Optional[List[str]]): High priority task types, optional.
