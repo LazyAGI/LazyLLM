@@ -26,7 +26,7 @@ void DocNode::set_content(const std::vector<std::string>& lines) {
 
 
 const std::string& DocNode::get_text() const {
-    return _text;
+    return _text_view;
 }
 
 std::string DocNode::get_text_with_metadata(MetadataMode mode) const {
@@ -86,14 +86,12 @@ void DocNode::do_embedding(const std::unordered_map<std::string, EmbeddingFun>& 
     for (const auto& item : embed) {
         generated[item.first] = item.second(input, "");
     }
-    std::lock_guard<std::mutex> lock(_embedding_mutex);
     for (const auto& item : generated) {
         _embedding[item.first] = item.second;
     }
 }
 
 void DocNode::set_embedding_value(const std::string& key, const std::vector<float>& value) {
-    std::lock_guard<std::mutex> lock(_embedding_mutex);
     _embedding[key] = value;
 }
 

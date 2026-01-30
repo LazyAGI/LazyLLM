@@ -1,12 +1,16 @@
+#include <algorithm>
+#include <cctype>
+
 #include "lazyllm.hpp"
 #include "document_store.hpp"
 #include "doc_node.hpp"
+#include "utils.hpp"
 
 namespace py = pybind11;
 
 lazyllm::DocNode init(
     std::optional<std::string> uid,
-    std::optional<std::variant<std::string, std::vector<std::any>>> content,
+    std::optional<std::variant<std::string, std::vector<std::string>>> content,
     std::optional<std::string> group,
     std::optional<lazyllm::DocNode::EmbeddingVec> embedding,
     std::optional<std::variant<std::string, py::object>> parent,
@@ -17,44 +21,53 @@ lazyllm::DocNode init(
     std::optional<lazyllm::DocNode::Metadata> global_metadata,
     std::optional<std::string> text
 ) {
-    lazyllm::DocNode node;
-
     if (content && text) {
         throw std::invalid_argument("`text` and `content` cannot be set at the same time.");
     }
 
-    if (uid) node.set_uid(uid.value());
-    else node.generateUUID();
+    // Find parent node.
+    lazyllm::DocNode* p_parent_node = nullptr;
+    std::shared_ptr<lazyllm::DocumentStore> store_bridge = nullptr;
 
-    if (content) {
-        if (auto p = std::get_if<std::string>(&*content))
-        else node.set_text(std::any_cast<std::string>(content.value));
-    }
-    else node.set_text(*text);
-
-    if (uid.has_value() && !uid->empty()) {
-        node.set_uid(*uid);
-    } else {
-        node.generateUUID();
-    }
-
-    if (group.has_value()) {
-        node.set_group(*group);
-    }
-
-    if (!content.is_none()) {
-        if (py::isinstance<py::str>(content)) {
-            node.set_content(content.cast<std::string>());
-        } else if (py::isinstance<py::list>(content) || py::isinstance<py::tuple>(content)) {
-            node.set_content(content.cast<std::vector<std::string>>());
-        } else {
-            throw std::invalid_argument("`content` must be a str or list[str].");
+    // Build node groups map.
+    // Usually, parent + store + node_groups are not None at the same time.
+    if (parent && !store.is_none() && node_groups && global_metadata && group) {
+        std::unordered_map<std::string, lazyllm::NodeGroup> node_groups_map;
+        node_groups_map.reserve(node_groups->size());
+        for (const auto &entry : *node_groups) {
+            auto &group_key = entry.first;
+            auto &group_dict = entry.second;
+            node_groups_map.emplace(group_key, lazyllm::NodeGroup(
+                std::any_cast<std::string>(group_dict.at(std::string("parent"))),
+                std::any_cast<std::string>(group_dict.at(std::string("display_name")))
+            ));
         }
-    } else if (text.has_value()) {
-        node.set_text(*text);
-    } else {
-        node.set_text("");
+        auto store_bridge = lazyllm::DocumentStore::from_store(store, node_groups_map);
+
+        auto kb_id = std::any_cast<std::string>((*global_metadata)[
+            std::string(lazyllm::DocumentStore::RAG_KB_ID_KEY)]);
+        auto doc_id = std::any_cast<std::string>((*global_metadata)[
+            std::string(lazyllm::DocumentStore::RAG_DOC_ID_KEY)]);
+
+        if (std::holds_alternative<std::string>(*parent)) {
+            const std::string& parent_uid = std::get<std::string>(*parent);
+            p_parent_node = store_bridge->get_node(parent_uid, *group, kb_id).cast<lazyllm::DocNode*>();
+        }
+        else
+            p_parent_node = std::get<py::object>(*parent).cast<lazyllm::DocNode*>();
     }
+
+    lazyllm::DocNode node(
+        content.value_or(text.value_or(std::string(""))),
+        uid.value_or(lazyllm::GenerateUUID()),
+        group.value_or(""),
+        p_parent_node,
+        store_bridge,
+        embedding.value_or(lazyllm::DocNode::EmbeddingVec()),
+        metadata.value_or(lazyllm::DocNode::Metadata()),
+        global_metadata.value_or(lazyllm::DocNode::Metadata())
+    );
+
 
     if (embedding.has_value()) {
         node.set_embedding(*embedding);
@@ -87,7 +100,7 @@ lazyllm::DocNode init(
     std::shared_ptr<lazyllm::DocumentStore> store_bridge;
     if (!store.is_none()) {
         py::object store_obj = store;
-        store_bridge = std::make_shared<lazyllm::DocumentStore>(store_obj);
+        store_bridge = lazyllm::DocumentStore::from_store(store_obj, node_groups_map);
     }
     node.set_store(std::move(store_bridge));
 
@@ -109,9 +122,12 @@ void exportDocNode(py::module& m) {
             py::arg("node_groups") = py::none(),
             py::arg("metadata") = py::none(),
             py::arg("global_metadata") = py::none(),
-            py::arg("text") = py::none()
+            py::arg("text") = py::none(),
+
+            py::keep_alive<1, 7>() // Keep store alive
         )
         .def_property_readonly("uid", &lazyllm::DocNode::uid)
+        number
         .def("set_text", &lazyllm::DocNode::set_text, py::arg("text"))
         .def("get_text", &lazyllm::DocNode::get_text);
 }
