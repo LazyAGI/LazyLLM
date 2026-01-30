@@ -2,17 +2,15 @@ import pytest
 
 import lazyllm
 
-from tests.utils import get_path
+from tests.utils import get_api_key, get_path
 
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineChatModuleBase.py'
 
-pytestmark = pytest.mark.model_connectivity_test
-
 
 class TestChat:
     def common_chat(self, source, query='你好，请介绍一下你自己', **kwargs):
-        api_key = lazyllm.config[f'{source}_api_key']
+        api_key = get_api_key(source)
         chat = lazyllm.OnlineModule(source=source, type='llm', api_key=api_key, **kwargs)
         result = chat(query)
         assert result is not None

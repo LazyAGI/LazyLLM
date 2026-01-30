@@ -7,9 +7,6 @@ import re
 import pytest
 import time
 
-
-pytestmark = pytest.mark.advanced_test
-
 @pytest.mark.skip_on_win
 @pytest.mark.skip_on_mac
 class TestSqlManager(unittest.TestCase):

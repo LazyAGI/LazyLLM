@@ -4,9 +4,6 @@ from lazyllm.tools import SqlManager
 import pytest
 import os
 
-
-pytestmark = pytest.mark.advanced_test
-
 class DocToDbTester(unittest.TestCase):
 
     @classmethod

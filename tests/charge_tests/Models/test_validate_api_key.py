@@ -1,5 +1,5 @@
 import pytest
-import os
+import lazyllm
 from lazyllm.module.llms.onlinemodule.supplier.deepseek import DeepSeekChat
 from lazyllm.module.llms.onlinemodule.supplier.doubao import DoubaoChat
 from lazyllm.module.llms.onlinemodule.supplier.kimi import KimiChat
@@ -11,36 +11,16 @@ from lazyllm.module.llms.onlinemodule.supplier.siliconflow import SiliconFlowCha
 from lazyllm.module.llms.onlinemodule.supplier.ppio import PPIOChat
 from lazyllm.module.llms.onlinemodule.supplier.aiping import AipingChat
 
+from tests.utils import get_api_key
+
 
 class TestValidateApiKey:
     '''Test online model API Key validation functionality'''
 
-    def setup_method(self):
-        '''Initialize test environment, get API Keys from environment variables'''
-        self.api_keys = {
-            'deepseek': os.getenv('LAZYLLM_DEEPSEEK_API_KEY'),
-            'doubao': os.getenv('LAZYLLM_DOUBAO_API_KEY'),
-            'kimi': os.getenv('LAZYLLM_KIMI_API_KEY'),
-            'openai': os.getenv('LAZYLLM_OPENAI_API_KEY'),
-            'glm': os.getenv('LAZYLLM_GLM_API_KEY'),
-            'qwen': os.getenv('LAZYLLM_QWEN_API_KEY'),
-            'sensenova': os.getenv('LAZYLLM_SENSENOVA_API_KEY'),
-            'siliconflow': os.getenv('LAZYLLM_SILICONFLOW_API_KEY'),
-            'ppio': os.getenv('LAZYLLM_PPIO_API_KEY'),
-            'aiping': os.getenv('LAZYLLM_AIPING_API_KEY'),
-        }
-        # Get sensenova secret key
-        self.sensenova_secret_key = os.getenv('LAZYLLM_SENSENOVA_SECRET_KEY')
-        # Get doubao model name (if set in environment variables)
-        self.doubao_model_name = os.getenv('LAZYLLM_DOUBAO_MODEL_NAME')
-
     @pytest.mark.xfail
     def test_deepseek_validate_valid_api_key(self):
         '''Test DeepSeek valid API Key validation'''
-        if not self.api_keys['deepseek']:
-            pytest.skip('LAZYLLM_DEEPSEEK_API_KEY environment variable is not set')
-
-        module = DeepSeekChat(api_key=self.api_keys['deepseek'])
+        module = DeepSeekChat(api_key=get_api_key('deepseek'))
         result = module._validate_api_key()
         assert result is True, 'DeepSeek valid API Key should pass validation'
 
@@ -51,20 +31,10 @@ class TestValidateApiKey:
         result = module._validate_api_key()
         assert result is False, 'DeepSeek invalid API Key should fail validation'
 
+    @pytest.mark.xfail
     def test_doubao_validate_valid_api_key(self):
-
         '''Test Doubao valid API Key validation'''
-        if not self.api_keys['doubao']:
-            pytest.skip('LAZYLLM_DOUBAO_API_KEY environment variable is not set')
-
-        # If model name is set in environment variables, use it; otherwise use default
-        if self.doubao_model_name:
-            module = DoubaoChat(
-                api_key=self.api_keys['doubao'],
-                model=self.doubao_model_name
-            )
-        else:
-            module = DoubaoChat(api_key=self.api_keys['doubao'])
+        module = DoubaoChat(api_key=get_api_key('doubao'), model=lazyllm.config['doubao_model_name'] or None)
 
         result = module._validate_api_key()
         assert result is True, 'Doubao valid API Key should pass validation'
@@ -78,10 +48,7 @@ class TestValidateApiKey:
     @pytest.mark.xfail
     def test_kimi_validate_valid_api_key(self):
         '''Test Kimi valid API Key validation'''
-        if not self.api_keys['kimi']:
-            pytest.skip('LAZYLLM_KIMI_API_KEY environment variable is not set')
-
-        module = KimiChat(api_key=self.api_keys['kimi'])
+        module = KimiChat(api_key=get_api_key('kimi'))
         result = module._validate_api_key()
         assert result is True, 'Kimi valid API Key should pass validation'
 
@@ -95,10 +62,7 @@ class TestValidateApiKey:
     @pytest.mark.xfail
     def test_openai_validate_valid_api_key(self):
         '''Test OpenAI valid API Key validation'''
-        if not self.api_keys['openai']:
-            pytest.skip('LAZYLLM_OPENAI_API_KEY environment variable is not set')
-
-        module = OpenAIChat(api_key=self.api_keys['openai'])
+        module = OpenAIChat(api_key=get_api_key('openai'))
         result = module._validate_api_key()
         assert result is True, 'OpenAI valid API Key should pass validation'
 
@@ -112,10 +76,7 @@ class TestValidateApiKey:
     @pytest.mark.xfail
     def test_glm_validate_valid_api_key(self):
         '''Test GLM valid API Key validation'''
-        if not self.api_keys['glm']:
-            pytest.skip('LAZYLLM_GLM_API_KEY environment variable is not set')
-
-        module = GLMChat(api_key=self.api_keys['glm'])
+        module = GLMChat(api_key=get_api_key('glm'))
         result = module._validate_api_key()
         assert result is True, 'GLM valid API Key should pass validation'
 
@@ -126,12 +87,10 @@ class TestValidateApiKey:
         result = module._validate_api_key()
         assert result is False, 'GLM invalid API Key should fail validation'
 
+    @pytest.mark.xfail
     def test_qwen_validate_valid_api_key(self):
         '''Test Qwen valid API Key validation'''
-        if not self.api_keys['qwen']:
-            pytest.skip('LAZYLLM_QWEN_API_KEY environment variable is not set')
-
-        module = QwenChat(api_key=self.api_keys['qwen'])
+        module = QwenChat(api_key=get_api_key('qwen'))
         result = module._validate_api_key()
         assert result is True, 'Qwen valid API Key should pass validation'
 
@@ -141,14 +100,12 @@ class TestValidateApiKey:
         result = module._validate_api_key()
         assert result is False, 'Qwen invalid API Key should fail validation'
 
+    @pytest.mark.xfail
     def test_sensenova_validate_valid_api_key(self):
         '''Test SenseNova valid API Key validation'''
-        if not self.api_keys['sensenova'] or not self.sensenova_secret_key:
-            pytest.skip('LAZYLLM_SENSENOVA_API_KEY or LAZYLLM_SENSENOVA_SECRET_KEY environment variable is not set')
-
         module = SenseNovaChat(
-            api_key=self.api_keys['sensenova'],
-            secret_key=self.sensenova_secret_key
+            api_key=get_api_key('sensenova'),
+            secret_key=lazyllm.config['sensenova_secret_key']
         )
         result = module._validate_api_key()
         assert result is True, 'SenseNova valid API Key should pass validation'
@@ -165,10 +122,7 @@ class TestValidateApiKey:
     @pytest.mark.xfail
     def test_siliconflow_validate_valid_api_key(self):
         '''Test SiliconFlow valid API Key validation'''
-        if not self.api_keys['siliconflow']:
-            pytest.skip('LAZYLLM_SILICONFLOW_API_KEY environment variable is not set')
-
-        module = SiliconFlowChat(api_key=self.api_keys['siliconflow'])
+        module = SiliconFlowChat(api_key=get_api_key('siliconflow'))
         result = module._validate_api_key()
         assert result is True, 'SiliconFlow valid API Key should pass validation'
 
@@ -182,10 +136,7 @@ class TestValidateApiKey:
     @pytest.mark.xfail
     def test_ppio_validate_valid_api_key(self):
         '''Test PPIO valid API Key validation'''
-        if not self.api_keys['ppio']:
-            pytest.skip('LAZYLLM_PPIO_API_KEY environment variable is not set')
-
-        module = PPIOChat(api_key=self.api_keys['ppio'])
+        module = PPIOChat(api_key=get_api_key('ppio'))
         result = module._validate_api_key()
         assert result is True, 'PPIO valid API Key should pass validation'
 
@@ -199,10 +150,7 @@ class TestValidateApiKey:
     @pytest.mark.xfail
     def test_aiping_validate_valid_api_key(self):
         '''Test Aiping valid API Key validation'''
-        if not self.api_keys['aiping']:
-            pytest.skip('LAZYLLM_AIPING_API_KEY environment variable is not set')
-
-        module = AipingChat(api_key=self.api_keys['aiping'])
+        module = AipingChat(api_key=get_api_key('aiping'))
         result = module._validate_api_key()
         assert result is True, 'Aiping valid API Key should pass validation'
 

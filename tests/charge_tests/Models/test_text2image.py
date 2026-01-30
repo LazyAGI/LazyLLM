@@ -5,12 +5,10 @@ import pytest
 import lazyllm
 from lazyllm.components.formatter import decode_query_with_filepaths
 
-from tests.utils import get_path
+from tests.utils import get_api_key, get_path
 
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'
-
-pytestmark = pytest.mark.model_connectivity_test
 
 
 class TestText2Image:
@@ -32,7 +30,7 @@ class TestText2Image:
         assert file.endswith(suffix)
 
     def common_text2image(self, source, type='text2image', **kwargs):
-        api_key = lazyllm.config[f'{source}_api_key']
+        api_key = get_api_key(source)
         t2i = lazyllm.OnlineMultiModalModule(source=source, type=type, api_key=api_key, **kwargs)
         result = t2i(self.test_image_prompt)
         self._check_file_result(result, 'image')

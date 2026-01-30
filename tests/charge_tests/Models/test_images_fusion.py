@@ -5,12 +5,10 @@ import pytest
 import lazyllm
 from lazyllm.components.formatter import decode_query_with_filepaths
 
-from tests.utils import get_path
+from tests.utils import get_api_key, get_path
 
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'
-
-pytestmark = pytest.mark.model_connectivity_test
 
 
 class TestImagesFusion:
@@ -37,7 +35,7 @@ class TestImagesFusion:
         return [file, file]
 
     def common_images_fusion(self, source, **kwargs):
-        api_key = lazyllm.config[f'{source}_api_key']
+        api_key = get_api_key(source)
         kwargs.setdefault('type', 'image_editing')
         img_fusion = lazyllm.OnlineModule(source=source, api_key=api_key, **kwargs)
         result = img_fusion(self.test_multi_images_fusion, files=self._test_images_files())

@@ -66,8 +66,6 @@ online-advanced = "Install dependencies for online multimodal"
 markers = [
     "run_on_change: skip test unless related files changed",
     "ignore_cache_on_change: for Linux, disable online module cache when related files changed; for macOS/Windows always use cache",
-    "model_connectivity_test: online model connectivity tests (cache by default; Linux disables cache only when related files changed)",
-    "advanced_test: higher-level tests using LLM capability (always use cache and specify supplier)",
     "skip_on_win: mark tests to skip on Windows",
     "skip_on_mac: mark tests to skip on macOS",
     "skip_on_linux: mark tests to skip on Linux",

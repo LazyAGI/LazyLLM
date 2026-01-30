@@ -6,12 +6,10 @@ import lazyllm
 from lazyllm.module.module import ModuleExecutionError
 from lazyllm.components.formatter import decode_query_with_filepaths
 
-from tests.utils import get_path
+from tests.utils import get_api_key, get_path
 
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'
-
-pytestmark = pytest.mark.model_connectivity_test
 
 
 class TestTTS:
@@ -32,7 +30,7 @@ class TestTTS:
         assert file.endswith(('.wav', '.mp3', '.flac'))
 
     def common_tts(self, source, call_kwargs=None, **kwargs):
-        api_key = lazyllm.config[f'{source}_api_key']
+        api_key = get_api_key(source)
         tts = lazyllm.OnlineMultiModalModule(source=source, function='tts', api_key=api_key, **kwargs)
         result = tts(self.test_text, **(call_kwargs or {}))
         self._check_file_result(result)
@@ -54,7 +52,7 @@ class TestTTS:
 
     @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen'))
     def test_qwen_tts_cosyvoice_multi_user_raises(self):
-        api_key = lazyllm.config['qwen_api_key']
+        api_key = get_api_key('qwen')
         with pytest.raises(ModuleExecutionError, match="cosyvoice-v1 does not support multi user, don't set api_key"):
             tts = lazyllm.OnlineMultiModalModule(source='qwen', function='tts', model='cosyvoice-v1', api_key=api_key)
             tts(self.test_text)

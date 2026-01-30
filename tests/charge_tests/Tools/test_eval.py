@@ -1,8 +1,5 @@
-import pytest
 import lazyllm
 from lazyllm.tools.eval import ResponseRelevancy, Faithfulness, LLMContextRecall, NonLLMContextRecall, ContextRelevance
-
-pytestmark = pytest.mark.advanced_test
 
 class TestEvalRAG:
 

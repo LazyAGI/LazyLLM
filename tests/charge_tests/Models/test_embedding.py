@@ -2,17 +2,15 @@ import pytest
 
 import lazyllm
 
-from tests.utils import get_path
+from tests.utils import get_api_key, get_path
 
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineEmbeddingModuleBase.py'
 
-pytestmark = pytest.mark.model_connectivity_test
-
 
 class TestEmbedding:
     def common_embedding(self, source, **kwargs):
-        api_key = lazyllm.config[f'{source}_api_key']
+        api_key = get_api_key(source)
         embed_model = lazyllm.OnlineEmbeddingModule(source=source, api_key=api_key, **kwargs)
         vec1 = embed_model('床前明月光')
         vec2 = embed_model(['床前明月光', '疑是地上霜'])
@@ -22,7 +20,7 @@ class TestEmbedding:
         return vec2
 
     def common_multimodal_embedding(self, source, **kwargs):
-        api_key = lazyllm.config[f'{source}_api_key']
+        api_key = get_api_key(source)
         embed_model = lazyllm.OnlineEmbeddingModule(source=source, api_key=api_key, **kwargs)
         vec = embed_model([{'text': '床前明月光'}])
         assert vec is not None

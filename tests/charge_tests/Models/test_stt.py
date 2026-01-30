@@ -4,12 +4,10 @@ import pytest
 
 import lazyllm
 
-from tests.utils import get_path
+from tests.utils import get_api_key, get_path
 
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'
-
-pytestmark = pytest.mark.model_connectivity_test
 
 
 class TestSTT:
@@ -23,7 +21,7 @@ class TestSTT:
         return os.path.join(data_path, 'ci_data/asr_test.wav')
 
     def common_stt(self, source, **kwargs):
-        api_key = lazyllm.config[f'{source}_api_key']
+        api_key = get_api_key(source)
         stt = lazyllm.OnlineMultiModalModule(source=source, function='stt', api_key=api_key, **kwargs)
         test_input = [self.QWEN_TEST_AUDIO_URL] if source == 'qwen' else self._test_audio_file()
         result = stt(lazyllm_files=test_input)

@@ -2,17 +2,15 @@ import pytest
 
 import lazyllm
 
-from tests.utils import get_path
+from tests.utils import get_api_key, get_path
 
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineEmbeddingModuleBase.py'
 
-pytestmark = pytest.mark.model_connectivity_test
-
 
 class TestRerank:
     def common_rerank(self, source, **kwargs):
-        api_key = lazyllm.config[f'{source}_api_key']
+        api_key = get_api_key(source)
         rerank_model = lazyllm.OnlineEmbeddingModule(source=source, api_key=api_key, type='rerank', **kwargs)
         result = rerank_model(
             '床前明月光',
