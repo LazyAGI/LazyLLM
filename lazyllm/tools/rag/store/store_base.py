@@ -42,6 +42,8 @@ class SegmentType(IntFlag):
     TABLE = auto()
     CODE = auto()
     QA = auto()
+    JSON = auto()
+    RICH = auto()
 
 
 class Segment(BaseModel):

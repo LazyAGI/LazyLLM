@@ -40,6 +40,7 @@ A `Document` instance may be further subdivided into several sets of nodes with 
 * `name`: Specifies the name of the `Node Group`.
 * `transform`: Specifies the transformation rule of the `Node Group`, which can be a subclass of [NodeTransformer][lazyllm.tools.rag.NodeTransformer], or a function that takes content as input.
 * `parent`: Specifies the parent `Node Group`, if not specified, it defaults to the entire document, which is the root `Node` named `lazyllm-root`.
+* `ref`: Specifies the name of another `Node Group` to reference. The referenced `Node Group` must be a descendant of the parent. During transformation, nodes from the referenced `Node Group` are passed to the `transform` function as the `ref` parameter. Note: If `ref` is set, the `transform` function must support the `ref` parameter.
 
 !!! Note
 

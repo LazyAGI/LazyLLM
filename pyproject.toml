@@ -75,6 +75,7 @@ order_group_scope = "class"
 [tool.poetry.dependencies]
 appdirs = { version = "*", optional = true }
 loralib = { version = "*", optional = true }
+json_repair = { version = "*", optional = true }
 flake8 = { version = ">=7.0.0", optional = true }
 chromadb = {version = ">=1.0.6", optional = true}
 sentence-transformers = { version = "^3.0.1", optional = true }
@@ -148,6 +149,7 @@ html2text = { version = ">=2025.4.15,<2026.0.0", optional = true }
 olefile = { version = ">=0.47,<0.48", optional = true }
 openpyxl = { version = ">=3.1.5,<4.0.0", optional = true }
 python-pptx = { version = ">=1.0.2,<2.0.0", optional = true }
+python-docx = { version = ">=1.2.0,<2.0.0", optional = true }
 tenacity = { version = ">=9.1.2,<10.0.0", optional = true }
 beautifulsoup4 = { version = ">=4.13.4,<5.0.0", optional = true }
 tiktoken = { version = ">=0.7.0,<0.8.0", optional = true }
@@ -215,6 +217,7 @@ standard = [
     "olefile",
     "openpyxl",
     "python-pptx",
+    "python-docx",
     "tenacity",
     "beautifulsoup4",
     "tiktoken",
@@ -231,7 +234,8 @@ standard = [
     "numpy",
     "httpx",
     "async-timeout",
-    "protobuf"
+    "protobuf",
+    "json_repair"
 ]
 full = [
     "appdirs",
@@ -307,7 +311,8 @@ full = [
     "numpy",
     "httpx",
     "async-timeout",
-    "protobuf"
+    "protobuf",
+    "json_repair"
 ]
 alpaca-lora = [
     "appdirs",
@@ -419,6 +424,7 @@ rag = [
     "olefile",
     "openpyxl",
     "python-pptx",
+    "python-docx",
     "beautifulsoup4",
     "tiktoken",
     "spacy",
@@ -428,7 +434,8 @@ rag = [
     "jieba",
     "sentencepiece",
     "psycopg2-binary",
-    "sqlalchemy"
+    "sqlalchemy",
+    "json_repair"
 ]
 rag-advanced = [
     "fsspec",

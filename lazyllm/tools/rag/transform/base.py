@@ -4,8 +4,9 @@ from enum import Enum
 from dataclasses import dataclass
 from typing import Any, List, Union, Optional, Tuple, AbstractSet, Collection, Literal, Callable
 from lazyllm import LOG
-from ..doc_node import DocNode
+from ..doc_node import DocNode, RichDocNode
 from lazyllm import ThreadPoolExecutor
+from itertools import chain
 import re
 from functools import partial
 import os
@@ -57,19 +58,35 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
 
 
 class NodeTransform(ABC):
+    __support_rich__ = False
+
     def __init__(self, num_workers: int = 0):
         self._number_workers = num_workers
         self._name = None
 
+    def _get_ref_nodes(self, node, ref_path):
+        current = [node]
+        for key in ref_path:
+            current = list(
+                chain.from_iterable(
+                    n.children.get(key, []) for n in current
+                )
+            )
+        return current
+
     def batch_forward(
-        self, documents: Union[DocNode, List[DocNode]], node_group: str, **kwargs
+        self, documents: Union[DocNode, List[DocNode]], node_group: str, ref_path: List[str] = None, **kwargs
     ) -> List[DocNode]:
         documents: List[DocNode] = documents if isinstance(documents, (tuple, list)) else [documents]
 
         def impl(node: DocNode):
+            ref_nodes = self._get_ref_nodes(node, ref_path) if ref_path else []
             with node._lock:
                 if node_group in node.children: return []
-                splits = self(node, **kwargs)
+                if isinstance(node, RichDocNode) and not self.__support_rich__:
+                    splits = list(chain.from_iterable(self(n, ref=ref_nodes, **kwargs) for n in node.nodes))
+                else:
+                    splits = self(node, ref=ref_nodes, **kwargs)
                 for s in splits:
                     s.parent = node
                     s._group = node_group

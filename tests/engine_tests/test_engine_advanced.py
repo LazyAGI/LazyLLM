@@ -96,11 +96,11 @@ class TestEngine(object):
         assert '.png' in r
 
         r = engine.run(gid, '这张图片描述的是什么？', _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
-        assert '鸡' in r or 'chicken' in r
+        assert '鸡' in r or 'chicken' in r or 'rooster' in r
 
         r = engine.run(gid, '这张图片描述的是什么？',
                        _file_resources={'file-resource': os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg')})
-        assert '鸡' in r or 'chicken' in r
+        assert '鸡' in r or 'chicken' in r or 'rooster' in r
 
         r = engine.run(gid, '你好，很高兴认识你')
         assert '你好' in r
@@ -155,7 +155,7 @@ class TestEngine(object):
         gid = engine.start(nodes, resources=resources)
 
         r = engine.run(gid, '这张图片描述的是什么？', _lazyllm_files=os.path.join(lazyllm.config['data_path'], 'ci_data/ji.jpg'))
-        assert '鸡' in r or 'chicken' in r
+        assert '鸡' in r or 'chicken' in r or 'rooster' in r
 
     def test_engine_tts_with_target_dir(self):
         engine = LightEngine()

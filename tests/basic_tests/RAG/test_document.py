@@ -79,7 +79,7 @@ class TestDocImpl(unittest.TestCase):
         assert node.text == 'dummy text'
 
     def test_add_files(self):
-        assert self.doc_impl.store is None
+        assert self.doc_impl._store is None
         self.doc_impl._lazy_init()
         assert len(self.doc_impl.store.get_nodes(group=LAZY_ROOT_NAME)) == 1
         new_doc = DocNode(text='new dummy text', group=LAZY_ROOT_NAME)
@@ -143,6 +143,47 @@ class TestDocument(unittest.TestCase):
         retriever = Retriever(doc, 'AdaptiveChunk2', similarity='bm25', topk=2)
         retriever('什么是道')
 
+    def test_create_node_group_with_ref(self):
+        doc = Document('rag_master')
+        # Create parent node group
+        doc.create_node_group('parent_chunk', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+        # Create ref node group under parent
+        doc.create_node_group('ref_chunk', parent='parent_chunk',
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
+
+        # Create node group with ref - ref_chunk is descendant of parent_chunk
+        def transform_with_ref(text, ref):
+            return f'doc_test_text: {text}\n doc_test_ref:' + '\n'.join(ref)
+
+        doc.create_node_group('chunk_with_ref', parent='parent_chunk',
+                              transform=transform_with_ref, ref='ref_chunk')
+
+        assert 'chunk_with_ref' in doc._impl.node_groups
+        assert doc._impl.node_groups['chunk_with_ref']['ref'] == 'ref_chunk'
+
+        doc.activate_groups(['chunk_with_ref'])
+        doc.start()
+        ref_nodes = doc._impl.store.get_nodes(group='chunk_with_ref')
+        assert len(ref_nodes) > 0
+        assert 'doc_test_text' in ref_nodes[0].text
+        assert 'doc_test_ref' in ref_nodes[0].text
+
+    def test_create_node_group_with_invalid_ref(self):
+        doc = Document('rag_master')
+        # Create two independent node groups
+        doc.create_node_group('group_a', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+        doc.create_node_group('group_b', transform=SentenceSplitter, chunk_size=256, chunk_overlap=25)
+
+        # Try to create node group with ref that is not descendant of parent - should raise error
+        doc.create_node_group('invalid_ref_chunk', parent='group_a',
+                              transform=lambda x: [x], ref='group_b')
+
+        # Activate the group first, then init to trigger validation
+        doc._impl._activated_groups.add('invalid_ref_chunk')
+        with self.assertRaises(ValueError) as context:
+            doc._impl._lazy_init()
+        assert 'not under parent' in str(context.exception)
+
     def test_find(self):
         #       /- MediumChunk
         #      /                /- chunk1 -- chunk11 -- chunk111
@@ -187,6 +228,45 @@ class TestDocument(unittest.TestCase):
         assert doc2._curr_group == 'test_group2'
         assert doc2.manager == doc.manager
         doc.stop()
+
+    def test_get_nodes(self):
+        doc = Document('rag_master')
+        doc.create_node_group('chunk1', parent=Document.CoarseChunk,
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=256, chunk_overlap=25)))
+        doc.activate_groups(groups=['chunk1'])
+        nodes = doc.get_nodes(group='chunk1', numbers=[2])
+        assert len(nodes) > 0
+        for n in nodes:
+            assert n.number == 2
+
+    def test_get_window_nodes(self):
+        doc = Document('rag_master')
+        doc.create_node_group('chunk1', parent=Document.CoarseChunk,
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
+        doc.activate_groups(groups=['chunk1'])
+
+        nodes = doc.get_nodes(group='chunk1', numbers=[1])
+        node = nodes[0]
+        assert node.number == 1
+        # node.number is 1, so the window is [1, 2, 3, 4]
+        window = doc.get_window_nodes(node, span=(-1, 3), merge=False)
+        assert len(window) == 4
+        assert window == sorted(window, key=lambda n: n.number)
+        assert all(n.number in [1, 2, 3, 4] for n in window)
+
+        merged = doc.get_window_nodes(node, span=(-1, 3), merge=True)
+        assert isinstance(merged, DocNode)
+        assert merged.group == node.group
+        assert merged.text == '\n'.join([n.text for n in window])
+
+        nodes = doc.get_nodes(group='chunk1', numbers=[2])
+        node = nodes[0]
+        assert node.number == 2
+        # node.number is 2, so the window is [1, 2, 3, 4, 5]
+        window = doc.get_window_nodes(node, span=(-1, 3), merge=False)
+        assert len(window) == 5
+        assert window == sorted(window, key=lambda n: n.number)
+        assert all(n.number in [1, 2, 3, 4, 5] for n in window)
 
 class TmpDir:
     def __init__(self):

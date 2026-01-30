@@ -28,6 +28,6 @@ void addDocStr(py::object obj, std::string docs) {
     }
 }
 
-void exportDoc(pybind11::module& m) {
+void exportDoc(py::module& m) {
     m.def("add_doc", &addDocStr, "Add docstring to a function or method", py::arg("obj"), py::arg("docs"));
 }

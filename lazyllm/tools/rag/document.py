@@ -1,5 +1,5 @@
 import os
-from typing import Callable, Optional, Dict, Union, List, Type
+from typing import Callable, Optional, Dict, Union, List, Type, Set
 from functools import cached_property
 from pydantic import BaseModel
 import lazyllm
@@ -330,15 +330,16 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
     @DynamicDescriptor
     def create_node_group(self, name: str = None, *, transform: Callable, parent: str = LAZY_ROOT_NAME,
                           trans_node: bool = None, num_workers: int = 0, display_name: str = None,
-                          group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
+                          ref: str = None, group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
+        assert ref is None or parent != ref, 'parent and ref must be different'
         if isinstance(self, type):
             DocImpl.create_global_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
                                              num_workers=num_workers, display_name=display_name,
-                                             group_type=group_type, **kwargs)
+                                             group_type=group_type, ref=ref, **kwargs)
         else:
             self._impl.create_node_group(name, transform=transform, parent=parent, trans_node=trans_node,
                                          num_workers=num_workers, display_name=display_name, group_type=group_type,
-                                         **kwargs)
+                                         ref=ref, **kwargs)
 
     @DynamicDescriptor
     def add_reader(self, pattern: str, func: Optional[Callable] = None):
@@ -388,6 +389,15 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                             force_refresh: bool = False) -> str:
         return self._forward('_register_schema_set', schema_set, kb_id, force_refresh)
 
+    def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
+                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
+                  ) -> List[DocNode]:
+        return self._forward('_get_nodes', uids, doc_ids, group, kb_id, numbers)
+
+    def get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
+                         merge: bool = False) -> Union[List[DocNode], DocNode]:
+        return self._forward('_get_window_nodes', node, span, merge)
+
     def _get_post_process_tasks(self):
         return lazyllm.pipeline(lambda *a: self._forward('_lazy_init'))
 
@@ -411,6 +421,15 @@ class UrlDocument(ModuleBase):
 
     def forward(self, *args, **kw):
         return self._forward('retrieve', *args, **kw)
+
+    def get_nodes(self, uids: Optional[List[str]] = None, doc_ids: Optional[Set] = None,
+                  group: Optional[str] = None, kb_id: Optional[str] = None, numbers: Optional[Set] = None
+                  ) -> List[DocNode]:
+        return self._forward('_get_nodes', uids, doc_ids, group, kb_id, numbers)
+
+    def get_window_nodes(self, node: DocNode, span: tuple[int, int] = (-5, 5),
+                         merge: bool = False) -> Union[List[DocNode], DocNode]:
+        return self._forward('_get_window_nodes', node, span, merge)
 
     @cached_property
     def active_node_groups(self):

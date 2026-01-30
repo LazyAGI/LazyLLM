@@ -1732,7 +1732,6 @@ OnlineChatModuleBase是管理开放平台的LLM接口的公共组件，具备训
     5、配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
 
 Args:
-    model_series (str): 模型系列名称
     api_key (str): API访问密钥
     base_url (str): API基础URL
     model_name (str): 模型名称
@@ -1755,7 +1754,6 @@ If you need to support the capabilities of a new open platform's LLM, please ext
     5. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
 
 Args:
-    model_series (str): Model series name
     api_key (str): API access key
     base_url (str): API base URL
     model_name (str): Model name
@@ -1882,7 +1880,6 @@ OnlineEmbeddingModuleBase是管理开放平台的嵌入模型接口的基类，�
 3. 配置新平台支持的api_key到全局变量，通过lazyllm.config.add(变量名，类型，默认值，环境变量名)进行添加
 
 Args:
-    model_series (str): 模型系列名称标识。
     embed_url (str): 嵌入API的URL地址。
     api_key (str): API访问密钥。
     embed_model_name (str): 嵌入模型名称。
@@ -1899,7 +1896,6 @@ If you need to support the capabilities of embedding models on a new open platfo
 3. Configure the api_key supported by the new platform as a global variable by using ``lazyllm.config.add(variable_name, type, default_value, environment_variable_name)`` .
 
 Args:
-    model_series (str): Model series name identifier.
     embed_url (str): Embedding API URL address.
     api_key (str): API access key.
     embed_model_name (str): Embedding model name.
@@ -2427,7 +2423,6 @@ add_chinese_doc('llms.onlinemodule.base.onlineMultiModalBase.OnlineMultiModalBas
 多模态在线模型的基类，继承自LLMBase，提供多模态模型的基础功能实现。
 
 Args:
-    model_series (str): 模型系列名称，不能为空。
     model_name (str): 模型名称，默认为None。如果未指定会产生警告。
     return_trace (bool): 是否返回调用追踪信息，默认为False。
     **kwargs: 其他传递给基类的参数。
@@ -2445,7 +2440,6 @@ Args:
 
 注意：
     - 子类必须实现_forward方法。
-    - 模型系列名称(model_series)为必填项。
     - 如果未指定模型名称(model_name)，系统会产生警告日志。
 ''')
 
@@ -2453,7 +2447,6 @@ add_english_doc('llms.onlinemodule.base.onlineMultiModalBase.OnlineMultiModalBas
 Base class for online multimodal models, inheriting from LLMBase, providing basic functionality for multimodal models.
 
 Args:
-    model_series (str): Model series name, cannot be empty.
     model_name (str): Model name, defaults to None. A warning will be generated if not specified.
     return_trace (bool): Whether to return call trace information, defaults to False.
     **kwargs: Additional arguments passed to the base class.
@@ -2471,7 +2464,6 @@ Main Methods:
 
 Notes:
     - Subclasses must implement the _forward method.
-    - Model series name (model_series) is required.
     - A warning log will be generated if model name (model_name) is not specified.
 ''')
 

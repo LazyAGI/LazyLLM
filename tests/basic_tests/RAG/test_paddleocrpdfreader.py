@@ -7,6 +7,10 @@ import requests
 import lazyllm
 from lazyllm.tools.rag.readers.paddleocr_pdf_reader import PaddleOCRPDFReader
 from lazyllm.tools.rag import DocNode
+from lazyllm.tools.rag.doc_node import RichDocNode
+from lazyllm.tools.rag.transform import RichTransform
+from lazyllm.tools.rag.transform.sentence import SentenceSplitter
+
 
 lazyllm.config.add('PADDLEOCRVL_URL', str, '', 'PADDLEOCRVL_URL')
 
@@ -42,34 +46,39 @@ class TestPaddleOCRPDFReader(object):
         if os.path.exists(self.temp_dir):
             shutil.rmtree(self.temp_dir)
 
-    def test_load_data_without_images_dir(self):
+    def _skip_if_pdf_not_exist(self):
         if not os.path.exists(self.test_pdf):
             pytest.skip(f'Test file does not exist: {self.test_pdf}')
+
+    def test_load_data_without_images_dir(self):
+        self._skip_if_pdf_not_exist()
         reader = PaddleOCRPDFReader(url=self.url)
         docs = reader(self.test_pdf)
         assert isinstance(docs, list)
         assert len(docs) > 0, 'Return result should not be empty'
 
     def test_load_data_with_images_dir(self):
-        if not os.path.exists(self.test_pdf):
-            pytest.skip(f'Test file does not exist: {self.test_pdf}')
+        self._skip_if_pdf_not_exist()
         images_dir = os.path.join(self.temp_dir, 'images')
         reader = PaddleOCRPDFReader(
             url=self.url,
             images_dir=images_dir
         )
-        docs = reader(self.test_pdf)
-        assert isinstance(docs, list)
-        assert len(docs) > 0, 'Return result should not be empty'
+        root_docs = reader(self.test_pdf)
+        assert isinstance(root_docs, list)
+        assert len(root_docs) > 0, 'Return result should not be empty'
+        assert len(root_docs) == 1, 'Return result should be a single RichDocNode'
+        assert isinstance(root_docs[0], RichDocNode), 'Return result should be a RichDocNode'
         # Check if image_path in image node metadata actually exists
+        docs = RichTransform().transform(root_docs[0])
         image_nodes = [doc for doc in docs if doc.metadata.get('type') == 'image']
+        assert len(image_nodes) > 0, 'Return result should contain image nodes'
         for image_node in image_nodes:
             image_path = image_node.metadata.get('image_path')
             assert os.path.exists(image_path), f'Image path does not exist: {image_path}'
 
     def test_load_data_with_split_doc_false(self):
-        if not os.path.exists(self.test_pdf):
-            pytest.skip(f'Test file does not exist: {self.test_pdf}')
+        self._skip_if_pdf_not_exist()
         reader = PaddleOCRPDFReader(url=self.url, split_doc=False)
         docs = reader(self.test_pdf)
         assert isinstance(docs, list)
@@ -77,9 +86,27 @@ class TestPaddleOCRPDFReader(object):
         assert len(docs) == 1, 'When split_doc=False, should return only one node'
         assert isinstance(docs[0], DocNode)
 
+    def test_richdocnode_compatible(self):
+        self._skip_if_pdf_not_exist()
+        split_reader = PaddleOCRPDFReader(url=self.url, split_doc=True)
+        docs = split_reader(self.test_pdf)
+        assert isinstance(docs, list)
+        assert len(docs) == 1, 'When split_doc=True, should return only one node'
+        assert isinstance(docs[0], RichDocNode), 'Return result should be a RichDocNode'
+
+        splitted_nodes = SentenceSplitter(chunk_size=100, chunk_overlap=10).transform(docs[0])
+        assert isinstance(splitted_nodes, list)
+        assert len(splitted_nodes) > 0, 'Return result should not be empty'
+        assert isinstance(splitted_nodes[0], str), 'Return result should be a string'
+
+        rich_nodes = RichTransform().transform(docs[0])
+        assert isinstance(rich_nodes, list)
+        assert len(rich_nodes) > 0, 'Return result should not be empty'
+        assert isinstance(rich_nodes[0], DocNode), 'Return result should be a DocNode'
+        assert rich_nodes[0].text == docs[0].nodes[0].text, 'Return result should be the same as the original node'
+
     def test_load_data_with_different_init_parameters(self):
-        if not os.path.exists(self.test_pdf):
-            pytest.skip(f'Test file does not exist: {self.test_pdf}')
+        self._skip_if_pdf_not_exist()
 
         # Test format_block_content=False
         reader1 = PaddleOCRPDFReader(
@@ -87,6 +114,7 @@ class TestPaddleOCRPDFReader(object):
             format_block_content=False
         )
         docs1 = reader1(self.test_pdf)
+        docs1 = RichTransform().transform(docs1[0])
         assert isinstance(docs1, list)
         assert len(docs1) > 0, 'Return result should not be empty when format_block_content=False'
 
@@ -96,6 +124,7 @@ class TestPaddleOCRPDFReader(object):
             use_layout_detection=False
         )
         docs2 = reader2(self.test_pdf)
+        docs2 = RichTransform().transform(docs2[0])
         assert isinstance(docs2, list)
         assert len(docs2) > 0 and len(docs2) < 15, 'Return result should not be empty when use_layout_detection=False'
 
@@ -105,6 +134,7 @@ class TestPaddleOCRPDFReader(object):
             use_chart_recognition=False
         )
         docs3 = reader3(self.test_pdf)
+        docs3 = RichTransform().transform(docs3[0])
         assert isinstance(docs3, list)
         assert len(docs3) > 0, 'Return result should not be empty when use_chart_recognition=False'
 
@@ -114,6 +144,7 @@ class TestPaddleOCRPDFReader(object):
             drop_types=['header', 'footer', 'aside_text']
         )
         docs4 = reader4(self.test_pdf)
+        docs4 = RichTransform().transform(docs4[0])
         assert isinstance(docs4, list)
         assert len(docs4) > 0, 'Return result should not be empty when using drop_types'
         # Check that metadata should not contain filtered types

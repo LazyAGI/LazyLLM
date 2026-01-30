@@ -36,15 +36,14 @@ class TestThirdparty(object):
         def patch():
             flag.flag = True
 
-        from lazyllm.thirdparty import mineru
-        mineru.register_patches(patch)
+        from lazyllm.thirdparty import graphrag
+        graphrag.register_patches(patch)
         assert not flag.flag
-        cli = mineru.cli
-        common = cli.common
+        load_config = graphrag.config.load_config
         assert not flag.flag
 
         with pytest.raises(ImportError):
-            _ = common.aio_do_parse
+            _ = load_config.load_config
         assert not flag.flag
 
         from lazyllm.thirdparty import os
@@ -55,7 +54,7 @@ class TestThirdparty(object):
         assert flag.flag
 
     def test_toml_dependencies_extraction(self):
-        thirdparty.prep_req_dict()
+        thirdparty.prepare_requirements_dict()
         assert requirements
 
     def test_check_package_installed(self):
