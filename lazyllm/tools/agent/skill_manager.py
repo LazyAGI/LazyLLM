@@ -1,12 +1,10 @@
 import os
 import shlex
-from contextvars import ContextVar
 from typing import Dict, Iterable, List, Optional, Tuple
 
 import yaml
 
 from lazyllm import config, ModuleBase
-from .toolsManager import register
 from .file_tool import read_file as _read_file
 from .shell_tool import shell_tool as _shell_tool
 from lazyllm.tools.rag.component.bm25 import BM25
@@ -24,8 +22,6 @@ config.add(
     'max_skill_md_bytes', int, 5 * 1024 * 1024, 'MAX_SKILL_MD_BYTES',
     description='The maximum size of SKILL.md that can be loaded by default'
 )
-
-_ACTIVE_SKILL_MANAGER: ContextVar = ContextVar('lazyllm_active_skill_manager', default=None)
 
 SKILLS_PROMPT = '''
 ## Skills Guide
@@ -353,8 +349,50 @@ class SkillManager(ModuleBase):
         '''Read a reference file within a skill directory.'''
         return self.read_file(name=name, rel_path=rel_path, **kwargs)
 
-    def get_skill_tools(self) -> List[str]:
-        return ['get_skill', 'read_reference', 'run_script']
+    def get_skill_tools(self) -> List:
+        return [
+            self._build_get_skill_tool(),
+            self._build_read_reference_tool(),
+            self._build_run_script_tool(),
+        ]
+
+    def _build_get_skill_tool(self):
+        def get_skill(name: str, allow_large: bool = False) -> dict:
+            '''Get the full usage for a skill (SKILL.md).
+
+            Args:
+                name (str): Skill name.
+                allow_large (bool, optional): Allow loading large SKILL.md. Defaults to False.
+            '''
+            return self.get_skill(name=name, allow_large=allow_large)
+        return get_skill
+
+    def _build_read_reference_tool(self):
+        def read_reference(name: str, rel_path: str, **kwargs) -> dict:
+            '''Read a reference file within a skill directory.
+
+            Args:
+                name (str): Skill name.
+                rel_path (str): Relative file path inside the skill directory.
+            '''
+            return self.read_reference(name=name, rel_path=rel_path, **kwargs)
+        return read_reference
+
+    def _build_run_script_tool(self):
+        def run_script(name: str, rel_path: str, args: Optional[List[str]] = None,
+                       allow_unsafe: bool = False, cwd: Optional[str] = None) -> dict:
+            '''Run a script within a skill directory.
+
+            Args:
+                name (str): Skill name.
+                rel_path (str): Relative script path inside the skill directory.
+                args (list[str], optional): Script arguments.
+                allow_unsafe (bool, optional): Allow execution. Defaults to False.
+                cwd (str, optional): Working directory.
+            '''
+            return self.run_script(name=name, rel_path=rel_path, args=args,
+                                   allow_unsafe=allow_unsafe, cwd=cwd)
+        return run_script
 
     def _format_skills_list(self, names: List[str]) -> str:
         lines = []
@@ -372,48 +410,3 @@ class SkillManager(ModuleBase):
         if not self._skills_dir:
             return ''
         return '\n'.join([f'- {path}' for path in self._skills_dir])
-
-
-def _get_active_manager():
-    manager = _ACTIVE_SKILL_MANAGER.get()
-    if manager is None:
-        raise RuntimeError('SkillManager is not initialized.')
-    return manager
-
-
-@register('tool')
-def get_skill(name: str, allow_large: bool = False) -> dict:
-    '''Get the full usage for a skill (SKILL.md).
-
-    Args:
-        name (str): Skill name.
-        allow_large (bool, optional): Allow loading large SKILL.md. Defaults to False.
-    '''
-    return _get_active_manager().get_skill(name=name, allow_large=allow_large)
-
-
-@register('tool')
-def read_reference(name: str, rel_path: str, **kwargs) -> dict:
-    '''Read a reference file within a skill directory.
-
-    Args:
-        name (str): Skill name.
-        rel_path (str): Relative file path inside the skill directory.
-    '''
-    return _get_active_manager().read_reference(name=name, rel_path=rel_path, **kwargs)
-
-
-@register('tool')
-def run_script(name: str, rel_path: str, args: Optional[List[str]] = None,
-               allow_unsafe: bool = False, cwd: Optional[str] = None) -> dict:
-    '''Run a script within a skill directory.
-
-    Args:
-        name (str): Skill name.
-        rel_path (str): Relative script path inside the skill directory.
-        args (list[str], optional): Script arguments.
-        allow_unsafe (bool, optional): Allow execution. Defaults to False.
-        cwd (str, optional): Working directory.
-    '''
-    return _get_active_manager().run_script(name=name, rel_path=rel_path, args=args,
-                                            allow_unsafe=allow_unsafe, cwd=cwd)

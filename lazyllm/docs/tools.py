@@ -7793,17 +7793,17 @@ Args:
 ''')
 
 add_chinese_doc('SkillManager.get_skill_tools', '''\
-返回 Skills 工具列表名称。
+返回 Skills 工具列表（可调用对象）。
 
 **Returns:**\n
-- List[str]: Skills 工具名称列表。
+- List[Callable]: Skills 工具列表。
 ''')
 
 add_english_doc('SkillManager.get_skill_tools', '''\
-Return the tool names exposed by SkillManager.
+Return the skill tool callables exposed by SkillManager.
 
 **Returns:**\n
-- List[str]: Skill tool names.
+- List[Callable]: Skill tool callables.
 ''')
 
 add_chinese_doc('LazyLLMAgentBase.build_agent', '''\

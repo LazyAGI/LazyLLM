@@ -1,7 +1,7 @@
 from lazyllm.module import ModuleBase
 from lazyllm import locals, LOG
 from .toolsManager import ToolManager
-from .skill_manager import SkillManager, _ACTIVE_SKILL_MANAGER
+from .skill_manager import SkillManager
 from .file_tool import (  # noqa: F401
     read_file,
     list_dir,
@@ -57,22 +57,15 @@ class LazyLLMAgentBase(ModuleBase):
             self._agent = self.build_agent()
 
     def forward(self, *args, **kwargs):
-        token = None
-        if self._use_skills and self._skill_manager:
-            token = _ACTIVE_SKILL_MANAGER.set(self._skill_manager)
-        try:
-            self._ensure_agent()
-            pre = self._pre_process(*args, **kwargs)
-            if isinstance(pre, tuple):
-                result = self._agent(*pre)
-            elif isinstance(pre, dict):
-                result = self._agent(**pre)
-            else:
-                result = self._agent(pre)
-            return self._post_process(result)
-        finally:
-            if token is not None:
-                _ACTIVE_SKILL_MANAGER.reset(token)
+        self._ensure_agent()
+        pre = self._pre_process(*args, **kwargs)
+        if isinstance(pre, tuple):
+            result = self._agent(*pre)
+        elif isinstance(pre, dict):
+            result = self._agent(**pre)
+        else:
+            result = self._agent(pre)
+        return self._post_process(result)
 
     def _assert_llm_tools(self, require_tools: bool = True):
         assert self._llm is not None, 'llm cannot be empty.'
