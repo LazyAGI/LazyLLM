@@ -2,7 +2,7 @@ import pytest
 
 import lazyllm
 
-from tests.utils import get_api_key, get_path
+from ...utils import get_api_key, get_path
 
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineChatModuleBase.py'

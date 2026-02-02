@@ -6,7 +6,7 @@ import lazyllm
 from lazyllm.module.module import ModuleExecutionError
 from lazyllm.components.formatter import decode_query_with_filepaths
 
-from tests.utils import get_api_key, get_path
+from ...utils import get_api_key, get_path
 
 
 BASE_PATH = 'lazyllm/module/llms/onlinemodule/base/onlineMultiModalBase.py'

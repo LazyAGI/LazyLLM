@@ -11,7 +11,7 @@ from lazyllm.module.llms.onlinemodule.supplier.siliconflow import SiliconFlowCha
 from lazyllm.module.llms.onlinemodule.supplier.ppio import PPIOChat
 from lazyllm.module.llms.onlinemodule.supplier.aiping import AipingChat
 
-from tests.utils import get_api_key
+from ...utils import get_api_key
 
 
 class TestValidateApiKey:
