@@ -154,3 +154,8 @@ def get_db_init_keywords(db_type: str):
 
 def get_path(supplier):
     return f'lazyllm/module/llms/onlinemodule/supplier/{supplier}.py'
+
+
+def get_api_key(source):
+    import lazyllm
+    return lazyllm.config[f'{source}_api_key']
