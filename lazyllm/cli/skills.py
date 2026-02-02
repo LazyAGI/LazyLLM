@@ -6,15 +6,23 @@ from lazyllm import LOG
 from pathlib import Path
 from dataclasses import dataclass
 
-DEFAULT_SKILL_REPO = 'https://github.com/LazyAGI/LazyLLM.git'
-FALLBACK_SKILL_REPO = 'https://gitcode.com/LazyAGI/LazyLLM.git'
+DEFAULT_SKILL_REPO = 'https://github.com/chenhao0205/lazyllm-skill'
+ATOMGIT_SKILL_REPO = 'https://atomgit.com/LazyAGI/LazyLLM'
+GITEE_SKILL_REPO = 'https://gitee.com/lazy-agi/LazyLLM'
 
 SKILL_RELATIVE_PATH = Path('docs/lazyllm-skill')
 
-def install_skill(commands):
+def skills(commands):
     parser = argparse.ArgumentParser(
-        prog='lazyllm install --skill',
+        prog='lazyllm skills install',
         description='Install lazyllm-skill for an agent'
+    )
+
+    parser.add_argument(
+        'command',
+        type=str,
+        choices=['install'],
+        help='command'
     )
 
     parser.add_argument(
@@ -37,6 +45,14 @@ def install_skill(commands):
     )
 
     args = parser.parse_args(commands)
+
+    handlers = {
+        'install': _handle_install,
+    }
+
+    handlers[args.command](args)
+
+def _handle_install(args):
     agent = args.agent
     project_level = args.project
     timeout = args.timeout
@@ -112,8 +128,10 @@ def _download_repo(tmp_dir: Path, timeout: int = 300):
     try:
         _clone_repo(DEFAULT_SKILL_REPO, tmp_dir, timeout=timeout)
     except Exception:
-        _clone_repo(FALLBACK_SKILL_REPO, tmp_dir, timeout=timeout)
-
+        try:
+            _clone_repo(ATOMGIT_SKILL_REPO, tmp_dir, timeout=timeout)
+        except Exception:
+            _clone_repo(GITEE_SKILL_REPO, tmp_dir, timeout=timeout)
 
 @dataclass
 class AgentConfig:
