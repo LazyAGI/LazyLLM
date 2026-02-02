@@ -57,6 +57,9 @@ public:
         return created;
     }
 
+private:
+    std::unordered_map<std::string, NodeGroup> _node_groups_map;
+
     std::any call_impl(
         const std::string& func_name,
         const pybind11::object& func,
@@ -83,9 +86,6 @@ public:
 
         throw std::runtime_error("Unknown DocumentStore function: " + func_name);
     }
-
-private:
-    std::unordered_map<std::string, NodeGroup> _node_groups_map;
 
     // Cache by Python object identity to ensure one wrapper per store instance.
     static std::unordered_map<PyObject *, std::weak_ptr<DocumentStore>> &store_cache() {

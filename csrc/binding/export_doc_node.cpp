@@ -1,5 +1,4 @@
 #include <algorithm>
-#include <cctype>
 
 #include "lazyllm.hpp"
 #include "document_store.hpp"
@@ -21,90 +20,61 @@ lazyllm::DocNode init(
     std::optional<lazyllm::DocNode::Metadata> global_metadata,
     std::optional<std::string> text
 ) {
-    if (content && text) {
+    if (content && text)
         throw std::invalid_argument("`text` and `content` cannot be set at the same time.");
-    }
 
-    // Find parent node.
     lazyllm::DocNode* p_parent_node = nullptr;
-    std::shared_ptr<lazyllm::DocumentStore> store_bridge = nullptr;
+    std::shared_ptr<lazyllm::DocumentStore> store_adaptor = nullptr;
 
     // Build node groups map.
     // Usually, parent + store + node_groups are not None at the same time.
     if (parent && !store.is_none() && node_groups && global_metadata && group) {
         std::unordered_map<std::string, lazyllm::NodeGroup> node_groups_map;
         node_groups_map.reserve(node_groups->size());
-        for (const auto &entry : *node_groups) {
-            auto &group_key = entry.first;
-            auto &group_dict = entry.second;
+        for (const auto& [group_key, group_dict] : *node_groups) {
             node_groups_map.emplace(group_key, lazyllm::NodeGroup(
                 std::any_cast<std::string>(group_dict.at(std::string("parent"))),
                 std::any_cast<std::string>(group_dict.at(std::string("display_name")))
             ));
         }
-        auto store_bridge = lazyllm::DocumentStore::from_store(store, node_groups_map);
+        store_adaptor = lazyllm::DocumentStore::from_store(store, node_groups_map);
 
         auto kb_id = std::any_cast<std::string>((*global_metadata)[
             std::string(lazyllm::DocumentStore::RAG_KB_ID_KEY)]);
         auto doc_id = std::any_cast<std::string>((*global_metadata)[
             std::string(lazyllm::DocumentStore::RAG_DOC_ID_KEY)]);
 
-        if (std::holds_alternative<std::string>(*parent)) {
-            const std::string& parent_uid = std::get<std::string>(*parent);
-            p_parent_node = store_bridge->get_node(parent_uid, *group, kb_id).cast<lazyllm::DocNode*>();
+        if (const auto* parent_uid = std::get_if<std::string>(&*parent)) {
+            p_parent_node = std::any_cast<lazyllm::DocNode*>(store_adaptor->call("get_node",
+                {{"group_name", *group}, {"uid", *parent_uid}, {"kb_id", kb_id}}));
         }
         else
             p_parent_node = std::get<py::object>(*parent).cast<lazyllm::DocNode*>();
     }
 
+    std::string raw_text;
+    if (content) {
+        if (const auto* single_text = std::get_if<std::string>(&*content))
+            raw_text = std::move(*single_text);
+        else
+            raw_text = lazyllm::JoinLines(std::get<std::vector<std::string>>(*content));
+    }
+    else if (text){
+        raw_text = std::move(*text);
+    }
+
     lazyllm::DocNode node(
-        content.value_or(text.value_or(std::string(""))),
-        uid.value_or(lazyllm::GenerateUUID()),
+        std::string_view(raw_text),
         group.value_or(""),
+        uid.value_or(""),
         p_parent_node,
-        store_bridge,
-        embedding.value_or(lazyllm::DocNode::EmbeddingVec()),
         metadata.value_or(lazyllm::DocNode::Metadata()),
-        global_metadata.value_or(lazyllm::DocNode::Metadata())
+        std::make_shared<lazyllm::DocNode::Metadata>(
+            global_metadata.value_or(lazyllm::DocNode::Metadata()))
     );
-
-
-    if (embedding.has_value()) {
-        node.set_embedding(*embedding);
-    }
-
-    if (!metadata.is_none()) {
-        if (!py::isinstance<py::dict>(metadata)) {
-            throw std::invalid_argument("`metadata` must be a dict.");
-        }
-        node.set_metadata(dict_to_metadata(metadata.cast<py::dict>()));
-    }
-
-    if (!global_metadata.is_none()) {
-        if (!py::isinstance<py::dict>(global_metadata)) {
-            throw std::invalid_argument("`global_metadata` must be a dict.");
-        }
-        node.set_global_metadata(dict_to_metadata(global_metadata.cast<py::dict>()));
-    }
-
-    if (!parent.is_none()) {
-        if (py::isinstance<lazyllm::DocNode>(parent)) {
-            node.set_parent(parent.cast<std::shared_ptr<lazyllm::DocNode>>());
-        } else if (py::isinstance<py::str>(parent)) {
-            throw std::invalid_argument("`parent` as str is not supported in C++ binding.");
-        } else {
-            throw std::invalid_argument("`parent` must be a DocNode or None.");
-        }
-    }
-
-    std::shared_ptr<lazyllm::DocumentStore> store_bridge;
-    if (!store.is_none()) {
-        py::object store_obj = store;
-        store_bridge = lazyllm::DocumentStore::from_store(store_obj, node_groups_map);
-    }
-    node.set_store(std::move(store_bridge));
-
-    (void)node_groups;
+    if (store_adaptor) node.set_store(store_adaptor);
+    if (embedding) node.set_embedding_vec(*embedding);
+    if (!raw_text.empty()) node.set_root_text(std::move(raw_text));
 
     return node;
 }

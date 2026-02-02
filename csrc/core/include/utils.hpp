@@ -10,14 +10,13 @@
 namespace lazyllm {
 
 std::string JoinLines(const std::vector<std::string>& lines) {
-    std::ostringstream oss;
-    for (size_t i = 0; i < lines.size(); ++i) {
-        if (i > 0) {
-            oss << "\n";
-        }
-        oss << lines[i];
+    if (lines.empty()) return {};
+    std::string out = lines.front();
+    for (size_t i = 1; i < lines.size(); ++i) {
+        out += '\n';
+        out += lines[i];
     }
-    return oss.str();
+    return out;
 }
 
 std::string Trim(const std::string& value) {

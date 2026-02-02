@@ -13,6 +13,7 @@
 #include <memory>
 
 #include "utils.hpp"
+#include "adaptor_base.hpp"
 
 namespace lazyllm {
 
@@ -25,7 +26,6 @@ public:
     using EmbeddingFun = std::function<std::vector<double>(const std::string&, const std::string&)>;
     using EmbeddingVec = std::unordered_map<std::string, std::vector<double>>;
 
-    DocNode* _p_parent_node = nullptr;
 private:
     std::shared_ptr<std::string> _p_root_text = nullptr;
     std::string_view _text_view;
@@ -34,7 +34,7 @@ private:
     mutable size_t _text_hash = 0;
 
     Metadata _metadata;
-    std::shared_ptr<Metadata> _p_global_metadata;
+    std::shared_ptr<const Metadata> _p_global_metadata;
     std::vector<std::string> _excluded_embed_metadata_keys;
     std::vector<std::string> _excluded_llm_metadata_keys;
 
@@ -43,7 +43,9 @@ private:
     double _relevance_score = .0;
     double _similarity_score = .0;
 
+    const DocNode* _p_parent_node = nullptr;
     Children _children;
+    std::shared_ptr<const AdaptorBase> _p_store = nullptr;
 
 public:
     DocNode() = delete;
@@ -51,21 +53,17 @@ public:
         const std::string_view& text_view,
         const std::string& group_name,
         const std::string& uid = "",
-        const EmbeddingVec& embedding_vec = {},
+        const DocNode* p_parent_node = nullptr,
         const Metadata& metadata = {},
-        const std::shared_ptr<Metadata>& global_metadata = {},
-        const std::shared_ptr<std::string>& p_raw_text = nullptr
+        const std::shared_ptr<const Metadata>& global_metadata = {}
     ) :
         _text_view(text_view),
         _group_name(group_name),
-        _uid(uid),
+        _uid(uid.empty() ? GenerateUUID() : uid),
+        _p_parent_node(p_parent_node),
         _metadata(metadata),
-        _p_global_metadata(global_metadata),
-        _embedding_vec(embedding_vec),
-        _p_root_text(p_raw_text)
-    {
-        if (uid.empty()) _uid = GenerateUUID();
-    }
+        _p_global_metadata(global_metadata)
+    {}
 
     DocNode(const DocNode&) = default;
     DocNode& operator=(const DocNode&) = default;
@@ -77,18 +75,19 @@ public:
     std::vector<DocNode*> find_children(const std::vector<DocNode*>& nodes) const {
         std::vector<DocNode*> children;
         for (auto p_node : nodes)
-            if (p_node->get_parent_node() == _p_parent_node)
+            if (p_node->get_p_parent_node() == _p_parent_node)
                 children.push_back(p_node);
         return children;
     }
 
     // Getter and Setter
+    void set_store(const std::shared_ptr<AdaptorBase>& p_store) { _p_store = p_store; }
     const std::string& get_uid() const { return _uid; }
     const std::string& get_group_name() const { return _group_name; }
     const std::string_view& get_text_view() const { return _text_view; }
     const std::string& get_text() const { return std::string(_text_view); }
-    void set_text(const std::string& text) {
-        _p_root_text = std::make_shared<std::string>(text);
+    void set_root_text(const std::string&& text) {
+        _p_root_text = std::make_shared<std::string>(std::move(text));
         _text_view = *_p_root_text;
         _text_hash = evaluate_text_hash();
     }
@@ -96,6 +95,7 @@ public:
         if (_text_hash == 0) _text_hash = evaluate_text_hash();
         return _text_hash;
     }
+    void set_store(const std::shared_ptr<AdaptorBase>& p_store) { _p_store = p_store; }
     const DocNode* get_parent_node() { return _p_parent_node; }
     void set_parent_node(DocNode* p_parent_node) { _p_parent_node = p_parent_node; }
 
