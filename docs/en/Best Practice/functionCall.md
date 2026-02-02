@@ -131,7 +131,7 @@ In the above example, if the input query triggers a function call, [FunctionCall
 
 ## Skills-aware agents
 
-All built-in agents (`ReactAgent`, `PlanAndSolveAgent`, `ReWOOAgent`) share the same base class and can enable **Skills** via `use_skills`/`skills`.
+All built-in agents (`ReactAgent`, `PlanAndSolveAgent`, `ReWOOAgent`) share the same base class and can enable **Skills** via the `skills` parameter. `skills=True` enables Skills with auto selection; pass a `str`/`list` to enable specific skills.
 
 ```python
 import lazyllm
@@ -141,8 +141,7 @@ llm = lazyllm.OnlineChatModule()
 agent = ReactAgent(
     llm,
     tools=["get_current_weather"],
-    use_skills=True,
-    skills=["docs-writer"],
+    skills=["docs-writer"],  # set skills=True to enable auto selection
 )
 ```
 

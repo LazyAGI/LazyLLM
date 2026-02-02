@@ -39,12 +39,12 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[str] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  max_retries: int = 5, return_trace: bool = False, stream: bool = False,
-                 return_last_tool_calls: bool = False, use_skills: bool = False, skills: List[str] = None,
-                 desc: str = ''):
+                 return_last_tool_calls: bool = False,
+                 skills: Union[bool, str, List[str], None] = None, desc: str = ''):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,
-                         use_skills=use_skills, skills=skills, desc=desc)
+                         skills=skills, desc=desc)
         plan_llm, solve_llm = self._normalize_llms(llm, plan_llm, solve_llm)
         self._init_planner_prompter()
         self._plan_llm = plan_llm.share(prompt=self._planner_prompter, stream=self._planner_stream)\

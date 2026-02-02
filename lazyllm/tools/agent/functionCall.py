@@ -130,12 +130,12 @@ class FunctionCall(ModuleBase):
 @deprecated('ReactAgent')
 class FunctionCallAgent(LazyLLMAgentBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False,
-                 return_last_tool_calls: bool = False, use_skills: bool = False, skills: List[str] = None,
-                 desc: str = ''):
+                 return_last_tool_calls: bool = False,
+                 skills: Union[bool, str, List[str], None] = None, desc: str = ''):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,
-                         use_skills=use_skills, skills=skills, desc=desc)
+                         skills=skills, desc=desc)
         self._fc = FunctionCall(self._llm, self._tools, return_trace=return_trace, stream=stream,
                                 _tool_manager=self._tools_manager,
                                 _system_prompt_builder=self._build_extra_system_prompt)

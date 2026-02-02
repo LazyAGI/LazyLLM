@@ -43,7 +43,6 @@ def main():
     agent = ReactAgent(
         llm=llm,
         tools=[],
-        use_skills=True,
         skills=['demo-skill'],
     )
     res = agent('What skills do you have?')

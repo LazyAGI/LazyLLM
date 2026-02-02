@@ -34,10 +34,9 @@ class ReWOOAgent(LazyLLMAgentBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[Union[str, Callable]] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False,
-                 use_skills: bool = False, skills: List[str] = None, desc: str = ''):
+                 skills: Union[bool, str, List[str], None] = None, desc: str = ''):
         super().__init__(llm=llm, tools=tools, return_trace=return_trace, stream=stream,
-                         return_last_tool_calls=return_last_tool_calls, use_skills=use_skills,
-                         skills=skills, desc=desc)
+                         return_last_tool_calls=return_last_tool_calls, skills=skills, desc=desc)
         if llm is None and plan_llm is None and solve_llm is None:
             raise ValueError('Either specify llm, or provide plan_llm/solve_llm.')
         if llm is None:

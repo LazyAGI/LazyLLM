@@ -128,7 +128,7 @@ print(f"ret: {ret}")
 
 ## Skills 智能体支持
 
-所有内置 Agent（`ReactAgent`、`PlanAndSolveAgent`、`ReWOOAgent`）统一基于同一基类，可通过 `use_skills` / `skills` 开启 Skills。
+所有内置 Agent（`ReactAgent`、`PlanAndSolveAgent`、`ReWOOAgent`）统一基于同一基类，可通过 `skills` 参数开启 Skills。`skills=True` 表示启用 Skills 并自动筛选；传入 `str`/`list` 表示只启用指定技能。
 
 ```python
 import lazyllm
@@ -138,8 +138,7 @@ llm = lazyllm.OnlineChatModule()
 agent = ReactAgent(
     llm,
     tools=["get_current_weather"],
-    use_skills=True,
-    skills=["docs-writer"],
+    skills=["docs-writer"],  # 传入 skills=True 启用自动筛选
 )
 ```
 

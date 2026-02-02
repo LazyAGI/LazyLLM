@@ -1,7 +1,7 @@
 from .base import LazyLLMAgentBase
 from lazyllm import loop
 from .functionCall import FunctionCall
-from typing import List, Any, Dict, Optional
+from typing import List, Any, Dict, Optional, Union
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 
 INSTRUCTION = f'''
@@ -65,11 +65,11 @@ You are responsible for maintaining correctness, efficiency, and clarity through
 class ReactAgent(LazyLLMAgentBase):
     def __init__(self, llm, tools: Optional[List[str]] = None, max_retries: int = 5, return_trace: bool = False,
                  prompt: str = None, stream: bool = False, return_last_tool_calls: bool = False,
-                 use_skills: bool = False, skills: List[str] = None, desc: str = ''):
+                 skills: Optional[Union[bool, str, List[str]]] = None, desc: str = ''):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,
-                         use_skills=use_skills, skills=skills, desc=desc)
+                         skills=skills, desc=desc)
         prompt = prompt or INSTRUCTION
         if self._return_last_tool_calls:
             prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'

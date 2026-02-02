@@ -7516,8 +7516,7 @@ Args:
     return_trace (bool): 是否返回执行追踪信息，默认为False。
     stream (bool): 是否启用流式输出，默认为False。
     return_last_tool_calls (bool): 若为True，在模型结束且存在工具调用记录时返回最后一次的工具调用轨迹。
-    use_skills (bool): 是否启用 Skills 支持。
-    skills (List[str]): 指定要启用的技能名称列表。
+    skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
     desc (str): Agent 能力描述，可为空。
 ''')
 
@@ -7531,8 +7530,7 @@ Args:
     return_trace (bool): Whether to return execution trace information, defaults to False.
     stream (bool): Whether to enable streaming output, defaults to False.
     return_last_tool_calls (bool): If True, return the last tool-call trace when the model finishes.
-    use_skills (bool): Whether to enable Skills support.
-    skills (List[str]): List of skill names to enable.
+    skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
     desc (str): Optional agent capability description.
 ''')
 
@@ -7605,8 +7603,7 @@ Args:
     return_trace (bool): 是否返回中间执行轨迹。
     stream (bool): 是否启用流式输出。
     return_last_tool_calls (bool): 若为True，在模型结束且存在工具调用记录时返回最后一次的工具调用轨迹。
-    use_skills (bool): 是否启用 Skills 支持。
-    skills (List[str]): 指定要启用的技能名称列表。
+    skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
     memory: 预留的记忆/上下文对象。
     desc (str): Agent 能力描述。
     sub_agents (List): 子 Agent 列表（可选）。
@@ -7623,8 +7620,7 @@ Args:
     return_trace (bool): Whether to return execution traces.
     stream (bool): Whether to enable streaming output.
     return_last_tool_calls (bool): If True, return the last tool-call trace when the model finishes.
-    use_skills (bool): Whether to enable Skills support.
-    skills (List[str]): List of skill names to enable.
+    skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
     memory: Reserved memory/context object.
     desc (str): Optional agent capability description.
     sub_agents (List): Optional sub-agents.
@@ -7833,8 +7829,7 @@ Args:
     prompt (str): 自定义提示词模板，如果为None则使用内置模板
     stream (bool): 是否启用流式输出，用于实时显示生成过程，默认为False
     return_last_tool_calls (bool): 若为True，在模型结束且存在工具调用记录时返回最后一次的工具调用轨迹。
-    use_skills (bool): 是否启用 Skills 支持。
-    skills (List[str]): 指定要启用的技能名称列表。
+    skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
     desc (str): Agent 能力描述，可为空。
 ''')
 
@@ -7849,8 +7844,7 @@ Args:
     prompt (str): Custom prompt template, uses built-in template if None
     stream (bool): Whether to enable streaming output for real-time generation display, defaults to False
     return_last_tool_calls (bool): If True, return the last tool-call trace when the model finishes.
-    use_skills (bool): Whether to enable Skills support.
-    skills (List[str]): List of skill names to enable.
+    skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
     desc (str): Optional agent capability description.
 
 ''')
@@ -7909,8 +7903,7 @@ Args:
     return_trace (bool): 是否返回中间步骤和工具调用信息。
     stream (bool): 是否以流式方式输出规划和解决过程。
     return_last_tool_calls (bool): 若为True，在模型结束且存在工具调用记录时返回最后一次的工具调用轨迹。
-    use_skills (bool): 是否启用 Skills 支持。
-    skills (List[str]): 指定要启用的技能名称列表。
+    skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
     desc (str): Agent 能力描述，可为空。
 ''')
 
@@ -7926,8 +7919,7 @@ Args:
     return_trace (bool): If True, return intermediate steps and tool calls.
     stream (bool): Whether to stream the planning and solving process.
     return_last_tool_calls (bool): If True, return the last tool-call trace when the model finishes.
-    use_skills (bool): Whether to enable Skills support.
-    skills (List[str]): List of skill names to enable.
+    skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
     desc (str): Optional agent capability description.
 ''')
 
@@ -7984,8 +7976,7 @@ Args:
     return_trace (bool): 是否返回中间步骤和工具调用信息。
     stream (bool): 是否以流式方式输出规划和解决过程。
     return_last_tool_calls (bool): 若为True，在模型结束且存在工具调用记录时返回最后一次的工具调用轨迹。
-    use_skills (bool): 是否启用 Skills 支持。
-    skills (List[str]): 指定要启用的技能名称列表。
+    skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
     desc (str): Agent 能力描述，可为空。
 
 ''')
@@ -8001,8 +7992,7 @@ Args:
     return_trace (bool): If True, return intermediate steps and tool calls.
     stream (bool): Whether to stream the planning and solving process.
     return_last_tool_calls (bool): If True, return the last tool-call trace when the model finishes.
-    use_skills (bool): Whether to enable Skills support.
-    skills (List[str]): List of skill names to enable.
+    skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
     desc (str): Optional agent capability description.
 ''')
 

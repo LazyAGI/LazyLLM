@@ -1,5 +1,7 @@
+from typing import Iterable, Optional, Union
+
 from lazyllm.module import ModuleBase
-from lazyllm import locals, LOG
+from lazyllm import locals
 from .toolsManager import ToolManager
 from .skill_manager import SkillManager
 from .file_tool import (  # noqa: F401
@@ -17,16 +19,14 @@ from .download_tool import download_file  # noqa: F401
 
 class LazyLLMAgentBase(ModuleBase):
     def __init__(self, llm=None, tools=None, max_retries: int = 5, return_trace: bool = False,
-                 stream: bool = False, return_last_tool_calls: bool = False, use_skills: bool = False,
-                 skills: list[str] = None, memory=None, desc: str = '', sub_agents=None):
+                 stream: bool = False, return_last_tool_calls: bool = False,
+                 skills: Optional[Union[bool, str, Iterable[str]]] = None, memory=None,
+                 desc: str = '', sub_agents=None):
         super().__init__(return_trace=return_trace)
-        if skills and not use_skills:
-            LOG.warning('use_skills is False but skills provided; enabling skills.')
-        use_skills = use_skills or bool(skills)
+        use_skills, skills = self._normalize_skills_config(skills)
         self._llm = llm
         self._tools = list(tools) if tools else []
         self._memory = memory
-        self._use_skills = use_skills
         self._skills = skills or []
         self._desc = desc
         self._sub_agents = sub_agents if sub_agents is not None else []
@@ -36,10 +36,27 @@ class LazyLLMAgentBase(ModuleBase):
         self._agent = None
         self._skill_manager = None
 
-        if self._use_skills:
+        if use_skills:
             self._skill_manager = SkillManager(skills=self._skills)
             self._ensure_default_skill_tools()
         self._tools_manager = ToolManager(self._tools, return_trace=return_trace)
+
+    @staticmethod
+    def _normalize_skills_config(skills: Optional[Union[bool, str, Iterable[str]]]):
+        if isinstance(skills, bool):
+            return skills, []
+        if skills is None:
+            return False, []
+        if isinstance(skills, str):
+            if not skills.strip():
+                return False, []
+            return True, [skills]
+        if isinstance(skills, (list, tuple, set)):
+            normalized = [item for item in skills if item]
+            if not normalized:
+                return False, []
+            return True, normalized
+        raise TypeError('skills must be a bool, str, or list of skill names.')
 
     def _pre_process(self, *args, **kwargs):
         if len(args) == 1 and not kwargs:
@@ -86,7 +103,7 @@ class LazyLLMAgentBase(ModuleBase):
                 self._tools.append(tool)
 
     def _build_extra_system_prompt(self, task: str) -> str:
-        if not self._use_skills or not self._skill_manager:
+        if not self._skill_manager:
             return ''
         return self._skill_manager.build_prompt(task)
 

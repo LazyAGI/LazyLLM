@@ -69,7 +69,7 @@ _META_REQUIRED_FIELDS = {
 
 class SkillManager(ModuleBase):
     def __init__(self, dir: Optional[str] = None, skills: Optional[Iterable[str]] = None,
-                 max_skill_md_bytes: Optional[int] = None, llm=None):
+                 max_skill_md_bytes: Optional[int] = None):
         super().__init__(return_trace=False)
         self._skills_dir = self._parse_dirs(dir) if dir else self._parse_dirs(config['skills_dir'])
         self._skills_expected = self._parse_skills(skills)
@@ -124,9 +124,10 @@ class SkillManager(ModuleBase):
                 skill_md = os.path.join(cur, 'SKILL.md')
                 if 'SKILL.md' in entries and os.path.isfile(skill_md):
                     yield cur, skill_md
-                subdirs = [os.path.join(cur, e) for e in entries if os.path.isdir(os.path.join(cur, e))]
-                for subdir in reversed(subdirs):
-                    stack.append(subdir)
+                else:
+                    subdirs = [os.path.join(cur, e) for e in entries if os.path.isdir(os.path.join(cur, e))]
+                    for subdir in reversed(subdirs):
+                        stack.append(subdir)
 
     @staticmethod
     def _extract_yaml_meta(text: str) -> Optional[dict]:
