@@ -28,6 +28,7 @@ class DataStateStore:
         self.error_buffer = []
         self.indices_buffer = []
         self.processed_indices = set()
+        self.is_done = False
         self.buffer_size_limit = 100
         self.last_save_time = time.time()
         self.lock = threading.RLock()
@@ -69,15 +70,13 @@ class DataStateStore:
                 try:
                     with open(self.progress_path, 'r', encoding='utf-8') as f:
                         data = json.load(f)
-                        if data == 'Done':
-                            self.processed_indices = 'Done'
-                        else:
-                            self.processed_indices = set(data)
-                        return self.processed_indices
+                        self.is_done = data.get('is_done', False)
+                        self.processed_indices = set(data.get('indices', []))
                 except Exception:
                     LOG.warning(f'Failed to load progress from {self.progress_path}')
-            self.processed_indices = set()
-            return self.processed_indices
+            else:
+                self.processed_indices = set()
+                self.is_done = False
 
     def save_results(self, results, indices=None, force=False):
         if not self.save_path:
@@ -92,7 +91,7 @@ class DataStateStore:
 
             if indices is not None:
                 if indices == 'Done':
-                    self.processed_indices = 'Done'
+                    self.is_done = True
                     self.indices_buffer = []
                     force = True
                 elif isinstance(indices, list):
@@ -149,16 +148,16 @@ class DataStateStore:
                                     f'Skipping. Item: {res}. Error: {e}')
                     self.error_buffer = []
 
-                if self.indices_buffer and isinstance(self.processed_indices, set):
+                if self.indices_buffer:
                     self.processed_indices.update(self.indices_buffer)
                     self.indices_buffer = []
 
-                if self.processed_indices:
+                if self.processed_indices or self.is_done:
                     with open(self.progress_path, 'w', encoding='utf-8') as f:
-                        if self.processed_indices == 'Done':
-                            json.dump('Done', f)
-                        else:
-                            json.dump(list(self.processed_indices), f)
+                        json.dump({
+                            'is_done': self.is_done,
+                            'indices': list(self.processed_indices)
+                        }, f)
         except Exception as e:
             LOG.error(f'Failed to save results to {self.save_path}: {e}')
 
@@ -180,7 +179,12 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, _concurrency_mode=None, _save_data=True, _max_workers=None,
                  _ignore_errors=True, **kwargs):
         self._concurrency_mode = _concurrency_mode or getattr(self, '_concurrency_mode', 'process')
-        self._max_workers = _max_workers or (os.cpu_count() if self._concurrency_mode == 'process' else 32)
+        if _max_workers:
+            self._max_workers = _max_workers
+        elif self._concurrency_mode == 'process':
+            self._max_workers = os.cpu_count()
+        else:
+            self._max_workers = min(max(32, (os.cpu_count() or 1) * 5), 128)
         self._ignore_errors = _ignore_errors
         self._store = DataStateStore(self.__class__.__name__, _save_data)
         self._lazyllm_kwargs = kwargs
@@ -207,23 +211,22 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
         except Exception as e:
             err_msg = str(e)
             if isinstance(data, dict):
-                data['infer_error'] = err_msg
-                return data
+                return {**data, 'infer_error': err_msg}
             return {'input': data, 'infer_error': err_msg}
 
     def _process_forward_common(self, data):
-        processed_indices = self._store.load_progress()
+        self._store.load_progress()
         results = []
         pbar = tqdm(total=len(data), desc=f'Processing {self.__class__.__name__}', unit='item')
 
-        if processed_indices == 'Done':
+        if self._store.is_done:
             pbar.update(len(data))
             pending_indices = []
         else:
-            if len(processed_indices) > 0:
-                pbar.update(len(processed_indices))
+            if len(self._store.processed_indices) > 0:
+                pbar.update(len(self._store.processed_indices))
 
-            pending_indices = [idx for idx in range(len(data)) if idx not in processed_indices]
+            pending_indices = [idx for idx in range(len(data)) if idx not in self._store.processed_indices]
 
         if not pending_indices:
             pbar.close()
@@ -365,7 +368,8 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
         res = []
 
         if self._overwrote('forward_batch_input'):
-            if self._store.save_data and self._store.resume and 'Done' in self._store.load_progress():
+            self._store.load_progress()
+            if self._store.save_data and self._store.resume and self._store.is_done:
                 LOG.warning(f'skip {self.__class__.__name__} and load data from {self._store.save_path}')
                 res = self._store.load_results()
             else:

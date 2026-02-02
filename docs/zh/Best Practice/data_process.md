@@ -126,14 +126,14 @@ def process_deduplicate(data:List[dict], input_key='content'):
 
 ```python
 class WordTableFilter:
-    def __init__(self, world_table, input_key='content', **kwargs):
+    def __init__(self, word_table, input_key='content', **kwargs):
         super().__init__(**kwargs)
-        self.world_table = world_table
+        self.word_table = word_table
         self.input_key = input_key
 
     def forward(self, data: dict):
         content = data.get(self.input_key, '')
-        for word in self.world_table:
+        for word in self.word_table:
             if word in content:
                 data['filtered'] = True
                 return data

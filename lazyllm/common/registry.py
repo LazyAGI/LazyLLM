@@ -192,7 +192,8 @@ class Register(object):
             f = LazyLLMRegisterMetaClass.all_clses[cls.lower()].__getattr__(func_name)
             f.__name__ = func_name
             setattr(f, rewrite_func, bind_to_instance(func))
-            [setattr(f, k, v) for k, v in kwargs.items()]
+            for k, v in kwargs.items():
+                setattr(f, k, v)
             return func
         return impl
 
