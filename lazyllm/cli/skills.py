@@ -6,7 +6,7 @@ from lazyllm import LOG
 from pathlib import Path
 from dataclasses import dataclass
 
-DEFAULT_SKILL_REPO = 'https://github.com/chenhao0205/lazyllm-skill'
+DEFAULT_SKILL_REPO = 'https://github.com/LazyAGI/LazyLLM'
 ATOMGIT_SKILL_REPO = 'https://atomgit.com/LazyAGI/LazyLLM'
 GITEE_SKILL_REPO = 'https://gitee.com/lazy-agi/LazyLLM'
 
