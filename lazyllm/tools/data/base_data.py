@@ -198,7 +198,7 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
         return getattr(self.__class__, f) is not getattr(__class__, f) or \
             getattr(self.__class__, '__reg_overwrite__', None) == f
 
-    def forward(self, input, **kwargs):
+    def forward(self, input_data, **kwargs):
         raise NotImplementedError()
 
     def forward_batch_input(self, inputs, **kwargs):

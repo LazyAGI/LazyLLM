@@ -214,5 +214,4 @@ class Register(object):
         return impl
 
     def new_group(self, group_name):
-        exec('class LazyLLM{name}Base(self.basecls):\n    pass\n'.format(name=group_name))
-        return locals()[f'LazyLLM{group_name}Base']
+        return type(f'LazyLLM{group_name}Base', (self.basecls,), {})
