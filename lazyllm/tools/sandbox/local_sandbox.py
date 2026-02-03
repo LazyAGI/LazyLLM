@@ -67,7 +67,48 @@ class LocalSandbox(SandboxBase):
             'stderr': stderr,
         }
 
-    def _execute(self, code: str, input_files: Optional[List[str]] = None, output_files: Optional[List[str]] = None) -> Union[Dict[str, Any], str]:
+    def _copy_input_files(
+        self,
+        input_files: List[str],
+        temp_dir: str,
+    ) -> None:
+        for file_path in input_files:
+            try:
+                shutil.copy(file_path, temp_dir)
+            except Exception as e:
+                LOG.warning(
+                    f'LocalSandbox: failed to copy input file {file_path!r} '
+                    f'to temp dir {temp_dir!r}: {e}'
+                )
+
+    def _collect_output_files(
+        self,
+        temp_dir: str,
+        output_files: List[str],
+    ) -> List[str]:
+        collected: List[str] = []
+        for out_file in output_files:
+            src_path = os.path.join(temp_dir, os.path.basename(out_file))
+            dst_path = os.path.join(
+                self._output_dir_path, os.path.basename(out_file)
+            )
+            try:
+                if os.path.exists(src_path):
+                    shutil.move(src_path, dst_path)
+                    collected.append(dst_path)
+            except Exception as e:
+                LOG.warning(
+                    f'LocalSandbox: failed to move output file {src_path!r} '
+                    f'to {dst_path!r}: {e}'
+                )
+        return collected
+
+    def _execute(
+        self,
+        code: str,
+        input_files: Optional[List[str]] = None,
+        output_files: Optional[List[str]] = None,
+    ) -> Union[Dict[str, Any], str]:
         is_safe, safety_msg = self._check_code_safety(code)
         if not is_safe:
             return safety_msg
@@ -78,11 +119,9 @@ class LocalSandbox(SandboxBase):
             script_path = os.path.join(temp_dir, '_script.py')
             with open(script_path, 'w', encoding='utf-8') as f:
                 f.write(code)
-            for file_path in input_files:
-                try:
-                    shutil.copy(file_path, temp_dir)
-                except Exception as e:
-                    LOG.warning(f"LocalSandbox: failed to copy input file {file_path!r} to temp dir {temp_dir!r}: {e}")
+
+            if input_files:
+                self._copy_input_files(input_files, temp_dir)
 
             env = os.environ.copy()
             env['HOME'] = temp_dir
@@ -91,17 +130,10 @@ class LocalSandbox(SandboxBase):
             result = self._run_in_subprocess(
                 script_path, cwd=temp_dir, env=env
             )
-            if output_files:
-                result['output_files'] = []
-                for out_file in output_files:
-                    src_path = os.path.join(temp_dir, os.path.basename(out_file))
-                    dst_path = os.path.join(self._output_dir_path, os.path.basename(out_file))
-                    try:
-                        if os.path.exists(src_path):
-                            shutil.move(src_path, dst_path)
-                            result['output_files'].append(dst_path)
-                    except Exception as e:
-                        LOG.warning(f"LocalSandbox: failed to move output file {src_path!r} to {dst_path!r}: {e}")
+            if output_files and (files := result.pop('files', None)):
+                result['output_files'] = self._collect_output_files(
+                    temp_dir, files
+                )
             return result
         except subprocess.TimeoutExpired:
             return f'Execution timed out after {self._timeout} seconds'
