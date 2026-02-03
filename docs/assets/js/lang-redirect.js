@@ -1,19 +1,23 @@
 document.addEventListener("DOMContentLoaded", function() {
   console.log("[i18n] Language redirect initialized");
 
-  const currentUrl = new URL(window.location.href);
-  const currentPath = currentUrl.pathname;
-  const currentHash = currentUrl.hash;  // #xxxx
-  const currentSearch = currentUrl.search; // ?key=value
+  const routeMap = {
+    'en': 'en',
+    'zh': 'zh-cn'
+  };
 
-  const currentLang = currentPath.startsWith('/zh-cn/') ? 'zh' : 
-                     currentPath.startsWith('/en/') ? 'en' : 
-                     'default';
+  const currentPath = window.location.pathname;
+  const pathParts = currentPath.split('/');
+  
+  const currentLangSegment = pathParts[1];
 
   document.querySelectorAll('a[lang], a[hreflang]').forEach(link => {
     const targetLang = link.getAttribute('lang') || link.getAttribute('hreflang');
+    const targetSegment = routeMap[targetLang];
 
-    if (targetLang === currentLang) {
+    if (!targetSegment) return;
+
+    if (targetSegment === currentLangSegment) {
       link.addEventListener('click', (e) => {
         e.preventDefault();
         console.log(`[i18n] Blocked redundant switch to ${targetLang}`);
@@ -21,22 +25,17 @@ document.addEventListener("DOMContentLoaded", function() {
       return;
     }
 
-    const newUrl = new URL(link.href, window.location.origin);
+    const newPathParts = [...pathParts];
+    if (newPathParts.length > 1) {
+        newPathParts[1] = targetSegment;
 
-    if (currentPath.startsWith('/zh-cn/')) {
-      newUrl.pathname = currentPath.replace('/zh-cn/', '/en/');
-    } 
-    else if (currentPath.startsWith('/en/')) {
-      newUrl.pathname = currentPath.replace('/en/', '/zh-cn/');
+        const newUrl = new URL(newPathParts.join('/'), window.location.origin);
+
+        newUrl.search = window.location.search;
+        newUrl.hash = window.location.hash;
+
+        link.href = newUrl.toString();
+        console.log(`[i18n] Converted to: ${newUrl}`);
     }
-    else {
-      newUrl.pathname = targetLang === 'en' ? '/en/' : '/zh-cn/';
-    }
-
-    newUrl.search = currentSearch;
-    newUrl.hash = currentHash;
-
-    link.href = newUrl.toString();
-    console.log(`[i18n] Converted to: ${newUrl}`);
   });
 });
