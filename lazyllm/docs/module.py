@@ -3264,3 +3264,109 @@ Note:
     - This module automatically downloads generated images to local files
     - The returned result contains file path information for easy subsequent processing
 ''')
+
+add_chinese_doc('llms.onlinemodule.supplier.gemini.GeminiChat', '''\
+GeminiChat 是 Google Gemini系列模型的在线聊天模块，继承自 OnlineChatModuleBase。
+
+提供与Google Gemini系列大语言模型交互的接口，支持对话生成、文件处理以及模型微调等功能。支持多种模型，包括视觉语言模型（VLM）。
+
+Args:
+    base_url (str): API 基础 URL，默认为 "https://generativelanguage.googleapis.com/v1beta"。
+    model (str): 使用的模型名称，默认为 "gemini-2.5-flash"。
+    api_key (Optional[str]): 访问 Gemini 的 API Key，若未提供则从 lazyllm 配置中读取。
+    stream (bool): 是否开启流式输出，默认为 True。
+    return_trace (bool): 是否返回调试追踪信息，默认为 False。
+    **kwargs: 其他传递给 OnlineChatModuleBase 的参数。
+
+功能特点:
+    1. 支持多种大语言模型，包括通用对话模型和视觉语言模型
+    2. 支持流式输出，提升用户体验
+    3. 集成文件处理功能，支持微调数据格式验证和转换
+    4. 内置系统提示："You are an intelligent assistant developed by Google. You are a helpful assistant."
+    5. 支持 API Key 验证，确保服务安全性
+''')
+
+add_english_doc('llms.onlinemodule.supplier.gemini.GeminiChat', '''\
+GeminiChat is an online chat module for Google Gemini series models, inheriting from OnlineChatModuleBase.
+
+Provides an interface to interact with Google's large language models, supporting chat generation, file handling, and model fine-tuning. Supports multiple models including Vision-Language Models (VLM).
+
+Args:
+    base_url (str): Base URL for the API, defaults to "https://generativelanguage.googleapis.com/v1beta".
+    model (str): Name of the model to use, defaults to "gemini-2.5-flash".
+    api_key (Optional[str]): API key for accessing Gemini service. If not provided, it is read from lazyllm config.
+    stream (bool): Whether to enable streaming output, defaults to True.
+    return_trace (bool): Whether to return debug trace information, defaults to False.
+    **kwargs: Additional parameters passed to OnlineChatModuleBase.
+
+Features:
+    1. Supports multiple large language models, including general chat models and vision-language models
+    2. Supports streaming output for better user experience
+    3. Integrated file handling functionality, supporting fine-tuning data format validation and conversion
+    4. Built-in system prompt: "You are an intelligent assistant developed by Google. You are a helpful assistant."
+    5. Supports API key validation to ensure service security
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.gemini.GeminiText2Image', '''\
+Qwen文本生成图像模块和图像编辑模块，继承自 LazyLLMOnlineText2ImageModuleBase，封装了调用 gemini-2.5-flash-image 模型生成图像的能力和调用 nano-banana-pro-preview 模型进行图像编辑的能力。  
+支持根据文本提示生成指定数量和分辨率的图像，支持图像编辑，并可设置负面提示、随机种子及扩展提示功能。
+
+Args:
+    model (Optional[str]): 使用的 Gemini 模型名称，默认从配置 'gemini_text2image_model_name' 获取，若未设置则使用 "gemini-2.5-flash-image"。
+    api_key (Optional[str]): 调用 Gemini 模型服务的 API Key。
+    return_trace (bool): 是否返回调试追踪信息，默认为 False。
+    **kwargs: 其他传递给 GeminiText2Image 的参数。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.gemini.GeminiText2Image', '''\
+Gemini Text-to-Image module and Image-Edit module, inheriting from LazyLLMOnlineText2ImageModuleBase, encapsulates the functionality to generate images using the Gemini "gemini-2.5-flash-image" model and to edit images using the "nano-banana-pro-preview" model.  
+It supports generating a specified number of images with given resolution based on a text prompt, and allows setting negative prompts, random seeds, and prompt extension.
+
+Args:
+    model (Optional[str]): Name of the Gemini model to use, default is taken from config 'gemini_text2image_model_name', or "gemini-2.5-flash-image" if not set.
+    api_key (Optional[str]): API key for accessing Gemini model service.
+    return_trace (bool): Whether to return debug trace information, default is False.
+    **kwargs: Additional parameters passed to GeminiText2Image.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.claude.ClaudeChat', '''\
+ClaudeChat 是 Anthropic 公司 Claude系列模型的在线聊天模块，继承自 OnlineChatModuleBase。
+
+提供与Anthropic Claude系列大语言模型交互的接口，支持对话生成、文件处理以及模型微调等功能。支持多种模型，包括视觉语言模型（VLM）。
+
+Args:
+    base_url (str): API 基础 URL，默认为 "https://api.anthropic.com/v1"。
+    model (str): 使用的模型名称，默认为 "claude-4-5-sonnet-latest"。
+    api_key (Optional[str]): 访问 Claude 的 API Key，若未提供则从 lazyllm 配置中读取。
+    stream (bool): 是否开启流式输出，默认为 True。
+    return_trace (bool): 是否返回调试追踪信息，默认为 False。
+    **kwargs: 其他传递给 OnlineChatModuleBase 的参数。
+
+功能特点:
+    1. 支持多种大语言模型，包括通用对话模型和视觉语言模型
+    2. 支持流式输出，提升用户体验
+    3. 集成文件处理功能，支持微调数据格式验证和转换
+    4. 内置系统提示："You are an intelligent assistant developed by Anthropic. You are a helpful assistant."
+    5. 支持 API Key 验证，确保服务安全性
+''')
+
+add_english_doc('llms.onlinemodule.supplier.gemini.ClaudeChat', '''\
+ClaudeChat is an online chat module for Anthropic Claude series models, inheriting from OnlineChatModuleBase.
+
+Provides an interface to interact with Anthropic's large language models, supporting chat generation, file handling, and model fine-tuning. Supports multiple models including Vision-Language Models (VLM).
+
+Args:
+    base_url (str): Base URL for the API, defaults to "https://api.anthropic.com/v1".
+    model (str): Name of the model to use, defaults to "claude-4-5-sonnet-latest".
+    api_key (Optional[str]): API key for accessing Claude service. If not provided, it is read from lazyllm config.
+    stream (bool): Whether to enable streaming output, defaults to True.
+    return_trace (bool): Whether to return debug trace information, defaults to False.
+    **kwargs: Additional parameters passed to OnlineChatModuleBase.
+
+Features:
+    1. Supports multiple large language models, including general chat models and vision-language models
+    2. Supports streaming output for better user experience
+    3. Integrated file handling functionality, supporting fine-tuning data format validation and conversion
+    4. Built-in system prompt: "You are an intelligent assistant developed by Anthropic. You are a helpful assistant."
+    5. Supports API key validation to ensure service security
+''')
