@@ -29,10 +29,6 @@ struct NodeGroup {
 
 class DocumentStore : public AdaptorBaseWrapper {
 public:
-    // RAG system metadata keys
-    static constexpr std::string_view RAG_KB_ID_KEY = "kb_id";
-    static constexpr std::string_view RAG_DOC_ID_KEY = "docid";
-
     DocumentStore() = delete;
     explicit DocumentStore(
         const pybind11::object& store,
@@ -55,6 +51,29 @@ public:
         auto created = std::make_shared<DocumentStore>(store, map);
         cache[key] = created;
         return created;
+    }
+
+    DocNode::Children get_node_children(const DocNode* node) const {
+        DocNode::Children out;
+        auto& kb_id = std::any_cast<std::string&>(node->_p_global_metadata->at(std::string(RAG_KEY_KB_ID)));
+        auto& doc_id = std::any_cast<std::string&>(node->_p_global_metadata->at(std::string(RAG_KEY_DOC_ID)));
+        auto& group_name = node->get_group_name();
+        for(auto& [current_group_name, group] : _node_groups_map) {
+            if (group.parent != group_name) continue;
+            if (!std::any_cast<bool>(call("is_group_active", {{"group", current_group_name}}))) continue;
+            auto nodes_in_group = std::any_cast<std::vector<DocNode*>>(call("get_nodes", {
+                {"group_name", current_group_name},
+                {"kb_id", kb_id},
+                {"doc_ids", std::vector<std::string>({doc_id})}
+            }));
+
+            std::vector<DocNode*> children;
+            children.reserve(nodes_in_group.size());
+            for (auto* n : nodes_in_group)
+                if (n->get_parent_node() == node) children.push_back(n);
+            out[current_group_name] = children;
+        }
+        return out;
     }
 
 private:
@@ -82,6 +101,9 @@ private:
                 pybind11::arg("kb_id") = std::any_cast<std::string>(args.at("kb_id")),
                 pybind11::arg("doc_ids") = std::vector<std::string>({std::any_cast<std::string>(args.at("doc_id"))})
             ).cast<std::vector<DocNode*>>();
+        }
+        else if (func_name == "get_node_children") {
+            return get_node_children(std::any_cast<DocNode*>(args.at("node")));
         }
 
         throw std::runtime_error("Unknown DocumentStore function: " + func_name);

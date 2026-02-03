@@ -22,7 +22,7 @@ public:
         const std::unordered_map<std::string, std::any>& args) const override final
     {
         pybind11::gil_scoped_acquire gil;
-        pybind11::object func = _py_obj.attr(func_name.c_str());
+        pybind11::object func = pybind11::getattr(_py_obj, func_name.c_str(), pybind11::none());
         return call_impl(func_name, func, args);
     }
 

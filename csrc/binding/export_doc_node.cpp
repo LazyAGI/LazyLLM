@@ -39,10 +39,10 @@ lazyllm::DocNode init(
         }
         store_adaptor = lazyllm::DocumentStore::from_store(store, node_groups_map);
 
-        auto kb_id = std::any_cast<std::string>((*global_metadata)[
-            std::string(lazyllm::DocumentStore::RAG_KB_ID_KEY)]);
-        auto doc_id = std::any_cast<std::string>((*global_metadata)[
-            std::string(lazyllm::DocumentStore::RAG_DOC_ID_KEY)]);
+        auto kb_id = std::any_cast<std::string>((*global_metadata).at(
+            std::string(lazyllm::RAG_KEY_KB_ID)));
+        auto doc_id = std::any_cast<std::string>((*global_metadata).at(
+            std::string(lazyllm::RAG_KEY_DOC_ID)));
 
         if (const auto* parent_uid = std::get_if<std::string>(&*parent)) {
             p_parent_node = std::any_cast<lazyllm::DocNode*>(store_adaptor->call("get_node",
@@ -53,18 +53,10 @@ lazyllm::DocNode init(
     }
 
     std::string raw_text;
-    if (content) {
-        if (const auto* single_text = std::get_if<std::string>(&*content))
-            raw_text = std::move(*single_text);
-        else
-            raw_text = lazyllm::JoinLines(std::get<std::vector<std::string>>(*content));
-    }
-    else if (text){
-        raw_text = std::move(*text);
-    }
+
 
     lazyllm::DocNode node(
-        std::string_view(raw_text),
+        "",
         group.value_or(""),
         uid.value_or(""),
         p_parent_node,
@@ -74,7 +66,15 @@ lazyllm::DocNode init(
     );
     if (store_adaptor) node.set_store(store_adaptor);
     if (embedding) node.set_embedding_vec(*embedding);
-    if (!raw_text.empty()) node.set_root_text(std::move(raw_text));
+    if (content) {
+        if (const auto* s = std::get_if<std::string>(&*content))
+            node.set_root_text(std::move(*s));
+        else
+            node.set_root_texts(std::get<std::vector<std::string>>(*content));
+    }
+    else if (text){
+        node.set_root_text(std::move(*text));
+    }
 
     return node;
 }
@@ -97,7 +97,9 @@ void exportDocNode(py::module& m) {
             py::keep_alive<1, 7>() // Keep store alive
         )
         .def_property_readonly("uid", &lazyllm::DocNode::uid)
-        number
+    @property
+    def number(self) -> int:
+        return self._metadata.get('lazyllm_store_num', 0)
         .def("set_text", &lazyllm::DocNode::set_text, py::arg("text"))
         .def("get_text", &lazyllm::DocNode::get_text);
 }

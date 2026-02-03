@@ -9,11 +9,22 @@
 
 namespace lazyllm {
 
-std::string JoinLines(const std::vector<std::string>& lines) {
+// RAG system metadata keys
+constexpr std::string_view RAG_KEY_KB_ID = "kb_id";
+constexpr std::string_view RAG_KEY_DOC_ID = "docid";
+constexpr std::string_view RAG_KEY_DOC_PATH = "lazyllm_doc_path";
+constexpr std::string_view RAG_KEY_DOC_FILE_NAME = "file_name";
+constexpr std::string_view RAG_KEY_DOC_FILE_TYPE = "file_type";
+constexpr std::string_view RAG_KEY_DOC_FILE_SIZE = "file_size";
+constexpr std::string_view RAG_KEY_DOC_CREATION_DATE = "creation_date";
+constexpr std::string_view RAG_KEY_DOC_LAST_MODIFIED_DATE = "last_modified_date";
+constexpr std::string_view RAG_KEY_DOC_LAST_ACCESSED_DATE = "last_accessed_date";
+
+std::string JoinLines(const std::vector<std::string>& lines, char delim = '\n') {
     if (lines.empty()) return {};
     std::string out = lines.front();
     for (size_t i = 1; i < lines.size(); ++i) {
-        out += '\n';
+        out += delim;
         out += lines[i];
     }
     return out;
