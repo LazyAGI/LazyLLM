@@ -123,6 +123,10 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def execute_in_sandbox(self) -> bool:
         return self._execute_in_sandbox
 
+    @execute_in_sandbox.setter
+    def execute_in_sandbox(self, value: bool):
+        self._execute_in_sandbox = value
+
     @property
     def params_schema(self) -> Type[BaseModel]:
         return self._params_schema
@@ -198,7 +202,7 @@ result = tool(kwargs)
 print(result)  # noqa print
 '''
 
-register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool')
+register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool', allowed_parameter=['execute_in_sandbox'])
 if 'tool' not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group('tool')
 
