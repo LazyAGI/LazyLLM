@@ -9,11 +9,11 @@ from typing import Dict, List, Optional, Callable, Union
 import lazyllm
 from lazyllm import LOG
 from ..doc_node import DocNode
-from .readerBase import LazyLLMReaderBase
+from .readerBase import _RichReader
 
 lazyllm.config.add('paddleocr_api_key', str, None, 'PADDLEOCR_API_KEY', description='The API key for PaddleOCR')
 
-class PaddleOCRPDFReader(LazyLLMReaderBase):
+class PaddleOCRPDFReader(_RichReader):
     def __init__(self, url: str = None, api_key: str = None,
                  callback: Optional[Callable[[List[dict], Path, dict], List[DocNode]]] = None,
                  format_block_content: bool = True,
@@ -24,7 +24,7 @@ class PaddleOCRPDFReader(LazyLLMReaderBase):
                  post_func: Optional[Callable] = None,
                  return_trace: bool = True,
                  images_dir: str = None):
-        super().__init__(return_trace=return_trace)
+        super().__init__(post_func=post_func, split_doc=split_doc, return_trace=return_trace)
         api_key = api_key or lazyllm.config['paddleocr_api_key']
         if not url and not api_key:
             raise ValueError('Either url or api_key must be provided')
@@ -44,8 +44,6 @@ class PaddleOCRPDFReader(LazyLLMReaderBase):
         self._format_block_content = format_block_content
         self._use_layout_detection = use_layout_detection
         self._use_chart_recognition = use_chart_recognition
-        self._split_doc = split_doc
-        self._post_func = post_func
         if images_dir:
             self._images_dir = Path(images_dir)
             self._images_dir.mkdir(exist_ok=True)
@@ -65,13 +63,6 @@ class PaddleOCRPDFReader(LazyLLMReaderBase):
             elements = self._parse_pdf_elements(file)
             docs = self._build_nodes(elements, file, extra_info)
 
-            if self._post_func:
-                docs = self._post_func(docs)
-                assert isinstance(docs, list), f'Expected list, got {type(docs)}, please check your post function'
-                for node in docs:
-                    assert isinstance(node, DocNode), f'Expected DocNode, got {type(node)}, \
-                        please check your post function'
-                    node.global_metadata = extra_info
             if not docs:
                 LOG.warning(f'[PaddleOCRPDFReader] No elements found in PDF: {file}')
             return docs

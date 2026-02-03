@@ -116,7 +116,7 @@ class SiliconFlowText2Image(LazyLLMOnlineText2ImageModuleBase):
                 if i == 0:
                     payload['image'] = reference_image_data
                 elif i > 0:
-                    payload[f'image{i+1}'] = reference_image_data
+                    payload[f'image{i + 1}'] = reference_image_data
         result = self._make_request(self._endpoint, payload)
         image_urls = [item['url'] for item in result.get('data', [])]
         if not image_urls:

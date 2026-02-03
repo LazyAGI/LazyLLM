@@ -81,7 +81,7 @@ async def _create_proxy_server(remote_app): # noqa C901
     response = await remote_app.initialize()
     capabilities = response.capabilities
 
-    server_instance: mcp.server.Server[Any] = mcp.server.Server(name=response.serverInfo.name)
+    server_instance: mcp.server.Server[Any] = mcp.server.Server(name=response.serverInfo.name)  # noqa NID003
 
     if capabilities.prompts:
         async def _list_prompts(_: Any) -> mcp.types.ServerResult:

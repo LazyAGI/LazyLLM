@@ -38,6 +38,7 @@
   - FunctionCall: Best Practice/functionCall.md
   - Stream: Best Practice/stream.md
   - AutoRegistry: Best Practice/Features/AutoRegistry.md
+  - Data Processing: Best Practice/data_process.md
 - Advanced Topics:
   - Contribution: Advanced Topics/contribution.md
   - Changelog: Advanced Topics/changelog.md
@@ -53,6 +54,7 @@
   - Hook: API Reference/hook.md
   - patch: API Reference/patch.md
   - Prompt: API Reference/prompt_template.md
+  - Data Processing: API Reference/data_process.md
 - Tutorials:
   - Overview: Tutorial/index.md
   - 1. RAG Fundamentals: Tutorial/1.en.md
