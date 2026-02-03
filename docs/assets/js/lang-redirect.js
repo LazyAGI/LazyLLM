@@ -6,7 +6,8 @@ document.addEventListener("DOMContentLoaded", function() {
     'zh': 'zh-cn'
   };
 
-  const currentPath = window.location.pathname;
+  // Ensure we work with decoded path to avoid %20 doubling issues or mismatches
+  const currentPath = decodeURIComponent(window.location.pathname);
 
   document.querySelectorAll('a[lang], a[hreflang]').forEach(link => {
     const targetLang = link.getAttribute('lang') || link.getAttribute('hreflang');
@@ -23,9 +24,11 @@ document.addEventListener("DOMContentLoaded", function() {
             console.log(`[i18n] Already on language: ${targetLang}`);
           });
         } else {
-          // Replace only the language segment prefix, keeping the rest of the path (version, page, etc) intact
+          // Replace language segment in the decoded path
           const newPath = currentPath.replace(`/${segment}/`, `/${targetSegment}/`);
           
+          // Construct full URL
+          // new URL() will handle encoding special characters back to %20 etc. correctly
           const newUrl = new URL(newPath, window.location.origin);
           newUrl.search = window.location.search;
           newUrl.hash = window.location.hash;
