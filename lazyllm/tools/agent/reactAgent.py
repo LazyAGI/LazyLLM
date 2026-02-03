@@ -1,8 +1,9 @@
 from lazyllm.module import ModuleBase
 from lazyllm import loop, locals
 from .functionCall import FunctionCall
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Optional
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
+from lazyllm.tools.sandbox.sandbox_base import SandboxBase
 
 INSTRUCTION = f'''You are designed to help with a variety of tasks, from answering questions to providing \
 summaries to other types of analyses.
@@ -38,7 +39,8 @@ Below is the current conversation consisting of interleaving human and assistant
 
 class ReactAgent(ModuleBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False,
-                 prompt: str = None, stream: bool = False, return_last_tool_calls: bool = False):
+                 prompt: str = None, stream: bool = False, return_last_tool_calls: bool = False,
+                 sandbox: Optional[SandboxBase] = None):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
         self._return_last_tool_calls = return_last_tool_calls
@@ -46,8 +48,8 @@ class ReactAgent(ModuleBase):
         if self._return_last_tool_calls:
             prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
         assert llm and tools, 'llm and tools cannot be empty.'
-        self._agent = loop(FunctionCall(llm, tools, _prompt=prompt, return_trace=return_trace, stream=stream),
-                           stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        fc = FunctionCall(llm, tools, _prompt=prompt, return_trace=return_trace, stream=stream, sandbox=sandbox)
+        self._agent = loop(fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
 
     def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
         ret = self._agent(query, llm_chat_history or [])

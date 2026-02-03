@@ -3,8 +3,9 @@ import json5 as json
 import lazyllm
 import docstring_parser
 from lazyllm.module import ModuleBase
-from lazyllm.common import LazyLLMRegisterMetaClass, compile_func
-from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Set
+from lazyllm.module.utils import module_tool_light_reduce
+from lazyllm.common import LazyLLMRegisterMetaClass, compile_func, kwargs
+from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Set, Optional
 import inspect
 from pydantic import create_model, BaseModel, ValidationError
 from lazyllm import LOG
@@ -50,18 +51,22 @@ def _check_return_type_is_the_same(doc_type_hints, func_type_hints) -> None:
 
 # ---------------------------------------------------------------------------- #
 
+@module_tool_light_reduce
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
-    def __init__(self, verbose: bool = False, return_trace: bool = True):
+    def __init__(self, verbose: bool = False, return_trace: bool = True, execute_in_sandbox: bool = True):
         super().__init__(return_trace=return_trace)
         self._verbose = verbose
-        self._name = self.apply.__name__\
-            if hasattr(self.apply, '__name__') and self.apply.__name__ is not None\
-            else (_ for _ in ()).throw(ValueError('Function must have a name.'))
+        func = getattr(self.apply, '__func__', self.apply)
+        if callable(func) and getattr(func, '__closure__', None):
+            self._name = getattr(func, '__name__', None)
+        else:
+            self._name = self.__class__.__name__
         self._description = self.apply.__doc__\
             if hasattr(self.apply, '__doc__') and self.apply.__doc__ is not None\
             else (_ for _ in ()).throw(ValueError('Function must have a docstring'))
         # strip space(s) and newlines before and after docstring, as RewooAgent requires
         self._description = self._description.strip(' \n')
+        self._execute_in_sandbox = execute_in_sandbox
 
         self._params_schema = self._load_function_schema(self.__class__.apply)
 
@@ -101,6 +106,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
                    if param.default is not inspect.Parameter.empty
                    else ...)
             for name, param in signature.parameters.items()
+            if name != 'self'
         }
 
         return create_model(self._name, **fields)
@@ -112,6 +118,10 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     @property
     def description(self):
         return self._description
+
+    @property
+    def execute_in_sandbox(self) -> bool:
+        return self._execute_in_sandbox
 
     @property
     def params_schema(self) -> Type[BaseModel]:
@@ -172,6 +182,22 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         return ret
 
+    def to_sandbox_code(self, tool_arguments: Optional[Dict[str, Any]] = None, **kwargs: Any) -> str:
+        if tool_arguments is not None:
+            if kwargs:
+                raise ValueError('Cannot pass both tool_arguments and keyword arguments.')
+            kwargs = tool_arguments
+        args_dump = lazyllm.dump_obj(kwargs)
+        tool_dump = lazyllm.dump_obj(self)
+        return f'''
+import base64
+import cloudpickle
+tool = cloudpickle.loads(base64.b64decode({repr(tool_dump)}.encode('utf-8')))
+kwargs = cloudpickle.loads(base64.b64decode({repr(args_dump)}.encode('utf-8')))
+result = tool(kwargs)
+print(result)
+'''
+
 register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool')
 if 'tool' not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group('tool')
@@ -183,11 +209,12 @@ TOOL_CALL_FORMAT_EXAMPLE = (
 
 
 class ToolManager(ModuleBase):
-    def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False):
+    def __init__(self, tools: List[Union[str, Callable]], return_trace: bool = False, sandbox=None):
         super().__init__(return_trace=return_trace)
         self._tools = self._load_tools(tools)
         self._format_tools()
         self._tools_desc = self._transform_to_openai_function()
+        self._sandbox = sandbox
 
     def _load_tools(self, tools: List[Union[str, Callable]]):
         if 'tmp_tool' not in LazyLLMRegisterMetaClass.all_clses:
@@ -196,7 +223,10 @@ class ToolManager(ModuleBase):
         _tools = []
         for element in tools:
             if isinstance(element, str):
-                _tools.append(getattr(lazyllm.tool, element)())
+                tool_cls = getattr(lazyllm.tool, element)
+                _tools.append(tool_cls() if isinstance(tool_cls, type) else tool_cls)
+            elif isinstance(element, ModuleTool):
+                _tools.append(element)
             elif isinstance(element, Callable):
                 # just to convert `element` to the internal type in `Register`
                 register('tmp_tool')(element)
@@ -325,13 +355,27 @@ class ToolManager(ModuleBase):
         ]
 
         tools_calls = []
+        call_arguments = []
         for idx, tool in enumerate(tools):
             name = tool['function']['name']
-            tools_calls.append(
-                self._tool_call[name] if self._validate_tool(name, tool_arguments[idx])
-                else (lambda *_, name=name: f'Tool [{name}] parameters error.')
-            )
+            if not self._validate_tool(name, tool_arguments[idx]):
+                tools_calls.append(lambda *_, name=name: f'Tool [{name}] parameters error.')
+                call_arguments.append(tool_arguments[idx])
+            elif self._sandbox and self._tool_call[name].execute_in_sandbox:
+                tools_calls.append(self._sandbox)
+                arg = tool_arguments[idx]
+                has_io = isinstance(arg, dict) and ('input_files' in arg or 'output_files' in arg)
+                if has_io:
+                    input_files = arg.get('input_files', [])
+                    output_files = arg.get('output_files', [])
+                    code = self._tool_call[name].to_sandbox_code(arg)
+                    call_arguments.append(kwargs(code=code, input_files=input_files, output_files=output_files))
+                else:
+                    call_arguments.append(self._tool_call[name].to_sandbox_code(arg))
+            else:
+                tools_calls.append(self._tool_call[name])
+                call_arguments.append(tool_arguments[idx])
 
         tool_diverter = lazyllm.diverter(tuple(tools_calls))
-        tool_results = tool_diverter(tuple(tool_arguments))
+        tool_results = tool_diverter(tuple(call_arguments))
         return tool_results

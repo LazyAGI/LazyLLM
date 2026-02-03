@@ -1,9 +1,10 @@
 from lazyllm.module import ModuleBase
 from lazyllm import pipeline, LOG, bind, Color, locals, ifs
 from .toolsManager import ToolManager
-from typing import List, Dict, Union, Callable
+from typing import List, Dict, Union, Callable, Optional
 import re
 import json
+from lazyllm.tools.sandbox.sandbox_base import SandboxBase
 
 P_PROMPT_PREFIX = ('For the following tasks, make plans that can solve the problem step-by-step. '
                    'For each plan, indicate which external tool together with tool input to retrieve '
@@ -33,7 +34,8 @@ S_PROMPT_SUFFIX = ('\nNow begin to solve the task or problem. Respond with '
 class ReWOOAgent(ModuleBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[Union[str, Callable]] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
-                 return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False):
+                 return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False,
+                 sandbox: Optional[SandboxBase] = None):
         super().__init__(return_trace=return_trace)
         self._return_last_tool_calls = return_last_tool_calls
         assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), 'Either specify only llm \
@@ -44,7 +46,7 @@ class ReWOOAgent(ModuleBase):
             prefix='\nI will give a plan first:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
         self._solver = (solve_llm or llm).share(stream=dict(
             prefix='\nI will solve the problem:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
-        self._tools_manager = ToolManager(tools, return_trace=return_trace)
+        self._tools_manager = ToolManager(tools, return_trace=return_trace, sandbox=sandbox)
         with pipeline() as self._agent:
             self._agent.planner_pre_action = self._build_planner_prompt
             self._agent.planner = self._planner
