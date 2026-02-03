@@ -27,19 +27,27 @@ SKILLS_PROMPT = '''
 ## Skills Guide
 You have access to a skills library that encodes specialized workflows and domain knowledge.
 
-{skills_locations}
-
-**Available Skills**
-{skills_list}
-
 ### How to Use Skills (Progressive Disclosure)
 You can see the name/description above, but only fetch a skill’s full instructions when it’s relevant.
 
 1) **Identify relevance**: If a skill’s description matches the task, consider using it.
 2) **Get the skill’s full usage**: Call `get_skill` to retrieve the complete workflow.
-3) **Follow the workflow**: After you obtain the full usage, execute the steps, constraints, and examples in order.
-4) **Load support files only when needed**: Use `read_reference` to read referenced files on demand.
-5) **Run helper scripts only when required**: Use `run_script` with absolute paths and request approval if risky.
+3) **Follow the workflow strictly**: After you obtain the full usage,
+execute the workflow steps, constraints, and examples in order.
+4) **Adapt workflow to the current task**: Before execution, map the workflow
+to the user's actual goal, constraints, and available inputs; do not apply
+steps blindly.
+5) **Load support files only when needed**: Use `read_reference` to read referenced files on demand.
+6) **Run helper scripts only when required**: Use `run_script` with absolute paths and request approval if risky.
+
+### Reference and Script
+- **Reference**: Documentation and guidance files (e.g., design notes,
+  domain rules, templates). Read them with `read_reference` to understand
+  how to execute the workflow correctly.
+- **Script**: Executable helpers provided by the skill. Prefer running these
+  scripts with `run_script` instead of writing new programs from scratch.
+- If a suitable script already exists in the skill, use it first. Only write
+  new code when the existing scripts cannot satisfy the task.
 
 ### When Skills Help
 - The user asks for a structured or repeatable process
@@ -47,7 +55,8 @@ You can see the name/description above, but only fetch a skill’s full instruct
 - The skill provides a proven workflow for complex tasks
 
 ### Script Execution
-Skills may include Python or shell scripts. Run them via `run_script` or `shell_tool`, and always use absolute paths.
+Skills may include Python or shell scripts. Prefer `run_script` for scripts provided by the selected skill.
+Use `shell_tool` only when needed, and always use absolute paths.
 
 ### Example
 User: “Research the latest developments in quantum computing.”
@@ -234,7 +243,58 @@ class SkillManager(ModuleBase):
             selected = list(self._skills_index.keys())
         skills_list = self._format_skills_list(selected)
         skills_locations = self._format_skills_locations()
-        return SKILLS_PROMPT.format(skills_locations=skills_locations, skills_list=skills_list)
+        lines = []
+        lines.append('**Skills Directory**')
+        if skills_locations:
+            lines.append(skills_locations)
+        lines.append('**Available Skills**')
+        lines.append(skills_list if skills_list else '- (none)')
+        return '\n'.join(lines)
+
+    def available_skills_text(self, task: str) -> str:
+        return self.build_prompt(task)
+
+    def render_system_prompt(self, task: str) -> str:
+        available = self.available_skills_text(task)
+        if not available:
+            return ''
+        return f'{SKILLS_PROMPT}\n\n{available}'
+
+    def append_to_prompt(self, prompt: str) -> str:
+        return f'{prompt}\n\n{SKILLS_PROMPT}'
+
+    def wrap_input(self, input, task: str):
+        available = self.available_skills_text(task)
+        if not available:
+            return input
+        if isinstance(input, dict):
+            if 'available_skills' in input:
+                return input
+            ret = dict(input)
+            if 'input' not in ret:
+                ret['input'] = ret.pop('content', task)
+            else:
+                ret.pop('content', None)
+            ret.pop('role', None)
+            ret['available_skills'] = available
+            return ret
+        if isinstance(input, str):
+            return {'input': input, 'available_skills': available}
+        return input
+
+    def sync_history_skills(self, input, workspace: Dict[str, str]) -> None:
+        if isinstance(input, dict) and input.get('available_skills'):
+            workspace['available_skills'] = input['available_skills']
+
+    def inject_history_skills(self, input, workspace: Dict[str, str]):
+        if not isinstance(input, dict):
+            return input
+        available = workspace.get('available_skills')
+        if not available or 'available_skills' in input:
+            return input
+        ret = dict(input)
+        ret['available_skills'] = available
+        return ret
 
     def get_selected_skills(self) -> List[str]:
         self._load_skills_index()

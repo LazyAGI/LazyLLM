@@ -6,6 +6,7 @@ from .toolsManager import register
 from .file_tool import _check_root, _resolve_path
 
 
+@register('builtin_tools')
 @register('tool')
 def download_file(url: str, dst: str, timeout: int = 30, root: Optional[str] = None,
                   allow_unsafe: bool = False) -> dict:

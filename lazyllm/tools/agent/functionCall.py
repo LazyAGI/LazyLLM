@@ -1,6 +1,6 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
-from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text
+from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text, once_wrapper
 from .toolsManager import ToolManager
 from typing import List, Any, Dict, Union, Callable, Optional
 from .base import LazyLLMAgentBase
@@ -41,29 +41,32 @@ class FunctionCall(ModuleBase):
 
     def __init__(self, llm, tools: Optional[List[Union[str, Callable]]] = None, *, return_trace: bool = False,
                  stream: bool = False, _prompt: str = None, _tool_manager: Optional[ToolManager] = None,
-                 _system_prompt_builder: Optional[Callable[[str], str]] = None):
+                 skill_manager=None, workspace: Optional[str] = None):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
             self._tools_manager = ToolManager(tools, return_trace=return_trace)
         else:
             self._tools_manager = _tool_manager
-        self._prompter = ChatPrompter(instruction=_prompt or FC_PROMPT, tools=self._tools_manager.tools_description)
-        self._base_instruction_template = self._prompter._instruction_template
-        if _system_prompt_builder:
-            def _hook(input, history, tools, label):
-                query = ''
-                if isinstance(input, str):
-                    query = input
-                elif isinstance(input, dict):
-                    query = input.get('content', '')
-                extra_prompt = _system_prompt_builder(query)
-                if extra_prompt:
-                    self._prompter._instruction_template = f'{self._base_instruction_template}\n\n{extra_prompt}\n'
-                else:
-                    self._prompter._instruction_template = self._base_instruction_template
-                return input, history, tools, label
-            self._prompter.pre_hook(_hook)
+        self._skill_manager = skill_manager
+        self._workspace = workspace
+        prompt = _prompt or FC_PROMPT
+        if self._workspace:
+            prompt = (
+                f'{prompt}\n\n## Workspace\n'
+                f'- Default workspace: `{self._workspace}`\n'
+                '- Prefer creating/updating files under this workspace.\n'
+                '- Use absolute paths under this workspace when creating files.\n'
+            )
+        if self._skill_manager:
+            prompt = self._skill_manager.append_to_prompt(prompt)
+            self._prompter = ChatPrompter(
+                instruction=prompt,
+                tools=self._tools_manager.tools_description,
+                extra_keys=['available_skills']
+            )
+        else:
+            self._prompter = ChatPrompter(instruction=prompt, tools=self._tools_manager.tools_description)
         self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
         with pipeline() as self._impl:
             self._impl.ins = StreamResponse('Received instruction:', prefix_color=Color.yellow,
@@ -74,10 +77,21 @@ class FunctionCall(ModuleBase):
                                             prefix_color=Color.yellow, color=Color.green, stream=stream)
             self._impl.post_action = self._post_action
 
-    def _build_history(self, input: Union[str, list]):
-        history_idx = len(locals['_lazyllm_agent']['workspace'].setdefault('history', []))
+    def _build_history(self, input: Union[str, dict, list]):
+        workspace = locals['_lazyllm_agent']['workspace']
+        history_idx = len(workspace.setdefault('history', []))
+        if self._skill_manager:
+            self._skill_manager.sync_history_skills(input, workspace)
         if isinstance(input, str):
-            locals['_lazyllm_agent']['workspace']['history'].append({'role': 'user', 'content': input})
+            workspace['history'].append({'role': 'user', 'content': input})
+        elif isinstance(input, dict) and 'input' in input:
+            workspace['history'].append(
+                {'role': 'user', 'content': input.get('input', '')}
+            )
+        elif isinstance(input, dict) and input.get('role') == 'user':
+            workspace['history'].append(
+                {'role': 'user', 'content': input.get('content', '')}
+            )
         elif isinstance(input, dict):
             tool_call_results = [
                 {
@@ -85,15 +99,18 @@ class FunctionCall(ModuleBase):
                     'content': str(tool_call['tool_call_result']),
                     'tool_call_id': tool_call['id'],
                     'name': tool_call['function']['name'],
-                } for tool_call in locals['_lazyllm_agent']['workspace']['tool_call_trace']
+                } for tool_call in workspace['tool_call_trace']
             ]
-            locals['_lazyllm_agent']['workspace']['history'].append(
+            workspace['history'].append(
                 {'role': 'assistant', 'content': input.get('content', ''), 'tool_calls': input.get('tool_calls', [])}
             )
             input = {'input': tool_call_results}
             history_idx += 1
-            locals['_lazyllm_agent']['workspace']['history'].extend(tool_call_results)
-        locals['chat_history'][self._llm._module_id] = locals['_lazyllm_agent']['workspace']['history'][:history_idx]
+            workspace['history'].extend(tool_call_results)
+        chat_history = workspace['history'][:history_idx]
+        locals['chat_history'][self._llm._module_id] = chat_history
+        if self._skill_manager:
+            input = self._skill_manager.inject_history_skills(input, workspace)
         return input
 
     def _post_action(self, llm_output: Dict[str, Any]):
@@ -131,21 +148,25 @@ class FunctionCall(ModuleBase):
 class FunctionCallAgent(LazyLLMAgentBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False,
                  return_last_tool_calls: bool = False,
-                 skills: Union[bool, str, List[str], None] = None, desc: str = ''):
+                 skills: Union[bool, str, List[str], None] = None, desc: str = '',
+                 workspace: Optional[str] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,
-                         skills=skills, desc=desc)
+                         skills=skills, desc=desc, workspace=workspace)
+        prompt = FC_PROMPT
         self._fc = FunctionCall(self._llm, self._tools, return_trace=return_trace, stream=stream,
-                                _tool_manager=self._tools_manager,
-                                _system_prompt_builder=self._build_extra_system_prompt)
-        self._agent = self.build_agent()
+                                _prompt=prompt, _tool_manager=self._tools_manager,
+                                skill_manager=self._skill_manager, workspace=self.workspace)
         self._fc._llm.used_by(self._module_id)
 
+    @once_wrapper(reset_on_pickle=True)
     def build_agent(self):
-        return loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        agent = loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        self._agent = agent
 
     def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
+        query = self._wrap_user_input_with_skills(query)
         if llm_chat_history is not None:
             return (query, llm_chat_history)
         return query

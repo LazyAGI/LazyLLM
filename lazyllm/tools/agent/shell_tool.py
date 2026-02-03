@@ -36,6 +36,7 @@ def _detect_dangerous_command(cmd: str) -> Optional[str]:
     return None
 
 
+@register('builtin_tools')
 @register('tool')
 def shell_tool(cmd: str, cwd: Optional[str] = None, timeout: int = 30,
                env: Optional[Dict[str, str]] = None, allow_unsafe: bool = False) -> dict:

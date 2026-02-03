@@ -2,9 +2,9 @@ import re
 from lazyllm.module import ModuleBase
 from .base import LazyLLMAgentBase
 from lazyllm.components import ChatPrompter
-from lazyllm import loop, pipeline, _0, package, bind, LOG, Color
-from .functionCall import FunctionCall
-from typing import List, Union
+from lazyllm import loop, pipeline, _0, package, bind, LOG, Color, once_wrapper
+from .functionCall import FunctionCall, FC_PROMPT
+from typing import List, Optional, Union
 
 PLANNER_PROMPT = (
     'Let\'s first understand the problem and devise a plan to solve it. '
@@ -40,57 +40,45 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  max_retries: int = 5, return_trace: bool = False, stream: bool = False,
                  return_last_tool_calls: bool = False,
-                 skills: Union[bool, str, List[str], None] = None, desc: str = ''):
+                 skills: Union[bool, str, List[str], None] = None, desc: str = '',
+                 workspace: Optional[str] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,
-                         skills=skills, desc=desc)
+                         skills=skills, desc=desc, workspace=workspace)
         plan_llm, solve_llm = self._normalize_llms(llm, plan_llm, solve_llm)
         self._init_planner_prompter()
         self._plan_llm = plan_llm.share(prompt=self._planner_prompter, stream=self._planner_stream)\
             .used_by(self._module_id)
         self._solve_llm = solve_llm.share().used_by(self._module_id)
+        prompt = FC_PROMPT
         self._fc = FunctionCall(self._solve_llm, tools=self._tools, return_trace=return_trace, stream=stream,
-                                _tool_manager=self._tools_manager,
-                                _system_prompt_builder=self._build_extra_system_prompt)
-        self._agent = self.build_agent()
+                                _prompt=prompt, _tool_manager=self._tools_manager,
+                                skill_manager=self._skill_manager, workspace=self.workspace)
 
     def _normalize_llms(self, llm, plan_llm, solve_llm):
-        if llm is None and plan_llm is None and solve_llm is None:
-            raise ValueError('Either specify llm, or provide plan_llm/solve_llm.')
-        if llm is None:
-            if plan_llm is None:
-                plan_llm = solve_llm
-            if solve_llm is None:
-                solve_llm = plan_llm
-        else:
-            if plan_llm is None:
-                plan_llm = llm
-            if solve_llm is None:
-                solve_llm = llm
+        assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), (
+            'Either specify only llm '
+            'without specify plan and solve, or specify only plan and solve without specifying llm, or specify '
+            'both llm and solve. Other situations are not allowed.'
+        )
         assert self._tools, 'tools cannot be empty.'
+        plan_llm = plan_llm or llm
+        solve_llm = solve_llm or llm
         return plan_llm, solve_llm
 
     def _init_planner_prompter(self):
         planner_prompt = self._build_planner_prompt()
-        self._planner_prompter = ChatPrompter(instruction=planner_prompt)
-        self._planner_base_instruction = self._planner_prompter._instruction_template
+        planner_prompt = self._append_skills_prompt(planner_prompt)
+        planner_extra_keys = ['available_skills'] if self._skill_manager else None
+        self._planner_prompter = ChatPrompter(instruction=planner_prompt, extra_keys=planner_extra_keys)
         self._planner_stream = dict(prefix='I will give a plan first:\n', prefix_color=Color.blue,
                                     color=Color.green) if self._stream else False
 
-        def _planner_hook(input, history, tools, label):
-            query = input if isinstance(input, str) else input.get('content', '') if isinstance(input, dict) else ''
-            extra = self._build_extra_system_prompt(query)
-            if extra:
-                self._planner_prompter._instruction_template = f'{self._planner_base_instruction}\n\n{extra}'
-            else:
-                self._planner_prompter._instruction_template = self._planner_base_instruction
-            return input, history, tools, label
-
-        self._planner_prompter.pre_hook(_planner_hook)
-
+    @once_wrapper(reset_on_pickle=True)
     def build_agent(self):
         with pipeline() as agent:
+            agent.plan_input = self._wrap_user_input_with_skills
             agent.plan = self._plan_llm
             agent.parse = (lambda text, query: package([], '', [v for v in re.split('\n\\s*\\d+\\. ', text)[1:]],
                            query)) | bind(query=agent.input)
@@ -103,7 +91,7 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
                                                                 agent.lp.input[0][3])
 
             agent.final_action = lambda pre, res, steps, query: res
-        return agent
+        self._agent = agent
 
     def _pre_action(self, pre_steps, response, steps, query):
         solver_prompt = SOLVER_PROMPT.format(
@@ -113,7 +101,7 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
         )
         if self._return_last_tool_calls:
             solver_prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
-        return package(solver_prompt, [])
+        return package(self._wrap_user_input_with_skills(solver_prompt), [])
 
     def _build_planner_prompt(self) -> str:
         tools_desc = []

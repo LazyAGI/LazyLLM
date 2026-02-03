@@ -1,5 +1,5 @@
 from .base import LazyLLMAgentBase
-from lazyllm import loop
+from lazyllm import loop, once_wrapper
 from .functionCall import FunctionCall
 from typing import List, Any, Dict, Optional, Union
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
@@ -65,26 +65,27 @@ You are responsible for maintaining correctness, efficiency, and clarity through
 class ReactAgent(LazyLLMAgentBase):
     def __init__(self, llm, tools: Optional[List[str]] = None, max_retries: int = 5, return_trace: bool = False,
                  prompt: str = None, stream: bool = False, return_last_tool_calls: bool = False,
-                 skills: Optional[Union[bool, str, List[str]]] = None, desc: str = ''):
-        super().__init__(llm=llm, tools=tools, max_retries=max_retries,
-                         return_trace=return_trace, stream=stream,
-                         return_last_tool_calls=return_last_tool_calls,
-                         skills=skills, desc=desc)
+                 skills: Optional[Union[bool, str, List[str]]] = None, desc: str = '',
+                 workspace: Optional[str] = None):
+        super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
+                         stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
+                         desc=desc, workspace=workspace)
         prompt = prompt or INSTRUCTION
         if self._return_last_tool_calls:
             prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
         self._assert_llm_tools()
         self._prompt = prompt
-        self._agent = self.build_agent()
 
+    @once_wrapper(reset_on_pickle=True)
     def build_agent(self):
-        return loop(FunctionCall(self._llm, self._tools, _prompt=self._prompt, return_trace=self._return_trace,
-                                 stream=self._stream, _tool_manager=self._tools_manager,
-                                 _system_prompt_builder=self._build_extra_system_prompt),
-                    stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        agent = loop(FunctionCall(self._llm, self._tools, _prompt=self._prompt, return_trace=self._return_trace,
+                                  stream=self._stream, _tool_manager=self._tools_manager,
+                                  skill_manager=self._skill_manager, workspace=self.workspace),
+                     stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        self._agent = agent
 
     def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
-        return (query, llm_chat_history or [])
+        return (self._wrap_user_input_with_skills(query), llm_chat_history or [])
 
     def _post_process(self, ret):
         if isinstance(ret, str):

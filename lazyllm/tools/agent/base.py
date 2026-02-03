@@ -1,7 +1,9 @@
+import os
 from typing import Iterable, Optional, Union
 
+import lazyllm
 from lazyllm.module import ModuleBase
-from lazyllm import locals
+from lazyllm import locals, once_wrapper
 from .toolsManager import ToolManager
 from .skill_manager import SkillManager
 from .file_tool import (  # noqa: F401
@@ -21,7 +23,7 @@ class LazyLLMAgentBase(ModuleBase):
     def __init__(self, llm=None, tools=None, max_retries: int = 5, return_trace: bool = False,
                  stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, Iterable[str]]] = None, memory=None,
-                 desc: str = '', sub_agents=None):
+                 desc: str = '', sub_agents=None, workspace: Optional[str] = None):
         super().__init__(return_trace=return_trace)
         use_skills, skills = self._normalize_skills_config(skills)
         self._llm = llm
@@ -33,6 +35,7 @@ class LazyLLMAgentBase(ModuleBase):
         self._max_retries = max_retries
         self._stream = stream
         self._return_last_tool_calls = return_last_tool_calls
+        self._workspace = self._init_workspace(workspace)
         self._agent = None
         self._skill_manager = None
 
@@ -58,6 +61,12 @@ class LazyLLMAgentBase(ModuleBase):
             return True, normalized
         raise TypeError('skills must be a bool, str, or list of skill names.')
 
+    def _init_workspace(self, workspace: Optional[str]) -> str:
+        path = workspace or os.path.join(lazyllm.config['home'], 'agent_workspace')
+        path = os.path.abspath(os.path.expanduser(path))
+        os.makedirs(path, exist_ok=True)
+        return path
+
     def _pre_process(self, *args, **kwargs):
         if len(args) == 1 and not kwargs:
             return args[0]
@@ -66,15 +75,14 @@ class LazyLLMAgentBase(ModuleBase):
     def _post_process(self, result):
         return result
 
+    @once_wrapper(reset_on_pickle=True)
     def build_agent(self):
         raise NotImplementedError('Subclasses must implement build_agent().')
 
-    def _ensure_agent(self):
-        if self._agent is None:
-            self._agent = self.build_agent()
-
     def forward(self, *args, **kwargs):
-        self._ensure_agent()
+        self.build_agent()
+        if self._agent is None:
+            raise RuntimeError('build_agent() did not initialize _agent.')
         pre = self._pre_process(*args, **kwargs)
         if isinstance(pre, tuple):
             result = self._agent(*pre)
@@ -90,13 +98,18 @@ class LazyLLMAgentBase(ModuleBase):
             assert self._tools, 'tools cannot be empty.'
 
     def _ensure_default_skill_tools(self):
-        defaults = [
-            'read_file', 'list_dir', 'search_in_files', 'make_dir',
-            'write_file', 'delete_file', 'move_file',
-            'shell_tool', 'download_file',
-        ]
-        for name in defaults:
-            if name not in self._tools:
+        builtin_group = getattr(lazyllm, 'builtin_tools', None)
+        builtin_names = []
+        if builtin_group:
+            builtin_names = [f'builtin_tools.{name}' for name in builtin_group.keys()]
+        existing = set()
+        for tool in self._tools:
+            if isinstance(tool, str):
+                existing.add(tool.split('.')[-1])
+            elif hasattr(tool, '__name__'):
+                existing.add(tool.__name__)
+        for name in builtin_names:
+            if name.split('.')[-1] not in existing:
                 self._tools.append(name)
         if self._skill_manager:
             for tool in self._skill_manager.get_skill_tools():
@@ -105,7 +118,29 @@ class LazyLLMAgentBase(ModuleBase):
     def _build_extra_system_prompt(self, task: str) -> str:
         if not self._skill_manager:
             return ''
-        return self._skill_manager.build_prompt(task)
+        return self._skill_manager.render_system_prompt(task)
+
+    def _append_skills_prompt(self, prompt: str) -> str:
+        if not self._skill_manager:
+            return prompt
+        return self._skill_manager.append_to_prompt(prompt)
+
+    def _wrap_user_input_with_skills(self, query: str):
+        if not self._skill_manager:
+            return query
+        return self._skill_manager.wrap_input(query, query)
+
+    def _append_workspace_prompt(self, prompt: str) -> str:
+        return (
+            f'{prompt}\n\n## Workspace\n'
+            f'- Default workspace: `{self._workspace}`\n'
+            '- Prefer creating and updating files under this workspace.\n'
+            '- Use absolute paths under this workspace when possible.\n'
+        )
+
+    @property
+    def workspace(self) -> str:
+        return self._workspace
 
     @property
     def desc(self) -> str:
