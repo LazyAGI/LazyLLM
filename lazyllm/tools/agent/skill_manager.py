@@ -251,20 +251,11 @@ class SkillManager(ModuleBase):
         lines.append(skills_list if skills_list else '- (none)')
         return '\n'.join(lines)
 
-    def available_skills_text(self, task: str) -> str:
+    def _available_skills_text(self, task: str) -> str:
         return self.build_prompt(task)
 
-    def render_system_prompt(self, task: str) -> str:
-        available = self.available_skills_text(task)
-        if not available:
-            return ''
-        return f'{SKILLS_PROMPT}\n\n{available}'
-
-    def append_to_prompt(self, prompt: str) -> str:
-        return f'{prompt}\n\n{SKILLS_PROMPT}'
-
     def wrap_input(self, input, task: str):
-        available = self.available_skills_text(task)
+        available = self._available_skills_text(task)
         if not available:
             return input
         if isinstance(input, dict):
@@ -281,24 +272,6 @@ class SkillManager(ModuleBase):
         if isinstance(input, str):
             return {'input': input, 'available_skills': available}
         return input
-
-    def sync_history_skills(self, input, workspace: Dict[str, str]) -> None:
-        if isinstance(input, dict) and input.get('available_skills'):
-            workspace['available_skills'] = input['available_skills']
-
-    def inject_history_skills(self, input, workspace: Dict[str, str]):
-        if not isinstance(input, dict):
-            return input
-        available = workspace.get('available_skills')
-        if not available or 'available_skills' in input:
-            return input
-        ret = dict(input)
-        ret['available_skills'] = available
-        return ret
-
-    def get_selected_skills(self) -> List[str]:
-        self._load_skills_index()
-        return list(self._skills_selected)
 
     @staticmethod
     def _to_bool(value) -> bool:

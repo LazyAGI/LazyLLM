@@ -2,6 +2,7 @@ from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
 from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text, once_wrapper
 from .toolsManager import ToolManager
+from .skill_manager import SKILLS_PROMPT
 from typing import List, Any, Dict, Union, Callable, Optional
 from .base import LazyLLMAgentBase
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
@@ -59,7 +60,7 @@ class FunctionCall(ModuleBase):
                 '- Use absolute paths under this workspace when creating files.\n'
             )
         if self._skill_manager:
-            prompt = self._skill_manager.append_to_prompt(prompt)
+            prompt = f'{prompt}\n\n{SKILLS_PROMPT}'
             self._prompter = ChatPrompter(
                 instruction=prompt,
                 tools=self._tools_manager.tools_description,
@@ -80,8 +81,8 @@ class FunctionCall(ModuleBase):
     def _build_history(self, input: Union[str, dict, list]):
         workspace = locals['_lazyllm_agent']['workspace']
         history_idx = len(workspace.setdefault('history', []))
-        if self._skill_manager:
-            self._skill_manager.sync_history_skills(input, workspace)
+        if self._skill_manager and isinstance(input, dict) and input.get('available_skills'):
+            workspace['available_skills'] = input['available_skills']
         if isinstance(input, str):
             workspace['history'].append({'role': 'user', 'content': input})
         elif isinstance(input, dict) and 'input' in input:
@@ -109,8 +110,9 @@ class FunctionCall(ModuleBase):
             workspace['history'].extend(tool_call_results)
         chat_history = workspace['history'][:history_idx]
         locals['chat_history'][self._llm._module_id] = chat_history
-        if self._skill_manager:
-            input = self._skill_manager.inject_history_skills(input, workspace)
+        if self._skill_manager and isinstance(input, dict) and 'available_skills' not in input:
+            available = workspace.get('available_skills')
+            if available: input['available_skills'] = available
         return input
 
     def _post_action(self, llm_output: Dict[str, Any]):

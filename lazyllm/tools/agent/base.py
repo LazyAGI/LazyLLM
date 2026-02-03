@@ -5,7 +5,7 @@ import lazyllm
 from lazyllm.module import ModuleBase
 from lazyllm import locals, once_wrapper
 from .toolsManager import ToolManager
-from .skill_manager import SkillManager
+from .skill_manager import SkillManager, SKILLS_PROMPT
 from .file_tool import (  # noqa: F401
     read_file,
     list_dir,
@@ -115,15 +115,10 @@ class LazyLLMAgentBase(ModuleBase):
             for tool in self._skill_manager.get_skill_tools():
                 self._tools.append(tool)
 
-    def _build_extra_system_prompt(self, task: str) -> str:
-        if not self._skill_manager:
-            return ''
-        return self._skill_manager.render_system_prompt(task)
-
     def _append_skills_prompt(self, prompt: str) -> str:
         if not self._skill_manager:
             return prompt
-        return self._skill_manager.append_to_prompt(prompt)
+        return f'{prompt}\n\n{SKILLS_PROMPT}'
 
     def _wrap_user_input_with_skills(self, query: str):
         if not self._skill_manager:

@@ -7684,20 +7684,6 @@ Args:
 - str: Composed system prompt.
 ''')
 
-add_chinese_doc('SkillManager.get_selected_skills', '''\
-返回当前筛选后的技能名称列表。
-
-**Returns:**\n
-- List[str]: 选中的技能名称列表。
-''')
-
-add_english_doc('SkillManager.get_selected_skills', '''\
-Return the currently selected skill names.
-
-**Returns:**\n
-- List[str]: Selected skill names.
-''')
-
 add_chinese_doc('SkillManager.get_skill', '''\
 读取指定技能的 SKILL.md 全量内容。
 
@@ -7790,6 +7776,28 @@ Args:
 
 **Returns:**\n
 - dict: Execution result.
+''')
+
+add_chinese_doc('SkillManager.wrap_input', '''\
+将输入包装为包含 `available_skills` 的模型输入结构。
+
+Args:
+    input: 原始输入（通常为 str 或 dict）。
+    task (str): 当前任务文本，用于生成可用技能列表。
+
+**Returns:**\n
+- Any: 包装后的输入。若输入为 str/dict 且存在可用技能，返回包含 `available_skills` 的 dict；否则返回原值。
+''')
+
+add_english_doc('SkillManager.wrap_input', '''\
+Wrap input into a model payload with `available_skills`.
+
+Args:
+    input: Original input (typically str or dict).
+    task (str): Current task text used to build available skills.
+
+**Returns:**\n
+- Any: Wrapped input. If input is str/dict and skills are available, returns a dict with `available_skills`; otherwise returns the original value.
 ''')
 
 add_chinese_doc('SkillManager.get_skill_tools', '''\
