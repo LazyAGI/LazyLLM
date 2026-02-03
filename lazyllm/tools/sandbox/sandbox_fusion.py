@@ -1,5 +1,5 @@
 import base64
-from typing import List, Optional, Any
+from typing import List, Any, Optional
 import os
 import requests
 from requests import exceptions as req_exc
@@ -67,9 +67,14 @@ class SandboxFusion(SandboxBase):
             'run_timeout': self._run_timeout,
             'memory_limit_mb': self._memory_limit_mb,
             'language': 'python',
-            'files': {file: base64.b64encode(open(file, 'rb').read()).decode('utf-8') for file in input_files},
-            'fetch_files': output_files,
         }
+        if input_files:
+            call_params['files'] = {
+                file: base64.b64encode(open(file, 'rb').read()).decode('utf-8')
+                for file in input_files
+            }
+        if output_files:
+            call_params['fetch_files'] = output_files
         result = self._call_api(call_params)
         if files := result.get('files', None):
             result['output_files'] = []

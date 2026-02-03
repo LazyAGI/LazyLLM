@@ -196,7 +196,7 @@ tool = cloudpickle.loads(base64.b64decode({repr(tool_dump)}.encode('utf-8')))
 kwargs = cloudpickle.loads(base64.b64decode({repr(args_dump)}.encode('utf-8')))
 result = tool(kwargs)
 print(result)  # noqa print
-''' #
+'''
 
 register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool')
 if 'tool' not in LazyLLMRegisterMetaClass.all_clses:

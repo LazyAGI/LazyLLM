@@ -7,10 +7,7 @@ class SandboxBase(ModuleBase):
 
     def __init__(self, output_dir_path: Optional[str] = None, return_trace: bool = True):
         super().__init__(return_trace=return_trace)
-        if not output_dir_path:
-            output_dir_path = os.path.join(os.getcwd(), 'lazyllm_sandbox_output_files')
-        os.makedirs(output_dir_path, exist_ok=True)
-        self._output_dir_path = output_dir_path
+        self._output_dir_path = output_dir_path or os.getcwd()
 
     def _is_available(self) -> None:
         raise NotImplementedError('Subclasses must implement this method')
