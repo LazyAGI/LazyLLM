@@ -14,5 +14,6 @@ __all__ = [
     'ReactAgent',
     'PlanAndSolveAgent',
     'ReWOOAgent',
-    'ModuleTool'
+    'ModuleTool',
+    'code_interpreter'
 ]

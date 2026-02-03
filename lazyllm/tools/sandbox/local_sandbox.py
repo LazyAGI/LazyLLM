@@ -108,7 +108,7 @@ class LocalSandbox(SandboxBase):
     def _execute(
         self,
         code: str,
-        language: str = "python",
+        language: str = 'python',
         input_files: Optional[List[str]] = None,
         output_files: Optional[List[str]] = None,
     ) -> Union[Dict[str, Any], str]:

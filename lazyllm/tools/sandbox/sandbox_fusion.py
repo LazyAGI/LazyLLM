@@ -11,8 +11,9 @@ config.add('sandbox_fusion_base_url', str, '', 'SANDBOX_FUSION_BASE_URL')
 
 class SandboxFusion(SandboxBase):
     SUPPORTED_LANGUAGES: List[str] = ['python', 'bash']
-    
-    def __init__(self, base_url: str = config['sandbox_fusion_base_url'], compile_timeout: int = 10, run_timeout: int = 10, memory_limit_mb: int = -1):
+
+    def __init__(self, base_url: str = config['sandbox_fusion_base_url'], compile_timeout: int = 10,
+                 run_timeout: int = 10, memory_limit_mb: int = -1):
         self._base_url = base_url
         super().__init__()
         self._compile_timeout = compile_timeout
@@ -61,7 +62,7 @@ class SandboxFusion(SandboxBase):
     def _execute(
         self,
         code: str,
-        language: str = "python",
+        language: str = 'python',
         input_files: Optional[List[str]] = None,
         output_files: Optional[List[str]] = None,
     ) -> str:

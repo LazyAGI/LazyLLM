@@ -12,11 +12,12 @@ class SandboxBase(ModuleBase):
     def _is_available(self) -> None:
         raise NotImplementedError('Subclasses must implement this method')
 
-    def _execute(self, code: str, language: str = "python", input_files: Optional[List[str]] = None,
+    def _execute(self, code: str, language: str = 'python', input_files: Optional[List[str]] = None,
                  output_files: Optional[List[str]] = None) -> str:
         raise NotImplementedError('Subclasses must implement this method')
 
-    def forward(self, code: str, language: str = "python", input_files: Optional[List[str]] = None, output_files: Optional[List[str]] = None):
+    def forward(self, code: str, language: str = 'python', input_files: Optional[List[str]] = None,
+                output_files: Optional[List[str]] = None) -> str:
         if language not in self.SUPPORTED_LANGUAGES:
             raise ValueError(f'Language {language} not supported by {self.__class__.__name__}')
         return self._execute(code, language, input_files, output_files)
