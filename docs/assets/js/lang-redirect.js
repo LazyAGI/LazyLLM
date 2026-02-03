@@ -6,7 +6,6 @@ document.addEventListener("DOMContentLoaded", function() {
     'zh': 'zh-cn'
   };
 
-  // Ensure we work with decoded path to avoid %20 doubling issues or mismatches
   const currentPath = decodeURIComponent(window.location.pathname);
 
   document.querySelectorAll('a[lang], a[hreflang]').forEach(link => {
@@ -19,22 +18,30 @@ document.addEventListener("DOMContentLoaded", function() {
     for (const [langCode, segment] of Object.entries(routeMap)) {
       if (currentPath.startsWith(`/${segment}/`)) {
         if (segment === targetSegment) {
+          // Already on target language, prevent click
           link.addEventListener('click', (e) => {
             e.preventDefault();
             console.log(`[i18n] Already on language: ${targetLang}`);
           });
         } else {
-          // Replace language segment in the decoded path
+          // Calculate new path
           const newPath = currentPath.replace(`/${segment}/`, `/${targetSegment}/`);
-          
-          // Construct full URL
-          // new URL() will handle encoding special characters back to %20 etc. correctly
           const newUrl = new URL(newPath, window.location.origin);
           newUrl.search = window.location.search;
           newUrl.hash = window.location.hash;
+          const finalUrl = newUrl.toString();
 
-          link.href = newUrl.toString();
-          console.log(`[i18n] Updated ${targetLang} link to: ${newUrl}`);
+          // 1. Update href attribute (for hover and SEO)
+          link.href = finalUrl;
+
+          // 2. Force click event binding to ensure redirect
+          link.addEventListener('click', (e) => {
+            e.preventDefault(); // Prevent default behavior and interference from other scripts
+            console.log(`[i18n] Force redirect to: ${finalUrl}`);
+            window.location.href = finalUrl;
+          });
+          
+          console.log(`[i18n] Setup redirect for ${targetLang} to: ${finalUrl}`);
         }
         processed = true;
         break;
