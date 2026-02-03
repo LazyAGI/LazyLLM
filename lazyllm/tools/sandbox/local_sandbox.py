@@ -12,6 +12,8 @@ from lazyllm.tools.sandbox.sandbox_base import SandboxBase
 
 
 class LocalSandbox(SandboxBase):
+    SUPPORTED_LANGUAGES: List[str] = ['python']
+
     def __init__(self, timeout: int = 30, return_trace: bool = True):
         super().__init__(return_trace=return_trace)
         self._timeout = timeout
@@ -106,6 +108,7 @@ class LocalSandbox(SandboxBase):
     def _execute(
         self,
         code: str,
+        language: str = "python",
         input_files: Optional[List[str]] = None,
         output_files: Optional[List[str]] = None,
     ) -> Union[Dict[str, Any], str]:
