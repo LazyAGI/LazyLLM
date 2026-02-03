@@ -12,6 +12,13 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 from lazyllm.components.prompter import ChatPrompter
 
 
+@pytest.fixture(autouse=True)
+def _temp_default_source():
+    with lazyllm.config.temp('default_source', 'sensenova'), lazyllm.config.temp(
+        'default_key', lazyllm.config['sensenova_api_key']
+    ):
+        yield
+
 class TestExamples(object):
 
     def setup_method(self):
