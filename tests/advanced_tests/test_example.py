@@ -15,6 +15,31 @@ from lazyllm.components.formatter import decode_query_with_filepaths
 from lazyllm.tools.rag.global_metadata import RAG_DOC_ID, RAG_DOC_PATH
 
 
+lazyllm.config.add(
+    'default_source', str, '', 'DEFAULT_SOURCE',
+    description='The default model source for online modules.'
+)
+lazyllm.config.add('default_key', str, '', 'DEFAULT_KEY', description='The default API key for online modules.')
+
+
+@pytest.fixture(autouse=True)
+def _temp_default_source():
+    default_source = os.getenv(f'{lazyllm.config.prefix}_DEFAULT_SOURCE') or ''
+    if not default_source:
+        yield
+        return
+    default_source = default_source.lower()
+    default_key = os.getenv(f'{lazyllm.config.prefix}_DEFAULT_KEY')
+    if default_key is None:
+        default_key = os.getenv(f'{lazyllm.config.prefix}_{default_source.upper()}_API_KEY', '')
+    if not default_key:
+        try:
+            default_key = lazyllm.config[f'{default_source}_api_key']
+        except Exception:
+            pass
+    with lazyllm.config.temp('default_source', default_source), lazyllm.config.temp('default_key', default_key or ''):
+        yield
+
 class TestExamples(object):
 
     def setup_method(self):
