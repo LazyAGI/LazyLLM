@@ -7,9 +7,6 @@ document.addEventListener("DOMContentLoaded", function() {
   };
 
   const currentPath = window.location.pathname;
-  const pathParts = currentPath.split('/');
-  
-  const currentLangSegment = pathParts[1];
 
   document.querySelectorAll('a[lang], a[hreflang]').forEach(link => {
     const targetLang = link.getAttribute('lang') || link.getAttribute('hreflang');
@@ -17,25 +14,32 @@ document.addEventListener("DOMContentLoaded", function() {
 
     if (!targetSegment) return;
 
-    if (targetSegment === currentLangSegment) {
-      link.addEventListener('click', (e) => {
-        e.preventDefault();
-        console.log(`[i18n] Blocked redundant switch to ${targetLang}`);
-      });
-      return;
+    let processed = false;
+    for (const [langCode, segment] of Object.entries(routeMap)) {
+      if (currentPath.startsWith(`/${segment}/`)) {
+        if (segment === targetSegment) {
+          link.addEventListener('click', (e) => {
+            e.preventDefault();
+            console.log(`[i18n] Already on language: ${targetLang}`);
+          });
+        } else {
+          // Replace only the language segment prefix, keeping the rest of the path (version, page, etc) intact
+          const newPath = currentPath.replace(`/${segment}/`, `/${targetSegment}/`);
+          
+          const newUrl = new URL(newPath, window.location.origin);
+          newUrl.search = window.location.search;
+          newUrl.hash = window.location.hash;
+
+          link.href = newUrl.toString();
+          console.log(`[i18n] Updated ${targetLang} link to: ${newUrl}`);
+        }
+        processed = true;
+        break;
+      }
     }
 
-    const newPathParts = [...pathParts];
-    if (newPathParts.length > 1) {
-        newPathParts[1] = targetSegment;
-
-        const newUrl = new URL(newPathParts.join('/'), window.location.origin);
-
-        newUrl.search = window.location.search;
-        newUrl.hash = window.location.hash;
-
-        link.href = newUrl.toString();
-        console.log(`[i18n] Converted to: ${newUrl}`);
+    if (!processed && targetSegment) {
+        console.log(`[i18n] Path ${currentPath} did not match known language segments, redirect logic skipped.`);
     }
   });
 });
