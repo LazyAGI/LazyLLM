@@ -5,7 +5,7 @@ import random
 import shutil
 import json
 from lazyllm import config, LOG
-from lazyllm.tools.data import demo1, demo2, refine, chunker, filter, data_register
+from lazyllm.tools.data import demo1, demo2, refine, chunker, data_register
 
 
 class TestDataOperators:
