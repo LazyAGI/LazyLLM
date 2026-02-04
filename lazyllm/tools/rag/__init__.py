@@ -11,7 +11,7 @@ from .transform import (SentenceSplitter, LLMParser, NodeTransform, TransformArg
                         CharacterSplitter, RecursiveSplitter, MarkdownSplitter, CodeSplitter,
                         JSONSplitter, YAMLSplitter, HTMLSplitter, XMLSplitter, GeneralCodeSplitter, JSONLSplitter)
 from .similarity import register_similarity
-from .doc_node import DocNode
+from .doc_node import DocNode, RichDocNode
 from .readers import (PDFReader, DocxReader, HWPReader, PPTXReader, ImageReader, IPYNBReader, EpubReader,
                       MarkdownReader, MboxReader, PandasCSVReader, PandasExcelReader, VideoAudioReader,
                       MineruPDFReader)
@@ -46,6 +46,7 @@ __all__ = [
     'register_similarity',
     'register_reranker',
     'DocNode',
+    'RichDocNode',
     'PDFReader',
     'DocxReader',
     'HWPReader',
