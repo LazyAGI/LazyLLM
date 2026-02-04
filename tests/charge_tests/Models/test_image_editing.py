@@ -47,7 +47,7 @@ class TestImageEditing:
 
     @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen'))
     def test_qwen_image_editing_model(self):
-        self.common_image_editing(source='qwen', model='qwen-image-edit-plus')
+        self.common_image_editing(source='qwen', model='qwen-image-edit-max')
 
     @pytest.mark.ignore_cache_on_change(get_path('doubao'))
     @pytest.mark.xfail
