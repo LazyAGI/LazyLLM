@@ -8,6 +8,7 @@ from huggingface_hub import hf_hub_download
 from datasketch import MinHash, MinHashLSH
 import nltk
 from nltk.tokenize import word_tokenize, sent_tokenize, WordPunctTokenizer
+from nltk.corpus import stopwords
 import jieba
 
 
@@ -365,7 +366,6 @@ class SymbolRatioFilter:
         tokens = self.tokenizer.tokenize(text)
         word_tokens = [t for t in tokens if t not in self.symbols]
         num_words = len(word_tokens)
-
         if num_words == 0:
             return None
 
@@ -378,77 +378,416 @@ class SymbolRatioFilter:
 
 
 @DataOperatorRegistry.register
-def filter_idcard(data, input_key='content'):
-    assert isinstance(data, dict)
-    # TODO: Implement ID card information filtering
-    return data
+class IDCardFilter:
+    def __init__(self, input_key='content', threshold=3):
+        self.input_key = input_key
+        self.threshold = threshold
+        self.chinese_terms = [
+            r'身\s{0,5}份\s{0,5}证(?:\s{0,5}号(?:\s{0,5}码)?)?',
+            r'证\s{0,5}件(?:\s{0,5}号(?:\s{0,5}码)?)?',
+            r'居\s{0,5}民\s{0,5}身\s{0,5}份\s{0,5}证',
+            r'个\s{0,5}人\s{0,5}身\s{0,5}份',
+        ]
+
+        self.english_terms = [
+            r'id\s{0,10}number',
+            r'id\s{0,10}card',
+            r'id\s{0,10}no\.?',
+            r'i\.?\s{0,5}d\.?\s{0,10}number',
+            r'identification(?:\s{0,10}number)?(?:\s{0,10}card)?',
+            r'identity(?:\s{0,10}card)?(?:\s{0,10}number)?',
+            r'national\s{0,10}id(?:\s{0,10}card)?',
+            r'government\s{0,10}id(?:\s{0,10}card)?',
+            r'nric(?:\s{0,10}number)?',
+            r'ic\s{0,10}number',
+            r'resident\s{0,10}registration(?:\s{0,10}number)?',
+            r'personal\s{0,10}id(?:\s{0,10}number)?',
+            r'passport\s{0,10}number',
+            r'social\s{0,10}security\s{0,10}number',
+            r'ssn',
+        ]
+
+        all_patterns = self.chinese_terms + self.english_terms
+        self.pattern = re.compile('|'.join(f'({p})' for p in all_patterns), re.I)
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        matches = self.pattern.findall(text)
+        has_too_many_id_terms = len(matches) >= self.threshold
+        if not has_too_many_id_terms:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_no_punctuation(data, input_key='content', max_ratio=0.1):
-    assert isinstance(data, dict)
-    # TODO: Implement punctuation presence filtering
-    return data
+class NoPunctuationFilter:
+    def __init__(self, input_key='content', max_length_between_punct=112, language='zh'):
+        self.input_key = input_key
+        self.max_length_between_punct = max_length_between_punct
+        self.language = language.lower()
+
+        if self.language in ['zh', 'cn', 'chinese']:
+            self.punct_pattern = r'[。！？；，、：""''（）《》【】…—\.\!\?,;:]'
+        elif self.language in ['en', 'english']:
+            self.punct_pattern = r'[–.!?,;•/|…:;\'\"]'
+        else:
+            LOG.warning(f'Unsupported language: {self.language}, using Chinese punctuation')
+            self.punct_pattern = r'[。！？；，、：""''（）《》【】…—\.\!\?,;:]'
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        paragraphs = text.split('\n')
+        max_length = 0
+
+        for paragraph in paragraphs:
+            if len(paragraph.strip()) == 0:
+                continue
+
+            segments = re.split(self.punct_pattern, paragraph)
+            for segment in segments:
+                segment = segment.strip()
+                if not segment:
+                    continue
+
+                if self.language in ['en', 'english']:
+                    length = len(segment.split())
+                else:
+                    length = len(segment)
+
+                if length > max_length:
+                    max_length = length
+
+        if max_length <= self.max_length_between_punct:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_special_chars(data, input_key='content', max_ratio=0.25):
-    assert isinstance(data, dict)
-    # TODO: Implement special character ratio filtering
-    return data
+class SpecialCharFilter:
+    def __init__(self, input_key='content'):
+        self.input_key = input_key
+        self.special_patterns = [
+            r'\u200b|\u200c|\u200d|\u200e|\u200f',
+            r'\ufeff',
+            r'\u2060|\u2061|\u2062|\u2063',
+            r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]',
+            r'[\x80-\x9f]',
+            r'[�□�]',
+            r'\ufffd',
+            r'&#\d{1,5};',
+            r'&[a-zA-Z]{2,10};',
+            r'\? :',
+            r'\{\/U\}',
+            r'U\+[0-9A-Fa-f]{4,6}',
+            r'\\u[0-9A-Fa-f]{4}',
+            r'\\x[0-9A-Fa-f]{2}',
+            r'U\+1F[0-9A-Fa-f]{3}',
+            r'U\+26[0-9A-Fa-f]{2}',
+            r'U\+27[0-9A-Fa-f]{2}',
+            r'\u202a|\u202b|\u202c|\u202d|\u202e',
+            r'[\ue000-\uf8ff]',
+            r'\ud800-\udfff',
+        ]
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        has_special_char = any(re.search(pattern, text) for pattern in self.special_patterns)
+        if not has_special_char:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_watermark(data, input_key='content'):
-    assert isinstance(data, dict)
-    # TODO: Implement watermark detection and filtering
-    return data
+class WatermarkFilter:
+    def __init__(self, input_key='content', watermarks=None):
+        self.input_key = input_key
+        self.watermarks = watermarks or [
+            'Copyright', 'Watermark', 'Confidential', 'All Rights Reserved',
+            'Proprietary', 'Trade Secret', 'Internal Use Only', 'Do Not Distribute',
+            'Private and Confidential', 'Restricted', 'Classified', 'Top Secret',
+            '版权所有', '保留所有权利', '机密', '内部资料', '严禁转载', '禁止复制',
+            '仅供内部使用', '未经授权', '商业机密', '翻版必究'
+        ]
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        matches = re.search('|'.join(self.watermarks), text)
+        if matches is None:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_curly_brackets(data, input_key='content', max_ratio=0.2):
-    assert isinstance(data, dict)
-    # TODO: Implement curly bracket ratio filtering
-    return data
+class StopWordFilter:
+    def __init__(self, input_key='content', max_ratio=0.5, use_tokenizer=True, language='zh'):
+        self.input_key = input_key
+        self.max_ratio = max_ratio
+        self.use_tokenizer = use_tokenizer
+        self.language = language.lower()
+
+        try:
+            nltk.data.find('corpora/stopwords')
+        except LookupError:
+            LOG.info('Downloading NLTK stopwords...')
+            nltk.download('stopwords')
+
+        if self.language in ['en', 'english']:
+            self.stopwords = set(stopwords.words('english'))
+        elif self.language in ['zh', 'cn', 'chinese']:
+            self.stopwords = set(stopwords.words('chinese'))
+        else:
+            LOG.warning(f'Unsupported language: {self.language}, using English stopwords')
+            self.stopwords = set(stopwords.words('english'))
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        if self.language in ['zh', 'cn', 'chinese']:
+            if self.use_tokenizer:
+                words = list(jieba.cut(text.lower()))
+            else:
+                words = list(text)
+        elif self.language in ['en', 'english']:
+            if self.use_tokenizer:
+                words = word_tokenize(text.lower())
+            else:
+                words = text.lower().split()
+        else:
+            words = text.lower().split()
+
+        num_words = len(words)
+        if num_words == 0:
+            return None
+
+        num_stop_words = sum(1 for w in words if w in self.stopwords)
+        ratio = num_stop_words / num_words
+
+        if ratio < self.max_ratio:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_capital_words(data, input_key='content', max_ratio=0.3):
-    assert isinstance(data, dict)
-    # TODO: Implement capital words ratio filtering
-    return data
+class CurlyBracketFilter:
+    def __init__(self, input_key='content', max_ratio=0.025):
+        self.input_key = input_key
+        self.max_ratio = max_ratio
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        num_brackets = text.count('{') + text.count('}')
+        ratio = num_brackets / len(text) if len(text) > 0 else 0
+        if ratio < self.max_ratio:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_lorem_ipsum(data, input_key='content'):
-    assert isinstance(data, dict)
-    # TODO: Implement Lorem Ipsum placeholder text detection
-    return data
+class CapitalWordFilter:
+    def __init__(self, input_key='content', max_ratio=0.2, use_tokenizer=False):
+        self.input_key = input_key
+        self.max_ratio = max_ratio
+        self.use_tokenizer = use_tokenizer
+
+        if self.use_tokenizer:
+            try:
+                nltk.data.find('tokenizers/punkt_tab')
+            except LookupError:
+                LOG.info('Downloading NLTK punkt_tab tokenizer...')
+                nltk.download('punkt_tab')
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        if self.use_tokenizer:
+            words = word_tokenize(text)
+        else:
+            words = text.split()
+
+        num_words = len(words)
+        if num_words == 0:
+            return None
+
+        num_caps_words = sum(1 for word in words if word.isupper())
+        ratio = num_caps_words / num_words
+
+        if ratio <= self.max_ratio:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_unique_words(data, input_key='content', min_ratio=0.3):
-    assert isinstance(data, dict)
-    # TODO: Implement unique words ratio filtering
-    return data
+class LoremIpsumFilter:
+    def __init__(self, input_key='content', max_ratio=3e-8):
+        self.input_key = input_key
+        self.max_ratio = max_ratio
+        self.pattern = re.compile(r'lorem ipsum', re.IGNORECASE)
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        num_occurrences = len(self.pattern.findall(text))
+        ratio = num_occurrences / len(text) if len(text) > 0 else 0
+
+        if ratio <= self.max_ratio:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_char_count(data, input_key='content', min_chars=50, max_chars=100000):
-    assert isinstance(data, dict)
-    # TODO: Implement character count filtering
-    return data
+class UniqueWordFilter:
+    def __init__(self, input_key='content', min_ratio=0.1):
+        self.input_key = input_key
+        self.min_ratio = min_ratio
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        words = text.lower().split()
+        num_words = len(words)
+
+        if num_words == 0:
+            return None
+
+        num_unique_words = len(set(words))
+        ratio = num_unique_words / num_words
+
+        if ratio > self.min_ratio:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_bullet_start(data, input_key='content', max_ratio=0.5):
-    assert isinstance(data, dict)
-    # TODO: Implement bullet point line filtering
-    return data
+class CharCountFilter:
+    def __init__(self, input_key='content', min_chars=100, max_chars=100000):
+        self.input_key = input_key
+        self.min_chars = min_chars
+        self.max_chars = max_chars
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        text_no_space = text.strip().replace(' ', '').replace('\n', '').replace('\t', '')
+        num_chars = len(text_no_space)
+
+        if self.min_chars <= num_chars <= self.max_chars:
+            return data
+        else:
+            return None
 
 
 @DataOperatorRegistry.register
-def filter_javascript(data, input_key='content'):
-    assert isinstance(data, dict)
-    # TODO: Implement JavaScript code detection and filtering
-    return data
+class BulletPointFilter:
+    def __init__(self, input_key='content', max_ratio=0.9):
+        self.input_key = input_key
+        self.max_ratio = max_ratio
+        self.bullet_chars = [
+            '\u2022', '\u2023', '\u25B6', '\u25C0', '\u25E6',
+            '\u25A0', '\u25A1', '\u25AA', '\u25AB', '\u2013'
+        ]
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        num_lines = len(lines)
+
+        if num_lines == 0:
+            return None
+
+        num_bullet_lines = sum(
+            1 for line in lines
+            if any(line.startswith(bullet) for bullet in self.bullet_chars)
+        )
+        ratio = num_bullet_lines / num_lines
+
+        if ratio <= self.max_ratio:
+            return data
+        else:
+            return None
+
+
+@DataOperatorRegistry.register
+class JavascriptFilter:
+    def __init__(self, input_key='content', min_non_js_lines=3):
+        self.input_key = input_key
+        self.min_non_js_lines = min_non_js_lines
+
+    def __call__(self, data):
+        assert isinstance(data, dict)
+
+        text = data.get(self.input_key)
+        if not isinstance(text, str) or not text.strip():
+            return None
+
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        num_lines = len(lines)
+
+        if num_lines == 0:
+            return None
+
+        num_js_lines = sum(1 for line in lines if 'javascript' in line.lower())
+        num_non_js_lines = num_lines - num_js_lines
+
+        if num_lines <= 3 or num_non_js_lines >= self.min_non_js_lines:
+            return data
+        else:
+            return None
