@@ -117,7 +117,7 @@ class GeminiChat(OnlineChatModuleBase):
         system_instruction = gemini_dict.get('system_instruction')
 
         if self.type == LLMType.VLM and files:
-            vlm_parts = self._format_input_with_files(contents[-1]['parts'][0].get('text') 
+            vlm_parts = self._format_input_with_files(contents[-1]['parts'][0].get('text')
                                                       if contents else __input, files)
             if contents:
                 last_content = contents[-1]

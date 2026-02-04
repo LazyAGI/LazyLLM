@@ -3370,3 +3370,59 @@ Features:
     4. Built-in system prompt: "You are an intelligent assistant developed by Anthropic. You are a helpful assistant."
     5. Supports API key validation to ensure service security
 ''')
+
+add_chinese_doc('llms.onlinemodule.supplier.gemini.GeminiPrompter', '''\
+GeminiPrompter 是 GeminiChat 的提示词转换器，继承自 LazyLLMPrompterBase。
+
+用于将 LazyLLM 的通用 messages 结构转换为 Gemini `generateContent` 所需的 `contents` 和 `system_instruction`。
+会提取第一条 system 消息作为 `system_instruction`，并将 user/assistant 消息转换为 Gemini 的 `role` 与 `parts` 结构。
+当前实现仅保留文本部分，非文本内容会被忽略。
+
+Args:
+    show (bool): 是否打印 prompt 结果，默认为 False。
+    tools (Optional[list]): 可选的工具定义列表。
+    history (Optional[list]): 预置历史消息。
+    enable_system (bool): 是否启用 system prompt，默认为 False。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.gemini.GeminiPrompter', '''\
+GeminiPrompter is a prompt adapter for GeminiChat, inheriting from LazyLLMPrompterBase.
+
+It converts LazyLLM generic messages into Gemini `generateContent` format (`contents` and `system_instruction`).
+It extracts the first system message into `system_instruction`, and maps user/assistant messages into Gemini `role` and `parts`.
+The current implementation keeps text parts only; non-text content is ignored.
+
+Args:
+    show (bool): Whether to print the prompt result, default is False.
+    tools (Optional[list]): Optional tool definitions.
+    history (Optional[list]): Preset message history.
+    enable_system (bool): Whether to enable system prompt, default is False.
+''')
+
+add_chinese_doc('llms.onlinemodule.supplier.claude.ClaudePrompter', '''\
+ClaudePrompter 是 ClaudeChat 的提示词转换器，继承自 LazyLLMPrompterBase。
+
+用于将 LazyLLM 的通用 messages 结构转换为 Claude `/messages` 所需格式。
+会提取第一条 system 消息作为 `system` 字段，其余消息转换为 Claude 的 `content` 数组结构。
+支持文本内容与 data-URI 形式的 `image_url`，用于多模态输入。
+
+Args:
+    show (bool): 是否打印 prompt 结果，默认为 False。
+    tools (Optional[list]): 可选的工具定义列表。
+    history (Optional[list]): 预置历史消息。
+    enable_system (bool): 是否启用 system prompt，默认为 True。
+''')
+
+add_english_doc('llms.onlinemodule.supplier.claude.ClaudePrompter', '''\
+ClaudePrompter is a prompt adapter for ClaudeChat, inheriting from LazyLLMPrompterBase.
+
+It converts LazyLLM generic messages into Claude `/messages` format.
+The first system message is extracted into the `system` field, and the rest are converted into Claude `content` blocks.
+It supports text content and data-URI `image_url` for multimodal inputs.
+
+Args:
+    show (bool): Whether to print the prompt result, default is False.
+    tools (Optional[list]): Optional tool definitions.
+    history (Optional[list]): Preset message history.
+    enable_system (bool): Whether to enable system prompt, default is True.
+''')
