@@ -1,14 +1,19 @@
 """KBC Text Cleaner Batch operator"""
 import json
-import pandas as pd
+from typing import List
 from lazyllm import LOG
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
 from ...prompts.kbcleaning import KnowledgeCleanerPrompt
 
+# 复用已存在的 kbc 组
+if 'data' in LazyLLMRegisterMetaClass.all_clses and 'kbc' in LazyLLMRegisterMetaClass.all_clses['data']:
+    kbc = LazyLLMRegisterMetaClass.all_clses['data']['kbc'].base
+else:
+    kbc = data_register.new_group('kbc')
 
-funcs = data_register.new_group('function')
-classes = data_register.new_group('class')
-class KBCTextCleanerBatch(classes):
+
+class KBCTextCleanerBatch(kbc):
     """
     Batch knowledge cleaner for RAG.
     批量知识清洗算子。
@@ -16,11 +21,13 @@ class KBCTextCleanerBatch(classes):
 
     def __init__(
             self,
-            llm_serving=None,
+            llm=None,
             lang: str = "en",
             prompt_template=None,
+            **kwargs
     ):
-        self.llm_serving = llm_serving
+        super().__init__(**kwargs)
+        self.llm = llm
         self.lang = lang
         self.prompts = KnowledgeCleanerPrompt(lang=lang)
         if prompt_template:
@@ -43,49 +50,53 @@ class KBCTextCleanerBatch(classes):
 
     def _generate_from_llm(self, user_prompts, system_prompt=""):
         """Helper to call LLM serving"""
-        if self.llm_serving is None:
-            raise ValueError("LLM serving is not configured")
-        return self.llm_serving.generate_from_input(user_prompts, system_prompt)
+        if self.llm is None:
+            raise ValueError("LLM is not configured")
+        llm_serve = self.llm.share(prompt=system_prompt)
+        llm_serve.start()
+        results = []
+        for prompt in user_prompts:
+            results.append(llm_serve(prompt))
+        return results
 
     def _reformat_prompt_from_path(self, chunk_path: str):
         """Load and reformat prompts from file path"""
         if chunk_path.endswith(".json"):
-            dataframe = pd.read_json(chunk_path)
+            with open(chunk_path, 'r', encoding='utf-8') as f:
+                file_data = json.load(f)
         elif chunk_path.endswith(".jsonl"):
-            dataframe = pd.read_json(chunk_path, lines=True)
+            with open(chunk_path, 'r', encoding='utf-8') as f:
+                file_data = [json.loads(line) for line in f]
         else:
             raise ValueError("Unsupported file format. Only .json and .jsonl are supported.")
 
-        if "raw_chunk" not in dataframe.columns:
+        if not file_data or "raw_chunk" not in file_data[0]:
             raise KeyError("'raw_chunk' field not found in the input file.")
 
-        raw_contents = dataframe["raw_chunk"].tolist()
+        raw_contents = [item.get("raw_chunk", "") for item in file_data]
         inputs = [self.prompts.build_prompt(content) for content in raw_contents]
         return raw_contents, inputs
 
-    def __call__(
+    def forward_batch_input(
             self,
-            data,
+            data: List[dict],
             input_key: str = "chunk_path",
             output_key: str = "cleaned_chunk_path",
-    ):
+    ) -> List[dict]:
         """
         Batch clean text content from chunk files.
 
         Args:
-            data: List of dict or pandas DataFrame
+            data: List of dict
             input_key: Key for input chunk file paths
             output_key: Key for output cleaned chunk file paths
 
         Returns:
             List of dict with cleaned chunk paths added
         """
-        if isinstance(data, pd.DataFrame):
-            dataframe = data
-        else:
-            dataframe = pd.DataFrame(data)
+        assert isinstance(data, list), "Input data must be a list of dict"
 
-        chunk_paths = dataframe[input_key].tolist()
+        chunk_paths = [item.get(input_key, "") for item in data]
 
         for chunk_path in chunk_paths:
             if chunk_path:
@@ -109,7 +120,11 @@ class KBCTextCleanerBatch(classes):
                     json.dump(json_items, f, ensure_ascii=False, indent=4)
                 LOG.info(f"Successfully cleaned contents in {chunk_path}")
 
-        dataframe[output_key] = chunk_paths
-        LOG.info("Batch text cleaning completed!")
-        return dataframe.to_dict('records')
+        results = []
+        for item, chunk_path in zip(data, chunk_paths):
+            new_item = item.copy()
+            new_item[output_key] = chunk_path
+            results.append(new_item)
 
+        LOG.info("Batch text cleaning completed!")
+        return results

@@ -1,13 +1,12 @@
 """AgenticRAG Atomic Task Generator operator"""
-from ast import List
 import json
 import string
 import re
 from collections import Counter
-import pandas as pd
+from typing import List
+import lazyllm
 from lazyllm import LOG
 from ...base_data import data_register
-from ..llm_serve import llm_serving
 from ...prompts.agenticrag import (
     AtomicTaskGeneratorGetIdentifierPrompt,
     AtomicTaskGeneratorGetConlcusionPrompt,
@@ -18,7 +17,13 @@ from ...prompts.agenticrag import (
     AtomicTaskGeneratorOptionalAnswerPrompt,
     AtomicTaskGeneratorGoldenDocAnswerPrompt
 )
-agenticrag = data_register.new_group('agenticrag')
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
+
+# 获取或创建 agenticrag 组（确保所有模块共享同一个组）
+if 'agenticrag' in LazyLLMRegisterMetaClass.all_clses['data']:
+    agenticrag = LazyLLMRegisterMetaClass.all_clses['data']['agenticrag'].base
+else:
+    agenticrag = data_register.new_group('agenticrag')
 
 class AgenticRAGAtomicTaskGenerator(agenticrag):
     """
@@ -31,8 +36,11 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
             data_num: int = 100,
             max_per_task: int = 10,
             max_question: int = 10,
+            llm = None,
+            **kwargs
     ):
-        self.llm_serving = llm_serving
+        super().__init__(**kwargs)
+        self.llm = llm
         self.data_num = data_num
         self.max_per_task = max_per_task
         self.max_question = max_question
@@ -73,32 +81,41 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
 
         return white_space_fix(remove_articles(remove_punc(lower(s))))
 
-    def _generate_from_llm(self, if_online, user_prompts, system_prompt="", model_name='Qwen2.5-0.5B-Instruct'):
+    def _generate_from_llm(self, user_prompts, system_prompt=""):
         """Helper to call LLM serving"""
-        if if_online is None:
-            raise ValueError("you need to choose one patten for llm")
-        return self.llm_serving(if_online, user_prompts, system_prompt, model_name)
-    def _reformat_prompt(self, dataframe, prompt_type: str = None):
+        if self.llm is None:
+            raise ValueError("LLM is not configured")
+        llm_serve = self.llm.share(prompt=system_prompt)
+        llm_serve.start()
+        # prompter = lazyllm.ChatPrompter(system_prompt)
+        # llm_serve = self.llm.prompt(prompter)
+        # llm_serve.start()
+        # LLM expects single string, need to iterate for batch
+        results = []
+        for prompt in user_prompts:
+            results.append(llm_serve(prompt))
+        return results
+    def _reformat_prompt(self, data_list: List[dict], prompt_type: str = None):
         """
-        Reformat the prompts in the dataframe to generate LLM input.
+        Reformat the prompts in the data_list to generate LLM input.
         All input columns are expected to be strings.
         """
         if prompt_type == "get_identifier":
             self.prompt_template = AtomicTaskGeneratorGetIdentifierPrompt()
-            input_prompts = dataframe[self.input_key].tolist()
+            input_prompts = [item.get(self.input_key, '') for item in data_list]
             system_prompt = self.prompt_template.build_system_prompt()
             prompts = [self.prompt_template.build_prompt(p) for p in input_prompts]
 
         elif prompt_type == "get_conclusion":
             self.prompt_template = AtomicTaskGeneratorGetConlcusionPrompt()
-            input_prompts = dataframe[self.input_key].tolist()
+            input_prompts = [item.get(self.input_key, '') for item in data_list]
             system_prompt = self.prompt_template.build_system_prompt()
             prompts = [self.prompt_template.build_prompt(p) for p in input_prompts]
 
         elif prompt_type == "init_question":
             self.prompt_template = AtomicTaskGeneratorQuestionPrompt()
-            candidate_strs = dataframe["candidate_tasks_str"].tolist()
-            raw_identifiers = dataframe["identifier"].tolist()
+            candidate_strs = [item.get("candidate_tasks_str", '') for item in data_list]
+            raw_identifiers = [item.get("identifier", '') for item in data_list]
             system_prompt = self.prompt_template.build_system_prompt()
             prompts = []
             for s, raw_id in zip(candidate_strs, raw_identifiers):
@@ -120,8 +137,8 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
 
         elif prompt_type == "clean_qa":
             self.prompt_template = AtomicTaskGeneratorCleanQAPrompt()
-            questions = dataframe[self.output_question_key].tolist()
-            answers = dataframe[self.output_answer_key].tolist()
+            questions = [item.get(self.output_question_key, '') for item in data_list]
+            answers = [item.get(self.output_answer_key, '') for item in data_list]
             system_prompt = self.prompt_template.build_system_prompt()
             prompts = [
                 self.prompt_template.build_prompt({"question": q, "original_answer": a})
@@ -129,38 +146,38 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
             ]
         elif prompt_type == "llm_answer":
             self.prompt_template = AtomicTaskGeneratorAnswerPrompt()
-            questions = dataframe[self.output_question_key].tolist()
+            questions = [item.get(self.output_question_key, '') for item in data_list]
             system_prompt = ""
             prompts = [
                 self.prompt_template.build_prompt(question) for question in questions
             ]
         elif prompt_type == "get_recall_score":
             self.prompt_template = AtomicTaskGeneratorRecallScorePrompt()
-            golden_answers = dataframe[self.output_refined_answer_key].tolist()
-            llm_answers = dataframe[self.output_llm_answer_key]
+            golden_answers = [item.get(self.output_refined_answer_key, '') for item in data_list]
+            llm_answers = [item.get(self.output_llm_answer_key, '') for item in data_list]
             system_prompt = self.prompt_template.build_system_prompt()
             prompts = [
                 self.prompt_template.build_prompt(golden_answer, llm_answer) for golden_answer, llm_answer in zip(golden_answers, llm_answers)
             ]
         elif prompt_type == "get_golden_answer_score":
             self.prompt_template = AtomicTaskGeneratorRecallScorePrompt()
-            golden_answers = dataframe[self.output_refined_answer_key].tolist()
-            llm_answers = dataframe[self.output_golden_doc_answer_key]
+            golden_answers = [item.get(self.output_refined_answer_key, '') for item in data_list]
+            llm_answers = [item.get(self.output_golden_doc_answer_key, '') for item in data_list]
             system_prompt = self.prompt_template.build_system_prompt()
             prompts = [
                 self.prompt_template.build_prompt(golden_answer, llm_answer) for golden_answer, llm_answer in zip(golden_answers, llm_answers)
             ]
         elif prompt_type == "more_optional_answer":
             self.prompt_template = AtomicTaskGeneratorOptionalAnswerPrompt()
-            answers = dataframe[self.output_refined_answer_key].tolist()
+            answers = [item.get(self.output_refined_answer_key, '') for item in data_list]
             system_prompt = self.prompt_template.build_system_prompt()
             prompts = [
                 self.prompt_template.build_prompt(answer) for answer in answers
             ]
         elif prompt_type == "golden_doc_answer":
             self.prompt_template = AtomicTaskGeneratorGoldenDocAnswerPrompt()
-            golden_docs = dataframe[self.input_key].tolist()
-            questions = dataframe[self.output_question_key].tolist()
+            golden_docs = [item.get(self.input_key, '') for item in data_list]
+            questions = [item.get(self.output_question_key, '') for item in data_list]
             system_prompt = ""
             prompts = [
                 self.prompt_template.build_prompt(golden_doc, question) 
@@ -170,9 +187,9 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
             raise ValueError(f"Unknown prompt_type: {prompt_type}")
 
         return system_prompt, prompts
-    def recall_score(self, dataframe):
-        sys_prompts, user_prompts = self._reformat_prompt(dataframe, "get_recall_score")
-        recall_scores = self.llm_serving(user_prompts, sys_prompts)
+    def recall_score(self, data_list: List[dict]):
+        sys_prompts, user_prompts = self._reformat_prompt(data_list, "get_recall_score")
+        recall_scores = self._generate_from_llm(user_prompts, sys_prompts)
         valid_scores = []
         for score_str in recall_scores:
             try:
@@ -184,9 +201,9 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
                 continue
         return valid_scores
 
-    def recall_score_golden_doc(self, dataframe):
-        sys_prompts, user_prompts = self._reformat_prompt(dataframe, "get_golden_answer_score")
-        recall_scores = self.llm_serving(user_prompts, sys_prompts)
+    def recall_score_golden_doc(self, data_list: List[dict]):
+        sys_prompts, user_prompts = self._reformat_prompt(data_list, "get_golden_answer_score")
+        recall_scores = self._generate_from_llm(user_prompts, sys_prompts)
         valid_scores = []
         for score_str in recall_scores:
             try:
@@ -198,12 +215,12 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
                 continue
         return valid_scores
 
-    def more_optional_answer(self, dataframe):
-        original_answer = dataframe[self.output_refined_answer_key]
-        system_prompt, user_prompts = self._reformat_prompt(dataframe, "more_optional_answer")
-        optional_answers = self.llm_serving(user_prompts, system_prompt)
+    def more_optional_answer(self, data_list: List[dict]):
+        original_answers = [item.get(self.output_refined_answer_key, '') for item in data_list]
+        system_prompt, user_prompts = self._reformat_prompt(data_list, "more_optional_answer")
+        optional_answers = self._generate_from_llm(user_prompts, system_prompt)
         valid_answers = []
-        for optional_answer in optional_answers:
+        for idx, optional_answer in enumerate(optional_answers):
             try:
                 if isinstance(optional_answer, str):
                     optional_answer = json.loads(self._clean_json_block(optional_answer))
@@ -212,14 +229,14 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
                     valid_answers.append(optional_answer)
             except Exception as e:
                 print(f"Error parsing optional answer: {optional_answer} | Error: {e}")
-                valid_answers.append(original_answer)
+                valid_answers.append(original_answers[idx] if idx < len(original_answers) else '')
         return valid_answers
-    def get_f1_score(self, dataframe):
+    def get_f1_score(self, data_list: List[dict]):
 
         f1_scores = []
-        for idx, row in dataframe.iterrows():
-            prediction = row[self.output_golden_doc_answer_key]
-            ground_truths = row[self.output_optional_answer_key]
+        for item in data_list:
+            prediction = item.get(self.output_golden_doc_answer_key)
+            ground_truths = item.get(self.output_optional_answer_key)
 
             final_metric = {"f1": 0, "precision": 0, "recall": 0}
 
@@ -264,7 +281,7 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
         return f1_scores
         
         
-    def forward(
+    def forward_batch_input(
         self,
         data: List[dict],
         input_key: str = "prompts",
@@ -281,27 +298,23 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
 
         self.output_llm_answer_key, self.output_golden_doc_answer_key = output_llm_answer_key, output_golden_doc_answer_key
 
-        if isinstance(data, pd.DataFrame):
-            dataframe = data
-        else:
-            dataframe = pd.DataFrame(data)
-       
-        self._validate_dataframe(dataframe)
+        # Ensure data is a list of dicts
+        assert isinstance(data, list), "Input data must be a list"
+        data_list = data
 
         # === Step 0: Get identifier
         LOG.info("Get identifier...")
-        sys_prompts, user_prompts = self._reformat_prompt(dataframe, "get_identifier")
-        identifiers = self.llm_serving.generate_from_input(user_prompts, sys_prompts)
+        sys_prompts, user_prompts = self._reformat_prompt(data_list, "get_identifier")
+        identifiers = self._generate_from_llm(user_prompts, sys_prompts)
 
         # === Step 1: Get conclusions
         LOG.info("Get conclusions...")
-        sys_prompts, user_prompts = self._reformat_prompt(dataframe, "get_conclusion")
-        conclusions = self.llm_serving.generate_from_input(user_prompts, sys_prompts)
+        sys_prompts, user_prompts = self._reformat_prompt(data_list, "get_conclusion")
+        conclusions = self._generate_from_llm(user_prompts, sys_prompts)
 
         # === Expand each conclusion into multiple candidate tasks (rows)
         expanded_rows = []
-        # Use to_dict('records') instead of itertuples() to preserve column names with special characters (e.g., "user:contents")
-        for idx, (row, output_str, identifier) in enumerate(zip(dataframe.to_dict('records'), conclusions, identifiers)):
+        for idx, (row, output_str, identifier) in enumerate(zip(data_list, conclusions, identifiers)):
             try:
                 parsed = json.loads(self._clean_json_block(output_str))
                 parsed = parsed[:self.max_per_task] if isinstance(parsed, list) else parsed
@@ -315,28 +328,27 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
             for item in parsed:
                 if isinstance(item, dict) and "conclusion" in item and "R" in item:
                     expanded_rows.append({
-                        **row,  # row is already a dict now
+                        **row,
                         "identifier": str(identifier),
                         "candidate_tasks_str": json.dumps(item, ensure_ascii=False)
                     })
 
         if not expanded_rows:
-            LOG.info.warning("No valid candidate tasks extracted.")
-            return
+            LOG.warning("No valid candidate tasks extracted.")
+            return []
 
-        dataframe = pd.DataFrame(expanded_rows)
+        data_list = expanded_rows
 
         # === Step 2: Generate questions based on conclusion + reasoning
         LOG.info("Generate questions based on conclusion + reasoning...")
-        sys_prompts, user_prompts = self._reformat_prompt(dataframe, "init_question")
-        question_outputs = self.llm_serving.generate_from_input(user_prompts, sys_prompts)
+        sys_prompts, user_prompts = self._reformat_prompt(data_list, "init_question")
+        question_outputs = self._generate_from_llm(user_prompts, sys_prompts)
 
         questions = []
         answers = []
         valid_rows = []
 
-        # Use to_dict('records') instead of itertuples() to preserve column names with special characters
-        for idx, (res, row) in enumerate(zip(question_outputs, dataframe.to_dict('records'))):
+        for idx, (res, row) in enumerate(zip(question_outputs, data_list)):
             try:
                 parsed = json.loads(self._clean_json_block(res))
             except Exception as e:
@@ -350,72 +362,85 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
                     answer = task.get("conclusion", "")
                 except Exception:
                     answer = ""
-                valid_rows.append(row)  # row is already a dict
-                questions.append(str(question))
-                answers.append(str(answer))
+                row_copy = row.copy()
+                row_copy[self.output_question_key] = str(question)
+                row_copy[self.output_answer_key] = str(answer)
+                valid_rows.append(row_copy)
 
         if not valid_rows:
             LOG.warning("No valid QA pairs generated.")
-            return
+            return []
 
-        dataframe = pd.DataFrame(valid_rows)
-        dataframe[self.output_question_key] = questions
-        dataframe[self.output_answer_key] = answers
+        data_list = valid_rows
 
         # === Step 3: Clean QA
         LOG.info("Clean QA...")
-        sys_prompts, user_prompts = self._reformat_prompt(dataframe, "clean_qa")
-        clean_outputs = self.llm_serving.generate_from_input(user_prompts, sys_prompts)
+        sys_prompts, user_prompts = self._reformat_prompt(data_list, "clean_qa")
+        clean_outputs = self._generate_from_llm(user_prompts, sys_prompts)
 
-        final_answers = []
-
-        for idx, res in enumerate(clean_outputs):
+        for idx, (item, res) in enumerate(zip(data_list, clean_outputs)):
             try:
                 parsed = json.loads(self._clean_json_block(res))
-                final_answers.append(str(parsed.get("refined_answer", "")))
+                item[self.output_refined_answer_key] = str(parsed.get("refined_answer", ""))
             except Exception as e:
                 print(f"[WARN] Failed to parse cleaned QA at idx={idx}: {e} | res: {res}")
-                final_answers.append("")
-
-        dataframe[self.output_refined_answer_key] = final_answers
+                item[self.output_refined_answer_key] = ""
 
         # Verify module
         LOG.info("LLM reasoning verify...")
-        sys_prompts, user_prompts = self._reformat_prompt(dataframe, "llm_answer")
-        llm_answer_results = self.llm_serving.generate_from_input(user_prompts, sys_prompts)
-        dataframe[self.output_llm_answer_key] = llm_answer_results
+        sys_prompts, user_prompts = self._reformat_prompt(data_list, "llm_answer")
+        llm_answer_results = self._generate_from_llm(user_prompts, sys_prompts)
         
-        llm_score = self.recall_score(dataframe)
-        dataframe["llm_score"] = llm_score
-        dataframe = dataframe[dataframe["llm_score"] < 1].reset_index(drop=True)
+        for item, llm_answer in zip(data_list, llm_answer_results):
+            item[self.output_llm_answer_key] = llm_answer
+        
+        llm_scores = self.recall_score(data_list)
+        for item, score in zip(data_list, llm_scores):
+            item["llm_score"] = score
+        
+        # Filter out items with llm_score >= 1
+        data_list = [item for item in data_list if item.get("llm_score", 0) < 1]
 
-        if dataframe.empty:
+        if not data_list:
             LOG.warning("No data left after LLM score filtering. All questions were answered correctly by LLM.")
-            return
+            return []
 
         LOG.info("Get golden doc answer...")
-        sys_prompts, user_prompts = self._reformat_prompt(dataframe, "golden_doc_answer")
-        llm_answer_results = self.llm_serving.generate_from_input(user_prompts, sys_prompts)
-        dataframe[self.output_golden_doc_answer_key] = llm_answer_results
+        sys_prompts, user_prompts = self._reformat_prompt(data_list, "golden_doc_answer")
+        llm_answer_results = self._generate_from_llm(user_prompts, sys_prompts)
+        
+        for item, llm_answer in zip(data_list, llm_answer_results):
+            item[self.output_golden_doc_answer_key] = llm_answer
 
 
         # golden doc answer verify
         LOG.info("Golden doc LLM verifying...")
-        golden_doc_score = self.recall_score_golden_doc(dataframe)
-        dataframe["golden_doc_score"] = golden_doc_score
-        dataframe = dataframe[dataframe["golden_doc_score"] >= 1].reset_index(drop=True)
+        golden_doc_scores = self.recall_score_golden_doc(data_list)
+        for item, score in zip(data_list, golden_doc_scores):
+            item["golden_doc_score"] = score
+        
+        # Filter items with golden_doc_score >= 1
+        data_list = [item for item in data_list if item.get("golden_doc_score", 0) >= 1]
 
         # more optional answer
         LOG.info("Generating more optional answer...")
-        dataframe[self.output_optional_answer_key] = self.more_optional_answer(dataframe)
+        optional_answers = self.more_optional_answer(data_list)
+        for item, optional_answer in zip(data_list, optional_answers):
+            item[self.output_optional_answer_key] = optional_answer
         
-        dataframe = (
-            dataframe.groupby(input_key, group_keys=False)
-            .apply(lambda x: x.head(self.max_question))
-            .reset_index(drop=True)
-        )
-
-        output_file = storage.write(dataframe)
-        LOG.info(f"Results saved to {output_file}")
-        return "identifier", "candidate_tasks_str", "llm_score", "golden_doc_score", self.output_question_key, self.output_answer_key, self.output_refined_answer_key, self.output_optional_answer_key, self.output_llm_answer_key, self.output_golden_doc_answer_key    
-   
+        # Group by input_key and limit max_question per group
+        grouped_data = {}
+        for item in data_list:
+            key_value = item.get(input_key, '')
+            if key_value not in grouped_data:
+                grouped_data[key_value] = []
+            if len(grouped_data[key_value]) < self.max_question:
+                grouped_data[key_value].append(item)
+        
+        # Flatten back to list
+        result_list = []
+        for items in grouped_data.values():
+            result_list.extend(items)
+        
+        LOG.info(f"Generated {len(result_list)} QA pairs")
+        return result_list

@@ -1,13 +1,19 @@
 """KBC Chunk Generator Batch operator"""
 import os
 import json
-import pandas as pd
+from typing import List
 from lazyllm import LOG
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
 
-funcs = data_register.new_group('function')
-classes = data_register.new_group('class')
-class KBCChunkGeneratorBatch(classes):
+# 复用已存在的 kbc 组
+if 'data' in LazyLLMRegisterMetaClass.all_clses and 'kbc' in LazyLLMRegisterMetaClass.all_clses['data']:
+    kbc = LazyLLMRegisterMetaClass.all_clses['data']['kbc'].base
+else:
+    kbc = data_register.new_group('kbc')
+
+
+class KBCChunkGeneratorBatch(kbc):
     """
     Batch text splitting tool supporting token/sentence/semantic/recursive chunking.
     批量文本分割工具，支持词/句/语义/递归分块。
@@ -20,7 +26,9 @@ class KBCChunkGeneratorBatch(classes):
             split_method: str = "token",
             min_tokens_per_chunk: int = 100,
             tokenizer_name: str = "bert-base-uncased",
+            **kwargs
     ):
+        super().__init__(**kwargs)
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.split_method = split_method
@@ -76,18 +84,20 @@ class KBCChunkGeneratorBatch(classes):
     def get_desc(lang: str = "zh"):
         if lang == "zh":
             return (
-                "批量文本分割工具，",
-                "支持词/句/语义/递归分块，",
-                "可配置块大小、重叠和最小块长度",
+                "批量文本分割工具，"
+                "支持词/句/语义/递归分块，"
+                "可配置块大小、重叠和最小块长度"
             )
         elif lang == "en":
             return (
-                "Batch text segmentation tool",
-                "supporting multiple chunking methods",
+                "Batch text segmentation tool "
+                "supporting multiple chunking methods "
                 "with configurable size and overlap."
             )
+        else:
+            return "Batch text splitting tool."
 
-    def _load_text(self, text_paths):
+    def _load_text(self, text_paths: List[str]) -> List[str]:
         """Load text from file list"""
         texts = []
         for text_path in text_paths:
@@ -101,43 +111,44 @@ class KBCChunkGeneratorBatch(classes):
                 with open(text_path, 'r', encoding='utf-8') as f:
                     data = json.load(f) if text_path.endswith('.json') else [json.loads(line) for line in f]
                 text_fields = ['text', 'content', 'body']
+                found = False
                 for field in text_fields:
                     if isinstance(data, list) and len(data) > 0 and field in data[0]:
                         texts.append("\n".join([item[field] for item in data]))
+                        found = True
                         break
                     elif isinstance(data, dict) and field in data:
                         texts.append(data[field])
+                        found = True
                         break
+                if not found:
+                    texts.append("")
             else:
                 LOG.error(f"Unsupported file format for {text_path}")
                 texts.append("")
         return texts
 
-    def __call__(
+    def forward_batch_input(
             self,
-            data,
+            data: List[dict],
             input_key: str = "text_path",
             output_key: str = "chunk_path",
-    ):
+    ) -> List[dict]:
         """
         Perform batch text splitting and save results to files.
 
         Args:
-            data: List of dict or pandas DataFrame
+            data: List of dict
             input_key: Key for input text file paths
             output_key: Key for output chunk file paths
 
         Returns:
             List of dict with chunk paths added
         """
+        assert isinstance(data, list), "Input data must be a list of dict"
         self._ensure_initialized()
 
-        if isinstance(data, pd.DataFrame):
-            dataframe = data
-        else:
-            dataframe = pd.DataFrame(data)
-
-        text_paths = dataframe[input_key].tolist()
+        text_paths = [item.get(input_key, "") for item in data]
         texts = self._load_text(text_paths)
         output_paths = []
 
@@ -175,7 +186,11 @@ class KBCChunkGeneratorBatch(classes):
             else:
                 output_paths.append("")
 
-        dataframe[output_key] = output_paths
-        LOG.info(f"Successfully split text for {len(text_paths)} files.")
-        return dataframe.to_dict('records')
+        results = []
+        for item, output_path in zip(data, output_paths):
+            new_item = item.copy()
+            new_item[output_key] = output_path
+            results.append(new_item)
 
+        LOG.info(f"Successfully split text for {len(text_paths)} files.")
+        return results

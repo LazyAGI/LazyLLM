@@ -2,14 +2,20 @@
 import os
 from pathlib import Path
 from urllib.parse import urlparse
+from typing import List
 from tqdm import tqdm
 import requests
-import pandas as pd
 from lazyllm import LOG
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
 
-funcs = data_register.new_group('function')
-classes = data_register.new_group('class')
+# 复用已存在的 kbc 组
+if 'data' in LazyLLMRegisterMetaClass.all_clses and 'kbc' in LazyLLMRegisterMetaClass.all_clses['data']:
+    kbc = LazyLLMRegisterMetaClass.all_clses['data']['kbc'].base
+else:
+    kbc = data_register.new_group('kbc')
+
+
 def is_url(string):
     try:
         result = urlparse(string)
@@ -91,7 +97,7 @@ def _batch_parse_html_or_xml(items: list):
     return results
 
 
-class FileOrURLToMarkdownConverterAPI(classes):
+class FileOrURLToMarkdownConverterAPI(kbc):
     """
     Knowledge extractor using MinerU API for PDF processing.
     知识提取算子：通过 MinerU API 处理 PDF 文件。
@@ -101,7 +107,9 @@ class FileOrURLToMarkdownConverterAPI(classes):
             self,
             intermediate_dir: str = "intermediate",
             mineru_backend: str = "vlm",
+            **kwargs
     ):
+        super().__init__(**kwargs)
         self.intermediate_dir = intermediate_dir
         os.makedirs(self.intermediate_dir, exist_ok=True)
         self.mineru_backend = mineru_backend
@@ -119,33 +127,30 @@ class FileOrURLToMarkdownConverterAPI(classes):
                 "Set MINERU_API_KEY environment variable to use the API"
             )
 
-    def __call__(
+    def forward_batch_input(
             self,
-            data,
+            data: List[dict],
             input_key: str = "source",
             output_key: str = "text_path",
-    ):
+    ) -> List[dict]:
         """
         Convert files or URLs to Markdown using API.
 
         Args:
-            data: List of dict or pandas DataFrame
+            data: List of dict
             input_key: Key for input sources
             output_key: Key for output text paths
 
         Returns:
             List of dict with text paths added
         """
-        if isinstance(data, pd.DataFrame):
-            df = data
-        else:
-            df = pd.DataFrame(data)
+        assert isinstance(data, list), "Input data must be a list of dict"
 
         LOG.info("Starting content extraction (batch mode)...")
         normalized = []
 
         # Stage 1: normalize inputs
-        for idx, row in df.iterrows():
+        for idx, row in enumerate(data):
             src = row.get(input_key, "")
             item = {"index": idx}
 
@@ -199,8 +204,11 @@ class FileOrURLToMarkdownConverterAPI(classes):
             results[item["index"]] = item.get("raw_path", "")
 
         # Stage 4: merge back
-        df[output_key] = df.index.map(lambda i: results.get(i, ""))
+        output_list = []
+        for idx, row in enumerate(data):
+            new_item = row.copy()
+            new_item[output_key] = results.get(idx, "")
+            output_list.append(new_item)
 
         LOG.info("Extraction finished!")
-        return df.to_dict('records')
-
+        return output_list

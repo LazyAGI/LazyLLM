@@ -3,18 +3,26 @@ Embedding Query Generator Operator
 
 This operator generates high-quality queries from document passages for embedding model training.
 该算子从文档段落生成高质量的查询，用于 Embedding 模型训练。
+
+原始算法参考：DataFlow/dataflow/operators/core_text/generate/text2qa_generator.py (Text2QAGenerator)
+核心思想：使用 LLM 从文档段落中生成相关的查询-段落对，用于训练 Embedding 模型。
 """
 import json
-import pandas as pd
 from typing import List, Optional
+import warnings
 from lazyllm import LOG
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
 from ...prompts.embedding_synthesis import EmbeddingQueryGeneratorPrompt
 
+# 复用已存在的 embedding 组
+if 'data' in LazyLLMRegisterMetaClass.all_clses and 'embedding' in LazyLLMRegisterMetaClass.all_clses['data']:
+    embedding = LazyLLMRegisterMetaClass.all_clses['data']['embedding'].base
+else:
+    embedding = data_register.new_group('embedding')
 
-funcs = data_register.new_group('function')
-classes = data_register.new_group('class')
-class EmbeddingQueryGenerator(classes):
+
+class EmbeddingQueryGenerator(embedding):
     """
     Generate queries from document passages for embedding training data.
     从文档段落生成查询，用于构建 Embedding 训练数据。
@@ -22,21 +30,29 @@ class EmbeddingQueryGenerator(classes):
     This operator uses an LLM to generate relevant queries that could be
     answered by the given passage, creating query-passage pairs for training.
 
+    原始算法：参考 DataFlow Text2QAGenerator，使用两阶段方法：
+    1. 先生成 prompt/问题类型
+    2. 再基于文档生成具体的 QA 对
+
     Args:
         llm_serving: LLM serving instance for query generation
         num_queries: Number of queries to generate per passage (default: 3)
         lang: Language for prompts ("zh" or "en", default: "zh")
         query_types: List of query types to generate (default: ["factual", "semantic", "inferential"])
+        _concurrency_mode: Concurrency mode ('process', 'thread', 'single')
+        _save_data: Whether to save intermediate data
     """
 
     def __init__(
             self,
-            llm_serving=None,
             num_queries: int = 3,
             lang: str = "zh",
             query_types: Optional[List[str]] = None,
+            llm = None,
+            **kwargs
     ):
-        self.llm_serving = llm_serving
+        super().__init__(**kwargs)
+        self.llm = llm
         self.num_queries = num_queries
         self.lang = lang
         self.query_types = query_types or ["factual", "semantic", "inferential"]
@@ -72,42 +88,50 @@ class EmbeddingQueryGenerator(classes):
         """Clean JSON code block markers from LLM output."""
         return text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
 
-    def _generate_from_llm(self, user_prompts: List[str], system_prompt: str = "") -> List[str]:
-        """Call LLM serving to generate responses."""
-        if self.llm_serving is None:
-            raise ValueError("LLM serving is not configured")
-        return self.llm_serving.generate_from_input(user_prompts, system_prompt)
+    def _generate_from_llm(self, user_prompts, system_prompt=""):
+        """Helper to call LLM serving"""
+        if self.llm is None:
+            raise ValueError("LLM is not configured")
+        llm_serve = self.llm.share(prompt=system_prompt)
+        llm_serve.start()
+        # prompter = lazyllm.ChatPrompter(system_prompt)
+        # llm_serve = self.llm.prompt(prompter)
+        # llm_serve.start()
+        # LLM expects single string, need to iterate for batch
+        results = []
+        for prompt in user_prompts:
+            results.append(llm_serve(prompt))
+        return results
 
-    def __call__(
+    def forward_batch_input(
             self,
-            data,
+            inputs: List[dict],
             input_key: str = "passage",
             output_query_key: str = "query",
-    ):
+            **kwargs
+    ) -> List[dict]:
         """
         Generate queries for each passage in the data.
 
         Args:
-            data: List of dict or pandas DataFrame containing passages
+            inputs: List of dict containing passages
             input_key: Key for input passage field
             output_query_key: Key for output query field
 
         Returns:
             List of dict with generated queries (expanded rows)
         """
-        if isinstance(data, pd.DataFrame):
-            dataframe = data
-        else:
-            dataframe = pd.DataFrame(data)
+        assert isinstance(inputs, list), "inputs must be a list of dict"
 
-        LOG.info(f"Generating queries for {len(dataframe)} passages...")
+        LOG.info(f"Generating queries for {len(inputs)} passages...")
 
         # Build prompts
         prompt_template = EmbeddingQueryGeneratorPrompt(lang=self.lang)
         system_prompt = prompt_template.build_system_prompt()
 
         user_prompts = []
-        for passage in dataframe[input_key].tolist():
+        for item in inputs:
+            passage = item.get(input_key, "")
             user_prompts.append(prompt_template.build_prompt(
                 passage=passage,
                 num_queries=self.num_queries,
@@ -119,7 +143,7 @@ class EmbeddingQueryGenerator(classes):
 
         # Parse responses and expand rows
         expanded_rows = []
-        for idx, (row, response) in enumerate(zip(dataframe.to_dict('records'), responses)):
+        for idx, (item, response) in enumerate(zip(inputs, responses)):
             try:
                 parsed = json.loads(self._clean_json_block(response))
                 queries = parsed if isinstance(parsed, list) else parsed.get("queries", [])
@@ -133,16 +157,15 @@ class EmbeddingQueryGenerator(classes):
                         query_type = "unknown"
 
                     if query.strip():
-                        new_row = row.copy()
+                        new_row = item.copy()
                         new_row[output_query_key] = query.strip()
                         new_row["query_type"] = query_type
-                        new_row["pos"] = [row[input_key]]  # Positive sample is the source passage
+                        new_row["pos"] = [item[input_key]]  # Positive sample is the source passage
                         expanded_rows.append(new_row)
 
             except Exception as e:
                 LOG.warning(f"Failed to parse response at idx={idx}: {e}")
                 continue
 
-        LOG.info(f"Generated {len(expanded_rows)} query-passage pairs from {len(dataframe)} passages.")
+        LOG.info(f"Generated {len(expanded_rows)} query-passage pairs from {len(inputs)} passages.")
         return expanded_rows
-

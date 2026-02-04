@@ -1,5 +1,5 @@
 from lazyllm import pipeline
-from lazyllm.tools.data import Demo1, Demo2
+from lazyllm.tools.data.operators.demo_ops import Demo1, Demo2
 
 def build_demo_pipeline(input_key='text'):
     with pipeline() as ppl:

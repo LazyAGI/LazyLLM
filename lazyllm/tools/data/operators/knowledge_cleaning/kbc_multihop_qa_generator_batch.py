@@ -1,16 +1,21 @@
 """KBC Multi-Hop QA Generator Batch operator"""
 import random
 import json
-import pandas as pd
+from typing import List
 from tqdm import tqdm
 from lazyllm import LOG
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
 from ...prompts.text2qa import Text2MultiHopQAGeneratorPrompt
 
+# 复用已存在的 kbc 组
+if 'data' in LazyLLMRegisterMetaClass.all_clses and 'kbc' in LazyLLMRegisterMetaClass.all_clses['data']:
+    kbc = LazyLLMRegisterMetaClass.all_clses['data']['kbc'].base
+else:
+    kbc = data_register.new_group('kbc')
 
-funcs = data_register.new_group('function')
-classes = data_register.new_group('class')
-class KBCMultiHopQAGeneratorBatch(classes):
+
+class KBCMultiHopQAGeneratorBatch(kbc):
     """
     Processor for generating multi-hop question-answer pairs from text data.
     多跳问答对生成处理器。
@@ -18,13 +23,15 @@ class KBCMultiHopQAGeneratorBatch(classes):
 
     def __init__(
             self,
-            llm_serving=None,
+            llm=None,
             seed: int = 0,
             lang: str = "en",
             prompt_template=None,
+            **kwargs
     ):
+        super().__init__(**kwargs)
         self.rng = random.Random(seed)
-        self.llm_serving = llm_serving
+        self.llm = llm
         self.lang = lang
         if prompt_template:
             self.prompt_template = prompt_template
@@ -46,9 +53,14 @@ class KBCMultiHopQAGeneratorBatch(classes):
 
     def _generate_from_llm(self, user_prompts, system_prompt=""):
         """Helper to call LLM serving"""
-        if self.llm_serving is None:
-            raise ValueError("LLM serving is not configured")
-        return self.llm_serving.generate_from_input(user_prompts, system_prompt)
+        if self.llm is None:
+            raise ValueError("LLM is not configured")
+        llm_serve = self.llm.share(prompt=system_prompt)
+        llm_serve.start()
+        results = []
+        for prompt in user_prompts:
+            results.append(llm_serve(prompt))
+        return results
 
     def _preprocess_text(self, text: str, min_length: int = 100, max_length: int = 200000) -> str:
         """Preprocess input text"""
@@ -160,29 +172,26 @@ class KBCMultiHopQAGeneratorBatch(classes):
             examples.append(self.process_text(text, source))
         return examples
 
-    def __call__(
+    def forward_batch_input(
             self,
-            data,
+            data: List[dict],
             input_key: str = 'chunk_path',
             output_key: str = 'enhanced_chunk_path',
-    ):
+    ) -> List[dict]:
         """
         Generate multi-hop QA pairs from chunk files.
 
         Args:
-            data: List of dict or pandas DataFrame
+            data: List of dict
             input_key: Key for input chunk file paths
             output_key: Key for output enhanced chunk file paths
 
         Returns:
             List of dict with enhanced chunk paths added
         """
-        if isinstance(data, pd.DataFrame):
-            dataframe = data
-        else:
-            dataframe = pd.DataFrame(data)
+        assert isinstance(data, list), "Input data must be a list of dict"
 
-        chunk_paths = dataframe[input_key].tolist()
+        chunk_paths = [item.get(input_key, "") for item in data]
 
         for chunk_path in chunk_paths:
             if chunk_path:
@@ -216,7 +225,11 @@ class KBCMultiHopQAGeneratorBatch(classes):
 
                 LOG.info(f"Generated multi-hop QA for {chunk_path}")
 
-        dataframe[output_key] = chunk_paths
-        LOG.info("Multi-hop QA generation completed!")
-        return dataframe.to_dict('records')
+        results = []
+        for item, chunk_path in zip(data, chunk_paths):
+            new_item = item.copy()
+            new_item[output_key] = chunk_path
+            results.append(new_item)
 
+        LOG.info("Multi-hop QA generation completed!")
+        return results

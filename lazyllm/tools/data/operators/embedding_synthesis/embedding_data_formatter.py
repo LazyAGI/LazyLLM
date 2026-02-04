@@ -3,19 +3,28 @@ Embedding Data Formatter Operator
 
 This operator formats embedding training data into standard training formats.
 该算子将 Embedding 训练数据格式化为标准的训练格式。
+
+原始算法参考：标准的数据格式化方法，参考各主流 Embedding 训练框架的数据格式：
+1. FlagEmbedding/BGE: {"query": str, "pos": [str], "neg": [str], "prompt": str}
+2. Sentence-Transformers: {"anchor": str, "positive": str, "negative": str}
+3. Simple Triplet: {"query": str, "positive": str, "negative": str}
 """
 import json
-import os
-import pandas as pd
+import random
 from pathlib import Path
 from typing import List, Optional
 from lazyllm import LOG
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
 
+# 复用已存在的 embedding 组
+if 'data' in LazyLLMRegisterMetaClass.all_clses and 'embedding' in LazyLLMRegisterMetaClass.all_clses['data']:
+    embedding = LazyLLMRegisterMetaClass.all_clses['data']['embedding'].base
+else:
+    embedding = data_register.new_group('embedding')
 
-funcs = data_register.new_group('function')
-classes = data_register.new_group('class')
-class EmbeddingDataFormatter(classes):
+
+class EmbeddingDataFormatter(embedding):
     """
     Format embedding training data into standard formats.
     将 Embedding 训练数据格式化为标准格式。
@@ -32,6 +41,8 @@ class EmbeddingDataFormatter(classes):
         output_format: Target output format (default: "flagembedding")
         instruction: Instruction/prompt to prepend to queries (optional)
         output_file: Path to save formatted data (optional)
+        _concurrency_mode: Concurrency mode ('process', 'thread', 'single')
+        _save_data: Whether to save intermediate data
     """
 
     def __init__(
@@ -39,7 +50,11 @@ class EmbeddingDataFormatter(classes):
             output_format: str = "flagembedding",
             instruction: Optional[str] = None,
             output_file: Optional[str] = None,
+            _concurrency_mode: str = 'single',
+            _save_data: bool = True,
+            **kwargs
     ):
+        super().__init__(_concurrency_mode=_concurrency_mode, _save_data=_save_data, **kwargs)
         self.output_format = output_format
         self.instruction = instruction
         self.output_file = output_file
@@ -130,18 +145,19 @@ class EmbeddingDataFormatter(classes):
                 })
         return results
 
-    def __call__(
+    def forward_batch_input(
             self,
-            data,
+            inputs: List[dict],
             input_query_key: str = "query",
             input_pos_key: str = "pos",
             input_neg_key: str = "neg",
-    ):
+            **kwargs
+    ) -> List[dict]:
         """
         Format the training data.
 
         Args:
-            data: List of dict or pandas DataFrame
+            inputs: List of dict
             input_query_key: Key for query field
             input_pos_key: Key for positive samples field
             input_neg_key: Key for negative samples field
@@ -149,21 +165,18 @@ class EmbeddingDataFormatter(classes):
         Returns:
             List of dict in the specified output format
         """
-        if isinstance(data, pd.DataFrame):
-            dataframe = data
-        else:
-            dataframe = pd.DataFrame(data)
+        assert isinstance(inputs, list), "inputs must be a list of dict"
 
-        LOG.info(f"Formatting {len(dataframe)} samples to {self.output_format} format...")
+        LOG.info(f"Formatting {len(inputs)} samples to {self.output_format} format...")
 
         results = []
-        for _, row in dataframe.iterrows():
-            query = row.get(input_query_key, "")
-            pos = row.get(input_pos_key, [])
-            neg = row.get(input_neg_key, [])
+        for item in inputs:
+            query = item.get(input_query_key, "")
+            pos = item.get(input_pos_key, [])
+            neg = item.get(input_neg_key, [])
 
             if not query or not pos:
-                LOG.warning(f"Skipping row with missing query or pos: {row}")
+                LOG.warning(f"Skipping item with missing query or pos: {item}")
                 continue
 
             # Ensure pos and neg are lists
@@ -200,7 +213,7 @@ class EmbeddingDataFormatter(classes):
         return results
 
 
-class EmbeddingTrainTestSplitter(classes):
+class EmbeddingTrainTestSplitter(embedding):
     """
     Split embedding training data into train/test sets.
     将 Embedding 训练数据分割为训练集和测试集。
@@ -209,6 +222,10 @@ class EmbeddingTrainTestSplitter(classes):
         test_size: Proportion of data for test set (default: 0.1)
         seed: Random seed for reproducibility
         stratify_key: Key for stratified splitting (optional)
+        train_output_file: Path to save train data (optional)
+        test_output_file: Path to save test data (optional)
+        _concurrency_mode: Concurrency mode ('process', 'thread', 'single')
+        _save_data: Whether to save intermediate data
     """
 
     def __init__(
@@ -218,7 +235,11 @@ class EmbeddingTrainTestSplitter(classes):
             stratify_key: Optional[str] = None,
             train_output_file: Optional[str] = None,
             test_output_file: Optional[str] = None,
+            _concurrency_mode: str = 'single',
+            _save_data: bool = True,
+            **kwargs
     ):
+        super().__init__(_concurrency_mode=_concurrency_mode, _save_data=_save_data, **kwargs)
         self.test_size = test_size
         self.seed = seed
         self.stratify_key = stratify_key
@@ -247,31 +268,27 @@ class EmbeddingTrainTestSplitter(classes):
                 "Output: Data list with 'split' field ('train' or 'test')"
             )
 
-    def __call__(
+    def forward_batch_input(
             self,
-            data,
-    ):
+            inputs: List[dict],
+            **kwargs
+    ) -> List[dict]:
         """
         Split the data into train and test sets.
 
         Args:
-            data: List of dict or pandas DataFrame
+            inputs: List of dict
 
         Returns:
             List of dict with 'split' field indicating train/test
         """
-        import random
+        assert isinstance(inputs, list), "inputs must be a list of dict"
 
-        if isinstance(data, pd.DataFrame):
-            records = data.to_dict('records')
-        else:
-            records = list(data)
-
-        LOG.info(f"Splitting {len(records)} samples with test_size={self.test_size}")
+        LOG.info(f"Splitting {len(inputs)} samples with test_size={self.test_size}")
 
         # Shuffle and split
         random.seed(self.seed)
-        shuffled = records.copy()
+        shuffled = inputs.copy()
         random.shuffle(shuffled)
 
         split_idx = int(len(shuffled) * (1 - self.test_size))
@@ -306,4 +323,3 @@ class EmbeddingTrainTestSplitter(classes):
             LOG.info(f"Saved test data to {output_path}")
 
         return train_data + test_data
-

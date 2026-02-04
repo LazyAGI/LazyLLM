@@ -2,14 +2,20 @@
 import os
 from pathlib import Path
 from urllib.parse import urlparse
+from typing import List
 from tqdm import tqdm
 import requests
-import pandas as pd
 from lazyllm import LOG
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
 
-funcs = data_register.new_group('function')
-classes = data_register.new_group('class')
+# 复用已存在的 kbc 组
+if 'data' in LazyLLMRegisterMetaClass.all_clses and 'kbc' in LazyLLMRegisterMetaClass.all_clses['data']:
+    kbc = LazyLLMRegisterMetaClass.all_clses['data']['kbc'].base
+else:
+    kbc = data_register.new_group('kbc')
+
+
 def is_url(string):
     try:
         result = urlparse(string)
@@ -112,7 +118,7 @@ def _parse_xml_to_md(raw_file: str = None, url: str = None, output_file: str = N
     return output_file
 
 
-class FileOrURLToMarkdownConverterBatch(classes):
+class FileOrURLToMarkdownConverterBatch(kbc):
     """
     Knowledge extractor supporting multiple file formats to Markdown conversion.
     知识提取算子：支持从多种文件格式中提取结构化内容并转换为标准Markdown。
@@ -122,7 +128,9 @@ class FileOrURLToMarkdownConverterBatch(classes):
             self,
             intermediate_dir: str = "intermediate",
             mineru_backend: str = "vlm-sglang-engine",
+            **kwargs
     ):
+        super().__init__(**kwargs)
         self.intermediate_dir = intermediate_dir
         os.makedirs(self.intermediate_dir, exist_ok=True)
         self.mineru_backend = mineru_backend
@@ -146,32 +154,29 @@ class FileOrURLToMarkdownConverterBatch(classes):
                 "3. Plaintext(TXT/MD): Directly passes through"
             )
 
-    def __call__(
+    def forward_batch_input(
             self,
-            data,
+            data: List[dict],
             input_key: str = "source",
             output_key: str = "text_path",
-    ):
+    ) -> List[dict]:
         """
         Convert files or URLs to Markdown.
 
         Args:
-            data: List of dict or pandas DataFrame
+            data: List of dict
             input_key: Key for input sources
             output_key: Key for output text paths
 
         Returns:
             List of dict with text paths added
         """
-        if isinstance(data, pd.DataFrame):
-            dataframe = data
-        else:
-            dataframe = pd.DataFrame(data)
+        assert isinstance(data, list), "Input data must be a list of dict"
 
         LOG.info("Starting content extraction...")
         output_file_all = []
 
-        for index, row in tqdm(dataframe.iterrows(), total=len(dataframe), desc="Processing files"):
+        for index, row in tqdm(enumerate(data), total=len(data), desc="Processing files"):
             content = row.get(input_key, "")
 
             if is_url(content):
@@ -216,7 +221,11 @@ class FileOrURLToMarkdownConverterBatch(classes):
 
             output_file_all.append(output_file)
 
-        dataframe[output_key] = output_file_all
-        LOG.info("Content extraction completed!")
-        return dataframe.to_dict('records')
+        results = []
+        for item, output_file in zip(data, output_file_all):
+            new_item = item.copy()
+            new_item[output_key] = output_file
+            results.append(new_item)
 
+        LOG.info("Content extraction completed!")
+        return results

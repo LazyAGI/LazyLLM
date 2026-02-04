@@ -1,9 +1,6 @@
-from .base_data import DataOperatorRegistry
-from .operator.basic_op import *  # noqa: F401, F403
-from .pipeline.basic_pipeline import *  # noqa: F401, F403
 
 # Import Pipelines
-from .pipeline import (  # noqa: F401
+from .pipelines import (  # noqa: F401
     AgenticRAGPipeline,
     AgenticRAGDepthPipeline,
     AgenticRAGWidthPipeline,
@@ -17,7 +14,7 @@ from .pipeline import (  # noqa: F401
 )
 
 # Import AgenticRAG operators
-from .operator.agentic_rag import (  # noqa: F401
+from .operators.agentic_rag import (  # noqa: F401
     AgenticRAGQAF1SampleEvaluator,
     AgenticRAGAtomicTaskGenerator,
     AgenticRAGDepthQAGenerator,
@@ -25,7 +22,7 @@ from .operator.agentic_rag import (  # noqa: F401
 )
 
 # Import Knowledge Cleaning operators
-from .operator.knowledge_cleaning import (  # noqa: F401
+from .operators.knowledge_cleaning import (  # noqa: F401
     KBCChunkGenerator,
     KBCChunkGeneratorBatch,
     KBCTextCleaner,
@@ -37,7 +34,7 @@ from .operator.knowledge_cleaning import (  # noqa: F401
 )
 
 # Import Embedding Synthesis operators
-from .operator.embedding_synthesis import (  # noqa: F401
+from .operators.embedding_synthesis import (  # noqa: F401
     EmbeddingQueryGenerator,
     EmbeddingHardNegativeMiner,
     EmbeddingDataFormatter,
@@ -46,7 +43,7 @@ from .operator.embedding_synthesis import (  # noqa: F401
 )
 
 # Import Reranker Synthesis operators
-from .operator.reranker_synthesis import (  # noqa: F401
+from .operators.reranker_synthesis import (  # noqa: F401
     RerankerQueryGenerator,
     RerankerHardNegativeMiner,
     RerankerDataFormatter,
@@ -56,11 +53,19 @@ from .operator.reranker_synthesis import (  # noqa: F401
 
 # Import prompts
 from .prompts import PromptABC  # noqa: F401
+import importlib
+import lazyllm
+from .base_data import LazyLLMDataBase, data_register
+from .operators import demo_ops  # noqa: F401
 
-keys = DataOperatorRegistry._registry.keys()
-__all__ = ['DataOperatorRegistry', 'PromptABC']
-__all__.extend(keys)
+def __getattr__(name):
+    if name == 'pipelines':
+        return importlib.import_module('.pipelines', __package__)
+    if name in lazyllm.data:
+        return lazyllm.data[name]
+    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
 
+__all__ = ['LazyLLMDataBase', 'data_register', 'PromptABC']
 # Add AgenticRAG operators to __all__
 __all__.extend([
     'AgenticRAGQAF1SampleEvaluator',
@@ -112,16 +117,4 @@ __all__.extend([
     'RerankerFromEmbeddingPipeline',
     'RerankerFineTunePipeline',
 ])
-import importlib
-import lazyllm
-from .base_data import LazyLLMDataBase, data_register
-from .operators import demo_ops  # noqa: F401
 
-def __getattr__(name):
-    if name == 'pipelines':
-        return importlib.import_module('.pipelines', __package__)
-    if name in lazyllm.data:
-        return lazyllm.data[name]
-    raise AttributeError(f'module {__name__!r} has no attribute {name!r}')
-
-__all__ = ['LazyLLMDataBase', 'data_register']

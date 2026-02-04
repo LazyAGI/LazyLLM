@@ -1,13 +1,19 @@
 """KBC Chunk Generator operator"""
 import os
 import json
-import pandas as pd
+from typing import List
 from lazyllm import LOG
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
 
-funcs = data_register.new_group('function')
-classes = data_register.new_group('class')
-class KBCChunkGenerator(classes):
+# 复用已存在的 kbc 组
+if 'data' in LazyLLMRegisterMetaClass.all_clses and 'kbc' in LazyLLMRegisterMetaClass.all_clses['data']:
+    kbc = LazyLLMRegisterMetaClass.all_clses['data']['kbc'].base
+else:
+    kbc = data_register.new_group('kbc')
+
+
+class KBCChunkGenerator(kbc):
     """
     Lightweight text splitting tool supporting token/sentence/semantic/recursive chunking.
     CorpusTextSplitter是轻量级文本分割工具，支持词/句/语义/递归分块。
@@ -20,7 +26,9 @@ class KBCChunkGenerator(classes):
             split_method: str = "token",
             min_tokens_per_chunk: int = 100,
             tokenizer_name: str = "bert-base-uncased",
+            **kwargs
     ):
+        super().__init__(**kwargs)
         self.chunk_size = chunk_size
         self.chunk_overlap = chunk_overlap
         self.split_method = split_method
@@ -76,17 +84,19 @@ class KBCChunkGenerator(classes):
     def get_desc(lang: str = "zh"):
         if lang == "zh":
             return (
-                "CorpusTextSplitter是轻量级文本分割工具，",
-                "支持词/句/语义/递归分块，",
-                "可配置块大小、重叠和最小块长度",
+                "CorpusTextSplitter是轻量级文本分割工具，"
+                "支持词/句/语义/递归分块，"
+                "可配置块大小、重叠和最小块长度"
             )
         elif lang == "en":
             return (
-                "CorpusTextSplitter is a lightweight text segmentation tool",
-                "that supports multiple chunking methods",
-                "(token/sentence/semantic/recursive) with configurable size and overlap,",
+                "CorpusTextSplitter is a lightweight text segmentation tool "
+                "that supports multiple chunking methods "
+                "(token/sentence/semantic/recursive) with configurable size and overlap, "
                 "optimized for RAG applications."
             )
+        else:
+            return "Text splitting tool supporting multiple chunking methods."
 
     def _load_text(self, file_path) -> str:
         """Load text from input file"""
@@ -111,37 +121,35 @@ class KBCChunkGenerator(classes):
         else:
             raise ValueError("Unsupported file format")
 
-    def __call__(
+    def forward_batch_input(
             self,
-            data,
+            data: List[dict],
             input_key: str = 'text_path',
             output_key: str = "raw_chunk",
-    ):
+    ) -> List[dict]:
         """
         Perform text splitting.
 
         Args:
-            data: List of dict or pandas DataFrame
+            data: List of dict
             input_key: Key for input text file paths
             output_key: Key for output chunks
 
         Returns:
             List of dict with chunks added
         """
+        assert isinstance(data, list), "Input data must be a list of dict"
         self._ensure_initialized()
 
-        if isinstance(data, pd.DataFrame):
-            dataframe = data
-        else:
-            dataframe = pd.DataFrame(data)
-
-        text_paths = dataframe[input_key].tolist()
+        text_paths = [item.get(input_key, "") for item in data]
         for input_path in text_paths:
             if not input_path or not os.path.exists(input_path):
                 LOG.error(f"Invalid input file path: {input_path}")
 
         new_records = []
-        for row_dict, text_path in zip(dataframe.to_dict(orient='records'), text_paths):
+        for row_dict, text_path in zip(data, text_paths):
+            if not text_path:
+                continue
             text = self._load_text(text_path)
             if text:
                 tokens = self.tokenizer.encode(text)
@@ -167,4 +175,3 @@ class KBCChunkGenerator(classes):
 
         LOG.info(f"Successfully split text for {len(text_paths)} files.")
         return new_records
-
