@@ -17,18 +17,18 @@ class TestEvalRAG:
 
     def test_response_relevancy(self):
         m = ResponseRelevancy(
-            lazyllm.OnlineChatModule(),
-            lazyllm.OnlineEmbeddingModule())
+            lazyllm.OnlineChatModule(source='sensenova'),
+            lazyllm.OnlineEmbeddingModule(source='sensenova'))
         res = m(self.data)
         assert isinstance(res, float)
 
     def test_faithfulness(self):
-        m = Faithfulness(lazyllm.OnlineChatModule())
+        m = Faithfulness(lazyllm.OnlineChatModule(source='sensenova'))
         res = m(self.data)
         assert isinstance(res, float)
 
     def test_llm_context_recall(self):
-        m = LLMContextRecall(lazyllm.OnlineChatModule())
+        m = LLMContextRecall(lazyllm.OnlineChatModule(source='sensenova'))
         res = m(self.data)
         assert isinstance(res, float)
 

@@ -143,6 +143,47 @@ class TestDocument(unittest.TestCase):
         retriever = Retriever(doc, 'AdaptiveChunk2', similarity='bm25', topk=2)
         retriever('什么是道')
 
+    def test_create_node_group_with_ref(self):
+        doc = Document('rag_master')
+        # Create parent node group
+        doc.create_node_group('parent_chunk', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+        # Create ref node group under parent
+        doc.create_node_group('ref_chunk', parent='parent_chunk',
+                              transform=dict(f=SentenceSplitter, kwargs=dict(chunk_size=128, chunk_overlap=12)))
+
+        # Create node group with ref - ref_chunk is descendant of parent_chunk
+        def transform_with_ref(text, ref):
+            return f'doc_test_text: {text}\n doc_test_ref:' + '\n'.join(ref)
+
+        doc.create_node_group('chunk_with_ref', parent='parent_chunk',
+                              transform=transform_with_ref, ref='ref_chunk')
+
+        assert 'chunk_with_ref' in doc._impl.node_groups
+        assert doc._impl.node_groups['chunk_with_ref']['ref'] == 'ref_chunk'
+
+        doc.activate_groups(['chunk_with_ref'])
+        doc.start()
+        ref_nodes = doc._impl.store.get_nodes(group='chunk_with_ref')
+        assert len(ref_nodes) > 0
+        assert 'doc_test_text' in ref_nodes[0].text
+        assert 'doc_test_ref' in ref_nodes[0].text
+
+    def test_create_node_group_with_invalid_ref(self):
+        doc = Document('rag_master')
+        # Create two independent node groups
+        doc.create_node_group('group_a', transform=SentenceSplitter, chunk_size=512, chunk_overlap=50)
+        doc.create_node_group('group_b', transform=SentenceSplitter, chunk_size=256, chunk_overlap=25)
+
+        # Try to create node group with ref that is not descendant of parent - should raise error
+        doc.create_node_group('invalid_ref_chunk', parent='group_a',
+                              transform=lambda x: [x], ref='group_b')
+
+        # Activate the group first, then init to trigger validation
+        doc._impl._activated_groups.add('invalid_ref_chunk')
+        with self.assertRaises(ValueError) as context:
+            doc._impl._lazy_init()
+        assert 'not under parent' in str(context.exception)
+
     def test_find(self):
         #       /- MediumChunk
         #      /                /- chunk1 -- chunk11 -- chunk111

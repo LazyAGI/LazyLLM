@@ -2,6 +2,7 @@ import builtins
 import functools
 import lazyllm
 import re
+import sys
 from typing import Union, List
 from .bind import _MetaBind
 from ..configs import config
@@ -190,9 +191,16 @@ class Register(object):
                 name=func_name + cls.split('.')[-1].capitalize(), base=cls))
             # 'func' cannot be recognized by exec, so we use 'setattr' instead
             f = LazyLLMRegisterMetaClass.all_clses[cls.lower()].__getattr__(func_name)
+
+            # Support multiprocessing: Register the class in the module where the function is defined
+            if func.__module__ in sys.modules:
+                setattr(sys.modules[func.__module__], f.__name__, f)
+                f.__module__ = func.__module__
+
             f.__name__ = func_name
             setattr(f, rewrite_func, bind_to_instance(func))
-            [setattr(f, k, v) for k, v in kwargs.items()]
+            for k, v in kwargs.items():
+                setattr(f, k, v)
             return func
         return impl
 
@@ -213,5 +221,4 @@ class Register(object):
         return impl
 
     def new_group(self, group_name):
-        exec('class LazyLLM{name}Base(self.basecls):\n    pass\n'.format(name=group_name))
-        return locals()[f'LazyLLM{group_name}Base']
+        return type(f'LazyLLM{group_name}Base', (self.basecls,), {})

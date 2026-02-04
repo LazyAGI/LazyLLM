@@ -108,11 +108,28 @@ class DocImpl:
         self._activated_groups = set([g for g in self._activated_groups if g in node_groups])
 
         # use list to avoid `dictionary changed size during iteration` error
+        def _activate_with_parents(group_name: str):
+            cur = group_name
+            while cur and cur not in self._activated_groups:
+                self._activated_groups.add(cur)
+                cur = self.node_groups[cur]['parent']
+
+        def _is_descendant(desc: str, ancestor: str) -> bool:
+            cur = self.node_groups.get(desc, {}).get('parent')
+            while cur:
+                if cur == ancestor:
+                    return True
+                cur = self.node_groups.get(cur, {}).get('parent')
+            return False
+
         for group in list(self._activated_groups):
-            while True:
+            _activate_with_parents(self.node_groups[group]['parent'])
+            ref_group = self.node_groups[group].get('ref')
+            if ref_group and ref_group in node_groups:
                 parent_group = self.node_groups[group]['parent']
-                if not parent_group or parent_group in self._activated_groups: break
-                self._activated_groups.add(group := parent_group)
+                if parent_group and not _is_descendant(ref_group, parent_group):
+                    raise ValueError(f'Node group "{group}" has ref "{ref_group}" not under parent "{parent_group}".')
+                _activate_with_parents(ref_group)
 
     @property
     def store(self) -> _DocumentStore:
@@ -192,7 +209,7 @@ class DocImpl:
     def _create_node_group_impl(cls, group_name, name, transform: Union[str, Callable],
                                 parent: str = LAZY_ROOT_NAME, *, trans_node: Optional[bool] = None,
                                 num_workers: int = 0, display_name: Optional[str] = None,
-                                group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs):
+                                group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None, **kwargs):
         group_name, parent = str(group_name), str(parent)
         groups = getattr(cls, group_name)
 
@@ -223,7 +240,7 @@ class DocImpl:
             else:
                 assert callable(t.f), f'transform should be callable, but get {t.f}'
         groups[name] = dict(transform=transforms, parent=parent, display_name=display_name or name,
-                            group_type=group_type)
+                            group_type=group_type, ref=ref)
 
     @classmethod
     def _create_builtin_node_group(cls, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME,
@@ -238,18 +255,18 @@ class DocImpl:
     def create_global_node_group(cls, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
                                  trans_node: Optional[bool] = None, num_workers: int = 0,
                                  display_name: Optional[str] = None,
-                                 group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
+                                 group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None, **kwargs) -> None:
         DocImpl._create_node_group_impl(cls, '_global_node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
-                                        group_type=group_type, **kwargs)
+                                        group_type=group_type, ref=ref, **kwargs)
 
     def create_node_group(self, name, transform: Union[str, Callable], parent: str = LAZY_ROOT_NAME, *,
                           trans_node: Optional[bool] = None, num_workers: int = 0, display_name: Optional[str] = None,
-                          group_type: NodeGroupType = NodeGroupType.CHUNK, **kwargs) -> None:
+                          group_type: NodeGroupType = NodeGroupType.CHUNK, ref: str = None, **kwargs) -> None:
         assert not self._lazy_init.flag, 'Cannot add node group after document started'
         DocImpl._create_node_group_impl(self, 'node_groups', name=name, transform=transform, parent=parent,
                                         trans_node=trans_node, num_workers=num_workers, display_name=display_name,
-                                        group_type=group_type, **kwargs)
+                                        group_type=group_type, ref=ref, **kwargs)
 
     @classmethod
     def register_global_reader(cls, pattern: str, func: Optional[Callable] = None):
