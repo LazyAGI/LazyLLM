@@ -11,7 +11,7 @@ lazyllm::DocNode init(
     std::optional<std::string> uid,
     std::optional<std::variant<std::string, std::vector<std::string>>> content,
     std::optional<std::string> group,
-    std::optional<lazyllm::DocNode::EmbeddingVec> embedding,
+    std::optional<lazyllm::DocNode::EmbeddingVecs> embedding,
     std::optional<std::variant<std::string, py::object>> parent,
     py::object store,
     std::optional<std::unordered_map<
@@ -65,7 +65,10 @@ lazyllm::DocNode init(
             global_metadata.value_or(lazyllm::DocNode::Metadata()))
     );
     if (store_adaptor) node.set_store(store_adaptor);
-    if (embedding) node.set_embedding_vec(*embedding);
+    if (embedding) {
+        for (const auto& [key, vec] : *embedding)
+            node.set_embedding_vec(key, vec);
+    }
     if (content) {
         if (const auto* s = std::get_if<std::string>(&*content))
             node.set_root_text(std::move(*s));
@@ -92,14 +95,6 @@ void exportDocNode(py::module& m) {
             py::arg("node_groups") = py::none(),
             py::arg("metadata") = py::none(),
             py::arg("global_metadata") = py::none(),
-            py::arg("text") = py::none(),
-
-            py::keep_alive<1, 7>() // Keep store alive
-        )
-        .def_property_readonly("uid", &lazyllm::DocNode::uid)
-    @property
-    def number(self) -> int:
-        return self._metadata.get('lazyllm_store_num', 0)
-        .def("set_text", &lazyllm::DocNode::set_text, py::arg("text"))
-        .def("get_text", &lazyllm::DocNode::get_text);
+            py::arg("text") = py::none()
+        );
 }

@@ -13,10 +13,12 @@
 
 namespace lazyllm {
 
-class AdaptorBaseWrapper : public AdaptorBase {
+class LAZYLLM_HIDDEN AdaptorBaseWrapper : public AdaptorBase {
     pybind11::object _py_obj;
 public:
     AdaptorBaseWrapper(const pybind11::object &obj) : _py_obj(obj) {}
+    virtual ~AdaptorBaseWrapper() = default;
+
     std::any call(
         const std::string& func_name,
         const std::unordered_map<std::string, std::any>& args) const override final

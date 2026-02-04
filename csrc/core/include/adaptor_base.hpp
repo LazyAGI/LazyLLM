@@ -4,6 +4,12 @@
 #include <unordered_map>
 #include <any>
 
+#if defined(__GNUC__) || defined(__clang__)
+#define LAZYLLM_HIDDEN __attribute__((visibility("hidden")))
+#else
+#define LAZYLLM_HIDDEN
+#endif
+
 namespace lazyllm {
 
 struct Arg {
@@ -11,7 +17,8 @@ struct Arg {
     std::any value;
 };
 
-struct AdaptorBase {
+class AdaptorBase {
+public:
     virtual ~AdaptorBase() = default;
     virtual std::any call(
         const std::string& func_name,

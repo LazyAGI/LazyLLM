@@ -30,6 +30,29 @@ std::string JoinLines(const std::vector<std::string>& lines, char delim = '\n') 
     return out;
 }
 
+template <typename T>
+std::vector<T> ConcatVector(const std::vector<T>& l, const std::vector<T>& r) {
+    std::vector<T> out;
+    out.reserve(l.size() + r.size());
+    out.insert(out.end(), l.begin(), l.end());
+    out.insert(out.end(), r.begin(), r.end());
+    return out;
+}
+
+template <typename T>
+std::set<T> SetUnion(const std::set<T>& l, const std::set<T>& r) {
+    std::set<T> out;
+    std::set_union(l.begin(), l.end(), r.begin(), r.end(), std::inserter(out, out.begin()));
+    return out;
+}
+
+template <typename T>
+std::set<T> SetDiff(const std::set<T>& l, const std::set<T>& r) {
+    std::set<T> out;
+    std::set_difference(l.begin(), l.end(), r.begin(), r.end(), std::inserter(out, out.begin()));
+    return out;
+}
+
 std::string Trim(const std::string& value) {
     size_t start = 0;
     while (start < value.size() && std::isspace(static_cast<unsigned char>(value[start]))) {

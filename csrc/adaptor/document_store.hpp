@@ -17,17 +17,17 @@ struct NodeGroup {
     enum class Type {
         ORIGINAL, CHUNK, SUMMARY, IMAGE_INFO, QUESTION_ANSWER, OTHER
     };
-    std::string parent;
-    std::string display_name;
-    Type type;
+    std::string _parent;
+    std::string _display_name;
+    Type _type;
     NodeGroup(
         const std::string& parent,
         const std::string& display_name,
         const Type& type = Type::ORIGINAL) :
-            parent(parent), display_name(display_name), type(type) {}
+            _parent(parent), _display_name(display_name), _type(type) {}
 };
 
-class DocumentStore : public AdaptorBaseWrapper {
+class LAZYLLM_HIDDEN DocumentStore : public AdaptorBaseWrapper {
 public:
     DocumentStore() = delete;
     explicit DocumentStore(
@@ -59,7 +59,7 @@ public:
         auto& doc_id = std::any_cast<std::string&>(node->_p_global_metadata->at(std::string(RAG_KEY_DOC_ID)));
         auto& group_name = node->get_group_name();
         for(auto& [current_group_name, group] : _node_groups_map) {
-            if (group.parent != group_name) continue;
+            if (group._parent != group_name) continue;
             if (!std::any_cast<bool>(call("is_group_active", {{"group", current_group_name}}))) continue;
             auto nodes_in_group = std::any_cast<std::vector<DocNode*>>(call("get_nodes", {
                 {"group_name", current_group_name},
