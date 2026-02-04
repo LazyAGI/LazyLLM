@@ -26,7 +26,6 @@ class TextToChunks(Text2qa):
         self.output_key = output_key
         self.chunk_size = chunk_size
         self.tokenizer = tokenizer
-        print('加载Tokenizer')
         if tokenize and tokenizer is None:
             LOG.warning(
                 f'tokenize=True but tokenizer is None, '
