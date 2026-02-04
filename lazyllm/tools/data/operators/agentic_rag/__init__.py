@@ -10,4 +10,3 @@ __all__ = [
     'AgenticRAGDepthQAGenerator',
     'AgenticRAGWidthQAGenerator',
 ]
-
