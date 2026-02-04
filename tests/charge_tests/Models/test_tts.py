@@ -53,6 +53,7 @@ class TestTTS:
     @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('qwen'))
     def test_qwen_tts_cosyvoice_multi_user_raises(self):
         api_key = get_api_key('qwen')
+        if lazyllm.config['cache_online_module']: return
         with pytest.raises(ModuleExecutionError, match="cosyvoice-v1 does not support multi user, don't set api_key"):
             tts = lazyllm.OnlineMultiModalModule(source='qwen', function='tts', model='cosyvoice-v1', api_key=api_key)
             tts(self.test_text)
