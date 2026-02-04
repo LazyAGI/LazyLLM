@@ -451,7 +451,7 @@ MODEL_MAPPING = {
     'nano-banana-pro-preview': 'image_editing',
 
     # ==== Claude ====
-    'claude-4-5-sonnet-latest': 'sd',
+    'claude-4-5-sonnet-latest': 'vlm',
 }
 _TOKEN_MAP = {
     'embed': ('embedding', 'embed'),

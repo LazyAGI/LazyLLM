@@ -3308,7 +3308,7 @@ Features:
 ''')
 
 add_chinese_doc('llms.onlinemodule.supplier.gemini.GeminiText2Image', '''\
-Qwen文本生成图像模块和图像编辑模块，继承自 LazyLLMOnlineText2ImageModuleBase，封装了调用 gemini-2.5-flash-image 模型生成图像的能力和调用 nano-banana-pro-preview 模型进行图像编辑的能力。  
+Gemini文本生成图像模块和图像编辑模块，继承自 LazyLLMOnlineText2ImageModuleBase，封装了调用 gemini-2.5-flash-image 模型生成图像的能力和调用 nano-banana-pro-preview 模型进行图像编辑的能力。  
 支持根据文本提示生成指定数量和分辨率的图像，支持图像编辑，并可设置负面提示、随机种子及扩展提示功能。
 
 Args:
@@ -3350,7 +3350,7 @@ Args:
     5. 支持 API Key 验证，确保服务安全性
 ''')
 
-add_english_doc('llms.onlinemodule.supplier.gemini.ClaudeChat', '''\
+add_english_doc('llms.onlinemodule.supplier.claude.ClaudeChat', '''\
 ClaudeChat is an online chat module for Anthropic Claude series models, inheriting from OnlineChatModuleBase.
 
 Provides an interface to interact with Anthropic's large language models, supporting chat generation, file handling, and model fine-tuning. Supports multiple models including Vision-Language Models (VLM).

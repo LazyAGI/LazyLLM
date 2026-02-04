@@ -81,37 +81,33 @@ class ClaudeChat(OnlineChatModuleBase):
 
         return parts
 
-    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
-                tools: List[Dict[str, Any]] = None, stream_output: bool = False,
-                lazyllm_files=None, url: str = None, model: str = None, **kw):
-        stream_output = stream_output or self._stream
-        __input, files = self._get_files(__input, lazyllm_files)
-        runtime_base_url = (url or kw.pop('base_url', None) or self._base_url).rstrip('/')
-        runtime_url = self._get_chat_url(runtime_base_url)
-        runtime_model = model or kw.pop('model_name', None) or self._model_name
-
+    def _build_prompt(self, __input: Union[Dict, str], llm_chat_history, tools):
         params = {'input': __input, 'history': llm_chat_history, 'return_dict': True}
         if tools:
             params['tools'] = tools
         claude_dict = self._prompt.generate_prompt(**params)
-        messages = claude_dict.get('messages', [])
-        system = claude_dict.get('system')
+        return claude_dict.get('messages', []), claude_dict.get('system')
 
-        if self.type == 'VLM' and files:
-            if messages and messages[-1].get('role') == 'user':
-                content = messages[-1].get('content')
-                query_text = ''
-                if isinstance(content, list):
-                    query_text = ''.join([
-                        item.get('text', '') for item in content
-                        if isinstance(item, dict) and item.get('type') == 'text'
-                    ])
-                elif isinstance(content, str):
-                    query_text = content
-                messages[-1]['content'] = self._format_input_with_files(query_text or __input, files)
-            else:
-                messages.append({'role': 'user', 'content': self._format_input_with_files(__input, files)})
+    def _extract_text_from_content(self, content: Any) -> str:
+        if isinstance(content, str):
+            return content
+        if isinstance(content, list):
+            texts = [
+                item.get('text', '')
+                for item in content
+                if isinstance(item, dict) and item.get('type') == 'text'
+            ]
+            return ''.join(filter(None, texts))
+        return ''
 
+    def _apply_vlm_files(self, messages, __input, files):
+        if messages and messages[-1].get('role') == 'user':
+            query_text = self._extract_text_from_content(messages[-1].get('content'))
+            messages[-1]['content'] = self._format_input_with_files(query_text or __input, files)
+        else:
+            messages.append({'role': 'user', 'content': self._format_input_with_files(__input, files)})
+
+    def _build_payload(self, runtime_model, messages, system, stream_output, tools, kw):
         max_tokens = kw.pop('max_tokens', None) or self._static_params.get('max_tokens') or 1024
         payload = {
             'model': runtime_model,
@@ -121,16 +117,54 @@ class ClaudeChat(OnlineChatModuleBase):
         }
         if system:
             payload['system'] = system
-        if self._static_params.get('temperature') is not None:
-            payload['temperature'] = self._static_params.get('temperature')
-        if self._static_params.get('top_p') is not None:
-            payload['top_p'] = self._static_params.get('top_p')
-        if self._static_params.get('top_k') is not None:
-            payload['top_k'] = self._static_params.get('top_k')
+        for key in ('temperature', 'top_p', 'top_k'):
+            value = self._static_params.get(key)
+            if value is not None:
+                payload[key] = value
         if tools:
             payload['tools'] = tools
         if kw:
             payload.update(kw)
+        return payload
+
+    def _extract_text_from_chunk(self, chunk: Dict[str, Any]) -> str:
+        chunk_type = chunk.get('type')
+        if chunk_type == 'content_block_delta':
+            delta = chunk.get('delta') or {}
+            return delta.get('text') or ''
+        if chunk_type == 'content_block_start':
+            content = chunk.get('content_block') or {}
+            if content.get('type') == 'text':
+                return content.get('text') or ''
+        return ''
+
+    def _handle_stream_response(self, response, stream_output):
+        color = stream_output.get('color') if isinstance(stream_output, dict) else None
+        full_text: List[str] = []
+        with self.stream_output(stream_output):
+            for chunk in self._iter_sse_json(response):
+                text = self._extract_text_from_chunk(chunk)
+                if text:
+                    self._stream_output(text, color)
+                    full_text.append(text)
+        result = ''.join(full_text)
+        return self._formatter({'role': 'assistant', 'content': result}) if result else ''
+
+    def forward(self, __input: Union[Dict, str] = None, *, llm_chat_history: List[List[str]] = None,
+                tools: List[Dict[str, Any]] = None, stream_output: bool = False,
+                lazyllm_files=None, url: str = None, model: str = None, **kw):
+        stream_output = stream_output or self._stream
+        __input, files = self._get_files(__input, lazyllm_files)
+        runtime_base_url = (url or kw.pop('base_url', None) or self._base_url).rstrip('/')
+        runtime_url = self._get_chat_url(runtime_base_url)
+        runtime_model = model or kw.pop('model_name', None) or self._model_name
+
+        messages, system = self._build_prompt(__input, llm_chat_history, tools)
+
+        if self.type == 'VLM' and files:
+            self._apply_vlm_files(messages, __input, files)
+
+        payload = self._build_payload(runtime_model, messages, system, stream_output, tools, kw)
 
         proxies = {'http': None, 'https': None} if self.NO_PROXY else None
         with requests.post(runtime_url, json=payload, headers=self._header, stream=stream_output,
@@ -140,26 +174,7 @@ class ClaudeChat(OnlineChatModuleBase):
                 raise requests.RequestException(f'{r.status_code}: {msg}')
 
             if stream_output:
-                color = stream_output.get('color') if isinstance(stream_output, dict) else None
-                full_text: List[str] = []
-                with self.stream_output(stream_output):
-                    for chunk in self._iter_sse_json(r):
-                        chunk_type = chunk.get('type')
-                        if chunk_type == 'content_block_delta':
-                            delta = chunk.get('delta') or {}
-                            text = delta.get('text')
-                        elif chunk_type == 'message_delta':
-                            text = ''
-                        elif chunk_type == 'content_block_start':
-                            content = chunk.get('content_block') or {}
-                            text = content.get('text') if content.get('type') == 'text' else ''
-                        else:
-                            text = ''
-                        if text:
-                            self._stream_output(text, color)
-                            full_text.append(text)
-                result = ''.join(full_text)
-                return self._formatter({'role': 'assistant', 'content': result}) if result else ''
+                return self._handle_stream_response(r, stream_output)
 
             text = self._extract_text(r.json())
             return self._formatter({'role': 'assistant', 'content': text}) if text else ''

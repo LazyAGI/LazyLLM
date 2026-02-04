@@ -117,7 +117,8 @@ class GeminiChat(OnlineChatModuleBase):
         system_instruction = gemini_dict.get('system_instruction')
 
         if self.type == LLMType.VLM and files:
-            vlm_parts = self._format_input_with_files(contents[-1]['parts'][0].get('text') if contents else __input, files)
+            vlm_parts = self._format_input_with_files(contents[-1]['parts'][0].get('text') 
+                                                      if contents else __input, files)
             if contents:
                 last_content = contents[-1]
                 if last_content.get('role') == 'user':
@@ -196,36 +197,41 @@ class GeminiText2Image(LazyLLMOnlineText2ImageModuleBase):
             request_url = f'{request_url}?key={self._api_key}'
         return request_url
 
-    def _extract_image_bytes(self, response_json: Dict[str, Any]) -> List[bytes]:
-        image_bytes: List[bytes] = []
+    def _extract_candidate_image_b64(self, response_json: Dict[str, Any]) -> List[str]:
+        results: List[str] = []
         candidates = response_json.get('candidates') or []
-
         for cand in candidates:
             content = cand.get('content') or {}
             parts = content.get('parts') or []
             for part in parts:
                 inline = part.get('inline_data') or part.get('inlineData')
-                if inline and isinstance(inline, dict):
+                if isinstance(inline, dict):
                     b64 = inline.get('data')
                     if b64:
-                        try:
-                            image_bytes.append(base64.b64decode(b64))
-                        except Exception:
-                            continue
+                        results.append(b64)
+        return results
 
-        if image_bytes:
-            return image_bytes
-
-        if isinstance(response_json.get('images'), list):
-            for item in response_json['images']:
+    def _extract_images_list_b64(self, response_json: Dict[str, Any]) -> List[str]:
+        results: List[str] = []
+        images = response_json.get('images')
+        if isinstance(images, list):
+            for item in images:
                 b64 = item.get('imageBytes') or item.get('bytesBase64Encoded')
                 if b64:
-                    try:
-                        image_bytes.append(base64.b64decode(b64))
-                    except Exception:
-                        continue
+                    results.append(b64)
+        return results
 
-        return image_bytes
+    def _decode_base64_list(self, items: List[str]) -> List[bytes]:
+        decoded: List[bytes] = []
+        for b64 in items:
+            decoded.append(base64.b64decode(b64))
+        return decoded
+
+    def _extract_image_bytes(self, response_json: Dict[str, Any]) -> List[bytes]:
+        b64_list = self._extract_candidate_image_b64(response_json)
+        if not b64_list:
+            b64_list = self._extract_images_list_b64(response_json)
+        return self._decode_base64_list(b64_list)
 
     def _build_parts(self, prompt: Optional[str], files: Optional[List[str]]) -> List[Dict[str, Any]]:
         parts: List[Dict[str, Any]] = []
