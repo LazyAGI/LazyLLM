@@ -3,10 +3,13 @@ try:
     from install import install
     from deploy import deploy
     from run import run
+    from skills import skills
+
 except ImportError:
     from .install import install
     from .deploy import deploy
     from .run import run
+    from .skills import skills
 import logging
 
 def main():
@@ -25,6 +28,8 @@ def main():
         deploy(commands)
     elif sys.argv[1] == 'run':
         run(commands)
+    elif sys.argv[1] == 'skills':
+        skills(commands)
     else:
         exit()
 
