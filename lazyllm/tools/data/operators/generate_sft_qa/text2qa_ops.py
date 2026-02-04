@@ -6,10 +6,10 @@ from lazyllm.thirdparty import transformers
 from datasketch import MinHash, MinHashLSH
 
 import os
-os.environ["TOKENIZERS_PARALLELISM"] = "false"
+os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
-DEFAULT_MODEL = "qwen2.5-0.5B-instruct"
-DEFAULT_TOKENIZER = "Qwen/Qwen2.5-0.5B"
+DEFAULT_MODEL = 'qwen2.5-0.5B-instruct'
+DEFAULT_TOKENIZER = 'Qwen/Qwen2.5-0.5B'
 Text2qa = data_register.new_group('Text2qa')
 
 
@@ -21,16 +21,16 @@ class TextToChunks(Text2qa):
                  tokenize=True,
                  tokenizer=None,
                  **kwargs):
-        super().__init__(_concurrency_mode="thread", **kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.output_key = output_key
         self.chunk_size = chunk_size
         self.tokenizer = tokenizer
-        print("加载Tokenizer")
+        print('加载Tokenizer')
         if tokenize and tokenizer is None:
             LOG.warning(
-                f"tokenize=True but tokenizer is None, "
-                f"loading tokenizer from default model: {DEFAULT_TOKENIZER}"
+                f'tokenize=True but tokenizer is None, '
+                f'loading tokenizer from default model: {DEFAULT_TOKENIZER}'
             )
             try:
                 self.tokenizer = transformers.AutoTokenizer.from_pretrained(
@@ -40,8 +40,8 @@ class TextToChunks(Text2qa):
                 self.tokenize = True
             except Exception as e:
                 LOG.warning(
-                    f"failed to load tokenizer from {DEFAULT_TOKENIZER}, "
-                    f"falling back to char count, error: {e}"
+                    f'failed to load tokenizer from {DEFAULT_TOKENIZER}, '
+                    f'falling back to char count, error: {e}'
                 )
                 self.tokenize = False
                 self.tokenizer = None
@@ -57,9 +57,9 @@ class TextToChunks(Text2qa):
         return len(text)
 
     def forward(self, data: dict):
-        """
+        '''
         将文本切分为 chunk
-        """
+        '''
         text = data.get(self.input_key, '')
         if not text:
             return []
@@ -77,12 +77,12 @@ class TextToChunks(Text2qa):
                 cur_len += l_len
             else:
                 if cur_parts:
-                    chunks.append("\n".join(cur_parts))
+                    chunks.append('\n'.join(cur_parts))
                 cur_parts = [line]
                 cur_len = l_len
 
         if cur_parts:
-            chunks.append("\n".join(cur_parts))
+            chunks.append('\n'.join(cur_parts))
 
         results = []
         for c in chunks:
@@ -94,10 +94,10 @@ class TextToChunks(Text2qa):
 
 @data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
 def html_tag_cleaner(data: dict, input_key='chunk'):
-    """
+    '''
     移除 HTML 标签，如 <p> <br> <div> 等
-    """
-    text = data.get(input_key, "")
+    '''
+    text = data.get(input_key, '')
     if not text:
         return data
 
@@ -107,10 +107,10 @@ def html_tag_cleaner(data: dict, input_key='chunk'):
 
 @data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
 def html_entity_cleaner(data: dict, input_key='chunk'):
-    """
+    '''
     移除 HTML 实体，如 &nbsp; &amp;
-    """
-    text = data.get(input_key, "")
+    '''
+    text = data.get(input_key, '')
     if not text:
         return data
 
@@ -120,10 +120,10 @@ def html_entity_cleaner(data: dict, input_key='chunk'):
 
 @data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
 def whitespace_cleaner(data: dict, input_key='chunk'):
-    """
+    '''
     合并多余空白字符并 strip
-    """
-    text = data.get(input_key, "")
+    '''
+    text = data.get(input_key, '')
     if not text:
         return data
 
@@ -133,10 +133,10 @@ def whitespace_cleaner(data: dict, input_key='chunk'):
 
 @data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
 def control_char_cleaner(data: dict, input_key='chunk'):
-    """
+    '''
     移除控制字符（\x00-\x1f, \x7f）
-    """
-    text = data.get(input_key, "")
+    '''
+    text = data.get(input_key, '')
     if not text:
         return data
 
@@ -146,10 +146,10 @@ def control_char_cleaner(data: dict, input_key='chunk'):
 
 @data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
 def unicode_space_cleaner(data: dict, input_key='chunk'):
-    """
+    '''
     统一 Unicode 空白字符
-    """
-    text = data.get(input_key, "")
+    '''
+    text = data.get(input_key, '')
     if not text:
         return data
 
@@ -159,10 +159,10 @@ def unicode_space_cleaner(data: dict, input_key='chunk'):
 
 @data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
 def punctuation_dedup_cleaner(data: dict, input_key='chunk'):
-    """
+    '''
     压缩重复标点
-    """
-    text = data.get(input_key, "")
+    '''
+    text = data.get(input_key, '')
     if not text:
         return data
 
@@ -172,10 +172,10 @@ def punctuation_dedup_cleaner(data: dict, input_key='chunk'):
 
 @data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
 def empty_or_noise_filter(data: dict, input_key='chunk'):
-    """
+    '''
     过滤几乎没有有效字符的 chunk
-    """
-    text = data.get(input_key, "")
+    '''
+    text = data.get(input_key, '')
     # 返回 [] 为丢弃
     if not text:
         return []
@@ -188,10 +188,10 @@ def empty_or_noise_filter(data: dict, input_key='chunk'):
 
 @data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
 def invalid_unicode_cleaner(data: dict, input_key='chunk'):
-    """
+    '''
     移除常见非法 Unicode 区段
-    """
-    text = data.get(input_key, "")
+    '''
+    text = data.get(input_key, '')
     if not text:
         return data
 
@@ -222,7 +222,7 @@ def invalid_unicode_cleaner(data: dict, input_key='chunk'):
     return data
 
 def extract_qa_object(model_output):
-    """提取第一个包含 instruction 和 output 字段的 JSON 对象"""
+    '''提取第一个包含 instruction 和 output 字段的 JSON 对象'''
     json_pattern = r'\{[\s\S]*?\}'
     matches = re.findall(json_pattern, model_output)
     for match in matches:
@@ -241,7 +241,7 @@ class ChunkToQA(Text2qa):
                  answer_key='answer',
                  model=None,
                  **kwargs):
-        super().__init__(_concurrency_mode="thread", **kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
 
         self.input_key = input_key
         self.query_key = query_key
@@ -260,13 +260,13 @@ class ChunkToQA(Text2qa):
             data[self.answer_key] = ''
             return data
 
-        prompt = f"""
+        prompt = f'''
 根据下面文本生成一个 QA 对：
 {chunk}
 
 仅输出 JSON：
-{{"{self.query_key}": "问题", "{self.answer_key}": "答案"}}
-"""
+{{'{self.query_key}': '问题', '{self.answer_key}': '答案'}}
+'''
 
         response = self.model(prompt)
         qa = self.extract_qa_object(response)
@@ -295,7 +295,7 @@ class QAScorer(Text2qa):
                  answer_key='answer',
                  model=None,
                  **kwargs):
-        super().__init__(_concurrency_mode="thread", **kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
 
         self.input_key = input_key
         self.output_key = output_key
@@ -319,7 +319,7 @@ class QAScorer(Text2qa):
             data[self.output_key] = 0
             return data
 
-        prompt = f"""
+        prompt = f'''
 请根据下面内容对 QA 打分：
 
 原文：
@@ -336,8 +336,8 @@ class QAScorer(Text2qa):
 - 否则 → 0
 
 仅输出 JSON：
-{{"{self.output_key}": 0 or 1}}
-"""
+{{'{self.output_key}': 0 or 1}}
+'''
 
         response = self.model(prompt)
         res = self.extract_score_object(response)
@@ -397,7 +397,7 @@ def minhash_dedup(data: list,
             drop.append(item)
             continue
 
-        lsh.insert(f"id_{idx}", mh)
+        lsh.insert(f'id_{idx}', mh)
         keep.append(item)
 
     return keep
