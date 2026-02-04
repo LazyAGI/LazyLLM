@@ -46,7 +46,7 @@ class TestImagesFusion:
     def test_qwen_images_fusion(self):
         self.common_images_fusion(source='qwen', model='qwen-image-edit-plus')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.ignore_cache_on_change(get_path('siliconflow'))
     @pytest.mark.xfail
     def test_siliconflow_images_fusion(self):
         self.common_images_fusion(source='siliconflow', model='Qwen/Qwen-Image-Edit-2509')

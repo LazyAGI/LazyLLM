@@ -49,17 +49,17 @@ class TestImageEditing:
     def test_qwen_image_editing_model(self):
         self.common_image_editing(source='qwen', model='qwen-image-edit-plus')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('doubao'))
+    @pytest.mark.ignore_cache_on_change(get_path('doubao'))
     @pytest.mark.xfail
     def test_doubao_image_editing(self):
         self.common_image_editing(source='doubao')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.ignore_cache_on_change(get_path('siliconflow'))
     @pytest.mark.xfail
     def test_siliconflow_image_editing_auto(self):
         self.common_image_editing(source='siliconflow')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.ignore_cache_on_change(get_path('siliconflow'))
     @pytest.mark.xfail
     def test_siliconflow_image_editing_model(self):
         self.common_image_editing(source='siliconflow', model='Qwen/Qwen-Image-Edit-2509')

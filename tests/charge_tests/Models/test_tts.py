@@ -40,12 +40,12 @@ class TestTTS:
     def test_qwen_tts(self):
         self.common_tts(source='qwen', model='qwen-tts')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('minimax'))
+    @pytest.mark.ignore_cache_on_change(get_path('minimax'))
     @pytest.mark.xfail
     def test_minimax_tts(self):
         self.common_tts(source='minimax')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.ignore_cache_on_change(get_path('siliconflow'))
     @pytest.mark.xfail
     def test_siliconflow_tts(self):
         self.common_tts(source='siliconflow', call_kwargs={'voice': 'fnlp/MOSS-TTSD-v0.5:anna'})
