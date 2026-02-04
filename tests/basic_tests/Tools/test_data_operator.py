@@ -38,7 +38,7 @@ class TestDataOperators:
         assert sorted(res, key=lambda x: x['text']) == sorted(expected, key=lambda x: x['text'])
 
     def test_add_suffix(self):
-        func = demo2.AddSuffix(input_key='text', suffix='!!!', _max_workers=64, _concurrency_mode='process')
+        func = demo2.AddSuffix(input_key='text', suffix='!!!', _max_workers=32, _concurrency_mode='process')
         assert func._concurrency_mode == 'process'
         LOG.info(f'Max workers: {func._max_workers}')
         inputs = [{'text': text} for text in (['exciting', 'amazing'] * 2000)]
