@@ -1,19 +1,16 @@
-import os
 import re
-from ..base_data import DataOperatorRegistry
+from ..base_data import data_register
 from lazyllm import LOG, config
 
 import fasttext
-from huggingface_hub import hf_hub_download
 from datasketch import MinHash, MinHashLSH
-import nltk
-from nltk.tokenize import word_tokenize, sent_tokenize, WordPunctTokenizer
-from nltk.corpus import stopwords
-import jieba
+from lazyllm.thirdparty import huggingface_hub, nltk, jieba
 
 
-@DataOperatorRegistry.register
-class LanguageFilter:
+Filter = data_register.new_group('filter')
+
+
+class LanguageFilter(Filter):
     COMMON_LANGUAGES = {
         'zho_Hans', 'zho_Hant', 'eng_Latn', 'spa_Latn', 'fra_Latn',
         'deu_Latn', 'jpn', 'kor', 'rus_Cyrl', 'ara', 'por_Latn',
@@ -21,7 +18,9 @@ class LanguageFilter:
         'tha', 'hin', 'ind_Latn', 'msa_Latn'
     }
 
-    def __init__(self, input_key='content', target_language='zh', threshold=0.6, model_path=None, model_cache_dir=None):
+    def __init__(self, input_key='content', target_language='zh', threshold=0.6, model_path=None,
+                 model_cache_dir=None, _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         if isinstance(target_language, str):
             self.allowed_languages = {target_language}
@@ -57,7 +56,7 @@ class LanguageFilter:
             else:
                 # Download model to cache directory
                 LOG.info('Downloading FastText language identification model from Hugging Face Hub...')
-                model_path = hf_hub_download(
+                model_path = huggingface_hub.hf_hub_download(
                     repo_id='facebook/fasttext-language-identification',
                     filename='model.bin',
                     cache_dir=self.model_cache_dir
@@ -69,7 +68,7 @@ class LanguageFilter:
             LOG.error(f'Error loading FastText model: {e}')
             raise
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -87,9 +86,11 @@ class LanguageFilter:
         return None
 
 
-@DataOperatorRegistry.register(one_item=False)
-class MinHashDeduplicateFilter:
-    def __init__(self, input_key='content', threshold=0.85, num_perm=128, use_n_gram=True, ngram=5):
+class MinHashDeduplicateFilter(Filter):
+    __reg_overwrite__ = 'forward_batch_input'
+
+    def __init__(self, input_key='content', threshold=0.85, num_perm=128, use_n_gram=True, ngram=5, **kwargs):
+        super().__init__(**kwargs)
         self.input_key = input_key
         self.threshold = threshold
         self.num_perm = num_perm
@@ -109,7 +110,7 @@ class MinHashDeduplicateFilter:
                 minhash.update(char.encode('utf8'))
         return minhash
 
-    def __call__(self, data):
+    def forward_batch_input(self, data, **kwargs):
         assert isinstance(data, list)
 
         kept_items = []
@@ -133,10 +134,10 @@ class MinHashDeduplicateFilter:
         return kept_items
 
 
-@DataOperatorRegistry.register
-class BlocklistFilter:
+class BlocklistFilter(Filter):
     def __init__(self, input_key='content', blocklist=None, blocklist_path=None,
-                 language='en', threshold=1, use_tokenizer=False):
+                 language='zh', threshold=1, use_tokenizer=False, _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.threshold = threshold
         self.use_tokenizer = use_tokenizer
@@ -166,7 +167,7 @@ class BlocklistFilter:
         LOG.info(f'Loaded {len(blocklist)} words from blocklist')
         return blocklist
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -177,7 +178,7 @@ class BlocklistFilter:
             if self.language in ['zh', 'cn', 'chinese']:
                 words = list(jieba.cut(text.lower()))
             elif self.language in ['en', 'english']:
-                words = word_tokenize(text.lower())
+                words = nltk.word_tokenize(text.lower())
             else:
                 LOG.warning(f'Unsupported language: {self.language}, using simple split')
                 words = text.lower().split()
@@ -192,15 +193,16 @@ class BlocklistFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class WordCountFilter:
-    def __init__(self, input_key='content', min_words=10, max_words=10000, language='zh'):
+class WordCountFilter(Filter):
+    def __init__(self, input_key='content', min_words=10, max_words=10000, language='zh',
+                 _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.min_words = min_words
         self.max_words = max_words
         self.language = language.lower()
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -221,12 +223,12 @@ class WordCountFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class ColonEndFilter:
-    def __init__(self, input_key='content'):
+class ColonEndFilter(Filter):
+    def __init__(self, input_key='content', _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -239,15 +241,16 @@ class ColonEndFilter:
             return data
 
 
-@DataOperatorRegistry.register
-class SentenceCountFilter:
-    def __init__(self, input_key='content', min_sentences=3, max_sentences=1000, language='zh'):
+class SentenceCountFilter(Filter):
+    def __init__(self, input_key='content', min_sentences=3, max_sentences=1000, language='zh',
+                 _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.min_sentences = min_sentences
         self.max_sentences = max_sentences
         self.language = language.lower()
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -259,7 +262,7 @@ class SentenceCountFilter:
             sentences = [s.strip() for s in sentences if s.strip()]
             num_sentences = len(sentences)
         elif self.language in ['en', 'english']:
-            sentences = sent_tokenize(text)
+            sentences = nltk.sent_tokenize(text)
             num_sentences = len(sentences)
         else:
             LOG.warning(f'Unsupported language: {self.language}, using Chinese punctuation')
@@ -273,14 +276,14 @@ class SentenceCountFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class EllipsisEndFilter:
-    def __init__(self, input_key='content', max_ratio=0.3):
+class EllipsisEndFilter(Filter):
+    def __init__(self, input_key='content', max_ratio=0.3, _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.max_ratio = max_ratio
         self.ellipsis = ['...', '…', '……']
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -305,30 +308,29 @@ class EllipsisEndFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class NullContentFilter:
-    def __init__(self, input_key='content'):
+class NullContentFilter(Filter):
+    def __init__(self, input_key='content', _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
-        
         if text is not None and isinstance(text, str) and text.strip() != '':
             return data
         else:
             return None
 
 
-@DataOperatorRegistry.register
-class WordLengthFilter:
-    def __init__(self, input_key='content', min_length=3, max_length=20):
+class WordLengthFilter(Filter):
+    def __init__(self, input_key='content', min_length=3, max_length=20, _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.min_length = min_length
         self.max_length = max_length
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -348,15 +350,15 @@ class WordLengthFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class SymbolRatioFilter:
-    def __init__(self, input_key='content', max_ratio=0.3, symbols=None):
+class SymbolRatioFilter(Filter):
+    def __init__(self, input_key='content', max_ratio=0.3, symbols=None, _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.max_ratio = max_ratio
         self.symbols = symbols or ['#', '...', '…']
-        self.tokenizer = WordPunctTokenizer()
+        self.tokenizer = nltk.WordPunctTokenizer()
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -377,9 +379,9 @@ class SymbolRatioFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class IDCardFilter:
-    def __init__(self, input_key='content', threshold=3):
+class IDCardFilter(Filter):
+    def __init__(self, input_key='content', threshold=3, _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.threshold = threshold
         self.chinese_terms = [
@@ -410,7 +412,7 @@ class IDCardFilter:
         all_patterns = self.chinese_terms + self.english_terms
         self.pattern = re.compile('|'.join(f'({p})' for p in all_patterns), re.I)
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -425,22 +427,23 @@ class IDCardFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class NoPunctuationFilter:
-    def __init__(self, input_key='content', max_length_between_punct=112, language='zh'):
+class NoPuncFilter(Filter):
+    def __init__(self, input_key='content', max_length_between_punct=112, language='zh',
+                 _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.max_length_between_punct = max_length_between_punct
         self.language = language.lower()
 
         if self.language in ['zh', 'cn', 'chinese']:
-            self.punct_pattern = r'[。！？；，、：""''（）《》【】…—\.\!\?,;:]'
+            self.punct_pattern = r'[。！？；，、：""''（）《》【】…—.!?,;:]'
         elif self.language in ['en', 'english']:
             self.punct_pattern = r'[–.!?,;•/|…:;\'\"]'
         else:
             LOG.warning(f'Unsupported language: {self.language}, using Chinese punctuation')
-            self.punct_pattern = r'[。！？；，、：""''（）《》【】…—\.\!\?,;:]'
+            self.punct_pattern = r'[。！？；，、：""''（）《》【】…—.!?,;:]'
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -474,9 +477,9 @@ class NoPunctuationFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class SpecialCharFilter:
-    def __init__(self, input_key='content'):
+class SpecialCharFilter(Filter):
+    def __init__(self, input_key='content', _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.special_patterns = [
             r'\u200b|\u200c|\u200d|\u200e|\u200f',
@@ -501,7 +504,7 @@ class SpecialCharFilter:
             r'\ud800-\udfff',
         ]
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -515,9 +518,9 @@ class SpecialCharFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class WatermarkFilter:
-    def __init__(self, input_key='content', watermarks=None):
+class WatermarkFilter(Filter):
+    def __init__(self, input_key='content', watermarks=None, _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.watermarks = watermarks or [
             'Copyright', 'Watermark', 'Confidential', 'All Rights Reserved',
@@ -527,7 +530,7 @@ class WatermarkFilter:
             '仅供内部使用', '未经授权', '商业机密', '翻版必究'
         ]
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -541,9 +544,10 @@ class WatermarkFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class StopWordFilter:
-    def __init__(self, input_key='content', max_ratio=0.5, use_tokenizer=True, language='zh'):
+class StopWordFilter(Filter):
+    def __init__(self, input_key='content', max_ratio=0.5, use_tokenizer=True, language='zh',
+                 _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.max_ratio = max_ratio
         self.use_tokenizer = use_tokenizer
@@ -556,14 +560,14 @@ class StopWordFilter:
             nltk.download('stopwords')
 
         if self.language in ['en', 'english']:
-            self.stopwords = set(stopwords.words('english'))
+            self.stopwords = set(nltk.corpus.stopwords.words('english'))
         elif self.language in ['zh', 'cn', 'chinese']:
-            self.stopwords = set(stopwords.words('chinese'))
+            self.stopwords = set(nltk.corpus.stopwords.words('chinese'))
         else:
             LOG.warning(f'Unsupported language: {self.language}, using English stopwords')
-            self.stopwords = set(stopwords.words('english'))
+            self.stopwords = set(nltk.corpus.stopwords.words('english'))
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -577,7 +581,7 @@ class StopWordFilter:
                 words = list(text)
         elif self.language in ['en', 'english']:
             if self.use_tokenizer:
-                words = word_tokenize(text.lower())
+                words = nltk.word_tokenize(text.lower())
             else:
                 words = text.lower().split()
         else:
@@ -596,13 +600,13 @@ class StopWordFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class CurlyBracketFilter:
-    def __init__(self, input_key='content', max_ratio=0.025):
+class CurlyBracketFilter(Filter):
+    def __init__(self, input_key='content', max_ratio=0.08, _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.max_ratio = max_ratio
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -617,9 +621,10 @@ class CurlyBracketFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class CapitalWordFilter:
-    def __init__(self, input_key='content', max_ratio=0.2, use_tokenizer=False):
+class CapitalWordFilter(Filter):
+    def __init__(self, input_key='content', max_ratio=0.5, use_tokenizer=False,
+                 _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.max_ratio = max_ratio
         self.use_tokenizer = use_tokenizer
@@ -631,7 +636,7 @@ class CapitalWordFilter:
                 LOG.info('Downloading NLTK punkt_tab tokenizer...')
                 nltk.download('punkt_tab')
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -639,7 +644,7 @@ class CapitalWordFilter:
             return None
 
         if self.use_tokenizer:
-            words = word_tokenize(text)
+            words = nltk.word_tokenize(text)
         else:
             words = text.split()
 
@@ -656,21 +661,49 @@ class CapitalWordFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class LoremIpsumFilter:
-    def __init__(self, input_key='content', max_ratio=3e-8):
+class LoremIpsumFilter(Filter):
+    LOREM_PATTERNS = [
+        r'lorem\s+ipsum',
+        r'dolor\s+sit\s+amet',
+        r'consectetur\s+adipiscing',
+        r'consectetur\s+adipisicing',
+        r'sed\s+do\s+eiusmod',
+        r'tempor\s+incididunt',
+        r'ut\s+labore\s+et\s+dolore',
+        r'magna\s+aliqua',
+        r'eiusmod\s+tempor',
+        r'incididunt\s+ut\s+labore',
+        r'aliquip\s+ex\s+ea\s+commodo',
+        r'duis\s+aute\s+irure',
+        r'in\s+reprehenderit\s+in\s+voluptate',
+        r'esse\s+cillum\s+dolore',
+        r'fugiat\s+nulla\s+pariatur',
+        r'excepteur\s+sint\s+occaecat',
+        r'cupidatat\s+non\s+proident',
+        r'sunt\s+in\s+culpa\s+qui\s+officia',
+        r'deserunt\s+mollit\s+anim',
+        r'占位符?文本',
+        r'测试文[本字]',
+        r'示例[文本内容]',
+        r'这是一[个段]测试',
+    ]
+
+    def __init__(self, input_key='content', max_ratio=3e-8, _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.max_ratio = max_ratio
-        self.pattern = re.compile(r'lorem ipsum', re.IGNORECASE)
+        pattern_str = '|'.join(f'({p})' for p in self.LOREM_PATTERNS)
+        self.pattern = re.compile(pattern_str, re.IGNORECASE)
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
         if not isinstance(text, str) or not text.strip():
             return None
 
-        num_occurrences = len(self.pattern.findall(text))
+        matches = self.pattern.findall(text)
+        num_occurrences = len(matches)
         ratio = num_occurrences / len(text) if len(text) > 0 else 0
 
         if ratio <= self.max_ratio:
@@ -679,22 +712,37 @@ class LoremIpsumFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class UniqueWordFilter:
-    def __init__(self, input_key='content', min_ratio=0.1):
+class UniqueWordFilter(Filter):
+    def __init__(self, input_key='content', min_ratio=0.1, use_tokenizer=True, language='zh',
+                 _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.min_ratio = min_ratio
+        self.use_tokenizer = use_tokenizer
+        self.language = language.lower()
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
         if not isinstance(text, str) or not text.strip():
             return None
 
-        words = text.lower().split()
-        num_words = len(words)
+        if self.language in ['zh', 'cn', 'chinese']:
+            if self.use_tokenizer:
+                words = list(jieba.cut(text.lower()))
+            else:
+                words = list(text)
+        elif self.language in ['en', 'english']:
+            if self.use_tokenizer:
+                words = nltk.word_tokenize(text.lower())
+            else:
+                words = text.lower().split()
+        else:
+            LOG.warning(f'Unsupported language: {self.language}, using simple split')
+            words = text.lower().split()
 
+        num_words = len(words)
         if num_words == 0:
             return None
 
@@ -707,14 +755,14 @@ class UniqueWordFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class CharCountFilter:
-    def __init__(self, input_key='content', min_chars=100, max_chars=100000):
+class CharCountFilter(Filter):
+    def __init__(self, input_key='content', min_chars=100, max_chars=100000, _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.min_chars = min_chars
         self.max_chars = max_chars
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -730,17 +778,28 @@ class CharCountFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class BulletPointFilter:
-    def __init__(self, input_key='content', max_ratio=0.9):
+class BulletPointFilter(Filter):
+    def __init__(self, input_key='content', max_ratio=0.9, _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.max_ratio = max_ratio
         self.bullet_chars = [
-            '\u2022', '\u2023', '\u25B6', '\u25C0', '\u25E6',
-            '\u25A0', '\u25A1', '\u25AA', '\u25AB', '\u2013'
+            # Common bullets
+            '\u2022', '\u2023', '\u25E6', '\u2043',
+            # Geometric shapes
+            '\u25A0', '\u25A1', '\u25AA', '\u25AB',
+            '\u25CF', '\u25CB', '\u25C6', '\u25C7',
+            # Arrows
+            '\u25B6', '\u25BA', '\u25C0', '\u2192', '\u21D2', '\u27A4',
+            # Dashes and ASCII
+            '\u2013', '\u2014', '-', '*', '+',
+            # Check marks and stars
+            '\u2713', '\u2714', '\u2605', '\u2606',
+            # Chinese/CJK
+            '\u00B7', '\u30FB',
         ]
 
-    def __call__(self, data):
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -765,13 +824,19 @@ class BulletPointFilter:
             return None
 
 
-@DataOperatorRegistry.register
-class JavascriptFilter:
-    def __init__(self, input_key='content', min_non_js_lines=3):
-        self.input_key = input_key
-        self.min_non_js_lines = min_non_js_lines
+class JavascriptFilter(Filter):
+    SCRIPT_PATTERNS = [
+        'javascript', '<script', '</script>', 'function(', '=>', 'var ', 'let ', 'const ',
+        'console.log', 'document.', 'window.', '$(', 'jquery', '.then(', 'async ',
+        'addEventListener', 'onclick', 'onload', 'typeof', 'undefined', 'null',
+    ]
 
-    def __call__(self, data):
+    def __init__(self, input_key='content', min_non_script_lines=3, _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
+        self.input_key = input_key
+        self.min_non_script_lines = min_non_script_lines
+
+    def forward(self, data, **kwargs):
         assert isinstance(data, dict)
 
         text = data.get(self.input_key)
@@ -784,10 +849,15 @@ class JavascriptFilter:
         if num_lines == 0:
             return None
 
-        num_js_lines = sum(1 for line in lines if 'javascript' in line.lower())
-        num_non_js_lines = num_lines - num_js_lines
+        if num_lines <= 3:
+            return data
 
-        if num_lines <= 3 or num_non_js_lines >= self.min_non_js_lines:
+        num_script_lines = sum(
+            1 for line in lines
+            if any(pattern in line.lower() for pattern in self.SCRIPT_PATTERNS)
+        )
+        num_non_script_lines = num_lines - num_script_lines
+        if num_non_script_lines >= self.min_non_script_lines:
             return data
         else:
             return None
