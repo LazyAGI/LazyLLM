@@ -1,10 +1,19 @@
 import argparse
 import os
 import shutil
+import subprocess
 import sys
+import tempfile
+from dataclasses import dataclass
+from pathlib import Path
 
 import lazyllm
 from lazyllm.tools.agent.skill_manager import SkillManager
+
+DEFAULT_SKILL_REPO = 'https://github.com/LazyAGI/LazyLLM'
+ATOMGIT_SKILL_REPO = 'https://atomgit.com/LazyAGI/LazyLLM'
+GITEE_SKILL_REPO = 'https://gitee.com/lazy-agi/LazyLLM'
+SKILL_RELATIVE_PATH = Path('docs/lazyllm-skill')
 
 
 def _build_manager(args):
@@ -98,7 +107,8 @@ def _usage_error():
         '  lazyllm skills info <name>\n'
         '  lazyllm skills delete <name>\n'
         '  lazyllm skills add <path> [-n NAME] [--dir DIR]\n'
-        '  lazyllm skills import <path> [--dir DIR] [--names a,b,c] [--overwrite]'
+        '  lazyllm skills import <path> [--dir DIR] [--names a,b,c] [--overwrite]\n'
+        '  lazyllm skills install --agent <name> [--project] [--timeout SEC]'
     )
     sys.exit(1)
 
@@ -264,6 +274,44 @@ def _handle_import(manager, args):  # noqa: C901
         lazyllm.LOG.info(f'Installed skills: {sep.join(installed)}')
 
 
+def _handle_install(_manager, args):
+    if not args.agent:
+        lazyllm.LOG.error('`--agent` is required for install.')
+        sys.exit(1)
+
+    if get_agent_config(args.agent) is None:
+        agents = ', '.join(get_all_agents())
+        lazyllm.LOG.error(f"Unknown agent '{args.agent}'. Available: {agents}")
+        sys.exit(1)
+
+    tmp_dir = Path(tempfile.mkdtemp(prefix='lazyllm-skill-'))
+    try:
+        _download_repo(tmp_dir, timeout=args.timeout)
+
+        skill_src = tmp_dir / SKILL_RELATIVE_PATH
+        if not skill_src.exists():
+            lazyllm.LOG.error(f'lazyllm-skill not found at {skill_src}')
+            sys.exit(1)
+
+        target_root = get_path(args.agent, args.project)
+        target_dir = target_root / 'lazyllm-skill'
+
+        target_dir.parent.mkdir(parents=True, exist_ok=True)
+        if target_dir.exists():
+            shutil.rmtree(target_dir)
+
+        shutil.copytree(skill_src, target_dir)
+        lazyllm.LOG.success(f'lazyllm-skill installed to: {target_dir}')
+    except subprocess.TimeoutExpired:
+        lazyllm.LOG.error(f'Install timeout after {args.timeout}s. Try increasing --timeout.')
+        sys.exit(1)
+    except Exception as exc:
+        lazyllm.LOG.error(f'Failed to install lazyllm-skill: {exc}')
+        sys.exit(1)
+    finally:
+        shutil.rmtree(tmp_dir, ignore_errors=True)
+
+
 def _handle_delete(manager, args):
     _require_name(args)
     manager._load_skills_index()
@@ -318,7 +366,7 @@ def skills(commands):
         'command',
         type=str,
         help='command',
-        choices=['init', 'list', 'info', 'delete', 'add', 'import'],
+        choices=['init', 'list', 'info', 'delete', 'add', 'import', 'install'],
     )
     parser.add_argument('name', nargs='?', help='skill name or path')
     parser.add_argument('--dir', dest='dir', default=None,
@@ -332,6 +380,12 @@ def skills(commands):
                         help='Comma-separated skill names (from SKILL.md) to import. Can be used multiple times.')
     parser.add_argument('--overwrite', action='store_true', default=False,
                         help='Overwrite existing skill folder when importing.')
+    parser.add_argument('--agent', default=None,
+                        help='Target agent for `skills install` (e.g., cursor, codex, claude).')
+    parser.add_argument('--project', action='store_true', default=False,
+                        help='Install at project level for `skills install` (default: user level).')
+    parser.add_argument('--timeout', type=int, default=300,
+                        help='Timeout in seconds for repository download in `skills install` (default: 300).')
 
     args = parser.parse_args(commands)
     manager = _build_manager(args)
@@ -342,6 +396,241 @@ def skills(commands):
         'info': _handle_info,
         'add': _handle_add,
         'import': _handle_import,
+        'install': _handle_install,
         'delete': _handle_delete,
     }
     handlers[args.command](manager, args)
+
+
+def _clone_repo(repo: str, dst: Path, timeout: int = 300):
+    cmd = ['git', 'clone', repo, str(dst)]
+    subprocess.check_call(
+        cmd,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        timeout=timeout,
+    )
+
+
+def _download_repo(tmp_dir: Path, timeout: int = 300):
+    try:
+        _clone_repo(DEFAULT_SKILL_REPO, tmp_dir, timeout=timeout)
+    except Exception:
+        try:
+            _clone_repo(ATOMGIT_SKILL_REPO, tmp_dir, timeout=timeout)
+        except Exception:
+            _clone_repo(GITEE_SKILL_REPO, tmp_dir, timeout=timeout)
+
+
+@dataclass
+class AgentConfig:
+    name: str
+    display_name: str
+    home_dir: Path | None
+    project_dir: Path
+    supports_home: bool
+
+
+AGENT_CONFIGS: dict[str, AgentConfig] = {
+    'claude': AgentConfig(
+        name='claude',
+        display_name='Claude Code',
+        home_dir=Path.home() / '.claude' / 'skills',
+        project_dir=Path('.claude') / 'skills',
+        supports_home=True,
+    ),
+    'opencode': AgentConfig(
+        name='opencode',
+        display_name='OpenCode CLI',
+        home_dir=Path.home() / '.config' / 'opencode' / 'skill',
+        project_dir=Path('.opencode') / 'skill',
+        supports_home=True,
+    ),
+    'codex': AgentConfig(
+        name='codex',
+        display_name='OpenAI Codex',
+        home_dir=Path.home() / '.codex' / 'skills',
+        project_dir=Path('.codex') / 'skills',
+        supports_home=True,
+    ),
+    'gemini': AgentConfig(
+        name='gemini',
+        display_name='Gemini CLI',
+        home_dir=Path.home() / '.gemini' / 'skills',
+        project_dir=Path('.gemini') / 'skills',
+        supports_home=True,
+    ),
+    'copilot': AgentConfig(
+        name='copilot',
+        display_name='GitHub Copilot',
+        home_dir=Path.home() / '.copilot' / 'skills',
+        project_dir=Path('.github') / 'skills',
+        supports_home=True,
+    ),
+    'cursor': AgentConfig(
+        name='cursor',
+        display_name='Cursor',
+        home_dir=Path.home() / '.cursor' / 'skills',
+        project_dir=Path('.cursor') / 'skills',
+        supports_home=True,
+    ),
+    'windsurf': AgentConfig(
+        name='windsurf',
+        display_name='Windsurf',
+        home_dir=Path.home() / '.codeium' / 'windsurf' / 'skills',
+        project_dir=Path('.windsurf') / 'skills',
+        supports_home=True,
+    ),
+    'qwen': AgentConfig(
+        name='qwen',
+        display_name='Qwen Code',
+        home_dir=Path.home() / '.qwen' / 'skills',
+        project_dir=Path('.qwen') / 'skills',
+        supports_home=True,
+    ),
+    'antigravity': AgentConfig(
+        name='antigravity',
+        display_name='Google Antigravity',
+        home_dir=Path.home() / '.gemini' / 'antigravity' / 'skills',
+        project_dir=Path('.agent') / 'skills',
+        supports_home=True,
+    ),
+    'openhands': AgentConfig(
+        name='openhands',
+        display_name='OpenHands',
+        home_dir=Path.home() / '.openhands' / 'skills',
+        project_dir=Path('.openhands') / 'skills',
+        supports_home=True,
+    ),
+    'cline': AgentConfig(
+        name='cline',
+        display_name='Cline',
+        home_dir=Path.home() / '.cline' / 'skills',
+        project_dir=Path('.cline') / 'skills',
+        supports_home=True,
+    ),
+    'goose': AgentConfig(
+        name='goose',
+        display_name='Goose',
+        home_dir=Path.home() / '.config' / 'goose' / 'skills',
+        project_dir=Path('.goose') / 'skills',
+        supports_home=True,
+    ),
+    'roo': AgentConfig(
+        name='roo',
+        display_name='Roo Code',
+        home_dir=Path.home() / '.roo' / 'skills',
+        project_dir=Path('.roo') / 'skills',
+        supports_home=True,
+    ),
+    'kilo': AgentConfig(
+        name='kilo',
+        display_name='Kilo Code',
+        home_dir=Path.home() / '.kilocode' / 'skills',
+        project_dir=Path('.kilocode') / 'skills',
+        supports_home=True,
+    ),
+    'trae': AgentConfig(
+        name='trae',
+        display_name='Trae',
+        home_dir=Path.home() / '.trae' / 'skills',
+        project_dir=Path('.trae') / 'skills',
+        supports_home=True,
+    ),
+    'droid': AgentConfig(
+        name='droid',
+        display_name='Droid',
+        home_dir=Path.home() / '.factory' / 'skills',
+        project_dir=Path('.factory') / 'skills',
+        supports_home=True,
+    ),
+    'clawdbot': AgentConfig(
+        name='clawdbot',
+        display_name='Clawdbot',
+        home_dir=Path.home() / '.clawdbot' / 'skills',
+        project_dir=Path('skills'),
+        supports_home=True,
+    ),
+    'kiro-cli': AgentConfig(
+        name='kiro-cli',
+        display_name='Kiro CLI',
+        home_dir=Path.home() / '.kiro' / 'skills',
+        project_dir=Path('.kiro') / 'skills',
+        supports_home=True,
+    ),
+    'pi': AgentConfig(
+        name='pi',
+        display_name='Pi',
+        home_dir=Path.home() / '.pi' / 'agent' / 'skills',
+        project_dir=Path('.pi') / 'skills',
+        supports_home=True,
+    ),
+    'neovate': AgentConfig(
+        name='neovate',
+        display_name='Neovate',
+        home_dir=Path.home() / '.neovate' / 'skills',
+        project_dir=Path('.neovate') / 'skills',
+        supports_home=True,
+    ),
+    'zencoder': AgentConfig(
+        name='zencoder',
+        display_name='Zencoder',
+        home_dir=Path.home() / '.zencoder' / 'skills',
+        project_dir=Path('.zencoder') / 'skills',
+        supports_home=True,
+    ),
+    'amp': AgentConfig(
+        name='amp',
+        display_name='Amp',
+        home_dir=Path.home() / '.config' / 'agents' / 'skills',
+        project_dir=Path('.agents') / 'skills',
+        supports_home=True,
+    ),
+    'qoder': AgentConfig(
+        name='qoder',
+        display_name='Qoder',
+        home_dir=Path.home() / '.qoder' / 'skills',
+        project_dir=Path('.qoder') / 'skills',
+        supports_home=True,
+    ),
+}
+
+
+def get_agent_config(agent: str) -> AgentConfig | None:
+    return AGENT_CONFIGS.get(agent)
+
+
+def get_all_agents() -> list[str]:
+    return list(AGENT_CONFIGS.keys())
+
+
+def list_all_agents() -> list[str]:
+    return get_all_agents()
+
+
+def get_user_path(agent: str) -> Path:
+    config = get_agent_config(agent)
+    if config is None:
+        raise ValueError(f'Unknown agent: {agent}')
+
+    if not config.supports_home or config.home_dir is None:
+        raise ValueError(f"Agent '{agent}' does not support user-level installation")
+
+    return config.home_dir
+
+
+def get_project_path(agent: str, project_dir: Path | None = None) -> Path:
+    config = get_agent_config(agent)
+    if config is None:
+        raise ValueError(f'Unknown agent: {agent}')
+
+    if project_dir is None:
+        project_dir = Path.cwd()
+
+    return (project_dir / config.project_dir).resolve()
+
+
+def get_path(agent: str, project_level: bool = False, project_dir: Path | None = None) -> Path:
+    if project_level:
+        return get_project_path(agent, project_dir)
+    return get_user_path(agent)
