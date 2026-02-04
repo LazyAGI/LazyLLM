@@ -69,7 +69,7 @@ async def async_wrapper(func, *args, **kwargs):
         globals._update(global_data)
         return func(*args, **kw)
 
-    return loop.run_in_executor(None, partial(impl, func, globals._sid, globals._data, *args, **kwargs))
+    return await loop.run_in_executor(None, partial(impl, func, globals._sid, globals._data, *args, **kwargs))
 
 def security_check(f: Callable):
     @functools.wraps(f)
