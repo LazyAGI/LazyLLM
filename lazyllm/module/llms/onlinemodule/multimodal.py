@@ -79,6 +79,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
                 **kwargs):
         if type is None:
             type = kwargs.pop('function', None)
+        type = LLMType._normalize(type)
         source, model, kwargs_normalized = OnlineMultiModalModule._validate_parameters(
             source=source, model=model, type=type, base_url=base_url, **kwargs
         )

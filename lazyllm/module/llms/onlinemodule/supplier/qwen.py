@@ -366,7 +366,14 @@ class QwenSTT(LazyLLMOnlineSTTModuleBase, QwenMultiModal):
     def __init__(self, model: str = None, api_key: str = None, return_trace: bool = False,
                  base_url: str = 'https://dashscope.aliyuncs.com/api/v1',
                  base_websocket_url: str = 'wss://dashscope.aliyuncs.com/api-ws/v1/inference', **kwargs):
-        super().__init__(api_key=api_key, model_name=model, return_trace=return_trace, base_url=base_url, **kwargs)
+        model_name = model or lazyllm.config['qwen_stt_model_name'] or QwenSTT.MODEL_NAME
+        super().__init__(
+            api_key=api_key,
+            model_name=model_name,
+            return_trace=return_trace,
+            base_url=base_url,
+            **kwargs,
+        )
         QwenMultiModal.__init__(self, api_key=api_key, base_url=base_url, base_websocket_url=base_websocket_url)
 
     def _forward(self, files: List[str] = [], url: str = None, model: str = None, **kwargs):  # noqa B006

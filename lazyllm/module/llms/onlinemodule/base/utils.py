@@ -77,10 +77,14 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             LLMType.CHAT: ('_model_name', 'The default model name for '),
             LLMType.EMBED: ('_model_name', 'The default embed model name for '),
             LLMType.RERANK: ('_model_name', 'The default rerank model name for '),
+            LLMType.MULTIMODAL_EMBED: ('_multimodal_embed_model_name', 'The default multimodal embed model name for '),
             LLMType.STT: ('_stt_model_name', 'The default stt model name for '),
             LLMType.TTS: ('_tts_model_name', 'The default tts model name for '),
             LLMType.TEXT2IMAGE: ('_text2image_model_name', 'The default text2image model name for '),
         }
+
+        check_and_add_config(key='default_source', description='The default model source for online modules.')
+        check_and_add_config(key='default_key', description='The default API key for online modules.')
 
         if group_name == '':
             assert name == 'online'
