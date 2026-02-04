@@ -46,9 +46,7 @@ class OnlineMultiModalModule(metaclass=_OnlineMultiModalMeta):
         if source is None and kwargs.get('api_key'):
             raise ValueError('No source is given but an api_key is provided.')
         register_type = OnlineMultiModalModule.TYPE_GROUP_MAP.get(type).lower()
-        source, default_key = select_source_with_default_key(lazyllm.online[register_type],
-                                                             explicit_source=source,
-                                                             type=type)
+        source, default_key = select_source_with_default_key(lazyllm.online[register_type], source, type)
         if default_key and not kwargs.get('api_key'):
             kwargs['api_key'] = default_key
 
