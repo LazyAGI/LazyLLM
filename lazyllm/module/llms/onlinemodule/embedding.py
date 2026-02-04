@@ -42,9 +42,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
         if 'type' in params:
             params.pop('type')
         if kwargs.get('type', 'embed') == 'embed':
-            source, default_key = select_source_with_default_key(lazyllm.online.embed,
-                                                                 explicit_source=source,
-                                                                 type=LLMType.EMBED)
+            source, default_key = select_source_with_default_key(lazyllm.online.embed, source, LLMType.EMBED)
             if default_key and not kwargs.get('api_key'):
                 kwargs['api_key'] = default_key
             if source == 'doubao':
@@ -54,9 +52,7 @@ class OnlineEmbeddingModule(metaclass=__EmbedModuleMeta):
                     return DoubaoEmbed(**params)
             return getattr(lazyllm.online.embed, source)(**params)
         elif kwargs.get('type') == 'rerank':
-            source, default_key = select_source_with_default_key(lazyllm.online.rerank,
-                                                                 explicit_source=source,
-                                                                 type=LLMType.RERANK)
+            source, default_key = select_source_with_default_key(lazyllm.online.rerank, source, LLMType.RERANK)
             if default_key and not kwargs.get('api_key'):
                 kwargs['api_key'] = default_key
             return getattr(lazyllm.online.rerank, source)(**params)
