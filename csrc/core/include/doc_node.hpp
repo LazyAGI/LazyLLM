@@ -115,7 +115,7 @@ public:
         set_text_view(*_p_root_text);
     }
     void set_root_texts(const std::vector<std::string>& texts) { set_root_text(JoinLines(texts)); }
-    size_t text_hash() const { return _text_hash; }
+    size_t get_text_hash() const { return _text_hash; }
     const DocNode* get_parent_node() const { return _p_parent_node; }
     void set_parent_node(DocNode* p_parent_node) { _p_parent_node = p_parent_node; }
     Children py_get_children() const {
