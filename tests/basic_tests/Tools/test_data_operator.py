@@ -5,7 +5,7 @@ import random
 import shutil
 import json
 from lazyllm import config, LOG
-from lazyllm.tools.data import demo1, demo2, refine, chunker, data_register
+from lazyllm.tools.data import demo1, demo2, refine, chunker, filter, data_register
 
 
 class TestDataOperators:
@@ -226,3 +226,324 @@ class TestDataOperators:
             assert 'total' in chunk['meta_data']
             assert 'length' in chunk['meta_data']
             assert chunk['meta_data']['length'] == len(chunk['content'])
+
+    def test_language_filter(self):
+        func = filter.LanguageFilter(input_key='content', target_language='zho_Hans',
+                                     threshold=0.5, _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('这是一段中文文本。', True),
+            ('这是中文mixed with English.', True),
+            ('This is pure English text.', False),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 100]
+        expected_keep = [{'content': text} for text, keep in test_cases * 100 if keep]
+        res = func(inputs)
+        assert len(res) >= len(expected_keep) * 0.8
+
+    def test_word_count_filter(self):
+        func = filter.WordCountFilter(input_key='content', min_words=5, max_words=20,
+                                      language='zh', _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('短文本', False),
+            ('这是一段适中长度的中文文本内容。', True),
+            ('这是一段非常长的文本内容' * 50, False),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        res = func(inputs)
+        for item in res:
+            text = item['content']
+            count = len(text.replace(' ', '').replace('\n', '').replace('\t', ''))
+            assert 5 <= count < 20
+
+    def test_colon_end_filter(self):
+        func = filter.ColonEndFilter(input_key='content', _concurrency_mode='thread')
+        assert func._concurrency_mode == 'thread'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('这是正常结尾。', True),
+            ('这是冒号结尾：', False),
+            ('This ends with colon:', False),
+            ('Normal ending.', True),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': text} for text, keep in test_cases * 500 if keep]
+        res = func(inputs)
+        assert sorted(res, key=lambda x: x['content']) == sorted(expected, key=lambda x: x['content'])
+
+    def test_sentence_count_filter(self):
+        func = filter.SentenceCountFilter(input_key='content', min_sentences=2, max_sentences=10,
+                                          language='zh', _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('单句。', False),
+            ('第一句。第二句。', True),
+            ('第一句。第二句！第三句？', True),
+            ('句子' * 20 + '。', False),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        res = func(inputs)
+        assert len(res) > 0
+
+    def test_ellipsis_end_filter(self):
+        func = filter.EllipsisEndFilter(input_key='content', max_ratio=0.3, _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('第一行。\n第二行。\n第三行。', True),
+            ('第一行...\n第二行...\n第三行...', False),
+            ('第一行…\n第二行。', True),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': text} for text, keep in test_cases * 500 if keep]
+        res = func(inputs)
+        assert len(res) == len(expected)
+
+    def test_null_content_filter(self):
+        func = filter.NullContentFilter(input_key='content', _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('Valid content', True),
+            ('', False),
+            ('   ', False),
+            ('有效内容', True),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': text} for text, keep in test_cases * 500 if keep]
+        res = func(inputs)
+        assert sorted(res, key=lambda x: x['content']) == sorted(expected, key=lambda x: x['content'])
+
+    def test_word_length_filter(self):
+        func = filter.WordLengthFilter(input_key='content', min_length=3, max_length=10,
+                                       _concurrency_mode='thread')
+        assert func._concurrency_mode == 'thread'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('I am ok', False),
+            ('This is a normal sentence', True),
+            ('Supercalifragilisticexpialidocious', False),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        res = func(inputs)
+        assert len(res) > 0
+
+    def test_symbol_ratio_filter(self):
+        func = filter.SymbolRatioFilter(input_key='content', max_ratio=0.3,
+                                        _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('Normal text without symbols', True),
+            ('Text # with ... some … symbols', True),
+            ('### ... … ### ... …', False),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        res = func(inputs)
+        assert len(res) > 0
+
+    def test_idcard_filter(self):
+        func = filter.IDCardFilter(input_key='content', threshold=3, _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('这是正常文本', True),
+            ('请提供身份证号码和ID number还有证件号', False),
+            ('Normal text without ID terms', True),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': text} for text, keep in test_cases * 500 if keep]
+        res = func(inputs)
+        assert sorted(res, key=lambda x: x['content']) == sorted(expected, key=lambda x: x['content'])
+
+    def test_no_punc_filter(self):
+        func = filter.NoPuncFilter(input_key='content', max_length_between_punct=20,
+                                   language='zh', _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('这是。正常。文本。', True),
+            ('这是一段没有标点符号的超长文本' * 10, False),
+            ('短文本。', True),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        res = func(inputs)
+        assert len(res) > 0
+
+    def test_special_char_filter(self):
+        func = filter.SpecialCharFilter(input_key='content', _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('Normal text 正常文本', True),
+            ('Text with \u200b zero width space', False),
+            ('Text with \ufffd replacement char', False),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': text} for text, keep in test_cases * 500 if keep]
+        res = func(inputs)
+        assert sorted(res, key=lambda x: x['content']) == sorted(expected, key=lambda x: x['content'])
+
+    def test_watermark_filter(self):
+        func = filter.WatermarkFilter(input_key='content', _concurrency_mode='thread')
+        assert func._concurrency_mode == 'thread'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('Normal content without watermark', True),
+            ('This document contains Copyright notice', False),
+            ('Confidential information inside', False),
+            ('版权所有 2024', False),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': text} for text, keep in test_cases * 500 if keep]
+        res = func(inputs)
+        assert sorted(res, key=lambda x: x['content']) == sorted(expected, key=lambda x: x['content'])
+
+    def test_stop_word_filter(self):
+        func = filter.StopWordFilter(input_key='content', max_ratio=0.5, use_tokenizer=True,
+                                     language='zh', _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('这是一段包含实际内容的正常文本。', True),
+            ('的了吗呢吧啊', False),
+            ('人工智能技术发展迅速。', True),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 300]
+        res = func(inputs)
+        assert len(res) > 0
+
+    def test_curly_bracket_filter(self):
+        func = filter.CurlyBracketFilter(input_key='content', max_ratio=0.08,
+                                         _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('Normal text without brackets', True),
+            ('Text with {one} bracket', True),
+            ('{{{{{' * 10, False),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': text} for text, keep in test_cases * 500 if keep]
+        res = func(inputs)
+        assert sorted(res, key=lambda x: x['content']) == sorted(expected, key=lambda x: x['content'])
+
+    def test_capital_word_filter(self):
+        func = filter.CapitalWordFilter(input_key='content', max_ratio=0.5,
+                                        _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('Normal text with Some Capitals', True),
+            ('MOSTLY UPPERCASE TEXT HERE', False),
+            ('mixed CaSe TeXt', True),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        res = func(inputs)
+        assert len(res) > 0
+
+    def test_lorem_ipsum_filter(self):
+        func = filter.LoremIpsumFilter(input_key='content', max_ratio=3e-8,
+                                       _concurrency_mode='thread')
+        assert func._concurrency_mode == 'thread'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('This is real content', True),
+            ('Lorem ipsum dolor sit amet', False),
+            ('占位符文本', False),
+            ('Normal Chinese text 正常文本', True),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': text} for text, keep in test_cases * 500 if keep]
+        res = func(inputs)
+        assert sorted(res, key=lambda x: x['content']) == sorted(expected, key=lambda x: x['content'])
+
+    def test_unique_word_filter(self):
+        func = filter.UniqueWordFilter(input_key='content', min_ratio=0.3, use_tokenizer=True,
+                                       language='zh', _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('这是一段包含多个不同词汇的文本内容。', True),
+            ('重复重复重复重复重复', False),
+            ('人工智能和机器学习技术。', True),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 300]
+        res = func(inputs)
+        assert len(res) > 0
+
+    def test_char_count_filter(self):
+        func = filter.CharCountFilter(input_key='content', min_chars=10, max_chars=100,
+                                      _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('短', False),
+            ('这是一段中等长度的文本内容。', True),
+            ('这是一段超长文本' * 50, False),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        res = func(inputs)
+        for item in res:
+            text = item['content']
+            count = len(text.strip().replace(' ', '').replace('\n', '').replace('\t', ''))
+            assert 10 <= count <= 100
+
+    def test_bullet_point_filter(self):
+        func = filter.BulletPointFilter(input_key='content', max_ratio=0.5,
+                                        _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('Normal paragraph text', True),
+            ('• Item 1\n• Item 2\n• Item 3', True),
+            ('• A\n• B\n• C\n• D\n• E\n• F', False),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        res = func(inputs)
+        assert len(res) > 0
+
+    def test_javascript_filter(self):
+        func = filter.JavascriptFilter(input_key='content', min_non_script_lines=3,
+                                       _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('This is normal text content', True),
+            ('function() { console.log("test"); }', False),
+            ('Line 1\nLine 2\nLine 3\nLine 4\nNormal content', True),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': text} for text, keep in test_cases * 500 if keep]
+        res = func(inputs)
+        assert len(res) == len(expected)
+
+    @pytest.mark.skip(reason='Requires blocklist file')
+    def test_blocklist_filter(self):
+        func = filter.BlocklistFilter(input_key='content',
+                                      blocklist=['badword1', 'badword2'],
+                                      threshold=1, _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        test_cases = [
+            ('Clean text', True),
+            ('Text with badword1', False),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 100]
+        res = func(inputs)
+        assert len(res) > 0
+
+    @pytest.mark.skip(reason='Requires MinHash computation')
+    def test_minhash_deduplicate_filter(self):
+        func = filter.MinHashDeduplicateFilter(input_key='content', threshold=0.85)
+        test_cases = [
+            '这是第一段不同的内容。',
+            '这是第二段完全不同的内容。',
+            '这是第一段不同的内容。',
+        ]
+        inputs = [{'content': text} for text in test_cases]
+        res = func.forward_batch_input(inputs)
+        assert len(res) == 2
