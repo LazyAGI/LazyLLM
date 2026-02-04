@@ -32,11 +32,8 @@ class OnlineChatModule(metaclass=_ChatModuleMeta):
         if model in lazyllm.online.chat and source is None: source, model = model, source
         if source is None and api_key is not None:
             raise ValueError('No source is given but an api_key is provided.')
-        source, default_key = select_source_with_default_key(lazyllm.online.chat,
-                                                             explicit_source=source,
-                                                             type=LLMType.CHAT)
-        if default_key and not api_key:
-            api_key = default_key
+        source, default_key = select_source_with_default_key(lazyllm.online.chat, source, LLMType.CHAT)
+        api_key = api_key or default_key
 
         if type is None and model:
             type = get_model_type(model)

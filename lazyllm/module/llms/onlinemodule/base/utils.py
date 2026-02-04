@@ -9,18 +9,14 @@ config.add('cache_online_module', bool, False, 'CACHE_ONLINE_MODULE',
            description='Whether to cache the online module result. Use for unit test.')
 
 
-def select_source_with_default_key(available_models,
-                                   explicit_source: Optional[str] = None,
-                                   type: str = ''):
+def select_source_with_default_key(available_models, explicit_source: Optional[str] = None, type: str = ''):
     if explicit_source:
         assert explicit_source in available_models, f'Unsupported source: {explicit_source}'
         key_name = f'{explicit_source}_api_key'
         default_key = config[key_name] if key_name in config.get_all_configs() else None
         return explicit_source, default_key
-    default_source = config['default_source'] if 'default_source' in config.get_all_configs() else None
-    default_key = config['default_key'] if 'default_key' in config.get_all_configs() else None
-    if default_source and default_key and default_source in available_models:
-        return default_source, default_key
+    if (default_source := config['default_source']):
+        return default_source, config['default_key']
 
     for candidate in available_models.keys():
         candidate = candidate[:-len(type)]
@@ -77,10 +73,14 @@ class LazyLLMOnlineBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
             LLMType.CHAT: ('_model_name', 'The default model name for '),
             LLMType.EMBED: ('_model_name', 'The default embed model name for '),
             LLMType.RERANK: ('_model_name', 'The default rerank model name for '),
+            LLMType.MULTIMODAL_EMBED: ('_multimodal_embed_model_name', 'The default multimodal embed model name for '),
             LLMType.STT: ('_stt_model_name', 'The default stt model name for '),
             LLMType.TTS: ('_tts_model_name', 'The default tts model name for '),
             LLMType.TEXT2IMAGE: ('_text2image_model_name', 'The default text2image model name for '),
         }
+
+        check_and_add_config(key='default_source', description='The default model source for online modules.')
+        check_and_add_config(key='default_key', description='The default API key for online modules.')
 
         if group_name == '':
             assert name == 'online'

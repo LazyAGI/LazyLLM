@@ -1,5 +1,4 @@
 import os
-import sys
 import json
 import time
 import threading
@@ -247,24 +246,7 @@ class LazyLLMDataBase(metaclass=LazyLLMRegisterMetaClass):
             return self._store.load_results()
         return results
 
-    def _ensure_picklable(self):
-        # Fix dynamic class pickling issue for multiprocessing
-        cls = self.__class__
-        mod_name = cls.__module__
-        if mod_name in sys.modules:
-            mod = sys.modules[mod_name]
-            # Ensure the class is registered in the module with its name
-            if not hasattr(mod, cls.__name__):
-                setattr(mod, cls.__name__, cls)
-
-            # Also check if qualname is used
-            if '.' not in cls.__qualname__:
-                if not hasattr(mod, cls.__qualname__):
-                    setattr(mod, cls.__qualname__, cls)
-
     def _process_parallel(self, data, pending_indices, results, pbar):
-        if self._concurrency_mode == 'process':
-            self._ensure_picklable()
 
         executor_cls = ProcessPoolExecutor if self._concurrency_mode == 'process' else ThreadPoolExecutor
         idx_iter = iter(pending_indices)
