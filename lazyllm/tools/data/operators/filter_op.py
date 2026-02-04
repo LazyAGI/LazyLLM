@@ -18,8 +18,8 @@ class LanguageFilter(Filter):
         'tha', 'hin', 'ind_Latn', 'msa_Latn'
     }
 
-    def __init__(self, input_key='content', target_language='zh', threshold=0.6, model_path=None,
-                 model_cache_dir=None, _concurrency_mode='process', **kwargs):
+    def __init__(self, input_key='content', target_language='zho_Hans', threshold=0.6, model_path=None,
+                 model_cache_dir=None, _concurrency_mode='thread', **kwargs):
         super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         if isinstance(target_language, str):
