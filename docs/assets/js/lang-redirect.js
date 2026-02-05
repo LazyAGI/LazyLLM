@@ -3,7 +3,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   const routeMap = {
     'en': 'en',
-    'zh': 'zh-cn'
+    'zh-cn': 'zh-cn'
   };
 
   const currentPath = decodeURIComponent(window.location.pathname);
