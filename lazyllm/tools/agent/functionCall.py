@@ -39,10 +39,10 @@ class StreamResponse():
 class FunctionCall(ModuleBase):
 
     def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False,
-                 stream: bool = False, _prompt: str = None):
+                 stream: bool = False, _prompt: str = None, sandbox=None):
         super().__init__(return_trace=return_trace)
 
-        self._tools_manager = ToolManager(tools, return_trace=return_trace)
+        self._tools_manager = ToolManager(tools, return_trace=return_trace, sandbox=sandbox)
         self._prompter = ChatPrompter(instruction=_prompt or FC_PROMPT, tools=self._tools_manager.tools_description)
         self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
         with pipeline() as self._impl:

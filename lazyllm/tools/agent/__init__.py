@@ -4,6 +4,7 @@ from .reactAgent import ReactAgent
 from .planAndSolveAgent import PlanAndSolveAgent
 from .rewooAgent import ReWOOAgent
 from .toolsManager import ModuleTool
+from .code_interpreter import code_interpreter
 
 __all__ = [
     'ToolManager',
@@ -13,5 +14,6 @@ __all__ = [
     'ReactAgent',
     'PlanAndSolveAgent',
     'ReWOOAgent',
-    'ModuleTool'
+    'ModuleTool',
+    'code_interpreter'
 ]

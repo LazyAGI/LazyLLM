@@ -67,6 +67,36 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 ```
 
 注册方式很简单，导入 `fc_register` 之后，直接在定义好的函数名之上按照装饰器的方式进行添加即可。这里需要注意，添加的时候要指定默认分组 `tool`，默认注册的工具名称是所注册的函数名称。
+如果工具需要在 sandbox 中执行并且涉及文件上传或下载，必须通过 `input_files` / `output_files` 字段传递文件；如果工具不希望在 sandbox 中执行，可在注册时显式指定 `@fc_register("tool", execute_in_sandbox=False)`。
+
+下面是一个文件上传/下载工具的例子：
+
+```python
+from typing import List, Optional
+from lazyllm.tools import fc_register
+
+@fc_register("tool")
+def count_lines_in_file(
+    input_files: Optional[List[str]] = None,
+    output_files: Optional[List[str]] = None,
+):
+    """
+    Count lines of the first input file and write to an output file.
+
+    Args:
+        input_files (list[str] | None): 输入文件路径列表。
+        output_files (list[str] | None): 输出文件路径列表（沙箱会回传这些文件）。
+    """
+    if not input_files or not output_files:
+        return "input_files/output_files required"
+    src = input_files[0]
+    dst = output_files[0]
+    with open(src, "r", encoding="utf-8") as f:
+        count = sum(1 for _ in f)
+    with open(dst, "w", encoding="utf-8") as f:
+        f.write(str(count))
+    return {"output_files": output_files, "lines": count}
+```
 
 我们也可以把工具注册为不同的名字，在注册的时候填入第二个参数即可，例如：
 
@@ -192,6 +222,41 @@ print(f"ret: {ret}")
 
     - 注册函数或者工具时，必需指定默认分组 `tool`，否则模型没有办法使用对应的工具。
     - 在使用模型时，不用区分 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule]，因为设计的 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 的输出类型是一致的。
+
+## 内置工具：code_interpreter
+
+LazyLLM 提供内置工具 `code_interpreter`，用于在沙箱内执行代码并返回结果。该工具已通过 `fc_register("tool")` 注册，可直接作为工具名使用。
+
+### 使用示例
+
+```python
+import lazyllm
+from lazyllm.tools import FunctionCall
+
+llm = lazyllm.OnlineChatModule()
+tools = ["code_interpreter"]
+fc = FunctionCall(llm, tools)
+
+query = "用 python 计算 1 到 100 的和"
+ret = fc(query)
+print(ret)
+```
+
+### 沙箱配置
+
+`code_interpreter` 默认使用本地沙箱（`LocalSandbox`，仅支持 python）。如需远程执行或 bash 支持，可切换为 `SandboxFusion`：
+
+```python
+from lazyllm import config
+
+config['sandbox_type'] = 'sandbox_fusion'
+config['sandbox_fusion_base_url'] = 'http://your-sandbox-host:port'
+```
+
+对应的环境变量：
+
+- `LAZYLLM_SANDBOX_TYPE`：`local` 或 `sandbox_fusion`
+- `LAZYLLM_SANDBOX_FUSION_BASE_URL`：远程沙箱服务地址
 
 ## FunctionCall 的设计思路
 [FunctionCall][lazyllm.tools.agent.FunctionCall] 的设计流程采用自底向上的方式进行的，首先由于 [FunctionCall][lazyllm.tools.agent.FunctionCall] 是必需要调用 LLM 的，所以必须是模型的输出格式一致，因此，首先保证 [TrainableModule][lazyllm.module.TrainableModule] 和 [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] 的输出对齐，然后再实现单轮的 [FunctionCall][lazyllm.tools.agent.FunctionCall], 即调用 LLM 和 tools 一次，最后实现完整的 [ReactAgent][lazyllm.tools.agent.ReactAgent]，即多次迭代 [FunctionCall][lazyllm.tools.agent.FunctionCall], 直到模型迭代完成或者超过最大迭代次数。

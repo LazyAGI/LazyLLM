@@ -3,7 +3,8 @@ from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
 from lazyllm import loop, pipeline, _0, package, bind, LOG, Color, locals
 from .functionCall import FunctionCall
-from typing import List, Union
+from typing import List, Union, Optional
+from lazyllm.tools.sandbox.sandbox_base import SandboxBase
 
 PLANNER_PROMPT = (
     'Let\'s first understand the problem and devise a plan to solve the problem.'
@@ -29,7 +30,7 @@ class PlanAndSolveAgent(ModuleBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[str] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  max_retries: int = 5, return_trace: bool = False, stream: bool = False,
-                 return_last_tool_calls: bool = False):
+                 return_last_tool_calls: bool = False, sandbox: Optional[SandboxBase] = None):
         super().__init__(return_trace=return_trace)
         self._max_retries = max_retries
         self._return_last_tool_calls = return_last_tool_calls
@@ -44,7 +45,8 @@ class PlanAndSolveAgent(ModuleBase):
                                                   stream=s).used_by(self._module_id))
         self._solve_llm = (solve_llm or llm).share().used_by(self._module_id)
         self._tools = tools
-        self._fc = FunctionCall(self._solve_llm, tools=self._tools, return_trace=return_trace, stream=stream)
+        self._fc = FunctionCall(
+            self._solve_llm, tools=self._tools, return_trace=return_trace, stream=stream, sandbox=sandbox)
         with pipeline() as self._agent:
             self._agent.plan = self._plan_llm
             self._agent.parse = (lambda text, query: package([], '', [v for v in re.split('\n\\s*\\d+\\. ', text)[1:]],
