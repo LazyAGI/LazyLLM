@@ -57,24 +57,24 @@
   - Data Processing: API Reference/data_process.md
 - Tutorials:
   - Overview: Tutorial/index.md
-  - 1. RAG Fundamentals: Tutorial/1.en.md
-  - 2. Quickstart with RAG: Tutorial/2.en.md
-  - 3. Mastering LLM with LazyLLM: Tutorial/3.en.md
-  - 4. Engineering Basics: Tutorial/4.en.md
-  - 5. Custom Document Readers: Tutorial/5.en.md
-  - 6. Retrieval Optimization: Tutorial/6.en.md
-  - 7. Hands-on Retrieval Tuning: Tutorial/7.en.md
-  - 8. Custom Retrieval Strategies: Tutorial/8.en.md
-  - 9. Domain-Specific Fine-Tuning: Tutorial/9.en.md
-  - 10. Deepseek Integration: Tutorial/10.en.md
-  - 11. Performance Optimization: Tutorial/11.en.md
-  - 12. Speed-Up Techniques: Tutorial/12.en.md
-  - 13. Multimodal RAG: Tutorial/13.en.md
-  - 14. Academic Paper QA: Tutorial/14.en.md
-  - 15. Statistical RAG: Tutorial/15.en.md
-  - 16. Advanced Paper QA: Tutorial/16.en.md
-  - 17. Enterprise RAG Solutions: Tutorial/17.en.md
-  - 18. Agentic RAG: Tutorial/18.en.md
-  - 19. Knowledge Graph RAG: Tutorial/19.en.md
+  - 1. RAG Fundamentals: Tutorial/1.md
+  - 2. Quickstart with RAG: Tutorial/2.md
+  - 3. Mastering LLM with LazyLLM: Tutorial/3.md
+  - 4. Engineering Basics: Tutorial/4.md
+  - 5. Custom Document Readers: Tutorial/5.md
+  - 6. Retrieval Optimization: Tutorial/6.md
+  - 7. Hands-on Retrieval Tuning: Tutorial/7.md
+  - 8. Custom Retrieval Strategies: Tutorial/8.md
+  - 9. Domain-Specific Fine-Tuning: Tutorial/9.md
+  - 10. Deepseek Integration: Tutorial/10.md
+  - 11. Performance Optimization: Tutorial/11.md
+  - 12. Speed-Up Techniques: Tutorial/12.md
+  - 13. Multimodal RAG: Tutorial/13.md
+  - 14. Academic Paper QA: Tutorial/14.md
+  - 15. Statistical RAG: Tutorial/15.md
+  - 16. Advanced Paper QA: Tutorial/16.md
+  - 17. Enterprise RAG Solutions: Tutorial/17.md
+  - 18. Agentic RAG: Tutorial/18.md
+  - 19. Knowledge Graph RAG: Tutorial/19.md
 - RoadMap:
   - 0.6 & 0.7: RoadMap/0_6and0_7.md
