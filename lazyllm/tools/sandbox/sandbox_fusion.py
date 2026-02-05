@@ -5,6 +5,7 @@ import requests
 from requests import exceptions as req_exc
 from json import JSONDecodeError
 from lazyllm import LOG, config
+from lazyllm.components.utils.file_operate import file_to_base64
 from lazyllm.tools.sandbox.sandbox_base import SandboxBase
 
 config.add('sandbox_fusion_base_url', str, '', 'SANDBOX_FUSION_BASE_URL')
@@ -26,7 +27,7 @@ class SandboxFusion(SandboxBase):
     def url(self) -> str:
         return f'{self._base_url}/run_code'
 
-    def _organize_project_dir(self) -> str:
+    def _organize_project_dir(self) -> dict[str, str]:
         abs_dir = os.path.abspath(self._project_dir)
         files_map = {}
         for root, _, files in os.walk(abs_dir):
@@ -34,9 +35,7 @@ class SandboxFusion(SandboxBase):
                 if name.endswith('.py'):
                     abs_path = os.path.join(root, name)
                     rel_path = os.path.relpath(abs_path, os.getcwd())
-                    with open(abs_path, 'rb') as f:
-                        b64_content = base64.b64encode(f.read()).decode('utf-8')
-                    files_map[rel_path] = b64_content
+                    files_map[rel_path] = self._encode_file_base64(abs_path)
         return files_map
 
     def _check_available(self) -> None:
@@ -94,10 +93,8 @@ class SandboxFusion(SandboxBase):
                 self._project_files = self._organize_project_dir()
             call_params['files'] = dict(self._project_files)
         if input_files:
-            call_params['files'].update({
-                file: base64.b64encode(open(file, 'rb').read()).decode('utf-8')
-                for file in input_files
-            })
+            for file in input_files:
+                call_params['files'][file] = self._encode_file_base64(file)
         if output_files:
             call_params['fetch_files'] = output_files
         result = self._call_api(call_params)
@@ -109,3 +106,10 @@ class SandboxFusion(SandboxBase):
                     f.write(base64.b64decode(base64_content))
                     result['output_files'].append(file_path)
         return result
+
+    @staticmethod
+    def _encode_file_base64(path: str) -> str:
+        encoded = file_to_base64(path)
+        if encoded is None:
+            raise ValueError(f'Failed to encode file to base64: {path}')
+        return encoded[0]

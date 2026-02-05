@@ -106,6 +106,7 @@ class LocalSandbox(SandboxBase):
         output_files: List[str],
     ) -> List[str]:
         collected: List[str] = []
+        os.makedirs(self._output_dir_path, exist_ok=True)
         for out_file in output_files:
             src_path = os.path.join(temp_dir, os.path.basename(out_file))
             dst_path = os.path.join(
@@ -153,9 +154,9 @@ class LocalSandbox(SandboxBase):
             result = self._run_in_subprocess(
                 script_path, cwd=temp_dir, env=env
             )
-            if output_files and (files := result.pop('files', None)):
+            if output_files:
                 result['output_files'] = self._collect_output_files(
-                    temp_dir, files
+                    temp_dir, output_files
                 )
             return result
         except subprocess.TimeoutExpired:
