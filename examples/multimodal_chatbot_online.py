@@ -17,7 +17,7 @@ import lazyllm
 #           You can apply for the API key at https://platform.sensenova.cn/home
 #     * `source` needs to be specified for multiple API keys, but it does not need to be set for a single API key.
 
-chat = lazyllm.OnlineChatModule(source="glm", model="glm-4v-flash")
+chat = lazyllm.OnlineChatModule(source="sensenova", model="SenseNova-V6-5-Pro")
 
 if __name__ == '__main__':
     lazyllm.WebModule(chat, port=range(23466, 23470), files_target=chat).start().wait()

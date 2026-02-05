@@ -40,27 +40,27 @@ class TestText2Image:
     def test_qwen_text2image(self):
         self.common_text2image(source='qwen', type='sd')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('doubao'))
+    @pytest.mark.ignore_cache_on_change(get_path('doubao'))
     @pytest.mark.xfail
     def test_doubao_text2image(self):
         self.common_text2image(source='doubao', type='text2image')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.ignore_cache_on_change(get_path('siliconflow'))
     @pytest.mark.xfail
     def test_siliconflow_text2image(self):
         self.common_text2image(source='siliconflow', type='text2image', model='Qwen/Qwen-Image')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('glm'))
+    @pytest.mark.ignore_cache_on_change(get_path('glm'))
     @pytest.mark.xfail
     def test_glm_text2image(self):
         self.common_text2image(source='glm', type='text2image')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('minimax'))
+    @pytest.mark.ignore_cache_on_change(get_path('minimax'))
     @pytest.mark.xfail
     def test_minimax_text2image(self):
         self.common_text2image(source='minimax', function='text2image')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('aiping'))
+    @pytest.mark.ignore_cache_on_change(get_path('aiping'))
     @pytest.mark.xfail
     def test_aiping_text2image(self):
         self.common_text2image(source='aiping', type='text2image')
