@@ -142,12 +142,11 @@ class LazyLLMAgentBase(ModuleBase):
     def desc(self, desc: str):
         self._desc = desc
 
-    def _pop_completed_tool_calls(self):
-        if self._return_last_tool_calls and locals['_lazyllm_agent'].get('completed'):
-            return locals['_lazyllm_agent'].pop('completed')
-        return None
-
-    def _pop_workspace_tool_calls(self, key: str = 'tool_call_trace'):
-        if self._return_last_tool_calls and locals['_lazyllm_agent'].get('workspace', {}).get(key):
+    def _pop_tool_calls(self, key: str = 'tool_call_trace'):
+        if not self._return_last_tool_calls:
+            return None
+        if locals['_lazyllm_agent'].get('workspace', {}).get(key):
             return locals['_lazyllm_agent'].pop('workspace').pop(key)
+        if locals['_lazyllm_agent'].get('completed'):
+            return locals['_lazyllm_agent'].pop('completed')
         return None

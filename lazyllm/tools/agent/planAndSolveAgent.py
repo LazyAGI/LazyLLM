@@ -122,7 +122,7 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
         return package(pre_steps, response, steps, query)
 
     def _post_process(self, result):
-        completed = self._pop_completed_tool_calls()
+        completed = self._pop_tool_calls()
         if completed is not None:
             return completed
         return result

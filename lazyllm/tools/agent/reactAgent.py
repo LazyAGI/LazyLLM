@@ -90,7 +90,7 @@ class ReactAgent(LazyLLMAgentBase):
 
     def _post_process(self, ret):
         if isinstance(ret, str):
-            completed = self._pop_completed_tool_calls()
+            completed = self._pop_tool_calls()
             if completed is not None:
                 return completed
             return ret

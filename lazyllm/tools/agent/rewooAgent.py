@@ -131,7 +131,7 @@ class ReWOOAgent(LazyLLMAgentBase):
         return query
 
     def _post_process(self, result):
-        trace = self._pop_workspace_tool_calls()
+        trace = self._pop_tool_calls()
         if trace is not None:
             return trace
         return result
