@@ -8,7 +8,7 @@
 #include "doc_node.hpp"
 #include "utils.hpp"
 
-namespace py = pybind11;
+namespace {
 
 lazyllm::DocNode init(
     std::optional<std::string> uid,
@@ -100,6 +100,8 @@ std::string DocNodeToString(const lazyllm::DocNode& node) {
         + ", content: " + node.get_text(lazyllm::MetadataMode::NONE)
         + ") parent: " + node.get_parent_uid() + ", children: " + children_str;
 }
+
+} // namespace
 
 void exportDocNode(py::module& m) {
     py::enum_<lazyllm::MetadataMode>(m, "MetadataMode")

@@ -16,4 +16,6 @@ PYBIND11_MODULE(lazyllm_cpp, m) {
     options.disable_function_signatures();
 
     exportDocNode(m);
+    exportNodeTransform(m);
+    exportTextSpliterBase(m);
 }

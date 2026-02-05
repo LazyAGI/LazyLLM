@@ -10,20 +10,7 @@ add_compile_options(
 )
 
 # Third party libs
-include(FetchContent)
-find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
-find_package(pybind11 CONFIG REQUIRED)
-
-find_package(xxHash QUIET)
-if (NOT TARGET xxhash)
-    FetchContent_Declare(
-        xxhash
-        GIT_REPOSITORY https://github.com/Cyan4973/xxHash.git
-        GIT_TAG v0.8.2
-    )
-    FetchContent_Populate(xxhash)
-    add_subdirectory(${xxhash_SOURCE_DIR}/cmake_unofficial ${xxhash_BINARY_DIR})
-endif()
+include(cmake/third_party.cmake)
 
 # Config lazyllm_core lib with pure cpp code.
 file(GLOB_RECURSE LAZYLLM_CORE_SOURCES CONFIGURE_DEPENDS
@@ -31,6 +18,7 @@ file(GLOB_RECURSE LAZYLLM_CORE_SOURCES CONFIGURE_DEPENDS
 add_library(lazyllm_core STATIC ${LAZYLLM_CORE_SOURCES})
 target_include_directories(lazyllm_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/core/include)
 target_link_libraries(lazyllm_core PUBLIC xxhash)
+target_link_libraries(lazyllm_core PUBLIC sentencepiece)
 
 # Config lazyllm_adaptor lib which maintains callback invocations.
 file(GLOB_RECURSE LAZYLLM_ADAPTOR_SOURCES CONFIGURE_DEPENDS
