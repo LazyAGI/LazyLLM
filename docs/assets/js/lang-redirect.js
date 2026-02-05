@@ -7,6 +7,9 @@ document.addEventListener("DOMContentLoaded", function() {
   };
 
   const currentPath = decodeURIComponent(window.location.pathname);
+  
+  console.log(`[i18n] Current Full URL: ${window.location.href}`);
+  console.log(`[i18n] Current Pathname: ${currentPath}`);
 
   document.querySelectorAll('a[lang], a[hreflang]').forEach(link => {
     const targetLang = link.getAttribute('lang') || link.getAttribute('hreflang');
@@ -25,7 +28,10 @@ document.addEventListener("DOMContentLoaded", function() {
           });
         } else {
           // Calculate new path
+          console.log(`[i18n] Switching from '${segment}' to '${targetSegment}'`);
           const newPath = currentPath.replace(`/${segment}/`, `/${targetSegment}/`);
+          console.log(`[i18n] Calculated New Path: ${newPath}`);
+          
           const newUrl = new URL(newPath, window.location.origin);
           newUrl.search = window.location.search;
           newUrl.hash = window.location.hash;
