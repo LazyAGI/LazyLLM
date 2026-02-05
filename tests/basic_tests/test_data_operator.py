@@ -5,7 +5,7 @@ import random
 import shutil
 import json
 from lazyllm import config, LOG
-from lazyllm.tools.data import demo1, demo2, data_register
+from lazyllm.tools.data import demo1, demo2, refine, chunker, data_register
 
 
 class TestDataOperators:
@@ -144,3 +144,85 @@ class TestDataOperators:
                 load_res.append(data)
         sorted_load = sorted(load_res, key=lambda x: x['id'])
         assert sorted_res == sorted_load
+
+    def test_remove_extra_spaces(self):
+        func = refine.RemoveExtraSpaces(input_key='content', _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('This   has    extra     spaces', 'This has extra spaces'),
+            ('  Leading and trailing  ', 'Leading and trailing'),
+            ('Normal text', 'Normal text'),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': expected} for _, expected in test_cases * 500]
+        res = func(inputs)
+        assert sorted(res, key=lambda x: x['content']) == sorted(expected, key=lambda x: x['content'])
+
+    def test_remove_emoji(self):
+        func = refine.RemoveEmoji(input_key='content', _max_workers=64, _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('Hello 😊 World 🌍!', 'Hello  World !'),
+            ('Python 🐍 is awesome 👍', 'Python  is awesome '),
+            ('No emoji here', 'No emoji here'),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': expected} for _, expected in test_cases * 500]
+        res = func(inputs)
+        assert sorted(res, key=lambda x: x['content']) == sorted(expected, key=lambda x: x['content'])
+
+    def test_remove_html_url(self):
+        func = refine.RemoveHtmlUrl(input_key='content', _max_workers=32)
+        assert func._max_workers == 32
+        LOG.info(f'Concurrency mode: {func._concurrency_mode}')
+        test_cases = [
+            ('Check https://example.com for details', 'Check  for details'),
+            ('<div>HTML <b>tags</b></div> removed', 'HTML tags removed'),
+            ('Visit http://test.com and <a>click</a>', 'Visit  and click'),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': expected} for _, expected in test_cases * 500]
+        res = func(inputs)
+        assert sorted(res, key=lambda x: x['content']) == sorted(expected, key=lambda x: x['content'])
+
+    def test_remove_html_entity(self):
+        func = refine.RemoveHtmlEntity(input_key='content')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        test_cases = [
+            ('Hello&nbsp;World', 'HelloWorld'),
+            ('&lt;tag&gt; and &amp; symbol', 'tag and  symbol'),
+            ('&quot;quoted&quot; text', 'quoted text'),
+        ]
+        inputs = [{'content': text} for text, _ in test_cases * 500]
+        expected = [{'content': expected} for _, expected in test_cases * 500]
+        res = func(inputs)
+        assert sorted(res, key=lambda x: x['content']) == sorted(expected, key=lambda x: x['content'])
+
+    def test_refine_chained_operations(self):
+        inputs = [{'content': 'Hello 😊  World  https://example.com &nbsp; <b>Bold</b>'}]
+        res = refine.RemoveEmoji(input_key='content')(inputs)
+        res = refine.RemoveHtmlUrl(input_key='content')(res)
+        res = refine.RemoveHtmlEntity(input_key='content')(res)
+        res = refine.RemoveExtraSpaces(input_key='content')(res)
+        assert len(res) == 1
+        assert res[0]['content'] == 'Hello World Bold'
+
+    def test_token_chunker(self):
+        func = chunker.TokenChunker(input_key='content', max_tokens=50, min_tokens=10, _concurrency_mode='process')
+        assert func._concurrency_mode == 'process'
+        LOG.info(f'Max workers: {func._max_workers}')
+        long_text = '人工智能是计算机科学的一个分支。' * 20
+        inputs = [{'content': long_text, 'meta_data': {'source': f'doc_{i}'}} for i in range(100)]
+        res = func(inputs)
+        assert len(res) > len(inputs)
+        for chunk in res[:5]:
+            assert 'uid' in chunk
+            assert 'content' in chunk
+            assert 'meta_data' in chunk
+            assert 'index' in chunk['meta_data']
+            assert 'total' in chunk['meta_data']
+            assert 'length' in chunk['meta_data']
+            assert chunk['meta_data']['length'] == len(chunk['content'])
