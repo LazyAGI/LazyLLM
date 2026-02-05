@@ -37,8 +37,10 @@ document.addEventListener("DOMContentLoaded", function() {
              link.addEventListener('click', function(e) {
                 e.preventDefault();
                 e.stopImmediatePropagation();
-                console.log(`[i18n] Reloading current page: ${currentUrl}`);
-                window.location.href = currentUrl;
+                // Get fresh URL in case hash changed after page load
+                const freshUrl = window.location.href;
+                console.log(`[i18n] Reloading current page: ${freshUrl}`);
+                window.location.href = freshUrl;
              });
         } else {
             // Replace only the language prefix, preserving the rest of the path exactly (including encoding)
@@ -55,8 +57,50 @@ document.addEventListener("DOMContentLoaded", function() {
                 // Stop propagation and other similar event listeners (critical to prevent interference from other scripts)
                 e.stopImmediatePropagation();
                 
-                console.log(`[i18n] Force redirect to: ${finalUrl}`);
-                window.location.href = finalUrl;
+                // Dynamically get current path and hash (user might have navigated in-page)
+                const freshPath = window.location.pathname;
+                const freshHash = window.location.hash;
+                const freshSearch = window.location.search;
+
+                // Construct target base URL
+                const freshNewPath = freshPath.replace(`/${currentSegment}/`, `/${targetSegment}/`);
+                const targetBaseUrl = window.location.origin + freshNewPath + freshSearch;
+
+                if (freshHash) {
+                    console.log(`[i18n] Hash detected: ${freshHash}. Verifying existence in target...`);
+                    
+                    fetch(targetBaseUrl)
+                        .then(response => {
+                            if (!response.ok) throw new Error("Target page fetch failed");
+                            return response.text();
+                        })
+                        .then(html => {
+                            const parser = new DOMParser();
+                            const doc = parser.parseFromString(html, "text/html");
+                            const tagId = freshHash.substring(1); // Remove '#'
+                            
+                            // Check if element with this ID exists in target document
+                            const element = doc.getElementById(tagId);
+                            
+                            let finalDest = targetBaseUrl;
+                            if (element) {
+                                finalDest += freshHash;
+                                console.log(`[i18n] Hash found in target. Keeping tag.`);
+                            } else {
+                                console.log(`[i18n] Hash NOT found in target. Dropping tag.`);
+                            }
+                            
+                            window.location.href = finalDest;
+                        })
+                        .catch(err => {
+                            console.error("[i18n] Error checking hash, fallback to direct redirect:", err);
+                            // Fallback: assume it works or just redirect
+                            window.location.href = targetBaseUrl + freshHash;
+                        });
+                } else {
+                    console.log(`[i18n] Force redirect to: ${targetBaseUrl}`);
+                    window.location.href = targetBaseUrl;
+                }
             });
         }
     }
