@@ -66,6 +66,36 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 ```
 
 The registration method is very simple. After importing `fc_register`, you can add it directly above the predefined function name in the manner of a decorator. Note that when adding, you need to specify the default group `tool`, and the default registered tool name is the name of the function being registered.
+If the tool runs inside a sandbox and needs file upload/download, you must pass files via `input_files` / `output_files`. If you do not want sandbox execution, register with `@fc_register("tool", execute_in_sandbox=False)`.
+
+Here is an example tool that uploads a file and downloads a generated result:
+
+```python
+from typing import List, Optional
+from lazyllm.tools import fc_register
+
+@fc_register("tool")
+def count_lines_in_file(
+    input_files: Optional[List[str]] = None,
+    output_files: Optional[List[str]] = None,
+):
+    """
+    Count lines of the first input file and write to an output file.
+
+    Args:
+        input_files (list[str] | None): input file paths.
+        output_files (list[str] | None): output file paths (sandbox will fetch these).
+    """
+    if not input_files or not output_files:
+        return "input_files/output_files required"
+    src = input_files[0]
+    dst = output_files[0]
+    with open(src, "r", encoding="utf-8") as f:
+        count = sum(1 for _ in f)
+    with open(dst, "w", encoding="utf-8") as f:
+        f.write(str(count))
+    return {"output_files": output_files, "lines": count}
+```
 
 We can also register the tool under a different name by filling in the second parameter during registration, for example:
 
@@ -195,6 +225,41 @@ print(f"ret: {ret}")
 
     - When registering a function or tool, you must specify the default group `tool`, otherwise the model will not be able to use the corresponding tool.
     - When using the model, thers is no need to distinguish between [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule], because the output types of [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] are designed to the same.
+
+## Built-in Tool: code_interpreter
+
+LazyLLM provides a built-in tool `code_interpreter` that executes code inside a sandbox and returns the result. It is already registered with `fc_register("tool")`, so you can use it directly by name.
+
+### Example
+
+```python
+import lazyllm
+from lazyllm.tools import FunctionCall
+
+llm = lazyllm.OnlineChatModule()
+tools = ["code_interpreter"]
+fc = FunctionCall(llm, tools)
+
+query = "Use python to compute the sum from 1 to 100"
+ret = fc(query)
+print(ret)
+```
+
+### Sandbox configuration
+
+`code_interpreter` uses the local sandbox (`LocalSandbox`, python only) by default. Switch to `SandboxFusion` for remote execution or bash support:
+
+```python
+from lazyllm import config
+
+config['sandbox_type'] = 'sandbox_fusion'
+config['sandbox_fusion_base_url'] = 'http://your-sandbox-host:8000'
+```
+
+Environment variables:
+
+- `LAZYLLM_SANDBOX_TYPE`: `local` or `sandbox_fusion`
+- `LAZYLLM_SANDBOX_FUSION_BASE_URL`: remote sandbox base URL
 
 ## Design Concept of FunctionCall
 The design process of [FunctionCall][lazyllm.tools.agent.FunctionCall] is carried out in a bottom-up manner. First, since [FunctionCall][lazyllm.tools.agent.FunctionCall] must call LLM, the output format of the model must be consistent. Therefore, the outputs of [TrainableModule][lazyllm.module.TrainableModule] and [OnlineChatModule][lazyllm.module.onlineChatModule.OnlineChatModule] are aligned. Then a single round of [FunctionCall][lazyllm.tools.agent.FunctionCall] is implemented, that is, LLM and tools are called once. Finally, the complete [ReactAgent][lazyllm.tools.agent.ReactAgent] is implemented, that is, [FunctionCall][lazyllm.tools.agent.FunctionCall] is iterated multiple times until the model iteration is completed or the maximum number of iterations is exceeded.

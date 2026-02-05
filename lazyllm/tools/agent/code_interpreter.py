@@ -3,6 +3,10 @@ from lazyllm.tools import fc_register
 from lazyllm.tools.sandbox.sandbox_fusion import SandboxFusion
 from lazyllm.tools.sandbox.local_sandbox import LocalSandbox
 
+_SANDBOX_MAP = {
+    'local': LocalSandbox,
+    'sandbox_fusion': SandboxFusion,
+}
 
 config.add('sandbox_type', str, 'local', 'SANDBOX_TYPE')
 
@@ -12,7 +16,7 @@ _sandbox_once = once_flag()
 
 def _create_sandbox():
     global _sandbox
-    _sandbox = LocalSandbox() if config['sandbox_type'] == 'local' else SandboxFusion()
+    _sandbox = _SANDBOX_MAP.get(config['sandbox_type'], LocalSandbox)()
     return _sandbox
 
 

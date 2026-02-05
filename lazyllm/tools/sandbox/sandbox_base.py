@@ -8,8 +8,9 @@ class SandboxBase(ModuleBase):
     def __init__(self, output_dir_path: Optional[str] = None, return_trace: bool = True):
         super().__init__(return_trace=return_trace)
         self._output_dir_path = output_dir_path or os.getcwd()
+        self._check_available()
 
-    def _is_available(self) -> None:
+    def _check_available(self) -> None:
         raise NotImplementedError('Subclasses must implement this method')
 
     def _execute(self, code: str, language: str = 'python', input_files: Optional[List[str]] = None,

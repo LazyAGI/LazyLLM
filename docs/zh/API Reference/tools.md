@@ -1,3 +1,18 @@
+:::: lazyllm.tools.agent.code_interpreter
+    exclude-members:
+
+:::: lazyllm.tools.sandbox.SandboxBase
+    members:
+    exclude-members:
+
+:::: lazyllm.tools.sandbox.LocalSandbox
+    members:
+    exclude-members:
+
+:::: lazyllm.tools.sandbox.SandboxFusion
+    members:
+    exclude-members:
+
 ::: lazyllm.tools.IntentClassifier
     members:
     - intent_promt_hook

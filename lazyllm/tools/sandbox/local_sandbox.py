@@ -19,7 +19,7 @@ class LocalSandbox(SandboxBase):
         self._timeout = timeout
         self._project_dir = project_dir
 
-    def _is_available(self) -> bool:
+    def _check_available(self) -> bool:
         return True
 
     def _check_code_safety(self, code: str) -> Tuple[bool, Optional[str]]:

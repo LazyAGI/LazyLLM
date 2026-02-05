@@ -106,6 +106,20 @@ class TestRegistry:
         assert registered_func != orig_func
         assert registered_func.__name__ == new_func_name
 
+    def test_fc_register_execute_in_sandbox_flag(self):
+        @fc_register('tool', execute_in_sandbox=False)
+        def sandbox_disabled_tool(x: int):
+            '''
+            Simple tool for testing.
+
+            Args:
+                x (int): input value.
+            '''
+            return x
+
+        tool = lazyllm.tool.sandbox_disabled_tool()
+        assert tool.execute_in_sandbox is False
+
 
 class TestRegistryWithKey(object):
     def test_registry_with_key(self):

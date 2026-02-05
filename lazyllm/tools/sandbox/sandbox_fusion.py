@@ -39,7 +39,7 @@ class SandboxFusion(SandboxBase):
                     files_map[rel_path] = b64_content
         return files_map
 
-    def _is_available(self) -> None:
+    def _check_available(self) -> None:
         try:
             response = requests.get(f'{self._base_url}/v1/ping', timeout=2)
             if response.status_code != 200:
@@ -101,7 +101,7 @@ class SandboxFusion(SandboxBase):
         if output_files:
             call_params['fetch_files'] = output_files
         result = self._call_api(call_params)
-        if files := result.get('files', None):
+        if not isinstance(result, str) and (files := result.get('files', None)):
             result['output_files'] = []
             for file_name, base64_content in files.items():
                 file_path = os.path.join(self._output_dir_path, file_name)
