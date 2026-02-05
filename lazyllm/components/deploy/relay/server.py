@@ -69,8 +69,7 @@ async def async_wrapper(func, *args, **kwargs):
         globals._update(global_data)
         return func(*args, **kw)
 
-    result = await loop.run_in_executor(None, partial(impl, func, globals._sid, globals._data, *args, **kwargs))
-    return result
+    return await loop.run_in_executor(None, partial(impl, func, globals._sid, globals._data, *args, **kwargs))
 
 def security_check(f: Callable):
     @functools.wraps(f)
@@ -86,7 +85,7 @@ async def lazyllm_call(request: Request):
     try:
         fname, args, kwargs = await request.json()
         args, kwargs = load_obj(args), load_obj(kwargs)
-        r = getattr(func, fname)(*args, **kwargs)
+        r = await async_wrapper(getattr(func, fname), *args, **kwargs)
         return Response(content=codecs.encode(pickle.dumps(r), 'base64'))
     except requests.RequestException as e:
         return Response(content=f'{str(e)}', status_code=500)

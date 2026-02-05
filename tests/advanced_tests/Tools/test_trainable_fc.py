@@ -120,12 +120,8 @@ def LLMWorker(input: str):
     Args:
         input (str): instruction
     '''
-    llm = lazyllm.OnlineChatModule(source='glm', stream=False)
-    query = f'Respond in short directly with no extra words.\n\n{input}'
-    print(f'llm query: {query}, input: {input}')
-    response = llm(query, llm_chat_history=[])
-    print(f'llm res: {response}')
-    return response
+    # Simulated LLM response
+    return 'I have no idea.'
 
 @pytest.fixture()
 def exe_trainable_single_function_call(request):
