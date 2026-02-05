@@ -17,12 +17,12 @@ class TestLocalSandbox:
 
     def test_execute_with_input_files(self):
         with tempfile.TemporaryDirectory() as temp_dir:
-            input_path = os.path.join(temp_dir, "input.txt")
-            with open(input_path, "w", encoding="utf-8") as f:
-                f.write("line1\nline2\n")
+            input_path = os.path.join(temp_dir, 'input.txt')
+            with open(input_path, 'w', encoding='utf-8') as f:
+                f.write('line1\nline2\n')
             code = (
-                "import os\n"
-                "print(os.path.exists('input.txt'))\n"
+                'import os\n'
+                'print(os.path.exists("input.txt"))\n'
             )
             sandbox = LocalSandbox(timeout=5)
             result = sandbox(code=code, input_files=[input_path])
