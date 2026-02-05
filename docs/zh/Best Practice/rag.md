@@ -40,6 +40,7 @@ docs = Document(dataset_path='/path/to/doc/dir', embed=MyEmbeddingModule(), mana
 * `name`：节点组的名字；
 * `transform`：期望当前节点组按照什么规则分割节点，支持传入基于[NodeTransform][lazyllm.tool.rag.NodeTransform]的变换类，同时支持传入一个`lambda`函数，用于操作传入节点的实际内容。
 * `parent`：当前定义节点组的父节点组，用于指定本次转换是基于哪个节点组进行的，默认是整篇文档（名为 `lazyllm-root` 的根节点组）。
+* `ref`：当前节点组引用的其他节点组名称。引用的节点组必须是父节点组的后代。在转换时，`ref` 指定的节点组中的相关节点会作为 `ref` 参数传递给 `transform` 函数。注意：如果设置了 `ref`，则 `transform` 函数必须支持 `ref` 参数。
 
 !!! 注意
 

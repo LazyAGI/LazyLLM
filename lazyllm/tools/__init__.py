@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from .eval import (BaseEvaluator, ResponseRelevancy, Faithfulness, LLMContextRecall,
                     NonLLMContextRecall, ContextRelevance)
     from .http_request import HttpRequest, HttpExecutorResponse
+    from .data import data_register
     from .review import get_errors, ChineseCorrector
 
 
@@ -97,6 +98,9 @@ _SUBMOD_MAP = {
     'http_request': [
         'HttpRequest',
         'HttpExecutorResponse'
+    ],
+    'data': [
+        'data_register'
     ],
     'review': [
         'get_errors',
