@@ -3,7 +3,7 @@ document.addEventListener("DOMContentLoaded", function() {
 
   const routeMap = {
     'en': 'en',
-    'zh-cn': 'zh-cn'
+    'zh': 'zh-cn'
   };
 
   const currentPath = decodeURIComponent(window.location.pathname);
@@ -40,13 +40,8 @@ document.addEventListener("DOMContentLoaded", function() {
           // 1. Update href attribute (for hover and SEO)
           link.href = finalUrl;
 
-          // 2. Force click event binding to ensure redirect
-          link.addEventListener('click', (e) => {
-            e.preventDefault(); // Prevent default behavior and interference from other scripts
-            console.log(`[i18n] Force redirect to: ${finalUrl}`);
-            window.location.href = finalUrl;
-          });
-          
+          // Remove the forced click listener which might be conflicting with RtD logic
+          // or causing race conditions. Let the native href navigation work.
           console.log(`[i18n] Setup redirect for ${targetLang} to: ${finalUrl}`);
         }
         processed = true;
