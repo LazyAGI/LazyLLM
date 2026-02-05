@@ -23,7 +23,7 @@ class LazyLLMAgentBase(ModuleBase):
     def __init__(self, llm=None, tools=None, max_retries: int = 5, return_trace: bool = False,
                  stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, Iterable[str]]] = None, memory=None,
-                 desc: str = '', sub_agents=None, workspace: Optional[str] = None):
+                 desc: str = '', workspace: Optional[str] = None):
         super().__init__(return_trace=return_trace)
         use_skills, skills = self._normalize_skills_config(skills)
         self._llm = llm
@@ -31,7 +31,6 @@ class LazyLLMAgentBase(ModuleBase):
         self._memory = memory
         self._skills = skills or []
         self._desc = desc
-        self._sub_agents = sub_agents if sub_agents is not None else []
         self._max_retries = max_retries
         self._stream = stream
         self._return_last_tool_calls = return_last_tool_calls
@@ -92,10 +91,8 @@ class LazyLLMAgentBase(ModuleBase):
             result = self._agent(pre)
         return self._post_process(result)
 
-    def _assert_llm_tools(self, require_tools: bool = True):
-        assert self._llm is not None, 'llm cannot be empty.'
-        if require_tools:
-            assert self._tools, 'tools cannot be empty.'
+    def _assert_tools(self):
+        assert self._tools, 'tools cannot be empty.'
 
     def _ensure_default_skill_tools(self):
         builtin_group = getattr(lazyllm, 'builtin_tools', None)

@@ -174,7 +174,7 @@ def _handle_add(manager, args):
     folder_name = args.folder_name or os.path.basename(src.rstrip(os.sep))
     roots = _get_roots(manager, args.dir)
     if not roots:
-        lazyllm.LOG.error('No skills directory configured. Run `lazyllm skills init` first or set SKILLS_DIR.')
+        lazyllm.LOG.error('No skills directory configured. Run `lazyllm skills init` first or set LAZYLLM_SKILLS_DIR.')
         sys.exit(1)
     meta_name = meta.get('name') or folder_name
     manager._load_skills_index()
@@ -200,7 +200,7 @@ def _handle_import(manager, args):  # noqa: C901
         sys.exit(1)
     roots = _get_roots(manager, args.dir)
     if not roots:
-        lazyllm.LOG.error('No skills directory configured. Run `lazyllm skills init` first or set SKILLS_DIR.')
+        lazyllm.LOG.error('No skills directory configured. Run `lazyllm skills init` first or set LAZYLLM_SKILLS_DIR.')
         sys.exit(1)
     target_root = roots[0]
     os.makedirs(target_root, exist_ok=True)

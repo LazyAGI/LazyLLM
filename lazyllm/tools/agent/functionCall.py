@@ -156,8 +156,10 @@ class FunctionCallAgent(LazyLLMAgentBase):
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,
                          skills=skills, desc=desc, workspace=workspace)
+        assert self._llm is not None, 'llm cannot be empty.'
+        self._assert_tools()
         prompt = FC_PROMPT
-        self._fc = FunctionCall(self._llm, self._tools, return_trace=return_trace, stream=stream,
+        self._fc = FunctionCall(llm=self._llm, return_trace=return_trace, stream=stream,
                                 _prompt=prompt, _tool_manager=self._tools_manager,
                                 skill_manager=self._skill_manager, workspace=self.workspace)
         self._fc._llm.used_by(self._module_id)

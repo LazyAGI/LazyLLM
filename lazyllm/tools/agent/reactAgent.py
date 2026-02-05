@@ -73,12 +73,13 @@ class ReactAgent(LazyLLMAgentBase):
         prompt = prompt or INSTRUCTION
         if self._return_last_tool_calls:
             prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
-        self._assert_llm_tools()
+        assert self._llm is not None, 'llm cannot be empty.'
+        self._assert_tools()
         self._prompt = prompt
 
     @once_wrapper(reset_on_pickle=True)
     def build_agent(self):
-        agent = loop(FunctionCall(self._llm, self._tools, _prompt=self._prompt, return_trace=self._return_trace,
+        agent = loop(FunctionCall(llm=self._llm, _prompt=self._prompt, return_trace=self._return_trace,
                                   stream=self._stream, _tool_manager=self._tools_manager,
                                   skill_manager=self._skill_manager, workspace=self.workspace),
                      stop_condition=lambda x: isinstance(x, str), count=self._max_retries)

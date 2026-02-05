@@ -62,7 +62,7 @@ class TestSkills(object):
 
     def test_react_agent_with_skills(self):
         llm = lazyllm.TrainableModule('Qwen2.5-32B-Instruct')
-        agent = ReactAgent(llm=llm, use_skills=True, skills=[self._alpha_name, self._beta_name])
+        agent = ReactAgent(llm=llm, skills=[self._alpha_name, self._beta_name])
         res = agent('what skills do you have?')
         assert self._alpha_name in res
         assert self._beta_name in res

@@ -53,7 +53,7 @@ class ReWOOAgent(LazyLLMAgentBase):
                 plan_llm = llm
             if solve_llm is None:
                 solve_llm = llm
-        assert self._tools, 'tools cannot be empty.'
+        self._assert_tools()
         extra_keys = ['available_skills'] if self._skill_manager else None
         planner_prompt = self._append_skills_prompt(self._build_planner_prompt_template())
         solver_prompt = self._append_workspace_prompt(

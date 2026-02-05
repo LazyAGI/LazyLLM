@@ -46,13 +46,14 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,
                          skills=skills, desc=desc, workspace=workspace)
+        self._assert_tools()
         plan_llm, solve_llm = self._normalize_llms(llm, plan_llm, solve_llm)
         self._init_planner_prompter()
         self._plan_llm = plan_llm.share(prompt=self._planner_prompter, stream=self._planner_stream)\
             .used_by(self._module_id)
         self._solve_llm = solve_llm.share().used_by(self._module_id)
         prompt = FC_PROMPT
-        self._fc = FunctionCall(self._solve_llm, tools=self._tools, return_trace=return_trace, stream=stream,
+        self._fc = FunctionCall(llm=self._solve_llm, return_trace=return_trace, stream=stream,
                                 _prompt=prompt, _tool_manager=self._tools_manager,
                                 skill_manager=self._skill_manager, workspace=self.workspace)
 
@@ -62,7 +63,6 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
             'without specify plan and solve, or specify only plan and solve without specifying llm, or specify '
             'both llm and solve. Other situations are not allowed.'
         )
-        assert self._tools, 'tools cannot be empty.'
         plan_llm = plan_llm or llm
         solve_llm = solve_llm or llm
         return plan_llm, solve_llm

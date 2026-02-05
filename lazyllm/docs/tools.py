@@ -7618,7 +7618,6 @@ Args:
     skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
     memory: 预留的记忆/上下文对象。
     desc (str): Agent 能力描述。
-    sub_agents (List): 子 Agent 列表（可选）。
     workspace (str): Agent 默认工作目录，默认是 `config['home']/agent_workspace`。
 ''')
 
@@ -7636,7 +7635,6 @@ Args:
     skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
     memory: Reserved memory/context object.
     desc (str): Optional agent capability description.
-    sub_agents (List): Optional sub-agents.
     workspace (str): Default agent workspace path. Defaults to `config['home']/agent_workspace`.
 ''')
 
