@@ -25,7 +25,7 @@ class AgenticRAGWidthQAGenerator(agenticrag):
     '''
 
     def __init__(self, llm=None, **kwargs):
-        super().__init__()
+        super().__init__(**kwargs)
         self.llm = llm
 
     def _generate_from_llm(self, user_prompts, system_prompt=''):

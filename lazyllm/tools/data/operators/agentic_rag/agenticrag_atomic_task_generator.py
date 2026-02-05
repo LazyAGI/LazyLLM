@@ -2,13 +2,12 @@
 import json
 import string
 import re
-from collections import Counter
 from typing import List, Tuple
 from lazyllm import LOG
 from ...base_data import data_register
 from ...prompts.agenticrag import (
     AtomicTaskGeneratorGetIdentifierPrompt,
-    AtomicTaskGeneratorGetConlcusionPrompt,
+    AtomicTaskGeneratorGetConclusionPrompt,
     AtomicTaskGeneratorQuestionPrompt,
     AtomicTaskGeneratorCleanQAPrompt,
     AtomicTaskGeneratorAnswerPrompt,
@@ -33,7 +32,6 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
 
     def __init__(
             self,
-            data_num: int = 100,
             max_per_task: int = 10,
             max_question: int = 10,
             llm=None,
@@ -41,7 +39,6 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
     ):
         super().__init__(**kwargs)
         self.llm = llm
-        self.data_num = data_num
         self.max_per_task = max_per_task
         self.max_question = max_question
 
@@ -103,7 +100,7 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
 
     def _build_conclusion_prompt(self, data_list: List[dict]) -> Tuple[str, List[str]]:
         '''Build prompts for getting conclusions'''
-        self.prompt_template = AtomicTaskGeneratorGetConlcusionPrompt()
+        self.prompt_template = AtomicTaskGeneratorGetConclusionPrompt()
         input_prompts = [item.get(self.input_key, '') for item in data_list]
         system_prompt = self.prompt_template.build_system_prompt()
         prompts = [self.prompt_template.build_prompt(p) for p in input_prompts]
@@ -258,56 +255,6 @@ class AgenticRAGAtomicTaskGenerator(agenticrag):
                 LOG.warning(f'Error parsing optional answer: {optional_answer} | Error: {e}')
                 valid_answers.append(original_answers[idx] if idx < len(original_answers) else '')
         return valid_answers
-
-    def get_f1_score(self, data_list: List[dict]):
-        f1_scores = []
-        for item in data_list:
-            prediction = item.get(self.output_golden_doc_answer_key)
-            ground_truths = item.get(self.output_optional_answer_key)
-
-            final_metric = {'f1': 0, 'precision': 0, 'recall': 0}
-
-            if ground_truths is None or prediction is None:
-                f1_scores.append(final_metric['f1'])
-                continue
-
-            if isinstance(ground_truths, str):
-                ground_truths = [ground_truths]
-
-            for ground_truth in ground_truths:
-
-                if ground_truth is None:
-                    continue
-
-                normalized_prediction = self.normalize_answer(prediction)
-                normalized_ground_truth = self.normalize_answer(ground_truth)
-
-                if (normalized_prediction in ['yes', 'no', 'noanswer']
-                        and normalized_prediction != normalized_ground_truth):
-                    continue
-
-                if (normalized_ground_truth in ['yes', 'no', 'noanswer']
-                        and normalized_prediction != normalized_ground_truth):
-                    continue
-
-                prediction_tokens = normalized_prediction.split()
-                ground_truth_tokens = normalized_ground_truth.split()
-                common = Counter(prediction_tokens) & Counter(ground_truth_tokens)
-                num_same = sum(common.values())
-                if num_same == 0:
-                    continue
-
-                precision = 1.0 * num_same / len(prediction_tokens)
-                recall = 1.0 * num_same / len(ground_truth_tokens)
-                f1 = (2 * precision * recall) / (precision + recall)
-
-                final_metric['precision'] = max(precision, final_metric['precision'])
-                final_metric['recall'] = max(recall, final_metric['recall'])
-                final_metric['f1'] = max(f1, final_metric['f1'])
-
-            f1_scores.append(final_metric['f1'])
-
-        return f1_scores
 
     # === Step methods for forward_batch_input ===
     def _step_get_identifiers(self, data_list: List[dict]) -> List[str]:

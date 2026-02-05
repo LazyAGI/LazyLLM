@@ -1,5 +1,4 @@
-"""Prompts for knowledge cleaning pipeline operators"""
-import re
+'''Prompts for knowledge cleaning pipeline operators'''
 from .base_prompt import PromptABC
 
 
@@ -8,14 +7,14 @@ class KnowledgeCleanerPrompt(PromptABC):
     知识清洗提示词生成器，支持中英文多语言适配
     Specialized in refining raw content with multilingual support.
     '''
-    def __init__(self, lang: str = "en", strict_mode: bool = True):
+    def __init__(self, lang: str = 'en', strict_mode: bool = True):
         self.lang = lang
         self.strict_mode = strict_mode
 
     def build_prompt(self, raw_content: str) -> str:
-        """生成知识清洗的思维链提示词"""
-        if self.lang == "en":
-            self.prompt_header = f"""
+        '''生成知识清洗的思维链提示词'''
+        if self.lang == 'en':
+            self.prompt_header = f'''
 You are a meticulous Knowledge Refinement Engineer. Apply these rules STRICTLY:
 
 1. Remove redundant tags but retain:
@@ -54,9 +53,9 @@ You are a meticulous Knowledge Refinement Engineer. Apply these rules STRICTLY:
 - Illegal: Replace with 〖ILLEGAL∶removed〗
 
 Output must be between <cleaned_start> and <cleaned_end>.
-"""
+'''
         else:
-            self.prompt_header = f"""
+            self.prompt_header = f'''
 你是一名严谨的知识清洗工程师。请严格按照以下规则处理原始内容：
 
 1. 移除冗余HTML/XML标签，但保留：
@@ -90,30 +89,30 @@ Output must be between <cleaned_start> and <cleaned_end>.
 - 涉密内容替换为【涉密内容已加密】
 
 输出必须以<cleaned_start>开头，<cleaned_end>结尾。
-"""
+'''
 
-        if self.lang == "en":
-            processing_steps = """
+        if self.lang == 'en':
+            processing_steps = '''
 Processing Steps:
 1. [Tag Analysis] Classify markup tags
 2. [Reference Extraction] Isolate images/tables
 3. [Character Audit] Log special chars
 4. [Structure Check] Validate hierarchy
 5. [Final Output] Generate cleaned text
-""".strip()
+'''.strip()
             output_requirement = 'Response must contain ONLY cleaned text between <cleaned_start> and <cleaned_end>.'
         else:
-            processing_steps = """
+            processing_steps = '''
 处理步骤：
 1. [标签分析] 识别并分类所有标记标签
 2. [引用提取] 分离图片/表格/签名等引用内容
 3. [字符审核] 记录特殊字符变更
 4. [结构检查] 验证文本层级
 5. [最终输出] 生成清洗后文本
-""".strip()
+'''.strip()
             output_requirement = '响应必须只包含清洗后文本，以<cleaned_start>开头，<cleaned_end>结尾，无其他内容。'
 
-        return f"""
+        return f'''
 {self.prompt_header}
 
 待清洗内容：
@@ -122,7 +121,7 @@ Processing Steps:
 {processing_steps}
 
 {output_requirement}
-""".strip()
+'''.strip()
 
 
 class MathbookQuestionExtractPrompt(PromptABC):
@@ -131,7 +130,7 @@ class MathbookQuestionExtractPrompt(PromptABC):
         pass
 
     def build_prompt(self):
-        return """You are given a collection of images:
+        return '''You are given a collection of images:
 
 • page_n.jpg – the n-th page of a math textbook
 • page_n+1.jpg – the (n+1)-th page of the same book
@@ -139,20 +138,25 @@ class MathbookQuestionExtractPrompt(PromptABC):
 
 Your task:
 
-1. Extract every exercise (math problem) that has at least one line or element on page_n.jpg. You should extract the problem in its original language, do not translate it.
-2. If a problem is split across page_n.jpg and page_n+1.jpg, include it in full (using page_n+1.jpg only to complete it).
+1. Extract every exercise (math problem) that has at least one line or element on page_n.jpg. \
+You should extract the problem in its original language, do not translate it.
+2. If a problem is split across page_n.jpg and page_n+1.jpg, include it in full (using page_n+1.jpg only \
+to complete it).
 3. Do not extract any problem that appears exclusively on page_n+1.jpg.
-4. For each extracted problem, locate any referenced figures among the index.jpg files and insert the exact filename in <image>...</image> (for example <image>3.jpg</image>) at the correct place in the problem text.
-5. Return all extracted problems concatenated into one string, using the literal token <SPACE> to separate them. For example:
+4. For each extracted problem, locate any referenced figures among the index.jpg files and insert \
+the exact filename in <image>...</image> (for example <image>3.jpg</image>) at the correct place \
+in the problem text.
+5. Return all extracted problems concatenated into one string, using the literal token <SPACE> to separate them. \
+For example:
    PROBLEM_TEXT_1<SPACE>PROBLEM_TEXT_2<SPACE>PROBLEM_TEXT_3
 6. If no qualifying problems are found on page_n.jpg, return two consecutive spaces: "<SPACE><SPACE>".
 
-Ensure that figure tags exactly match the provided image filenames and that no extra separators or punctuation are added.
-      """
+Ensure that figure tags exactly match the provided image filenames and that no extra separators or \
+punctuation are added.
+      '''
 
 
 __all__ = [
     'KnowledgeCleanerPrompt',
     'MathbookQuestionExtractPrompt',
 ]
-

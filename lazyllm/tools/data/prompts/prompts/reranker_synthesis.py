@@ -1,25 +1,26 @@
-"""
+'''
 Prompts for Reranker Synthesis Operators
 
 This module contains prompt templates for generating reranker training data.
 该模块包含用于生成 Reranker 训练数据的提示词模板。
-"""
+'''
 from typing import List, Optional
 from .base_prompt import PromptABC
 
 
 class RerankerQueryGeneratorPrompt(PromptABC):
-    """
+    '''
     Prompt template for generating queries from passages for reranker training.
     用于从段落生成查询的提示词模板（用于 Reranker 训练）。
-    """
+    '''
 
-    def __init__(self, lang: str = "zh"):
+    def __init__(self, lang: str = 'zh'):
         self.lang = lang
 
     def build_system_prompt(self) -> str:
-        if self.lang == "zh":
-            return """你是一个专业的查询生成专家，专门为文档重排序模型生成训练数据。你的任务是根据给定的文档段落，生成不同难度级别的搜索查询。
+        if self.lang == 'zh':
+            return '''你是一个专业的查询生成专家，专门为文档重排序模型生成训练数据。\
+你的任务是根据给定的文档段落，生成不同难度级别的搜索查询。
 
 要求：
 1. 生成的查询应该自然、多样，符合真实用户的搜索习惯
@@ -30,9 +31,11 @@ class RerankerQueryGeneratorPrompt(PromptABC):
    - 困难(hard): 需要推理或综合多个信息点的查询
 4. 避免直接复制段落中的句子
 
-请以JSON格式返回结果。"""
+请以JSON格式返回结果。'''
         else:
-            return """You are a professional query generation expert, specializing in generating training data for document reranking models. Your task is to generate search queries of varying difficulty levels based on the given document passage.
+            return '''You are a professional query generation expert, specializing in generating training data \
+for document reranking models. Your task is to generate search queries of varying difficulty levels based \
+on the given document passage.
 
 Requirements:
 1. Generated queries should be natural, diverse, and reflect real user search patterns
@@ -43,7 +46,7 @@ Requirements:
    - Hard: Queries requiring inference or synthesis of multiple information points
 4. Avoid directly copying sentences from the passage
 
-Return results in JSON format."""
+Return results in JSON format.'''
 
     def build_prompt(
             self,
@@ -51,11 +54,11 @@ Return results in JSON format."""
             num_queries: int = 3,
             difficulty_levels: Optional[List[str]] = None
     ) -> str:
-        difficulty_levels = difficulty_levels or ["easy", "medium", "hard"]
-        levels_str = ", ".join(difficulty_levels)
+        difficulty_levels = difficulty_levels or ['easy', 'medium', 'hard']
+        levels_str = ', '.join(difficulty_levels)
 
-        if self.lang == "zh":
-            return f"""请根据以下文档段落生成 {num_queries} 个搜索查询，覆盖不同难度级别。
+        if self.lang == 'zh':
+            return f'''请根据以下文档段落生成 {num_queries} 个搜索查询，覆盖不同难度级别。
 
 文档段落：
 {passage}
@@ -73,9 +76,10 @@ Return results in JSON format."""
     {{"query": "中等查询内容", "difficulty": "medium"}},
     {{"query": "困难查询内容", "difficulty": "hard"}}
 ]
-```"""
+```'''
         else:
-            return f"""Generate {num_queries} search queries based on the following document passage, covering different difficulty levels.
+            return f'''Generate {num_queries} search queries based on the following document passage, \
+covering different difficulty levels.
 
 Document Passage:
 {passage}
@@ -93,21 +97,22 @@ Return in the following JSON format:
     {{"query": "medium query content", "difficulty": "medium"}},
     {{"query": "hard query content", "difficulty": "hard"}}
 ]
-```"""
+```'''
 
 
 class RerankerNegativeGeneratorPrompt(PromptABC):
-    """
+    '''
     Prompt template for generating confusing negative samples.
     用于生成易混淆负样本的提示词模板。
-    """
+    '''
 
-    def __init__(self, lang: str = "zh"):
+    def __init__(self, lang: str = 'zh'):
         self.lang = lang
 
     def build_system_prompt(self) -> str:
-        if self.lang == "zh":
-            return """你是一个专业的负样本生成专家，专门为重排序模型生成困难负样本。你的任务是根据给定的查询和正确答案段落，生成看起来相关但实际上不能回答查询的段落。
+        if self.lang == 'zh':
+            return '''你是一个专业的负样本生成专家，专门为重排序模型生成困难负样本。\
+你的任务是根据给定的查询和正确答案段落，生成看起来相关但实际上不能回答查询的段落。
 
 要求：
 1. 生成的负样本应该与查询在主题上相关
@@ -115,9 +120,11 @@ class RerankerNegativeGeneratorPrompt(PromptABC):
 3. 但负样本不能真正回答查询的问题
 4. 这些负样本用于训练模型区分"相关但不正确"和"正确答案"
 
-请以JSON格式返回结果。"""
+请以JSON格式返回结果。'''
         else:
-            return """You are a professional negative sample generation expert, specializing in generating hard negatives for reranking models. Your task is to generate passages that look relevant but cannot actually answer the query.
+            return '''You are a professional negative sample generation expert, specializing in generating \
+hard negatives for reranking models. Your task is to generate passages that look relevant but cannot \
+actually answer the query.
 
 Requirements:
 1. Generated negatives should be topically related to the query
@@ -125,7 +132,7 @@ Requirements:
 3. But negatives should not actually answer the query
 4. These negatives are used to train models to distinguish "relevant but incorrect" from "correct answer"
 
-Return results in JSON format."""
+Return results in JSON format.'''
 
     def build_prompt(
             self,
@@ -133,8 +140,8 @@ Return results in JSON format."""
             positive_passage: str,
             num_negatives: int = 3
     ) -> str:
-        if self.lang == "zh":
-            return f"""请根据以下查询和正确答案段落，生成 {num_negatives} 个困难负样本。
+        if self.lang == 'zh':
+            return f'''请根据以下查询和正确答案段落，生成 {num_negatives} 个困难负样本。
 
 查询：{query}
 
@@ -153,9 +160,10 @@ Return results in JSON format."""
     {{"negative": "负样本段落2", "reason": "为什么这是负样本"}},
     ...
 ]
-```"""
+```'''
         else:
-            return f"""Generate {num_negatives} hard negative samples based on the following query and correct passage.
+            return f'''Generate {num_negatives} hard negative samples based on the following query \
+and correct passage.
 
 Query: {query}
 
@@ -174,11 +182,10 @@ Return in the following JSON format:
     {{"negative": "negative passage 2", "reason": "why this is negative"}},
     ...
 ]
-```"""
+```'''
 
 
 __all__ = [
     'RerankerQueryGeneratorPrompt',
     'RerankerNegativeGeneratorPrompt',
 ]
-

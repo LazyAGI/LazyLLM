@@ -32,7 +32,7 @@ class AgenticRAGDepthQAGenerator(agenticrag):
             n_rounds: int = 2,
             **kwargs
     ):
-        super().__init__()
+        super().__init__(**kwargs)
         self.n_rounds = n_rounds
         self.llm = llm
 

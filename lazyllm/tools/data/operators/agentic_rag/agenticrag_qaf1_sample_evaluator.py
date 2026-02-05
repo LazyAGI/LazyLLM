@@ -27,7 +27,7 @@ class AgenticRAGQAF1SampleEvaluator(agenticrag):
                  output_key: str = 'F1Score',
                  _concurrency_mode: str = 'process',  # 纯计算，使用多进程
                  **kwargs):
-        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
+        super().__init__(**kwargs)
         self.prediction_key = prediction_key
         self.ground_truth_key = ground_truth_key
         self.output_key = output_key
@@ -48,6 +48,7 @@ class AgenticRAGQAF1SampleEvaluator(agenticrag):
         else:
             return 'Evaluate F1 scores between predicted answers and reference answers.'
 
+    @staticmethod
     def normalize_answer(self, s: str) -> str:
         '''Normalize answer text by removing articles, punctuation, and fixing whitespace'''
         def remove_articles(text):

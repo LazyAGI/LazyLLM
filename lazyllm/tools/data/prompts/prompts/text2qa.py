@@ -1,4 +1,4 @@
-"""Prompts for text to QA pipeline operators"""
+'''Prompts for text to QA pipeline operators'''
 import textwrap
 from .base_prompt import PromptABC
 
@@ -8,14 +8,14 @@ class Text2MultiHopQAGeneratorPrompt(PromptABC):
     多跳问答生成器（严格JSON格式输出）
     根据语言参数提供完全独立的专业提示模板
     '''
-    def __init__(self, lang: str = "en"):
+    def __init__(self, lang: str = 'en'):
         self.lang = lang
         self.system_text = self.build_system_prompt()
 
     def build_system_prompt(self) -> str:
-        """构建专业级多跳问答提示"""
-        if self.lang == "en":
-            return textwrap.dedent("""\
+        '''构建专业级多跳问答提示'''
+        if self.lang == 'en':
+            return textwrap.dedent('''\
                 You are a professional multi-hop QA specialist with strict protocols:
 
                 █ Core Requirements
@@ -49,9 +49,9 @@ class Text2MultiHopQAGeneratorPrompt(PromptABC):
                 - Fewer than 2 reasoning steps
                 - Unreferenced supporting facts exist
                 - Any non-JSON content appears
-                """)
+                ''')
         else:
-            return textwrap.dedent("""\
+            return textwrap.dedent('''\
                 您是专业的多跳问答生成专家，必须严格遵循以下专业标准：
 
                 █ 核心要求
@@ -81,12 +81,12 @@ class Text2MultiHopQAGeneratorPrompt(PromptABC):
                 - 推理步骤少于2步
                 - 存在未引用的支撑事实
                 - JSON外出现任何附加文本
-                """)
+                ''')
 
     def build_prompt(self, text: str) -> str:
-        """生成完全专业化的用户提示"""
-        if self.lang == "en":
-            return textwrap.dedent(f"""\
+        '''生成完全专业化的用户提示'''
+        if self.lang == 'en':
+            return textwrap.dedent(f'''\
             Generate professional multi-hop QA from:
 
             Context:
@@ -106,9 +106,9 @@ class Text2MultiHopQAGeneratorPrompt(PromptABC):
                 "supporting_facts": ["Verbatim Fact 1", "Verbatim Fact 2"],
                 "type": "..."
             }}
-            """)
+            ''')
         else:
-            return textwrap.dedent(f"""\
+            return textwrap.dedent(f'''\
                 请基于以下上下文生成专业级多跳问答：
 
                 上下文：
@@ -128,10 +128,9 @@ class Text2MultiHopQAGeneratorPrompt(PromptABC):
                     "supporting_facts": ["事实1原文", "事实2原文"],
                     "type": "..."
                 }}
-            """)
+            ''')
 
 
 __all__ = [
     'Text2MultiHopQAGeneratorPrompt',
 ]
-

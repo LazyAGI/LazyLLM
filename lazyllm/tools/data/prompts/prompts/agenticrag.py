@@ -1,4 +1,4 @@
-"""Prompts for AgenticRAG pipeline operators"""
+'''Prompts for AgenticRAG pipeline operators'''
 import json
 from .base_prompt import PromptABC
 
@@ -36,7 +36,7 @@ class AtomicTaskGeneratorGetIdentifierPrompt(PromptABC):
         '''
 
 
-class AtomicTaskGeneratorGetConlcusionPrompt(PromptABC):
+class AtomicTaskGeneratorGetConclusionPrompt(PromptABC):
     '''Prompt for the AtomicTaskGenerator to get initial conclusion.'''
     def __init__(self):
         pass
@@ -52,7 +52,8 @@ class AtomicTaskGeneratorGetConlcusionPrompt(PromptABC):
   ## II. Conclusion Extraction Rules
   1. **Atomicity**
       - Each conclusion must be an indivisible basic fact
-      - ✖ Prohibited combined conclusions: "A increased by 5% and B decreased by 2%" → Should be split into two conclusions
+      - ✖ Prohibited combined conclusions: "A increased by 5% and B decreased by 2%"
+        → Should be split into two conclusions
 
   2. **Verifiability**
       - Must contain at least one definite identifier:
@@ -85,7 +86,8 @@ class AtomicTaskGeneratorQuestionPrompt(PromptABC):
         pass
 
     def build_system_prompt(self) -> str:
-        return '''Your task is to generate a corresponding question (Q) based on the given task identifier (ID), relationship (R), and answer (A).
+        return '''Your task is to generate a corresponding question (Q) based on the given task identifier (ID), \
+relationship (R), and answer (A).
 
   Input/Output Specifications:
   Input:
@@ -141,7 +143,8 @@ class AtomicTaskGeneratorAnswerPrompt(PromptABC):
         pass
 
     def build_prompt(self, input) -> str:
-        return f'''Please solve the following problem and return as many relevant results as possible that meet the query requirements.
+        return f'''Please solve the following problem and return as many relevant results as possible \
+that meet the query requirements.
  Ensure responses are as concise as possible, focusing only on key information while omitting redundant details.
  The task is:
  {input}
@@ -182,22 +185,24 @@ class AtomicTaskGeneratorOptionalAnswerPrompt(PromptABC):
         pass
 
     def build_system_prompt(self) -> str:
-        return """
-  You are an expert in **linguistic variation** and **data augmentation**. Your task is to generate a comprehensive list of all plausible and commonly recognized alternative expressions, formats, and aliases for a given input entity.
+        return '''
+  You are an expert in **linguistic variation** and **data augmentation**. Your task is to generate a \
+comprehensive list of all plausible and commonly recognized alternative expressions, formats, and aliases \
+for a given input entity.
 
   **Key Guidelines:**
   1. **Equivalence:** Each alternative expression must refer to *exactly the same entity*
   2. **Scope of Variation:** Focus on formatting conventions, abbreviations, aliases
   3. **Inclusion of Original:** Always include the original input as the first item
   5. **Format:** Output the variations as a JSON list of strings.
-        """
+        '''
 
     def build_prompt(self, answer) -> str:
-        return f"""
+        return f'''
     The original answer is: {answer}
     Please list all possible textual expressions that have the same meaning or refer to the same entity.
     Respond with a JSON list of strings. Do not explain.
-        """
+        '''
 
 
 class AtomicTaskGeneratorGoldenDocAnswerPrompt(PromptABC):
@@ -206,15 +211,16 @@ class AtomicTaskGeneratorGoldenDocAnswerPrompt(PromptABC):
         pass
 
     def build_prompt(self, golden_doc, question) -> str:
-        return f"""You are given the following document that contains relevant information to help answer a question.
+        return f'''You are given the following document that contains relevant information to help answer a question.
 Document:
 \"\"\"
 {golden_doc}
 \"\"\"
 Question:
 {question}
-Please answer the question using ONLY the information in the provided document. Return the final answer directly, with no explanation.
-        """
+Please answer the question using ONLY the information in the provided document. \
+Return the final answer directly, with no explanation.
+        '''
 
 
 class DepthQAGeneratorGetIdentifierPrompt(PromptABC):
@@ -247,9 +253,11 @@ class DepthQAGeneratorBackwardTaskPrompt(PromptABC):
 
     def build_prompt(self, input) -> str:
         return f'''
-        Conduct divergent searches based on the input element to find an appropriate superset related to its attributes.
+        Conduct divergent searches based on the input element to find an appropriate superset related to \
+its attributes.
 
-  Return format requirements: Please return the result in JSON format with keys 'identifier': str (identifier) and 'relation': str (relationship).
+  Return format requirements: Please return the result in JSON format with keys 'identifier': str \
+(identifier) and 'relation': str (relationship).
 
   Current input:
   {input}
@@ -463,7 +471,7 @@ Evaluate the consistency of the core content of the golden answer and the other 
 
 __all__ = [
     'AtomicTaskGeneratorGetIdentifierPrompt',
-    'AtomicTaskGeneratorGetConlcusionPrompt',
+    'AtomicTaskGeneratorGetConclusionPrompt',
     'AtomicTaskGeneratorQuestionPrompt',
     'AtomicTaskGeneratorCleanQAPrompt',
     'AtomicTaskGeneratorAnswerPrompt',
@@ -482,4 +490,3 @@ __all__ = [
     'WidthQAGeneratorAnswerPrompt',
     'WidthQAGeneratorRecallScorePrompt',
 ]
-

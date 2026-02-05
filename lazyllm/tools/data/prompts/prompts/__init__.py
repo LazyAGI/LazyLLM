@@ -7,4 +7,3 @@ from .embedding_synthesis import *  # noqa: F401, F403
 from .reranker_synthesis import *  # noqa: F401, F403
 
 __all__ = ['PromptABC']
-
