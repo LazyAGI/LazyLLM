@@ -6,8 +6,7 @@ document.addEventListener("DOMContentLoaded", function() {
     'zh': 'zh-cn'
   };
 
-  // 使用 pathname，浏览器通常会返回 URL 编码过的路径（或者包含原始字符）
-  // 稳妥起见，我们直接处理字符串，不手动编解码
+  // Use pathname; browsers typically return URL-encoded paths (or raw characters)
   const currentPath = window.location.pathname;
   
   console.log(`[i18n] Current Raw Pathname: ${currentPath}`);
@@ -29,20 +28,31 @@ document.addEventListener("DOMContentLoaded", function() {
 
     if (currentSegment) {
         if (currentSegment === targetSegment) {
-             // 已经在当前语言页面
+             // Already on the target language page: update href to the current full URL
+             // This makes clicking the button refresh the current page instead of jumping to the default homepage configured in mkdocs.yml
+             const currentUrl = window.location.href;
+             link.href = currentUrl;
+
+             // Also add forced redirect logic to prevent theme or other scripts from interfering
+             link.addEventListener('click', function(e) {
+                e.preventDefault();
+                e.stopImmediatePropagation();
+                console.log(`[i18n] Reloading current page: ${currentUrl}`);
+                window.location.href = currentUrl;
+             });
         } else {
-            // 仅替换语言前缀，保留后续路径的所有细节（包括编码）
+            // Replace only the language prefix, preserving the rest of the path exactly (including encoding)
             const newPath = currentPath.replace(`/${currentSegment}/`, `/${targetSegment}/`);
             const finalUrl = window.location.origin + newPath + window.location.search + window.location.hash;
             
-            // 1. 更新 href，保证右键菜单和 SEO 正常
+            // 1. Update href so right-click menu and SEO remain correct
             link.href = finalUrl;
             
-            // 2. 强制绑定点击事件，防止 MkDocs Material 或 ReadTheDocs 脚本劫持跳转
+            // 2. Force-bind a click event to prevent other scripts from hijacking the redirect
             link.addEventListener('click', function(e) {
-                // 阻止浏览器的默认链接跳转
+                // Prevent browser's default link navigation
                 e.preventDefault();
-                // 阻止事件冒泡和其他同类事件监听器（关键步骤，防止其他脚本干扰）
+                // Stop propagation and other similar event listeners (critical to prevent interference from other scripts)
                 e.stopImmediatePropagation();
                 
                 console.log(`[i18n] Force redirect to: ${finalUrl}`);
