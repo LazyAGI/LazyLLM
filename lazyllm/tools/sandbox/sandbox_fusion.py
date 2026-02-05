@@ -13,16 +13,31 @@ class SandboxFusion(SandboxBase):
     SUPPORTED_LANGUAGES: List[str] = ['python', 'bash']
 
     def __init__(self, base_url: str = config['sandbox_fusion_base_url'], compile_timeout: int = 10,
-                 run_timeout: int = 10, memory_limit_mb: int = -1):
+                 run_timeout: int = 10, memory_limit_mb: int = -1, project_dir: str = None):
         self._base_url = base_url
         super().__init__()
         self._compile_timeout = compile_timeout
         self._run_timeout = run_timeout
         self._memory_limit_mb = memory_limit_mb
+        self._project_dir = project_dir
+        self._project_files = None
 
     @property
     def url(self) -> str:
         return f'{self._base_url}/run_code'
+
+    def _organize_project_dir(self) -> str:
+        abs_dir = os.path.abspath(self._project_dir)
+        files_map = {}
+        for root, _, files in os.walk(abs_dir):
+            for name in files:
+                if name.endswith('.py'):
+                    abs_path = os.path.join(root, name)
+                    rel_path = os.path.relpath(abs_path, os.getcwd())
+                    with open(abs_path, 'rb') as f:
+                        b64_content = base64.b64encode(f.read()).decode('utf-8')
+                    files_map[rel_path] = b64_content
+        return files_map
 
     def _is_available(self) -> None:
         try:
@@ -72,12 +87,17 @@ class SandboxFusion(SandboxBase):
             'run_timeout': self._run_timeout,
             'memory_limit_mb': self._memory_limit_mb,
             'language': language,
+            'files': {},
         }
+        if self._project_dir:
+            if self._project_files is None:
+                self._project_files = self._organize_project_dir()
+            call_params['files'] = dict(self._project_files)
         if input_files:
-            call_params['files'] = {
+            call_params['files'].update({
                 file: base64.b64encode(open(file, 'rb').read()).decode('utf-8')
                 for file in input_files
-            }
+            })
         if output_files:
             call_params['fetch_files'] = output_files
         result = self._call_api(call_params)

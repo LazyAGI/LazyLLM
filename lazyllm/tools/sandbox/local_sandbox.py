@@ -14,9 +14,10 @@ from lazyllm.tools.sandbox.sandbox_base import SandboxBase
 class LocalSandbox(SandboxBase):
     SUPPORTED_LANGUAGES: List[str] = ['python']
 
-    def __init__(self, timeout: int = 30, return_trace: bool = True):
+    def __init__(self, timeout: int = 30, return_trace: bool = True, project_dir: Optional[str] = None):
         super().__init__(return_trace=return_trace)
         self._timeout = timeout
+        self._project_dir = project_dir
 
     def _is_available(self) -> bool:
         return True
@@ -83,6 +84,22 @@ class LocalSandbox(SandboxBase):
                     f'to temp dir {temp_dir!r}: {e}'
                 )
 
+    def _copy_project_dir(
+        self,
+        project_dir: str,
+        temp_dir: str,
+    ) -> None:
+        for root, _, files in os.walk(project_dir):
+            rel_dir = os.path.relpath(root, project_dir)
+            dst_dir = os.path.join(temp_dir, rel_dir)
+            os.makedirs(dst_dir, exist_ok=True)
+
+            for file in files:
+                if file.endswith('.py'):
+                    src = os.path.join(root, file)
+                    dst = os.path.join(dst_dir, file)
+                    shutil.copy(src, dst)
+
     def _collect_output_files(
         self,
         temp_dir: str,
@@ -125,6 +142,9 @@ class LocalSandbox(SandboxBase):
 
             if input_files:
                 self._copy_input_files(input_files, temp_dir)
+
+            if self._project_dir:
+                self._copy_project_dir(self._project_dir, temp_dir)
 
             env = os.environ.copy()
             env['HOME'] = temp_dir
