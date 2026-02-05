@@ -7333,7 +7333,7 @@ add_example('ToolManager', """\
 '{"location": "Beijing", "temperature": "85", "unit": "fahrenheit", "num_days": 3}'
 """)
 
-add_agent_chinese_doc('fc_register', '''\
+add_agent_chinese_doc('register', '''\
 工具注册器，用于将函数注册为可供 FunctionCall/Agent 调用的工具。
 
 Args:
@@ -7344,7 +7344,7 @@ Notes:
     若工具在沙箱中执行并且需要文件上传/下载，必须通过 input_files / output_files 字段传递文件。
 ''')
 
-add_agent_english_doc('fc_register', '''\
+add_agent_english_doc('register', '''\
 Tool registrar for registering functions as tools callable by FunctionCall/Agent.
 
 Args:
@@ -7355,7 +7355,7 @@ Notes:
     If a tool executes in sandbox and needs file upload/download, you must pass files via input_files / output_files.
 ''')
 
-add_agent_example('fc_register', """\
+add_agent_example('register', """\
 >>> from lazyllm.tools import fc_register
 >>> @fc_register("tool")
 >>> def my_tool(text: str):
@@ -7639,6 +7639,31 @@ Args:
 
 **Returns:**\n
 - bool: True if valid and complete; False otherwise.
+''')
+
+add_chinese_doc("ModuleTool.to_sandbox_code", '''
+生成用于在沙箱中执行的代码字符串。
+
+该方法会序列化当前工具与传入参数，返回一段可在沙箱环境中反序列化并执行的 Python 代码。
+
+Args:
+    tool_arguments (Dict[str, Any]): 以字典形式提供的工具参数。
+
+**Returns:**\n
+- str: 可在沙箱中执行的 Python 代码字符串。
+''')
+
+add_english_doc("ModuleTool.to_sandbox_code", '''
+Generate a sandbox-executable code string.
+
+This method serializes the tool instance and arguments, and returns a Python code snippet
+that can be deserialized and executed inside a sandbox environment.
+
+Args:
+    tool_arguments (Dict[str, Any]): Tool arguments as a dict.
+
+**Returns:**\n
+- str: A Python code string executable in a sandbox environment.
 ''')
 
 add_chinese_doc('FunctionCall', '''\

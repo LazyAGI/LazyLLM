@@ -5,7 +5,7 @@ import docstring_parser
 from lazyllm.module import ModuleBase
 from lazyllm.module.utils import module_tool_light_reduce
 from lazyllm.common import LazyLLMRegisterMetaClass, compile_func, kwargs
-from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Set, Optional
+from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Set
 import inspect
 from pydantic import create_model, BaseModel, ValidationError
 from lazyllm import LOG
@@ -186,12 +186,8 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
         return ret
 
-    def to_sandbox_code(self, tool_arguments: Optional[Dict[str, Any]] = None, **kwargs: Any) -> str:
-        if tool_arguments is not None:
-            if kwargs:
-                raise ValueError('Cannot pass both tool_arguments and keyword arguments.')
-            kwargs = tool_arguments
-        args_dump = lazyllm.dump_obj(kwargs)
+    def to_sandbox_code(self, tool_arguments: Dict[str, Any]) -> str:
+        args_dump = lazyllm.dump_obj(tool_arguments)
         tool_dump = lazyllm.dump_obj(self)
         return f'''
 import base64
