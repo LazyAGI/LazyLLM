@@ -5,7 +5,7 @@ pre {
 }
 </style>
 
-# Rapid Development with OpenCode
+# AI Coding with LazyLLM
 
 ## 0. Document Description
 

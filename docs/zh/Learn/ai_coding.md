@@ -5,7 +5,7 @@ pre {
 }
 </style>
 
-# 使用OpenCode
+# AI编程与LazyLLM
 
 ## 0. 文档说明
 
