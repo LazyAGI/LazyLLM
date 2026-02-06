@@ -5,7 +5,7 @@ pre {
 }
 </style>
 
-# 使用OpenCode快速上手LazyLLM开发：从安装到第一个AI应用
+# 使用OpenCode
 
 ## 0. 文档说明
 
@@ -1140,7 +1140,7 @@ except KeyboardInterrupt:
 
 **prompt**:
 ```text
-在/Users/chenhao7/LocalScripts/LazyLLM/example6.py中使用lazyllm实现一个代码agent
+在./LazyLLM/example6.py中使用lazyllm实现一个代码agent
 ```
 
 ```python
@@ -1383,7 +1383,7 @@ if __name__ == "__main__":
 
 **prompt**:
 ```text
-在/Users/chenhao7/LocalScripts/LazyLLM/example7.py中使用lazyllm实现一个代码agent，支持读取文件、写代码、执行验证代码，具备上下文管理和命令行交互能力，支持模型切换。知识库文档在/Users/chenhao7/LocalScripts/LazyLLM/docs
+在./LazyLLM/example7.py中使用lazyllm实现一个代码agent，支持读取文件、写代码、执行验证代码，具备上下文管理和命令行交互能力，支持模型切换。知识库文档在./LazyLLM/docs
 ```
 
 ```python
@@ -1819,7 +1819,7 @@ if __name__ == "__main__":
 
 **prompt**:
 ```text
-在文件/Users/chenhao7/LocalScripts/LazyLLM/example8.py中使用lazyllm实现一个多智能体对话系统，使不同角色在特定话题下进行层次分明且自然的互动。要求在系统中引入一个director来控制发言顺序与对话终止逻辑，其他dialogueagent作为受控角色参与讨论。director决定谁来发言，并判断是否结束对话。我可以在命令行给出讨论的话题，过程中系统输出各个智能体每轮讨论内容，最后输出给我结果。
+在文件./LazyLLM/example8.py中使用lazyllm实现一个多智能体对话系统，使不同角色在特定话题下进行层次分明且自然的互动。要求在系统中引入一个director来控制发言顺序与对话终止逻辑，其他dialogueagent作为受控角色参与讨论。director决定谁来发言，并判断是否结束对话。我可以在命令行给出讨论的话题，过程中系统输出各个智能体每轮讨论内容，最后输出给我结果。
 ```
 
 ```python
@@ -2014,7 +2014,7 @@ if __name__ == "__main__":
 
 **prompt**:
 ```text
-在/Users/chenhao7/LocalScripts/LazyLLM/example10.py中使用lazyllm实现一个格式转换agent，专门将word文档转为latex文档，并且保存在相同目录下。为了解决超长文件的问题，对文档进行切分，并使用rag进行存储，要求并行执行，最后一并拼接。转换完成后用户可以根据文件内容进行问询。执行文件后，用户从命令行输入文件路径，执行结束后用户可以从命令行进行问询。要求体现当前转换进度
+在./LazyLLM/example10.py中使用lazyllm实现一个格式转换agent，专门将word文档转为latex文档，并且保存在相同目录下。为了解决超长文件的问题，对文档进行切分，并使用rag进行存储，要求并行执行，最后一并拼接。转换完成后用户可以根据文件内容进行问询。执行文件后，用户从命令行输入文件路径，执行结束后用户可以从命令行进行问询。要求体现当前转换进度
 ```
 
 ```python
@@ -2650,7 +2650,7 @@ if __name__ == '__main__':
 
 **prompt**:
 ```text
-在文件/Users/chenhao7/LocalScripts/LazyLLM/example10.py中使用lazyllm实现一个热点分析agent，要求使用lazyllm的搜索工具，并且可以实现对当前用户关心的热点内容进行筛选和分析，过滤掉不相关甚至虚假的内容，如果觉得内容不够充分可以进行多轮搜索和分析，最后给出markdown报告并保存在本地。用户从命令行输入关心的热点
+在文件./LazyLLM/example10.py中使用lazyllm实现一个热点分析agent，要求使用lazyllm的搜索工具，并且可以实现对当前用户关心的热点内容进行筛选和分析，过滤掉不相关甚至虚假的内容，如果觉得内容不够充分可以进行多轮搜索和分析，最后给出markdown报告并保存在本地。用户从命令行输入关心的热点
 ```
 
 ```python
@@ -3326,7 +3326,7 @@ if __name__ == '__main__':
 
 **prompt**:
 ```text
-在文件/Users/chenhao7/LocalScripts/LazyLLM/example11.py中使用lazyllm实现一个从数据加载到微调推理一键完成的脚本。
+在文件./LazyLLM/example11.py中使用lazyllm实现一个从数据加载到微调推理一键完成的脚本。
 ```
 
 ```python
@@ -3925,7 +3925,7 @@ future_will_simulator/
 
 --------------------------------------------------
 
-现在请严格按照以上要求，在文件夹/Users/chenhao7/LocalScripts/LazyLLM/example12内使用lazyllm的能力生成整个项目。
+现在请严格按照以上要求，在文件夹./LazyLLM/example12内使用lazyllm的能力生成整个项目。
 ```
 运行项目：
 ![complex_app1.png](../assets/complex_app1.png)
@@ -4345,7 +4345,7 @@ requests
 7. 流式输出：WebModule配置stream=True
 8. 上下文持久化：使用本地JSON文件存储对话历史
 生成要求
-请生成完整的、可运行的Python代码，包含所有模块的实现。代码需遵循LazyLLM最佳实践，包含适当的错误处理和注释。确保所有Agent和工具都可以被正确注册和调用。 在文件夹/Users/chenhao7/LocalScripts/LazyLLM/example14中实现
+请生成完整的、可运行的Python代码，包含所有模块的实现。代码需遵循LazyLLM最佳实践，包含适当的错误处理和注释。确保所有Agent和工具都可以被正确注册和调用。 在文件夹./LazyLLM/example14中实现
 ```
 ![complex_app3.png](../assets/complex_app3.png)
 
