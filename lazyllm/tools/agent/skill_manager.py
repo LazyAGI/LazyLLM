@@ -7,17 +7,12 @@ import yaml
 from lazyllm import config, ModuleBase
 from .file_tool import read_file as _read_file
 from .shell_tool import shell_tool as _shell_tool
-from lazyllm.tools.rag.component.bm25 import BM25
-from lazyllm.tools.rag.doc_node import DocNode
 
 DEFAULT_SKILLS_DIR = os.path.join(config['home'], 'skills')
 os.makedirs(DEFAULT_SKILLS_DIR, exist_ok=True)
 config.add(
     'skills_dir', str, DEFAULT_SKILLS_DIR, 'SKILLS_DIR',
     description='The directory of skills, supports multiple directories separated by commas'
-).add(
-    'default_skills_topk', int, 10, 'DEFAULT_SKILLS_TOPK',
-    description='The topk of skills to use when no skills are specified'
 ).add(
     'max_skill_md_bytes', int, 5 * 1024 * 1024, 'MAX_SKILL_MD_BYTES',
     description='The maximum size of SKILL.md that can be loaded by default'
@@ -290,24 +285,8 @@ class SkillManager(ModuleBase):
         candidates = self._skills_selected
         if not task or not candidates:
             return candidates
-        nodes: List[DocNode] = []
-        for name in candidates:
-            info = self._skills_index.get(name, {})
-            text = f'{name}\n{info.get("description", "")}\n{info.get("argument-hint", "")}'
-            node = DocNode(text=text, metadata={'skill_name': name})
-            nodes.append(node)
-        language = 'zh' if any('\u4e00' <= ch <= '\u9fff' for ch in task) else 'en'
-        topk = min(config['default_skills_topk'], len(nodes))
-        if topk <= 0:
-            return []
-        bm25 = BM25(nodes=nodes, language=language, topk=topk)
-        results = bm25.retrieve(task, topk=topk)
-        selected = []
-        for node, _score in results:
-            name = node.metadata.get('skill_name')
-            if name and name not in selected:
-                selected.append(name)
-        return selected
+        # TODO: Use BM25-based ranking when rag dependencies are available.
+        return list(candidates)
 
     def get_skill(self, name: str, allow_large: bool = False) -> Dict[str, str]:
         '''Get full skill usage from SKILL.md.
