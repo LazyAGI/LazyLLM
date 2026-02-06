@@ -32,12 +32,12 @@ public:
     std::set<std::string> _pending_embedding_keys = {};
     double _relevance_score = .0;
     double _similarity_score = .0;
+    std::string _group_name;
 
 private:
     std::string_view _text_view;
     std::shared_ptr<std::string> _p_root_text = nullptr;
     std::vector<std::string> _root_texts = {};
-    std::string _group_name;
     std::string _uid;
     mutable size_t _text_hash = 0;
 
@@ -52,7 +52,7 @@ public:
     DocNode() = delete;
     explicit DocNode(
         const std::string_view& text_view,
-        const std::string& group_name,
+        const std::string& group_name = "",
         const std::string& uid = "",
         const DocNode* p_parent_node = nullptr,
         const Metadata& metadata = {},
@@ -74,6 +74,10 @@ public:
     size_t evaluate_text_hash() const {
         return static_cast<size_t>(XXH64(_text_view.data(), _text_view.size(), 0));
     }
+    bool is_children_group_exists(const std::string& group_name) const {
+        if (_children.empty()) return false;
+        return _children.find(group_name) != _children.end();
+    }
 
     // Getter and Setter
     const DocNode* get_root_node() const {
@@ -82,7 +86,6 @@ public:
     }
     void set_store(const std::shared_ptr<AdaptorBase>& p_store) { _p_store = p_store; }
     const std::string& get_uid() const { return _uid; }
-    const std::string& get_group_name() const { return _group_name; }
     const std::string_view& get_text_view() const { return _text_view; }
     void set_text_view(const std::string_view& text_view) {
         _text_view = text_view;
@@ -117,7 +120,7 @@ public:
     void set_root_texts(const std::vector<std::string>& texts) { set_root_text(JoinLines(texts)); }
     size_t get_text_hash() const { return _text_hash; }
     const DocNode* get_parent_node() const { return _p_parent_node; }
-    void set_parent_node(DocNode* p_parent_node) { _p_parent_node = p_parent_node; }
+    void set_parent_node(const DocNode* p_parent_node) { _p_parent_node = p_parent_node; }
     Children py_get_children() const {
         if (!_children.empty()) return _children;
         if (_p_store == nullptr) return Children();
@@ -125,6 +128,9 @@ public:
         return _children;
     }
     void set_children(const Children& children) { _children = children; }
+    void set_children_group(const std::string& group_name, const std::vector<DocNode*>& children_group) {
+        _children[group_name] = children_group;
+    }
     std::set<std::string> get_excluded_embed_metadata_keys() const {
         return SetUnion(get_root_node()->get_excluded_embed_metadata_keys(), _excluded_embed_metadata_keys);
     }

@@ -96,7 +96,7 @@ std::string DocNodeToString(const lazyllm::DocNode& node) {
         d[py::str(group)] = std::move(ids);
     }
     const std::string children_str = py::str(d).cast<std::string>();
-    return "DocNode(id: " + node.get_uid() + ", group: " + node.get_group_name()
+    return "DocNode(id: " + node.get_uid() + ", group: " + node._group_name
         + ", content: " + node.get_text(lazyllm::MetadataMode::NONE)
         + ") parent: " + node.get_parent_uid() + ", children: " + children_str;
 }
@@ -125,7 +125,7 @@ void exportDocNode(py::module& m) {
             py::arg("text") = py::none()
         )
         .def_property_readonly("uid", &lazyllm::DocNode::get_uid)
-        .def_property_readonly("group", &lazyllm::DocNode::get_group_name)
+        .def_property_readonly("group", [](const lazyllm::DocNode& node) { return node._group_name; })
         .def_property("content",
             [](const lazyllm::DocNode& node) {
                 return std::string(node.get_text(lazyllm::MetadataMode::NONE));
@@ -247,7 +247,7 @@ void exportDocNode(py::module& m) {
             py::dict st;
             st["_uid"] = node.get_uid();
             st["_content"] = node.get_text(lazyllm::MetadataMode::NONE);
-            st["_group"] = node.get_group_name();
+            st["_group"] = node._group_name;
             st["_embedding"] = node._embedding_vecs;
             st["_metadata"] = node._metadata;
             st["_global_metadata"] = *(node._p_global_metadata);
