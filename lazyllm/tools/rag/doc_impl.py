@@ -192,11 +192,9 @@ class DocImpl:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.success)
         if self._dlm:
-            self._init_monitor_event = threading.Event()
             self._daemon = threading.Thread(target=self.worker)
             self._daemon.daemon = True
             self._daemon.start()
-            self._init_monitor_event.wait()
 
     def _resolve_index_pending_registrations(self):
         for index_type, index_cls, index_args, index_kwargs in self._index_pending_registrations:
@@ -298,13 +296,11 @@ class DocImpl:
         self._local_file_reader[pattern] = func
         self._reader._lazy_init.flag.reset()
 
-    def _add_doc_to_store_with_status(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]],
-                                      cond_status_list: Optional[List[str]] = None):
+    def _add_doc_to_store(self, input_files: List[str], ids: List[str], metadatas: List[Dict[str, Any]]):
         success_ids, failed_ids = [], []
         for filepath, doc_id, metadata in zip(input_files, ids or repeat(None), metadatas or repeat(None)):
             try:
-                self._add_doc_to_store(input_files=[filepath], ids=[doc_id] if doc_id is not None else None,
-                                       metadatas=[metadata] if metadata is not None else None)
+                self._processor.add_doc([filepath], [doc_id], [metadata] if metadata is not None else None)
                 success_ids.append(doc_id)
             except Exception as e:
                 LOG.error(f'Error adding document {doc_id} ({filepath}) to store: {e}')
@@ -312,10 +308,10 @@ class DocImpl:
 
         if success_ids:
             self._dlm.update_kb_group(cond_file_ids=success_ids, cond_group=self._kb_group_name,
-                                      cond_status_list=cond_status_list, new_status=DocListManager.Status.success)
+                                      new_status=DocListManager.Status.success)
         if failed_ids:
             self._dlm.update_kb_group(cond_file_ids=failed_ids, cond_group=self._kb_group_name,
-                                      cond_status_list=cond_status_list, new_status=DocListManager.Status.failed)
+                                      new_status=DocListManager.Status.failed)
 
     def _batch_call(self, func: Callable, *args, batch_size: int = 10, **kwargs):
         batch_count = next((len(arg) for arg in args if isinstance(arg, (tuple, list))), 0)
@@ -323,7 +319,6 @@ class DocImpl:
             func(*[arg[i:i + batch_size] if isinstance(arg, (list, tuple)) else arg for arg in args], **kwargs)
 
     def worker(self):
-        is_first_run = True
         while True:
             # Apply meta changes
             rows = self._dlm.fetch_docs_changed_meta(self._kb_group_name)
@@ -341,7 +336,7 @@ class DocImpl:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working, new_need_reparse=False)
                 self._delete_doc_from_store(doc_ids=ids)
-                self._batch_call(self._add_doc_to_store_with_status, filepaths, ids, metadatas, batch_size=10)
+                self._batch_call(self._add_doc_to_store, filepaths, ids, metadatas, batch_size=10)
 
             # Step 2: After doc is deleted from related kb_group, delete doc from db
             if self._kb_group_name == DocListManager.DEFAULT_GROUP_NAME:
@@ -359,12 +354,8 @@ class DocImpl:
             if files:
                 self._dlm.update_kb_group(cond_file_ids=ids, cond_group=self._kb_group_name,
                                           new_status=DocListManager.Status.working)
-                self._batch_call(self._add_doc_to_store_with_status,
-                                 files, ids, metadatas, cond_status_list=[DocListManager.Status.working])
+                self._batch_call(self._add_doc_to_store, files, ids, metadatas)
 
-            if is_first_run:
-                self._init_monitor_event.set()
-            is_first_run = False
             time.sleep(10)
 
     def _list_files(
@@ -380,11 +371,6 @@ class DocImpl:
             paths.append(row[1])
             metadatas.append(json.loads(row[3]) if row[3] else {})
         return ids, paths, metadatas
-
-    def _add_doc_to_store(self, input_files: List[str], ids: Optional[List[str]] = None,
-                          metadatas: Optional[List[Dict[str, Any]]] = None):
-        if not input_files: return
-        self._processor.add_doc(input_files, ids, metadatas)
 
     def _delete_doc_from_store(self, doc_ids: List[str] = None) -> None:
         self._processor.delete_doc(doc_ids=doc_ids)
