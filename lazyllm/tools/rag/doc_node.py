@@ -111,7 +111,7 @@ class DocNode:
             return []
         if isinstance(uids, str):
             uids = [uids]
-        nodes = self._store.get_nodes(group_name=group_name, uids=uids,
+        nodes = self._store.get_nodes(group=group_name, uids=uids,
                                       kb_id=self.global_metadata.get(RAG_KB_ID), display=True)
         for n in nodes:
             n._store = self._store
@@ -140,7 +140,7 @@ class DocNode:
             for grp in c_groups:
                 if not self._store.is_group_active(grp):
                     continue
-                nodes = self._store.get_nodes(group_name=grp, kb_id=kb_id, doc_ids=[doc_id])
+                nodes = self._store.get_nodes(group=grp, kb_id=kb_id, doc_ids=[doc_id])
                 c_nodes = [n for n in nodes if n._parent in {self, self._uid}]
                 self._children[grp] = c_nodes
                 for n in self._children[grp]:

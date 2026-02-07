@@ -5,6 +5,7 @@
   - 支持模型: Home/model_list.md
 - 入门教程:
   - 新手入门教程: Learn/learn.md
+  - AI编程与LazyLLM: Learn/ai_coding.md
 - 使用示例:
   - 聊天机器人: Cookbook/chatbot.md
   - 绘画大师: Cookbook/painting_master.md
@@ -38,6 +39,7 @@
   - 函数调用: Best Practice/functionCall.md
   - 流式处理: Best Practice/stream.md
   - 注册机制: Best Practice/Features/AutoRegistry.md
+  - 数据处理: Best Practice/data_process.md
 - 高级主题:
   - 贡献指南: Advanced Topics/contribution.md
   - 更新日志: Advanced Topics/changelog.md
@@ -53,6 +55,7 @@
   - 钩子: API Reference/hook.md
   - 补丁: API Reference/patch.md
   - 提示词: API Reference/prompt_template.md
+  - 数据处理: API Reference/data_process.md
 - 课程体系:
   - 概述: Tutorial/index.md
   - 1. RAG原理解读: Tutorial/1.md

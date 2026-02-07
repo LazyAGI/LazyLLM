@@ -107,7 +107,7 @@ jobs:
         run: |
           pip cache purge
           pip freeze | grep -v "^-e" | xargs pip uninstall -y
-      
+
       - name: Tar repo with docs
         run: |
           touch repo-with-docs.tar.gz

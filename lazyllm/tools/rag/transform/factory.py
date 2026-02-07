@@ -1,5 +1,6 @@
 import os
 import fnmatch
+import inspect
 
 from typing import Any, Dict, List, Union, Optional, Callable
 
@@ -84,8 +85,13 @@ class FuncNodeTransform(NodeTransform):
                  trans_node: bool = None, num_workers: int = 0):
         super(__class__, self).__init__(num_workers=num_workers)
         self._func, self._trans_node = func, trans_node
+        self._need_ref = 'ref' in inspect.signature(func).parameters
 
     def transform(self, node: DocNode, **kwargs) -> List[Union[str, DocNode]]:
+        if ref := kwargs.pop('ref', None):
+            assert self._need_ref, \
+                'if node group has ref, the transform function must support ref parameter.'
+            kwargs['ref'] = ref if self._trans_node else [r.get_text() for r in ref]
         result = self._func(node if self._trans_node else node.get_text(), **kwargs)
         return result if isinstance(result, list) else [result]
 

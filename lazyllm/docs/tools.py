@@ -512,6 +512,7 @@ Args:
     trans_node (bool): Determines whether the input and output of transform are `DocNode` or `str`, default is None. Can only be set to true when `transform` is `Callable`.
     num_workers (int): number of new threads used for transform. default: 0
     parent (str): The node that needs further transformation. The series of new nodes obtained after transformation will be child nodes of this parent node. If not specified, the transformation starts from the root node.
+    ref (str): The name of another node group to reference. The referenced node group must be a descendant of the parent. During transformation, nodes from the referenced node group are passed to the transform function as the `ref` parameter (if the transform function supports it).
     kwargs: Parameters related to the specific implementation.
 ''')
 
@@ -524,6 +525,7 @@ Args:
     trans_node (bool): 决定了transform的输入和输出是 `DocNode` 还是 `str` ，默认为None。只有在 `transform` 为 `Callable` 时才可以设置为true。
     num_workers (int): Transform时所用的新线程数量，默认为0
     parent (str): 需要进一步转换的节点。转换之后得到的一系列新的节点将会作为该父节点的子节点。如果不指定则从根节点开始转换。
+    ref (str): 当前节点组引用的其他节点组名称。引用的节点组必须是父节点组的后代。在转换时，ref 指定的节点组中的相关节点会作为参数传递给 transform 函数（如果 transform 函数支持 ref 参数）。
     kwargs: 和具体实现相关的参数。
 ''')
 
@@ -533,6 +535,14 @@ add_example('Document.create_node_group', '''
 >>> m = lazyllm.OnlineEmbeddingModule(source="glm")
 >>> documents = Document(dataset_path='your_doc_path', embed=m, manager=False)
 >>> documents.create_node_group(name="sentences", transform=SentenceSplitter, chunk_size=1024, chunk_overlap=100)
+>>> # Example with ref parameter: create a node group that references another group
+>>> documents.create_node_group(name="fine_chunks", parent="sentences",
+...                             transform=SentenceSplitter, chunk_size=128, chunk_overlap=12)
+>>> def transform_with_ref(text, ref):
+...     # ref contains nodes from the referenced group
+...     return "\n".join(ref)
+>>> documents.create_node_group(name="summary_chunks", parent="sentences",
+...                             transform=transform_with_ref, ref="fine_chunks")
 ''')
 
 add_chinese_doc('Document.find_parent', """\
@@ -7515,6 +7525,10 @@ Args:
     max_retries (int): 工具调用迭代的最大次数。默认值为5。
     return_trace (bool): 是否返回执行追踪信息，默认为False。
     stream (bool): 是否启用流式输出，默认为False。
+    return_last_tool_calls (bool): 若为True，在模型结束且存在工具调用记录时返回最后一次的工具调用轨迹。
+    skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
+    desc (str): Agent 能力描述，可为空。
+    workspace (str): Agent 默认工作目录，默认是 `config['home']/agent_workspace`。
 ''')
 
 add_english_doc('FunctionCallAgent', '''\
@@ -7526,6 +7540,10 @@ Args:
     max_retries (int): The maximum number of tool call iterations. The default value is 5.
     return_trace (bool): Whether to return execution trace information, defaults to False.
     stream (bool): Whether to enable streaming output, defaults to False.
+    return_last_tool_calls (bool): If True, return the last tool-call trace when the model finishes.
+    skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
+    desc (str): Optional agent capability description.
+    workspace (str): Default agent workspace path. Defaults to `config['home']/agent_workspace`.
 ''')
 
 add_example('FunctionCallAgent', """\
@@ -7587,6 +7605,239 @@ add_example('FunctionCallAgent', """\
 'Hello! How can I assist you today?'
 """)
 
+add_chinese_doc('LazyLLMAgentBase', '''\
+LazyLLMAgentBase 是所有内置 Agent 的公共基类，负责统一的工具管理、技能启用、提示词注入与执行流程封装。
+
+Args:
+    llm: 大语言模型实例。
+    tools (List[str]): 工具名称列表。
+    max_retries (int): 工具调用最大迭代次数，默认 5。
+    return_trace (bool): 是否返回中间执行轨迹。
+    stream (bool): 是否启用流式输出。
+    return_last_tool_calls (bool): 若为True，在模型结束且存在工具调用记录时返回最后一次的工具调用轨迹。
+    skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
+    memory: 预留的记忆/上下文对象。
+    desc (str): Agent 能力描述。
+    workspace (str): Agent 默认工作目录，默认是 `config['home']/agent_workspace`。
+''')
+
+add_english_doc('LazyLLMAgentBase', '''\
+LazyLLMAgentBase is the common base class for built-in agents. It unifies tool management, skills enablement,
+system-prompt injection, and execution flow.
+
+Args:
+    llm: Large language model instance.
+    tools (List[str]): List of tool names.
+    max_retries (int): Maximum tool-call iterations. Default is 5.
+    return_trace (bool): Whether to return execution traces.
+    stream (bool): Whether to enable streaming output.
+    return_last_tool_calls (bool): If True, return the last tool-call trace when the model finishes.
+    skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
+    memory: Reserved memory/context object.
+    desc (str): Optional agent capability description.
+    workspace (str): Default agent workspace path. Defaults to `config['home']/agent_workspace`.
+''')
+
+add_chinese_doc('SkillManager', '''\
+SkillManager 用于发现、加载与管理 Skills。
+
+Args:
+    dir (str, optional): Skills 目录路径，支持逗号分隔的多个路径。
+    skills (Iterable[str], optional): 期望使用的技能名称列表。
+    max_skill_md_bytes (int, optional): 单个 SKILL.md 最大读取大小。
+    llm: 预留参数，目前不强制使用。
+''')
+
+add_english_doc('SkillManager', '''\
+SkillManager discovers, loads, and manages Skills.
+
+Args:
+    dir (str, optional): Skills directory paths, comma-separated is supported.
+    skills (Iterable[str], optional): Expected skill name list.
+    max_skill_md_bytes (int, optional): Maximum SKILL.md size to load.
+    llm: Reserved parameter, not required currently.
+''')
+
+add_chinese_doc('SkillManager.list_skill', '''\
+列出当前 skills 目录中的可用技能，返回 Markdown 字符串。
+
+**Returns:**\n
+- str: 技能列表（名称/描述/路径）。
+''')
+
+add_english_doc('SkillManager.list_skill', '''\
+List available skills under configured directories and return a Markdown string.
+
+**Returns:**\n
+- str: Skill list with name/description/path.
+''')
+
+add_chinese_doc('SkillManager.build_prompt', '''\
+根据任务构建 Skills 引导提示词。
+
+Args:
+    task (str): 当前任务文本。
+
+**Returns:**\n
+- str: 拼接后的系统提示词。
+''')
+
+add_english_doc('SkillManager.build_prompt', '''\
+Build a skills guide prompt for a task.
+
+Args:
+    task (str): Current task text.
+
+**Returns:**\n
+- str: Composed system prompt.
+''')
+
+add_chinese_doc('SkillManager.get_skill', '''\
+读取指定技能的 SKILL.md 全量内容。
+
+Args:
+    name (str): 技能名称。
+    allow_large (bool): 是否允许读取超过大小限制的文件。
+
+**Returns:**\n
+- dict: 包含状态、路径与内容的结果。
+''')
+
+add_english_doc('SkillManager.get_skill', '''\
+Load the full SKILL.md content for a skill.
+
+Args:
+    name (str): Skill name.
+    allow_large (bool): Whether to allow loading oversized files.
+
+**Returns:**\n
+- dict: Result with status, path, and content.
+''')
+
+add_chinese_doc('SkillManager.read_file', '''\
+读取技能目录下指定相对路径文件内容。
+
+Args:
+    name (str): 技能名称。
+    rel_path (str): 相对路径。
+
+**Returns:**\n
+- dict: 读取结果。
+''')
+
+add_english_doc('SkillManager.read_file', '''\
+Read a file under a skill directory by relative path.
+
+Args:
+    name (str): Skill name.
+    rel_path (str): Relative path.
+
+**Returns:**\n
+- dict: Read result.
+''')
+
+add_chinese_doc('SkillManager.read_reference', '''\
+读取技能参考文件内容（别名封装）。
+
+Args:
+    name (str): 技能名称。
+    rel_path (str): 相对路径。
+
+**Returns:**\n
+- dict: 读取结果。
+''')
+
+add_english_doc('SkillManager.read_reference', '''\
+Read a reference file in a skill directory (alias wrapper).
+
+Args:
+    name (str): Skill name.
+    rel_path (str): Relative path.
+
+**Returns:**\n
+- dict: Read result.
+''')
+
+add_chinese_doc('SkillManager.run_script', '''\
+执行技能目录下的脚本文件。
+
+Args:
+    name (str): 技能名称。
+    rel_path (str): 脚本相对路径。
+    args (List[str], optional): 脚本参数。
+    allow_unsafe (bool): 是否允许执行潜在风险脚本。
+    cwd (str, optional): 工作目录。
+
+**Returns:**\n
+- dict: 执行结果。
+''')
+
+add_english_doc('SkillManager.run_script', '''\
+Run a script under a skill directory.
+
+Args:
+    name (str): Skill name.
+    rel_path (str): Script relative path.
+    args (List[str], optional): Script arguments.
+    allow_unsafe (bool): Whether to allow potentially unsafe execution.
+    cwd (str, optional): Working directory.
+
+**Returns:**\n
+- dict: Execution result.
+''')
+
+add_chinese_doc('SkillManager.wrap_input', '''\
+将输入包装为包含 `available_skills` 的模型输入结构。
+
+Args:
+    input: 原始输入（通常为 str 或 dict）。
+    task (str): 当前任务文本，用于生成可用技能列表。
+
+**Returns:**\n
+- Any: 包装后的输入。若输入为 str/dict 且存在可用技能，返回包含 `available_skills` 的 dict；否则返回原值。
+''')
+
+add_english_doc('SkillManager.wrap_input', '''\
+Wrap input into a model payload with `available_skills`.
+
+Args:
+    input: Original input (typically str or dict).
+    task (str): Current task text used to build available skills.
+
+**Returns:**\n
+- Any: Wrapped input. If input is str/dict and skills are available, returns a dict with `available_skills`; otherwise returns the original value.
+''')
+
+add_chinese_doc('SkillManager.get_skill_tools', '''\
+返回 Skills 工具列表（可调用对象）。
+
+**Returns:**\n
+- List[Callable]: Skills 工具列表。
+''')
+
+add_english_doc('SkillManager.get_skill_tools', '''\
+Return the skill tool callables exposed by SkillManager.
+
+**Returns:**\n
+- List[Callable]: Skill tool callables.
+''')
+
+add_chinese_doc('LazyLLMAgentBase.build_agent', '''\
+构建内部执行流程的工厂方法。
+
+说明：
+    该方法由子类实现，用于构建该 Agent 的内部工作流。
+    基类会在首次执行时调用它完成初始化。
+''')
+
+add_english_doc('LazyLLMAgentBase.build_agent', '''\
+Factory method for constructing the internal execution workflow.
+
+Notes:
+    This method should be implemented by subclasses to build the agent workflow.
+    The base class invokes it lazily on first use.
+''')
+
 add_chinese_doc('ReactAgent', '''\
 ReactAgent是按照 `Thought->Action->Observation->Thought...->Finish` 的流程一步一步的通过LLM和工具调用来显示解决用户问题的步骤，以及最后给用户的答案。
 
@@ -7597,6 +7848,10 @@ Args:
     return_trace (bool): 是否返回完整的执行轨迹，用于调试和分析，默认为False
     prompt (str): 自定义提示词模板，如果为None则使用内置模板
     stream (bool): 是否启用流式输出，用于实时显示生成过程，默认为False
+    return_last_tool_calls (bool): 若为True，在模型结束且存在工具调用记录时返回最后一次的工具调用轨迹。
+    skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
+    desc (str): Agent 能力描述，可为空。
+    workspace (str): Agent 默认工作目录，默认是 `config['home']/agent_workspace`。
 ''')
 
 add_english_doc('ReactAgent', '''\
@@ -7609,7 +7864,19 @@ Args:
     return_trace (bool): Whether to return complete execution trace for debugging and analysis, defaults to False
     prompt (str): Custom prompt template, uses built-in template if None
     stream (bool): Whether to enable streaming output for real-time generation display, defaults to False
+    return_last_tool_calls (bool): If True, return the last tool-call trace when the model finishes.
+    skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
+    desc (str): Optional agent capability description.
+    workspace (str): Default agent workspace path. Defaults to `config['home']/agent_workspace`.
 
+''')
+
+add_chinese_doc('ReactAgent.build_agent', '''\
+构建 ReactAgent 的内部推理与工具调用闭环。
+''')
+
+add_english_doc('ReactAgent.build_agent', '''\
+Build the internal reasoning and tool-calling loop for ReactAgent.
 ''')
 
 add_example('ReactAgent', """\
@@ -7657,6 +7924,10 @@ Args:
     max_retries (int): 工具调用迭代的最大次数。默认值为5。
     return_trace (bool): 是否返回中间步骤和工具调用信息。
     stream (bool): 是否以流式方式输出规划和解决过程。
+    return_last_tool_calls (bool): 若为True，在模型结束且存在工具调用记录时返回最后一次的工具调用轨迹。
+    skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
+    desc (str): Agent 能力描述，可为空。
+    workspace (str): Agent 默认工作目录，默认是 `config['home']/agent_workspace`。
 ''')
 
 add_english_doc('PlanAndSolveAgent', '''\
@@ -7670,6 +7941,18 @@ Args:
     max_retries (int): The maximum number of tool call iterations. The default value is 5.
     return_trace (bool): If True, return intermediate steps and tool calls.
     stream (bool): Whether to stream the planning and solving process.
+    return_last_tool_calls (bool): If True, return the last tool-call trace when the model finishes.
+    skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
+    desc (str): Optional agent capability description.
+    workspace (str): Default agent workspace path. Defaults to `config['home']/agent_workspace`.
+''')
+
+add_chinese_doc('PlanAndSolveAgent.build_agent', '''\
+构建 PlanAndSolveAgent 的规划与求解执行流程。
+''')
+
+add_english_doc('PlanAndSolveAgent.build_agent', '''\
+Build the planning and solving execution workflow for PlanAndSolveAgent.
 ''')
 
 add_example('PlanAndSolveAgent', """\
@@ -7716,6 +7999,10 @@ Args:
     solve_llm (ModuleBase): solver要使用的LLM，可以是TrainableModule或OnlineChatModule。
     return_trace (bool): 是否返回中间步骤和工具调用信息。
     stream (bool): 是否以流式方式输出规划和解决过程。
+    return_last_tool_calls (bool): 若为True，在模型结束且存在工具调用记录时返回最后一次的工具调用轨迹。
+    skills (bool | str | List[str]): Skills 配置。True 启用 Skills 并自动筛选；传入 str/list 启用指定技能。
+    desc (str): Agent 能力描述，可为空。
+    workspace (str): Agent 默认工作目录，默认是 `config['home']/agent_workspace`。
 
 ''')
 
@@ -7729,6 +8016,26 @@ Args:
     solve_llm (ModuleBase): The LLM to be used by the solver, which can be either TrainableModule or OnlineChatModule.
     return_trace (bool): If True, return intermediate steps and tool calls.
     stream (bool): Whether to stream the planning and solving process.
+    return_last_tool_calls (bool): If True, return the last tool-call trace when the model finishes.
+    skills (bool | str | List[str]): Skills config. True enables Skills with auto selection; pass a str/list to enable specific skills.
+    desc (str): Optional agent capability description.
+    workspace (str): Default agent workspace path. Defaults to `config['home']/agent_workspace`.
+''')
+
+add_chinese_doc('ReWOOAgent.build_agent', '''\
+构建 ReWOOAgent 的 Planner/Worker/Solver 执行流程。
+''')
+
+add_english_doc('ReWOOAgent.build_agent', '''\
+Build the Planner/Worker/Solver workflow for ReWOOAgent.
+''')
+
+add_chinese_doc('FunctionCallAgent.build_agent', '''\
+构建 FunctionCallAgent 的工具调用迭代流程。
+''')
+
+add_english_doc('FunctionCallAgent.build_agent', '''\
+Build the tool-calling iteration workflow for FunctionCallAgent.
 ''')
 
 add_example(
