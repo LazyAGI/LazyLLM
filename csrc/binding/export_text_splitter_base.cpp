@@ -48,7 +48,7 @@ private:
 } // namespace
 
 void exportTextSpliterBase(py::module& m) {
-    py::class_<lazyllm::_TextSplitterBase, lazyllm::NodeTransform>(m, "_TextSplitterBase")
+    py::class_<lazyllm::TextSplitterBase, lazyllm::NodeTransform>(m, "TextSplitterBase")
         .def(py::init<
                 std::optional<int>,
                 std::optional<int>,
@@ -59,12 +59,12 @@ void exportTextSpliterBase(py::module& m) {
             py::arg("num_workers") = py::none(),
             py::arg("sentencepiece_model") = py::none()
         )
-        .def("split_text", &lazyllm::_TextSplitterBase::split_text,
+        .def("split_text", &lazyllm::TextSplitterBase::split_text,
             py::arg("text"), py::arg("metadata_size"))
-        .def("from_sentencepiece_model", &lazyllm::_TextSplitterBase::from_sentencepiece_model,
+        .def("from_sentencepiece_model", &lazyllm::TextSplitterBase::from_sentencepiece_model,
             py::arg("model_path"), py::return_value_policy::reference)
         .def("from_tokenizer",
-            [](lazyllm::_TextSplitterBase& self, py::object tokenizer) -> lazyllm::_TextSplitterBase& {
+            [](lazyllm::TextSplitterBase& self, py::object tokenizer) -> lazyllm::TextSplitterBase& {
                 auto adaptor = std::make_shared<PyTokenizer>(tokenizer);
                 self.set_tokenizer(adaptor);
                 return self;
@@ -77,21 +77,21 @@ void exportTextSpliterBase(py::module& m) {
                 std::unordered_map<std::string, int> params;
                 for (auto item : kwargs)
                     params[py::cast<std::string>(item.first)] = py::cast<int>(item.second);
-                lazyllm::_TextSplitterBase::set_default(params);
+                lazyllm::TextSplitterBase::set_default(params);
             }
         )
         .def_static("get_default",
             [](py::object name) {
-                if (name.is_none()) return py::cast(lazyllm::_TextSplitterBase::get_default());
-                auto opt = lazyllm::_TextSplitterBase::get_default(name.cast<std::string>());
+                if (name.is_none()) return py::cast(lazyllm::TextSplitterBase::get_default());
+                auto opt = lazyllm::TextSplitterBase::get_default(name.cast<std::string>());
                 if (!opt.has_value()) return py::none();
                 return py::cast(*opt);
             },
             py::arg("param_name") = py::none()
         )
-        .def_static("reset_default", &lazyllm::_TextSplitterBase::reset_default);
+        .def_static("reset_default", &lazyllm::TextSplitterBase::reset_default);
 
-    py::class_<lazyllm::_TokenTextSplitter, lazyllm::_TextSplitterBase>(m, "_TokenTextSplitter")
+    py::class_<lazyllm::_TokenTextSplitter, lazyllm::TextSplitterBase>(m, "_TokenTextSplitter")
         .def(py::init<
                 std::optional<int>,
                 std::optional<int>,
