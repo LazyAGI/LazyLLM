@@ -1,6 +1,6 @@
 include(FetchContent)
 
-find_package(Python3 COMPONENTS Interpreter Development REQUIRED)
+find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
 
 find_package(xxHash QUIET)
