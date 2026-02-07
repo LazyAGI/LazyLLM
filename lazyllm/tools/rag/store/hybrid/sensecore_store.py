@@ -51,6 +51,12 @@ class SenseCoreStore(LazyLLMStoreBase):
         self._s3_config = kwargs.get('s3_config')
         self._image_url_config = kwargs.get('image_url_config')
         self._uploaded_image_keys = set()
+        self._path_prefix = kwargs.get('path_prefix')
+        if not self._path_prefix:
+            try:
+                self._path_prefix = config['image_path_prefix']
+            except Exception:
+                self._path_prefix = os.getenv('RAG_IMAGE_PATH_PREFIX', '')
 
     @property
     def dir(self):
@@ -99,11 +105,7 @@ class SenseCoreStore(LazyLLMStoreBase):
                 continue
             image_file_name = os.path.basename(image_path)
             obj_key = f'lazyllm/images/{kb_id}/{doc_id}/{image_file_name}'
-            try:
-                prefix = config['image_path_prefix']
-            except Exception:
-                prefix = os.getenv('RAG_IMAGE_PATH_PREFIX', '')
-            file_path = create_file_path(path=image_path, prefix=prefix)
+            file_path = create_file_path(path=image_path, prefix=self._path_prefix)
             try:
                 self._upload_image_if_needed(file_path, obj_key)
                 content = content.replace(image_path, obj_key)
@@ -124,11 +126,7 @@ class SenseCoreStore(LazyLLMStoreBase):
                     continue
                 image_name = os.path.basename(image_path)
                 obj_key = f'lazyllm/images/{kb_id}/{doc_id}/{image_name}'
-                try:
-                    prefix = config['image_path_prefix']
-                except Exception:
-                    prefix = os.getenv('RAG_IMAGE_PATH_PREFIX', '')
-                file_path = create_file_path(path=image_path, prefix=prefix)
+                file_path = create_file_path(path=image_path, prefix=self._path_prefix)
                 try:
                     self._upload_image_if_needed(file_path, obj_key)
                     md_info = md_info.replace(image_path, obj_key)
@@ -188,11 +186,7 @@ class SenseCoreStore(LazyLLMStoreBase):
                     continue
                 image_file_name = os.path.basename(image_path)
                 obj_key = f'lazyllm/images/{kb_id}/{doc_id}/{image_file_name}'
-                try:
-                    prefix = config['image_path_prefix']
-                except Exception:
-                    prefix = os.getenv('RAG_IMAGE_PATH_PREFIX', '')
-                file_path = create_file_path(path=image_path, prefix=prefix)
+                file_path = create_file_path(path=image_path, prefix=self._path_prefix)
                 try:
                     self._upload_image_if_needed(file_path, obj_key)
                     answer = answer.replace(image_path, obj_key)
