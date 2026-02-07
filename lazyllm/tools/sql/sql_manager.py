@@ -106,8 +106,7 @@ class SqlManager(DBManager):
                 column_name = column_info.name
                 is_primary = column_info.is_primary_key
                 default_value = column_info.default
-                # Use text for unsupported column type
-                real_type = self.PYTYPE_TO_SQL_MAP.get(column_type, sqlalchemy.Text)
+                real_type = self._sql_type_for(column_type)
                 # Handle default value
                 if default_value is not None:
                     attrs[column_name] = sqlalchemy.Column(real_type, nullable=is_nullable,

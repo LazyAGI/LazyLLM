@@ -3870,6 +3870,32 @@ Returns:
     None
 """)
 
+add_chinese_doc('rag.doc_node.DocNode.copy', """
+复制当前 DocNode，并生成新的 uid。
+
+复制后的节点会记录来源信息（_copy_source），可选更新 metadata/global_metadata。
+
+Args:
+    global_metadata (dict): 需要合并到 global_metadata 的字段
+    metadata (dict): 需要合并到 metadata 的字段
+
+Returns:
+    DocNode: 复制后的节点
+""")
+
+add_english_doc('rag.doc_node.DocNode.copy', """
+Copy the current DocNode and generate a new uid.
+
+The copied node records its source (_copy_source) and can optionally merge metadata/global_metadata.
+
+Args:
+    global_metadata (dict): Fields to merge into global_metadata
+    metadata (dict): Fields to merge into metadata
+
+Returns:
+    DocNode: The copied node
+""")
+
 add_chinese_doc('rag.parsing_service.server.DocumentProcessor', """
 文档处理服务类，启动后可对外提供文档处理服务，支持文档的添加、删除和更新等操作。
 服务内部采取生产者-消费者模式，通过队列管理文档处理任务，支持异步处理文档任务，支持任务状态回调通知。
@@ -3884,6 +3910,10 @@ Args:
         def post_func(task_id: str, task_status: str = None, error_code: str = None, error_msg: str = None):
             pass
     path_prefix (Optional[str]): 用于配置上传文件存储路径前缀，默认为None。
+    lease_duration (float): 任务租约时长（秒），默认为300。
+    lease_renew_interval (float): 租约续租间隔（秒），默认为60。
+    high_priority_task_types (Optional[List[str]]): 高优任务类型列表，默认包含 DOC_DELETE。
+    high_priority_workers (int): 高优任务 worker 数量，默认1。
 """)
 
 add_english_doc('rag.parsing_service.server.DocumentProcessor', """
@@ -3900,6 +3930,10 @@ Args:
         def post_func(task_id: str, task_status: str = None, error_code: str = None, error_msg: str = None):
             pass
     path_prefix (Optional[str]): Used to configure the prefix of the uploaded file storage path, defaults to None.
+    lease_duration (float): Task lease duration in seconds, defaults to 300.
+    lease_renew_interval (float): Lease renewal interval in seconds, defaults to 60.
+    high_priority_task_types (Optional[List[str]]): High priority task types, defaults to [DOC_DELETE].
+    high_priority_workers (int): Number of high priority workers, defaults to 1.
 """)
 
 add_example('rag.parsing_service.server.DocumentProcessor', """
@@ -3990,6 +4024,14 @@ Args:
     db_config (Optional[Dict[str, Any]]): 用于配置SqlManager实现数据库连接，默认为None，当为None时，使用默认数据库配置。
     num_workers (int): 工作线程数，默认为1， 当大于1时，内部基于ray集群启动多个工作线程，否则仅启动一个工作线程。
     port (Optional[int]): 服务端口号。默认为None，当为None时，将自动分配端口。
+    task_poller (Optional[Callable]): 外部任务拉取函数，可选。
+    poll_mode (str): 任务拉取模式，可选值为 "direct" 或 "thread"。
+        - "direct": 不启动独立 poller 线程，worker 空闲时直接拉取并立即处理任务（默认）。
+        - "thread": 启动独立 poller 线程，持续拉取任务并入队。
+    lease_duration (float): 任务租约时长（秒），默认为300。
+    lease_renew_interval (float): 租约续租间隔（秒），默认为60。
+    high_priority_task_types (Optional[List[str]]): 高优任务类型列表，可选。
+    high_priority_only (bool): 仅处理高优任务，默认为False。
 ''')
 
 add_english_doc('rag.parsing_service.worker.DocumentProcessorWorker', '''
@@ -4000,6 +4042,14 @@ Args:
     db_config (Optional[Dict[str, Any]]): Used to configure the database connection information for SqlManager, defaults to None, when it is None, the default database configuration is used.
     num_workers (int): Number of worker threads, defaults to 1, when it is greater than 1, multiple worker threads are started internally based on the ray cluster, otherwise only one worker thread is started.
     port (Optional[int]): Service port number. Defaults to None, when it is None, a random port will be assigned.
+    task_poller (Optional[Callable]): External task poller callback, optional.
+    poll_mode (str): Task polling mode, either "direct" or "thread".
+        - "direct": No dedicated poller thread; the worker pulls and processes tasks when idle (default).
+        - "thread": Run a dedicated poller thread to continuously fetch tasks and enqueue them.
+    lease_duration (float): Task lease duration in seconds, defaults to 300.
+    lease_renew_interval (float): Lease renewal interval in seconds, defaults to 60.
+    high_priority_task_types (Optional[List[str]]): High priority task types, optional.
+    high_priority_only (bool): Process high priority tasks only, defaults to False.
 ''')
 
 add_chinese_doc('rag.parsing_service.worker.DocumentProcessorWorker.start', '''
