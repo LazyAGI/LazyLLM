@@ -1,5 +1,6 @@
 import os
 import json
+import threading
 
 from lazyllm import LOG
 
@@ -10,11 +11,15 @@ class PromptLibrary:
         ('prompts.chat.json', 'en'),
     ]
     _loaded = False
+    _load_lock = threading.Lock()
+    _default_lang = 'zh'
 
     def __init__(self, lang=None):
         if not PromptLibrary._loaded:
-            self._build_library()
-            PromptLibrary._loaded = True
+            with PromptLibrary._load_lock:
+                if not PromptLibrary._loaded:  # Double-checked locking
+                    self._build_library()
+                    PromptLibrary._loaded = True
 
         self.lang = lang
         if self.lang and self.lang not in self.supported_langs:
@@ -66,15 +71,15 @@ class PromptLibrary:
         return self.get_prompt(act, lang)
 
     def get_prompt(self, act: str, lang=None) -> str:
-        lang = lang or self.lang or 'zh'
+        lang = lang or self.lang or self._default_lang
         if lang not in self._prompts:
             LOG.warning(f'Language "{lang}" not supported. Supported: {self.supported_langs}')
             return ''
-
-        if act not in self._prompts[lang]:
+        prompt = self._prompts[lang].get(act)
+        if prompt is None:
             LOG.warning(f'Prompt for act "{act}" not found in library (lang: {lang}).')
             return ''
-        return self._prompts[lang].get(act, '')
+        return prompt
 
     def get_all_acts(self, lang=None) -> list:
         if lang is None:
@@ -82,8 +87,8 @@ class PromptLibrary:
                 lang = self.lang
                 LOG.info(f'get_all_acts: no lang passed, using instance language "{self.lang}"')
             else:
-                lang = 'zh'
-                LOG.info('get_all_acts: no lang passed, using default language "zh"')
+                lang = self._default_lang
+                LOG.info(f'get_all_acts: no lang passed, using default language "{self._default_lang}"')
 
         if lang not in self._prompts:
             LOG.warning(f'Language "{lang}" not supported. Supported: {self.supported_langs}')
