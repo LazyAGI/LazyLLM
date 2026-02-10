@@ -3,6 +3,7 @@ from typing import List
 
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
+from lazyllm.components.formatter import JsonFormatter
 
 from ...base_data import data_register
 from ...prompts import (
@@ -33,33 +34,34 @@ def _clean_json_block(item: str) -> str:
     )
 
 
-def _call_llm_single(llm, prompt: str, system_prompt: str = '') -> str:
-    if llm is None:
-        raise ValueError('LLM is not configured')
-    llm_serve = llm.share(prompt=system_prompt)
-    llm_serve.start()
-    return llm_serve(prompt)
-
-
 class AgenticRAGGetIdentifier(agenticrag):
 
     def __init__(self, llm=None, input_key: str = 'prompts', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.llm = llm
         self.input_key = input_key
         self.prompt_template = AtomicTaskGeneratorGetIdentifierPrompt()
 
+        if llm is not None:
+            system_prompt = self.prompt_template.build_system_prompt()
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
+            self._llm_serve.start()
+        else:
+            self._llm_serve = None
+
     def forward(self, data: dict) -> dict:
-        '''Extract identifier from a single document.'''
+        """Extract identifier from a single document."""
+        if self._llm_serve is None:
+            raise ValueError('LLM is not configured')
+            
         content = data.get(self.input_key, '')
-        system_prompt = self.prompt_template.build_system_prompt()
         user_prompt = self.prompt_template.build_prompt(content)
 
         try:
-            result = _call_llm_single(self.llm, user_prompt, system_prompt)
-            cleaned = _clean_json_block(result)
-            identifier_obj = json.loads(cleaned)
-            data['identifier'] = identifier_obj.get('content_identifier', '')
+            result = self._llm_serve(user_prompt)
+            if isinstance(result, dict):
+                data['identifier'] = result.get('content_identifier', '')
+            else:
+                data['identifier'] = ''
         except Exception as e:
             LOG.warning(f'Failed to extract identifier: {e}')
             data['identifier'] = ''
@@ -71,17 +73,25 @@ class AgenticRAGGetConclusion(agenticrag):
 
     def __init__(self, llm=None, input_key: str = 'prompts', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.llm = llm
         self.input_key = input_key
         self.prompt_template = AtomicTaskGeneratorGetConclusionPrompt()
 
+        if llm is not None:
+            system_prompt = self.prompt_template.build_system_prompt()
+            self._llm_serve = llm.share().prompt(system_prompt)
+            self._llm_serve.start()
+        else:
+            self._llm_serve = None
+
     def forward(self, data: dict) -> dict:
+        if self._llm_serve is None:
+            raise ValueError('LLM is not configured')
+            
         content = data.get(self.input_key, '')
-        system_prompt = self.prompt_template.build_system_prompt()
         user_prompt = self.prompt_template.build_prompt(content)
 
         try:
-            result = _call_llm_single(self.llm, user_prompt, system_prompt)
+            result = self._llm_serve(user_prompt)
             data['raw_conclusion'] = result
         except Exception as e:
             LOG.warning(f'Failed to extract conclusion: {e}')
@@ -128,10 +138,19 @@ class AgenticRAGGenerateQuestion(agenticrag):
 
     def __init__(self, llm=None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.llm = llm
         self.prompt_template = AtomicTaskGeneratorQuestionPrompt()
 
+        if llm is not None:
+            system_prompt = self.prompt_template.build_system_prompt()
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
+            self._llm_serve.start()
+        else:
+            self._llm_serve = None
+
     def forward(self, data: dict):
+        if self._llm_serve is None:
+            raise ValueError('LLM is not configured')
+            
         candidate_str = data.get('candidate_tasks_str', '')
         identifier = data.get('identifier', '')
 
@@ -140,16 +159,13 @@ class AgenticRAGGenerateQuestion(agenticrag):
             conclusion = task_item.get('conclusion', '')
             relation = task_item.get('R', '')
 
-            system_prompt = self.prompt_template.build_system_prompt()
             user_prompt = self.prompt_template.build_prompt(
                 identifier, conclusion, relation
             )
 
-            result = _call_llm_single(self.llm, user_prompt, system_prompt)
-            parsed = json.loads(_clean_json_block(result))
-
-            if isinstance(parsed, dict) and 'Q' in parsed:
-                data['question'] = str(parsed['Q'])
+            result = self._llm_serve(user_prompt)
+            if isinstance(result, dict) and 'Q' in result:
+                data['question'] = str(result['Q'])
                 data['answer'] = str(conclusion)
                 return data
         except Exception as e:
@@ -162,22 +178,32 @@ class AgenticRAGCleanQA(agenticrag):
 
     def __init__(self, llm=None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.llm = llm
         self.prompt_template = AtomicTaskGeneratorCleanQAPrompt()
+        
+        if llm is not None:
+            system_prompt = self.prompt_template.build_system_prompt()
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
+            self._llm_serve.start()
+        else:
+            self._llm_serve = None
 
     def forward(self, data: dict) -> dict:
+        if self._llm_serve is None:
+            raise ValueError('LLM is not configured')
+            
         question = data.get('question', '')
         answer = data.get('answer', '')
 
-        system_prompt = self.prompt_template.build_system_prompt()
         user_prompt = self.prompt_template.build_prompt(
             {'question': question, 'original_answer': answer}
         )
 
         try:
-            result = _call_llm_single(self.llm, user_prompt, system_prompt)
-            parsed = json.loads(_clean_json_block(result))
-            data['refined_answer'] = str(parsed.get('refined_answer', ''))
+            result = self._llm_serve(user_prompt)
+            if isinstance(result, dict):
+                data['refined_answer'] = str(result.get('refined_answer', ''))
+            else:
+                data['refined_answer'] = ''
         except Exception as e:
             LOG.warning(f'Failed to clean QA: {e}')
             data['refined_answer'] = ''
@@ -189,37 +215,49 @@ class AgenticRAGLLMVerify(agenticrag):
 
     def __init__(self, llm=None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.llm = llm
         self.prompt_template = AtomicTaskGeneratorAnswerPrompt()
         self.score_template = AtomicTaskGeneratorRecallScorePrompt()
+        
+        if llm is not None:
+            self._llm_answer_serve = llm.share()
+            self._llm_answer_serve.start()
+            
+            score_system_prompt = self.score_template.build_system_prompt()
+            self._llm_score_serve = llm.share().prompt(score_system_prompt).formatter(JsonFormatter())
+            self._llm_score_serve.start()
+        else:
+            self._llm_answer_serve = None
+            self._llm_score_serve = None
 
     def forward(self, data: dict):
+        if self._llm_answer_serve is None or self._llm_score_serve is None:
+            raise ValueError('LLM is not configured')
+            
         question = data.get('question', '')
         refined_answer = data.get('refined_answer', '')
 
         user_prompt = self.prompt_template.build_prompt(question)
         try:
-            llm_answer = _call_llm_single(self.llm, user_prompt, '')
+            llm_answer = self._llm_answer_serve(user_prompt)
             data['llm_answer'] = llm_answer
         except Exception as e:
             LOG.warning(f'Failed to get LLM answer: {e}')
             return []
 
-        system_prompt = self.score_template.build_system_prompt()
         score_prompt = self.score_template.build_prompt(
             refined_answer, llm_answer
         )
 
         try:
-            score_result = _call_llm_single(
-                self.llm, score_prompt, system_prompt
-            )
-            score_dict = json.loads(_clean_json_block(score_result))
-            score = score_dict.get('answer_score', 0)
-            data['llm_score'] = score
+            score_result = self._llm_score_serve(score_prompt)
+            if isinstance(score_result, dict):
+                score = score_result.get('answer_score', 0)
+                data['llm_score'] = score
 
-            if score >= 1:
-                return []
+                if score >= 1:
+                    return []
+            else:
+                data['llm_score'] = 0
         except Exception as e:
             LOG.warning(f'Failed to calculate recall score: {e}')
             data['llm_score'] = 0
@@ -231,12 +269,25 @@ class AgenticRAGGoldenDocAnswer(agenticrag):
 
     def __init__(self, llm=None, input_key: str = 'prompts', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.llm = llm
         self.input_key = input_key
         self.prompt_template = AtomicTaskGeneratorGoldenDocAnswerPrompt()
         self.score_template = AtomicTaskGeneratorRecallScorePrompt()
+        
+        if llm is not None:
+            self._llm_answer_serve = llm.share()
+            self._llm_answer_serve.start()
+            
+            score_system_prompt = self.score_template.build_system_prompt()
+            self._llm_score_serve = llm.share().prompt(score_system_prompt).formatter(JsonFormatter())
+            self._llm_score_serve.start()
+        else:
+            self._llm_answer_serve = None
+            self._llm_score_serve = None
 
     def forward(self, data: dict):
+        if self._llm_answer_serve is None or self._llm_score_serve is None:
+            raise ValueError('LLM is not configured')
+            
         golden_doc = data.get(self.input_key, '')
         question = data.get('question', '')
         refined_answer = data.get('refined_answer', '')
@@ -245,26 +296,25 @@ class AgenticRAGGoldenDocAnswer(agenticrag):
             golden_doc, question
         )
         try:
-            golden_doc_answer = _call_llm_single(self.llm, user_prompt, '')
+            golden_doc_answer = self._llm_answer_serve(user_prompt)
             data['golden_doc_answer'] = golden_doc_answer
         except Exception as e:
             LOG.warning(f'Failed to get golden doc answer: {e}')
             return []
 
-        system_prompt = self.score_template.build_system_prompt()
         score_prompt = self.score_template.build_prompt(
             refined_answer, golden_doc_answer
         )
 
         try:
-            score_result = _call_llm_single(
-                self.llm, score_prompt, system_prompt
-            )
-            score_dict = json.loads(_clean_json_block(score_result))
-            score = score_dict.get('answer_score', 0)
-            data['golden_doc_score'] = score
+            score_result = self._llm_score_serve(score_prompt)
+            if isinstance(score_result, dict):
+                score = score_result.get('answer_score', 0)
+                data['golden_doc_score'] = score
 
-            if score < 1:
+                if score < 1:
+                    return []
+            else:
                 return []
         except Exception as e:
             LOG.warning(f'Failed to calculate golden doc score: {e}')
@@ -277,21 +327,27 @@ class AgenticRAGOptionalAnswers(agenticrag):
 
     def __init__(self, llm=None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.llm = llm
         self.prompt_template = AtomicTaskGeneratorOptionalAnswerPrompt()
+        
+        if llm is not None:
+            system_prompt = self.prompt_template.build_system_prompt()
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
+            self._llm_serve.start()
+        else:
+            self._llm_serve = None
 
     def forward(self, data: dict) -> dict:
+        if self._llm_serve is None:
+            raise ValueError('LLM is not configured')
+            
         refined_answer = data.get('refined_answer', '')
 
-        system_prompt = self.prompt_template.build_system_prompt()
         user_prompt = self.prompt_template.build_prompt(refined_answer)
 
         try:
-            result = _call_llm_single(self.llm, user_prompt, system_prompt)
-            parsed = json.loads(_clean_json_block(result))
-
-            if isinstance(parsed, list):
-                data['optional_answer'] = parsed
+            result = self._llm_serve(user_prompt)
+            if isinstance(result, list):
+                data['optional_answer'] = result
             else:
                 data['optional_answer'] = [refined_answer]
         except Exception as e:
@@ -329,3 +385,37 @@ class AgenticRAGGroupAndLimit(agenticrag):
 
         LOG.info(f'Grouped and limited to {len(result_list)} QA pairs')
         return result_list
+
+
+class AgenticRAGAtomicTaskGenerator(agenticrag):
+
+    def __init__(
+        self,
+        max_per_task: int = 10,
+        max_question: int = 10,
+        llm=None,
+        input_key: str = 'prompts',
+        **kwargs
+    ):
+        super().__init__(rewrite_func='forward_batch_input', **kwargs)
+        self.max_per_task = max_per_task
+        self.max_question = max_question
+        self.input_key = input_key
+        self.llm = llm
+
+    def forward_batch_input(self, data: List[dict]) -> List[dict]:
+        '''Process data using the new pipeline operators with JsonFormatter.'''
+        from lazyllm import pipeline
+
+        with pipeline() as ppl:
+            ppl.get_identifier = AgenticRAGGetIdentifier(llm=self.llm, input_key=self.input_key)
+            ppl.get_conclusion = AgenticRAGGetConclusion(llm=self.llm, input_key=self.input_key)
+            ppl.expand = AgenticRAGExpandConclusions(max_per_task=self.max_per_task)
+            ppl.generate_question = AgenticRAGGenerateQuestion(llm=self.llm)
+            ppl.clean_qa = AgenticRAGCleanQA(llm=self.llm)
+            ppl.llm_verify = AgenticRAGLLMVerify(llm=self.llm)
+            ppl.golden_doc = AgenticRAGGoldenDocAnswer(llm=self.llm, input_key=self.input_key)
+            ppl.optional = AgenticRAGOptionalAnswers(llm=self.llm)
+            ppl.group = AgenticRAGGroupAndLimit(input_key=self.input_key, max_question=self.max_question)
+
+        return ppl(data)

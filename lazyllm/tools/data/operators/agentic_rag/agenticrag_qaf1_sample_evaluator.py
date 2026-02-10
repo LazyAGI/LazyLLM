@@ -96,3 +96,52 @@ def qaf1_calculate_score(data: dict, output_key: str = 'F1Score') -> dict:
     data.pop('_normalized_ground_truths', None)
 
     return data
+
+
+# Keep the original class for backward compatibility
+class AgenticRAGQAF1SampleEvaluator(agenticrag):
+    '''
+    Legacy evaluator for computing F1 scores between predicted answers and reference answers.
+    Uses the new function-based operators internally.
+    '''
+
+    def __init__(self,
+                 prediction_key: str = 'refined_answer',
+                 ground_truth_key: str = 'golden_doc_answer',
+                 output_key: str = 'F1Score',
+                 **kwargs):
+        super().__init__(rewrite_func='forward_batch_input', **kwargs)
+        self.prediction_key = prediction_key
+        self.ground_truth_key = ground_truth_key
+        self.output_key = output_key
+
+    @staticmethod
+    def get_desc(lang: str = 'zh'):
+        if lang == 'zh':
+            return (
+                '用于评估预测答案与多个参考答案之间的 F1 分数。\n\n'
+                '输入参数：\n'
+                '- prediction_key: 预测答案字段名（默认值：\'refined_answer\'）\n'
+                '- ground_truth_key: 真实答案字段名（默认值：\'golden_doc_answer\'）\n'
+                '- output_key: 输出F1分数字段名（默认值：\'F1Score\'）\n'
+            )
+        elif lang == 'en':
+            return 'Evaluate F1 scores between predicted answers and reference answers.'
+        else:
+            return 'Evaluate F1 scores between predicted answers and reference answers.'
+
+    def forward_batch_input(self, data: list) -> list:
+        '''
+        Process data to compute F1 scores using function-based operators.
+        '''
+        from lazyllm import pipeline
+
+        with pipeline() as ppl:
+            ppl.normalize = qaf1_normalize_texts(
+                prediction_key=self.prediction_key,
+                ground_truth_key=self.ground_truth_key
+            )
+            ppl.calculate = qaf1_calculate_score(output_key=self.output_key)
+
+        result = ppl(data)
+        return result

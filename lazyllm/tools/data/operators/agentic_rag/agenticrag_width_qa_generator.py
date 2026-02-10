@@ -1,6 +1,7 @@
 import json
 from typing import List, Optional
 from lazyllm import LOG
+from lazyllm.components.formatter import JsonFormatter
 from ...base_data import data_register
 from ...prompts import (
     WidthQAGeneratorMergePrompt,
@@ -21,35 +22,32 @@ def _clean_json_block(item: str) -> str:
     return item.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
 
 
-def _call_llm_single(llm, prompt: str, system_prompt: str = '') -> str:
-
-    if llm is None:
-        raise ValueError('LLM is not configured')
-    llm_serve = llm.share(prompt=system_prompt)
-    llm_serve.start()
-    return llm_serve(prompt)
-
-
 class WidthQAGMergePairs(agenticrag):
 
     def __init__(self, llm=None, **kwargs):
         super().__init__(rewrite_func='forward_batch_input', **kwargs)
-        self.llm = llm
         self.prompt_template = WidthQAGeneratorMergePrompt()
+       
+        if llm is not None:
+            system_prompt = self.prompt_template.build_system_prompt()
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
+            self._llm_serve.start()
+        else:
+            self._llm_serve = None
 
-    def _build_prompts(self, data: List[dict]) -> tuple:
-
-        system_prompt = self.prompt_template.build_system_prompt()
+    def _build_prompts(self, data: List[dict]) -> list:
         user_prompts = []
         for i in range(len(data) - 1):
             pair = [data[i], data[i + 1]]
             user_prompts.append(self.prompt_template.build_prompt(pair))
-        return system_prompt, user_prompts
+        return user_prompts
 
     def _parse_merge_result(self, result, idx: int, input_batch: List[dict]) -> Optional[dict]:
-
         try:
-            if isinstance(result, str):
+            if isinstance(result, dict):
+                if isinstance(result, list) and len(result) > 0:
+                    result = result[0]
+            elif isinstance(result, str):
                 result = json.loads(_clean_json_block(result))
                 if isinstance(result, list) and len(result) > 0:
                     result = result[0]
@@ -77,22 +75,22 @@ class WidthQAGMergePairs(agenticrag):
             return None
 
     def forward_batch_input(self, data: List[dict]) -> List[dict]:
+        if self._llm_serve is None:
+            raise ValueError('LLM is not configured')
+            
         if len(data) < 2:
             LOG.warning('Need at least 2 items to merge.')
             return []
 
         LOG.info(f'Merging {len(data)} items into width questions...')
-        system_prompt, user_prompts = self._build_prompts(data)
+        user_prompts = self._build_prompts(data)
 
         if not user_prompts:
             return []
 
-        # Call LLM for all pairs
-        llm_serve = self.llm.share(prompt=system_prompt)
-        llm_serve.start()
         merge_results = []
         for prompt in user_prompts:
-            merge_results.append(llm_serve(prompt))
+            merge_results.append(self._llm_serve(prompt))
 
         merged_data_list = []
         for idx, result in enumerate(merge_results):
@@ -108,12 +106,17 @@ class WidthQAGCheckDecomposition(agenticrag):
 
     def __init__(self, llm=None, output_question_key: str = 'generated_width_task', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.llm = llm
         self.output_question_key = output_question_key
         self.prompt_template = WidthQAGeneratorOriginCheckPrompt()
+        
+        if llm is not None:
+            system_prompt = self.prompt_template.build_system_prompt()
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
+            self._llm_serve.start()
+        else:
+            self._llm_serve = None
 
     def _build_check_input(self, item: dict) -> dict:
-
         ori_q = item.get('original_question', [])
         return {
             'index': item.get('index', 0),
@@ -122,15 +125,15 @@ class WidthQAGCheckDecomposition(agenticrag):
         }
 
     def forward(self, data: dict) -> dict:
+        if self._llm_serve is None:
+            raise ValueError('LLM is not configured')
 
         check_input = self._build_check_input(data)
-
-        system_prompt = self.prompt_template.build_system_prompt()
         user_prompt = self.prompt_template.build_prompt(check_input)
 
         try:
-            result = _call_llm_single(self.llm, user_prompt, system_prompt)
-
+            result = self._llm_serve(user_prompt)
+            
             if isinstance(result, str):
                 result = json.loads(_clean_json_block(result))
                 if isinstance(result, list) and len(result) > 0:
@@ -158,25 +161,33 @@ class WidthQAGVerifyQuestion(agenticrag):
 
     def __init__(self, llm=None, output_question_key: str = 'generated_width_task', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.llm = llm
         self.output_question_key = output_question_key
         self.prompt_template = WidthQAGeneratorQuestionVerifyPrompt()
+        
+        if llm is not None:
+            system_prompt = self.prompt_template.build_system_prompt()
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
+            self._llm_serve.start()
+        else:
+            self._llm_serve = None
 
     def _parse_verify_result(self, result) -> Optional[str]:
-
         try:
-            if isinstance(result, str):
+            if isinstance(result, dict):
+                return result.get('llm_answer', None)
+            elif isinstance(result, str):
                 result = json.loads(_clean_json_block(result))
                 if isinstance(result, list) and len(result) > 0:
                     result = result[0]
-
-            if isinstance(result, dict):
-                return result.get('llm_answer', None)
+                if isinstance(result, dict):
+                    return result.get('llm_answer', None)
         except Exception as e:
             LOG.warning(f'[Error]: Failed to parse verification result: {e}')
         return None
 
     def forward(self, data: dict) -> dict:
+        if self._llm_serve is None:
+            raise ValueError('LLM is not configured')
 
         question = data.get(self.output_question_key, '')
 
@@ -185,11 +196,10 @@ class WidthQAGVerifyQuestion(agenticrag):
             'complex_question': question
         }
 
-        system_prompt = self.prompt_template.build_system_prompt()
         user_prompt = self.prompt_template.build_prompt(verify_input)
 
         try:
-            result = _call_llm_single(self.llm, user_prompt, system_prompt)
+            result = self._llm_serve(user_prompt)
             llm_answer = self._parse_verify_result(result)
             data['llm_answer'] = llm_answer
             return data
@@ -202,33 +212,46 @@ class WidthQAGFilterByScore(agenticrag):
 
     def __init__(self, llm=None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.llm = llm
         self.score_template = WidthQAGeneratorRecallScorePrompt()
+        
+        if llm is not None:
+            system_prompt = self.score_template.build_system_prompt()
+            self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
+            self._llm_serve.start()
+        else:
+            self._llm_serve = None
 
     def forward(self, data: dict) -> dict:
+        if self._llm_serve is None:
+            raise ValueError('LLM is not configured')
+            
         golden_answer = data.get('original_answer', [])
         llm_answer = data.get('llm_answer', '')
 
         if not golden_answer or not llm_answer:
             return []
 
-        system_prompt = self.score_template.build_system_prompt()
         user_prompt = self.score_template.build_prompt(golden_answer, llm_answer)
 
         try:
-            score_result = _call_llm_single(self.llm, user_prompt, system_prompt)
-            score_dict = json.loads(_clean_json_block(score_result))
-            score = score_dict.get('answer_score', 0)
+            score_result = self._llm_serve(user_prompt)
+            
+            if isinstance(score_result, dict):
+                score = score_result.get('answer_score', 0)
+            elif isinstance(score_result, str):
+                score_dict = json.loads(_clean_json_block(score_result))
+                score = score_dict.get('answer_score', 0)
+            else:
+                score = 0
+                
             data['llm_score'] = score
 
-            # Filter out easy questions (score >= 1)
             if score >= 1:
                 data.pop('llm_answer', None)
                 data.pop('llm_score', None)
                 data.pop('state', None)
                 return []
 
-            # Clean up temporary fields
             data.pop('llm_answer', None)
             data.pop('llm_score', None)
             data.pop('state', None)
@@ -236,3 +259,57 @@ class WidthQAGFilterByScore(agenticrag):
         except Exception as e:
             LOG.warning(f'Failed to calculate recall score: {e}')
             return []
+
+
+class AgenticRAGWidthQAGenerator(agenticrag):
+
+    def __init__(self, llm=None, **kwargs):
+        super().__init__(rewrite_func='forward_batch_input', **kwargs)
+        self.llm = llm
+
+    def forward_batch_input(
+            self,
+            data: List[dict],
+            input_question_key: str = 'question',
+            input_identifier_key: str = 'identifier',
+            input_answer_key: str = 'answer',
+            output_question_key: str = 'generated_width_task',
+    ) -> List[dict]:
+        from lazyllm import pipeline
+
+        assert isinstance(data, list), 'Input data must be a list'
+
+        LOG.info('Preparing input batch...')
+        input_batch = []
+        for i, item in enumerate(data):
+            input_batch.append({
+                'index': i,
+                'question': item.get(input_question_key, ''),
+                'content_identifier': item.get(input_identifier_key, ''),
+                'golden_answer': item.get(input_answer_key, '')
+            })
+
+        if len(input_batch) < 2:
+            LOG.warning('Need at least 2 items to merge. Returning empty list.')
+            return []
+
+        LOG.info('Merging adjacent QA pairs...')
+        merge_op = WidthQAGMergePairs(llm=self.llm)
+        merged_data_list = merge_op(input_batch)
+
+        if not merged_data_list:
+            LOG.warning('No valid merged questions generated.')
+            return []
+
+        LOG.info(f'{len(merged_data_list)} questions passed merge.')
+
+        LOG.info('Processing merged questions with pipeline...')
+        with pipeline() as ppl_process:
+            ppl_process.check = WidthQAGCheckDecomposition(llm=self.llm, output_question_key=output_question_key)
+            ppl_process.verify = WidthQAGVerifyQuestion(llm=self.llm, output_question_key=output_question_key)
+            ppl_process.filter = WidthQAGFilterByScore(llm=self.llm)
+
+        result_list = ppl_process(merged_data_list)
+
+        LOG.info(f'Width QA generation completed! Final count: {len(result_list)}')
+        return result_list
