@@ -209,9 +209,9 @@ class CodeQualityScoreFilter(CodeGenOps):
         score = data.get(self.output_score_key, 0)
         try:
             score_int = int(score)
-        except Exception:
+        except (ValueError, TypeError):
             score_int = 0
-        pass_filter = (self.min_score <= score_int <= self.max_score) or score_int == 0
+        pass_filter = (self.min_score <= score_int <= self.max_score)
         data[self.output_key] = 1 if pass_filter else 0
         if pass_filter:
             return data
