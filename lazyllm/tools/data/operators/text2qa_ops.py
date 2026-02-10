@@ -1,9 +1,9 @@
 import re
-from lazyllm import LOG, TrainableModule
+from lazyllm import LOG, TrainableModule, OnlineChatModule
 from lazyllm.tools.data import data_register
 from lazyllm.thirdparty import transformers
-import textwrap
-from ..res_extractor import json_res_extractor
+import regex
+from lazyllm.components.formatter import JsonFormatter
 
 import os
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
@@ -12,6 +12,12 @@ DEFAULT_MODEL = 'qwen2.5-0.5B-instruct'
 DEFAULT_TOKENIZER = 'Qwen/Qwen2.5-0.5B'
 Text2qa = data_register.new_group('Text2qa')
 
+def boxed_res_extractor(text):
+    if not isinstance(text, str):
+        return None
+    pattern = r'\\boxed\{(?P<content>(?:[^{}]+|\{(?&content)\})*)\}'
+    matches = regex.findall(pattern, text)
+    return matches[-1].strip() if matches else None
 
 class TextToChunks(Text2qa):
     def __init__(self,
@@ -136,6 +142,7 @@ class ChunkToQA(Text2qa):
                  query_key='query',
                  answer_key='answer',
                  model=None,
+                 output_structure=None,
                  **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
 
@@ -143,34 +150,42 @@ class ChunkToQA(Text2qa):
         self.query_key = query_key
         self.answer_key = answer_key
 
+        if output_structure is None:
+            output_structure = f'''
+            输出格式要求：
+            {{
+                "{self.query_key}": "生成的问题",
+                "{self.answer_key}": "答案"
+            }}
+            '''
+
         if model is None:
             self.model = TrainableModule(DEFAULT_MODEL)
         else:
             self.model = model
+        self.model = self.model.prompt(output_structure)\
+                .formatter(JsonFormatter())\
+                .start()
 
-    def forward(self, data: dict):
+    def forward(self, data: dict, user_prompt=None):
         assert self.input_key in data
         chunk = data.get(self.input_key, '')
+
         if not chunk:
             data[self.query_key] = ''
             data[self.answer_key] = ''
             return data
 
-        prompt = textwrap.dedent(f'''
-        根据下面文本生成一个 QA 对：
-        {chunk}
+        if user_prompt is None:
+            user_prompt = '根据下面文本生成一个 QA 对：\n'
 
-        仅输出 JSON：
-        {{'{self.query_key}': '问题', '{self.answer_key}': '答案'}}
-        ''')
+        inp = f'{user_prompt}\n{chunk}'
 
-        response = self.model(prompt)
-        qa = json_res_extractor(response, [self.query_key, self.answer_key])
+        qa = self.model(inp)
 
         data[self.query_key] = qa.get(self.query_key, '')
         data[self.answer_key] = qa.get(self.answer_key, '')
         return data
-
 
 class QAScorer(Text2qa):
     def __init__(self,
@@ -179,6 +194,7 @@ class QAScorer(Text2qa):
                  query_key='query',
                  answer_key='answer',
                  model=None,
+                 output_structure=None,
                  **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
 
@@ -187,15 +203,27 @@ class QAScorer(Text2qa):
         self.query_key = query_key
         self.answer_key = answer_key
 
+        if output_structure is None:
+            output_structure = f'''
+            输出格式要求：
+            {{
+                "{self.output_key}": 0 or 1
+            }}
+            '''
+
         if model is None:
             self.model = TrainableModule(DEFAULT_MODEL)
         else:
-            self.model = model
+            self.model = model.prompt(output_structure)
+        self.model = self.model.prompt(output_structure)\
+                .formatter(JsonFormatter())\
+                .start()
 
-    def forward(self, data: dict):
+    def forward(self, data: dict, user_prompt=None):
         assert self.input_key in data
         assert self.query_key in data
         assert self.answer_key in data
+
         chunk = data.get(self.input_key, '')
         query = data.get(self.query_key, '')
         answer = data.get(self.answer_key, '')
@@ -204,7 +232,8 @@ class QAScorer(Text2qa):
             data[self.output_key] = 0
             return data
 
-        prompt = textwrap.dedent(f'''
+        if user_prompt is None:
+            user_prompt = f'''
         请根据下面内容对 QA 打分：
 
         原文：
@@ -219,13 +248,9 @@ class QAScorer(Text2qa):
         规则：
         - 严格基于原文 → 1
         - 否则 → 0
+        '''
 
-        仅输出 JSON：
-        {{'{self.output_key}': 0 or 1}}
-        ''')
-
-        response = self.model(prompt)
-        res = json_res_extractor(response, self.output_key)
+        res = self.model(user_prompt)
 
         data[self.output_key] = res.get(self.output_key, 0)
         return data
