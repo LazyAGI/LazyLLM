@@ -1,7 +1,7 @@
 import json5
 import regex
 
-def json_res_extractor(model_output,output_key):
+def json_res_extractor(model_output, output_key):  # noqa: C901
     if isinstance(output_key, str):
         required_keys = [output_key]
     else:
@@ -13,13 +13,13 @@ def json_res_extractor(model_output,output_key):
     n = len(text)
 
     for start in range(n):
-        if text[start] != "{":
+        if text[start] != '{':
             continue
 
         depth = 0
         in_string = False
         escape = False
-        quote_char = ""
+        quote_char = ''
 
         for i in range(start, n):
             ch = text[i]
@@ -27,7 +27,7 @@ def json_res_extractor(model_output,output_key):
             if in_string:
                 if escape:
                     escape = False
-                elif ch == "\\":
+                elif ch == '\\':
                     escape = True
                 elif ch == quote_char:
                     in_string = False
@@ -35,14 +35,14 @@ def json_res_extractor(model_output,output_key):
                 if ch == '"' or ch == "'":
                     in_string = True
                     quote_char = ch
-                elif ch == "{":
+                elif ch == '{':
                     depth += 1
-                elif ch == "}":
+                elif ch == '}':
                     if depth == 0:
                         break
                     depth -= 1
                     if depth == 0:
-                        candidate = text[start : i + 1]
+                        candidate = text[start: i + 1]
                         try:
                             obj = json5.loads(candidate)
                         except Exception:
