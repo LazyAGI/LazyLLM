@@ -1,9 +1,9 @@
 import re
-import json5
 from lazyllm import LOG, TrainableModule
 from lazyllm.tools.data import data_register
 from lazyllm.thirdparty import transformers
-from datasketch import MinHash, MinHashLSH
+import textwrap
+from ..res_extractor import json_res_extractor
 
 import os
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
@@ -56,9 +56,6 @@ class TextToChunks(Text2qa):
         return len(text)
 
     def forward(self, data: dict):
-        '''
-        将文本切分为 chunk
-        '''
         text = data.get(self.input_key, '')
         if not text:
             return []
@@ -92,94 +89,11 @@ class TextToChunks(Text2qa):
         return results
 
 @data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
-def html_tag_cleaner(data: dict, input_key='chunk'):
-    '''
-    移除 HTML 标签，如 <p> <br> <div> 等
-    '''
-    text = data.get(input_key, '')
-    if not text:
-        return data
-
-    text = re.sub(r'<[^>]+>', '', text)
-    data[input_key] = text
-    return data
-
-@data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
-def html_entity_cleaner(data: dict, input_key='chunk'):
-    '''
-    移除 HTML 实体，如 &nbsp; &amp;
-    '''
-    text = data.get(input_key, '')
-    if not text:
-        return data
-
-    text = re.sub(r'&\w+;', ' ', text)
-    data[input_key] = text
-    return data
-
-@data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
-def whitespace_cleaner(data: dict, input_key='chunk'):
-    '''
-    合并多余空白字符并 strip
-    '''
-    text = data.get(input_key, '')
-    if not text:
-        return data
-
-    text = re.sub(r'\s+', ' ', text).strip()
-    data[input_key] = text
-    return data
-
-@data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
-def control_char_cleaner(data: dict, input_key='chunk'):
-    '''
-    移除控制字符（\x00-\x1f, \x7f）
-    '''
-    text = data.get(input_key, '')
-    if not text:
-        return data
-
-    text = re.sub(r'[\x00-\x1f\x7f]', ' ', text)
-    data[input_key] = text
-    return data
-
-@data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
-def unicode_space_cleaner(data: dict, input_key='chunk'):
-    '''
-    统一 Unicode 空白字符
-    '''
-    text = data.get(input_key, '')
-    if not text:
-        return data
-
-    text = text.replace('\u3000', ' ').replace('\xa0', ' ')
-    data[input_key] = text
-    return data
-
-@data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
-def punctuation_dedup_cleaner(data: dict, input_key='chunk'):
-    '''
-    压缩重复标点
-    '''
-    text = data.get(input_key, '')
-    if not text:
-        return data
-
-    text = re.sub(r'([!?。，,.])\1+', r'\1', text)
-    data[input_key] = text
-    return data
-
-@data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
 def empty_or_noise_filter(data: dict, input_key='chunk'):
-    '''
-    过滤几乎没有有效字符的 chunk
-    '''
     text = data.get(input_key, '')
-    # 返回 [] 为丢弃
     if not text:
         return []
 
-    # 只剩标点或空白, 返回 [] 为丢弃
     if not re.search(r'[\w\u4e00-\u9fff]', text):
         return []
 
@@ -187,14 +101,10 @@ def empty_or_noise_filter(data: dict, input_key='chunk'):
 
 @data_register('data.Text2qa', rewrite_func='forward', _concurrency_mode='process')
 def invalid_unicode_cleaner(data: dict, input_key='chunk'):
-    '''
-    移除常见非法 Unicode 区段
-    '''
     text = data.get(input_key, '')
     if not text:
         return data
 
-    # 非字符 & 私有区
     text = re.sub(
         r'[\uFDD0-\uFDEF\uFFFE\uFFFF'
         r'\U0001FFFE\U0001FFFF'
@@ -219,19 +129,6 @@ def invalid_unicode_cleaner(data: dict, input_key='chunk'):
 
     data[input_key] = text
     return data
-
-def extract_qa_object(model_output):
-    '''提取第一个包含 instruction 和 output 字段的 JSON 对象'''
-    json_pattern = r'\{[\s\S]*?\}'
-    matches = re.findall(json_pattern, model_output)
-    for match in matches:
-        try:
-            obj = json5.loads(match)
-            if 'query' in obj and 'answer' in obj:
-                return obj
-        except json5.JSONDecodeError:
-            continue
-    return {}
 
 class ChunkToQA(Text2qa):
     def __init__(self,
@@ -259,32 +156,21 @@ class ChunkToQA(Text2qa):
             data[self.answer_key] = ''
             return data
 
-        prompt = f'''
-根据下面文本生成一个 QA 对：
-{chunk}
+        prompt = textwrap.dedent(f'''
+        根据下面文本生成一个 QA 对：
+        {chunk}
 
-仅输出 JSON：
-{{'{self.query_key}': '问题', '{self.answer_key}': '答案'}}
-'''
+        仅输出 JSON：
+        {{'{self.query_key}': '问题', '{self.answer_key}': '答案'}}
+        ''')
 
         response = self.model(prompt)
-        qa = self.extract_qa_object(response)
+        qa = json_res_extractor(response, [self.query_key, self.answer_key])
 
         data[self.query_key] = qa.get(self.query_key, '')
         data[self.answer_key] = qa.get(self.answer_key, '')
         return data
 
-    def extract_qa_object(self, model_output):
-        json_pattern = r'\{[\s\S]*?\}'
-        matches = re.findall(json_pattern, model_output)
-        for match in matches:
-            try:
-                obj = json5.loads(match)
-                if self.query_key in obj and self.answer_key in obj:
-                    return obj
-            except json5.JSONDecodeError:
-                continue
-        return {}
 
 class QAScorer(Text2qa):
     def __init__(self,
@@ -318,85 +204,28 @@ class QAScorer(Text2qa):
             data[self.output_key] = 0
             return data
 
-        prompt = f'''
-请根据下面内容对 QA 打分：
+        prompt = textwrap.dedent(f'''
+        请根据下面内容对 QA 打分：
 
-原文：
-{chunk}
+        原文：
+        {chunk}
 
-问题：
-{query}
+        问题：
+        {query}
 
-答案：
-{answer}
+        答案：
+        {answer}
 
-规则：
-- 严格基于原文 → 1
-- 否则 → 0
+        规则：
+        - 严格基于原文 → 1
+        - 否则 → 0
 
-仅输出 JSON：
-{{'{self.output_key}': 0 or 1}}
-'''
+        仅输出 JSON：
+        {{'{self.output_key}': 0 or 1}}
+        ''')
 
         response = self.model(prompt)
-        res = self.extract_score_object(response)
+        res = json_res_extractor(response, self.output_key)
 
         data[self.output_key] = res.get(self.output_key, 0)
         return data
-
-    def extract_score_object(self, model_output):
-        json_pattern = r'\{[\s\S]*?\}'
-        matches = re.findall(json_pattern, model_output)
-        for match in matches:
-            try:
-                obj = json5.loads(match)
-                if self.output_key in obj:
-                    return obj
-            except json5.JSONDecodeError:
-                continue
-        return {}
-
-@data_register(
-    'data.Text2qa',
-    rewrite_func='forward_batch_input',
-    _concurrency_mode='process'
-)
-def minhash_dedup(data: list,
-                  input_key='chunk',
-                  num_perm=10,
-                  sim_threshold=0.85):
-
-    assert isinstance(data, list)
-
-    keep = []
-    drop = []
-
-    lsh = MinHashLSH(
-        threshold=sim_threshold,
-        num_perm=num_perm
-    )
-
-    def build_minhash(text):
-        mh = MinHash(num_perm=num_perm)
-        for w in re.findall(r'\w+', text.lower()):
-            mh.update(w.encode('utf-8'))
-        return mh
-
-    for idx, item in enumerate(data):
-        text = item.get(input_key, '')
-
-        if not text:
-            drop.append(item)
-            continue
-
-        mh = build_minhash(text)
-
-        dup = lsh.query(mh)
-        if dup:
-            drop.append(item)
-            continue
-
-        lsh.insert(f'id_{idx}', mh)
-        keep.append(item)
-
-    return keep
