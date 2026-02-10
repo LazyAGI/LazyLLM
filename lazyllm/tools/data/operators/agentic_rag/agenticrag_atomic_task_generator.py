@@ -1,7 +1,9 @@
-'''AgenticRAG Atomic Task Generator Operators'''
 import json
 from typing import List
+
 from lazyllm import LOG
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
+
 from ...base_data import data_register
 from ...prompts import (
     AtomicTaskGeneratorGetIdentifierPrompt,
@@ -11,9 +13,8 @@ from ...prompts import (
     AtomicTaskGeneratorAnswerPrompt,
     AtomicTaskGeneratorRecallScorePrompt,
     AtomicTaskGeneratorOptionalAnswerPrompt,
-    AtomicTaskGeneratorGoldenDocAnswerPrompt
+    AtomicTaskGeneratorGoldenDocAnswerPrompt,
 )
-from lazyllm.common.registry import LazyLLMRegisterMetaClass
 
 # Get or create agenticrag group
 if 'agenticrag' in LazyLLMRegisterMetaClass.all_clses['data']:
@@ -23,9 +24,13 @@ else:
 
 
 def _clean_json_block(item: str) -> str:
-
-    return item.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
-
+    return (
+        item.strip()
+        .removeprefix('```json')
+        .removeprefix('```')
+        .removesuffix('```')
+        .strip()
+    )
 
 
 def _call_llm_single(llm, prompt: str, system_prompt: str = '') -> str:
@@ -37,7 +42,7 @@ def _call_llm_single(llm, prompt: str, system_prompt: str = '') -> str:
 
 
 class AgenticRAGGetIdentifier(agenticrag):
-   
+
     def __init__(self, llm=None, input_key: str = 'prompts', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.llm = llm
@@ -63,7 +68,7 @@ class AgenticRAGGetIdentifier(agenticrag):
 
 
 class AgenticRAGGetConclusion(agenticrag):
-    
+
     def __init__(self, llm=None, input_key: str = 'prompts', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.llm = llm
@@ -116,18 +121,17 @@ class AgenticRAGExpandConclusions(agenticrag):
                 new_row['identifier'] = str(identifier)
                 expanded_rows.append(new_row)
 
-        return expanded_rows if expanded_rows else []
+        return expanded_rows
 
 
 class AgenticRAGGenerateQuestion(agenticrag):
-    
+
     def __init__(self, llm=None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.llm = llm
         self.prompt_template = AtomicTaskGeneratorQuestionPrompt()
 
-    def forward(self, data: dict) -> dict:
-        
+    def forward(self, data: dict):
         candidate_str = data.get('candidate_tasks_str', '')
         identifier = data.get('identifier', '')
 
@@ -137,7 +141,9 @@ class AgenticRAGGenerateQuestion(agenticrag):
             relation = task_item.get('R', '')
 
             system_prompt = self.prompt_template.build_system_prompt()
-            user_prompt = self.prompt_template.build_prompt(identifier, conclusion, relation)
+            user_prompt = self.prompt_template.build_prompt(
+                identifier, conclusion, relation
+            )
 
             result = _call_llm_single(self.llm, user_prompt, system_prompt)
             parsed = json.loads(_clean_json_block(result))
@@ -160,12 +166,13 @@ class AgenticRAGCleanQA(agenticrag):
         self.prompt_template = AtomicTaskGeneratorCleanQAPrompt()
 
     def forward(self, data: dict) -> dict:
-        
         question = data.get('question', '')
         answer = data.get('answer', '')
 
         system_prompt = self.prompt_template.build_system_prompt()
-        user_prompt = self.prompt_template.build_prompt({'question': question, 'original_answer': answer})
+        user_prompt = self.prompt_template.build_prompt(
+            {'question': question, 'original_answer': answer}
+        )
 
         try:
             result = _call_llm_single(self.llm, user_prompt, system_prompt)
@@ -186,12 +193,10 @@ class AgenticRAGLLMVerify(agenticrag):
         self.prompt_template = AtomicTaskGeneratorAnswerPrompt()
         self.score_template = AtomicTaskGeneratorRecallScorePrompt()
 
-    def forward(self, data: dict) -> dict:
-        
+    def forward(self, data: dict):
         question = data.get('question', '')
         refined_answer = data.get('refined_answer', '')
 
-        # Get LLM answer
         user_prompt = self.prompt_template.build_prompt(question)
         try:
             llm_answer = _call_llm_single(self.llm, user_prompt, '')
@@ -200,17 +205,19 @@ class AgenticRAGLLMVerify(agenticrag):
             LOG.warning(f'Failed to get LLM answer: {e}')
             return []
 
-        # Calculate recall score
         system_prompt = self.score_template.build_system_prompt()
-        score_prompt = self.score_template.build_prompt(refined_answer, llm_answer)
+        score_prompt = self.score_template.build_prompt(
+            refined_answer, llm_answer
+        )
 
         try:
-            score_result = _call_llm_single(self.llm, score_prompt, system_prompt)
+            score_result = _call_llm_single(
+                self.llm, score_prompt, system_prompt
+            )
             score_dict = json.loads(_clean_json_block(score_result))
             score = score_dict.get('answer_score', 0)
             data['llm_score'] = score
 
-            # Return None if score >= 1 (filter out easy questions)
             if score >= 1:
                 return []
         except Exception as e:
@@ -229,13 +236,14 @@ class AgenticRAGGoldenDocAnswer(agenticrag):
         self.prompt_template = AtomicTaskGeneratorGoldenDocAnswerPrompt()
         self.score_template = AtomicTaskGeneratorRecallScorePrompt()
 
-    def forward(self, data: dict) -> dict:
+    def forward(self, data: dict):
         golden_doc = data.get(self.input_key, '')
         question = data.get('question', '')
         refined_answer = data.get('refined_answer', '')
 
-        # Get golden doc answer
-        user_prompt = self.prompt_template.build_prompt(golden_doc, question)
+        user_prompt = self.prompt_template.build_prompt(
+            golden_doc, question
+        )
         try:
             golden_doc_answer = _call_llm_single(self.llm, user_prompt, '')
             data['golden_doc_answer'] = golden_doc_answer
@@ -243,17 +251,19 @@ class AgenticRAGGoldenDocAnswer(agenticrag):
             LOG.warning(f'Failed to get golden doc answer: {e}')
             return []
 
-        # Calculate score
         system_prompt = self.score_template.build_system_prompt()
-        score_prompt = self.score_template.build_prompt(refined_answer, golden_doc_answer)
+        score_prompt = self.score_template.build_prompt(
+            refined_answer, golden_doc_answer
+        )
 
         try:
-            score_result = _call_llm_single(self.llm, score_prompt, system_prompt)
+            score_result = _call_llm_single(
+                self.llm, score_prompt, system_prompt
+            )
             score_dict = json.loads(_clean_json_block(score_result))
             score = score_dict.get('answer_score', 0)
             data['golden_doc_score'] = score
 
-            # Return None if score < 1 (filter out low quality)
             if score < 1:
                 return []
         except Exception as e:
@@ -293,17 +303,23 @@ class AgenticRAGOptionalAnswers(agenticrag):
 
 class AgenticRAGGroupAndLimit(agenticrag):
 
-    def __init__(self, input_key: str = 'prompts', max_question: int = 10, **kwargs):
+    def __init__(
+        self,
+        input_key: str = 'prompts',
+        max_question: int = 10,
+        **kwargs,
+    ):
         super().__init__(rewrite_func='forward_batch_input', **kwargs)
         self.input_key = input_key
         self.max_question = max_question
 
     def forward_batch_input(self, data: List[dict]) -> List[dict]:
         grouped_data = {}
+
         for item in data:
             key_value = item.get(self.input_key, '')
-            if key_value not in grouped_data:
-                grouped_data[key_value] = []
+            grouped_data.setdefault(key_value, [])
+
             if len(grouped_data[key_value]) < self.max_question:
                 grouped_data[key_value].append(item)
 

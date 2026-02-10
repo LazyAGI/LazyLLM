@@ -1,4 +1,3 @@
-'''AgenticRAG Width QA Generator Operators'''
 import json
 from typing import List, Optional
 from lazyllm import LOG
@@ -32,7 +31,7 @@ def _call_llm_single(llm, prompt: str, system_prompt: str = '') -> str:
 
 
 class WidthQAGMergePairs(agenticrag):
-    
+
     def __init__(self, llm=None, **kwargs):
         super().__init__(rewrite_func='forward_batch_input', **kwargs)
         self.llm = llm
@@ -78,7 +77,6 @@ class WidthQAGMergePairs(agenticrag):
             return None
 
     def forward_batch_input(self, data: List[dict]) -> List[dict]:
-     
         if len(data) < 2:
             LOG.warning('Need at least 2 items to merge.')
             return []
@@ -107,7 +105,7 @@ class WidthQAGMergePairs(agenticrag):
 
 
 class WidthQAGCheckDecomposition(agenticrag):
-  
+
     def __init__(self, llm=None, output_question_key: str = 'generated_width_task', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.llm = llm

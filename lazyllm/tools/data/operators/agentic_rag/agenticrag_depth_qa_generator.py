@@ -1,6 +1,6 @@
 '''AgenticRAG Depth QA Generator Operators'''
 import json
-from typing import List, Optional
+from typing import Optional
 from lazyllm import LOG
 from ...base_data import data_register
 from ...prompts import (
@@ -35,7 +35,7 @@ def _call_llm_single(llm, prompt: str, system_prompt: str = '') -> str:
 
 
 class DepthQAGGetIdentifier(agenticrag):
-    
+
     def __init__(self, llm=None, input_key: str = 'question', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.llm = llm

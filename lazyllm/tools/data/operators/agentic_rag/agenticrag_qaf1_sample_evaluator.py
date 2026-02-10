@@ -1,9 +1,6 @@
-'''AgenticRAG QA F1 Sample Evaluator Operators (Function-based)'''
 import re
 import string
 from collections import Counter
-from typing import List
-from lazyllm import LOG
 from ...base_data import data_register
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 
@@ -32,7 +29,6 @@ def _normalize_answer(s: str) -> str:
 
 
 def _calculate_f1(prediction: str, ground_truth: str) -> float:
-    
     # Handle special cases for yes/no/noanswer
     if prediction in ['yes', 'no', 'noanswer'] or ground_truth in ['yes', 'no', 'noanswer']:
         if prediction != ground_truth:
@@ -59,7 +55,6 @@ def _calculate_f1(prediction: str, ground_truth: str) -> float:
 def qaf1_normalize_texts(data: dict,
                          prediction_key: str = 'refined_answer',
                          ground_truth_key: str = 'golden_doc_answer') -> dict:
-    
     prediction = data.get(prediction_key, None)
     ground_truths = data.get(ground_truth_key, None)
 
@@ -84,7 +79,6 @@ def qaf1_normalize_texts(data: dict,
 
 @data_register('data.agenticrag', rewrite_func='forward', _concurrency_mode='process')
 def qaf1_calculate_score(data: dict, output_key: str = 'F1Score') -> dict:
-
     normalized_prediction = data.get('_normalized_prediction', None)
     normalized_ground_truths = data.get('_normalized_ground_truths', None)
 
@@ -102,4 +96,3 @@ def qaf1_calculate_score(data: dict, output_key: str = 'F1Score') -> dict:
     data.pop('_normalized_ground_truths', None)
 
     return data
-
