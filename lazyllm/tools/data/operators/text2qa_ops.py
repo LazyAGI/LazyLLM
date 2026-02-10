@@ -1,5 +1,5 @@
 import re
-from lazyllm import LOG, TrainableModule, OnlineChatModule
+from lazyllm import LOG, TrainableModule
 from lazyllm.tools.data import data_register
 from lazyllm.thirdparty import transformers
 import regex
@@ -164,8 +164,8 @@ class ChunkToQA(Text2qa):
         else:
             self.model = model
         self.model = self.model.prompt(output_structure)\
-                .formatter(JsonFormatter())\
-                .start()
+            .formatter(JsonFormatter())\
+            .start()
 
     def forward(self, data: dict, user_prompt=None):
         assert self.input_key in data
@@ -216,8 +216,8 @@ class QAScorer(Text2qa):
         else:
             self.model = model.prompt(output_structure)
         self.model = self.model.prompt(output_structure)\
-                .formatter(JsonFormatter())\
-                .start()
+            .formatter(JsonFormatter())\
+            .start()
 
     def forward(self, data: dict, user_prompt=None):
         assert self.input_key in data
