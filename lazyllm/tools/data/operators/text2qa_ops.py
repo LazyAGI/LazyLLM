@@ -143,12 +143,14 @@ class ChunkToQA(Text2qa):
                  answer_key='answer',
                  model=None,
                  output_structure=None,
+                 user_prompt=None,
                  **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
 
         self.input_key = input_key
         self.query_key = query_key
         self.answer_key = answer_key
+        self.user_prompt = user_prompt
 
         if output_structure is None:
             output_structure = f'''
@@ -167,7 +169,7 @@ class ChunkToQA(Text2qa):
             .formatter(JsonFormatter())\
             .start()
 
-    def forward(self, data: dict, user_prompt=None):
+    def forward(self, data: dict):
         assert self.input_key in data
         chunk = data.get(self.input_key, '')
 
@@ -176,8 +178,10 @@ class ChunkToQA(Text2qa):
             data[self.answer_key] = ''
             return data
 
-        if user_prompt is None:
+        if self.user_prompt is None:
             user_prompt = '根据下面文本生成一个 QA 对：\n'
+        else:
+            user_prompt = self.user_prompt
 
         inp = f'{user_prompt}\n{chunk}'
 
@@ -195,6 +199,7 @@ class QAScorer(Text2qa):
                  answer_key='answer',
                  model=None,
                  output_structure=None,
+                 user_prompt=None,
                  **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
 
@@ -202,6 +207,7 @@ class QAScorer(Text2qa):
         self.output_key = output_key
         self.query_key = query_key
         self.answer_key = answer_key
+        self.user_prompt = user_prompt
 
         if output_structure is None:
             output_structure = f'''
@@ -214,12 +220,12 @@ class QAScorer(Text2qa):
         if model is None:
             self.model = TrainableModule(DEFAULT_MODEL)
         else:
-            self.model = model.prompt(output_structure)
+            self.model = model
         self.model = self.model.prompt(output_structure)\
             .formatter(JsonFormatter())\
             .start()
 
-    def forward(self, data: dict, user_prompt=None):
+    def forward(self, data: dict):
         assert self.input_key in data
         assert self.query_key in data
         assert self.answer_key in data
@@ -232,24 +238,22 @@ class QAScorer(Text2qa):
             data[self.output_key] = 0
             return data
 
-        if user_prompt is None:
+        qa = f'问题{query}; 答案{answer}'
+        if self.user_prompt is None:
             user_prompt = f'''
         请根据下面内容对 QA 打分：
 
         原文：
         {chunk}
 
-        问题：
-        {query}
-
-        答案：
-        {answer}
+        {qa}
 
         规则：
         - 严格基于原文 → 1
         - 否则 → 0
         '''
-
+        else:
+            user_prompt = self.user_prompt + qa
         res = self.model(user_prompt)
 
         data[self.output_key] = res.get(self.output_key, 0)
