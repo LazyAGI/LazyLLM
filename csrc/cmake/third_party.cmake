@@ -1,6 +1,6 @@
 include(FetchContent)
 
-find_package(Python3 COMPONENTS Interpreter Development.Module REQUIRED)
+find_package(Python3 COMPONENTS Interpreter Development Development.Module REQUIRED)
 find_package(pybind11 CONFIG REQUIRED)
 
 find_package(xxHash QUIET)
@@ -14,19 +14,15 @@ if (NOT TARGET xxhash)
     add_subdirectory(${xxhash_SOURCE_DIR}/cmake_unofficial ${xxhash_BINARY_DIR})
 endif()
 
-find_package(sentencepiece QUIET)
-if (NOT TARGET sentencepiece AND NOT TARGET sentencepiece::sentencepiece AND NOT TARGET sentencepiece-static)
+find_package(cpp_tiktoken QUIET)
+if (NOT TARGET cpp_tiktoken)
+    # We only need cpp_tiktoken for in-tree usage; avoid exporting/installing it.
+    set(CPP_TIKTOKEN_INSTALL OFF CACHE BOOL "" FORCE)
+    set(CPP_TIKTOKEN_TESTING OFF CACHE BOOL "" FORCE)
     FetchContent_Declare(
-        sentencepiece
-        GIT_REPOSITORY https://github.com/google/sentencepiece.git
-        GIT_TAG v0.2.0
+        cpp_tiktoken
+        GIT_REPOSITORY https://github.com/gh-markt/cpp-tiktoken.git
+        GIT_TAG master
     )
-    FetchContent_MakeAvailable(sentencepiece)
-endif()
-if (TARGET sentencepiece::sentencepiece)
-    add_library(sentencepiece ALIAS sentencepiece::sentencepiece)
-elseif (TARGET sentencepiece)
-    add_library(sentencepiece ALIAS sentencepiece)
-elseif (TARGET sentencepiece-static)
-    add_library(sentencepiece ALIAS sentencepiece-static)
+    FetchContent_MakeAvailable(cpp_tiktoken)
 endif()

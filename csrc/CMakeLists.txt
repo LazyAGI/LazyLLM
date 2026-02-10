@@ -18,8 +18,7 @@ file(GLOB_RECURSE LAZYLLM_CORE_SOURCES CONFIGURE_DEPENDS
 add_library(lazyllm_core STATIC ${LAZYLLM_CORE_SOURCES})
 target_include_directories(lazyllm_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/core/include)
 target_link_libraries(lazyllm_core PUBLIC xxhash)
-target_link_libraries(lazyllm_core PUBLIC sentencepiece)
-target_include_directories(lazyllm_core PUBLIC ${sentencepiece_SOURCE_DIR}/src)
+target_link_libraries(lazyllm_core PUBLIC tiktoken)
 
 # Config lazyllm_adaptor lib which maintains callback invocations.
 file(GLOB_RECURSE LAZYLLM_ADAPTOR_SOURCES CONFIGURE_DEPENDS

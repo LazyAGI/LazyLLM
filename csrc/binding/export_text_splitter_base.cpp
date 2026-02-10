@@ -1,7 +1,7 @@
 #include "lazyllm.hpp"
 
 #include "adaptor_base_wrapper.hpp"
-#include "text_spliter_base.hpp"
+#include "text_splitter_base.hpp"
 
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
@@ -12,8 +12,8 @@ class PyTokenizer final : public lazyllm::Tokenizer, public lazyllm::AdaptorBase
 public:
     explicit PyTokenizer(const py::object& obj) : AdaptorBaseWrapper(obj) {}
 
-    std::vector<int> encode(const std::string& text) const override {
-        auto result = call("encode", {{"text", text}});
+    std::vector<int> encode(const std::string_view& text) const override {
+        auto result = call("encode", {{"text", std::string(text)}});
         return std::any_cast<std::vector<int>>(result);
     }
 
@@ -57,12 +57,12 @@ void exportTextSpliterBase(py::module& m) {
             py::arg("chunk_size") = py::none(),
             py::arg("overlap") = py::none(),
             py::arg("num_workers") = py::none(),
-            py::arg("sentencepiece_model") = py::none()
+            py::arg("encoding_name") = py::none()
         )
         .def("split_text", &lazyllm::TextSplitterBase::split_text,
             py::arg("text"), py::arg("metadata_size"))
-        .def("from_sentencepiece_model", &lazyllm::TextSplitterBase::from_sentencepiece_model,
-            py::arg("model_path"), py::return_value_policy::reference)
+        .def("from_tiktoken_encoding", &lazyllm::TextSplitterBase::from_tiktoken_encoding,
+            py::arg("encoding_name"), py::return_value_policy::reference)
         .def("from_tokenizer",
             [](lazyllm::TextSplitterBase& self, py::object tokenizer) -> lazyllm::TextSplitterBase& {
                 auto adaptor = std::make_shared<PyTokenizer>(tokenizer);
@@ -100,7 +100,7 @@ void exportTextSpliterBase(py::module& m) {
             py::arg("chunk_size") = py::none(),
             py::arg("overlap") = py::none(),
             py::arg("num_workers") = py::none(),
-            py::arg("sentencepiece_model") = py::none()
+            py::arg("encoding_name") = py::none()
         );
 
     m.def("split_text_keep_separator", &lazyllm::split_text_keep_separator,
