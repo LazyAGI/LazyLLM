@@ -79,23 +79,8 @@ private:
         return static_cast<int>(_tokenizer->encode(view).size());
     }
 
-    static std::vector<std::string> regex_find_all(const std::string_view& text, const std::string_view& pattern) {
-        std::regex re(pattern);
-        std::vector<std::string> out;
-        for (auto it = std::sregex_iterator(text.begin(), text.end(), re);
-             it != std::sregex_iterator(); ++it) {
-            out.emplace_back(it->str());
-        }
-        if (out.empty()) out.emplace_back(text);
-        return out;
-    }
-
-    static std::vector<std::string_view> split_to_chars(const std::string_view& text) {
-        std::vector<std::string_view> out;
-        out.reserve(text.size());
-        for (char c : text) out.emplace_back(1, c);
-        return out;
-    }
+    static std::vector<std::string> regex_find_all(const std::string_view& text, const std::string_view& pattern);
+    static std::vector<std::string_view> split_to_chars(const std::string_view& text);
 
 private:
     static MapParams _default_params;
