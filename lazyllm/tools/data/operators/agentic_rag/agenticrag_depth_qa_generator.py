@@ -1,6 +1,5 @@
-'''AgenticRAG Depth QA Generator Operators'''
 import json
-from typing import List, Optional
+from typing import Optional
 from lazyllm import LOG
 from lazyllm.components.formatter import JsonFormatter
 from ...base_data import data_register
@@ -31,7 +30,7 @@ class DepthQAGGetIdentifier(agenticrag):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.prompt_template = DepthQAGeneratorGetIdentifierPrompt()
-        
+
         if llm is not None:
             system_prompt = self.prompt_template.build_system_prompt()
             self._llm_serve = llm.share().prompt(system_prompt)
@@ -69,7 +68,7 @@ class DepthQAGBackwardTask(agenticrag):
         self.new_identifier_key = new_identifier_key
         self.relation_key = relation_key
         self.prompt_template = DepthQAGeneratorBackwardTaskPrompt()
-        
+
         if llm is not None:
             self._llm_serve = llm.share().formatter(JsonFormatter())
             self._llm_serve.start()
@@ -116,7 +115,7 @@ class DepthQAGCheckSuperset(agenticrag):
         self.relation_key = relation_key
         self.identifier_key = identifier_key
         self.prompt_template = DepthQAGeneratorSupersetCheckPrompt()
-        
+
         if llm is not None:
             system_prompt = self.prompt_template.build_system_prompt()
             self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
@@ -166,7 +165,7 @@ class DepthQAGGenerateQuestion(agenticrag):
         self.identifier_key = identifier_key
         self.question_key = question_key
         self.prompt_template = DepthQAGeneratorQuestionPrompt()
-        
+
         if llm is not None:
             system_prompt = self.prompt_template.build_system_prompt()
             self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
@@ -215,11 +214,11 @@ class DepthQAGVerifyQuestion(agenticrag):
         self.question_key = question_key
         self.answer_template = DepthQAGeneratorAnswerPrompt()
         self.score_template = DepthQAGeneratorRecallScorePrompt()
-        
+
         if llm is not None:
             self._llm_answer_serve = llm.share()
             self._llm_answer_serve.start()
-            
+
             score_system_prompt = self.score_template.build_system_prompt()
             self._llm_score_serve = llm.share().prompt(score_system_prompt).formatter(JsonFormatter())
             self._llm_score_serve.start()
@@ -230,7 +229,7 @@ class DepthQAGVerifyQuestion(agenticrag):
     def forward(self, data: dict) -> dict:
         if self._llm_answer_serve is None or self._llm_score_serve is None:
             raise ValueError('LLM is not configured')
-            
+
         question = data.get(self.question_key, '')
 
         if 'refined_answer' not in data and 'answer' in data:
@@ -273,82 +272,3 @@ class DepthQAGVerifyQuestion(agenticrag):
             return []
 
         return data
-
-
-class AgenticRAGDepthQAGenerator(agenticrag):
-
-    def __init__(
-            self,
-            llm=None,
-            n_rounds: int = 2,
-            **kwargs
-    ):
-        super().__init__(rewrite_func='forward_batch_input', **kwargs)
-        self.n_rounds = n_rounds
-        self.llm = llm
-
-    def forward_batch_input(
-            self,
-            data: List[dict],
-            input_key: str = 'question',
-            output_key: str = 'depth_question',
-    ) -> List[dict]:
-        '''
-        Process data to generate depth QA pairs using pipeline operators.
-        '''
-        from lazyllm import pipeline
-
-        assert isinstance(data, list), 'Input data must be a list'
-        data_list = data.copy()
-
-        # Step 0: Get identifiers
-        LOG.info('Getting identifiers...')
-        with pipeline() as ppl_identifier:
-            ppl_identifier.get_id = DepthQAGGetIdentifier(llm=self.llm, input_key=input_key)
-        data_list = ppl_identifier(data_list)
-
-        # Iterative depth question generation
-        for round_id in range(1, self.n_rounds + 1):
-            LOG.info(f'=== Iteration Round {round_id} ===')
-
-            identifier_key = 'identifier' if round_id == 1 else f'new_identifier_{round_id - 1}' if round_id > 1 else 'identifier'
-            new_identifier_key = f'new_identifier_{round_id}'
-            relation_key = f'relation_{round_id}'
-            question_key = f'{output_key}_{round_id}'
-
-            # Build pipeline for this round
-            LOG.info(f'Processing round {round_id} with pipeline...')
-            with pipeline() as ppl_round:
-                ppl_round.backward = DepthQAGBackwardTask(
-                    llm=self.llm,
-                    identifier_key=identifier_key,
-                    new_identifier_key=new_identifier_key,
-                    relation_key=relation_key
-                )
-                ppl_round.check = DepthQAGCheckSuperset(
-                    llm=self.llm,
-                    new_identifier_key=new_identifier_key,
-                    relation_key=relation_key,
-                    identifier_key=identifier_key
-                )
-                ppl_round.generate = DepthQAGGenerateQuestion(
-                    llm=self.llm,
-                    new_identifier_key=new_identifier_key,
-                    relation_key=relation_key,
-                    identifier_key=identifier_key,
-                    question_key=question_key
-                )
-                ppl_round.verify = DepthQAGVerifyQuestion(
-                    llm=self.llm,
-                    question_key=question_key
-                )
-            data_list = ppl_round(data_list)
-
-            if not data_list:
-                LOG.warning(f'No data left after round {round_id}.')
-                break
-
-            LOG.info(f'Round {round_id} completed. Remaining items: {len(data_list)}')
-
-        LOG.info(f'Depth QA generation completed! Final count: {len(data_list)}')
-        return data_list
