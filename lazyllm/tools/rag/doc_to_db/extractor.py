@@ -67,7 +67,7 @@ class SchemaExtractor:
 
     def __init__(self, db_config: Dict[str, Any], llm: LLMBase, *, table_prefix: Optional[str] = None,
                  force_refresh: bool = False, extraction_mode: ExtractionMode = ExtractionMode.TEXT,
-                 max_len: int = ONE_DOC_LENGTH_LIMIT, num_workers: int = 4):
+                 max_len: int = ONE_DOC_LENGTH_LIMIT, num_workers: int = 4, sql_manager: Optional[SqlManager] = None):
         if not isinstance(llm, LLMBase):
             raise TypeError('llm must be an instance of LLMBase')
         self._llm = llm
@@ -80,6 +80,7 @@ class SchemaExtractor:
         self._extraction_mode = extraction_mode
         self._max_len = max_len
         self._num_workers = num_workers
+        self._sql_manager = sql_manager
 
     @property
     def sql_manager(self) -> SqlManager:
@@ -179,7 +180,8 @@ class SchemaExtractor:
 
     @once_wrapper
     def _lazy_init(self):
-        self._sql_manager = self._init_sql_manager(self._db_config) if self._db_config else None
+        if self._sql_manager is None:
+            self._sql_manager = self._init_sql_manager(self._db_config) if self._db_config else None
         if self._sql_manager:
             self._ensure_management_tables()
 
