@@ -2,23 +2,12 @@ from ..base_data import data_register
 from lazyllm import TrainableModule
 from lazyllm.components.formatter import JsonFormatter
 from collections import Counter
-import os
-import regex
+from utils import boxed_res_extractor
 from lazyllm.thirdparty import math_verify
 
-os.environ['TOKENIZERS_PARALLELISM'] = 'false'
-
 DEFAULT_MODEL = 'qwen2.5-0.5B-instruct'
-DEFAULT_TOKENIZER = 'Qwen/Qwen2.5-0.5B'
 
 GenCot = data_register.new_group('genCot')
-
-def boxed_res_extractor(text):
-    if not isinstance(text, str):
-        return None
-    pattern = r'\\boxed\{(?P<content>(?:[^{}]+|\{(?&content)\})*)\}'
-    matches = regex.findall(pattern, text)
-    return matches[-1].strip() if matches else None
 
 class CoTGenerator(GenCot):
     def __init__(self,

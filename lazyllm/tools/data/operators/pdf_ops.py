@@ -9,13 +9,15 @@ class Pdf2Md(Pdf2Qa):
     def __init__(self,
                  input_key='pdf_path',
                  output_key='docs',
-                 reader_url='http://10.119.30.80:20234',
+                 reader_url=None,
                  backend='vlm-vllm-async-engine',
                  upload_mode=True,
                  use_cache=False,
                  **kwargs):
 
         super().__init__(_concurrency_mode='thread', **kwargs)
+        if not reader_url:
+            raise ValueError('You must pass in a reader_url.')
 
         self.input_key = input_key
         self.output_key = output_key
@@ -29,6 +31,7 @@ class Pdf2Md(Pdf2Qa):
 
     def forward(self, data):
         pdf_path = data.get(self.input_key)
+        
         if not pdf_path:
             return None
 

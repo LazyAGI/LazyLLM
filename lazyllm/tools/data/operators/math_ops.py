@@ -287,8 +287,8 @@ class DuplicateAnswerDetector(MathQA):
 
     def forward(self, data):
         assert isinstance(data, dict)
-        question = str(data.get(self.question_key, '') or '')
-        answer = str(data.get(self.answer_key, '') or '')
+        question = str(data.get(self.question_key, ''))
+        answer = str(data.get(self.answer_key, ''))
         data[self.output_key] = False
         if not answer:
             return data
@@ -413,7 +413,9 @@ class QuestionFusionGenerator(MathQA):
 
     def forward(self, data):
         questions = data.get(self.list_key, [])
-        assert len(questions) > 1
+        if len(questions) <= 1:
+            LOG.warning(f'QuestionFusionGenerator requires more than one question, but got {len(questions)}. Skipping.')
+            return data
         base_prompt = f'''
         问题列表：
         {questions}

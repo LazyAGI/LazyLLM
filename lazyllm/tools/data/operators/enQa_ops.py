@@ -3,7 +3,6 @@ from lazyllm import TrainableModule
 from lazyllm.components.formatter import JsonFormatter
 
 DEFAULT_MODEL = 'qwen2.5-0.5B-instruct'
-DEFAULT_TOKENIZER = 'Qwen/Qwen2.5-0.5B'
 
 EnQA = data_register.new_group('enQA')
 
@@ -141,54 +140,30 @@ class DiversityScorer(EnQA):
         data[self.output_key] = new_list
         return data
 
+@data_register('data.enQA', rewrite_func='forward')
+def post_processor(data, input_key):
+    items = data.get(input_key)
+    if not items:
+        return None
 
-class PostProcessor(EnQA):
+    result = []
+    for obj in items:
 
-    def __init__(self,
-                 input_key='diversity_querys',
-                 rewritten_key='query',
-                 **kwargs):
+        if not isinstance(obj, dict):
+            continue
 
-        super().__init__(_concurrency_mode='thread', **kwargs)
+        new_row = data.copy()
+        new_row.pop(input_key, None)
+        for k, v in obj.items():
+            new_row[k] = v
 
-        self.input_key = input_key
-        self.rewritten_key = rewritten_key
+        result.append(new_row)
 
-    def forward(self, data):
-        items = data.get(self.input_key)
-        if not items:
-            return None
+    return result
 
-        result = []
-        for obj in items:
-
-            if not isinstance(obj, dict):
-                continue
-
-            new_row = data.copy()
-            new_row.pop(self.input_key, None)
-            for k, v in obj.items():
-                new_row[k] = v
-
-            result.append(new_row)
-
-        return result
-
-
-class DiversityFilter(EnQA):
-
-    def __init__(self,
-                 input_key='diversity_score',
-                 min_score=1,
-                 **kwargs):
-
-        super().__init__(_concurrency_mode='thread', **kwargs)
-
-        self.input_key = input_key
-        self.min_score = min_score
-
-    def forward(self, data):
-        score = data.get(self.input_key)
-        if score >= self.min_score:
+@data_register('data.enQA', rewrite_func='forward')
+def diversity_filter(data, input_key, min_score):
+        score = data.get(input_key, 0)
+        if score >= min_score:
             return None
         return []
