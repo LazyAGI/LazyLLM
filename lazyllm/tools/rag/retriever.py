@@ -45,8 +45,12 @@ class Retriever(_RetrieverBase, _PostProcess):
                  output_format: Optional[str] = None, join: Union[bool, str] = False,
                  weight: Optional[float] = None, priority: Optional[_RetrieverBase.Priority] = None, **kwargs):
         super().__init__()
-
-        if similarity and similarity in registered_similarities:
+        if similarity:
+            if similarity not in registered_similarities:
+                raise ValueError(
+                    f"Unregistered similarity: '{similarity}'. "
+                    f'Available options are: {list(registered_similarities.keys())}'
+                )
             _, mode, _ = registered_similarities[similarity]
         else:
             similarity = 'cosine'

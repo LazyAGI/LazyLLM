@@ -61,7 +61,7 @@ class DocManager(lazyllm.ModuleBase):
                 return new_path
         return f'{str(uuid.uuid4())}{suffix}'
 
-    def _parse_json_param(value: Optional[str]):
+    def _parse_json_param(self, value: Optional[str]):
         if value is None:
             return None
         try:
