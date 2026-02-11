@@ -28,7 +28,6 @@ class TestAgenticRAGOperators:
 
     def test_qaf1_sample_evaluator_basic(self):
         '''Test F1 evaluator with basic inputs'''
-        # 使用 single 模式确保测试稳定性
         func = agenticrag.AgenticRAGQAF1SampleEvaluator(_concurrency_mode='single')
         # Test data with exact matches
         inputs = [
@@ -55,7 +54,6 @@ class TestAgenticRAGOperators:
         '''Test F1 evaluator with partial matches'''
         func = agenticrag.AgenticRAGQAF1SampleEvaluator(_concurrency_mode='single')
 
-        # 使用有明显差异的数据确保部分匹配
         inputs = [
             {
                 'refined_answer': 'Paris is the beautiful capital city of France in Europe',
@@ -147,11 +145,8 @@ class TestAgenticRAGOperators:
             '''
         }]
         res = func(inputs)
-
-        # 断言：由于 LLM 输出有不确定性，只检查结构和类型
         assert isinstance(res, list)
-        # 可能生成 0 到多个 QA 对，取决于 LLM 输出
-        # 如果生成了结果，检查必要字段存在
+
         for item in res:
             assert 'question' in item
             assert 'answer' in item or 'refined_answer' in item

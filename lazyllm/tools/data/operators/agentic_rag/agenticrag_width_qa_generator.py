@@ -1,4 +1,3 @@
-import json
 from typing import List, Optional
 from lazyllm import LOG
 from lazyllm.components.formatter import JsonFormatter
