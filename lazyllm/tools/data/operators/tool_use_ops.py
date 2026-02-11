@@ -1,27 +1,6 @@
 from ..base_data import data_register
+from lazyllm.components.formatter import JsonFormatter
 import json
-import re
-
-def _safe_json_load(text):
-    if text is None:
-        return None
-    if not isinstance(text, str):
-        return text
-    raw = text.strip()
-    if not raw:
-        return None
-    try:
-        return json.loads(raw)
-    except Exception:
-        pass
-    match = re.search(r'(\{[\s\S]*\}|\[[\s\S]*\])', raw)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except Exception:
-            return None
-    return None
-
 
 ToolUseOps = data_register.new_group('tool_use_ops')
 
@@ -52,9 +31,8 @@ class ScenarioExtractor(ToolUseOps):
             data[self.output_key] = None
             return data
         instruction = f'对话内容如下：\n{content}\n\n请提取场景信息并输出 JSON。'
-        response = self.model.prompt(self.system_prompt)(instruction)
-        parsed = _safe_json_load(response)
-        data[self.output_key] = parsed if parsed is not None else response.strip()
+        parsed = self.model.prompt(self.system_prompt).formatter(JsonFormatter())(instruction)
+        data[self.output_key] = parsed if parsed is not None else ''
         return data
 
 
@@ -87,10 +65,9 @@ class ScenarioExpander(ToolUseOps):
             return data
         base_text = json.dumps(base, ensure_ascii=False) if not isinstance(base, str) else base
         instruction = f'原始场景：\n{base_text}\n\n请生成 {self.n} 个替代场景并输出 JSON。'
-        response = self.model.prompt(self.system_prompt)(instruction)
-        parsed = _safe_json_load(response) or {}
+        parsed = self.model.prompt(self.system_prompt).formatter(JsonFormatter())(instruction)
         scenarios = parsed.get('scenarios') if isinstance(parsed, dict) else None
-        data[self.output_key] = scenarios if isinstance(scenarios, list) else (parsed if parsed else response.strip())
+        data[self.output_key] = scenarios if isinstance(scenarios, list) else (parsed if parsed else [])
         return data
 
 
@@ -122,10 +99,9 @@ class AtomTaskGenerator(ToolUseOps):
             return data
         scenario_text = json.dumps(scenario, ensure_ascii=False) if not isinstance(scenario, str) else scenario
         instruction = f'场景：\n{scenario_text}\n\n请生成不超过 {self.n} 个原子任务并输出 JSON。'
-        response = self.model.prompt(self.system_prompt)(instruction)
-        parsed = _safe_json_load(response) or {}
+        parsed = self.model.prompt(self.system_prompt).formatter(JsonFormatter())(instruction)
         tasks = parsed.get('tasks') if isinstance(parsed, dict) else None
-        data[self.output_key] = tasks if isinstance(tasks, list) else (parsed if parsed else response.strip())
+        data[self.output_key] = tasks if isinstance(tasks, list) else (parsed if parsed else [])
         return data
 
 
@@ -158,10 +134,9 @@ class SequentialTaskGenerator(ToolUseOps):
             return data
         tasks_text = json.dumps(tasks, ensure_ascii=False) if not isinstance(tasks, str) else tasks
         instruction = f'原子任务列表：\n{tasks_text}\n\n请生成后继与组合任务并输出 JSON。'
-        response = self.model.prompt(self.system_prompt)(instruction)
-        parsed = _safe_json_load(response) or {}
+        parsed = self.model.prompt(self.system_prompt).formatter(JsonFormatter())(instruction)
         items = parsed.get('items') if isinstance(parsed, dict) else None
-        data[self.output_key] = items if isinstance(items, list) else (parsed if parsed else response.strip())
+        data[self.output_key] = items if isinstance(items, list) else (parsed if parsed else [])
         return data
 
 
@@ -195,9 +170,9 @@ class ParaSeqTaskGenerator(ToolUseOps):
             return data
         tasks_text = json.dumps(tasks, ensure_ascii=False) if not isinstance(tasks, str) else tasks
         instruction = f'原子任务列表：\n{tasks_text}\n\n请生成三类任务并输出 JSON。'
-        response = self.model.prompt(self.system_prompt)(instruction)
-        parsed = _safe_json_load(response)
-        data[self.output_key] = parsed if parsed is not None else response.strip()
+        parsed = self.model.prompt(self.system_prompt).formatter(JsonFormatter())(instruction)
+        default_val = {'parallel_tasks': [], 'sequential_tasks': [], 'hybrid_tasks': []}
+        data[self.output_key] = parsed if parsed is not None else default_val
         return data
 
 
@@ -240,8 +215,7 @@ class CompositionTaskFilter(ToolUseOps):
             f'子任务（可选）：\n{subtasks_text}\n\n'
             '请逐条判断并输出 JSON。'
         )
-        response = self.model.prompt(self.system_prompt)(instruction)
-        parsed = _safe_json_load(response) or {}
+        parsed = self.model.prompt(self.system_prompt).formatter(JsonFormatter())(instruction)
         items = parsed.get('items') if isinstance(parsed, dict) else None
         valid = []
         if isinstance(items, list):
@@ -249,7 +223,7 @@ class CompositionTaskFilter(ToolUseOps):
                 if isinstance(it, dict) and it.get('is_valid') is True and it.get('composed_task'):
                     valid.append(it.get('composed_task'))
         data[self.output_key] = valid if valid else (
-            items if isinstance(items, list) else (parsed if parsed else response.strip())
+            items if isinstance(items, list) else (parsed if parsed else [])
         )
         return data
 
@@ -292,10 +266,9 @@ class FunctionGenerator(ToolUseOps):
             f'子任务（可选）：\n{subtasks_text}\n\n'
             '请生成函数列表并输出 JSON。'
         )
-        response = self.model.prompt(self.system_prompt)(instruction)
-        parsed = _safe_json_load(response) or {}
+        parsed = self.model.prompt(self.system_prompt).formatter(JsonFormatter())(instruction)
         funcs = parsed.get('functions') if isinstance(parsed, dict) else None
-        data[self.output_key] = funcs if isinstance(funcs, list) else (parsed if parsed else response.strip())
+        data[self.output_key] = funcs if isinstance(funcs, list) else (parsed if parsed else [])
         return data
 
 
@@ -342,7 +315,6 @@ class MultiTurnConversationGenerator(ToolUseOps):
             f'函数列表：\n{functions_text}\n\n'
             f'请生成约 {self.n_turns} 轮对话的 messages 并输出 JSON。'
         )
-        response = self.model.prompt(self.system_prompt)(instruction)
-        parsed = _safe_json_load(response)
-        data[self.output_key] = parsed if parsed is not None else response.strip()
+        parsed = self.model.prompt(self.system_prompt).formatter(JsonFormatter())(instruction)
+        data[self.output_key] = parsed if parsed is not None else []
         return data

@@ -1,6 +1,6 @@
 from ..base_data import data_register
-import json
-import re
+from lazyllm import LOG
+from lazyllm.components.formatter import JsonFormatter
 
 PreferenceOps = data_register.new_group('preference_ops')
 
@@ -20,18 +20,8 @@ class IntentExtractor(PreferenceOps):
 
     def extract(self, raw_text):
         instruction = f'提炼以下用户文本的核心意图: \n{raw_text}'
-        response = self.model.prompt(self.sys_prompt)(instruction)
-
-        try:
-            return json.loads(response)
-        except Exception:
-            json_match = re.search(r'(\{.*\})', response, re.DOTALL)
-            if json_match:
-                try:
-                    return json.loads(json_match.group(1))
-                except Exception:
-                    pass
-            return response
+        res = self.model.prompt(self.sys_prompt).formatter(JsonFormatter())(instruction)
+        return res if isinstance(res, dict) else None
 
 
 class PreferenceResponseGenerator(PreferenceOps):
@@ -98,16 +88,12 @@ class ResponseEvaluator(PreferenceOps):
                 f'回复: {resp}\n\n'
                 '请对上述回复进行打分。'
             )
-            response = self.model.prompt(self.sys_prompt)(prompt)
-            try:
-                res = json.loads(response)
+            res = self.model.prompt(self.sys_prompt).formatter(JsonFormatter())(prompt)
+            if isinstance(res, dict):
                 scores.append(res.get('total_score', 0))
-            except Exception:
-                json_match = re.search(r'"total_score":\s*(\d+)', response)
-                if json_match:
-                    scores.append(int(json_match.group(1)))
-                else:
-                    scores.append(0)
+            else:
+                LOG.warning(f'Failed to extract total_score from response: {res}')
+                scores.append(0)
         return scores
 
 
@@ -131,7 +117,7 @@ class PreferencePairConstructor(PreferenceOps):
             scores = data[self.score_key]
 
             if not responses or not scores or len(responses) != len(scores):
-                return []  # Return empty list to indicate this item should be skipped/deleted
+                return []
 
             chosen, rejected = self.construct_pair(responses, scores)
 
@@ -142,7 +128,7 @@ class PreferencePairConstructor(PreferenceOps):
                     self.output_rejected_key: rejected
                 }
 
-        return []  # Return empty list if no pair could be constructed
+        return []
 
     def construct_pair(self, responses, scores):
         if len(responses) < 2:
