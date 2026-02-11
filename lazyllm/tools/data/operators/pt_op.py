@@ -53,7 +53,7 @@ def resolution_filter(data, image_key='image_path', min_width=256, min_height=25
 
 
 @data_register('data.pt_mm', rewrite_func='forward', _concurrency_mode='process')
-def resolution_resize(data, image_key='image_path', max_side=1024, input_key=None):
+def resolution_resize(data, image_key='image_path', max_side=1024, input_key=None, inplace=True):
     assert isinstance(data, dict)
     if input_key:
         image_key = input_key
@@ -76,10 +76,17 @@ def resolution_resize(data, image_key='image_path', max_side=1024, input_key=Non
                 new_w, new_h = int(round(w * scale)), int(round(h * scale))
                 if new_w < 1 or new_h < 1:
                     continue
-                resample = getattr(getattr(PIL.Image, 'Resampling', None), 'LANCZOS', PIL.Image.LANCZOS)
+                resample = getattr(
+                    getattr(PIL.Image, 'Resampling', None), 'LANCZOS', PIL.Image.LANCZOS
+                )
                 out = img.resize((new_w, new_h), resample)
-                out.save(image_path, quality=95)
-                valid_paths.append(image_path)
+                if inplace:
+                    save_path = image_path
+                else:
+                    base, ext = os.path.splitext(image_path)
+                    save_path = f'{base}_resized{ext}'
+                out.save(save_path, quality=95)
+                valid_paths.append(save_path)
         if not valid_paths:
             return []
         data[image_key] = valid_paths
@@ -104,13 +111,10 @@ def integrity_check(data, image_key='image_path', input_key=None):
                 LOG.warning(f'Image path not found: {image_path}')
                 continue
             try:
-                file_size = os.path.getsize(image_path)
-                if file_size == 0:
+                with PIL.Image.open(image_path) as img:
+                    img.verify()
+                if os.path.getsize(image_path) == 0:
                     continue
-                with open(image_path, 'rb') as f:
-                    header = f.read(16)
-                    if len(header) < 4:
-                        continue
                 valid_paths.append(image_path)
             except Exception as e:
                 LOG.warning(f'Failed to check file integrity for {image_path}: {e}')
@@ -231,7 +235,8 @@ class VQAGenerator(PT_MM):
         '    {"query": "", "answer": ""}\n'
         '  ]\n'
         '}\n'
-        'Each item in qa_pairs has query (question) and answer. All questions should be answerable from the context and image.'
+        'Each item in qa_pairs has query (question) and answer. '
+        'All questions should be answerable from the context and image.'
     )
 
     def __init__(self, vlm, image_key='image_path', context_key='context', num_qa=5,
@@ -358,20 +363,21 @@ class VQAScorer(PT_MM):
         self.prompt = prompt or self.DEFAULT_PROMPT
         self._scorer = vlm.share().prompt(self.prompt).formatter(JsonFormatter())
 
+    def _clamp_score(self, v):
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (TypeError, ValueError):
+            return 0.0
+
     def _calc_quality(self, image_path):
         if not image_path or not os.path.exists(image_path):
             return 0.0, {}
         try:
-            from lazyllm.components.formatter import encode_query_with_filepaths
             query = 'Rate the visual quality of this image.'
             out = self._scorer(encode_query_with_filepaths(query, [image_path]))
             if not isinstance(out, dict):
                 return 0.0, {}
-            score = out.get('score', out.get('overall', 0.0))
-            try:
-                score = max(0.0, min(1.0, float(score)))
-            except (TypeError, ValueError):
-                score = 0.0
+            score = self._clamp_score(out.get('score', out.get('overall', 0.0)))
             return score, out
         except Exception as e:
             LOG.warning(f'VLM quality scoring failed: {e}')
@@ -386,17 +392,13 @@ class VQAScorer(PT_MM):
             results = [self._calc_quality(p) for p in paths]
             score_dicts = [r[1] for r in results]
             n = len(score_dicts)
-
-            def _f(v):
-                try:
-                    return max(0.0, min(1.0, float(v)))
-                except (TypeError, ValueError):
-                    return 0.0
-
             data['quality_score'] = {
-                'score': sum(_f(d.get('score', d.get('overall', 0))) for d in score_dicts) / n if n else 0.0,
-                'clarity': sum(_f(d.get('clarity', 0)) for d in score_dicts) / n if n else 0.0,
-                'composition': sum(_f(d.get('composition', 0)) for d in score_dicts) / n if n else 0.0,
+                'score': sum(
+                    self._clamp_score(d.get('score', d.get('overall', 0)))
+                    for d in score_dicts
+                ) / n if n else 0.0,
+                'clarity': sum(self._clamp_score(d.get('clarity', 0)) for d in score_dicts) / n if n else 0.0,
+                'composition': sum(self._clamp_score(d.get('composition', 0)) for d in score_dicts) / n if n else 0.0,
                 'reason': '; '.join(str(d.get('reason', '')) for d in score_dicts if d.get('reason')),
             }
             return data
@@ -491,6 +493,7 @@ class GraphRetriever(PT_MM):
         if isinstance(context, list):
             context = '\n\n'.join(str(c) for c in context)
         if isinstance(context, str):
+            # Escape braces so context can be safely used in .format() templates downstream
             context = context.replace('{', '{{').replace('}', '}}')
         if not context or not context.strip():
             return []
