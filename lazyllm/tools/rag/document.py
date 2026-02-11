@@ -124,7 +124,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             if args or kw:
                 raise TypeError(
                     f"When 'url' is provided, only 'name' is allowed. "
-                    f"Got args={args}, extra kwargs={kw}"
+                    f'Got args={args}, extra kwargs={kw}'
                 )
             return UrlDocument(url, name)
         else:

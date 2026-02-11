@@ -69,7 +69,7 @@ class DocManager(lazyllm.ModuleBase):
         except json.JSONDecodeError as e:
             raise fastapi.HTTPException(
                 status_code=400,
-                detail=f"Invalid JSON to load: {e.msg}"
+                detail=f'Invalid JSON to load: {e.msg}'
             )
         return obj
 

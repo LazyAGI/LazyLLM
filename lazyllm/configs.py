@@ -153,8 +153,8 @@ class Config(metaclass=_ConfigMeta):
             return self._impl[name]
         except KeyError:
             raise KeyError(
-                f"Unknown config key: '{name}'. "
-                "Please register it via config.add(...) before access."
+                f'Unknown config key: "{name}". '
+                'Please register it via config.add(...) before access.'
             )
 
     def __str__(self):

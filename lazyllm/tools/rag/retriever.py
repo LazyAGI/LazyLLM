@@ -46,7 +46,7 @@ class Retriever(_RetrieverBase, _PostProcess):
                  weight: Optional[float] = None, priority: Optional[_RetrieverBase.Priority] = None, **kwargs):
         super().__init__()
 
-        if similarity and  similarity in registered_similarities:
+        if similarity and similarity in registered_similarities:
             _, mode, _ = registered_similarities[similarity]
         else:
             similarity = 'cosine'
