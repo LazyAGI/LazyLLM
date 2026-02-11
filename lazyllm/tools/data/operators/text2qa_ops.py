@@ -142,7 +142,6 @@ class ChunkToQA(Text2qa):
                  query_key='query',
                  answer_key='answer',
                  model=None,
-                 output_structure=None,
                  user_prompt=None,
                  **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
@@ -152,14 +151,13 @@ class ChunkToQA(Text2qa):
         self.answer_key = answer_key
         self.user_prompt = user_prompt
 
-        if output_structure is None:
-            output_structure = f'''
-            输出格式要求：
-            {{
-                "{self.query_key}": "生成的问题",
-                "{self.answer_key}": "答案"
-            }}
-            '''
+        output_structure = f'''
+        输出格式要求：
+        {{
+            "{self.query_key}": "生成的问题",
+            "{self.answer_key}": "答案"
+        }}
+        '''
 
         if model is None:
             self.model = TrainableModule(DEFAULT_MODEL)
@@ -198,7 +196,6 @@ class QAScorer(Text2qa):
                  query_key='query',
                  answer_key='answer',
                  model=None,
-                 output_structure=None,
                  user_prompt=None,
                  **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
@@ -209,13 +206,12 @@ class QAScorer(Text2qa):
         self.answer_key = answer_key
         self.user_prompt = user_prompt
 
-        if output_structure is None:
-            output_structure = f'''
-            输出格式要求：
-            {{
-                "{self.output_key}": 0 or 1
-            }}
-            '''
+        output_structure = f'''
+        输出格式要求：
+        {{
+            "{self.output_key}": 0 or 1
+        }}
+        '''
 
         if model is None:
             self.model = TrainableModule(DEFAULT_MODEL)
