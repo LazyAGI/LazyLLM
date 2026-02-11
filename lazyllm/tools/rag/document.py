@@ -238,61 +238,54 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         assert isinstance(self._manager._kbs, ServerModule), 'Document is not a service, please set `manager` to `True`'
         return self._manager._kbs._url
 
+    def _resolve_schema_extractor(self, sql_manager: SqlManager) -> SchemaExtractor:
+        if self._schema_extractor is None:
+            raise ValueError('schema_extractor is required to connect sql manager')
+        if not isinstance(self._schema_extractor, SchemaExtractor):
+            raise ValueError(f'Invalid type for schema extractor: {type(self._schema_extractor)}')
+        if sql_manager == self._schema_extractor.sql_manager:
+            return self._schema_extractor
+        return SchemaExtractor(sql_manager=sql_manager, llm=self._schema_extractor._llm)
+
+    @staticmethod
+    def _compare_schema_rows(rows: Union[List, object, None], schma: BaseModel,
+                             extractor: SchemaExtractor) -> bool:
+        if schma is None:
+            return False
+        sid = extractor.register_schema_set(schma)
+        if not rows:
+            return False
+        if not isinstance(rows, (list, tuple, set)):
+            rows = [rows]
+        return any(getattr(row, 'schema_set_id', row) == sid for row in rows)
+
+    def _get_schema_bind_rows(self, extractor: SchemaExtractor) -> List:
+        mgr = extractor.sql_manager
+        bind_cls = mgr.get_table_orm_class(Table_ALGO_KB_SCHEMA['name'])
+        if bind_cls is None:
+            return []
+        with mgr.get_session() as s:
+            return s.query(bind_cls).filter_by(algo_id=self._impl.algo_name).all()
+
     def connect_sql_manager(
-        self,
-        sql_manager: SqlManager,
-        schma: Optional[BaseModel] = None, #basemodel
+        self, sql_manager: SqlManager, schma: Optional[BaseModel] = None,
         force_refresh: bool = True,
     ):
-        def _resolve_schema_extractor(mgr: SqlManager) -> SchemaExtractor:
-            if isinstance(self._schema_extractor, SchemaExtractor):
-                if mgr == self._schema_extractor.sql_manager:
-                    return self._schema_extractor
-                return SchemaExtractor(sql_manager=mgr, llm=self._schema_extractor._llm)
-            if self._schema_extractor is None:
-                raise ValueError('schema_extractor (SchemaExtractor or LLMBase) is required to connect sql manager')
-            raise ValueError(f'Invalid type for schema extractor: {type(self._schema_extractor)}')
-
-        def compare_schema(rows: Union[List, object, None], schma: BaseModel, extractor: SchemaExtractor):
-            if schma is None:
-                return False
-            sid = extractor.register_schema_set(schma)
-
-            if not rows:
-                return False
-            if not isinstance(rows, (list, tuple, set)):
-                rows = [rows]
-
-            return any(getattr(row, 'schema_set_id', row) == sid for row in rows)
-        
         # 1. Check valid arguments
         if sql_manager.check_connection().status != DBStatus.SUCCESS:
             raise RuntimeError(f'Failed to connect to sql manager: {sql_manager._gen_conn_url()}')
 
-        extractor = _resolve_schema_extractor(sql_manager)
-
-        rows: List = []
-        mgr = extractor.sql_manager
-        Bind = mgr.get_table_orm_class(Table_ALGO_KB_SCHEMA['name'])
-        if Bind is not None:
-            with mgr.get_session() as s:
-                rows = s.query(Bind).filter_by(algo_id=self._impl.algo_name).all()
-        # algoid + kbid (self._impl.algo_name)
-    
+        extractor = self._resolve_schema_extractor(sql_manager)
+        rows = self._get_schema_bind_rows(extractor)
         assert rows or schma, 'doc_table_schma must be given'
 
-        schema_equal = compare_schema(rows, schma, extractor)
+        schema_equal = self._compare_schema_rows(rows, schma, extractor)
         assert (
             schema_equal or force_refresh is True
         ), 'When changing doc_table_schema, force_refresh should be set to True'
 
         # 2. Init handler if needed
-        need_init_processor = not isinstance(self._schema_extractor, SchemaExtractor)
-        if not need_init_processor:
-            # avoid reinit for the same db
-            if sql_manager != self._schema_extractor.sql_manager:
-                need_init_processor = True
-        if need_init_processor:
+        if extractor is not self._schema_extractor:
             # reuse the extractor instance used for schema comparison/registration
             self._schema_extractor = extractor
             self._impl._schema_extractor = extractor
@@ -302,7 +295,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             # This api call will clear existing db table 'lazyllm_doc_elements'
             schema_set_id = self._schema_extractor.register_schema_set(schma)
             self._schema_extractor.register_schema_set_to_kb(
-                algo_id = self._impl._algo_name, schema_set_id= schema_set_id, force_refresh=True)
+                algo_id=self._impl._algo_name, schema_set_id=schema_set_id, force_refresh=True)
 
     def get_sql_manager(self):
         if self._schema_extractor is None:
@@ -310,7 +303,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
         return self._schema_extractor.sql_manager
 
     def extract_db_schema(
-        self, print_schema: bool = False
+        self, llm: Union[OnlineChatModule, TrainableModule], print_schema: bool = False
     ) -> SchemaSetInfo:
 
         schema = self._forward('_analyze_schema_by_llm')
