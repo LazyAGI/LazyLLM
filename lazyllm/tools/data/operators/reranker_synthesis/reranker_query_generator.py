@@ -1,5 +1,6 @@
 import json
 from typing import List, Optional
+
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from lazyllm.components.formatter import JsonFormatter
@@ -14,30 +15,30 @@ else:
 
 
 def _clean_json_block(text: str) -> str:
-    return text.strip().removeprefix("```json").removeprefix("```").removesuffix("```").strip()
+    return text.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
 
 
 class RerankerBuildQueryPrompt(reranker):
     def __init__(
         self,
         num_queries: int = 3,
-        lang: str = "zh",
+        lang: str = 'zh',
         difficulty_levels: Optional[List[str]] = None,
         **kwargs
     ):
         super().__init__(_concurrency_mode='process', **kwargs)
         self.num_queries = num_queries
         self.lang = lang
-        self.difficulty_levels = difficulty_levels or ["easy", "medium", "hard"]
+        self.difficulty_levels = difficulty_levels or ['easy', 'medium', 'hard']
         self.prompt_template = RerankerQueryGeneratorPrompt(lang=lang)
 
     def forward(
         self,
         data: dict,
-        input_key: str = "passage",
+        input_key: str = 'passage',
         **kwargs
     ) -> dict:
-        passage = data.get(input_key, "")
+        passage = data.get(input_key, '')
         if not passage:
             return {**data, '_query_prompt': ''}
 
@@ -54,7 +55,7 @@ class RerankerGenerateQueries(reranker):
     def __init__(
         self,
         llm_serving=None,
-        lang: str = "zh",
+        lang: str = 'zh',
         **kwargs
     ):
         super().__init__(_concurrency_mode='thread', **kwargs)
@@ -74,7 +75,7 @@ class RerankerGenerateQueries(reranker):
         **kwargs
     ) -> dict:
         if self._llm_serve is None:
-            raise ValueError("LLM serving is not configured")
+            raise ValueError('LLM serving is not configured')
 
         user_prompt = data.get('_query_prompt', '')
         if not user_prompt:
@@ -89,15 +90,15 @@ class RerankerGenerateQueries(reranker):
                 response = json.dumps(result, ensure_ascii=False)
             return {**data, '_query_response': response}
         except Exception as e:
-            LOG.warning(f"Failed to generate queries: {e}")
+            LOG.warning(f'Failed to generate queries: {e}')
             return {**data, '_query_response': ''}
 
 
 class RerankerParseQueries(reranker):
     def __init__(
         self,
-        input_key: str = "passage",
-        output_query_key: str = "query",
+        input_key: str = 'passage',
+        output_query_key: str = 'query',
         **kwargs
     ):
         super().__init__(_concurrency_mode='process', **kwargs)
@@ -118,28 +119,28 @@ class RerankerParseQueries(reranker):
 
         try:
             parsed = json.loads(_clean_json_block(response))
-            queries = parsed if isinstance(parsed, list) else parsed.get("queries", [])
+            queries = parsed if isinstance(parsed, list) else parsed.get('queries', [])
 
             for query_item in queries:
                 if isinstance(query_item, dict):
-                    query = query_item.get("query", "")
-                    difficulty = query_item.get("difficulty", "medium")
+                    query = query_item.get('query', '')
+                    difficulty = query_item.get('difficulty', 'medium')
                 else:
                     query = str(query_item)
-                    difficulty = "medium"
+                    difficulty = 'medium'
 
                 if query.strip():
                     new_row = data.copy()
                     new_row[self.output_query_key] = query.strip()
-                    new_row["difficulty"] = difficulty
-                    new_row["pos"] = [passage]  # Positive sample is the source passage
+                    new_row['difficulty'] = difficulty
+                    new_row['pos'] = [passage]  # Positive sample is the source passage
                     # Clean up intermediate fields
                     new_row.pop('_query_prompt', None)
                     new_row.pop('_query_response', None)
                     expanded_rows.append(new_row)
 
         except Exception as e:
-            LOG.warning(f"Failed to parse LLM response: {e}")
+            LOG.warning(f'Failed to parse LLM response: {e}')
             return []
 
         return expanded_rows

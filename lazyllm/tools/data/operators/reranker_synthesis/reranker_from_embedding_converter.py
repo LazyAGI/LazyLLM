@@ -1,8 +1,8 @@
 import json
 import random
-import os
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional
+
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
@@ -20,12 +20,12 @@ class RerankerValidateEmbeddingData(reranker):
     def forward(
         self,
         data: dict,
-        input_query_key: str = "query",
-        input_pos_key: str = "pos",
-        input_neg_key: str = "neg",
+        input_query_key: str = 'query',
+        input_pos_key: str = 'pos',
+        input_neg_key: str = 'neg',
         **kwargs
     ) -> dict:
-        query = data.get(input_query_key, "")
+        query = data.get(input_query_key, '')
         pos = data.get(input_pos_key, [])
 
         if not query:
@@ -69,7 +69,7 @@ class RerankerAdjustNegatives(reranker):
             neg = neg[:self.adjust_neg_count]
         elif len(neg) < self.adjust_neg_count and neg:
             # Pad with duplicates if needed (when we have some negatives)
-            local_random = random.Random(f"{self.seed}_{data['_query']}")
+            local_random = random.Random(f'{self.seed}_{data["_query"]}')
             while len(neg) < self.adjust_neg_count:
                 neg.append(local_random.choice(neg))
 
@@ -86,9 +86,9 @@ class RerankerBuildFormat(reranker):
 
         # Build reranker format (no prompt/instruction)
         reranker_item = {
-            "query": data['_query'],
-            "pos": data['_pos'],
-            "neg": data['_neg'],
+            'query': data['_query'],
+            'pos': data['_pos'],
+            'neg': data['_neg'],
         }
 
         return reranker_item
@@ -110,6 +110,6 @@ class RerankerSaveConverted(reranker):
             with open(output_path, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(data, ensure_ascii=False) + '\n')
         except Exception as e:
-            LOG.warning(f"Failed to save to file: {e}")
+            LOG.warning(f'Failed to save to file: {e}')
 
         return data

@@ -1,6 +1,5 @@
 import json
 import os
-from typing import List
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from lazyllm.components.formatter import JsonFormatter
@@ -14,46 +13,45 @@ else:
     kbc = data_register.new_group('kbc')
 
 
-class KBCLoadChunkFile(kbc):
+class KBCLoadRAWChunkFile(kbc):
     def __init__(self, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
 
     def forward(
         self,
         data: dict,
-        input_key: str = "chunk_path",
+        input_key: str = 'chunk_path',
         **kwargs
     ) -> dict:
-        chunk_path = data.get(input_key, "")
-        
+        chunk_path = data.get(input_key, '')
         if not chunk_path or not os.path.exists(chunk_path):
-            LOG.warning(f"Invalid chunk path: {chunk_path}")
+            LOG.warning(f'Invalid chunk path: {chunk_path}')
             return {**data, '_chunks_data': [], '_chunk_path': chunk_path}
 
         try:
-            if chunk_path.endswith(".json"):
+            if chunk_path.endswith('.json'):
                 with open(chunk_path, 'r', encoding='utf-8') as f:
                     file_data = json.load(f)
-            elif chunk_path.endswith(".jsonl"):
+            elif chunk_path.endswith('.jsonl'):
                 with open(chunk_path, 'r', encoding='utf-8') as f:
                     file_data = [json.loads(line) for line in f]
             else:
-                LOG.warning(f"Unsupported file format: {chunk_path}")
+                LOG.warning(f'Unsupported file format: {chunk_path}')
                 return {**data, '_chunks_data': [], '_chunk_path': chunk_path}
 
-            if not file_data or "raw_chunk" not in file_data[0]:
+            if not file_data or 'raw_chunk' not in file_data[0]:
                 LOG.warning(f"'raw_chunk' field not found in: {chunk_path}")
                 return {**data, '_chunks_data': [], '_chunk_path': chunk_path}
 
             return {**data, '_chunks_data': file_data, '_chunk_path': chunk_path}
 
         except Exception as e:
-            LOG.error(f"Error loading chunk file {chunk_path}: {e}")
+            LOG.error(f'Error loading chunk file {chunk_path}: {e}')
             return {**data, '_chunks_data': [], '_chunk_path': chunk_path}
 
 
 class KBCBuildCleanPrompt(kbc):
-    def __init__(self, lang: str = "en", **kwargs):
+    def __init__(self, lang: str = 'en', **kwargs):
         super().__init__(_concurrency_mode='process', **kwargs)
         self.prompts = KnowledgeCleanerPrompt(lang=lang)
 
@@ -68,7 +66,7 @@ class KBCBuildCleanPrompt(kbc):
 
         prompts_data = []
         for item in chunks_data:
-            raw_chunk = item.get("raw_chunk", "")
+            raw_chunk = item.get('raw_chunk', '')
             if raw_chunk:
                 user_prompt = self.prompts.build_prompt(raw_chunk)
                 prompts_data.append({
@@ -81,16 +79,12 @@ class KBCBuildCleanPrompt(kbc):
 
 
 class KBCGenerateCleanedText(kbc):
-    def __init__(self, llm=None, lang: str = "en", **kwargs):
+    def __init__(self, llm=None, lang: str = 'en', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        
-        # Initialize prompt template
         self.prompts = KnowledgeCleanerPrompt(lang=lang)
-        
-        # Initialize LLM serve with system prompt and formatter
         if llm is not None:
             # Note: KnowledgeCleanerPrompt may not have system prompt, use empty string
-            system_prompt = getattr(self.prompts, 'build_system_prompt', lambda: "")()
+            system_prompt = getattr(self.prompts, 'build_system_prompt', lambda: '')()
             self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
             self._llm_serve.start()
         else:
@@ -102,7 +96,7 @@ class KBCGenerateCleanedText(kbc):
         **kwargs
     ) -> dict:
         if self._llm_serve is None:
-            raise ValueError("LLM is not configured")
+            raise ValueError('LLM is not configured')
 
         prompts_data = data.get('_prompts_data', [])
         if not prompts_data:
@@ -117,14 +111,14 @@ class KBCGenerateCleanedText(kbc):
             try:
                 # Call LLM (system prompt and formatter already set in __init__)
                 response = self._llm_serve(user_prompt)
-                
+
                 cleaned_results.append({
                     'response': response,
                     'raw_chunk': raw_chunk,
                     'original_item': original_item
                 })
             except Exception as e:
-                LOG.warning(f"Failed to clean text: {e}")
+                LOG.warning(f'Failed to clean text: {e}')
                 # Use raw chunk as fallback
                 cleaned_results.append({
                     'response': raw_chunk,
@@ -194,7 +188,7 @@ class KBCSaveCleanedChunks(kbc):
     def forward(
         self,
         data: dict,
-        output_key: str = "cleaned_chunk_path",
+        output_key: str = 'cleaned_chunk_path',
         **kwargs
     ) -> dict:
         cleaned_chunks = data.get('_cleaned_chunks', [])
@@ -202,49 +196,49 @@ class KBCSaveCleanedChunks(kbc):
 
         if not chunk_path:
             result = data.copy()
-            result[output_key] = ""
+            result[output_key] = ''
             # Clean intermediate fields
-            for key in ['_chunks_data', '_chunk_path', '_prompts_data', 
-                       '_cleaned_results', '_cleaned_chunks']:
+            for key in ['_chunks_data', '_chunk_path', '_prompts_data',
+                        '_cleaned_results', '_cleaned_chunks']:
                 result.pop(key, None)
             return result
 
         if not cleaned_chunks:
-            LOG.warning(f"No cleaned chunks to save for {chunk_path}")
+            LOG.warning(f'No cleaned chunks to save for {chunk_path}')
             result = data.copy()
             result[output_key] = chunk_path
             # Clean intermediate fields
-            for key in ['_chunks_data', '_chunk_path', '_prompts_data', 
-                       '_cleaned_results', '_cleaned_chunks']:
+            for key in ['_chunks_data', '_chunk_path', '_prompts_data',
+                        '_cleaned_results', '_cleaned_chunks']:
                 result.pop(key, None)
             return result
 
         try:
             # Build output JSON
             json_items = [{
-                "raw_chunk": item['raw_chunk'],
-                "cleaned_chunk": item['cleaned_chunk']
+                'raw_chunk': item['raw_chunk'],
+                'cleaned_chunk': item['cleaned_chunk']
             } for item in cleaned_chunks]
 
-            with open(chunk_path, "w", encoding="utf-8") as f:
+            with open(chunk_path, 'w', encoding='utf-8') as f:
                 json.dump(json_items, f, ensure_ascii=False, indent=4)
 
-            LOG.info(f"Successfully saved cleaned chunks to {chunk_path}")
+            LOG.info(f'Successfully saved cleaned chunks to {chunk_path}')
 
             result = data.copy()
             result[output_key] = chunk_path
             # Clean intermediate fields
-            for key in ['_chunks_data', '_chunk_path', '_prompts_data', 
-                       '_cleaned_results', '_cleaned_chunks']:
+            for key in ['_chunks_data', '_chunk_path', '_prompts_data',
+                        '_cleaned_results', '_cleaned_chunks']:
                 result.pop(key, None)
             return result
 
         except Exception as e:
-            LOG.error(f"Error saving cleaned chunks: {e}")
+            LOG.error(f'Error saving cleaned chunks: {e}')
             result = data.copy()
-            result[output_key] = ""
+            result[output_key] = ''
             # Clean intermediate fields
-            for key in ['_chunks_data', '_chunk_path', '_prompts_data', 
-                       '_cleaned_results', '_cleaned_chunks']:
+            for key in ['_chunks_data', '_chunk_path', '_prompts_data',
+                        '_cleaned_results', '_cleaned_chunks']:
                 result.pop(key, None)
             return result

@@ -2,9 +2,12 @@ import json
 import random
 from pathlib import Path
 from typing import List, Optional
+
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
+
 from ...base_data import data_register
+
 
 # Get or create embedding group
 if 'data' in LazyLLMRegisterMetaClass.all_clses and 'embedding' in LazyLLMRegisterMetaClass.all_clses['data']:
@@ -33,12 +36,12 @@ class EmbeddingFormatFlagEmbedding(embedding):
             neg = [neg] if neg else []
 
         result = {
-            "query": query,
-            "pos": pos,
-            "neg": neg,
+            'query': query,
+            'pos': pos,
+            'neg': neg,
         }
         if self.instruction:
-            result["prompt"] = self.instruction
+            result['prompt'] = self.instruction
 
         return result
 
@@ -63,11 +66,13 @@ class EmbeddingFormatSentenceTransformers(embedding):
         results = []
         for p in pos_list:
             for n in neg_list:
-                results.append({
-                    "anchor": query,
-                    "positive": p,
-                    "negative": n,
-                })
+                results.append(
+                    {
+                        'anchor': query,
+                        'positive': p,
+                        'negative': n,
+                    }
+                )
 
         return results
 
@@ -92,11 +97,13 @@ class EmbeddingFormatTriplet(embedding):
         results = []
         for p in pos_list:
             for n in neg_list:
-                results.append({
-                    "query": query,
-                    "positive": p,
-                    "negative": n,
-                })
+                results.append(
+                    {
+                        'query': query,
+                        'positive': p,
+                        'negative': n,
+                    }
+                )
 
         return results
 
@@ -109,7 +116,7 @@ class EmbeddingTrainTestSplitter(embedding):
         stratify_key: Optional[str] = None,
         train_output_file: Optional[str] = None,
         test_output_file: Optional[str] = None,
-        **kwargs
+        **kwargs,
     ):
         super().__init__(rewrite_func='forward_batch_input', **kwargs)
         self.test_size = test_size
@@ -117,16 +124,20 @@ class EmbeddingTrainTestSplitter(embedding):
         self.stratify_key = stratify_key
         self.train_output_file = train_output_file
         self.test_output_file = test_output_file
-        LOG.info(f"Initializing {self.__class__.__name__} with test_size: {test_size}")
+        LOG.info(
+            f'Initializing {self.__class__.__name__} with test_size: {test_size}'
+        )
 
     def forward_batch_input(
         self,
         inputs: List[dict],
-        **kwargs
+        **kwargs,
     ) -> List[dict]:
-        assert isinstance(inputs, list), "inputs must be a list of dict"
+        assert isinstance(inputs, list), 'inputs must be a list of dict'
 
-        LOG.info(f"Splitting {len(inputs)} samples with test_size={self.test_size}")
+        LOG.info(
+            f'Splitting {len(inputs)} samples with test_size={self.test_size}'
+        )
 
         # Shuffle and split
         random.seed(self.seed)
@@ -143,24 +154,34 @@ class EmbeddingTrainTestSplitter(embedding):
         for item in test_data:
             item['split'] = 'test'
 
-        LOG.info(f"Split completed: {len(train_data)} train, {len(test_data)} test")
+        LOG.info(
+            f'Split completed: {len(train_data)} train, {len(test_data)} test'
+        )
 
         if self.train_output_file:
             output_path = Path(self.train_output_file)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, 'w', encoding='utf-8') as f:
                 for item in train_data:
-                    item_copy = {k: v for k, v in item.items() if k != 'split'}
-                    f.write(json.dumps(item_copy, ensure_ascii=False) + '\n')
-            LOG.info(f"Saved train data to {output_path}")
+                    item_copy = {
+                        k: v for k, v in item.items() if k != 'split'
+                    }
+                    f.write(
+                        json.dumps(item_copy, ensure_ascii=False) + '\n'
+                    )
+            LOG.info(f'Saved train data to {output_path}')
 
         if self.test_output_file:
             output_path = Path(self.test_output_file)
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, 'w', encoding='utf-8') as f:
                 for item in test_data:
-                    item_copy = {k: v for k, v in item.items() if k != 'split'}
-                    f.write(json.dumps(item_copy, ensure_ascii=False) + '\n')
-            LOG.info(f"Saved test data to {output_path}")
+                    item_copy = {
+                        k: v for k, v in item.items() if k != 'split'
+                    }
+                    f.write(
+                        json.dumps(item_copy, ensure_ascii=False) + '\n'
+                    )
+            LOG.info(f'Saved test data to {output_path}')
 
         return train_data + test_data

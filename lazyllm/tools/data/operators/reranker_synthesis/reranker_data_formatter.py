@@ -1,11 +1,12 @@
 import json
 import random
-import os
 from pathlib import Path
 from typing import List, Optional
+
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
+
 
 if 'data' in LazyLLMRegisterMetaClass.all_clses and 'reranker' in LazyLLMRegisterMetaClass.all_clses['data']:
     reranker = LazyLLMRegisterMetaClass.all_clses['data']['reranker'].base
@@ -20,24 +21,24 @@ class RerankerValidateData(reranker):
     def forward(
         self,
         data: dict,
-        input_query_key: str = "query",
-        input_pos_key: str = "pos",
-        input_neg_key: str = "neg",
+        input_query_key: str = 'query',
+        input_pos_key: str = 'pos',
+        input_neg_key: str = 'neg',
         **kwargs
     ) -> dict:
-        query = data.get(input_query_key, "")
+        query = data.get(input_query_key, '')
         pos = data.get(input_pos_key, [])
 
         if not query:
             return {**data, '_is_valid': False, '_error': 'Missing query'}
-        
+
         if not pos:
             return {**data, '_is_valid': False, '_error': 'Missing positive samples'}
 
         # Ensure pos and neg are lists
         if not isinstance(pos, list):
             pos = [pos]
-        
+
         neg = data.get(input_neg_key, [])
         if not isinstance(neg, list):
             neg = [neg] if neg else []
@@ -73,9 +74,9 @@ class RerankerFormatFlagReranker(reranker):
             neg = neg[:num_neg_needed]
 
         return [{
-            "query": query,
-            "pos": pos,
-            "neg": neg,
+            'query': query,
+            'pos': pos,
+            'neg': neg,
         }]
 
 
@@ -95,11 +96,11 @@ class RerankerFormatCrossEncoder(reranker):
 
         # Positive samples with label 1
         for p in pos:
-            results.append({"query": query, "document": p, "label": 1})
+            results.append({'query': query, 'document': p, 'label': 1})
 
         # Negative samples with label 0
         for n in neg:
-            results.append({"query": query, "document": n, "label": 0})
+            results.append({'query': query, 'document': n, 'label': 0})
 
         return results
 
@@ -121,7 +122,7 @@ class RerankerFormatPairwise(reranker):
         # Create pairwise comparisons
         for p in pos:
             for n in neg:
-                results.append({"query": query, "doc_pos": p, "doc_neg": n})
+                results.append({'query': query, 'doc_pos': p, 'doc_neg': n})
 
         return results
 
@@ -142,7 +143,7 @@ class RerankerSaveToFile(reranker):
             with open(output_path, 'a', encoding='utf-8') as f:
                 f.write(json.dumps(data, ensure_ascii=False) + '\n')
         except Exception as e:
-            LOG.warning(f"Failed to save to file: {e}")
+            LOG.warning(f'Failed to save to file: {e}')
 
         return data
 
@@ -161,13 +162,13 @@ class RerankerTrainTestSplitter(reranker):
         self.seed = seed
         self.train_output_file = train_output_file
         self.test_output_file = test_output_file
-        LOG.info(f"Initializing {self.__class__.__name__} with test_size: {test_size}")
+        LOG.info(f'Initializing {self.__class__.__name__} with test_size: {test_size}')
 
     def forward_batch_input(self, data: List[dict]) -> List[dict]:
-        assert isinstance(data, list), "Input data must be a list"
+        assert isinstance(data, list), 'Input data must be a list'
         records = list(data)
 
-        LOG.info(f"Splitting {len(records)} samples with test_size={self.test_size}")
+        LOG.info(f'Splitting {len(records)} samples with test_size={self.test_size}')
 
         # Shuffle and split
         random.seed(self.seed)
@@ -184,7 +185,7 @@ class RerankerTrainTestSplitter(reranker):
         for item in test_data:
             item['split'] = 'test'
 
-        LOG.info(f"Split completed: {len(train_data)} train, {len(test_data)} test")
+        LOG.info(f'Split completed: {len(train_data)} train, {len(test_data)} test')
 
         # Save to files if specified
         if self.train_output_file:
@@ -194,7 +195,7 @@ class RerankerTrainTestSplitter(reranker):
                 for item in train_data:
                     item_copy = {k: v for k, v in item.items() if k != 'split'}
                     f.write(json.dumps(item_copy, ensure_ascii=False) + '\n')
-            LOG.info(f"Saved train data to {output_path}")
+            LOG.info(f'Saved train data to {output_path}')
 
         if self.test_output_file:
             output_path = Path(self.test_output_file)
@@ -208,6 +209,6 @@ class RerankerTrainTestSplitter(reranker):
                         'neg': item.get('neg', [])
                     }
                     f.write(json.dumps(item_copy, ensure_ascii=False) + '\n')
-            LOG.info(f"Saved test data to {output_path}")
+            LOG.info(f'Saved test data to {output_path}')
 
         return train_data + test_data

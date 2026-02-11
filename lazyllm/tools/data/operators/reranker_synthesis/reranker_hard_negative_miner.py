@@ -1,5 +1,6 @@
 import random
 from typing import List, Optional, Callable
+
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from lazyllm.thirdparty import numpy as np, bm25s, jieba, Stemmer
@@ -12,7 +13,7 @@ else:
     reranker = data_register.new_group('reranker')
 
 
-def _build_corpus_from_inputs(inputs: List[dict], input_pos_key: str = "pos") -> List[str]:
+def _build_corpus_from_inputs(inputs: List[dict], input_pos_key: str = 'pos') -> List[str]:
     all_passages = []
     for item in inputs:
         pos_list = item.get(input_pos_key, [])
@@ -36,21 +37,21 @@ class RerankerBuildCorpus(reranker):
     def forward_batch_input(
         self,
         inputs: List[dict],
-        input_pos_key: str = "pos",
+        input_pos_key: str = 'pos',
         corpus: Optional[List[str]] = None,
         **kwargs
     ) -> List[dict]:
         if corpus is not None:
-            LOG.info(f"Using external corpus with {len(corpus)} passages.")
+            LOG.info(f'Using external corpus with {len(corpus)} passages.')
             return [{**item, '_corpus': corpus} for item in inputs]
         else:
             corpus = _build_corpus_from_inputs(inputs, input_pos_key)
-            LOG.info(f"Built corpus with {len(corpus)} unique passages.")
+            LOG.info(f'Built corpus with {len(corpus)} unique passages.')
             return [{**item, '_corpus': corpus} for item in inputs]
 
 
 class RerankerInitBM25(reranker):
-    def __init__(self, language: str = "zh", **kwargs):
+    def __init__(self, language: str = 'zh', **kwargs):
         super().__init__(rewrite_func='forward_batch_input', **kwargs)
         self.language = language
         self._setup_tokenizer(language)
@@ -75,10 +76,10 @@ class RerankerInitBM25(reranker):
 
         corpus = inputs[0].get('_corpus') or []
         if not corpus:
-            LOG.warning("No corpus found for BM25 initialization.")
+            LOG.warning('No corpus found for BM25 initialization.')
             return [{**item, '_bm25': None, '_bm25_corpus': []} for item in inputs]
 
-        LOG.info(f"Initializing BM25 index for {len(corpus)} documents...")
+        LOG.info(f'Initializing BM25 index for {len(corpus)} documents...')
         corpus_tokens = bm25s.tokenize(
             [self._tokenizer(doc) for doc in corpus],
             stopwords=self._stopwords,
@@ -86,7 +87,7 @@ class RerankerInitBM25(reranker):
         )
         bm25_index = bm25s.BM25()
         bm25_index.index(corpus_tokens)
-        LOG.info("BM25 index initialized.")
+        LOG.info('BM25 index initialized.')
 
         return [{
             **item,
@@ -109,13 +110,13 @@ class RerankerInitSemantic(reranker):
 
         corpus = inputs[0].get('_corpus') or []
         if not corpus or self.embedding_serving is None:
-            LOG.warning("No corpus or embedding_serving for semantic initialization.")
+            LOG.warning('No corpus or embedding_serving for semantic initialization.')
             return [{**item, '_semantic_embeddings': None, '_semantic_corpus': corpus or []}
                     for item in inputs]
 
-        LOG.info(f"Computing embeddings for {len(corpus)} documents...")
+        LOG.info(f'Computing embeddings for {len(corpus)} documents...')
         embeddings = np.array(self.embedding_serving(corpus))
-        LOG.info("Embeddings computed.")
+        LOG.info('Embeddings computed.')
 
         return [{
             **item,
@@ -133,9 +134,9 @@ class RerankerMineRandomNegatives(reranker):
     def forward(
         self,
         data: dict,
-        input_query_key: str = "query",
-        input_pos_key: str = "pos",
-        output_neg_key: str = "neg",
+        input_query_key: str = 'query',
+        input_pos_key: str = 'pos',
+        output_neg_key: str = 'neg',
         **kwargs
     ) -> dict:
         corpus = data.get('_corpus') or []
@@ -155,7 +156,7 @@ class RerankerMineRandomNegatives(reranker):
             negatives = candidates
         else:
             # Use instance seed combined with query content for reproducibility
-            local_random = random.Random(f"{self.seed}_{query}")
+            local_random = random.Random(f'{self.seed}_{query}')
             negatives = local_random.sample(candidates, self.num_negatives)
 
         return {**data, output_neg_key: negatives}
@@ -169,9 +170,9 @@ class RerankerMineBM25Negatives(reranker):
     def forward(
         self,
         data: dict,
-        input_query_key: str = "query",
-        input_pos_key: str = "pos",
-        output_neg_key: str = "neg",
+        input_query_key: str = 'query',
+        input_pos_key: str = 'pos',
+        output_neg_key: str = 'neg',
         **kwargs
     ) -> dict:
         bm25_index = data.get('_bm25')
@@ -181,7 +182,7 @@ class RerankerMineBM25Negatives(reranker):
         stemmer = data.get('_bm25_stemmer')
 
         if bm25_index is None:
-            LOG.warning("BM25 index not initialized.")
+            LOG.warning('BM25 index not initialized.')
             return {**data, output_neg_key: []}
 
         query = data.get(input_query_key, '')
@@ -202,7 +203,7 @@ class RerankerMineBM25Negatives(reranker):
         negatives = []
         if not corpus:
             return {**data, output_neg_key: []}
-            
+
         for idx in indices[0]:
             doc = corpus[idx]
             if doc not in pos_set:
@@ -235,16 +236,16 @@ class RerankerMineSemanticNegatives(reranker):
     def forward(
         self,
         data: dict,
-        input_query_key: str = "query",
-        input_pos_key: str = "pos",
-        output_neg_key: str = "neg",
+        input_query_key: str = 'query',
+        input_pos_key: str = 'pos',
+        output_neg_key: str = 'neg',
         **kwargs
     ) -> dict:
         corpus_embeddings = data.get('_semantic_embeddings')
         corpus = data.get('_semantic_corpus') or []
 
         if corpus_embeddings is None:
-            LOG.warning("Semantic embeddings not initialized.")
+            LOG.warning('Semantic embeddings not initialized.')
             return {**data, output_neg_key: []}
 
         query = data.get(input_query_key, '')
@@ -262,7 +263,7 @@ class RerankerMineSemanticNegatives(reranker):
         similarities = self._cosine_similarity(query_embedding, corpus_embeddings)
 
         scored_docs = [(sim, doc) for sim, doc in zip(similarities, corpus)
-                      if doc not in pos_set]
+                       if doc not in pos_set]
         scored_docs.sort(key=lambda x: x[0], reverse=True)
 
         negatives = [doc for _, doc in scored_docs[:self.num_negatives]]
@@ -278,9 +279,9 @@ class RerankerMineMixedNegatives(reranker):
     def forward(
         self,
         data: dict,
-        input_query_key: str = "query",
-        input_pos_key: str = "pos",
-        output_neg_key: str = "neg",
+        input_query_key: str = 'query',
+        input_pos_key: str = 'pos',
+        output_neg_key: str = 'neg',
         **kwargs
     ) -> dict:
         query = data.get(input_query_key, '')
@@ -290,7 +291,7 @@ class RerankerMineMixedNegatives(reranker):
             return {**data, output_neg_key: []}
 
         pos_set = _normalize_pos_samples(pos_samples)
-        
+
         # Calculate number of negatives for each strategy
         num_bm25 = max(1, int(self.num_negatives * self.bm25_ratio))
         num_semantic = self.num_negatives - num_bm25
@@ -299,18 +300,18 @@ class RerankerMineMixedNegatives(reranker):
         bm25_negatives = []
         bm25_index = data.get('_bm25')
         corpus_bm25 = data.get('_bm25_corpus') or []
-        
+
         if bm25_index and corpus_bm25:
             tokenizer = data.get('_bm25_tokenizer', lambda t: t)
             stopwords = data.get('_bm25_stopwords')
             stemmer = data.get('_bm25_stemmer')
-            
+
             tokenized_query = bm25s.tokenize(
                 tokenizer(query), stopwords=stopwords, stemmer=stemmer
             )
             k = min(len(corpus_bm25), num_bm25 + len(pos_set) + 5)
             indices, scores = bm25_index.retrieve(tokenized_query, k=k)
-            
+
             for idx in indices[0]:
                 doc = corpus_bm25[idx]
                 if doc not in pos_set:
@@ -323,13 +324,13 @@ class RerankerMineMixedNegatives(reranker):
         corpus_embeddings = data.get('_semantic_embeddings')
         corpus_semantic = data.get('_semantic_corpus') or []
         embedding_serving = data.get('_embedding_serving')
-        
+
         if corpus_embeddings is not None and corpus_semantic and embedding_serving is not None:
             # Update pos_set to exclude BM25 negatives
             pos_set_extended = pos_set | set(bm25_negatives)
-            
+
             query_embedding = np.array(embedding_serving([query])[0])
-            
+
             # Compute cosine similarity
             query_norm = np.linalg.norm(query_embedding)
             if query_norm > 0:
@@ -338,11 +339,11 @@ class RerankerMineMixedNegatives(reranker):
             corpus_norms = np.where(corpus_norms > 0, corpus_norms, 1)
             corpus_normalized = corpus_embeddings / corpus_norms
             similarities = np.dot(corpus_normalized, query_embedding)
-            
+
             scored_docs = [(sim, doc) for sim, doc in zip(similarities, corpus_semantic)
-                          if doc not in pos_set_extended]
+                           if doc not in pos_set_extended]
             scored_docs.sort(key=lambda x: x[0], reverse=True)
-            
+
             semantic_negatives = [doc for _, doc in scored_docs[:num_semantic]]
 
         negatives = bm25_negatives + semantic_negatives

@@ -1,4 +1,3 @@
-from typing import List
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from lazyllm.components.formatter import JsonFormatter
@@ -13,18 +12,18 @@ else:
 
 
 class KBCBuildCleanPromptSingle(kbc):
-   
-    def __init__(self, lang: str = "en", **kwargs):
+
+    def __init__(self, lang: str = 'en', **kwargs):
         super().__init__(_concurrency_mode='process', **kwargs)
         self.prompts = KnowledgeCleanerPrompt(lang=lang)
 
     def forward(
         self,
         data: dict,
-        input_key: str = "raw_chunk",
+        input_key: str = 'raw_chunk',
         **kwargs
     ) -> dict:
-        raw_content = data.get(input_key, "")
+        raw_content = data.get(input_key, '')
         if not raw_content:
             return {**data, '_clean_prompt': ''}
 
@@ -33,16 +32,17 @@ class KBCBuildCleanPromptSingle(kbc):
 
 
 class KBCGenerateCleanedTextSingle(kbc):
-    def __init__(self, llm=None, lang: str = "en", **kwargs):
+
+    def __init__(self, llm=None, lang: str = 'en', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        
+
         # Initialize prompt template
         self.prompts = KnowledgeCleanerPrompt(lang=lang)
-        
+
         # Initialize LLM serve with system prompt and formatter
         if llm is not None:
             # Note: KnowledgeCleanerPrompt may not have system prompt, use empty string
-            system_prompt = getattr(self.prompts, 'build_system_prompt', lambda: "")()
+            system_prompt = getattr(self.prompts, 'build_system_prompt', lambda: '')()
             self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
             self._llm_serve.start()
         else:
@@ -54,7 +54,7 @@ class KBCGenerateCleanedTextSingle(kbc):
         **kwargs
     ) -> dict:
         if self._llm_serve is None:
-            raise ValueError("LLM is not configured")
+            raise ValueError('LLM is not configured')
 
         user_prompt = data.get('_clean_prompt', '')
         raw_content = data.get('_raw_content', '')
@@ -67,13 +67,14 @@ class KBCGenerateCleanedTextSingle(kbc):
             response = self._llm_serve(user_prompt)
             return {**data, '_cleaned_response': response}
         except Exception as e:
-            LOG.warning(f"Failed to clean text: {e}")
+            LOG.warning(f'Failed to clean text: {e}')
             # Use raw content as fallback
             return {**data, '_cleaned_response': raw_content}
 
 
 class KBCExtractCleanedContentSingle(kbc):
-    def __init__(self, output_key: str = "cleaned_chunk", **kwargs):
+
+    def __init__(self, output_key: str = 'cleaned_chunk', **kwargs):
         super().__init__(_concurrency_mode='process', **kwargs)
         self.output_key = output_key
 
@@ -83,7 +84,7 @@ class KBCExtractCleanedContentSingle(kbc):
         **kwargs
     ) -> dict:
         response = data.get('_cleaned_response', '')
-        
+
         # Handle different response types from JsonFormatter
         if isinstance(response, dict):
             # JsonFormatter returned a dict, extract text field or convert to string
