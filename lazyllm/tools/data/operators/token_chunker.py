@@ -2,6 +2,7 @@ import re
 import os
 import uuid
 from datetime import datetime
+from itertools import zip_longest
 from ..base_data import data_register
 from lazyllm import LOG, config
 from lazyllm.thirdparty import transformers
@@ -11,35 +12,93 @@ Chunker = data_register.new_group('chunker')
 
 
 class TokenChunker(Chunker):
-    def __init__(self, input_key='content', tokenizer_path=None, model_cache_dir=None,
+    def __init__(self, input_key='content', model_path=None,
                  max_tokens=1024, min_tokens=200, _concurrency_mode='process', **kwargs):
         super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
-        self.tokenizer_path = tokenizer_path
-        self.model_cache_dir = model_cache_dir or config['model_cache_dir']
         self.max_tokens = max_tokens
         self.min_tokens = min_tokens
+        self.model_path = model_path
         self.tokenizer = self._load_tokenizer()
+
+    def _try_load_tokenizer(self, path, is_local, default_cache_dir):
+        if is_local or os.path.isdir(path) or os.path.isfile(path):
+            return transformers.AutoTokenizer.from_pretrained(
+                path, trust_remote_code=True
+            )
+        else:
+            return transformers.AutoTokenizer.from_pretrained(
+                path, cache_dir=default_cache_dir, trust_remote_code=True
+            )
+
+    def _try_load_from_config_path(self, default_model_name, default_cache_dir):
+        try:
+            config_model_path = config['model_path']
+            if not config_model_path:
+                return None
+            if os.path.isdir(config_model_path):
+                joined_path = os.path.join(config_model_path, default_model_name)
+                if os.path.exists(joined_path):
+                    LOG.info(f'Loading tokenizer from config model_path: {joined_path}')
+                    try:
+                        return self._try_load_tokenizer(joined_path, True, default_cache_dir)
+                    except Exception as e:
+                        LOG.warning(f'Failed to load from {joined_path}: {e}, trying cache directory')
+            elif os.path.exists(config_model_path):
+                LOG.info(f'Loading tokenizer from config model_path: {config_model_path}')
+                try:
+                    return self._try_load_tokenizer(config_model_path, True, default_cache_dir)
+                except Exception as e:
+                    LOG.warning(f'Failed to load from {config_model_path}: {e}, trying cache directory')
+        except (KeyError, TypeError):
+            pass
+        return None
+
+    def _try_load_from_cache(self, default_model_name, default_cache_dir):
+        try:
+            cache_model_path = os.path.join(default_cache_dir, default_model_name)
+            if os.path.exists(cache_model_path):
+                LOG.info(f'Loading tokenizer from cache directory: {cache_model_path}')
+                return self._try_load_tokenizer(cache_model_path, True, default_cache_dir)
+        except Exception:
+            pass
+        return None
 
     def _load_tokenizer(self):
         default_model = 'Qwen/Qwen2.5-0.5B-Instruct'
+        default_model_name = 'qwen2.5-0.5b-instruct'
+        model_or_path = self.model_path
 
-        def _load(path):
-            return transformers.AutoTokenizer.from_pretrained(
-                path, cache_dir=self.model_cache_dir, trust_remote_code=True
-            )
-
-        model_or_path = self.tokenizer_path
-        if not model_or_path or (os.path.isabs(model_or_path) and not os.path.exists(model_or_path)):
-            model_or_path = default_model
-
-        LOG.info(f'Loading tokenizer from: {model_or_path}')
         try:
-            return _load(model_or_path)
+            default_cache_dir = config['model_cache_dir']
+        except (KeyError, TypeError):
+            default_cache_dir = os.path.join(os.path.expanduser('~'), '.lazyllm', 'models')
+
+        if model_or_path:
+            try:
+                is_local = os.path.isdir(model_or_path) or os.path.isfile(model_or_path)
+                if is_local:
+                    log_msg = f'Loading tokenizer from local path: {model_or_path}'
+                else:
+                    log_msg = f'Loading tokenizer from model: {model_or_path}'
+                LOG.info(log_msg)
+                return self._try_load_tokenizer(model_or_path, is_local, default_cache_dir)
+            except Exception as e:
+                LOG.warning(f'Failed to load from {model_or_path}: {e}, trying config model_path')
+
+        if model_or_path is None:
+            result = self._try_load_from_config_path(default_model_name, default_cache_dir)
+            if result:
+                return result
+
+        result = self._try_load_from_cache(default_model_name, default_cache_dir)
+        if result:
+            return result
+
+        LOG.info(f'Loading default tokenizer: {default_model} (will download to cache)')
+        try:
+            return self._try_load_tokenizer(default_model, False, default_cache_dir)
         except Exception as e:
-            if model_or_path != default_model:
-                LOG.warning(f'Failed to load from {model_or_path}: {e}, falling back to default')
-                return _load(default_model)
             LOG.error(f'Failed to load default tokenizer: {e}')
             raise
 
@@ -56,7 +115,7 @@ class TokenChunker(Chunker):
 
     def _split_sentences(self, text):
         sentences = re.split(r'([。！？\.!\?])', text)
-        return [''.join(s) for s in zip(sentences[0::2], sentences[1::2])]
+        return [s for s in (''.join(filter(None, t)) for t in zip_longest(sentences[0::2], sentences[1::2])) if s]
 
     def _process_chunks(self, processed_paragraphs):
         chunks = []
