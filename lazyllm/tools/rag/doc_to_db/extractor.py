@@ -71,7 +71,7 @@ class SchemaExtractor:
                  num_workers: int = 4, sql_manager: Optional[SqlManager] = None):
         if (db_config is None) == (sql_manager is None):
             raise ValueError('Exactly one of db_config or sql_manager must be provided')
-        if not isinstance(llm, LLMBase):
+        if llm is None or not isinstance(llm, LLMBase):
             raise TypeError('llm must be an instance of LLMBase')
         self._llm = llm
         self._table_prefix = table_prefix or self.TABLE_PREFIX
