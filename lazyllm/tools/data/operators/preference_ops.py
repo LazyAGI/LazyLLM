@@ -6,7 +6,7 @@ PreferenceOps = data_register.new_group('preference_ops')
 
 class IntentExtractor(PreferenceOps):
     def __init__(self, model=None, input_key='content', output_key='intent', **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.output_key = output_key
         sys_prompt = '你是一个意图提取助手，请从用户文本中提取核心意图，并以 JSON 格式返回。'
@@ -27,7 +27,7 @@ class IntentExtractor(PreferenceOps):
 class PreferenceResponseGenerator(PreferenceOps):
     def __init__(self, model=None, n=3, temperature=1.0, system_prompt=None,
                  input_key='intent', output_key='responses', **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.n = n
         self.temperature = temperature
         self.input_key = input_key
@@ -52,7 +52,7 @@ class PreferenceResponseGenerator(PreferenceOps):
 
 class ResponseEvaluator(PreferenceOps):
     def __init__(self, model=None, input_key='content', response_key='responses', output_key='evaluation', **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.response_key = response_key
         self.output_key = output_key

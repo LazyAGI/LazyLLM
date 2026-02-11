@@ -6,7 +6,7 @@ ToolUseOps = data_register.new_group('tool_use_ops')
 
 class ScenarioExtractor(ToolUseOps):
     def __init__(self, model=None, input_key='content', output_key='scenario', system_prompt=None, **kwargs):
-        super().__init__(**kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.output_key = output_key
         sys_prompt = system_prompt or (
@@ -40,7 +40,7 @@ class ScenarioExpander(ToolUseOps):
     def __init__(
         self, model=None, input_key='scenario', output_key='expanded_scenarios', n=3, system_prompt=None, **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.output_key = output_key
         self.n = n
@@ -75,7 +75,7 @@ class AtomTaskGenerator(ToolUseOps):
     def __init__(
         self, model=None, input_key='scenario', output_key='atomic_tasks', n=5, system_prompt=None, **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.output_key = output_key
         self.n = n
@@ -109,7 +109,7 @@ class SequentialTaskGenerator(ToolUseOps):
     def __init__(
         self, model=None, input_key='atomic_tasks', output_key='sequential_tasks', system_prompt=None, **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.output_key = output_key
         sys_prompt = system_prompt or (
@@ -144,7 +144,7 @@ class ParaSeqTaskGenerator(ToolUseOps):
     def __init__(
         self, model=None, input_key='atomic_tasks', output_key='para_seq_tasks', system_prompt=None, **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.output_key = output_key
         sys_prompt = system_prompt or (
@@ -181,7 +181,7 @@ class CompositionTaskFilter(ToolUseOps):
         self, model=None, composition_key='composition_tasks', subtask_key='atomic_tasks',
         output_key='filtered_composition_tasks', system_prompt=None, **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.composition_key = composition_key
         self.subtask_key = subtask_key
         self.output_key = output_key
@@ -233,7 +233,7 @@ class FunctionGenerator(ToolUseOps):
         self, model=None, task_key='composition_task', subtask_key='atomic_tasks',
         output_key='functions', system_prompt=None, **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.task_key = task_key
         self.subtask_key = subtask_key
         self.output_key = output_key
@@ -277,7 +277,7 @@ class MultiTurnConversationGenerator(ToolUseOps):
         self, model=None, task_key='composition_task', functions_key='functions',
         output_key='conversation', n_turns=6, system_prompt=None, **kwargs
     ):
-        super().__init__(**kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.task_key = task_key
         self.functions_key = functions_key
         self.output_key = output_key
