@@ -2,7 +2,7 @@ from typing import List, Tuple, Dict
 from lazyllm import LOG
 from ..base_data import data_register
 from .python_executor import PythonExecutor
-#————后续修改————
+# ————后续修改————
 
 CodeGenOps = data_register.new_group('codegen_ops')
 
@@ -24,15 +24,13 @@ class CodeSandboxSampleEvaluator(CodeGenOps):
         if PythonExecutor is None:
             raise ImportError("PythonExecutor not found. Please ensure 'python_executor.py' is in the same directory.")
 
-        # Initialize the PythonExecutor here. It will be reused for all code snippets.
         self.executor = PythonExecutor(
-            get_answer_from_stdout=True,  # Capture print statements as primary output
+            get_answer_from_stdout=True,
             timeout_length=timeout_length,
             use_process_isolation=use_process_isolation
         )
         self.score_name = 'SandboxValidationScore'
         LOG.info(f'{self.__class__.__name__} initialized.')
-
 
     def _execute_code_batch(self, code_list: List[str]) -> List[Tuple[str, str]]:
         results_with_reports = self.executor.batch_apply(code_list, messages=[])
