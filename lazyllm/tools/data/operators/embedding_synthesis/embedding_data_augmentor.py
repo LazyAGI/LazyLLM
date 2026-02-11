@@ -101,7 +101,7 @@ class EmbeddingQueryRewrite(embedding):
             return []
 
 
-class EmbeddingSynonymReplace(embedding):
+class EmbeddingAdjacentWordSwap(embedding):
     def __init__(
         self,
         num_augments: int = 2,

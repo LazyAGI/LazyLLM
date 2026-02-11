@@ -38,7 +38,6 @@ from .kbc_multihop_qa_generator_batch import (
 
 from .qa_extract import (
     KBCLoadQAData,
-    KBCParseFields,
     KBCExtractQAPairs,
     KBCSaveQAResults,
 )
@@ -69,7 +68,6 @@ __all__ = [
     KBCParseQAPairs,
     KBCSaveEnhancedChunks,
     KBCLoadQAData,
-    KBCParseFields,
     KBCExtractQAPairs,
     KBCSaveQAResults,
 ]

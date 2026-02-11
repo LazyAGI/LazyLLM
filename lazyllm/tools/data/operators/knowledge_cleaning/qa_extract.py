@@ -13,7 +13,7 @@ else:
 
 
 class KBCLoadQAData(kbc):
-    def __init__(self, qa_key: str = 'QA_pairs', **kwargs):
+    def __init__(self, qa_key: str = "QA_pairs", **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.qa_key = qa_key
 
@@ -28,7 +28,7 @@ class KBCLoadQAData(kbc):
 
         # Try to load from chunk files
         path_keys = ['enhanced_chunk_path', 'cleaned_chunk_path', 'chunk_path']
-
+        
         for path_key in path_keys:
             file_path = data.get(path_key)
             if not file_path or not Path(file_path).exists():
@@ -47,40 +47,18 @@ class KBCLoadQAData(kbc):
                                 '_source_file': file_path
                             }
             except Exception as e:
-                LOG.error(f'Failed to load {file_path}: {e}')
+                LOG.error(f"Failed to load {file_path}: {e}")
                 continue
 
         # No QA data found
         return {**data, '_qa_data': None}
 
 
-class KBCParseFields(kbc):
-    def __init__(self, **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
-
-    def forward(
-        self,
-        data: dict,
-        include_fields: Optional[str] = None,
-        **kwargs
-    ) -> dict:
-        if include_fields is None:
-            fields = ['question', 'reasoning_steps', 'supporting_facts']
-        elif isinstance(include_fields, list):
-            fields = include_fields
-        elif isinstance(include_fields, str):
-            fields = [f.strip() for f in include_fields.split(',') if f.strip()] if include_fields.strip() else []
-        else:
-            fields = ['question', 'reasoning_steps', 'supporting_facts']
-
-        return {**data, '_fields': fields}
-
-
 class KBCExtractQAPairs(kbc):
     def __init__(
         self,
-        qa_key: str = 'QA_pairs',
-        instruction: str = 'Please answer the following question based on the provided information.',
+        qa_key: str = "QA_pairs",
+        instruction: str = "Please answer the following question based on the provided information.",
         **kwargs
     ):
         super().__init__(_concurrency_mode='process', **kwargs)
@@ -90,17 +68,16 @@ class KBCExtractQAPairs(kbc):
     def forward(
         self,
         data: dict,
-        output_instruction_key: str = 'instruction',
-        output_question_key: str = 'input',
-        output_answer_key: str = 'output',
+        output_instruction_key: str = "instruction",
+        output_question_key: str = "input",
+        output_answer_key: str = "output",
         **kwargs
     ) -> List[dict]:
-
         qa_data = data.get('_qa_data')
         if not qa_data:
             return []
 
-        # Extract qa_pairs
+        # Extract qa_pairs - handle both dict with 'qa_pairs' key and direct list
         qa_list = qa_data.get('qa_pairs', []) if isinstance(qa_data, dict) else qa_data
         if not isinstance(qa_list, list):
             qa_list = [qa_list] if isinstance(qa_list, dict) else []
@@ -112,7 +89,7 @@ class KBCExtractQAPairs(kbc):
 
             question = qa.get('question', '').strip()
             answer = qa.get('answer', '').strip()
-
+            
             if not question or not answer:
                 continue
 
@@ -144,8 +121,8 @@ class KBCSaveQAResults(kbc):
             output_path.parent.mkdir(parents=True, exist_ok=True)
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(data, f, indent=2, ensure_ascii=False)
-            LOG.info(f'Saved QA results to {output_path}')
+            LOG.info(f"Saved QA results to {output_path}")
         except Exception as e:
-            LOG.error(f'Failed to save QA results: {e}')
+            LOG.error(f"Failed to save QA results: {e}")
 
         return data

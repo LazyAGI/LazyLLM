@@ -23,7 +23,7 @@ from .embedding_data_formatter import (
 
 from .embedding_data_augmentor import (
     EmbeddingQueryRewrite,
-    EmbeddingSynonymReplace,
+    EmbeddingAdjacentWordSwap,
 )
 
 
@@ -43,5 +43,5 @@ __all__ = [
     'EmbeddingFormatTriplet',
     'EmbeddingTrainTestSplitter',
     'EmbeddingQueryRewrite',
-    'EmbeddingSynonymReplace',
+    'EmbeddingAdjacentWordSwap',
 ]

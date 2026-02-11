@@ -30,6 +30,21 @@ def _normalize_pos_samples(pos_samples) -> set:
     return {pos_samples}
 
 
+def _compute_cosine_similarity(query_emb: np.ndarray, corpus_embs: np.ndarray) -> np.ndarray:
+    # Normalize query
+    query_norm = np.linalg.norm(query_emb)
+    if query_norm > 0:
+        query_emb = query_emb / query_norm
+
+    # Normalize corpus
+    corpus_norms = np.linalg.norm(corpus_embs, axis=1, keepdims=True)
+    corpus_norms = np.where(corpus_norms > 0, corpus_norms, 1)
+    corpus_normalized = corpus_embs / corpus_norms
+
+    # Compute cosine similarity
+    return np.dot(corpus_normalized, query_emb)
+
+
 class RerankerBuildCorpus(reranker):
     def __init__(self, **kwargs):
         super().__init__(rewrite_func='forward_batch_input', **kwargs)
@@ -221,18 +236,6 @@ class RerankerMineSemanticNegatives(reranker):
         self.num_negatives = num_negatives
         self.embedding_serving = embedding_serving
 
-    @staticmethod
-    def _cosine_similarity(query_emb: np.ndarray, corpus_embs: np.ndarray) -> np.ndarray:
-        query_norm = np.linalg.norm(query_emb)
-        if query_norm > 0:
-            query_emb = query_emb / query_norm
-
-        corpus_norms = np.linalg.norm(corpus_embs, axis=1, keepdims=True)
-        corpus_norms = np.where(corpus_norms > 0, corpus_norms, 1)
-        corpus_normalized = corpus_embs / corpus_norms
-
-        return np.dot(corpus_normalized, query_emb)
-
     def forward(
         self,
         data: dict,
@@ -260,7 +263,7 @@ class RerankerMineSemanticNegatives(reranker):
             return {**data, output_neg_key: []}
 
         query_embedding = np.array(self.embedding_serving([query])[0])
-        similarities = self._cosine_similarity(query_embedding, corpus_embeddings)
+        similarities = _compute_cosine_similarity(query_embedding, corpus_embeddings)
 
         scored_docs = [(sim, doc) for sim, doc in zip(similarities, corpus)
                        if doc not in pos_set]
@@ -271,10 +274,12 @@ class RerankerMineSemanticNegatives(reranker):
 
 
 class RerankerMineMixedNegatives(reranker):
-    def __init__(self, num_negatives: int = 7, bm25_ratio: float = 0.5, **kwargs):
+    def __init__(self, embedding_serving: Optional[Callable] = None, 
+                 num_negatives: int = 7, bm25_ratio: float = 0.5, **kwargs):
         super().__init__(_concurrency_mode='process', **kwargs)
         self.num_negatives = num_negatives
         self.bm25_ratio = bm25_ratio
+        self.embedding_serving = embedding_serving
 
     def forward(
         self,
@@ -323,22 +328,15 @@ class RerankerMineMixedNegatives(reranker):
         semantic_negatives = []
         corpus_embeddings = data.get('_semantic_embeddings')
         corpus_semantic = data.get('_semantic_corpus') or []
-        embedding_serving = data.get('_embedding_serving')
 
-        if corpus_embeddings is not None and corpus_semantic and embedding_serving is not None:
+        if corpus_embeddings is not None and corpus_semantic and self.embedding_serving is not None:
             # Update pos_set to exclude BM25 negatives
             pos_set_extended = pos_set | set(bm25_negatives)
 
-            query_embedding = np.array(embedding_serving([query])[0])
+            query_embedding = np.array(self.embedding_serving([query])[0])
 
-            # Compute cosine similarity
-            query_norm = np.linalg.norm(query_embedding)
-            if query_norm > 0:
-                query_embedding = query_embedding / query_norm
-            corpus_norms = np.linalg.norm(corpus_embeddings, axis=1, keepdims=True)
-            corpus_norms = np.where(corpus_norms > 0, corpus_norms, 1)
-            corpus_normalized = corpus_embeddings / corpus_norms
-            similarities = np.dot(corpus_normalized, query_embedding)
+            # Compute cosine similarity using shared function
+            similarities = _compute_cosine_similarity(query_embedding, corpus_embeddings)
 
             scored_docs = [(sim, doc) for sim, doc in zip(similarities, corpus_semantic)
                            if doc not in pos_set_extended]
