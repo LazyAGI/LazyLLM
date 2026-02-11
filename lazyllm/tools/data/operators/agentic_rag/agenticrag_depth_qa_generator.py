@@ -96,8 +96,6 @@ class DepthQAGBackwardTask(agenticrag):
 
     def _parse_backward_result(self, result) -> Optional[dict]:
         try:
-            if isinstance(result, str):
-                result = json.loads(_clean_json_block(result))
             if isinstance(result, dict) and 'identifier' in result and 'relation' in result:
                 return result
             LOG.warning('[Skipped]: Invalid backward result')
@@ -146,9 +144,6 @@ class DepthQAGCheckSuperset(agenticrag):
         try:
             if isinstance(result, dict):
                 return result.get('new_query') == 'valid'
-            elif isinstance(result, str):
-                result = json.loads(_clean_json_block(result))
-                return isinstance(result, dict) and result.get('new_query') == 'valid'
         except Exception as e:
             LOG.warning(f'[Error]: Failed to check superset: {e}')
         return False
@@ -198,10 +193,6 @@ class DepthQAGGenerateQuestion(agenticrag):
         try:
             if isinstance(result, dict) and 'new_query' in result:
                 return result['new_query']
-            elif isinstance(result, str):
-                result = json.loads(_clean_json_block(result))
-                if isinstance(result, dict) and 'new_query' in result:
-                    return result['new_query']
         except Exception as e:
             LOG.warning(f'[Error]: Failed to parse question: {e}')
         return None
@@ -251,9 +242,6 @@ class DepthQAGVerifyQuestion(agenticrag):
             score_result = self._llm_score_serve(score_prompt)
             if isinstance(score_result, dict):
                 score = score_result.get('answer_score', 0)
-            elif isinstance(score_result, str):
-                score_dict = json.loads(_clean_json_block(score_result))
-                score = score_dict.get('answer_score', 0)
             else:
                 score = 0
             data['llm_score'] = score

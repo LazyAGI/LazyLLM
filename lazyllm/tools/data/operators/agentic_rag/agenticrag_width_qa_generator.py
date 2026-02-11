@@ -47,10 +47,6 @@ class WidthQAGMergePairs(agenticrag):
             if isinstance(result, dict):
                 if isinstance(result, list) and len(result) > 0:
                     result = result[0]
-            elif isinstance(result, str):
-                result = json.loads(_clean_json_block(result))
-                if isinstance(result, list) and len(result) > 0:
-                    result = result[0]
 
             if not isinstance(result, dict) or 'question' not in result or 'index' not in result:
                 LOG.warning(f'[Skipped]: Invalid merge result at index {idx}')
@@ -134,11 +130,6 @@ class WidthQAGCheckDecomposition(agenticrag):
         try:
             result = self._llm_serve(user_prompt)
 
-            if isinstance(result, str):
-                result = json.loads(_clean_json_block(result))
-                if isinstance(result, list) and len(result) > 0:
-                    result = result[0]
-
             if isinstance(result, dict):
                 state = result.get('state', None)
                 complex_question = result.get('complex_question', data.get('question'))
@@ -175,12 +166,6 @@ class WidthQAGVerifyQuestion(agenticrag):
         try:
             if isinstance(result, dict):
                 return result.get('llm_answer', None)
-            elif isinstance(result, str):
-                result = json.loads(_clean_json_block(result))
-                if isinstance(result, list) and len(result) > 0:
-                    result = result[0]
-                if isinstance(result, dict):
-                    return result.get('llm_answer', None)
         except Exception as e:
             LOG.warning(f'[Error]: Failed to parse verification result: {e}')
         return None
@@ -238,9 +223,6 @@ class WidthQAGFilterByScore(agenticrag):
 
             if isinstance(score_result, dict):
                 score = score_result.get('answer_score', 0)
-            elif isinstance(score_result, str):
-                score_dict = json.loads(_clean_json_block(score_result))
-                score = score_dict.get('answer_score', 0)
             else:
                 score = 0
 

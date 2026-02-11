@@ -22,8 +22,8 @@ class TestAgenticRAGOperators:
             shutil.rmtree(self.root_dir)
 
     def model_set(self):
-        # self.llm = lazyllm.TrainableModule('Qwen2.5-0.5B-Instruct')
-        self.llm = lazyllm.OnlineChatModule()
+        self.llm = lazyllm.TrainableModule('Qwen2.5-0.5B-Instruct')
+        # self.llm = lazyllm.OnlineChatModule()
         return self.llm
 
     def test_qaf1_sample_evaluator_basic(self):
