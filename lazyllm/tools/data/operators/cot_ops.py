@@ -4,6 +4,7 @@ from lazyllm.components.formatter import JsonFormatter
 from collections import Counter
 import os
 import regex
+from lazyllm.thirdparty import math_verify
 
 os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 
@@ -140,3 +141,22 @@ class SelfConsistencyCoTGenerator(GenCot):
 
         data[self.output_key] = None
         return data
+
+@data_register('data.genCot', rewrite_func='forward')
+def answer_verify(data, answer_key='reference', infer_key='llm_extracted', output_key='is_equal'):
+    real_answer = data.get(answer_key, None)
+    llm_answer = data.get(infer_key, None)
+
+    if real_answer is None or llm_answer is None:
+        data[output_key] = False
+        return data
+
+    try:
+        parsed_real = math_verify.parse(str(real_answer))
+        parsed_llm = math_verify.parse(str(llm_answer))
+        data[output_key] = math_verify.verify(parsed_real, parsed_llm)
+
+    except Exception:
+        data[output_key] = False
+
+    return data

@@ -427,8 +427,7 @@ class QuestionFusionGenerator(MathQA):
         if self.user_prompt is None:
             prompt = base_prompt
         else:
-            prompt = self.user_prompt\
-                 + '\n' + f'融合列表中的问题，输出一个新问题：{questions}'
+            prompt = self.user_prompt + '\n' + f'融合列表中的问题，输出一个新问题：{questions}'
 
         res = self.model(prompt)
 
