@@ -31,22 +31,22 @@ class TestRerank:
     def test_qwen_rerank(self):
         self.common_rerank(source='qwen')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.ignore_cache_on_change(get_path('siliconflow'))
     @pytest.mark.xfail
     def test_siliconflow_rerank(self):
         self.common_rerank(source='siliconflow')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('aiping'))
+    @pytest.mark.ignore_cache_on_change(get_path('aiping'))
     @pytest.mark.xfail
     def test_aiping_rerank(self):
         self.common_rerank(source='aiping')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('glm'))
+    @pytest.mark.ignore_cache_on_change(get_path('glm'))
     @pytest.mark.xfail
     def test_glm_rerank(self):
         self.common_rerank(source='glm')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('openai'))
+    @pytest.mark.ignore_cache_on_change(get_path('openai'))
     @pytest.mark.xfail
     def test_openai_rerank(self):
         self.common_rerank(source='openai')
