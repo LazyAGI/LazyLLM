@@ -18,11 +18,6 @@ if 'agenticrag' in LazyLLMRegisterMetaClass.all_clses['data']:
 else:
     agenticrag = data_register.new_group('agenticrag')
 
-
-def _clean_json_block(item: str) -> str:
-    return item.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
-
-
 class DepthQAGGetIdentifier(agenticrag):
 
     def __init__(self, llm=None, input_key: str = 'question', **kwargs):
