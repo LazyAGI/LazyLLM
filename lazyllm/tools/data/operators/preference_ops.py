@@ -7,10 +7,10 @@ PreferenceOps = data_register.new_group('preference_ops')
 class IntentExtractor(PreferenceOps):
     def __init__(self, model=None, input_key='content', output_key='intent', **kwargs):
         super().__init__(**kwargs)
-        self.model = model
         self.input_key = input_key
         self.output_key = output_key
-        self.sys_prompt = '你是一个意图提取助手，请从用户文本中提取核心意图，并以 JSON 格式返回。'
+        sys_prompt = '你是一个意图提取助手，请从用户文本中提取核心意图，并以 JSON 格式返回。'
+        self.model = model.share().prompt(sys_prompt).formatter(JsonFormatter())
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
@@ -20,7 +20,7 @@ class IntentExtractor(PreferenceOps):
 
     def extract(self, raw_text):
         instruction = f'提炼以下用户文本的核心意图: \n{raw_text}'
-        res = self.model.prompt(self.sys_prompt).formatter(JsonFormatter())(instruction)
+        res = self.model(instruction)
         return res if isinstance(res, dict) else None
 
 
@@ -28,12 +28,13 @@ class PreferenceResponseGenerator(PreferenceOps):
     def __init__(self, model=None, n=3, temperature=1.0, system_prompt=None,
                  input_key='intent', output_key='responses', **kwargs):
         super().__init__(**kwargs)
-        self.model = model
         self.n = n
         self.temperature = temperature
-        self.system_prompt = system_prompt
         self.input_key = input_key
         self.output_key = output_key
+        self.model = model.share()
+        if system_prompt:
+            self.model = self.model.prompt(system_prompt)
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
@@ -43,12 +44,8 @@ class PreferenceResponseGenerator(PreferenceOps):
 
     def generate(self, x):
         responses = []
-        llm = self.model
-        if self.system_prompt:
-            llm = llm.prompt(self.system_prompt)
-
         for _ in range(self.n):
-            response = llm(x, temperature=self.temperature)
+            response = self.model(x, temperature=self.temperature)
             responses.append(response)
         return responses
 
@@ -56,11 +53,10 @@ class PreferenceResponseGenerator(PreferenceOps):
 class ResponseEvaluator(PreferenceOps):
     def __init__(self, model=None, input_key='content', response_key='responses', output_key='evaluation', **kwargs):
         super().__init__(**kwargs)
-        self.model = model
         self.input_key = input_key
         self.response_key = response_key
         self.output_key = output_key
-        self.sys_prompt = (
+        sys_prompt = (
             '你是一个专业的回复评测判官。请针对用户提供的指令和回复，从以下三个维度进行打分，总分为 10 分：\n'
             '1. 有用性 (Helpfulness): 满分 4 分。回复是否解决了用户的问题。\n'
             '2. 真实性 (Truthfulness): 满分 3 分。回复内容是否准确、无误导。\n'
@@ -73,6 +69,7 @@ class ResponseEvaluator(PreferenceOps):
             '  "total_score": 10\n'
             '}'
         )
+        self.model = model.share().prompt(sys_prompt).formatter(JsonFormatter())
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
@@ -88,7 +85,7 @@ class ResponseEvaluator(PreferenceOps):
                 f'回复: {resp}\n\n'
                 '请对上述回复进行打分。'
             )
-            res = self.model.prompt(self.sys_prompt).formatter(JsonFormatter())(prompt)
+            res = self.model(prompt)
             if isinstance(res, dict):
                 scores.append(res.get('total_score', 0))
             else:
