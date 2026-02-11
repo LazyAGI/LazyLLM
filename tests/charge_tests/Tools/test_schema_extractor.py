@@ -72,7 +72,7 @@ def _connect_and_get_table(documents, schema_extractor, algo_id, *, force_refres
     return sql_manager, table_name
 
 
-class TestDocToDb:
+class TestSchemaExtractor:
     @classmethod
     def setup_class(cls):
         cls.llm = lazyllm.OnlineChatModule(source="qwen")
