@@ -165,7 +165,7 @@ class ChunkToQA(Text2qa):
             self.model = TrainableModule(DEFAULT_MODEL)
         else:
             self.model = model
-        self.model = self.model.prompt(output_structure)\
+        self.model.prompt(output_structure)\
             .formatter(JsonFormatter())\
             .start()
 
@@ -221,7 +221,7 @@ class QAScorer(Text2qa):
             self.model = TrainableModule(DEFAULT_MODEL)
         else:
             self.model = model
-        self.model = self.model.prompt(output_structure)\
+        self.model.prompt(output_structure)\
             .formatter(JsonFormatter())\
             .start()
 
