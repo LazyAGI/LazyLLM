@@ -163,7 +163,7 @@ def post_processor(data, input_key):
 
 @data_register('data.enQA', rewrite_func='forward')
 def diversity_filter(data, input_key, min_score):
-        score = data.get(input_key, 0)
-        if score >= min_score:
-            return None
-        return []
+    score = data.get(input_key, 0)
+    if score >= min_score:
+        return None
+    return []

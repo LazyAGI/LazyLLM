@@ -31,7 +31,6 @@ class Pdf2Md(Pdf2Qa):
 
     def forward(self, data):
         pdf_path = data.get(self.input_key)
-        
         if not pdf_path:
             return None
 
