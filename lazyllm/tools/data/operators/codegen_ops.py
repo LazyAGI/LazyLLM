@@ -1,4 +1,5 @@
 from ..base_data import data_register
+from lazyllm.components.formatter import JsonFormatter
 import re
 from typing import Tuple
 
@@ -59,11 +60,10 @@ def _parse_score_and_feedback(response) -> Tuple[int, str]:
 class CodeEnhancementInstructionGenerator(CodeGenOps):
     def __init__(self, model=None, prompt_template=None, input_key='messages', output_key='generated_instruction',
                  **kwargs):
-        super().__init__(**kwargs)
-        self.model = model
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.output_key = output_key
-        self.system_prompt = prompt_template or (
+        sys_prompt = prompt_template or (
             'You are a code instruction standardization assistant.\n'
             'Rewrite the given instruction into a consistent format for Python code generation tasks.\n'
             'Output must be English and contain exactly two parts:\n'
@@ -78,6 +78,7 @@ class CodeEnhancementInstructionGenerator(CodeGenOps):
             '    ...\n'
             '```\n'
         )
+        self.model = model.share().prompt(sys_prompt)
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
@@ -88,22 +89,22 @@ class CodeEnhancementInstructionGenerator(CodeGenOps):
         if self.output_key in data:
             raise ValueError(f'The following key already exists and would be overwritten: {self.output_key}')
         raw_instruction = _extract_human_instruction(data.get(self.input_key))
-        response = self.model.prompt(self.system_prompt)(raw_instruction)
+        response = self.model(raw_instruction)
         data[self.output_key] = response.strip() if isinstance(response, str) else response
         return data
 
 
 class CodeInstructionToCodeGenerator(CodeGenOps):
     def __init__(self, model=None, prompt_template=None, input_key='instruction', output_key='generated_code', **kwargs):
-        super().__init__(**kwargs)
-        self.model = model
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.output_key = output_key
-        self.system_prompt = prompt_template or (
+        sys_prompt = prompt_template or (
             'You are a senior Python engineer.\n'
             'Given a natural language instruction, generate the corresponding Python code.\n'
             'Return only the code. If you include a Markdown code block, use ```python ... ```.\n'
         )
+        self.model = model.share().prompt(sys_prompt)
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
@@ -114,7 +115,7 @@ class CodeInstructionToCodeGenerator(CodeGenOps):
         if self.output_key in data:
             raise ValueError(f'The following key already exists and would be overwritten: {self.output_key}')
         instruction = data.get(self.input_key, '')
-        response = self.model.prompt(self.system_prompt)(instruction)
+        response = self.model(instruction)
         data[self.output_key] = _parse_code(response)
         return data
 
@@ -130,19 +131,22 @@ class CodeQualitySampleEvaluator(CodeGenOps):
         output_feedback_key='quality_feedback',
         **kwargs,
     ):
-        super().__init__(**kwargs)
-        self.model = model
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_instruction_key = input_instruction_key
         self.input_code_key = input_code_key
         self.output_score_key = output_score_key
         self.output_feedback_key = output_feedback_key
-        self.system_prompt = prompt_template or (
+        sys_prompt = prompt_template or (
             'You are an automated code reviewer.\n'
             'Evaluate the generated Python code against the given instruction.\n'
-            'Return the result strictly in the following format:\n'
-            'Score: <0-10>\n'
-            'Feedback: <your feedback>\n'
+            'Please provide a score (0-10) and feedback.\n'
+            'Output must be in JSON format:\n'
+            '{\n'
+            '  "score": <0-10>,\n'
+            '  "feedback": "..."\n'
+            '}'
         )
+        self.model = model.share().prompt(sys_prompt).formatter(JsonFormatter())
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
@@ -159,8 +163,16 @@ class CodeQualitySampleEvaluator(CodeGenOps):
         instruction = data.get(self.input_instruction_key, '')
         code = data.get(self.input_code_key, '')
         user_input = f'Instruction:\n{instruction}\n\nCode:\n```python\n{code}\n```'
-        response = self.model.prompt(self.system_prompt)(user_input)
-        score, feedback = _parse_score_and_feedback(response)
+        res = self.model(user_input)
+
+        if isinstance(res, dict):
+            score = res.get('score', 0)
+            feedback = res.get('feedback', 'No feedback provided.')
+        else:
+            from lazyllm import LOG
+            LOG.warning(f'Failed to extract JSON from response: {res}')
+            score, feedback = 0, 'Failed to parse LLM evaluation output.'
+
         data[self.output_score_key] = score
         data[self.output_feedback_key] = feedback
         return data
