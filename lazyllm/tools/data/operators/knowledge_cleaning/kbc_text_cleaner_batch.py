@@ -150,93 +150,71 @@ def extract_cleaned_content(data: dict) -> dict:
     return {**data, '_cleaned_chunks': cleaned_chunks}
 
 
-class KBCSaveCleanedChunks(kbc):
+def _clean_save_result(result: dict, output_key: str, output_path: str = '') -> dict:
+    result[output_key] = output_path
+    for key in ['_chunks_data', '_chunk_path', '_cleaned_results', '_cleaned_chunks']:
+        result.pop(key, None)
+    return result
+
+
+def _build_json_items(cleaned_chunks: list) -> list:
+    return [{
+        'raw_chunk': item['raw_chunk'],
+        'cleaned_chunk': item['cleaned_chunk']
+    } for item in cleaned_chunks]
+
+
+def _get_save_output_path(chunk_path: str, output_dir: Optional[str]) -> str:
+    if output_dir:
+        abs_chunk_path = os.path.abspath(chunk_path)
+        abs_cwd = os.path.abspath(os.getcwd())
+        if abs_chunk_path.startswith(abs_cwd):
+            rel_path = os.path.relpath(abs_chunk_path, abs_cwd)
+        else:
+            rel_path = abs_chunk_path.lstrip('/')
+
+        output_path = os.path.join(output_dir, rel_path)
+        os.makedirs(os.path.dirname(output_path), exist_ok=True)
+    else:
+        base, ext = os.path.splitext(chunk_path)
+        if base.endswith('_cleaned'):
+            counter = 1
+            output_path = f'{base}_v{counter}{ext}'
+            while os.path.exists(output_path):
+                counter += 1
+                output_path = f'{base}_v{counter}{ext}'
+        else:
+            output_path = f'{base}_cleaned{ext}'
+    return output_path
+
+
+class KBCSaveCleaned(kbc):
     def __init__(self, output_dir: Optional[str] = None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.output_dir = output_dir
 
-    def forward(
-        self,
-        data: dict,
-        output_key: str = 'cleaned_chunk_path',
-        **kwargs
-    ) -> dict:
+    def forward(self, data: dict, output_key: str = 'cleaned_chunk_path', **kwargs) -> dict:
         cleaned_chunks = data.get('_cleaned_chunks', [])
         chunk_path = data.get('_chunk_path', '')
+        result = data.copy()
 
         if not chunk_path:
-            result = data.copy()
-            result[output_key] = ''
-            # Clean intermediate fields
-            for key in ['_chunks_data', '_chunk_path', '_cleaned_results', '_cleaned_chunks']:
-                result.pop(key, None)
-            return result
+            return _clean_save_result(result, output_key)
 
         if not cleaned_chunks:
             LOG.warning(f'No cleaned chunks to save for {chunk_path}')
-            result = data.copy()
-            result[output_key] = chunk_path
-            # Clean intermediate fields
-            for key in ['_chunks_data', '_chunk_path', '_cleaned_results', '_cleaned_chunks']:
-                result.pop(key, None)
-            return result
+            return _clean_save_result(result, output_key, chunk_path)
 
         try:
-            # Build output JSON
-            json_items = [{
-                'raw_chunk': item['raw_chunk'],
-                'cleaned_chunk': item['cleaned_chunk']
-            } for item in cleaned_chunks]
-
-            # Determine output path: use output_dir if specified, otherwise add suffix
-            if self.output_dir:
-                # Preserve relative directory structure to avoid filename collision
-                # Convert /data/a/chunks.json -> output_dir/data/a/chunks.json
-                abs_chunk_path = os.path.abspath(chunk_path)
-                abs_cwd = os.path.abspath(os.getcwd())
-                
-                # Get relative path from current working directory
-                if abs_chunk_path.startswith(abs_cwd):
-                    rel_path = os.path.relpath(abs_chunk_path, abs_cwd)
-                else:
-                    # If outside cwd, use the full path structure under output_dir
-                    rel_path = abs_chunk_path.lstrip('/')
-                
-                # Build output path preserving directory structure
-                output_path = os.path.join(self.output_dir, rel_path)
-                output_dir = os.path.dirname(output_path)
-                os.makedirs(output_dir, exist_ok=True)
-            else:
-                # Add _cleaned suffix to avoid overwriting original file
-                # Check if already has _cleaned suffix to avoid duplicate
-                base, ext = os.path.splitext(chunk_path)
-                if base.endswith('_cleaned'):
-                    # Already cleaned, add version number
-                    counter = 1
-                    output_path = f'{base}_v{counter}{ext}'
-                    while os.path.exists(output_path):
-                        counter += 1
-                        output_path = f'{base}_v{counter}{ext}'
-                else:
-                    output_path = f'{base}_cleaned{ext}'
+            json_items = _build_json_items(cleaned_chunks)
+            output_path = _get_save_output_path(chunk_path, self.output_dir)
 
             with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(json_items, f, ensure_ascii=False, indent=4)
 
             LOG.info(f'Successfully saved cleaned chunks to {output_path}')
-
-            result = data.copy()
-            result[output_key] = output_path
-            # Clean intermediate fields
-            for key in ['_chunks_data', '_chunk_path', '_cleaned_results', '_cleaned_chunks']:
-                result.pop(key, None)
-            return result
+            return _clean_save_result(result, output_key, output_path)
 
         except Exception as e:
             LOG.error(f'Error saving cleaned chunks: {e}')
-            result = data.copy()
-            result[output_key] = ''
-            # Clean intermediate fields
-            for key in ['_chunks_data', '_chunk_path', '_cleaned_results', '_cleaned_chunks']:
-                result.pop(key, None)
-            return result
+            return _clean_save_result(result, output_key)

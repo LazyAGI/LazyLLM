@@ -121,8 +121,6 @@ class RerankerFormatPairwise(reranker):
 
         return results
 
-
-
 class RerankerTrainTestSplitter(reranker):
     def __init__(
             self,

@@ -372,6 +372,88 @@ res = op([{'text': 'ok'}, {'text': 'fail'}, {'text': 'ok2'}])
 ```
 """)
 
+# =========================
+# EmbeddingQueryRewrite
+# =========================
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_data_augmentor.EmbeddingQueryRewrite', """\
+使用 LLM 对查询进行重写生成增强样本的算子。
+
+该算子利用语言模型对输入查询进行语义等价改写，生成多个表达不同但含义相同的查询变体，
+用于扩充 Embedding 训练数据。支持指定生成数量和语言。
+
+Args:
+    llm: 语言模型服务实例
+    num_augments (int): 每个查询生成的增强样本数量，默认 2
+    lang (str): 语言代码，'zh' 表示中文，'en' 表示英文，默认 'zh'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_data_augmentor.EmbeddingQueryRewrite', """\
+An operator that rewrites queries using LLM to generate augmented samples.
+
+This operator leverages a language model to perform semantic-equivalent rewriting of input queries,
+generating multiple variants with different expressions but same meaning for expanding Embedding training data.
+Supports specifying the number of augmentations and language.
+
+Args:
+    llm: language model service instance
+    num_augments (int): number of augmented samples to generate per query, default 2
+    lang (str): language code, 'zh' for Chinese, 'en' for English, default 'zh'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_data_augmentor.EmbeddingQueryRewrite', """\
+```python
+from lazyllm.tools.data import embedding
+
+op = embedding.EmbeddingQueryRewrite(llm=my_llm, num_augments=3, lang='zh')
+result = op({'query': '如何学习机器学习'})
+# Returns list of augmented samples with rewritten queries
+for item in result:
+    print(item['query'], item['is_augmented'], item['augment_method'])
+```
+""")
+
+# =========================
+# EmbeddingAdjacentWordSwap
+# =========================
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_data_augmentor.EmbeddingAdjacentWordSwap', """\
+通过交换相邻词语进行数据增强的算子。
+
+该算子使用基于规则的方法，随机选择查询中的相邻词对进行交换，生成语义相同但词序不同的查询变体。
+适用于长度大于2个词的查询。属于 CPU 密集型任务，使用进程模式并发。
+
+Args:
+    num_augments (int): 每个查询生成的增强样本数量，默认 2
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_data_augmentor.EmbeddingAdjacentWordSwap', """\
+An operator that augments data by swapping adjacent words.
+
+This operator uses a rule-based approach to randomly select adjacent word pairs in the query
+for swapping, generating query variants with the same semantics but different word order.
+Applicable to queries with more than 2 words. Uses process mode for CPU-bound tasks.
+
+Args:
+    num_augments (int): number of augmented samples to generate per query, default 2
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_data_augmentor.EmbeddingAdjacentWordSwap', """\
+```python
+from lazyllm.tools.data import embedding
+
+op = embedding.EmbeddingAdjacentWordSwap(num_augments=2)
+result = op({'query': 'machine learning tutorial'})
+# Returns list with swapped versions like 'learning machine tutorial'
+for item in result:
+    print(item['query'], item['is_augmented'], item['augment_method'])
+```
+""")
+
 # pipelines module docs
 add_chinese_doc( 'data.pipelines.demo_pipelines.build_demo_pipeline', """\
 构建演示用数据处理流水线（Pipeline），包含若干示例算子并展示如何在 pipeline 上组合使用这些算子。
@@ -401,5 +483,2264 @@ ppl = build_demo_pipeline(input_key='text')
 data = [{'text': 'lazyLLM'}]
 res = ppl(data)
 print(res)  # demonstrates how operators are combined and applied
+```
+""")
+
+# =========================
+# Embedding Data Formatter
+# =========================
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatFlagEmbedding', """\
+将数据格式化为 FlagEmbedding 训练格式的算子。
+
+该算子将输入的 query、pos（正样本）、neg（负样本）格式化为 FlagEmbedding 框架所需的训练数据格式。
+支持添加指令（instruction）字段用于有监督的 Embedding 训练。
+
+Args:
+    instruction (str, optional): 指令文本，用于有监督训练场景。默认为 None。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含 query、pos、neg 和可选 prompt 字段的字典。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatFlagEmbedding', """\
+An operator that formats data into FlagEmbedding training format.
+
+This operator formats the input query, pos (positive samples), and neg (negative samples)
+into the training data format required by the FlagEmbedding framework.
+Supports adding an instruction field for supervised Embedding training.
+
+Args:
+    instruction (str, optional): Instruction text for supervised training scenarios. Defaults to None.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: A dictionary containing query, pos, neg, and optional prompt fields.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatFlagEmbedding', """\
+```python
+from lazyllm.tools.data import embedding
+
+op = embedding.EmbeddingFormatFlagEmbedding(instruction='Represent this sentence for searching relevant passages:')
+result = op({'query': 'machine learning', 'pos': ['ML tutorial'], 'neg': ['cooking recipe']})
+# Returns: {'query': 'machine learning', 'pos': ['ML tutorial'], 'neg': ['cooking recipe'], 'prompt': 'Represent this sentence for searching relevant passages:'}
+```
+""")
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatSentenceTransformers', """\
+将数据格式化为 SentenceTransformers 三元组训练格式的算子。
+
+该算子将输入的 query、pos（正样本）、neg（负样本）转换为 SentenceTransformers 框架所需的 anchor-positive-negative 三元组格式。
+适用于 MultipleNegativesRankingLoss 等损失函数的训练。
+
+Args:
+    **kwargs (dict): 可选的参数，传递给父类。
+
+Returns:
+    List[dict]: 包含 anchor、positive、negative 字段的字典列表，每对正负样本生成一个三元组。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatSentenceTransformers', """\
+An operator that formats data into SentenceTransformers triplet training format.
+
+This operator converts the input query, pos (positive samples), and neg (negative samples)
+into the anchor-positive-negative triplet format required by the SentenceTransformers framework.
+Suitable for training with losses like MultipleNegativesRankingLoss.
+
+Args:
+    **kwargs (dict): Optional arguments passed to the parent class.
+
+Returns:
+    List[dict]: A list of dictionaries containing anchor, positive, and negative fields,
+    with one triplet generated for each positive-negative pair.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatSentenceTransformers', """\
+```python
+from lazyllm.tools.data import embedding
+
+op = embedding.EmbeddingFormatSentenceTransformers()
+result = op({'query': 'machine learning', 'pos': ['ML basics'], 'neg': ['cooking tips']})
+# Returns: [{'anchor': 'machine learning', 'positive': 'ML basics', 'negative': 'cooking tips'}]
+```
+""")
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatTriplet', """\
+将数据格式化为通用三元组格式的算子。
+
+该算子将输入的 query、pos（正样本）、neg（负样本）转换为标准的三元组格式，
+字段名为 query、positive、negative。适用于多种 Embedding 训练框架。
+
+Args:
+    **kwargs (dict): 可选的参数，传递给父类。
+
+Returns:
+    List[dict]: 包含 query、positive、negative 字段的字典列表，每对正负样本生成一个三元组。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatTriplet', """\
+An operator that formats data into generic triplet format.
+
+This operator converts the input query, pos (positive samples), and neg (negative samples)
+into a standard triplet format with field names query, positive, and negative.
+Compatible with various Embedding training frameworks.
+
+Args:
+    **kwargs (dict): Optional arguments passed to the parent class.
+
+Returns:
+    List[dict]: A list of dictionaries containing query, positive, and negative fields,
+    with one triplet generated for each positive-negative pair.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatTriplet', """\
+```python
+from lazyllm.tools.data import embedding
+
+op = embedding.EmbeddingFormatTriplet()
+result = op({'query': 'deep learning', 'pos': ['neural networks', 'AI'], 'neg': ['history', 'geography']})
+# Returns list of triplets combining each positive with each negative
+```
+""")
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingTrainTestSplitter', """\
+将数据集分割为训练集和测试集的算子。
+
+该算子对输入数据进行随机打乱，并按指定比例分割为训练集和测试集。
+支持保存分割后的数据到 JSONL 文件，并可按指定键进行分层抽样。
+
+Args:
+    test_size (float): 测试集比例，默认为 0.1（即 10%）。
+    seed (int): 随机种子，用于可复现的分割结果，默认为 42。
+    stratify_key (str, optional): 分层抽样的键名，默认为 None。
+    train_output_file (str, optional): 训练集输出文件路径，默认为 None。
+    test_output_file (str, optional): 测试集输出文件路径，默认为 None。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    List[dict]: 包含训练集和测试集的所有样本，每个样本添加了 'split' 字段标记所属集合。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingTrainTestSplitter', """\
+An operator that splits dataset into training and test sets.
+
+This operator randomly shuffles the input data and splits it into training and test sets
+according to the specified ratio. Supports saving split data to JSONL files
+and stratified sampling by a specified key.
+
+Args:
+    test_size (float): Proportion of test set, defaults to 0.1 (i.e., 10%).
+    seed (int): Random seed for reproducible splitting, defaults to 42.
+    stratify_key (str, optional): Key name for stratified sampling, defaults to None.
+    train_output_file (str, optional): Output file path for training set, defaults to None.
+    test_output_file (str, optional): Output file path for test set, defaults to None.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    List[dict]: All samples from both training and test sets, with a 'split' field added
+to indicate which set each sample belongs to.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingTrainTestSplitter', """\
+```python
+from lazyllm.tools.data import embedding
+
+op = embedding.EmbeddingTrainTestSplitter(test_size=0.2, seed=123, train_output_file='train.jsonl', test_output_file='test.jsonl')
+data = [{'query': 'q1', 'pos': 'p1'}, {'query': 'q2', 'pos': 'p2'}, {'query': 'q3', 'pos': 'p3'}]
+result = op(data)
+# Returns all samples with 'split' field ('train' or 'test')
+# Saves train data to train.jsonl and test data to test.jsonl
+```
+""")
+
+# =========================
+# Embedding Hard Negative Miner
+# =========================
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.build_embedding_corpus', """\
+构建 Embedding 训练所需的语料库。
+
+该函数从输入数据中提取正样本和语料字段，构建一个唯一的语料库，并将其保存到文件中。
+支持使用外部语料库，如果提供了 corpus 参数，则直接使用外部语料库。
+
+Args:
+    inputs (List[dict]): 输入数据列表，每条数据应包含正样本和可选的语料字段。
+    input_pos_key (str): 正样本字段名，默认为 'pos'。
+    corpus_key (str): 语料字段名，默认为 'passage'。
+    corpus (List[str], optional): 外部语料库，如果提供则直接使用。默认为 None。
+    corpus_dir (str, optional): 语料库保存目录，默认为临时目录。
+
+Returns:
+    List[dict]: 原始输入数据，每条数据添加了 '_corpus' 字段指向语料库文件路径。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.build_embedding_corpus', """\
+Build corpus for Embedding training.
+
+This function extracts positive samples and corpus fields from input data to build a unique corpus and saves it to a file.
+Supports using external corpus; if corpus parameter is provided, it will be used directly.
+
+Args:
+    inputs (List[dict]): List of input data, each should contain positive samples and optional corpus field.
+    input_pos_key (str): Key name for positive samples, defaults to 'pos'.
+    corpus_key (str): Key name for corpus field, defaults to 'passage'.
+    corpus (List[str], optional): External corpus, used directly if provided. Defaults to None.
+    corpus_dir (str, optional): Directory to save corpus, defaults to temp directory.
+
+Returns:
+    List[dict]: Original input data with '_corpus' field added pointing to corpus file path.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_hard_negative_miner.build_embedding_corpus', """\
+```python
+from lazyllm.tools.data.operators.embedding_synthesis.embedding_hard_negative_miner import build_embedding_corpus
+
+data = [{'query': 'machine learning', 'pos': ['ML tutorial', 'deep learning']}, {'query': 'cooking', 'pos': ['recipe']}]
+result = build_embedding_corpus(data, input_pos_key='pos')
+# Returns data with '_corpus' field pointing to corpus file containing unique passages
+```
+""")
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingInitBM25', """\
+初始化 BM25 索引的算子。
+
+该算子基于语料库构建 BM25 索引，用于后续的关键词检索和困难负样本挖掘。
+支持中英文分词，使用 jieba 进行中文分词，Stemmer 进行英文词干提取。
+
+Args:
+    language (str): 语言类型，'zh' 表示中文，'en' 表示英文，默认为 'zh'。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    List[dict]: 输入数据，每条数据添加了 BM25 索引和相关配置信息。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingInitBM25', """\
+An operator that initializes BM25 index.
+
+This operator builds BM25 index based on corpus for subsequent keyword retrieval and hard negative mining.
+Supports Chinese and English tokenization, using jieba for Chinese and Stemmer for English stemming.
+
+Args:
+    language (str): Language type, 'zh' for Chinese, 'en' for English, defaults to 'zh'.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    List[dict]: Input data with BM25 index and related configuration added to each item.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingInitBM25', """\
+```python
+from lazyllm.tools.data import embedding
+
+# First build corpus, then initialize BM25
+corpus_op = embedding.build_embedding_corpus(input_pos_key='pos')
+bm25_op = embedding.EmbeddingInitBM25(language='zh')
+# Returns data with '_bm25' index and tokenizer configuration
+```
+""")
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingInitSemantic', """\
+初始化语义嵌入向量的算子。
+
+该算子使用 Embedding 服务计算语料库中所有文档的向量表示，并保存到文件中。
+用于后续的语义相似度计算和困难负样本挖掘。
+
+Args:
+    embedding_serving (Callable): Embedding 服务调用函数，用于计算文本向量。
+    embeddings_dir (str, optional): 向量文件保存目录，默认为语料库所在目录。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    List[dict]: 输入数据，每条数据添加了语义向量文件路径和语料库信息。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingInitSemantic', """\
+An operator that initializes semantic embeddings.
+
+This operator uses Embedding service to compute vector representations for all documents in the corpus
+and saves them to files. Used for subsequent semantic similarity calculation and hard negative mining.
+
+Args:
+    embedding_serving (Callable): Embedding service callable for computing text vectors.
+    embeddings_dir (str, optional): Directory to save embedding files, defaults to corpus directory.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    List[dict]: Input data with semantic embedding file paths and corpus information added.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingInitSemantic', """\
+```python
+from lazyllm.tools.data import embedding
+
+# Assuming my_embedding_fn is an embedding service
+semantic_op = embedding.EmbeddingInitSemantic(embedding_serving=my_embedding_fn)
+# Returns data with '_semantic_embeddings_path' pointing to saved embeddings
+```
+""")
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.mine_bm25_negatives', """\
+使用 BM25 算法挖掘困难负样本的函数。
+
+该函数基于 BM25 索引，检索与查询最相关但不属于正样本的文档作为负样本。
+适用于挖掘与查询有词汇重叠但语义不同的困难负样本。
+
+Args:
+    data (dict): 单条输入数据，应包含 query、pos 和 BM25 索引信息。
+    num_negatives (int): 需要挖掘的负样本数量，默认为 7。
+    input_query_key (str): 查询字段名，默认为 'query'。
+    input_pos_key (str): 正样本字段名，默认为 'pos'。
+    output_neg_key (str): 负样本输出字段名，默认为 'neg'。
+
+Returns:
+    dict: 输入数据，添加了挖掘到的负样本列表。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.mine_bm25_negatives', """\
+A function that mines hard negative samples using BM25 algorithm.
+
+This function retrieves documents most relevant to the query but not in positive samples as negative samples,
+based on BM25 index. Suitable for mining hard negatives that have lexical overlap but different semantics.
+
+Args:
+    data (dict): Single input data, should contain query, pos, and BM25 index information.
+    num_negatives (int): Number of negative samples to mine, defaults to 7.
+    input_query_key (str): Key name for query field, defaults to 'query'.
+    input_pos_key (str): Key name for positive samples field, defaults to 'pos'.
+    output_neg_key (str): Key name for output negative samples field, defaults to 'neg'.
+
+Returns:
+    dict: Input data with mined negative samples list added.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_hard_negative_miner.mine_bm25_negatives', """\
+```python
+from lazyllm.tools.data.operators.embedding_synthesis.embedding_hard_negative_miner import mine_bm25_negatives
+
+# After building corpus and initializing BM25
+data = {'query': 'machine learning', 'pos': ['ML tutorial'], '_bm25': bm25_index, '_bm25_corpus': corpus}
+result = mine_bm25_negatives(data, num_negatives=5)
+# Returns data with 'neg' field containing BM25-mined negative samples
+```
+""")
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.mine_random_negatives', """\
+随机挖掘负样本的函数。
+
+该函数从语料库中随机选择不属于正样本的文档作为负样本。
+适用于基线对比或需要随机负样本的场景。
+
+Args:
+    data (dict): 单条输入数据，应包含 query、pos 和语料库信息。
+    num_negatives (int): 需要挖掘的负样本数量，默认为 7。
+    seed (int): 随机种子，用于可复现的随机选择，默认为 42。
+    input_query_key (str): 查询字段名，默认为 'query'。
+    input_pos_key (str): 正样本字段名，默认为 'pos'。
+    output_neg_key (str): 负样本输出字段名，默认为 'neg'。
+
+Returns:
+    dict: 输入数据，添加了随机选择的负样本列表。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.mine_random_negatives', """\
+A function that mines random negative samples.
+
+This function randomly selects documents from corpus that are not in positive samples as negative samples.
+Suitable for baseline comparison or scenarios requiring random negatives.
+
+Args:
+    data (dict): Single input data, should contain query, pos, and corpus information.
+    num_negatives (int): Number of negative samples to mine, defaults to 7.
+    seed (int): Random seed for reproducible selection, defaults to 42.
+    input_query_key (str): Key name for query field, defaults to 'query'.
+    input_pos_key (str): Key name for positive samples field, defaults to 'pos'.
+    output_neg_key (str): Key name for output negative samples field, defaults to 'neg'.
+
+Returns:
+    dict: Input data with randomly selected negative samples list added.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_hard_negative_miner.mine_random_negatives', """\
+```python
+from lazyllm.tools.data.operators.embedding_synthesis.embedding_hard_negative_miner import mine_random_negatives
+
+data = {'query': 'machine learning', 'pos': ['ML tutorial'], '_corpus': corpus_path}
+result = mine_random_negatives(data, num_negatives=5, seed=123)
+# Returns data with 'neg' field containing randomly selected negative samples
+```
+""")
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingMineSemanticNegatives', """\
+使用语义相似度挖掘困难负样本的算子。
+
+该算子基于语义向量相似度，找出与查询最相似但不属于正样本的文档作为负样本。
+适用于挖掘语义相近但实际不相关的困难负样本，通常比 BM25 方法效果更好。
+
+Args:
+    num_negatives (int): 需要挖掘的负样本数量，默认为 7。
+    embedding_serving (Callable): Embedding 服务调用函数，用于计算查询向量。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 输入数据，添加了基于语义相似度挖掘的负样本列表。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingMineSemanticNegatives', """\
+An operator that mines hard negative samples using semantic similarity.
+
+This operator finds documents most similar to the query but not in positive samples based on semantic vector similarity.
+Suitable for mining hard negatives that are semantically similar but actually irrelevant,
+usually performs better than BM25 method.
+
+Args:
+    num_negatives (int): Number of negative samples to mine, defaults to 7.
+    embedding_serving (Callable): Embedding service callable for computing query vectors.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Input data with negative samples mined based on semantic similarity added.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingMineSemanticNegatives', """\
+```python
+from lazyllm.tools.data import embedding
+
+# Assuming embeddings are initialized
+semantic_miner = embedding.EmbeddingMineSemanticNegatives(num_negatives=5, embedding_serving=my_embedding_fn)
+data = {'query': 'machine learning', 'pos': ['ML tutorial'], '_semantic_embeddings_path': emb_path, '_semantic_corpus': corpus}
+result = semantic_miner(data)
+# Returns data with 'neg' field containing semantically similar negative samples
+```
+""")
+
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_query_generator.EmbeddingGenerateQueries', """\
+使用 LLM 生成查询的算子。
+
+该算子调用语言模型服务，基于构建的提示生成查询。返回 JSON 格式的查询响应。
+
+Args:
+    llm: LLM 服务实例，用于生成查询。
+    num_queries (int): 要生成的查询数量，默认为 3。
+    lang (str): 语言，'zh' 表示中文，'en' 表示英文，默认为 'zh'。
+    query_types (List[str], optional): 查询类型列表，默认为 ['factual', 'semantic', 'inferential']。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 输入数据，添加了 '_query_response' 字段包含生成的查询响应。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_query_generator.EmbeddingGenerateQueries', """\
+An operator that generates queries using LLM.
+
+This operator calls a language model service to generate queries based on the built prompts. Returns the query response in JSON format.
+
+Args:
+    llm: LLM service instance for generating queries.
+    num_queries (int): Number of queries to generate, defaults to 3.
+    lang (str): Language, 'zh' for Chinese, 'en' for English, defaults to 'zh'.
+    query_types (List[str], optional): List of query types, defaults to ['factual', 'semantic', 'inferential'].
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Input data with '_query_response' field added containing the generated query response.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_query_generator.EmbeddingGenerateQueries', """\
+```python
+from lazyllm.tools.data import embedding
+
+# Assuming llm is an LLM service instance
+generator = embedding.EmbeddingGenerateQueries(llm=llm, lang='zh')
+data = {'_query_prompt': 'Generate queries for: machine learning tutorial'}
+result = generator(data)
+# Returns data with '_query_response' field containing JSON queries
+```
+""")
+
+add_chinese_doc('data.operators.embedding_synthesis.embedding_query_generator.EmbeddingParseQueries', """\
+解析生成的查询的算子。
+
+该算子解析 LLM 生成的查询响应，将每条查询展开为独立的数据记录。
+
+Args:
+    input_key (str): 输入字段名，默认为 'passage'。
+    output_query_key (str): 输出查询字段名，默认为 'query'。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    List[dict]: 解析后的查询列表，每个查询为一个独立的数据记录。
+""")
+
+add_english_doc('data.operators.embedding_synthesis.embedding_query_generator.EmbeddingParseQueries', """\
+An operator that parses generated queries.
+
+This operator parses the query response generated by LLM and expands each query into an independent data record.
+
+Args:
+    input_key (str): Input field name, defaults to 'passage'.
+    output_query_key (str): Output query field name, defaults to 'query'.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    List[dict]: List of parsed queries, each query as an independent data record.
+""")
+
+add_example('data.operators.embedding_synthesis.embedding_query_generator.EmbeddingParseQueries', """\
+```python
+from lazyllm.tools.data import embedding
+
+parser = embedding.EmbeddingParseQueries(input_key='passage', output_query_key='query')
+data = {'_query_response': '[{"query": "what is ML?", "type": "factual"}]', 'passage': 'Machine learning is...'}
+result = parser(data)
+# Returns list of expanded query records with 'query' and 'pos' fields
+```
+""")
+
+# =========================
+# File/URL to Markdown Converter API
+# =========================
+
+add_chinese_doc('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.FileOrURLNormalizer', """\
+文件或URL标准化算子。
+
+该算子根据输入类型（文件或URL）自动识别文件格式，进行标准化处理。
+支持PDF、HTML/XML、TXT/MD等文件格式，以及网页URL。对于网络PDF，会先下载到本地。
+
+Args:
+    intermediate_dir (str): 中间文件保存目录，默认为 'intermediate'。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 标准化后的数据，包含以下字段：
+    - _type: 文件类型 ('pdf', 'html', 'text', 'invalid', 'unsupported')
+    - _raw_path: 本地文件路径（如果有）
+    - _url: URL地址（如果是网页）
+    - _output_path: 预期的Markdown输出路径
+    - _error: 错误信息（如果有）
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.FileOrURLNormalizer', """\
+File or URL normalizer operator.
+
+This operator automatically identifies file format based on input type (file or URL) and performs normalization.
+Supports PDF, HTML/XML, TXT/MD files, and web URLs. For network PDFs, they will be downloaded locally first.
+
+Args:
+    intermediate_dir (str): Directory for intermediate files, defaults to 'intermediate'.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Normalized data containing the following fields:
+    - _type: File type ('pdf', 'html', 'text', 'invalid', 'unsupported')
+    - _raw_path: Local file path (if available)
+    - _url: URL address (if web page)
+    - _output_path: Expected Markdown output path
+    - _error: Error message (if any)
+""")
+
+add_example('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.FileOrURLNormalizer', """\
+```python
+from lazyllm.tools.data import kbc
+
+normalizer = kbc.FileOrURLNormalizer(intermediate_dir='./temp')
+
+# For file input
+data = {'source': '/path/to/document.pdf'}
+result = normalizer(data)
+# Returns: {'source': '/path/to/document.pdf', '_type': 'pdf', '_raw_path': '/path/to/document.pdf', '_output_path': './temp/document.md'}
+
+# For URL input
+data = {'source': 'https://example.com/page.html'}
+result = normalizer(data)
+# Returns: {'source': 'https://example.com/page.html', '_type': 'html', '_url': 'https://example.com/page.html', '_output_path': './temp/url_xxx.md'}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.HTMLToMarkdownConverter', """\
+HTML转Markdown转换器算子。
+
+该算子使用trafilatura库从HTML或XML文件中提取内容并转换为Markdown格式。
+支持本地HTML文件和网络URL，会自动处理页面元数据。
+
+Args:
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 转换后的数据，包含以下字段：
+    - _markdown_path: 生成的Markdown文件路径
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.HTMLToMarkdownConverter', """\
+HTML to Markdown converter operator.
+
+This operator uses the trafilatura library to extract content from HTML or XML files and convert to Markdown format.
+Supports local HTML files and web URLs, automatically handles page metadata.
+
+Args:
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Converted data containing the following fields:
+    - _markdown_path: Path to the generated Markdown file
+""")
+
+add_example('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.HTMLToMarkdownConverter', """\
+```python
+from lazyllm.tools.data import kbc
+
+converter = kbc.HTMLToMarkdownConverter()
+
+# After normalization
+data = {'_type': 'html', '_url': 'https://example.com/article', '_output_path': './temp/output.md'}
+result = converter(data)
+# Returns: {'_type': 'html', '_url': 'https://example.com/article', '_output_path': './temp/output.md', '_markdown_path': './temp/output.md'}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.PDFToMarkdownConverterAPI', """\
+PDF转Markdown转换器API算子。
+
+该算子使用MinerU服务将PDF文件（包括扫描件和图片）转换为Markdown格式。
+支持通过API调用MinerU进行PDF解析，可配置后端引擎和上传模式。
+
+Args:
+    mineru_url (str): MinerU服务URL地址。
+    mineru_backend (str): MinerU后端引擎类型，默认为 'vlm-vllm-async-engine'。
+    upload_mode (bool): 是否使用上传模式，默认为 True。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 转换后的数据，包含以下字段：
+    - _markdown_path: 生成的Markdown文件路径
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.PDFToMarkdownConverterAPI', """\
+PDF to Markdown converter API operator.
+
+This operator uses the MinerU service to convert PDF files (including scanned documents and images) to Markdown format.
+Supports calling MinerU via API for PDF parsing, with configurable backend engine and upload mode.
+
+Args:
+    mineru_url (str): MinerU service URL address.
+    mineru_backend (str): MinerU backend engine type, defaults to 'vlm-vllm-async-engine'.
+    upload_mode (bool): Whether to use upload mode, defaults to True.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Converted data containing the following fields:
+    - _markdown_path: Path to the generated Markdown file
+""")
+
+add_example('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.PDFToMarkdownConverterAPI', """\
+```python
+from lazyllm.tools.data import kbc
+
+converter = kbc.PDFToMarkdownConverterAPI(
+    mineru_url='your_mineru_url',
+    mineru_backend='vlm-vllm-async-engine',
+    upload_mode=True
+)
+
+# After normalization
+data = {'_type': 'pdf', '_raw_path': '/path/to/doc.pdf', '_output_path': './temp/output.md'}
+result = converter(data)
+# Returns: {'_type': 'pdf', '_raw_path': '/path/to/doc.pdf', '_output_path': './temp/output.md', '_markdown_path': './temp/output.md'}
+```
+""")
+
+# =========================
+# KBC Chunk Generator Batch
+# =========================
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCLoadText', """\
+加载文本文件内容的算子。
+
+该算子从指定路径加载文本文件内容，支持多种文件格式：
+- .txt, .md, .xml: 直接读取文本内容
+- .json, .jsonl: 从指定的文本字段中提取内容并合并
+
+Args:
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含加载结果的数据：
+    - _text_content: 加载的文本内容
+    - _load_error: 加载错误信息（如果有）
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCLoadText', """\
+Operator for loading text file content.
+
+This operator loads text file content from the specified path, supporting multiple file formats:
+- .txt, .md, .xml: Direct text content reading
+- .json, .jsonl: Extract and merge content from specified text fields
+
+Args:
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing loading results:
+    - _text_content: Loaded text content
+    - _load_error: Loading error message (if any)
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCLoadText', """\
+```python
+from lazyllm.tools.data import kbc
+
+loader = kbc.KBCLoadText()
+
+# Load text file
+data = {'text_path': '/path/to/document.txt'}
+result = loader(data)
+# Returns: {'text_path': '/path/to/document.txt', '_text_content': 'file content...'}
+
+# Load JSON file
+data = {'text_path': '/path/to/data.json'}
+result = loader(data)
+# Returns: {'text_path': '/path/to/data.json', '_text_content': 'extracted text...'}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCChunkText', """\
+文本分块算子。
+
+该算子将长文本分割成小块（chunks），支持多种分块策略：
+- token: 基于Token数量分块
+- sentence: 基于句子边界分块
+- semantic: 基于语义相似度分块
+- recursive: 递归分块
+
+Args:
+    chunk_size (int): 每个块的最大大小，默认为 512。
+    chunk_overlap (int): 块之间的重叠大小，默认为 50。
+    split_method (str): 分块方法，可选 'token', 'sentence', 'semantic', 'recursive'，默认为 'token'。
+    tokenizer_name (str): 使用的tokenizer名称，默认为 'bert-base-uncased'。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含分块结果的数据：
+    - _chunks: 分块后的文本列表
+    - _chunk_error: 分块错误信息（如果有）
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCChunkText', """\
+Text chunking operator.
+
+This operator splits long text into chunks, supporting multiple chunking strategies:
+- token: Token-based chunking
+- sentence: Sentence boundary-based chunking
+- semantic: Semantic similarity-based chunking
+- recursive: Recursive chunking
+
+Args:
+    chunk_size (int): Maximum size of each chunk, defaults to 512.
+    chunk_overlap (int): Overlap size between chunks, defaults to 50.
+    split_method (str): Chunking method, options: 'token', 'sentence', 'semantic', 'recursive', defaults to 'token'.
+    tokenizer_name (str): Name of the tokenizer to use, defaults to 'bert-base-uncased'.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing chunking results:
+    - _chunks: List of chunked texts
+    - _chunk_error: Chunking error message (if any)
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCChunkText', """\
+```python
+from lazyllm.tools.data import kbc
+
+chunker = kbc.KBCChunkText(chunk_size=512, chunk_overlap=50, split_method='token')
+
+data = {'_text_content': 'Long text content that needs to be chunked...'}
+result = chunker(data)
+# Returns: {'_text_content': 'Long text content...', '_chunks': ['chunk1', 'chunk2', ...]}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCSaveChunks', """\
+保存文本分块结果的算子。
+
+该算子将分块后的文本保存为JSON文件，每个分块作为一个JSON对象。
+支持指定输出目录，会保留原始文件的相对路径结构。
+
+Args:
+    output_dir (str, optional): 输出目录路径，默认为 None（保存到原文件所在目录的 'extract' 子目录）。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含保存结果的数据：
+    - chunk_path: 保存的JSON文件路径
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCSaveChunks', """\
+Operator for saving text chunking results.
+
+This operator saves chunked texts as JSON files, with each chunk as a JSON object.
+Supports specifying output directory, preserving the relative path structure of the original file.
+
+Args:
+    output_dir (str, optional): Output directory path, defaults to None (save to 'extract' subdirectory of the original file's directory).
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing save results:
+    - chunk_path: Path to the saved JSON file
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCSaveChunks', """\
+```python
+from lazyllm.tools.data import kbc
+
+saver = kbc.KBCSaveChunks(output_dir='./output')
+
+data = {'text_path': '/path/to/doc.txt', '_chunks': ['chunk1', 'chunk2']}
+result = saver(data)
+# Returns: {'text_path': '/path/to/doc.txt', 'chunk_path': './output/path/to/doc_chunk.json'}
+```
+""")
+
+# =========================
+# KBC Chunk Generator
+# =========================
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_chunk_generator.KBCExpandChunks', """\
+将分块文本展开为独立记录的算子。
+
+该算子将包含多个文本分块的数据记录展开为多个独立的数据记录，每个记录包含一个分块。
+适用于需要将分块后的文本作为独立样本进行后续处理的场景。
+
+Args:
+    output_key (str): 输出字段名，用于存储分块文本，默认为 'raw_chunk'。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    List[dict]: 展开后的独立数据记录列表，每个记录包含一个分块。
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_chunk_generator.KBCExpandChunks', """\
+Operator that expands chunked text into independent records.
+
+This operator expands data records containing multiple text chunks into multiple independent data records,
+with each record containing one chunk. Suitable for scenarios where chunked texts need to be processed
+as independent samples.
+
+Args:
+    output_key (str): Output key name for storing chunk text, defaults to 'raw_chunk'.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    List[dict]: List of expanded independent data records, each containing one chunk.
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_chunk_generator.KBCExpandChunks', """\
+```python
+from lazyllm.tools.data import kbc
+
+expander = kbc.KBCExpandChunks(output_key='raw_chunk')
+
+data = {'text_path': '/path/to/doc.txt', '_chunks': ['chunk1 content', 'chunk2 content', 'chunk3 content']}
+result = expander(data)
+# Returns: [
+#   {'text_path': '/path/to/doc.txt', 'raw_chunk': 'chunk1 content'},
+#   {'text_path': '/path/to/doc.txt', 'raw_chunk': 'chunk2 content'},
+#   {'text_path': '/path/to/doc.txt', 'raw_chunk': 'chunk3 content'}
+# ]
+```
+""")
+
+# =========================
+# KBC MultiHop QA Generator Batch
+# =========================
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCLoadChunkFile', """\
+加载分块文件算子。
+
+该算子从指定路径加载JSON或JSONL格式的分块文件。
+支持从知识库清洗流程中生成的分块结果文件。
+
+Args:
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含分块数据的数据：
+    - _chunks_data: 分块数据列表
+    - _chunk_path: 分块文件路径
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCLoadChunkFile', """\
+Chunk file loading operator.
+
+This operator loads JSON or JSONL format chunk files from the specified path.
+Supports chunk result files generated from the knowledge base cleaning process.
+
+Args:
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing chunk data:
+    - _chunks_data: List of chunk data
+    - _chunk_path: Chunk file path
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCLoadChunkFile', """\
+```python
+from lazyllm.tools.data import kbc
+
+loader = kbc.KBCLoadChunkFile()
+
+data = {'chunk_path': '/path/to/chunks.json'}
+result = loader(data)
+# Returns: {'chunk_path': '/path/to/chunks.json', '_chunks_data': [...], '_chunk_path': '/path/to/chunks.json'}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCPreprocessText', """\
+文本预处理算子。
+
+该算子对加载的分块文本进行预处理，根据长度过滤分块。
+只保留长度在指定范围内的分块，避免处理过短或过长的文本。
+
+Args:
+    min_length (int): 最小文本长度，默认为 100。
+    max_length (int): 最大文本长度，默认为 200000。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含预处理结果的数据：
+    - _processed_chunks: 预处理后的分块列表
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCPreprocessText', """\
+Text preprocessing operator.
+
+This operator preprocesses loaded chunk texts, filtering chunks based on length.
+Only retains chunks within the specified length range, avoiding processing text that is too short or too long.
+
+Args:
+    min_length (int): Minimum text length, defaults to 100.
+    max_length (int): Maximum text length, defaults to 200000.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing preprocessing results:
+    - _processed_chunks: List of preprocessed chunks
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCPreprocessText', """\
+```python
+from lazyllm.tools.data import kbc
+
+processor = kbc.KBCPreprocessText(min_length=50, max_length=10000)
+
+data = {'_chunks_data': [{'cleaned_chunk': 'Short text.'}, {'cleaned_chunk': 'A much longer text that meets the length requirements and will be processed.'}]}
+result = processor(data, text_field='cleaned_chunk')
+# Returns: {'_chunks_data': [...], '_processed_chunks': [{'text': 'A much longer text...', 'original_data': {...}}]}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCExtractInfoPairs', """\
+信息对提取算子。
+
+该算子从预处理后的文本中提取信息对，用于生成多跳问答。
+根据语言类型（中文或英文）使用不同的句子分割符，
+提取前提-中间-结论三元组和相关上下文。
+
+Args:
+    lang (str): 语言类型，'en' 表示英文，'zh' 表示中文，默认为 'en'。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含信息对的数据：
+    - _info_pairs: 信息对列表，每个包含 premise、intermediate、conclusion 和 related_contexts
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCExtractInfoPairs', """\
+Information pair extraction operator.
+
+This operator extracts information pairs from preprocessed text for multi-hop QA generation.
+Uses different sentence delimiters based on language type (Chinese or English),
+extracting premise-intermediate-conclusion triples and related contexts.
+
+Args:
+    lang (str): Language type, 'en' for English, 'zh' for Chinese, defaults to 'en'.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing information pairs:
+    - _info_pairs: List of information pairs, each containing premise, intermediate, conclusion, and related_contexts
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCExtractInfoPairs', """\
+```python
+from lazyllm.tools.data import kbc
+
+extractor = kbc.KBCExtractInfoPairs(lang='en')
+
+data = {'_processed_chunks': [{'text': 'First sentence. Second sentence. Third sentence.', 'original_data': {}}]}
+result = extractor(data)
+# Returns: {'_processed_chunks': [...], '_info_pairs': [{'premise': 'First sentence', 'intermediate': 'Second sentence', 'conclusion': 'Third sentence', 'related_contexts': [], 'original_data': {}}]}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCGenerateMultiHopQA', """\
+多跳问答生成算子。
+
+该算子使用LLM根据提取的信息对生成多跳问答对。
+多跳问答需要多个推理步骤才能回答，适用于训练复杂的问答模型。
+
+Args:
+    llm: LLM服务实例，用于生成问答对。
+    lang (str): 语言类型，'en' 表示英文，'zh' 表示中文，默认为 'en'。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含生成的问答结果的数据：
+    - _qa_results: 问答结果列表，每个包含 response 和 info_pair
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCGenerateMultiHopQA', """\
+Multi-hop QA generation operator.
+
+This operator uses LLM to generate multi-hop QA pairs based on extracted information pairs.
+Multi-hop QA requires multiple reasoning steps to answer, suitable for training complex QA models.
+
+Args:
+    llm: LLM service instance for generating QA pairs.
+    lang (str): Language type, 'en' for English, 'zh' for Chinese, defaults to 'en'.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing generated QA results:
+    - _qa_results: List of QA results, each containing response and info_pair
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCGenerateMultiHopQA', """\
+```python
+from lazyllm.tools.data import kbc
+
+# Assuming llm is an LLM service instance
+generator = kbc.KBCGenerateMultiHopQA(llm=llm, lang='en')
+
+data = {'_info_pairs': [{'premise': 'A', 'intermediate': 'B', 'conclusion': 'C', 'original_data': {}}]}
+result = generator(data)
+# Returns: {'_info_pairs': [...], '_qa_results': [{'response': {...}, 'info_pair': {...}}]}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.parse_qa_pairs', """\
+解析问答对函数。
+
+该函数解析LLM生成的问答响应，提取有效的问答对。
+支持多种响应格式（字典、列表、字符串），并将解析结果与原始数据合并。
+
+Args:
+    data (dict): 包含问答结果的数据。
+
+Returns:
+    dict: 包含解析后的问答对的数据：
+    - _qa_pairs: 解析后的问答对列表
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.parse_qa_pairs', """\
+QA pair parsing function.
+
+This function parses LLM-generated QA responses, extracting valid QA pairs.
+Supports multiple response formats (dict, list, string) and merges parsing results with original data.
+
+Args:
+    data (dict): Data containing QA results.
+
+Returns:
+    dict: Data containing parsed QA pairs:
+    - _qa_pairs: List of parsed QA pairs
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.parse_qa_pairs', """\
+```python
+from lazyllm.tools.data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch import parse_qa_pairs
+
+data = {'_qa_results': [{'response': {'question': 'What is AI?', 'answer': 'Artificial Intelligence'}, 'info_pair': {'original_data': {'id': 1}}}]}
+result = parse_qa_pairs(data)
+# Returns: {'_qa_results': [...], '_qa_pairs': [{'id': 1, 'qa_pairs': {'question': 'What is AI?', 'answer': 'Artificial Intelligence'}}]}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCSaveEnhanced', """\
+保存增强数据算子。
+
+该算子将生成的问答对与原始分块数据合并，保存为增强后的分块文件。
+支持指定输出目录，会保留原始文件的相对路径结构。
+
+Args:
+    output_dir (str, optional): 输出目录路径，默认为 None（保存到原文件所在目录）。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含保存结果的数据：
+    - enhanced_chunk_path: 增强后的分块文件路径
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCSaveEnhanced', """\
+Enhanced data saving operator.
+
+This operator merges generated QA pairs with original chunk data and saves them as enhanced chunk files.
+Supports specifying output directory, preserving the relative path structure of the original file.
+
+Args:
+    output_dir (str, optional): Output directory path, defaults to None (save to the original file's directory).
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing save results:
+    - enhanced_chunk_path: Path to the enhanced chunk file
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCSaveEnhanced', """\
+```python
+from lazyllm.tools.data import kbc
+
+saver = kbc.KBCSaveEnhanced(output_dir='./enhanced_output')
+
+data = {'_chunk_path': '/path/to/chunks.json', '_chunks_data': [{'id': 1, 'text': 'chunk1'}], '_qa_pairs': [{'id': 1, 'qa_pairs': {'question': 'Q1', 'answer': 'A1'}}]}
+result = saver(data, output_key='enhanced_chunk_path')
+# Returns: {'enhanced_chunk_path': './enhanced_output/path/to/chunks_enhanced.json'}
+```
+""")
+
+# =========================
+# KBC Text Cleaner Batch
+# =========================
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCLoadRAWChunkFile', """\
+加载原始分块文件算子。
+
+该算子从指定路径加载包含原始分块（raw_chunk）的JSON或JSONL文件。
+用于知识库清洗流程中加载需要清洗的原始分块数据。
+
+Args:
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含原始分块数据的数据：
+    - _chunks_data: 原始分块数据列表
+    - _chunk_path: 分块文件路径
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCLoadRAWChunkFile', """\
+Raw chunk file loading operator.
+
+This operator loads JSON or JSONL files containing raw chunks (raw_chunk) from the specified path.
+Used in the knowledge base cleaning process to load raw chunk data that needs cleaning.
+
+Args:
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing raw chunk data:
+    - _chunks_data: List of raw chunk data
+    - _chunk_path: Chunk file path
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCLoadRAWChunkFile', """\
+```python
+from lazyllm.tools.data import kbc
+
+loader = kbc.KBCLoadRAWChunkFile()
+
+data = {'chunk_path': '/path/to/raw_chunks.json'}
+result = loader(data)
+# Returns: {'chunk_path': '/path/to/raw_chunks.json', '_chunks_data': [{'raw_chunk': '...'}], '_chunk_path': '/path/to/raw_chunks.json'}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCGenerateCleanedText', """\
+生成清洗后文本的算子。
+
+该算子使用LLM对原始分块文本进行清洗，去除噪声、格式化内容。
+支持多语言，当LLM调用失败时会使用原始文本作为回退。
+
+Args:
+    llm: LLM服务实例，用于清洗文本。
+    lang (str): 语言类型，'en' 表示英文，'zh' 表示中文，默认为 'en'。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含清洗结果的数据：
+    - _cleaned_results: 清洗结果列表，每个包含 response、raw_chunk 和 original_item
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCGenerateCleanedText', """\
+Cleaned text generation operator.
+
+This operator uses LLM to clean raw chunk text, removing noise and formatting content.
+Supports multiple languages, falls back to original text when LLM call fails.
+
+Args:
+    llm: LLM service instance for cleaning text.
+    lang (str): Language type, 'en' for English, 'zh' for Chinese, defaults to 'en'.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing cleaning results:
+    - _cleaned_results: List of cleaning results, each containing response, raw_chunk, and original_item
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCGenerateCleanedText', """\
+```python
+from lazyllm.tools.data import kbc
+
+# Assuming llm is an LLM service instance
+cleaner = kbc.KBCGenerateCleanedText(llm=llm, lang='en')
+
+data = {'_chunks_data': [{'raw_chunk': 'Noisy text with errors...'}]}
+result = cleaner(data)
+# Returns: {'_chunks_data': [...], '_cleaned_results': [{'response': 'Cleaned text', 'raw_chunk': '...', 'original_item': {...}}]}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.extract_cleaned_content', """\
+提取清洗内容函数。
+
+该函数从LLM清洗结果中提取清洗后的文本内容，处理不同的响应格式。
+支持从标签 <cleaned_start> 和 <cleaned_end> 之间提取内容。
+
+Args:
+    data (dict): 包含清洗结果的数据。
+
+Returns:
+    dict: 包含提取后清洗内容的数据：
+    - _cleaned_chunks: 清洗后的分块列表，每个包含 raw_chunk、cleaned_chunk 和 original_item
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.extract_cleaned_content', """\
+Extract cleaned content function.
+
+This function extracts cleaned text content from LLM cleaning results, handling different response formats.
+Supports extracting content between <cleaned_start> and <cleaned_end> tags.
+
+Args:
+    data (dict): Data containing cleaning results.
+
+Returns:
+    dict: Data containing extracted cleaned content:
+    - _cleaned_chunks: List of cleaned chunks, each containing raw_chunk, cleaned_chunk, and original_item
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.extract_cleaned_content', """\
+```python
+from lazyllm.tools.data.operators.knowledge_cleaning.kbc_text_cleaner_batch import extract_cleaned_content
+
+data = {'_cleaned_results': [{'response': '<cleaned_start>Clean text<cleaned_end>', 'raw_chunk': 'raw', 'original_item': {}}]}
+result = extract_cleaned_content(data)
+# Returns: {'_cleaned_results': [...], '_cleaned_chunks': [{'raw_chunk': 'raw', 'cleaned_chunk': 'Clean text', 'original_item': {}}]}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCSaveCleaned', """\
+保存清洗后数据算子。
+
+该算子将清洗后的分块数据保存为JSON文件，保留原始分块和清洗后分块的对应关系。
+支持指定输出目录，会保留原始文件的相对路径结构。
+
+Args:
+    output_dir (str, optional): 输出目录路径，默认为 None（保存到原文件所在目录）。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含保存结果的数据：
+    - cleaned_chunk_path: 清洗后的分块文件路径
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCSaveCleaned', """\
+Cleaned data saving operator.
+
+This operator saves cleaned chunk data as JSON files, preserving the correspondence between raw and cleaned chunks.
+Supports specifying output directory, preserving the relative path structure of the original file.
+
+Args:
+    output_dir (str, optional): Output directory path, defaults to None (save to the original file's directory).
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing save results:
+    - cleaned_chunk_path: Path to the cleaned chunk file
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCSaveCleaned', """\
+```python
+from lazyllm.tools.data import kbc
+
+saver = kbc.KBCSaveCleaned(output_dir='./cleaned_output')
+
+data = {'_chunk_path': '/path/to/raw_chunks.json', '_cleaned_chunks': [{'raw_chunk': 'raw', 'cleaned_chunk': 'cleaned'}]}
+result = saver(data, output_key='cleaned_chunk_path')
+# Returns: {'cleaned_chunk_path': './cleaned_output/path/to/raw_chunks_cleaned.json'}
+```
+""")
+
+# =========================
+# KBC Text Cleaner
+# =========================
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_text_cleaner.KBCGenerateCleanedTextSingle', """\
+单条文本清洗生成算子。
+
+该算子使用LLM对单条原始文本进行清洗，去除噪声、格式化内容。
+适用于单条数据的实时清洗场景，当LLM调用失败时会使用原始文本作为回退。
+
+Args:
+    llm: LLM服务实例，用于清洗文本。
+    lang (str): 语言类型，'en' 表示英文，'zh' 表示中文，默认为 'en'。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含清洗响应的数据：
+    - _cleaned_response: LLM的清洗响应
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_text_cleaner.KBCGenerateCleanedTextSingle', """\
+Single text cleaning generation operator.
+
+This operator uses LLM to clean single raw text, removing noise and formatting content.
+Suitable for real-time cleaning of individual data items, falls back to original text when LLM call fails.
+
+Args:
+    llm: LLM service instance for cleaning text.
+    lang (str): Language type, 'en' for English, 'zh' for Chinese, defaults to 'en'.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing cleaning response:
+    - _cleaned_response: LLM's cleaning response
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_text_cleaner.KBCGenerateCleanedTextSingle', """\
+```python
+from lazyllm.tools.data import kbc
+
+# Assuming llm is an LLM service instance
+cleaner = kbc.KBCGenerateCleanedTextSingle(llm=llm, lang='en')
+
+data = {'raw_chunk': 'Noisy text with errors...'}
+result = cleaner(data, input_key='raw_chunk')
+# Returns: {'raw_chunk': '...', '_cleaned_response': 'Cleaned text result'}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.kbc_text_cleaner.extract_cleaned_content_single', """\
+单条清洗内容提取函数。
+
+该函数从单条LLM清洗响应中提取清洗后的文本内容，处理不同的响应格式。
+支持从标签 <cleaned_start> 和 <cleaned_end> 之间提取内容，并清理中间字段。
+
+Args:
+    data (dict): 包含清洗响应的数据。
+    output_key (str): 输出字段名，默认为 'cleaned_chunk'。
+
+Returns:
+    dict: 包含提取后清洗内容的数据，添加了 output_key 指定的字段。
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.kbc_text_cleaner.extract_cleaned_content_single', """\
+Single cleaned content extraction function.
+
+This function extracts cleaned text content from single LLM cleaning response, handling different response formats.
+Supports extracting content between <cleaned_start> and <cleaned_end> tags and cleans intermediate fields.
+
+Args:
+    data (dict): Data containing cleaning response.
+    output_key (str): Output key name, defaults to 'cleaned_chunk'.
+
+Returns:
+    dict: Data containing extracted cleaned content with field specified by output_key added.
+""")
+
+add_example('data.operators.knowledge_cleaning.kbc_text_cleaner.extract_cleaned_content_single', """\
+```python
+from lazyllm.tools.data.operators.knowledge_cleaning.kbc_text_cleaner import extract_cleaned_content_single
+
+data = {'_cleaned_response': '<cleaned_start>Clean text<cleaned_end>'}
+result = extract_cleaned_content_single(data, output_key='cleaned_chunk')
+# Returns: {'cleaned_chunk': 'Clean text'}
+```
+""")
+
+# =========================
+# QA Extract
+# =========================
+
+add_chinese_doc('data.operators.knowledge_cleaning.qa_extract.KBCLoadQAData', """\
+加载问答数据的算子。
+
+该算子从输入数据或分块文件中加载问答数据。首先检查输入数据中是否已包含问答数据，
+如果没有则尝试从增强分块文件、清洗后分块文件或普通分块文件中加载。
+
+Args:
+    qa_key (str): 问答数据字段名，默认为 'QA_pairs'。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 包含问答数据的数据：
+    - _qa_data: 加载的问答数据
+    - _source_file: 数据来源文件路径（如果从文件加载）
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.qa_extract.KBCLoadQAData', """\
+QA data loading operator.
+
+This operator loads QA data from input data or chunk files. First checks if QA data already exists in input data,
+if not, tries to load from enhanced chunk files, cleaned chunk files, or regular chunk files.
+
+Args:
+    qa_key (str): QA data field name, defaults to 'QA_pairs'.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Data containing QA data:
+    - _qa_data: Loaded QA data
+    - _source_file: Data source file path (if loaded from file)
+""")
+
+add_example('data.operators.knowledge_cleaning.qa_extract.KBCLoadQAData', """\
+```python
+from lazyllm.tools.data import kbc
+
+loader = kbc.KBCLoadQAData(qa_key='QA_pairs')
+
+# From existing data
+data = {'QA_pairs': [{'question': 'Q1', 'answer': 'A1'}]}
+result = loader(data)
+# Returns: {'QA_pairs': [...], '_qa_data': [...]}
+
+# From file
+data = {'enhanced_chunk_path': '/path/to/enhanced.json'}
+result = loader(data)
+# Returns: {'enhanced_chunk_path': '...', '_qa_data': [...], '_source_file': '/path/to/enhanced.json'}
+```
+""")
+
+add_chinese_doc('data.operators.knowledge_cleaning.qa_extract.KBCExtractQAPairs', """\
+提取问答对的算子。
+
+该算子从加载的问答数据中提取问答对，并将其转换为标准格式。
+支持自定义指令、问题和答案的输出字段名。
+
+Args:
+    qa_key (str): 问答数据字段名，默认为 'QA_pairs'。
+    instruction (str): 指令文本，默认为 'Please answer the following question based on the provided information.'。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    List[dict]: 提取的问答对列表，每个包含 instruction、input 和 output 字段。
+""")
+
+add_english_doc('data.operators.knowledge_cleaning.qa_extract.KBCExtractQAPairs', """\
+QA pairs extraction operator.
+
+This operator extracts QA pairs from loaded QA data and converts them to standard format.
+Supports customizing output field names for instruction, question, and answer.
+
+Args:
+    qa_key (str): QA data field name, defaults to 'QA_pairs'.
+    instruction (str): Instruction text, defaults to 'Please answer the following question based on the provided information.'.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    List[dict]: List of extracted QA pairs, each containing instruction, input, and output fields.
+""")
+
+add_example('data.operators.knowledge_cleaning.qa_extract.KBCExtractQAPairs', """\
+```python
+from lazyllm.tools.data import kbc
+
+extractor = kbc.KBCExtractQAPairs(
+    qa_key='QA_pairs',
+    instruction='Please answer based on the context.'
+)
+
+data = {'_qa_data': {'qa_pairs': [{'question': 'What is AI?', 'answer': 'Artificial Intelligence'}]}}
+result = extractor(
+    data,
+    output_instruction_key='instruction',
+    output_question_key='input',
+    output_answer_key='output'
+)
+# Returns: [{'instruction': 'Please answer based on the context.', 'input': 'What is AI?', 'output': 'Artificial Intelligence'}]
+```
+""")
+
+# =========================
+# Reranker Data Formatter
+# =========================
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_data_formatter.validate_reranker_data', """\
+验证重排序数据的函数。
+
+该函数验证输入数据是否包含必要的字段（query、正样本），并确保正样本和负样本为列表格式。
+
+Args:
+    data (dict): 输入数据，应包含 query、pos 和 neg 字段。
+    input_query_key (str): 查询字段名，默认为 'query'。
+    input_pos_key (str): 正样本字段名，默认为 'pos'。
+    input_neg_key (str): 负样本字段名，默认为 'neg'。
+
+Returns:
+    dict: 验证后的数据，包含：
+    - _is_valid: 数据是否有效
+    - _error: 错误信息（如果无效）
+    - _query, _pos, _neg: 标准化后的字段值
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_data_formatter.validate_reranker_data', """\
+Reranker data validation function.
+
+This function validates if input data contains required fields (query, positive samples) and ensures positive and negative samples are in list format.
+
+Args:
+    data (dict): Input data, should contain query, pos, and neg fields.
+    input_query_key (str): Query field name, defaults to 'query'.
+    input_pos_key (str): Positive samples field name, defaults to 'pos'.
+    input_neg_key (str): Negative samples field name, defaults to 'neg'.
+
+Returns:
+    dict: Validated data containing:
+    - _is_valid: Whether data is valid
+    - _error: Error message (if invalid)
+    - _query, _pos, _neg: Normalized field values
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_data_formatter.validate_reranker_data', """\
+```python
+from lazyllm.tools.data.operators.reranker_synthesis.reranker_data_formatter import validate_reranker_data
+
+data = {'query': 'machine learning', 'pos': ['ML tutorial'], 'neg': ['cooking recipe']}
+result = validate_reranker_data(data)
+# Returns: {'query': '...', 'pos': [...], 'neg': [...], '_is_valid': True, '_query': 'machine learning', '_pos': ['ML tutorial'], '_neg': ['cooking recipe']}
+```
+""")
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_data_formatter.RerankerFormatFlagReranker', """\
+FlagReranker格式转换算子。
+
+该算子将验证后的数据转换为FlagReranker训练格式。确保负样本数量符合训练组大小要求，
+如果负样本不足会复制填充，如果过多会截断。
+
+Args:
+    train_group_size (int): 训练组大小（包含1个正样本），默认为 8。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    List[dict]: 转换后的数据列表，每个包含 query、pos 和 neg 字段。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_data_formatter.RerankerFormatFlagReranker', """\
+FlagReranker format conversion operator.
+
+This operator converts validated data to FlagReranker training format. Ensures the number of negative samples meets training group size requirements, padding with duplicates if insufficient or truncating if excessive.
+
+Args:
+    train_group_size (int): Training group size (including 1 positive sample), defaults to 8.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    List[dict]: List of converted data, each containing query, pos, and neg fields.
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_data_formatter.RerankerFormatFlagReranker', """\
+```python
+from lazyllm.tools.data import reranker
+
+formatter = reranker.RerankerFormatFlagReranker(train_group_size=8)
+
+data = {'_is_valid': True, '_query': 'machine learning', '_pos': ['ML tutorial'], '_neg': ['cooking', 'history']}
+result = formatter(data)
+# Returns: [{'query': 'machine learning', 'pos': ['ML tutorial'], 'neg': ['cooking', 'history', ...]}]
+```
+""")
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_data_formatter.RerankerFormatCrossEncoder', """\
+CrossEncoder格式转换算子。
+
+该算子将验证后的数据转换为CrossEncoder训练格式。每个查询-文档对作为一个独立样本，
+正样本标记为1，负样本标记为0。
+
+Args:
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    List[dict]: 转换后的数据列表，每个包含 query、document 和 label 字段。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_data_formatter.RerankerFormatCrossEncoder', """\
+CrossEncoder format conversion operator.
+
+This operator converts validated data to CrossEncoder training format. Each query-document pair is an independent sample, with positive samples labeled 1 and negative samples labeled 0.
+
+Args:
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    List[dict]: List of converted data, each containing query, document, and label fields.
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_data_formatter.RerankerFormatCrossEncoder', """\
+```python
+from lazyllm.tools.data import reranker
+
+formatter = reranker.RerankerFormatCrossEncoder()
+
+data = {'_is_valid': True, '_query': 'machine learning', '_pos': ['ML tutorial'], '_neg': ['cooking']}
+result = formatter(data)
+# Returns: [{'query': 'machine learning', 'document': 'ML tutorial', 'label': 1}, {'query': 'machine learning', 'document': 'cooking', 'label': 0}]
+```
+""")
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_data_formatter.RerankerFormatPairwise', """\
+Pairwise格式转换算子。
+
+该算子将验证后的数据转换为Pairwise训练格式。创建正样本和负样本的成对组合，
+用于训练排序模型区分相关和不相关文档。
+
+Args:
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    List[dict]: 转换后的数据列表，每个包含 query、doc_pos 和 doc_neg 字段。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_data_formatter.RerankerFormatPairwise', """\
+Pairwise format conversion operator.
+
+This operator converts validated data to Pairwise training format. Creates pairwise combinations of positive and negative samples for training ranking models to distinguish relevant from irrelevant documents.
+
+Args:
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    List[dict]: List of converted data, each containing query, doc_pos, and doc_neg fields.
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_data_formatter.RerankerFormatPairwise', """\
+```python
+from lazyllm.tools.data import reranker
+
+formatter = reranker.RerankerFormatPairwise()
+
+data = {'_is_valid': True, '_query': 'machine learning', '_pos': ['ML tutorial'], '_neg': ['cooking']}
+result = formatter(data)
+# Returns: [{'query': 'machine learning', 'doc_pos': 'ML tutorial', 'doc_neg': 'cooking'}]
+```
+""")
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_data_formatter.RerankerTrainTestSplitter', """\
+重排序训练集/测试集分割算子。
+
+该算子将数据集随机分割为训练集和测试集，支持指定分割比例和随机种子。
+可以保存训练集和测试集到指定文件，测试集会转换格式以兼容评估需求。
+
+Args:
+    test_size (float): 测试集比例，默认为 0.1（即10%）。
+    seed (int): 随机种子，用于可复现的分割，默认为 42。
+    train_output_file (str, optional): 训练集输出文件路径，默认为 None。
+    test_output_file (str, optional): 测试集输出文件路径，默认为 None。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    List[dict]: 分割后的数据列表，每个样本包含 split 字段标记所属集合（'train' 或 'test'）。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_data_formatter.RerankerTrainTestSplitter', """\
+Reranker train/test splitter operator.
+
+This operator randomly splits dataset into training and test sets, supporting specified split ratio and random seed. Can save training and test sets to specified files, with test set format converted for evaluation compatibility.
+
+Args:
+    test_size (float): Test set proportion, defaults to 0.1 (i.e., 10%).
+    seed (int): Random seed for reproducible splitting, defaults to 42.
+    train_output_file (str, optional): Training set output file path, defaults to None.
+    test_output_file (str, optional): Test set output file path, defaults to None.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    List[dict]: List of split data, each sample contains split field marking its set ('train' or 'test').
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_data_formatter.RerankerTrainTestSplitter', """\
+```python
+from lazyllm.tools.data import reranker
+
+splitter = reranker.RerankerTrainTestSplitter(
+    test_size=0.2,
+    seed=123,
+    train_output_file='train.jsonl',
+    test_output_file='test.jsonl'
+)
+
+data = [
+    {'query': 'q1', 'pos': ['p1'], 'neg': ['n1']},
+    {'query': 'q2', 'pos': ['p2'], 'neg': ['n2']}
+]
+result = splitter(data)
+# Returns: [{'query': 'q1', 'pos': ['p1'], 'neg': ['n1'], 'split': 'train'}, {'query': 'q2', 'pos': ['p2'], 'neg': ['n2'], 'split': 'test'}]
+```
+""")
+
+# =========================
+# Reranker from Embedding Converter
+# =========================
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_from_embedding_converter.validate_reranker_embedding_data', """\
+验证Embedding数据用于重排序的函数。
+
+该函数验证输入的Embedding格式数据是否适合转换为重排序格式。检查query和正样本是否存在，
+并确保正样本和负样本为列表格式。
+
+Args:
+    data (dict): 输入数据，应包含 query、pos 和 neg 字段。
+    input_query_key (str): 查询字段名，默认为 'query'。
+    input_pos_key (str): 正样本字段名，默认为 'pos'。
+    input_neg_key (str): 负样本字段名，默认为 'neg'。
+
+Returns:
+    dict: 验证后的数据，包含：
+    - _is_valid: 数据是否有效
+    - _error: 错误信息（如果无效）
+    - _query, _pos, _neg: 标准化后的字段值
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_from_embedding_converter.validate_reranker_embedding_data', """\
+Validate embedding data for reranker function.
+
+This function validates if input embedding format data is suitable for conversion to reranker format. Checks if query and positive samples exist, and ensures positive and negative samples are in list format.
+
+Args:
+    data (dict): Input data, should contain query, pos, and neg fields.
+    input_query_key (str): Query field name, defaults to 'query'.
+    input_pos_key (str): Positive samples field name, defaults to 'pos'.
+    input_neg_key (str): Negative samples field name, defaults to 'neg'.
+
+Returns:
+    dict: Validated data containing:
+    - _is_valid: Whether data is valid
+    - _error: Error message (if invalid)
+    - _query, _pos, _neg: Normalized field values
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_from_embedding_converter.validate_reranker_embedding_data', """\
+```python
+from lazyllm.tools.data.operators.reranker_synthesis.reranker_from_embedding_converter import validate_reranker_embedding_data
+
+data = {'query': 'machine learning', 'pos': 'ML tutorial', 'neg': ['cooking']}
+result = validate_reranker_embedding_data(data)
+# Returns: {'query': '...', 'pos': 'ML tutorial', 'neg': [...], '_is_valid': True, '_query': 'machine learning', '_pos': ['ML tutorial'], '_neg': ['cooking']}
+```
+""")
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_from_embedding_converter.RerankerAdjustNegatives', """\
+调整重排序负样本数量的算子。
+
+该算子调整负样本数量以匹配目标数量。如果负样本过多则截断，如果不足则通过随机采样进行填充。
+使用基于查询内容的确定性随机种子以保证可复现性。
+
+Args:
+    adjust_neg_count (int): 目标负样本数量，默认为 7。
+    seed (int): 随机种子，用于填充时的随机选择，默认为 42。
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 调整后的数据，包含更新后的 _neg 字段。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_from_embedding_converter.RerankerAdjustNegatives', """\
+Reranker negative sample adjustment operator.
+
+This operator adjusts the number of negative samples to match the target count. Truncates if there are too many, or pads by random sampling if there are too few. Uses deterministic random seed based on query content for reproducibility.
+
+Args:
+    adjust_neg_count (int): Target negative sample count, defaults to 7.
+    seed (int): Random seed for random selection during padding, defaults to 42.
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Adjusted data with updated _neg field.
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_from_embedding_converter.RerankerAdjustNegatives', """\
+```python
+from lazyllm.tools.data import reranker
+
+adjuster = reranker.RerankerAdjustNegatives(adjust_neg_count=5, seed=123)
+
+# Too many negatives
+data = {'_is_valid': True, '_query': 'ML', '_neg': ['n1', 'n2', 'n3', 'n4', 'n5', 'n6', 'n7', 'n8']}
+result = adjuster(data)
+# Returns: {'_is_valid': True, '_query': 'ML', '_neg': ['n1', 'n2', 'n3', 'n4', 'n5']}
+
+# Too few negatives
+data = {'_is_valid': True, '_query': 'ML', '_neg': ['n1', 'n2']}
+result = adjuster(data)
+# Returns: {'_is_valid': True, '_query': 'ML', '_neg': ['n1', 'n2', 'n1', 'n2', 'n1']}
+```
+""")
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_from_embedding_converter.RerankerBuildFormat', """\
+构建重排序格式的算子。
+
+该算子将验证后的数据转换为标准的重排序训练格式。输出包含 query、pos 和 neg 字段的字典，
+不包含提示或指令字段。
+
+Args:
+    **kwargs (dict): 其它可选的参数，传递给父类。
+
+Returns:
+    dict: 重排序格式的数据，包含 query、pos 和 neg 字段。如果数据无效则返回空字典。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_from_embedding_converter.RerankerBuildFormat', """\
+Reranker format builder operator.
+
+This operator converts validated data to standard reranker training format. Outputs a dictionary containing query, pos, and neg fields without prompts or instructions.
+
+Args:
+    **kwargs (dict): Additional optional arguments passed to the parent class.
+
+Returns:
+    dict: Reranker format data containing query, pos, and neg fields. Returns empty dict if data is invalid.
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_from_embedding_converter.RerankerBuildFormat', """\
+```python
+from lazyllm.tools.data import reranker
+
+builder = reranker.RerankerBuildFormat()
+
+data = {'_is_valid': True, '_query': 'machine learning', '_pos': ['ML tutorial'], '_neg': ['cooking']}
+result = builder(data)
+# Returns: {'query': 'machine learning', 'pos': ['ML tutorial'], 'neg': ['cooking']}
+```
+""")
+
+# =========================
+# Reranker Hard Negative Miner
+# =========================
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.build_reranker_corpus', """\
+构建重排序语料库的函数。
+
+该函数从输入数据中提取正样本文本构建语料库，并保存到临时文件中供后续使用。
+
+Args:
+    inputs (List[dict]): 输入数据列表，每个字典应包含正样本。
+    input_pos_key (str): 正样本字段名，默认为 'pos'。
+    corpus (List[str], optional): 外部语料库，如果提供则直接使用。默认为 None。
+    corpus_dir (str, optional): 语料库文件保存目录，默认为临时目录。
+
+Returns:
+    List[dict]: 输入数据列表，每个数据添加了 '_corpus' 字段指向语料库文件路径。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.build_reranker_corpus', """\
+Build reranker corpus function.
+
+This function extracts positive sample texts from input data to build a corpus and saves it to a temporary file for later use.
+
+Args:
+    inputs (List[dict]): List of input data, each dict should contain positive samples.
+    input_pos_key (str): Positive sample field name, defaults to 'pos'.
+    corpus (List[str], optional): External corpus, if provided will be used directly. Defaults to None.
+    corpus_dir (str, optional): Corpus file save directory, defaults to temp directory.
+
+Returns:
+    List[dict]: Input data list, each data adds '_corpus' field pointing to corpus file path.
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_hard_negative_miner.build_reranker_corpus', """\
+```python
+from lazyllm.tools.data.operators.reranker_synthesis.reranker_hard_negative_miner import build_reranker_corpus
+
+inputs = [{'query': 'q1', 'pos': ['doc1', 'doc2']}, {'query': 'q2', 'pos': ['doc2', 'doc3']}]
+result = build_reranker_corpus(inputs)
+# Returns: [{'query': 'q1', 'pos': [...], '_corpus': '/tmp/reranker_corpus_xxx.json'}, ...]
+```
+""")
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerInitBM25', """\
+初始化BM25索引的算子。
+
+该算子基于语料库构建BM25索引，用于基于关键词的负样本挖掘。
+支持中英文分词，中文使用jieba，英文使用Stemmer词干提取。
+
+Args:
+    language (str): 语言类型，'zh'表示中文，'en'表示英文，默认为'zh'。
+    **kwargs (dict): 其他可选参数，传递给父类。
+
+Returns:
+    List[dict]: 输入数据列表，每个数据添加了BM25索引和分词器配置。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerInitBM25', """\
+Initialize BM25 index operator.
+
+This operator builds BM25 index based on corpus for keyword-based negative sample mining.
+Supports Chinese and English tokenization, Chinese uses jieba, English uses Stemmer stemming.
+
+Args:
+    language (str): Language type, 'zh' for Chinese, 'en' for English, defaults to 'zh'.
+    **kwargs (dict): Additional optional parameters passed to parent class.
+
+Returns:
+    List[dict]: Input data list, each data adds BM25 index and tokenizer configuration.
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerInitBM25', """\
+```python
+from lazyllm.tools.data import reranker
+
+init_bm25 = reranker.RerankerInitBM25(language='zh')
+
+# 先构建语料库
+data_with_corpus = reranker.build_reranker_corpus(inputs)
+# 然后初始化BM25
+result = init_bm25(data_with_corpus)
+```
+""")
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerInitSemantic', """\
+初始化语义向量的算子。
+
+该算子使用embedding服务计算语料库中所有文档的向量表示，并保存到文件中。
+用于后续的语义相似度计算和负样本挖掘。
+
+Args:
+    embedding_serving (Callable): embedding服务调用函数。
+    embeddings_dir (str, optional): 向量文件保存目录，默认为语料库所在目录。
+    **kwargs (dict): 其他可选参数，传递给父类。
+
+Returns:
+    List[dict]: 输入数据列表，每个数据添加了向量文件路径和语料库信息。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerInitSemantic', """\
+Initialize semantic embeddings operator.
+
+This operator uses embedding service to compute vector representations for all documents in the corpus and saves them to files.
+Used for subsequent semantic similarity calculation and negative sample mining.
+
+Args:
+    embedding_serving (Callable): Embedding service callable function.
+    embeddings_dir (str, optional): Embedding file save directory, defaults to corpus directory.
+    **kwargs (dict): Additional optional parameters passed to parent class.
+
+Returns:
+    List[dict]: Input data list, each data adds embedding file path and corpus information.
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerInitSemantic', """\
+```python
+from lazyllm.tools.data import reranker
+
+# 假设 embedding_fn 是embedding服务
+init_semantic = reranker.RerankerInitSemantic(embedding_serving=embedding_fn)
+
+# 先构建语料库
+data_with_corpus = reranker.build_reranker_corpus(inputs)
+# 然后计算语义向量
+result = init_semantic(data_with_corpus)
+```
+""")
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerMineRandomNegatives', """\
+随机负样本挖掘算子。
+
+该算子从语料库中随机选择不属于正样本的文档作为负样本。
+适用于基线对比或需要随机负样本的场景。
+
+Args:
+    num_negatives (int): 需要挖掘的负样本数量，默认为 7。
+    seed (int): 随机种子，用于可复现的随机选择，默认为 42。
+    **kwargs (dict): 其他可选参数，传递给父类。
+
+Returns:
+    dict: 输入数据，添加了挖掘到的负样本列表。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerMineRandomNegatives', """\
+Random negative sample mining operator.
+
+This operator randomly selects documents from corpus that are not in positive samples as negative samples.
+Suitable for baseline comparison or scenarios requiring random negative samples.
+
+Args:
+    num_negatives (int): Number of negative samples to mine, defaults to 7.
+    seed (int): Random seed for reproducible selection, defaults to 42.
+    **kwargs (dict): Additional optional parameters passed to parent class.
+
+Returns:
+    dict: Input data with mined negative samples list added.
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerMineRandomNegatives', """\
+```python
+from lazyllm.tools.data import reranker
+
+miner = reranker.RerankerMineRandomNegatives(num_negatives=5, seed=123)
+
+data = {'query': 'machine learning', 'pos': ['ML tutorial'], '_corpus': corpus_path}
+result = miner(data)
+# Returns: {'query': '...', 'pos': [...], '_corpus': '...', 'neg': ['random_neg1', 'random_neg2', ...]}
+```
+""")
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerMineBM25Negatives', """\
+BM25负样本挖掘算子。
+
+该算子基于BM25索引，检索与查询最相关但不属于正样本的文档作为负样本。
+适用于挖掘与查询有词汇重叠但语义不同的困难负样本。
+
+Args:
+    num_negatives (int): 需要挖掘的负样本数量，默认为 7。
+    **kwargs (dict): 其他可选参数，传递给父类。
+
+Returns:
+    dict: 输入数据，添加了挖掘到的负样本列表。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerMineBM25Negatives', """\
+BM25 negative sample mining operator.
+
+This operator retrieves documents most relevant to the query but not in positive samples based on BM25 index.
+Suitable for mining hard negatives that have lexical overlap but different semantics.
+
+Args:
+    num_negatives (int): Number of negative samples to mine, defaults to 7.
+    **kwargs (dict): Additional optional parameters passed to parent class.
+
+Returns:
+    dict: Input data with mined negative samples list added.
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerMineBM25Negatives', """\
+```python
+from lazyllm.tools.data import reranker
+
+miner = reranker.RerankerMineBM25Negatives(num_negatives=5)
+
+data = {'query': 'machine learning', 'pos': ['ML tutorial'], '_bm25': bm25_index, '_bm25_corpus': corpus}
+result = miner(data)
+# Returns: {'query': '...', 'pos': [...], 'neg': ['bm25_neg1', 'bm25_neg2', ...]}
+```
+""")
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerMineSemanticNegatives', """\
+语义相似度负样本挖掘算子。
+
+该算子基于语义向量相似度，找出与查询最相似但不属于正样本的文档作为负样本。
+适用于挖掘语义相近但实际不相关的困难负样本，通常比BM25方法效果更好。
+
+Args:
+    num_negatives (int): 需要挖掘的负样本数量，默认为 7。
+    embedding_serving (Callable): embedding服务调用函数，用于计算查询向量。
+    **kwargs (dict): 其他可选参数，传递给父类。
+
+Returns:
+    dict: 输入数据，添加了基于语义相似度挖掘的负样本列表。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerMineSemanticNegatives', """\
+Semantic similarity negative sample mining operator.
+
+This operator finds documents most similar to the query but not in positive samples based on semantic vector similarity.
+Suitable for mining hard negatives that are semantically similar but actually irrelevant, usually performs better than BM25 method.
+
+Args:
+    num_negatives (int): Number of negative samples to mine, defaults to 7.
+    embedding_serving (Callable): Embedding service callable function for computing query vectors.
+    **kwargs (dict): Additional optional parameters passed to parent class.
+
+Returns:
+    dict: Input data with negative samples mined based on semantic similarity added.
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerMineSemanticNegatives', """\
+```python
+from lazyllm.tools.data import reranker
+
+# 假设 embedding_fn 是embedding服务
+miner = reranker.RerankerMineSemanticNegatives(num_negatives=5, embedding_serving=embedding_fn)
+
+data = {'query': 'machine learning', 'pos': ['ML tutorial'], '_semantic_embeddings_path': emb_path, '_semantic_corpus': corpus}
+result = miner(data)
+# Returns: {'query': '...', 'pos': [...], 'neg': ['semantic_neg1', 'semantic_neg2', ...]}
+```
+""")
+
+add_chinese_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerMineMixedNegatives', """\
+混合策略负样本挖掘算子。
+
+该算子结合BM25和语义相似度两种方法挖掘负样本。按指定比例分别使用两种方法，
+可以获得更多样化的困难负样本。
+
+Args:
+    embedding_serving (Callable): embedding服务调用函数。
+    num_negatives (int): 需要挖掘的负样本数量，默认为 7。
+    bm25_ratio (float): BM25方法占比，剩余部分使用语义方法，默认为 0.5。
+    **kwargs (dict): 其他可选参数，传递给父类。
+
+Returns:
+    dict: 输入数据，添加了混合策略挖掘的负样本列表。
+""")
+
+add_english_doc('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerMineMixedNegatives', """\
+Mixed strategy negative sample mining operator.
+
+This operator combines BM25 and semantic similarity methods to mine negative samples. Uses both methods according to specified ratio to obtain more diverse hard negatives.
+
+Args:
+    embedding_serving (Callable): Embedding service callable function.
+    num_negatives (int): Number of negative samples to mine, defaults to 7.
+    bm25_ratio (float): BM25 method ratio, remaining portion uses semantic method, defaults to 0.5.
+    **kwargs (dict): Additional optional parameters passed to parent class.
+
+Returns:
+    dict: Input data with mixed strategy mined negative samples list added.
+""")
+
+add_example('data.operators.reranker_synthesis.reranker_hard_negative_miner.RerankerMineMixedNegatives', """\
+```python
+from lazyllm.tools.data import reranker
+
+# 假设 embedding_fn 是embedding服务
+miner = reranker.RerankerMineMixedNegatives(
+    embedding_serving=embedding_fn,
+    num_negatives=6,
+    bm25_ratio=0.5  # 3个BM25负样本 + 3个语义负样本
+)
+
+data = {
+    'query': 'machine learning',
+    'pos': ['ML tutorial'],
+    '_bm25': bm25_index,
+    '_bm25_corpus': corpus,
+    '_semantic_embeddings_path': emb_path,
+    '_semantic_corpus': corpus
+}
+result = miner(data)
+# Returns: {'query': '...', 'pos': [...], 'neg': [...]} 包含3个BM25负样本和3个语义负样本
+```
+""")
+
+# =========================
+# RerankerGenerateQueries
+# =========================
+
+add_chinese_doc('data.operators.reranker.reranker_synthesis.RerankerGenerateQueries', """\
+基于给定文本生成多条检索查询（query）的算子。
+
+该算子使用 RerankerQueryGeneratorPrompt 构造提示词，
+调用 LLM 生成不同难度等级的查询语句。
+生成结果通过 JsonFormatter 解析后，
+以 JSON 字符串形式保存在 '_query_response' 字段中。
+
+若输入 passage 为空或生成失败，则返回空响应字段。
+
+Args:
+    llm_serving: 语言模型服务实例
+    lang (str): 查询生成语言，默认 'zh'
+    num_queries (int): 生成查询数量，默认 3
+    difficulty_levels (List[str]): 查询难度等级列表，默认 ['easy', 'medium', 'hard']
+    **kwargs (dict): 其他可选参数，传递给父类。
+""")
+
+add_english_doc('data.operators.reranker.reranker_synthesis.RerankerGenerateQueries', """\
+Generates multiple retrieval queries from a given passage.
+
+This operator builds prompts using RerankerQueryGeneratorPrompt
+and calls the LLM to produce queries with different difficulty levels.
+The result is parsed by JsonFormatter and stored as a JSON string
+in the '_query_response' field.
+
+If the passage is empty or generation fails, an empty response is returned.
+
+Args:
+    llm_serving: language model serving instance
+    lang (str): language of generated queries, default 'zh'
+    num_queries (int): number of queries to generate, default 3
+    difficulty_levels (List[str]): list of difficulty levels, default ['easy', 'medium', 'hard']
+    **kwargs (dict): Additional optional parameters passed to parent class.
+""")
+
+add_example('data.operators.reranker.reranker_synthesis.RerankerGenerateQueries', """\
+```python
+op = RerankerGenerateQueries(
+    llm_serving=my_llm,
+    lang='en',
+    num_queries=5,
+    difficulty_levels=['easy', 'hard']
+)
+
+result = op({'passage': 'Large language models are widely used in NLP.'})
+print(result['_query_response'])
+```
+""")
+
+# =========================
+# RerankerParseQueries
+# =========================
+
+add_chinese_doc('data.operators.reranker.reranker_synthesis.RerankerParseQueries', """\
+解析 LLM 生成的查询结果，并展开为多条训练样本数据。
+
+该算子读取 '_query_response' 字段中的 JSON 内容，
+解析得到查询列表（支持 list 或 {'queries': [...]} 结构）。
+每条查询会生成一条新的数据记录，包含：
+
+- query: 查询文本
+- difficulty: 难度等级（默认 'medium'）
+- pos: 正样本文本列表（原始 passage）
+
+同时会清理中间字段 '_query_response' 等。
+
+Args:
+    input_key (str): 原始文本字段名，默认 'passage'
+    output_query_key (str): 输出查询字段名，默认 'query'
+    **kwargs (dict): 其他可选参数，传递给父类。
+""")
+
+add_english_doc('data.operators.reranker.reranker_synthesis.RerankerParseQueries', """\
+Parses LLM-generated query results and expands them into multiple training samples.
+
+It reads the '_query_response' JSON content and extracts the query list
+(supporting both list and {'queries': [...]} structures).
+Each query generates a new data record containing:
+
+- query: query text
+- difficulty: difficulty level (default 'medium')
+- pos: positive sample list (original passage)
+
+Intermediate fields like '_query_response' are removed.
+
+Args:
+    input_key (str): source passage field name, default 'passage'
+    output_query_key (str): output query field name, default 'query'
+    **kwargs (dict): Additional optional parameters passed to parent class.
+""")
+
+add_example('data.operators.reranker.reranker_synthesis.RerankerParseQueries', """\
+```python
+op = RerankerParseQueries(input_key='passage', output_query_key='query')
+
+data = {
+    'passage': 'Large language models are widely used in NLP.',
+    '_query_response': '[{"query": "What are LLMs used for?", "difficulty": "easy"}]'
+}
+
+rows = op(data)
+for row in rows:
+    print(row['query'], row['difficulty'], row['pos'])
 ```
 """)

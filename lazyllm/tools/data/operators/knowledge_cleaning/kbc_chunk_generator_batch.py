@@ -209,17 +209,17 @@ class KBCSaveChunks(kbc):
                 # Use specified output directory, preserving relative structure
                 abs_text_path = os.path.abspath(text_path)
                 abs_cwd = os.path.abspath(os.getcwd())
-                
+
                 if abs_text_path.startswith(abs_cwd):
                     rel_path = os.path.relpath(os.path.dirname(abs_text_path), abs_cwd)
                 else:
                     rel_path = os.path.dirname(abs_text_path).lstrip('/')
-                
+
                 output_dir = os.path.join(self.output_dir, rel_path)
             else:
                 # Default: save to 'extract' subdirectory
                 output_dir = os.path.join(os.path.dirname(text_path), 'extract')
-            
+
             os.makedirs(output_dir, exist_ok=True)
 
             file_name = os.path.splitext(os.path.basename(text_path))[0] + '_chunk.json'

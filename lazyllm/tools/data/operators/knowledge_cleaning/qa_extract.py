@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Optional, List
+from typing import List
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
@@ -13,7 +13,7 @@ else:
 
 
 class KBCLoadQAData(kbc):
-    def __init__(self, qa_key: str = "QA_pairs", **kwargs):
+    def __init__(self, qa_key: str = 'QA_pairs', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.qa_key = qa_key
 
@@ -28,7 +28,7 @@ class KBCLoadQAData(kbc):
 
         # Try to load from chunk files
         path_keys = ['enhanced_chunk_path', 'cleaned_chunk_path', 'chunk_path']
-        
+
         for path_key in path_keys:
             file_path = data.get(path_key)
             if not file_path or not Path(file_path).exists():
@@ -47,7 +47,7 @@ class KBCLoadQAData(kbc):
                                 '_source_file': file_path
                             }
             except Exception as e:
-                LOG.error(f"Failed to load {file_path}: {e}")
+                LOG.error(f'Failed to load {file_path}: {e}')
                 continue
 
         # No QA data found
@@ -57,8 +57,8 @@ class KBCLoadQAData(kbc):
 class KBCExtractQAPairs(kbc):
     def __init__(
         self,
-        qa_key: str = "QA_pairs",
-        instruction: str = "Please answer the following question based on the provided information.",
+        qa_key: str = 'QA_pairs',
+        instruction: str = 'Please answer the following question based on the provided information.',
         **kwargs
     ):
         super().__init__(_concurrency_mode='process', **kwargs)
@@ -68,9 +68,9 @@ class KBCExtractQAPairs(kbc):
     def forward(
         self,
         data: dict,
-        output_instruction_key: str = "instruction",
-        output_question_key: str = "input",
-        output_answer_key: str = "output",
+        output_instruction_key: str = 'instruction',
+        output_question_key: str = 'input',
+        output_answer_key: str = 'output',
         **kwargs
     ) -> List[dict]:
         qa_data = data.get('_qa_data')
@@ -89,7 +89,7 @@ class KBCExtractQAPairs(kbc):
 
             question = qa.get('question', '').strip()
             answer = qa.get('answer', '').strip()
-            
+
             if not question or not answer:
                 continue
 

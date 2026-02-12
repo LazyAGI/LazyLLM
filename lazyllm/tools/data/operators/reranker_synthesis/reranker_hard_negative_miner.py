@@ -17,7 +17,6 @@ else:
     reranker = data_register.new_group('reranker')
 
 def _load_corpus_from_path(corpus_path: str) -> List[str]:
-    """Load corpus from file path."""
     if not corpus_path or not os.path.exists(corpus_path):
         return []
     try:
@@ -29,7 +28,6 @@ def _load_corpus_from_path(corpus_path: str) -> List[str]:
 
 
 def _load_embeddings_from_path(embeddings_path: str) -> Optional[np.ndarray]:
-    """Load embeddings from file path."""
     if not embeddings_path or not os.path.exists(embeddings_path):
         return None
     try:
@@ -37,8 +35,6 @@ def _load_embeddings_from_path(embeddings_path: str) -> Optional[np.ndarray]:
     except Exception as e:
         LOG.warning(f'Failed to load embeddings from {embeddings_path}: {e}')
         return None
-
-
 
 def _normalize_pos_samples(pos_samples) -> set:
     if isinstance(pos_samples, list):
@@ -82,18 +78,17 @@ def build_reranker_corpus(
         LOG.info(f'Built corpus with {len(corpus)} unique passages from inputs.')
     else:
         LOG.info(f'Using external corpus with {len(corpus)} passages.')
-    
+
     # Save corpus to file instead of storing in memory for each item
     if corpus_dir is None:
         corpus_dir = tempfile.gettempdir()
     os.makedirs(corpus_dir, exist_ok=True)
-    
     corpus_path = os.path.join(corpus_dir, f'reranker_corpus_{id(inputs)}.json')
     with open(corpus_path, 'w', encoding='utf-8') as f:
         json.dump(corpus, f, ensure_ascii=False)
-    
+
     LOG.info(f'Saved corpus to {corpus_path}')
-    
+
     return [{**item, '_corpus': corpus_path} for item in inputs]
 
 
@@ -126,7 +121,7 @@ class RerankerInitBM25(reranker):
         if not corpus_path:
             LOG.warning('No corpus path found for BM25 initialization.')
             return [{**item, '_bm25': None, '_bm25_corpus': []} for item in inputs]
-        
+
         corpus = _load_corpus_from_path(corpus_path)
         if not corpus:
             LOG.warning(f'Failed to load corpus from {corpus_path}')
@@ -346,7 +341,7 @@ class RerankerMineSemanticNegatives(reranker):
 
 
 class RerankerMineMixedNegatives(reranker):
-    def __init__(self, embedding_serving: Optional[Callable] = None, 
+    def __init__(self, embedding_serving: Optional[Callable] = None,
                  num_negatives: int = 7, bm25_ratio: float = 0.5, **kwargs):
         super().__init__(_concurrency_mode='process', **kwargs)
         self.num_negatives = num_negatives

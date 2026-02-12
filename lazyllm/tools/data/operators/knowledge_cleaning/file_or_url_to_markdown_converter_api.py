@@ -280,4 +280,3 @@ class PDFToMarkdownConverterAPI(kbc):
         except Exception as e:
             LOG.error(f'MinerU API failed for {raw_path}: {e}')
             return {**data, '_markdown_path': ''}
-

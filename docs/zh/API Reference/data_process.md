@@ -12,6 +12,17 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.data.operators.embedding
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.kbc
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.reranker
+    members:
+    exclude-members:
 
 ## 数据处理 Pipeline
 

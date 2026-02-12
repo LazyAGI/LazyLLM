@@ -1,7 +1,4 @@
-import os
-import json
 from typing import List
-from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
 

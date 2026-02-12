@@ -1,9 +1,4 @@
-import json
 import random
-from pathlib import Path
-from typing import Optional
-
-from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
 

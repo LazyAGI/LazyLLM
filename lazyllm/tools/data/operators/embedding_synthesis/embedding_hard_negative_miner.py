@@ -19,7 +19,6 @@ else:
 
 
 def _load_corpus_from_path(corpus_path: str) -> List[str]:
-    """Load corpus from file path."""
     if not corpus_path or not os.path.exists(corpus_path):
         return []
     try:
@@ -31,7 +30,6 @@ def _load_corpus_from_path(corpus_path: str) -> List[str]:
 
 
 def _load_embeddings_from_path(embeddings_path: str) -> Optional[np.ndarray]:
-    """Load embeddings from file path."""
     if not embeddings_path or not os.path.exists(embeddings_path):
         return None
     try:
@@ -39,10 +37,6 @@ def _load_embeddings_from_path(embeddings_path: str) -> Optional[np.ndarray]:
     except Exception as e:
         LOG.warning(f'Failed to load embeddings from {embeddings_path}: {e}')
         return None
-
-
-
-
 
 def _normalize_pos_samples(pos_samples) -> set:
     if isinstance(pos_samples, list):
