@@ -277,7 +277,7 @@ class MinHashDeduplicateFilter(Filter):
 
 class BlocklistFilter(Filter):
     def __init__(self, input_key='content', blocklist=None, blocklist_path=None,
-                 language='zh', threshold=1, use_tokenizer=True, _concurrency_mode='process', **kwargs):
+                 language='zh', threshold=1, use_tokenizer=True, _concurrency_mode='thread', **kwargs):
         super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.threshold = threshold
@@ -565,7 +565,7 @@ def watermark_filter(data, input_key='content', watermarks=None):
 
 class StopWordFilter(Filter):
     def __init__(self, input_key='content', max_ratio=0.5, use_tokenizer=True, language='zh',
-                 _concurrency_mode='process', **kwargs):
+                 _concurrency_mode='thread', **kwargs):
         super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.max_ratio = max_ratio
@@ -636,7 +636,7 @@ def curly_bracket_filter(data, input_key='content', max_ratio=0.08):
 
 class CapitalWordFilter(Filter):
     def __init__(self, input_key='content', max_ratio=0.5, use_tokenizer=False,
-                 _concurrency_mode='process', **kwargs):
+                 _concurrency_mode='thread', **kwargs):
         super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.max_ratio = max_ratio
@@ -692,7 +692,7 @@ def lorem_ipsum_filter(data, input_key='content', max_ratio=3e-8):
         return []
 
 
-@data_register('data.filter', rewrite_func='forward', _concurrency_mode='process')
+@data_register('data.filter', rewrite_func='forward', _concurrency_mode='thread')
 def unique_word_filter(data, input_key='content', min_ratio=0.1, use_tokenizer=True, language='zh'):
     assert isinstance(data, dict)
     text = data.get(input_key)
