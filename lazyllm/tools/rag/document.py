@@ -58,6 +58,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._dataset_path = dataset_path
             self._embed = self._get_embeds(embed)
             self._processor = processor
+            self._schema_extractor = self._register_submodules(schema_extractor)
             name = name or DocListManager.DEFAULT_GROUP_NAME
             if not display_name: display_name = name
 
@@ -90,21 +91,22 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
 
         def _get_embeds(self, embed):
             embeds = embed if isinstance(embed, dict) else {EMBED_DEFAULT_KEY: embed} if embed else {}
-            for embed in embeds.values():
-                if isinstance(embed, ModuleBase):
-                    self._submodules.append(embed)
-            return embeds
+            return self._register_submodules(embeds)
 
-        def add_kb_group(self, name, doc_fields: Optional[Dict[str, DocField]] = None,
-                         store_conf: Optional[Dict] = None,
-                         embed: Optional[Union[Callable, Dict[str, Callable]]] = None):
+        def _register_submodules(self, m):
+            if not m: return m
+            for embed in (m.values() if isinstance(m, dict) else m if isinstance(m, (tuple, list)) else [m]):
+                if isinstance(embed, ModuleBase): self._submodules.append(embed)
+            return m
+
+        def add_kb_group(self, name, doc_fields: Optional[Dict[str, DocField]] = None, store_conf: Optional[Dict] = None,
+                         embed: Optional[Union[Callable, Dict[str, Callable]]] = None,
+                         schema_extractor: Optional[Union[LLMBase, SchemaExtractor]] = None):
             embed = self._get_embeds(embed) if embed else self._embed
-            if isinstance(self._kbs, ServerModule):
-                self._kbs._impl._m[name] = DocImpl(dlm=self._dlm, embed=embed, kb_group_name=name,
-                                                   global_metadata_desc=doc_fields, store=store_conf)
-            else:
-                self._kbs[name] = DocImpl(dlm=self._dlm, embed=self._embed, kb_group_name=name,
-                                          global_metadata_desc=doc_fields, store=store_conf)
+            schema_extractor = self._register_submodules(schema_extractor) or self._schema_extractor
+            impl = DocImpl(dlm=self._dlm, embed=embed, kb_group_name=name, global_metadata_desc=doc_fields,
+                           store=store_conf, schema_extractor=schema_extractor)
+            (self._kbs._impl._m if isinstance(self._kbs, ServerModule) else self._kbs)[name] = impl
             self._dlm.add_kb_group(name=name)
 
         def get_doc_by_kb_group(self, name):
@@ -151,7 +153,6 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
                 'Only map store is supported for Document with temp-files')
 
         name = name or DocListManager.DEFAULT_GROUP_NAME
-        self._schema_extractor: SchemaExtractor = schema_extractor
 
         if isinstance(manager, Document._Manager):
             assert not server, 'Server infomation is already set to by manager'
@@ -161,7 +162,8 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             if dataset_path != manager._dataset_path and dataset_path != manager._origin_path:
                 raise RuntimeError(f'Document path mismatch, expected `{manager._dataset_path}`'
                                    f'while received `{dataset_path}`')
-            manager.add_kb_group(name=name, doc_fields=doc_fields, store_conf=store_conf, embed=embed)
+            manager.add_kb_group(name=name, doc_fields=doc_fields, store_conf=store_conf, embed=embed,
+                                 schema_extractor=schema_extractor)
             self._manager = manager
             self._curr_group = name
         else:
@@ -177,7 +179,7 @@ class Document(ModuleBase, BuiltinGroups, metaclass=_MetaDocument):
             self._manager = Document._Manager(dataset_path, embed, manager, server, name, launcher, store_conf,
                                               doc_fields, cloud=cloud, doc_files=doc_files, processor=processor,
                                               display_name=display_name, description=description,
-                                              schema_extractor=self._schema_extractor)
+                                              schema_extractor=schema_extractor)
             self._curr_group = name
         self._doc_to_db_processor: DocToDbProcessor = None
         self._graph_document: weakref.ref = None
