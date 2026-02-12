@@ -2,8 +2,8 @@ import copy
 import json5 as json
 import lazyllm
 import docstring_parser
+import os
 from lazyllm.module import ModuleBase
-from lazyllm.module.utils import module_tool_light_reduce
 from lazyllm.common import LazyLLMRegisterMetaClass, compile_func, kwargs
 from typing import Callable, Any, Union, get_type_hints, List, Dict, Type, Set
 import inspect
@@ -51,7 +51,6 @@ def _check_return_type_is_the_same(doc_type_hints, func_type_hints) -> None:
 
 # ---------------------------------------------------------------------------- #
 
-@module_tool_light_reduce
 class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def __init__(self, verbose: bool = False, return_trace: bool = True, execute_in_sandbox: bool = True):
         super().__init__(return_trace=return_trace)
@@ -142,6 +141,38 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def apply(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError('Implement apply function in subclass')
 
+    @staticmethod
+    def _rebuild_from_reduce(module_id, rebuild_object):
+        if isinstance(rebuild_object, type):
+            return rebuild_object()._set_mid(module_id)
+        elif isinstance(rebuild_object, callable):
+            from lazyllm.tools.agent.toolsManager import register
+            register('tool')(rebuild_object)
+            cls_to_use = getattr(lazyllm.tool, rebuild_object.__name__)
+            return cls_to_use()._set_mid(module_id)
+        else:
+            raise ValueError(f'Invalid rebuild object in ModuleTool: {rebuild_object}')
+
+    @staticmethod
+    def _get_orig_apply_func(apply_method):
+        func = getattr(apply_method, '__func__', apply_method)
+        if not callable(func) or not getattr(func, '__closure__', None):
+            return None
+        for cell in func.__closure__:
+            try:
+                c = cell.cell_contents
+                if callable(c) and not isinstance(c, type) and getattr(c, '__name__', None):
+                    return c
+            except ValueError:
+                pass
+        return None
+
+    def __reduce__(self):
+        if os.getenv('LAZYLLM_ON_CLOUDPICKLE', None) == 'ON':
+            orig = ModuleTool._get_orig_apply_func(self.apply)
+            return (ModuleTool._rebuild_from_reduce, (self._module_id, orig or self.__class__))
+        return super().__reduce__()
+
     def _validate_input(self, tool_input: Dict[str, Any]) -> Dict[str, Any]:
         input_params = self._params_schema
         if isinstance(tool_input, dict):
@@ -195,7 +226,7 @@ import cloudpickle
 tool = cloudpickle.loads(base64.b64decode({repr(tool_dump)}.encode('utf-8')))
 kwargs = cloudpickle.loads(base64.b64decode({repr(args_dump)}.encode('utf-8')))
 result = tool(kwargs)
-print(result)  # noqa print
+print(f'tool result: {{result}}')  # noqa print
 '''
 
 register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool', allowed_parameter=['execute_in_sandbox'])
@@ -256,6 +287,14 @@ class ToolManager(ModuleBase):
     @property
     def tools_info(self):
         return self._tool_call
+
+    @property
+    def sandbox(self):
+        return self._sandbox
+
+    @sandbox.setter
+    def sandbox(self, sandbox):
+        self._sandbox = sandbox
 
     def _validate_tool(self, tool_name: str, tool_arguments: Dict[str, Any]):
         tool = self._tool_call.get(tool_name)

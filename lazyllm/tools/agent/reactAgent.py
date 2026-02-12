@@ -3,7 +3,7 @@ from lazyllm import loop, once_wrapper
 from .functionCall import FunctionCall
 from typing import List, Any, Dict, Optional, Union
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
-from lazyllm.tools.sandbox.sandbox_base import SandboxBase
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 
 INSTRUCTION = f'''
 ## Role
@@ -67,7 +67,7 @@ class ReactAgent(LazyLLMAgentBase):
     def __init__(self, llm, tools: Optional[List[str]] = None, max_retries: int = 5, return_trace: bool = False,
                  prompt: str = None, stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, List[str]]] = None, desc: str = '',
-                 workspace: Optional[str] = None, sandbox: Optional[SandboxBase] = None):
+                 workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
                          stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
                          desc=desc, workspace=workspace, sandbox=sandbox)

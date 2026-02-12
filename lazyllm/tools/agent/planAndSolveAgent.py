@@ -5,7 +5,7 @@ from lazyllm.components import ChatPrompter
 from lazyllm import loop, pipeline, _0, package, bind, LOG, Color, once_wrapper
 from .functionCall import FunctionCall, FC_PROMPT
 from typing import List, Optional, Union
-from lazyllm.tools.sandbox.sandbox_base import SandboxBase
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 
 PLANNER_PROMPT = (
     'Let\'s first understand the problem and devise a plan to solve it. '
@@ -42,7 +42,7 @@ class PlanAndSolveAgent(LazyLLMAgentBase):
                  max_retries: int = 5, return_trace: bool = False, stream: bool = False,
                  return_last_tool_calls: bool = False,
                  skills: Union[bool, str, List[str], None] = None, desc: str = '',
-                 workspace: Optional[str] = None, sandbox: Optional[SandboxBase] = None):
+                 workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None):
         super().__init__(llm=llm, tools=tools, max_retries=max_retries,
                          return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls,

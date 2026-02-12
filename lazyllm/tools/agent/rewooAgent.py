@@ -5,7 +5,7 @@ import json
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter
 from lazyllm import pipeline, LOG, bind, Color, locals, ifs, once_wrapper
-from lazyllm.tools.sandbox.sandbox_base import SandboxBase
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 from .base import LazyLLMAgentBase
 
 
@@ -40,7 +40,7 @@ class ReWOOAgent(LazyLLMAgentBase):
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
                  return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Union[bool, str, List[str], None] = None, desc: str = '',
-                 workspace: Optional[str] = None, sandbox: Optional[SandboxBase] = None):
+                 workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None):
         super().__init__(llm=llm, tools=tools, return_trace=return_trace, stream=stream,
                          return_last_tool_calls=return_last_tool_calls, skills=skills, desc=desc,
                          workspace=workspace, sandbox=sandbox)

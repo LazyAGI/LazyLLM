@@ -7368,14 +7368,14 @@ add_agent_example('register', """\
 """)
 
 add_agent_chinese_doc('code_interpreter', '''\
-内置代码解释工具，基于沙箱执行代码并返回结果。默认使用本地沙箱（LocalSandbox），也可通过配置切换为远程沙箱（SandboxFusion）。
+内置代码解释工具，基于沙箱执行代码并返回结果。默认使用本地沙箱（DummySandbox），也可通过配置切换为远程沙箱（SandboxFusion）。
 
 沙箱选择：
-- config['sandbox_type'] == 'local'：使用 LocalSandbox，仅支持 python。
+- config['sandbox_type'] == 'dummy'：使用 DummySandbox，仅支持 python。
 - config['sandbox_type'] == 'sandbox_fusion'：使用 SandboxFusion，支持 python / bash。
 
 环境变量：
-- LAZYLLM_SANDBOX_TYPE: 设置为 "local" 或 "sandbox_fusion"。
+- LAZYLLM_SANDBOX_TYPE: 设置为 "dummy" 或 "sandbox_fusion"。
 - LAZYLLM_SANDBOX_FUSION_BASE_URL: 远程沙箱服务地址（仅 sandbox_fusion 模式需要）。
 
 Args:
@@ -7388,14 +7388,14 @@ Args:
 
 add_agent_english_doc('code_interpreter', '''\
 Built-in code interpreter tool that executes code inside a sandbox and returns the result.
-It uses LocalSandbox by default, and can be switched to SandboxFusion via configuration.
+It uses DummySandbox by default, and can be switched to SandboxFusion via configuration.
 
 Sandbox selection:
-- config['sandbox_type'] == 'local': LocalSandbox, python only.
+- config['sandbox_type'] == 'dummy': DummySandbox, python only.
 - config['sandbox_type'] == 'sandbox_fusion': SandboxFusion, python / bash.
 
 Environment variables:
-- LAZYLLM_SANDBOX_TYPE: set to "local" or "sandbox_fusion".
+- LAZYLLM_SANDBOX_TYPE: set to "dummy" or "sandbox_fusion".
 - LAZYLLM_SANDBOX_FUSION_BASE_URL: remote sandbox base URL (sandbox_fusion only).
 
 Args:
@@ -7413,7 +7413,7 @@ add_agent_example('code_interpreter', """\
 hello
 """)
 
-add_sandbox_chinese_doc('SandboxBase', '''\
+add_sandbox_chinese_doc('LazyLLMSandboxBase', '''\
 沙箱执行基类，定义统一的代码执行接口与语言检查逻辑。
 
 Args:
@@ -7424,7 +7424,7 @@ Notes:
     子类需实现 `_is_available` 与 `_execute` 方法。
 ''')
 
-add_sandbox_english_doc('SandboxBase', '''\
+add_sandbox_english_doc('LazyLLMSandboxBase', '''\
 Base class for sandbox execution with a unified call interface and language validation.
 
 Args:
@@ -7435,7 +7435,7 @@ Notes:
     Subclasses must implement `_is_available` and `_execute`.
 ''')
 
-add_sandbox_chinese_doc('SandboxBase.forward', '''\
+add_sandbox_chinese_doc('LazyLLMSandboxBase.forward', '''\
 统一执行入口，负责语言校验并调用具体实现。
 
 Args:
@@ -7448,7 +7448,7 @@ Args:
     由具体沙箱实现返回的结果（通常为 dict 或错误信息字符串）。
 ''')
 
-add_sandbox_english_doc('SandboxBase.forward', '''\
+add_sandbox_english_doc('LazyLLMSandboxBase.forward', '''\
 Unified execution entry that validates language and delegates to the implementation.
 
 Args:
@@ -7461,7 +7461,7 @@ Args:
     Result produced by the sandbox implementation (usually a dict or an error message string).
 ''')
 
-add_sandbox_chinese_doc('LocalSandbox', '''\
+add_sandbox_chinese_doc('DummySandbox', '''\
 本地沙箱实现（python-only），用于在受限环境中执行代码。
 
 特点：
@@ -7475,7 +7475,7 @@ Args:
     return_trace (bool): 是否返回中间执行信息。
 ''')
 
-add_sandbox_english_doc('LocalSandbox', '''\
+add_sandbox_english_doc('DummySandbox', '''\
 Local sandbox implementation (python-only) for executing code in a restricted environment.
 
 Features:
@@ -7489,9 +7489,9 @@ Args:
     return_trace (bool): whether to return intermediate execution info.
 ''')
 
-add_sandbox_example('LocalSandbox', """\
->>> from lazyllm.tools.sandbox import LocalSandbox
->>> sandbox = LocalSandbox(timeout=10)
+add_sandbox_example('DummySandbox', """\
+>>> from lazyllm.tools.sandbox import DummySandbox
+>>> sandbox = DummySandbox(timeout=10)
 >>> result = sandbox(code="print(1 + 1)")
 >>> print(result['stdout'].strip())
 2

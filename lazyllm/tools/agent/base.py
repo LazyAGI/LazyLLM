@@ -3,8 +3,8 @@ from typing import Iterable, Optional, Union
 
 import lazyllm
 from lazyllm.module import ModuleBase
-from lazyllm import locals, once_wrapper
-from lazyllm.tools.sandbox.sandbox_base import SandboxBase
+from lazyllm import locals, once_wrapper, config
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 from .toolsManager import ToolManager
 from .skill_manager import SkillManager, SKILLS_PROMPT
 from .file_tool import (  # noqa: F401
@@ -24,7 +24,7 @@ class LazyLLMAgentBase(ModuleBase):
     def __init__(self, llm=None, tools=None, max_retries: int = 5, return_trace: bool = False,
                  stream: bool = False, return_last_tool_calls: bool = False,
                  skills: Optional[Union[bool, str, Iterable[str]]] = None, memory=None,
-                 desc: str = '', workspace: Optional[str] = None, sandbox: Optional[SandboxBase] = None):
+                 desc: str = '', workspace: Optional[str] = None, sandbox: Optional[LazyLLMSandboxBase] = None):
         super().__init__(return_trace=return_trace)
         use_skills, skills = self._normalize_skills_config(skills)
         self._llm = llm
@@ -38,12 +38,12 @@ class LazyLLMAgentBase(ModuleBase):
         self._workspace = self._init_workspace(workspace)
         self._agent = None
         self._skill_manager = None
-        self._sandbox = sandbox
+        self._sandbox = sandbox or lazyllm.sandbox[config['sandbox_type']]()
 
         if use_skills:
             self._skill_manager = SkillManager(skills=self._skills)
             self._ensure_default_skill_tools()
-        self._tools_manager = ToolManager(self._tools, return_trace=return_trace, sandbox=sandbox)
+        self._tools_manager = ToolManager(self._tools, return_trace=return_trace, sandbox=self._sandbox)
 
     @staticmethod
     def _normalize_skills_config(skills: Optional[Union[bool, str, Iterable[str]]]):
@@ -135,6 +135,16 @@ class LazyLLMAgentBase(ModuleBase):
     @property
     def workspace(self) -> str:
         return self._workspace
+
+    @property
+    def sandbox(self) -> LazyLLMSandboxBase:
+        return self._sandbox
+
+    @sandbox.setter
+    def sandbox(self, sandbox: Optional[LazyLLMSandboxBase]):
+        self._sandbox = sandbox
+        if hasattr(self, '_tools_manager') and self._tools_manager is not None:
+            self._tools_manager.sandbox = sandbox
 
     @property
     def desc(self) -> str:

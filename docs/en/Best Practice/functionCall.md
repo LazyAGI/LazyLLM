@@ -273,7 +273,7 @@ print(ret)
 
 ### Sandbox configuration
 
-`code_interpreter` uses the local sandbox (`LocalSandbox`, python only) by default. Switch to `SandboxFusion` for remote execution or bash support:
+`code_interpreter` uses the local sandbox (`DummySandbox`, python only) by default. Switch to `SandboxFusion` for remote execution or bash support:
 
 ```python
 from lazyllm import config
@@ -284,7 +284,7 @@ config['sandbox_fusion_base_url'] = 'http://your-sandbox-host:8000'
 
 Environment variables:
 
-- `LAZYLLM_SANDBOX_TYPE`: `local` or `sandbox_fusion`
+- `LAZYLLM_SANDBOX_TYPE`: `dummy` or `sandbox_fusion`
 - `LAZYLLM_SANDBOX_FUSION_BASE_URL`: remote sandbox base URL
 
 ## Design Concept of FunctionCall

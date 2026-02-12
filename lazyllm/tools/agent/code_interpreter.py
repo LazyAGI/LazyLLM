@@ -1,14 +1,7 @@
+import lazyllm
 from lazyllm import config, call_once, once_flag
 from lazyllm.tools import fc_register
-from lazyllm.tools.sandbox.sandbox_fusion import SandboxFusion
-from lazyllm.tools.sandbox.local_sandbox import LocalSandbox
-
-_SANDBOX_MAP = {
-    'local': LocalSandbox,
-    'sandbox_fusion': SandboxFusion,
-}
-
-config.add('sandbox_type', str, 'local', 'SANDBOX_TYPE')
+from lazyllm.tools.sandbox import DummySandbox
 
 _sandbox = None
 _sandbox_once = once_flag()
@@ -16,7 +9,8 @@ _sandbox_once = once_flag()
 
 def _create_sandbox():
     global _sandbox
-    _sandbox = _SANDBOX_MAP.get(config['sandbox_type'], LocalSandbox)()
+    sandbox_cls = lazyllm.sandbox.get(config['sandbox_type'], DummySandbox)
+    _sandbox = sandbox_cls()
     return _sandbox
 
 

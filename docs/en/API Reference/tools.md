@@ -1,11 +1,11 @@
 :::: lazyllm.tools.agent.code_interpreter
     exclude-members:
 
-:::: lazyllm.tools.sandbox.SandboxBase
+:::: lazyllm.tools.sandbox.LazyLLMSandboxBase
     members:
     exclude-members:
 
-:::: lazyllm.tools.sandbox.LocalSandbox
+:::: lazyllm.tools.sandbox.DummySandbox
     members:
     exclude-members:
 

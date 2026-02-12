@@ -1,111 +1,95 @@
 import base64
-from typing import List, Any, Optional
 import os
+from typing import Any, List, Optional
+from json import JSONDecodeError
+
 import requests
 from requests import exceptions as req_exc
-from json import JSONDecodeError
+
 from lazyllm import LOG, config
 from lazyllm.components.utils.file_operate import file_to_base64
-from lazyllm.tools.sandbox.sandbox_base import SandboxBase
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
 
 config.add('sandbox_fusion_base_url', str, '', 'SANDBOX_FUSION_BASE_URL')
 
-class SandboxFusion(SandboxBase):
+
+class SandboxFusion(LazyLLMSandboxBase):
+    __lazyllm_registry_key__ = 'sandbox_fusion'
     SUPPORTED_LANGUAGES: List[str] = ['python', 'bash']
 
     def __init__(self, base_url: str = config['sandbox_fusion_base_url'], compile_timeout: int = 10,
                  run_timeout: int = 10, memory_limit_mb: int = -1, project_dir: str = None):
         self._base_url = base_url
-        super().__init__()
+        super().__init__(project_dir=project_dir)
         self._compile_timeout = compile_timeout
         self._run_timeout = run_timeout
         self._memory_limit_mb = memory_limit_mb
-        self._project_dir = project_dir
-        self._project_files = None
+        self._project_files_cache = None
 
     @property
     def url(self) -> str:
         return f'{self._base_url}/run_code'
 
-    def _organize_project_dir(self) -> dict[str, str]:
-        abs_dir = os.path.abspath(self._project_dir)
-        files_map = {}
-        for root, _, files in os.walk(abs_dir):
-            for name in files:
-                if name.endswith('.py'):
-                    abs_path = os.path.join(root, name)
-                    rel_path = os.path.relpath(abs_path, os.getcwd())
-                    files_map[rel_path] = self._encode_file_base64(abs_path)
-        return files_map
-
     def _check_available(self) -> None:
         try:
-            response = requests.get(f'{self._base_url}/v1/ping', timeout=2)
-            if response.status_code != 200:
-                raise ValueError(
-                    f'SandboxFusion _is_available ping failed: status={response.status_code}, text={response.text}')
+            resp = requests.get(f'{self._base_url}/v1/ping', timeout=2)
+            if resp.status_code != 200:
+                raise ValueError(f'SandboxFusion ping failed: status={resp.status_code}, text={resp.text}')
         except Exception as e:
-            raise ValueError(f'SandboxFusion _is_available error: {e}')
+            raise ValueError(f'SandboxFusion _check_available error: {e}')
 
-    def _call_api(
-        self,
-        call_params: dict[str, Any],
-        content_type: str = 'application/json',
-    ):
-        headers = {
-            'Content-Type': content_type,
-            'Accept': 'application/json',
-        }
+    def _call_api(self, call_params: dict[str, Any]):
+        headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
         try:
-            response = requests.post(self.url, headers=headers, json=call_params)
-            response.raise_for_status()
-            return response.json()
+            resp = requests.post(self.url, headers=headers, json=call_params)
+            resp.raise_for_status()
+            return resp.json()
+        except req_exc.RequestException as e:
+            LOG.error(f'API Request Error: {e}')
+        except JSONDecodeError as e:
+            LOG.error(f'API Response JSON Decode Error: {e}')
         except Exception as e:
-            if isinstance(e, req_exc.RequestException):
-                last_error = f'API Request Error: {e}'
-                LOG.error(last_error)
-            elif isinstance(e, JSONDecodeError):
-                raw = response.text if 'response' in locals() else 'N/A'
-                last_error = f'API Response JSON Decode Error: {e}; raw={raw}'
-                LOG.error(last_error)
-            else:
-                last_error = f'Unexpected Error: {e}'
-                LOG.exception(last_error)
+            LOG.exception(f'Unexpected Error: {e}')
         return 'Sandbox API Call Failed'
 
-    def _execute(
-        self,
-        code: str,
-        language: str = 'python',
-        input_files: Optional[List[str]] = None,
-        output_files: Optional[List[str]] = None,
-    ) -> str:
+    def _create_context(self) -> dict:
+        return {'files': {}}
+
+    def _process_input_files(self, input_files: List[str], context: dict) -> None:
+        for f in input_files:
+            context['files'][f] = self._encode_file_base64(f)
+
+    def _process_project_dir(self, context: dict) -> None:
+        if self._project_files_cache is None:
+            self._project_files_cache = {
+                rel: self._encode_file_base64(abs_p)
+                for abs_p, rel in self._collect_project_py_files()
+            }
+        context['files'].update(self._project_files_cache)
+
+    def _process_output_files(self, result: dict, output_files: List[str], context: dict) -> List[str]:
+        self._ensure_output_dir()
+        collected = []
+        for name, b64 in (result.get('files') or {}).items():
+            path = os.path.join(self._output_dir_path, name)
+            with open(path, 'wb') as f:
+                f.write(base64.b64decode(b64))
+            collected.append(path)
+        return collected
+
+    def _execute(self, code: str, language: str, context: dict,
+                 output_files: Optional[List[str]] = None) -> str:
         call_params = {
             'code': code,
             'compile_timeout': self._compile_timeout,
             'run_timeout': self._run_timeout,
             'memory_limit_mb': self._memory_limit_mb,
             'language': language,
-            'files': {},
+            'files': context['files'],
         }
-        if self._project_dir:
-            if self._project_files is None:
-                self._project_files = self._organize_project_dir()
-            call_params['files'] = dict(self._project_files)
-        if input_files:
-            for file in input_files:
-                call_params['files'][file] = self._encode_file_base64(file)
         if output_files:
             call_params['fetch_files'] = output_files
-        result = self._call_api(call_params)
-        if not isinstance(result, str) and (files := result.get('files', None)):
-            result['output_files'] = []
-            for file_name, base64_content in files.items():
-                file_path = os.path.join(self._output_dir_path, file_name)
-                with open(file_path, 'wb') as f:
-                    f.write(base64.b64decode(base64_content))
-                    result['output_files'].append(file_path)
-        return result
+        return self._call_api(call_params)
 
     @staticmethod
     def _encode_file_base64(path: str) -> str:

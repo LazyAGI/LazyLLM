@@ -270,7 +270,7 @@ print(ret)
 
 ### 沙箱配置
 
-`code_interpreter` 默认使用本地沙箱（`LocalSandbox`，仅支持 python）。如需远程执行或 bash 支持，可切换为 `SandboxFusion`：
+`code_interpreter` 默认使用本地沙箱（`DummySandbox`，仅支持 python）。如需远程执行或 bash 支持，可切换为 `SandboxFusion`：
 
 ```python
 from lazyllm import config
@@ -281,7 +281,7 @@ config['sandbox_fusion_base_url'] = 'http://your-sandbox-host:port'
 
 对应的环境变量：
 
-- `LAZYLLM_SANDBOX_TYPE`：`local` 或 `sandbox_fusion`
+- `LAZYLLM_SANDBOX_TYPE`：`dummy` 或 `sandbox_fusion`
 - `LAZYLLM_SANDBOX_FUSION_BASE_URL`：远程沙箱服务地址
 
 ## FunctionCall 的设计思路

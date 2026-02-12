@@ -17,6 +17,7 @@ if TYPE_CHECKING:
         ModuleTool,
         SkillManager,
     )
+    from .sandbox import LazyLLMSandboxBase, DummySandbox, SandboxFusion
     from .classifier import IntentClassifier
     from .sql import SqlManager, MongoDBManager, DBResult, DBStatus, DBManager
     from .sql_call import SqlCall
@@ -70,6 +71,11 @@ _SUBMOD_MAP = {
         'PlanAndSolveAgent',
         'ReWOOAgent',
         'SkillManager',
+    ],
+    'sandbox': [
+        'LazyLLMSandboxBase',
+        'DummySandbox',
+        'SandboxFusion'
     ],
     'classifier': ['IntentClassifier'],
     'sql': [
