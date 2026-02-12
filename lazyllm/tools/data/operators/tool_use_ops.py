@@ -206,10 +206,10 @@ class CompositionTaskFilter(ToolUseOps):
         if not composition_tasks:
             data[self.output_key] = []
             return data
-        composition_text = json.dumps(composition_tasks, ensure_ascii=False) if not isinstance(composition_tasks, str) \
-            else composition_tasks
-        subtasks_text = json.dumps(subtasks, ensure_ascii=False) if subtasks is not None \
-            and not isinstance(subtasks, str) else (subtasks or '')
+        composition_text = (json.dumps(composition_tasks, ensure_ascii=False)
+                            if not isinstance(composition_tasks, str) else composition_tasks)
+        subtasks_text = (json.dumps(subtasks, ensure_ascii=False) if subtasks is not None
+                         and not isinstance(subtasks, str) else (subtasks or ''))
         instruction = (
             f'组合任务：\n{composition_text}\n\n'
             f'子任务（可选）：\n{subtasks_text}\n\n'
@@ -259,8 +259,8 @@ class FunctionGenerator(ToolUseOps):
             data[self.output_key] = []
             return data
         task_text = json.dumps(task, ensure_ascii=False) if not isinstance(task, str) else task
-        subtasks_text = json.dumps(subtasks, ensure_ascii=False) if subtasks is not None \
-            and not isinstance(subtasks, str) else (subtasks or '')
+        subtasks_text = (json.dumps(subtasks, ensure_ascii=False) if subtasks is not None
+                         and not isinstance(subtasks, str) else (subtasks or ''))
         instruction = (
             f'组合任务：\n{task_text}\n\n'
             f'子任务（可选）：\n{subtasks_text}\n\n'
@@ -308,8 +308,8 @@ class MultiTurnConversationGenerator(ToolUseOps):
             data[self.output_key] = []
             return data
         task_text = json.dumps(task, ensure_ascii=False) if not isinstance(task, str) else task
-        functions_text = json.dumps(functions, ensure_ascii=False) if functions is not None \
-            and not isinstance(functions, str) else (functions or '')
+        functions_text = (json.dumps(functions, ensure_ascii=False) if functions is not None
+                          and not isinstance(functions, str) else (functions or ''))
         instruction = (
             f'组合任务：\n{task_text}\n\n'
             f'函数列表：\n{functions_text}\n\n'
