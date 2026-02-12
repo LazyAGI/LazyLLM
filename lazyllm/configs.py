@@ -155,7 +155,7 @@ class Config(metaclass=_ConfigMeta):
             raise KeyError(
                 f'Unknown config key: "{name}". '
                 'Please register it via config.add(...) before access.'
-            )
+            ) from None
 
     def __str__(self):
         return str(self._impl)
