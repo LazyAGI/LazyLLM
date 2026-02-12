@@ -1,4 +1,6 @@
 import json
+import os
+from typing import Optional
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from lazyllm.components.formatter import JsonFormatter
@@ -130,37 +132,6 @@ class KBCExtractInfoPairs(kbc):
         return {**data, '_info_pairs': all_info_pairs}
 
 
-class KBCBuildMultiHopPrompt(kbc):
-    def __init__(self, lang: str = 'en', **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
-        self.prompt_template = Text2MultiHopQAGeneratorPrompt(lang=lang)
-
-    def forward(self, data: dict, **kwargs) -> dict:
-        info_pairs = data.get('_info_pairs', [])
-        if not info_pairs:
-            return {**data, '_prompts_data': []}
-
-        prompts_data = []
-
-        for pair in info_pairs:
-            context = (
-                f"{pair['premise']}. "
-                f"{pair['intermediate']}. "
-                f"{pair['conclusion']}"
-            )
-
-            user_prompt = self.prompt_template.build_prompt(context)
-
-            prompts_data.append(
-                {
-                    'user_prompt': user_prompt,
-                    'info_pair': pair,
-                }
-            )
-
-        return {**data, '_prompts_data': prompts_data}
-
-
 class KBCGenerateMultiHopQA(kbc):
     def __init__(self, llm=None, lang: str = 'en', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
@@ -182,15 +153,22 @@ class KBCGenerateMultiHopQA(kbc):
         if self._llm_serve is None:
             raise ValueError('LLM is not configured')
 
-        prompts_data = data.get('_prompts_data', [])
-        if not prompts_data:
+        info_pairs = data.get('_info_pairs', [])
+        if not info_pairs:
             return {**data, '_qa_results': []}
 
         qa_results = []
 
-        for prompt_data in prompts_data:
-            user_prompt = prompt_data.get('user_prompt', '')
-            info_pair = prompt_data.get('info_pair', {})
+        for pair in info_pairs:
+            # Build context from info pair
+            context = (
+                f"{pair['premise']}. "
+                f"{pair['intermediate']}. "
+                f"{pair['conclusion']}"
+            )
+
+            # Build prompt for this info pair
+            user_prompt = self.prompt_template.build_prompt(context)
 
             try:
                 response = self._llm_serve(user_prompt)
@@ -198,7 +176,7 @@ class KBCGenerateMultiHopQA(kbc):
                 qa_results.append(
                     {
                         'response': response,
-                        'info_pair': info_pair,
+                        'info_pair': pair,
                     }
                 )
 
@@ -208,47 +186,45 @@ class KBCGenerateMultiHopQA(kbc):
         return {**data, '_qa_results': qa_results}
 
 
-class KBCParseQAPairs(kbc):
-    def __init__(self, **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
+@data_register('data.kbc', rewrite_func='forward', _concurrency_mode='process')
+def parse_qa_pairs(data: dict) -> dict:
+    qa_results = data.get('_qa_results', [])
+    if not qa_results:
+        return {**data, '_qa_pairs': []}
 
-    def forward(self, data: dict, **kwargs) -> dict:
-        qa_results = data.get('_qa_results', [])
-        if not qa_results:
-            return {**data, '_qa_pairs': []}
+    all_qa_pairs = []
 
-        all_qa_pairs = []
+    for qa_result in qa_results:
+        response = qa_result.get('response', '')
+        info_pair = qa_result.get('info_pair', {})
+        original_data = info_pair.get('original_data', {})
 
-        for qa_result in qa_results:
-            response = qa_result.get('response', '')
-            info_pair = qa_result.get('info_pair', {})
-            original_data = info_pair.get('original_data', {})
-
-            if isinstance(response, dict):
-                if 'question' in response:
-                    all_qa_pairs.append(
-                        {**original_data, 'qa_pairs': response}
-                    )
-
-            elif isinstance(response, list):
-                for item in response:
-                    if isinstance(item, dict) and 'question' in item:
-                        all_qa_pairs.append(
-                            {**original_data, 'qa_pairs': item}
-                        )
-
-            elif isinstance(response, str):
-                LOG.warning(
-                    f'JsonFormatter failed to parse response, '
-                    f'skipping: {response[:100]}...'
+        if isinstance(response, dict):
+            if 'question' in response:
+                all_qa_pairs.append(
+                    {**original_data, 'qa_pairs': response}
                 )
 
-        return {**data, '_qa_pairs': all_qa_pairs}
+        elif isinstance(response, list):
+            for item in response:
+                if isinstance(item, dict) and 'question' in item:
+                    all_qa_pairs.append(
+                        {**original_data, 'qa_pairs': item}
+                    )
+
+        elif isinstance(response, str):
+            LOG.warning(
+                f'JsonFormatter failed to parse response, '
+                f'skipping: {response[:100]}...'
+            )
+
+    return {**data, '_qa_pairs': all_qa_pairs}
 
 
 class KBCSaveEnhancedChunks(kbc):
-    def __init__(self, **kwargs):
+    def __init__(self, output_dir: Optional[str] = None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
+        self.output_dir = output_dir
 
     def forward(
         self,
@@ -269,7 +245,6 @@ class KBCSaveEnhancedChunks(kbc):
                 '_chunk_path',
                 '_processed_chunks',
                 '_info_pairs',
-                '_prompts_data',
                 '_qa_results',
                 '_qa_pairs',
             ]:
@@ -296,8 +271,38 @@ class KBCSaveEnhancedChunks(kbc):
             enhanced_data.append(enhanced_item)
 
         try:
-            with open(chunk_path, 'w', encoding='utf-8') as f:
-                if str(chunk_path).endswith('.json'):
+            # Determine output path: use output_dir if specified, otherwise add suffix
+            if self.output_dir:
+                # Preserve relative directory structure to avoid filename collision
+                abs_chunk_path = os.path.abspath(chunk_path)
+                abs_cwd = os.path.abspath(os.getcwd())
+                
+                # Get relative path from current working directory
+                if abs_chunk_path.startswith(abs_cwd):
+                    rel_path = os.path.relpath(abs_chunk_path, abs_cwd)
+                else:
+                    # If outside cwd, use the full path structure under output_dir
+                    rel_path = abs_chunk_path.lstrip('/')
+                
+                # Build output path preserving directory structure
+                output_path = os.path.join(self.output_dir, rel_path)
+                output_dir = os.path.dirname(output_path)
+                os.makedirs(output_dir, exist_ok=True)
+            else:
+                # Add _enhanced suffix to avoid overwriting original file
+                base, ext = os.path.splitext(chunk_path)
+                if base.endswith('_enhanced'):
+                    # Already enhanced, add version number
+                    counter = 1
+                    output_path = f'{base}_v{counter}{ext}'
+                    while os.path.exists(output_path):
+                        counter += 1
+                        output_path = f'{base}_v{counter}{ext}'
+                else:
+                    output_path = f'{base}_enhanced{ext}'
+
+            with open(output_path, 'w', encoding='utf-8') as f:
+                if str(output_path).endswith('.json'):
                     json.dump(
                         enhanced_data,
                         f,
@@ -311,16 +316,15 @@ class KBCSaveEnhancedChunks(kbc):
                             + '\n'
                         )
 
-            LOG.info(f'Saved enhanced chunks to {chunk_path}')
+            LOG.info(f'Saved enhanced chunks to {output_path}')
 
-            result[output_key] = chunk_path
+            result[output_key] = output_path
 
             for key in [
                 '_chunks_data',
                 '_chunk_path',
                 '_processed_chunks',
                 '_info_pairs',
-                '_prompts_data',
                 '_qa_results',
                 '_qa_pairs',
             ]:
@@ -337,7 +341,6 @@ class KBCSaveEnhancedChunks(kbc):
                 '_chunk_path',
                 '_processed_chunks',
                 '_info_pairs',
-                '_prompts_data',
                 '_qa_results',
                 '_qa_pairs',
             ]:

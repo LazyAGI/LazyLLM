@@ -45,24 +45,20 @@ def _compute_cosine_similarity(query_emb: np.ndarray, corpus_embs: np.ndarray) -
     return np.dot(corpus_normalized, query_emb)
 
 
-class RerankerBuildCorpus(reranker):
-    def __init__(self, **kwargs):
-        super().__init__(rewrite_func='forward_batch_input', **kwargs)
+@data_register('data.reranker', rewrite_func='forward_batch_input')
+def build_reranker_corpus(
+    inputs: List[dict],
+    input_pos_key: str = 'pos',
+    corpus: Optional[List[str]] = None,
+) -> List[dict]:
 
-    def forward_batch_input(
-        self,
-        inputs: List[dict],
-        input_pos_key: str = 'pos',
-        corpus: Optional[List[str]] = None,
-        **kwargs
-    ) -> List[dict]:
-        if corpus is not None:
-            LOG.info(f'Using external corpus with {len(corpus)} passages.')
-            return [{**item, '_corpus': corpus} for item in inputs]
-        else:
-            corpus = _build_corpus_from_inputs(inputs, input_pos_key)
-            LOG.info(f'Built corpus with {len(corpus)} unique passages.')
-            return [{**item, '_corpus': corpus} for item in inputs]
+    if corpus is not None:
+        LOG.info(f'Using external corpus with {len(corpus)} passages.')
+        return [{**item, '_corpus': corpus} for item in inputs]
+    else:
+        corpus = _build_corpus_from_inputs(inputs, input_pos_key)
+        LOG.info(f'Built corpus with {len(corpus)} unique passages.')
+        return [{**item, '_corpus': corpus} for item in inputs]
 
 
 class RerankerInitBM25(reranker):
@@ -123,7 +119,11 @@ class RerankerInitSemantic(reranker):
         if not inputs:
             return inputs
 
+        # Verify all inputs share the same corpus for consistency
         corpus = inputs[0].get('_corpus') or []
+        if not all(item.get('_corpus') == corpus for item in inputs):
+            LOG.warning('Not all inputs share the same corpus. Using corpus from first item.')
+
         if not corpus or self.embedding_serving is None:
             LOG.warning('No corpus or embedding_serving for semantic initialization.')
             return [{**item, '_semantic_embeddings': None, '_semantic_corpus': corpus or []}

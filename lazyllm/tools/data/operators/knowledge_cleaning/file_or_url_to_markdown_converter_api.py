@@ -215,7 +215,7 @@ class HTMLToMarkdownConverter(kbc):
 class PDFToMarkdownConverterAPI(kbc):
     def __init__(
         self,
-        mineru_url: str = 'http://10.119.30.80:20234',
+        mineru_url: str = None,
         mineru_backend: str = 'vlm-vllm-async-engine',
         upload_mode: bool = True,
         **kwargs,
@@ -281,38 +281,3 @@ class PDFToMarkdownConverterAPI(kbc):
             LOG.error(f'MinerU API failed for {raw_path}: {e}')
             return {**data, '_markdown_path': ''}
 
-
-class TextPassThrough(kbc):
-    def __init__(self, **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
-
-    def forward(self, data: dict, **kwargs) -> dict:
-        if data.get('_type', '') == 'text':
-            return {
-                **data,
-                '_markdown_path': data.get('_raw_path', ''),
-            }
-        return data
-
-
-class MarkdownPathCleaner(kbc):
-    def __init__(self, output_key: str = 'text_path', **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
-        self.output_key = output_key
-
-    def forward(self, data: dict, **kwargs) -> dict:
-        result = data.copy()
-
-        result[self.output_key] = result.get('_markdown_path', '')
-
-        for key in [
-            '_type',
-            '_raw_path',
-            '_url',
-            '_output_path',
-            '_markdown_path',
-            '_error',
-        ]:
-            result.pop(key, None)
-
-        return result

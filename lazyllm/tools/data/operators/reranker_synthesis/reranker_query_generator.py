@@ -18,47 +18,18 @@ def _clean_json_block(text: str) -> str:
     return text.strip().removeprefix('```json').removeprefix('```').removesuffix('```').strip()
 
 
-class RerankerBuildQueryPrompt(reranker):
-    def __init__(
-        self,
-        num_queries: int = 3,
-        lang: str = 'zh',
-        difficulty_levels: Optional[List[str]] = None,
-        **kwargs
-    ):
-        super().__init__(_concurrency_mode='process', **kwargs)
-        self.num_queries = num_queries
-        self.lang = lang
-        self.difficulty_levels = difficulty_levels or ['easy', 'medium', 'hard']
-        self.prompt_template = RerankerQueryGeneratorPrompt(lang=lang)
-
-    def forward(
-        self,
-        data: dict,
-        input_key: str = 'passage',
-        **kwargs
-    ) -> dict:
-        passage = data.get(input_key, '')
-        if not passage:
-            return {**data, '_query_prompt': ''}
-
-        user_prompt = self.prompt_template.build_prompt(
-            passage=passage,
-            num_queries=self.num_queries,
-            difficulty_levels=self.difficulty_levels
-        )
-
-        return {**data, '_query_prompt': user_prompt}
-
-
 class RerankerGenerateQueries(reranker):
     def __init__(
         self,
         llm_serving=None,
         lang: str = 'zh',
+        num_queries: int = 3,
+        difficulty_levels: Optional[List[str]] = None,
         **kwargs
     ):
         super().__init__(_concurrency_mode='thread', **kwargs)
+        self.num_queries = num_queries
+        self.difficulty_levels = difficulty_levels or ['easy', 'medium', 'hard']
         self.prompt_template = RerankerQueryGeneratorPrompt(lang=lang)
 
         # Initialize LLM serve with system prompt and formatter
@@ -72,14 +43,22 @@ class RerankerGenerateQueries(reranker):
     def forward(
         self,
         data: dict,
+        input_key: str = 'passage',
         **kwargs
     ) -> dict:
         if self._llm_serve is None:
             raise ValueError('LLM serving is not configured')
 
-        user_prompt = data.get('_query_prompt', '')
-        if not user_prompt:
+        passage = data.get(input_key, '')
+        if not passage:
             return {**data, '_query_response': ''}
+
+        # Build user prompt from passage
+        user_prompt = self.prompt_template.build_prompt(
+            passage=passage,
+            num_queries=self.num_queries,
+            difficulty_levels=self.difficulty_levels
+        )
 
         try:
             result = self._llm_serve(user_prompt)

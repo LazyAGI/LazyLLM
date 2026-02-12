@@ -14,42 +14,37 @@ else:
     reranker = data_register.new_group('reranker')
 
 
-class RerankerValidateData(reranker):
-    def __init__(self, **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
+@data_register('data.reranker', rewrite_func='forward', _concurrency_mode='process')
+def validate_reranker_data(
+    data: dict,
+    input_query_key: str = 'query',
+    input_pos_key: str = 'pos',
+    input_neg_key: str = 'neg',
+) -> dict:
+    query = data.get(input_query_key, '')
+    pos = data.get(input_pos_key, [])
 
-    def forward(
-        self,
-        data: dict,
-        input_query_key: str = 'query',
-        input_pos_key: str = 'pos',
-        input_neg_key: str = 'neg',
-        **kwargs
-    ) -> dict:
-        query = data.get(input_query_key, '')
-        pos = data.get(input_pos_key, [])
+    if not query:
+        return {**data, '_is_valid': False, '_error': 'Missing query'}
 
-        if not query:
-            return {**data, '_is_valid': False, '_error': 'Missing query'}
+    if not pos:
+        return {**data, '_is_valid': False, '_error': 'Missing positive samples'}
 
-        if not pos:
-            return {**data, '_is_valid': False, '_error': 'Missing positive samples'}
+    # Ensure pos and neg are lists
+    if not isinstance(pos, list):
+        pos = [pos]
 
-        # Ensure pos and neg are lists
-        if not isinstance(pos, list):
-            pos = [pos]
+    neg = data.get(input_neg_key, [])
+    if not isinstance(neg, list):
+        neg = [neg] if neg else []
 
-        neg = data.get(input_neg_key, [])
-        if not isinstance(neg, list):
-            neg = [neg] if neg else []
-
-        return {
-            **data,
-            '_is_valid': True,
-            '_query': query,
-            '_pos': pos,
-            '_neg': neg
-        }
+    return {
+        **data,
+        '_is_valid': True,
+        '_query': query,
+        '_pos': pos,
+        '_neg': neg
+    }
 
 
 class RerankerFormatFlagReranker(reranker):
@@ -126,26 +121,6 @@ class RerankerFormatPairwise(reranker):
 
         return results
 
-
-class RerankerSaveToFile(reranker):
-    def __init__(self, output_file: Optional[str] = None, **kwargs):
-        super().__init__(_concurrency_mode='thread', **kwargs)
-        self.output_file = output_file
-
-    def forward(self, data: dict, **kwargs) -> dict:
-        if not self.output_file:
-            return data
-
-        try:
-            output_path = Path(self.output_file)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-
-            with open(output_path, 'a', encoding='utf-8') as f:
-                f.write(json.dumps(data, ensure_ascii=False) + '\n')
-        except Exception as e:
-            LOG.warning(f'Failed to save to file: {e}')
-
-        return data
 
 
 class RerankerTrainTestSplitter(reranker):

@@ -1,5 +1,6 @@
 import json
 import os
+from typing import Optional
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from lazyllm.components.formatter import JsonFormatter
@@ -50,34 +51,6 @@ class KBCLoadRAWChunkFile(kbc):
             return {**data, '_chunks_data': [], '_chunk_path': chunk_path}
 
 
-class KBCBuildCleanPrompt(kbc):
-    def __init__(self, lang: str = 'en', **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
-        self.prompts = KnowledgeCleanerPrompt(lang=lang)
-
-    def forward(
-        self,
-        data: dict,
-        **kwargs
-    ) -> dict:
-        chunks_data = data.get('_chunks_data', [])
-        if not chunks_data:
-            return {**data, '_prompts_data': []}
-
-        prompts_data = []
-        for item in chunks_data:
-            raw_chunk = item.get('raw_chunk', '')
-            if raw_chunk:
-                user_prompt = self.prompts.build_prompt(raw_chunk)
-                prompts_data.append({
-                    'user_prompt': user_prompt,
-                    'raw_chunk': raw_chunk,
-                    'original_item': item
-                })
-
-        return {**data, '_prompts_data': prompts_data}
-
-
 class KBCGenerateCleanedText(kbc):
     def __init__(self, llm=None, lang: str = 'en', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
@@ -98,15 +71,18 @@ class KBCGenerateCleanedText(kbc):
         if self._llm_serve is None:
             raise ValueError('LLM is not configured')
 
-        prompts_data = data.get('_prompts_data', [])
-        if not prompts_data:
+        chunks_data = data.get('_chunks_data', [])
+        if not chunks_data:
             return {**data, '_cleaned_results': []}
 
         cleaned_results = []
-        for prompt_data in prompts_data:
-            user_prompt = prompt_data.get('user_prompt', '')
-            raw_chunk = prompt_data.get('raw_chunk', '')
-            original_item = prompt_data.get('original_item', {})
+        for item in chunks_data:
+            raw_chunk = item.get('raw_chunk', '')
+            if not raw_chunk:
+                continue
+
+            # Build prompt for this chunk
+            user_prompt = self.prompts.build_prompt(raw_chunk)
 
             try:
                 # Call LLM (system prompt and formatter already set in __init__)
@@ -115,7 +91,7 @@ class KBCGenerateCleanedText(kbc):
                 cleaned_results.append({
                     'response': response,
                     'raw_chunk': raw_chunk,
-                    'original_item': original_item
+                    'original_item': item
                 })
             except Exception as e:
                 LOG.warning(f'Failed to clean text: {e}')
@@ -123,67 +99,61 @@ class KBCGenerateCleanedText(kbc):
                 cleaned_results.append({
                     'response': raw_chunk,
                     'raw_chunk': raw_chunk,
-                    'original_item': original_item
+                    'original_item': item
                 })
 
         return {**data, '_cleaned_results': cleaned_results}
 
 
-class KBCExtractCleanedContent(kbc):
-    def __init__(self, **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
+@data_register('data.kbc', rewrite_func='forward', _concurrency_mode='process')
+def extract_cleaned_content(data: dict) -> dict:
+    cleaned_results = data.get('_cleaned_results', [])
+    if not cleaned_results:
+        return {**data, '_cleaned_chunks': []}
 
-    def forward(
-        self,
-        data: dict,
-        **kwargs
-    ) -> dict:
-        cleaned_results = data.get('_cleaned_results', [])
-        if not cleaned_results:
-            return {**data, '_cleaned_chunks': []}
+    cleaned_chunks = []
+    for result in cleaned_results:
+        response = result.get('response', '')
+        raw_chunk = result.get('raw_chunk', '')
+        original_item = result.get('original_item', {})
 
-        cleaned_chunks = []
-        for result in cleaned_results:
-            response = result.get('response', '')
-            raw_chunk = result.get('raw_chunk', '')
-            original_item = result.get('original_item', {})
+        # Handle different response types from JsonFormatter
+        if isinstance(response, dict):
+            # JsonFormatter returned a dict, extract text field or convert to string
+            text = response.get('text', '') or response.get('content', '') or str(response)
+        elif isinstance(response, list):
+            # JsonFormatter returned a list, join or take first item
+            text = response[0] if response else ''
+            if isinstance(text, dict):
+                text = text.get('text', '') or text.get('content', '') or str(text)
+        elif isinstance(response, str):
+            # JsonFormatter failed to parse, use as-is
+            text = response
+        else:
+            text = str(response)
 
-            # Handle different response types from JsonFormatter
-            if isinstance(response, dict):
-                # JsonFormatter returned a dict, extract text field or convert to string
-                text = response.get('text', '') or response.get('content', '') or str(response)
-            elif isinstance(response, list):
-                # JsonFormatter returned a list, join or take first item
-                text = response[0] if response else ''
-                if isinstance(text, dict):
-                    text = text.get('text', '') or text.get('content', '') or str(text)
-            elif isinstance(response, str):
-                # JsonFormatter failed to parse, use as-is
-                text = response
-            else:
-                text = str(response)
-
-            # Extract content between tags
-            if '<cleaned_start>' in text and '<cleaned_end>' in text:
-                try:
-                    cleaned_text = text.split('<cleaned_start>')[1].split('<cleaned_end>')[0].strip()
-                except IndexError:
-                    cleaned_text = text.strip()
-            else:
+        # Extract content between tags
+        if '<cleaned_start>' in text and '<cleaned_end>' in text:
+            try:
+                cleaned_text = text.split('<cleaned_start>')[1].split('<cleaned_end>')[0].strip()
+            except IndexError:
                 cleaned_text = text.strip()
+        else:
+            cleaned_text = text.strip()
 
-            cleaned_chunks.append({
-                'raw_chunk': raw_chunk,
-                'cleaned_chunk': cleaned_text,
-                'original_item': original_item
-            })
+        cleaned_chunks.append({
+            'raw_chunk': raw_chunk,
+            'cleaned_chunk': cleaned_text,
+            'original_item': original_item
+        })
 
-        return {**data, '_cleaned_chunks': cleaned_chunks}
+    return {**data, '_cleaned_chunks': cleaned_chunks}
 
 
 class KBCSaveCleanedChunks(kbc):
-    def __init__(self, **kwargs):
+    def __init__(self, output_dir: Optional[str] = None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
+        self.output_dir = output_dir
 
     def forward(
         self,
@@ -198,8 +168,7 @@ class KBCSaveCleanedChunks(kbc):
             result = data.copy()
             result[output_key] = ''
             # Clean intermediate fields
-            for key in ['_chunks_data', '_chunk_path', '_prompts_data',
-                        '_cleaned_results', '_cleaned_chunks']:
+            for key in ['_chunks_data', '_chunk_path', '_cleaned_results', '_cleaned_chunks']:
                 result.pop(key, None)
             return result
 
@@ -208,8 +177,7 @@ class KBCSaveCleanedChunks(kbc):
             result = data.copy()
             result[output_key] = chunk_path
             # Clean intermediate fields
-            for key in ['_chunks_data', '_chunk_path', '_prompts_data',
-                        '_cleaned_results', '_cleaned_chunks']:
+            for key in ['_chunks_data', '_chunk_path', '_cleaned_results', '_cleaned_chunks']:
                 result.pop(key, None)
             return result
 
@@ -220,16 +188,47 @@ class KBCSaveCleanedChunks(kbc):
                 'cleaned_chunk': item['cleaned_chunk']
             } for item in cleaned_chunks]
 
-            with open(chunk_path, 'w', encoding='utf-8') as f:
+            # Determine output path: use output_dir if specified, otherwise add suffix
+            if self.output_dir:
+                # Preserve relative directory structure to avoid filename collision
+                # Convert /data/a/chunks.json -> output_dir/data/a/chunks.json
+                abs_chunk_path = os.path.abspath(chunk_path)
+                abs_cwd = os.path.abspath(os.getcwd())
+                
+                # Get relative path from current working directory
+                if abs_chunk_path.startswith(abs_cwd):
+                    rel_path = os.path.relpath(abs_chunk_path, abs_cwd)
+                else:
+                    # If outside cwd, use the full path structure under output_dir
+                    rel_path = abs_chunk_path.lstrip('/')
+                
+                # Build output path preserving directory structure
+                output_path = os.path.join(self.output_dir, rel_path)
+                output_dir = os.path.dirname(output_path)
+                os.makedirs(output_dir, exist_ok=True)
+            else:
+                # Add _cleaned suffix to avoid overwriting original file
+                # Check if already has _cleaned suffix to avoid duplicate
+                base, ext = os.path.splitext(chunk_path)
+                if base.endswith('_cleaned'):
+                    # Already cleaned, add version number
+                    counter = 1
+                    output_path = f'{base}_v{counter}{ext}'
+                    while os.path.exists(output_path):
+                        counter += 1
+                        output_path = f'{base}_v{counter}{ext}'
+                else:
+                    output_path = f'{base}_cleaned{ext}'
+
+            with open(output_path, 'w', encoding='utf-8') as f:
                 json.dump(json_items, f, ensure_ascii=False, indent=4)
 
-            LOG.info(f'Successfully saved cleaned chunks to {chunk_path}')
+            LOG.info(f'Successfully saved cleaned chunks to {output_path}')
 
             result = data.copy()
-            result[output_key] = chunk_path
+            result[output_key] = output_path
             # Clean intermediate fields
-            for key in ['_chunks_data', '_chunk_path', '_prompts_data',
-                        '_cleaned_results', '_cleaned_chunks']:
+            for key in ['_chunks_data', '_chunk_path', '_cleaned_results', '_cleaned_chunks']:
                 result.pop(key, None)
             return result
 
@@ -238,7 +237,6 @@ class KBCSaveCleanedChunks(kbc):
             result = data.copy()
             result[output_key] = ''
             # Clean intermediate fields
-            for key in ['_chunks_data', '_chunk_path', '_prompts_data',
-                        '_cleaned_results', '_cleaned_chunks']:
+            for key in ['_chunks_data', '_chunk_path', '_cleaned_results', '_cleaned_chunks']:
                 result.pop(key, None)
             return result

@@ -17,16 +17,6 @@ else:
     embedding = data_register.new_group('embedding')
 
 
-def _clean_json_block(text: str) -> str:
-    return (
-        text.strip()
-        .removeprefix('```json')
-        .removeprefix('```')
-        .removesuffix('```')
-        .strip()
-    )
-
-
 class EmbeddingQueryRewrite(embedding):
     def __init__(
         self,
@@ -73,13 +63,6 @@ class EmbeddingQueryRewrite(embedding):
                 rewrites = result
             elif isinstance(result, dict):
                 rewrites = result.get('rewrites', [])
-            elif isinstance(result, str):
-                parsed = json.loads(_clean_json_block(result))
-                rewrites = (
-                    parsed
-                    if isinstance(parsed, list)
-                    else parsed.get('rewrites', [])
-                )
             else:
                 rewrites = []
 

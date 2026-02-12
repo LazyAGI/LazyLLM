@@ -11,26 +11,6 @@ else:
     kbc = data_register.new_group('kbc')
 
 
-class KBCBuildCleanPromptSingle(kbc):
-
-    def __init__(self, lang: str = 'en', **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
-        self.prompts = KnowledgeCleanerPrompt(lang=lang)
-
-    def forward(
-        self,
-        data: dict,
-        input_key: str = 'raw_chunk',
-        **kwargs
-    ) -> dict:
-        raw_content = data.get(input_key, '')
-        if not raw_content:
-            return {**data, '_clean_prompt': ''}
-
-        user_prompt = self.prompts.build_prompt(raw_content)
-        return {**data, '_clean_prompt': user_prompt, '_raw_content': raw_content}
-
-
 class KBCGenerateCleanedTextSingle(kbc):
 
     def __init__(self, llm=None, lang: str = 'en', **kwargs):
@@ -51,16 +31,18 @@ class KBCGenerateCleanedTextSingle(kbc):
     def forward(
         self,
         data: dict,
+        input_key: str = 'raw_chunk',
         **kwargs
     ) -> dict:
         if self._llm_serve is None:
             raise ValueError('LLM is not configured')
 
-        user_prompt = data.get('_clean_prompt', '')
-        raw_content = data.get('_raw_content', '')
-
-        if not user_prompt:
+        raw_content = data.get(input_key, '')
+        if not raw_content:
             return {**data, '_cleaned_response': raw_content}
+
+        # Build prompt for the raw content
+        user_prompt = self.prompts.build_prompt(raw_content)
 
         try:
             # Call LLM (system prompt and formatter already set in __init__)
@@ -72,46 +54,40 @@ class KBCGenerateCleanedTextSingle(kbc):
             return {**data, '_cleaned_response': raw_content}
 
 
-class KBCExtractCleanedContentSingle(kbc):
+@data_register('data.kbc', rewrite_func='forward', _concurrency_mode='process')
+def extract_cleaned_content_single(
+    data: dict,
+    output_key: str = 'cleaned_chunk',
+) -> dict:
+    response = data.get('_cleaned_response', '')
 
-    def __init__(self, output_key: str = 'cleaned_chunk', **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
-        self.output_key = output_key
+    # Handle different response types from JsonFormatter
+    if isinstance(response, dict):
+        # JsonFormatter returned a dict, extract text field or convert to string
+        text = response.get('text', '') or response.get('content', '') or str(response)
+    elif isinstance(response, list):
+        # JsonFormatter returned a list, join or take first item
+        text = response[0] if response else ''
+        if isinstance(text, dict):
+            text = text.get('text', '') or text.get('content', '') or str(text)
+    elif isinstance(response, str):
+        # JsonFormatter failed to parse, use as-is
+        text = response
+    else:
+        text = str(response)
 
-    def forward(
-        self,
-        data: dict,
-        **kwargs
-    ) -> dict:
-        response = data.get('_cleaned_response', '')
-
-        # Handle different response types from JsonFormatter
-        if isinstance(response, dict):
-            # JsonFormatter returned a dict, extract text field or convert to string
-            text = response.get('text', '') or response.get('content', '') or str(response)
-        elif isinstance(response, list):
-            # JsonFormatter returned a list, join or take first item
-            text = response[0] if response else ''
-            if isinstance(text, dict):
-                text = text.get('text', '') or text.get('content', '') or str(text)
-        elif isinstance(response, str):
-            # JsonFormatter failed to parse, use as-is
-            text = response
-        else:
-            text = str(response)
-
-        # Extract content between tags
-        if '<cleaned_start>' in text and '<cleaned_end>' in text:
-            try:
-                cleaned_text = text.split('<cleaned_start>')[1].split('<cleaned_end>')[0].strip()
-            except IndexError:
-                cleaned_text = text.strip()
-        else:
+    # Extract content between tags
+    if '<cleaned_start>' in text and '<cleaned_end>' in text:
+        try:
+            cleaned_text = text.split('<cleaned_start>')[1].split('<cleaned_end>')[0].strip()
+        except IndexError:
             cleaned_text = text.strip()
+    else:
+        cleaned_text = text.strip()
 
-        result = data.copy()
-        result[self.output_key] = cleaned_text
-        # Clean intermediate fields
-        for key in ['_clean_prompt', '_raw_content', '_cleaned_response']:
-            result.pop(key, None)
-        return result
+    result = data.copy()
+    result[output_key] = cleaned_text
+    # Clean intermediate fields
+    for key in ['_cleaned_response']:
+        result.pop(key, None)
+    return result

@@ -101,28 +101,3 @@ class KBCExtractQAPairs(kbc):
             results.append(item)
 
         return results
-
-
-class KBCSaveQAResults(kbc):
-    def __init__(self, output_json_file: Optional[str] = None, **kwargs):
-        super().__init__(rewrite_func='forward_batch_input', **kwargs)
-        self.output_json_file = output_json_file
-
-    def forward_batch_input(
-        self,
-        data: List[dict],
-        **kwargs
-    ) -> List[dict]:
-        if not self.output_json_file or not data:
-            return data
-
-        try:
-            output_path = Path(self.output_json_file)
-            output_path.parent.mkdir(parents=True, exist_ok=True)
-            with open(output_path, 'w', encoding='utf-8') as f:
-                json.dump(data, f, indent=2, ensure_ascii=False)
-            LOG.info(f"Saved QA results to {output_path}")
-        except Exception as e:
-            LOG.error(f"Failed to save QA results: {e}")
-
-        return data
