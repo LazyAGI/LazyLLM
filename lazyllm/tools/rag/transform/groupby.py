@@ -8,6 +8,8 @@ from .base import NodeTransform, RuleSet
 
 
 class GroupNodeParser(NodeTransform):
+    __requires_all_nodes__ = True
+
     def __init__(self, num_workers: int = 0, max_length: int = 2048,
                  merge_title: bool = True, return_trace: bool = False, **kwargs):
         rules = RuleSet()
