@@ -942,9 +942,6 @@ class CodeSplitter(_TextSplitterBase):
         )
 
     def forward(self, nodes: Union[List[DocNode], DocNode], **kwargs) -> List[DocNode]:
-        """
-        Process nodes by code splitting. Handles both single node and list of nodes.
-        """
         if not isinstance(nodes, (list, tuple)):
             nodes = [nodes]
 
