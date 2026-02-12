@@ -33,7 +33,7 @@ class TestSTT:
     def test_qwen_stt(self):
         self.common_stt(source='qwen')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('glm'))
+    @pytest.mark.ignore_cache_on_change(get_path('glm'))
     @pytest.mark.xfail
     def test_glm_stt(self):
         self.common_stt(source='glm')
