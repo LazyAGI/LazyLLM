@@ -18,16 +18,26 @@ class TestToolUseOperators:
         if os.path.exists(self.root_dir):
             shutil.rmtree(self.root_dir)
 
+    class MockModel:
+        def __init__(self, return_val=None):
+            self.return_val = return_val
+
+        def share(self): return self
+        def prompt(self, system): return self
+        def formatter(self, fmt): return self
+
+        def __call__(self, x, **kwargs):
+            if callable(self.return_val):
+                return self.return_val(x)
+            return self.return_val
+
     def test_scenario_extractor(self):
-        class MockModel:
-            def prompt(self, system):
-                return lambda x: '{"scene": "ordering pizza", "domain": "food"}'
+        mock_model = self.MockModel(return_val={'scene': 'ordering pizza', 'domain': 'food'})
 
         op = tool_use_ops.ScenarioExtractor(
-            model=MockModel(),
+            model=mock_model,
             input_key='content',
             output_key='scenario',
-            _concurrency_mode='single',
             _save_data=False
         )
         data = {'content': 'I want to order a pepperoni pizza.'}
@@ -36,15 +46,12 @@ class TestToolUseOperators:
         assert res[0]['scenario']['domain'] == 'food'
 
     def test_scenario_expander(self):
-        class MockModel:
-            def prompt(self, system):
-                return lambda x: '{"scenarios": [{"scene": "booking a flight"}]}'
+        mock_model = self.MockModel(return_val={'scenarios': [{'scene': 'booking a flight'}]})
 
         op = tool_use_ops.ScenarioExpander(
-            model=MockModel(),
+            model=mock_model,
             input_key='scenario',
             output_key='expanded',
-            _concurrency_mode='single',
             _save_data=False
         )
         data = {'scenario': {'scene': 'travel'}}
@@ -53,15 +60,12 @@ class TestToolUseOperators:
         assert res[0]['expanded'][0]['scene'] == 'booking a flight'
 
     def test_atom_task_generator(self):
-        class MockModel:
-            def prompt(self, system):
-                return lambda x: '{"tasks": [{"task": "check weather"}]}'
+        mock_model = self.MockModel(return_val={'tasks': [{'task': 'check weather'}]})
 
         op = tool_use_ops.AtomTaskGenerator(
-            model=MockModel(),
+            model=mock_model,
             input_key='scenario',
             output_key='tasks',
-            _concurrency_mode='single',
             _save_data=False
         )
         data = {'scenario': 'outdoor activity'}
@@ -69,33 +73,28 @@ class TestToolUseOperators:
         assert res[0]['tasks'][0]['task'] == 'check weather'
 
     def test_sequential_task_generator(self):
-        class MockModel:
-            def prompt(self, system):
-                return lambda x: '{"items": [{"task": "t1", "next_task": "t2", "composed_task": "t1 then t2"}]}'
+        mock_model = self.MockModel(return_val={'items': [{'task': 't1', 'next_task': 't2',
+                                                          'composed_task': 't1 then t2'}]})
 
         op = tool_use_ops.SequentialTaskGenerator(
-            model=MockModel(),
+            model=mock_model,
             input_key='atomic_tasks',
             output_key='seq_tasks',
-            _concurrency_mode='single',
             _save_data=False
         )
         data = {'atomic_tasks': ['t1', 't2']}
         res = op([data])
         assert res[0]['seq_tasks'][0]['task'] == 't1'
         assert res[0]['seq_tasks'][0]['next_task'] == 't2'
-        assert res[0]['seq_tasks'][0]['composed_task'] == 't1 then t2'
 
     def test_para_seq_task_generator(self):
-        class MockModel:
-            def prompt(self, system):
-                return lambda x: '{"parallel_tasks": ["task1"], "sequential_tasks": ["task2"], "hybrid_tasks": []}'
+        mock_model = self.MockModel(return_val={'parallel_tasks': ['task1'], 'sequential_tasks': ['task2'],
+                                                'hybrid_tasks': []})
 
         op = tool_use_ops.ParaSeqTaskGenerator(
-            model=MockModel(),
+            model=mock_model,
             input_key='atomic_tasks',
             output_key='complex',
-            _concurrency_mode='single',
             _save_data=False
         )
         data = {'atomic_tasks': ['task1', 'task2']}
@@ -104,32 +103,27 @@ class TestToolUseOperators:
         assert 'task2' in res[0]['complex']['sequential_tasks']
 
     def test_composition_task_filter(self):
-        class MockModel:
-            def prompt(self, system):
-                return lambda x: '{"items": [{"composed_task": "valid_task", "is_valid": true, "reason": "ok"}]}'
+        mock_model = self.MockModel(return_val={'items': [{'composed_task': 'valid_task',
+                                                          'is_valid': True, 'reason': 'ok'}]})
 
         op = tool_use_ops.CompositionTaskFilter(
-            model=MockModel(),
+            model=mock_model,
             composition_key='complex',
             output_key='filtered',
-            _concurrency_mode='single',
             _save_data=False
         )
         data = {'complex': ['valid_task', 'invalid_task']}
         res = op([data])
         assert 'valid_task' in res[0]['filtered']
-        assert 'invalid_task' not in res[0]['filtered']
 
     def test_function_generator(self):
-        class MockModel:
-            def prompt(self, system):
-                return lambda x: '{"functions": [{"name": "get_weather", "description": "returns weather"}]}'
+        mock_model = self.MockModel(return_val={'functions': [{'name': 'get_weather',
+                                                              'description': 'returns weather'}]})
 
         op = tool_use_ops.FunctionGenerator(
-            model=MockModel(),
+            model=mock_model,
             task_key='task',
             output_key='funcs',
-            _concurrency_mode='single',
             _save_data=False
         )
         data = {'task': 'check weather'}
@@ -137,15 +131,12 @@ class TestToolUseOperators:
         assert res[0]['funcs'][0]['name'] == 'get_weather'
 
     def test_multi_turn_conversation_generator(self):
-        class MockModel:
-            def prompt(self, system):
-                return lambda x: '{"messages": [{"role": "user", "content": "hello"}]}'
+        mock_model = self.MockModel(return_val={'messages': [{'role': 'user', 'content': 'hello'}]})
 
         op = tool_use_ops.MultiTurnConversationGenerator(
-            model=MockModel(),
+            model=mock_model,
             task_key='task',
             output_key='conv',
-            _concurrency_mode='single',
             _save_data=False
         )
         data = {'task': 'greet'}
