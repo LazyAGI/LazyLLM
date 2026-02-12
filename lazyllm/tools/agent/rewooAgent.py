@@ -1,7 +1,8 @@
 from lazyllm.module import ModuleBase
-from lazyllm import pipeline, LOG, bind, Color, locals, ifs
-from .toolsManager import ToolManager
-from typing import List, Dict, Union, Callable
+from .base import LazyLLMAgentBase
+from lazyllm.components import ChatPrompter
+from lazyllm import pipeline, LOG, bind, Color, locals, ifs, once_wrapper
+from typing import Callable, Dict, List, Optional, Union
 import re
 import json
 
@@ -29,36 +30,66 @@ S_PROMPT_PREFIX = ('Solve the following task or problem. To assist you, we provi
 
 S_PROMPT_SUFFIX = ('\nNow begin to solve the task or problem. Respond with '
                    'the answer directly with no extra words.\n\n')
+S_PROMPT_TEMPLATE = S_PROMPT_PREFIX + '{objective}\n{worker_evidences}' + S_PROMPT_SUFFIX + '{objective}\n'
 
-class ReWOOAgent(ModuleBase):
+class ReWOOAgent(LazyLLMAgentBase):
     def __init__(self, llm: Union[ModuleBase, None] = None, tools: List[Union[str, Callable]] = [], *,  # noqa B006
                  plan_llm: Union[ModuleBase, None] = None, solve_llm: Union[ModuleBase, None] = None,
-                 return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False):
-        super().__init__(return_trace=return_trace)
-        self._return_last_tool_calls = return_last_tool_calls
-        assert (llm is None and plan_llm and solve_llm) or (llm and plan_llm is None), 'Either specify only llm \
-               without specify plan and solve, or specify only plan and solve without specifying llm, or specify \
-               both llm and solve. Other situations are not allowed.'
-        assert tools, 'tools cannot be empty.'
-        self._planner = (plan_llm or llm).share(stream=dict(
-            prefix='\nI will give a plan first:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
-        self._solver = (solve_llm or llm).share(stream=dict(
-            prefix='\nI will solve the problem:\n', prefix_color=Color.blue, color=Color.green) if stream else False)
-        self._tools_manager = ToolManager(tools, return_trace=return_trace)
-        with pipeline() as self._agent:
-            self._agent.planner_pre_action = self._build_planner_prompt
-            self._agent.planner = self._planner
-            self._agent.worker_evidences = self._get_worker_evidences
-            self._agent.solver_pre_action = self._build_solver_prompt | bind(input=self._agent.input)
-            self._agent.solver = ifs(self._return_last_tool_calls, lambda x: 'ok', self._solver)
+                 return_trace: bool = False, stream: bool = False, return_last_tool_calls: bool = False,
+                 skills: Union[bool, str, List[str], None] = None, desc: str = '',
+                 workspace: Optional[str] = None):
+        super().__init__(llm=llm, tools=tools, return_trace=return_trace, stream=stream,
+                         return_last_tool_calls=return_last_tool_calls, skills=skills, desc=desc,
+                         workspace=workspace)
+        if llm is None and plan_llm is None and solve_llm is None:
+            raise ValueError('Either specify llm, or provide plan_llm/solve_llm.')
+        if llm is None:
+            if plan_llm is None:
+                plan_llm = solve_llm
+            if solve_llm is None:
+                solve_llm = plan_llm
+        else:
+            if plan_llm is None:
+                plan_llm = llm
+            if solve_llm is None:
+                solve_llm = llm
+        self._assert_tools()
+        extra_keys = ['available_skills'] if self._skill_manager else None
+        planner_prompt = self._append_skills_prompt(self._build_planner_prompt_template())
+        solver_prompt = self._append_workspace_prompt(
+            self._append_skills_prompt(S_PROMPT_TEMPLATE)
+        )
+        self._planner = plan_llm.share(
+            prompt=ChatPrompter(instruction=planner_prompt, extra_keys=extra_keys),
+            stream=dict(prefix='\nI will give a plan first:\n', prefix_color=Color.blue, color=Color.green)
+            if stream else False
+        )
+        self._solver = solve_llm.share(
+            prompt=ChatPrompter(instruction=solver_prompt, extra_keys=extra_keys),
+            stream=dict(prefix='\nI will solve the problem:\n', prefix_color=Color.blue, color=Color.green)
+            if stream else False
+        )
 
-    def _build_planner_prompt(self, input: str):
+    @once_wrapper(reset_on_pickle=True)
+    def build_agent(self):
+        with pipeline() as agent:
+            agent.planner_pre_action = self._build_planner_input
+            agent.planner = self._planner
+            agent.worker_evidences = self._get_worker_evidences
+            agent.solver_pre_action = self._build_solver_input | bind(input=agent.input)
+            agent.solver = ifs(self._return_last_tool_calls, lambda x: 'ok', self._solver)
+        self._agent = agent
+
+    def _build_planner_prompt_template(self):
         prompt = P_PROMPT_PREFIX + 'Tools can be one of the following:\n'
         for name, tool in self._tools_manager.tools_info.items():
             prompt += f'{name}[params_dict]: {tool.description}\n'
-        prompt += P_FEWSHOT + '\n' + P_PROMPT_SUFFIX + input + '\n'
-        locals['chat_history'][self._planner._module_id] = []
+        prompt += P_FEWSHOT + '\n' + P_PROMPT_SUFFIX
         return prompt
+
+    def _build_planner_input(self, input: str):
+        locals['chat_history'][self._planner._module_id] = []
+        return self._wrap_user_input_with_skills(input)
 
     def _parse_and_call_tool(self, tool_call: str, evidence: Dict[str, str]):
         tool_name, tool_arguments = tool_call.split('[', 1)
@@ -88,14 +119,19 @@ class ReWOOAgent(ModuleBase):
         LOG.debug(f'worker_evidences: {worker_evidences}')
         return worker_evidences
 
-    def _build_solver_prompt(self, worker_evidences, input):
-        prompt = S_PROMPT_PREFIX + input + '\n' + worker_evidences + S_PROMPT_SUFFIX + input + '\n'
+    def _build_solver_input(self, worker_evidences, input):
         locals['chat_history'][self._solver._module_id] = []
-        return prompt
+        payload = {'input': input, 'objective': input, 'worker_evidences': worker_evidences}
+        if self._skill_manager:
+            return self._skill_manager.wrap_input(payload, input)
+        return payload
 
-    def forward(self, query: str):
+    def _pre_process(self, query: str):
         locals['_lazyllm_agent']['workspace'] = {'tool_call_trace': []}
-        result = self._agent(query)
-        if self._return_last_tool_calls and locals['_lazyllm_agent']['workspace']['tool_call_trace']:
-            return locals['_lazyllm_agent'].pop('workspace').pop('tool_call_trace')
+        return query
+
+    def _post_process(self, result):
+        trace = self._pop_tool_calls()
+        if trace is not None:
+            return trace
         return result

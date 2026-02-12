@@ -10,10 +10,12 @@ if TYPE_CHECKING:
         FunctionCall,
         FunctionCallAgent,
         register as fc_register,
+        LazyLLMAgentBase,
         ReactAgent,
         PlanAndSolveAgent,
         ReWOOAgent,
         ModuleTool,
+        SkillManager,
     )
     from .classifier import IntentClassifier
     from .sql import SqlManager, MongoDBManager, DBResult, DBStatus, DBManager
@@ -63,9 +65,11 @@ _SUBMOD_MAP = {
         'FunctionCall',
         'FunctionCallAgent',
         'fc_register',
+        'LazyLLMAgentBase',
         'ReactAgent',
         'PlanAndSolveAgent',
-        'ReWOOAgent'
+        'ReWOOAgent',
+        'SkillManager',
     ],
     'classifier': ['IntentClassifier'],
     'sql': [

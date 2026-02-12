@@ -38,22 +38,22 @@ class TestEmbedding:
     def test_doubao_embedding(self):
         self.common_embedding(source='doubao')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('glm'))
+    @pytest.mark.ignore_cache_on_change(get_path('glm'))
     @pytest.mark.xfail
     def test_glm_embedding(self):
         self.common_embedding(source='glm')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('siliconflow'))
+    @pytest.mark.ignore_cache_on_change(get_path('siliconflow'))
     @pytest.mark.xfail
     def test_siliconflow_embedding(self):
         self.common_embedding(source='siliconflow')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('openai'))
+    @pytest.mark.ignore_cache_on_change(get_path('openai'))
     @pytest.mark.xfail
     def test_openai_embedding(self):
         self.common_embedding(source='openai')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('aiping'))
+    @pytest.mark.ignore_cache_on_change(get_path('aiping'))
     @pytest.mark.xfail
     def test_aiping_embedding(self):
         self.common_embedding(source='aiping')
@@ -62,7 +62,7 @@ class TestEmbedding:
     def test_sensenova_embedding(self):
         self.common_embedding(source='sensenova')
 
-    @pytest.mark.ignore_cache_on_change(BASE_PATH, get_path('doubao'))
+    @pytest.mark.ignore_cache_on_change(get_path('doubao'))
     @pytest.mark.xfail
     def test_doubao_multimodal_embedding(self):
         model_name = (lazyllm.config['doubao_multimodal_embed_model_name']

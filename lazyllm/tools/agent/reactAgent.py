@@ -1,57 +1,98 @@
-from lazyllm.module import ModuleBase
-from lazyllm import loop, locals
+from .base import LazyLLMAgentBase
+from lazyllm import loop, once_wrapper
 from .functionCall import FunctionCall
-from typing import List, Any, Dict
+from typing import List, Any, Dict, Optional, Union
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 
-INSTRUCTION = f'''You are designed to help with a variety of tasks, from answering questions to providing \
-summaries to other types of analyses.
+INSTRUCTION = f'''
+## Role
+You are a **ReAct-style autonomous agent** designed to solve user tasks through an iterative closed loop:
+Reason → Act → Observe → Reflect.
 
-## Tools
+Your goal is to produce **accurate, efficient, and well-structured results** while making optimal use of available tools.
 
-You have access to a wide variety of tools. You are responsible for using the tools in any sequence \
-you deem appropriate to complete the task at hand.
-This may require breaking the task into subtasks and using different tools to complete each subtask.
+## Core Working Loop (ReAct)
+You must repeatedly follow this loop until the task is fully solved:
+### 1. Reason
+- Understand the user's intent and constraints.
+- Break complex tasks into manageable steps.
+- Decide whether external tools are required.
+- Plan the next best action.
 
-You have access to the following tools:
+### 2. Act
+- Select **the most appropriate tool** if a tool is needed.
+- Invoke a tool **only when it provides capabilities or information you do not already have**.
+- Avoid speculative, redundant, or exploratory tool calls.
 
-## Output Format
+### 3. Observe
+- Carefully examine the tool's output.
+- Extract only information relevant to the current task.
+- Ignore noise or irrelevant details.
 
-Please answer in the same language as the question and use the following format:
+### 4. Reflect
+- Evaluate whether the obtained information is sufficient.
+- If insufficient, refine the plan and continue the loop.
+- If sufficient, prepare the final answer.
 
-Thought: The current language of the user is: (user's language). I need to use a tool to help answer the question.
+## Tool Usage Guidelines
+- You have access to multiple tools.
+- Before calling a tool, always consider:
+  * *Is a tool strictly necessary at this step?*
+  * *Which available tool is the most suitable for this purpose?*
+- Use **at most one tool per action step**.
+- Do **not** call any tools after you already have enough information to answer.
+
 {FC_PROMPT_PLACEHOLDER}
-Answering questions should include Thought regardless of whether or not you need to \
-call a tool.(Thought is required, tool_calls is optional.)
 
-Please ALWAYS start with a Thought and Only ONE Thought at a time.
+## Language & Communication Rules
+- Always respond in **the same language as the user's question**.
+- Do not switch languages unless explicitly requested.
+- Be concise, precise, and task-focused.
+- Do **not** expose internal reasoning, chain-of-thought, or decision deliberations to the user.
 
-You should keep repeating the above format till you have enough information to answer the question without using \
-any more tools. At that point, you MUST respond in the following formats:
+## Final Answer Rule
+When the task is complete:
+  * Stop the ReAct loop.
+  * Do not call any additional tools.
+  * Provide a clear and complete final answer.
+The final response should contain **only the answer itself**, without internal process details.
 
-Answer: your answer here (In the same language as the user's question)
+You are responsible for maintaining correctness, efficiency, and clarity throughout the entire reasoning–action cycle.
 
-## Current Conversation
-
-Below is the current conversation consisting of interleaving human and assistant messages. Think step by step.'''
+'''
 
 
-class ReactAgent(ModuleBase):
-    def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False,
-                 prompt: str = None, stream: bool = False, return_last_tool_calls: bool = False):
-        super().__init__(return_trace=return_trace)
-        self._max_retries = max_retries
-        self._return_last_tool_calls = return_last_tool_calls
+class ReactAgent(LazyLLMAgentBase):
+    def __init__(self, llm, tools: Optional[List[str]] = None, max_retries: int = 5, return_trace: bool = False,
+                 prompt: str = None, stream: bool = False, return_last_tool_calls: bool = False,
+                 skills: Optional[Union[bool, str, List[str]]] = None, desc: str = '',
+                 workspace: Optional[str] = None):
+        super().__init__(llm=llm, tools=tools, max_retries=max_retries, return_trace=return_trace,
+                         stream=stream, return_last_tool_calls=return_last_tool_calls, skills=skills,
+                         desc=desc, workspace=workspace)
         prompt = prompt or INSTRUCTION
         if self._return_last_tool_calls:
             prompt += '\nIf no more tool calls are needed, reply with ok and skip any summary.'
-        assert llm and tools, 'llm and tools cannot be empty.'
-        self._agent = loop(FunctionCall(llm, tools, _prompt=prompt, return_trace=return_trace, stream=stream),
-                           stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        assert self._llm is not None, 'llm cannot be empty.'
+        self._assert_tools()
+        self._prompt = prompt
 
-    def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
-        ret = self._agent(query, llm_chat_history or [])
-        if isinstance(ret, str) and self._return_last_tool_calls and locals['_lazyllm_agent'].get('completed'):
-            return locals['_lazyllm_agent'].pop('completed')
-        return ret if isinstance(ret, str) else (_ for _ in ()).throw(ValueError(f'After retrying \
-            {self._max_retries} times, the react agent still failes to call successfully.'))
+    @once_wrapper(reset_on_pickle=True)
+    def build_agent(self):
+        agent = loop(FunctionCall(llm=self._llm, _prompt=self._prompt, return_trace=self._return_trace,
+                                  stream=self._stream, _tool_manager=self._tools_manager,
+                                  skill_manager=self._skill_manager, workspace=self.workspace),
+                     stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        self._agent = agent
+
+    def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
+        return (self._wrap_user_input_with_skills(query), llm_chat_history or [])
+
+    def _post_process(self, ret):
+        if isinstance(ret, str):
+            completed = self._pop_tool_calls()
+            if completed is not None:
+                return completed
+            return ret
+        raise ValueError(f'After retrying {self._max_retries} times, the react agent still failes to call '
+                         f'successfully.')

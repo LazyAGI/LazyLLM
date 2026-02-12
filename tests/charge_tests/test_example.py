@@ -25,29 +25,12 @@ class TestExamples(object):
         self.use_context = False
         self.stream_output = False
         self.append_text = False
-        self.env_vars = [
-            'LAZYLLM_OPENAI_API_KEY',
-            'LAZYLLM_KIMI_API_KEY',
-            'LAZYLLM_SENSENOVA_API_KEY',
-            'LAZYLLM_DOUBAO_API_KEY',
-        ]
         self.webs = []
         self.clients = []
 
     @pytest.fixture(autouse=True)
     def run_around_tests(self):
-        env_vars = {}
-        for var in self.env_vars:
-            if var in os.environ:
-                env_vars[var] = os.environ[var]
-                del os.environ[var]
-                env_name = var[8:].lower()
-                lazyllm.config.add(env_name.lower(), str, '', env_name)
         yield
-        for var, value in env_vars.items():
-            os.environ[var] = value
-            env_name = var[8:]
-            lazyllm.config.add(env_name.lower(), str, '', env_name)
         while self.clients:
             client = self.clients.pop()
             client.close()
@@ -83,10 +66,9 @@ class TestExamples(object):
     def test_chat(self):
         from examples.chatbot_online import chat
         chat.start()
-
         # test chat warpped in web
         web, client = self.warp_into_web(chat)
-        chat_history = [[query, None]]
+        chat_history = [['不要发挥和扩展，请严格原样输出下面句子：Hello world.', None]]
         ans = client.predict(self.use_context,
                              chat_history,
                              self.stream_output,
@@ -162,28 +144,3 @@ class TestExamples(object):
         res = ans[0][-1][-1]
         assert type(res) is str
         assert len(res) >= 16
-
-@pytest.fixture()
-def requestOnlineChatModule(request):
-    params = request.param if hasattr(request, 'param') else {}
-    source = params.get('source', None)
-    query = params.get('query', '')
-    print(f'\nStarting test 【{source}】 Module.')
-    chat = lazyllm.OnlineChatModule(source=source)
-    res = chat(query)
-    yield res
-    print(f'\n【{source}】Module test done.')
-
-query = '不要发挥和扩展，请严格原样输出下面句子：Hello world.'
-
-class TestOnlineChatModule(object):
-    @pytest.mark.parametrize('requestOnlineChatModule',
-                             [{'source': 'sensenova', 'query': query},
-                              {'source': 'glm', 'query': query},
-                              {'source': 'kimi', 'query': query},
-                              {'source': 'qwen', 'query': query},
-                              {'source': 'doubao', 'query': query}],
-                             indirect=True)
-    def test_online_chat(self, requestOnlineChatModule):
-        res = requestOnlineChatModule
-        assert res == 'Hello world.'

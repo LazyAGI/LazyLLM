@@ -339,6 +339,14 @@
     members:
     exclude-members: forward
 
+::: lazyllm.tools.LazyLLMAgentBase
+    members:
+    exclude-members: forward
+
+::: lazyllm.tools.SkillManager
+    members:
+    exclude-members: forward
+
 ::: lazyllm.tools.FunctionCall
     members:
     exclude-members: forward

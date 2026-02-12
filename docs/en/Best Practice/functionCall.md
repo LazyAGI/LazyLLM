@@ -129,6 +129,32 @@ print(f"ret: {ret}")
 
 In the above example, if the input query triggers a function call, [FunctionCall][lazyllm.tools.agent.FunctionCall] returns the assistant message dictionary that includes both `tool_calls` and `tool_calls_results`. [ReactAgent][lazyllm.tools.agent.ReactAgent] will re-invoke the model with the tool outputs until the model concludes that the information is sufficient or the number of iterations, controlled by `max_retries` (default 5), is exhausted.
 
+## Skills-aware agents
+
+All built-in agents (`ReactAgent`, `PlanAndSolveAgent`, `ReWOOAgent`) share the same base class and can enable **Skills** via the `skills` parameter. `skills=True` enables Skills with auto selection; pass a `str`/`list` to enable specific skills.
+
+```python
+import lazyllm
+from lazyllm.tools import ReactAgent
+
+llm = lazyllm.OnlineChatModule()
+agent = ReactAgent(
+    llm,
+    tools=["get_current_weather"],
+    skills=["docs-writer"],  # set skills=True to enable auto selection
+)
+```
+
+What changes when skills are enabled:
+- A skills guide prompt is automatically injected into the system prompt.
+- The agent can call skill tools: `get_skill`, `read_reference`, `run_script`.
+- A default toolset is auto-added for common operations (read/list/search/write/delete/move files, shell, download).
+
+Approval flow for risky operations:
+- Tools return `{"status": "needs_approval", ...}` for dangerous actions.
+- The front-end (or orchestrator) should ask for confirmation.
+- Re-run the tool with `allow_unsafe=True` only after explicit user approval.
+
 Complete code is as follows:
 ```python
 from typing import Literal

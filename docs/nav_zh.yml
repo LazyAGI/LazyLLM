@@ -5,6 +5,7 @@
   - 支持模型: Home/model_list.md
 - 入门教程:
   - 新手入门教程: Learn/learn.md
+  - AI编程与LazyLLM: Learn/ai_coding.md
 - 使用示例:
   - 聊天机器人: Cookbook/chatbot.md
   - 绘画大师: Cookbook/painting_master.md
