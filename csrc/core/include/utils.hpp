@@ -6,6 +6,7 @@
 #include <random>
 #include <algorithm>
 #include <iomanip>
+#include <set>
 
 namespace lazyllm {
 

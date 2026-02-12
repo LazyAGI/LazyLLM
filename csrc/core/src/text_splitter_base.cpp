@@ -1,6 +1,5 @@
 #include "text_splitter_base.hpp"
-
-#include <utf8proc.h>
+#include "unicode_processor.hpp"
 
 namespace lazyllm {
 
@@ -44,18 +43,18 @@ std::vector<SplitUnit> TextSplitterBase::split_recursive(
     return splits;
 }
 
-std::tuple<std::vector<std::string_view>, bool> TextSplitterBase::split_by_functions(const std::string& text) const
+std::tuple<std::vector<std::string_view>, bool> TextSplitterBase::split_by_functions(const std::string_view& text) const
 {
     auto views = split_text_while_keeping_separator(text, "\n\n\n");
     if (views.size() > 1) return {views, true};
 
-    views = regex_find_all(text, R"([^,.;。？！]+[,.;。？！]?)");
+    views = UnicodeProcessor(text).split_by_punctuation();
     if (views.size() > 1) return {views, false};
 
     views = split_text_while_keeping_separator(text, " ");
     if (views.size() > 1) return {views, false};
 
-    return {split_to_chars(text), false};
+    return {UnicodeProcessor(text).split_to_chars(), false};
 }
 
 std::vector<std::string_view> TextSplitterBase::split_text_while_keeping_separator(
@@ -71,67 +70,12 @@ std::vector<std::string_view> TextSplitterBase::split_text_while_keeping_separat
     while (start <= text.size()) {
         const size_t idx = text.find(separator, start);
         const size_t end = (idx == std::string_view::npos) ? text.size() : idx;
-        if (end > start) result.emplace_back(text.substr(start, end - start));
+        if (end > start) // Drop empty strings
+            result.emplace_back(text.substr(start, end - start));
         if (idx == std::string_view::npos) break;
         start = idx + sep_len;
     }
     return result;
-}
-
-std::vector<std::string> TextSplitterBase::regex_find_all(
-    const std::string_view& text,
-    const std::string_view& pattern)
-{
-    std::regex re(pattern);
-    std::vector<std::string> out;
-    for (auto it = std::sregex_iterator(text.begin(), text.end(), re);
-            it != std::sregex_iterator(); ++it) {
-        out.emplace_back(it->str());
-    }
-    if (out.empty()) out.emplace_back(text);
-    return out;
-}
-
-std::vector<std::string_view> TextSplitterBase::split_to_chars(const std::string_view& text) {
-    std::vector<std::string_view> out;
-    if (text.empty()) return out;
-    out.reserve(text.size());
-
-    const size_t len = text.size();
-    size_t cluster_start = 0;
-    size_t i = 0;
-    utf8proc_int32_t prev = -1;
-    utf8proc_propval_t state = 0;
-
-    while (i < len) {
-        utf8proc_int32_t codepoint = -1;
-        const utf8proc_ssize_t n = utf8proc_iterate(
-            reinterpret_cast<const utf8proc_uint8_t*>(text.data() + i),
-            static_cast<utf8proc_ssize_t>(len - i),
-            &codepoint);
-        if (n <= 0) {
-            if (i > cluster_start) {
-                out.emplace_back(text.substr(cluster_start, i - cluster_start));
-            }
-            out.emplace_back(text.substr(i, 1));
-            i += 1;
-            cluster_start = i;
-            prev = -1;
-            state = 0;
-            continue;
-        }
-
-        if (prev >= 0 && utf8proc_grapheme_break_stateful(prev, codepoint, &state)) {
-            out.emplace_back(text.substr(cluster_start, i - cluster_start));
-            cluster_start = i;
-        }
-        prev = codepoint;
-        i += static_cast<size_t>(n);
-    }
-    if (cluster_start < len) {
-        out.emplace_back(text.substr(cluster_start, len - cluster_start));
-    }
-    return out;
 }
 
 std::vector<std::string> TextSplitterBase::_merge(std::vector<SplitUnit> splits, int chunk_size) {

@@ -7,7 +7,6 @@
 #include <functional>
 #include <memory>
 #include <optional>
-#include <regex>
 #include <stdexcept>
 #include <string>
 #include <utility>
@@ -64,7 +63,7 @@ protected:
     virtual std::vector<std::string> _merge(std::vector<SplitUnit> splits, int chunk_size);
 
 private:
-    std::tuple<std::vector<std::string_view>, bool> split_by_functions(const std::string& text) const;
+    std::tuple<std::vector<std::string_view>, bool> split_by_functions(const std::string_view& text) const;
     std::vector<std::string_view> split_text_while_keeping_separator(
         const std::string_view& text,
         const std::string_view& separator) const;
@@ -78,9 +77,6 @@ private:
     int get_token_size(const std::string_view& view) const {
         return static_cast<int>(_tokenizer->encode(view).size());
     }
-
-    static std::vector<std::string> regex_find_all(const std::string_view& text, const std::string_view& pattern);
-    static std::vector<std::string_view> split_to_chars(const std::string_view& text);
 
 private:
     static MapParams _default_params;
