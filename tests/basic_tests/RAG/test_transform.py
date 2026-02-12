@@ -1167,9 +1167,9 @@ class TestTextSplitterBase:
 
     def test_transform_returns_chunks(self, doc_node):
         splitter = _TextSplitterBase(chunk_size=20, overlap=10)
-        chunks = splitter.transform(doc_node)
+        chunks = splitter.forward([doc_node])
         assert isinstance(chunks, list)
-        assert all(isinstance(c, str) for c in chunks)
+        assert all(isinstance(c, DocNode) for c in chunks)
 
     def test_batch_forward_single(self, doc_node):
         splitter = _TextSplitterBase(chunk_size=20, overlap=10)
@@ -1281,9 +1281,9 @@ class TestTokenTextSplitter:
 
     def test_token_splitter_transform_with_docnode(self, doc_node):
         token_splitter = _TokenTextSplitter(chunk_size=10, overlap=3)
-        chunks = token_splitter.transform(doc_node)
+        chunks = token_splitter.forward([doc_node])
         assert isinstance(chunks, list)
-        assert all(isinstance(c, str) for c in chunks)
+        assert all(isinstance(c, DocNode) for c in chunks)
 
     def test_token_text_splitter_with_tiktoken(self):
         splitter = _TokenTextSplitter(chunk_size=10, overlap=5)

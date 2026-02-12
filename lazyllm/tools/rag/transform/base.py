@@ -1,8 +1,10 @@
-from abc import ABC, abstractmethod
 from copy import copy as copy_obj
 from enum import Enum
-from dataclasses import dataclass
-from typing import Any, List, Union, Optional, Tuple, AbstractSet, Collection, Literal, Callable
+from dataclasses import dataclass, field
+from typing import (
+    Any, List, Union, Optional, Tuple, AbstractSet,
+    Collection, Literal, Callable, Dict, Iterator
+)
 from lazyllm import LOG
 from ..doc_node import DocNode, RichDocNode
 from lazyllm import ThreadPoolExecutor
@@ -12,7 +14,7 @@ from functools import partial
 import os
 import threading
 from lazyllm.thirdparty import tiktoken
-from lazyllm import config
+from lazyllm import config, ModuleBase
 from pathlib import Path
 from lazyllm.thirdparty import nltk
 from lazyllm.thirdparty import transformers
@@ -57,12 +59,17 @@ def split_text_keep_separator(text: str, separator: str) -> List[str]:
     return result
 
 
-class NodeTransform(ABC):
+class NodeTransform(ModuleBase):
     __support_rich__ = False
 
-    def __init__(self, num_workers: int = 0):
+    def __init__(self, num_workers: int = 0, rules: Optional['RuleSet'] = None,
+                 return_trace: bool = False, **kwargs):
+        super().__init__(return_trace=return_trace, **kwargs)
         self._number_workers = num_workers
         self._name = None
+        self.rules = rules if rules is not None else RuleSet()
+        self.on_match: Optional[Callable[[Any, Tuple['Rule', Any], 'Context'], Any]] = None
+        self.on_miss: Optional[Callable[[Any, 'Context'], Any]] = None
 
     def _get_ref_nodes(self, node, ref_path):
         current = [node]
@@ -100,9 +107,42 @@ class NodeTransform(ABC):
         else:
             return sum([impl(node) for node in documents], [])
 
-    @abstractmethod
-    def transform(self, document: DocNode, **kwargs) -> List[Union[str, DocNode]]:
-        raise NotImplementedError('Not implemented')
+    def forward(self, nodes: Union[List[DocNode], DocNode], **kwargs) -> List[DocNode]:
+        raise NotImplementedError(
+            'Subclasses must implement forward() to process nodes'
+        )
+
+    def process(self, nodes: List[Any], on_match: Optional[Callable] = None,
+                on_miss: Optional[Callable] = None) -> List[Any]:
+        instance_match = getattr(self, 'on_match', None)
+        instance_miss = getattr(self, 'on_miss', None)
+
+        match_handler = (
+            on_match if on_match is not None
+            else (instance_match if instance_match is not None else self._default_match_handler)
+        )
+        miss_handler = (
+            on_miss if on_miss is not None
+            else (instance_miss if instance_miss is not None else self._default_miss_handler)
+        )
+
+        ctx = Context(total=len(nodes))
+        results = []
+
+        for i, node in enumerate(nodes):
+            ctx.current_idx = i
+            match = self.rules.first(node)
+            processed = match_handler(node, match, ctx) if match else miss_handler(node, ctx)
+            results.append(processed)
+            ctx.prev_node, ctx.prev_result = node, processed
+
+        return results
+
+    def _default_match_handler(self, node, matched, ctx):
+        return matched[1]
+
+    def _default_miss_handler(self, node, ctx):
+        return node
 
     def with_name(self, name: Optional[str], *, copy: bool = True) -> 'NodeTransform':
         if name is not None:
@@ -110,9 +150,31 @@ class NodeTransform(ABC):
             self._name = name
         return self
 
-    def __call__(self, node: DocNode, **kwargs: Any) -> List[DocNode]:
-        results = self.transform(node, **kwargs)
-        return [DocNode(text=chunk) if isinstance(chunk, str) else chunk for chunk in results if chunk]
+    def __call__(self, node_or_nodes: Union[DocNode, List[DocNode]], **kwargs: Any) -> List[DocNode]:
+        if isinstance(node_or_nodes, (list, tuple)):
+            nodes = node_or_nodes
+            for n in nodes:
+                if not isinstance(n, DocNode):
+                    raise TypeError(
+                        f'__call__() expects DocNode objects, got {type(n).__name__} '
+                        f'in list. Use forward() directly if you need to process other types.'
+                    )
+        else:
+            if not isinstance(node_or_nodes, DocNode):
+                raise TypeError(
+                    f'__call__() expects DocNode, got {type(node_or_nodes).__name__}'
+                )
+            nodes = [node_or_nodes]
+
+        if len(nodes) == 1 and isinstance(nodes[0], RichDocNode) and not self.__support_rich__:
+            rich_node = nodes[0]
+            results = []
+            for sub_node in rich_node.nodes:
+                sub_results = super().__call__([sub_node], **kwargs)
+                results.extend(sub_results)
+            return results
+
+        return super().__call__(nodes, **kwargs)
 
 
 _tiktoken_env_lock = threading.Lock()
@@ -377,11 +439,25 @@ class _TextSplitterBase(NodeTransform):
         result.insert(0, end_split.text)
         return result
 
-    def transform(self, node: DocNode, **kwargs) -> List[Union[str, DocNode]]:
-        return self.split_text(
-            node.get_text(),
-            metadata_size=self._get_metadata_size(node),
-        )
+    def forward(self, nodes: Union[List[DocNode], DocNode], **kwargs) -> List[DocNode]:
+        if not isinstance(nodes, (list, tuple)):
+            nodes = [nodes]
+
+        results: List[DocNode] = []
+        for node in nodes:
+            chunks = self.split_text(
+                node.get_text(),
+                metadata_size=self._get_metadata_size(node),
+            )
+            for c in chunks:
+                if c:
+                    if isinstance(c, str):
+                        results.append(DocNode(text=c))
+                    elif isinstance(c, DocNode):
+                        results.append(c)
+                    else:
+                        results.append(DocNode(text=str(c)))
+        return results
 
     def set_split_fns(self, split_fns: List[Callable[[str], List[str]]],
                       sub_split_fns: Optional[List[Callable[[str], List[str]]]] = None) -> '_TextSplitterBase':
@@ -452,3 +528,86 @@ class _TokenTextSplitter(_TextSplitterBase):
 
     def _merge(self, splits: List[_Split], chunk_size: int) -> List[str]:
         return [split.text for split in splits]
+
+
+@dataclass(frozen=True)
+class Rule:
+    name: str
+    match: Callable[[Any], bool]
+    apply: Callable[[Any, 'Rule'], Any]
+    priority: int = 0
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __call__(self, data: Any) -> Optional[Any]:
+        if not self.match(data):
+            return None
+        return self.apply(data, self)
+
+@dataclass
+class Context:
+    total: int
+    current_idx: int = 0
+    prev_node: Optional[Any] = None
+    prev_result: Optional[Any] = None
+    user_data: Dict[str, Any] = field(default_factory=dict)
+
+def build_rule(name: str, rule: Union[str, Callable[[Any], bool]],
+               apply: Callable[[Any, Rule], Any], priority: int = 0) -> Rule:
+    if isinstance(rule, str):
+        compiled = re.compile(rule)
+        return Rule(
+            name=name,
+            match=lambda text: bool(compiled.search(text)),
+            apply=lambda text, rule: apply(compiled.search(text), text),
+            priority=priority,
+        )
+    if callable(rule):
+        return Rule(name=name, match=rule, apply=apply, priority=priority)
+    raise TypeError('rule must be a pattern string or a predicate callable')
+
+
+class RuleSet:
+    def __init__(self, rules: Optional[List[Rule]] = None):
+        self._rules: List[Rule] = []
+        if rules:
+            self.extend(rules)
+
+    def add(self, *rules: Rule) -> 'RuleSet':
+        self._rules.extend(rules)
+        self._sort()
+        return self
+
+    def extend(self, rules: List[Rule]) -> 'RuleSet':
+        self._rules.extend(rules)
+        self._sort()
+        return self
+
+    def _sort(self):
+        self._rules.sort(key=lambda r: r.priority, reverse=True)
+
+    def first(self, data: Any) -> Optional[tuple[Rule, Any]]:
+        for rule in self._rules:
+            result = rule(data)
+            if result is not None:
+                return (rule, result)
+        return None
+
+    def all(self, data: Any) -> List[tuple[Rule, Any]]:
+        results = []
+        for rule in self._rules:
+            result = rule(data)
+            if result is not None:
+                results.append((rule, result))
+        return results
+
+    def filter(self, predicate: Callable[[Rule], bool]) -> 'RuleSet':
+        return RuleSet([r for r in self._rules if predicate(r)])
+
+    def __iter__(self) -> Iterator[Rule]:
+        return iter(self._rules)
+
+    def __len__(self) -> int:
+        return len(self._rules)
+
+    def __bool__(self) -> bool:
+        return bool(self._rules)

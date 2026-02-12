@@ -24,22 +24,22 @@ class TestLLMParser(unittest.TestCase):
         cleanup()
 
     def test_summary_transform(self):
-        result = self.summary_parser.transform(self.mock_node)
+        result = self.summary_parser.forward([self.mock_node])
         assert isinstance(result, list)
-        assert isinstance(result[0], str)
-        assert len(result[0]) < 150
-        assert 'LazyLLM' in result[0]
+        assert isinstance(result[0], DocNode)
+        assert len(result[0].text) < 150
+        assert 'LazyLLM' in result[0].text
 
     def test_keywords_transform(self):
-        result = self.keywords_parser.transform(self.mock_node)
+        result = self.keywords_parser.forward([self.mock_node])
         assert isinstance(result, list)
         assert 1 < len(result) < 10
-        assert isinstance(result[0], str)
-        assert len(result[0]) < 20
-        assert 'LazyLLM' in result
+        assert isinstance(result[0], DocNode)
+        assert len(result[0].text) < 20
+        assert 'LazyLLM' in [r.text for r in result]
 
     def test_qa_transform(self):
-        result = self.qa_parser.transform(self.mock_node)
+        result = self.qa_parser.forward([self.mock_node])
         assert isinstance(result, list)
         assert isinstance(result[0], DocNode)
         text, content = result[0].text, result[0].get_content()

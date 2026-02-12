@@ -1,6 +1,6 @@
 from .base import NodeTransform
 from ..doc_node import RichDocNode, DocNode
-from typing import List
+from typing import List, Union
 
 
 class RichTransform(NodeTransform):
@@ -13,6 +13,12 @@ class RichTransform(NodeTransform):
         new_node.excluded_llm_metadata_keys = n.excluded_llm_metadata_keys
         return new_node
 
-    def transform(self, node: RichDocNode, **kwargs) -> List[DocNode]:
-        assert isinstance(node, RichDocNode), f'Expected RichDocNode, got {type(node)}'
-        return [self._clone_node(sub_node) for sub_node in node.nodes]
+    def forward(self, nodes: Union[List[DocNode], DocNode], **kwargs) -> List[DocNode]:
+        if not isinstance(nodes, (list, tuple)):
+            nodes = [nodes]
+
+        results: List[DocNode] = []
+        for node in nodes:
+            assert isinstance(node, RichDocNode), f'Expected RichDocNode, got {type(node)}'
+            results.extend([self._clone_node(sub_node) for sub_node in node.nodes])
+        return results
