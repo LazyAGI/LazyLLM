@@ -12,6 +12,9 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.data.operators.agenticrag
+    members:
+    exclude-members:
 
 ## 数据处理 Pipeline
 
