@@ -201,6 +201,8 @@ print(result)  # noqa print
 register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool', allowed_parameter=['execute_in_sandbox'])
 if 'tool' not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group('tool')
+if 'builtin_tools' not in LazyLLMRegisterMetaClass.all_clses:
+    register.new_group('builtin_tools')
 
 TOOL_CALL_FORMAT_EXAMPLE = (
     '{"function": {"name": "tool_name", "arguments": '
@@ -223,8 +225,16 @@ class ToolManager(ModuleBase):
         _tools = []
         for element in tools:
             if isinstance(element, str):
-                tool_cls = getattr(lazyllm.tool, element)
-                _tools.append(tool_cls() if isinstance(tool_cls, type) else tool_cls)
+                name = element.strip()
+                if '.' in name:
+                    target = lazyllm
+                    for part in name.split('.'):
+                        if not part:
+                            raise ValueError(f'invalid tool name: {element}')
+                        target = getattr(target, part)
+                    _tools.append(target())
+                else:
+                    _tools.append(getattr(lazyllm.tool, name)())
             elif isinstance(element, ModuleTool):
                 _tools.append(element)
             elif isinstance(element, Callable):

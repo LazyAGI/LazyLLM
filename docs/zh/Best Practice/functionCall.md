@@ -156,6 +156,32 @@ print(f"ret: {ret}")
 
 在上面的例子中，如果输入的 query 触发了 function call，[FunctionCall][lazyllm.tools.agent.FunctionCall] 会返回包含 `tool_calls` 与 `tool_calls_results` 的助手消息字典。[ReactAgent][lazyllm.tools.agent.ReactAgent] 则会反复调用模型和工具，直到模型认定信息足以得出结论，或达到由 `max_retries`（默认 5）控制的最大迭代次数。
 
+## Skills 智能体支持
+
+所有内置 Agent（`ReactAgent`、`PlanAndSolveAgent`、`ReWOOAgent`）统一基于同一基类，可通过 `skills` 参数开启 Skills。`skills=True` 表示启用 Skills 并自动筛选；传入 `str`/`list` 表示只启用指定技能。
+
+```python
+import lazyllm
+from lazyllm.tools import ReactAgent
+
+llm = lazyllm.OnlineChatModule()
+agent = ReactAgent(
+    llm,
+    tools=["get_current_weather"],
+    skills=["docs-writer"],  # 传入 skills=True 启用自动筛选
+)
+```
+
+启用 Skills 后的变化：
+- 系统提示词自动拼接 Skills 引导。
+- 智能体可调用技能工具：`get_skill`、`read_reference`、`run_script`。
+- 默认注入一组通用工具（文件读写/检索、Shell 执行、下载等）。
+
+危险操作的审批流程：
+- 工具对高风险操作返回 `{"status": "needs_approval", ...}`。
+- 由前端/编排层进行用户确认。
+- 用户确认后再以 `allow_unsafe=True` 重新调用工具。
+
 完整代码如下：
 ```python
 from typing import Literal
