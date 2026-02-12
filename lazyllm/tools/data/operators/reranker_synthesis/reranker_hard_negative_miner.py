@@ -1,4 +1,7 @@
+import json
+import os
 import random
+import tempfile
 from typing import List, Optional, Callable
 
 from lazyllm import LOG
@@ -7,21 +10,34 @@ from lazyllm.thirdparty import numpy as np, bm25s, jieba, Stemmer
 from lazyllm.tools.rag.component.stopwords import STOPWORDS_CHINESE
 from ...base_data import data_register
 
+
 if 'data' in LazyLLMRegisterMetaClass.all_clses and 'reranker' in LazyLLMRegisterMetaClass.all_clses['data']:
     reranker = LazyLLMRegisterMetaClass.all_clses['data']['reranker'].base
 else:
     reranker = data_register.new_group('reranker')
 
+def _load_corpus_from_path(corpus_path: str) -> List[str]:
+    """Load corpus from file path."""
+    if not corpus_path or not os.path.exists(corpus_path):
+        return []
+    try:
+        with open(corpus_path, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        LOG.warning(f'Failed to load corpus from {corpus_path}: {e}')
+        return []
 
-def _build_corpus_from_inputs(inputs: List[dict], input_pos_key: str = 'pos') -> List[str]:
-    all_passages = []
-    for item in inputs:
-        pos_list = item.get(input_pos_key, [])
-        if isinstance(pos_list, list):
-            all_passages.extend(pos_list)
-        else:
-            all_passages.append(pos_list)
-    return list(set(all_passages))
+
+def _load_embeddings_from_path(embeddings_path: str) -> Optional[np.ndarray]:
+    """Load embeddings from file path."""
+    if not embeddings_path or not os.path.exists(embeddings_path):
+        return None
+    try:
+        return np.load(embeddings_path)
+    except Exception as e:
+        LOG.warning(f'Failed to load embeddings from {embeddings_path}: {e}')
+        return None
+
 
 
 def _normalize_pos_samples(pos_samples) -> set:
@@ -50,15 +66,35 @@ def build_reranker_corpus(
     inputs: List[dict],
     input_pos_key: str = 'pos',
     corpus: Optional[List[str]] = None,
+    corpus_dir: Optional[str] = None,
 ) -> List[dict]:
 
-    if corpus is not None:
-        LOG.info(f'Using external corpus with {len(corpus)} passages.')
-        return [{**item, '_corpus': corpus} for item in inputs]
+    # Use external corpus if provided, otherwise build from inputs
+    if corpus is None:
+        all_passages = []
+        for item in inputs:
+            pos_list = item.get(input_pos_key, [])
+            if isinstance(pos_list, list):
+                all_passages.extend(pos_list)
+            else:
+                all_passages.append(pos_list)
+        corpus = list(set(all_passages))
+        LOG.info(f'Built corpus with {len(corpus)} unique passages from inputs.')
     else:
-        corpus = _build_corpus_from_inputs(inputs, input_pos_key)
-        LOG.info(f'Built corpus with {len(corpus)} unique passages.')
-        return [{**item, '_corpus': corpus} for item in inputs]
+        LOG.info(f'Using external corpus with {len(corpus)} passages.')
+    
+    # Save corpus to file instead of storing in memory for each item
+    if corpus_dir is None:
+        corpus_dir = tempfile.gettempdir()
+    os.makedirs(corpus_dir, exist_ok=True)
+    
+    corpus_path = os.path.join(corpus_dir, f'reranker_corpus_{id(inputs)}.json')
+    with open(corpus_path, 'w', encoding='utf-8') as f:
+        json.dump(corpus, f, ensure_ascii=False)
+    
+    LOG.info(f'Saved corpus to {corpus_path}')
+    
+    return [{**item, '_corpus': corpus_path} for item in inputs]
 
 
 class RerankerInitBM25(reranker):
@@ -85,9 +121,15 @@ class RerankerInitBM25(reranker):
         if not inputs:
             return inputs
 
-        corpus = inputs[0].get('_corpus') or []
+        # Load corpus from file path instead of memory
+        corpus_path = inputs[0].get('_corpus', '')
+        if not corpus_path:
+            LOG.warning('No corpus path found for BM25 initialization.')
+            return [{**item, '_bm25': None, '_bm25_corpus': []} for item in inputs]
+        
+        corpus = _load_corpus_from_path(corpus_path)
         if not corpus:
-            LOG.warning('No corpus found for BM25 initialization.')
+            LOG.warning(f'Failed to load corpus from {corpus_path}')
             return [{**item, '_bm25': None, '_bm25_corpus': []} for item in inputs]
 
         LOG.info(f'Initializing BM25 index for {len(corpus)} documents...')
@@ -111,31 +153,50 @@ class RerankerInitBM25(reranker):
 
 
 class RerankerInitSemantic(reranker):
-    def __init__(self, embedding_serving: Optional[Callable] = None, **kwargs):
+    def __init__(self, embedding_serving: Optional[Callable] = None, embeddings_dir: Optional[str] = None, **kwargs):
         super().__init__(rewrite_func='forward_batch_input', **kwargs)
         self.embedding_serving = embedding_serving
+        self.embeddings_dir = embeddings_dir
 
     def forward_batch_input(self, inputs: List[dict], **kwargs) -> List[dict]:
         if not inputs:
             return inputs
 
-        # Verify all inputs share the same corpus for consistency
-        corpus = inputs[0].get('_corpus') or []
-        if not all(item.get('_corpus') == corpus for item in inputs):
-            LOG.warning('Not all inputs share the same corpus. Using corpus from first item.')
+        # Load corpus from file path instead of memory
+        corpus_path = inputs[0].get('_corpus', '')
+        if not corpus_path:
+            LOG.warning('No corpus path found for semantic initialization.')
+            return [{**item, '_semantic_embeddings_path': '', '_semantic_corpus': []}
+                    for item in inputs]
 
+        # Verify all inputs share the same corpus path for consistency
+        if not all(item.get('_corpus') == corpus_path for item in inputs):
+            LOG.warning('Not all inputs share the same corpus path. Using corpus from first item.')
+
+        corpus = _load_corpus_from_path(corpus_path)
         if not corpus or self.embedding_serving is None:
             LOG.warning('No corpus or embedding_serving for semantic initialization.')
-            return [{**item, '_semantic_embeddings': None, '_semantic_corpus': corpus or []}
+            return [{**item, '_semantic_embeddings_path': '', '_semantic_corpus': corpus or []}
                     for item in inputs]
 
         LOG.info(f'Computing embeddings for {len(corpus)} documents...')
         embeddings = np.array(self.embedding_serving(corpus))
         LOG.info('Embeddings computed.')
 
+        # Save embeddings to file instead of storing in memory for each item
+        if self.embeddings_dir is None:
+            embeddings_dir = os.path.dirname(corpus_path)
+        else:
+            embeddings_dir = self.embeddings_dir
+        os.makedirs(embeddings_dir, exist_ok=True)
+
+        embeddings_path = os.path.join(embeddings_dir, f'reranker_embeddings_{id(inputs)}.npy')
+        np.save(embeddings_path, embeddings)
+        LOG.info(f'Saved embeddings to {embeddings_path}')
+
         return [{
             **item,
-            '_semantic_embeddings': embeddings,
+            '_semantic_embeddings_path': embeddings_path,
             '_semantic_corpus': corpus
         } for item in inputs]
 
@@ -154,7 +215,16 @@ class RerankerMineRandomNegatives(reranker):
         output_neg_key: str = 'neg',
         **kwargs
     ) -> dict:
-        corpus = data.get('_corpus') or []
+        # Load corpus from file path
+        corpus_path = data.get('_corpus', '')
+        if isinstance(corpus_path, str) and corpus_path:
+            corpus = _load_corpus_from_path(corpus_path)
+        elif isinstance(corpus_path, list):
+            # Backward compatibility: corpus stored directly
+            corpus = corpus_path
+        else:
+            corpus = []
+
         if not corpus:
             return {**data, output_neg_key: []}
 
@@ -244,7 +314,9 @@ class RerankerMineSemanticNegatives(reranker):
         output_neg_key: str = 'neg',
         **kwargs
     ) -> dict:
-        corpus_embeddings = data.get('_semantic_embeddings')
+        # Load embeddings from file path
+        embeddings_path = data.get('_semantic_embeddings_path', '')
+        corpus_embeddings = _load_embeddings_from_path(embeddings_path)
         corpus = data.get('_semantic_corpus') or []
 
         if corpus_embeddings is None:
@@ -326,7 +398,9 @@ class RerankerMineMixedNegatives(reranker):
 
         # Mine semantic negatives
         semantic_negatives = []
-        corpus_embeddings = data.get('_semantic_embeddings')
+        # Load embeddings from file path
+        embeddings_path = data.get('_semantic_embeddings_path', '')
+        corpus_embeddings = _load_embeddings_from_path(embeddings_path)
         corpus_semantic = data.get('_semantic_corpus') or []
 
         if corpus_embeddings is not None and corpus_semantic and self.embedding_serving is not None:
