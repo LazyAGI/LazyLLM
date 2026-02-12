@@ -308,3 +308,74 @@ Raises ValueError if any check fails.
 
 This method guarantees that the template is valid and self-consistent before use.
 """)
+
+# PromptLibrary.py
+
+add_chinese_doc('PromptLibrary', '''\
+提示语库模块。内置了丰富的预设提示语（Prompts），支持中英文分类，可基于角色（act）名称获取。
+
+Args:
+    lang (str): 默认语言，可选 'zh' (中文) 或 'en' (英文)。若不指定，默认为 'zh'。
+''')
+
+add_english_doc('PromptLibrary', '''\
+Prompt library module. Contains a wide range of preset prompts, supporting Chinese and English categories, which can be retrieved by act (role) names.
+
+Args:
+    lang (str): Default language, optional 'zh' (Chinese) or 'en' (English). Defaults to 'zh' if not specified.
+''')
+
+add_example('PromptLibrary', '''\
+    >>> from lazyllm import PromptLibrary
+    >>> lib = PromptLibrary(lang='en')
+    >>> # Get all available acts
+    >>> acts = lib.get_all_acts()
+    >>> # Get prompt for a specific act
+    >>> prompt = lib.get_prompt('English Translator and Improver')
+    >>> # Also callable directly
+    >>> prompt = lib('English Translator and Improver')
+    >>> print(prompt[:50])
+    I want you to act as an English translator, spelli...
+''')
+
+add_chinese_doc('PromptLibrary.get_prompt', '''\
+根据指定的角色名称和语言获取提示语。
+
+Args:
+    act (str): 角色或场景名称。
+    lang (str): 语言代码 ('zh' 或 'en')。若未提供，则使用实例初始化时的语言。
+
+**Returns:**\n
+- str: 提示语内容。如果未找到则返回空字符串。
+''')
+
+add_english_doc('PromptLibrary.get_prompt', '''\
+Get prompt content for a specific act and language.
+
+Args:
+    act (str): Name of the act or role.
+    lang (str): Language code ('zh' or 'en'). If not provided, uses the language set during initialization.
+
+**Returns:**\n
+- str: The prompt content. Returns an empty string if not found.
+''')
+
+add_chinese_doc('PromptLibrary.get_all_acts', '''\
+获取指定语言下所有支持的角色（act）列表。
+
+Args:
+    lang (str): 语言代码 ('zh' 或 'en')。若未提供，则使用实例初始化时的语言。
+
+**Returns:**\n
+- list: 包含所有可用角色名称的列表。
+''')
+
+add_english_doc('PromptLibrary.get_all_acts', '''\
+Get the list of all supported acts for a specific language.
+
+Args:
+    lang (str): Language code ('zh' or 'en'). If not provided, uses the language set during initialization.
+
+**Returns:**\n
+- list: A list of all available act names.
+''')
