@@ -12,7 +12,11 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.data.operators.agenticrag
+    members:
+    exclude-members:
 
+    
 ## Data Processing Pipeline
 
 ### Demo Pipeline
