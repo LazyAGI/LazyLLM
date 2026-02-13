@@ -17,3 +17,7 @@
       - validate_variables
       - format
       - partial
+
+::: lazyllm.ActorPrompt
+    members:
+    exclude-members:
