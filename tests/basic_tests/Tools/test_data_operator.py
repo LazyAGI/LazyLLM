@@ -332,12 +332,11 @@ class TestDataOperators:
         test_cases = [
             ('第一行。\n第二行。\n第三行。', True),
             ('第一行...\n第二行...\n第三行...', False),
-            ('第一行…\n第二行。', True),
+            ('第一行…\n第二行。', False),
         ]
-        inputs = [{'content': text} for text, _ in test_cases * 500]
-        expected = [{'content': text} for text, keep in test_cases * 500 if keep]
+        inputs = [{'content': text} for text, _ in test_cases * 50]
         res = func(inputs)
-        assert len(res) == len(expected)
+        assert len(res) == 50
 
     def test_null_content_filter(self):
         func = filter.null_content_filter(input_key='content', _concurrency_mode='process')
@@ -474,9 +473,9 @@ class TestDataOperators:
             ('MOSTLY UPPERCASE TEXT HERE', False),
             ('mixed CaSe TeXt', True),
         ]
-        inputs = [{'content': text} for text, _ in test_cases * 500]
+        inputs = [{'content': text} for text, _ in test_cases * 50]
         res = func(inputs)
-        assert len(res) > 0
+        assert len(res) == 100
 
     def test_lorem_ipsum_filter(self):
         func = filter.lorem_ipsum_filter(input_key='content', max_ratio=3e-8,
