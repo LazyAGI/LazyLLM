@@ -18,4 +18,5 @@ PYBIND11_MODULE(lazyllm_cpp, m) {
     exportDocNode(m);
     exportNodeTransform(m);
     exportTextSpliterBase(m);
+    exportSentenceSplitter(m);
 }

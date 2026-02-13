@@ -21,12 +21,6 @@
 
 namespace lazyllm {
 
-struct SplitUnit {
-    std::string_view view;
-    bool is_sentence = false;
-    int token_size = 0;
-};
-
 class TextSplitterBase : public NodeTransform {
 public:
     using SplitFn = std::function<std::vector<std::string>(const std::string&)>;
@@ -82,8 +76,8 @@ public:
     virtual void clear_split_functions() {}
 
 protected:
-    virtual std::vector<SplitUnit> split_recursive(const std::string_view& view, const int chunk_size) const;
-    virtual std::vector<std::string> merge_chunks(const std::vector<SplitUnit>& splits, int chunk_size) const;
+    virtual std::vector<ChunkView> split_recursive(const std::string_view& view, const int chunk_size) const;
+    virtual std::vector<std::string> merge_chunks(const std::vector<ChunkView>& splits, int chunk_size) const;
 
 private:
     std::tuple<std::vector<std::string_view>, bool> split_by_functions(const std::string_view& text) const;

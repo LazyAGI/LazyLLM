@@ -84,4 +84,22 @@ inline bool is_adjacent(const std::string_view& left, const std::string_view& ri
     return left.data() + left.size() == right.data();
 }
 
+struct ChunkView {
+    std::string_view view;
+    bool is_sentence = false;
+    int token_size = 0;
+};
+
+struct Chunk {
+    std::string text;
+    bool is_sentence = false;
+    int token_size = 0;
+
+    Chunk& operator+=(const Chunk& r) {
+        text += r.text;
+        is_sentence = is_sentence && r.is_sentence;
+        token_size += r.token_size;
+        return *this;
+    }
+};
 } // namespace lazyllm

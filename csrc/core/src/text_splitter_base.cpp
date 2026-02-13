@@ -48,14 +48,14 @@ std::vector<std::string> TextSplitterBase::split_text(const std::string_view& vi
     return merge_chunks(splits, effective_chunk_size);
 }
 
-std::vector<SplitUnit> TextSplitterBase::split_recursive(
+std::vector<ChunkView> TextSplitterBase::split_recursive(
     const std::string_view& view, const int chunk_size) const
 {
     int token_size = get_token_size(view);
-    if (token_size <= chunk_size) return {SplitUnit{view, true, token_size}};
+    if (token_size <= chunk_size) return {ChunkView{view, true, token_size}};
 
     auto [views, is_sentence] = split_by_functions(view);
-    std::vector<SplitUnit> splits;
+    std::vector<ChunkView> splits;
     for (const auto& segment_view : views) {
         const int seg_token_size = get_token_size(segment_view);
         if (seg_token_size <= chunk_size) {
@@ -126,30 +126,18 @@ std::vector<std::string_view> TextSplitterBase::split_text_while_keeping_separat
  *  @todo Replace eager string materialization once tokenizer encode/decode supports
  *  end-to-end zero-copy string_view operations.
  */
-std::vector<std::string> TextSplitterBase::merge_chunks(const std::vector<SplitUnit>& splits, int chunk_size) const {
+std::vector<std::string> TextSplitterBase::merge_chunks(const std::vector<ChunkView>& splits, int chunk_size) const {
     if (splits.empty()) return {};
 
-    struct MergedSplit {
-        std::string text;
-        bool is_sentence = false;
-        int token_size = 0;
-
-        MergedSplit& operator+=(const MergedSplit& r) {
-            text += r.text;
-            is_sentence = is_sentence && r.is_sentence;
-            token_size += r.token_size;
-            return *this;
-        }
-    };
-    std::vector<MergedSplit> merged_splits;
+    std::vector<Chunk> merged_splits;
     merged_splits.reserve(splits.size() + 2);
     for (const auto& split : splits)
-        merged_splits.push_back(MergedSplit{std::string(split.view), split.is_sentence, split.token_size});
+        merged_splits.push_back(Chunk{std::string(split.view), split.is_sentence, split.token_size});
 
     if (merged_splits.size() == 1) return {merged_splits.front().text};
 
     if (merged_splits.back().token_size == chunk_size && _overlap > 0) {
-        MergedSplit end_split = merged_splits.back();
+        Chunk end_split = merged_splits.back();
         merged_splits.pop_back();
 
         auto text_tokens = _tokenizer->encode(end_split.text);
@@ -161,16 +149,16 @@ std::vector<std::string> TextSplitterBase::merge_chunks(const std::vector<SplitU
         std::string prefix_text = _tokenizer->decode(prefix_tokens);
         std::string suffix_text = _tokenizer->decode(suffix_tokens);
         merged_splits.push_back(
-            MergedSplit{prefix_text, end_split.is_sentence, get_token_size(prefix_text)});
+            Chunk{prefix_text, end_split.is_sentence, get_token_size(prefix_text)});
         merged_splits.push_back(
-            MergedSplit{suffix_text, end_split.is_sentence, get_token_size(suffix_text)});
+            Chunk{suffix_text, end_split.is_sentence, get_token_size(suffix_text)});
     }
 
-    MergedSplit end_split = merged_splits.back();
+    Chunk end_split = merged_splits.back();
     std::vector<std::string> reversed_result;
     reversed_result.reserve(merged_splits.size());
     for (auto idx = merged_splits.size() - 2; idx >= 0; --idx) {
-        const MergedSplit& start_split = merged_splits[idx];
+        const Chunk& start_split = merged_splits[idx];
         if (start_split.token_size <= _overlap && end_split.token_size <= chunk_size - _overlap) {
             end_split += start_split;
             continue;
@@ -187,7 +175,7 @@ std::vector<std::string> TextSplitterBase::merge_chunks(const std::vector<SplitU
             std::vector<int> overlap_tokens(start_tokens.end() - overlap_len, start_tokens.end());
             std::string overlap_text = _tokenizer->decode(overlap_tokens);
 
-            end_split = MergedSplit{
+            end_split = Chunk{
                 overlap_text + end_split.text,
                 end_split.is_sentence,
                 end_split.token_size + overlap_len};
