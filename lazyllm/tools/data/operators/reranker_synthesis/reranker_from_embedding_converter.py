@@ -8,7 +8,7 @@ else:
     reranker = data_register.new_group('reranker')
 
 
-@data_register('data.reranker', rewrite_func='forward', _concurrency_mode='process')
+@data_register('data.reranker', rewrite_func='forward', _concurrency_mode='thread')
 def validate_reranker_embedding_data(
     data: dict,
     input_query_key: str = 'query',
@@ -44,7 +44,7 @@ def validate_reranker_embedding_data(
 
 class RerankerAdjustNegatives(reranker):
     def __init__(self, adjust_neg_count: int = 7, seed: int = 42, **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.adjust_neg_count = adjust_neg_count
         self.seed = seed
 
@@ -68,7 +68,7 @@ class RerankerAdjustNegatives(reranker):
 
 class RerankerBuildFormat(reranker):
     def __init__(self, **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
 
     def forward(self, data: dict, **kwargs) -> dict:
         if not data.get('_is_valid'):

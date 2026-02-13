@@ -14,7 +14,7 @@ else:
     reranker = data_register.new_group('reranker')
 
 
-@data_register('data.reranker', rewrite_func='forward', _concurrency_mode='process')
+@data_register('data.reranker', rewrite_func='forward', _concurrency_mode='thread')
 def validate_reranker_data(
     data: dict,
     input_query_key: str = 'query',
@@ -49,7 +49,7 @@ def validate_reranker_data(
 
 class RerankerFormatFlagReranker(reranker):
     def __init__(self, train_group_size: int = 8, **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.train_group_size = train_group_size
 
     def forward(self, data: dict, **kwargs) -> List[dict]:
@@ -77,7 +77,7 @@ class RerankerFormatFlagReranker(reranker):
 
 class RerankerFormatCrossEncoder(reranker):
     def __init__(self, **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
 
     def forward(self, data: dict, **kwargs) -> List[dict]:
         if not data.get('_is_valid'):
@@ -102,7 +102,7 @@ class RerankerFormatCrossEncoder(reranker):
 
 class RerankerFormatPairwise(reranker):
     def __init__(self, **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
 
     def forward(self, data: dict, **kwargs) -> List[dict]:
         if not data.get('_is_valid'):

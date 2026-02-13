@@ -225,7 +225,7 @@ class EmbeddingInitSemantic(embedding):
         ]
 
 
-@data_register('data.embedding', rewrite_func='forward', _concurrency_mode='process')
+@data_register('data.embedding', rewrite_func='forward', _concurrency_mode='thread')
 def mine_bm25_negatives(
     data: dict,
     num_negatives: int = 7,
@@ -276,7 +276,11 @@ def mine_bm25_negatives(
             if len(negatives) >= num_negatives:
                 break
 
-    return {**data, output_neg_key: negatives}
+    result = {k: v for k, v in data.items() if k not in (
+        '_bm25', '_bm25_corpus', '_bm25_tokenizer', '_bm25_stopwords', '_bm25_stemmer'
+    )}
+    result[output_neg_key] = negatives
+    return result
 
 
 @data_register('data.embedding', rewrite_func='forward', _concurrency_mode='process')

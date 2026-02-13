@@ -11,7 +11,7 @@ add_chinese_doc('data.data_register', """\
 数据处理算子注册器装饰器 / 工厂，用于将函数或类注册为可复用的数据处理算子。
 
 用法：
-     
+
 - 可以用来注册单条数据处理算子（实现 forward 方法或函数）。
 - 可以用来注册批处理算子（实现 forward_batch_input 方法或函数）。
 - 支持通过参数 rewrite_func 指定注册时替换框架调用的方法（'forward' 或 'forward_batch_input'）。
@@ -39,7 +39,7 @@ add_example('data.data_register', """\
 from lazyllm.tools.data import data_register
 
 Demo = data_register.new_group('Demo')
-            
+
 # register a simple batch function
 @data_register('data.Demo', rewrite_func='forward_batch_input')
 def my_batch_op(data, input_key='text'):
@@ -2638,7 +2638,7 @@ result = miner(data)
 # RerankerGenerateQueries
 # =========================
 
-add_chinese_doc('data.operators.reranker.reranker_synthesis.RerankerGenerateQueries', """\
+add_chinese_doc('data.operators.reranker_synthesis.RerankerGenerateQueries', """\
 基于给定文本生成多条检索查询（query）的算子。
 
 该算子使用 RerankerQueryGeneratorPrompt 构造提示词，
@@ -2656,7 +2656,7 @@ Args:
     **kwargs (dict): 其他可选参数，传递给父类。
 """)
 
-add_english_doc('data.operators.reranker.reranker_synthesis.RerankerGenerateQueries', """\
+add_english_doc('data.operators.reranker_synthesis.RerankerGenerateQueries', """\
 Generates multiple retrieval queries from a given passage.
 
 This operator builds prompts using RerankerQueryGeneratorPrompt
@@ -2674,7 +2674,7 @@ Args:
     **kwargs (dict): Additional optional parameters passed to parent class.
 """)
 
-add_example('data.operators.reranker.reranker_synthesis.RerankerGenerateQueries', """\
+add_example('data.operators.reranker_synthesis.RerankerGenerateQueries', """\
 ```python
 op = RerankerGenerateQueries(
     llm_serving=my_llm,
@@ -2692,7 +2692,7 @@ print(result['_query_response'])
 # RerankerParseQueries
 # =========================
 
-add_chinese_doc('data.operators.reranker.reranker_synthesis.RerankerParseQueries', """\
+add_chinese_doc('data.operators.reranker_synthesis.RerankerParseQueries', """\
 解析 LLM 生成的查询结果，并展开为多条训练样本数据。
 
 该算子读取 '_query_response' 字段中的 JSON 内容，
@@ -2711,7 +2711,7 @@ Args:
     **kwargs (dict): 其他可选参数，传递给父类。
 """)
 
-add_english_doc('data.operators.reranker.reranker_synthesis.RerankerParseQueries', """\
+add_english_doc('data.operators.reranker_synthesis.RerankerParseQueries', """\
 Parses LLM-generated query results and expands them into multiple training samples.
 
 It reads the '_query_response' JSON content and extracts the query list
@@ -2730,7 +2730,7 @@ Args:
     **kwargs (dict): Additional optional parameters passed to parent class.
 """)
 
-add_example('data.operators.reranker.reranker_synthesis.RerankerParseQueries', """\
+add_example('data.operators.reranker_synthesis.RerankerParseQueries', """\
 ```python
 op = RerankerParseQueries(input_key='passage', output_query_key='query')
 

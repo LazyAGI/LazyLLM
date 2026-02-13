@@ -64,7 +64,6 @@ def build_reranker_corpus(
     corpus: Optional[List[str]] = None,
     corpus_dir: Optional[str] = None,
 ) -> List[dict]:
-
     # Use external corpus if provided, otherwise build from inputs
     if corpus is None:
         all_passages = []
@@ -244,7 +243,7 @@ class RerankerMineRandomNegatives(reranker):
 
 class RerankerMineBM25Negatives(reranker):
     def __init__(self, num_negatives: int = 7, **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.num_negatives = num_negatives
 
     def forward(
@@ -291,7 +290,11 @@ class RerankerMineBM25Negatives(reranker):
                 if len(negatives) >= self.num_negatives:
                     break
 
-        return {**data, output_neg_key: negatives}
+        result = {k: v for k, v in data.items() if k not in (
+            '_bm25', '_bm25_corpus', '_bm25_tokenizer', '_bm25_stopwords', '_bm25_stemmer'
+        )}
+        result[output_neg_key] = negatives
+        return result
 
 
 class RerankerMineSemanticNegatives(reranker):
@@ -343,7 +346,7 @@ class RerankerMineSemanticNegatives(reranker):
 class RerankerMineMixedNegatives(reranker):
     def __init__(self, embedding_serving: Optional[Callable] = None,
                  num_negatives: int = 7, bm25_ratio: float = 0.5, **kwargs):
-        super().__init__(_concurrency_mode='process', **kwargs)
+        super().__init__(_concurrency_mode='thread', **kwargs)
         self.num_negatives = num_negatives
         self.bm25_ratio = bm25_ratio
         self.embedding_serving = embedding_serving
@@ -414,4 +417,8 @@ class RerankerMineMixedNegatives(reranker):
             semantic_negatives = [doc for _, doc in scored_docs[:num_semantic]]
 
         negatives = bm25_negatives + semantic_negatives
-        return {**data, output_neg_key: negatives}
+        result = {k: v for k, v in data.items() if k not in (
+            '_bm25', '_bm25_corpus', '_bm25_tokenizer', '_bm25_stopwords', '_bm25_stemmer'
+        )}
+        result[output_neg_key] = negatives
+        return result
