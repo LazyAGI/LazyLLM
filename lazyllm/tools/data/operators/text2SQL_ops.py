@@ -215,11 +215,11 @@ class SQLExecutabilityFilter(Text2SQLOps):
         db_id = data.get(input_db_id_key)
 
         if not self.filter_select_sql(sql):
-            return None
+            return []
 
         if not self.database_manager.database_exists(db_id):
             LOG.warning(f'Database {db_id} not found in registry, please check the database folder')
-            return None
+            return []
 
         try:
             execution_results = self.database_manager.batch_explain_queries([(db_id, sql)])
@@ -228,7 +228,7 @@ class SQLExecutabilityFilter(Text2SQLOps):
         except Exception as e:
             LOG.error(f'Error during explain_query: {e}')
 
-        return None
+        return []
 
 
 class Text2SQLQuestionGenerator(Text2SQLOps):
@@ -468,7 +468,7 @@ class Text2SQLCorrespondenceFilter(Text2SQLOps):
         db_id = data.get(input_db_id_key)
 
         if not question or str(question).strip() == '':
-            return None
+            return []
 
         if evidence:
             question = f'{question}\n{evidence}'
@@ -483,7 +483,7 @@ class Text2SQLCorrespondenceFilter(Text2SQLOps):
         except Exception as e:
             LOG.warning(f'Failed to check correspondence: {e}')
 
-        return None
+        return []
 
 
 class Text2SQLPromptGenerator(Text2SQLOps):
