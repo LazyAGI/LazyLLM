@@ -43,9 +43,9 @@ lazyllm::DocNode init(
         store_adaptor = lazyllm::DocumentStore::from_store(store, node_groups_map);
 
         auto kb_id = std::any_cast<std::string>((*global_metadata).at(
-            std::string(lazyllm::RAG_KEY_KB_ID)));
+            std::string(lazyllm::RAGMetadataKeys::KB_ID)));
         auto doc_id = std::any_cast<std::string>((*global_metadata).at(
-            std::string(lazyllm::RAG_KEY_DOC_ID)));
+            std::string(lazyllm::RAGMetadataKeys::DOC_ID)));
 
         if (const auto* parent_uid = std::get_if<std::string>(&*parent)) {
             p_parent_node = std::any_cast<lazyllm::DocNode*>(store_adaptor->call("get_node",

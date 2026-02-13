@@ -145,10 +145,10 @@ public:
         _excluded_llm_metadata_keys = keys;
     }
     std::string get_doc_path() const {
-        return std::any_cast<std::string>(get_root_node()->_p_global_metadata->at(std::string(RAG_KEY_DOC_PATH)));
+        return std::any_cast<std::string>(get_root_node()->_p_global_metadata->at(std::string(RAGMetadataKeys::DOC_PATH)));
     }
     void set_doc_path(const std::string& path) {
-        get_root_node()->_p_global_metadata->operator[](std::string(RAG_KEY_DOC_PATH)) = path;
+        get_root_node()->_p_global_metadata->operator[](std::string(RAGMetadataKeys::DOC_PATH)) = path;
     }
     auto py_get_children_uid() const {
         auto children = py_get_children();

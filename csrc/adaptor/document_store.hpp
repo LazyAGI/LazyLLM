@@ -55,8 +55,8 @@ public:
 
     DocNode::Children get_node_children(const DocNode* node) const {
         DocNode::Children out;
-        auto& kb_id = std::any_cast<std::string&>(node->_p_global_metadata->at(std::string(RAG_KEY_KB_ID)));
-        auto& doc_id = std::any_cast<std::string&>(node->_p_global_metadata->at(std::string(RAG_KEY_DOC_ID)));
+        auto& kb_id = std::any_cast<std::string&>(node->_p_global_metadata->at(std::string(RAGMetadataKeys::KB_ID)));
+        auto& doc_id = std::any_cast<std::string&>(node->_p_global_metadata->at(std::string(RAGMetadataKeys::DOC_ID)));
         auto& group_name = node->get_group_name();
         for(auto& [current_group_name, group] : _node_groups_map) {
             if (group._parent != group_name) continue;
