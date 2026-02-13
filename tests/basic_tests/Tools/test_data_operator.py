@@ -5,7 +5,7 @@ import random
 import shutil
 import json
 from lazyllm import config, LOG
-from lazyllm.tools.data import demo1, demo2, data_register
+from lazyllm.tools.data import demo1, demo2, pt_mm, data_register
 
 
 class TestDataOperators:
@@ -144,3 +144,68 @@ class TestDataOperators:
                 load_res.append(data)
         sorted_load = sorted(load_res, key=lambda x: x['id'])
         assert sorted_res == sorted_load
+
+    def _ci_image_path(self, name):
+        path = os.path.join(config['data_path'], 'ci_data', name)
+        return path if os.path.exists(path) else None
+
+    def test_pt_resolution_filter(self):
+        ji = self._ci_image_path('ji.jpg')
+        if not ji:
+            pytest.skip('ci_data/ji.jpg not found')
+        op = pt_mm.resolution_filter(min_width=1, min_height=1, max_width=99999, max_height=99999)
+        inputs = [
+            {'image_path': ji, 'id': 1},
+            {'image_path': '/nonexistent/path.png', 'id': 2},
+        ]
+        res = op(inputs)
+        assert len(res) == 1
+        assert res[0]['id'] == 1
+        assert res[0]['image_path'] == [ji]
+
+    def test_pt_resolution_resize(self):
+        ji = self._ci_image_path('ji.jpg')
+        if not ji:
+            pytest.skip('ci_data/ji.jpg not found')
+        op = pt_mm.resolution_resize(max_side=400)
+        res = op([{'image_path': ji}])
+        assert res and res[0].get('image_path')
+
+    def test_pt_integrity_check(self):
+        ji = self._ci_image_path('ji.jpg')
+        if not ji:
+            pytest.skip('ci_data/ji.jpg not found')
+        op = pt_mm.integrity_check()
+        res = op([
+            {'image_path': ji, 'id': 1},
+            {'image_path': '/nonexistent/path.png', 'id': 2},
+        ])
+        assert len(res) == 1
+        assert res[0]['id'] == 1
+        assert res[0]['image_path'] == [ji]
+
+    def test_pt_image_dedup(self):
+        ji = self._ci_image_path('ji.jpg')
+        dog = self._ci_image_path('dog.png')
+        if not ji or not dog:
+            pytest.skip('ci_data/ji.jpg or ci_data/dog.png not found')
+        op = pt_mm.ImageDedup()
+        batch = [
+            {'image_path': ji, 'id': 1},
+            {'image_path': ji, 'id': 2},
+            {'image_path': dog, 'id': 3},
+        ]
+        res = op(batch)
+        assert len(res) == 2
+        assert {r['id'] for r in res} == {1, 3}
+
+    def test_pt_graph_retriever(self):
+        ji = self._ci_image_path('ji.jpg')
+        if not ji:
+            pytest.skip('ci_data/ji.jpg not found')
+        op = pt_mm.GraphRetriever(context_key='context', img_key='img')
+        data = {'context': 'Test content with {braces}', 'img': f'![]({ji})'}
+        res = op([data])
+        assert res and res[0]['context'] == 'Test content with {{braces}}'
+        assert 'img' in res[0] and len(res[0]['img']) == 1
+        assert os.path.isabs(res[0]['img'][0])
