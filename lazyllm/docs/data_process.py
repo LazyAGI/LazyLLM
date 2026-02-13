@@ -11,7 +11,7 @@ add_chinese_doc('data.data_register', """\
 数据处理算子注册器装饰器 / 工厂，用于将函数或类注册为可复用的数据处理算子。
 
 用法：
-     
+
 - 可以用来注册单条数据处理算子（实现 forward 方法或函数）。
 - 可以用来注册批处理算子（实现 forward_batch_input 方法或函数）。
 - 支持通过参数 rewrite_func 指定注册时替换框架调用的方法（'forward' 或 'forward_batch_input'）。
@@ -39,7 +39,7 @@ add_example('data.data_register', """\
 from lazyllm.tools.data import data_register
 
 Demo = data_register.new_group('Demo')
-            
+
 # register a simple batch function
 @data_register('data.Demo', rewrite_func='forward_batch_input')
 def my_batch_op(data, input_key='text'):
@@ -394,7 +394,7 @@ add_example('data.operators.refine_op.remove_extra_spaces', """\
 from lazyllm.tools.data import refine
 
 func = refine.remove_extra_spaces(input_key='content')
-inputs = [{'content': 'hello   world\\n\\n  foo\\tbar'}]
+inputs = [{'content': 'hello   world\\\\n\\\\n  foo\\\\tbar'}]
 res = func(inputs)
 print(res)
 # [{'content': 'hello world foo bar'}]
@@ -847,10 +847,10 @@ add_example('data.operators.filter_op.ellipsis_end_filter', """\
 from lazyllm.tools.data import filter
 
 func = filter.ellipsis_end_filter(input_key='content', max_ratio=0.3)
-inputs = [{'content': '第一行。\\n第二行。\\n第三行。'}, {'content': '第一行...\\n第二行...'}]
+inputs = [{'content': '第一行。\\\\n第二行。\\\\n第三行。'}, {'content': '第一行...\\\\n第二行...'}]
 res = func(inputs)
 print(res)
-# [{'content': '第一行。\\n第二行。\\n第三行。'}]
+# [{'content': '第一行。\\\\n第二行。\\\\n第三行。'}]
 ```
 """)
 
@@ -1183,7 +1183,7 @@ add_example('data.operators.filter_op.bullet_point_filter', """\
 from lazyllm.tools.data import filter
 
 func = filter.bullet_point_filter(input_key='content', max_ratio=0.5)
-inputs = [{'content': 'Normal paragraph text'}, {'content': '• Item 1\\n• Item 2\\n• Item 3'}]
+inputs = [{'content': 'Normal paragraph text'}, {'content': '- Item 1\\\\n- Item 2\\\\n- Item 3'}]
 res = func(inputs)
 print(res)
 # [{'content': 'Normal paragraph text'}]
