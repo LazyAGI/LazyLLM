@@ -17,7 +17,7 @@ from .module import (ModuleBase, ModuleBase as Module, UrlModule, TrainableModul
                      ServerModule, TrialModule, register as module_register,
                      OnlineModule, OnlineChatModule, OnlineEmbeddingModule, AutoModel, OnlineMultiModalModule)
 from .hook import LazyLLMHook, LazyLLMFuncHook
-from .prompt_templates import PromptLibrary
+from .prompt_templates import ActorPrompt, DataPrompt
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
     from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
@@ -102,7 +102,8 @@ __all__ = [
     'PlanAndSolveAgent',
     'ReWOOAgent',
     'SentenceSplitter',
-    'PromptLibrary',
+    'ActorPrompt',
+    'DataPrompt',
 
     # docs
     'add_doc',

@@ -1,10 +1,50 @@
 import os
 import json
+import copy
 import threading
 
-from lazyllm import LOG
 
-class PromptLibrary:
+from lazyllm import LOG, ChatPrompter
+from lazyllm.common.registry import LazyLLMRegisterMetaClass
+
+
+class LazyLLMPromptLibraryBase(metaclass=LazyLLMRegisterMetaClass):
+    _prompts = {}
+    _default_lang = 'zh'
+
+    def __init__(self, lang=None):
+        self.lang = lang
+        if self.lang and self.lang not in self.supported_langs:
+            LOG.warning(f'Language "{self.lang}" passed to init is not supported. Supported: {self.supported_langs}')
+
+    @property
+    def supported_langs(self):
+        return list(self._prompts.keys())
+
+    def get_prompt(self, key: str, lang=None):
+        lang = lang or self.lang or self._default_lang
+        if lang not in self._prompts:
+            raise ValueError(f'Language "{lang}" not supported. Supported: {self.supported_langs}')
+        prompt = self._prompts[lang].get(key)
+        if prompt is None:
+            raise ValueError(f'Prompt for key "{key}" not found in library (lang: {lang}).')
+        return prompt
+
+    def get_all_keys(self, lang=None) -> list:
+        if lang is None:
+            if self.lang:
+                lang = self.lang
+                LOG.info(f'get_all_keys: no lang passed, using instance language "{self.lang}"')
+            else:
+                lang = self._default_lang
+                LOG.info(f'get_all_keys: no lang passed, using default language "{self._default_lang}"')
+
+        if lang not in self._prompts:
+            LOG.warning(f'Language "{lang}" not supported. Supported: {self.supported_langs}')
+            return []
+        return list(self._prompts[lang].keys())
+
+class ActorPrompt(LazyLLMPromptLibraryBase):
     _prompts: dict = {}
     _prompts_paths = [
         ('awesome-chatgpt-prompts-zh.json', 'zh'),
@@ -15,26 +55,20 @@ class PromptLibrary:
     _default_lang = 'zh'
 
     def __init__(self, lang=None):
-        if not PromptLibrary._loaded:
-            with PromptLibrary._load_lock:
-                if not PromptLibrary._loaded:  # Double-checked locking
+        if not ActorPrompt._loaded:
+            with ActorPrompt._load_lock:
+                if not ActorPrompt._loaded:  # Double-checked locking
                     self._build_library()
-                    PromptLibrary._loaded = True
+                    ActorPrompt._loaded = True
 
-        self.lang = lang
-        if self.lang and self.lang not in self.supported_langs:
-            LOG.warning(f'Language "{self.lang}" passed to init is not supported. Supported: {self.supported_langs}')
-
-    @property
-    def supported_langs(self):
-        return list(self._prompts.keys())
+        super().__init__(lang)
 
     def _load_prompts(self, path, lang):
         if lang not in self._prompts:
             self._prompts[lang] = {}
 
         if not os.path.exists(path):
-            LOG.warning(f'PromptLibrary file not found: {path}')
+            LOG.warning(f'ActorPrompt file not found: {path}')
             return
 
         try:
@@ -61,36 +95,57 @@ class PromptLibrary:
     def _build_library(self):
         base_path = os.path.dirname(__file__)
         for rel_path, lang in self._prompts_paths:
-            abs_path = os.path.join(base_path, 'prompts_lib', rel_path)
+            abs_path = os.path.join(base_path, 'prompts_actor', rel_path)
             self._load_prompts(abs_path, lang)
             # Show summary of loaded prompts
             if lang in self._prompts:
                 LOG.info(f'After loading {rel_path}, total prompts for lang "{lang}": {len(self._prompts[lang])}')
 
-    def __call__(self, act: str, lang=None) -> str:
-        return self.get_prompt(act, lang)
-
-    def get_prompt(self, act: str, lang=None) -> str:
-        lang = lang or self.lang or self._default_lang
-        if lang not in self._prompts:
-            LOG.warning(f'Language "{lang}" not supported. Supported: {self.supported_langs}')
-            return ''
-        prompt = self._prompts[lang].get(act)
-        if prompt is None:
-            LOG.warning(f'Prompt for act "{act}" not found in library (lang: {lang}).')
-            return ''
-        return prompt
+    def __call__(self, act: str, lang=None, return_raw=False) -> str:
+        prompt = self.get_prompt(act, lang)  # Get the raw prompt string
+        if prompt is None: return ''
+        if return_raw:
+            return prompt
+        return ChatPrompter(prompt)
 
     def get_all_acts(self, lang=None) -> list:
-        if lang is None:
-            if self.lang:
-                lang = self.lang
-                LOG.info(f'get_all_acts: no lang passed, using instance language "{self.lang}"')
-            else:
-                lang = self._default_lang
-                LOG.info(f'get_all_acts: no lang passed, using default language "{self._default_lang}"')
+        return self.get_all_keys(lang)
 
-        if lang not in self._prompts:
-            LOG.warning(f'Language "{lang}" not supported. Supported: {self.supported_langs}')
-            return []
-        return list(self._prompts[lang].keys())
+class DataPrompt(LazyLLMPromptLibraryBase):
+    _prompts: dict = {}
+    _default_lang = 'zh'
+
+    def __init__(self, lang=None):
+        super().__init__(lang)
+
+    def __call__(self, key: str, lang=None, return_raw=False) -> str:
+        prompt = self.get_prompt(key, lang)  # Get the raw prompt dict
+        if prompt is None: return None
+        if return_raw:
+            return prompt  # Dict
+
+        prompt = copy.deepcopy(prompt)
+        tools = prompt.get('tools')
+        history = prompt.get('history')
+        extra_keys = prompt.get('extra_keys')
+        system = prompt.get('system', '')
+        user = prompt.get('user', '')
+
+        return ChatPrompter({'system': system, 'user': user}, tools=tools, history=history, extra_keys=extra_keys)
+
+    @classmethod
+    def add_prompt(cls, act, system_prompt=None, user_prompt=None, tools=None, history=None, extra_keys=None, lang='zh'):
+        assert system_prompt or user_prompt, 'At least one of system_prompt or user_prompt must be provided'
+        if lang not in cls._prompts:
+            cls._prompts[lang] = {}
+
+        if act in cls._prompts[lang]:
+            LOG.warning(f'Duplicate act "{act}" found in DataPrompt for lang {lang}. Overwriting.')
+
+        cls._prompts[lang][act] = {
+            'system': system_prompt if system_prompt is not None else '',
+            'user': user_prompt if user_prompt is not None else '',
+            'tools': tools,
+            'history': history,
+            'extra_keys': extra_keys
+        }
