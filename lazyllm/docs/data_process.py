@@ -616,195 +616,6 @@ print(op(data))
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.ScenarioExtractor', """\
-工具调用数据生成算子：场景抽取器。
-
-从一段对话文本中抽取可用于后续任务/工具调用数据生成的“场景信息”，并以结构化 JSON 形式写入输出字段。
-
-输出 JSON 典型结构：
-
-- scene: 一句话场景描述
-- domain: 领域/主题
-- user_profile: 用户角色/背景（可为空）
-- assistant_goal: 助手应完成的目标
-- constraints: 约束条件列表
-- key_entities: 关键实体列表
-
-Args:
-    model: LazyLLM 模型对象（必需），会被 share() 后复用并接 JSON 格式化器。
-    input_key (str): 输入对话内容字段名，默认 'content'。
-    output_key (str): 输出场景字段名，默认 'scenario'。
-    system_prompt (str|None): 可选，自定义系统提示词，不传则使用内置中文提示。
-    **kwargs: 传递给基类算子的其它参数（如 _max_workers、_save_data 等）。
-""")
-
-add_english_doc('data.operators.tool_use_ops.ScenarioExtractor', """\
-Tool-use data operator: scenario extractor.
-
-Extracts high-level scenario information from a conversation text and writes a structured JSON object into the output field.
-
-Typical JSON structure:
-
-- scene: one-sentence scenario description
-- domain: domain/topic
-- user_profile: user role/profile (optional)
-- assistant_goal: goal the assistant should achieve
-- constraints: list of constraints
-- key_entities: list of key entities
-
-Args:
-    model: a LazyLLM model object (required), shared and wrapped with a JSON formatter.
-    input_key (str): input conversation field name, default 'content'.
-    output_key (str): output scenario field name, default 'scenario'.
-    system_prompt (str|None): optional custom system prompt, defaults to a built-in Chinese prompt.
-    **kwargs: extra args passed to the base operator (e.g. _max_workers, _save_data).
-""")
-
-add_example('data.operators.tool_use_ops.ScenarioExtractor', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import ScenarioExtractor
-
-op = ScenarioExtractor(model=model, input_key='content', output_key='scenario')
-item = {
-    'content': 'User: 我想订一张从北京到上海的高铁票，下午出发最好。\\nAssistant: 好的，请问具体日期？'
-}
-print(op(item))
-# {
-#   'content': 'User: 我想订一张从北京到上海的高铁票，下午出发最好。\\nAssistant: 好的，请问具体日期？',
-#   'scenario': {
-#     'scene': '用户咨询高铁购票服务',
-#     'domain': '出行/购票',
-#     'user_profile': '普通出行乘客',
-#     'assistant_goal': '帮助用户完成车次与时间筛选并完成购票',
-#     'constraints': ['出发地为北京', '目的地为上海', '尽量下午出发'],
-#     'key_entities': ['北京', '上海', '高铁', '下午']
-#   }
-# }
-```
-""")
-
-add_chinese_doc('data.operators.tool_use_ops.ScenarioExpander', """\
-工具调用数据生成算子：场景扩展器。
-
-在已有基础场景的基础上，生成若干个语义相关但细节不同的替代场景列表，便于扩充数据多样性。
-
-输出 JSON 典型结构：
-
-- scenarios: 场景列表，每项为包含 scene/domain/assistant_goal/constraints/key_entities 等字段的字典。
-
-Args:
-    model: LazyLLM 模型对象（必需）。
-    input_key (str): 输入场景字段名，默认 'scenario'（可为 dict 或 str）。
-    output_key (str): 输出扩展场景列表字段名，默认 'expanded_scenarios'。
-    n (int): 希望生成的场景数量上限，默认 3。
-    system_prompt (str|None): 可选系统提示词。
-    **kwargs: 传递给基类算子的其它参数。
-""")
-
-add_english_doc('data.operators.tool_use_ops.ScenarioExpander', """\
-Tool-use data operator: scenario expander.
-
-Given a base scenario, generates multiple alternative scenarios that are semantically related but differ in details, to enrich data diversity.
-
-Typical JSON structure:
-
-- scenarios: list of scenario dicts, each with fields like scene/domain/assistant_goal/constraints/key_entities.
-
-Args:
-    model: a LazyLLM model object (required).
-    input_key (str): input scenario field name, default 'scenario' (dict or str).
-    output_key (str): output expanded scenario list field name, default 'expanded_scenarios'.
-    n (int): maximum number of scenarios to generate, default 3.
-    system_prompt (str|None): optional system prompt.
-    **kwargs: extra args passed to the base operator.
-""")
-
-add_example('data.operators.tool_use_ops.ScenarioExpander', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import ScenarioExpander
-
-base = {
-    'scene': '用户咨询高铁购票服务',
-    'domain': '出行/购票',
-    'assistant_goal': '帮助用户完成车次筛选并购票',
-}
-op = ScenarioExpander(model=model, input_key='scenario', output_key='expanded_scenarios', n=3)
-print(op({'scenario': base}))
-# {
-#   'scenario': {...},
-#   'expanded_scenarios': [
-#     {'scene': '用户预订跨城商务出差火车票', ...},
-#     {'scene': '用户为家人购买回乡火车票', ...},
-#     ...
-#   ]
-# }
-```
-""")
-
-add_chinese_doc('data.operators.tool_use_ops.AtomTaskGenerator', """\
-工具调用数据生成算子：原子任务生成器。
-
-基于单个场景，生成一组粒度较小、目标单一的“原子任务”列表，用于后续任务编排与工具设计。
-
-输出 JSON 典型结构：
-
-- tasks: 原子任务列表，每项包含：
-  - task: 任务描述
-  - input: 任务输入（可为空）
-  - output: 任务输出（可为空）
-  - constraints: 相关约束列表
-
-Args:
-    model: LazyLLM 模型对象（必需）。
-    input_key (str): 输入场景字段名，默认 'scenario'。
-    output_key (str): 输出原子任务列表字段名，默认 'atomic_tasks'。
-    n (int): 原子任务数量上限，默认 5。
-    system_prompt (str|None): 可选系统提示词。
-    **kwargs: 传递给基类算子的其它参数。
-""")
-
-add_english_doc('data.operators.tool_use_ops.AtomTaskGenerator', """\
-Tool-use data operator: atomic task generator.
-
-Given a scenario, generates a list of fine-grained, single-goal atomic tasks, which can be used for later orchestration and tool design.
-
-Typical JSON structure:
-
-- tasks: list of atomic task dicts:
-  - task: task description
-  - input: task input (optional)
-  - output: task output (optional)
-  - constraints: list of constraints
-
-Args:
-    model: a LazyLLM model object (required).
-    input_key (str): input scenario field name, default 'scenario'.
-    output_key (str): output atomic task list field name, default 'atomic_tasks'.
-    n (int): maximum number of tasks, default 5.
-    system_prompt (str|None): optional system prompt.
-    **kwargs: extra args passed to the base operator.
-""")
-
-add_example('data.operators.tool_use_ops.AtomTaskGenerator', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import AtomTaskGenerator
-
-scenario = {
-    'scene': '用户咨询高铁购票服务',
-    'assistant_goal': '帮助用户完成车次筛选并购票',
-}
-op = AtomTaskGenerator(model=model, input_key='scenario', output_key='atomic_tasks', n=4)
-print(op({'scenario': scenario}))
-# {
-#   'scenario': {...},
-#   'atomic_tasks': [
-#     {'task': '获取用户出发地和目的地', 'input': '', 'output': '出发地与目的地', 'constraints': [...]},
-#     {'task': '确认出行日期与大致时间', ...},
-#     ...
-#   ]
-# }
-```
-""")
 
 add_chinese_doc('data.operators.tool_use_ops.SequentialTaskGenerator', """\
 工具调用数据生成算子：顺序任务生成器。
@@ -1700,7 +1511,7 @@ print(op({'composition_task': composition_task, 'functions': functions}))
 ```
 """)
 
-add_chinese_doc('data.operators.text2SQL_ops.SQLGenerator', """\
+add_chinese_doc('data.operators.text2sql_ops.SQLGenerator', """\
 Text2SQL 数据生成算子：SQL 生成器。
 
 基于数据库 Schema 与样例数据，为给定或全部数据库自动生成可执行的 SQL 语句集合，并标注大致复杂度类型。
@@ -1722,7 +1533,7 @@ Args:
     **kwargs: 传递给基类 Text2SQLOps/LazyLLMDataBase 的其它参数。
 """)
 
-add_english_doc('data.operators.text2SQL_ops.SQLGenerator', """\
+add_english_doc('data.operators.text2sql_ops.SQLGenerator', """\
 Text2SQL data operator: SQLGenerator.
 
 Generates executable SQL queries for one or multiple databases based on their schema and optional sample data, and labels each query with a rough complexity type.
@@ -1744,7 +1555,7 @@ Args:
     **kwargs: extra args forwarded to the Text2SQLOps/LazyLLMDataBase base class.
 """)
 
-add_example('data.operators.text2SQL_ops.SQLGenerator', """\
+add_example('data.operators.text2sql_ops.SQLGenerator', """\
 ```python
 from lazyllm.tools.data.operators.text2SQL_ops import SQLGenerator
 
@@ -1762,7 +1573,7 @@ print(res[0])
 ```
 """)
 
-add_chinese_doc('data.operators.text2SQL_ops.SQLExecutabilityFilter', """\
+add_chinese_doc('data.operators.text2sql_ops.SQLExecutabilityFilter', """\
 Text2SQL 数据过滤算子：SQL 可执行性过滤器。
 
 对每条数据中的 SQL 进行简单语法形态过滤（仅保留 SELECT / WITH 开头的查询），并调用 database_manager 进行 EXPLAIN 校验；只保留可在目标库上成功执行的 SQL。
@@ -1774,7 +1585,7 @@ Args:
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.text2SQL_ops.SQLExecutabilityFilter', """\
+add_english_doc('data.operators.text2sql_ops.SQLExecutabilityFilter', """\
 Text2SQL data operator: SQLExecutabilityFilter.
 
 Filters SQL queries by:
@@ -1789,7 +1600,7 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2SQL_ops.SQLExecutabilityFilter', """\
+add_example('data.operators.text2sql_ops.SQLExecutabilityFilter', """\
 ```python
 from lazyllm.tools.data.operators.text2SQL_ops import SQLExecutabilityFilter
 
@@ -1800,7 +1611,7 @@ print(res)  # 若 SQL 可在 db_1 上 explain 成功，则返回原始 dict；�
 ```
 """)
 
-add_chinese_doc('data.operators.text2SQL_ops.Text2SQLQuestionGenerator', """\
+add_chinese_doc('data.operators.text2sql_ops.Text2SQLQuestionGenerator', """\
 Text2SQL 数据生成算子：自然语言问题生成器。
 
 基于给定 SQL + 数据库 Schema 以及列注释信息，生成与 SQL 语义对应的自然语言问题，并可附带“外部知识”提示，以支持 Text2SQL 训练。
@@ -1822,7 +1633,7 @@ Args:
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2SQL_ops.Text2SQLQuestionGenerator', """\
+add_english_doc('data.operators.text2sql_ops.Text2SQLQuestionGenerator', """\
 Text2SQL data operator: Text2SQLQuestionGenerator.
 
 Given a SQL query and database schema (with optional column descriptions), generates a natural language question aligned with the SQL semantics, plus optional external knowledge text.
@@ -1844,7 +1655,7 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2SQL_ops.Text2SQLQuestionGenerator', """\
+add_example('data.operators.text2sql_ops.Text2SQLQuestionGenerator', """\
 ```python
 from lazyllm.tools.data.operators.text2SQL_ops import Text2SQLQuestionGenerator
 
@@ -1865,7 +1676,7 @@ print(res)
 ```
 """)
 
-add_chinese_doc('data.operators.text2SQL_ops.Text2SQLCorrespondenceFilter', """\
+add_chinese_doc('data.operators.text2sql_ops.Text2SQLCorrespondenceFilter', """\
 Text2SQL 数据过滤算子：问句-SQL 一致性过滤器。
 
 给定自然语言问题 + 证据（可选）+ SQL + 数据库 Schema，判断 SQL 是否能够正确回答该问题，保留“正确”的样本。
@@ -1884,7 +1695,7 @@ Args:
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2SQL_ops.Text2SQLCorrespondenceFilter', """\
+add_english_doc('data.operators.text2sql_ops.Text2SQLCorrespondenceFilter', """\
 Text2SQL data operator: Text2SQLCorrespondenceFilter.
 
 Given a natural language question + optional evidence + SQL + database schema, determines whether the SQL correctly answers the question and filters samples accordingly.
@@ -1903,7 +1714,7 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2SQL_ops.Text2SQLCorrespondenceFilter', """\
+add_example('data.operators.text2sql_ops.Text2SQLCorrespondenceFilter', """\
 ```python
 from lazyllm.tools.data.operators.text2SQL_ops import Text2SQLCorrespondenceFilter
 
@@ -1926,7 +1737,7 @@ print(res)
 ```
 """)
 
-add_chinese_doc('data.operators.text2SQL_ops.Text2SQLPromptGenerator', """\
+add_chinese_doc('data.operators.text2sql_ops.Text2SQLPromptGenerator', """\
 Text2SQL 数据生成算子：Prompt 构造器。
 
 根据数据库 Schema、自然语言问题与证据，构造下游 Text2SQL 模型的输入提示词（prompt）。
@@ -1944,7 +1755,7 @@ Args:
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2SQL_ops.Text2SQLPromptGenerator', """\
+add_english_doc('data.operators.text2sql_ops.Text2SQLPromptGenerator', """\
 Text2SQL data operator: Text2SQLPromptGenerator.
 
 Builds prompts for downstream Text2SQL models from database schema, natural language question, and evidence.
@@ -1962,7 +1773,7 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2SQL_ops.Text2SQLPromptGenerator', """\
+add_example('data.operators.text2sql_ops.Text2SQLPromptGenerator', """\
 ```python
 from lazyllm.tools.data.operators.text2SQL_ops import Text2SQLPromptGenerator
 
@@ -1984,7 +1795,7 @@ print(res['prompt'])
 ```
 """)
 
-add_chinese_doc('data.operators.text2SQL_ops.Text2SQLCoTGenerator', """\
+add_chinese_doc('data.operators.text2sql_ops.Text2SQLCoTGenerator', """\
 Text2SQL 数据生成算子：CoT 轨迹生成器。
 
 针对给定 (问题, SQL, 数据库 Schema, 证据) 生成若干条“从问题到 SQL 的链式思考（Chain-of-Thought）”文本，用于训练/分析。
@@ -1998,7 +1809,7 @@ Args:
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2SQL_ops.Text2SQLCoTGenerator', """\
+add_english_doc('data.operators.text2sql_ops.Text2SQLCoTGenerator', """\
 Text2SQL data operator: Text2SQLCoTGenerator.
 
 For each (question, SQL, schema, evidence) item, generates multiple chain-of-thought (CoT) reasoning traces from question to SQL.
@@ -2012,7 +1823,7 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2SQL_ops.Text2SQLCoTGenerator', """\
+add_example('data.operators.text2sql_ops.Text2SQLCoTGenerator', """\
 ```python
 from lazyllm.tools.data.operators.text2SQL_ops import Text2SQLCoTGenerator
 
@@ -2031,7 +1842,7 @@ print(res['cot_responses'][0][:200])  # 打印第一条 CoT 的前 200 个字符
 ```
 """)
 
-add_chinese_doc('data.operators.text2SQL_ops.Text2SQLCoTVotingGenerator', """\
+add_chinese_doc('data.operators.text2sql_ops.Text2SQLCoTVotingGenerator', """\
 Text2SQL 数据处理算子：CoT 轨迹投票选择器。
 
 对一组 CoT 轨迹（cot_responses）进行 SQL 解析与执行，基于执行结果的一致性与正确性，从中选出“最佳” CoT 及对应 SQL。
@@ -2050,7 +1861,7 @@ Args:
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2SQL_ops.Text2SQLCoTVotingGenerator', """\
+add_english_doc('data.operators.text2sql_ops.Text2SQLCoTVotingGenerator', """\
 Text2SQL data operator: Text2SQLCoTVotingGenerator.
 
 Given multiple CoT traces (cot_responses), parses SQL from each, executes them, and selects the best CoT/SQL pair based on execution consistency and success.
@@ -2069,7 +1880,7 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2SQL_ops.Text2SQLCoTVotingGenerator', """\
+add_example('data.operators.text2sql_ops.Text2SQLCoTVotingGenerator', """\
 ```python
 from lazyllm.tools.data.operators.text2SQL_ops import Text2SQLCoTVotingGenerator
 
@@ -2089,7 +1900,7 @@ print(res['SQL'])
 ```
 """)
 
-add_chinese_doc('data.operators.text2SQL_ops.SQLComponentClassifier', """\
+add_chinese_doc('data.operators.text2sql_ops.SQLComponentClassifier', """\
 Text2SQL 数据分类算子：SQL 组件难度分类器。
 
 使用 SQL 结构级别的难度评估器（EvalHardness/EvalHardnessLite），根据 SQL 中涉及的组件复杂度对其进行难度打标（easy/medium/hard/extra 等）。
@@ -2100,7 +1911,7 @@ Args:
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2SQL_ops.SQLComponentClassifier', """\
+add_english_doc('data.operators.text2sql_ops.SQLComponentClassifier', """\
 Text2SQL data operator: SQLComponentClassifier.
 
 Classifies SQL difficulty based on structural components using EvalHardness/EvalHardnessLite, assigning labels such as easy/medium/hard/extra.
@@ -2111,7 +1922,7 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2SQL_ops.SQLComponentClassifier', """\
+add_example('data.operators.text2sql_ops.SQLComponentClassifier', """\
 ```python
 from lazyllm.tools.data.operators.text2SQL_ops import SQLComponentClassifier
 
@@ -2126,7 +1937,7 @@ print(res)
 ```
 """)
 
-add_chinese_doc('data.operators.text2SQL_ops.SQLExecutionClassifier', """\
+add_chinese_doc('data.operators.text2sql_ops.SQLExecutionClassifier', """\
 Text2SQL 数据分类算子：SQL 执行难度分类器。
 
 基于 Text2SQLPromptGenerator 生成的 prompt、多次采样生成 SQL 并与金标 SQL 在数据库上对比执行结果，从“可被模型正确生成的次数”角度对样本执行难度进行分类。
@@ -2147,7 +1958,7 @@ Args:
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2SQL_ops.SQLExecutionClassifier', """\
+add_english_doc('data.operators.text2sql_ops.SQLExecutionClassifier', """\
 Text2SQL data operator: SQLExecutionClassifier.
 
 Classifies SQL execution difficulty by repeatedly generating SQL from a prompt, comparing each prediction to the gold SQL on the database, and counting how many generations match.
@@ -2168,7 +1979,7 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2SQL_ops.SQLExecutionClassifier', """\
+add_example('data.operators.text2sql_ops.SQLExecutionClassifier', """\
 ```python
 from lazyllm.tools.data.operators.text2SQL_ops import SQLExecutionClassifier
 

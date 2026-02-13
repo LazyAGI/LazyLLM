@@ -2,6 +2,10 @@ import importlib
 import lazyllm
 from .base_data import LazyLLMDataBase, data_register
 from .operators import demo_ops  # noqa: F401
+from .operators import preference_ops  # noqa: F401
+from .operators import sql_evalhardness  # noqa: F401
+from .operators import text2sql_ops  # noqa: F401
+from .operators import tool_use_ops  # noqa: F401
 
 def __getattr__(name):
     if name == 'pipelines':
