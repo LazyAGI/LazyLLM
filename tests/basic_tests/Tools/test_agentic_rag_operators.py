@@ -1,15 +1,10 @@
-"""Test cases for AgenticRAG operators with MockLLM"""
 import json
-import pytest
 import os
 import shutil
 from lazyllm import config
 from lazyllm.tools.data import agenticrag
 
-
-
 class MockLLMServe:
-    """Mock single LLM service."""
 
     def __init__(self, return_value=None, raise_exc=False):
         self._return_value = return_value
@@ -28,12 +23,11 @@ class MockLLMServe:
 
     def __call__(self, prompt):
         if self._raise_exc:
-            raise RuntimeError("mock error")
+            raise RuntimeError('mock error')
         return self._return_value
 
 
 class MockLLM:
-    """Mock LLM with answer and score services."""
 
     def __init__(self, answer_return=None, score_return=None,
                  answer_raise=False, score_raise=False):
@@ -53,7 +47,6 @@ class MockLLM:
 
 
 class TestAgenticRAGOperators:
-    """Test suite for AgenticRAG operators."""
     def setup_method(self):
         self.root_dir = './test_data_op'
         self.keep_dir = config['data_process_path']
@@ -68,21 +61,18 @@ class TestAgenticRAGOperators:
     # ========== Atomic Task Generator Operators ==========
 
     def test_agenticrag_get_identifier(self):
-        """Test AgenticRAGGetIdentifier extracts identifier."""
         mock_llm = MockLLM(answer_return={'content_identifier': 'test_id'})
         op = agenticrag.AgenticRAGGetIdentifier(llm=mock_llm, input_key='prompts')
         result = op([{'prompts': 'test content'}])[0]
         assert result['identifier'] == 'test_id'
 
     def test_agenticrag_get_conclusion(self):
-        """Test AgenticRAGGetConclusion extracts conclusions."""
         mock_llm = MockLLM(answer_return=json.dumps([{'conclusion': 'C1', 'R': 'R1'}]))
         op = agenticrag.AgenticRAGGetConclusion(llm=mock_llm, input_key='prompts')
         result = op([{'prompts': 'test'}])[0]
         assert 'raw_conclusion' in result
 
     def test_agenticrag_expand_conclusions(self):
-        """Test AgenticRAGExpandConclusions expands conclusion list."""
         op = agenticrag.AgenticRAGExpandConclusions(max_per_task=2)
         data = {
             'raw_conclusion': json.dumps([{'conclusion': 'C1', 'R': 'R1'}, {'conclusion': 'C2', 'R': 'R2'}]),
@@ -92,7 +82,6 @@ class TestAgenticRAGOperators:
         assert len(result) == 2
 
     def test_agenticrag_generate_question(self):
-        """Test AgenticRAGGenerateQuestion generates question."""
         mock_llm = MockLLM(answer_return={'Q': 'What is test?'})
         op = agenticrag.AgenticRAGGenerateQuestion(llm=mock_llm)
         data = {
@@ -103,14 +92,12 @@ class TestAgenticRAGOperators:
         assert result['question'] == 'What is test?'
 
     def test_agenticrag_clean_qa(self):
-        """Test AgenticRAGCleanQA cleans QA pair."""
         mock_llm = MockLLM(answer_return={'refined_answer': 'Cleaned answer'})
         op = agenticrag.AgenticRAGCleanQA(llm=mock_llm)
         result = op([{'question': 'Q?', 'answer': 'A'}])[0]
         assert result['refined_answer'] == 'Cleaned answer'
 
     def test_agenticrag_llm_verify(self):
-        """Test AgenticRAGLLMVerify verifies answer."""
         mock_llm = MockLLM(
             answer_return='LLM answer',
             score_return={'answer_score': 0}
@@ -120,7 +107,6 @@ class TestAgenticRAGOperators:
         assert 'llm_answer' in result
 
     def test_agenticrag_golden_doc_answer(self):
-        """Test AgenticRAGGoldenDocAnswer generates golden doc answer."""
         mock_llm = MockLLM(
             answer_return='Golden answer',
             score_return={'answer_score': 1}
@@ -130,14 +116,12 @@ class TestAgenticRAGOperators:
         assert result['golden_doc_answer'] == 'Golden answer'
 
     def test_agenticrag_optional_answers(self):
-        """Test AgenticRAGOptionalAnswers generates optional answers."""
         mock_llm = MockLLM(answer_return=['A1', 'A2', 'A3'])
         op = agenticrag.AgenticRAGOptionalAnswers(llm=mock_llm)
         result = op([{'refined_answer': 'Original'}])[0]
         assert result['optional_answer'] == ['A1', 'A2', 'A3']
 
     def test_agenticrag_group_and_limit(self):
-        """Test AgenticRAGGroupAndLimit groups and limits results."""
         op = agenticrag.AgenticRAGGroupAndLimit(input_key='prompts', max_question=2)
         data = [
             {'prompts': 'Group A', 'question': 'Q1'},
@@ -150,35 +134,30 @@ class TestAgenticRAGOperators:
     # ========== Depth QA Generator Operators ==========
 
     def test_depth_qag_get_identifier(self):
-        """Test DepthQAGGetIdentifier extracts identifier."""
         mock_llm = MockLLM(answer_return='depth_id')
         op = agenticrag.DepthQAGGetIdentifier(llm=mock_llm, input_key='question')
         result = op([{'question': 'What?'}])[0]
         assert result['identifier'] == 'depth_id'
 
     def test_depth_qag_backward_task(self):
-        """Test DepthQAGBackwardTask generates backward task."""
         mock_llm = MockLLM(answer_return={'identifier': 'back_id', 'relation': 'back_rel'})
         op = agenticrag.DepthQAGBackwardTask(llm=mock_llm)
         result = op([{'identifier': 'orig_id'}])[0]
         assert result['new_identifier'] == 'back_id'
 
     def test_depth_qag_check_superset(self):
-        """Test DepthQAGCheckSuperset checks superset validity."""
         mock_llm = MockLLM(answer_return={'new_query': 'valid'})
         op = agenticrag.DepthQAGCheckSuperset(llm=mock_llm)
         result = op([{'new_identifier': 'new', 'relation': 'rel', 'identifier': 'orig'}])[0]
         assert result['new_identifier'] == 'new'
 
     def test_depth_qag_generate_question(self):
-        """Test DepthQAGGenerateQuestion generates depth question."""
         mock_llm = MockLLM(answer_return={'new_query': 'Generated question?'})
         op = agenticrag.DepthQAGGenerateQuestion(llm=mock_llm, question_key='depth_question')
         result = op([{'new_identifier': 'new', 'relation': 'rel', 'identifier': 'orig'}])[0]
         assert result['depth_question'] == 'Generated question?'
 
     def test_depth_qag_verify_question(self):
-        """Test DepthQAGVerifyQuestion verifies depth question."""
         mock_llm = MockLLM(
             answer_return='LLM answer',
             score_return={'answer_score': 0}
@@ -190,7 +169,6 @@ class TestAgenticRAGOperators:
     # ========== Width QA Generator Operators ==========
 
     def test_width_qag_merge_pairs(self):
-        """Test WidthQAGMergePairs merges question pairs."""
         mock_llm = MockLLM(answer_return={'question': 'Merged?', 'index': [0, 1]})
         op = agenticrag.WidthQAGMergePairs(llm=mock_llm)
         data = [{'question': 'Q1?', 'golden_answer': 'A1'}, {'question': 'Q2?', 'golden_answer': 'A2'}]
@@ -199,21 +177,18 @@ class TestAgenticRAGOperators:
         assert result[0]['question'] == 'Merged?'
 
     def test_width_qag_check_decomposition(self):
-        """Test WidthQAGCheckDecomposition checks decomposition."""
         mock_llm = MockLLM(answer_return={'state': 1, 'complex_question': 'Decomposed?'})
         op = agenticrag.WidthQAGCheckDecomposition(llm=mock_llm)
         result = op([{'question': 'Original?', 'original_question': ['Q1?', 'Q2?']}])[0]
         assert result['state'] == 1
 
     def test_width_qag_verify_question(self):
-        """Test WidthQAGVerifyQuestion verifies width question."""
         mock_llm = MockLLM(answer_return={'llm_answer': 'Verified'})
         op = agenticrag.WidthQAGVerifyQuestion(llm=mock_llm)
         result = op([{'generated_width_task': 'Test?', 'index': 0}])[0]
         assert result['llm_answer'] == 'Verified'
 
     def test_width_qag_filter_by_score(self):
-        """Test WidthQAGFilterByScore filters by score."""
         mock_llm = MockLLM(answer_return={'answer_score': 0})
         op = agenticrag.WidthQAGFilterByScore(llm=mock_llm)
         result = op([{'original_answer': ['A1'], 'llm_answer': 'LLM', 'state': 1}])[0]
@@ -222,16 +197,13 @@ class TestAgenticRAGOperators:
     # ========== QA F1 Evaluator Functions ==========
 
     def test_qaf1_normalize_texts(self):
-        """Test qaf1_normalize_texts normalizes texts."""
         func = agenticrag.qaf1_normalize_texts()
         data = {'refined_answer': 'Test!', 'golden_doc_answer': 'test'}
         result = func(data)[0]
         assert result['_normalized_prediction'] == 'test'
 
     def test_qaf1_calculate_score(self):
-        """Test qaf1_calculate_score calculates F1 score."""
         data = {'_normalized_prediction': 'test', '_normalized_ground_truths': ['test']}
         func = agenticrag.qaf1_calculate_score()
         result = func([data])[0]
         assert result['F1Score'] == 1.0
-
