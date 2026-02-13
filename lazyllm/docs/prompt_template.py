@@ -384,11 +384,13 @@ add_chinese_doc('LazyLLMPromptLibraryBase', '''\
 提示语库基类，用于管理多语言的提示语集合并提供统一访问接口。
 
 行为简介：
+
 - 维护按语言划分的提示语字典（_prompts）。
 - 提供获取单条提示语和列举某语言全部键（key）的能力。
 - 在初始化时可指定实例默认语言。
 
 主要方法：
+
 - get_prompt(key, lang=None): 按 key 与语言获取对应提示语字符串或结构，若未提供语言则使用实例语言或默认语言。
 - get_all_keys(lang=None): 列出指定语言下的所有提示语键名，若未提供语言则使用实例语言或默认语言。
 ''')
@@ -397,11 +399,13 @@ add_english_doc('LazyLLMPromptLibraryBase', '''\
 Base prompt library class that manages multilingual prompt collections and provides a unified access API.
 
 Overview:
+
 - Maintains a language-keyed dictionary of prompts (_prompts).
 - Allows fetching a single prompt and listing all keys for a language.
 - Instance may be initialized with a default language.
 
 Main methods:
+
 - get_prompt(key, lang=None): Retrieve the prompt (string or structured) by key and language. Falls back to instance language or class default when lang is omitted.
 - get_all_keys(lang=None): Return a list of all prompt keys for the specified language; falls back to instance/default language when omitted.
 ''')
@@ -413,7 +417,7 @@ Args:
     key (str): 提示语的键名。
     lang (str): 可选，语言代码 ('zh' 或 'en')。若未提供，使用实例语言或类默认语言。
 
-Returns:
+**Returns:**\n
 - str 或 dict: 返回对应的提示语（可能是字符串或结构化 dict），若未找到则抛出 ValueError。
 ''')
 
@@ -424,7 +428,7 @@ Args:
     key (str): The prompt key name.
     lang (str): Optional language code ('zh' or 'en'). If omitted, instance language or class default is used.
 
-Returns:
+**Returns:**\n
 - str or dict: The prompt content (may be a string or structured dict). Raises ValueError if not found.
 ''')
 
@@ -434,7 +438,7 @@ add_chinese_doc('LazyLLMPromptLibraryBase.get_all_keys', '''\
 Args:
     lang (str): 可选，语言代码 ('zh' 或 'en')。若未提供，使用实例语言或类默认语言。
 
-Returns:
+**Returns:**\n
 - list: 包含所有键名的列表；若语言不受支持则返回空列表并记录警告。
 ''')
 
@@ -444,14 +448,14 @@ List all available prompt keys for a specified language.
 Args:
     lang (str): Optional language code ('zh' or 'en'). If omitted, instance language or class default is used.
 
-Returns:
+**Returns:**\n
 - list: A list of key names. Returns an empty list and logs a warning if the language is unsupported.
 ''')
 
 add_chinese_doc('DataPrompt', '''\
 结构化提示语库(用于数据处理模块)，支持将提示语以字典形式存储（包含 system/user/tools/history/extra_keys 等字段），并通过 ChatPrompter 构建可用的对话提示器。
 
-特点：
+特点：\n
 - 支持以类方法 add_prompt 动态添加提示语。
 - __call__ 可返回 ChatPrompter 或原始字典（return_raw=True）。
 ''')
@@ -459,7 +463,7 @@ add_chinese_doc('DataPrompt', '''\
 add_english_doc('DataPrompt', '''\
 Structured prompt library (for data processing modules) that stores prompts as dictionaries (including fields like system/user/tools/history/extra_keys) and builds ChatPrompter instances for use.
 
-Features:
+Features:\n
 - Prompts can be added dynamically via the class method add_prompt.
 - __call__ returns a ChatPrompter by default or the raw prompt dict when return_raw=True.
 ''')
@@ -472,7 +476,7 @@ Args:
     lang (str): 可选，语言代码。
     return_raw (bool): 若为 True，返回原始字典；否则返回 ChatPrompter 实例。
 
-Returns:
+**Returns:**\n
 - ChatPrompter 或 dict: 根据 return_raw 决定返回类型。若未找到会抛出 ValueError。
 ''')
 
@@ -484,7 +488,7 @@ Args:
     lang (str): Optional language code.
     return_raw (bool): If True, return the raw dict; otherwise return a ChatPrompter instance.
 
-Returns:
+**Returns:**\n
 - ChatPrompter or dict: Type depends on return_raw. Raises ValueError if key not found.
 ''')
 
@@ -520,7 +524,6 @@ Note: At least one of system_prompt or user_prompt must be provided.
 
 add_example('DataPrompt', '''\
 >>> from lazyllm import DataPrompt
->>> # 动态添加一个结构化提示（也可在加载时来自文件）
 >>> DataPrompt.add_prompt(
 ...     act='simple_summarize',
 ...     system_prompt='You are a concise summarizer.',
@@ -528,11 +531,9 @@ add_example('DataPrompt', '''\
 ...     lang='en'
 ... )
 >>> lib = DataPrompt(lang='en')
->>> # 获取 ChatPrompter 实例
 >>> prompter = lib('simple_summarize')
 >>> print(type(prompter))
 <class 'lazyllm.components.prompter.chatPrompter.ChatPrompter'>
->>> # 获取原始字典
 >>> raw = lib('simple_summarize', return_raw=True)
 >>> print(raw['system'][:20])
 You are a concise su

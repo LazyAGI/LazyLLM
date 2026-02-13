@@ -18,6 +18,14 @@
       - format
       - partial
 
+::: lazyllm.prompt_templates.LazyLLMPromptLibraryBase
+    members:
+    exclude-members:
+
 ::: lazyllm.ActorPrompt
+    members:
+    exclude-members:
+
+::: lazyllm.DataPrompt
     members:
     exclude-members:
