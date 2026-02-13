@@ -6,7 +6,7 @@ from collections import defaultdict
 from lazyllm.thirdparty import pandas as pd
 from tqdm import tqdm
 from lazyllm import LOG
-from .SQL_EvalHardness import EvalHardness, EvalHardnessLite, Schema
+from .sql_evalhardness import EvalHardness, EvalHardnessLite, Schema
 
 
 Text2SQLOps = data_register.new_group('text2sql_ops')

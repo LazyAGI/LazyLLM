@@ -1,7 +1,7 @@
 import os
 import shutil
 from lazyllm import config
-from lazyllm.tools.data.operators import text2SQL_ops
+from lazyllm.tools.data.operators import text2sql_ops
 import pytest  # noqa: F401
 
 class MockDatabaseManager:
@@ -70,7 +70,7 @@ class TestText2SQLOperators:
 
     def test_sql_generator(self):
         mock_model = MockModel(return_val='```sql SELECT * FROM users ```')
-        op = text2SQL_ops.SQLGenerator(
+        op = text2sql_ops.SQLGenerator(
             model=mock_model,
             database_manager=self.db_manager,
             generate_num=1,
@@ -83,7 +83,7 @@ class TestText2SQLOperators:
         assert res[0]['db_id'] == 'test_db'
 
     def test_sql_executability_filter(self):
-        op = text2SQL_ops.SQLExecutabilityFilter(
+        op = text2sql_ops.SQLExecutabilityFilter(
             database_manager=self.db_manager,
             _save_data=False
         )
@@ -101,7 +101,7 @@ class TestText2SQLOperators:
     def test_text2sql_question_generator(self):
         mock_model = MockModel(return_val='[QUESTION-START] Who are the users? [QUESTION-END]\n'
                                           '[EXTERNAL-KNOWLEDGE-START] none [EXTERNAL-KNOWLEDGE-END]')
-        op = text2SQL_ops.Text2SQLQuestionGenerator(
+        op = text2sql_ops.Text2SQLQuestionGenerator(
             model=mock_model,
             database_manager=self.db_manager,
             question_candidates_num=1,
@@ -114,7 +114,7 @@ class TestText2SQLOperators:
 
     def test_text2sql_correspondence_filter(self):
         mock_model = MockModel(return_val='Yes')
-        op = text2SQL_ops.Text2SQLCorrespondenceFilter(
+        op = text2sql_ops.Text2SQLCorrespondenceFilter(
             model=mock_model,
             database_manager=self.db_manager,
             _save_data=False
@@ -130,7 +130,7 @@ class TestText2SQLOperators:
         assert len(res_no) == 0
 
     def test_text2sql_prompt_generator(self):
-        op = text2SQL_ops.Text2SQLPromptGenerator(
+        op = text2sql_ops.Text2SQLPromptGenerator(
             database_manager=self.db_manager,
             _save_data=False
         )
@@ -141,7 +141,7 @@ class TestText2SQLOperators:
 
     def test_text2sql_cot_generator(self):
         mock_model = MockModel(return_val='Step 1: Select all columns from users table.')
-        op = text2SQL_ops.Text2SQLCoTGenerator(
+        op = text2sql_ops.Text2SQLCoTGenerator(
             model=mock_model,
             database_manager=self.db_manager,
             sampling_num=2,
@@ -153,7 +153,7 @@ class TestText2SQLOperators:
         assert res[0]['cot_responses'][0] == 'Step 1: Select all columns from users table.'
 
     def test_text2sql_cot_voting_generator(self):
-        op = text2SQL_ops.Text2SQLCoTVotingGenerator(
+        op = text2sql_ops.Text2SQLCoTVotingGenerator(
             database_manager=self.db_manager,
             _save_data=False
         )
@@ -167,7 +167,7 @@ class TestText2SQLOperators:
         assert res[0]['SQL'] in ['SELECT * FROM users', 'SELECT id FROM users']
 
     def test_sql_component_classifier(self):
-        op = text2SQL_ops.SQLComponentClassifier(_save_data=False)
+        op = text2sql_ops.SQLComponentClassifier(_save_data=False)
         data = {'SQL': 'SELECT name FROM users WHERE id > 1 GROUP BY name HAVING count(*) > 1 ORDER BY name LIMIT 1'}
         res = op([data])
         # Based on EvalHardnessLite logic in SQL_EvalHardness.py
@@ -176,7 +176,7 @@ class TestText2SQLOperators:
 
     def test_sql_execution_classifier(self):
         mock_model = MockModel(return_val='```sql SELECT * FROM users ```')
-        op = text2SQL_ops.SQLExecutionClassifier(
+        op = text2sql_ops.SQLExecutionClassifier(
             model=mock_model,
             database_manager=self.db_manager,
             num_generations=5,
