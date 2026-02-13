@@ -70,7 +70,7 @@ class TestPaddleOCRPDFReader(object):
         assert len(root_docs) == 1, 'Return result should be a single RichDocNode'
         assert isinstance(root_docs[0], RichDocNode), 'Return result should be a RichDocNode'
         # Check if image_path in image node metadata actually exists
-        docs = RichTransform().transform(root_docs[0])
+        docs = RichTransform().forward([root_docs[0]])
         image_nodes = [doc for doc in docs if doc.metadata.get('type') == 'image']
         assert len(image_nodes) > 0, 'Return result should contain image nodes'
         for image_node in image_nodes:
@@ -94,12 +94,12 @@ class TestPaddleOCRPDFReader(object):
         assert len(docs) == 1, 'When split_doc=True, should return only one node'
         assert isinstance(docs[0], RichDocNode), 'Return result should be a RichDocNode'
 
-        splitted_nodes = SentenceSplitter(chunk_size=100, chunk_overlap=10).transform(docs[0])
+        splitted_nodes = SentenceSplitter(chunk_size=100, chunk_overlap=10).forward([docs[0]])
         assert isinstance(splitted_nodes, list)
         assert len(splitted_nodes) > 0, 'Return result should not be empty'
-        assert isinstance(splitted_nodes[0], str), 'Return result should be a string'
+        assert isinstance(splitted_nodes[0], DocNode), 'Return result should be a DocNode'
 
-        rich_nodes = RichTransform().transform(docs[0])
+        rich_nodes = RichTransform().forward([docs[0]])
         assert isinstance(rich_nodes, list)
         assert len(rich_nodes) > 0, 'Return result should not be empty'
         assert isinstance(rich_nodes[0], DocNode), 'Return result should be a DocNode'
@@ -114,7 +114,7 @@ class TestPaddleOCRPDFReader(object):
             format_block_content=False
         )
         docs1 = reader1(self.test_pdf)
-        docs1 = RichTransform().transform(docs1[0])
+        docs1 = RichTransform().forward([docs1[0]])
         assert isinstance(docs1, list)
         assert len(docs1) > 0, 'Return result should not be empty when format_block_content=False'
 
@@ -124,7 +124,7 @@ class TestPaddleOCRPDFReader(object):
             use_layout_detection=False
         )
         docs2 = reader2(self.test_pdf)
-        docs2 = RichTransform().transform(docs2[0])
+        docs2 = RichTransform().forward([docs2[0]])
         assert isinstance(docs2, list)
         assert len(docs2) > 0 and len(docs2) < 15, 'Return result should not be empty when use_layout_detection=False'
 
@@ -134,7 +134,7 @@ class TestPaddleOCRPDFReader(object):
             use_chart_recognition=False
         )
         docs3 = reader3(self.test_pdf)
-        docs3 = RichTransform().transform(docs3[0])
+        docs3 = RichTransform().forward([docs3[0]])
         assert isinstance(docs3, list)
         assert len(docs3) > 0, 'Return result should not be empty when use_chart_recognition=False'
 
@@ -144,7 +144,7 @@ class TestPaddleOCRPDFReader(object):
             drop_types=['header', 'footer', 'aside_text']
         )
         docs4 = reader4(self.test_pdf)
-        docs4 = RichTransform().transform(docs4[0])
+        docs4 = RichTransform().forward([docs4[0]])
         assert isinstance(docs4, list)
         assert len(docs4) > 0, 'Return result should not be empty when using drop_types'
         # Check that metadata should not contain filtered types
