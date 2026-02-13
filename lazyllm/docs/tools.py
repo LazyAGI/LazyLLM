@@ -5211,39 +5211,28 @@ add_example('rag.transform.treefixer.TreeFixerParser', '''
 >>> parser(nodes)
 ''')
 
-add_english_doc('rag.transform.contentfilter.ContentFilter', '''
-A content filter that filters the nodes by the rules.
+add_english_doc('rag.transform.contentfilter.ContentFiltParser', '''
+A content filter parser that filters the nodes by the rules.
 
 Args:
     rules (RuleSet): The rules to apply to the nodes.
-    return_trace (bool): Whether to return the trace of the nodes.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
     **kwargs: Additional parameters passed to the transformation function.
 ''')
 
-add_chinese_doc('rag.transform.contentfilter.ContentFilter', '''
-一个内容过滤器，负责过滤节点。
+add_chinese_doc('rag.transform.contentfilter.ContentFiltParser', '''
+一个内容过滤器解析器，负责过滤节点。
 
 Args:
     rules (RuleSet): 要应用的规则。
     num_workers (int): Controls the number of threads or processes used for parallel processing.
-    return_trace (bool): Whether to return the trace of the nodes.
     **kwargs: Additional parameters passed to the transformation function.
 ''')
 
-add_chinese_doc('rag.transform.contentfilter.ContentFilter', '''
-一个内容过滤器，负责过滤节点。
-
-Args:
-    rules (RuleSet): 要应用的规则。
-    num_workers (int): 控制并行处理的线程/进程数量。
-    return_trace (bool): 是否返回节点的跟踪信息。
-    **kwargs: 传递给转换函数的额外参数。
-''')
-
-add_example('rag.transform.contentfilter.ContentFilter', '''
+add_example('rag.transform.contentfilter.ContentFiltParser', '''
 >>> import lazyllm
->>> from lazyllm.tools import ContentFilter
->>> parser = ContentFilter(rules=RuleSet([Rule(name='rule1', match=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)]))
+>>> from lazyllm.tools import ContentFiltParser
+>>> parser = ContentFiltParser(rules=RuleSet([Rule(name='rule1', match=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)]))
 >>> parser(nodes)
 ''')
 
