@@ -1,12 +1,9 @@
 import os
-import time
-import pytest
-import random
 import shutil
 import json
 from lazyllm import config, LOG
-from lazyllm.tools.data import demo1, demo2, data_register
-
+from lazyllm.tools.data import demo1, demo2, Text2qa
+from lazyllm import OnlineChatModule
 
 class TestDataOperators:
 
@@ -109,38 +106,48 @@ class TestDataOperators:
         sorted_load = sorted(load_res, key=lambda x: x['text'])
         assert sorted_res == sorted_load
 
-    @pytest.mark.skip(reason='Long running test')
-    def test_dummy_llm_operator(self):
-        num_qa = 60000
+    # text2qa_ops tests
+    def test_text2qa_text_to_chunks(self):
+        # Example from data.operators.text2qa_ops.TextToChunks
+        op = Text2qa.TextToChunks(input_key='content', output_key='chunk', chunk_size=10, tokenize=False)
+        data = [{'content': 'line1\nline2\nline3\nline4'}]
+        res = op(data)
+        assert res == [
+            {'content': 'line1\nline2\nline3\nline4', 'chunk': 'line1\nline2'},
+            {'content': 'line1\nline2\nline3\nline4', 'chunk': 'line3\nline4'},
+        ]
 
-        @data_register('data.demo1', rewrite_func='forward', _concurrency_mode='thread')
-        def dummy_llm_op(data, input_key='text', output_key='llm_output'):
-            assert isinstance(data, dict)
-            content = data.get(input_key, '')
-            time.sleep(random.uniform(2, 12))  # Simulate LLM latency with variability
-            data[output_key] = f'LLM response for: {content}'
-            return data
+    def test_text2qa_empty_or_noise_filter(self):
+        # Example from data.operators.text2qa_ops.empty_or_noise_filter
+        op = Text2qa.empty_or_noise_filter(input_key='chunk')
+        data = [{'chunk': 'hello'}, {'chunk': ''}, {'chunk': '\n'}]
+        res = op(data)
+        assert res == [{'chunk': 'hello'}]
 
-        llm_func = demo1.dummy_llm_op(input_key='text', output_key='llm_output')
-        assert llm_func._concurrency_mode == 'thread'
-        inputs = [{'text': f'query_{i}', 'id': i} for i in range(num_qa)]
-        res = llm_func(inputs)
+    def test_text2qa_invalid_unicode_cleaner(self):
+        # Example from data.operators.text2qa_ops.invalid_unicode_cleaner
+        op = Text2qa.invalid_unicode_cleaner(input_key='chunk')
+        data = [{'chunk': 'valid text\uFFFE tail'}]
+        res = op(data)
+        assert res == [{'chunk': 'valid text tail'}]
 
-        assert len(res) == num_qa
+    def test_text2qa_chunk_to_qa(self):
+        # Example from data.operators.text2qa_ops.ChunkToQA
+        llm = OnlineChatModule()
+        op = Text2qa.ChunkToQA(input_key='chunk', query_key='query', answer_key='answer', model=llm)
+        data = [{'chunk': '今天是晴天！'}]
+        res = op(data)
+        assert len(res) == 1
+        assert 'chunk' in res[0] and 'query' in res[0] and 'answer' in res[0]
 
-        sorted_res = sorted(res, key=lambda x: x['id'])
-        for i, item in enumerate(sorted_res):
-            expected_text = f'query_{i}'
-            expected_llm = f'LLM response for: {expected_text}'
-            assert item['text'] == expected_text
-            assert item['llm_output'] == expected_llm
-
-        load_res = []
-        with open(llm_func._store.save_path, 'r', encoding='utf-8') as f:
-            lines = f.readlines()
-            assert len(lines) == num_qa
-            for line in lines:
-                data = json.loads(line)
-                load_res.append(data)
-        sorted_load = sorted(load_res, key=lambda x: x['id'])
-        assert sorted_res == sorted_load
+    def test_text2qa_qa_scorer(self):
+        # Example from data.operators.text2qa_ops.QAScorer
+        llm = OnlineChatModule()
+        op = Text2qa.QAScorer(input_key='chunk', output_key='score', query_key='query', answer_key='answer', model=llm)
+        data = [
+            {'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！'},
+            {'chunk': '1+1=2', 'query': '1+1=?', 'answer': '3'},
+        ]
+        res = op(data)
+        assert len(res) == 2
+        assert res[0].get('score') == 1 and res[1].get('score') == 0
