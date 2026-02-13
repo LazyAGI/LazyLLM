@@ -247,10 +247,13 @@ Args:
 
 add_example('data.operators.demo_ops.process_uppercase', """\
 ```python
-from lazyllm.tools.data.operators.demo_ops import process_uppercase
+from lazyllm.tools.data import Demo1
 
-op = process_uppercase(input_key='text')
-print(op({'text': 'hello'}))  # {'text': 'HELLO'}
+op = Demo1.process_uppercase(input_key='text')
+data = [{'text': 'hello'}]
+res = op(data)
+print(res)
+# [{'text': 'HELLO'}]
 ```
 """)
 
@@ -276,10 +279,12 @@ Args:
 
 add_example('data.operators.demo_ops.build_pre_suffix', """\
 ```python
-from lazyllm.tools.data.operators.demo_ops import build_pre_suffix
+from lazyllm.tools.data import Demo1
 
-op = build_pre_suffix(input_key='text', prefix='Hello, ', suffix='!')
-print(op([{'text': 'world'}]))
+op = Demo1.build_pre_suffix(input_key='text', prefix='Hello, ', suffix='!')
+data = [{'text': 'world'}]
+res = op(data)
+print(res)
 # [{'text': 'Hello, world!'}]
 ```
 """)
@@ -308,10 +313,13 @@ Args:
 
 add_example('data.operators.demo_ops.AddSuffix', """\
 ```python
-from lazyllm.tools.data.operators.demo_ops import AddSuffix
+from lazyllm.tools.data import Demo2
 
-op = AddSuffix(suffix='!!!', input_key='text', _max_workers=2)
-print(op([{'text': 'wow'}]))  # [{'text': 'wow!!!'}]
+op = Demo2.AddSuffix(suffix='!!!', input_key='text', _max_workers=2)
+data = [{'text': 'wow'}]
+res = op(data)
+print(res)
+# [{'text': 'wow!!!'}]
 ```
 """)
 
@@ -333,10 +341,12 @@ Args:
 
 add_example('data.operators.demo_ops.rich_content', """\
 ```python
-from lazyllm.tools.data.operators.demo_ops import rich_content
+from lazyllm.tools.data import Demo2
 
-op = rich_content(input_key='text')
-print(op({'text': 'This is a test.'}))
+op = Demo2.rich_content(input_key='text')
+data = [{'text': 'This is a test.'}]
+res = op(data)
+print(res)
 # [
 #   {'text': 'This is a test.'},
 #   {'text': 'This is a test. - part 1'},
@@ -364,10 +374,13 @@ Args:
 
 add_example('data.operators.demo_ops.error_prone_op', """\
 ```python
-from lazyllm.tools.data.operators.demo_ops import error_prone_op
+from lazyllm.tools.data import Demo2
 
-op = error_prone_op(input_key='text', _save_data=True, _concurrency_mode='single')
-res = op([{'text': 'ok'}, {'text': 'fail'}, {'text': 'ok2'}])
+op = Demo2.error_prone_op(input_key='text', _save_data=True, _concurrency_mode='single')
+data = [{'text': 'ok'}, {'text': 'fail'}, {'text': 'ok2'}]
+res = op(data)
+print(res)
+# [{'text': 'Processed: ok'}, {'text': 'Processed: ok2'}]
 # valid results skip the failed item; error details written to error file
 ```
 """)
@@ -399,11 +412,13 @@ Args:
 
 add_example('data.operators.text2qa_ops.TextToChunks', """\
 ```python
-from lazyllm.tools.data.operators.text2qa_ops import TextToChunks
+from lazyllm.tools.data import Text2qa
 
-op = TextToChunks(input_key='content', output_key='chunk', chunk_size=10, tokenize=False)
-data = [{'content': 'line1\\nline2\\nline3\\nline4'}]
-print(op(data))  # list of dicts, each with 'chunk' containing a piece of text
+op = Text2qa.TextToChunks(input_key='content', output_key='chunk', chunk_size=10, tokenize=False)
+data = [{'content': 'line1\nline2\nline3\nline4'}]
+res = op(data)
+print(res)
+# [{'content': 'line1\nline2\nline3\nline4', 'chunk': 'line1\nline2'}, {'content': 'line1\nline2\nline3\nline4', 'chunk': 'line3\nline4'}]
 ```
 """)
 
@@ -425,12 +440,13 @@ Args:
 
 add_example('data.operators.text2qa_ops.empty_or_noise_filter', """\
 ```python
-from lazyllm.tools.data.operators.text2qa_ops import empty_or_noise_filter
+from lazyllm.tools.data import Text2qa
 
-op = empty_or_noise_filter(input_key='chunk')
-print(op({'chunk': 'hello'}))   # {'chunk': 'hello'}
-print(op({'chunk': ''}))        # []
-print(op({'chunk': '!!!'}))     # [] (no word/CJK)
+op = Text2qa.empty_or_noise_filter(input_key='chunk')
+data = [{'chunk': 'hello'}, {'chunk': ''}, {'chunk': '\n'}]
+res = op(data)
+print(res)
+# [{'chunk': 'hello'}]
 ```
 """)
 
@@ -452,11 +468,13 @@ Args:
 
 add_example('data.operators.text2qa_ops.invalid_unicode_cleaner', """\
 ```python
-from lazyllm.tools.data.operators.text2qa_ops import invalid_unicode_cleaner
+from lazyllm.tools.data import Text2qa
 
-op = invalid_unicode_cleaner(input_key='chunk')
-data = {'chunk': 'valid text\\uFFFE tail'}
-print(op(data))  # {'chunk': 'valid text tail'}
+op = Text2qa.invalid_unicode_cleaner(input_key='chunk')
+data = {'chunk': 'valid text\uFFFE tail'}
+res = op(data)  # 剔除乱码\uFFFE
+print(res)
+[{'chunk': 'valid text tail'}]
 ```
 """)
 
@@ -486,11 +504,15 @@ Args:
 
 add_example('data.operators.text2qa_ops.ChunkToQA', """\
 ```python
-from lazyllm.tools.data.operators.text2qa_ops import ChunkToQA
+from lazyllm.tools.data import Text2qa
+from lazyllm import OnlineChatModule
 
-op = ChunkToQA(input_key='chunk', query_key='query', answer_key='answer')
-data = [{'chunk': 'Python is a programming language.'}]
-res = op(data)  # each item gets 'query' and 'answer' from the model
+llm = OnlineChatModule()
+op = Text2qa.ChunkToQA(input_key='chunk', query_key='query', answer_key='answer', model=llm)
+data = [{'chunk': '今天是晴天！'}]
+res = op(data)
+print(res)
+# [{'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！'}]
 ```
 """)
 
@@ -522,11 +544,18 @@ Args:
 
 add_example('data.operators.text2qa_ops.QAScorer', """\
 ```python
-from lazyllm.tools.data.operators.text2qa_ops import QAScorer
+from lazyllm.tools.data import Text2qa
+from lazyllm import OnlineChatModule
 
-op = QAScorer(input_key='chunk', output_key='score', query_key='query', answer_key='answer')
-data = [{'chunk': '...', 'query': 'What is X?', 'answer': 'X is ...'}]
-res = op(data)  # each item gets 'score' 0 or 1 from the model
+llm = OnlineChatModule()
+op = Text2qa.QAScorer(input_key='chunk', output_key='score', query_key='query', answer_key='answer', model=llm)
+data = [
+{'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！'},
+{'chunk': '1+1=2', 'query': '1+1=?', 'answer': '3'}
+]
+res = op(data)
+print(res)
+# [{'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！', 'score': 1}, {'chunk': '1+1=2', 'query': '1+1=?', 'answer': '3', 'score': 0}]
 ```
 """)
 
