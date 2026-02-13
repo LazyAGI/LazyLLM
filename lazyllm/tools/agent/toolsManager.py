@@ -175,6 +175,8 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool')
 if 'tool' not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group('tool')
+if 'builtin_tools' not in LazyLLMRegisterMetaClass.all_clses:
+    register.new_group('builtin_tools')
 
 TOOL_CALL_FORMAT_EXAMPLE = (
     '{"function": {"name": "tool_name", "arguments": '
@@ -196,7 +198,16 @@ class ToolManager(ModuleBase):
         _tools = []
         for element in tools:
             if isinstance(element, str):
-                _tools.append(getattr(lazyllm.tool, element)())
+                name = element.strip()
+                if '.' in name:
+                    target = lazyllm
+                    for part in name.split('.'):
+                        if not part:
+                            raise ValueError(f'invalid tool name: {element}')
+                        target = getattr(target, part)
+                    _tools.append(target())
+                else:
+                    _tools.append(getattr(lazyllm.tool, name)())
             elif isinstance(element, Callable):
                 # just to convert `element` to the internal type in `Register`
                 register('tmp_tool')(element)

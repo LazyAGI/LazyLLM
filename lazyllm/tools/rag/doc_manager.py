@@ -61,13 +61,25 @@ class DocManager(lazyllm.ModuleBase):
                 return new_path
         return f'{str(uuid.uuid4())}{suffix}'
 
+    def _parse_json_param(self, value: Optional[str]):
+        if value is None:
+            return None
+        try:
+            obj = json.loads(value)
+        except json.JSONDecodeError as e:
+            raise fastapi.HTTPException(
+                status_code=400,
+                detail=f'Invalid JSON to load: {e.msg}'
+            )
+        return obj
+
     @app.post('/upload_files')
     def upload_files(self, files: List['fastapi.UploadFile'], override: bool = False,  # noqa C901
                      metadatas: Optional[str] = None, user_path: Optional[str] = None):
         try:
             if user_path: user_path = user_path.lstrip('/')
             if metadatas:
-                metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
+                metadatas: Optional[List[Dict[str, str]]] = self._parse_json_param(metadatas)
                 if len(files) != len(metadatas):
                     raise fastapi.HTTPException(status_code=400,
                                                 detail='Length of files and metadatas should be the same')
@@ -120,7 +132,7 @@ class DocManager(lazyllm.ModuleBase):
         metadatas = request.metadatas
         try:
             if metadatas:
-                metadatas: Optional[List[Dict[str, str]]] = json.loads(metadatas)
+                metadatas: Optional[List[Dict[str, str]]] = self._parse_json_param(metadatas)
                 assert len(files) == len(metadatas), 'Length of files and metadatas should be the same'
 
             exists_files_info = self._manager.list_files(limit=None, details=True, status=DocListManager.Status.all)
@@ -251,7 +263,7 @@ class DocManager(lazyllm.ModuleBase):
                 raise fastapi.HTTPException(status_code=400, detail='Failed, no doc found')
             doc_meta = {}
             for doc in docs:
-                meta_dict = json.loads(doc.meta) if doc.meta else {}
+                meta_dict = self._parse_json_param(doc.meta) if doc.meta else {}
                 for k, v in kv_pair.items():
                     if k not in meta_dict or not meta_dict[k]:
                         meta_dict[k] = v
@@ -308,7 +320,7 @@ class DocManager(lazyllm.ModuleBase):
                     raise fastapi.HTTPException(status_code=400, detail='Failed, no doc found')
                 doc_meta = {}
                 for doc in docs:
-                    meta_dict = json.loads(doc.meta) if doc.meta else {}
+                    meta_dict = self._parse_json_param(doc.meta) if doc.meta else {}
                     self._inplace_del_meta(meta_dict, kv_pair)
                     doc_meta[doc.doc_id] = meta_dict
                 self._manager.set_docs_new_meta(doc_meta)
@@ -330,7 +342,7 @@ class DocManager(lazyllm.ModuleBase):
                 raise fastapi.HTTPException(status_code=400, detail='Failed, no doc found')
             for doc in docs:
                 doc_meta = {}
-                meta_dict = json.loads(doc.meta) if doc.meta else {}
+                meta_dict = self._parse_json_param(doc.meta) if doc.meta else {}
                 for k, v in kv_pair.items():
                     meta_dict[k] = v
                 doc_meta[doc.doc_id] = meta_dict
@@ -369,7 +381,7 @@ class DocManager(lazyllm.ModuleBase):
             if not docs:
                 raise fastapi.HTTPException(status_code=400, detail='Failed, no doc found')
             doc = docs[0]
-            meta_dict = json.loads(doc.meta) if doc.meta else {}
+            meta_dict = self._parse_json_param(doc.meta) if doc.meta else {}
             if not key:
                 raise fastapi.HTTPException(status_code=400, detail='Failed, no key found')
             if key not in meta_dict:
