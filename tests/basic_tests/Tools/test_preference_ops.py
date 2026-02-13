@@ -20,7 +20,7 @@ class TestPreferenceOperators:
             shutil.rmtree(self.root_dir)
 
     def test_intent_extractor(self):
-        llm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Pro')
+        llm = lazyllm.OnlineChatModule(source='sensenova', model='SenseChat-5')
 
         op = preference_ops.IntentExtractor(
             model=llm,
