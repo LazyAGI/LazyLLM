@@ -1,12 +1,12 @@
-## 数据处理算子
+## Data Processing Operators
 
-### 基类算子
+### Base Operators
 
 ::: lazyllm.tools.data.LazyLLMDataBase
     members:
     exclude-members:
 
-### 演示算子
+### Demo Operators
 
 ::: lazyllm.tools.data.operators.demo_ops
     members:
@@ -72,9 +72,9 @@
     members:
     exclude-members:
     
-## 数据处理 Pipeline
+## Data Processing Pipeline
 
-### 演示Pipeline
+### Demo Pipeline
 
 ::: lazyllm.tools.data.pipelines.demo_pipelines
     members:
