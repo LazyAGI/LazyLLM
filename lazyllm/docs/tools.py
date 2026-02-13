@@ -5401,21 +5401,21 @@ add_example('rag.transform.factory.LLMParser', '''
 >>> summary_parser = LLMParser(llm, language="en", task_type="summary")
 ''')
 
-add_english_doc('rag.transform.factory.LLMParser.transform', '''
+add_english_doc('rag.transform.factory.LLMParser.forward', '''
 Perform the set task on the specified document.
 
 Args:
     node (DocNode): The document on which the extraction task needs to be performed.
 ''')
 
-add_chinese_doc('rag.transform.factory.LLMParser.transform', '''
+add_chinese_doc('rag.transform.factory.LLMParser.forward', '''
 在指定的文档上执行设定的任务。
 
 Args:
     node (DocNode): 需要执行抽取任务的文档。
 ''')
 
-add_example('rag.transform.factory.LLMParser.transform', '''
+add_example('rag.transform.factory.LLMParser.forward', '''
 >>> import lazyllm
 >>> from lazyllm.tools import LLMParser
 >>> llm = lazyllm.TrainableModule("internlm2-chat-7b").start()
@@ -5425,8 +5425,8 @@ add_example('rag.transform.factory.LLMParser.transform', '''
 >>> documents = lazyllm.Document(dataset_path="/path/to/your/data", embed=m, manager=False)
 >>> rm = lazyllm.Retriever(documents, group_name='CoarseChunk', similarity='bm25', topk=6)
 >>> doc_nodes = rm("test")
->>> summary_result = summary_parser.transform(doc_nodes[0])
->>> keywords_result = keywords_parser.transform(doc_nodes[0])
+>>> summary_result = summary_parser.forward(doc_nodes[0])
+>>> keywords_result = keywords_parser.forward(doc_nodes[0])
 ''')
 
 # FuncNodeTransform
@@ -5491,7 +5491,7 @@ add_example('rag.transform.factory.FuncNodeTransform', '''
 ''')
 
 # FuncNodeTransform.transform
-add_english_doc('rag.transform.factory.FuncNodeTransform.transform', '''
+add_english_doc('rag.transform.factory.FuncNodeTransform.forward', '''
 Transform a document node using the wrapped user-defined function.
 
 This method applies the user-defined function to either the text content of the node (when trans_node=False) or the node itself (when trans_node=True).
@@ -5504,7 +5504,7 @@ Args:
 - List[Union[str, DocNode]]: The transformed results, which can be either strings or DocNode objects depending on the function implementation.
 ''')
 
-add_chinese_doc('rag.transform.factory.FuncNodeTransform.transform', '''
+add_chinese_doc('rag.transform.factory.FuncNodeTransform.forward', '''
 使用包装的用户自定义函数转换文档节点。
 
 此方法将用户自定义函数应用于节点的文本内容（当 trans_node=False 时）或节点本身（当 trans_node=True 时）。
@@ -5554,17 +5554,17 @@ add_example('rag.transform.factory.AdaptiveTransform', '''\
 ...     }
 ... ]
 >>> adaptive = AdaptiveTransform(transforms)
->>> results1 = adaptive.transform(doc1)
+>>> results1 = adaptive.forward(doc1)
 >>> print(f"文档1转换结果: {len(results1)} 个块")
 >>> for i, result in enumerate(results1):
 ...     print(f"  块 {i+1}: {result.text}")
->>> results2 = adaptive.transform(doc2)
+>>> results2 = adaptive.forward(doc2)
 >>> print(f"文档2转换结果: {len(results2)} 个块")
 >>> for i, result in enumerate(results2):
 ...     print(f"  块 {i+1}: {result.text}")      
 ''')
 
-add_english_doc('rag.transform.factory.AdaptiveTransform.transform', '''\
+add_english_doc('rag.transform.factory.AdaptiveTransform.forward', '''\
 Transform a document using the appropriate transformation strategy based on pattern matching.
 
 This method evaluates each transform configuration in order and applies the first one that matches the document's path pattern. The matching logic supports both glob patterns and custom callable functions.
@@ -5577,7 +5577,7 @@ Args:
 - List[Union[str, DocNode]]: A list of transformed results (strings or DocNode objects).
 ''')
 
-add_chinese_doc('rag.transform.factory.AdaptiveTransform.transform', '''\
+add_chinese_doc('rag.transform.factory.AdaptiveTransform.forward', '''\
 根据模式匹配使用适当的转换策略转换文档。
 
 此方法按顺序评估每个转换配置，并应用第一个匹配文档路径模式的转换。匹配逻辑支持glob模式和自定义可调用函数。
