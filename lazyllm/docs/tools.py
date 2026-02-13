@@ -1,4 +1,5 @@
 # flake8: noqa E501
+from audioop import add
 import importlib
 from . import utils
 import functools
@@ -5265,6 +5266,31 @@ add_example('rag.transform.groupby.GroupNodeParser', '''
 >>> parser(nodes)
 ''')
 
+add_english_doc('rag.transform.groupby.GroupNodeParser.process', '''
+Process nodes with optional match and miss handlers.
+
+Args:
+    nodes (List[Any]): The nodes to process.
+    on_match (Optional[Callable]): The function to handle matched nodes.
+    on_miss (Optional[Callable]): The function to handle missed nodes.
+''')
+
+add_chinese_doc('rag.transform.groupby.GroupNodeParser.process', '''
+处理节点，可选匹配和缺失处理。
+
+Args:
+    nodes (List[Any]): 要处理的节点。
+    on_match (Optional[Callable]): 处理匹配节点的函数。
+    on_miss (Optional[Callable]): 处理缺失节点的函数。
+''')
+
+add_example('rag.transform.groupby.GroupNodeParser.process', '''
+>>> import lazyllm
+>>> from lazyllm.tools import GroupNodeParser
+>>> parser = GroupNodeParser(max_length=1024, merge_title=True, num_workers=10)
+>>> nodes = parser.process(nodes, on_match=lambda n, mr, ctx: mr[1], on_miss=lambda n, ctx: n)
+''')
+
 add_english_doc('rag.transform.base.NodeTransform', '''
 Processes document nodes in batch, supporting both single-threaded and multi-threaded modes.
 
@@ -5341,6 +5367,33 @@ add_chinese_doc('rag.transform.base.NodeTransform.with_name', '''
 Args:
     name (Optional[str]): 转换器的新名称。
     copy (bool): 是否返回副本，默认为True。
+''')
+
+add_english_doc('rag.transform.base.NodeTransform.process', '''
+Process nodes with optional match and miss handlers.
+
+Args:
+    nodes (List[Any]): The nodes to process.
+    on_match (Optional[Callable]): The function to handle matched nodes.
+    on_miss (Optional[Callable]): The function to handle missed nodes.
+''')
+
+add_chinese_doc('rag.transform.base.NodeTransform.process', '''
+处理节点，可选匹配和缺失处理。
+
+Args:
+    nodes (List[Any]): 要处理的节点。
+    on_match (Optional[Callable]): 处理匹配节点的函数。
+    on_miss (Optional[Callable]): 处理缺失节点的函数。
+''')
+
+add_example('rag.transform.base.NodeTransform.process', '''
+>>> import lazyllm
+>>> from lazyllm.tools import NodeTransform
+>>> node_tran = NodeTransform(num_workers=num_workers)
+>>> doc = lazyllm.Document(dataset_path="/path/to/your/data", embed=m, manager=False)
+>>> nodes = node_tran.batch_forward(doc, "word_split")
+>>> nodes = node_tran.process(nodes, on_match=lambda n, mr, ctx: mr[1], on_miss=lambda n, ctx: n)
 ''')
 
 add_english_doc('rag.transform.factory.TransformArgs', '''
