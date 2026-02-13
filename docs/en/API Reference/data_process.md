@@ -14,7 +14,7 @@
 
 ### LLM JSON Operators
 
-::: lazyllm.tools.data.operators.LLMDataJson
+::: lazyllm.tools.data.operators.llm_base_ops
     members:
     exclude-members:
 
