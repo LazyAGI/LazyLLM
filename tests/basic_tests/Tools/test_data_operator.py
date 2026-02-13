@@ -1,8 +1,11 @@
 import os
+import time
+import pytest
+import random
 import shutil
 import json
 from lazyllm import config, LOG
-from lazyllm.tools.data import demo1, demo2, Text2qa
+from lazyllm.tools.data import demo1, demo2, data_register, Text2qa
 from lazyllm import OnlineChatModule
 
 class TestDataOperators:
@@ -104,6 +107,42 @@ class TestDataOperators:
         # 3. Check all expected entries are present
         sorted_res = sorted(res, key=lambda x: x['text'])
         sorted_load = sorted(load_res, key=lambda x: x['text'])
+        assert sorted_res == sorted_load
+
+    @pytest.mark.skip(reason='Long running test')
+    def test_dummy_llm_operator(self):
+        num_qa = 60000
+
+        @data_register('data.demo1', rewrite_func='forward', _concurrency_mode='thread')
+        def dummy_llm_op(data, input_key='text', output_key='llm_output'):
+            assert isinstance(data, dict)
+            content = data.get(input_key, '')
+            time.sleep(random.uniform(2, 12))  # Simulate LLM latency with variability
+            data[output_key] = f'LLM response for: {content}'
+            return data
+
+        llm_func = demo1.dummy_llm_op(input_key='text', output_key='llm_output')
+        assert llm_func._concurrency_mode == 'thread'
+        inputs = [{'text': f'query_{i}', 'id': i} for i in range(num_qa)]
+        res = llm_func(inputs)
+
+        assert len(res) == num_qa
+
+        sorted_res = sorted(res, key=lambda x: x['id'])
+        for i, item in enumerate(sorted_res):
+            expected_text = f'query_{i}'
+            expected_llm = f'LLM response for: {expected_text}'
+            assert item['text'] == expected_text
+            assert item['llm_output'] == expected_llm
+
+        load_res = []
+        with open(llm_func._store.save_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            assert len(lines) == num_qa
+            for line in lines:
+                data = json.loads(line)
+                load_res.append(data)
+        sorted_load = sorted(load_res, key=lambda x: x['id'])
         assert sorted_res == sorted_load
 
     # text2qa_ops tests

@@ -12,10 +12,27 @@
     members:
     exclude-members:
 
+### 纯文本生成QA对算子
+
 ::: lazyllm.tools.data.operators.text2qa_ops.TextToChunks
-    options:
-        heading_level: 4
-        members: [forward]
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.text2qa_ops.empty_or_noise_filter
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.text2qa_ops.invalid_unicode_cleaner
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.text2qa_ops.ChunkToQA
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.text2qa_ops.QAScorer
+    members:
+    exclude-members:
 
 
 
