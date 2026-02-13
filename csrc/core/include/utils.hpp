@@ -10,16 +10,17 @@
 
 namespace lazyllm {
 
-// RAG system metadata keys
-constexpr std::string_view RAG_KEY_KB_ID = "kb_id";
-constexpr std::string_view RAG_KEY_DOC_ID = "docid";
-constexpr std::string_view RAG_KEY_DOC_PATH = "lazyllm_doc_path";
-constexpr std::string_view RAG_KEY_DOC_FILE_NAME = "file_name";
-constexpr std::string_view RAG_KEY_DOC_FILE_TYPE = "file_type";
-constexpr std::string_view RAG_KEY_DOC_FILE_SIZE = "file_size";
-constexpr std::string_view RAG_KEY_DOC_CREATION_DATE = "creation_date";
-constexpr std::string_view RAG_KEY_DOC_LAST_MODIFIED_DATE = "last_modified_date";
-constexpr std::string_view RAG_KEY_DOC_LAST_ACCESSED_DATE = "last_accessed_date";
+struct RAGMetadataKeys {
+    inline static constexpr std::string_view KB_ID = "kb_id";
+    inline static constexpr std::string_view DOC_ID = "docid";
+    inline static constexpr std::string_view DOC_PATH = "lazyllm_doc_path";
+    inline static constexpr std::string_view DOC_FILE_NAME = "file_name";
+    inline static constexpr std::string_view DOC_FILE_TYPE = "file_type";
+    inline static constexpr std::string_view DOC_FILE_SIZE = "file_size";
+    inline static constexpr std::string_view DOC_CREATION_DATE = "creation_date";
+    inline static constexpr std::string_view DOC_LAST_MODIFIED_DATE = "last_modified_date";
+    inline static constexpr std::string_view DOC_LAST_ACCESSED_DATE = "last_accessed_date";
+};
 
 inline std::string JoinLines(const std::vector<std::string>& lines, char delim = '\n') {
     if (lines.empty()) return {};
@@ -77,6 +78,10 @@ inline std::string GenerateUUID() {
             out.push_back('-');
     }
     return out;
+}
+
+inline bool is_adjacent(const std::string_view& left, const std::string_view& right) {
+    return left.data() + left.size() == right.data();
 }
 
 } // namespace lazyllm

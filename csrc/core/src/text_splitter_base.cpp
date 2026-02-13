@@ -3,7 +3,30 @@
 
 namespace lazyllm {
 
-std::vector<DocNode> TextSplitterBase::split_text(const std::string_view& view, int metadata_size) const {
+/*
+ * split_text
+ * ----------
+ * Purpose:
+ * 1) Validate chunk budget after accounting for metadata tokens.
+ * 2) Recursively split the original text view into token-bounded SplitUnit pieces.
+ * 3) Merge the pieces into final chunk strings with overlap behavior aligned to Python implementation.
+ *
+ * Flow:
+ * 1) Compute effective_chunk_size = chunk_size - metadata_size.
+ * 2) Reject invalid/too-small budgets.
+ * 3) Call split_recursive(...) to produce SplitUnit sequence.
+ * 4) Call merge_chunks(...) to build final std::string chunks.
+ *
+ * Notes:
+ * - This function returns std::string chunks intentionally because current tokenizer
+ *   encode/decode materializes strings in the merge path.
+ * - Ownership is explicit here to avoid dangling string_view in downstream DocNode construction.
+ *
+ * TODO:
+ * - After tokenizer supports true string_view encode/decode, migrate this path back to
+ *   std::vector<std::string_view> and remove eager string materialization.
+ */
+std::vector<std::string> TextSplitterBase::split_text(const std::string_view& view, int metadata_size) const {
     if (view.empty()) return {};
     int effective_chunk_size = _chunk_size - metadata_size;
     if (effective_chunk_size <= 0) {
@@ -20,7 +43,7 @@ std::vector<DocNode> TextSplitterBase::split_text(const std::string_view& view, 
             "your metadata to avoid this.");
     }
     auto splits = split_recursive(view, effective_chunk_size);
-    return _merge(splits, effective_chunk_size);
+    return merge_chunks(splits, effective_chunk_size);
 }
 
 std::vector<SplitUnit> TextSplitterBase::split_recursive(
@@ -67,43 +90,87 @@ std::vector<std::string_view> TextSplitterBase::split_text_while_keeping_separat
     std::vector<std::string_view> result;
     size_t start = 0;
     const size_t sep_len = separator.size();
-    while (start <= text.size()) {
+    while (start < text.size()) {
         const size_t idx = text.find(separator, start);
-        const size_t end = (idx == std::string_view::npos) ? text.size() : idx;
-        if (end > start) // Drop empty strings
-            result.emplace_back(text.substr(start, end - start));
-        if (idx == std::string_view::npos) break;
+        if (idx == std::string_view::npos) {
+            result.emplace_back(text.substr(start));
+            break;
+        }
+
+        if (idx == start) {
+            start += sep_len;
+            continue;
+        }
+
+        result.emplace_back(text.substr(start, idx + sep_len - start));
         start = idx + sep_len;
     }
     return result;
 }
 
-std::vector<std::string> TextSplitterBase::_merge(std::vector<SplitUnit> splits, int chunk_size) {
+/**
+ *  @brief Build final chunks from token-sized split units while preserving overlap semantics.
+ *
+ *  @details
+ *  1) Convert input SplitUnit views to owned strings (MergedSplit) for safe concatenation.
+ *  2) If the tail split exactly matches chunk_size and overlap > 0:
+ *     split it by token-halves via encode/decode, then push both halves back.
+ *  3) Iterate backward:
+ *     Add previous split, or part of it, to current split as overlap.
+ *     - If the previous split is small enough, prepend it fully.
+ *     - Otherwise, prepend token-based overlap suffix from previous split.
+ *  4) Emit chunks in original order.
+ *
+ *  @todo Replace eager string materialization once tokenizer encode/decode supports
+ *  end-to-end zero-copy string_view operations.
+ */
+std::vector<std::string> TextSplitterBase::merge_chunks(const std::vector<SplitUnit>& splits, int chunk_size) const {
     if (splits.empty()) return {};
-    if (splits.size() == 1) return {splits.front().text};
 
-    SplitUnit end_split = splits.back();
-    if (end_split.token_size == chunk_size && _overlap > 0) {
-        splits.pop_back();
-        auto text_tokens = encode(end_split.text);
+    struct MergedSplit {
+        std::string text;
+        bool is_sentence = false;
+        int token_size = 0;
+
+        MergedSplit& operator+=(const MergedSplit& r) {
+            text += r.text;
+            is_sentence = is_sentence && r.is_sentence;
+            token_size += r.token_size;
+            return *this;
+        }
+    };
+    std::vector<MergedSplit> merged_splits;
+    merged_splits.reserve(splits.size() + 2);
+    for (const auto& split : splits)
+        merged_splits.push_back(MergedSplit{std::string(split.view), split.is_sentence, split.token_size});
+
+    if (merged_splits.size() == 1) return {merged_splits.front().text};
+
+    if (merged_splits.back().token_size == chunk_size && _overlap > 0) {
+        MergedSplit end_split = merged_splits.back();
+        merged_splits.pop_back();
+
+        auto text_tokens = _tokenizer->encode(end_split.text);
         const size_t half = text_tokens.size() / 2;
-        std::vector<int> p_tokens(text_tokens.begin(), text_tokens.begin() + half);
-        std::vector<int> n_tokens(text_tokens.begin() + half, text_tokens.end());
-        std::string p_text = decode(p_tokens);
-        std::string n_text = decode(n_tokens);
-        splits.push_back(SplitUnit{p_text, end_split.is_sentence, get_token_size(p_text)});
-        splits.push_back(SplitUnit{n_text, end_split.is_sentence, get_token_size(n_text)});
-        end_split = splits.back();
+        const auto split_it = text_tokens.begin() + static_cast<std::vector<int>::difference_type>(half);
+        std::vector<int> prefix_tokens(text_tokens.begin(), split_it);
+        std::vector<int> suffix_tokens(split_it, text_tokens.end());
+
+        std::string prefix_text = _tokenizer->decode(prefix_tokens);
+        std::string suffix_text = _tokenizer->decode(suffix_tokens);
+        merged_splits.push_back(
+            MergedSplit{prefix_text, end_split.is_sentence, get_token_size(prefix_text)});
+        merged_splits.push_back(
+            MergedSplit{suffix_text, end_split.is_sentence, get_token_size(suffix_text)});
     }
 
-    std::vector<std::string> result;
-    for (int idx = static_cast<int>(splits.size()) - 2; idx >= 0; --idx) {
-        SplitUnit start_split = splits[static_cast<size_t>(idx)];
-        if (start_split.token_size <= _overlap &&
-            end_split.token_size <= chunk_size - _overlap) {
-            const bool is_sentence = start_split.is_sentence && end_split.is_sentence;
-            const int token_size = start_split.token_size + end_split.token_size;
-            end_split = SplitUnit{start_split.text + end_split.text, is_sentence, token_size};
+    MergedSplit end_split = merged_splits.back();
+    std::vector<std::string> reversed_result;
+    reversed_result.reserve(merged_splits.size());
+    for (auto idx = merged_splits.size() - 2; idx >= 0; --idx) {
+        const MergedSplit& start_split = merged_splits[idx];
+        if (start_split.token_size <= _overlap && end_split.token_size <= chunk_size - _overlap) {
+            end_split += start_split;
             continue;
         }
 
@@ -114,20 +181,23 @@ std::vector<std::string> TextSplitterBase::_merge(std::vector<SplitUnit> splits,
         const int remaining_space = chunk_size - end_split.token_size;
         const int overlap_len = std::min({_overlap, remaining_space, start_split.token_size});
         if (overlap_len > 0) {
-            auto start_tokens = encode(start_split.text);
-            std::vector<int> overlap_tokens(
-                start_tokens.end() - overlap_len, start_tokens.end());
-            std::string overlap_text = decode(overlap_tokens);
-            end_split = SplitUnit{overlap_text + end_split.text, end_split.is_sentence,
-                                end_split.token_size + overlap_len};
+            auto start_tokens = _tokenizer->encode(start_split.text);
+            std::vector<int> overlap_tokens(start_tokens.end() - overlap_len, start_tokens.end());
+            std::string overlap_text = _tokenizer->decode(overlap_tokens);
+
+            end_split = MergedSplit{
+                overlap_text + end_split.text,
+                end_split.is_sentence,
+                end_split.token_size + overlap_len};
         }
 
-        result.insert(result.begin(), end_split.text);
+        reversed_result.emplace_back(end_split.text);
         end_split = start_split;
     }
 
-    result.insert(result.begin(), end_split.text);
-    return result;
+    reversed_result.emplace_back(end_split.text);
+    std::reverse(reversed_result.begin(), reversed_result.end());
+    return reversed_result;
 }
 
 }

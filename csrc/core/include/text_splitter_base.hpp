@@ -9,6 +9,7 @@
 #include <optional>
 #include <stdexcept>
 #include <string>
+#include <string_view>
 #include <utility>
 #include <variant>
 #include <vector>
@@ -47,10 +48,18 @@ public:
 
     std::vector<DocNode> transform(const DocNode* node) const override {
         if (node == nullptr) return {};
-        return split_text(node->get_text_view(), get_node_metadata_size(node));
+        auto chunks = split_text(node->get_text_view(), get_node_metadata_size(node));
+        std::vector<DocNode> nodes;
+        nodes.reserve(chunks.size());
+        for (const auto& chunk : chunks) {
+            DocNode chunk_node(chunk);
+            chunk_node.set_root_text(std::string(chunk));
+            nodes.emplace_back(std::move(chunk_node));
+        }
+        return nodes;
     }
 
-    std::vector<DocNode> split_text(const std::string_view& view, int metadata_size) const;
+    std::vector<std::string> split_text(const std::string_view& view, int metadata_size) const;
 
     virtual void set_split_functions(
         const std::vector<SplitFn>&,
@@ -60,7 +69,7 @@ public:
 
 protected:
     virtual std::vector<SplitUnit> split_recursive(const std::string_view& view, const int chunk_size) const;
-    virtual std::vector<std::string> _merge(std::vector<SplitUnit> splits, int chunk_size);
+    virtual std::vector<std::string> merge_chunks(const std::vector<SplitUnit>& splits, int chunk_size) const;
 
 private:
     std::tuple<std::vector<std::string_view>, bool> split_by_functions(const std::string_view& text) const;

@@ -19,6 +19,7 @@ namespace lazyllm {
 
 enum class MetadataMode { ALL, EMBED, LLM, NONE };
 
+// TODO: Refactor docnode management from NodeTransform to "Parant" DocNode
 class DocNode {
 public:
     using Metadata = std::unordered_map<std::string, std::any>;
