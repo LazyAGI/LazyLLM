@@ -12,6 +12,15 @@
     members:
     exclude-members:
 
+### LLM JSON Operators
+
+::: lazyllm.tools.data.operators.LLMDataJson
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.llm_json_ops
+    members:
+    exclude-members:
 
 ## Data Processing Pipeline
 
