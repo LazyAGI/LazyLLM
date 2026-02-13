@@ -36,55 +36,6 @@
 流式并发处理算法核心逻辑：
 首先向线程池提交一批初始任务至最大并发数；随后进入一个核心循环，该循环会等待并收集第一个完成的任务，将其结果（或异常）立即产出，同时从任务迭代器中取出下一个新任务提交给线程池以填补空缺；此“完成-产出-补充”的循环持续进行，直到任务迭代器耗尽且所有已提交的任务都处理完毕。
 
-## 常见算子分组
-
-- 偏好数据处理算子：意图抽取、多候选回复生成、候选评测与偏好对构造。
-- 工具调用数据处理算子：场景抽取/扩展、原子任务生成、顺序/并行任务组合、函数规格生成、多轮对话生成与组合任务过滤。
-- Text2SQL 数据处理算子：SQL 生成、可执行性过滤、问题生成、一致性校验、提示词/思维链生成、投票与分类评估。
-
-## 工具调用数据生成流程示例
-
-```python
-from lazyllm.tools.data.operators.tool_use_ops import (
-    ScenarioExtractor, AtomTaskGenerator, SequentialTaskGenerator,
-    FunctionGenerator, MultiTurnConversationGenerator
-)
-
-extract_scenario = ScenarioExtractor(model=model, input_key='content', output_key='scenario')
-gen_atomic = AtomTaskGenerator(model=model, input_key='scenario', output_key='atomic_tasks')
-gen_seq = SequentialTaskGenerator(model=model, input_key='atomic_tasks', output_key='sequential_tasks')
-func_gen = FunctionGenerator(model=model,
-                             task_key='composition_task',
-                             subtask_key='atomic_tasks',
-                             output_key='functions')
-conv_gen = MultiTurnConversationGenerator(model=model,
-                                          task_key='composition_task',
-                                          functions_key='functions',
-                                          output_key='conversation',
-                                          n_turns=6)
-
-def pick_composition_task(data):
-    items = data.get('sequential_tasks') or []
-    return items[0]['composed_task'] if items else ''
-
-item = {'content': '我想订一张从北京到上海的高铁票，下午出发最好。'}
-item = extract_scenario(item)
-item = gen_atomic(item)
-item = gen_seq(item)
-item['composition_task'] = pick_composition_task(item)
-item = func_gen(item)
-item = conv_gen(item)
-```
-
-## Text2SQL 处理建议
-
-- 先用 SQLGenerator 基于 Schema 生成 SQL，并标注复杂度。
-- 用 SQLExecutabilityFilter 做可执行性过滤，移除无法执行的 SQL。
-- 用 Text2SQLQuestionGenerator 生成自然语言问题与可选证据。
-- 用 Text2SQLCorrespondenceFilter 进行问句-SQL 一致性校验。
-- 需要优化提示与可解释性时，可串联 Text2SQLPromptGenerator、Text2SQLCoTGenerator 与 Text2SQLCoTVotingGenerator。
-- 需要质量分级时，可使用 SQLComponentClassifier 与 SQLExecutionClassifier。
-
 ## 注册算子
 
 ### 1. 最简单用法

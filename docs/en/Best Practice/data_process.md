@@ -35,55 +35,6 @@ The basic convention for the data processing module is that the type of the data
 Core logic of the streaming concurrency processing algorithm:
 First, submit a batch of initial tasks to the thread pool up to the maximum concurrency number; then enter a core loop, which waits for and collects the first completed task, immediately produces its result (or exception), and simultaneously takes the next new task from the task iterator and submits it to the thread pool to fill the vacancy; this "complete-produce-replenish" loop continues until the task iterator is exhausted and all submitted tasks are processed.
 
-## Common Operator Groups
-
-- Preference operators: intent extraction, multi-response generation, response evaluation, and preference pair construction.
-- Tool-use operators: scenario extraction/expansion, atomic task generation, sequential/parallel task composition, function spec generation, multi-turn conversation generation, and composition filtering.
-- Text2SQL operators: SQL generation, executability filtering, question generation, correspondence checks, prompt/CoT generation, voting, and quality classifiers.
-
-## Tool-Use Data Generation Example
-
-```python
-from lazyllm.tools.data.operators.tool_use_ops import (
-    ScenarioExtractor, AtomTaskGenerator, SequentialTaskGenerator,
-    FunctionGenerator, MultiTurnConversationGenerator
-)
-
-extract_scenario = ScenarioExtractor(model=model, input_key='content', output_key='scenario')
-gen_atomic = AtomTaskGenerator(model=model, input_key='scenario', output_key='atomic_tasks')
-gen_seq = SequentialTaskGenerator(model=model, input_key='atomic_tasks', output_key='sequential_tasks')
-func_gen = FunctionGenerator(model=model,
-                             task_key='composition_task',
-                             subtask_key='atomic_tasks',
-                             output_key='functions')
-conv_gen = MultiTurnConversationGenerator(model=model,
-                                          task_key='composition_task',
-                                          functions_key='functions',
-                                          output_key='conversation',
-                                          n_turns=6)
-
-def pick_composition_task(data):
-    items = data.get('sequential_tasks') or []
-    return items[0]['composed_task'] if items else ''
-
-item = {'content': 'I want a high-speed train ticket from Beijing to Shanghai this afternoon.'}
-item = extract_scenario(item)
-item = gen_atomic(item)
-item = gen_seq(item)
-item['composition_task'] = pick_composition_task(item)
-item = func_gen(item)
-item = conv_gen(item)
-```
-
-## Text2SQL Workflow Suggestions
-
-- Start with SQLGenerator to generate SQL from schema and label complexity.
-- Use SQLExecutabilityFilter to remove queries that cannot execute.
-- Use Text2SQLQuestionGenerator to produce natural questions and optional evidence.
-- Use Text2SQLCorrespondenceFilter to verify question-SQL alignment.
-- Add Text2SQLPromptGenerator, Text2SQLCoTGenerator, and Text2SQLCoTVotingGenerator for prompt and reasoning quality.
-- Use SQLComponentClassifier and SQLExecutionClassifier for quality grading.
-
 ## Registering Operators
 
 ### 1. Simplest Usage
