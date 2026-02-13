@@ -2,7 +2,7 @@ import re
 from typing import List, Optional, Tuple, Any
 
 from ..doc_node import DocNode
-from .base import NodeTransform, RuleSet, Context
+from .base import NodeTransform, RuleSet, _Context
 
 
 _NUMBERING_PATTERNS = [
@@ -155,10 +155,10 @@ class TreeFixerParser(NodeTransform):
             if children:
                 self._update_text_levels(children, level + 1)
 
-    def _on_match(self, node: DocNode, matched: tuple, ctx: Context) -> DocNode:
+    def _on_match(self, node: DocNode, matched: tuple, ctx: _Context) -> DocNode:
         return node
 
-    def _on_miss(self, node: DocNode, ctx: Context) -> DocNode:
+    def _on_miss(self, node: DocNode, ctx: _Context) -> DocNode:
         if self._should_skip_numbering(node):
             self._attach_non_title_node(node, self._last_content_parent)
             return node

@@ -5054,18 +5054,246 @@ add_example('rag.transform.code.XMLSplitter', '''
 >>> print(splitter)
 ''')
 
+add_english_doc('rag.transform.base.Rule', '''
+A rule to apply to the nodes.
+
+Args:
+    name (str): The name of the rule.
+    match (Callable): The function to match the nodes.
+    apply (Callable): The function to apply to the nodes.
+    priority (int): The priority of the rule.
+    metadata (Dict[str, Any]): The metadata of the rule.
+''')
+
+add_chinese_doc('rag.transform.base.Rule', '''
+一个规则，用于应用到节点。
+
+Args:
+    name (str): 规则的名称。
+    match (Callable): 匹配节点的函数。
+    apply (Callable): 应用节点的函数。
+    priority (int): 规则的优先级。
+    metadata (Dict[str, Any]): 规则的元数据。
+''')
+
+add_english_doc('rag.transform.base.RuleSet', '''
+A set of rules to apply to the nodes.
+
+Args:
+    rules (List[Rule]): The rules to apply to the nodes.
+''')
+
+add_chinese_doc('rag.transform.base.RuleSet', '''
+一个规则集，用于应用到节点。
+
+Args:
+    rules (List[Rule]): 要应用的规则。
+''')
+
+add_example('rag.transform.base.RuleSet', '''
+>>> import lazyllm
+>>> from lazyllm.tools import RuleSet
+>>> rules = RuleSet([Rule(name='rule1', rule=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)])
+>>> print(rules)
+''')
+
+add_english_doc('rag.transform.base.build_rule', '''
+Build a rule from a function.
+
+Args:
+    name (str): The name of the rule.
+    match (Callable): The function to match the nodes.
+    apply (Callable): The function to apply to the nodes.
+''')
+
+add_chinese_doc('rag.transform.base.build_rule', '''
+构建一个规则。
+
+Args:
+    name (str): 规则的名称。
+    match (Callable): 匹配节点的函数。
+    apply (Callable): 应用节点的函数。
+''')
+
+add_example('rag.transform.base.build_rule', '''
+>>> import lazyllm
+>>> from lazyllm.tools import build_rule
+>>> rule = build_rule(name='rule1', match=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)
+>>> print(rule)
+''')
+
+add_english_doc('rag.transform.layout.LayoutNodeParser', '''
+A layout node parser that parses layout nodes by semantics.
+
+Args:
+    rules (RuleSet): The rules to apply to the nodes.
+    group_by (Callable): The function to group the nodes.
+    post_process (Callable): The function to post process the nodes.
+    sort_by (Callable): The function to sort the nodes.
+    return_trace (bool): Whether to return the trace of the nodes.
+    **kwargs: Additional parameters passed to the transformation function.
+''')
+
+add_chinese_doc('rag.transform.layout.LayoutNodeParser', '''
+一个布局节点解析器，负责解析布局节点。
+
+Args:
+    rules (RuleSet): 要应用的规则。
+    group_by (Callable): 分组节点的函数。
+    post_process (Callable): 后处理节点的函数。
+    sort_by (Callable): 排序节点的函数。
+    return_trace (bool): 是否返回节点的跟踪信息。
+    **kwargs: 传递给转换函数的额外参数。
+''')
+
+add_example('rag.transform.layout.LayoutNodeParser', '''
+>>> import lazyllm
+>>> from lazyllm.tools import LayoutNodeParser
+>>> parser = LayoutNodeParser(rules=RuleSet([Rule(name='rule1', match=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)]))
+>>> parser(nodes)
+''')
+
+add_english_doc('rag.transform.treebuilder.TreeBuilderParser', '''
+A tree builder parser that builds a tree from the nodes.
+
+Args:
+    rules (RuleSet): The rules to apply to the nodes.
+    get_level (Callable): The function to get the level of the nodes.
+    is_valid_child (Callable): The function to check if a node is a valid child.
+    return_trace (bool): Whether to return the trace of the nodes.
+    **kwargs: Additional parameters passed to the transformation function.
+''')
+
+add_chinese_doc('rag.transform.treebuilder.TreeBuilderParser', '''
+一个树构建器，负责构建一个树。
+
+Args:
+    rules (RuleSet): 要应用的规则。
+    get_level (Callable): 获取节点层级的函数。
+    is_valid_child (Callable): 检查节点是否为有效子节点的函数。
+    return_trace (bool): 是否返回节点的跟踪信息。
+    **kwargs: 传递给转换函数的额外参数。
+''')
+
+add_example('rag.transform.treebuilder.TreeBuilderParser', '''
+>>> import lazyllm
+>>> from lazyllm.tools import TreeBuilderParser
+>>> parser = TreeBuilderParser(rules=RuleSet([Rule(name='rule1', match=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)]))
+>>> parser(nodes)
+''')
+
+add_english_doc('rag.transform.treefixer.TreeFixerParser', '''
+A tree fixer parser that fixes a tree from the nodes.
+
+Args:
+    rules (RuleSet): The rules to apply to the nodes.
+    skip_level_under (int): The level to skip the nodes.
+    extra_patterns (List[Tuple[str, str]]): The extra patterns to apply to the nodes.
+    return_trace (bool): Whether to return the trace of the nodes.
+    **kwargs: Additional parameters passed to the transformation function.
+''')
+
+add_chinese_doc('rag.transform.treefixer.TreeFixerParser', '''
+一个树修复器，负责修复一个树。
+
+Args:
+    rules (RuleSet): 要应用的规则。
+    skip_level_under (int): 跳过节点层级的函数。
+    extra_patterns (List[Tuple[str, str]]): 额外的模式。
+    return_trace (bool): 是否返回节点的跟踪信息。
+    **kwargs: 传递给转换函数的额外参数。
+''')
+
+add_example('rag.transform.treefixer.TreeFixerParser', '''
+>>> import lazyllm
+>>> from lazyllm.tools import TreeFixerParser
+>>> parser = TreeFixerParser(rules=RuleSet([Rule(name='rule1', match=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)]))
+>>> parser(nodes)
+''')
+
+add_english_doc('rag.transform.contentfilter.ContentFilter', '''
+A content filter that filters the nodes by the rules.
+
+Args:
+    rules (RuleSet): The rules to apply to the nodes.
+    return_trace (bool): Whether to return the trace of the nodes.
+    **kwargs: Additional parameters passed to the transformation function.
+''')
+
+add_chinese_doc('rag.transform.contentfilter.ContentFilter', '''
+一个内容过滤器，负责过滤节点。
+
+Args:
+    rules (RuleSet): 要应用的规则。
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    return_trace (bool): Whether to return the trace of the nodes.
+    **kwargs: Additional parameters passed to the transformation function.
+''')
+
+add_chinese_doc('rag.transform.contentfilter.ContentFilter', '''
+一个内容过滤器，负责过滤节点。
+
+Args:
+    rules (RuleSet): 要应用的规则。
+    num_workers (int): 控制并行处理的线程/进程数量。
+    return_trace (bool): 是否返回节点的跟踪信息。
+    **kwargs: 传递给转换函数的额外参数。
+''')
+
+add_example('rag.transform.contentfilter.ContentFilter', '''
+>>> import lazyllm
+>>> from lazyllm.tools import ContentFilter
+>>> parser = ContentFilter(rules=RuleSet([Rule(name='rule1', match=lambda n: n.text.startswith('Hello'), apply=lambda n, r: n)]))
+>>> parser(nodes)
+''')
+
+add_english_doc('rag.transform.groupby.GroupNodeParser', '''
+A group node parser that groups the nodes by the rules.
+
+Args:
+    max_length (int): The maximum length of the nodes.
+    merge_title (bool): Whether to merge the title of the nodes.
+    num_workers (int): Controls the number of threads or processes used for parallel processing.
+    return_trace (bool): Whether to return the trace of the nodes.
+    **kwargs: Additional parameters passed to the transformation function.
+''')
+
+add_chinese_doc('rag.transform.groupby.GroupNodeParser', '''
+一个组节点解析器，负责组节点。
+
+Args:
+    max_length (int): 节点的最大长度。
+    merge_title (bool): 是否合并节点的标题。
+    num_workers (int): 控制并行处理的线程/进程数量。
+    return_trace (bool): 是否返回节点的跟踪信息。
+    **kwargs: 传递给转换函数的额外参数。
+''')
+
+add_example('rag.transform.groupby.GroupNodeParser', '''
+>>> import lazyllm
+>>> from lazyllm.tools import GroupNodeParser
+>>> parser = GroupNodeParser(max_length=1024, merge_title=True, num_workers=10)
+>>> parser(nodes)
+''')
+
 add_english_doc('rag.transform.base.NodeTransform', '''
 Processes document nodes in batch, supporting both single-threaded and multi-threaded modes.
 
 Args:
     num_workers (int): Controls whether multi-threading is enabled (enabled when >0).
+    rules (RuleSet): The rules to apply to the nodes.
+    return_trace (bool): Whether to return the trace of the nodes.
+    **kwargs: Additional parameters passed to the transformation function.
 ''')
 
 add_chinese_doc('rag.transform.base.NodeTransform', '''
 批量处理文档节点，支持单线程/多线程模式。
 
 Args:
-    num_workers (int)：控制是否启用多线程（>0 时启用）。
+    num_workers (int)：控制是否启用多线程（>0 时启用, 默认为0）。
+    rules (RuleSet): 要应用的规则。
+    return_trace (bool): 是否返回节点的跟踪信息。
+    **kwargs: 传递给转换函数的额外参数。
 ''')
 
 add_example('rag.transform.base.NodeTransform', '''
@@ -5094,19 +5322,19 @@ Args:
     **kwargs: 额外转换参数。
 ''')
 
-add_english_doc('rag.transform.base.NodeTransform.transform', '''
+add_english_doc('rag.transform.base.NodeTransform.forward', '''
 [Abstract] Core transformation logic to implement.
 
 Args:
-    document (DocNode): Input document node.
+    nodes (Union[List[DocNode], DocNode]): Input document node(s).
     **kwargs: Implementation-specific parameters.
 ''')
 
-add_chinese_doc('rag.transform.base.NodeTransform.transform', '''
+add_chinese_doc('rag.transform.base.NodeTransform.forward', '''
 [抽象方法] 需要子类实现的核心转换逻辑。
 
 Args:
-    document (DocNode): 输入文档节点。
+    nodes (Union[List[DocNode], DocNode]): 输入文档节点(s)。
     **kwargs: 实现相关的参数。
 ''')
 

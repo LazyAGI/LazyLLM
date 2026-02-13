@@ -16,6 +16,7 @@ import threading
 from lazyllm.thirdparty import tiktoken
 from lazyllm import config, ModuleBase
 from pathlib import Path
+import inspect
 from lazyllm.thirdparty import nltk
 from lazyllm.thirdparty import transformers
 
@@ -69,8 +70,8 @@ class NodeTransform(ModuleBase):
         self._number_workers = num_workers
         self._name = None
         self.rules = rules if rules is not None else RuleSet()
-        self.on_match: Optional[Callable[[Any, Tuple['Rule', Any], 'Context'], Any]] = None
-        self.on_miss: Optional[Callable[[Any, 'Context'], Any]] = None
+        self.on_match: Optional[Callable[[Any, Tuple['Rule', Any], '_Context'], Any]] = None
+        self.on_miss: Optional[Callable[[Any, '_Context'], Any]] = None
 
     def _get_ref_nodes(self, node, ref_path):
         current = [node]
@@ -143,7 +144,7 @@ class NodeTransform(ModuleBase):
             else (instance_miss if instance_miss is not None else self._default_miss_handler)
         )
 
-        ctx = Context(total=len(nodes))
+        ctx = _Context(total=len(nodes))
         results = []
 
         for i, node in enumerate(nodes):
@@ -550,18 +551,32 @@ class _TokenTextSplitter(_TextSplitterBase):
 @dataclass(frozen=True)
 class Rule:
     name: str
-    match: Callable[[Any], bool]
-    apply: Callable[[Any, 'Rule'], Any]
+    match: Callable[[Any], Any]
+    apply: Callable[..., Any]
     priority: int = 0
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __call__(self, data: Any) -> Optional[Any]:
-        if not self.match(data):
+        match_result = self.match(data)
+        if not match_result:
             return None
+        try:
+            sig = inspect.signature(self.apply)
+            params = [
+                p for p in sig.parameters.values()
+                if p.kind in (
+                    inspect.Parameter.POSITIONAL_ONLY,
+                    inspect.Parameter.POSITIONAL_OR_KEYWORD
+                )
+            ]
+            if len(params) >= 3:
+                return self.apply(data, match_result, self)
+        except (ValueError, TypeError):
+            pass
         return self.apply(data, self)
 
 @dataclass
-class Context:
+class _Context:
     total: int
     current_idx: int = 0
     prev_node: Optional[Any] = None
@@ -574,12 +589,17 @@ def build_rule(name: str, rule: Union[str, Callable[[Any], bool]],
         compiled = re.compile(rule)
         return Rule(
             name=name,
-            match=lambda text: bool(compiled.search(text)),
-            apply=lambda text, rule: apply(compiled.search(text), text),
+            match=lambda text: compiled.search(text),
+            apply=lambda text, match_result, r: apply(match_result, text),
             priority=priority,
         )
     if callable(rule):
-        return Rule(name=name, match=rule, apply=apply, priority=priority)
+        return Rule(
+            name=name,
+            match=lambda data: True if rule(data) else None,
+            apply=lambda data, _match_result, r: apply(data, r),
+            priority=priority,
+        )
     raise TypeError('rule must be a pattern string or a predicate callable')
 
 

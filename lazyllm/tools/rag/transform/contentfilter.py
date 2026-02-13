@@ -1,21 +1,30 @@
-from lazyllm import ModuleBase
-from typing import List, Any
+from typing import List, Optional
+
+from .base import NodeTransform, RuleSet, build_rule
 from ..doc_node import DocNode
 
-class NodeTextClear(ModuleBase):
-    def __init__(self, num_workers: int = 0, **kwargs):
-        super().__init__(**kwargs)
 
-    def forward(self, document: List[DocNode], **kwargs) -> List[DocNode]:
-        return self._parse_nodes(document, **kwargs)
+DEFAULT_NON_EMPTY_RULE = RuleSet([build_rule(
+    'non_empty',
+    rule=lambda n: bool(n.text.strip() if getattr(n, 'text', '') else ''),
+    apply=lambda n, r: n,
+)])
+
+
+class ContentFiltParser(NodeTransform):
+    def __init__(self, rules: Optional[RuleSet] = None, num_workers: int = 0, **kwargs):
+        rules = rules if rules is not None else DEFAULT_NON_EMPTY_RULE
+        super().__init__(num_workers=num_workers, rules=rules, **kwargs)
 
     @classmethod
     def class_name(cls) -> str:
-        return 'NodeTextClear'
+        return 'ContentFiltParser'
 
-    def _parse_nodes(self, nodes: List[DocNode], **kwargs: Any) -> List[DocNode]:
-        result = []
-        for node in nodes:
-            if node.text.strip():
-                result.append(node)
-        return result
+    def forward(self, document: List[DocNode], **kwargs) -> List[DocNode]:
+        nodes = document if isinstance(document, (list, tuple)) else [document]
+        results = self.process(
+            nodes,
+            on_match=lambda node, match, ctx: node,
+            on_miss=lambda node, ctx: None,
+        )
+        return [x for x in results if x is not None]
