@@ -16,10 +16,6 @@ class ContentFiltParser(NodeTransform):
         rules = rules if rules is not None else DEFAULT_NON_EMPTY_RULE
         super().__init__(num_workers=num_workers, rules=rules, **kwargs)
 
-    @classmethod
-    def class_name(cls) -> str:
-        return 'ContentFiltParser'
-
     def forward(self, document: List[DocNode], **kwargs) -> List[DocNode]:
         nodes = document if isinstance(document, (list, tuple)) else [document]
         results = self.process(

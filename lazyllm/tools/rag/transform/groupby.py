@@ -22,10 +22,6 @@ class GroupNodeParser(NodeTransform):
         self.on_match = self._default_group_handler
         self.on_miss = self._default_group_handler
 
-    @classmethod
-    def class_name(cls) -> str:
-        return 'GroupNodeParser'
-
     def forward(self, document: List[DocNode], **kwargs) -> List[DocNode]:
         return self._parse_nodes(document, **kwargs)
 

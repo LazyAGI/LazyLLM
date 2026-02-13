@@ -56,10 +56,6 @@ class TreeFixerParser(NodeTransform):
         self._update_text_levels(self._result)
         return self._result
 
-    @classmethod
-    def class_name(cls) -> str:
-        return 'TreeFixerParser'
-
     def _flatten_nodes(self, nodes: List[DocNode]) -> List[DocNode]:
         result = []
         for node in nodes:

@@ -57,10 +57,6 @@ class TreeBuilderParser(NodeTransform):
     def forward(self, document: List[DocNode], **kwargs) -> List[DocNode]:
         return self._parse_nodes(document, **kwargs)
 
-    @classmethod
-    def class_name(cls) -> str:
-        return 'TreeBuilderParser'
-
     def _parse_nodes(self, nodes: List[DocNode], **kwargs: Any) -> List[DocNode]:  # noqa: C901
         if not nodes:
             return []

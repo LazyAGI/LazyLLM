@@ -71,7 +71,3 @@ class LayoutNodeParser(NodeTransform):
             result_nodes.extend(processed)
 
         return self._post_process(result_nodes)
-
-    @classmethod
-    def class_name(cls) -> str:
-        return 'LayoutNodeParser'
