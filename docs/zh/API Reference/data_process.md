@@ -12,6 +12,12 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.data.operators.text2qa_ops.TextToChunks
+    options:
+        heading_level: 4
+        members: [forward]
+
+
 
 ## 数据处理 Pipeline
 
