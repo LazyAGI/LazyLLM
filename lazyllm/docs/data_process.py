@@ -11,7 +11,7 @@ add_chinese_doc('data.data_register', """\
 数据处理算子注册器装饰器 / 工厂，用于将函数或类注册为可复用的数据处理算子。
 
 用法：
-     
+
 - 可以用来注册单条数据处理算子（实现 forward 方法或函数）。
 - 可以用来注册批处理算子（实现 forward_batch_input 方法或函数）。
 - 支持通过参数 rewrite_func 指定注册时替换框架调用的方法（'forward' 或 'forward_batch_input'）。
@@ -39,7 +39,7 @@ add_example('data.data_register', """\
 from lazyllm.tools.data import data_register
 
 Demo = data_register.new_group('Demo')
-            
+
 # register a simple batch function
 @data_register('data.Demo', rewrite_func='forward_batch_input')
 def my_batch_op(data, input_key='text'):
@@ -385,7 +385,7 @@ Args:
     **kwargs (dict): 其它可选的参数。
 """)
 
-add_english_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
 An operator that extracts a content identifier from the input text using an LLM.
 
 
@@ -395,7 +395,7 @@ Args:
     **kwargs (dict): additional user-provided arguments.
 """)
 
-add_example('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
 ```python
 from lazyllm.tools.data import agenticrag
 op = agenticrag.AgenticRAGGetIdentifier(llm=my_llm, input_key='prompts')
@@ -409,7 +409,7 @@ print('identifier:', result['identifier'])
 # AgenticRAGGetConclusion
 # =========================
 
-add_chinese_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGetConclusion', """\
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetConclusion', """\
 调用 LLM 进行结论提取和关系生成的算子。
 
 该算子根据输入文本构造提示词，并将模型的原始输出
@@ -422,7 +422,7 @@ Args:
     **kwargs (dict): 其它可选的参数。
 """)
 
-add_english_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGetConclusion', """\
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetConclusion', """\
 An operator that extracts conclusions and generates relationships using an LLM.
 
 It builds prompts from the input text and stores the raw model output
@@ -435,7 +435,7 @@ Args:
     **kwargs (dict): additional user-provided arguments.
 """)
 
-add_example('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGetConclusion', """\
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetConclusion', """\
 ```python
 from lazyllm.tools.data import agenticrag
 op = agenticrag.AgenticRAGGetConclusion(llm=my_llm)
@@ -448,7 +448,7 @@ print(result['raw_conclusion'])
 # AgenticRAGExpandConclusions
 # =========================
 
-add_chinese_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGExpandConclusions', """\
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGExpandConclusions', """\
 解析 raw_conclusion 字段中的 JSON 结论列表，
 并将其展开为多条候选任务数据。
 
@@ -460,7 +460,7 @@ Args:
     **kwargs (dict): 其它可选的参数。
 """)
 
-add_english_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGExpandConclusions', """\
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGExpandConclusions', """\
 Parses the JSON conclusion list in raw_conclusion
 and expands it into multiple candidate task records.
 
@@ -472,7 +472,7 @@ Args:
     **kwargs (dict): additional user-provided arguments.
 """)
 
-add_example('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGExpandConclusions', """\
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGExpandConclusions', """\
 ```python
 from lazyllm.tools.data import agenticrag
 op = agenticrag.AgenticRAGExpandConclusions(max_per_task=5)
@@ -488,7 +488,7 @@ print(rows)
 # AgenticRAGGenerateQuestion
 # =========================
 
-add_chinese_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGenerateQuestion', """\
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGenerateQuestion', """\
 根据主要内容标识符(ID), 关系(R), 答案(A) 生成问题（question）与标准答案（answer）的算子。
 
 Args:
@@ -496,7 +496,7 @@ Args:
     **kwargs (dict): 其它可选的参数。
 """)
 
-add_english_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGenerateQuestion', """\
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGenerateQuestion', """\
 Generates a question-answer pair from task identifier (ID), relationship (R), and answer (A).
 
 Args:
@@ -504,7 +504,7 @@ Args:
     **kwargs (dict): additional user-provided arguments.
 """)
 
-add_example('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGenerateQuestion', """\
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGenerateQuestion', """\
 ```python
 from lazyllm.tools.data import agenticrag
 op = agenticrag.AgenticRAGGenerateQuestion(llm=my_llm)
@@ -520,7 +520,7 @@ print(result['question'], result['answer'])
 # AgenticRAGCleanQA
 # =========================
 
-add_chinese_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGCleanQA', """\
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGCleanQA', """\
 对生成的问答对进行清洗与答案规范化。调用 LLM 生成 refined_answer，用于后续验证与评分。
 
 Args:
@@ -528,7 +528,7 @@ Args:
     **kwargs (dict): 其它可选的参数。
 """)
 
-add_english_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGCleanQA', """\
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGCleanQA', """\
 Cleans and refines a generated QA pair by calling the LLM to produce a refined_answer   .
 
 Args:
@@ -536,7 +536,7 @@ Args:
     **kwargs (dict): additional user-provided arguments.
 """)
 
-add_example('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGCleanQA', """\
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGCleanQA', """\
 ```python
 from lazyllm.tools.data import agenticrag
 op = agenticrag.AgenticRAGCleanQA(llm=my_llm)
@@ -549,7 +549,7 @@ print(result['refined_answer'])
 # AgenticRAGLLMVerify
 # =========================
 
-add_chinese_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGLLMVerify', """\
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGLLMVerify', """\
 使用 LLM 对问答进行回答与召回评分验证。
 
 先让模型根据 question 生成 llm_answer，
@@ -561,7 +561,7 @@ Args:
     **kwargs (dict): 其它可选的参数。
 """)
 
-add_english_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGLLMVerify', """\
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGLLMVerify', """\
 Verifies QA quality via LLM answering and recall scoring.
 
 The model first answers the question to produce llm_answer,
@@ -573,7 +573,7 @@ Args:
     **kwargs (dict): additional user-provided arguments.
 """)
 
-add_example('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGLLMVerify', """\
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGLLMVerify', """\
 ```python
 from lazyllm.tools.data import agenticrag
 op = agenticrag.AgenticRAGLLMVerify(llm=my_llm)
@@ -586,7 +586,7 @@ print(result)
 # AgenticRAGGoldenDocAnswer
 # =========================
 
-add_chinese_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGoldenDocAnswer', """\
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGoldenDocAnswer', """\
 基于黄金文档生成答案并进行评分验证。
 
 使用 golden_doc 与 question 生成答案，
@@ -599,7 +599,7 @@ Args:
     **kwargs (dict): 其它可选的参数。
 """)
 
-add_english_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGoldenDocAnswer', """\
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGoldenDocAnswer', """\
 Generates answers from a golden document and verifies via recall scoring.
 
 It produces an answer using golden_doc and question,
@@ -612,7 +612,7 @@ Args:
     **kwargs (dict): additional user-provided arguments.
 """)
 
-add_example('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGoldenDocAnswer', """\
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGoldenDocAnswer', """\
 ```python
 from lazyllm.tools.data import agenticrag
 op = agenticrag.AgenticRAGGoldenDocAnswer(llm=my_llm)
@@ -629,7 +629,7 @@ print(result)
 # AgenticRAGOptionalAnswers
 # =========================
 
-add_chinese_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGOptionalAnswers', """\
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGOptionalAnswers', """\
 为标准答案生成多个可选答案。
 
 基于 refined_answer 调用 LLM，
@@ -639,10 +639,10 @@ add_chinese_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.Agen
 Args:
     llm: 语言模型服务实例
 
-    
+
 """)
 
-add_english_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGOptionalAnswers', """\
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGOptionalAnswers', """\
 Generates multiple optional answers for a refined answer.
 
 It calls the LLM to produce semantically equivalent or similar variants,
@@ -652,7 +652,7 @@ Args:
     llm: language model service instance
 """)
 
-add_example('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGOptionalAnswers', """\
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGOptionalAnswers', """\
 ```python
 from lazyllm.tools.data import agenticrag
 op = agenticrag.AgenticRAGOptionalAnswers(llm=my_llm)
@@ -665,7 +665,7 @@ print(result['optional_answer'])
 # AgenticRAGGroupAndLimit
 # =========================
 
-add_chinese_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGroupAndLimit', """\
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGroupAndLimit', """\
 按指定字段分组并限制每组最大问答数量。
 
 对批量数据按 input_key 分组，
@@ -677,7 +677,7 @@ Args:
     max_question (int): 每组最大问答数量
 """)
 
-add_english_doc('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGroupAndLimit', """\
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGroupAndLimit', """\
 Groups data by a specified key and limits the number of QA pairs per group.
 
 It groups batch input by input_key and retains up to max_question
@@ -688,7 +688,7 @@ Args:
     max_question (int): maximum QA pairs per group
 """)
 
-add_example('data.operators.agenticrag.agenticrag_atomic_task_generator.AgenticRAGGroupAndLimit', """\
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGroupAndLimit', """\
 ```python
 from lazyllm.tools.data import agenticrag
 op = agenticrag.AgenticRAGGroupAndLimit(input_key='prompts', max_question=2)

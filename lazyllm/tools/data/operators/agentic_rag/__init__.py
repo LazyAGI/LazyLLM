@@ -20,7 +20,6 @@ from .agenticrag_depth_qa_generator import (
 from .agenticrag_qaf1_sample_evaluator import (
     qaf1_normalize_texts,
     qaf1_calculate_score,
-    AgenticRAGQAF1SampleEvaluator,
 )
 from .agenticrag_width_qa_generator import (
     WidthQAGMergePairs,
@@ -54,5 +53,4 @@ __all__ = [
     # QA F1 Evaluator operators
     'qaf1_normalize_texts',
     'qaf1_calculate_score',
-    'AgenticRAGQAF1SampleEvaluator',
 ]
