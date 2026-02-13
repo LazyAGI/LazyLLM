@@ -45,7 +45,7 @@ class MathAnswerGenerator(MathQA):
         output_structure = f'''
         输出格式要求：
         {{
-            "{self.output_key}": "推理结果"
+            "{self.output_key}": "推理结果boxed"
         }}
         '''
 
@@ -104,7 +104,7 @@ class DifficultyEvaluator(MathQA):
         output_structure = f'''
         输出格式要求：
         {{
-            "{self.output_key}": "Easy | Medium | Hard"
+            "{self.output_key}": "难度"
         }}
         '''
 
@@ -130,8 +130,6 @@ class DifficultyEvaluator(MathQA):
         - Medium : 初中/高中
         - Hard : 大学及以上
 
-        规则：
-        - 只能输出 Easy / Medium / Hard
         '''
 
         if self.user_prompt is None:
@@ -400,7 +398,7 @@ class QuestionFusionGenerator(MathQA):
         output_structure = f'''
         输出格式要求：
         {{
-            "{input_key}": "融合后的问题",
+            "{self.input_key}": "融合后的问题",
             "{self.output_key}": "推理结果"
         }}
         '''
@@ -421,18 +419,17 @@ class QuestionFusionGenerator(MathQA):
         {questions}
 
         规则：
-        - 融合列表中的问题，输出一个新问题
+        - 融合列表中的问题，生成一个更复杂的新问题
         - 输出详细的过程
-        - 最终结果使用 \\boxed{{ANSWER}} 包裹
         '''
 
         if self.user_prompt is None:
             prompt = base_prompt
         else:
-            prompt = self.user_prompt + '\n' + f'融合列表中的问题，输出一个新问题：{questions}'
+            prompt = self.user_prompt + '\n' + f'融合列表中的问题，生成一个更复杂的新问题：{questions}'
 
         res = self.model(prompt)
-
+        data[self.input_key] = res.get(self.input_key)
         data[self.output_key] = res.get(self.output_key)
 
         return data

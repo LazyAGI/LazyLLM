@@ -2,7 +2,7 @@ from ..base_data import data_register
 from lazyllm import TrainableModule
 from lazyllm.components.formatter import JsonFormatter
 from collections import Counter
-from utils import boxed_res_extractor
+from lazyllm.tools.data.operators.utils import boxed_res_extractor
 from lazyllm.thirdparty import math_verify
 
 DEFAULT_MODEL = 'qwen2.5-0.5B-instruct'
@@ -50,7 +50,7 @@ class CoTGenerator(GenCot):
 
         规则：
         - 输出详细CoT
-        - 最终答案必须使用 \\boxed{{ANSWER}} 包裹
+        - 最终答案必须使用 \boxed{{ANSWER}} 包裹
         '''
 
         if self.user_prompt is None:
@@ -90,7 +90,7 @@ class SelfConsistencyCoTGenerator(GenCot):
 
         规则：
         - 输出详细CoT
-        - 最终答案必须使用 \\boxed{{ANSWER}} 包裹
+        - 最终答案必须使用 \boxed{{ANSWER}} 包裹
         '''
         if self.user_prompt is None:
             return '请为这个问题生成带有思维链（Chain-of-Thought, CoT）的输出结果：\n' + base_prompt
@@ -106,12 +106,12 @@ class SelfConsistencyCoTGenerator(GenCot):
         boxed_answers = []
 
         prompt = self._build_prompt(question)
-
+        candidates = []
         for _ in range(self.num_samples):
             response = self.model(prompt)
             cot = response
             boxed = boxed_res_extractor(response)
-
+            candidates.append(boxed)
             if boxed is not None:
                 cot_list.append(cot)
                 boxed_answers.append(boxed)
@@ -122,7 +122,7 @@ class SelfConsistencyCoTGenerator(GenCot):
 
         counter = Counter(boxed_answers)
         majority_answer = counter.most_common(1)[0][0]
-
+        data['candidates'] = candidates
         for cot, ans in zip(cot_list, boxed_answers):
             if ans == majority_answer:
                 data[self.output_key] = cot
