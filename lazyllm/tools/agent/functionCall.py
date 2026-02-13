@@ -49,7 +49,15 @@ class FunctionCall(ModuleBase):
         super().__init__(return_trace=return_trace)
         if _tool_manager is None:
             assert tools, 'tools cannot be empty.'
-            self._sandbox = sandbox or lazyllm.sandbox[config['sandbox_type']]()
+            try:
+                self._sandbox = sandbox or lazyllm.sandbox[config['sandbox_type']]()
+            except KeyError as e:
+                message = (
+                    f'Sandbox type {config["sandbox_type"]} not found, '
+                    'the function call agent only supports the following sandbox '
+                    f'types: {list(lazyllm.sandbox.keys())}'
+                )
+                raise ValueError(message) from e
             self._tools_manager = ToolManager(tools, return_trace=return_trace, sandbox=self._sandbox)
         else:
             self._tools_manager = _tool_manager

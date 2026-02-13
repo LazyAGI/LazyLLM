@@ -145,8 +145,7 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def _rebuild_from_reduce(module_id, rebuild_object):
         if isinstance(rebuild_object, type):
             return rebuild_object()._set_mid(module_id)
-        elif isinstance(rebuild_object, callable):
-            from lazyllm.tools.agent.toolsManager import register
+        elif callable(rebuild_object):
             register('tool')(rebuild_object)
             cls_to_use = getattr(lazyllm.tool, rebuild_object.__name__)
             return cls_to_use()._set_mid(module_id)

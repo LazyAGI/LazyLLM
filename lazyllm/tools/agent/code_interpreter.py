@@ -1,7 +1,6 @@
 import lazyllm
 from lazyllm import config, call_once, once_flag
 from lazyllm.tools import fc_register
-from lazyllm.tools.sandbox import DummySandbox
 
 _sandbox = None
 _sandbox_once = once_flag()
@@ -9,7 +8,15 @@ _sandbox_once = once_flag()
 
 def _create_sandbox():
     global _sandbox
-    sandbox_cls = lazyllm.sandbox.get(config['sandbox_type'], DummySandbox)
+    try:
+        sandbox_cls = lazyllm.sandbox[config['sandbox_type']]
+    except KeyError as e:
+        message = (
+            f'Sandbox type {config["sandbox_type"]} not found, '
+            'the code interpreter tool only supports the following sandbox types: '
+            f'{list(lazyllm.sandbox.keys())}'
+        )
+        raise ValueError(message) from e
     _sandbox = sandbox_cls()
     return _sandbox
 

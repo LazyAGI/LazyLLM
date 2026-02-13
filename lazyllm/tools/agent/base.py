@@ -38,7 +38,15 @@ class LazyLLMAgentBase(ModuleBase):
         self._workspace = self._init_workspace(workspace)
         self._agent = None
         self._skill_manager = None
-        self._sandbox = sandbox or lazyllm.sandbox[config['sandbox_type']]()
+        try:
+            self._sandbox = sandbox or lazyllm.sandbox[config['sandbox_type']]()
+        except KeyError as e:
+            message = (
+                f'Sandbox type {config["sandbox_type"]} not found, '
+                'the agent only supports the following sandbox types: '
+                f'{list(lazyllm.sandbox.keys())}'
+            )
+            raise ValueError(message) from e
 
         if use_skills:
             self._skill_manager = SkillManager(skills=self._skills)
