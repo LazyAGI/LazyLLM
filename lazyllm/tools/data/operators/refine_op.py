@@ -55,6 +55,7 @@ def remove_extra_spaces(data, input_key='content'):
     assert isinstance(data, dict)
     text = data.get(input_key, '')
     if text:
+        text = text.replace('\\n', ' ').replace('\\t', ' ').replace('\\r', ' ')
         data[input_key] = ' '.join(text.split())
     return data
 
