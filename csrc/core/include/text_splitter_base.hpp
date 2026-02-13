@@ -30,6 +30,7 @@ struct SplitUnit {
 class TextSplitterBase : public NodeTransform {
 public:
     using SplitFn = std::function<std::vector<std::string>(const std::string&)>;
+    static MapParams _default_params;
 
     explicit TextSplitterBase(
         std::optional<unsigned> chunk_size,
@@ -60,6 +61,19 @@ public:
     }
 
     std::vector<std::string> split_text(const std::string_view& view, int metadata_size) const;
+    static std::vector<std::string_view> split_text_while_keeping_separator(
+        const std::string_view& text,
+        const std::string_view& separator);
+
+    TextSplitterBase& from_tiktoken_encoder(
+        const std::string& encoding_name = "gpt2",
+        const std::optional<std::string>& model_name = std::nullopt)
+    {
+        _tokenizer = std::make_shared<TiktokenTokenizer>(model_name.value_or(encoding_name));
+        return *this;
+    }
+
+    void set_tokenizer(std::shared_ptr<Tokenizer> tokenizer) { _tokenizer = std::move(tokenizer); }
 
     virtual void set_split_functions(
         const std::vector<SplitFn>&,
@@ -73,9 +87,6 @@ protected:
 
 private:
     std::tuple<std::vector<std::string_view>, bool> split_by_functions(const std::string_view& text) const;
-    std::vector<std::string_view> split_text_while_keeping_separator(
-        const std::string_view& text,
-        const std::string_view& separator) const;
 
     int get_node_metadata_size(const DocNode* node) const {
         return std::max(
@@ -86,9 +97,6 @@ private:
     int get_token_size(const std::string_view& view) const {
         return static_cast<int>(_tokenizer->encode(view).size());
     }
-
-private:
-    static MapParams _default_params;
 
 protected:
     int _chunk_size;

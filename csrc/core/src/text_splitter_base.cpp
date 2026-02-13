@@ -3,6 +3,8 @@
 
 namespace lazyllm {
 
+MapParams TextSplitterBase::_default_params{};
+
 /*
  * split_text
  * ----------
@@ -54,12 +56,12 @@ std::vector<SplitUnit> TextSplitterBase::split_recursive(
 
     auto [views, is_sentence] = split_by_functions(view);
     std::vector<SplitUnit> splits;
-    for (const auto& view : views) {
-        const int seg_token_size = get_token_size(view);
+    for (const auto& segment_view : views) {
+        const int seg_token_size = get_token_size(segment_view);
         if (seg_token_size <= chunk_size) {
-            splits.emplace_back(view, is_sentence, seg_token_size);
+            splits.push_back({segment_view, is_sentence, seg_token_size});
         } else {
-            auto new_splits = split_recursive(view, chunk_size);
+            auto new_splits = split_recursive(segment_view, chunk_size);
             splits.insert(splits.end(), new_splits.begin(), new_splits.end());
         }
     }
@@ -82,7 +84,7 @@ std::tuple<std::vector<std::string_view>, bool> TextSplitterBase::split_by_funct
 
 std::vector<std::string_view> TextSplitterBase::split_text_while_keeping_separator(
     const std::string_view& text,
-    const std::string_view& separator) const
+    const std::string_view& separator)
 {
     if (text.empty()) return {};
     else if (separator.empty()) return {text};

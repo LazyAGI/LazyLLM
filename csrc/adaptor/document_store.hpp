@@ -57,7 +57,7 @@ public:
         DocNode::Children out;
         auto& kb_id = std::any_cast<std::string&>(node->_p_global_metadata->at(std::string(RAGMetadataKeys::KB_ID)));
         auto& doc_id = std::any_cast<std::string&>(node->_p_global_metadata->at(std::string(RAGMetadataKeys::DOC_ID)));
-        auto& group_name = node->get_group_name();
+        auto& group_name = node->_group_name;
         for(auto& [current_group_name, group] : _node_groups_map) {
             if (group._parent != group_name) continue;
             if (!std::any_cast<bool>(call("is_group_active", {{"group", current_group_name}}))) continue;

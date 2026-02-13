@@ -21,7 +21,7 @@ public:
     {
         if (value.has_value()) return *value;
         std::lock_guard<std::mutex> guard(_lock);
-        auto it = _params.find(param_name);
+        auto it = _params.find(std::string(param_name));
         if (it != _params.end()) return std::any_cast<T>(it->second);
         return default_value;
     }
@@ -29,7 +29,7 @@ public:
     template <typename T>
     void set_default(const std::string_view& param_name, T value) {
         std::lock_guard<std::mutex> guard(_lock);
-        _params[param_name] = std::any(value);
+        _params[std::string(param_name)] = std::any(value);
     }
 
     void set_default(const MapType& updates) {
