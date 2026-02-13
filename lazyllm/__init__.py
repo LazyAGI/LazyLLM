@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-__version__ = '0.7.3'
+__version__ = '0.7.5'
 
 import importlib
 import builtins
@@ -20,7 +20,7 @@ from .hook import LazyLLMHook, LazyLLMFuncHook
 from .prompt_templates import ActorPrompt, DataPrompt
 from typing import TYPE_CHECKING
 if TYPE_CHECKING:
-    from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall,
+    from .tools import (Document, Reranker, Retriever, WebModule, ToolManager, FunctionCall, SkillManager,
                         FunctionCallAgent, fc_register, ReactAgent, PlanAndSolveAgent, ReWOOAgent, SentenceSplitter,
                         LLMParser)
 from .patch import patch_os_env
@@ -94,6 +94,7 @@ __all__ = [
     'Retriever',
     'Reranker',
     'ToolManager',
+    'SkillManager',
     'FunctionCall',
     'FunctionCallAgent',
     'fc_register',
