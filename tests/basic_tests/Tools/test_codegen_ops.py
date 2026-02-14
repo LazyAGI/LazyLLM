@@ -77,7 +77,6 @@ class TestCodeGenOps:
         assert result['quality_feedback'] == 'Good code.'
 
     def test_code_quality_score_filter(self):
-        # 1. 测试通过的情况
         mock_data_high = {
             'score': 8,
             'feedback': 'Good code.'
@@ -91,12 +90,9 @@ class TestCodeGenOps:
         }
         result = op.forward(data)
 
-        # Filter 逻辑通常对单条数据返回 dict，对多条数据返回 list
-        # 如果 result 是 list，取第一个；如果是 dict 直接用
         res_obj = result[0] if isinstance(result, list) else result
         assert res_obj['quality_score_filter_label'] == 1
 
-        # 2. 测试被过滤掉的情况
         mock_data_low = {
             'score': 5,
             'feedback': 'Bad code.'
@@ -109,5 +105,4 @@ class TestCodeGenOps:
             'generated_code': "print('hello')"
         }
         result_low = op_low.forward(data_low)
-        # 按照 LazyLLM Filter 的惯例，过滤掉通常返回空列表 []
         assert result_low == []

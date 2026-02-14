@@ -11,7 +11,7 @@ add_chinese_doc('data.data_register', """\
 数据处理算子注册器装饰器 / 工厂，用于将函数或类注册为可复用的数据处理算子。
 
 用法：
-     
+
 - 可以用来注册单条数据处理算子（实现 forward 方法或函数）。
 - 可以用来注册批处理算子（实现 forward_batch_input 方法或函数）。
 - 支持通过参数 rewrite_func 指定注册时替换框架调用的方法（'forward' 或 'forward_batch_input'）。
@@ -39,7 +39,7 @@ add_example('data.data_register', """\
 from lazyllm.tools.data import data_register
 
 Demo = data_register.new_group('Demo')
-            
+
 # register a simple batch function
 @data_register('data.Demo', rewrite_func='forward_batch_input')
 def my_batch_op(data, input_key='text'):
@@ -409,7 +409,6 @@ Args:
 """)
 
 add_example('data.operators.codegen_ops.CodeEnhancementInstructionGenerator', """\
-```python
 from lazyllm.tools.data.operators.codegen_ops import CodeEnhancementInstructionGenerator
 
 op = CodeEnhancementInstructionGenerator(model=model,
@@ -422,15 +421,16 @@ item = {
 }
 res = op(item)
 print(res)
+
+# Output Example:
 # {
-#   'messages': [...],
-#   'generated_instruction': "Write a Python function that prints 'hello'.\\n"
-#                            "```python\\n"
-#                            "def solution():\\n"
-#                            "    print('hello')\\n"
-#                            "```"
+#    'messages': [...],
+#    'generated_instruction': "Write a Python function that prints 'hello'.\\n"
+#                             "\\`\\`\\`python\\n"
+#                             "def solution():\\n"
+#                             "    print('hello')\\n"
+#                             "\\`\\`\\`"
 # }
-```
 """)
 
 add_chinese_doc('data.operators.codegen_ops.CodeInstructionToCodeGenerator', """\
