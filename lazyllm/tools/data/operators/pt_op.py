@@ -10,7 +10,6 @@ from lazyllm.components.formatter import encode_query_with_filepaths
 
 PT = data_register.new_group('pt')
 PT_MM = data_register.new_group('pt_mm')
-PT_TXT = data_register.new_group('pt_text')
 
 
 def _normalize_image_paths(image_path) -> list:
@@ -21,7 +20,7 @@ def _normalize_image_paths(image_path) -> list:
     return list(image_path)
 
 
-@data_register('data.pt_mm', rewrite_func='forward', _concurrency_mode='process')
+@data_register('data.pt_mm', rewrite_func='forward', _concurrency_mode='thread')
 def resolution_filter(data, image_key='image_path', min_width=256, min_height=256,
                       max_width=4096, max_height=4096, input_key=None):
     assert isinstance(data, dict)
@@ -52,7 +51,7 @@ def resolution_filter(data, image_key='image_path', min_width=256, min_height=25
         return []
 
 
-@data_register('data.pt_mm', rewrite_func='forward', _concurrency_mode='process')
+@data_register('data.pt_mm', rewrite_func='forward', _concurrency_mode='thread')
 def resolution_resize(data, image_key='image_path', max_side=1024, input_key=None, inplace=True):
     assert isinstance(data, dict)
     if input_key:
@@ -96,7 +95,7 @@ def resolution_resize(data, image_key='image_path', max_side=1024, input_key=Non
         return []
 
 
-@data_register('data.pt_mm', rewrite_func='forward', _concurrency_mode='process')
+@data_register('data.pt_mm', rewrite_func='forward', _concurrency_mode='thread')
 def integrity_check(data, image_key='image_path', input_key=None):
     assert isinstance(data, dict)
     if input_key:
@@ -283,7 +282,174 @@ class VQAGenerator(PT_MM):
             return []
 
 
-class Phi4QAGenerator(PT_TXT):
+class VQAScorer(PT_MM):
+    DEFAULT_PROMPT = (
+        'Given an image and a VQA pair (query, answer), rate the quality of this VQA. '
+        'Output JSON only. Do not output any other irrelevant content.\n'
+        '{\n'
+        '  "score": 0.0,\n'
+        '  "relevance": 0.0,\n'
+        '  "correctness": 0.0,\n'
+        '  "reason": ""\n'
+        '}\n'
+        'score: overall VQA quality [0, 1]; relevance: answer relevance to query [0, 1]; '
+        'correctness: answer correctness given the image [0, 1]. All floats.'
+    )
+
+    def __init__(self, vlm, image_key='image_path', query_key='query', answer_key='answer',
+                 prompt: Optional[str] = None,
+                 _concurrency_mode='thread', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
+        if vlm is None:
+            raise ValueError('VQAScorer requires vlm (vision-language model).')
+        self.image_key = image_key
+        self.query_key = query_key
+        self.answer_key = answer_key
+        self.prompt = prompt or self.DEFAULT_PROMPT
+        self._scorer = vlm.share().prompt(self.prompt).formatter(JsonFormatter())
+
+    def _clamp_score(self, v):
+        try:
+            return max(0.0, min(1.0, float(v)))
+        except (TypeError, ValueError):
+            return 0.0
+
+    def _calc_vqa_quality(self, query, answer, image_path):
+        if not query or not answer:
+            return 0.0, {}
+        if not image_path or not os.path.exists(image_path):
+            return 0.0, {}
+        try:
+            eval_query = (
+                f'Query: {query}\nAnswer: {answer}\n\n'
+                'Rate the quality of this VQA pair given the image. How relevant and correct is the answer?'
+            )
+            out = self._scorer(encode_query_with_filepaths(eval_query, [image_path]))
+            if not isinstance(out, dict):
+                return 0.0, {}
+            score = self._clamp_score(out.get('score', out.get('overall', 0.0)))
+            return score, out
+        except Exception as e:
+            LOG.warning(f'VLM VQA scoring failed: {e}')
+            return 0.0, {}
+
+    def forward(self, data, **kwargs):
+        assert isinstance(data, dict)
+        paths = _normalize_image_paths(data.get(self.image_key, ''))
+        query = data.get(self.query_key, '')
+        answer = data.get(self.answer_key, '')
+        if not paths or not query or not answer:
+            return []
+        try:
+            image_path = paths[0]
+            _, out = self._calc_vqa_quality(query, answer, image_path)
+            data['quality_score'] = {
+                'score': self._clamp_score(out.get('score', out.get('overall', 0.0))),
+                'relevance': self._clamp_score(out.get('relevance', 0.0)),
+                'correctness': self._clamp_score(out.get('correctness', 0.0)),
+                'reason': str(out.get('reason', '')),
+            }
+            return data
+        except Exception as e:
+            LOG.warning(f'Failed to score VQA quality: {e}')
+            return []
+
+
+class GraphRetriever(PT_MM):
+    def __init__(self, context_key='context', img_key='image_path', images_folder: Optional[str] = None,
+                 _concurrency_mode='process', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
+        self.context_key = context_key
+        self.img_key = img_key
+        self.images_folder = images_folder
+
+    def _parse_str_for_paths(self, s) -> list:
+        matches = re.findall(r'!\[.*?\]\((.*?)\)', str(s))
+        candidates = matches if matches else [str(s)] if s else []
+        paths = []
+        for p in candidates:
+            if not p or not p.strip():
+                continue
+            raw = os.path.join(self.images_folder, os.path.basename(p)) if self.images_folder else p
+            full = os.path.abspath(raw)
+            if os.path.exists(full):
+                paths.append(full)
+        return paths
+
+    def _extract_img_paths(self, img_data) -> list:
+        valid_paths = []
+        if isinstance(img_data, list):
+            for item in img_data:
+                if isinstance(item, list):
+                    for sub in item:
+                        valid_paths.extend(self._parse_str_for_paths(sub))
+                else:
+                    valid_paths.extend(self._parse_str_for_paths(item))
+        else:
+            valid_paths.extend(self._parse_str_for_paths(img_data))
+        return list(dict.fromkeys(valid_paths))
+
+    def forward(self, data, **kwargs):
+        assert isinstance(data, dict)
+        context = data.get(self.context_key, '')
+        if isinstance(context, list):
+            context = '\n\n'.join(str(c) for c in context)
+        context_stripped = context.strip() if context else ''
+        if not context_stripped:
+            data[self.img_key] = []
+            return data
+        valid_paths = self._extract_img_paths(context)
+        data[self.img_key] = valid_paths
+        return data
+
+
+class ContextQualFilter(PT):
+    DEFAULT_PROMPT = (
+        'Evaluate whether the given context (text and/or images) is suitable for generating QA pairs. '
+        'Output JSON only. Do not output any other irrelevant content.\n'
+        '{\n'
+        '  "score": 0,\n'
+        '  "reason": ""\n'
+        '}\n'
+        'score: MUST be 0 or 1 only. 1=suitable, 0=not suitable. Good context has sufficient info for Q&A.'
+    )
+
+    def __init__(self, llm, context_key='context', image_key='image_path',
+                 prompt: Optional[str] = None,
+                 _concurrency_mode='thread', **kwargs):
+        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
+        if llm is None:
+            raise ValueError('ContextQualFilter requires llm (vision- or text-language model).')
+        self.context_key = context_key
+        self.image_key = image_key
+        self.prompt = prompt or self.DEFAULT_PROMPT
+        self._evaluator = llm.share().prompt(self.prompt).formatter(JsonFormatter())
+
+    def forward(self, data, **kwargs):
+        assert isinstance(data, dict)
+        context = data.get(self.context_key, '')
+        if not context:
+            return []
+        paths = _normalize_image_paths(data.get(self.image_key, ''))
+        try:
+            query = f'Context:\n{context}\n\nIs this context suitable for generating QA pairs?'
+            inputs = encode_query_with_filepaths(query, paths) if paths else query
+            out = self._evaluator(inputs)
+            if not isinstance(out, dict):
+                return []
+            score = out.get('score', out.get('suitable', 0))
+            try:
+                score = int(float(score))
+            except (TypeError, ValueError):
+                score = 0
+            if score != 1:
+                return []
+            return data
+        except Exception as e:
+            LOG.warning(f'Context qualification evaluation failed: {e}')
+            return []
+
+class Phi4QAGenerator(PT):
     DEFAULT_PROMPT = (
         'Convert the given context (text and/or images) into pretraining-format multi-turn Q&A dialogue data. '
         'Output JSON only. Do not output any other irrelevant content.\n'
@@ -295,17 +461,17 @@ class Phi4QAGenerator(PT_TXT):
         'Each item has query (question) and answer. Generate natural, instructional Q&A suitable for LM pretraining.'
     )
 
-    def __init__(self, vlm, image_key='image_path', context_key='context', num_qa=5,
+    def __init__(self, llm, image_key='image_path', context_key='context', num_qa=5,
                  prompt: Optional[str] = None,
                  _concurrency_mode='thread', **kwargs):
         super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
-        if vlm is None:
-            raise ValueError('Phi4QAGenerator requires vlm (vision-language model).')
+        if llm is None:
+            raise ValueError('Phi4QAGenerator requires llm (vision- or text-language model).')
         self.image_key = image_key
         self.context_key = context_key
         self.num_qa = num_qa
         self.prompt = prompt or self.DEFAULT_PROMPT
-        self._generator = vlm.share().prompt(self.prompt).formatter(JsonFormatter())
+        self._generator = llm.share().prompt(self.prompt).formatter(JsonFormatter())
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
@@ -338,167 +504,3 @@ class Phi4QAGenerator(PT_TXT):
         except Exception as e:
             LOG.warning(f'Phi4 Q&A generation failed: {e}')
             return []
-
-
-class VQAScorer(PT_MM):
-    DEFAULT_PROMPT = (
-        'Rate the visual quality of this image and output JSON only. '
-        'Do not output any other irrelevant content.\n'
-        '{\n'
-        '  "score": 0.0,\n'
-        '  "clarity": 0.0,\n'
-        '  "composition": 0.0,\n'
-        '  "reason": ""\n'
-        '}\n'
-        'score: overall [0, 1]; clarity: sharpness [0, 1]; composition [0, 1]. All floats.'
-    )
-
-    def __init__(self, vlm, image_key='image_path',
-                 prompt: Optional[str] = None,
-                 _concurrency_mode='thread', **kwargs):
-        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
-        if vlm is None:
-            raise ValueError('VQAScorer requires vlm (vision-language model).')
-        self.image_key = image_key
-        self.prompt = prompt or self.DEFAULT_PROMPT
-        self._scorer = vlm.share().prompt(self.prompt).formatter(JsonFormatter())
-
-    def _clamp_score(self, v):
-        try:
-            return max(0.0, min(1.0, float(v)))
-        except (TypeError, ValueError):
-            return 0.0
-
-    def _calc_quality(self, image_path):
-        if not image_path or not os.path.exists(image_path):
-            return 0.0, {}
-        try:
-            query = 'Rate the visual quality of this image.'
-            out = self._scorer(encode_query_with_filepaths(query, [image_path]))
-            if not isinstance(out, dict):
-                return 0.0, {}
-            score = self._clamp_score(out.get('score', out.get('overall', 0.0)))
-            return score, out
-        except Exception as e:
-            LOG.warning(f'VLM quality scoring failed: {e}')
-            return 0.0, {}
-
-    def forward(self, data, **kwargs):
-        assert isinstance(data, dict)
-        paths = _normalize_image_paths(data.get(self.image_key, ''))
-        if not paths:
-            return []
-        try:
-            results = [self._calc_quality(p) for p in paths]
-            score_dicts = [r[1] for r in results]
-            n = len(score_dicts)
-            data['quality_score'] = {
-                'score': sum(
-                    self._clamp_score(d.get('score', d.get('overall', 0)))
-                    for d in score_dicts
-                ) / n if n else 0.0,
-                'clarity': sum(self._clamp_score(d.get('clarity', 0)) for d in score_dicts) / n if n else 0.0,
-                'composition': sum(self._clamp_score(d.get('composition', 0)) for d in score_dicts) / n if n else 0.0,
-                'reason': '; '.join(str(d.get('reason', '')) for d in score_dicts if d.get('reason')),
-            }
-            return data
-        except Exception as e:
-            LOG.warning(f'Failed to score image quality: {e}')
-            return []
-
-
-class ContextQualFilter(PT):
-    DEFAULT_PROMPT = (
-        'Evaluate whether the given context (text and/or images) is suitable for generating QA pairs. '
-        'Output JSON only. Do not output any other irrelevant content.\n'
-        '{\n'
-        '  "score": 0,\n'
-        '  "reason": ""\n'
-        '}\n'
-        'score: MUST be 0 or 1 only. 1=suitable, 0=not suitable. Good context has sufficient info for Q&A.'
-    )
-
-    def __init__(self, vlm, context_key='context', image_key='image_path',
-                 prompt: Optional[str] = None,
-                 _concurrency_mode='thread', **kwargs):
-        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
-        if vlm is None:
-            raise ValueError('ContextQualFilter requires vlm (vision-language model).')
-        self.context_key = context_key
-        self.image_key = image_key
-        self.prompt = prompt or self.DEFAULT_PROMPT
-        self._evaluator = vlm.share().prompt(self.prompt).formatter(JsonFormatter())
-
-    def forward(self, data, **kwargs):
-        assert isinstance(data, dict)
-        context = data.get(self.context_key, '')
-        if not context:
-            return []
-        paths = _normalize_image_paths(data.get(self.image_key, ''))
-        try:
-            query = f'Context:\n{context}\n\nIs this context suitable for generating QA pairs?'
-            inputs = encode_query_with_filepaths(query, paths) if paths else query
-            out = self._evaluator(inputs)
-            if not isinstance(out, dict):
-                return []
-            score = out.get('score', out.get('suitable', 0))
-            try:
-                score = int(float(score))
-            except (TypeError, ValueError):
-                score = 0
-            if score != 1:
-                return []
-            return data
-        except Exception as e:
-            LOG.warning(f'Context qualification evaluation failed: {e}')
-            return []
-
-
-class GraphRetriever(PT_MM):
-    def __init__(self, context_key='context', img_key='image_path', images_folder: Optional[str] = None,
-                 _concurrency_mode='process', **kwargs):
-        super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
-        self.context_key = context_key
-        self.img_key = img_key
-        self.images_folder = images_folder
-
-    def _extract_img_paths(self, img_data) -> list:
-        valid_paths = []
-
-        def _from_str(s):
-            matches = re.findall(r'!\[.*?\]\((.*?)\)', str(s))
-            candidates = matches if matches else [str(s)] if s else []
-            for p in candidates:
-                if not p or not p.strip():
-                    continue
-                raw = os.path.join(self.images_folder, os.path.basename(p)) if self.images_folder else p
-                full = os.path.abspath(raw)
-                if os.path.exists(full):
-                    valid_paths.append(full)
-
-        if isinstance(img_data, list):
-            for item in img_data:
-                if isinstance(item, list):
-                    for sub in item:
-                        _from_str(sub)
-                else:
-                    _from_str(item)
-        else:
-            _from_str(img_data)
-        return list(dict.fromkeys(valid_paths))
-
-    def forward(self, data, **kwargs):
-        assert isinstance(data, dict)
-        context = data.get(self.context_key, '')
-        if isinstance(context, list):
-            context = '\n\n'.join(str(c) for c in context)
-        if isinstance(context, str):
-            # Escape braces so context can be safely used in .format() templates downstream
-            context = context.replace('{', '{{').replace('}', '}}')
-        if not context or not context.strip():
-            return []
-
-        valid_paths = self._extract_img_paths(data.get(self.img_key, []))
-        data['context'] = context.strip()
-        data[self.img_key] = valid_paths
-        return data

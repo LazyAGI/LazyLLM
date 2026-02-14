@@ -6,7 +6,7 @@ import pytest
 import random
 import json
 from lazyllm import config, LOG
-from lazyllm.tools.data import demo1, demo2, pt, pt_mm, pt_text, data_register
+from lazyllm.tools.data import demo1, demo2, pt, pt_mm, data_register
 from lazyllm.thirdparty import PIL
 
 
@@ -231,12 +231,18 @@ class TestDataOperators:
         ji = self._test_image_file('ji.jpg')
         if not os.path.exists(ji):
             pytest.skip('ci_data/ji.jpg not found')
-        op = pt_mm.GraphRetriever(context_key='context', img_key='img')
-        data = {'context': 'Test content with {braces}', 'img': f'![]({ji})'}
+        op = pt_mm.GraphRetriever(context_key='context', img_key='img', _save_data=False)
+        data = {'context': f'Test content ![]({ji}) with {{braces}}'}
         res = op([data])
-        assert res and res[0]['context'] == 'Test content with {{braces}}'
+        assert res and 'Test content' in res[0]['context']
         assert 'img' in res[0] and len(res[0]['img']) == 1
         assert os.path.isabs(res[0]['img'][0])
+
+        # empty context: data kept, image_path as []
+        empty_res = op([{'context': '   ', 'id': 1}])
+        assert len(empty_res) == 1
+        assert empty_res[0]['context'] == '   '
+        assert empty_res[0]['img'] == []
 
     def test_text_relevance_filter(self):
         ji = self._test_image_file('ji.jpg')
@@ -273,7 +279,7 @@ class TestDataOperators:
             'qa_pairs': [{'query': 'What is it?', 'answer': 'An image.'}],
         }
         vlm = MockModel(expected_response)
-        op = pt_text.Phi4QAGenerator(vlm, num_qa=2, _concurrency_mode='single')
+        op = pt.Phi4QAGenerator(vlm, num_qa=2, _concurrency_mode='single')
         inputs = [{'context': 'Some context.', 'image_path': ji}]
         res = op(inputs)
         assert len(res) == 1
@@ -284,15 +290,20 @@ class TestDataOperators:
         ji = self._test_image_file('ji.jpg')
         if not os.path.exists(ji):
             pytest.skip('ci_data/ji.jpg not found')
-        expected_response = {'score': 0.85, 'clarity': 0.9, 'composition': 0.8, 'reason': 'Good quality'}
+        expected_response = {
+            'score': 0.85,
+            'relevance': 0.9,
+            'correctness': 0.8,
+            'reason': 'Good VQA quality',
+        }
         vlm = MockModel(expected_response)
         op = pt_mm.VQAScorer(vlm, _concurrency_mode='single')
-        inputs = [{'image_path': ji}]
+        inputs = [{'image_path': ji, 'query': 'What color is it?', 'answer': 'Red'}]
         res = op(inputs)
         assert len(res) == 1
         assert res[0]['quality_score']['score'] == 0.85
-        assert res[0]['quality_score']['clarity'] == 0.9
-        assert res[0]['quality_score']['composition'] == 0.8
+        assert res[0]['quality_score']['relevance'] == 0.9
+        assert res[0]['quality_score']['correctness'] == 0.8
 
     def test_context_qual_filter(self):
         ji = self._test_image_file('ji.jpg')
