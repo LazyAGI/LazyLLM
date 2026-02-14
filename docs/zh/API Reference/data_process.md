@@ -12,6 +12,11 @@
     members:
     exclude-members:
 
+### 预训练算子
+
+::: lazyllm.tools.data.operators.pt_op
+    members:
+    exclude-members:
 
 ## 数据处理 Pipeline
 
