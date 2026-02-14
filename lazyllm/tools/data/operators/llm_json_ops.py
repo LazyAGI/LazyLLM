@@ -1,5 +1,5 @@
 from typing import Tuple, Union
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 from .llm_base_ops import LLMDataJson
 from lazyllm import DataPrompt
@@ -8,7 +8,7 @@ from ..base_data import data_register
 LLMJsonBase = data_register.new_group('llm_json_base')
 
 class FieldExtractor(LLMDataJson, LLMJsonBase):
-    _default_prompt = DataPrompt('zh')('filed_extractor')
+    _default_prompt = DataPrompt('zh')('field_extractor')
     _default_inference_kwargs = {
         'max_new_tokens': 1024,
         'temperature': 0.2,
@@ -17,6 +17,7 @@ class FieldExtractor(LLMDataJson, LLMJsonBase):
     def __init__(self, model, prompt=None, input_keys=None, output_key=None, **kwargs):
         super().__init__(model, prompt, **kwargs)
         self.input_keys = input_keys or ['persona', 'text', 'fields']
+        assert len(self.input_keys) == 3, 'input_keys must contain exactly three keys.'
         self.output_key = output_key or 'structured_data'
 
     def preprocess(self, data: dict, **kwargs) -> Tuple[dict, dict]:
@@ -82,7 +83,7 @@ class SchemaExtractor(LLMDataJson, LLMJsonBase):
             try:
                 schema(**output)
                 return True
-            except Exception:
+            except ValidationError:
                 return False
         for key in schema:
             if key not in output:

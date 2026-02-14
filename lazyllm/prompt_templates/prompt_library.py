@@ -2,6 +2,7 @@ import os
 import json
 import copy
 import threading
+from typing import Union
 
 
 from lazyllm import LOG, ChatPrompter
@@ -101,9 +102,8 @@ class ActorPrompt(LazyLLMPromptLibraryBase):
             if lang in self._prompts:
                 LOG.info(f'After loading {rel_path}, total prompts for lang "{lang}": {len(self._prompts[lang])}')
 
-    def __call__(self, act: str, lang=None, return_raw=False) -> str:
+    def __call__(self, act: str, lang=None, return_raw=False) -> 'Union[ChatPrompter, str]':
         prompt = self.get_prompt(act, lang)  # Get the raw prompt string
-        if prompt is None: return ''
         if return_raw:
             return prompt
         return ChatPrompter(prompt)
@@ -114,13 +114,13 @@ class ActorPrompt(LazyLLMPromptLibraryBase):
 class DataPrompt(LazyLLMPromptLibraryBase):
     _prompts: dict = {}
     _default_lang = 'zh'
+    _load_lock = threading.Lock()
 
     def __init__(self, lang=None):
         super().__init__(lang)
 
-    def __call__(self, key: str, lang=None, return_raw=False) -> str:
+    def __call__(self, key: str, lang=None, return_raw=False) -> 'Union[ChatPrompter, str]':
         prompt = self.get_prompt(key, lang)  # Get the raw prompt dict
-        if prompt is None: return None
         if return_raw:
             return prompt  # Dict
 
@@ -136,16 +136,17 @@ class DataPrompt(LazyLLMPromptLibraryBase):
     @classmethod
     def add_prompt(cls, act, system_prompt=None, user_prompt=None, tools=None, history=None, extra_keys=None, lang='zh'):
         assert system_prompt or user_prompt, 'At least one of system_prompt or user_prompt must be provided'
-        if lang not in cls._prompts:
-            cls._prompts[lang] = {}
+        with cls._load_lock:
+            if lang not in cls._prompts:
+                cls._prompts[lang] = {}
 
-        if act in cls._prompts[lang]:
-            LOG.warning(f'Duplicate act "{act}" found in DataPrompt for lang {lang}. Overwriting.')
+            if act in cls._prompts[lang]:
+                LOG.warning(f'Duplicate act "{act}" found in DataPrompt for lang {lang}. Overwriting.')
 
-        cls._prompts[lang][act] = {
-            'system': system_prompt if system_prompt is not None else '',
-            'user': user_prompt if user_prompt is not None else '',
-            'tools': tools,
-            'history': history,
-            'extra_keys': extra_keys
-        }
+            cls._prompts[lang][act] = {
+                'system': system_prompt if system_prompt is not None else '',
+                'user': user_prompt if user_prompt is not None else '',
+                'tools': tools,
+                'history': history,
+                'extra_keys': extra_keys
+            }

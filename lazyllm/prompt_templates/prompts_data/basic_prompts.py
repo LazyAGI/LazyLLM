@@ -2,7 +2,7 @@
 from lazyllm.prompt_templates.prompt_library import DataPrompt
 
 
-DataPrompt.add_prompt('filed_extractor', '''\
+DataPrompt.add_prompt('field_extractor', '''\
 你是一个{persona}，专门从非结构化文本中提取结构化JSON。
 请严格按照用户指定的字段输出，不要添加额外解释。''', '''\
 文本内容：
@@ -11,7 +11,7 @@ DataPrompt.add_prompt('filed_extractor', '''\
 请提取以下字段并以JSON格式返回：
 {fields}''')
 
-DataPrompt.add_prompt('filed_extractor', '''\
+DataPrompt.add_prompt('field_extractor', '''\
 You are a {persona}, specialized in extracting structured JSON from unstructured text.
 Please strictly output according to the fields specified by the user, and do not add any additional explanations.''', '''\
 Text content:
