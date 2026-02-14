@@ -12,19 +12,7 @@
     members:
     exclude-members:
 
-::: lazyllm.tools.data.operators.embedding_synthesis.embedding_data_augmentor
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.embedding_synthesis.embedding_data_formatter
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.embedding_synthesis.embedding_hard_negative_miner
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.embedding_synthesis.embedding_query_generator
+::: lazyllm.tools.data.operators.embedding_synthesis
     members:
     exclude-members:
 
@@ -56,19 +44,7 @@
     members:
     exclude-members:
 
-::: lazyllm.tools.data.operators.reranker_synthesis.reranker_data_formatter
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.reranker_synthesis.reranker_from_embedding_converter
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.reranker_synthesis.reranker_hard_negative_miner
-    members:
-    exclude-members:
-
-::: lazyllm.tools.data.operators.reranker_synthesis.reranker_query_generator
+::: lazyllm.tools.data.operators.reranker_synthesis
     members:
     exclude-members:
     
