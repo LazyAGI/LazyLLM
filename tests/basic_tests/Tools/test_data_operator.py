@@ -170,6 +170,7 @@ class TestDataOperators:
         res = op(data)
         assert res == [{'chunk': 'valid text tail'}]
 
+    @pytest.mark.skip(reason='Long running test')
     def test_text2qa_chunk_to_qa(self):
         # Example from data.operators.text2qa_ops.ChunkToQA
         llm = OnlineChatModule()
@@ -179,6 +180,7 @@ class TestDataOperators:
         assert len(res) == 1
         assert 'chunk' in res[0] and 'query' in res[0] and 'answer' in res[0]
 
+    @pytest.mark.skip(reason='Long running test')
     def test_text2qa_qa_scorer(self):
         # Example from data.operators.text2qa_ops.QAScorer
         llm = OnlineChatModule()
