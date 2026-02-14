@@ -1,11 +1,30 @@
 import os
+import shutil
+import tempfile
 import time
 import pytest
 import random
-import shutil
 import json
 from lazyllm import config, LOG
-from lazyllm.tools.data import demo1, demo2, pt_mm, data_register
+from lazyllm.tools.data import demo1, demo2, pt, pt_mm, pt_text, data_register
+from lazyllm.thirdparty import PIL
+
+
+class MockModel:
+    def __init__(self, mock_response):
+        self.mock_response = mock_response
+
+    def __call__(self, string, **kwargs):
+        return self.mock_response
+
+    def prompt(self, prompt):
+        return self
+
+    def formatter(self, formatter):
+        return self
+
+    def share(self):
+        return self
 
 
 class TestDataOperators:
@@ -145,35 +164,44 @@ class TestDataOperators:
         sorted_load = sorted(load_res, key=lambda x: x['id'])
         assert sorted_res == sorted_load
 
-    def _ci_image_path(self, name):
-        path = os.path.join(config['data_path'], 'ci_data', name)
-        return path if os.path.exists(path) else None
+    @staticmethod
+    def _test_image_file(name):
+        data_path = config['data_path']
+        return os.path.join(data_path, 'ci_data', name)
 
-    def test_pt_resolution_filter(self):
-        ji = self._ci_image_path('ji.jpg')
-        if not ji:
+    def test_resolution_filter(self):
+        ji = self._test_image_file('ji.jpg')
+        if not os.path.exists(ji):
             pytest.skip('ci_data/ji.jpg not found')
-        op = pt_mm.resolution_filter(min_width=1, min_height=1, max_width=99999, max_height=99999)
+        op = pt_mm.resolution_filter(min_width=1, min_height=1, max_width=700, max_height=500)
         inputs = [
             {'image_path': ji, 'id': 1},
             {'image_path': '/nonexistent/path.png', 'id': 2},
         ]
         res = op(inputs)
-        assert len(res) == 1
-        assert res[0]['id'] == 1
-        assert res[0]['image_path'] == [ji]
+        assert len(res) == 0
 
-    def test_pt_resolution_resize(self):
-        ji = self._ci_image_path('ji.jpg')
-        if not ji:
+    def test_resolution_resize(self):
+        ji = self._test_image_file('ji.jpg')
+        if not os.path.exists(ji):
             pytest.skip('ci_data/ji.jpg not found')
-        op = pt_mm.resolution_resize(max_side=400)
-        res = op([{'image_path': ji}])
-        assert res and res[0].get('image_path')
+        with tempfile.TemporaryDirectory() as tmpdir:
+            ji_tmp = os.path.join(tmpdir, 'ji.jpg')
+            shutil.copy(ji, ji_tmp)
+            op = pt_mm.resolution_resize(max_side=400, inplace=False)
+            res = op([{'image_path': ji_tmp}])
+            assert res and res[0].get('image_path')
+            resized_path = res[0]['image_path'][0]
+            assert resized_path != ji_tmp
+            assert '_resized' in resized_path
+            assert os.path.exists(ji)
+            with PIL.Image.open(resized_path) as img:
+                w, h = img.size
+                assert max(w, h) <= 400
 
-    def test_pt_integrity_check(self):
-        ji = self._ci_image_path('ji.jpg')
-        if not ji:
+    def test_integrity_check(self):
+        ji = self._test_image_file('ji.jpg')
+        if not os.path.exists(ji):
             pytest.skip('ci_data/ji.jpg not found')
         op = pt_mm.integrity_check()
         res = op([
@@ -184,10 +212,10 @@ class TestDataOperators:
         assert res[0]['id'] == 1
         assert res[0]['image_path'] == [ji]
 
-    def test_pt_image_dedup(self):
-        ji = self._ci_image_path('ji.jpg')
-        dog = self._ci_image_path('dog.png')
-        if not ji or not dog:
+    def test_image_dedup(self):
+        ji = self._test_image_file('ji.jpg')
+        dog = self._test_image_file('dog.png')
+        if not os.path.exists(ji) or not os.path.exists(dog):
             pytest.skip('ci_data/ji.jpg or ci_data/dog.png not found')
         op = pt_mm.ImageDedup()
         batch = [
@@ -199,9 +227,9 @@ class TestDataOperators:
         assert len(res) == 2
         assert {r['id'] for r in res} == {1, 3}
 
-    def test_pt_graph_retriever(self):
-        ji = self._ci_image_path('ji.jpg')
-        if not ji:
+    def test_graph_retriever(self):
+        ji = self._test_image_file('ji.jpg')
+        if not os.path.exists(ji):
             pytest.skip('ci_data/ji.jpg not found')
         op = pt_mm.GraphRetriever(context_key='context', img_key='img')
         data = {'context': 'Test content with {braces}', 'img': f'![]({ji})'}
@@ -209,3 +237,77 @@ class TestDataOperators:
         assert res and res[0]['context'] == 'Test content with {{braces}}'
         assert 'img' in res[0] and len(res[0]['img']) == 1
         assert os.path.isabs(res[0]['img'][0])
+
+    def test_text_relevance_filter(self):
+        ji = self._test_image_file('ji.jpg')
+        if not os.path.exists(ji):
+            pytest.skip('ci_data/ji.jpg not found')
+        expected_response = {'relevance': 0.9, 'reason': 'relevant'}
+        vlm = MockModel(expected_response)
+        op = pt_mm.TextRelevanceFilter(vlm, threshold=0.5, _concurrency_mode='single')
+        inputs = [{'image_path': ji, 'text': 'a red image'}]
+        res = op(inputs)
+        assert len(res) == 1
+        assert res[0]['image_path'] == [ji]
+        assert res[0]['image_text_relevance'] == 0.9
+
+    def test_vqa_generator(self):
+        ji = self._test_image_file('ji.jpg')
+        if not os.path.exists(ji):
+            pytest.skip('ci_data/ji.jpg not found')
+        expected_response = {
+            'qa_pairs': [{'query': 'Q1', 'answer': 'A1'}, {'query': 'Q2', 'answer': 'A2'}],
+        }
+        vlm = MockModel(expected_response)
+        op = pt_mm.VQAGenerator(vlm, num_qa=2, _concurrency_mode='single')
+        inputs = [{'image_path': ji, 'context': 'A simple image.'}]
+        res = op(inputs)
+        assert len(res) == 1
+        assert res[0]['qa_pairs'] == [{'query': 'Q1', 'answer': 'A1'}, {'query': 'Q2', 'answer': 'A2'}]
+
+    def test_phi4_qa_generator(self):
+        ji = self._test_image_file('ji.jpg')
+        if not os.path.exists(ji):
+            pytest.skip('ci_data/ji.jpg not found')
+        expected_response = {
+            'qa_pairs': [{'query': 'What is it?', 'answer': 'An image.'}],
+        }
+        vlm = MockModel(expected_response)
+        op = pt_text.Phi4QAGenerator(vlm, num_qa=2, _concurrency_mode='single')
+        inputs = [{'context': 'Some context.', 'image_path': ji}]
+        res = op(inputs)
+        assert len(res) == 1
+        assert len(res[0]['qa_pairs']) == 1
+        assert res[0]['qa_pairs'][0]['query'] == 'What is it?'
+
+    def test_vqa_scorer(self):
+        ji = self._test_image_file('ji.jpg')
+        if not os.path.exists(ji):
+            pytest.skip('ci_data/ji.jpg not found')
+        expected_response = {'score': 0.85, 'clarity': 0.9, 'composition': 0.8, 'reason': 'Good quality'}
+        vlm = MockModel(expected_response)
+        op = pt_mm.VQAScorer(vlm, _concurrency_mode='single')
+        inputs = [{'image_path': ji}]
+        res = op(inputs)
+        assert len(res) == 1
+        assert res[0]['quality_score']['score'] == 0.85
+        assert res[0]['quality_score']['clarity'] == 0.9
+        assert res[0]['quality_score']['composition'] == 0.8
+
+    def test_context_qual_filter(self):
+        ji = self._test_image_file('ji.jpg')
+        if not os.path.exists(ji):
+            pytest.skip('ci_data/ji.jpg not found')
+        expected_response = {'score': 1, 'reason': 'suitable'}
+        vlm = MockModel(expected_response)
+        op = pt.ContextQualFilter(vlm, _concurrency_mode='single')
+        inputs = [{'context': 'Good context for QA.', 'image_path': ji}]
+        res = op(inputs)
+        assert len(res) == 1
+        assert res[0]['context'] == 'Good context for QA.'
+
+        expected_response_reject = {'score': 0, 'reason': 'not suitable'}
+        vlm_reject = MockModel(expected_response_reject)
+        op_reject = pt.ContextQualFilter(vlm_reject, _concurrency_mode='single')
+        res_reject = op_reject(inputs)
+        assert len(res_reject) == 0
