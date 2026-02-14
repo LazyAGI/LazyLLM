@@ -12,6 +12,11 @@
     members:
     exclude-members:
 
+### PT Operators
+
+::: lazyllm.tools.data.operators.pt_op
+    members:
+    exclude-members:
 
 ## Data Processing Pipeline
 

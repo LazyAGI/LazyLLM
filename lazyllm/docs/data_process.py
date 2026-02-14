@@ -403,3 +403,327 @@ res = ppl(data)
 print(res)  # demonstrates how operators are combined and applied
 ```
 """)
+
+# pt_op
+add_chinese_doc('data.operators.pt_op.resolution_filter', """\
+按最小/最大宽高过滤图片，保留尺寸在指定范围内的图片路径。   
+
+Args:
+    data (dict): 单条数据字典
+    image_key (str): 图片路径字段名，默认 'image_path'
+    min_width (int): 最小宽度，默认 256
+    min_height (int): 最小高度，默认 256
+    max_width (int): 最大宽度，默认 4096
+    max_height (int): 最大高度，默认 4096
+    input_key (str): 可选，覆盖 image_key
+""")
+
+add_english_doc('data.operators.pt_op.resolution_filter', """\
+Filter images by min/max width and height, keeping only those within the specified resolution range.
+
+Args:
+    data (dict): single data dict
+    image_key (str): key for image path(s), default 'image_path'
+    min_width (int): minimum width, default 256
+    min_height (int): minimum height, default 256
+    max_width (int): maximum width, default 4096
+    max_height (int): maximum height, default 4096
+    input_key (str): optional, overrides image_key
+""")
+
+add_example('data.operators.pt_op.resolution_filter', """\
+```python
+from lazyllm.tools.data import pt_mm
+
+op = pt_mm.resolution_filter(min_width=256, min_height=256, max_width=4096, max_height=4096)
+res = op([{'image_path': '/path/to/image.jpg'}])
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.resolution_resize', """\
+将图片最长边缩放到不超过 max_side，可原位覆盖或生成新文件。
+
+Args:
+    data (dict): 单条数据字典
+    image_key (str): 图片路径字段名，默认 'image_path'
+    max_side (int): 最长边上限，默认 1024
+    inplace (bool): 是否覆盖原文件，默认 True；False 时生成 _resized 后缀新文件
+    input_key (str): 可选，覆盖 image_key
+""")
+
+add_english_doc('data.operators.pt_op.resolution_resize', """\
+Resize image so the longest side does not exceed max_side. Can overwrite in place or save to a new file.
+
+Args:
+    data (dict): single data dict
+    image_key (str): key for image path(s), default 'image_path'
+    max_side (int): max length of longest side, default 1024
+    inplace (bool): overwrite original file if True; if False, save with _resized suffix
+    input_key (str): optional, overrides image_key
+""")
+
+add_example('data.operators.pt_op.resolution_resize', """\
+```python
+from lazyllm.tools.data import pt_mm
+
+op = pt_mm.resolution_resize(max_side=400, inplace=False)
+res = op([{'image_path': '/path/to/image.jpg'}])
+# resized file saved as image_resized.jpg in same directory
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.integrity_check', """\
+检查图片文件完整性，过滤损坏或空文件，保留可正常打开的图片路径。
+
+Args:
+    data (dict): 单条数据字典
+    image_key (str): 图片路径字段名，默认 'image_path'
+    input_key (str): 可选，覆盖 image_key
+""")
+
+add_english_doc('data.operators.pt_op.integrity_check', """\
+Check image file integrity; filter out corrupted or empty files, keep paths of valid images.
+
+Args:
+    data (dict): single data dict
+    image_key (str): key for image path(s), default 'image_path'
+    input_key (str): optional, overrides image_key
+""")
+
+add_example('data.operators.pt_op.integrity_check', """\
+```python
+from lazyllm.tools.data import pt_mm
+
+op = pt_mm.integrity_check()
+res = op([{'image_path': '/path/to/image.jpg'}, {'image_path': '/nonexistent.png'}])
+# only valid images retained
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.TextRelevanceFilter', """\
+使用 VLM 判断图文相关性，过滤低于阈值的样本。
+
+Args:
+    vlm: 视觉语言模型实例
+    image_key (str): 图片路径字段名，默认 'image_path'
+    text_key (str): 文本字段名，默认 'text'
+    threshold (float): 相关性阈值 [0,1]，默认 0.6
+    prompt (str): 可选，自定义提示词
+""")
+
+add_english_doc('data.operators.pt_op.TextRelevanceFilter', """\
+Use VLM to judge image-text relevance; filter samples below the threshold.
+
+Args:
+    vlm: vision-language model instance
+    image_key (str): key for image path(s), default 'image_path'
+    text_key (str): key for text, default 'text'
+    threshold (float): relevance threshold [0,1], default 0.6
+    prompt (str): optional custom prompt
+""")
+
+add_example('data.operators.pt_op.TextRelevanceFilter', """\
+```python
+from lazyllm.tools.data import pt_mm
+
+vlm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
+op = pt_mm.TextRelevanceFilter(vlm, threshold=0.5)
+res = op([{'image_path': '/path/to/image.jpg', 'text': 'a red square'}])
+# samples with relevance >= threshold are kept
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.ImageDedup', """\
+基于图片文件哈希去重，保留首次出现的图片，跳过重复项。
+
+Args:
+    image_key (str): 图片路径字段名，默认 'image_path'
+    hash_method (str): 哈希算法，默认 'md5'
+""")
+
+add_english_doc('data.operators.pt_op.ImageDedup', """\
+Deduplicate images by file hash; keep first occurrence, skip duplicates.
+
+Args:
+    image_key (str): key for image path(s), default 'image_path'
+    hash_method (str): hash algorithm, default 'md5'
+""")
+
+add_example('data.operators.pt_op.ImageDedup', """\
+```python
+from lazyllm.tools.data import pt_mm
+
+op = pt_mm.ImageDedup()
+batch = [{'image_path': 'a.jpg', 'id': 1}, {'image_path': 'a.jpg', 'id': 2}, {'image_path': 'b.jpg', 'id': 3}]
+res = op(batch)
+# len(res) == 2, duplicate removed
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.VQAGenerator', """\
+使用 VLM 根据 context 和图片生成视觉问答对（VQA pairs）。
+
+Args:
+    vlm: 视觉语言模型实例
+    image_key (str): 图片路径字段名，默认 'image_path'
+    context_key (str): 上下文字段名，默认 'context'
+    num_qa (int): 生成的问答对数量，默认 5
+    prompt (str): 可选，自定义提示词
+""")
+
+add_english_doc('data.operators.pt_op.VQAGenerator', """\
+Use VLM to generate Visual Question Answering (VQA) pairs from context and images.
+
+Args:
+    vlm: vision-language model instance
+    image_key (str): key for image path(s), default 'image_path'
+    context_key (str): key for context, default 'context'
+    num_qa (int): number of QA pairs to generate, default 5
+    prompt (str): optional custom prompt
+""")
+
+add_example('data.operators.pt_op.VQAGenerator', """\
+```python
+from lazyllm.tools.data import pt_mm
+
+vlm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
+op = pt_mm.VQAGenerator(vlm, num_qa=3)
+res = op([{'image_path': '/path/to/image.jpg', 'context': 'A simple image.'}])
+# res[0]['qa_pairs'] contains [{'query': '...', 'answer': '...'}, ...]
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.VQAScorer', """\
+使用 VLM 对 VQA 对（query、answer、image_path）进行质量打分，评估图文问答的质量。
+
+Args:
+    vlm: 视觉语言模型实例
+    image_key (str): 图片路径字段名，默认 'image_path'
+    query_key (str): 问题字段名，默认 'query'
+    answer_key (str): 答案字段名，默认 'answer'
+    prompt (str): 可选，自定义提示词
+""")
+
+add_english_doc('data.operators.pt_op.VQAScorer', """\
+Use VLM to score VQA pair quality (query, answer, image_path), evaluating how good the visual QA is.
+
+Args:
+    vlm: vision-language model instance
+    image_key (str): key for image path(s), default 'image_path'
+    query_key (str): key for question, default 'query'
+    answer_key (str): key for answer, default 'answer'
+    prompt (str): optional custom prompt
+""")
+
+add_example('data.operators.pt_op.VQAScorer', """\
+```python
+from lazyllm.tools.data import pt_mm
+
+vlm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
+op = pt_mm.VQAScorer(vlm)
+res = op([{
+    'image_path': '/path/to/image.jpg',
+    'query': 'What color is it?',
+    'answer': 'Red',
+}])
+# res[0]['quality_score'] contains score, relevance, correctness, reason
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.GraphRetriever', """\
+从 context 字段中解析 Markdown 格式的图片链接 `![alt](path)`，提取存在磁盘上的图片路径并写入 img_key。
+不修改原始 context；若 context.strip() 为空，则 img_key 为 []，样本仍保留。
+
+Args:
+    context_key (str): 文本上下文字段名，默认 'context'
+    img_key (str): 图片路径输出字段名，默认 'image_path'
+    images_folder (str): 可选，图片根目录，用于解析相对路径
+""")
+
+add_english_doc('data.operators.pt_op.GraphRetriever', """\
+Parse Markdown-style image links `![alt](path)` from context field, extract existing file paths and write to img_key.
+Does not modify source context; if context.strip() is empty, img_key is [] and the sample is kept.
+
+Args:
+    context_key (str): key for text context, default 'context'
+    img_key (str): key for image path output, default 'image_path'
+    images_folder (str): optional root folder for resolving relative paths
+""")
+
+add_example('data.operators.pt_op.GraphRetriever', """\
+```python
+from lazyllm.tools.data import pt_mm
+
+op = pt_mm.GraphRetriever(context_key='context', img_key='img', _save_data=False)
+data = {'context': 'Some content ![](/path/to/fig.png)'}
+res = op([data])
+# res[0]['img'] contains resolved absolute path
+
+# empty context: res[0]['img'] == [], record kept, source context unchanged
+empty_res = op([{'context': '   '}])
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.ContextQualFilter', """\
+使用 VLM 或 LLM 评估 context 是否适合生成 QA 对；仅保留 score=1（适合）的样本。
+
+Args:
+    llm: 视觉或文本语言模型实例
+    context_key (str): 上下文字段名，默认 'context'
+    image_key (str): 图片路径字段名，默认 'image_path'
+    prompt (str): 可选，自定义提示词
+""")
+
+add_english_doc('data.operators.pt_op.ContextQualFilter', """\
+Use VLM or LLM to evaluate whether context is suitable for generating QA pairs; keep only samples with score=1 (suitable).
+
+Args:
+    llm: vision- or text-language model instance
+    context_key (str): key for context, default 'context'
+    image_key (str): key for image path(s), default 'image_path'
+    prompt (str): optional custom prompt
+""")
+
+add_example('data.operators.pt_op.ContextQualFilter', """\
+```python
+from lazyllm.tools.data import pt
+
+vlm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
+op = pt.ContextQualFilter(vlm)
+res = op([{'context': 'Good context for QA.', 'image_path': '/path/to/image.jpg'}])
+# only samples with score=1 are kept
+```
+""")
+
+add_chinese_doc('data.operators.pt_op.Phi4QAGenerator', """\
+使用 LLM 将 context（含可选图片）转换为预训练格式的 Phi-4 风格多轮问答对。
+
+Args:
+    llm: 视觉或文本语言模型实例
+    image_key (str): 图片路径字段名，默认 'image_path'
+    context_key (str): 上下文字段名，默认 'context'
+    num_qa (int): 生成的问答对数量，默认 5
+    prompt (str): 可选，自定义提示词
+""")
+
+add_english_doc('data.operators.pt_op.Phi4QAGenerator', """\
+Use LLM to convert context (with optional images) into pretraining-format Phi-4 style multi-turn Q&A pairs.
+
+Args:
+    llm: vision- or text-language model instance
+    image_key (str): key for image path(s), default 'image_path'
+    context_key (str): key for context, default 'context'
+    num_qa (int): number of QA pairs to generate, default 5
+    prompt (str): optional custom prompt
+""")
+
+add_example('data.operators.pt_op.Phi4QAGenerator', """\
+```python
+from lazyllm.tools.data import pt
+
+vlm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Turbo')
+op = pt.Phi4QAGenerator(vlm, num_qa=2)
+res = op([{'context': 'Some context.', 'image_path': '/path/to/image.jpg'}])
+# res[0]['qa_pairs'] contains pretraining-format Q&A
+```
+""")
