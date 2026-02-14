@@ -27,7 +27,7 @@ class MockLLMServe:
 
     def __call__(self, prompt):
         if self._raise_exc:
-            raise RuntimeError("mock error")
+            raise RuntimeError('mock error')
         return self._return_value
 
 
@@ -86,7 +86,7 @@ class TestKnowledgeCleaningOperators:
             result = op([data])[0]
             assert '_chunks' in result
             assert len(result['_chunks']) > 0
-        except (ImportError, Exception):
+        except Exception:
             # Skip if dependencies are missing
             pass
 

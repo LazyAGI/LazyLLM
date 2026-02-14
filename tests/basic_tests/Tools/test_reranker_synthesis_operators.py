@@ -27,7 +27,7 @@ class MockLLMServe:
 
     def __call__(self, prompt):
         if self._raise_exc:
-            raise RuntimeError("mock error")
+            raise RuntimeError('mock error')
         return self._return_value
 
 
@@ -211,13 +211,13 @@ class TestRerankerSynthesisOperators:
         validate_op = reranker.validate_reranker_data()
         data = {'query': 'What is AI?', 'pos': ['AI is AI'], 'neg': ['ML is ML']}
         result = validate_op([data])[0]
-        assert result['_is_valid'] == True
+        assert result['_is_valid'] is True
 
     def test_validate_reranker_data_missing_query(self):
         validate_op = reranker.validate_reranker_data()
         data = {'query': '', 'pos': ['AI is AI'], 'neg': ['ML is ML']}
         result = validate_op([data])[0]
-        assert result['_is_valid'] == False
+        assert result['_is_valid'] is False
 
     def test_reranker_format_flag_reranker(self):
         validate_op = reranker.validate_reranker_data()
@@ -271,7 +271,7 @@ class TestRerankerSynthesisOperators:
         validate_op = reranker.validate_reranker_embedding_data()
         data = {'query': 'What is AI?', 'pos': ['AI is AI'], 'neg': ['ML is ML']}
         result = validate_op([data])[0]
-        assert result['_is_valid'] == True
+        assert result['_is_valid'] is True
 
     def test_reranker_adjust_negatives(self):
         validate_op = reranker.validate_reranker_embedding_data()

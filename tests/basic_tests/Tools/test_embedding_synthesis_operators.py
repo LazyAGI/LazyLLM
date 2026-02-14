@@ -25,7 +25,7 @@ class MockLLMServe:
 
     def __call__(self, prompt):
         if self._raise_exc:
-            raise RuntimeError("mock error")
+            raise RuntimeError('mock error')
         return self._return_value
 
 
@@ -252,7 +252,7 @@ class TestEmbeddingSynthesisOperators:
         data = {'query': 'original query'}
         result = op([data])
         assert len(result) == 2
-        assert result[0]['is_augmented'] == True
+        assert result[0]['is_augmented'] is True
 
     def test_embedding_adjacent_word_swap(self):
         op = embedding.EmbeddingAdjacentWordSwap(num_augments=2)
@@ -261,4 +261,4 @@ class TestEmbeddingSynthesisOperators:
         # May return 0, 1, or 2 augmentations depending on word count
         assert len(result) <= 2
         if len(result) > 0:
-            assert result[0]['is_augmented'] == True
+            assert result[0]['is_augmented'] is True
