@@ -1,116 +1,110 @@
-'''Prompts for knowledge cleaning pipeline operators'''
 from .base_prompt import PromptABC
 
 
 class KnowledgeCleanerPrompt(PromptABC):
-    '''
-    知识清洗提示词生成器，支持中英文多语言适配
-    Specialized in refining raw content with multilingual support.
-    '''
     def __init__(self, lang: str = 'en', strict_mode: bool = True):
         self.lang = lang
         self.strict_mode = strict_mode
 
     def build_prompt(self, raw_content: str) -> str:
-        '''生成知识清洗的思维链提示词'''
         if self.lang == 'en':
             self.prompt_header = f'''
-You are a meticulous Knowledge Refinement Engineer. Apply these rules STRICTLY:
+As a precise Knowledge Processing Specialist, you must follow these guidelines RIGOROUSLY:
 
-1. Remove redundant tags but retain:
-- Semantic tags like <table>, <code>
-- Meaningful attributes
+1. Eliminate unnecessary tags while keeping:
+- Semantically meaningful tags such as <table>, <code>
+- Attributes that carry significance
 
-2. Normalize special characters:
-- Standardize quotes and dashes
-- Convert ellipsis (...)
+2. Standardize special characters:
+- Normalize quotation marks and hyphenation
+- Transform ellipsis marks (...)
 
-3. URL handling:
-- Preserve footnote URLs
-- Extract display texts
+3. URL management:
+- Keep footnote URLs intact
+- Retain display text content
 
-4. Text structure:
-- Maintain paragraph/list breaks
-- Keep code indentation
-- Limit empty lines (max=2)
+4. Document structure:
+- Preserve paragraph and list separations
+- Maintain code indentation levels
+- Restrict blank lines (maximum=2)
 
-5. Reference processing:
+5. Reference handling:
 - Images → "[Image: alt_text]"
 - Signatures → "[Signature]"
 
-6. Code blocks: {"(strict)" if self.strict_mode else ""}
-- {"Force closure" if self.strict_mode else "Preserve raw"}
-- Mark fragments as /*...*/
+6. Code sections: {"(strict)" if self.strict_mode else ""}
+- {"Enforce closure" if self.strict_mode else "Maintain original"}
+- Label incomplete sections as /*...*/
 
-7. Absolute fidelity:
-- NO fact/number modifications
-- NO term paraphrasing
-- NO table structure changes
+7. Complete accuracy:
+- DO NOT alter facts or numbers
+- DO NOT rephrase terminology
+- DO NOT modify table layouts
 
-8. Security Processing:
-- PII: Phone/ID/Email must be masked
-- Classified: Mark as 〖SEC∶classified〗
-- Illegal: Replace with 〖ILLEGAL∶removed〗
+8. Security measures:
+- PII: Mask phone numbers/IDs/emails
+- Classified: Label as 〖SEC∶classified〗
+- Illegal: Substitute with 〖ILLEGAL∶removed〗
 
-Output must be between <cleaned_start> and <cleaned_end>.
+Response must be enclosed within <cleaned_start> and <cleaned_end>.
 '''
         else:
             self.prompt_header = f'''
-你是一名严谨的知识清洗工程师。请严格按照以下规则处理原始内容：
+你是一位细致入微的知识处理专家。请严格遵循以下准则处理原始材料：
 
-1. 移除冗余HTML/XML标签，但保留：
-- 语义化标签如 <table>、<code>、<formula>
-- 所有携带意义的属性值
+1. 删除多余的HTML/XML标记，但需保留：
+- 具有语义价值的标签如 <table>、<code>、<formula>
+- 所有包含意义的属性信息
 
-2. 规范化特殊字符：
-- 将花引号转为标准引号
-- 将长破折号替换为短横线
-- 中文省略号转为英文省略号
+2. 统一特殊字符格式：
+- 将特殊引号转换为标准引号
+- 将长横线改为短横线
+- 将中文省略号改为英文省略号
 
-3. 链接处理：
-- 脚注/参考文献中的URL保持原样
-- 移除超链接包装但保留显示文本
+3. 超链接管理：
+- 脚注/参考文献中的URL维持不变
+- 去除超链接标签但保留可见文本
 
-4. 文本结构：
-- 保持原始段落/列表的换行
-- 保留代码/引用的缩进层级
+4. 文档结构：
+- 维持原有段落/列表的分隔
+- 保持代码/引用的缩进结构
 
-5. 引用内容处理：
-- 图片引用转换为【引用图片：描述文本】
-- 签名区块标记为【签名引用】
+5. 引用元素处理：
+- 图片引用改为【引用图片：描述文本】
+- 签名区域标注为【签名引用】
 
-6. 代码块处理：{"（严格模式）" if self.strict_mode else ""}
+6. 代码段处理：{"（严格模式）" if self.strict_mode else ""}
 
-7. 绝对保真：
-- 禁止增删任何事实、数字或命名实体
+7. 完全保真：
+- 不得增减任何事实信息、数值或实体名称
 
-8. 安全处理：
-- 个人隐私需脱敏
-- 涉密内容替换为【涉密内容已加密】
+8. 安全措施：
+- 个人敏感信息需要脱敏处理
+- 机密内容替换为【涉密内容已加密】
 
-输出必须以<cleaned_start>开头，<cleaned_end>结尾。
+输出内容需以<cleaned_start>开始，<cleaned_end>结束。
 '''
 
         if self.lang == 'en':
             processing_steps = '''
-Processing Steps:
-1. [Tag Analysis] Classify markup tags
-2. [Reference Extraction] Isolate images/tables
-3. [Character Audit] Log special chars
-4. [Structure Check] Validate hierarchy
-5. [Final Output] Generate cleaned text
+Workflow Steps:
+1. [Tag Classification] Categorize markup elements
+2. [Reference Isolation] Separate images/tables
+3. [Character Review] Document special characters
+4. [Hierarchy Validation] Verify document structure
+5. [Result Generation] Produce refined text
 '''.strip()
-            output_requirement = 'Response must contain ONLY cleaned text between <cleaned_start> and <cleaned_end>.'
+            output_requirement = 'Response should include ONLY refined text enclosed by <cleaned_start> and <cleaned_end>.'
         else:
             processing_steps = '''
-处理步骤：
-1. [标签分析] 识别并分类所有标记标签
-2. [引用提取] 分离图片/表格/签名等引用内容
-3. [字符审核] 记录特殊字符变更
-4. [结构检查] 验证文本层级
-5. [最终输出] 生成清洗后文本
+工作流程：
+1. [标签归类] 识别并区分所有标记元素
+2. [引用分离] 提取图片/表格/签名等引用部分
+3. [字符审查] 记录特殊字符变化
+4. [层级验证] 检查文档结构
+5. [结果生成] 输出处理后的文本
 '''.strip()
-            output_requirement = '响应必须只包含清洗后文本，以<cleaned_start>开头，<cleaned_end>结尾，无其他内容。'
+            output_requirement = '响应内容应仅包含处理后的文本，以<cleaned_start>开始，<cleaned_end>结束，不得包含其他内容。'
 
         return f'''
 {self.prompt_header}
@@ -125,34 +119,33 @@ Processing Steps:
 
 
 class MathbookQuestionExtractPrompt(PromptABC):
-    '''Prompt for extracting questions from math textbook images.'''
     def __init__(self):
         pass
 
     def build_prompt(self):
-        return '''You are given a collection of images:
+        return '''You are provided with a set of images:
 
-• page_n.jpg – the n-th page of a math textbook
-• page_n+1.jpg – the (n+1)-th page of the same book
-• index.jpg files (e.g. 1.jpg, 2.jpg, …) – all figures, diagrams or illustrations appearing on those two pages
+• page_n.jpg – represents the n-th page of a mathematics textbook
+• page_n+1.jpg – represents the (n+1)-th page of the same textbook
+• index.jpg files (e.g. 1.jpg, 2.jpg, …) – contains all figures, diagrams or illustrations present on those two pages
 
-Your task:
+Your assignment:
 
-1. Extract every exercise (math problem) that has at least one line or element on page_n.jpg. \
-You should extract the problem in its original language, do not translate it.
-2. If a problem is split across page_n.jpg and page_n+1.jpg, include it in full (using page_n+1.jpg only \
-to complete it).
-3. Do not extract any problem that appears exclusively on page_n+1.jpg.
-4. For each extracted problem, locate any referenced figures among the index.jpg files and insert \
-the exact filename in <image>...</image> (for example <image>3.jpg</image>) at the correct place \
-in the problem text.
-5. Return all extracted problems concatenated into one string, using the literal token <SPACE> to separate them. \
-For example:
+1. Identify every exercise (mathematical problem) that contains at least one line or component on page_n.jpg. \
+You must extract the problem using its original language, without translation.
+2. When a problem spans across page_n.jpg and page_n+1.jpg, include the complete problem (utilize page_n+1.jpg solely \
+to finish it).
+3. Exclude any problem that appears only on page_n+1.jpg.
+4. For each identified problem, find any referenced figures within the index.jpg files and place \
+the precise filename in <image>...</image> (for instance <image>3.jpg</image>) at the appropriate position \
+within the problem text.
+5. Combine all identified problems into a single string, using the literal token <SPACE> as separator. \
+Example:
    PROBLEM_TEXT_1<SPACE>PROBLEM_TEXT_2<SPACE>PROBLEM_TEXT_3
-6. If no qualifying problems are found on page_n.jpg, return two consecutive spaces: "<SPACE><SPACE>".
+6. If no eligible problems exist on page_n.jpg, return two consecutive spaces: "<SPACE><SPACE>".
 
-Ensure that figure tags exactly match the provided image filenames and that no extra separators or \
-punctuation are added.
+Make sure figure tags precisely correspond to the provided image filenames and avoid adding extra separators or \
+punctuation marks.
       '''
 
 

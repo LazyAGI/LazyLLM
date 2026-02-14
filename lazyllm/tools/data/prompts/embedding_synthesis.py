@@ -1,44 +1,34 @@
-'''
-Prompts for Embedding Synthesis Operators
-
-This module contains prompt templates for generating embedding training data.
-该模块包含用于生成 Embedding 训练数据的提示词模板。
-'''
 from typing import List, Optional
 from .base_prompt import PromptABC
 
 
 class EmbeddingQueryGeneratorPrompt(PromptABC):
-    '''
-    Prompt template for generating queries from passages.
-    用于从段落生成查询的提示词模板。
-    '''
 
     def __init__(self, lang: str = 'zh'):
         self.lang = lang
 
     def build_system_prompt(self) -> str:
         if self.lang == 'zh':
-            return '''你是一个专业的查询生成专家。你的任务是根据给定的文档段落，生成高质量的搜索查询。
+            return '''你是一位经验丰富的查询构建专家。你的职责是基于提供的文档片段，构建高质量的检索查询。
 
-要求：
-1. 生成的查询应该自然、多样，符合真实用户的搜索习惯
-2. 查询应该可以通过给定段落来回答
-3. 避免直接复制段落中的句子
-4. 生成不同类型的查询（事实型、语义型、推理型）
+标准：
+1. 构建的查询应当自然流畅、形式多样，贴近实际用户的检索行为
+2. 每个查询都能从给定片段中获得答案
+3. 禁止直接照搬片段中的原句
+4. 构建涵盖不同类别的查询（事实类、语义类、推理类）
 
-请以JSON格式返回结果。'''
+请使用JSON格式输出结果。'''
         else:
-            return '''You are a professional query generation expert. Your task is to generate high-quality \
-search queries based on the given document passage.
+            return '''You are an experienced query construction specialist. Your responsibility is to build \
+high-quality search queries based on the provided document segment.
 
-Requirements:
-1. Generated queries should be natural, diverse, and reflect real user search patterns
-2. Queries should be answerable by the given passage
-3. Avoid directly copying sentences from the passage
-4. Generate different types of queries (factual, semantic, inferential)
+Standards:
+1. Constructed queries should be natural, fluent, and diverse, mirroring actual user search behaviors
+2. Each query should be answerable from the given segment
+3. Do not directly copy sentences from the segment
+4. Build queries covering different categories (factual, semantic, inferential)
 
-Return results in JSON format.'''
+Output results in JSON format.'''
 
     def build_prompt(
             self,
@@ -50,17 +40,17 @@ Return results in JSON format.'''
         types_str = ', '.join(query_types)
 
         if self.lang == 'zh':
-            return f'''请根据以下文档段落生成 {num_queries} 个搜索查询。
+            return f'''请基于以下文档片段构建 {num_queries} 个检索查询。
 
-文档段落：
+文档片段：
 {passage}
 
-要求：
-- 生成 {num_queries} 个不同的查询
-- 查询类型包括：{types_str}
-- 每个查询都应该可以通过上述段落找到答案
+标准：
+- 构建 {num_queries} 个互不相同的查询
+- 查询类别应包含：{types_str}
+- 所有查询都能从上述片段中获取答案
 
-请以以下JSON格式返回：
+请按照以下JSON格式输出：
 ```json
 [
     {{"query": "查询内容1", "type": "factual"}},
@@ -69,17 +59,17 @@ Return results in JSON format.'''
 ]
 ```'''
         else:
-            return f'''Generate {num_queries} search queries based on the following document passage.
+            return f'''Build {num_queries} search queries based on the following document segment.
 
-Document Passage:
+Document Segment:
 {passage}
 
-Requirements:
-- Generate {num_queries} different queries
-- Query types include: {types_str}
-- Each query should be answerable by the passage above
+Standards:
+- Construct {num_queries} distinct queries
+- Query categories should include: {types_str}
+- All queries should be answerable from the segment above
 
-Return in the following JSON format:
+Output in the following JSON format:
 ```json
 [
     {{"query": "query content 1", "type": "factual"}},
@@ -90,44 +80,40 @@ Return in the following JSON format:
 
 
 class EmbeddingQueryAugmentPrompt(PromptABC):
-    '''
-    Prompt template for augmenting/rewriting queries.
-    用于增强/改写查询的提示词模板。
-    '''
 
     def __init__(self, lang: str = 'zh'):
         self.lang = lang
 
     def build_system_prompt(self) -> str:
         if self.lang == 'zh':
-            return '''你是一个查询改写专家。你的任务是将给定的查询改写成语义相同但表达不同的形式。
+            return '''你是一位查询转换专家。你的职责是将提供的查询转换为语义一致但表述不同的形式。
 
-要求：
-1. 保持原始查询的语义不变
-2. 使用不同的词汇和句式
-3. 生成自然流畅的表达
-4. 避免简单的同义词替换
+标准：
+1. 维持原始查询的语义内容不变
+2. 采用不同的用词和句型结构
+3. 构建自然流畅的表述
+4. 避免仅进行简单的同义词替换
 
-请以JSON格式返回结果。'''
+请使用JSON格式输出结果。'''
         else:
-            return '''You are a query rewriting expert. Your task is to rewrite the given query into \
-semantically equivalent but differently expressed forms.
+            return '''You are a query transformation specialist. Your responsibility is to convert the provided \
+query into semantically equivalent but differently worded forms.
 
-Requirements:
-1. Preserve the original query's meaning
-2. Use different vocabulary and sentence structures
-3. Generate natural and fluent expressions
-4. Avoid simple synonym substitution
+Standards:
+1. Maintain the original query's semantic content
+2. Employ different word choices and sentence patterns
+3. Build natural and fluent expressions
+4. Avoid mere synonym replacement
 
-Return results in JSON format.'''
+Output results in JSON format.'''
 
     def build_prompt(self, query: str, num_rewrites: int = 2) -> str:
         if self.lang == 'zh':
-            return f'''请将以下查询改写成 {num_rewrites} 个不同的表达方式，保持语义相同。
+            return f'''请将以下查询转换为 {num_rewrites} 个不同的表述形式，确保语义保持一致。
 
 原始查询：{query}
 
-请以以下JSON格式返回：
+请按照以下JSON格式输出：
 ```json
 [
     "改写后的查询1",
@@ -136,12 +122,12 @@ Return results in JSON format.'''
 ]
 ```'''
         else:
-            return f'''Rewrite the following query into {num_rewrites} different expressions \
-while preserving the same meaning.
+            return f'''Transform the following query into {num_rewrites} different wordings \
+while maintaining the same meaning.
 
 Original query: {query}
 
-Return in the following JSON format:
+Output in the following JSON format:
 ```json
 [
     "rewritten query 1",
@@ -152,43 +138,39 @@ Return in the following JSON format:
 
 
 class EmbeddingPassageEnhancePrompt(PromptABC):
-    '''
-    Prompt template for enhancing passages for better retrieval.
-    用于增强段落以提升检索效果的提示词模板。
-    '''
 
     def __init__(self, lang: str = 'zh'):
         self.lang = lang
 
     def build_system_prompt(self) -> str:
         if self.lang == 'zh':
-            return '''你是一个文档处理专家。你的任务是对给定的文档段落进行增强，使其更易于被检索系统找到。
+            return '''你是一位文档优化专家。你的职责是对提供的文档片段进行增强处理，提升其在检索系统中的可发现性。
 
-增强方式：
-1. 提取关键实体和概念
-2. 添加摘要或关键信息
-3. 补充相关的同义词或别名
+优化方法：
+1. 识别并提取关键实体和核心概念
+2. 补充摘要信息或重要要点
+3. 添加相关的同义表达或别名形式
 
-请以JSON格式返回结果。'''
+请使用JSON格式输出结果。'''
         else:
-            return '''You are a document processing expert. Your task is to enhance the given document passage \
-to make it more discoverable by retrieval systems.
+            return '''You are a document optimization specialist. Your responsibility is to enhance the provided \
+document segment to improve its discoverability in retrieval systems.
 
-Enhancement methods:
-1. Extract key entities and concepts
-2. Add summaries or key information
-3. Include related synonyms or aliases
+Optimization approaches:
+1. Identify and extract key entities and core concepts
+2. Supplement summary information or key points
+3. Add related synonymous expressions or alias forms
 
-Return results in JSON format.'''
+Output results in JSON format.'''
 
     def build_prompt(self, passage: str) -> str:
         if self.lang == 'zh':
-            return f'''请对以下文档段落进行增强处理。
+            return f'''请对以下文档片段进行优化处理。
 
-原始段落：
+原始片段：
 {passage}
 
-请以以下JSON格式返回：
+请按照以下JSON格式输出：
 ```json
 {{
     "enhanced_passage": "增强后的段落",
@@ -198,12 +180,12 @@ Return results in JSON format.'''
 }}
 ```'''
         else:
-            return f'''Enhance the following document passage.
+            return f'''Optimize the following document segment.
 
-Original passage:
+Original segment:
 {passage}
 
-Return in the following JSON format:
+Output in the following JSON format:
 ```json
 {{
     "enhanced_passage": "enhanced passage",

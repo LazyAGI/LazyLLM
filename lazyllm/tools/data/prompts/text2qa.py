@@ -2,31 +2,26 @@ from .base_prompt import PromptABC
 
 
 class Text2MultiHopQAGeneratorPrompt(PromptABC):
-    '''
-    多跳问答生成器（严格JSON格式输出）
-    根据语言参数提供完全独立的专业提示模板
-    '''
     def __init__(self, lang: str = 'en'):
         self.lang = lang
         self.system_text = self.build_system_prompt()
 
     def build_system_prompt(self) -> str:
-        '''构建专业级多跳问答提示'''
         if self.lang == 'en':
             return '''\
-                You are a professional multi-hop QA specialist with strict protocols:
+                As an expert in multi-hop question answering, you must adhere to rigorous standards:
 
-                █ Core Requirements
-                1. Must identify 2-3 interrelated facts in context
-                2. Design complex questions requiring cross-fact reasoning
-                3. Reasoning chains must:
-                   - Contain 2-3 logical steps (numbered)
-                   - Show clear causal/progressive relationships
-                   - Each step must reference specific facts
-                4. Final answer must synthesize all reasoning conclusions
+                █ Essential Guidelines
+                1. Locate 2-3 interconnected pieces of information within the provided context
+                2. Create sophisticated questions that demand reasoning across multiple facts
+                3. Your reasoning process should:
+                   - Include 2-3 sequential logical stages (with numbering)
+                   - Demonstrate evident cause-effect or progressive connections
+                   - Every stage needs to cite particular facts explicitly
+                4. The ultimate response should integrate conclusions from all reasoning stages
 
-                █ Output Specifications
-                1. Only pure JSON in this structure:
+                █ Response Format
+                1. Output exclusively valid JSON following this exact structure:
                 {
                     "question": "Multi-fact reasoning question",
                     "reasoning_steps": [
@@ -37,32 +32,32 @@ class Text2MultiHopQAGeneratorPrompt(PromptABC):
                     "supporting_facts": ["Verbatim Fact 1", "Verbatim Fact 2"],
                     "type": "domain_tag"
                 }
-                2. Supporting facts must:
-                   - Be verbatim from context
-                   - Directly support corresponding steps
-                   - No paraphrasing allowed
+                2. Supporting facts need to:
+                   - Match the original context word-for-word
+                   - Provide direct evidence for their respective steps
+                   - Paraphrasing is strictly forbidden
 
-                █ Rejection Criteria
-                Reject if:
-                - Fewer than 2 reasoning steps
-                - Unreferenced supporting facts exist
-                - Any non-JSON content appears
+                █ Exclusion Rules
+                Do not proceed if:
+                - Reasoning steps number less than 2
+                - Supporting facts appear without proper references
+                - Content outside JSON format is present
                 '''
         else:
             return '''\
-                您是专业的多跳问答生成专家，必须严格遵循以下专业标准：
+                作为多跳问答领域的资深专家，您需要严格遵守以下操作规范：
 
-                █ 核心要求
-                1. 必须识别上下文中的2-3个关联事实
-                2. 设计需要跨事实推理的复杂问题
-                3. 推理链必须满足：
-                    - 至少包含2-3个逻辑步骤
-                    - 每个步骤明确标注序号
-                    - 步骤间存在因果或递进关系
-                4. 最终答案必须整合所有推理结论
+                █ 基本准则
+                1. 需要在给定上下文中找出2-3个相互关联的信息点
+                2. 构建需要综合多个信息点进行推理的复杂问题
+                3. 推理链条应当具备：
+                    - 不少于2-3个有序的逻辑环节
+                    - 每个环节需标注清晰序号
+                    - 环节之间应体现因果关系或递进逻辑
+                4. 最终回答需融合所有推理环节的结论
 
-                █ 输出规范
-                1. 仅允许输出以下结构的纯JSON：
+                █ 输出要求
+                1. 只能输出符合以下结构的纯JSON格式：
                 {
                     "question": "需要跨事实推理的问题",
                     "reasoning_steps": [
@@ -74,26 +69,25 @@ class Text2MultiHopQAGeneratorPrompt(PromptABC):
                     "type": "领域标签"
                 }
 
-                █ 违规处理
-                以下情况将拒绝输出：
-                - 推理步骤少于2步
-                - 存在未引用的支撑事实
-                - JSON外出现任何附加文本
+                █ 拒绝条件
+                出现以下情况时应拒绝生成：
+                - 推理环节数量不足2个
+                - 支撑事实缺少对应引用
+                - JSON格式外存在额外内容
                 '''
 
     def build_prompt(self, text: str) -> str:
-        '''生成完全专业化的用户提示'''
         if self.lang == 'en':
             return f'''\
-            Generate professional multi-hop QA from:
+            Create high-quality multi-hop question-answer pairs based on:
 
             Context:
             {text}
 
-            Strict requirements:
-            1. Extract exactly 2-3 interrelated facts
-            2. Question must demonstrate cross-fact reasoning
-            3. Use this exact JSON structure (include all quotes/braces):
+            Mandatory conditions:
+            1. Identify precisely 2-3 connected pieces of information
+            2. The question should require reasoning that spans multiple facts
+            3. Follow this exact JSON format (preserve all quotes and braces):
             {{
                 "question": "...",
                 "reasoning_steps": [
@@ -107,15 +101,15 @@ class Text2MultiHopQAGeneratorPrompt(PromptABC):
             '''
         else:
             return f'''\
-                请基于以下上下文生成专业级多跳问答：
+                请根据以下文本内容创建高质量的多跳问答对：
 
-                上下文：
+                文本内容：
                 {text}
 
-                严格按照以下要求执行：
-                1. 必须从上述上下文中提取2-3个关联事实
-                2. 问题需体现跨事实推理的复杂性
-                3. 使用此精确JSON结构：
+                必须满足的条件：
+                1. 从上述文本中准确提取2-3个相互关联的信息点
+                2. 生成的问题应当展现跨信息点推理的复杂特征
+                3. 严格按照以下JSON格式输出：
                 {{
                     "question": "...",
                     "reasoning_steps": [
