@@ -13,7 +13,9 @@ from .kbc_text_cleaner_batch import (
     KBCGenerateCleanedText,
     KBCSaveCleaned,
 )
-
+from .kbc_text_cleaner import (
+    KBCGenerateCleanedTextSingle,
+)
 from .file_or_url_to_markdown_converter_api import (
     FileOrURLNormalizer,
     HTMLToMarkdownConverter,
@@ -52,4 +54,5 @@ __all__ = [
     KBCSaveEnhanced,
     KBCLoadQAData,
     KBCExtractQAPairs,
+    KBCGenerateCleanedTextSingle,
 ]
