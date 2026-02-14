@@ -1959,7 +1959,7 @@ Args:
     **kwargs: extra args forwarded to the base operator (e.g. _max_workers, _save_data).
 """)
 
-add_example('data.operators.codegen_ops.CodeEnhancementInstructionGenerator', """\
+add_example('data.operators.codegen_ops.CodeEnhancementInstructionGenerator', r"""
 from lazyllm.tools.data.operators.codegen_ops import CodeEnhancementInstructionGenerator
 
 op = CodeEnhancementInstructionGenerator(model=model,
@@ -1977,10 +1977,10 @@ print(res)
 # {
 #    'messages': [...],
 #    'generated_instruction': "Write a Python function that prints 'hello'.\\n"
-#                             "\\`\\`\\`python\\n"
+#                             "```python\\n"
 #                             "def solution():\\n"
 #                             "    print('hello')\\n"
-#                             "\\`\\`\\`"
+#                             "```"
 # }
 """)
 
