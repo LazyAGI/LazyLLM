@@ -1960,7 +1960,6 @@ Args:
 """)
 
 add_example('data.operators.codegen_ops.CodeEnhancementInstructionGenerator', """\
-```python
 from lazyllm.tools.data.operators.codegen_ops import CodeEnhancementInstructionGenerator
 
 op = CodeEnhancementInstructionGenerator(model=model,
@@ -1973,15 +1972,16 @@ item = {
 }
 res = op(item)
 print(res)
+
+# Output Example:
 # {
-#   'messages': [...],
-#   'generated_instruction': "Write a Python function that prints 'hello'.\\n"
-#                            "```python\\n"
-#                            "def solution():\\n"
-#                            "    print('hello')\\n"
-#                            "```"
+#    'messages': [...],
+#    'generated_instruction': "Write a Python function that prints 'hello'.\\n"
+#                             "\\`\\`\\`python\\n"
+#                             "def solution():\\n"
+#                             "    print('hello')\\n"
+#                             "\\`\\`\\`"
 # }
-```
 """)
 
 add_chinese_doc('data.operators.codegen_ops.CodeInstructionToCodeGenerator', """\

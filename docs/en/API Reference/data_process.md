@@ -12,6 +12,12 @@
     members:
     exclude-members:
 
+### Code Generation Operators
+
+::: lazyllm.tools.data.operators.codegen_ops
+    members:
+    exclude-members:
+
 ### Text to QA pairs Operators
 
 ::: lazyllm.tools.data.operators.text2qa_ops

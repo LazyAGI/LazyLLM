@@ -12,6 +12,12 @@
     members:
     exclude-members:
 
+### 代码生成算子
+
+::: lazyllm.tools.data.operators.codegen_ops
+    members:
+    exclude-members:
+
 ### Agentic rag
 ::: lazyllm.tools.data.operators.agentic_rag.agenticrag_atomic_task_generator
     members:
