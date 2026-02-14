@@ -12,6 +12,23 @@
     members:
     exclude-members:
 
+### Preference Operators
+
+::: lazyllm.tools.data.operators.preference_ops
+    members:
+    exclude-members:
+
+### Tool-Use Operators
+
+::: lazyllm.tools.data.operators.tool_use_ops
+    members:
+    exclude-members:
+
+### Text2SQL Operators
+
+::: lazyllm.tools.data.operators.text2sql_ops
+    members:
+    exclude-members:
 
 ## Data Processing Pipeline
 
