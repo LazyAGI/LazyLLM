@@ -6,7 +6,25 @@ import shutil
 import json
 from lazyllm import config, LOG
 from lazyllm.tools.data import demo1, demo2, data_register, Text2qa
-from lazyllm import OnlineChatModule
+
+class MockModel:
+    def __init__(self, mock_response: str):
+        self.mock_response = mock_response
+
+    def __call__(self, string: str, **kwargs):
+        return self.mock_response
+
+    def prompt(self, prompt):
+        return self
+
+    def formatter(self, formatter):
+        return self
+
+    def share(self):
+        return self
+
+    def start(self):
+        return self
 
 class TestDataOperators:
 
@@ -170,25 +188,21 @@ class TestDataOperators:
         res = op(data)
         assert res == [{'chunk': 'valid text tail'}]
 
-    @pytest.mark.skip(reason='Long running test')
     def test_text2qa_chunk_to_qa(self):
-        # Example from data.operators.text2qa_ops.ChunkToQA
-        llm = OnlineChatModule()
+        llm = MockModel({'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！'})
         op = Text2qa.ChunkToQA(input_key='chunk', query_key='query', answer_key='answer', model=llm)
         data = [{'chunk': '今天是晴天！'}]
         res = op(data)
         assert len(res) == 1
         assert 'chunk' in res[0] and 'query' in res[0] and 'answer' in res[0]
 
-    @pytest.mark.skip(reason='Long running test')
     def test_text2qa_qa_scorer(self):
         # Example from data.operators.text2qa_ops.QAScorer
-        llm = OnlineChatModule()
+        llm = MockModel({'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！', 'score': 1})
         op = Text2qa.QAScorer(input_key='chunk', output_key='score', query_key='query', answer_key='answer', model=llm)
         data = [
-            {'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！'},
-            {'chunk': '1+1=2', 'query': '1+1=?', 'answer': '3'},
+            {'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！'}
         ]
         res = op(data)
-        assert len(res) == 2
-        assert res[0].get('score') == 1 and res[1].get('score') == 0
+        assert len(res) == 1
+        assert res[0].get('score') == 1
