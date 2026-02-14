@@ -12,6 +12,15 @@
     members:
     exclude-members:
 
+### LLM JSON 算子
+
+::: lazyllm.tools.data.operators.llm_base_ops
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.llm_json_ops
+    members:
+    exclude-members:
 
 ## 数据处理 Pipeline
 
