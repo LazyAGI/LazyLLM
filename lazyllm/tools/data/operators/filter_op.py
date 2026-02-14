@@ -3,7 +3,7 @@ import re
 from ..base_data import data_register
 from lazyllm import LOG, config
 from lazyllm.components.utils.downloader import ModelManager
-from lazyllm.thirdparty import fasttext, datasketch, nltk, jieba
+from lazyllm.thirdparty import fasttext, datasketch, nltk, jieba, ahocorasick
 
 
 Filter = data_register.new_group('filter')
@@ -277,31 +277,43 @@ class MinHashDeduplicateFilter(Filter):
 
 class BlocklistFilter(Filter):
     def __init__(self, input_key='content', blocklist=None, blocklist_path=None,
-                 language='zh', threshold=1, use_tokenizer=True, _concurrency_mode='thread', **kwargs):
+                 language='zh', threshold=1, _concurrency_mode='thread', **kwargs):
         super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
         self.input_key = input_key
         self.threshold = threshold
-        self.use_tokenizer = use_tokenizer
         self.language = language.lower()
 
-        if self.use_tokenizer and self.language in ['en', 'english']:
-            nltk_data_dir = _setup_nltk_data_dir()
-            try:
-                nltk.data.find('tokenizers/punkt_tab')
-            except LookupError:
-                LOG.info('Downloading NLTK punkt_tab tokenizer...')
-                nltk.download('punkt_tab', quiet=True, download_dir=nltk_data_dir)
-
         if blocklist is not None:
-            self.blocklist = set(word.strip().lower() for word in blocklist)
+            words = [w.strip().lower() for w in blocklist if w and w.strip()]
         elif blocklist_path is not None:
-            self.blocklist = self._load_blocklist_from_file(blocklist_path)
+            words = self._load_blocklist_from_file(blocklist_path)
         else:
             default_path = self._get_default_blocklist_path()
-            self.blocklist = self._load_blocklist_from_file(default_path)
+            words = self._load_blocklist_from_file(default_path)
 
-        LOG.info(f'BlocklistFilter initialized with {len(self.blocklist)} blocked words, '
-                 f'language={self.language}, use_tokenizer={self.use_tokenizer}')
+        self._blocklist_words = words
+        self._automaton = self._build_automaton(words)
+
+        LOG.info(f'BlocklistFilter initialized with {len(words)} blocked words (AC automaton), '
+                 f'language={self.language}')
+
+    def _build_automaton(self, words):
+        A = ahocorasick.Automaton()
+        for idx, word in enumerate(words):
+            A.add_word(word, (idx, word))
+        A.make_automaton()
+        return A
+
+    def __getstate__(self):
+        state = self.__dict__.copy()
+        # automaton may not pickle well in process mode; keep words to rebuild
+        state['_automaton'] = None
+        return state
+
+    def __setstate__(self, state):
+        self.__dict__.update(state)
+        if self._automaton is None and self._blocklist_words:
+            self._automaton = self._build_automaton(self._blocklist_words)
 
     def _get_default_blocklist_path(self):
         current_dir = os.path.dirname(os.path.abspath(__file__))
@@ -318,9 +330,9 @@ class BlocklistFilter(Filter):
     def _load_blocklist_from_file(self, file_path):
         LOG.info(f'Loading blocklist from {file_path}...')
         with open(file_path, 'r', encoding='utf-8') as f:
-            blocklist = set(line.strip().lower() for line in f if line.strip())
-        LOG.info(f'Loaded {len(blocklist)} words from blocklist')
-        return blocklist
+            words = list(dict.fromkeys(line.strip().lower() for line in f if line.strip()))
+        LOG.info(f'Loaded {len(words)} words from blocklist')
+        return words
 
     def forward(self, data, **kwargs):
         assert isinstance(data, dict)
@@ -329,18 +341,8 @@ class BlocklistFilter(Filter):
         if not isinstance(text, str) or not text.strip():
             return data
 
-        if self.use_tokenizer:
-            if self.language in ['zh', 'cn', 'chinese']:
-                words = list(jieba.cut(text.lower()))
-            elif self.language in ['en', 'english']:
-                words = nltk.word_tokenize(text.lower())
-            else:
-                LOG.warning(f'Unsupported language: {self.language}, using simple split')
-                words = text.lower().split()
-        else:
-            words = text.lower().split()
-
-        blocklist_count = sum(1 for word in words if word in self.blocklist)
+        text_lower = text.lower()
+        blocklist_count = sum(1 for _ in self._automaton.iter(text_lower))
 
         if blocklist_count <= self.threshold:
             return data

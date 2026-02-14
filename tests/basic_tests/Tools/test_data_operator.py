@@ -259,7 +259,7 @@ class TestDataOperators:
     def test_blocklist_filter(self):
         func = filter.BlocklistFilter(input_key='content',
                                       blocklist=['敏感', '违禁', 'badword'],
-                                      threshold=0, language='zh', use_tokenizer=True,
+                                      threshold=0, language='zh',
                                       _max_workers=64, _concurrency_mode='thread')
         assert func._concurrency_mode == 'thread'
         assert func._max_workers == 64

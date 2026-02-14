@@ -593,7 +593,7 @@ print(res)
 """)
 
 add_chinese_doc('data.operators.filter_op.BlocklistFilter', """\
-过滤包含敏感词/违禁词超过阈值的文本。
+使用 AC 自动机多模式匹配过滤包含敏感词/违禁词超过阈值的文本。
 
 Args:
     input_key (str): 文本字段名，默认 'content'
@@ -601,12 +601,11 @@ Args:
     blocklist_path (str|None): 违禁词文件路径
     language (str): 语言，'zh' 或 'en'，默认 'zh'
     threshold (int): 允许出现的违禁词最大数量，默认 1
-    use_tokenizer (bool): 是否使用分词，默认 True
     _concurrency_mode (str): 可选，并发模式
 """)
 
 add_english_doc('data.operators.filter_op.BlocklistFilter', """\
-Filter text containing more than threshold blocked words from blocklist.
+Filter text containing more than threshold blocked words using Aho-Corasick automaton.
 
 Args:
     input_key (str): key of the text field, default 'content'
@@ -614,7 +613,6 @@ Args:
     blocklist_path (str|None): path to blocklist file
     language (str): language, 'zh' or 'en', default 'zh'
     threshold (int): max allowed occurrences of blocked words, default 1
-    use_tokenizer (bool): use tokenizer, default True
     _concurrency_mode (str): optional concurrency mode
 """)
 
