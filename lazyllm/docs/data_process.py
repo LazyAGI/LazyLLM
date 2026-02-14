@@ -950,44 +950,6 @@ print(op({'composition_task': composition_task, 'functions': functions}))
 ```
 """)
 
-add_example('data.operators.tool_use_ops', """\
-```python
-# 一个“工具调用数据生成”流水线示例（从场景到多轮对话）
-from lazyllm.tools.data.operators.tool_use_ops import (
-    ScenarioExtractor, AtomTaskGenerator, SequentialTaskGenerator,
-    FunctionGenerator, MultiTurnConversationGenerator
-)
-
-extract_scenario = ScenarioExtractor(model=model, input_key='content', output_key='scenario')
-gen_atomic = AtomTaskGenerator(model=model, input_key='scenario', output_key='atomic_tasks')
-gen_seq = SequentialTaskGenerator(model=model, input_key='atomic_tasks', output_key='sequential_tasks')
-
-# 假设我们从 sequential_tasks 中选取一个代表性的组合任务
-def pick_composition_task(data):
-    items = data.get('sequential_tasks') or []
-    return items[0]['composed_task'] if items else ''
-
-func_gen = FunctionGenerator(model=model,
-                             task_key='composition_task',
-                             subtask_key='atomic_tasks',
-                             output_key='functions')
-conv_gen = MultiTurnConversationGenerator(model=model,
-                                          task_key='composition_task',
-                                          functions_key='functions',
-                                          output_key='conversation',
-                                          n_turns=6)
-
-item = {'content': '我想订一张从北京到上海的高铁票，下午出发最好。'}
-item = extract_scenario(item)
-item = gen_atomic(item)
-item = gen_seq(item)
-item['composition_task'] = pick_composition_task(item)
-item = func_gen(item)
-item = conv_gen(item)
-print(item['conversation'])
-```
-""")
-
 add_chinese_doc('data.operators.tool_use_ops.ScenarioExtractor', """\
 工具调用数据生成算子：场景抽取器。
 
@@ -1032,8 +994,7 @@ Args:
     **kwargs: extra args passed to the base operator (e.g. _max_workers, _save_data).
 """)
 
-add_example('data.operators.tool_use_ops.ScenarioExtractor', """\
-```python
+add_example('data.operators.tool_use_ops.ScenarioExtractor', r"""
 from lazyllm.tools.data.operators.tool_use_ops import ScenarioExtractor
 
 op = ScenarioExtractor(model=model, input_key='content', output_key='scenario')
@@ -1041,6 +1002,8 @@ item = {
     'content': 'User: 我想订一张从北京到上海的高铁票，下午出发最好。\\nAssistant: 好的，请问具体日期？'
 }
 print(op(item))
+
+# Output Example:
 # {
 #   'content': 'User: 我想订一张从北京到上海的高铁票，下午出发最好。\\nAssistant: 好的，请问具体日期？',
 #   'scenario': {
@@ -1052,7 +1015,6 @@ print(op(item))
 #     'key_entities': ['北京', '上海', '高铁', '下午']
 #   }
 # }
-```
 """)
 
 add_chinese_doc('data.operators.tool_use_ops.ScenarioExpander', """\
