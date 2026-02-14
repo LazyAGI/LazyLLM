@@ -1,11 +1,22 @@
 import os
 import shutil
-import lazyllm
 from lazyllm import config
 from lazyllm.tools.data.operators import preference_ops
 import pytest  # noqa: F401
 
 class TestPreferenceOperators:
+    class MockModel:
+        def __init__(self, return_val=None):
+            self.return_val = return_val
+
+        def share(self): return self
+        def prompt(self, system): return self
+        def formatter(self, fmt): return self
+
+        def __call__(self, x, **kwargs):
+            if isinstance(x, list):
+                return [self.return_val] * len(x)
+            return self.return_val
 
     def setup_method(self):
         self.root_dir = './test_preference_op'
@@ -20,10 +31,10 @@ class TestPreferenceOperators:
             shutil.rmtree(self.root_dir)
 
     def test_intent_extractor(self):
-        llm = lazyllm.OnlineChatModule(source='sensenova', model='SenseChat-5')
+        mockmodle = self.MockModel(return_val={'intent': 'book a hotel'})
 
         op = preference_ops.IntentExtractor(
-            model=llm,
+            model=mockmodle,
             input_key='content',
             output_key='intent',
             _save_data=False
@@ -34,10 +45,10 @@ class TestPreferenceOperators:
         assert 'intent' in res[0]['intent']
 
     def test_preference_response_generator(self):
-        llm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Pro')
+        mockmodle = self.MockModel(return_val='I can help you book a hotel in Beijing.')
 
         op = preference_ops.PreferenceResponseGenerator(
-            model=llm,
+            model=mockmodle,
             n=2,
             input_key='intent',
             output_key='responses',
@@ -50,10 +61,10 @@ class TestPreferenceOperators:
         assert isinstance(res[0]['responses'][0], str)
 
     def test_response_evaluator(self):
-        llm = lazyllm.OnlineChatModule(source='sensenova', model='SenseNova-V6-5-Pro')
+        mockmodle = self.MockModel(return_val={'total_score': 8})
 
         op = preference_ops.ResponseEvaluator(
-            model=llm,
+            model=mockmodle,
             input_key='intent',
             response_key='responses',
             output_key='evaluation',
