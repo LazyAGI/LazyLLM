@@ -158,9 +158,9 @@ jobs:
           pip install build
           cp pyproject.toml pyproject.toml.backup
           python scripts/generate_toml_optional_deps.py --split
-          mv pyproject.toml.backup pyproject.toml
           python -m build --config-setting=skbuild.wheel.cmake=false
           ls -la dist/
+          mv pyproject.toml.backup pyproject.toml
 
       - name: Upload source_code
         uses: actions/upload-artifact@v4
@@ -217,9 +217,9 @@ jobs:
           pip install cibuildwheel
           cp pyproject.toml pyproject.toml.backup
           python scripts/generate_toml_optional_deps.py --split
-          mv pyproject.toml.backup pyproject.toml
           cibuildwheel --output-dir repaired_wheel
           ls -la repaired_wheel/
+          mv pyproject.toml.backup pyproject.toml
         env:
           CIBW_BUILD_VERBOSITY: 1
 
