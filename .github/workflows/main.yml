@@ -376,7 +376,7 @@ jobs:
       - name: Test installing built package
         run: |
           pip install dist/lazyllm*.whl
-          pip install "dist/lazyllm*.whl[online-advanced]"
+          pip install "$(ls dist/lazyllm*.whl)[online-advanced]"
 
       - name: Test import
         working-directory: /tmp
