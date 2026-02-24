@@ -12,10 +12,16 @@
     members:
     exclude-members:
 
+### 纯文本生成QA对算子
+
+::: lazyllm.tools.data.operators.text2qa_ops
+    members:
+    exclude-members:
+### Embedding 数据合成
 ::: lazyllm.tools.data.operators.embedding_synthesis
     members:
     exclude-members:
-
+### 知识库清洗
 ::: lazyllm.tools.data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api
     members:
     exclude-members:
@@ -43,7 +49,7 @@
 ::: lazyllm.tools.data.operators.knowledge_cleaning.qa_extract
     members:
     exclude-members:
-
+### Reranker 数据合成
 ::: lazyllm.tools.data.operators.reranker_synthesis
     members:
     exclude-members:

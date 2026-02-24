@@ -5,7 +5,7 @@ from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from lazyllm.components.formatter import JsonFormatter
 from ...base_data import data_register
-from ...prompts.kbcleaning import KnowledgeCleanerPrompt
+from ...prompts.kbcleaning import DocRefinementPrompt
 
 # Get or create kbc (knowledge base cleaning) group
 if 'data' in LazyLLMRegisterMetaClass.all_clses and 'kbc' in LazyLLMRegisterMetaClass.all_clses['data']:
@@ -54,9 +54,9 @@ class KBCLoadRAWChunkFile(kbc):
 class KBCGenerateCleanedText(kbc):
     def __init__(self, llm=None, lang: str = 'en', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.prompts = KnowledgeCleanerPrompt(lang=lang)
+        self.prompts = DocRefinementPrompt(lang=lang)
         if llm is not None:
-            # Note: KnowledgeCleanerPrompt may not have system prompt, use empty string
+            # Note: DocRefinementPrompt may not have system prompt, use empty string
             system_prompt = getattr(self.prompts, 'build_system_prompt', lambda: '')()
             self._llm_serve = llm.share().prompt(system_prompt).formatter(JsonFormatter())
             self._llm_serve.start()

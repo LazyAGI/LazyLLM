@@ -5,7 +5,7 @@ from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from lazyllm.components.formatter import JsonFormatter
 from ...base_data import data_register
-from ...prompts.text2qa import Text2MultiHopQAGeneratorPrompt
+from ...prompts.text2qa import MultiHopQABuilderPrompt
 
 
 # Get or create kbc (knowledge base cleaning) group
@@ -136,7 +136,7 @@ class KBCGenerateMultiHopQA(kbc):
     def __init__(self, llm=None, lang: str = 'en', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
 
-        self.prompt_template = Text2MultiHopQAGeneratorPrompt(lang=lang)
+        self.prompt_template = MultiHopQABuilderPrompt(lang=lang)
 
         if llm is not None:
             system_prompt = self.prompt_template.build_system_prompt()

@@ -1,7 +1,8 @@
 from .base_prompt import PromptABC
 
 
-class Text2MultiHopQAGeneratorPrompt(PromptABC):
+class MultiHopQABuilderPrompt(PromptABC):
+    '''Build multi-hop QA pairs requiring reasoning across multiple facts.'''
     def __init__(self, lang: str = 'en'):
         self.lang = lang
         self.system_text = self.build_system_prompt()
@@ -124,5 +125,5 @@ class Text2MultiHopQAGeneratorPrompt(PromptABC):
 
 
 __all__ = [
-    'Text2MultiHopQAGeneratorPrompt',
+    'MultiHopQABuilderPrompt',
 ]

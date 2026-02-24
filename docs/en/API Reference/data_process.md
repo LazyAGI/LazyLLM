@@ -12,10 +12,17 @@
     members:
     exclude-members:
 
-::: lazyllm.tools.data.operators.embedding_synthesis
+### Text to QA pairs Operators
+
+::: lazyllm.tools.data.operators.text2qa_ops
     members:
     exclude-members:
 
+### Embedding synthesis
+::: lazyllm.tools.data.operators.embedding_synthesis
+    members:
+    exclude-members:
+### Knowledge clean
 ::: lazyllm.tools.data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api
     members:
     exclude-members:
@@ -43,7 +50,7 @@
 ::: lazyllm.tools.data.operators.knowledge_cleaning.qa_extract
     members:
     exclude-members:
-
+### Reranker synthesis
 ::: lazyllm.tools.data.operators.reranker_synthesis
     members:
     exclude-members:

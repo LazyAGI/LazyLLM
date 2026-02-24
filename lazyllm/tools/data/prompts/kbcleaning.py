@@ -1,7 +1,8 @@
 from .base_prompt import PromptABC
 
 
-class KnowledgeCleanerPrompt(PromptABC):
+class DocRefinementPrompt(PromptABC):
+    '''Refine raw document for RAG: normalize markup, structure, PII.'''
     def __init__(self, lang: str = 'en', strict_mode: bool = True):
         self.lang = lang
         self.strict_mode = strict_mode
@@ -94,7 +95,10 @@ Workflow Steps:
 4. [Hierarchy Validation] Verify document structure
 5. [Result Generation] Produce refined text
 '''.strip()
-            output_requirement = 'Response should include ONLY refined text enclosed by <cleaned_start> and <cleaned_end>.'
+            output_requirement = (
+                'Response should include ONLY refined text enclosed by '
+                '<cleaned_start> and <cleaned_end>.'
+            )
         else:
             processing_steps = '''
 工作流程：
@@ -118,7 +122,8 @@ Workflow Steps:
 '''.strip()
 
 
-class MathbookQuestionExtractPrompt(PromptABC):
+class MathPageExerciseExtractPrompt(PromptABC):
+    '''Extract math exercises from textbook page images.'''
     def __init__(self):
         pass
 
@@ -150,6 +155,6 @@ punctuation marks.
 
 
 __all__ = [
-    'KnowledgeCleanerPrompt',
-    'MathbookQuestionExtractPrompt',
+    'DocRefinementPrompt',
+    'MathPageExerciseExtractPrompt',
 ]
