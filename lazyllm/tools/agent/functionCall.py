@@ -1,8 +1,10 @@
 from lazyllm.module import ModuleBase
 from lazyllm.components import ChatPrompter, FunctionCallFormatter
-from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text
+from lazyllm import pipeline, loop, locals, Color, package, FileSystemQueue, colored_text, once_wrapper
 from .toolsManager import ToolManager
-from typing import List, Any, Dict, Union, Callable
+from .skill_manager import SKILLS_PROMPT
+from typing import List, Any, Dict, Union, Callable, Optional
+from .base import LazyLLMAgentBase
 from lazyllm.components.prompter.builtinPrompt import FC_PROMPT_PLACEHOLDER
 from lazyllm.common.deprecated import deprecated
 import re
@@ -38,12 +40,34 @@ class StreamResponse():
 
 class FunctionCall(ModuleBase):
 
-    def __init__(self, llm, tools: List[Union[str, Callable]], *, return_trace: bool = False,
-                 stream: bool = False, _prompt: str = None):
+    def __init__(self, llm, tools: Optional[List[Union[str, Callable]]] = None, *, return_trace: bool = False,
+                 stream: bool = False, _prompt: str = None, _tool_manager: Optional[ToolManager] = None,
+                 skill_manager=None, workspace: Optional[str] = None):
         super().__init__(return_trace=return_trace)
-
-        self._tools_manager = ToolManager(tools, return_trace=return_trace)
-        self._prompter = ChatPrompter(instruction=_prompt or FC_PROMPT, tools=self._tools_manager.tools_description)
+        if _tool_manager is None:
+            assert tools, 'tools cannot be empty.'
+            self._tools_manager = ToolManager(tools, return_trace=return_trace)
+        else:
+            self._tools_manager = _tool_manager
+        self._skill_manager = skill_manager
+        self._workspace = workspace
+        prompt = _prompt or FC_PROMPT
+        if self._workspace:
+            prompt = (
+                f'{prompt}\n\n## Workspace\n'
+                f'- Default workspace: `{self._workspace}`\n'
+                '- Prefer creating/updating files under this workspace.\n'
+                '- Use absolute paths under this workspace when creating files.\n'
+            )
+        if self._skill_manager:
+            prompt = f'{prompt}\n\n{SKILLS_PROMPT}'
+            self._prompter = ChatPrompter(
+                instruction=prompt,
+                tools=self._tools_manager.tools_description,
+                extra_keys=['available_skills']
+            )
+        else:
+            self._prompter = ChatPrompter(instruction=prompt, tools=self._tools_manager.tools_description)
         self._llm = llm.share(prompt=self._prompter, format=FunctionCallFormatter()).used_by(self._module_id)
         with pipeline() as self._impl:
             self._impl.ins = StreamResponse('Received instruction:', prefix_color=Color.yellow,
@@ -54,10 +78,21 @@ class FunctionCall(ModuleBase):
                                             prefix_color=Color.yellow, color=Color.green, stream=stream)
             self._impl.post_action = self._post_action
 
-    def _build_history(self, input: Union[str, list]):
-        history_idx = len(locals['_lazyllm_agent']['workspace'].setdefault('history', []))
+    def _build_history(self, input: Union[str, dict, list]):
+        workspace = locals['_lazyllm_agent']['workspace']
+        history_idx = len(workspace.setdefault('history', []))
+        if self._skill_manager and isinstance(input, dict) and input.get('available_skills'):
+            workspace['available_skills'] = input['available_skills']
         if isinstance(input, str):
-            locals['_lazyllm_agent']['workspace']['history'].append({'role': 'user', 'content': input})
+            workspace['history'].append({'role': 'user', 'content': input})
+        elif isinstance(input, dict) and 'input' in input:
+            workspace['history'].append(
+                {'role': 'user', 'content': input.get('input', '')}
+            )
+        elif isinstance(input, dict) and input.get('role') == 'user':
+            workspace['history'].append(
+                {'role': 'user', 'content': input.get('content', '')}
+            )
         elif isinstance(input, dict):
             tool_call_results = [
                 {
@@ -65,15 +100,19 @@ class FunctionCall(ModuleBase):
                     'content': str(tool_call['tool_call_result']),
                     'tool_call_id': tool_call['id'],
                     'name': tool_call['function']['name'],
-                } for tool_call in locals['_lazyllm_agent']['workspace']['tool_call_trace']
+                } for tool_call in workspace['tool_call_trace']
             ]
-            locals['_lazyllm_agent']['workspace']['history'].append(
+            workspace['history'].append(
                 {'role': 'assistant', 'content': input.get('content', ''), 'tool_calls': input.get('tool_calls', [])}
             )
             input = {'input': tool_call_results}
             history_idx += 1
-            locals['_lazyllm_agent']['workspace']['history'].extend(tool_call_results)
-        locals['chat_history'][self._llm._module_id] = locals['_lazyllm_agent']['workspace']['history'][:history_idx]
+            workspace['history'].extend(tool_call_results)
+        chat_history = workspace['history'][:history_idx]
+        locals['chat_history'][self._llm._module_id] = chat_history
+        if self._skill_manager and isinstance(input, dict) and 'available_skills' not in input:
+            available = workspace.get('available_skills')
+            if available: input['available_skills'] = available
         return input
 
     def _post_action(self, llm_output: Dict[str, Any]):
@@ -108,19 +147,39 @@ class FunctionCall(ModuleBase):
         return result
 
 @deprecated('ReactAgent')
-class FunctionCallAgent(ModuleBase):
+class FunctionCallAgent(LazyLLMAgentBase):
     def __init__(self, llm, tools: List[str], max_retries: int = 5, return_trace: bool = False, stream: bool = False,
-                 return_last_tool_calls: bool = False):
-        super().__init__(return_trace=return_trace)
-        self._max_retries = max_retries
-        self._return_last_tool_calls = return_last_tool_calls
-        self._fc = FunctionCall(llm, tools, return_trace=return_trace, stream=stream)
-        self._agent = loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+                 return_last_tool_calls: bool = False,
+                 skills: Union[bool, str, List[str], None] = None, desc: str = '',
+                 workspace: Optional[str] = None):
+        super().__init__(llm=llm, tools=tools, max_retries=max_retries,
+                         return_trace=return_trace, stream=stream,
+                         return_last_tool_calls=return_last_tool_calls,
+                         skills=skills, desc=desc, workspace=workspace)
+        assert self._llm is not None, 'llm cannot be empty.'
+        self._assert_tools()
+        prompt = FC_PROMPT
+        self._fc = FunctionCall(llm=self._llm, return_trace=return_trace, stream=stream,
+                                _prompt=prompt, _tool_manager=self._tools_manager,
+                                skill_manager=self._skill_manager, workspace=self.workspace)
         self._fc._llm.used_by(self._module_id)
 
-    def forward(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
-        ret = self._agent(query, llm_chat_history) if llm_chat_history is not None else self._agent(query)
-        if isinstance(ret, str) and self._return_last_tool_calls and locals['_lazyllm_agent'].get('completed'):
-            return locals['_lazyllm_agent'].pop('completed')
-        return ret if isinstance(ret, str) else (_ for _ in ()).throw(ValueError(f'After retrying \
-            {self._max_retries} times, the function call agent still fails to call successfully.'))
+    @once_wrapper(reset_on_pickle=True)
+    def build_agent(self):
+        agent = loop(self._fc, stop_condition=lambda x: isinstance(x, str), count=self._max_retries)
+        self._agent = agent
+
+    def _pre_process(self, query: str, llm_chat_history: List[Dict[str, Any]] = None):
+        query = self._wrap_user_input_with_skills(query)
+        if llm_chat_history is not None:
+            return (query, llm_chat_history)
+        return query
+
+    def _post_process(self, ret):
+        if isinstance(ret, str):
+            completed = self._pop_tool_calls()
+            if completed is not None:
+                return completed
+            return ret
+        raise ValueError(f'After retrying {self._max_retries} times, the function call agent still fails to call '
+                         f'successfully.')

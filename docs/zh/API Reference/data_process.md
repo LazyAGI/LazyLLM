@@ -12,6 +12,12 @@
     members:
     exclude-members:
 
+### 纯文本生成QA对算子
+
+::: lazyllm.tools.data.operators.text2qa_ops
+    members:
+    exclude-members:
+
 ### 思维链生成算子
 
 ::: lazyllm.tools.data.operators.cot_ops

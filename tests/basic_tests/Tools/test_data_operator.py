@@ -5,8 +5,26 @@ import random
 import shutil
 import json
 from lazyllm import config, LOG
-from lazyllm.tools.data import demo1, demo2, data_register, genCot, EnQA, MathQA
+from lazyllm.tools.data import demo1, demo2, data_register, genCot, EnQA, MathQA, Text2qa
 
+class MockModel:
+    def __init__(self, mock_response: str):
+        self.mock_response = mock_response
+
+    def __call__(self, string: str, **kwargs):
+        return self.mock_response
+
+    def prompt(self, prompt):
+        return self
+
+    def formatter(self, formatter):
+        return self
+
+    def share(self):
+        return self
+
+    def start(self):
+        return self
 
 class MockModel:
     def __init__(self, mock_response: str):
@@ -403,3 +421,46 @@ class TestDataOperators:
 
         assert 'answer' in res[0]
         assert 'question' in res[0]
+    # text2qa_ops tests
+    def test_text2qa_text_to_chunks(self):
+        # Example from data.operators.text2qa_ops.TextToChunks
+        op = Text2qa.TextToChunks(input_key='content', output_key='chunk', chunk_size=10, tokenize=False)
+        data = [{'content': 'line1\nline2\nline3\nline4'}]
+        res = op(data)
+        assert res == [
+            {'content': 'line1\nline2\nline3\nline4', 'chunk': 'line1\nline2'},
+            {'content': 'line1\nline2\nline3\nline4', 'chunk': 'line3\nline4'},
+        ]
+
+    def test_text2qa_empty_or_noise_filter(self):
+        # Example from data.operators.text2qa_ops.empty_or_noise_filter
+        op = Text2qa.empty_or_noise_filter(input_key='chunk')
+        data = [{'chunk': 'hello'}, {'chunk': ''}, {'chunk': '\n'}]
+        res = op(data)
+        assert res == [{'chunk': 'hello'}]
+
+    def test_text2qa_invalid_unicode_cleaner(self):
+        # Example from data.operators.text2qa_ops.invalid_unicode_cleaner
+        op = Text2qa.invalid_unicode_cleaner(input_key='chunk')
+        data = [{'chunk': 'valid text\uFFFE tail'}]
+        res = op(data)
+        assert res == [{'chunk': 'valid text tail'}]
+
+    def test_text2qa_chunk_to_qa(self):
+        llm = MockModel({'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！'})
+        op = Text2qa.ChunkToQA(input_key='chunk', query_key='query', answer_key='answer', model=llm)
+        data = [{'chunk': '今天是晴天！'}]
+        res = op(data)
+        assert len(res) == 1
+        assert 'chunk' in res[0] and 'query' in res[0] and 'answer' in res[0]
+
+    def test_text2qa_qa_scorer(self):
+        # Example from data.operators.text2qa_ops.QAScorer
+        llm = MockModel({'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！', 'score': 1})
+        op = Text2qa.QAScorer(input_key='chunk', output_key='score', query_key='query', answer_key='answer', model=llm)
+        data = [
+            {'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！'}
+        ]
+        res = op(data)
+        assert len(res) == 1
+        assert res[0].get('score') == 1

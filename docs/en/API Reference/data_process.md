@@ -12,6 +12,12 @@
     members:
     exclude-members:
 
+### Text to QA pairs Operators
+
+::: lazyllm.tools.data.operators.text2qa_ops
+    members:
+    exclude-members:
+
 ### CoT QA Operators
 
 ::: lazyllm.tools.data.operators.cot_ops
@@ -35,7 +41,6 @@
 ::: lazyllm.tools.data.operators.pdf_ops
     members:
     exclude-members:
-
 
 ## Data Processing Pipeline
 

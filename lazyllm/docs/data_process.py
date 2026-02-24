@@ -247,10 +247,13 @@ Args:
 
 add_example('data.operators.demo_ops.process_uppercase', """\
 ```python
-from lazyllm.tools.data.operators.demo_ops import process_uppercase
+from lazyllm.tools.data import Demo1
 
-op = process_uppercase(input_key='text')
-print(op({'text': 'hello'}))  # {'text': 'HELLO'}
+op = Demo1.process_uppercase(input_key='text')
+data = [{'text': 'hello'}]
+res = op(data)
+print(res)
+# [{'text': 'HELLO'}]
 ```
 """)
 
@@ -276,10 +279,12 @@ Args:
 
 add_example('data.operators.demo_ops.build_pre_suffix', """\
 ```python
-from lazyllm.tools.data.operators.demo_ops import build_pre_suffix
+from lazyllm.tools.data import Demo1
 
-op = build_pre_suffix(input_key='text', prefix='Hello, ', suffix='!')
-print(op([{'text': 'world'}]))
+op = Demo1.build_pre_suffix(input_key='text', prefix='Hello, ', suffix='!')
+data = [{'text': 'world'}]
+res = op(data)
+print(res)
 # [{'text': 'Hello, world!'}]
 ```
 """)
@@ -308,10 +313,13 @@ Args:
 
 add_example('data.operators.demo_ops.AddSuffix', """\
 ```python
-from lazyllm.tools.data.operators.demo_ops import AddSuffix
+from lazyllm.tools.data import Demo2
 
-op = AddSuffix(suffix='!!!', input_key='text', _max_workers=2)
-print(op([{'text': 'wow'}]))  # [{'text': 'wow!!!'}]
+op = Demo2.AddSuffix(suffix='!!!', input_key='text', _max_workers=2)
+data = [{'text': 'wow'}]
+res = op(data)
+print(res)
+# [{'text': 'wow!!!'}]
 ```
 """)
 
@@ -333,10 +341,12 @@ Args:
 
 add_example('data.operators.demo_ops.rich_content', """\
 ```python
-from lazyllm.tools.data.operators.demo_ops import rich_content
+from lazyllm.tools.data import Demo2
 
-op = rich_content(input_key='text')
-print(op({'text': 'This is a test.'}))
+op = Demo2.rich_content(input_key='text')
+data = [{'text': 'This is a test.'}]
+res = op(data)
+print(res)
 # [
 #   {'text': 'This is a test.'},
 #   {'text': 'This is a test. - part 1'},
@@ -364,10 +374,13 @@ Args:
 
 add_example('data.operators.demo_ops.error_prone_op', """\
 ```python
-from lazyllm.tools.data.operators.demo_ops import error_prone_op
+from lazyllm.tools.data import Demo2
 
-op = error_prone_op(input_key='text', _save_data=True, _concurrency_mode='single')
-res = op([{'text': 'ok'}, {'text': 'fail'}, {'text': 'ok2'}])
+op = Demo2.error_prone_op(input_key='text', _save_data=True, _concurrency_mode='single')
+data = [{'text': 'ok'}, {'text': 'fail'}, {'text': 'ok2'}]
+res = op(data)
+print(res)
+# [{'text': 'Processed: ok'}, {'text': 'Processed: ok2'}]
 # valid results skip the failed item; error details written to error file
 ```
 """)
@@ -936,6 +949,177 @@ from lazyllm.tools.data.operators.pdf_ops import Pdf2Md
 op = Pdf2Qa.Pdf2Md(input_key='pdf_path', output_key='docs', reader_url='http://...')
 data = [{'pdf_path': '/path/to/file.pdf'}]
 res = op(data)  # each item gets 'docs' (list of doc content)
+# text2qa_ops module docs
+add_chinese_doc('data.operators.text2qa_ops.TextToChunks', """\
+将输入文本按行切分为多个块（chunk），每条输入可展开为多条输出。支持按 token 数或字符数控制块大小，可选用 tokenizer 或按字符计数。
+
+Args:
+    input_key (str): 输入文本字段名，默认 'content'
+    output_key (str): 输出块内容写入的字段名，默认 'chunk'
+    chunk_size (int): 每块的最大长度（token 数或字符数），默认 10
+    tokenize (bool): 是否按 token 计数；为 True 且未提供 tokenizer 时使用默认 Qwen tokenizer
+    tokenizer: 可选，用于计数的 tokenizer；None 时若 tokenize=True 则自动加载默认
+    **kwargs: 其它基类参数（如 _concurrency_mode、_max_workers 等）
+""")
+
+add_english_doc('data.operators.text2qa_ops.TextToChunks', """\
+Split input text into chunks by lines, with size controlled by token or character count. One input item may expand into multiple output items. Supports optional tokenizer or character-based length.
+
+Args:
+    input_key (str): key of the input text field, default 'content'
+    output_key (str): key to write each chunk into, default 'chunk'
+    chunk_size (int): max length per chunk (tokens or chars), default 10
+    tokenize (bool): whether to count by tokens; if True and tokenizer not provided, uses default Qwen tokenizer
+    tokenizer: optional tokenizer for counting; if None and tokenize=True, loads default
+    **kwargs: other base-class args (e.g. _concurrency_mode, _max_workers)
+""")
+
+add_example('data.operators.text2qa_ops.TextToChunks', """\
+```python
+from lazyllm.tools.data import Text2qa
+
+op = Text2qa.TextToChunks(input_key='content', output_key='chunk', chunk_size=10, tokenize=False)
+data = [{'content': 'line1\nline2\nline3\nline4'}]
+res = op(data)
+print(res)
+# [{'content': 'line1\nline2\nline3\nline4', 'chunk': 'line1\nline2'}, {'content': 'line1\nline2\nline3\nline4', 'chunk': 'line3\nline4'}]
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.empty_or_noise_filter', """\
+过滤空内容或纯噪声数据。若指定字段为空或仅包含非字母/非 CJK 字符则丢弃该条（返回空列表），否则保留原数据。以 forward 单条方式注册。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 要检查的字段名，默认 'chunk'
+""")
+
+add_english_doc('data.operators.text2qa_ops.empty_or_noise_filter', """\
+Filter out empty or noise-only items. If the specified field is empty or contains no word/CJK characters, the item is dropped (returns empty list); otherwise the item is kept. Registered as a single-item forward.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key to check, default 'chunk'
+""")
+
+add_example('data.operators.text2qa_ops.empty_or_noise_filter', """\
+```python
+from lazyllm.tools.data import Text2qa
+
+op = Text2qa.empty_or_noise_filter(input_key='chunk')
+data = [{'chunk': 'hello'}, {'chunk': ''}, {'chunk': '\n'}]
+res = op(data)
+print(res)
+# [{'chunk': 'hello'}]
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.invalid_unicode_cleaner', """\
+清除指定文本字段中的无效 Unicode 码位（如 FDD0–FDEF、FFFE/FFFF 及若干 Supplementary Special Purpose 区段），原地修改并返回数据。以 forward 单条方式注册。
+
+Args:
+    data (dict): 单条数据字典
+    input_key (str): 要清洗的文本字段名，默认 'chunk'
+""")
+
+add_english_doc('data.operators.text2qa_ops.invalid_unicode_cleaner', """\
+Remove invalid Unicode code points (e.g. FDD0–FDEF, FFFE/FFFF and certain Supplementary Special Purpose ranges) from the specified text field in place. Registered as a single-item forward.
+
+Args:
+    data (dict): single data dict
+    input_key (str): key of the text field to clean, default 'chunk'
+""")
+
+add_example('data.operators.text2qa_ops.invalid_unicode_cleaner', """\
+```python
+from lazyllm.tools.data import Text2qa
+
+op = Text2qa.invalid_unicode_cleaner(input_key='chunk')
+data = {'chunk': 'valid text\uFFFE tail'}
+res = op(data)  # 剔除乱码\uFFFE
+print(res)
+[{'chunk': 'valid text tail'}]
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.ChunkToQA', """\
+基于大模型将每个文本块生成一个 QA 对（问题 + 答案）。使用 JsonFormatter 约束输出格式，可自定义 user_prompt 或使用默认「根据下面文本生成一个 QA 对」。
+
+Args:
+    input_key (str): 输入块字段名，默认 'chunk'
+    query_key (str): 生成的问题写入的字段名，默认 'query'
+    answer_key (str): 生成的答案写入的字段名，默认 'answer'
+    model: 可选，TrainableModule 或兼容接口；None 时使用默认 Qwen 模型
+    user_prompt (str|None): 可选，用户提示前缀；None 时使用默认
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.text2qa_ops.ChunkToQA', """\
+Use an LLM to generate one QA pair (question + answer) per text chunk. Output format is constrained via JsonFormatter; user_prompt can be customized or left as default.
+
+Args:
+    input_key (str): key of the input chunk, default 'chunk'
+    query_key (str): key to write the generated question, default 'query'
+    answer_key (str): key to write the generated answer, default 'answer'
+    model: optional TrainableModule or compatible; None uses default Qwen model
+    user_prompt (str|None): optional user prompt prefix; None uses default
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.text2qa_ops.ChunkToQA', """\
+```python
+from lazyllm.tools.data import Text2qa
+from lazyllm import OnlineChatModule
+
+llm = OnlineChatModule()
+op = Text2qa.ChunkToQA(input_key='chunk', query_key='query', answer_key='answer', model=llm)
+data = [{'chunk': '今天是晴天！'}]
+res = op(data)
+print(res)
+# [{'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！'}]
+```
+""")
+
+add_chinese_doc('data.operators.text2qa_ops.QAScorer', """\
+基于大模型对 QA 对进行打分：判断答案是否严格基于原文，输出 1（基于原文）或 0（否则）。使用 JsonFormatter 约束输出 score 字段。
+
+Args:
+    input_key (str): 原文块字段名，默认 'chunk'
+    output_key (str): 分数写入的字段名，默认 'score'
+    query_key (str): 问题字段名，默认 'query'
+    answer_key (str): 答案字段名，默认 'answer'
+    model: 可选，TrainableModule 或兼容接口；None 时使用默认 Qwen 模型
+    user_prompt (str|None): 可选，用户提示；None 时使用默认规则（严格基于原文→1，否则→0）
+    **kwargs: 其它基类参数
+""")
+
+add_english_doc('data.operators.text2qa_ops.QAScorer', """\
+Use an LLM to score QA pairs: whether the answer is strictly grounded in the source chunk. Outputs 1 (grounded) or 0 (otherwise). Output format constrained via JsonFormatter.
+
+Args:
+    input_key (str): key of the source chunk, default 'chunk'
+    output_key (str): key to write the score, default 'score'
+    query_key (str): key of the question, default 'query'
+    answer_key (str): key of the answer, default 'answer'
+    model: optional TrainableModule or compatible; None uses default Qwen model
+    user_prompt (str|None): optional user prompt; None uses default rules
+    **kwargs: other base-class args
+""")
+
+add_example('data.operators.text2qa_ops.QAScorer', """\
+```python
+from lazyllm.tools.data import Text2qa
+from lazyllm import OnlineChatModule
+
+llm = OnlineChatModule()
+op = Text2qa.QAScorer(input_key='chunk', output_key='score', query_key='query', answer_key='answer', model=llm)
+data = [
+{'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！'},
+{'chunk': '1+1=2', 'query': '1+1=?', 'answer': '3'}
+]
+res = op(data)
+print(res)
+# [{'chunk': '今天是晴天！', 'query': '今天的天气怎么样？', 'answer': '今天是晴天！', 'score': 1}, {'chunk': '1+1=2', 'query': '1+1=?', 'answer': '3', 'score': 0}]
 ```
 """)
 
