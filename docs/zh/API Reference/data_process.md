@@ -12,6 +12,22 @@
     members:
     exclude-members:
 
+### Agentic rag
+::: lazyllm.tools.data.operators.agentic_rag.agenticrag_atomic_task_generator
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.agentic_rag.agenticrag_depth_qa_generator
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.agentic_rag.agenticrag_width_qa_generator
+    members:
+    exclude-members:
 
 ## 数据处理 Pipeline
 
