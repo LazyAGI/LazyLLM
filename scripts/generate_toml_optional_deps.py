@@ -4,6 +4,7 @@ For poetry install ; poetry lock
 '''
 from pathlib import Path
 import tomlkit
+import sys
 
 def expand_caret(version: str) -> str:
     '''
@@ -45,6 +46,13 @@ def normalize_version(version: str) -> str:
     return version
 
 
+def make_subgroup(project, name, deps):
+    arr = tomlkit.array()
+    arr.multiline(True)
+    for dep in sorted(deps):
+        arr.append(dep)
+    project['optional-dependencies'][name] = arr
+
 def main():
     path = Path('pyproject.toml')
     if not path.exists():
@@ -57,23 +65,24 @@ def main():
 
     poetry_optional_deps = doc['tool']['poetry']['dependencies']
 
-    proj_optional_deps = []
+    split = 'split' in sys.argv[1:] or '--split' in sys.argv[1:]
+    proj_optional_deps = {} if split else []
 
     for name, spec in poetry_optional_deps.items():
         version = normalize_version(spec['version'])
-        proj_optional_deps.append(f'{name}{version}')
+        if split:
+            proj_optional_deps[name] = f'{name}{version}'
+        else:
+            proj_optional_deps.append(f'{name}{version}')
 
-    project = doc['project']
     project['optional-dependencies'] = tomlkit.table()
 
-    arr = tomlkit.array()
-    arr.multiline(True)
-    for dep in sorted(proj_optional_deps):
-        arr.append(dep)
-
-    project = doc['project']
-    project['optional-dependencies'] = tomlkit.table()
-    project['optional-dependencies']['optional'] = arr
+    if split:
+        extras = doc['tool']['poetry']['extras']
+        for k, vs in extras.items():
+            make_subgroup(project, k, [proj_optional_deps[v] for v in vs])
+    else:
+        make_subgroup(project, 'optional', proj_optional_deps)
 
     # remove poetry sections
     doc['tool'].pop('poetry', None)

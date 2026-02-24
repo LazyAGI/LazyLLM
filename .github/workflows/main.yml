@@ -367,11 +367,16 @@ jobs:
 
       - name: Build
         run: |
-          pip install build
+          pip install build tomlkit
+          cp pyproject.toml pyproject.toml.backup
+          python scripts/generate_toml_optional_deps.py --split
           python -m build --config-setting=skbuild.wheel.cmake=false
+          mv pyproject.toml.backup pyproject.toml
 
       - name: Test installing built package
-        run: pip install dist/lazyllm*.whl
+        run: |
+          pip install dist/lazyllm*.whl
+          pip install "$(ls dist/lazyllm*.whl)[online-advanced]"
 
       - name: Test import
         working-directory: /tmp
