@@ -26,25 +26,6 @@ class MockModel:
     def start(self):
         return self
 
-class MockModel:
-    def __init__(self, mock_response: str):
-        self.mock_response = mock_response
-
-    def __call__(self, string: str, **kwargs):
-        return self.mock_response
-
-    def prompt(self, prompt):
-        return self
-
-    def formatter(self, formatter):
-        return self
-
-    def share(self):
-        return self
-
-    def start(self):
-        return self
-
 class TestDataOperators:
 
     def setup_method(self):
@@ -421,6 +402,7 @@ class TestDataOperators:
 
         assert 'answer' in res[0]
         assert 'question' in res[0]
+
     # text2qa_ops tests
     def test_text2qa_text_to_chunks(self):
         # Example from data.operators.text2qa_ops.TextToChunks

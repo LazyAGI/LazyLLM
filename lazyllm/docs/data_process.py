@@ -949,6 +949,9 @@ from lazyllm.tools.data.operators.pdf_ops import Pdf2Md
 op = Pdf2Qa.Pdf2Md(input_key='pdf_path', output_key='docs', reader_url='http://...')
 data = [{'pdf_path': '/path/to/file.pdf'}]
 res = op(data)  # each item gets 'docs' (list of doc content)
+```"""
+)
+
 # text2qa_ops module docs
 add_chinese_doc('data.operators.text2qa_ops.TextToChunks', """\
 将输入文本按行切分为多个块（chunk），每条输入可展开为多条输出。支持按 token 数或字符数控制块大小，可选用 tokenizer 或按字符计数。
