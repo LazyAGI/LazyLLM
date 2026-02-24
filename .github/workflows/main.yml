@@ -367,7 +367,7 @@ jobs:
 
       - name: Build
         run: |
-          pip install build
+          pip install build tomlkit
           cp pyproject.toml pyproject.toml.backup
           python scripts/generate_toml_optional_deps.py --split
           python -m build --config-setting=skbuild.wheel.cmake=false
