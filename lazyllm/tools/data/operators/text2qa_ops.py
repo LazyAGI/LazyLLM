@@ -162,7 +162,7 @@ class ChunkToQA(Text2qa):
         if model is None:
             self.model = TrainableModule(DEFAULT_MODEL)
         else:
-            self.model = model
+            self.model = model.share()
         self.model.prompt(output_structure)\
             .formatter(JsonFormatter())\
             .start()
@@ -216,7 +216,7 @@ class QAScorer(Text2qa):
         if model is None:
             self.model = TrainableModule(DEFAULT_MODEL)
         else:
-            self.model = model
+            self.model = model.share()
         self.model.prompt(output_structure)\
             .formatter(JsonFormatter())\
             .start()
