@@ -156,6 +156,9 @@ jobs:
       - name: Build default wheel
         run: |
           pip install build
+          cp pyproject.toml pyproject.toml.backup
+          python scripts/generate_toml_optional_deps.py --split
+          mv pyproject.toml.backup pyproject.toml
           python -m build --config-setting=skbuild.wheel.cmake=false
           ls -la dist/
 
@@ -212,6 +215,9 @@ jobs:
       - name: Build wheel
         run: |
           pip install cibuildwheel
+          cp pyproject.toml pyproject.toml.backup
+          python scripts/generate_toml_optional_deps.py --split
+          mv pyproject.toml.backup pyproject.toml
           cibuildwheel --output-dir repaired_wheel
           ls -la repaired_wheel/
         env:
