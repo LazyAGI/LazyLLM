@@ -65,7 +65,7 @@ def main():
 
     poetry_optional_deps = doc['tool']['poetry']['dependencies']
 
-    split = len(sys.argv) > 1 and 'split' in sys.argv[1]
+    split = 'split' in sys.argv[1:] or '--split' in sys.argv[1:]
     proj_optional_deps = {} if split else []
 
     for name, spec in poetry_optional_deps.items():
@@ -75,7 +75,6 @@ def main():
         else:
             proj_optional_deps.append(f'{name}{version}')
 
-    project = doc['project']
     project['optional-dependencies'] = tomlkit.table()
 
     if split:
