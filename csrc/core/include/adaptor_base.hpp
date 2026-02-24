@@ -12,11 +12,6 @@
 
 namespace lazyllm {
 
-struct Arg {
-    std::string name;
-    std::any value;
-};
-
 class AdaptorBase {
 public:
     virtual ~AdaptorBase() = default;

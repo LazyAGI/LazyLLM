@@ -157,8 +157,8 @@ std::vector<std::string> TextSplitterBase::merge_chunks(const std::vector<ChunkV
     Chunk end_split = merged_splits.back();
     std::vector<std::string> reversed_result;
     reversed_result.reserve(merged_splits.size());
-    for (auto idx = merged_splits.size() - 2; idx >= 0; --idx) {
-        const Chunk& start_split = merged_splits[idx];
+    for (int idx = static_cast<int>(merged_splits.size()) - 2; idx >= 0; --idx) {
+        const Chunk& start_split = merged_splits[static_cast<size_t>(idx)];
         if (start_split.token_size <= _overlap && end_split.token_size <= chunk_size - _overlap) {
             end_split += start_split;
             continue;

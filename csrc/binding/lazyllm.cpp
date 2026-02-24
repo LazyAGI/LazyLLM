@@ -11,10 +11,11 @@ PYBIND11_MODULE(lazyllm_cpp, m) {
     m.doc() = "LazyLLM CPP Module.";
     exportAddDocStr(m);
 
-    // prevent document generation
+    // Prevent document generation
     py::options options;
     options.disable_function_signatures();
 
+    // Export classes
     exportDocNode(m);
     exportNodeTransform(m);
     exportTextSpliterBase(m);

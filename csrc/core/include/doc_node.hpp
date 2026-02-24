@@ -133,13 +133,15 @@ public:
         _children[group_name] = children_group;
     }
     std::set<std::string> get_excluded_embed_metadata_keys() const {
-        return SetUnion(get_root_node()->get_excluded_embed_metadata_keys(), _excluded_embed_metadata_keys);
+        if (_p_parent_node == nullptr) return _excluded_embed_metadata_keys;
+        return SetUnion(_p_parent_node->get_excluded_embed_metadata_keys(), _excluded_embed_metadata_keys);
     }
     void set_excluded_embed_metadata_keys(const std::set<std::string>& keys) {
         _excluded_embed_metadata_keys = keys;
     }
     std::set<std::string> get_excluded_llm_metadata_keys() const {
-        return SetUnion(get_root_node()->get_excluded_llm_metadata_keys(), _excluded_llm_metadata_keys);
+        if (_p_parent_node == nullptr) return _excluded_llm_metadata_keys;
+        return SetUnion(_p_parent_node->get_excluded_llm_metadata_keys(), _excluded_llm_metadata_keys);
     }
     void set_excluded_llm_metadata_keys(const std::set<std::string>& keys) {
         _excluded_llm_metadata_keys = keys;
