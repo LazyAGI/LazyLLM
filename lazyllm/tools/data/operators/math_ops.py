@@ -49,7 +49,7 @@ class MathAnswerGenerator(MathQA):
         }}
         '''
 
-        self.model = model or TrainableModule(DEFAULT_MODEL)
+        self.model = model.share() or TrainableModule(DEFAULT_MODEL)
 
         self.model.prompt(output_structure)\
             .formatter(JsonFormatter())\
@@ -108,7 +108,7 @@ class DifficultyEvaluator(MathQA):
         }}
         '''
 
-        self.model = model or TrainableModule(DEFAULT_MODEL)
+        self.model = model.share() or TrainableModule(DEFAULT_MODEL)
 
         self.model.prompt(output_structure)\
             .formatter(JsonFormatter())\
@@ -181,7 +181,7 @@ class QualityEvaluator(MathQA):
         }}
         '''
 
-        self.model = model or TrainableModule(DEFAULT_MODEL)
+        self.model = model.share() or TrainableModule(DEFAULT_MODEL)
 
         self.model.prompt(output_structure)\
             .formatter(JsonFormatter())\
@@ -403,7 +403,7 @@ class QuestionFusionGenerator(MathQA):
         }}
         '''
 
-        self.model = model or TrainableModule(DEFAULT_MODEL)
+        self.model = model.share() or TrainableModule(DEFAULT_MODEL)
 
         self.model.prompt(output_structure)\
             .formatter(JsonFormatter())\

@@ -32,7 +32,7 @@ class CoTGenerator(GenCot):
         if model is None:
             self.model = TrainableModule(DEFAULT_MODEL)
         else:
-            self.model = model
+            self.model = model.share()
 
         self.model.prompt(output_structure)\
             .formatter(JsonFormatter())\
@@ -81,7 +81,8 @@ class SelfConsistencyCoTGenerator(GenCot):
         if model is None:
             self.model = TrainableModule(DEFAULT_MODEL)
         else:
-            self.model = model
+            self.model = model.share()
+        self.model.start()
 
     def _build_prompt(self, question):
         base_prompt = f'''

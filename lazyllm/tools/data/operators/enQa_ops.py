@@ -34,7 +34,7 @@ class QueryRewriter(EnQA):
         if model is None:
             self.model = TrainableModule(DEFAULT_MODEL)
         else:
-            self.model = model
+            self.model = model.share()
 
         self.model.prompt(output_structure)\
             .formatter(JsonFormatter())\
@@ -96,7 +96,7 @@ class DiversityScorer(EnQA):
         if model is None:
             self.model = TrainableModule(DEFAULT_MODEL)
         else:
-            self.model = model
+            self.model = model.share()
 
         self.model.prompt(output_structure)\
             .formatter(JsonFormatter())\
