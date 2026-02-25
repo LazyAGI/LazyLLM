@@ -524,7 +524,7 @@ print(res)
 """)
 
 # filter_op
-add_chinese_doc('data.operators.filter_op.LanguageFilter', """\
+add_chinese_doc('data.operators.filter_op.TargetLanguageFilter', """\
 使用 FastText 进行语言识别，仅保留指定语言的文本。
 
 Args:
@@ -535,7 +535,7 @@ Args:
     _concurrency_mode (str): 可选，并发模式
 """)
 
-add_english_doc('data.operators.filter_op.LanguageFilter', """\
+add_english_doc('data.operators.filter_op.TargetLanguageFilter', """\
 Filter text by language using FastText. Keeps only texts in the specified language(s).
 
 Args:
@@ -546,11 +546,11 @@ Args:
     _concurrency_mode (str): optional concurrency mode
 """)
 
-add_example('data.operators.filter_op.LanguageFilter', """\
+add_example('data.operators.filter_op.TargetLanguageFilter', """\
 ```python
 from lazyllm.tools.data import filter
 
-func = filter.LanguageFilter(input_key='content', target_language='zho_Hans', threshold=0.3)
+func = filter.TargetLanguageFilter(input_key='content', target_language='zho_Hans', threshold=0.3)
 inputs = [{'content': '这是一段中文文本。'}, {'content': 'This is English.'}]
 res = func(inputs)
 print(res)
@@ -558,7 +558,7 @@ print(res)
 ```
 """)
 
-add_chinese_doc('data.operators.filter_op.MinHashDeduplicateFilter', """\
+add_chinese_doc('data.operators.filter_op.MinHashDeduplicator', """\
 使用 MinHash LSH 去除近似重复文本，批处理时保留首次出现的文本。
 
 Args:
@@ -569,7 +569,7 @@ Args:
     ngram (int): n-gram 长度，默认 5
 """)
 
-add_english_doc('data.operators.filter_op.MinHashDeduplicateFilter', """\
+add_english_doc('data.operators.filter_op.MinHashDeduplicator', """\
 Remove near-duplicate texts using MinHash LSH. For batch input, keeps first occurrence of each unique text.
 
 Args:
@@ -580,11 +580,11 @@ Args:
     ngram (int): n-gram size, default 5
 """)
 
-add_example('data.operators.filter_op.MinHashDeduplicateFilter', """\
+add_example('data.operators.filter_op.MinHashDeduplicator', """\
 ```python
 from lazyllm.tools.data import filter
 
-func = filter.MinHashDeduplicateFilter(input_key='content', threshold=0.85)
+func = filter.MinHashDeduplicator(input_key='content', threshold=0.85)
 inputs = [{'uid': '0', 'content': '这是第一段不同的内容。'}, {'uid': '1', 'content': '这是第一段不同的内容。'}]
 res = func(inputs)
 print(res)
@@ -592,7 +592,7 @@ print(res)
 ```
 """)
 
-add_chinese_doc('data.operators.filter_op.BlocklistFilter', """\
+add_chinese_doc('data.operators.filter_op.WordBlocklistFilter', """\
 使用 AC 自动机多模式匹配过滤包含敏感词/违禁词超过阈值的文本。
 
 Args:
@@ -604,7 +604,7 @@ Args:
     _concurrency_mode (str): 可选，并发模式
 """)
 
-add_english_doc('data.operators.filter_op.BlocklistFilter', """\
+add_english_doc('data.operators.filter_op.WordBlocklistFilter', """\
 Filter text containing more than threshold blocked words using Aho-Corasick automaton.
 
 Args:
@@ -616,11 +616,11 @@ Args:
     _concurrency_mode (str): optional concurrency mode
 """)
 
-add_example('data.operators.filter_op.BlocklistFilter', """\
+add_example('data.operators.filter_op.WordBlocklistFilter', """\
 ```python
 from lazyllm.tools.data import filter
 
-func = filter.BlocklistFilter(input_key='content', blocklist=['敏感', '违禁'], threshold=0)
+func = filter.WordBlocklistFilter(input_key='content', blocklist=['敏感', '违禁'], threshold=0)
 inputs = [{'content': '这是正常的文本内容。'}, {'content': '这里包含敏感词。'}]
 res = func(inputs)
 print(res)

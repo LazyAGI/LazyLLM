@@ -4,7 +4,7 @@ import re
 
 Refine = data_register.new_group('refine')
 
-EMOJI_PATTERN = re.compile(
+EMOJIS = re.compile(
     '['
     u'\U0001F600-\U0001F64F'
     u'\U0001F300-\U0001F5FF'
@@ -30,22 +30,22 @@ EMOJI_PATTERN = re.compile(
 )
 URL_PATTERN = re.compile(r'https?://\S+', flags=re.MULTILINE)
 HTML_PATTERN = re.compile(r'<.*?>')
-HTML_ENTITIES = [
+HTML_ENTITY_LIST = [
     'nbsp', 'lt', 'gt', 'amp', 'quot', 'apos', 'hellip', 'ndash', 'mdash',
     'lsquo', 'rsquo', 'ldquo', 'rdquo'
 ]
 ENTITY_PATTERNS = [
     fr'&{entity};'
-    for entity in HTML_ENTITIES
+    for entity in HTML_ENTITY_LIST
 ] + [
     fr'＆{entity};'
-    for entity in HTML_ENTITIES
+    for entity in HTML_ENTITY_LIST
 ] + [
     fr'&{entity}；'
-    for entity in HTML_ENTITIES
+    for entity in HTML_ENTITY_LIST
 ] + [
     fr'＆{entity}；'
-    for entity in HTML_ENTITIES
+    for entity in HTML_ENTITY_LIST
 ]
 HTML_ENTITY_PATTERN = re.compile('|'.join(ENTITY_PATTERNS))
 
@@ -65,7 +65,7 @@ def remove_emoji(data, input_key='content'):
     assert isinstance(data, dict)
     text = data.get(input_key, '')
     if text:
-        data[input_key] = EMOJI_PATTERN.sub('', text)
+        data[input_key] = EMOJIS.sub('', text)
     return data
 
 

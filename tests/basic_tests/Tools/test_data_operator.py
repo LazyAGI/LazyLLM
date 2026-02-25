@@ -220,8 +220,9 @@ class TestDataOperators:
             assert chunk['meta_data']['length'] == len(chunk['content'])
 
     def test_language_filter(self):
-        func = filter.LanguageFilter(input_key='content', target_language='zho_Hans',
-                                     threshold=0.3, _concurrency_mode='thread')
+        func = filter.TargetLanguageFilter(input_key='content',
+                                           target_language='zho_Hans',
+                                           threshold=0.3, _concurrency_mode='thread')
         assert func._concurrency_mode == 'thread'
         LOG.info(f'Max workers: {func._max_workers}')
         test_cases = [
@@ -243,7 +244,7 @@ class TestDataOperators:
         assert res_map == expected_map
 
     def test_minhash_deduplicate_filter(self):
-        func = filter.MinHashDeduplicateFilter(input_key='content', threshold=0.85)
+        func = filter.MinHashDeduplicator(input_key='content', threshold=0.85)
         test_cases = [
             {'uid': '0', 'content': '这是第一段不同的内容。'},
             {'uid': '1', 'content': '这是第二段完全不同的内容。'},
@@ -257,10 +258,10 @@ class TestDataOperators:
         assert result_uids == {'0', '1', '3'}
 
     def test_blocklist_filter(self):
-        func = filter.BlocklistFilter(input_key='content',
-                                      blocklist=['敏感', '违禁', 'badword'],
-                                      threshold=0, language='zh',
-                                      _max_workers=64, _concurrency_mode='thread')
+        func = filter.WordBlocklistFilter(input_key='content',
+                                          blocklist=['敏感', '违禁', 'badword'],
+                                          threshold=0, language='zh',
+                                          _max_workers=64, _concurrency_mode='thread')
         assert func._concurrency_mode == 'thread'
         assert func._max_workers == 64
         test_cases = [

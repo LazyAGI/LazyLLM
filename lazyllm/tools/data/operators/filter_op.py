@@ -121,7 +121,7 @@ def _setup_nltk_data_dir():
     return nltk_data_dir
 
 
-class LanguageFilter(Filter):
+class TargetLanguageFilter(Filter):
     COMMON_LANGUAGES = {
         'zho_Hans', 'zho_Hant', 'eng_Latn', 'spa_Latn', 'fra_Latn',
         'deu_Latn', 'jpn', 'kor', 'rus_Cyrl', 'ara', 'por_Latn',
@@ -152,7 +152,7 @@ class LanguageFilter(Filter):
         invalid_langs = self.allowed_languages - self.COMMON_LANGUAGES
         if invalid_langs:
             LOG.warning(
-                f'LanguageFilter: Invalid language codes: {invalid_langs}\n'
+                f'TargetLanguageFilter: Invalid language codes: {invalid_langs}\n'
                 f'Common language codes:\n'
                 f'  - zho_Hans (Simplified Chinese), zho_Hant (Traditional Chinese)\n'
                 f'  - eng_Latn (English)\n'
@@ -227,7 +227,7 @@ class LanguageFilter(Filter):
         return []
 
 
-class MinHashDeduplicateFilter(Filter):
+class MinHashDeduplicator(Filter):
     __reg_overwrite__ = 'forward_batch_input'
 
     def __init__(self, input_key='content', threshold=0.85, num_perm=128, use_n_gram=True, ngram=5, **kwargs):
@@ -275,7 +275,7 @@ class MinHashDeduplicateFilter(Filter):
         return kept_items
 
 
-class BlocklistFilter(Filter):
+class WordBlocklistFilter(Filter):
     def __init__(self, input_key='content', blocklist=None, blocklist_path=None,
                  language='zh', threshold=1, _concurrency_mode='thread', **kwargs):
         super().__init__(_concurrency_mode=_concurrency_mode, **kwargs)
@@ -294,7 +294,7 @@ class BlocklistFilter(Filter):
         self._blocklist_words = words
         self._automaton = self._build_automaton(words)
 
-        LOG.info(f'BlocklistFilter initialized with {len(words)} blocked words (AC automaton), '
+        LOG.info(f'WordBlocklistFilter initialized with {len(words)} blocked words (AC automaton), '
                  f'language={self.language}')
 
     def _build_automaton(self, words):
