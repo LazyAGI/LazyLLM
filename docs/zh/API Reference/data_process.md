@@ -12,6 +12,12 @@
     members:
     exclude-members:
 
+### 预训练算子
+
+::: lazyllm.tools.data.operators.pt_op
+    members:
+    exclude-members:
+
 ### 精炼算子
 
 ::: lazyllm.tools.data.operators.refine_op

@@ -12,6 +12,12 @@
     members:
     exclude-members:
 
+### PT Operators
+
+::: lazyllm.tools.data.operators.pt_op
+    members:
+    exclude-members:
+
 ### Refine Operators
 
 ::: lazyllm.tools.data.operators.refine_op
