@@ -6,7 +6,8 @@ import pytest
 import random
 import json
 from lazyllm import config, LOG
-from lazyllm.tools.data import demo1, demo2, refine, chunker, filter, data_register, genCot, EnQA, MathQA, Text2qa, pt, pt_mm
+from lazyllm.tools.data import demo1, demo2, refine, chunker, \
+    filter, data_register, genCot, EnQA, MathQA, Text2qa, pt, pt_mm
 from lazyllm.thirdparty import PIL
 
 
@@ -324,6 +325,7 @@ class TestDataOperators:
         op_reject = pt.ContextQualFilter(vlm_reject, _concurrency_mode='single')
         res_reject = op_reject(inputs)
         assert len(res_reject) == 0
+
     def test_remove_extra_spaces(self):
         func = refine.remove_extra_spaces(input_key='content')
         test_cases = [
