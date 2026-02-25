@@ -1,10 +1,8 @@
-'''Prompts for AgenticRAG pipeline operators'''
 import json
 from .base_prompt import PromptABC
 
 
 class RAGContentIdExtractorPrompt(PromptABC):
-    '''Extract content identifier from question for RAG atomic pipeline.'''
     def __init__(self):
         pass
 
@@ -37,7 +35,6 @@ class RAGContentIdExtractorPrompt(PromptABC):
 
 
 class RAGFactsConclusionPrompt(PromptABC):
-    '''Extract atomic facts and relationships (conclusion + R) from document.'''
     def __init__(self):
         pass
 
@@ -81,7 +78,6 @@ class RAGFactsConclusionPrompt(PromptABC):
 
 
 class RAGTaskToQuestionPrompt(PromptABC):
-    '''Generate question from task identifier, relation and conclusion.'''
     def __init__(self):
         pass
 
@@ -112,7 +108,6 @@ relationship (R), and answer (A).
 
 
 class RAGQARefinementPrompt(PromptABC):
-    '''Refine and standardize QA pair output format.'''
     def __init__(self):
         pass
 
@@ -138,7 +133,6 @@ class RAGQARefinementPrompt(PromptABC):
 
 
 class RAGTaskSolverPrompt(PromptABC):
-    '''Solver-style prompt for LLM to answer the task question.'''
     def __init__(self):
         pass
 
@@ -152,7 +146,6 @@ that meet the query requirements.
 
 
 class RAGConsistencyScoringPrompt(PromptABC):
-    '''Score consistency between golden answer and model answer.'''
     def __init__(self):
         pass
 
@@ -180,7 +173,6 @@ Evaluate the consistency of the core content of the golden answer and the other 
 
 
 class RAGAnswerVariantsPrompt(PromptABC):
-    '''Generate alternative phrasings for an answer (data augmentation).'''
     def __init__(self):
         pass
 
@@ -206,7 +198,6 @@ for a given input entity.
 
 
 class RAGDocGroundedAnswerPrompt(PromptABC):
-    '''Answer question using only the provided document context.'''
     def __init__(self):
         pass
 
@@ -224,7 +215,6 @@ Return the final answer directly, with no explanation.
 
 
 class RAGDepthQueryIdPrompt(PromptABC):
-    '''Extract query/content identifier for depth QA pipeline.'''
     def __init__(self):
         pass
 
@@ -247,7 +237,6 @@ class RAGDepthQueryIdPrompt(PromptABC):
 
 
 class RAGDepthBackwardSupersetPrompt(PromptABC):
-    '''Find superset and relation via backward search from identifier.'''
     def __init__(self):
         pass
 
@@ -265,7 +254,6 @@ its attributes.
 
 
 class RAGDepthSupersetValidationPrompt(PromptABC):
-    '''Validate if superset+relation uniquely identify the subset.'''
     def __init__(self):
         pass
 
@@ -288,7 +276,6 @@ Given subset: {identifier}
 
 
 class RAGDepthQuestionFromContextPrompt(PromptABC):
-    '''Generate question from identifier, relation and answer context.'''
     def __init__(self):
         pass
 
@@ -307,7 +294,6 @@ class RAGDepthQuestionFromContextPrompt(PromptABC):
 
 
 class RAGDepthSolverPrompt(PromptABC):
-    '''Solver prompt for depth QA; output answer_list in JSON.'''
     def __init__(self):
         pass
 
@@ -321,7 +307,6 @@ The task is:
 
 
 class RAGDepthConsistencyScoringPrompt(PromptABC):
-    '''Score answer consistency for depth QA recall.'''
     def __init__(self):
         pass
 
@@ -349,7 +334,6 @@ Evaluate the consistency of the core content of the golden answer and the other 
 
 
 class RAGWidthQuestionSynthesisPrompt(PromptABC):
-    '''Synthesize comprehensive question from multiple related questions.'''
     def __init__(self):
         pass
 
@@ -378,7 +362,6 @@ class RAGWidthQuestionSynthesisPrompt(PromptABC):
 
 
 class RAGWidthDecompositionCheckPrompt(PromptABC):
-    '''Check if complex question decomposes to original sub-questions.'''
     def __init__(self):
         pass
 
@@ -404,7 +387,6 @@ class RAGWidthDecompositionCheckPrompt(PromptABC):
 
 
 class RAGWidthVerificationPrompt(PromptABC):
-    '''Verify and answer width/complex research questions.'''
     def __init__(self):
         pass
 
@@ -428,7 +410,6 @@ class RAGWidthVerificationPrompt(PromptABC):
 
 
 class RAGWidthSolverPrompt(PromptABC):
-    '''Solver prompt for width QA; output answer_list in JSON.'''
     def __init__(self):
         pass
 
@@ -442,7 +423,6 @@ The task is:
 
 
 class RAGWidthConsistencyScoringPrompt(PromptABC):
-    '''Score answer consistency for width QA.'''
     def __init__(self):
         pass
 
