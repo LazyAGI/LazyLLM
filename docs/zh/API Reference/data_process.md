@@ -12,6 +12,23 @@
     members:
     exclude-members:
 
+### 精炼算子
+
+::: lazyllm.tools.data.operators.refine_op
+    members:
+    exclude-members:
+
+### 过滤算子
+
+::: lazyllm.tools.data.operators.filter_op
+    members:
+    exclude-members:
+
+### 切块算子
+
+::: lazyllm.tools.data.operators.token_chunker
+    members:
+    exclude-members:
 ### 代码生成算子
 
 ::: lazyllm.tools.data.operators.codegen_ops
