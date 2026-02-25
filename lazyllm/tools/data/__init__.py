@@ -3,6 +3,15 @@ import lazyllm
 from .base_data import LazyLLMDataBase, data_register
 from .operators import demo_ops  # noqa: F401
 from .operators import pt_op  # noqa: F401
+from .operators import refine_op  # noqa: F401
+from .operators import token_chunker  # noqa: F401
+from .operators import filter_op  # noqa: F401
+from .operators import cot_ops  # noqa: F401
+from .operators import math_ops  # noqa: F401
+from .operators import pdf_ops  # noqa: F401
+from .operators import enQa_ops  # noqa: F401
+from .operators import text2qa_ops  # noqa: F401
+from .operators import codegen_ops  # noqa: F401
 
 def __getattr__(name):
     if name == 'pipelines':
