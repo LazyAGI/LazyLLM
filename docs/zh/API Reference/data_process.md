@@ -26,6 +26,33 @@
     exclude-members:
 
 ::: lazyllm.tools.data.operators.agentic_rag.agenticrag_width_qa_generator
+### 纯文本生成QA对算子
+
+::: lazyllm.tools.data.operators.text2qa_ops
+    members:
+    exclude-members:
+
+### 思维链生成算子
+
+::: lazyllm.tools.data.operators.cot_ops
+    members:
+    exclude-members:
+
+### 多样性强化算子
+
+::: lazyllm.tools.data.operators.enQa_ops
+    members:
+    exclude-members:
+
+### 数学问题算子
+
+::: lazyllm.tools.data.operators.math_ops
+    members:
+    exclude-members:
+
+### Pdf处理算子
+
+::: lazyllm.tools.data.operators.pdf_ops
     members:
     exclude-members:
 
