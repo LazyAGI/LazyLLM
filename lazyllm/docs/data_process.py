@@ -1184,7 +1184,7 @@ print(result['F1Score'])  # F1 score value between 0.0 and 1.0
 
 # cot_ops module docs
 add_chinese_doc('data.operators.cot_ops.CoTGenerator', """\
-使用大模型为问题生成带思维链（CoT）的推理过程，要求最终答案用 \\boxed{{ANSWER}} 包裹。输出写入指定字段。
+使用大模型为问题生成带思维链（CoT）的推理过程，要求最终答案用 \\\\boxed{{ANSWER}} 包裹。输出写入指定字段。
 
 Args:
     input_key (str): 输入问题字段名，默认 'query'
@@ -1195,7 +1195,7 @@ Args:
 """)
 
 add_english_doc('data.operators.cot_ops.CoTGenerator', """\
-Use an LLM to generate chain-of-thought reasoning for a question, with final answer wrapped in \\boxed{{ANSWER}}. Writes result to the specified output key.
+Use an LLM to generate chain-of-thought reasoning for a question, with final answer wrapped in \\\\boxed{{ANSWER}}. Writes result to the specified output key.
 
 Args:
     input_key (str): key of the input question, default 'query'
@@ -1213,14 +1213,14 @@ from lazyllm import OnlineChatModule
 llm = OnlineChatModule()
 op = genCot.CoTGenerator(input_key='query', output_key='cot_answer', model=llm)
 data = {'query': 'What is 2+2?'}
-res = op(data)  # each item gets 'cot_answer' with CoT and \\boxed{{4}}
+res = op(data)  # each item gets 'cot_answer' with CoT and \\\\boxed{{4}}
 print(res)
 # {'query': 'What is 2+2?', 'cot_answer': '首先，我们需要理解加法的基本概念，即两个或多个数值的总和。在这个问题中，我们需要计算 2 和另一个 2 的和。\n\n第一步，我们识别出第一个数值是 2。\n\n第二步，我们识别出第二个数值也是 2。\n\n第三步，我们将这两个数值相加：2 + 2。\n\n第四步，我们进行计算：2 + 2 = 4。\n\n因此，最终答案是 4，使用规定的格式包裹答案。\n\n最终答案：\\boxed{4}'}
 ```
 """)
 
 add_chinese_doc('data.operators.cot_ops.SelfConsistencyCoTGenerator', """\
-对同一问题采样多次 CoT，从 \\boxed{{}} 中提取答案并做多数投票，最终保留与多数答案一致的一条 CoT 输出。
+对同一问题采样多次 CoT，从 \\\\boxed{{}} 中提取答案并做多数投票，最终保留与多数答案一致的一条 CoT 输出。
 
 Args:
     input_key (str): 输入问题字段名，默认 'query'
@@ -1232,7 +1232,7 @@ Args:
 """)
 
 add_english_doc('data.operators.cot_ops.SelfConsistencyCoTGenerator', """\
-Sample multiple CoT answers for the same question, extract \\boxed{{}} answers, take majority vote, and output one CoT that matches the majority answer.
+Sample multiple CoT answers for the same question, extract \\\\boxed{{}} answers, take majority vote, and output one CoT that matches the majority answer.
 
 Args:
     input_key (str): key of the input question, default 'query'
@@ -1427,7 +1427,7 @@ print(op(data))  # [None] (drop)
 
 # math_ops module docs
 add_chinese_doc('data.operators.math_ops.math_answer_extractor', """\
-从文本中提取 \\boxed{{}} 内的数学答案，写入指定输出字段。以 forward 单条方式注册。
+从文本中提取 \\\\boxed{{}} 内的数学答案，写入指定输出字段。以 forward 单条方式注册。
 
 Args:
     data (dict): 单条数据字典
@@ -1436,7 +1436,7 @@ Args:
 """)
 
 add_english_doc('data.operators.math_ops.math_answer_extractor', """\
-Extract the math answer inside \\boxed{{}} from text and write to the specified output key. Registered as single-item forward.
+Extract the math answer inside \\\\boxed{{}} from text and write to the specified output key. Registered as single-item forward.
 
 Args:
     data (dict): single data dict
@@ -1456,7 +1456,7 @@ print(op(data))  # data['math_answer'] == '42'
 """)
 
 add_chinese_doc('data.operators.math_ops.MathAnswerGenerator', """\
-使用大模型为数学问题生成推理与答案，要求最终结果用 \\boxed{{ANSWER}} 包裹。若已有 answer 且未设置 regenerate 则跳过。
+使用大模型为数学问题生成推理与答案，要求最终结果用 \\\\boxed{{ANSWER}} 包裹。若已有 answer 且未设置 regenerate 则跳过。
 
 Args:
     input_key (str): 问题字段名，默认 'question'
@@ -1468,7 +1468,7 @@ Args:
 """)
 
 add_english_doc('data.operators.math_ops.MathAnswerGenerator', """\
-Use an LLM to generate reasoning and answer for a math question, with final result in \\boxed{{ANSWER}}. Skips if answer already exists and regenerate is not set.
+Use an LLM to generate reasoning and answer for a math question, with final result in \\\\boxed{{ANSWER}}. Skips if answer already exists and regenerate is not set.
 
 Args:
     input_key (str): key of the question, default 'question'
@@ -1670,7 +1670,7 @@ print(op(data))  # less than the max_length, keep the original input
 """)
 
 add_chinese_doc('data.operators.math_ops.QuestionFusionGenerator', """\
-使用大模型将多条问题融合为一个新问题并生成推理与 \\boxed{{}} 答案。需要 list_key 下至少 2 个问题。
+使用大模型将多条问题融合为一个新问题并生成推理与 \\\\boxed{{}} 答案。需要 list_key 下至少 2 个问题。
 
 Args:
     input_key (str): 融合后问题字段名，默认 'question'
@@ -1682,7 +1682,7 @@ Args:
 """)
 
 add_english_doc('data.operators.math_ops.QuestionFusionGenerator', """\
-Use an LLM to fuse multiple questions into one and generate reasoning with \\boxed{{}} answer. Requires at least 2 questions under list_key.
+Use an LLM to fuse multiple questions into one and generate reasoning with \\\\boxed{{}} answer. Requires at least 2 questions under list_key.
 
 Args:
     input_key (str): key for fused question, default 'question'
