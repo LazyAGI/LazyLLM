@@ -99,12 +99,12 @@ def _vote_select(candidates, tie_breaker='shortest_sql'):
     return _tie_break(valid, tie_breaker)
 
 
-class SQLGenerator(Text2SQLOps):
-    def __init__(self, model=None, database_manager=None, generate_num=300,
+class SQLForge(Text2SQLOps):
+    def __init__(self, model=None, database_manager=None, output_num=300,
                  prompt_template=None, system_prompt=None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.database_manager = database_manager
-        self.generate_num = generate_num
+        self.output_num = output_num
         self.prompt_template = prompt_template
         sys_prompt = system_prompt or (
             'You are a SQL generator for Text2SQL tasks.\n'
@@ -136,7 +136,7 @@ class SQLGenerator(Text2SQLOps):
             raise ValueError('database_manager.get_create_statements_and_insert_statements is required')
 
     def forward(self, data, output_sql_key='SQL', output_db_id_key='db_id',
-                output_sql_complexity_key='sql_complexity_type', **kwargs):
+                output_complexity_type_key='sql_complexity_type', **kwargs):
         assert isinstance(data, dict)
         self._validate_manager()
 
@@ -165,7 +165,7 @@ class SQLGenerator(Text2SQLOps):
             {
                 output_db_id_key: db_id,
                 output_sql_key: _parse_sql_response(resp),
-                output_sql_complexity_key: complexity,
+                output_complexity_type_key: complexity,
             }
             for db_id, resp, complexity in zip(db_ids, responses, complexity_types)
         ]
@@ -175,12 +175,12 @@ class SQLGenerator(Text2SQLOps):
         db_ids = []
         complexity_types = []
 
-        LOG.info(f'Generating {self.generate_num} SQLs for each database')
+        LOG.info(f'Generating {self.output_num} SQLs for each database')
         for db_name in tqdm(db_names, desc='Processing Databases'):
             create_statements, insert_statements = self.database_manager.get_create_statements_and_insert_statements(
                 db_name
             )
-            for _ in range(int(self.generate_num)):
+            for _ in range(int(self.output_num)):
                 prompt, complexity = self._build_prompt(create_statements, insert_statements, db_engine=db_engine)
                 prompts.append(prompt)
                 db_ids.append(db_name)
@@ -188,7 +188,7 @@ class SQLGenerator(Text2SQLOps):
         return prompts, db_ids, complexity_types
 
 
-class SQLExecutabilityFilter(Text2SQLOps):
+class SQLRuntimeSieve(Text2SQLOps):
     def __init__(self, database_manager=None, **kwargs):
         super().__init__(**kwargs)
         self.database_manager = database_manager
@@ -231,14 +231,16 @@ class SQLExecutabilityFilter(Text2SQLOps):
         return []
 
 
-class Text2SQLQuestionGenerator(Text2SQLOps):
+class SQLIntentSynthesizer(Text2SQLOps):
     def __init__(self, model=None, embedding_model=None, database_manager=None,
-                 question_candidates_num=5, prompt_template=None, system_prompt=None, **kwargs):
+                 input_query_num=5, prompt_template=None, system_prompt=None,
+                 input_intent_key='intent', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.embedding_model = embedding_model
         self.database_manager = database_manager
-        self.question_candidates_num = int(question_candidates_num)
+        self.question_candidates_num = int(input_query_num)
         self.prompt_template = prompt_template
+        self.input_intent_key = input_intent_key
         sys_prompt = system_prompt or 'You are a helpful assistant.'
         self.model = model.share().prompt(sys_prompt) if model else None
 
@@ -332,13 +334,13 @@ class Text2SQLQuestionGenerator(Text2SQLOps):
         column_info = db_id2column_info.get(db_id, {})
         column_info_text = '\n'.join([f'- {k}: {v}' for k, v in list(column_info.items())[:200]])
         prompt = (
-            f'You are a Text2SQL question generator.\n'
+            f'You are a Text2SQL intent synthesizer.\n'
             f'Database engine: {db_engine}\n'
             f'db_id: {db_id}\n\n'
-            f'Given a SQL query, generate a natural language question that matches it.\n'
+            f'Given a SQL query, generate a natural language intent that matches it.\n'
             f'If helpful, you may use the following column descriptions:\n{column_info_text}\n\n'
             f'Output format:\n'
-            f'[QUESTION-START] ... [QUESTION-END]\n'
+            f'[INTENT-START] ... [INTENT-END]\n'
             f'[EXTERNAL-KNOWLEDGE-START] ... [EXTERNAL-KNOWLEDGE-END]\n\n'
             f'SQL:\n{sql}\n'
         )
@@ -373,11 +375,14 @@ class Text2SQLQuestionGenerator(Text2SQLOps):
             raise ValueError('database_manager.get_create_statements_and_insert_statements is required')
 
     def forward(self, data, input_sql_key='SQL', input_db_id_key='db_id',
-                output_question_key='question', output_evidence_key='evidence', **kwargs):
+                output_intent_key=None, output_evidence_key='evidence', **kwargs):
         assert isinstance(data, dict)
         self._validate_generator_manager()
 
-        if self._is_non_empty_text(data.get(output_question_key)):
+        if output_intent_key is None:
+            output_intent_key = self.input_intent_key
+
+        if self._is_non_empty_text(data.get(self.input_intent_key)):
             return data
 
         db_engine = getattr(self.database_manager, 'db_type', 'unknown')
@@ -415,12 +420,12 @@ class Text2SQLQuestionGenerator(Text2SQLOps):
         best = self._select_best_question(candidates, 0, embeddings)
 
         if best is not None:
-            data[output_question_key] = best.get('question', '')
+            data[output_intent_key] = best.get('question', '')
             data[output_evidence_key] = best.get('external_knowledge', '')
 
         return data
 
-class Text2SQLCorrespondenceFilter(Text2SQLOps):
+class TSQLSemanticAuditor(Text2SQLOps):
     def __init__(self, model=None, database_manager=None, prompt_template=None,
                  system_prompt=None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
@@ -486,7 +491,7 @@ class Text2SQLCorrespondenceFilter(Text2SQLOps):
         return []
 
 
-class Text2SQLPromptGenerator(Text2SQLOps):
+class SQLContextAssembler(Text2SQLOps):
     def __init__(self, database_manager=None, prompt_template=None, **kwargs):
         super().__init__(**kwargs)
         self.database_manager = database_manager
@@ -495,24 +500,24 @@ class Text2SQLPromptGenerator(Text2SQLOps):
     def get_create_statements_and_insert_statements(self, db_id):
         return self.database_manager.get_create_statements_and_insert_statements(db_id)
 
-    def _build_prompt(self, db_details, question, evidence, db_engine):
+    def _build_prompt(self, db_details, intent, evidence, db_engine):
         template = self.prompt_template
         if template is not None and hasattr(template, 'build_prompt'):
             return str(template.build_prompt(
                 db_details=db_details,
-                question=question,
+                intent=intent,
                 evidence=evidence,
                 db_engine=db_engine
             ))
 
         return (
             f'Database Schema:\n{db_details}\n\n'
-            f'Question: {question}\n'
+            f'Intent: {intent}\n'
             f'Evidence: {evidence}\n'
             f'Generate a SQL query for {db_engine}.'
         )
 
-    def forward(self, data, input_question_key='question', input_db_id_key='db_id',
+    def forward(self, data, input_intent_key='intent', input_db_id_key='db_id',
                 input_evidence_key='evidence', output_prompt_key='prompt', **kwargs):
         assert isinstance(data, dict)
         if self.database_manager is None:
@@ -520,11 +525,11 @@ class Text2SQLPromptGenerator(Text2SQLOps):
 
         db_engine = getattr(self.database_manager, 'db_type', 'unknown')
         db_id = data.get(input_db_id_key)
-        question = data.get(input_question_key)
+        intent = data.get(input_intent_key)
         evidence = data.get(input_evidence_key, '')
 
-        if not db_id or not question:
-            LOG.warning(f'Missing db_id or question for item: {data}')
+        if not db_id or not intent:
+            LOG.warning(f'Missing db_id or intent for item: {data}')
             data[output_prompt_key] = ''
             return data
 
@@ -539,88 +544,62 @@ class Text2SQLPromptGenerator(Text2SQLOps):
 
             prompt = self._build_prompt(
                 db_details=db_details,
-                question=question,
+                intent=intent,
                 evidence=evidence,
                 db_engine=db_engine
             )
             data[output_prompt_key] = prompt
         except Exception as e:
-            LOG.error(f'Failed to generate prompt for db_id={db_id}: {e}')
+            LOG.error(f'Failed to generate context for db_id={db_id}: {e}')
             data[output_prompt_key] = ''
 
         return data
 
 
-class Text2SQLCoTGenerator(Text2SQLOps):
+class SQLReasoningTracer(Text2SQLOps):
     def __init__(self, model=None, database_manager=None, prompt_template=None,
-                 sampling_num=3, **kwargs):
+                 output_num=3, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.database_manager = database_manager
         self.prompt_template = prompt_template
-        self.sampling_num = int(sampling_num)
-        if self.sampling_num < 1:
-            raise ValueError('sampling_num must be >= 1')
+        self.output_num = int(output_num)
+        if self.output_num < 1:
+            raise ValueError('output_num must be >= 1')
         sys_prompt = 'You are a database expert. Please generate a step-by-step reasoning ' \
                      '(Chain of Thought) and the final SQL.'
         self.model = model.share().prompt(sys_prompt) if model else None
 
-    @staticmethod
-    def get_desc(lang):
-        if lang == 'zh':
-            return (
-                '对于每个条目，生成从自然语言问题和数据库Schema到SQL的CoT长链路推理过程。生成sampling_num条推理轨迹，但是不做验证'
-                '输入参数：\n'
-                '- input_sql_key: 输入SQL列名\n'
-                '- input_question_key: 输入问题列名\n'
-                '- input_db_id_key: 输入数据库ID列名\n\n'
-                '输出参数：\n'
-                '- output_cot_key: 输出CoT列名'
-            )
-        elif lang == 'en':
-            return (
-                'For each item, generate a CoT long chain of reasoning from natural language question '
-                'and database Schema to SQL.\n'
-                'Generate sampling_num reasoning trajectories, but do not verify.\n\n'
-                'Input parameters:\n'
-                '- input_sql_key: The name of the input SQL column\n'
-                '- input_question_key: The name of the input question column\n'
-                '- input_db_id_key: The name of the input database ID column\n\n'
-                'Output parameters:\n'
-                '- output_cot_key: The name of the output CoT column'
-            )
-        return 'CoT generator for Text2SQL tasks.'
-
     def _build_prompt(self, item, schema_str):
-        question = item.get(self.input_question_key)
+        intent = item.get(self.input_intent_key)
         gold_sql = item.get(self.input_sql_key)
         evidence = item.get(self.input_evidence_key, '')
 
         template = self.prompt_template
         if template is not None and hasattr(template, 'build_prompt'):
-            return template.build_prompt(schema_str, question, gold_sql, evidence)
+            return template.build_prompt(schema_str, intent, gold_sql, evidence)
 
         return (
             f'Database Schema:\n{schema_str}\n\n'
-            f'Question: {question}\n'
+            f'Intent: {intent}\n'
             f'Evidence: {evidence}\n'
             f'Target SQL: {gold_sql}\n\n'
             f'Please provide a detailed step-by-step reasoning that leads to the correct SQL query.'
         )
 
-    def forward(self, data, input_sql_key='SQL', input_question_key='question',
+    def forward(self, data, input_sql_key='SQL', input_intent_key='intent',
                 input_db_id_key='db_id', input_evidence_key='evidence',
                 output_cot_key='cot_responses', **kwargs):
         assert isinstance(data, dict)
         self._validate_manager()
 
-        self.input_question_key = input_question_key
+        self.input_intent_key = input_intent_key
         self.input_sql_key = input_sql_key
         self.input_db_id_key = input_db_id_key
         self.input_evidence_key = input_evidence_key
 
         db_id = data.get(input_db_id_key)
         if not db_id:
-            LOG.warning('Missing db_id for CoT generation')
+            LOG.warning('Missing db_id for reasoning tracing')
             return data
 
         try:
@@ -629,15 +608,15 @@ class Text2SQLCoTGenerator(Text2SQLOps):
             prompt = self._build_prompt(data, schema_str)
 
             responses = []
-            for _ in range(self.sampling_num):
+            for _ in range(self.output_num):
                 try:
                     responses.append(self.model(prompt))
                 except Exception as e:
-                    LOG.error(f'Failed to generate CoT: {e}')
+                    LOG.error(f'Failed to generate reasoning trace: {e}')
                     responses.append('')
             data[output_cot_key] = responses
         except Exception as e:
-            LOG.error(f'Error during CoT generation for db_id={db_id}: {e}')
+            LOG.error(f'Error during reasoning tracing for db_id={db_id}: {e}')
             data[output_cot_key] = []
 
         return data
@@ -648,14 +627,21 @@ class Text2SQLCoTGenerator(Text2SQLOps):
         if self.database_manager is None:
             raise ValueError('database_manager is required')
 
-class Text2SQLCoTVotingGenerator(Text2SQLOps):
+class SQLConsensusUnifier(Text2SQLOps):
     def __init__(self, database_manager=None, **kwargs):
         super().__init__(**kwargs)
         self.database_manager = database_manager
         self.tie_breaker = 'shortest_sql'
 
-    def forward(self, data, input_cot_responses_key='cot_responses',
-                input_db_id_key='db_id', output_cot_key='cot_reasoning', **kwargs):
+    def forward(
+        self,
+        data,
+        input_cot_responses_key='cot_responses',
+        input_db_id_key='db_id',
+        output_cot_key='cot_reasoning',
+        output_sql_key='SQL',
+        **kwargs,
+    ):
         assert isinstance(data, dict)
         if self.database_manager is None:
             raise ValueError('database_manager is required')
@@ -693,14 +679,14 @@ class Text2SQLCoTVotingGenerator(Text2SQLOps):
         best = _vote_select(candidates, self.tie_breaker)
         if best:
             data[output_cot_key] = best.get('cot', '')
-            data['SQL'] = best.get('sql', '')
+            data[output_sql_key] = best.get('sql', '')
         else:
             data[output_cot_key] = ''
 
         return data
 
 
-class SQLComponentClassifier(Text2SQLOps):
+class SQLSyntaxProfiler(Text2SQLOps):
     def __init__(self, difficulty_thresholds=None, difficulty_labels=None, **kwargs):
         super().__init__(**kwargs)
         if difficulty_thresholds is None:
@@ -735,7 +721,7 @@ class SQLComponentClassifier(Text2SQLOps):
 
         return data
 
-class SQLExecutionClassifier(Text2SQLOps):
+class SQLEffortRanker(Text2SQLOps):
     def __init__(self, model=None, database_manager=None, num_generations=10,
                  difficulty_thresholds=None, difficulty_labels=None,
                  system_prompt=None, **kwargs):
@@ -825,7 +811,6 @@ class SQLExecutionClassifier(Text2SQLOps):
             data[output_difficulty_key] = 'unknown'
             return data
 
-        # Generate SQLs
         prompts = [prompt] * self.num_generations
         try:
             responses = self.model(prompts)
@@ -837,7 +822,6 @@ class SQLExecutionClassifier(Text2SQLOps):
 
         parsed_sqls = [_parse_sql_response(r) if r else '' for r in responses]
 
-        # Compare SQLs
         comparisons = [(db_id, sql, ground_truth) for sql in parsed_sqls]
         try:
             batch_results = self.database_manager.batch_compare_queries(comparisons)

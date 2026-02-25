@@ -34,7 +34,7 @@ class TestToolUseOperators:
     def test_scenario_extractor(self):
         mock_model = self.MockModel(return_val={'scene': 'ordering pizza', 'domain': 'food'})
 
-        op = tool_use_ops.ScenarioExtractor(
+        op = tool_use_ops.ContextualBeacon(
             model=mock_model,
             input_key='content',
             output_key='scenario',
@@ -48,7 +48,7 @@ class TestToolUseOperators:
     def test_scenario_expander(self):
         mock_model = self.MockModel(return_val={'scenarios': [{'scene': 'booking a flight'}]})
 
-        op = tool_use_ops.ScenarioExpander(
+        op = tool_use_ops.ScenarioDiverger(
             model=mock_model,
             input_key='scenario',
             output_key='expanded',
@@ -62,7 +62,7 @@ class TestToolUseOperators:
     def test_atom_task_generator(self):
         mock_model = self.MockModel(return_val={'tasks': [{'task': 'check weather'}]})
 
-        op = tool_use_ops.AtomTaskGenerator(
+        op = tool_use_ops.DecompositionKernel(
             model=mock_model,
             input_key='scenario',
             output_key='tasks',
@@ -76,7 +76,7 @@ class TestToolUseOperators:
         mock_model = self.MockModel(return_val={'items': [{'task': 't1', 'next_task': 't2',
                                                           'composed_task': 't1 then t2'}]})
 
-        op = tool_use_ops.SequentialTaskGenerator(
+        op = tool_use_ops.ChainedLogicAssembler(
             model=mock_model,
             input_key='atomic_tasks',
             output_key='seq_tasks',
@@ -91,7 +91,7 @@ class TestToolUseOperators:
         mock_model = self.MockModel(return_val={'parallel_tasks': ['task1'], 'sequential_tasks': ['task2'],
                                                 'hybrid_tasks': []})
 
-        op = tool_use_ops.ParaSeqTaskGenerator(
+        op = tool_use_ops.TopologyArchitect(
             model=mock_model,
             input_key='atomic_tasks',
             output_key='complex',
@@ -106,9 +106,9 @@ class TestToolUseOperators:
         mock_model = self.MockModel(return_val={'items': [{'composed_task': 'valid_task',
                                                           'is_valid': True, 'reason': 'ok'}]})
 
-        op = tool_use_ops.CompositionTaskFilter(
+        op = tool_use_ops.ViabilitySieve(
             model=mock_model,
-            composition_key='complex',
+            input_composition_key='complex',
             output_key='filtered',
             _save_data=False
         )
@@ -120,9 +120,9 @@ class TestToolUseOperators:
         mock_model = self.MockModel(return_val={'functions': [{'name': 'get_weather',
                                                               'description': 'returns weather'}]})
 
-        op = tool_use_ops.FunctionGenerator(
+        op = tool_use_ops.ProtocolSpecifier(
             model=mock_model,
-            task_key='task',
+            input_composition_key='task',
             output_key='funcs',
             _save_data=False
         )
@@ -133,9 +133,9 @@ class TestToolUseOperators:
     def test_multi_turn_conversation_generator(self):
         mock_model = self.MockModel(return_val={'messages': [{'role': 'user', 'content': 'hello'}]})
 
-        op = tool_use_ops.MultiTurnConversationGenerator(
+        op = tool_use_ops.DialogueSimulator(
             model=mock_model,
-            task_key='task',
+            input_composition_key='task',
             output_key='conv',
             _save_data=False
         )

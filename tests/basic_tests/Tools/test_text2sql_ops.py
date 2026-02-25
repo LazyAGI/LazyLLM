@@ -70,10 +70,10 @@ class TestText2SQLOperators:
 
     def test_sql_generator(self):
         mock_model = MockModel(return_val='```sql SELECT * FROM users ```')
-        op = text2sql_ops.SQLGenerator(
+        op = text2sql_ops.SQLForge(
             model=mock_model,
             database_manager=self.db_manager,
-            generate_num=1,
+            output_num=1,
             _save_data=False
         )
         data = {'db_id': 'test_db'}
@@ -83,7 +83,7 @@ class TestText2SQLOperators:
         assert res[0]['db_id'] == 'test_db'
 
     def test_sql_executability_filter(self):
-        op = text2sql_ops.SQLExecutabilityFilter(
+        op = text2sql_ops.SQLRuntimeSieve(
             database_manager=self.db_manager,
             _save_data=False
         )
@@ -101,10 +101,11 @@ class TestText2SQLOperators:
     def test_text2sql_question_generator(self):
         mock_model = MockModel(return_val='[QUESTION-START] Who are the users? [QUESTION-END]\n'
                                           '[EXTERNAL-KNOWLEDGE-START] none [EXTERNAL-KNOWLEDGE-END]')
-        op = text2sql_ops.Text2SQLQuestionGenerator(
+        op = text2sql_ops.SQLIntentSynthesizer(
             model=mock_model,
             database_manager=self.db_manager,
-            question_candidates_num=1,
+            input_query_num=1,
+            input_intent_key='question',
             _save_data=False
         )
         data = {'SQL': 'SELECT * FROM users', 'db_id': 'test_db'}
@@ -114,7 +115,7 @@ class TestText2SQLOperators:
 
     def test_text2sql_correspondence_filter(self):
         mock_model = MockModel(return_val='Yes')
-        op = text2sql_ops.Text2SQLCorrespondenceFilter(
+        op = text2sql_ops.TSQLSemanticAuditor(
             model=mock_model,
             database_manager=self.db_manager,
             _save_data=False
@@ -130,21 +131,22 @@ class TestText2SQLOperators:
         assert len(res_no) == 0
 
     def test_text2sql_prompt_generator(self):
-        op = text2sql_ops.Text2SQLPromptGenerator(
+        op = text2sql_ops.SQLContextAssembler(
             database_manager=self.db_manager,
+            input_intent_key='question',
             _save_data=False
         )
         data = {'question': 'Show all users', 'db_id': 'test_db', 'evidence': 'none'}
         res = op([data])
         assert 'Database Schema:' in res[0]['prompt']
-        assert 'Question: Show all users' in res[0]['prompt']
+        assert 'Intent: Show all users' in res[0]['prompt']
 
     def test_text2sql_cot_generator(self):
         mock_model = MockModel(return_val='Step 1: Select all columns from users table.')
-        op = text2sql_ops.Text2SQLCoTGenerator(
+        op = text2sql_ops.SQLReasoningTracer(
             model=mock_model,
             database_manager=self.db_manager,
-            sampling_num=2,
+            output_num=2,
             _save_data=False
         )
         data = {'SQL': 'SELECT * FROM users', 'question': 'Show all users', 'db_id': 'test_db'}
@@ -153,7 +155,7 @@ class TestText2SQLOperators:
         assert res[0]['cot_responses'][0] == 'Step 1: Select all columns from users table.'
 
     def test_text2sql_cot_voting_generator(self):
-        op = text2sql_ops.Text2SQLCoTVotingGenerator(
+        op = text2sql_ops.SQLConsensusUnifier(
             database_manager=self.db_manager,
             _save_data=False
         )
@@ -167,7 +169,7 @@ class TestText2SQLOperators:
         assert res[0]['SQL'] in ['SELECT * FROM users', 'SELECT id FROM users']
 
     def test_sql_component_classifier(self):
-        op = text2sql_ops.SQLComponentClassifier(_save_data=False)
+        op = text2sql_ops.SQLSyntaxProfiler(_save_data=False)
         data = {'SQL': 'SELECT name FROM users WHERE id > 1 GROUP BY name HAVING count(*) > 1 ORDER BY name LIMIT 1'}
         res = op([data])
         # Based on EvalHardnessLite logic in SQL_EvalHardness.py
@@ -176,7 +178,7 @@ class TestText2SQLOperators:
 
     def test_sql_execution_classifier(self):
         mock_model = MockModel(return_val='```sql SELECT * FROM users ```')
-        op = text2sql_ops.SQLExecutionClassifier(
+        op = text2sql_ops.SQLEffortRanker(
             model=mock_model,
             database_manager=self.db_manager,
             num_generations=5,

@@ -617,7 +617,7 @@ print(op(data))
 """)
 
 
-add_chinese_doc('data.operators.tool_use_ops.SequentialTaskGenerator', """\
+add_chinese_doc('data.operators.tool_use_ops.ChainedLogicAssembler', """\
 工具调用数据生成算子：顺序任务生成器。
 
 基于原子任务列表，生成“后继任务关系”与对应的组合任务列表，用于构造线性或有依赖关系的任务链。
@@ -637,7 +637,7 @@ Args:
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.tool_use_ops.SequentialTaskGenerator', """\
+add_english_doc('data.operators.tool_use_ops.ChainedLogicAssembler', """\
 Tool-use data operator: sequential task generator.
 
 Given a list of atomic tasks, generates successor relationships and composed tasks to form linear or dependency-aware task chains.
@@ -657,16 +657,16 @@ Args:
     **kwargs: extra args passed to the base operator.
 """)
 
-add_example('data.operators.tool_use_ops.SequentialTaskGenerator', """\
+add_example('data.operators.tool_use_ops.ChainedLogicAssembler', """\
 ```python
-from lazyllm.tools.data.operators.tool_use_ops import SequentialTaskGenerator
+from lazyllm.tools.data.operators.tool_use_ops import ChainedLogicAssembler
 
 atomic_tasks = [
     {'task': '获取出发地与目的地'},
     {'task': '确认出行日期'},
     {'task': '筛选符合条件的车次'},
 ]
-op = SequentialTaskGenerator(model=model, input_key='atomic_tasks', output_key='sequential_tasks')
+op = ChainedLogicAssembler(model=model, input_key='atomic_tasks', output_key='sequential_tasks')
 print(op({'atomic_tasks': atomic_tasks}))
 # {
 #   'atomic_tasks': [...],
@@ -679,7 +679,7 @@ print(op({'atomic_tasks': atomic_tasks}))
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.ParaSeqTaskGenerator', """\
+add_chinese_doc('data.operators.tool_use_ops.TopologyArchitect', """\
 工具调用数据生成算子：并行/顺序/混合任务组合生成器。
 
 基于原子任务列表，自动生成三类任务组合：
@@ -696,7 +696,7 @@ Args:
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.tool_use_ops.ParaSeqTaskGenerator', """\
+add_english_doc('data.operators.tool_use_ops.TopologyArchitect', """\
 Tool-use data operator: parallel/sequential/hybrid task combination generator.
 
 Given atomic tasks, generates three kinds of task compositions:
@@ -713,9 +713,9 @@ Args:
     **kwargs: extra args passed to the base operator.
 """)
 
-add_example('data.operators.tool_use_ops.ParaSeqTaskGenerator', """\
+add_example('data.operators.tool_use_ops.TopologyArchitect', """\
 ```python
-from lazyllm.tools.data.operators.tool_use_ops import ParaSeqTaskGenerator
+from lazyllm.tools.data.operators.tool_use_ops import TopologyArchitect
 
 atomic_tasks = [
     {'task': '收集出行需求'},
@@ -723,7 +723,7 @@ atomic_tasks = [
     {'task': '对比价格与时间'},
     {'task': '完成下单支付'},
 ]
-op = ParaSeqTaskGenerator(model=model, input_key='atomic_tasks', output_key='para_seq_tasks')
+op = TopologyArchitect(model=model, input_key='atomic_tasks', output_key='para_seq_tasks')
 print(op({'atomic_tasks': atomic_tasks}))
 # {
 #   'atomic_tasks': [...],
@@ -736,7 +736,7 @@ print(op({'atomic_tasks': atomic_tasks}))
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.CompositionTaskFilter', """\
+add_chinese_doc('data.operators.tool_use_ops.ViabilitySieve', """\
 工具调用数据生成算子：组合任务可行性过滤器。
 
 对一组“组合任务”进行可运行性与完备性评审，筛选出被认为合理可行的组合任务列表。
@@ -749,14 +749,14 @@ add_chinese_doc('data.operators.tool_use_ops.CompositionTaskFilter', """\
 
 Args:
     model: LazyLLM 模型对象（必需）。
-    composition_key (str): 输入组合任务字段名，默认 'composition_tasks'。
-    subtask_key (str): 输入原子任务字段名（可选），默认 'atomic_tasks'。
+    input_composition_key (str): 输入组合任务字段名，默认 'composition_tasks'。
+    input_atomic_key (str): 输入原子任务字段名（可选），默认 'atomic_tasks'。
     output_key (str): 输出过滤后组合任务字段名，默认 'filtered_composition_tasks'。
     system_prompt (str|None): 可选系统提示词。
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.tool_use_ops.CompositionTaskFilter', """\
+add_english_doc('data.operators.tool_use_ops.ViabilitySieve', """\
 Tool-use data operator: composition task feasibility filter.
 
 Evaluates a list of composed tasks for feasibility and completeness, and filters out invalid ones.
@@ -769,24 +769,24 @@ On output, only keeps composed_task values where is_valid is true. If the model 
 
 Args:
     model: a LazyLLM model object (required).
-    composition_key (str): input composition task field name, default 'composition_tasks'.
-    subtask_key (str): input atomic task field name (optional), default 'atomic_tasks'.
+    input_composition_key (str): input composition task field name, default 'composition_tasks'.
+    input_atomic_key (str): input atomic task field name (optional), default 'atomic_tasks'.
     output_key (str): output filtered composition task field name, default 'filtered_composition_tasks'.
     system_prompt (str|None): optional system prompt.
     **kwargs: extra args passed to the base operator.
 """)
 
-add_example('data.operators.tool_use_ops.CompositionTaskFilter', """\
+add_example('data.operators.tool_use_ops.ViabilitySieve', """\
 ```python
-from lazyllm.tools.data.operators.tool_use_ops import CompositionTaskFilter
+from lazyllm.tools.data.operators.tool_use_ops import ViabilitySieve
 
 composition_tasks = ['先获取出发地和目的地再筛选车次', '直接随机推荐一个车次']
 atomic_tasks = [
     {'task': '获取出发地与目的地'}, {'task': '确认出行日期'}, {'task': '筛选符合条件的车次'}
 ]
-op = CompositionTaskFilter(model=model,
-                           composition_key='composition_tasks',
-                           subtask_key='atomic_tasks',
+op = ViabilitySieve(model=model,
+                           input_composition_key='composition_tasks',
+                           input_atomic_key='atomic_tasks',
                            output_key='filtered_composition_tasks')
 print(op({'composition_tasks': composition_tasks, 'atomic_tasks': atomic_tasks}))
 # {
@@ -797,7 +797,7 @@ print(op({'composition_tasks': composition_tasks, 'atomic_tasks': atomic_tasks})
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.FunctionGenerator', """\
+add_chinese_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
 工具调用数据生成算子：函数规格生成器。
 
 根据组合任务及其子任务，生成一组适合用于工具调用（function calling）的函数规格列表。
@@ -812,14 +812,14 @@ add_chinese_doc('data.operators.tool_use_ops.FunctionGenerator', """\
 
 Args:
     model: LazyLLM 模型对象（必需）。
-    task_key (str): 输入组合任务字段名，默认 'composition_task'。
-    subtask_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
+    input_composition_key (str): 输入组合任务字段名，默认 'composition_task'。
+    input_atomic_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
     output_key (str): 输出函数规格列表字段名，默认 'functions'。
     system_prompt (str|None): 可选系统提示词。
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.tool_use_ops.FunctionGenerator', """\
+add_english_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
 Tool-use data operator: function specification generator.
 
 Given a composed task and its subtasks, generates a list of function specifications suitable for tool calling.
@@ -834,16 +834,16 @@ Typical JSON structure:
 
 Args:
     model: a LazyLLM model object (required).
-    task_key (str): input composition task field name, default 'composition_task'.
-    subtask_key (str): input atomic task field name, default 'atomic_tasks'.
+    input_composition_key (str): input composition task field name, default 'composition_task'.
+    input_atomic_key (str): input atomic task field name, default 'atomic_tasks'.
     output_key (str): output function spec list field name, default 'functions'.
     system_prompt (str|None): optional system prompt.
     **kwargs: extra args passed to the base operator.
 """)
 
-add_example('data.operators.tool_use_ops.FunctionGenerator', """\
+add_example('data.operators.tool_use_ops.ProtocolSpecifier', """\
 ```python
-from lazyllm.tools.data.operators.tool_use_ops import FunctionGenerator
+from lazyllm.tools.data.operators.tool_use_ops import ProtocolSpecifier
 
 composition_task = '根据用户出发地、目的地和日期查询可选高铁车次并返回候选列表'
 atomic_tasks = [
@@ -851,9 +851,9 @@ atomic_tasks = [
     {'task': '确认出行日期'},
     {'task': '调用车次查询接口并过滤结果'},
 ]
-op = FunctionGenerator(model=model,
-                       task_key='composition_task',
-                       subtask_key='atomic_tasks',
+op = ProtocolSpecifier(model=model,
+                       input_composition_key='composition_task',
+                       input_atomic_key='atomic_tasks',
                        output_key='functions')
 print(op({'composition_task': composition_task, 'atomic_tasks': atomic_tasks}))
 # {
@@ -872,7 +872,7 @@ print(op({'composition_task': composition_task, 'atomic_tasks': atomic_tasks}))
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.MultiTurnConversationGenerator', """\
+add_chinese_doc('data.operators.tool_use_ops.DialogueSimulator', """\
 工具调用数据生成算子：多轮对话生成器（含 Tool 调用）。
 
 根据组合任务与可用函数列表，生成带有 User / Assistant / Tool 三种角色的多轮对话 JSON，用于构造工具调用训练数据。
@@ -886,15 +886,15 @@ add_chinese_doc('data.operators.tool_use_ops.MultiTurnConversationGenerator', ""
 
 Args:
     model: LazyLLM 模型对象（必需）。
-    task_key (str): 输入组合任务字段名，默认 'composition_task'。
-    functions_key (str): 输入函数列表字段名，默认 'functions'。
+    input_composition_key (str): 输入组合任务字段名，默认 'composition_task'。
+    input_functions_key (str): 输入函数列表字段名，默认 'functions'。
     output_key (str): 输出多轮对话字段名，默认 'conversation'。
     n_turns (int): 期望的轮次数量（提示给模型），默认 6。
     system_prompt (str|None): 可选系统提示词。
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.tool_use_ops.MultiTurnConversationGenerator', """\
+add_english_doc('data.operators.tool_use_ops.DialogueSimulator', """\
 Tool-use data operator: multi-turn conversation generator (with tools).
 
 Given a composed task and a list of available functions, generates a multi-turn conversation JSON involving User, Assistant and Tool roles, suitable for tool-calling training data.
@@ -908,17 +908,17 @@ Typical JSON structure:
 
 Args:
     model: a LazyLLM model object (required).
-    task_key (str): input composition task field name, default 'composition_task'.
-    functions_key (str): input function list field name, default 'functions'.
+    input_composition_key (str): input composition task field name, default 'composition_task'.
+    input_functions_key (str): input function list field name, default 'functions'.
     output_key (str): output conversation field name, default 'conversation'.
     n_turns (int): desired number of turns (as a hint to the model), default 6.
     system_prompt (str|None): optional system prompt.
     **kwargs: extra args passed to the base operator.
 """)
 
-add_example('data.operators.tool_use_ops.MultiTurnConversationGenerator', """\
+add_example('data.operators.tool_use_ops.DialogueSimulator', """\
 ```python
-from lazyllm.tools.data.operators.tool_use_ops import MultiTurnConversationGenerator
+from lazyllm.tools.data.operators.tool_use_ops import DialogueSimulator
 
 composition_task = '根据用户需求查询并推荐合适的高铁车次'
 functions = [
@@ -929,9 +929,9 @@ functions = [
         'returns': {...},
     }
 ]
-op = MultiTurnConversationGenerator(model=model,
-                                    task_key='composition_task',
-                                    functions_key='functions',
+op = DialogueSimulator(model=model,
+                                    input_composition_key='composition_task',
+                                    input_functions_key='functions',
                                     output_key='conversation',
                                     n_turns=6)
 print(op({'composition_task': composition_task, 'functions': functions}))
@@ -950,7 +950,7 @@ print(op({'composition_task': composition_task, 'functions': functions}))
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.ScenarioExtractor', """\
+add_chinese_doc('data.operators.tool_use_ops.ContextualBeacon', """\
 工具调用数据生成算子：场景抽取器。
 
 从一段对话文本中抽取可用于后续任务/工具调用数据生成的“场景信息”，并以结构化 JSON 形式写入输出字段。
@@ -972,7 +972,7 @@ Args:
     **kwargs: 传递给基类算子的其它参数（如 _max_workers、_save_data 等）。
 """)
 
-add_english_doc('data.operators.tool_use_ops.ScenarioExtractor', """\
+add_english_doc('data.operators.tool_use_ops.ContextualBeacon', """\
 Tool-use data operator: scenario extractor.
 
 Extracts high-level scenario information from a conversation text and writes a structured JSON object into the output field.
@@ -994,10 +994,10 @@ Args:
     **kwargs: extra args passed to the base operator (e.g. _max_workers, _save_data).
 """)
 
-add_example('data.operators.tool_use_ops.ScenarioExtractor', r"""
-from lazyllm.tools.data.operators.tool_use_ops import ScenarioExtractor
+add_example('data.operators.tool_use_ops.ContextualBeacon', r"""
+from lazyllm.tools.data.operators.tool_use_ops import ContextualBeacon
 
-op = ScenarioExtractor(model=model, input_key='content', output_key='scenario')
+op = ContextualBeacon(model=model, input_key='content', output_key='scenario')
 item = {
     'content': 'User: 我想订一张从北京到上海的高铁票，下午出发最好。\\nAssistant: 好的，请问具体日期？'
 }
@@ -1017,7 +1017,7 @@ print(op(item))
 # }
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.ScenarioExpander', """\
+add_chinese_doc('data.operators.tool_use_ops.ScenarioDiverger', """\
 工具调用数据生成算子：场景扩展器。
 
 在已有基础场景的基础上，生成若干个语义相关但细节不同的替代场景列表，便于扩充数据多样性。
@@ -1035,7 +1035,7 @@ Args:
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.tool_use_ops.ScenarioExpander', """\
+add_english_doc('data.operators.tool_use_ops.ScenarioDiverger', """\
 Tool-use data operator: scenario expander.
 
 Given a base scenario, generates multiple alternative scenarios that are semantically related but differ in details, to enrich data diversity.
@@ -1053,16 +1053,16 @@ Args:
     **kwargs: extra args passed to the base operator.
 """)
 
-add_example('data.operators.tool_use_ops.ScenarioExpander', """\
+add_example('data.operators.tool_use_ops.ScenarioDiverger', """\
 ```python
-from lazyllm.tools.data.operators.tool_use_ops import ScenarioExpander
+from lazyllm.tools.data.operators.tool_use_ops import ScenarioDiverger
 
 base = {
     'scene': '用户咨询高铁购票服务',
     'domain': '出行/购票',
     'assistant_goal': '帮助用户完成车次筛选并购票',
 }
-op = ScenarioExpander(model=model, input_key='scenario', output_key='expanded_scenarios', n=3)
+op = ScenarioDiverger(model=model, input_key='scenario', output_key='expanded_scenarios', n=3)
 print(op({'scenario': base}))
 # {
 #   'scenario': {...},
@@ -1075,7 +1075,7 @@ print(op({'scenario': base}))
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.AtomTaskGenerator', """\
+add_chinese_doc('data.operators.tool_use_ops.DecompositionKernel', """\
 工具调用数据生成算子：原子任务生成器。
 
 基于单个场景，生成一组粒度较小、目标单一的“原子任务”列表，用于后续任务编排与工具设计。
@@ -1097,7 +1097,7 @@ Args:
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.tool_use_ops.AtomTaskGenerator', """\
+add_english_doc('data.operators.tool_use_ops.DecompositionKernel', """\
 Tool-use data operator: atomic task generator.
 
 Given a scenario, generates a list of fine-grained, single-goal atomic tasks, which can be used for later orchestration and tool design.
@@ -1119,15 +1119,15 @@ Args:
     **kwargs: extra args passed to the base operator.
 """)
 
-add_example('data.operators.tool_use_ops.AtomTaskGenerator', """\
+add_example('data.operators.tool_use_ops.DecompositionKernel', """\
 ```python
-from lazyllm.tools.data.operators.tool_use_ops import AtomTaskGenerator
+from lazyllm.tools.data.operators.tool_use_ops import DecompositionKernel
 
 scenario = {
     'scene': '用户咨询高铁购票服务',
     'assistant_goal': '帮助用户完成车次筛选并购票',
 }
-op = AtomTaskGenerator(model=model, input_key='scenario', output_key='atomic_tasks', n=4)
+op = DecompositionKernel(model=model, input_key='scenario', output_key='atomic_tasks', n=4)
 print(op({'scenario': scenario}))
 # {
 #   'scenario': {...},
@@ -1140,7 +1140,7 @@ print(op({'scenario': scenario}))
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.SequentialTaskGenerator', """\
+add_chinese_doc('data.operators.tool_use_ops.ChainedLogicAssembler', """\
 工具调用数据生成算子：顺序任务生成器。
 
 基于原子任务列表，生成“后继任务关系”与对应的组合任务列表，用于构造线性或有依赖关系的任务链。
@@ -1160,7 +1160,7 @@ Args:
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.tool_use_ops.SequentialTaskGenerator', """\
+add_english_doc('data.operators.tool_use_ops.ChainedLogicAssembler', """\
 Tool-use data operator: sequential task generator.
 
 Given a list of atomic tasks, generates successor relationships and composed tasks to form linear or dependency-aware task chains.
@@ -1180,16 +1180,16 @@ Args:
     **kwargs: extra args passed to the base operator.
 """)
 
-add_example('data.operators.tool_use_ops.SequentialTaskGenerator', """\
+add_example('data.operators.tool_use_ops.ChainedLogicAssembler', """\
 ```python
-from lazyllm.tools.data.operators.tool_use_ops import SequentialTaskGenerator
+from lazyllm.tools.data.operators.tool_use_ops import ChainedLogicAssembler
 
 atomic_tasks = [
     {'task': '获取出发地与目的地'},
     {'task': '确认出行日期'},
     {'task': '筛选符合条件的车次'},
 ]
-op = SequentialTaskGenerator(model=model, input_key='atomic_tasks', output_key='sequential_tasks')
+op = ChainedLogicAssembler(model=model, input_key='atomic_tasks', output_key='sequential_tasks')
 print(op({'atomic_tasks': atomic_tasks}))
 # {
 #   'atomic_tasks': [...],
@@ -1202,7 +1202,7 @@ print(op({'atomic_tasks': atomic_tasks}))
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.ParaSeqTaskGenerator', """\
+add_chinese_doc('data.operators.tool_use_ops.TopologyArchitect', """\
 工具调用数据生成算子：并行/顺序/混合任务组合生成器。
 
 基于原子任务列表，自动生成三类任务组合：
@@ -1219,7 +1219,7 @@ Args:
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.tool_use_ops.ParaSeqTaskGenerator', """\
+add_english_doc('data.operators.tool_use_ops.TopologyArchitect', """\
 Tool-use data operator: parallel/sequential/hybrid task combination generator.
 
 Given atomic tasks, generates three kinds of task compositions:
@@ -1236,9 +1236,9 @@ Args:
     **kwargs: extra args passed to the base operator.
 """)
 
-add_example('data.operators.tool_use_ops.ParaSeqTaskGenerator', """\
+add_example('data.operators.tool_use_ops.TopologyArchitect', """\
 ```python
-from lazyllm.tools.data.operators.tool_use_ops import ParaSeqTaskGenerator
+from lazyllm.tools.data.operators.tool_use_ops import TopologyArchitect
 
 atomic_tasks = [
     {'task': '收集出行需求'},
@@ -1246,7 +1246,7 @@ atomic_tasks = [
     {'task': '对比价格与时间'},
     {'task': '完成下单支付'},
 ]
-op = ParaSeqTaskGenerator(model=model, input_key='atomic_tasks', output_key='para_seq_tasks')
+op = TopologyArchitect(model=model, input_key='atomic_tasks', output_key='para_seq_tasks')
 print(op({'atomic_tasks': atomic_tasks}))
 # {
 #   'atomic_tasks': [...],
@@ -1259,7 +1259,7 @@ print(op({'atomic_tasks': atomic_tasks}))
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.CompositionTaskFilter', """\
+add_chinese_doc('data.operators.tool_use_ops.ViabilitySieve', """\
 工具调用数据生成算子：组合任务可行性过滤器。
 
 对一组“组合任务”进行可运行性与完备性评审，筛选出被认为合理可行的组合任务列表。
@@ -1272,14 +1272,14 @@ add_chinese_doc('data.operators.tool_use_ops.CompositionTaskFilter', """\
 
 Args:
     model: LazyLLM 模型对象（必需）。
-    composition_key (str): 输入组合任务字段名，默认 'composition_tasks'。
-    subtask_key (str): 输入原子任务字段名（可选），默认 'atomic_tasks'。
+    input_composition_key (str): 输入组合任务字段名，默认 'composition_tasks'。
+    input_atomic_key (str): 输入原子任务字段名（可选），默认 'atomic_tasks'。
     output_key (str): 输出过滤后组合任务字段名，默认 'filtered_composition_tasks'。
     system_prompt (str|None): 可选系统提示词。
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.tool_use_ops.CompositionTaskFilter', """\
+add_english_doc('data.operators.tool_use_ops.ViabilitySieve', """\
 Tool-use data operator: composition task feasibility filter.
 
 Evaluates a list of composed tasks for feasibility and completeness, and filters out invalid ones.
@@ -1292,24 +1292,24 @@ On output, only keeps composed_task values where is_valid is true. If the model 
 
 Args:
     model: a LazyLLM model object (required).
-    composition_key (str): input composition task field name, default 'composition_tasks'.
-    subtask_key (str): input atomic task field name (optional), default 'atomic_tasks'.
+    input_composition_key (str): input composition task field name, default 'composition_tasks'.
+    input_atomic_key (str): input atomic task field name (optional), default 'atomic_tasks'.
     output_key (str): output filtered composition task field name, default 'filtered_composition_tasks'.
     system_prompt (str|None): optional system prompt.
     **kwargs: extra args passed to the base operator.
 """)
 
-add_example('data.operators.tool_use_ops.CompositionTaskFilter', """\
+add_example('data.operators.tool_use_ops.ViabilitySieve', """\
 ```python
-from lazyllm.tools.data.operators.tool_use_ops import CompositionTaskFilter
+from lazyllm.tools.data.operators.tool_use_ops import ViabilitySieve
 
 composition_tasks = ['先获取出发地和目的地再筛选车次', '直接随机推荐一个车次']
 atomic_tasks = [
     {'task': '获取出发地与目的地'}, {'task': '确认出行日期'}, {'task': '筛选符合条件的车次'}
 ]
-op = CompositionTaskFilter(model=model,
-                           composition_key='composition_tasks',
-                           subtask_key='atomic_tasks',
+op = ViabilitySieve(model=model,
+                           input_composition_key='composition_tasks',
+                           input_atomic_key='atomic_tasks',
                            output_key='filtered_composition_tasks')
 print(op({'composition_tasks': composition_tasks, 'atomic_tasks': atomic_tasks}))
 # {
@@ -1320,7 +1320,7 @@ print(op({'composition_tasks': composition_tasks, 'atomic_tasks': atomic_tasks})
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.FunctionGenerator', """\
+add_chinese_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
 工具调用数据生成算子：函数规格生成器。
 
 根据组合任务及其子任务，生成一组适合用于工具调用（function calling）的函数规格列表。
@@ -1335,14 +1335,14 @@ add_chinese_doc('data.operators.tool_use_ops.FunctionGenerator', """\
 
 Args:
     model: LazyLLM 模型对象（必需）。
-    task_key (str): 输入组合任务字段名，默认 'composition_task'。
-    subtask_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
+    input_composition_key (str): 输入组合任务字段名，默认 'composition_task'。
+    input_atomic_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
     output_key (str): 输出函数规格列表字段名，默认 'functions'。
     system_prompt (str|None): 可选系统提示词。
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.tool_use_ops.FunctionGenerator', """\
+add_english_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
 Tool-use data operator: function specification generator.
 
 Given a composed task and its subtasks, generates a list of function specifications suitable for tool calling.
@@ -1357,16 +1357,16 @@ Typical JSON structure:
 
 Args:
     model: a LazyLLM model object (required).
-    task_key (str): input composition task field name, default 'composition_task'.
-    subtask_key (str): input atomic task field name, default 'atomic_tasks'.
+    input_composition_key (str): input composition task field name, default 'composition_task'.
+    input_atomic_key (str): input atomic task field name, default 'atomic_tasks'.
     output_key (str): output function spec list field name, default 'functions'.
     system_prompt (str|None): optional system prompt.
     **kwargs: extra args passed to the base operator.
 """)
 
-add_example('data.operators.tool_use_ops.FunctionGenerator', """\
+add_example('data.operators.tool_use_ops.ProtocolSpecifier', """\
 ```python
-from lazyllm.tools.data.operators.tool_use_ops import FunctionGenerator
+from lazyllm.tools.data.operators.tool_use_ops import ProtocolSpecifier
 
 composition_task = '根据用户出发地、目的地和日期查询可选高铁车次并返回候选列表'
 atomic_tasks = [
@@ -1374,9 +1374,9 @@ atomic_tasks = [
     {'task': '确认出行日期'},
     {'task': '调用车次查询接口并过滤结果'},
 ]
-op = FunctionGenerator(model=model,
-                       task_key='composition_task',
-                       subtask_key='atomic_tasks',
+op = ProtocolSpecifier(model=model,
+                       input_composition_key='composition_task',
+                       input_atomic_key='atomic_tasks',
                        output_key='functions')
 print(op({'composition_task': composition_task, 'atomic_tasks': atomic_tasks}))
 # {
@@ -1395,7 +1395,7 @@ print(op({'composition_task': composition_task, 'atomic_tasks': atomic_tasks}))
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.MultiTurnConversationGenerator', """\
+add_chinese_doc('data.operators.tool_use_ops.DialogueSimulator', """\
 工具调用数据生成算子：多轮对话生成器（含 Tool 调用）。
 
 根据组合任务与可用函数列表，生成带有 User / Assistant / Tool 三种角色的多轮对话 JSON，用于构造工具调用训练数据。
@@ -1409,15 +1409,15 @@ add_chinese_doc('data.operators.tool_use_ops.MultiTurnConversationGenerator', ""
 
 Args:
     model: LazyLLM 模型对象（必需）。
-    task_key (str): 输入组合任务字段名，默认 'composition_task'。
-    functions_key (str): 输入函数列表字段名，默认 'functions'。
+    input_composition_key (str): 输入组合任务字段名，默认 'composition_task'。
+    input_functions_key (str): 输入函数列表字段名，默认 'functions'。
     output_key (str): 输出多轮对话字段名，默认 'conversation'。
     n_turns (int): 期望的轮次数量（提示给模型），默认 6。
     system_prompt (str|None): 可选系统提示词。
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.tool_use_ops.MultiTurnConversationGenerator', """\
+add_english_doc('data.operators.tool_use_ops.DialogueSimulator', """\
 Tool-use data operator: multi-turn conversation generator (with tools).
 
 Given a composed task and a list of available functions, generates a multi-turn conversation JSON involving User, Assistant and Tool roles, suitable for tool-calling training data.
@@ -1431,17 +1431,17 @@ Typical JSON structure:
 
 Args:
     model: a LazyLLM model object (required).
-    task_key (str): input composition task field name, default 'composition_task'.
-    functions_key (str): input function list field name, default 'functions'.
+    input_composition_key (str): input composition task field name, default 'composition_task'.
+    input_functions_key (str): input function list field name, default 'functions'.
     output_key (str): output conversation field name, default 'conversation'.
     n_turns (int): desired number of turns (as a hint to the model), default 6.
     system_prompt (str|None): optional system prompt.
     **kwargs: extra args passed to the base operator.
 """)
 
-add_example('data.operators.tool_use_ops.MultiTurnConversationGenerator', """\
+add_example('data.operators.tool_use_ops.DialogueSimulator', """\
 ```python
-from lazyllm.tools.data.operators.tool_use_ops import MultiTurnConversationGenerator
+from lazyllm.tools.data.operators.tool_use_ops import DialogueSimulator
 
 composition_task = '根据用户需求查询并推荐合适的高铁车次'
 functions = [
@@ -1452,9 +1452,9 @@ functions = [
         'returns': {...},
     }
 ]
-op = MultiTurnConversationGenerator(model=model,
-                                    task_key='composition_task',
-                                    functions_key='functions',
+op = DialogueSimulator(model=model,
+                                    input_composition_key='composition_task',
+                                    input_functions_key='functions',
                                     output_key='conversation',
                                     n_turns=6)
 print(op({'composition_task': composition_task, 'functions': functions}))
@@ -1473,14 +1473,14 @@ print(op({'composition_task': composition_task, 'functions': functions}))
 ```
 """)
 
-add_chinese_doc('data.operators.text2sql_ops.SQLGenerator', """\
+add_chinese_doc('data.operators.text2sql_ops.SQLForge', """\
 Text2SQL 数据生成算子：SQL 生成器。
 
 基于数据库 Schema 与样例数据，为给定或全部数据库自动生成可执行的 SQL 语句集合，并标注大致复杂度类型。
 
 主要行为：
 
-- 对每个数据库生成 generate_num 条 SQL。
+- 对每个数据库生成 output_num 条 SQL。
 - 内置默认提示词（可自定义 prompt_template），控制难度标签（easy/medium/hard 等）。
 - 从模型返回中解析出 ```sql ... ``` 代码块中的 SQL 文本。
 
@@ -1489,20 +1489,20 @@ Args:
     database_manager: 提供数据库 Schema 与样例数据的管理器（必需），需实现：
         - list_databases()
         - get_create_statements_and_insert_statements(db_name)
-    generate_num (int): 每个数据库生成的 SQL 数量，默认 300。
+    output_num (int): 每个数据库生成的 SQL 数量，默认 300。
     prompt_template: 可选，自定义 prompt 构造器对象，需实现 build_prompt(...)。
     system_prompt (str|None): 可选系统提示词，不传则使用内置英文提示。
     **kwargs: 传递给基类 Text2SQLOps/LazyLLMDataBase 的其它参数。
 """)
 
-add_english_doc('data.operators.text2sql_ops.SQLGenerator', """\
-Text2SQL data operator: SQLGenerator.
+add_english_doc('data.operators.text2sql_ops.SQLForge', """\
+Text2SQL data operator: SQLForge.
 
 Generates executable SQL queries for one or multiple databases based on their schema and optional sample data, and labels each query with a rough complexity type.
 
 Behavior:
 
-- Generates generate_num SQLs per database.
+- Generates output_num SQLs per database.
 - Uses a default English system prompt (or a custom prompt_template) to control complexity labels (easy/medium/hard, etc.).
 - Parses SQL text from model responses, preferring ```sql ... ``` code blocks.
 
@@ -1511,18 +1511,18 @@ Args:
     database_manager: database manager (required) implementing:
         - list_databases()
         - get_create_statements_and_insert_statements(db_name)
-    generate_num (int): number of SQLs to generate per database, default 300.
+    output_num (int): number of SQLs to generate per database, default 300.
     prompt_template: optional custom prompt builder with build_prompt(...).
     system_prompt (str|None): optional system prompt, defaults to a built-in English prompt.
     **kwargs: extra args forwarded to the Text2SQLOps/LazyLLMDataBase base class.
 """)
 
-add_example('data.operators.text2sql_ops.SQLGenerator', """\
+add_example('data.operators.text2sql_ops.SQLForge', """\
 ```python
-from lazyllm.tools.data.operators.text2SQL_ops import SQLGenerator
+from lazyllm.tools.data.operators.text2sql_ops import SQLForge
 
 # 假设 database_manager 已封装了你的 SQLite / Postgres 等数据库
-op = SQLGenerator(model=model, database_manager=database_manager, generate_num=10)
+op = SQLForge(model=model, database_manager=database_manager, output_num=10)
 
 # 如果 data 中不指定 db_id，则为所有数据库各生成若干条 SQL
 res = op({})
@@ -1535,7 +1535,7 @@ print(res[0])
 ```
 """)
 
-add_chinese_doc('data.operators.text2sql_ops.SQLExecutabilityFilter', """\
+add_chinese_doc('data.operators.text2sql_ops.SQLRuntimeSieve', """\
 Text2SQL 数据过滤算子：SQL 可执行性过滤器。
 
 对每条数据中的 SQL 进行简单语法形态过滤（仅保留 SELECT / WITH 开头的查询），并调用 database_manager 进行 EXPLAIN 校验；只保留可在目标库上成功执行的 SQL。
@@ -1547,8 +1547,8 @@ Args:
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.text2sql_ops.SQLExecutabilityFilter', """\
-Text2SQL data operator: SQLExecutabilityFilter.
+add_english_doc('data.operators.text2sql_ops.SQLRuntimeSieve', """\
+Text2SQL data operator: SQLRuntimeSieve.
 
 Filters SQL queries by:
 
@@ -1562,25 +1562,25 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2sql_ops.SQLExecutabilityFilter', """\
+add_example('data.operators.text2sql_ops.SQLRuntimeSieve', """\
 ```python
-from lazyllm.tools.data.operators.text2SQL_ops import SQLExecutabilityFilter
+from lazyllm.tools.data.operators.text2sql_ops import SQLRuntimeSieve
 
-op = SQLExecutabilityFilter(database_manager=database_manager)
+op = SQLRuntimeSieve(database_manager=database_manager)
 item = {'db_id': 'db_1', 'SQL': 'SELECT * FROM users;'}
 res = op(item)
 print(res)  # 若 SQL 可在 db_1 上 explain 成功，则返回原始 dict；否则返回 None
 ```
 """)
 
-add_chinese_doc('data.operators.text2sql_ops.Text2SQLQuestionGenerator', """\
+add_chinese_doc('data.operators.text2sql_ops.SQLIntentSynthesizer', """\
 Text2SQL 数据生成算子：自然语言问题生成器。
 
 基于给定 SQL + 数据库 Schema 以及列注释信息，生成与 SQL 语义对应的自然语言问题，并可附带“外部知识”提示，以支持 Text2SQL 训练。
 
 主要特性：
 
-- 支持多候选问题生成（question_candidates_num），并通过 embedding 去重/多样性选择。
+- 支持多候选问题生成（input_query_num），并通过 embedding 去重/多样性选择。
 - 内置输出格式标记：[QUESTION-START]/[QUESTION-END] 与 [EXTERNAL-KNOWLEDGE-START]/[...-END]。
 
 Args:
@@ -1589,20 +1589,20 @@ Args:
         - generate_embedding_from_input(texts) 或直接可调用(texts)。
     database_manager: 提供 Schema 的管理器（必需），需实现：
         - get_create_statements_and_insert_statements(db_id)
-    question_candidates_num (int): 每条 SQL 生成候选问题的数量，默认 5。
+    input_query_num (int): 每条 SQL 生成候选问题的数量，默认 5。
     prompt_template: 可选，自定义 prompt 构造器。
     system_prompt (str|None): 可选系统提示词，默认简要英文助手提示。
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2sql_ops.Text2SQLQuestionGenerator', """\
-Text2SQL data operator: Text2SQLQuestionGenerator.
+add_english_doc('data.operators.text2sql_ops.SQLIntentSynthesizer', """\
+Text2SQL data operator: SQLIntentSynthesizer.
 
 Given a SQL query and database schema (with optional column descriptions), generates a natural language question aligned with the SQL semantics, plus optional external knowledge text.
 
 Key features:
 
-- Generates multiple candidate questions (question_candidates_num) and selects one using embeddings-based diversity.
+- Generates multiple candidate questions (input_query_num) and selects one using embeddings-based diversity.
 - Uses special markers in model output: [QUESTION-START]/[QUESTION-END] and [EXTERNAL-KNOWLEDGE-START]/[...-END].
 
 Args:
@@ -1611,20 +1611,20 @@ Args:
         - generate_embedding_from_input(texts) or callable(texts).
     database_manager: schema provider (required) implementing:
         - get_create_statements_and_insert_statements(db_id)
-    question_candidates_num (int): number of question candidates per SQL, default 5.
+    input_query_num (int): number of question candidates per SQL, default 5.
     prompt_template: optional custom prompt builder.
     system_prompt (str|None): optional system prompt, default simple English helper.
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2sql_ops.Text2SQLQuestionGenerator', """\
+add_example('data.operators.text2sql_ops.SQLIntentSynthesizer', """\
 ```python
-from lazyllm.tools.data.operators.text2SQL_ops import Text2SQLQuestionGenerator
+from lazyllm.tools.data.operators.text2sql_ops import SQLIntentSynthesizer
 
-op = Text2SQLQuestionGenerator(model=model,
+op = SQLIntentSynthesizer(model=model,
                                embedding_model=embedding_model,
                                database_manager=database_manager,
-                               question_candidates_num=5)
+                               input_query_num=5)
 item = {'db_id': 'db_1', 'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';'}
 res = op(item)
 print(res)
@@ -1638,7 +1638,7 @@ print(res)
 ```
 """)
 
-add_chinese_doc('data.operators.text2sql_ops.Text2SQLCorrespondenceFilter', """\
+add_chinese_doc('data.operators.text2sql_ops.TSQLSemanticAuditor', """\
 Text2SQL 数据过滤算子：问句-SQL 一致性过滤器。
 
 给定自然语言问题 + 证据（可选）+ SQL + 数据库 Schema，判断 SQL 是否能够正确回答该问题，保留“正确”的样本。
@@ -1657,8 +1657,8 @@ Args:
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2sql_ops.Text2SQLCorrespondenceFilter', """\
-Text2SQL data operator: Text2SQLCorrespondenceFilter.
+add_english_doc('data.operators.text2sql_ops.TSQLSemanticAuditor', """\
+Text2SQL data operator: TSQLSemanticAuditor.
 
 Given a natural language question + optional evidence + SQL + database schema, determines whether the SQL correctly answers the question and filters samples accordingly.
 
@@ -1676,11 +1676,11 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2sql_ops.Text2SQLCorrespondenceFilter', """\
+add_example('data.operators.text2sql_ops.TSQLSemanticAuditor', """\
 ```python
-from lazyllm.tools.data.operators.text2SQL_ops import Text2SQLCorrespondenceFilter
+from lazyllm.tools.data.operators.text2sql_ops import TSQLSemanticAuditor
 
-op = Text2SQLCorrespondenceFilter(model=model, database_manager=database_manager)
+op = TSQLSemanticAuditor(model=model, database_manager=database_manager)
 item = {
     'db_id': 'db_1',
     'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';',
@@ -1699,7 +1699,7 @@ print(res)
 ```
 """)
 
-add_chinese_doc('data.operators.text2sql_ops.Text2SQLPromptGenerator', """\
+add_chinese_doc('data.operators.text2sql_ops.SQLContextAssembler', """\
 Text2SQL 数据生成算子：Prompt 构造器。
 
 根据数据库 Schema、自然语言问题与证据，构造下游 Text2SQL 模型的输入提示词（prompt）。
@@ -1717,8 +1717,8 @@ Args:
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2sql_ops.Text2SQLPromptGenerator', """\
-Text2SQL data operator: Text2SQLPromptGenerator.
+add_english_doc('data.operators.text2sql_ops.SQLContextAssembler', """\
+Text2SQL data operator: SQLContextAssembler.
 
 Builds prompts for downstream Text2SQL models from database schema, natural language question, and evidence.
 
@@ -1735,11 +1735,11 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2sql_ops.Text2SQLPromptGenerator', """\
+add_example('data.operators.text2sql_ops.SQLContextAssembler', """\
 ```python
-from lazyllm.tools.data.operators.text2SQL_ops import Text2SQLPromptGenerator
+from lazyllm.tools.data.operators.text2sql_ops import SQLContextAssembler
 
-op = Text2SQLPromptGenerator(database_manager=database_manager)
+op = SQLContextAssembler(database_manager=database_manager)
 item = {
     'db_id': 'db_1',
     'question': '有多少已支付的订单？',
@@ -1757,7 +1757,7 @@ print(res['prompt'])
 ```
 """)
 
-add_chinese_doc('data.operators.text2sql_ops.Text2SQLCoTGenerator', """\
+add_chinese_doc('data.operators.text2sql_ops.SQLReasoningTracer', """\
 Text2SQL 数据生成算子：CoT 轨迹生成器。
 
 针对给定 (问题, SQL, 数据库 Schema, 证据) 生成若干条“从问题到 SQL 的链式思考（Chain-of-Thought）”文本，用于训练/分析。
@@ -1767,12 +1767,12 @@ Args:
     database_manager: 提供 Schema 的管理器（必需），需实现：
         - get_create_statements_and_insert_statements(db_id)
     prompt_template: 可选，自定义 prompt 构造器。
-    sampling_num (int): 每条样本生成的 CoT 轨迹数量，默认 3（>=1）。
+    output_num (int): 每条样本生成的 CoT 轨迹数量，默认 3（>=1）。
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2sql_ops.Text2SQLCoTGenerator', """\
-Text2SQL data operator: Text2SQLCoTGenerator.
+add_english_doc('data.operators.text2sql_ops.SQLReasoningTracer', """\
+Text2SQL data operator: SQLReasoningTracer.
 
 For each (question, SQL, schema, evidence) item, generates multiple chain-of-thought (CoT) reasoning traces from question to SQL.
 
@@ -1781,15 +1781,15 @@ Args:
     database_manager: schema provider (required) implementing:
         - get_create_statements_and_insert_statements(db_id)
     prompt_template: optional custom prompt builder.
-    sampling_num (int): number of CoT trajectories per item, default 3 (>=1).
+    output_num (int): number of CoT trajectories per item, default 3 (>=1).
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2sql_ops.Text2SQLCoTGenerator', """\
+add_example('data.operators.text2sql_ops.SQLReasoningTracer', """\
 ```python
-from lazyllm.tools.data.operators.text2SQL_ops import Text2SQLCoTGenerator
+from lazyllm.tools.data.operators.text2sql_ops import SQLReasoningTracer
 
-op = Text2SQLCoTGenerator(model=model, database_manager=database_manager, sampling_num=3)
+op = SQLReasoningTracer(model=model, database_manager=database_manager, output_num=3)
 item = {
     'db_id': 'db_1',
     'question': '有多少已支付的订单？',
@@ -1804,14 +1804,14 @@ print(res['cot_responses'][0][:200])  # 打印第一条 CoT 的前 200 个字符
 ```
 """)
 
-add_chinese_doc('data.operators.text2sql_ops.Text2SQLCoTVotingGenerator', """\
+add_chinese_doc('data.operators.text2sql_ops.SQLConsensusUnifier', """\
 Text2SQL 数据处理算子：CoT 轨迹投票选择器。
 
 对一组 CoT 轨迹（cot_responses）进行 SQL 解析与执行，基于执行结果的一致性与正确性，从中选出“最佳” CoT 及对应 SQL。
 
 行为：
 
-- 从每条 CoT 中解析 SQL（使用与 SQLGenerator 相同的解析逻辑）。
+- 从每条 CoT 中解析 SQL（使用与 SQLForge 相同的解析逻辑）。
 - 调用 database_manager.batch_execute_queries 执行 SQL，计算结果 signature 与 success。
 - 使用投票策略 _vote_select 选择最终 CoT，并将：
   - output_cot_key（默认 'cot_reasoning'）设置为最佳 CoT 文本；
@@ -1823,14 +1823,14 @@ Args:
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2sql_ops.Text2SQLCoTVotingGenerator', """\
-Text2SQL data operator: Text2SQLCoTVotingGenerator.
+add_english_doc('data.operators.text2sql_ops.SQLConsensusUnifier', """\
+Text2SQL data operator: SQLConsensusUnifier.
 
 Given multiple CoT traces (cot_responses), parses SQL from each, executes them, and selects the best CoT/SQL pair based on execution consistency and success.
 
 Behavior:
 
-- Parses SQL from each CoT using the same logic as SQLGenerator.
+- Parses SQL from each CoT using the same logic as SQLForge.
 - Calls database_manager.batch_execute_queries to get execution results and signatures.
 - Uses a voting strategy (_vote_select) to pick the best candidate, then:
   - sets output_cot_key (default 'cot_reasoning') to the winning CoT,
@@ -1842,11 +1842,11 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2sql_ops.Text2SQLCoTVotingGenerator', """\
+add_example('data.operators.text2sql_ops.SQLConsensusUnifier', """\
 ```python
-from lazyllm.tools.data.operators.text2SQL_ops import Text2SQLCoTVotingGenerator
+from lazyllm.tools.data.operators.text2sql_ops import SQLConsensusUnifier
 
-op = Text2SQLCoTVotingGenerator(database_manager=database_manager)
+op = SQLConsensusUnifier(database_manager=database_manager)
 item = {
     'db_id': 'db_1',
     'cot_responses': [
@@ -1862,7 +1862,7 @@ print(res['SQL'])
 ```
 """)
 
-add_chinese_doc('data.operators.text2sql_ops.SQLComponentClassifier', """\
+add_chinese_doc('data.operators.text2sql_ops.SQLSyntaxProfiler', """\
 Text2SQL 数据分类算子：SQL 组件难度分类器。
 
 使用 SQL 结构级别的难度评估器（EvalHardness/EvalHardnessLite），根据 SQL 中涉及的组件复杂度对其进行难度打标（easy/medium/hard/extra 等）。
@@ -1873,8 +1873,8 @@ Args:
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2sql_ops.SQLComponentClassifier', """\
-Text2SQL data operator: SQLComponentClassifier.
+add_english_doc('data.operators.text2sql_ops.SQLSyntaxProfiler', """\
+Text2SQL data operator: SQLSyntaxProfiler.
 
 Classifies SQL difficulty based on structural components using EvalHardness/EvalHardnessLite, assigning labels such as easy/medium/hard/extra.
 
@@ -1884,11 +1884,11 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2sql_ops.SQLComponentClassifier', """\
+add_example('data.operators.text2sql_ops.SQLSyntaxProfiler', """\
 ```python
-from lazyllm.tools.data.operators.text2SQL_ops import SQLComponentClassifier
+from lazyllm.tools.data.operators.text2sql_ops import SQLSyntaxProfiler
 
-op = SQLComponentClassifier()
+op = SQLSyntaxProfiler()
 item = {'SQL': 'SELECT count(*) FROM orders WHERE status = \\'paid\\';'}
 res = op(item)
 print(res)
@@ -1899,10 +1899,10 @@ print(res)
 ```
 """)
 
-add_chinese_doc('data.operators.text2sql_ops.SQLExecutionClassifier', """\
+add_chinese_doc('data.operators.text2sql_ops.SQLEffortRanker', """\
 Text2SQL 数据分类算子：SQL 执行难度分类器。
 
-基于 Text2SQLPromptGenerator 生成的 prompt、多次采样生成 SQL 并与金标 SQL 在数据库上对比执行结果，从“可被模型正确生成的次数”角度对样本执行难度进行分类。
+基于 SQLContextAssembler 生成的 prompt、多次采样生成 SQL 并与金标 SQL 在数据库上对比执行结果，从“可被模型正确生成的次数”角度对样本执行难度进行分类。
 
 主要流程：
 
@@ -1920,8 +1920,8 @@ Args:
     **kwargs: 其它传递给基类算子的参数。
 """)
 
-add_english_doc('data.operators.text2sql_ops.SQLExecutionClassifier', """\
-Text2SQL data operator: SQLExecutionClassifier.
+add_english_doc('data.operators.text2sql_ops.SQLEffortRanker', """\
+Text2SQL data operator: SQLEffortRanker.
 
 Classifies SQL execution difficulty by repeatedly generating SQL from a prompt, comparing each prediction to the gold SQL on the database, and counting how many generations match.
 
@@ -1941,11 +1941,11 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.text2sql_ops.SQLExecutionClassifier', """\
+add_example('data.operators.text2sql_ops.SQLEffortRanker', """\
 ```python
-from lazyllm.tools.data.operators.text2SQL_ops import SQLExecutionClassifier
+from lazyllm.tools.data.operators.text2sql_ops import SQLEffortRanker
 
-op = SQLExecutionClassifier(model=model, database_manager=database_manager, num_generations=15)
+op = SQLEffortRanker(model=model, database_manager=database_manager, num_generations=15)
 item = {
     'db_id': 'db_1',
     'prompt': 'Database Schema: ... Question: 有多少已支付的订单？',

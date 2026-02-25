@@ -4,7 +4,7 @@ import json
 
 ToolUseOps = data_register.new_group('tool_use_ops')
 
-class ScenarioExtractor(ToolUseOps):
+class ContextualBeacon(ToolUseOps):
     def __init__(self, model=None, input_key='content', output_key='scenario', system_prompt=None, **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
@@ -36,7 +36,7 @@ class ScenarioExtractor(ToolUseOps):
         return data
 
 
-class ScenarioExpander(ToolUseOps):
+class ScenarioDiverger(ToolUseOps):
     def __init__(
         self, model=None, input_key='scenario', output_key='expanded_scenarios', n=3, system_prompt=None, **kwargs
     ):
@@ -71,7 +71,7 @@ class ScenarioExpander(ToolUseOps):
         return data
 
 
-class AtomTaskGenerator(ToolUseOps):
+class DecompositionKernel(ToolUseOps):
     def __init__(
         self, model=None, input_key='scenario', output_key='atomic_tasks', n=5, system_prompt=None, **kwargs
     ):
@@ -105,7 +105,7 @@ class AtomTaskGenerator(ToolUseOps):
         return data
 
 
-class SequentialTaskGenerator(ToolUseOps):
+class ChainedLogicAssembler(ToolUseOps):
     def __init__(
         self, model=None, input_key='atomic_tasks', output_key='sequential_tasks', system_prompt=None, **kwargs
     ):
@@ -140,7 +140,7 @@ class SequentialTaskGenerator(ToolUseOps):
         return data
 
 
-class ParaSeqTaskGenerator(ToolUseOps):
+class TopologyArchitect(ToolUseOps):
     def __init__(
         self, model=None, input_key='atomic_tasks', output_key='para_seq_tasks', system_prompt=None, **kwargs
     ):
@@ -176,14 +176,19 @@ class ParaSeqTaskGenerator(ToolUseOps):
         return data
 
 
-class CompositionTaskFilter(ToolUseOps):
+class ViabilitySieve(ToolUseOps):
     def __init__(
-        self, model=None, composition_key='composition_tasks', subtask_key='atomic_tasks',
-        output_key='filtered_composition_tasks', system_prompt=None, **kwargs
+        self,
+        model=None,
+        input_composition_key='composition_tasks',
+        input_atomic_key='atomic_tasks',
+        output_key='filtered_composition_tasks',
+        system_prompt=None,
+        **kwargs,
     ):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.composition_key = composition_key
-        self.subtask_key = subtask_key
+        self.composition_key = input_composition_key
+        self.subtask_key = input_atomic_key
         self.output_key = output_key
         sys_prompt = system_prompt or (
             '你是一个任务可运行性评审助手。你需要判断组合任务是否具备可行性与完备性：\n'
@@ -228,14 +233,19 @@ class CompositionTaskFilter(ToolUseOps):
         return data
 
 
-class FunctionGenerator(ToolUseOps):
+class ProtocolSpecifier(ToolUseOps):
     def __init__(
-        self, model=None, task_key='composition_task', subtask_key='atomic_tasks',
-        output_key='functions', system_prompt=None, **kwargs
+        self,
+        model=None,
+        input_composition_key='composition_task',
+        input_atomic_key='atomic_tasks',
+        output_key='functions',
+        system_prompt=None,
+        **kwargs,
     ):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.task_key = task_key
-        self.subtask_key = subtask_key
+        self.task_key = input_composition_key
+        self.subtask_key = input_atomic_key
         self.output_key = output_key
         sys_prompt = system_prompt or (
             '你是一个函数设计助手。给定组合任务及其子任务，请生成一组函数规格，便于后续工具调用。\n'
@@ -272,14 +282,20 @@ class FunctionGenerator(ToolUseOps):
         return data
 
 
-class MultiTurnConversationGenerator(ToolUseOps):
+class DialogueSimulator(ToolUseOps):
     def __init__(
-        self, model=None, task_key='composition_task', functions_key='functions',
-        output_key='conversation', n_turns=6, system_prompt=None, **kwargs
+        self,
+        model=None,
+        input_composition_key='composition_task',
+        input_functions_key='functions',
+        output_key='conversation',
+        n_turns=6,
+        system_prompt=None,
+        **kwargs,
     ):
         super().__init__(_concurrency_mode='thread', **kwargs)
-        self.task_key = task_key
-        self.functions_key = functions_key
+        self.task_key = input_composition_key
+        self.functions_key = input_functions_key
         self.output_key = output_key
         self.n_turns = n_turns
         sys_prompt = system_prompt or (
