@@ -384,6 +384,803 @@ print(res)
 # valid results skip the failed item; error details written to error file
 ```
 """)
+# =========================
+# AgenticRAGGetIdentifier
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
+调用 LLM 从输入文本中抽取内容标识符（identifier）的算子。
+
+Args:
+    llm: 语言模型服务实例
+    input_key (str): 输入文本字段名，默认 'prompts'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
+An operator that extracts a content identifier from the input text using an LLM.
+
+
+Args:
+    llm: language model service instance
+    input_key (str): name of the input text field, default 'prompts'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetIdentifier', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGGetIdentifier(llm=my_llm, input_key='prompts')
+result = op({'prompts': 'What is the third movie in the Avatar series?'})
+print('identifier:', result['identifier'])
+# {'identifier': 'Avatar series'}
+```
+""")
+
+# =========================
+# AgenticRAGGetConclusion
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetConclusion', """\
+调用 LLM 进行结论提取和关系生成的算子。
+
+该算子根据输入文本构造提示词，并将模型的原始输出
+保存至 data['raw_conclusion']，供后续 JSON 解析与任务展开使用。
+若生成失败，则写入空字符串。
+
+Args:
+    llm: 语言模型服务实例
+    input_key (str): 输入文本字段名，默认 'prompts'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetConclusion', """\
+An operator that extracts conclusions and generates relationships using an LLM.
+
+It builds prompts from the input text and stores the raw model output
+in data['raw_conclusion'] for downstream parsing and task expansion.
+If generation fails, an empty string is assigned.
+
+Args:
+    llm: language model service instance
+    input_key (str): name of the input text field, default 'prompts'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGetConclusion', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGGetConclusion(llm=my_llm)
+result = op({'prompts': 'Some document content'})
+print(result['raw_conclusion'])
+```
+""")
+
+# =========================
+# AgenticRAGExpandConclusions
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGExpandConclusions', """\
+解析 raw_conclusion 字段中的 JSON 结论列表，
+并将其展开为多条候选任务数据。
+
+仅保留包含 'conclusion' 和 'R' 字段的条目，
+为每个条目生成独立数据行，并写入 candidate_tasks_str。
+
+Args:
+    max_per_task (int): 每个样本最多展开的候选任务数量
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGExpandConclusions', """\
+Parses the JSON conclusion list in raw_conclusion
+and expands it into multiple candidate task records.
+
+Only items containing 'conclusion' and 'R' are kept.
+Each valid item produces a new data row with candidate_tasks_str.
+
+Args:
+    max_per_task (int): maximum number of candidate tasks per sample
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGExpandConclusions', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGExpandConclusions(max_per_task=5)
+rows = op({
+    'raw_conclusion': '[{"conclusion":"A","R":"rel"}]',
+    'identifier': 'doc1'
+})
+print(rows)
+```
+""")
+
+# =========================
+# AgenticRAGGenerateQuestion
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGenerateQuestion', """\
+根据主要内容标识符(ID), 关系(R), 答案(A) 生成问题（question）与标准答案（answer）的算子。
+
+Args:
+    llm: 语言模型服务实例
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGenerateQuestion', """\
+Generates a question-answer pair from task identifier (ID), relationship (R), and answer (A).
+
+Args:
+    llm: language model service instance
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGenerateQuestion', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGGenerateQuestion(llm=my_llm)
+result = op({
+    'candidate_tasks_str': '{"conclusion":"Paris","R":"capital_of"}',
+    'identifier': 'France'
+})
+print(result['question'], result['answer'])
+```
+""")
+
+# =========================
+# AgenticRAGCleanQA
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGCleanQA', """\
+对生成的问答对进行清洗与答案规范化。调用 LLM 生成 refined_answer，用于后续验证与评分。
+
+Args:
+    llm: 语言模型服务实例
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGCleanQA', """\
+Cleans and refines a generated QA pair by calling the LLM to produce a refined_answer   .
+
+Args:
+    llm: language model service instance
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGCleanQA', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGCleanQA(llm=my_llm)
+result = op({'question': 'What is...', 'answer': 'Raw answer'})
+print(result['refined_answer'])
+```
+""")
+
+# =========================
+# AgenticRAGLLMVerify
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGLLMVerify', """\
+使用 LLM 对问答进行回答与召回评分验证。
+
+先让模型根据 question 生成 llm_answer，
+再对 refined_answer 与 llm_answer 进行评分。
+若评分 >= 1，则过滤该样本；否则保留。
+
+Args:
+    llm: 语言模型服务实例
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGLLMVerify', """\
+Verifies QA quality via LLM answering and recall scoring.
+
+The model first answers the question to produce llm_answer,
+then scores refined_answer against llm_answer.
+If score >= 1, the sample is filtered out; otherwise retained.
+
+Args:
+    llm: language model service instance
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGLLMVerify', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGLLMVerify(llm=my_llm)
+result = op({'question': 'Q?', 'refined_answer': 'A'})
+print(result)
+```
+""")
+
+# =========================
+# AgenticRAGGoldenDocAnswer
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGoldenDocAnswer', """\
+基于黄金文档生成答案并进行评分验证。
+
+使用 golden_doc 与 question 生成答案，
+再与 refined_answer 进行评分。
+若评分不足则过滤样本。
+
+Args:
+    llm: 语言模型服务实例
+    input_key (str): 黄金文档字段名
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGoldenDocAnswer', """\
+Generates answers from a golden document and verifies via recall scoring.
+
+It produces an answer using golden_doc and question,
+then scores it against refined_answer.
+Samples with insufficient score are filtered out.
+
+Args:
+    llm: language model service instance
+    input_key (str): golden document field name
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGoldenDocAnswer', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGGoldenDocAnswer(llm=my_llm)
+result = op({
+    'prompts': 'Golden document text',
+    'question': 'Q?',
+    'refined_answer': 'Expected A'
+})
+print(result)
+```
+""")
+
+# =========================
+# AgenticRAGOptionalAnswers
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGOptionalAnswers', """\
+为标准答案生成多个可选答案。
+
+基于 refined_answer 调用 LLM，
+生成语义等价或近似表达的答案列表，
+写入 optional_answer 字段。
+
+Args:
+    llm: 语言模型服务实例
+
+
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGOptionalAnswers', """\
+Generates multiple optional answers for a refined answer.
+
+It calls the LLM to produce semantically equivalent or similar variants,
+stored in optional_answer.
+
+Args:
+    llm: language model service instance
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGOptionalAnswers', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGOptionalAnswers(llm=my_llm)
+result = op({'refined_answer': 'Paris'})
+print(result['optional_answer'])
+```
+""")
+
+# =========================
+# AgenticRAGGroupAndLimit
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGroupAndLimit', """\
+按指定字段分组并限制每组最大问答数量。
+
+对批量数据按 input_key 分组，
+每组最多保留 max_question 条，
+用于控制同源样本数量。
+
+Args:
+    input_key (str): 分组字段名
+    max_question (int): 每组最大问答数量
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGroupAndLimit', """\
+Groups data by a specified key and limits the number of QA pairs per group.
+
+It groups batch input by input_key and retains up to max_question
+items per group to control sample distribution.
+
+Args:
+    input_key (str): grouping field name
+    max_question (int): maximum QA pairs per group
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_atomic_task_generator.AgenticRAGGroupAndLimit', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.AgenticRAGGroupAndLimit(input_key='prompts', max_question=2)
+result = op([
+    {'prompts': 'doc1', 'question': 'Q1'},
+    {'prompts': 'doc1', 'question': 'Q2'},
+    {'prompts': 'doc1', 'question': 'Q3'}
+])
+print(result)  # only 2 kept for doc1
+```
+""")
+
+# =========================
+# DepthQAGGetIdentifier
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGGetIdentifier', """\
+调用 LLM 从输入文本中抽取内容标识符（identifier）的算子。
+
+如果数据中已存在 identifier 字段，则跳过处理。
+
+Args:
+    llm: 语言模型服务实例
+    input_key (str): 输入文本字段名，默认 'question'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGGetIdentifier', """\
+An operator that extracts a content identifier from the input text using an LLM.
+
+If the identifier field already exists in the data, processing is skipped.
+
+Args:
+    llm: language model service instance
+    input_key (str): name of the input text field, default 'question'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGGetIdentifier', """\
+```python
+from lazyllm.tools.data import agenticrag
+op = agenticrag.DepthQAGGetIdentifier(llm=my_llm, input_key='question')
+result = op({'question': 'What is the capital of France?'})
+print('identifier:', result['identifier'])
+# {'identifier': 'capital of France'}
+```
+""")
+
+# =========================
+# DepthQAGBackwardTask
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGBackwardTask', """\
+根据现有标识符生成反向任务，产生新的标识符和关系。
+
+该算子用于从给定的 identifier 反向推理，生成新的 identifier 和对应的 relation，
+用于构建深度问答任务。
+
+Args:
+    llm: 语言模型服务实例
+    identifier_key (str): 原始标识符字段名，默认 'identifier'
+    new_identifier_key (str): 新生成的标识符字段名，默认 'new_identifier'
+    relation_key (str): 关系字段名，默认 'relation'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGBackwardTask', """\
+Generates a backward task from the existing identifier, producing a new identifier and relation.
+
+This operator infers backwards from the given identifier to generate a new identifier
+and corresponding relation for building depth QA tasks.
+
+Args:
+    llm: language model service instance
+    identifier_key (str): original identifier field name, default 'identifier'
+    new_identifier_key (str): new identifier field name, default 'new_identifier'
+    relation_key (str): relation field name, default 'relation'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGBackwardTask', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.DepthQAGBackwardTask(llm=my_llm)
+result = op({'identifier': 'machine learning'})
+print(result)
+# {'identifier': 'machine learning', 'new_identifier': '...', 'relation': '...'}
+```
+""")
+
+# =========================
+# DepthQAGCheckSuperset
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGCheckSuperset', """\
+检查新生成的查询是否为原始标识符的超集。
+
+验证 new_identifier 和 relation 组合后是否构成对原始 identifier 的有效超集查询，
+若验证通过则保留数据，否则返回空列表过滤掉该样本。
+
+Args:
+    llm: 语言模型服务实例
+    new_identifier_key (str): 新标识符字段名，默认 'new_identifier'
+    relation_key (str): 关系字段名，默认 'relation'
+    identifier_key (str): 原始标识符字段名，默认 'identifier'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGCheckSuperset', """\
+Checks whether the newly generated query is a superset of the original identifier.
+
+Verifies if the combination of new_identifier and relation constitutes a valid superset query
+of the original identifier. If validation passes, the data is retained; otherwise,
+an empty list is returned to filter out the sample.
+
+Args:
+    llm: language model service instance
+    new_identifier_key (str): new identifier field name, default 'new_identifier'
+    relation_key (str): relation field name, default 'relation'
+    identifier_key (str): original identifier field name, default 'identifier'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGCheckSuperset', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.DepthQAGCheckSuperset(llm=my_llm)
+result = op({
+    'identifier': 'Paris',
+    'new_identifier': 'France',
+    'relation': 'capital_of'
+})
+print(result)  # returns data if valid, empty list if invalid
+```
+""")
+
+# =========================
+# DepthQAGGenerateQuestion
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGGenerateQuestion', """\
+根据新标识符、关系和原始标识符生成深度问题。
+
+使用 LLM 基于 new_identifier、relation 和 identifier 生成深度问答任务中的问题，
+存储在指定的 question_key 字段中。
+
+Args:
+    llm: 语言模型服务实例
+    new_identifier_key (str): 新标识符字段名，默认 'new_identifier'
+    relation_key (str): 关系字段名，默认 'relation'
+    identifier_key (str): 原始标识符字段名，默认 'identifier'
+    question_key (str): 生成问题存储的字段名，默认 'depth_question'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGGenerateQuestion', """\
+Generates a depth question based on the new identifier, relation, and original identifier.
+
+Uses an LLM to generate a question for depth QA tasks based on new_identifier, relation,
+and identifier, storing the result in the specified question_key field.
+
+Args:
+    llm: language model service instance
+    new_identifier_key (str): new identifier field name, default 'new_identifier'
+    relation_key (str): relation field name, default 'relation'
+    identifier_key (str): original identifier field name, default 'identifier'
+    question_key (str): field name to store generated question, default 'depth_question'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGGenerateQuestion', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.DepthQAGGenerateQuestion(llm=my_llm)
+result = op({
+    'identifier': 'Paris',
+    'new_identifier': 'France',
+    'relation': 'capital_of'
+})
+print(result['depth_question'])
+# 'What is the capital of France?'
+```
+""")
+
+# =========================
+# DepthQAGVerifyQuestion
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGVerifyQuestion', """\
+验证生成问题的质量，过滤过于简单的问题。
+
+先让 LLM 回答问题生成 llm_answer，然后与 refined_answer 进行召回评分。
+若评分 >= 1（表示问题太简单），则过滤该样本；否则保留数据。
+
+Args:
+    llm: 语言模型服务实例
+    question_key (str): 问题字段名，默认 'depth_question'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGVerifyQuestion', """\
+Verifies the quality of generated questions and filters out overly easy ones.
+
+First has the LLM answer the question to produce llm_answer, then calculates a recall score
+against refined_answer. If score >= 1 (indicating the question is too easy), the sample
+is filtered out; otherwise the data is retained.
+
+Args:
+    llm: language model service instance
+    question_key (str): question field name, default 'depth_question'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_depth_qa_generator.DepthQAGVerifyQuestion', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.DepthQAGVerifyQuestion(llm=my_llm)
+result = op({
+    'depth_question': 'What is the capital of France?',
+    'refined_answer': 'Paris'
+})
+# Returns data if question is challenging, empty list if too easy
+print(result)
+```
+""")
+
+# =========================
+# WidthQAGMergePairs
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGMergePairs', """\
+将相邻的问答对合并生成广度问题的算子。
+
+该算子接收批量问答数据，通过 LLM 将相邻的两个问答对合并为一个更复杂的广度问题。
+需要至少2条数据才能进行合并操作。
+
+Args:
+    llm: 语言模型服务实例
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGMergePairs', """\
+An operator that merges adjacent QA pairs to generate width questions.
+
+This operator receives a batch of QA data and uses an LLM to merge adjacent pairs
+into more complex width questions. Requires at least 2 items to perform merging.
+
+Args:
+    llm: language model service instance
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGMergePairs', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.WidthQAGMergePairs(llm=my_llm)
+result = op([
+    {'question': 'What is Paris?', 'golden_answer': 'Capital of France'},
+    {'question': 'What is London?', 'golden_answer': 'Capital of UK'}
+])
+print(result[0]['question'])  # Merged complex question
+```
+""")
+
+# =========================
+# WidthQAGCheckDecomposition
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGCheckDecomposition', """\
+验证合并后的问题是否有效分解了原始问题的算子。
+
+该算子检查 LLM 生成的复杂问题是否正确地分解和包含了原始问题，
+如果验证通过则保留数据，否则返回空列表过滤掉该样本。
+
+Args:
+    llm: 语言模型服务实例
+    output_question_key (str): 输出生成问题的字段名，默认 'generated_width_task'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGCheckDecomposition', """\
+An operator that verifies whether the merged question effectively decomposes the original questions.
+
+This operator checks if the complex question generated by LLM correctly decomposes
+and includes the original questions. If validation passes, the data is retained;
+otherwise an empty list is returned to filter out the sample.
+
+Args:
+    llm: language model service instance
+    output_question_key (str): field name for the generated question, default 'generated_width_task'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGCheckDecomposition', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.WidthQAGCheckDecomposition(llm=my_llm)
+result = op({
+    'question': 'What are the capitals of France and UK?',
+    'original_question': ['What is Paris?', 'What is London?'],
+    'index': 0
+})
+print(result)  # Returns data if valid, empty list if invalid
+```
+""")
+
+# =========================
+# WidthQAGVerifyQuestion
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGVerifyQuestion', """\
+验证生成的问题能否被正确回答的算子。
+
+该算子使用 LLM 尝试回答生成的问题，并将答案存储在 llm_answer 字段中，
+供后续评分使用。
+
+Args:
+    llm: 语言模型服务实例
+    output_question_key (str): 问题字段名，默认 'generated_width_task'
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGVerifyQuestion', """\
+An operator that verifies if the generated question can be properly answered.
+
+This operator uses an LLM to attempt answering the generated question and stores
+the answer in the llm_answer field for subsequent scoring.
+
+Args:
+    llm: language model service instance
+    output_question_key (str): question field name, default 'generated_width_task'
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGVerifyQuestion', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.WidthQAGVerifyQuestion(llm=my_llm)
+result = op({
+    'generated_width_task': 'What are the capitals of France and UK?',
+    'index': 0
+})
+print(result['llm_answer'])  # LLM's answer to the question
+```
+""")
+
+# =========================
+# WidthQAGFilterByScore
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGFilterByScore', """\
+根据召回评分过滤广度问题的算子。
+
+该算子对比 golden_answer 和 llm_answer 计算召回评分，
+若评分 >= 1 则过滤该样本（表示问题太简单或 LLM 回答太好）；
+否则保留数据并清理临时字段。
+
+Args:
+    llm: 语言模型服务实例
+    **kwargs (dict): 其它可选的参数。
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGFilterByScore', """\
+An operator that filters width questions based on recall score.
+
+This operator compares golden_answer with llm_answer to calculate a recall score.
+If score >= 1, the sample is filtered out (indicating the question is too easy
+or LLM answered too well); otherwise the data is retained and temporary fields are cleaned.
+
+Args:
+    llm: language model service instance
+    **kwargs (dict): additional user-provided arguments.
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_width_qa_generator.WidthQAGFilterByScore', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.WidthQAGFilterByScore(llm=my_llm)
+result = op({
+    'original_answer': ['Paris', 'London'],
+    'llm_answer': 'Paris is the capital of France and London is the capital of UK',
+    'state': 1
+})
+# Returns data if score < 1, empty list if score >= 1
+print(result)
+```
+""")
+
+# =========================
+# qaf1_normalize_texts
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator.qaf1_normalize_texts', """\
+规范化预测答案和参考答案文本的函数。
+
+对预测答案和参考答案进行标准化处理，包括：转换为小写、移除标点符号、
+移除冠词(a/an/the)、规范化空白字符。规范化后的结果存储在临时字段中，
+供后续 F1 分数计算使用。
+
+Args:
+    data (dict): 单条数据字典
+    prediction_key (str): 预测答案字段名，默认 'refined_answer'
+    ground_truth_key (str): 参考答案字段名，默认 'golden_doc_answer'
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator.qaf1_normalize_texts', """\
+A function that normalizes prediction and ground truth answer texts.
+
+Performs standardization on prediction and ground truth answers, including:
+converting to lowercase, removing punctuation, removing articles (a/an/the),
+and normalizing whitespace. Normalized results are stored in temporary fields
+for subsequent F1 score calculation.
+
+Args:
+    data (dict): single data dictionary
+    prediction_key (str): prediction answer field name, default 'refined_answer'
+    ground_truth_key (str): ground truth answer field name, default 'golden_doc_answer'
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator.qaf1_normalize_texts', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.qaf1_normalize_texts(prediction_key='refined_answer', ground_truth_key='golden_doc_answer')
+result = op({
+    'refined_answer': 'Paris is the capital.',
+    'golden_doc_answer': 'The capital is Paris!'
+})
+print(result['_normalized_prediction'])  # 'paris is capital'
+print(result['_normalized_ground_truths'])  # ['capital is paris']
+```
+""")
+
+# =========================
+# qaf1_calculate_score
+# =========================
+
+add_chinese_doc('data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator.qaf1_calculate_score', """\
+计算问答对的 F1 分数的函数。
+
+基于规范化后的预测答案和参考答案计算 F1 分数（综合考虑精确率和召回率）。
+支持多个参考答案，取最高 F1 分数作为最终结果。计算完成后清理临时字段。
+
+Args:
+    data (dict): 单条数据字典
+    output_key (str): 输出 F1 分数的字段名，默认 'F1Score'
+""")
+
+add_english_doc('data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator.qaf1_calculate_score', """\
+A function that calculates the F1 score for QA pairs.
+
+Calculates the F1 score (combining precision and recall) based on normalized
+prediction and ground truth answers. Supports multiple ground truth answers,
+taking the highest F1 score as the final result. Cleans up temporary fields after calculation.
+
+Args:
+    data (dict): single data dictionary
+    output_key (str): output field name for F1 score, default 'F1Score'
+""")
+
+add_example('data.operators.agentic_rag.agenticrag_qaf1_sample_evaluator.qaf1_calculate_score', """\
+```python
+from lazyllm.tools.data import agenticrag
+
+op = agenticrag.qaf1_calculate_score(output_key='F1Score')
+result = op({
+    '_normalized_prediction': 'paris is capital',
+    '_normalized_ground_truths': ['capital is paris', 'paris capital france']
+})
+print(result['F1Score'])  # F1 score value between 0.0 and 1.0
+```
+""")
 
 # cot_ops module docs
 add_chinese_doc('data.operators.cot_ops.CoTGenerator', """\
