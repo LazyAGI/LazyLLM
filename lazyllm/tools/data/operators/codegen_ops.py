@@ -95,7 +95,7 @@ class CodeInstructionGenerator(CodeGenOps):
 
 
 class ScriptSynthesizer(CodeGenOps):
-    def __init__(self, model=None, prompt_template=None, input_key='instruction', output_key='generated_code', **kwargs):
+    def __init__(self, model=None, prompt_template=None, input_key='instruction', output_key='new_code', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
         self.output_key = output_key
@@ -125,10 +125,10 @@ class LogicIntegrityAuditor(CodeGenOps):
         self,
         model=None,
         prompt_template=None,
-        input_instruction_key='generated_instruction',
-        input_code_key='generated_code',
+        input_instruction_key='instruction',
+        input_code_key='new_code',
         output_score_key='quality_score',
-        output_feedback_key='quality_feedback',
+        output_feedback_key='feedback',
         **kwargs,
     ):
         super().__init__(_concurrency_mode='thread', **kwargs)
@@ -184,10 +184,10 @@ class ThresholdSieve(CodeGenOps):
         model=None,
         min_score: int = 7,
         max_score: int = 10,
-        input_instruction_key: str = 'generated_instruction',
-        input_code_key: str = 'generated_code',
+        input_instruction_key: str = 'instruction',
+        input_code_key: str = 'new_code',
         output_score_key: str = 'quality_score',
-        output_feedback_key: str = 'quality_feedback',
+        output_feedback_key: str = 'feedback',
         output_key: str = 'quality_score_filter_label',
         **kwargs,
     ):

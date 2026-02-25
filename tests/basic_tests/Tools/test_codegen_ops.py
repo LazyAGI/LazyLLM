@@ -58,7 +58,7 @@ class TestCodeGenOps:
         op = codegen_ops.ScriptSynthesizer(model=model)
         data = {'instruction': 'print hello'}
         result = op.forward(data)
-        assert "print('hello')" in result['generated_code']
+        assert "print('hello')" in result['new_code']
 
     def test_code_quality_sample_evaluator(self):
         mock_data = {
@@ -69,12 +69,12 @@ class TestCodeGenOps:
         model = MockModel(mock_response)
         op = codegen_ops.LogicIntegrityAuditor(model=model)
         data = {
-            'generated_instruction': 'print hello',
-            'generated_code': "print('hello')"
+            'instruction': 'print hello',
+            'new_code': "print('hello')"
         }
         result = op.forward(data)
         assert result['quality_score'] == 8
-        assert result['quality_feedback'] == 'Good code.'
+        assert result['feedback'] == 'Good code.'
 
     def test_code_quality_score_filter(self):
         mock_data_high = {
@@ -85,8 +85,8 @@ class TestCodeGenOps:
         model = MockModel(mock_response_high)
         op = codegen_ops.ThresholdSieve(model=model, min_score=7)
         data = {
-            'generated_instruction': 'print hello',
-            'generated_code': "print('hello')"
+            'instruction': 'print hello',
+            'new_code': "print('hello')"
         }
         result = op.forward(data)
 
@@ -101,8 +101,8 @@ class TestCodeGenOps:
         model_low = MockModel(mock_response_low)
         op_low = codegen_ops.ThresholdSieve(model=model_low, min_score=7)
         data_low = {
-            'generated_instruction': 'print hello',
-            'generated_code': "print('hello')"
+            'instruction': 'print hello',
+            'new_code': "print('hello')"
         }
         result_low = op_low.forward(data_low)
         assert result_low == []
