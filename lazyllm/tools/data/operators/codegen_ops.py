@@ -57,7 +57,7 @@ def _parse_score_and_feedback(response) -> Tuple[int, str]:
         return 0, 'Failed to parse LLM evaluation output.'
 
 
-class CodeEnhancementInstructionGenerator(CodeGenOps):
+class CodeInstructionGenerator(CodeGenOps):
     def __init__(self, model=None, prompt_template=None, input_key='messages', output_key='generated_instruction',
                  **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
@@ -94,7 +94,7 @@ class CodeEnhancementInstructionGenerator(CodeGenOps):
         return data
 
 
-class CodeInstructionToCodeGenerator(CodeGenOps):
+class ScriptSynthesizer(CodeGenOps):
     def __init__(self, model=None, prompt_template=None, input_key='instruction', output_key='generated_code', **kwargs):
         super().__init__(_concurrency_mode='thread', **kwargs)
         self.input_key = input_key
@@ -120,7 +120,7 @@ class CodeInstructionToCodeGenerator(CodeGenOps):
         return data
 
 
-class CodeQualitySampleEvaluator(CodeGenOps):
+class LogicIntegrityAuditor(CodeGenOps):
     def __init__(
         self,
         model=None,
@@ -178,7 +178,7 @@ class CodeQualitySampleEvaluator(CodeGenOps):
         return data
 
 
-class CodeQualityScoreFilter(CodeGenOps):
+class ThresholdSieve(CodeGenOps):
     def __init__(
         self,
         model=None,
@@ -200,7 +200,7 @@ class CodeQualityScoreFilter(CodeGenOps):
         self.output_score_key = output_score_key
         self.output_feedback_key = output_feedback_key
         self.output_key = output_key
-        self.scorer = CodeQualitySampleEvaluator(
+        self.scorer = LogicIntegrityAuditor(
             model=model,
             input_instruction_key=input_instruction_key,
             input_code_key=input_code_key,

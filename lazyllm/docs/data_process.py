@@ -1923,7 +1923,7 @@ print(res)
 ```
 """)
 
-add_chinese_doc('data.operators.codegen_ops.CodeEnhancementInstructionGenerator', """\
+add_chinese_doc('data.operators.codegen_ops.CodeInstructionGenerator', """\
 代码生成流水线算子：指令标准化生成器。
 
 从原始对话消息（messages）中抽取用户指令，并将其重写为统一的“代码增强指令”，输出为一条英文描述 + 一个包含完整函数骨架的 Python 代码块。
@@ -1941,8 +1941,8 @@ Args:
     **kwargs: 传递给基类算子的其它参数（如 _max_workers、_save_data 等）。
 """)
 
-add_english_doc('data.operators.codegen_ops.CodeEnhancementInstructionGenerator', """\
-Code-gen pipeline operator: CodeEnhancementInstructionGenerator.
+add_english_doc('data.operators.codegen_ops.CodeInstructionGenerator', """\
+Code-gen pipeline operator: CodeInstructionGenerator.
 
 Extracts the user instruction from raw messages and rewrites it into a standardized English instruction plus a Python function skeleton code block.
 
@@ -1959,10 +1959,10 @@ Args:
     **kwargs: extra args forwarded to the base operator (e.g. _max_workers, _save_data).
 """)
 
-add_example('data.operators.codegen_ops.CodeEnhancementInstructionGenerator', r"""
-from lazyllm.tools.data.operators.codegen_ops import CodeEnhancementInstructionGenerator
+add_example('data.operators.codegen_ops.CodeInstructionGenerator', r"""
+from lazyllm.tools.data.operators.codegen_ops import CodeInstructionGenerator
 
-op = CodeEnhancementInstructionGenerator(model=model,
+op = CodeInstructionGenerator(model=model,
                                          input_key='messages',
                                          output_key='generated_instruction')
 item = {
@@ -1984,7 +1984,7 @@ print(res)
 # }
 """)
 
-add_chinese_doc('data.operators.codegen_ops.CodeInstructionToCodeGenerator', """\
+add_chinese_doc('data.operators.codegen_ops.ScriptSynthesizer', """\
 代码生成流水线算子：指令到代码生成器。
 
 给定自然语言代码指令（通常是上一阶段生成的 generated_instruction 或精简后的 instruction），生成对应的 Python 源代码文本，并尝试自动去掉 Markdown 代码块外壳，只保留代码本身。
@@ -2002,8 +2002,8 @@ Args:
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.codegen_ops.CodeInstructionToCodeGenerator', """\
-Code-gen pipeline operator: CodeInstructionToCodeGenerator.
+add_english_doc('data.operators.codegen_ops.ScriptSynthesizer', """\
+Code-gen pipeline operator: ScriptSynthesizer.
 
 Given a natural language code instruction (often from the previous generated_instruction or a cleaned instruction field), generates the corresponding Python source code, stripping Markdown code fences when present.
 
@@ -2020,11 +2020,11 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.codegen_ops.CodeInstructionToCodeGenerator', """\
+add_example('data.operators.codegen_ops.ScriptSynthesizer', """\
 ```python
-from lazyllm.tools.data.operators.codegen_ops import CodeInstructionToCodeGenerator
+from lazyllm.tools.data.operators.codegen_ops import ScriptSynthesizer
 
-op = CodeInstructionToCodeGenerator(model=model,
+op = ScriptSynthesizer(model=model,
                                     input_key='instruction',
                                     output_key='generated_code')
 item = {
@@ -2039,7 +2039,7 @@ print(res)
 ```
 """)
 
-add_chinese_doc('data.operators.codegen_ops.CodeQualitySampleEvaluator', """\
+add_chinese_doc('data.operators.codegen_ops.LogicIntegrityAuditor', """\
 代码生成流水线算子：代码质量评估器。
 
 对单条 (generated_instruction, generated_code) 样本进行自动代码评审，输出一个质量分数（0–10）与一段文字反馈，默认使用 JSON 格式进行解析。
@@ -2061,8 +2061,8 @@ Args:
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.codegen_ops.CodeQualitySampleEvaluator', """\
-Code-gen pipeline operator: CodeQualitySampleEvaluator.
+add_english_doc('data.operators.codegen_ops.LogicIntegrityAuditor', """\
+Code-gen pipeline operator: LogicIntegrityAuditor.
 
 Evaluates a single (generated_instruction, generated_code) sample, producing a quality score (0–10) and textual feedback, parsed from a JSON-formatted model response.
 
@@ -2083,11 +2083,11 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.codegen_ops.CodeQualitySampleEvaluator', """\
+add_example('data.operators.codegen_ops.LogicIntegrityAuditor', """\
 ```python
-from lazyllm.tools.data.operators.codegen_ops import CodeQualitySampleEvaluator
+from lazyllm.tools.data.operators.codegen_ops import LogicIntegrityAuditor
 
-op = CodeQualitySampleEvaluator(model=model)
+op = LogicIntegrityAuditor(model=model)
 item = {
     'generated_instruction': "Write a Python function that prints 'hello'.",
     'generated_code': "def solution():\\n    print('hello')"
@@ -2103,10 +2103,10 @@ print(res)
 ```
 """)
 
-add_chinese_doc('data.operators.codegen_ops.CodeQualityScoreFilter', """\
+add_chinese_doc('data.operators.codegen_ops.ThresholdSieve', """\
 代码生成流水线算子：代码质量分数过滤器。
 
-基于 CodeQualitySampleEvaluator 的打分结果，对样本进行区间过滤：
+基于 LogicIntegrityAuditor 的打分结果，对样本进行区间过滤：
 
 - 若样本尚未包含 quality_score/quality_feedback，会先自动调用内部 scorer 进行评估；
 - 若得分在 [min_score, max_score] 区间内，则为样本打上标签并保留；
@@ -2132,10 +2132,10 @@ Args:
     **kwargs: 传递给基类算子的其它参数。
 """)
 
-add_english_doc('data.operators.codegen_ops.CodeQualityScoreFilter', """\
-Code-gen pipeline operator: CodeQualityScoreFilter.
+add_english_doc('data.operators.codegen_ops.ThresholdSieve', """\
+Code-gen pipeline operator: ThresholdSieve.
 
-Filters samples based on code quality scores produced by CodeQualitySampleEvaluator:
+Filters samples based on code quality scores produced by LogicIntegrityAuditor:
 
 - If quality_score/quality_feedback are missing, it first calls the internal scorer.
 - If the score is within [min_score, max_score], the sample is kept and labeled.
@@ -2161,11 +2161,11 @@ Args:
     **kwargs: extra args forwarded to the base operator.
 """)
 
-add_example('data.operators.codegen_ops.CodeQualityScoreFilter', """\
+add_example('data.operators.codegen_ops.ThresholdSieve', """\
 ```python
-from lazyllm.tools.data.operators.codegen_ops import CodeQualityScoreFilter
+from lazyllm.tools.data.operators.codegen_ops import ThresholdSieve
 
-op = CodeQualityScoreFilter(model=model, min_score=7, max_score=10)
+op = ThresholdSieve(model=model, min_score=7, max_score=10)
 item = {
     'generated_instruction': "Write a Python function that prints 'hello'.",
     'generated_code': "def solution():\\n    print('hello')"

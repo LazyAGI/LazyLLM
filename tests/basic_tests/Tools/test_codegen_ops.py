@@ -47,7 +47,7 @@ class TestCodeGenOps:
     def test_code_enhancement_instruction_generator(self):
         mock_response = 'Enhanced instruction\n```python\ndef solution():\n    pass\n```'
         model = MockModel(mock_response)
-        op = codegen_ops.CodeEnhancementInstructionGenerator(model=model)
+        op = codegen_ops.CodeInstructionGenerator(model=model)
         data = {'messages': [{'role': 'user', 'content': 'test'}]}
         result = op.forward(data)
         assert result['generated_instruction'] == mock_response
@@ -55,7 +55,7 @@ class TestCodeGenOps:
     def test_code_instruction_to_code_generator(self):
         mock_response = "```python\nprint('hello')\n```"
         model = MockModel(mock_response)
-        op = codegen_ops.CodeInstructionToCodeGenerator(model=model)
+        op = codegen_ops.ScriptSynthesizer(model=model)
         data = {'instruction': 'print hello'}
         result = op.forward(data)
         assert "print('hello')" in result['generated_code']
@@ -67,7 +67,7 @@ class TestCodeGenOps:
         }
         mock_response = json.dumps(mock_data)
         model = MockModel(mock_response)
-        op = codegen_ops.CodeQualitySampleEvaluator(model=model)
+        op = codegen_ops.LogicIntegrityAuditor(model=model)
         data = {
             'generated_instruction': 'print hello',
             'generated_code': "print('hello')"
@@ -83,7 +83,7 @@ class TestCodeGenOps:
         }
         mock_response_high = json.dumps(mock_data_high)
         model = MockModel(mock_response_high)
-        op = codegen_ops.CodeQualityScoreFilter(model=model, min_score=7)
+        op = codegen_ops.ThresholdSieve(model=model, min_score=7)
         data = {
             'generated_instruction': 'print hello',
             'generated_code': "print('hello')"
@@ -99,7 +99,7 @@ class TestCodeGenOps:
         }
         mock_response_low = json.dumps(mock_data_low)
         model_low = MockModel(mock_response_low)
-        op_low = codegen_ops.CodeQualityScoreFilter(model=model_low, min_score=7)
+        op_low = codegen_ops.ThresholdSieve(model=model_low, min_score=7)
         data_low = {
             'generated_instruction': 'print hello',
             'generated_code': "print('hello')"
