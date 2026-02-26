@@ -159,49 +159,48 @@ class KBCChunkText(kbc):
 
     def _chunk_by_recursive(self, text: str) -> List[str]:
         separators = ['\n\n', '\n', '. ', '。', '! ', '? ', ' ', '']
+        parts = self._recursive_split(text, separators, 0)
+        return self._merge_chunks(parts)
 
-        def _split(tex: str, sep_index: int) -> List[str]:
-            if sep_index >= len(separators):
-                return [tex] if tex.strip() else []
-            sep = separators[sep_index]
-            if not sep:
-                return [tex] if tex.strip() else []
-            parts = [p.strip() for p in tex.split(sep) if p.strip()]
-            if len(parts) <= 1:
-                return _split(tex, sep_index + 1)
-            result = []
-            for p in parts:
-                result.extend(_split(p, sep_index + 1))
-            return result
+    def _recursive_split(self, tex: str, separators: List[str], sep_index: int) -> List[str]:
+        if sep_index >= len(separators):
+            return [tex] if tex.strip() else []
+        sep = separators[sep_index]
+        if not sep:
+            return [tex] if tex.strip() else []
+        parts = [p.strip() for p in tex.split(sep) if p.strip()]
+        if len(parts) <= 1:
+            return self._recursive_split(tex, separators, sep_index + 1)
+        result = []
+        for p in parts:
+            result.extend(self._recursive_split(p, separators, sep_index + 1))
+        return result
 
-        def _merge(parts: List[str]) -> List[str]:
-            if not parts:
-                return []
-            out = []
-            acc = []
-            acc_tokens = 0
-            for p in parts:
-                n = self._count_tokens(p)
-                if acc_tokens + n > self.chunk_size and acc:
-                    out.append(('\n' if '\n' in acc[0] else ' ').join(acc))
-                    overlap_acc = []
-                    overlap_tokens = 0
-                    for x in reversed(acc):
-                        overlap_tokens += self._count_tokens(x)
-                        if overlap_tokens <= self.chunk_overlap:
-                            overlap_acc.append(x)
-                        else:
-                            break
-                    acc = list(reversed(overlap_acc))
-                    acc_tokens = overlap_tokens
-                acc.append(p)
-                acc_tokens += n
-            if acc:
+    def _merge_chunks(self, parts: List[str]) -> List[str]:
+        if not parts:
+            return []
+        out = []
+        acc = []
+        acc_tokens = 0
+        for p in parts:
+            n = self._count_tokens(p)
+            if acc_tokens + n > self.chunk_size and acc:
                 out.append(('\n' if '\n' in acc[0] else ' ').join(acc))
-            return out
-
-        parts = _split(text, 0)
-        return _merge(parts)
+                overlap_acc = []
+                overlap_tokens = 0
+                for x in reversed(acc):
+                    overlap_tokens += self._count_tokens(x)
+                    if overlap_tokens <= self.chunk_overlap:
+                        overlap_acc.append(x)
+                    else:
+                        break
+                acc = list(reversed(overlap_acc))
+                acc_tokens = overlap_tokens
+            acc.append(p)
+            acc_tokens += n
+        if acc:
+            out.append(('\n' if '\n' in acc[0] else ' ').join(acc))
+        return out
 
     def _chunk_by_semantic(self, text: str) -> List[str]:
         paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
