@@ -8,7 +8,7 @@ from requests import exceptions as req_exc
 
 from lazyllm import LOG, config
 from lazyllm.components.utils.file_operate import file_to_base64
-from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, _SandboxResult
 
 config.add('sandbox_fusion_base_url', str, '', 'SANDBOX_FUSION_BASE_URL')
 
@@ -67,10 +67,15 @@ class SandboxFusion(LazyLLMSandboxBase):
             }
         context['files'].update(self._project_files_cache)
 
-    def _process_output_files(self, result: dict, output_files: List[str], context: dict) -> List[str]:
+    def _process_output_files(self, result: _SandboxResult, output_files: List[str], context: dict) -> List[str]:
         self._ensure_output_dir()
+        response_files = context.get('response_files') or {}
         collected = []
-        for name, b64 in (result.get('files') or {}).items():
+        for name in output_files:
+            b64 = response_files.get(name)
+            if b64 is None:
+                LOG.warning(f'SandboxFusion: requested output file {name!r} not found in response')
+                continue
             path = os.path.join(self._output_dir_path, name)
             with open(path, 'wb') as f:
                 f.write(base64.b64decode(b64))
@@ -78,7 +83,7 @@ class SandboxFusion(LazyLLMSandboxBase):
         return collected
 
     def _execute(self, code: str, language: str, context: dict,
-                 output_files: Optional[List[str]] = None) -> str:
+                 output_files: Optional[List[str]] = None) -> _SandboxResult:
         call_params = {
             'code': code,
             'compile_timeout': self._compile_timeout,
@@ -89,7 +94,20 @@ class SandboxFusion(LazyLLMSandboxBase):
         }
         if output_files:
             call_params['fetch_files'] = output_files
-        return self._call_api(call_params)
+
+        response = self._call_api(call_params)
+        if isinstance(response, str):
+            return _SandboxResult(success=False, error_message=response)
+
+        context['response_files'] = response.get('files') or {}
+        run_result = response.get('run_result') or {}
+        returncode = run_result.get('return_code', -1)
+        return _SandboxResult(
+            success=(response.get('status') == 'Success' and returncode == 0),
+            stdout=run_result.get('stdout', ''),
+            stderr=run_result.get('stderr', ''),
+            returncode=returncode,
+        )
 
     @staticmethod
     def _encode_file_base64(path: str) -> str:

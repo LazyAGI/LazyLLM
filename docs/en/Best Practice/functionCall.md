@@ -66,7 +66,15 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 ```
 
 The registration method is very simple. After importing `fc_register`, you can add it directly above the predefined function name in the manner of a decorator. Note that when adding, you need to specify the default group `tool`, and the default registered tool name is the name of the function being registered.
-If the tool runs inside a sandbox and needs file upload/download, you must pass files via `input_files` / `output_files`. If you do not want sandbox execution, register with `@fc_register("tool", execute_in_sandbox=False)`.
+
+### Sandbox Execution and File Transfer
+
+When `ToolManager` is configured with a sandbox, tools are executed inside the sandbox by default. The following parameters control sandbox behavior during registration:
+
+- `execute_in_sandbox` (bool): Whether to execute in the sandbox, default `True`. Set to `False` to disable sandbox execution.
+- `input_files_parm` (str): The name of the function parameter that holds input file paths. The sandbox uploads these files before execution. The parameter it points to must be of type `str` or `List[str]`.
+- `output_files_parm` (str): The name of the function parameter that holds output file paths. The sandbox downloads these files after execution. The parameter it points to must be of type `str` or `List[str]`.
+- `output_files` (List[str]): Additional output file paths for the sandbox to download. Use this for output filenames that are hardcoded in the tool rather than passed as parameters.
 
 Here is an example tool that uploads a file and downloads a generated result:
 
@@ -74,28 +82,32 @@ Here is an example tool that uploads a file and downloads a generated result:
 from typing import List, Optional
 from lazyllm.tools import fc_register
 
-@fc_register("tool")
+@fc_register("tool", input_files_parm="input_paths", output_files_parm="output_paths")
 def count_lines_in_file(
-    input_files: Optional[List[str]] = None,
-    output_files: Optional[List[str]] = None,
+    input_paths: Optional[List[str]] = None,
+    output_paths: Optional[List[str]] = None,
 ):
     """
     Count lines of the first input file and write to an output file.
 
     Args:
-        input_files (list[str] | None): input file paths.
-        output_files (list[str] | None): output file paths (sandbox will fetch these).
+        input_paths (List[str] | None): input file paths.
+        output_paths (List[str] | None): output file paths.
     """
-    if not input_files or not output_files:
-        return "input_files/output_files required"
-    src = input_files[0]
-    dst = output_files[0]
+    if not input_paths or not output_paths:
+        return "input_paths/output_paths required"
+    src = input_paths[0]
+    dst = output_paths[0]
     with open(src, "r", encoding="utf-8") as f:
         count = sum(1 for _ in f)
     with open(dst, "w", encoding="utf-8") as f:
         f.write(str(count))
-    return {"output_files": output_files, "lines": count}
+    return {"lines": count}
 ```
+
+In the example above, `input_files_parm="input_paths"` tells the sandbox that files listed in the `input_paths` parameter should be uploaded before execution; `output_files_parm="output_paths"` tells the sandbox that files listed in the `output_paths` parameter should be downloaded after execution.
+
+To disable sandbox execution for a tool, register with: `@fc_register("tool", execute_in_sandbox=False)`.
 
 We can also register the tool under a different name by filling in the second parameter during registration, for example:
 

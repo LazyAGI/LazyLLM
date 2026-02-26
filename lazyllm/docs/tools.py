@@ -7269,6 +7269,7 @@ ToolManager是一个工具管理类，用于提供工具信息和工具调用给
 Args:
     tools (List[str]): 工具名称字符串列表。
     return_trace (bool): 是否返回中间步骤和工具调用信息。
+    sandbox (LazyLLMSandboxBase | None): 沙箱实例。若提供，则当工具的 ``execute_in_sandbox`` 为 True 时，工具将在此沙箱中执行，并自动处理文件上传/下载。
 ''')
 
 add_english_doc('ToolManager', '''\
@@ -7279,6 +7280,7 @@ When constructing this management class, you need to pass in a list of tool name
 Args:
     tools (List[str]): A list of tool name strings.
     return_trace (bool): If True, return intermediate steps and tool calls.
+    sandbox (LazyLLMSandboxBase | None): A sandbox instance. When provided, tools with ``execute_in_sandbox`` set to True will be executed inside this sandbox, with automatic file upload/download handling.
 
 ''')
 
@@ -7339,9 +7341,9 @@ add_agent_chinese_doc('register', '''\
 Args:
     group (str): 工具分组，建议使用 'tool'。
     execute_in_sandbox (bool): 是否在沙箱中执行，默认 True；若不希望在沙箱执行，请设置为 False。
-
-Notes:
-    若工具在沙箱中执行并且需要文件上传/下载，必须通过 input_files / output_files 字段传递文件。
+    input_files_parm (str): 指定函数中哪个参数包含输入文件路径，沙箱会在执行前上传这些文件。该参数指向的函数参数类型必须为 ``str`` 或 ``List[str]``。
+    output_files_parm (str): 指定函数中哪个参数包含输出文件路径，沙箱执行完成后会下载这些文件。该参数指向的函数参数类型必须为 ``str`` 或 ``List[str]``。
+    output_files (List[str]): 额外的输出文件路径列表，用于工具中硬编码的输出文件名（不通过函数参数传递），沙箱执行后也会下载这些文件。
 ''')
 
 add_agent_english_doc('register', '''\
@@ -7350,9 +7352,9 @@ Tool registrar for registering functions as tools callable by FunctionCall/Agent
 Args:
     group (str): tool group, recommend using 'tool'.
     execute_in_sandbox (bool): whether to execute in sandbox, default True; set False to disable sandbox execution.
-
-Notes:
-    If a tool executes in sandbox and needs file upload/download, you must pass files via input_files / output_files.
+    input_files_parm (str): the name of the function parameter that holds input file paths; the sandbox uploads these files before execution. The parameter it points to must be of type ``str`` or ``List[str]``.
+    output_files_parm (str): the name of the function parameter that holds output file paths; the sandbox downloads these files after execution. The parameter it points to must be of type ``str`` or ``List[str]``.
+    output_files (List[str]): additional output file paths for the sandbox to download, for cases where output filenames are hardcoded in the tool rather than passed as parameters.
 ''')
 
 add_agent_example('register', """\
@@ -7365,6 +7367,17 @@ add_agent_example('register', """\
 ...         text (str): input text.
 ...     '''
 ...     return text.upper()
+
+>>> from typing import List, Optional
+>>> @fc_register("tool", input_files_parm="input_paths", output_files_parm="output_paths")
+>>> def file_tool(input_paths: Optional[List[str]] = None, output_paths: Optional[List[str]] = None):
+...     '''Process files in sandbox.
+...
+...     Args:
+...         input_paths (List[str] | None): input file paths.
+...         output_paths (List[str] | None): output file paths.
+...     '''
+...     return "done"
 """)
 
 add_agent_chinese_doc('code_interpreter', '''\
@@ -7544,12 +7557,13 @@ add_chinese_doc('ModuleTool', '''\
 
 该类封装了函数签名和文档字符串的自动解析逻辑，可生成标准化的参数模式（基于 pydantic），并对输入进行校验和工具调用的标准封装。
 
-`__init__(self, verbose=False, return_trace=True)`
+`__init__(self, verbose=False, return_trace=True, execute_in_sandbox=True)`
 初始化工具模块。
 
 Args:
     verbose (bool): 是否在执行过程中输出详细日志。
     return_trace (bool): 是否在结果中保留中间执行痕迹。
+    execute_in_sandbox (bool): 是否在沙箱中执行，默认 True。当 ToolManager 配置了沙箱且此值为 True 时，工具将在沙箱中执行。
 ''')
 
 add_english_doc('ModuleTool', '''\
@@ -7557,12 +7571,13 @@ Base class for defining tools using callable Python functions.
 
 This class automatically parses function signatures and docstrings to build a parameter schema using `pydantic`. It also performs input validation and handles standardized tool execution.
 
-`__init__(self, verbose=False, return_trace=True)`
+`__init__(self, verbose=False, return_trace=True, execute_in_sandbox=True)`
 Initializes a tool wrapper module.
 
 Args:
     verbose (bool): Whether to print verbose logs during execution.
     return_trace (bool): Whether to keep intermediate execution trace in the result.
+    execute_in_sandbox (bool): Whether to execute in sandbox, default True. When ToolManager has a sandbox configured and this is True, the tool will be executed inside the sandbox.
 ''')
 
 add_example('ModuleTool', """

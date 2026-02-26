@@ -120,6 +120,157 @@ class TestRegistry:
         tool = lazyllm.tool.sandbox_disabled_tool()
         assert tool.execute_in_sandbox is False
 
+    def test_fc_register_input_files_parm(self):
+        @fc_register('tool', input_files_parm='file_path')
+        def input_parm_tool(file_path: str):
+            '''
+            Tool with input file param.
+
+            Args:
+                file_path (str): path to input file.
+            '''
+            return file_path
+
+        tool = lazyllm.tool.input_parm_tool()
+        assert tool.input_files_parm == 'file_path'
+        # defaults should remain
+        assert tool.output_files_parm is None
+        assert tool.output_files == []
+        assert tool.execute_in_sandbox is True
+
+    def test_fc_register_output_files_parm(self):
+        @fc_register('tool', output_files_parm='out_path')
+        def output_parm_tool(out_path: str):
+            '''
+            Tool with output file param.
+
+            Args:
+                out_path (str): path to output file.
+            '''
+            return out_path
+
+        tool = lazyllm.tool.output_parm_tool()
+        assert tool.output_files_parm == 'out_path'
+        assert tool.input_files_parm is None
+
+    def test_fc_register_output_files_static(self):
+        @fc_register('tool', output_files=['report.txt', 'log.txt'])
+        def static_output_tool(text: str):
+            '''
+            Tool with static output files.
+
+            Args:
+                text (str): input text.
+            '''
+            return text
+
+        tool = lazyllm.tool.static_output_tool()
+        assert tool.output_files == ['report.txt', 'log.txt']
+
+    def test_fc_register_all_file_params(self):
+        @fc_register('tool', input_files_parm='inputs', output_files_parm='outputs',
+                     output_files=['extra.txt'], execute_in_sandbox=True)
+        def full_file_tool(inputs: str, outputs: str):
+            '''
+            Tool with all file params.
+
+            Args:
+                inputs (str): input file path.
+                outputs (str): output file path.
+            '''
+            return 'done'
+
+        tool = lazyllm.tool.full_file_tool()
+        assert tool.input_files_parm == 'inputs'
+        assert tool.output_files_parm == 'outputs'
+        assert tool.output_files == ['extra.txt']
+        assert tool.execute_in_sandbox is True
+
+    def test_fc_register_disallowed_parameter_raises(self):
+        with pytest.raises(AssertionError):
+            @fc_register('tool', nonexistent_param='value')
+            def bad_tool(x: int):
+                '''
+                Tool.
+
+                Args:
+                    x (int): value.
+                '''
+                return x
+
+
+class TestModuleToolProperties:
+    def test_execute_in_sandbox_default(self):
+        @fc_register('tool')
+        def default_sandbox_tool(x: int):
+            '''
+            Tool.
+
+            Args:
+                x (int): value.
+            '''
+            return x
+
+        tool = lazyllm.tool.default_sandbox_tool()
+        assert tool.execute_in_sandbox is True
+
+    def test_input_files_parm_setter_validates_type(self):
+        @fc_register('tool')
+        def setter_test_tool(x: int):
+            '''
+            Tool.
+
+            Args:
+                x (int): value.
+            '''
+            return x
+
+        tool = lazyllm.tool.setter_test_tool()
+        tool.input_files_parm = 'my_param'
+        assert tool.input_files_parm == 'my_param'
+
+        with pytest.raises(AssertionError):
+            tool.input_files_parm = 123
+
+    def test_output_files_parm_setter_validates_type(self):
+        @fc_register('tool')
+        def setter_test_tool2(x: int):
+            '''
+            Tool.
+
+            Args:
+                x (int): value.
+            '''
+            return x
+
+        tool = lazyllm.tool.setter_test_tool2()
+        tool.output_files_parm = 'out_param'
+        assert tool.output_files_parm == 'out_param'
+
+        with pytest.raises(AssertionError):
+            tool.output_files_parm = ['not', 'a', 'string']
+
+    def test_output_files_setter_validates_type(self):
+        @fc_register('tool')
+        def setter_test_tool3(x: int):
+            '''
+            Tool.
+
+            Args:
+                x (int): value.
+            '''
+            return x
+
+        tool = lazyllm.tool.setter_test_tool3()
+        tool.output_files = ['file1.txt', 'file2.txt']
+        assert tool.output_files == ['file1.txt', 'file2.txt']
+
+        with pytest.raises(AssertionError):
+            tool.output_files = 'not_a_list'
+
+        with pytest.raises(AssertionError):
+            tool.output_files = [1, 2, 3]
+
 
 class TestRegistryWithKey(object):
     def test_registry_with_key(self):

@@ -1,10 +1,24 @@
 import os
+from dataclasses import asdict, dataclass, field
 from typing import Generator, List, Optional, Tuple
 from lazyllm import config
 from lazyllm.module.module import ModuleBase
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 
 config.add('sandbox_type', str, 'dummy', 'SANDBOX_TYPE')
+
+
+@dataclass
+class _SandboxResult:
+    success: bool
+    stdout: str = ''
+    stderr: str = ''
+    returncode: int = 0
+    output_files: List[str] = field(default_factory=list)
+    error_message: str = ''
+
+    def to_dict(self) -> dict:
+        return asdict(self)
 
 
 class LazyLLMSandboxBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
@@ -17,55 +31,38 @@ class LazyLLMSandboxBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         self._project_dir = project_dir
         if self._project_dir and not os.path.isdir(self._project_dir):
             raise FileNotFoundError(f'Project directory not found: {self._project_dir}')
-        self._check_available()
-
-    # -- Abstract methods (subclasses must implement) --------------------------
+        self._available_checked = False
 
     def _check_available(self) -> None:
         raise NotImplementedError
 
     def _create_context(self) -> dict:
-        '''Create execution context. See class docstring for context structure.'''
         raise NotImplementedError
 
     def _execute(self, code: str, language: str, context: dict,
-                 output_files: Optional[List[str]] = None) -> dict:
-        '''Run code in sandbox. File staging and output collection are handled by forward().'''
+                 output_files: Optional[List[str]] = None) -> _SandboxResult:
         raise NotImplementedError
 
     def _process_input_files(self, input_files: List[str], context: dict) -> None:
-        '''Stage input files into context for execution.'''
         raise NotImplementedError
 
-    def _process_output_files(self, result: dict, output_files: List[str], context: dict) -> List[str]:
-        '''Collect output files from result/context, save to _output_dir_path, return saved paths.'''
+    def _process_output_files(self, result: _SandboxResult, output_files: List[str], context: dict) -> List[str]:
         raise NotImplementedError
 
     def _process_project_dir(self, context: dict) -> None:
-        '''Stage project .py files into context. Use _collect_project_py_files() for iteration.'''
         raise NotImplementedError
 
     def _cleanup_context(self, context: dict) -> None:
-        '''Clean up resources from _create_context. Called in finally block. Default is no-op.'''
         pass
 
-    # -- Utilities -------------------------------------------------------------
-
     def _validate_input_files(self, input_files: Optional[List[str]]) -> Optional[List[str]]:
-        '''Validate existence and return absolute paths. Called automatically in forward().'''
         if not input_files:
             return input_files
-        validated = []
         for f in input_files:
-            abs_path = os.path.abspath(f)
-            if not os.path.isfile(abs_path):
+            if not os.path.isfile(f):
                 raise FileNotFoundError(f'Input file not found: {f}')
-            validated.append(abs_path)
-        return validated
 
     def _collect_project_py_files(self) -> Generator[Tuple[str, str], None, None]:
-        '''Yield (abs_path, rel_path) for each .py file in _project_dir.
-        rel_path is relative to _project_dir, not cwd.'''
         if not self._project_dir:
             return
         abs_dir = os.path.abspath(self._project_dir)
@@ -78,13 +75,15 @@ class LazyLLMSandboxBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     def _ensure_output_dir(self) -> None:
         os.makedirs(self._output_dir_path, exist_ok=True)
 
-    # -- Template method -------------------------------------------------------
-
     def forward(self, code: str, language: str = 'python', input_files: Optional[List[str]] = None,
-                output_files: Optional[List[str]] = None) -> str:
+                output_files: Optional[List[str]] = None) -> dict:
+        if not self._available_checked:
+            self._check_available()
+            self._available_checked = True
+
         if language not in self.SUPPORTED_LANGUAGES:
             raise ValueError(f'Language {language} not supported by {self.__class__.__name__}')
-        input_files = self._validate_input_files(input_files)
+        self._validate_input_files(input_files)
 
         context = self._create_context()
         try:
@@ -95,8 +94,8 @@ class LazyLLMSandboxBase(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
 
             result = self._execute(code, language, context, output_files)
 
-            if output_files and isinstance(result, dict):
-                result['output_files'] = self._process_output_files(result, output_files, context)
-            return result
+            if output_files and result.success:
+                result.output_files = self._process_output_files(result, output_files, context)
+            return result.to_dict()
         finally:
             self._cleanup_context(context)

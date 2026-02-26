@@ -4,11 +4,11 @@ import shutil
 import subprocess
 import sys
 import tempfile
-from typing import Any, Dict, List, Optional, Tuple, Union
+from typing import Any, Dict, List, Optional, Tuple
 
 from lazyllm import LOG
 from lazyllm.common.utils import SecurityVisitor
-from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase
+from lazyllm.tools.sandbox.sandbox_base import LazyLLMSandboxBase, _SandboxResult
 
 
 class DummySandbox(LazyLLMSandboxBase):
@@ -70,7 +70,7 @@ class DummySandbox(LazyLLMSandboxBase):
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.copy(abs_path, dst)
 
-    def _process_output_files(self, result: dict, output_files: List[str], context: dict) -> List[str]:
+    def _process_output_files(self, result: _SandboxResult, output_files: List[str], context: dict) -> List[str]:
         self._ensure_output_dir()
         collected = []
         for name in output_files:
@@ -86,10 +86,10 @@ class DummySandbox(LazyLLMSandboxBase):
         return collected
 
     def _execute(self, code: str, language: str, context: dict,
-                 output_files: Optional[List[str]] = None) -> Union[Dict[str, Any], str]:
+                 output_files: Optional[List[str]] = None) -> _SandboxResult:
         is_safe, msg = self._check_code_safety(code)
         if not is_safe:
-            return msg
+            return _SandboxResult(success=False, error_message=msg)
 
         temp_dir = context['temp_dir']
         try:
@@ -99,8 +99,14 @@ class DummySandbox(LazyLLMSandboxBase):
             env = os.environ.copy()
             env['HOME'] = temp_dir
             env['PYTHONPATH'] = temp_dir
-            return self._run_in_subprocess(script_path, cwd=temp_dir, env=env)
+            proc_result = self._run_in_subprocess(script_path, cwd=temp_dir, env=env)
+            return _SandboxResult(
+                success=(proc_result['returncode'] == 0),
+                stdout=proc_result['stdout'],
+                stderr=proc_result['stderr'],
+                returncode=proc_result['returncode'],
+            )
         except subprocess.TimeoutExpired:
-            return f'Execution timed out after {self._timeout} seconds'
+            return _SandboxResult(success=False, error_message=f'Execution timed out after {self._timeout} seconds')
         except Exception as e:
-            return str(e)
+            return _SandboxResult(success=False, error_message=str(e))

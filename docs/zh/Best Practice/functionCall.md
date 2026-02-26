@@ -67,7 +67,15 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 ```
 
 注册方式很简单，导入 `fc_register` 之后，直接在定义好的函数名之上按照装饰器的方式进行添加即可。这里需要注意，添加的时候要指定默认分组 `tool`，默认注册的工具名称是所注册的函数名称。
-如果工具需要在 sandbox 中执行并且涉及文件上传或下载，必须通过 `input_files` / `output_files` 字段传递文件；如果工具不希望在 sandbox 中执行，可在注册时显式指定 `@fc_register("tool", execute_in_sandbox=False)`。
+
+### 沙箱执行与文件传递
+
+当 `ToolManager` 配置了沙箱（sandbox）后，工具默认会在沙箱中执行。注册时可通过以下参数控制沙箱行为：
+
+- `execute_in_sandbox` (bool)：是否在沙箱中执行，默认 `True`。若不希望在沙箱执行，设置为 `False`。
+- `input_files_parm` (str)：指定函数中**哪个参数**包含输入文件路径，沙箱会将这些文件上传到沙箱环境中。该参数指向的函数参数类型必须为 `str` 或 `List[str]`。
+- `output_files_parm` (str)：指定函数中**哪个参数**包含输出文件路径，沙箱执行完成后会将这些文件下载回来。该参数指向的函数参数类型必须为 `str` 或 `List[str]`。
+- `output_files` (List[str])：额外的输出文件列表，用于工具中硬编码的输出文件名（不通过函数参数传递的情况），沙箱执行完成后也会下载这些文件。
 
 下面是一个文件上传/下载工具的例子：
 
@@ -75,28 +83,32 @@ def get_n_day_weather_forecast(location: str, num_days: int, unit: Literal["cels
 from typing import List, Optional
 from lazyllm.tools import fc_register
 
-@fc_register("tool")
+@fc_register("tool", input_files_parm="input_paths", output_files_parm="output_paths")
 def count_lines_in_file(
-    input_files: Optional[List[str]] = None,
-    output_files: Optional[List[str]] = None,
+    input_paths: Optional[List[str]] = None,
+    output_paths: Optional[List[str]] = None,
 ):
     """
     Count lines of the first input file and write to an output file.
 
     Args:
-        input_files (list[str] | None): 输入文件路径列表。
-        output_files (list[str] | None): 输出文件路径列表（沙箱会回传这些文件）。
+        input_paths (List[str] | None): 输入文件路径列表。
+        output_paths (List[str] | None): 输出文件路径列表。
     """
-    if not input_files or not output_files:
-        return "input_files/output_files required"
-    src = input_files[0]
-    dst = output_files[0]
+    if not input_paths or not output_paths:
+        return "input_paths/output_paths required"
+    src = input_paths[0]
+    dst = output_paths[0]
     with open(src, "r", encoding="utf-8") as f:
         count = sum(1 for _ in f)
     with open(dst, "w", encoding="utf-8") as f:
         f.write(str(count))
-    return {"output_files": output_files, "lines": count}
+    return {"lines": count}
 ```
+
+上面的例子中，`input_files_parm="input_paths"` 告诉沙箱：调用时 `input_paths` 参数中的文件需要上传；`output_files_parm="output_paths"` 告诉沙箱：执行后 `output_paths` 参数中的文件需要下载回来。
+
+如果不需要在沙箱中执行，可以这样注册：`@fc_register("tool", execute_in_sandbox=False)`。
 
 我们也可以把工具注册为不同的名字，在注册的时候填入第二个参数即可，例如：
 

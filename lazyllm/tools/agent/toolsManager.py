@@ -66,6 +66,9 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
         # strip space(s) and newlines before and after docstring, as RewooAgent requires
         self._description = self._description.strip(' \n')
         self._execute_in_sandbox = execute_in_sandbox
+        self._input_files_parm = None
+        self._output_files_parm = None
+        self._output_files = []
 
         self._params_schema = self._load_function_schema(self.__class__.apply)
 
@@ -125,6 +128,34 @@ class ModuleTool(ModuleBase, metaclass=LazyLLMRegisterMetaClass):
     @execute_in_sandbox.setter
     def execute_in_sandbox(self, value: bool):
         self._execute_in_sandbox = value
+
+    @property
+    def input_files_parm(self) -> str:
+        return self._input_files_parm
+
+    @input_files_parm.setter
+    def input_files_parm(self, value: str):
+        assert isinstance(value, str), f'input_files_parm must be a string, but got {type(value)}'
+        self._input_files_parm = value
+
+    @property
+    def output_files_parm(self) -> str:
+        return self._output_files_parm
+
+    @output_files_parm.setter
+    def output_files_parm(self, value: str):
+        assert isinstance(value, str), f'output_files_parm must be a string, but got {type(value)}'
+        self._output_files_parm = value
+
+    @property
+    def output_files(self) -> List[str]:
+        return self._output_files
+
+    @output_files.setter
+    def output_files(self, value: List[str]):
+        assert isinstance(value, list) and all(isinstance(item, str) for item in value), \
+            f'output_files must be a list of strings, but got {type(value)}'
+        self._output_files = value
 
     @property
     def params_schema(self) -> Type[BaseModel]:
@@ -228,7 +259,9 @@ result = tool(kwargs)
 print(f'tool result: {{result}}')  # noqa print
 '''
 
-register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool', allowed_parameter=['execute_in_sandbox'])
+register = lazyllm.Register(ModuleTool, ['apply'], default_group='tool',
+                            allowed_parameter=['execute_in_sandbox', 'input_files_parm',
+                                               'output_files_parm', 'output_files'])
 if 'tool' not in LazyLLMRegisterMetaClass.all_clses:
     register.new_group('tool')
 if 'builtin_tools' not in LazyLLMRegisterMetaClass.all_clses:
@@ -388,42 +421,42 @@ class ToolManager(ModuleBase):
                                 f'parameter description, the format is as follows: {typehints_template}')
         return format_tools
 
+    @staticmethod
+    def _ensure_list(value):
+        if isinstance(value, str):
+            return [value]
+        return value if value else []
+
+    def _build_sandbox_args(self, tool, arguments):
+        input_files = self._ensure_list(arguments.get(tool.input_files_parm, []))
+        output_files = self._ensure_list(arguments.get(tool.output_files_parm, [])) + tool.output_files
+        return kwargs(code=tool.to_sandbox_code(arguments), input_files=input_files, output_files=output_files)
+
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
         if not tools: return []
-        tools = [tools,] if isinstance(tools, dict) else tools
+        tool_calls = [tools] if isinstance(tools, dict) else tools
 
-        assert any('function' in tool and 'name' in tool['function'] and 'arguments' in tool['function']
-                   for tool in tools), f'The tool call format is invalid; expected: {TOOL_CALL_FORMAT_EXAMPLE}'
+        assert any('function' in tc and 'name' in tc['function'] and 'arguments' in tc['function']
+                   for tc in tool_calls), f'The tool call format is invalid; expected: {TOOL_CALL_FORMAT_EXAMPLE}'
 
-        tool_arguments = [
-            json.loads(t['function']['arguments'])
-            if isinstance(t['function']['arguments'], str)
-            else t['function']['arguments']
-            for t in tools
-        ]
-
-        tools_calls = []
+        callables = []
         call_arguments = []
-        for idx, tool in enumerate(tools):
-            name = tool['function']['name']
-            if not self._validate_tool(name, tool_arguments[idx]):
-                tools_calls.append(lambda *_, name=name: f'Tool [{name}] parameters error.')
-                call_arguments.append(tool_arguments[idx])
-            elif self._sandbox and self._tool_call[name].execute_in_sandbox:
-                tools_calls.append(self._sandbox)
-                arg = tool_arguments[idx]
-                has_io = isinstance(arg, dict) and ('input_files' in arg or 'output_files' in arg)
-                if has_io:
-                    input_files = arg.get('input_files', [])
-                    output_files = arg.get('output_files', [])
-                    code = self._tool_call[name].to_sandbox_code(arg)
-                    call_arguments.append(kwargs(code=code, input_files=input_files, output_files=output_files))
-                else:
-                    call_arguments.append(self._tool_call[name].to_sandbox_code(arg))
-            else:
-                tools_calls.append(self._tool_call[name])
-                call_arguments.append(tool_arguments[idx])
+        for tc in tool_calls:
+            name = tc['function']['name']
+            raw_args = tc['function']['arguments']
+            arguments = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+            assert isinstance(arguments, dict)
+            tool = self._tool_call[name]
 
-        tool_diverter = lazyllm.diverter(tuple(tools_calls))
-        tool_results = tool_diverter(tuple(call_arguments))
-        return tool_results
+            if not self._validate_tool(name, arguments):
+                callables.append(lambda *_, _n=name: f'Tool [{_n}] parameters error.')
+                call_arguments.append({})
+            elif self._sandbox and tool.execute_in_sandbox:
+                callables.append(self._sandbox)
+                call_arguments.append(self._build_sandbox_args(tool, arguments))
+            else:
+                callables.append(tool)
+                call_arguments.append(arguments)
+
+        tool_diverter = lazyllm.diverter(tuple(callables))
+        return tool_diverter(tuple(call_arguments))
