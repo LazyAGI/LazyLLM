@@ -1,6 +1,5 @@
 import os
 import shutil
-import pytest  # noqa: F401
 import json
 from lazyllm import config
 from lazyllm.tools.data.operators import codegen_ops

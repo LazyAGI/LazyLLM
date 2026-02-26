@@ -1,12 +1,20 @@
-from ..base_data import data_register
-import regex
-from lazyllm import TrainableModule, LOG
+import os
 import re
-from lazyllm.thirdparty import transformers
-from lazyllm.components.formatter import JsonFormatter
+import regex
 
-DEFAULT_MODEL = 'qwen2.5-0.5B-instruct'
+from ..base_data import data_register
+
+from lazyllm import TrainableModule, LOG, config
+from lazyllm.components.formatter import JsonFormatter
+from lazyllm.thirdparty import transformers
+
+DEFAULT_MODEL = 'qwen2.5-0.5b-instruct'
 DEFAULT_TOKENIZER = 'Qwen/Qwen2.5-0.5B'
+if config['model_path']:
+    token_path = os.path.join(config['model_path'], DEFAULT_MODEL)
+    if os.path.exists(token_path):
+        DEFAULT_TOKENIZER = token_path
+
 MathQA = data_register.new_group('mathQA')
 
 

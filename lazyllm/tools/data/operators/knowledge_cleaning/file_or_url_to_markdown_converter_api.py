@@ -4,6 +4,7 @@ from urllib.parse import urlparse
 
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
+from lazyllm.thirdparty import trafilatura
 from ...base_data import data_register
 
 
@@ -164,19 +165,13 @@ class HTMLToMarkdownConverter(kbc):
         if data.get('_type', '') != 'html':
             return data
 
-        try:
-            from trafilatura import fetch_url, extract
-        except ImportError:
-            LOG.error('trafilatura is not installed. Please install it with `pip install trafilatura`.')
-            return {**data, '_markdown_path': ''}
-
         url = data.get('_url')
         raw_path = data.get('_raw_path')
         output_path = data.get('_output_path', '')
 
         try:
             if url:
-                downloaded = fetch_url(url)
+                downloaded = trafilatura.fetch_url(url)
                 if not downloaded:
                     error_msg = (
                         'fail to fetch this url. '
@@ -192,7 +187,7 @@ class HTMLToMarkdownConverter(kbc):
             else:
                 return {**data, '_markdown_path': ''}
 
-            result = extract(
+            result = trafilatura.extract(
                 downloaded,
                 output_format='markdown',
                 with_metadata=True,

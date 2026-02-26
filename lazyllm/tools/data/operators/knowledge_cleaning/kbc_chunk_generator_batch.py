@@ -3,6 +3,7 @@ import json
 from typing import Optional
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
+from lazyllm.thirdparty import chonkie, transformers
 from ...base_data import data_register
 
 
@@ -99,43 +100,30 @@ class KBCChunkText(kbc):
 
     def _ensure_initialized(self):
         if self._tokenizer is None:
-            try:
-                from lazyllm.thirdparty.transformers import AutoTokenizer
-
-                self._tokenizer = AutoTokenizer.from_pretrained(self.tokenizer_name)
-                self._chunker = self._initialize_chunker()
-            except ImportError as e:
-                LOG.error(f'Missing dependencies: {e}')
-                raise
+            self._tokenizer = transformers.AutoTokenizer.from_pretrained(self.tokenizer_name)
+            self._chunker = self._initialize_chunker()
 
     def _initialize_chunker(self):
-        from lazyllm.thirdparty.chonkie import (
-            TokenChunker,
-            SentenceChunker,
-            SemanticChunker,
-            RecursiveChunker,
-        )
-
         if self.split_method == 'token':
-            return TokenChunker(
+            return chonkie.TokenChunker(
                 tokenizer=self._tokenizer,
                 chunk_size=self.chunk_size,
                 chunk_overlap=self.chunk_overlap,
             )
 
         if self.split_method == 'sentence':
-            return SentenceChunker(
+            return chonkie.SentenceChunker(
                 chunk_size=self.chunk_size,
                 chunk_overlap=self.chunk_overlap,
             )
 
         if self.split_method == 'semantic':
-            return SemanticChunker(
+            return chonkie.SemanticChunker(
                 chunk_size=self.chunk_size,
             )
 
         if self.split_method == 'recursive':
-            return RecursiveChunker(
+            return chonkie.RecursiveChunker(
                 chunk_size=self.chunk_size,
                 chunk_overlap=self.chunk_overlap,
             )

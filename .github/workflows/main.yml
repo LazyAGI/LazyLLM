@@ -332,6 +332,31 @@ jobs:
             echo "No file changes detected, no commit needed"
           fi
 
+  data_op_ppl_tests:
+    runs-on: tps_sco_nv
+    needs: [ clone ]
+    if: always() && needs.clone.result == 'success'
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+
+      - name: Install data tests dependencies
+        run: |
+          cd ${{ env.CI_PATH }}
+          pip install -r tests/data_tests/requirements.txt
+
+      - name: RunTests
+        uses: ./.github/actions/run_tests
+        with:
+          working_directory: ${{ env.CI_PATH }}
+          changed_files: ${{ needs.clone.outputs.changed_files }}
+          markers: "not skip_on_linux"
+          tests_dir: "tests/data_tests"
+          launcher: "empty"
+          nproc: 4
+
   coverage_linux:
     runs-on: ubuntu-latest
     needs: [ basic_tests, advanced_tests, charge_tests ]
