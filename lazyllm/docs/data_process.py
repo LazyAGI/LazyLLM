@@ -3796,339 +3796,6 @@ print(op({'scenario': scenario}))
 ```
 """)
 
-add_chinese_doc('data.operators.tool_use_ops.ChainedLogicAssembler', """\
-工具调用数据生成算子：顺序任务生成器。
-
-基于原子任务列表，生成“后继任务关系”与对应的组合任务列表，用于构造线性或有依赖关系的任务链。
-
-输出 JSON 典型结构：
-
-- items: 列表，每项为：
-  - task: 当前原子任务
-  - next_task: 紧随其后的任务
-  - composed_task: 由 task + next_task 组合而成的描述
-
-Args:
-    model: LazyLLM 模型对象（必需）。
-    input_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
-    output_key (str): 输出顺序任务列表字段名，默认 'sequential_tasks'。
-    system_prompt (str|None): 可选系统提示词。
-    **kwargs: 传递给基类算子的其它参数。
-""")
-
-add_english_doc('data.operators.tool_use_ops.ChainedLogicAssembler', """\
-Tool-use data operator: sequential task generator.
-
-Given a list of atomic tasks, generates successor relationships and composed tasks to form linear or dependency-aware task chains.
-
-Typical JSON structure:
-
-- items: list of dicts:
-  - task: current atomic task
-  - next_task: its successor task
-  - composed_task: description combining task and next_task
-
-Args:
-    model: a LazyLLM model object (required).
-    input_key (str): input atomic task field name, default 'atomic_tasks'.
-    output_key (str): output sequential task list field name, default 'sequential_tasks'.
-    system_prompt (str|None): optional system prompt.
-    **kwargs: extra args passed to the base operator.
-""")
-
-add_example('data.operators.tool_use_ops.ChainedLogicAssembler', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import ChainedLogicAssembler
-
-atomic_tasks = [
-    {'task': '获取出发地与目的地'},
-    {'task': '确认出行日期'},
-    {'task': '筛选符合条件的车次'},
-]
-op = ChainedLogicAssembler(model=model, input_key='atomic_tasks', output_key='sequential_tasks')
-print(op({'atomic_tasks': atomic_tasks}))
-# {
-#   'atomic_tasks': [...],
-#   'sequential_tasks': [
-#     {'task': '获取出发地与目的地', 'next_task': '确认出行日期', 'composed_task': '先获取站点再确认日期'},
-#     {'task': '确认出行日期', 'next_task': '筛选符合条件的车次', 'composed_task': '在已知日期基础上筛选车次'},
-#     ...
-#   ]
-# }
-```
-""")
-
-add_chinese_doc('data.operators.tool_use_ops.TopologyArchitect', """\
-工具调用数据生成算子：并行/顺序/混合任务组合生成器。
-
-基于原子任务列表，自动生成三类任务组合：
-
-- parallel_tasks: 可以并行执行的任务组合
-- sequential_tasks: 具有明确先后依赖的任务组合
-- hybrid_tasks: 同时包含并行与顺序关系的混合任务组合
-
-Args:
-    model: LazyLLM 模型对象（必需）。
-    input_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
-    output_key (str): 输出任务组合字段名，默认 'para_seq_tasks'。
-    system_prompt (str|None): 可选系统提示词。
-    **kwargs: 传递给基类算子的其它参数。
-""")
-
-add_english_doc('data.operators.tool_use_ops.TopologyArchitect', """\
-Tool-use data operator: parallel/sequential/hybrid task combination generator.
-
-Given atomic tasks, generates three kinds of task compositions:
-
-- parallel_tasks: tasks that can be executed in parallel
-- sequential_tasks: tasks with explicit ordering dependencies
-- hybrid_tasks: compositions mixing parallel and sequential relations
-
-Args:
-    model: a LazyLLM model object (required).
-    input_key (str): input atomic task field name, default 'atomic_tasks'.
-    output_key (str): output composition field name, default 'para_seq_tasks'.
-    system_prompt (str|None): optional system prompt.
-    **kwargs: extra args passed to the base operator.
-""")
-
-add_example('data.operators.tool_use_ops.TopologyArchitect', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import TopologyArchitect
-
-atomic_tasks = [
-    {'task': '收集出行需求'},
-    {'task': '查询可选车次'},
-    {'task': '对比价格与时间'},
-    {'task': '完成下单支付'},
-]
-op = TopologyArchitect(model=model, input_key='atomic_tasks', output_key='para_seq_tasks')
-print(op({'atomic_tasks': atomic_tasks}))
-# {
-#   'atomic_tasks': [...],
-#   'para_seq_tasks': {
-#     'parallel_tasks': ['同时查询不同日期/车次方案', ...],
-#     'sequential_tasks': ['先确认日期再选车次', ...],
-#     'hybrid_tasks': ['并行对比多个方案后统一决策并下单', ...]
-#   }
-# }
-```
-""")
-
-add_chinese_doc('data.operators.tool_use_ops.ViabilitySieve', """\
-工具调用数据生成算子：组合任务可行性过滤器。
-
-对一组“组合任务”进行可运行性与完备性评审，筛选出被认为合理可行的组合任务列表。
-
-模型内部期望的中间 JSON 结构：
-
-- items: 列表，每项包含 composed_task、is_valid、reason 等字段。
-
-在算子输出中，仅保留 is_valid 为 true 且含有 composed_task 的项；如果模型未按预期输出，则尽量回退返回原 items 或原始 parsed 结果。
-
-Args:
-    model: LazyLLM 模型对象（必需）。
-    input_composition_key (str): 输入组合任务字段名，默认 'composition_tasks'。
-    input_atomic_key (str): 输入原子任务字段名（可选），默认 'atomic_tasks'。
-    output_key (str): 输出过滤后组合任务字段名，默认 'filtered_composition_tasks'。
-    system_prompt (str|None): 可选系统提示词。
-    **kwargs: 传递给基类算子的其它参数。
-""")
-
-add_english_doc('data.operators.tool_use_ops.ViabilitySieve', """\
-Tool-use data operator: composition task feasibility filter.
-
-Evaluates a list of composed tasks for feasibility and completeness, and filters out invalid ones.
-
-Expected intermediate JSON from the model:
-
-- items: list of dicts with composed_task, is_valid, reason, etc.
-
-On output, only keeps composed_task values where is_valid is true. If the model output does not match the schema, it falls back to returning items or the raw parsed result.
-
-Args:
-    model: a LazyLLM model object (required).
-    input_composition_key (str): input composition task field name, default 'composition_tasks'.
-    input_atomic_key (str): input atomic task field name (optional), default 'atomic_tasks'.
-    output_key (str): output filtered composition task field name, default 'filtered_composition_tasks'.
-    system_prompt (str|None): optional system prompt.
-    **kwargs: extra args passed to the base operator.
-""")
-
-add_example('data.operators.tool_use_ops.ViabilitySieve', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import ViabilitySieve
-
-composition_tasks = ['先获取出发地和目的地再筛选车次', '直接随机推荐一个车次']
-atomic_tasks = [
-    {'task': '获取出发地与目的地'}, {'task': '确认出行日期'}, {'task': '筛选符合条件的车次'}
-]
-op = ViabilitySieve(model=model,
-                           input_composition_key='composition_tasks',
-                           input_atomic_key='atomic_tasks',
-                           output_key='filtered_composition_tasks')
-print(op({'composition_tasks': composition_tasks, 'atomic_tasks': atomic_tasks}))
-# {
-#   'composition_tasks': [...],
-#   'atomic_tasks': [...],
-#   'filtered_composition_tasks': ['先获取出发地和目的地再筛选车次', ...]
-# }
-```
-""")
-
-add_chinese_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
-工具调用数据生成算子：函数规格生成器。
-
-根据组合任务及其子任务，生成一组适合用于工具调用（function calling）的函数规格列表。
-
-输出 JSON 典型结构：
-
-- functions: 列表，每项包含：
-  - name: 函数名称
-  - description: 函数用途描述
-  - args: 参数列表，每个参数包含 name/type/description
-  - returns: 返回值类型与描述
-
-Args:
-    model: LazyLLM 模型对象（必需）。
-    input_composition_key (str): 输入组合任务字段名，默认 'composition_task'。
-    input_atomic_key (str): 输入原子任务字段名，默认 'atomic_tasks'。
-    output_key (str): 输出函数规格列表字段名，默认 'functions'。
-    system_prompt (str|None): 可选系统提示词。
-    **kwargs: 传递给基类算子的其它参数。
-""")
-
-add_english_doc('data.operators.tool_use_ops.ProtocolSpecifier', """\
-Tool-use data operator: function specification generator.
-
-Given a composed task and its subtasks, generates a list of function specifications suitable for tool calling.
-
-Typical JSON structure:
-
-- functions: list of dicts:
-  - name: function name
-  - description: what the function does
-  - args: list of argument specs with name/type/description
-  - returns: return type and description
-
-Args:
-    model: a LazyLLM model object (required).
-    input_composition_key (str): input composition task field name, default 'composition_task'.
-    input_atomic_key (str): input atomic task field name, default 'atomic_tasks'.
-    output_key (str): output function spec list field name, default 'functions'.
-    system_prompt (str|None): optional system prompt.
-    **kwargs: extra args passed to the base operator.
-""")
-
-add_example('data.operators.tool_use_ops.ProtocolSpecifier', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import ProtocolSpecifier
-
-composition_task = '根据用户出发地、目的地和日期查询可选高铁车次并返回候选列表'
-atomic_tasks = [
-    {'task': '获取出发地与目的地'},
-    {'task': '确认出行日期'},
-    {'task': '调用车次查询接口并过滤结果'},
-]
-op = ProtocolSpecifier(model=model,
-                       input_composition_key='composition_task',
-                       input_atomic_key='atomic_tasks',
-                       output_key='functions')
-print(op({'composition_task': composition_task, 'atomic_tasks': atomic_tasks}))
-# {
-#   'composition_task': '根据用户出发地、目的地和日期查询可选高铁车次并返回候选列表',
-#   'atomic_tasks': [...],
-#   'functions': [
-#     {
-#       'name': 'query_train_tickets',
-#       'description': '根据出发地、目的地与日期查询高铁车次',
-#       'args': [{'name': 'from_city', 'type': 'string', ...}, ...],
-#       'returns': {'type': 'TrainList', 'description': '符合条件的车次列表'}
-#     },
-#     ...
-#   ]
-# }
-```
-""")
-
-add_chinese_doc('data.operators.tool_use_ops.DialogueSimulator', """\
-工具调用数据生成算子：多轮对话生成器（含 Tool 调用）。
-
-根据组合任务与可用函数列表，生成带有 User / Assistant / Tool 三种角色的多轮对话 JSON，用于构造工具调用训练数据。
-
-输出 JSON 典型结构：
-
-- messages: 列表，每项为：
-  - role: 'user' | 'assistant' | 'tool'
-  - content: 文本内容
-  - name: 工具名（仅 role == 'tool' 时可选）
-
-Args:
-    model: LazyLLM 模型对象（必需）。
-    input_composition_key (str): 输入组合任务字段名，默认 'composition_task'。
-    input_functions_key (str): 输入函数列表字段名，默认 'functions'。
-    output_key (str): 输出多轮对话字段名，默认 'conversation'。
-    n_turns (int): 期望的轮次数量（提示给模型），默认 6。
-    system_prompt (str|None): 可选系统提示词。
-    **kwargs: 传递给基类算子的其它参数。
-""")
-
-add_english_doc('data.operators.tool_use_ops.DialogueSimulator', """\
-Tool-use data operator: multi-turn conversation generator (with tools).
-
-Given a composed task and a list of available functions, generates a multi-turn conversation JSON involving User, Assistant and Tool roles, suitable for tool-calling training data.
-
-Typical JSON structure:
-
-- messages: list of dicts:
-  - role: 'user' | 'assistant' | 'tool'
-  - content: text content
-  - name: tool name (optional, when role == 'tool')
-
-Args:
-    model: a LazyLLM model object (required).
-    input_composition_key (str): input composition task field name, default 'composition_task'.
-    input_functions_key (str): input function list field name, default 'functions'.
-    output_key (str): output conversation field name, default 'conversation'.
-    n_turns (int): desired number of turns (as a hint to the model), default 6.
-    system_prompt (str|None): optional system prompt.
-    **kwargs: extra args passed to the base operator.
-""")
-
-add_example('data.operators.tool_use_ops.DialogueSimulator', """\
-```python
-from lazyllm.tools.data.operators.tool_use_ops import DialogueSimulator
-
-composition_task = '根据用户需求查询并推荐合适的高铁车次'
-functions = [
-    {
-        'name': 'query_train_tickets',
-        'description': '查询高铁车次',
-        'args': [...],
-        'returns': {...},
-    }
-]
-op = DialogueSimulator(model=model,
-                                    input_composition_key='composition_task',
-                                    input_functions_key='functions',
-                                    output_key='conversation',
-                                    n_turns=6)
-print(op({'composition_task': composition_task, 'functions': functions}))
-# {
-#   'composition_task': '根据用户需求查询并推荐合适的高铁车次',
-#   'functions': [...],
-#   'conversation': {
-#     'messages': [
-#       {'role': 'user', 'content': '我想订一张明天下午从北京到上海的高铁票'},
-#       {'role': 'assistant', 'content': '好的，我先为您确认出发时间与车次。'},
-#       {'role': 'tool', 'name': 'query_train_tickets', 'content': '{...工具返回...}'},
-#       ...
-#     ]
-#   }
-# }
-```
-""")
-
 add_chinese_doc('data.operators.text2sql_ops.SQLForge', """\
 Text2SQL 数据生成算子：SQL 生成器。
 
@@ -4743,7 +4410,7 @@ print(res)  # demonstrates how operators are combined and applied
 # Embedding Data Formatter
 # =========================
 
-add_chinese_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatFlagEmbedding', """\
+add_chinese_doc('data.embedding.EmbeddingFormatFlagEmbedding', """\
 将数据格式化为 FlagEmbedding 训练格式的算子。
 
 该算子将输入的 query、pos（正样本）、neg（负样本）格式化为 FlagEmbedding 框架所需的训练数据格式。
@@ -4757,7 +4424,7 @@ Returns:
     dict: 包含 query、pos、neg 和可选 prompt 字段的字典。
 """)
 
-add_english_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatFlagEmbedding', """\
+add_english_doc('data.embedding.EmbeddingFormatFlagEmbedding', """\
 An operator that formats data into FlagEmbedding training format.
 
 This operator formats the input query, pos (positive samples), and neg (negative samples)
@@ -4772,7 +4439,7 @@ Returns:
     dict: A dictionary containing query, pos, neg, and optional prompt fields.
 """)
 
-add_example('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatFlagEmbedding', """\
+add_example('data.embedding.EmbeddingFormatFlagEmbedding', """\
 ```python
 from lazyllm.tools.data import embedding
 
@@ -4782,7 +4449,7 @@ result = op({'query': 'machine learning', 'pos': ['ML tutorial'], 'neg': ['cooki
 ```
 """)
 
-add_chinese_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatSentenceTransformers', """\
+add_chinese_doc('data.embedding.EmbeddingFormatSentenceTransformers', """\
 将数据格式化为 SentenceTransformers 三元组训练格式的算子。
 
 该算子将输入的 query、pos（正样本）、neg（负样本）转换为 SentenceTransformers 框架所需的 anchor-positive-negative 三元组格式。
@@ -4795,7 +4462,7 @@ Returns:
     List[dict]: 包含 anchor、positive、negative 字段的字典列表，每对正负样本生成一个三元组。
 """)
 
-add_english_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatSentenceTransformers', """\
+add_english_doc('data.embedding.EmbeddingFormatSentenceTransformers', """\
 An operator that formats data into SentenceTransformers triplet training format.
 
 This operator converts the input query, pos (positive samples), and neg (negative samples)
@@ -4810,7 +4477,7 @@ Returns:
     with one triplet generated for each positive-negative pair.
 """)
 
-add_example('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatSentenceTransformers', """\
+add_example('data.embedding.EmbeddingFormatSentenceTransformers', """\
 ```python
 from lazyllm.tools.data import embedding
 
@@ -4820,7 +4487,7 @@ result = op({'query': 'machine learning', 'pos': ['ML basics'], 'neg': ['cooking
 ```
 """)
 
-add_chinese_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatTriplet', """\
+add_chinese_doc('data.embedding.EmbeddingFormatTriplet', """\
 将数据格式化为通用三元组格式的算子。
 
 该算子将输入的 query、pos（正样本）、neg（负样本）转换为标准的三元组格式，
@@ -4833,7 +4500,7 @@ Returns:
     List[dict]: 包含 query、positive、negative 字段的字典列表，每对正负样本生成一个三元组。
 """)
 
-add_english_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatTriplet', """\
+add_english_doc('data.embedding.EmbeddingFormatTriplet', """\
 An operator that formats data into generic triplet format.
 
 This operator converts the input query, pos (positive samples), and neg (negative samples)
@@ -4848,7 +4515,7 @@ Returns:
     with one triplet generated for each positive-negative pair.
 """)
 
-add_example('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingFormatTriplet', """\
+add_example('data.embedding.EmbeddingFormatTriplet', """\
 ```python
 from lazyllm.tools.data import embedding
 
@@ -4858,7 +4525,7 @@ result = op({'query': 'deep learning', 'pos': ['neural networks', 'AI'], 'neg': 
 ```
 """)
 
-add_chinese_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingTrainTestSplitter', """\
+add_chinese_doc('data.embedding.EmbeddingTrainTestSplitter', """\
 将数据集分割为训练集和测试集的算子。
 
 该算子对输入数据进行随机打乱，并按指定比例分割为训练集和测试集。
@@ -4876,7 +4543,7 @@ Returns:
     List[dict]: 包含训练集和测试集的所有样本，每个样本添加了 'split' 字段标记所属集合。
 """)
 
-add_english_doc('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingTrainTestSplitter', """\
+add_english_doc('data.embedding.EmbeddingTrainTestSplitter', """\
 An operator that splits dataset into training and test sets.
 
 This operator randomly shuffles the input data and splits it into training and test sets
@@ -4896,7 +4563,7 @@ Returns:
 to indicate which set each sample belongs to.
 """)
 
-add_example('data.operators.embedding_synthesis.embedding_data_formatter.EmbeddingTrainTestSplitter', """\
+add_example('data.embedding.EmbeddingTrainTestSplitter', """\
 ```python
 from lazyllm.tools.data import embedding
 
@@ -4948,15 +4615,15 @@ Returns:
 
 add_example('data.operators.embedding_synthesis.embedding_hard_negative_miner.build_embedding_corpus', """\
 ```python
-from lazyllm.tools.data.operators.embedding_synthesis.embedding_hard_negative_miner import build_embedding_corpus
+from lazyllm.tools.data import embedding
 
 data = [{'query': 'machine learning', 'pos': ['ML tutorial', 'deep learning']}, {'query': 'cooking', 'pos': ['recipe']}]
-result = build_embedding_corpus(data, input_pos_key='pos')
+result = embedding.build_embedding_corpus(data, input_pos_key='pos')
 # Returns data with '_corpus' field pointing to corpus file containing unique passages
 ```
 """)
 
-add_chinese_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingInitBM25', """\
+add_chinese_doc('data.embedding.EmbeddingInitBM25', """\
 初始化 BM25 索引的算子。
 
 该算子基于语料库构建 BM25 索引，用于后续的关键词检索和困难负样本挖掘。
@@ -4970,7 +4637,7 @@ Returns:
     List[dict]: 输入数据，每条数据添加了 BM25 索引和相关配置信息。
 """)
 
-add_english_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingInitBM25', """\
+add_english_doc('data.embedding.EmbeddingInitBM25', """\
 An operator that initializes BM25 index.
 
 This operator builds BM25 index based on corpus for subsequent keyword retrieval and hard negative mining.
@@ -4984,7 +4651,7 @@ Returns:
     List[dict]: Input data with BM25 index and related configuration added to each item.
 """)
 
-add_example('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingInitBM25', """\
+add_example('data.embedding.EmbeddingInitBM25', """\
 ```python
 from lazyllm.tools.data import embedding
 
@@ -4995,7 +4662,7 @@ bm25_op = embedding.EmbeddingInitBM25(language='zh')
 ```
 """)
 
-add_chinese_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingInitSemantic', """\
+add_chinese_doc('data.embedding.EmbeddingInitSemantic', """\
 初始化语义嵌入向量的算子。
 
 该算子使用 Embedding 服务计算语料库中所有文档的向量表示，并保存到文件中。
@@ -5010,7 +4677,7 @@ Returns:
     List[dict]: 输入数据，每条数据添加了语义向量文件路径和语料库信息。
 """)
 
-add_english_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingInitSemantic', """\
+add_english_doc('data.embedding.EmbeddingInitSemantic', """\
 An operator that initializes semantic embeddings.
 
 This operator uses Embedding service to compute vector representations for all documents in the corpus
@@ -5025,7 +4692,7 @@ Returns:
     List[dict]: Input data with semantic embedding file paths and corpus information added.
 """)
 
-add_example('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingInitSemantic', """\
+add_example('data.embedding.EmbeddingInitSemantic', """\
 ```python
 from lazyllm.tools.data import embedding
 
@@ -5071,16 +4738,16 @@ Returns:
 
 add_example('data.operators.embedding_synthesis.embedding_hard_negative_miner.mine_bm25_negatives', """\
 ```python
-from lazyllm.tools.data.operators.embedding_synthesis.embedding_hard_negative_miner import mine_bm25_negatives
+from lazyllm.tools.data import embedding
 
 # After building corpus and initializing BM25
 data = {'query': 'machine learning', 'pos': ['ML tutorial'], '_bm25': bm25_index, '_bm25_corpus': corpus}
-result = mine_bm25_negatives(data, num_negatives=5)
+result = embedding.mine_bm25_negatives(data, num_negatives=5)
 # Returns data with 'neg' field containing BM25-mined negative samples
 ```
 """)
 
-add_chinese_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.mine_random_negatives', """\
+add_chinese_doc('data.embedding.mine_random_negatives', """\
 随机挖掘负样本的函数。
 
 该函数从语料库中随机选择不属于正样本的文档作为负样本。
@@ -5098,7 +4765,7 @@ Returns:
     dict: 输入数据，添加了随机选择的负样本列表。
 """)
 
-add_english_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.mine_random_negatives', """\
+add_english_doc('data.embedding.mine_random_negatives', """\
 A function that mines random negative samples.
 
 This function randomly selects documents from corpus that are not in positive samples as negative samples.
@@ -5116,17 +4783,17 @@ Returns:
     dict: Input data with randomly selected negative samples list added.
 """)
 
-add_example('data.operators.embedding_synthesis.embedding_hard_negative_miner.mine_random_negatives', """\
+add_example('data.embedding.mine_random_negatives', """\
 ```python
-from lazyllm.tools.data.operators.embedding_synthesis.embedding_hard_negative_miner import mine_random_negatives
+from lazyllm.tools.data import embedding
 
 data = {'query': 'machine learning', 'pos': ['ML tutorial'], '_corpus': corpus_path}
-result = mine_random_negatives(data, num_negatives=5, seed=123)
+result = embedding.mine_random_negatives(data, num_negatives=5, seed=123)
 # Returns data with 'neg' field containing randomly selected negative samples
 ```
 """)
 
-add_chinese_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingMineSemanticNegatives', """\
+add_chinese_doc('data.embedding.EmbeddingMineSemanticNegatives', """\
 使用语义相似度挖掘困难负样本的算子。
 
 该算子基于语义向量相似度，找出与查询最相似但不属于正样本的文档作为负样本。
@@ -5141,7 +4808,7 @@ Returns:
     dict: 输入数据，添加了基于语义相似度挖掘的负样本列表。
 """)
 
-add_english_doc('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingMineSemanticNegatives', """\
+add_english_doc('data.embedding.EmbeddingMineSemanticNegatives', """\
 An operator that mines hard negative samples using semantic similarity.
 
 This operator finds documents most similar to the query but not in positive samples based on semantic vector similarity.
@@ -5157,7 +4824,7 @@ Returns:
     dict: Input data with negative samples mined based on semantic similarity added.
 """)
 
-add_example('data.operators.embedding_synthesis.embedding_hard_negative_miner.EmbeddingMineSemanticNegatives', """\
+add_example('data.embedding.EmbeddingMineSemanticNegatives', """\
 ```python
 from lazyllm.tools.data import embedding
 
@@ -5170,7 +4837,7 @@ result = semantic_miner(data)
 """)
 
 
-add_chinese_doc('data.operators.embedding_synthesis.embedding_query_generator.EmbeddingGenerateQueries', """\
+add_chinese_doc('data.embedding.EmbeddingGenerateQueries', """\
 使用 LLM 生成查询的算子。
 
 该算子调用语言模型服务，基于构建的提示生成查询。返回 JSON 格式的查询响应。
@@ -5186,7 +4853,7 @@ Returns:
     dict: 输入数据，添加了 '_query_response' 字段包含生成的查询响应。
 """)
 
-add_english_doc('data.operators.embedding_synthesis.embedding_query_generator.EmbeddingGenerateQueries', """\
+add_english_doc('data.embedding.EmbeddingGenerateQueries', """\
 An operator that generates queries using LLM.
 
 This operator calls a language model service to generate queries based on the built prompts. Returns the query response in JSON format.
@@ -5202,7 +4869,7 @@ Returns:
     dict: Input data with '_query_response' field added containing the generated query response.
 """)
 
-add_example('data.operators.embedding_synthesis.embedding_query_generator.EmbeddingGenerateQueries', """\
+add_example('data.embedding.EmbeddingGenerateQueries', """\
 ```python
 from lazyllm.tools.data import embedding
 
@@ -5214,7 +4881,7 @@ result = generator(data)
 ```
 """)
 
-add_chinese_doc('data.operators.embedding_synthesis.embedding_query_generator.EmbeddingParseQueries', """\
+add_chinese_doc('data.embedding.EmbeddingParseQueries', """\
 解析生成的查询的算子。
 
 该算子解析 LLM 生成的查询响应，将每条查询展开为独立的数据记录。
@@ -5228,7 +4895,7 @@ Returns:
     List[dict]: 解析后的查询列表，每个查询为一个独立的数据记录。
 """)
 
-add_english_doc('data.operators.embedding_synthesis.embedding_query_generator.EmbeddingParseQueries', """\
+add_english_doc('data.embedding.EmbeddingParseQueries', """\
 An operator that parses generated queries.
 
 This operator parses the query response generated by LLM and expands each query into an independent data record.
@@ -5242,7 +4909,7 @@ Returns:
     List[dict]: List of parsed queries, each query as an independent data record.
 """)
 
-add_example('data.operators.embedding_synthesis.embedding_query_generator.EmbeddingParseQueries', """\
+add_example('data.embedding.EmbeddingParseQueries', """\
 ```python
 from lazyllm.tools.data import embedding
 
@@ -5269,11 +4936,11 @@ Args:
 
 Returns:
     dict: 标准化后的数据，包含以下字段：
-    - _type: 文件类型 ('pdf', 'html', 'text', 'invalid', 'unsupported')
-    - _raw_path: 本地文件路径（如果有）
-    - _url: URL地址（如果是网页）
-    - _output_path: 预期的Markdown输出路径
-    - _error: 错误信息（如果有）
+    _type: 文件类型 ('pdf', 'html', 'text', 'invalid', 'unsupported')
+    _raw_path: 本地文件路径（如果有）
+    _url: URL地址（如果是网页）
+    _output_path: 预期的Markdown输出路径
+    _error: 错误信息（如果有）
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.FileOrURLNormalizer', """\
@@ -5288,11 +4955,11 @@ Args:
 
 Returns:
     dict: Normalized data containing the following fields:
-    - _type: File type ('pdf', 'html', 'text', 'invalid', 'unsupported')
-    - _raw_path: Local file path (if available)
-    - _url: URL address (if web page)
-    - _output_path: Expected Markdown output path
-    - _error: Error message (if any)
+    _type: File type ('pdf', 'html', 'text', 'invalid', 'unsupported')
+    _raw_path: Local file path (if available)
+    _url: URL address (if web page)
+    _output_path: Expected Markdown output path
+    _error: Error message (if any)
 """)
 
 add_example('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.FileOrURLNormalizer', """\
@@ -5324,7 +4991,7 @@ Args:
 
 Returns:
     dict: 转换后的数据，包含以下字段：
-    - _markdown_path: 生成的Markdown文件路径
+    _markdown_path: 生成的Markdown文件路径
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.HTMLToMarkdownConverter', """\
@@ -5338,7 +5005,7 @@ Args:
 
 Returns:
     dict: Converted data containing the following fields:
-    - _markdown_path: Path to the generated Markdown file
+    _markdown_path: Path to the generated Markdown file
 """)
 
 add_example('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.HTMLToMarkdownConverter', """\
@@ -5368,7 +5035,7 @@ Args:
 
 Returns:
     dict: 转换后的数据，包含以下字段：
-    - _markdown_path: 生成的Markdown文件路径
+    _markdown_path: 生成的Markdown文件路径
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.PDFToMarkdownConverterAPI', """\
@@ -5385,7 +5052,7 @@ Args:
 
 Returns:
     dict: Converted data containing the following fields:
-    - _markdown_path: Path to the generated Markdown file
+    _markdown_path: Path to the generated Markdown file
 """)
 
 add_example('data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api.PDFToMarkdownConverterAPI', """\
@@ -5421,8 +5088,8 @@ Args:
 
 Returns:
     dict: 包含加载结果的数据：
-    - _text_content: 加载的文本内容
-    - _load_error: 加载错误信息（如果有）
+    _text_content: 加载的文本内容
+    _load_error: 加载错误信息（如果有）
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCLoadText', """\
@@ -5437,8 +5104,8 @@ Args:
 
 Returns:
     dict: Data containing loading results:
-    - _text_content: Loaded text content
-    - _load_error: Loading error message (if any)
+    _text_content: Loaded text content
+    _load_error: Loading error message (if any)
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCLoadText', """\
@@ -5477,8 +5144,8 @@ Args:
 
 Returns:
     dict: 包含分块结果的数据：
-    - _chunks: 分块后的文本列表
-    - _chunk_error: 分块错误信息（如果有）
+    _chunks: 分块后的文本列表
+    _chunk_error: 分块错误信息（如果有）
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCChunkText', """\
@@ -5499,8 +5166,8 @@ Args:
 
 Returns:
     dict: Data containing chunking results:
-    - _chunks: List of chunked texts
-    - _chunk_error: Chunking error message (if any)
+    _chunks: List of chunked texts
+    _chunk_error: Chunking error message (if any)
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCChunkText', """\
@@ -5527,7 +5194,7 @@ Args:
 
 Returns:
     dict: 包含保存结果的数据：
-    - chunk_path: 保存的JSON文件路径
+    chunk_path: 保存的JSON文件路径
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCSaveChunks', """\
@@ -5542,7 +5209,7 @@ Args:
 
 Returns:
     dict: Data containing save results:
-    - chunk_path: Path to the saved JSON file
+    chunk_path: Path to the saved JSON file
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_chunk_generator_batch.KBCSaveChunks', """\
@@ -5621,8 +5288,8 @@ Args:
 
 Returns:
     dict: 包含分块数据的数据：
-    - _chunks_data: 分块数据列表
-    - _chunk_path: 分块文件路径
+    _chunks_data: 分块数据列表
+    _chunk_path: 分块文件路径
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCLoadChunkFile', """\
@@ -5636,8 +5303,8 @@ Args:
 
 Returns:
     dict: Data containing chunk data:
-    - _chunks_data: List of chunk data
-    - _chunk_path: Chunk file path
+    _chunks_data: List of chunk data
+    _chunk_path: Chunk file path
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCLoadChunkFile', """\
@@ -5665,7 +5332,7 @@ Args:
 
 Returns:
     dict: 包含预处理结果的数据：
-    - _processed_chunks: 预处理后的分块列表
+    _processed_chunks: 预处理后的分块列表
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCPreprocessText', """\
@@ -5681,7 +5348,7 @@ Args:
 
 Returns:
     dict: Data containing preprocessing results:
-    - _processed_chunks: List of preprocessed chunks
+    _processed_chunks: List of preprocessed chunks
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCPreprocessText', """\
@@ -5709,7 +5376,7 @@ Args:
 
 Returns:
     dict: 包含信息对的数据：
-    - _info_pairs: 信息对列表，每个包含 premise、intermediate、conclusion 和 related_contexts
+    _info_pairs: 信息对列表，每个包含 premise、intermediate、conclusion 和 related_contexts
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCExtractInfoPairs', """\
@@ -5725,7 +5392,7 @@ Args:
 
 Returns:
     dict: Data containing information pairs:
-    - _info_pairs: List of information pairs, each containing premise, intermediate, conclusion, and related_contexts
+    _info_pairs: List of information pairs, each containing premise, intermediate, conclusion, and related_contexts
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCExtractInfoPairs', """\
@@ -5753,7 +5420,7 @@ Args:
 
 Returns:
     dict: 包含生成的问答结果的数据：
-    - _qa_results: 问答结果列表，每个包含 response 和 info_pair
+    _qa_results: 问答结果列表，每个包含 response 和 info_pair
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCGenerateMultiHopQA', """\
@@ -5769,7 +5436,7 @@ Args:
 
 Returns:
     dict: Data containing generated QA results:
-    - _qa_results: List of QA results, each containing response and info_pair
+    _qa_results: List of QA results, each containing response and info_pair
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCGenerateMultiHopQA', """\
@@ -5796,7 +5463,7 @@ Args:
 
 Returns:
     dict: 包含解析后的问答对的数据：
-    - _qa_pairs: 解析后的问答对列表
+    _qa_pairs: 解析后的问答对列表
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.parse_qa_pairs', """\
@@ -5810,7 +5477,7 @@ Args:
 
 Returns:
     dict: Data containing parsed QA pairs:
-    - _qa_pairs: List of parsed QA pairs
+    _qa_pairs: List of parsed QA pairs
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.parse_qa_pairs', """\
@@ -5835,7 +5502,7 @@ Args:
 
 Returns:
     dict: 包含保存结果的数据：
-    - enhanced_chunk_path: 增强后的分块文件路径
+    enhanced_chunk_path: 增强后的分块文件路径
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCSaveEnhanced', """\
@@ -5850,7 +5517,7 @@ Args:
 
 Returns:
     dict: Data containing save results:
-    - enhanced_chunk_path: Path to the enhanced chunk file
+    enhanced_chunk_path: Path to the enhanced chunk file
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_multihop_qa_generator_batch.KBCSaveEnhanced', """\
@@ -5880,8 +5547,8 @@ Args:
 
 Returns:
     dict: 包含原始分块数据的数据：
-    - _chunks_data: 原始分块数据列表
-    - _chunk_path: 分块文件路径
+    _chunks_data: 原始分块数据列表
+    _chunk_path: 分块文件路径
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCLoadRAWChunkFile', """\
@@ -5895,8 +5562,8 @@ Args:
 
 Returns:
     dict: Data containing raw chunk data:
-    - _chunks_data: List of raw chunk data
-    - _chunk_path: Chunk file path
+    _chunks_data: List of raw chunk data
+    _chunk_path: Chunk file path
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCLoadRAWChunkFile', """\
@@ -5924,7 +5591,7 @@ Args:
 
 Returns:
     dict: 包含清洗结果的数据：
-    - _cleaned_results: 清洗结果列表，每个包含 response、raw_chunk 和 original_item
+    _cleaned_results: 清洗结果列表，每个包含 response、raw_chunk 和 original_item
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCGenerateCleanedText', """\
@@ -5940,7 +5607,7 @@ Args:
 
 Returns:
     dict: Data containing cleaning results:
-    - _cleaned_results: List of cleaning results, each containing response, raw_chunk, and original_item
+    _cleaned_results: List of cleaning results, each containing response, raw_chunk, and original_item
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCGenerateCleanedText', """\
@@ -5967,7 +5634,7 @@ Args:
 
 Returns:
     dict: 包含提取后清洗内容的数据：
-    - _cleaned_chunks: 清洗后的分块列表，每个包含 raw_chunk、cleaned_chunk 和 original_item
+    _cleaned_chunks: 清洗后的分块列表，每个包含 raw_chunk、cleaned_chunk 和 original_item
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.extract_cleaned_content', """\
@@ -5981,7 +5648,7 @@ Args:
 
 Returns:
     dict: Data containing extracted cleaned content:
-    - _cleaned_chunks: List of cleaned chunks, each containing raw_chunk, cleaned_chunk, and original_item
+    _cleaned_chunks: List of cleaned chunks, each containing raw_chunk, cleaned_chunk, and original_item
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.extract_cleaned_content', """\
@@ -6006,7 +5673,7 @@ Args:
 
 Returns:
     dict: 包含保存结果的数据：
-    - cleaned_chunk_path: 清洗后的分块文件路径
+    cleaned_chunk_path: 清洗后的分块文件路径
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCSaveCleaned', """\
@@ -6021,7 +5688,7 @@ Args:
 
 Returns:
     dict: Data containing save results:
-    - cleaned_chunk_path: Path to the cleaned chunk file
+    cleaned_chunk_path: Path to the cleaned chunk file
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_text_cleaner_batch.KBCSaveCleaned', """\
@@ -6053,7 +5720,7 @@ Args:
 
 Returns:
     dict: 包含清洗响应的数据：
-    - _cleaned_response: LLM的清洗响应
+    _cleaned_response: LLM的清洗响应
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.kbc_text_cleaner.KBCGenerateCleanedTextSingle', """\
@@ -6069,7 +5736,7 @@ Args:
 
 Returns:
     dict: Data containing cleaning response:
-    - _cleaned_response: LLM's cleaning response
+    _cleaned_response: LLM's cleaning response
 """)
 
 add_example('data.operators.knowledge_cleaning.kbc_text_cleaner.KBCGenerateCleanedTextSingle', """\
@@ -6139,8 +5806,8 @@ Args:
 
 Returns:
     dict: 包含问答数据的数据：
-    - _qa_data: 加载的问答数据
-    - _source_file: 数据来源文件路径（如果从文件加载）
+    _qa_data: 加载的问答数据
+    _source_file: 数据来源文件路径（如果从文件加载）
 """)
 
 add_english_doc('data.operators.knowledge_cleaning.qa_extract.KBCLoadQAData', """\
@@ -6155,8 +5822,8 @@ Args:
 
 Returns:
     dict: Data containing QA data:
-    - _qa_data: Loaded QA data
-    - _source_file: Data source file path (if loaded from file)
+    _qa_data: Loaded QA data
+    _source_file: Data source file path (if loaded from file)
 """)
 
 add_example('data.operators.knowledge_cleaning.qa_extract.KBCLoadQAData', """\
@@ -6244,9 +5911,9 @@ Args:
 
 Returns:
     dict: 验证后的数据，包含：
-    - _is_valid: 数据是否有效
-    - _error: 错误信息（如果无效）
-    - _query, _pos, _neg: 标准化后的字段值
+    _is_valid: 数据是否有效
+    _error: 错误信息（如果无效）
+    _query, _pos, _neg: 标准化后的字段值
 """)
 
 add_english_doc('data.operators.reranker_synthesis.reranker_data_formatter.validate_reranker_data', """\
@@ -6262,9 +5929,9 @@ Args:
 
 Returns:
     dict: Validated data containing:
-    - _is_valid: Whether data is valid
-    - _error: Error message (if invalid)
-    - _query, _pos, _neg: Normalized field values
+    _is_valid: Whether data is valid
+    _error: Error message (if invalid)
+    _query, _pos, _neg: Normalized field values
 """)
 
 add_example('data.operators.reranker_synthesis.reranker_data_formatter.validate_reranker_data', """\
@@ -6461,9 +6128,9 @@ Args:
 
 Returns:
     dict: 验证后的数据，包含：
-    - _is_valid: 数据是否有效
-    - _error: 错误信息（如果无效）
-    - _query, _pos, _neg: 标准化后的字段值
+    _is_valid: 数据是否有效
+    _error: 错误信息（如果无效）
+    _query, _pos, _neg: 标准化后的字段值
 """)
 
 add_english_doc('data.operators.reranker_synthesis.reranker_from_embedding_converter.validate_reranker_embedding_data', """\
@@ -6479,9 +6146,9 @@ Args:
 
 Returns:
     dict: Validated data containing:
-    - _is_valid: Whether data is valid
-    - _error: Error message (if invalid)
-    - _query, _pos, _neg: Normalized field values
+    _is_valid: Whether data is valid
+    _error: Error message (if invalid)
+    _query, _pos, _neg: Normalized field values
 """)
 
 add_example('data.operators.reranker_synthesis.reranker_from_embedding_converter.validate_reranker_embedding_data', """\
