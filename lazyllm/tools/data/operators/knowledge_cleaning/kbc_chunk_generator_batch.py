@@ -1,6 +1,7 @@
 import os
+import re
 import json
-from typing import Optional
+from typing import List, Optional
 from lazyllm import LOG
 from lazyllm.common.registry import LazyLLMRegisterMetaClass
 from ...base_data import data_register
@@ -108,38 +109,136 @@ class KBCChunkText(kbc):
                 LOG.error(f'Missing dependencies: {e}')
                 raise
 
+    def _count_tokens(self, text: str) -> int:
+        return len(self._tokenizer.encode(text, add_special_tokens=False))
+
+    def _chunk_by_token(self, text: str) -> List[str]:
+        tokens = self._tokenizer.encode(text, add_special_tokens=False)
+        if not tokens:
+            return [text] if text.strip() else []
+        step = max(1, self.chunk_size - self.chunk_overlap)
+        chunks = []
+        for start in range(0, len(tokens), step):
+            end = min(start + self.chunk_size, len(tokens))
+            chunk_tokens = tokens[start:end]
+            chunk_text = self._tokenizer.decode(chunk_tokens, skip_special_tokens=True)
+            if chunk_text.strip():
+                chunks.append(chunk_text)
+            if end >= len(tokens):
+                break
+        return chunks if chunks else [text]
+
+    def _chunk_by_sentence(self, text: str) -> List[str]:
+        # Sentence boundaries: . ! ? and common CJK terminators
+        parts = re.split(r'(?<=[。！？.!?])\s*', text)
+        sentences = [s.strip() for s in parts if s.strip()]
+        if not sentences:
+            return [text] if text.strip() else []
+        out = []
+        current = []
+        current_tokens = 0
+        for sent in sentences:
+            n = self._count_tokens(sent)
+            if current_tokens + n > self.chunk_size and current:
+                out.append(' '.join(current))
+                overlap_sents = []
+                overlap_tokens = 0
+                for s in reversed(current):
+                    overlap_tokens += self._count_tokens(s)
+                    if overlap_tokens <= self.chunk_overlap:
+                        overlap_sents.append(s)
+                    else:
+                        break
+                current = list(reversed(overlap_sents))
+                current_tokens = overlap_tokens
+            current.append(sent)
+            current_tokens += n
+        if current:
+            out.append(' '.join(current))
+        return out
+
+    def _chunk_by_recursive(self, text: str) -> List[str]:
+        separators = ['\n\n', '\n', '. ', '。', '! ', '? ', ' ', '']
+
+        def _split(tex: str, sep_index: int) -> List[str]:
+            if sep_index >= len(separators):
+                return [tex] if tex.strip() else []
+            sep = separators[sep_index]
+            if not sep:
+                return [tex] if tex.strip() else []
+            parts = [p.strip() for p in tex.split(sep) if p.strip()]
+            if len(parts) <= 1:
+                return _split(tex, sep_index + 1)
+            result = []
+            for p in parts:
+                result.extend(_split(p, sep_index + 1))
+            return result
+
+        def _merge(parts: List[str]) -> List[str]:
+            if not parts:
+                return []
+            out = []
+            acc = []
+            acc_tokens = 0
+            for p in parts:
+                n = self._count_tokens(p)
+                if acc_tokens + n > self.chunk_size and acc:
+                    out.append(('\n' if '\n' in acc[0] else ' ').join(acc))
+                    overlap_acc = []
+                    overlap_tokens = 0
+                    for x in reversed(acc):
+                        overlap_tokens += self._count_tokens(x)
+                        if overlap_tokens <= self.chunk_overlap:
+                            overlap_acc.append(x)
+                        else:
+                            break
+                    acc = list(reversed(overlap_acc))
+                    acc_tokens = overlap_tokens
+                acc.append(p)
+                acc_tokens += n
+            if acc:
+                out.append(('\n' if '\n' in acc[0] else ' ').join(acc))
+            return out
+
+        parts = _split(text, 0)
+        return _merge(parts)
+
+    def _chunk_by_semantic(self, text: str) -> List[str]:
+        paragraphs = [p.strip() for p in text.split('\n\n') if p.strip()]
+        if not paragraphs:
+            return [text] if text.strip() else []
+        out = []
+        acc = []
+        acc_tokens = 0
+        for para in paragraphs:
+            n = self._count_tokens(para)
+            if acc_tokens + n > self.chunk_size and acc:
+                out.append('\n\n'.join(acc))
+                overlap_acc = []
+                overlap_tokens = 0
+                for x in reversed(acc):
+                    overlap_tokens += self._count_tokens(x)
+                    if overlap_tokens <= self.chunk_overlap:
+                        overlap_acc.append(x)
+                    else:
+                        break
+                acc = list(reversed(overlap_acc))
+                acc_tokens = overlap_tokens
+            acc.append(para)
+            acc_tokens += n
+        if acc:
+            out.append('\n\n'.join(acc))
+        return out
+
     def _initialize_chunker(self):
-        from lazyllm.thirdparty.chonkie import (
-            TokenChunker,
-            SentenceChunker,
-            SemanticChunker,
-            RecursiveChunker,
-        )
-
         if self.split_method == 'token':
-            return TokenChunker(
-                tokenizer=self._tokenizer,
-                chunk_size=self.chunk_size,
-                chunk_overlap=self.chunk_overlap,
-            )
-
+            return lambda t: self._chunk_by_token(t)
         if self.split_method == 'sentence':
-            return SentenceChunker(
-                chunk_size=self.chunk_size,
-                chunk_overlap=self.chunk_overlap,
-            )
-
+            return lambda t: self._chunk_by_sentence(t)
         if self.split_method == 'semantic':
-            return SemanticChunker(
-                chunk_size=self.chunk_size,
-            )
-
+            return lambda t: self._chunk_by_semantic(t)
         if self.split_method == 'recursive':
-            return RecursiveChunker(
-                chunk_size=self.chunk_size,
-                chunk_overlap=self.chunk_overlap,
-            )
-
+            return lambda t: self._chunk_by_recursive(t)
         raise ValueError(f'Unsupported split method: {self.split_method}')
 
     def forward(
@@ -159,19 +258,18 @@ class KBCChunkText(kbc):
             max_tokens = self._tokenizer.model_max_length
 
             if total_tokens <= max_tokens:
-                chunks = self._chunker(text)
+                chunk_texts = self._chunker(text)
             else:
                 x = (total_tokens + max_tokens - 1) // max_tokens
                 words = text.split()
                 words_per_chunk = (len(words) + x - 1) // x
 
-                chunks = []
+                chunk_texts = []
                 for j in range(0, len(words), words_per_chunk):
                     chunk_text = ' '.join(words[j:j + words_per_chunk])
-                    chunks.extend(self._chunker(chunk_text))
+                    chunk_texts.extend(self._chunker(chunk_text))
 
-            chunk_texts = [chunk.text for chunk in chunks]
-            LOG.info(f'Split text into {len(chunks)} chunks.')
+            LOG.info(f'Split text into {len(chunk_texts)} chunks.')
             return {**data, '_chunks': chunk_texts}
 
         except Exception as e:
