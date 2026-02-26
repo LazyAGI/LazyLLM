@@ -116,6 +116,10 @@
     members:
     exclude-members:
 
+::: lazyllm.tools.data.operators.knowledge_cleaning.qa_extract
+    members:
+    exclude-members:
+
 ### 思维链生成算子
 
 ::: lazyllm.tools.data.operators.cot_ops
@@ -137,9 +141,6 @@
 ### Pdf处理算子
 
 ::: lazyllm.tools.data.operators.pdf_ops
-    members:
-    exclude-members:
-::: lazyllm.tools.data.operators.knowledge_cleaning.qa_extract
     members:
     exclude-members:
 
