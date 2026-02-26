@@ -91,6 +91,7 @@
     exclude-members:
 
 ### Agentic rag
+
 ::: lazyllm.tools.data.operators.agentic_rag.agenticrag_atomic_task_generator
     members:
     exclude-members:
@@ -108,10 +109,13 @@
     exclude-members:
 
 ### Embedding synthesis
+
 ::: lazyllm.tools.data.operators.embedding_synthesis
     members:
     exclude-members:
+
 ### Knowledge clean
+
 ::: lazyllm.tools.data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api
     members:
     exclude-members:
@@ -139,8 +143,20 @@
 ::: lazyllm.tools.data.operators.knowledge_cleaning.qa_extract
     members:
     exclude-members:
+
 ### Reranker synthesis
+
 ::: lazyllm.tools.data.operators.reranker_synthesis
+    members:
+    exclude-members:
+
+### LLM JSON Operators
+
+::: lazyllm.tools.data.operators.llm_base_ops
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.llm_json_ops
     members:
     exclude-members:
 

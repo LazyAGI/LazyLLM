@@ -4618,6 +4618,95 @@ print(res)
 ```
 """)
 
+# LLM based JSON operators docs
+add_chinese_doc('data.operators.llm_base_ops.LLMDataJson', """\
+基于 LLM 的 JSON 数据处理算子基类。提供结构化输出的基础逻辑，包括自动配置 JsonFormatter、重试机制以及预处理/验证/后处理生命周期。
+
+构造函数参数:\n
+- model: LazyLLM 模型实例。
+- prompt: 可选，用于引导 LLM 的 Prompt（ChatPrompter 或字符串）。
+- max_retries: 最大重试次数，默认 3。
+- **kwargs: 其它传递给基类的并发或持久化参数。
+""")
+
+add_english_doc('data.operators.llm_base_ops.LLMDataJson', """\
+Base class for LLM-based JSON data processing operators. Provides foundational logic for structured output,
+including automatic JsonFormatter configuration, retry mechanisms, and a pre/verify/post-processing lifecycle.
+
+Constructor args:\n
+- model: a LazyLLM model instance.
+- prompt: optional, ChatPrompter or string to guide the LLM.
+- max_retries: maximum number of retries, default 3.
+- **kwargs: additional concurrency or persistence arguments for the base class.
+""")
+
+add_chinese_doc('data.operators.llm_json_ops.FieldExtractor', """\
+字段提取器。利用 LLM 根据提供的字段列表从输入文本中提取特定信息。
+
+Args:
+    model: LazyLLM 模型实例。
+    prompt: 可选，自定义提取 Prompt。
+    input_keys: 字段列表，默认为 ['persona', 'text', 'fields']。
+    output_key: 结果存储在数据字典中的键名，默认 'structured_data'。
+""")
+
+add_english_doc('data.operators.llm_json_ops.FieldExtractor', """\
+Field extractor. Uses LLM to extract specific information from input text based on a provided list of fields.
+
+Args:
+    model: a LazyLLM model instance.
+    prompt: optional custom extraction prompt.
+    input_keys: list of input keys, defaults to ['persona', 'text', 'fields'].
+    output_key: key name to store results in the data dict, default 'structured_data'.
+""")
+
+add_example('data.operators.llm_json_ops.FieldExtractor', """\
+```python
+from lazyllm import OnlineChatModule
+from lazyllm.tools.data.operators.llm_json_ops import FieldExtractor
+model = OnlineChatModule(source='sensenova')
+op = FieldExtractor(model=model)
+inputs = [{
+    'text': '张三，28岁，目前在上海',
+    'fields': ['name', 'age', 'location']
+}]
+res = op(inputs)
+print(res[0]['structured_data']) # {'name': '张三', 'age': '28', 'location': '上海'}
+```
+""")
+
+add_chinese_doc('data.operators.llm_json_ops.SchemaExtractor', """\
+架构提取器。利用 LLM 根据指定的 Schema（字典或 Pydantic 模型）从文本中提取结构化数据。
+
+Args:
+    model: LazyLLM 模型实例。
+    prompt: 可选，自定义提取 Prompt。
+    input_key: 输入文本的键名，默认 'text'。
+    output_key: 结果存储在数据字典中的键名，默认 'structured_data'。
+""")
+
+add_english_doc('data.operators.llm_json_ops.SchemaExtractor', """\
+Schema extractor. Uses LLM to extract structured data from text according to a specified schema (dict or Pydantic model).
+
+Args:
+    model: a LazyLLM model instance.
+    prompt: optional custom extraction prompt.
+    input_key: key name for input text, default 'text'.
+    output_key: key name to store results in the data dict, default 'structured_data'.
+""")
+
+add_example('data.operators.llm_json_ops.SchemaExtractor', """\
+```python
+from lazyllm import OnlineChatModule
+from lazyllm.tools.data.operators.llm_json_ops import SchemaExtractor
+model = OnlineChatModule(source='sensenova')
+op = SchemaExtractor(model=model)
+inputs = [{'text': 'Math score is 95', 'schema': {'subject': 'str', 'score': 'int'}}]
+res = op(inputs)
+print(res[0]['structured_data']) # {'subject': 'Math', 'score': 95}
+```
+""")
+
 # pipelines module docs
 add_chinese_doc( 'data.pipelines.demo_pipelines.build_demo_pipeline', """\
 构建演示用数据处理流水线（Pipeline），包含若干示例算子并展示如何在 pipeline 上组合使用这些算子。

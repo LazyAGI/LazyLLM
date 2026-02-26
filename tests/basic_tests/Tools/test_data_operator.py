@@ -7,7 +7,8 @@ import random
 import json
 from lazyllm import config, LOG
 from lazyllm.tools.data import demo1, demo2, refine, chunker, \
-    filter, data_register, genCot, EnQA, MathQA, Text2qa, pt, pt_mm
+    filter, data_register, genCot, EnQA, MathQA, Text2qa, pt, pt_mm, \
+    llm_json_base
 from lazyllm.thirdparty import PIL
 
 
@@ -30,7 +31,7 @@ class MockModel:
     def start(self):
         return self
 
-class TestDataOperators:
+class TestDataDemoOperators:
 
     def setup_method(self):
         self.root_dir = './test_data_op'
@@ -1013,3 +1014,59 @@ class TestDataOperators:
         res = op(data)
         assert len(res) == 1
         assert res[0].get('score') == 1
+
+
+class TestDataLLMDemoOperators:
+
+    def setup_method(self):
+        self.root_dir = './test_data_op'
+        self.keep_dir = config['data_process_path']
+        os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.root_dir
+        config.refresh()
+
+    def teardown_method(self):
+        os.environ['LAZYLLM_DATA_PROCESS_PATH'] = self.keep_dir
+        config.refresh()
+        if os.path.exists(self.root_dir):
+            shutil.rmtree(self.root_dir)
+
+    def load_results(self, op):
+        load_res = []
+        with open(op._store.save_path, 'r', encoding='utf-8') as f:
+            lines = f.readlines()
+            for line in lines:
+                data = json.loads(line)
+                load_res.append(data)
+        return load_res
+
+    def test_field_extractor(self):
+        expected_response = {'name': '张三', 'age': 28, 'location': '上海'}
+        model = MockModel(expected_response)
+        op = llm_json_base.FieldExtractor(model)
+        inputs = [{
+            'text': '张三，28岁，目前在上海',
+            'fields': ['name', 'age', 'location']
+        }]
+        res = op(inputs)
+        assert len(res) == 1
+        assert res[0]['structured_data'] == expected_response
+
+        load_res = self.load_results(op)
+        assert len(load_res) == 1
+        assert load_res[0]['structured_data'] == expected_response
+
+    def test_schema_extractor(self):
+        expected_response = {'subject': 'Mock Subject', 'description': 'Mock Description'}
+        model = MockModel(expected_response)
+        op = llm_json_base.SchemaExtractor(model)
+        inputs = [{
+            'text': 'Some text',
+            'schema': {'subject': 'description 1', 'description': 'description 2'}
+        }]
+        res = op(inputs)
+        assert len(res) == 1
+        assert res[0]['structured_data'] == expected_response
+
+        load_res = self.load_results(op)
+        assert len(load_res) == 1
+        assert load_res[0]['structured_data'] == expected_response

@@ -53,6 +53,7 @@
 ::: lazyllm.tools.data.operators.token_chunker
     members:
     exclude-members:
+
 ### 代码生成算子
 
 ::: lazyllm.tools.data.operators.codegen_ops
@@ -60,6 +61,7 @@
     exclude-members:
 
 ### Agentic rag
+
 ::: lazyllm.tools.data.operators.agentic_rag.agenticrag_atomic_task_generator
     members:
     exclude-members:
@@ -81,11 +83,15 @@
 ::: lazyllm.tools.data.operators.text2qa_ops
     members:
     exclude-members:
+
 ### Embedding 数据合成
+
 ::: lazyllm.tools.data.operators.embedding_synthesis
     members:
     exclude-members:
+
 ### 知识库清洗
+
 ::: lazyllm.tools.data.operators.knowledge_cleaning.file_or_url_to_markdown_converter_api
     members:
     exclude-members:
@@ -136,8 +142,20 @@
 ::: lazyllm.tools.data.operators.knowledge_cleaning.qa_extract
     members:
     exclude-members:
+
 ### Reranker 数据合成
+
 ::: lazyllm.tools.data.operators.reranker_synthesis
+    members:
+    exclude-members:
+
+### LLM JSON 算子
+
+::: lazyllm.tools.data.operators.llm_base_ops
+    members:
+    exclude-members:
+
+::: lazyllm.tools.data.operators.llm_json_ops
     members:
     exclude-members:
 
