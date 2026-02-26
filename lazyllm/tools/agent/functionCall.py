@@ -61,6 +61,7 @@ class FunctionCall(ModuleBase):
             self._tools_manager = ToolManager(tools, return_trace=return_trace, sandbox=self._sandbox)
         else:
             self._tools_manager = _tool_manager
+            self._sandbox = _tool_manager.sandbox
         self._skill_manager = skill_manager
         self._workspace = workspace
         prompt = _prompt or FC_PROMPT

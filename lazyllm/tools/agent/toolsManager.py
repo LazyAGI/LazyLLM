@@ -432,31 +432,39 @@ class ToolManager(ModuleBase):
         output_files = self._ensure_list(arguments.get(tool.output_files_parm, [])) + tool.output_files
         return kwargs(code=tool.to_sandbox_code(arguments), input_files=input_files, output_files=output_files)
 
+    def _parse_tool_call(self, tc):
+        func = tc.get('function') if isinstance(tc, dict) else None
+        if not func or 'name' not in func or 'arguments' not in func:
+            return None, f'Tool call format is invalid, expected: {TOOL_CALL_FORMAT_EXAMPLE}'
+        name = func['name']
+        raw_args = func['arguments']
+        arguments = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
+        if not isinstance(arguments, dict):
+            return None, f'Tool [{name}] arguments format error.'
+        tool = self._tool_call.get(name)
+        if tool is None:
+            return None, f'Tool [{name}] is not available. Please choose from the available tools.'
+        if not self._validate_tool(name, arguments):
+            return None, f'Tool [{name}] parameters error.'
+        return tool, arguments
+
     def forward(self, tools: Union[Dict[str, Any], List[Dict[str, Any]]], verbose: bool = False):
         if not tools: return []
         tool_calls = [tools] if isinstance(tools, dict) else tools
 
-        assert any('function' in tc and 'name' in tc['function'] and 'arguments' in tc['function']
-                   for tc in tool_calls), f'The tool call format is invalid; expected: {TOOL_CALL_FORMAT_EXAMPLE}'
-
         callables = []
         call_arguments = []
         for tc in tool_calls:
-            name = tc['function']['name']
-            raw_args = tc['function']['arguments']
-            arguments = json.loads(raw_args) if isinstance(raw_args, str) else raw_args
-            assert isinstance(arguments, dict)
-            tool = self._tool_call[name]
-
-            if not self._validate_tool(name, arguments):
-                callables.append(lambda *_, _n=name: f'Tool [{_n}] parameters error.')
+            tool, args_or_err = self._parse_tool_call(tc)
+            if tool is None:
+                callables.append(lambda *_, _e=args_or_err: _e)
                 call_arguments.append({})
             elif self._sandbox and tool.execute_in_sandbox:
                 callables.append(self._sandbox)
-                call_arguments.append(self._build_sandbox_args(tool, arguments))
+                call_arguments.append(self._build_sandbox_args(tool, args_or_err))
             else:
                 callables.append(tool)
-                call_arguments.append(arguments)
+                call_arguments.append(args_or_err)
 
         tool_diverter = lazyllm.diverter(tuple(callables))
         return tool_diverter(tuple(call_arguments))

@@ -74,9 +74,8 @@ class DummySandbox(LazyLLMSandboxBase):
         self._ensure_output_dir()
         collected = []
         for name in output_files:
-            base = os.path.basename(name)
-            src = os.path.join(context['temp_dir'], base)
-            dst = os.path.join(self._output_dir_path, base)
+            src = os.path.join(context['temp_dir'], name)
+            dst = os.path.join(self._output_dir_path, name)
             try:
                 if os.path.exists(src):
                     shutil.move(src, dst)
